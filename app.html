@@ -90,7 +90,7 @@
 <span class="text-[11px] text-text-muted" id="kv-biz-sub">Premium Japanese Restaurant</span>
 <span class="text-[11px] text-text-muted" id="kv-biz-loc">Kuala Lumpur · MY</span>
 </div>
-<div class="mt-4 flex flex-col gap-1 px-2">
+<div class="mt-4 flex flex-col gap-1 px-2" id="kv-demo" style="display:none">
 <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Demo preview</span>
 <div class="flex flex-wrap gap-1">
 <button class="as-chip green" data-switch="restaurant" onclick="kvSetBiz('restaurant')">🍜 Restaurant</button>
@@ -239,6 +239,17 @@ document.querySelectorAll('.as-side-item').forEach(function(el){ el.addEventList
   try {
     if (localStorage.getItem('aisar-onboarded-v1') !== '1') {
       window.location.replace('/onboard');
+    }
+  } catch(e) {}
+})();
+
+/* Demo preview: hidden untuk produk sebenar — aktif hanya bila ?demo=1 */
+(function(){
+  try {
+    var demo = new URLSearchParams(location.search).get('demo');
+    if (demo === '1') {
+      var el = document.getElementById('kv-demo');
+      if (el) el.style.display = '';
     }
   } catch(e) {}
 })();
