@@ -77,7 +77,7 @@
 <a href="/" aria-label="AISAR home"><span class="inline-flex items-center gap-2 text-xl md:text-2xl font-pixel font-pixel-logo tracking-wide text-text"><span class="as-green">aisar</span><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted hidden sm:inline">/platform</span></span></a>
 <div class="flex items-center gap-3">
 <a class="btn btn-outline px-5 py-2 text-sm" href="/">← Landing</a>
-<a class="btn btn-primary px-5 py-2 text-sm" href="#onboarding">Get started</a>
+<a class="btn btn-primary px-5 py-2 text-sm" href="#" onclick="kvOpenOnboarding();return false">Get started</a>
 </div>
 </div>
 </header>
@@ -546,6 +546,14 @@ function kvActivate(){
   }, 1400);
 }
 function kvCloseOnboarding(){ document.getElementById('kv-onboarding').classList.add('hidden'); }
+function kvOpenOnboarding(){ document.getElementById('kv-onboarding').classList.remove('hidden'); }
+
+/* Auto-open onboarding kali pertama (demo: guna localStorage) */
+(function(){
+  if (!localStorage.getItem('aisar-onboarded-v1')) {
+    kvOpenOnboarding();
+  }
+})();
 
 /* Toast */
 var toastTimer = null;
