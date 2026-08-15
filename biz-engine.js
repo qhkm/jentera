@@ -1726,11 +1726,96 @@ function kvLiveChans(){
 function kvBump(v){ return kvSetupDone() ? Math.min(96, v + 20) : v; }
 
 /* ============================================================
+   COMMAND CENTER — Home jadi state-driven: setup → connect → operasi.
+   Satu CTA jelas setiap stage, bukan 5 view bebas.
+   ============================================================ */
+function kvEsc(s){
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+
+function kvCommandCenter(b){
+  var el = document.getElementById('h-command');
+  if (!el) return;
+  var html = '';
+  var setupDone = kvSetupDone();
+  var chans = kvLiveChans();
+  var sub = document.getElementById('kv-home-sub');
+
+  if (!setupDone){
+    /* Stage 1 — setup belum siap: fokus setup je */
+    if (sub) sub.textContent = 'Satu langkah lagi sebelum AISAR boleh mula bekerja.';
+    html =
+      '<div class="as-card flex flex-col gap-4 p-5">' +
+        '<div class="as-row justify-between">' +
+          '<div class="flex flex-col gap-1">' +
+            '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Satu langkah lagi</span>' +
+            '<h3 class="font-pixel text-lg tracking-tight">Siapkan profil bisnes kau</h3>' +
+            '<p class="text-[13px] text-text-secondary">AISAR perlu tahu bisnes kau sebelum boleh mula bekerja.</p>' +
+          '</div>' +
+          '<span class="as-tag amber">setup</span>' +
+        '</div>' +
+        '<div class="as-row gap-3">' +
+          '<a class="btn btn-primary px-5 py-2 text-sm" href="/setup">Sambung setup →</a>' +
+        '</div>' +
+      '</div>';
+  } else if (!chans || !chans.length){
+    /* Stage 2 — setup siap, belum connect: fokus connect */
+    if (sub) sub.textContent = 'AISAR sedia — sambungkan saluran untuk hidupkan AI team.';
+    html =
+      '<div class="as-card flex flex-col gap-4 p-5">' +
+        '<div class="as-row justify-between">' +
+          '<div class="flex flex-col gap-1">' +
+            '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Hidupkan AI team</span>' +
+            '<h3 class="font-pixel text-lg tracking-tight">Sambung WhatsApp dulu</h3>' +
+            '<p class="text-[13px] text-text-secondary">Customer Assistant akan jawab pelanggan kau 24/7 — tapi dia perlukan saluran dulu.</p>' +
+          '</div>' +
+          '<span class="as-tag amber">1 sambungan</span>' +
+        '</div>' +
+        '<div class="as-row gap-3">' +
+          '<a class="btn btn-primary px-5 py-2 text-sm" href="/setup">Sambung sekarang →</a>' +
+        '</div>' +
+      '</div>';
+  } else {
+    /* Stage 3 — operasi harian: narrative + eskalasi */
+    if (sub) sub.textContent = "Here's what happened while you were away.";
+    var work = b.work || [];
+    var needsYou = work.filter(function(w){ return w.tag === 'needs you'; });
+    var doneCount = work.filter(function(w){ return w.tag === 'done' || w.tag === 'confirmed' || w.tag === 'sent'; }).length;
+    var teamNames = (b.team || []).slice(0,3).map(function(t){ return t.e + ' ' + t.n; }).join(' · ');
+    var needHtml = needsYou.map(function(w){
+      return '<div class="as-row justify-between gap-3 border-t border-white/10 pt-3 mt-3">' +
+        '<div class="flex flex-col gap-1">' +
+          '<span class="text-[13px]">' + w.e + ' ' + kvEsc(w.n) + '</span>' +
+          '<span class="text-[12px] text-text-secondary">' + kvEsc(w.d) + '</span>' +
+        '</div>' +
+        '<button class="btn btn-primary px-4 py-1 text-xs" data-msg="' + kvEsc(w.cta || 'Done — reply sent.') + '" onclick="kvToast(this.dataset.msg)">Respond</button>' +
+      '</div>';
+    }).join('');
+    html =
+      '<div class="as-card flex flex-col gap-4 p-5">' +
+        '<div class="as-row justify-between">' +
+          '<div class="flex flex-col gap-1">' +
+            '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Apa yang AISAR buat hari ini</span>' +
+            '<h3 class="font-pixel text-lg tracking-tight">' + doneCount + ' tugasan diselesaikan auto</h3>' +
+            '<p class="text-[13px] text-text-secondary">' + kvEsc(teamNames) + '</p>' +
+          '</div>' +
+          '<span class="as-tag green">live</span>' +
+        '</div>' +
+        needHtml +
+        (needsYou.length ? '' : '<p class="text-[12px] text-text-muted">Semua dah settle — takde benda yang perlu kau buat. 🎉</p>') +
+      '</div>';
+  }
+  el.innerHTML = html;
+}
+
+/* ============================================================
    RENDER — satu set views, content ikut playbook.
    ============================================================ */
 function kvRenderAll(){
   var b = kvPlaybook(kvBizType());
   var chans = kvLiveChans() || b.ch;
+
+  kvCommandCenter(b);
 
   /* Sidebar */
   var el;
