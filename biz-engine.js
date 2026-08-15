@@ -124,12 +124,137 @@ function kvChans(b){
 }
 
 /* ============================================================
+   CONNECTOR REGISTRY — senarai semua platform yang AISAR boleh
+   connect. Setiap connector: kaedah integrate (oauth|link|file|bss),
+   auth flow, scope (apa yang boleh buat), negara sokongan.
+
+   Prinsip: customer TAK PERNAH nampak API key/webhook — connect =
+   login + approve (T1 oauth), link je (T2), file/email (T3),
+   atau key dipegang kami (T4/bss). Details: AISAR-INTEGRATION-STRATEGY.md
+   ============================================================ */
+var KV_CONNECTORS = {
+  whatsapp: {
+    n: 'WhatsApp', e: '💬', tier: 'T1', method: 'oauth',
+    flow: 'Meta Embedded Signup — login FB/Meta, setup WhatsApp Cloud API automatik (takde API key)',
+    scope: ['reply pelanggan', 'hantar reminder', 'hantar receipt', 'auto-follow-up'],
+    countries: ['MY','ID','SG','TH','PH'], meta: true
+  },
+  instagram: {
+    n: 'Instagram', e: '📸', tier: 'T1', method: 'oauth',
+    flow: 'Meta Business Login — 1 klik connect, perlu FB Page + IG Business',
+    scope: ['jawab DM', 'baca komen', 'hantar promo'],
+    countries: ['MY','ID','SG','TH','VN','PH'], meta: true
+  },
+  google: {
+    n: 'Google (Sheets & Calendar)', e: '📊', tier: 'T1', method: 'oauth',
+    flow: 'Google OAuth — popup login, sync ke Sheets/Calendar',
+    scope: ['baca stock/order', 'auto-import booking', 'hantar jadual'],
+    countries: ['MY','ID','SG','TH','VN','PH']
+  },
+  billplz: {
+    n: 'Billplz', e: '🧾', tier: 'T2', method: 'link',
+    flow: 'Payment link — jana link/QR, tiada integrasi rumit; webhook kita pegang',
+    scope: ['jana payment link', 'auto-receipt', 'reminder bayaran'],
+    countries: ['MY'], fpga: true
+  },
+  senangpay: {
+    n: 'senangPay (DOKU)', e: '💳', tier: 'T2', method: 'link',
+    flow: 'Payment link + QR — bayar via FPX, e-wallet, kad',
+    scope: ['payment link', 'auto-receipt'],
+    countries: ['MY'], fpga: true
+  },
+  shopee: {
+    n: 'Shopee', e: '🛒', tier: 'T1', method: 'oauth',
+    flow: 'Shopee Open Platform — seller authorize, kita daftar app sekali',
+    scope: ['sync order', 'update tracking', 'jawab chat'],
+    countries: ['MY','ID','SG','TH','PH'], marketplace: true
+  },
+  lazada: {
+    n: 'Lazada', e: '🛍️', tier: 'T1', method: 'oauth',
+    flow: 'Lazada Open Platform — seller authorize',
+    scope: ['sync order', 'update status'],
+    countries: ['MY','ID','SG','TH','PH'], marketplace: true
+  },
+  tiktokshop: {
+    n: 'TikTok Shop', e: '🎵', tier: 'T1', method: 'oauth',
+    flow: 'TikTok Shop Seller API — authorize, kita daftar app',
+    scope: ['sync order', 'auto-reply chat'],
+    countries: ['MY','ID','SG','TH','VN','PH'], marketplace: true
+  },
+  grab: {
+    n: 'GrabFood', e: '🛵', tier: 'T3', method: 'file',
+    flow: 'Email-to-parse atau CSV export mingguan',
+    scope: ['sync order', 'track revenue'],
+    countries: ['MY','ID','SG','TH','PH','VN'], delivery: true
+  },
+  foodpanda: {
+    n: 'foodpanda', e: '🍱', tier: 'T3', method: 'file',
+    flow: 'Email-to-parse atau CSV export mingguan',
+    scope: ['sync order', 'track revenue'],
+    countries: ['MY','ID','SG','TH'], delivery: true
+  },
+  qashier: {
+    n: 'Qashier POS', e: '🧾', tier: 'T3', method: 'file',
+    flow: 'CSV export atau Google Sheets sync (POS takde API terbuka)',
+    scope: ['sync sales', 'inventory', 'P&L report'],
+    countries: ['MY','SG'], pos: true
+  },
+  storehub: {
+    n: 'StoreHub POS', e: '🏪', tier: 'T3', method: 'file',
+    flow: 'CSV export / Sheets sync — 20k+ kedai MY guna',
+    scope: ['sync sales', 'inventory', 'customer list'],
+    countries: ['MY','SG'], pos: true
+  },
+  lalamove: {
+    n: 'Lalamove', e: '🚚', tier: 'T2', method: 'link',
+    flow: 'Link-based — jana pickup request dari order, takde API key',
+    scope: ['auto-booking delivery', 'track status'],
+    countries: ['MY','ID','SG','TH','PH','VN'], delivery: true
+  },
+  gdex: {
+    n: 'GDEX', e: '📦', tier: 'T2', method: 'link',
+    flow: 'Courier link + webhook — dropoff request dari order',
+    scope: ['auto-shipping label', 'track status'],
+    countries: ['MY'], courier: true, 'e-invoice': false
+  },
+  duitnow: {
+    n: 'DuitNow QR', e: '🔗', tier: 'T2', method: 'link',
+    flow: 'QR jana terus — bayaran masuk, kita webhook',
+    scope: ['QR payment', 'auto-receipt'],
+    countries: ['MY']
+  },
+  lhdn: {
+    n: 'LHDN e-Invoice', e: '🧾', tier: 'T4', method: 'bss',
+    flow: 'Kita pegang credential/dig prepaid — customer tak nampak; compliance auto',
+    scope: ['auto-e-invoice', 'compliance'],
+    countries: ['MY'], regulated: true
+  }
+};
+function kvConnectors(cat){
+  var c = kvCountry().code;
+  return Object.keys(KV_CONNECTORS)
+    .map(function(k){ return KV_CONNECTORS[k]; })
+    .filter(function(x){
+      if (cat && x[cat] !== true) return false;
+      if (x.countries && x.countries.indexOf(c) < 0) return false;
+      return true;
+    });
+}
+function kvConnector(name){
+  for (var k in KV_CONNECTORS){
+    if (KV_CONNECTORS[k].n === name) return KV_CONNECTORS[k];
+  }
+  return null;
+}
+
+/* ============================================================
    I18N — EN/BM language toggle (English-first, BM support).
    ============================================================ */
 var KV_I18N = {
   en: {
     'nav.home':'Home','nav.chat':'Chat','nav.team':'Team Chat','nav.business':'Your Business','nav.aiteam':'AI Team','nav.work':'Work','nav.connections':'Connections',
     'nav.landing':'← Landing','nav.getstarted':'Get started','nav.openchat':'Open chat →','nav.logout':'Log out',
+    'cx.oauth':'one-click login','cx.link':'payment link / QR — no setup','cx.file':'file / email sync — you just connect Google','cx.bss':'we handle the credentials — you just approve',
     'view.home.greet':'Good morning 👋','view.home.desc':"Here's what happened while you were away.",
     'view.chat':'Chat','view.chat.desc':'Your AI team in real time — like chatting with staff.',
     'view.team':'Team Chat','view.team.desc':'One space for you + all AI agents — tag @agent, they answer.',
@@ -160,6 +285,7 @@ var KV_I18N = {
   bm: {
     'nav.home':'Home','nav.chat':'Chat','nav.team':'Chat Pasukan','nav.business':'Perniagaan Anda','nav.aiteam':'Pasukan AI','nav.work':'Kerja','nav.connections':'Sambungan',
     'nav.landing':'← Laman','nav.getstarted':'Mula sekarang','nav.openchat':'Buka chat →','nav.logout':'Keluar',
+    'cx.oauth':'login satu klik','cx.link':'link / QR bayaran — tiada setup','cx.file':'sync fail / emel — anda cuma connect Google','cx.bss':'kami pegang credential — anda cuma approve',
     'view.home.greet':'Selamat pagi 👋','view.home.desc':'Apa yang berlaku semasa kau pergi.',
     'view.chat':'Chat','view.chat.desc':'Pasukan AI kau dalam masa nyata — macam chat dengan staff.',
     'view.team':'Chat Pasukan','view.team.desc':'Satu ruang untuk kau + semua AI agent — tag @agent, dia jawab.',
@@ -2732,12 +2858,15 @@ function kvRenderAll(){
   if ((el = document.getElementById('kv-conns'))) {
     el.innerHTML = b.conns.map(function (c) {
       var on = kvConnOn(c.n);
+      var cx = kvConnector(c.n);
+      var meta = cx ? ('<span class="as-tag">' + cx.tier + '</span><span class="as-tag amber" title="' + cx.flow + '">' + kvT('cx.' + (cx.method||'oauth')) + '</span>') : '';
       var action = on
         ? '<button class="btn btn-outline px-4 py-1.5 text-xs" onclick="kvToggleConn(\'' + c.n + '\')">Disconnect</button>'
         : '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvToggleConn(\'' + c.n + '\')">Connect</button>';
       return '<div class="as-card flex flex-col gap-3 p-4">' +
-        '<div class="as-row justify-between"><div class="as-row"><span class="as-avatar">' + c.e + '</span><div class="flex flex-col"><span class="text-sm">' + c.n + '</span><span class="text-[11px] text-text-muted">' + c.s + '</span></div></div>' + (on ? '<span class="as-tag green">connected</span>' : '<span class="as-tag dim">off</span>') + '</div>' +
+        '<div class="as-row justify-between"><div class="as-row"><span class="as-avatar">' + c.e + '</span><div class="flex flex-col"><span class="text-sm">' + c.n + '</span><span class="text-[11px] text-text-muted">' + c.s + '</span></div></div><div class="as-row gap-1">' + meta + (on ? '<span class="as-tag green">connected</span>' : '<span class="as-tag dim">off</span>') + '</div></div>' +
         '<p class="text-[13px] text-text-secondary">' + c.d + '</p>' +
+        '<p class="text-[11px] text-text-muted">' + (cx ? cx.flow : '') + '</p>' +
         '<div class="as-row justify-end">' + action + '</div>' +
         '</div>';
     }).join('');
