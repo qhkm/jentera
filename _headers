@@ -1,0 +1,12 @@
+/*
+  Cache-Control: public, max-age=0, must-revalidate
+/app
+  Cache-Control: no-cache, no-store, must-revalidate
+/app.html
+  Cache-Control: no-cache, no-store, must-revalidate
+/onboard
+  Cache-Control: no-cache, no-store, must-revalidate
+/setup
+  Cache-Control: no-cache, no-store, must-revalidate
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
