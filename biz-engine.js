@@ -1879,6 +1879,29 @@ function kvRenderAll(){
 
   kvCommandCenter(b);
 
+  /* Home chat widget — mesej terkini dari AI team, klik → Chat view */
+  var hc = document.getElementById('h-chat');
+  if (hc) {
+    var work = b.work || [];
+    var msgs = work.slice(0, 2).map(function (w) {
+      return '<div class="as-row items-start gap-2">' +
+        '<span class="as-avatar" style="width:28px;height:28px;font-size:13px;flex-shrink:0">' + w.e + '</span>' +
+        '<div class="flex flex-col min-w-0 gap-0.5">' +
+          '<span class="text-[12px]" style="font-weight:600">' + w.n + '</span>' +
+          '<span class="text-[12px] text-text-secondary leading-snug">' + w.d + '</span>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+    hc.innerHTML =
+      '<div class="as-card flex flex-col gap-3 p-4">' +
+        '<div class="as-row justify-between">' +
+          '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">💬 AI team activity</span>' +
+          '<a class="text-[11px] as-link" onclick="kvNav(\'chat\');return false">Open chat →</a>' +
+        '</div>' +
+        (msgs || '<p class="text-[12px] text-text-muted">Belum ada aktiviti.</p>') +
+      '</div>';
+  }
+
   /* Sidebar */
   var el;
   if ((el = document.getElementById('kv-biz-name'))) el.textContent = b.name;
