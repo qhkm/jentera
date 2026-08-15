@@ -37,13 +37,17 @@
 @media (prefers-reduced-motion:reduce){.kv-reveal{opacity:1;transform:none;transition:none}}
 
 /* Aurora drift background — custom keyframes */
-/* Animated hero grid — terminal grid pan (hologram feel) */
-@keyframes kv-grid-pan{from{background-position:0 0}to{background-position:64px 64px}}
-.kv-grid{position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(rgb(0 210 148 / .08) 1px,transparent 1px),linear-gradient(90deg,rgb(0 210 148 / .08) 1px,transparent 1px);background-size:64px 64px;animation:kv-grid-pan 5s linear infinite;-webkit-mask-image:radial-gradient(ellipse 70% 65% at 50% 45%,#000 30%,transparent 78%);mask-image:radial-gradient(ellipse 70% 65% at 50% 45%,#000 30%,transparent 78%)}
-/* Light sweep — sekali-sekala garisan cahaya lintas */
-@keyframes kv-sweep{0%{transform:translateX(-140%) skewX(-18deg)}55%{transform:translateX(340%) skewX(-18deg)}100%{transform:translateX(340%) skewX(-18deg)}}
-.kv-sweep{position:absolute;top:-10%;bottom:-10%;width:20%;pointer-events:none;background:linear-gradient(90deg,transparent,rgb(0 210 148 / .08),rgb(0 188 254 / .06),transparent);animation:kv-sweep 11s ease-in-out infinite}
-@media (prefers-reduced-motion:reduce){.kv-grid,.kv-sweep{animation:none}}
+/* Floating data particles — "AI processing" vibe; box-shadow multi-layer = takde DOM nodes, GPU compositor */
+@keyframes kv-rise{0%{transform:translate3d(0,0,0);opacity:0}10%{opacity:.8}70%{opacity:.45}100%{transform:translate3d(0,-105vh,0);opacity:0}}
+.kv-particles{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.kv-particles::before,.kv-particles::after{content:"";position:absolute;inset:0;will-change:transform;opacity:0}
+.kv-particles::before{animation:kv-rise 26s linear infinite}
+.kv-particles::after{animation:kv-rise 34s linear infinite 6s}
+/* Layer 1 — dots hijau kecil */
+.kv-particles::before{background-image:radial-gradient(circle,rgb(0 210 148 / .75) 1.2px,transparent 1.5px);background-size:190px 190px;background-position:30px 90px}
+/* Layer 2 — dots teal/cyan sedikit besar, lebih jarang */
+.kv-particles::after{background-image:radial-gradient(circle,rgb(0 188 254 / .55) 1.6px,transparent 2px);background-size:300px 300px;background-position:140px 220px}
+@media (prefers-reduced-motion:reduce){.kv-particles::before,.kv-particles::after{animation:none;opacity:0}}
 @keyframes kv-drift-1{0%{transform:translate3d(-6%,-4%,0) scale(1)}50%{transform:translate3d(5%,6%,0) scale(1.18)}100%{transform:translate3d(-6%,-4%,0) scale(1)}}
 @keyframes kv-drift-2{0%{transform:translate3d(4%,6%,0) scale(1.1)}50%{transform:translate3d(-5%,-5%,0) scale(.94)}100%{transform:translate3d(4%,6%,0) scale(1.1)}}
 @keyframes kv-drift-3{0%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(-7%,5%,0) scale(1.22)}100%{transform:translate3d(0,0,0) scale(1)}}
@@ -113,8 +117,7 @@
 <div class="relative">
 <section class="relative z-1 flex min-h-[calc(100svh-4rem)] w-full flex-col overflow-hidden border-b border-(--rail)">
 <div class="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
-<div class="kv-grid" aria-hidden="true"></div>
-<div class="kv-sweep" aria-hidden="true"></div>
+<div class="kv-particles" aria-hidden="true"></div>
 <div class="absolute inset-0 hidden md:block" style="background:radial-gradient(ellipse 38% 40% at 50% 44%, rgb(0 0 0 / 0.86) 0%, rgb(0 0 0 / 0.55) 48%, rgb(0 0 0 / 0.16) 76%, transparent 94%)"></div>
 <div class="absolute inset-0 md:hidden" style="background:radial-gradient(ellipse 82% 34% at 50% 32%, rgb(0 0 0 / 0.84) 0%, rgb(0 0 0 / 0.46) 54%, transparent 88%)"></div>
 <div class="kv-blob kv-blob-1" aria-hidden="true"></div>
