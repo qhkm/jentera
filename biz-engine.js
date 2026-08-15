@@ -1726,6 +1726,66 @@ function kvLiveChans(){
 function kvBump(v){ return kvSetupDone() ? Math.min(96, v + 20) : v; }
 
 /* ============================================================
+   STATE — sambungan sebenar + kerja selesai (localStorage).
+   ============================================================ */
+function kvConnKeys(){
+  try { var v = JSON.parse(KV_STORE.get('aisar-conns', 'null')); return Array.isArray(v) ? v : []; } catch(e){ return []; }
+}
+function kvSeedConns(){
+  if (KV_STORE.get('aisar-conns', null) !== null) return;
+  var b = kvPlaybook(kvBizType());
+  KV_STORE.set('aisar-conns', JSON.stringify(b.conns.filter(function(c){ return c.on; }).map(function(c){ return c.n; })));
+}
+function kvConnOn(n){ return kvConnKeys().indexOf(n) >= 0; }
+function kvToggleConn(n){
+  var a = kvConnKeys();
+  var i = a.indexOf(n);
+  if (i >= 0) a.splice(i, 1); else a.push(n);
+  KV_STORE.set('aisar-conns', JSON.stringify(a));
+  kvToast(i >= 0 ? n + ' disconnected.' : n + ' connected ✓');
+  kvRenderAll();
+}
+function kvAgentReady(t){
+  if (t.setup) return kvConnOn('Accounting');
+  var ch = String(t.ch || '').toLowerCase();
+  var keys = kvConnKeys();
+  var match = keys.some(function(cn){ return ch.indexOf(cn.split(' ')[0].toLowerCase()) >= 0; });
+  return match || keys.length > 0;
+}
+function kvWorkDone(i){
+  var k = 'aisar-work-done:' + kvBizType();
+  try { return JSON.parse(KV_STORE.get(k, '[]')).indexOf(String(i)) >= 0; } catch(e){ return false; }
+}
+function kvApproveWork(i){
+  var k = 'aisar-work-done:' + kvBizType();
+  var a = [];
+  try { a = JSON.parse(KV_STORE.get(k, '[]')); } catch(e){}
+  if (a.indexOf(String(i)) < 0) a.push(String(i));
+  KV_STORE.set(k, JSON.stringify(a));
+  kvToast('✓ Approved & sent.');
+  kvRenderAll();
+}
+function kvEditWork(i){
+  var b = kvPlaybook(kvBizType());
+  var w = b.work[i]; if (!w) return;
+  var card = document.getElementById('work-' + i); if (!card) return;
+  card.innerHTML = '<div class="as-card flex flex-col gap-3 p-4">' +
+    '<div class="as-row justify-between"><div class="as-row"><span class="as-avatar">' + w.e + '</span><div class="flex flex-col"><span class="text-sm">' + w.n + '</span><span class="text-[11px] text-text-muted">' + w.t + '</span></div></div><span class="as-tag amber">draft</span></div>' +
+    '<textarea id="work-edit-' + i + '" class="as-input w-full rounded-lg p-2 text-[13px]" style="min-height:48px" rows="2">' + kvEsc(w.d) + '</textarea>' +
+    '<div class="as-row gap-2">' +
+      '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvSaveWork(' + i + ')">Save</button>' +
+      '<button class="btn btn-outline px-4 py-1.5 text-xs" onclick="kvRenderAll()">Cancel</button>' +
+    '</div></div>';
+}
+function kvSaveWork(i){
+  var b = kvPlaybook(kvBizType());
+  var v = document.getElementById('work-edit-' + i);
+  if (v && b.work[i]) b.work[i].d = v.value;
+  kvToast('Saved ✓');
+  kvRenderAll();
+}
+
+/* ============================================================
    COMMAND CENTER — Home jadi state-driven: setup → connect → operasi.
    Satu CTA jelas setiap stage, bukan 5 view bebas.
    ============================================================ */
@@ -1779,18 +1839,19 @@ function kvCommandCenter(b){
     /* Stage 3 — operasi harian: narrative + eskalasi */
     if (sub) sub.textContent = "Here's what happened while you were away.";
     var work = b.work || [];
-    var needsYou = work.filter(function(w){ return w.tag === 'needs you'; });
     var doneCount = work.filter(function(w){ return w.tag === 'done' || w.tag === 'confirmed' || w.tag === 'sent'; }).length;
     var teamNames = (b.team || []).slice(0,3).map(function(t){ return t.e + ' ' + t.n; }).join(' · ');
-    var needHtml = needsYou.map(function(w){
-      return '<div class="as-row justify-between gap-3 border-t border-white/10 pt-3 mt-3">' +
+    var needHtml = '';
+    work.forEach(function(w, i){
+      if (w.tag !== 'needs you' || kvWorkDone(i)) return;
+      needHtml += '<div class="as-row justify-between gap-3 border-t border-white/10 pt-3 mt-3">' +
         '<div class="flex flex-col gap-1">' +
           '<span class="text-[13px]">' + w.e + ' ' + kvEsc(w.n) + '</span>' +
           '<span class="text-[12px] text-text-secondary">' + kvEsc(w.d) + '</span>' +
         '</div>' +
-        '<button class="btn btn-primary px-4 py-1 text-xs" data-msg="' + kvEsc(w.cta || 'Done — reply sent.') + '" onclick="kvToast(this.dataset.msg)">Respond</button>' +
+        '<button class="btn btn-primary px-4 py-1 text-xs" onclick="kvApproveWork(' + i + ')">Respond</button>' +
       '</div>';
-    }).join('');
+    });
     html =
       '<div class="as-card flex flex-col gap-4 p-5">' +
         '<div class="as-row justify-between">' +
@@ -1813,7 +1874,8 @@ function kvCommandCenter(b){
    ============================================================ */
 function kvRenderAll(){
   var b = kvPlaybook(kvBizType());
-  var chans = kvLiveChans() || b.ch;
+  kvSeedConns();
+  var chans = kvLiveChans() || kvConnKeys();
 
   kvCommandCenter(b);
 
@@ -1904,25 +1966,41 @@ function kvRenderAll(){
   /* AI Team */
   if ((el = document.getElementById('kv-team'))) {
     el.innerHTML = b.team.map(function (t) {
-      var action = t.setup
-        ? '<span class="as-tag amber">setup</span>'
-        : '<a class="btn btn-outline px-4 py-1.5 text-xs" href="#work" onclick="kvNav(\'work\');return false">Open</a>';
+      var ready = kvAgentReady(t);
+      var action;
+      if (t.setup){
+        action = ready
+          ? '<span class="as-tag green">live</span>'
+          : '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvNav(\'connections\')">Connect &amp; enable</button>';
+      } else {
+        action = ready
+          ? '<a class="btn btn-outline px-4 py-1.5 text-xs" href="#work" onclick="kvNav(\'work\');return false">Open</a>'
+          : '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvNav(\'connections\')">Connect first</button>';
+      }
+      var meta = ready ? (t.m || '') : 'Menunggu sambungan — connect channel dulu.';
       return '<div class="as-card flex flex-col gap-4 p-5">' +
         '<div class="as-row justify-between"><div class="as-row"><span class="as-avatar">' + t.e + '</span><div class="flex flex-col"><span class="text-sm">' + t.n + '</span><span class="text-[11px] text-text-muted">' + t.ch + '</span></div></div>' + action + '</div>' +
         '<p class="text-[13px] text-text-secondary">' + t.d + '</p>' +
-        '<div class="as-row justify-between">' + (t.m ? '<span class="text-[11px] text-text-muted">' + t.m + '</span>' : '') + (t.setup ? '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvToast(\'This assistant gets enabled after you connect its systems.\')">Connect &amp; enable</button>' : '') + '</div>' +
+        (meta ? '<div class="as-row justify-between"><span class="text-[11px] text-text-muted">' + meta + '</span></div>' : '') +
         '</div>';
     }).join('');
   }
 
   /* Work */
   if ((el = document.getElementById('kv-work'))) {
-    el.innerHTML = b.work.map(function (w) {
-      var cta = w.cta
-        ? '<div class="as-row gap-2"><button class="btn btn-primary px-4 py-1.5 text-xs" data-msg="' + w.cta + '" onclick="kvToast(this.dataset.msg)">Approve &amp; send</button><button class="btn btn-outline px-4 py-1.5 text-xs">Edit</button></div>'
-        : '';
-      return '<div class="as-card flex flex-col gap-3 p-4">' +
-        '<div class="as-row justify-between"><div class="as-row"><span class="as-avatar">' + w.e + '</span><div class="flex flex-col"><span class="text-sm">' + w.n + '</span><span class="text-[11px] text-text-muted">' + w.t + '</span></div></div><span class="as-tag' + (w.tc ? ' ' + w.tc : '') + '">' + w.tag + '</span></div>' +
+    el.innerHTML = b.work.map(function (w, i) {
+      var approved = kvWorkDone(i);
+      var status = approved ? 'approved' : w.tag;
+      var cta = approved
+        ? (w.tc === 'red' ? '<span class="as-tag green">approved ✓</span>' : '')
+        : (w.tag === 'needs you'
+          ? '<div class="as-row gap-2">' +
+              '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvApproveWork(' + i + ')">Approve &amp; send</button>' +
+              '<button class="btn btn-outline px-4 py-1.5 text-xs" onclick="kvEditWork(' + i + ')">Edit</button>' +
+            '</div>'
+          : '');
+      return '<div id="work-' + i + '" class="as-card flex flex-col gap-3 p-4">' +
+        '<div class="as-row justify-between"><div class="as-row"><span class="as-avatar">' + w.e + '</span><div class="flex flex-col"><span class="text-sm">' + w.n + '</span><span class="text-[11px] text-text-muted">' + w.t + '</span></div></div><span class="as-tag' + (approved ? ' green' : (w.tc ? ' ' + w.tc : '')) + '">' + status + '</span></div>' +
         '<p class="text-[13px] text-text-secondary">' + w.d + '</p>' + cta +
         '</div>';
     }).join('');
@@ -1931,12 +2009,14 @@ function kvRenderAll(){
   /* Connections */
   if ((el = document.getElementById('kv-conns'))) {
     el.innerHTML = b.conns.map(function (c) {
-      var action = c.on
-        ? '<span class="as-tag green">connected</span>'
-        : '<button class="btn btn-primary px-4 py-1.5 text-xs" data-msg="' + c.cta + '" onclick="kvToast(this.dataset.msg)">Connect</button>';
+      var on = kvConnOn(c.n);
+      var action = on
+        ? '<button class="btn btn-outline px-4 py-1.5 text-xs" onclick="kvToggleConn(\'' + c.n + '\')">Disconnect</button>'
+        : '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvToggleConn(\'' + c.n + '\')">Connect</button>';
       return '<div class="as-card flex flex-col gap-3 p-4">' +
-        '<div class="as-row justify-between"><div class="as-row"><span class="as-avatar">' + c.e + '</span><div class="flex flex-col"><span class="text-sm">' + c.n + '</span><span class="text-[11px] text-text-muted">' + c.s + '</span></div></div>' + action + '</div>' +
+        '<div class="as-row justify-between"><div class="as-row"><span class="as-avatar">' + c.e + '</span><div class="flex flex-col"><span class="text-sm">' + c.n + '</span><span class="text-[11px] text-text-muted">' + c.s + '</span></div></div>' + (on ? '<span class="as-tag green">connected</span>' : '<span class="as-tag dim">off</span>') + '</div>' +
         '<p class="text-[13px] text-text-secondary">' + c.d + '</p>' +
+        '<div class="as-row justify-end">' + action + '</div>' +
         '</div>';
     }).join('');
   }
