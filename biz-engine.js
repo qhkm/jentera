@@ -2021,3 +2021,18 @@ function kvRenderAll(){
     }).join('');
   }
 }
+
+/* ============================================================
+   AUTO-RENDER — panggil bila DOM sedia.
+   ============================================================ */
+if (typeof document !== 'undefined') {
+  function kvBoot(){
+    try { kvSeedConns(); kvRenderAll(); }
+    catch(e){ if (window.console) console.error('AISAR render error:', e); }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', kvBoot);
+  } else {
+    kvBoot();
+  }
+}
