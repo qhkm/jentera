@@ -550,11 +550,9 @@ function kvActivate(){
 function kvCloseOnboarding(){ document.getElementById('kv-onboarding').classList.add('hidden'); }
 function kvOpenOnboarding(){ document.getElementById('kv-onboarding').classList.remove('hidden'); }
 
-/* Auto-open onboarding kali pertama (demo: guna localStorage, fallback sentiasa buka) */
+/* Auto-open onboarding — SELALU buka semasa pembangunan (buang guard supaya senang iterate) */
 (function(){
-  var seen = false;
-  try { seen = localStorage.getItem('aisar-onboarded-v1') === '1'; } catch(e) { /* private mode — ignore */ }
-  if (!seen) kvOpenOnboarding();
+  kvOpenOnboarding();
 })();
 
 /* Toast */
