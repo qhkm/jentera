@@ -2320,6 +2320,12 @@ function kvRenderAll(){
       else if (w.tag === 'needs you') needCount++;
       else autoCount++;
     });
+    /* Bottom nav badge (mobile) */
+    var bn = document.getElementById('kv-bottom-work-badge');
+    if (bn){
+      bn.textContent = needCount;
+      bn.style.display = needCount ? 'inline-flex' : 'none';
+    }
     /* Ringkasan */
     var sum = document.getElementById('kv-work-sum');
     if (sum){

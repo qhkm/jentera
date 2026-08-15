@@ -166,6 +166,17 @@
 .kv-drawer.open{transform:translateX(0)}
 .kv-drawer-overlay{position:fixed;inset:0;background:rgb(0 0 0/.55);z-index:55;opacity:0;pointer-events:none;transition:opacity .25s}
 .kv-drawer-overlay.open{opacity:1;pointer-events:auto}
+/* Bottom nav — mobile sahaja */
+.as-bottom-nav{display:none}
+@media (max-width:768px){
+  .as-bottom-nav{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;bottom:0;left:0;right:0;z-index:45;background:rgb(10 10 12/.92);backdrop-filter:blur(14px);border-top:1px solid rgb(255 255 255/.1);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+  .as-bottom-item{display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;color:var(--text-secondary,rgb(160 160 170));font-size:10px;cursor:pointer;padding:4px 2px;border-radius:8px;position:relative}
+  .as-bottom-item.active{color:#00d294}
+  .as-bottom-item span:first-child{font-size:18px;line-height:1}
+  .as-bottom-item .kv-badge{position:absolute;top:0;right:50%;transform:translateX(14px);min-width:16px;height:16px;font-size:9px;line-height:16px}
+  #kv-main{padding-bottom:86px}
+  .as-toast{bottom:88px}
+}
 @media (min-width:48rem){
   .as-mobile-nav{display:none}
   .as-side-desktop{display:flex;flex-direction:column}
@@ -390,6 +401,15 @@
 </div>
 </div>
 
+<!-- BOTTOM NAV (mobile) -->
+<nav class="as-bottom-nav" id="kv-bottom-nav" aria-label="Mobile navigation">
+<button class="as-bottom-item active" data-view="home"><span>🏠</span><span data-t="nav.home">Home</span></button>
+<button class="as-bottom-item" data-view="chat"><span>💬</span><span data-t="nav.chat">Chat</span></button>
+<button class="as-bottom-item" data-view="work"><span>⚡</span><span data-t="nav.work">Work</span><span class="kv-badge" id="kv-bottom-work-badge" style="display:none">0</span></button>
+<button class="as-bottom-item" data-view="team"><span>🤝</span><span data-t="nav.team">Team</span></button>
+<button class="as-bottom-item" id="kv-bottom-menu" onclick="kvDrawerOpen()"><span>☰</span><span data-t="drawer.menu">Menu</span></button>
+</nav>
+
 <!-- ONBOARDING MODAL -->
 <div class="as-toast" id="kv-toast"><div class="as-card flex items-center gap-3 px-5 py-3"><span class="as-green">✓</span><span id="kv-toast-msg" class="text-[13px]">Done</span></div></div>
 
@@ -397,12 +417,12 @@
 <script>
 /* Views */
 function kvNav(view){
-  document.querySelectorAll('.as-side-item').forEach(function(el){ el.classList.toggle('active', el.dataset.view===view); });
+  document.querySelectorAll('.as-side-item,.as-bottom-item').forEach(function(el){ el.classList.toggle('active', el.dataset.view===view); });
   document.querySelectorAll('.as-view').forEach(function(el){ el.classList.toggle('active', el.id==='view-'+view); });
   kvDrawerClose();
   if (typeof ScrollTrigger !== 'undefined' && window.scrollY > 0) window.scrollTo({top:0,behavior:'smooth'});
 }
-document.querySelectorAll('.as-side-item').forEach(function(el){ el.addEventListener('click', function(){ kvNav(el.dataset.view); }); });
+document.querySelectorAll('.as-side-item,.as-bottom-item[data-view]').forEach(function(el){ el.addEventListener('click', function(){ kvNav(el.dataset.view); }); });
 
 /* Mobile hamburger drawer */
 function kvDrawerOpen(){
