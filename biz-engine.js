@@ -1,152 +1,408 @@
-/* ---- BIZ engine: satu dashboard engine, content ikut business type ---- */
-var BIZ = {
+/* ============================================================
+   AISAR playbook engine — generate on the run, self-improving.
+   Bukan senarai profil hardcode: PLAYBOOKS (pola industri) +
+   inference (free-text user → kategori) + generate dashboard.
+   Tambah industri baru = tambah SATU entri PLAYBOOKS.
+   ============================================================ */
+
+/* ---- Safe storage wrapper (private mode tak crash) ---- */
+var KV_STORE = (function(){
+  function get(k, d){ try { var v = localStorage.getItem(k); return v === null ? d : v; } catch(e){ return d; } }
+  function set(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+  return { get: get, set: set };
+})();
+
+/* ============================================================
+   PLAYBOOKS — pola per industri. Setiap entri = template
+   dashboard lengkap. Fields:
+   icon, keywords (untuk inference), name, type, sub, site,
+   booking, systems, potential, opportunities, ch (default
+   channels), detect (hasil scan), confirm (soalan step 3),
+   funcs, stats, sug, team, work, conns.
+   ============================================================ */
+var PLAYBOOKS = {
+
   restaurant: {
-    name: 'Wagyu Japanese Restaurant', sub: 'Premium Japanese Restaurant', loc: 'Kuala Lumpur · MY',
-    site: 'wagyu.my', booking: 'Phone + Instagram DM', systems: 'Google Sheets · AutoCount',
-    potential: 62, opportunities: 4,
+    icon: '🍜', keywords: ['restaurant','cafe','café','kedai makan','kedai','kopi','kopitiam','makan','food','bistro','warung','mamak','grill','sushi','pizza','burger','catering','dapur','kafe'],
+    name: 'Your Restaurant', type: 'Restaurant / Café', sub: 'Restaurant / Café', site: 'yourbusiness.com', booking: 'Phone + Instagram DM', systems: 'Google Sheets · POS',
+    potential: 62, opportunities: 4, ch: ['WhatsApp','Instagram'],
+    detect: 'restaurant · premium · Kuala Lumpur',
+    loc: 'Kuala Lumpur, MY',
+    confirm: 'I found that you operate a restaurant/café in Kuala Lumpur. Is that correct?',
+    funcs: [['Customer service','','covered'],['Reservations','green','live'],['Follow-up','green','live'],['Inventory & ordering','amber','opportunity'],['Weekly reports','amber','opportunity']],
     stats: [
-      { d: 'Today', v: '12', u: '', l: 'conversations handled', s: '4 needed you' },
-      { d: 'Reservations', v: '7', u: '', l: 'new bookings this week', s: '3 via WhatsApp' },
-      { d: 'Hours saved', v: '18', u: ' hrs', l: 'saved this week by your AI team', p: 64 }
-    ],
-    sug: { t: 'Automate your Friday export', d: 'You manually export reservations to Sheets every Friday. AISAR can do this automatically.', tag: 'est. 1 hr/month', cta: 'Automation queued \u2014 I\u0027ll take care of the Friday export.' },
-    ch: ['WhatsApp', 'Instagram'],
-    funcs: [['Customer service', '', 'covered'], ['Reservations', 'green', 'live'], ['Follow-up', 'green', 'live'], ['Inventory & ordering', 'amber', 'opportunity'], ['Weekly reports', 'amber', 'opportunity']],
+      { d:'Today', v:'12', u:'', l:'conversations handled', s:'4 needed you' },
+      { d:'Reservations', v:'7', u:'', l:'new bookings this week', s:'3 via WhatsApp' },
+      { d:'Hours saved', v:'18', u:' hrs', l:'saved this week by your AI team', p:64 } ],
+    sug: { t:'Automate your Friday export', d:'You manually export reservations to Sheets every Friday. AISAR can do this automatically.', tag:'est. 1 hr/month', cta:'Automation queued — I\u0027ll take care of the Friday export.' },
     team: [
-      { e: '💬', n: 'Customer Assistant', ch: 'WhatsApp · Instagram', d: 'Answers FAQs, menu questions, opening hours and policies — 24/7, in your voice. Escalates complaints.', m: 'Today · 12 chats · 4 escalated' },
-      { e: '📅', n: 'Booking Agent', ch: 'Calendar · Confirmations', d: 'Checks availability, creates bookings, sends confirmations and reminders automatically.', m: 'This week · 7 bookings' },
-      { e: '🔁', n: 'Follow-up', ch: 'Past customers', d: 'Follows up past customers, special occasions, and abandoned enquiries — turning one-time buyers into regulars.', m: 'This month · 23 follow-ups' },
-      { e: '📊', n: 'Ops Assistant', ch: 'Inventory · Reports', d: 'Watches your spreadsheets, automates supplier ordering, and prepares your weekly business report every Monday.', m: '', setup: true }
-    ],
+      { e:'💬', n:'Customer Assistant', ch:'WhatsApp · Instagram', d:'Answers FAQs, menu questions, opening hours and policies — 24/7, in your voice. Escalates complaints.', m:'Today · 12 chats · 4 escalated' },
+      { e:'📅', n:'Booking Agent', ch:'Calendar · Confirmations', d:'Checks availability, creates bookings, sends confirmations and reminders automatically.', m:'This week · 7 bookings' },
+      { e:'🔁', n:'Follow-up', ch:'Past customers', d:'Follows up past customers, special occasions, and abandoned enquiries — turning one-time buyers into regulars.', m:'This month · 23 follow-ups' },
+      { e:'📊', n:'Ops Assistant', ch:'Inventory · Reports', d:'Watches your spreadsheets, automates supplier ordering, and prepares your weekly business report every Monday.', m:'', setup:true } ],
     work: [
-      { e: '💬', n: 'Customer Assistant', t: 'WhatsApp · 2m ago · auto', tag: 'done', tc: '', d: 'Answered "Do you have halal certification?" with menu + certification link.' },
-      { e: '📅', n: 'Booking Agent', t: 'Instagram · 1h ago · auto', tag: 'confirmed', tc: 'green', d: 'Created booking for 2 pax, Sat 8pm — sent confirmation + reminder.' },
-      { e: '🔁', n: 'Follow-up', t: '3h ago · auto', tag: 'sent', tc: 'green', d: 'Sent birthday promo to 6 past customers (personalised, in brand voice).' },
-      { e: '⚠️', n: 'Customer Assistant', t: 'WhatsApp · 5h ago · escalated', tag: 'needs you', tc: 'red', d: 'Customer complained about wrong order delivery — AISAR apologised and offered 10% off. Review before sending?', cta: 'Approved \u2014 10% discount voucher sent.' }
-    ],
+      { e:'💬', n:'Customer Assistant', t:'WhatsApp · 2m ago · auto', tag:'done', tc:'', d:'Answered "Do you have halal certification?" with menu + certification link.' },
+      { e:'📅', n:'Booking Agent', t:'Instagram · 1h ago · auto', tag:'confirmed', tc:'green', d:'Created booking for 2 pax, Sat 8pm — sent confirmation + reminder.' },
+      { e:'🔁', n:'Follow-up', t:'3h ago · auto', tag:'sent', tc:'green', d:'Sent birthday promo to 6 past customers (personalised, in brand voice).' },
+      { e:'⚠️', n:'Customer Assistant', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Customer complained about wrong order delivery — AISAR apologised and offered 10% off. Review before sending?', cta:'Approved — 10% discount voucher sent.' } ],
     conns: [
-      { e: '💬', n: 'WhatsApp', s: 'Business API · linked', d: 'Customer Assistant & Follow-up use this to talk to customers.', on: true },
-      { e: '📸', n: 'Instagram', s: 'DM · linked', d: 'Booking Agent receives reservation DMs here.', on: true },
-      { e: '📅', n: 'Google Calendar', s: 'linked', d: 'Booking Agent checks availability and creates events.', on: true },
-      { e: '📊', n: 'Google Sheets', s: 'linked', d: 'Ops Assistant reads reservations &amp; inventory here.', on: true },
-      { e: '🧾', n: 'AutoCount', s: 'not connected', d: 'Unlocks ordering automation + weekly P&L reports.', on: false, cta: 'AutoCount connection wizard will open \u2014 we\u0027ll guide you through it.' }
-    ]
+      { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Customer Assistant & Follow-up use this to talk to customers.', on:true },
+      { e:'📸', n:'Instagram', s:'DM · linked', d:'Booking Agent receives reservation DMs here.', on:true },
+      { e:'📅', n:'Google Calendar', s:'linked', d:'Booking Agent checks availability and creates events.', on:true },
+      { e:'📊', n:'Google Sheets', s:'linked', d:'Ops Assistant reads reservations & inventory here.', on:true },
+      { e:'🧾', n:'Accounting / POS', s:'not connected', d:'Unlocks ordering automation + weekly P&L reports.', on:false, cta:'Accounting connection wizard will open — we\u0027ll guide you through it.' } ]
   },
+
   retail: {
-    name: 'Serai Homeware', sub: 'Home & Living E-commerce', loc: 'Shah Alam · MY',
-    site: 'seraihomeware.my', booking: 'Shopee / Website checkout', systems: 'Shopify · Google Sheets',
-    potential: 58, opportunities: 5,
+    icon: '🛍️', keywords: ['retail','e-commerce','ecommerce','shop','store','kedai runcit','fashion','baju','pakaian','online store','marketplace','shopee','lazada','tiktok shop','homeware','kosmetik','product','distributor'],
+    name: 'Your Store', type: 'Retail / E-commerce', sub: 'Retail / E-commerce', site: 'yourstore.my', booking: 'Shopee / Website checkout', systems: 'Shopify · Google Sheets',
+    potential: 58, opportunities: 5, ch: ['WhatsApp','Instagram'],
+    detect: 'e-commerce · home & living · Shah Alam',
+    loc: 'Shah Alam, MY',
+    confirm: 'I found that you run a home & living e-commerce business in Shah Alam. Is that correct?',
+    funcs: [['Customer service','','covered'],['Order status','green','live'],['Abandoned carts','green','live'],['Returns','amber','opportunity'],['Weekly reports','amber','opportunity']],
     stats: [
-      { d: 'Today', v: '34', u: '', l: 'orders processed', s: '6 support tickets' },
-      { d: 'Orders this week', v: '211', u: '', l: 'across Shopify + Shopee', s: '9 refunds handled' },
-      { d: 'Hours saved', v: '22', u: ' hrs', l: 'saved this week by your AI team', p: 71 }
-    ],
-    sug: { t: 'Automate abandoned cart recovery', d: 'Shoppers leave carts every day. AISAR follows up automatically with a personalised message + offer.', tag: 'est. 3 hrs/month', cta: 'Automation queued \u2014 I\u0027ll take care of cart recovery.' },
-    ch: ['WhatsApp', 'Instagram'],
-    funcs: [['Customer service', '', 'covered'], ['Order status', 'green', 'live'], ['Abandoned carts', 'green', 'live'], ['Returns', 'amber', 'opportunity'], ['Weekly reports', 'amber', 'opportunity']],
+      { d:'Today', v:'34', u:'', l:'orders processed', s:'6 support tickets' },
+      { d:'Orders this week', v:'211', u:'', l:'across your channels', s:'9 refunds handled' },
+      { d:'Hours saved', v:'22', u:' hrs', l:'saved this week by your AI team', p:71 } ],
+    sug: { t:'Automate abandoned cart recovery', d:'Shoppers leave carts every day. AISAR follows up automatically with a personalised message + offer.', tag:'est. 3 hrs/month', cta:'Automation queued — I\u0027ll take care of cart recovery.' },
     team: [
-      { e: '💬', n: 'Customer Assistant', ch: 'WhatsApp · Instagram', d: 'Answers product questions, stock, shipping and policy FAQs — 24/7.', m: 'Today · 34 chats · 6 escalated' },
-      { e: '📦', n: 'Order Tracker', ch: 'Shopify · Email', d: 'Tracks orders and sends status updates automatically as items ship.', m: 'This week · 41 updates' },
-      { e: '🔁', n: 'Follow-up', ch: 'Abandoned carts · Past customers', d: 'Recovers abandoned carts and nudges repeat-purchase in your brand voice.', m: 'This month · 17 campaigns' },
-      { e: '📊', n: 'Ops Assistant', ch: 'Inventory · Reports', d: 'Watches stock levels, reorders best-sellers, and prepares your weekly sales report.', m: '', setup: true }
-    ],
+      { e:'💬', n:'Customer Assistant', ch:'WhatsApp · Instagram', d:'Answers product questions, stock, shipping and policy FAQs — 24/7.', m:'Today · 34 chats · 6 escalated' },
+      { e:'📦', n:'Order Tracker', ch:'Store · Email', d:'Tracks orders and sends status updates automatically as items ship.', m:'This week · 41 updates' },
+      { e:'🔁', n:'Follow-up', ch:'Abandoned carts · Past customers', d:'Recovers abandoned carts and nudges repeat-purchase in your brand voice.', m:'This month · 17 campaigns' },
+      { e:'📊', n:'Ops Assistant', ch:'Inventory · Reports', d:'Watches stock levels, reorders best-sellers, and prepares your weekly sales report.', m:'', setup:true } ],
     work: [
-      { e: '💬', n: 'Customer Assistant', t: 'WhatsApp · 2m ago · auto', tag: 'done', tc: '', d: 'Answered "Is this available in size L?" with stock + product link.' },
-      { e: '📦', n: 'Order Tracker', t: '1h ago · auto', tag: 'confirmed', tc: 'green', d: 'Sent tracking update for order #1024 — out for delivery.' },
-      { e: '🔁', n: 'Follow-up', t: '3h ago · auto', tag: 'sent', tc: 'green', d: 'Sent cart recovery to 5 shoppers who abandoned checkout yesterday.' },
-      { e: '⚠️', n: 'Customer Assistant', t: 'WhatsApp · 5h ago · escalated', tag: 'needs you', tc: 'red', d: 'Customer complained about late delivery — AISAR apologised and offered free shipping. Review before sending?', cta: 'Approved \u2014 free shipping voucher sent.' }
-    ],
+      { e:'💬', n:'Customer Assistant', t:'WhatsApp · 2m ago · auto', tag:'done', tc:'', d:'Answered "Is this available in size L?" with stock + product link.' },
+      { e:'📦', n:'Order Tracker', t:'1h ago · auto', tag:'confirmed', tc:'green', d:'Sent tracking update for order #1024 — out for delivery.' },
+      { e:'🔁', n:'Follow-up', t:'3h ago · auto', tag:'sent', tc:'green', d:'Sent cart recovery to 5 shoppers who abandoned checkout yesterday.' },
+      { e:'⚠️', n:'Customer Assistant', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Customer complained about late delivery — AISAR apologised and offered free shipping. Review before sending?', cta:'Approved — free shipping voucher sent.' } ],
     conns: [
-      { e: '💬', n: 'WhatsApp', s: 'Business API · linked', d: 'Customer Assistant & Follow-up use this to talk to customers.', on: true },
-      { e: '📸', n: 'Instagram', s: 'Shop · linked', d: 'Customer Assistant answers product DMs here.', on: true },
-      { e: '🛒', n: 'Shopify', s: 'linked', d: 'Order Tracker reads orders &amp; fulfilment here.', on: true },
-      { e: '📊', n: 'Google Sheets', s: 'linked', d: 'Ops Assistant reads inventory here.', on: true },
-      { e: '💳', n: 'Payment gateway', s: 'not connected', d: 'Unlocks automatic refunds &amp; failed-payment follow-ups.', on: false, cta: 'Payment connection wizard will open \u2014 we\u0027ll guide you through it.' }
-    ]
+      { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Customer Assistant & Follow-up use this to talk to customers.', on:true },
+      { e:'📸', n:'Instagram', s:'Shop · linked', d:'Customer Assistant answers product DMs here.', on:true },
+      { e:'🛒', n:'Store platform', s:'linked', d:'Order Tracker reads orders & fulfilment here.', on:true },
+      { e:'📊', n:'Google Sheets', s:'linked', d:'Ops Assistant reads inventory here.', on:true },
+      { e:'💳', n:'Payment gateway', s:'not connected', d:'Unlocks automatic refunds & failed-payment follow-ups.', on:false, cta:'Payment connection wizard will open — we\u0027ll guide you through it.' } ]
   },
+
   services: {
-    name: 'Nadi Studio', sub: 'Design & Branding Agency', loc: 'Petaling Jaya · MY',
-    site: 'nadi.studio', booking: 'Email / Calendly', systems: 'Notion · Google Calendar',
-    potential: 66, opportunities: 4,
+    icon: '💼', keywords: ['agency','service','services','studio','konsult','consult','design','branding','marketing','digital','freelance','architect','law','accounting','audit','event','photography','mekanik','bengkel'],
+    name: 'Your Studio', type: 'Services / Agency', sub: 'Services / Agency', site: 'yourstudio.my', booking: 'Email / Calendly', systems: 'Notion · Google Calendar',
+    potential: 66, opportunities: 4, ch: ['Instagram','Email'],
+    detect: 'agency · design & branding · Petaling Jaya',
+    loc: 'Petaling Jaya, MY',
+    confirm: 'I found that you run a design & branding agency in Petaling Jaya. Is that correct?',
+    funcs: [['Enquiry response','','covered'],['Lead intake','green','live'],['Proposal follow-up','green','live'],['Scheduling','amber','opportunity'],['Invoicing','amber','opportunity']],
     stats: [
-      { d: 'Today', v: '8', u: '', l: 'new leads', s: '2 booked discovery calls' },
-      { d: 'Quotes', v: '3', u: '', l: 'sent this week', s: '1 awaiting reply' },
-      { d: 'Hours saved', v: '14', u: ' hrs', l: 'saved this week by your AI team', p: 55 }
-    ],
-    sug: { t: 'Automate proposal follow-up', d: 'You draft quotes and chase replies manually. AISAR follows up on sent quotes automatically.', tag: 'est. 4 hrs/month', cta: 'Automation queued \u2014 I\u0027ll chase those quotes.' },
-    ch: ['Instagram', 'Email'],
-    funcs: [['Enquiry response', '', 'covered'], ['Lead intake', 'green', 'live'], ['Proposal follow-up', 'green', 'live'], ['Scheduling', 'amber', 'opportunity'], ['Invoicing', 'amber', 'opportunity']],
+      { d:'Today', v:'8', u:'', l:'new leads', s:'2 booked discovery calls' },
+      { d:'Quotes', v:'3', u:'', l:'sent this week', s:'1 awaiting reply' },
+      { d:'Hours saved', v:'14', u:' hrs', l:'saved this week by your AI team', p:55 } ],
+    sug: { t:'Automate proposal follow-up', d:'You draft quotes and chase replies manually. AISAR follows up on sent quotes automatically.', tag:'est. 4 hrs/month', cta:'Automation queued — I\u0027ll chase those quotes.' },
     team: [
-      { e: '🧲', n: 'Lead Responder', ch: 'Instagram · Email', d: 'Answers scope, pricing and availability questions — and books discovery calls.', m: 'Today · 8 leads · 2 booked' },
-      { e: '📅', n: 'Booking Agent', ch: 'Calendar · Scheduling', d: 'Checks your calendar and schedules discovery calls without back-and-forth.', m: 'This week · 10 calls booked' },
-      { e: '🔁', n: 'Follow-up', ch: 'Sent quotes', d: 'Tracks sent proposals and nudges prospects at the right moment.', m: 'This month · 9 follow-ups' },
-      { e: '📑', n: 'Quote Assistant', ch: 'Notion · Pricing', d: 'Drafts first-pass quotes from your rate card and past projects.', m: '', setup: true }
-    ],
+      { e:'🧲', n:'Lead Responder', ch:'Instagram · Email', d:'Answers scope, pricing and availability questions — and books discovery calls.', m:'Today · 8 leads · 2 booked' },
+      { e:'📅', n:'Booking Agent', ch:'Calendar · Scheduling', d:'Checks your calendar and schedules discovery calls without back-and-forth.', m:'This week · 10 calls booked' },
+      { e:'🔁', n:'Follow-up', ch:'Sent quotes', d:'Tracks sent proposals and nudges prospects at the right moment.', m:'This month · 9 follow-ups' },
+      { e:'📑', n:'Quote Assistant', ch:'Notion · Pricing', d:'Drafts first-pass quotes from your rate card and past projects.', m:'', setup:true } ],
     work: [
-      { e: '🧲', n: 'Lead Responder', t: 'Instagram · 1m ago · auto', tag: 'done', tc: '', d: 'Answered "Do you do branding for F&amp;B brands?" with portfolio + case study.' },
-      { e: '📅', n: 'Booking Agent', t: '30m ago · auto', tag: 'confirmed', tc: 'green', d: 'Booked discovery call with new lead for Tue 3pm + sent invite.' },
-      { e: '🔁', n: 'Follow-up', t: '2h ago · auto', tag: 'sent', tc: 'green', d: 'Followed up quote #Q22 with a short personalised nudge.' },
-      { e: '⚠️', n: 'Lead Responder', t: '4h ago · escalated', tag: 'needs you', tc: 'red', d: 'Prospect asked for a discount on retainers — AISAR offered a 3-month option. Review before sending?', cta: 'Approved \u2014 3-month retainer offer sent.' }
-    ],
+      { e:'🧲', n:'Lead Responder', t:'Instagram · 1m ago · auto', tag:'done', tc:'', d:'Answered "Do you do branding for F&B brands?" with portfolio + case study.' },
+      { e:'📅', n:'Booking Agent', t:'30m ago · auto', tag:'confirmed', tc:'green', d:'Booked discovery call with new lead for Tue 3pm + sent invite.' },
+      { e:'🔁', n:'Follow-up', t:'2h ago · auto', tag:'sent', tc:'green', d:'Followed up quote #Q22 with a short personalised nudge.' },
+      { e:'⚠️', n:'Lead Responder', t:'4h ago · escalated', tag:'needs you', tc:'red', d:'Prospect asked for a discount on retainers — AISAR offered a 3-month option. Review before sending?', cta:'Approved — 3-month retainer offer sent.' } ],
     conns: [
-      { e: '📸', n: 'Instagram', s: 'DM · linked', d: 'Lead Responder answers enquiries here.', on: true },
-      { e: '✉️', n: 'Email', s: 'Gmail · linked', d: 'Proposals and follow-up go through here.', on: true },
-      { e: '📅', n: 'Google Calendar', s: 'linked', d: 'Booking Agent checks availability and creates events.', on: true },
-      { e: '📝', n: 'Notion', s: 'linked', d: 'Quote Assistant reads your rate card here.', on: true },
-      { e: '💬', n: 'WhatsApp', s: 'not connected', d: 'Unlocks instant client chats for status updates.', on: false, cta: 'WhatsApp connection wizard will open \u2014 we\u0027ll guide you through it.' }
-    ]
+      { e:'📸', n:'Instagram', s:'DM · linked', d:'Lead Responder answers enquiries here.', on:true },
+      { e:'✉️', n:'Email', s:'Gmail · linked', d:'Proposals and follow-up go through here.', on:true },
+      { e:'📅', n:'Google Calendar', s:'linked', d:'Booking Agent checks availability and creates events.', on:true },
+      { e:'📝', n:'Notion', s:'linked', d:'Quote Assistant reads your rate card here.', on:true },
+      { e:'💬', n:'WhatsApp', s:'not connected', d:'Unlocks instant client chats for status updates.', on:false, cta:'WhatsApp connection wizard will open — we\u0027ll guide you through it.' } ]
   },
+
   clinic: {
-    name: 'Klinik Sejahtera', sub: 'GP & Family Clinic', loc: 'Johor Bahru · MY',
-    site: 'kliniksejahtera.my', booking: 'Phone / WhatsApp', systems: 'Clinic system · Google Sheets',
-    potential: 71, opportunities: 6,
+    icon: '🏥', keywords: ['klinik','clinic','doctor','doktor','gigi','dental','farmasi','pharmacy','physio','terap','therapy','hospital','optometri'],
+    name: 'Your Clinic', type: 'Clinic / Health', sub: 'Clinic / Health', site: 'yourclinic.my', booking: 'Phone / WhatsApp', systems: 'Clinic system · Google Sheets',
+    potential: 71, opportunities: 6, ch: ['WhatsApp','Phone'],
+    detect: 'clinic · GP & family · Johor Bahru',
+    loc: 'Johor Bahru, MY',
+    confirm: 'I found that you run a GP & family clinic in Johor Bahru. Is that correct?',
+    funcs: [['Front desk','','covered'],['Appointments','green','live'],['Intake forms','green','live'],['Reminders','green','live'],['Billing','amber','opportunity']],
     stats: [
-      { d: 'Today', v: '41', u: '', l: 'appointments scheduled', s: '12 intake forms' },
-      { d: 'This week', v: '86', u: '', l: 'patients seen', s: '3 no-shows prevented' },
-      { d: 'Hours saved', v: '25', u: ' hrs', l: 'saved this week by your AI team', p: 68 }
-    ],
-    sug: { t: 'Automate appointment reminders', d: 'No-shows cost you hours every month. AISAR sends reminders + reschedule links automatically.', tag: 'est. 6 hrs/month', cta: 'Automation queued \u2014 I\u0027ll set up reminders.' },
-    ch: ['WhatsApp', 'Phone'],
-    funcs: [['Front desk', '', 'covered'], ['Appointments', 'green', 'live'], ['Intake forms', 'green', 'live'], ['Reminders', 'green', 'live'], ['Billing', 'amber', 'opportunity']],
+      { d:'Today', v:'41', u:'', l:'appointments scheduled', s:'12 intake forms' },
+      { d:'This week', v:'86', u:'', l:'patients seen', s:'3 no-shows prevented' },
+      { d:'Hours saved', v:'25', u:' hrs', l:'saved this week by your AI team', p:68 } ],
+    sug: { t:'Automate appointment reminders', d:'No-shows cost you hours every month. AISAR sends reminders + reschedule links automatically.', tag:'est. 6 hrs/month', cta:'Automation queued — I\u0027ll set up reminders.' },
     team: [
-      { e: '🩺', n: 'Front Desk Assistant', ch: 'WhatsApp · Phone', d: 'Answers clinic hours, doctor schedules, and insurance FAQs — 24/7.', m: 'Today · 41 chats · 8 escalated' },
-      { e: '📅', n: 'Booking Agent', ch: 'Calendar · Appointments', d: 'Books and confirms appointments, and manages the waitlist automatically.', m: 'This week · 86 appointments' },
-      { e: '🔁', n: 'Follow-up', ch: 'Patients', d: 'Sends reminders, post-visit check-ins, and recall messages for follow-ups.', m: 'This month · 210 reminders' },
-      { e: '📊', n: 'Ops Assistant', ch: 'Reports · Billing', d: 'Prepares daily patient stats and flags billing anomalies.', m: '', setup: true }
-    ],
+      { e:'🩺', n:'Front Desk Assistant', ch:'WhatsApp · Phone', d:'Answers clinic hours, doctor schedules, and insurance FAQs — 24/7.', m:'Today · 41 chats · 8 escalated' },
+      { e:'📅', n:'Booking Agent', ch:'Calendar · Appointments', d:'Books and confirms appointments, and manages the waitlist automatically.', m:'This week · 86 appointments' },
+      { e:'🔁', n:'Follow-up', ch:'Patients', d:'Sends reminders, post-visit check-ins, and recall messages for follow-ups.', m:'This month · 210 reminders' },
+      { e:'📊', n:'Ops Assistant', ch:'Reports · Billing', d:'Prepares daily patient stats and flags billing anomalies.', m:'', setup:true } ],
     work: [
-      { e: '🩺', n: 'Front Desk Assistant', t: 'WhatsApp · 3m ago · auto', tag: 'done', tc: '', d: 'Answered "Do you open on Sundays?" with this week\u0027s hours.' },
-      { e: '📅', n: 'Booking Agent', t: '40m ago · auto', tag: 'confirmed', tc: 'green', d: 'Booked appointment for Azman (check-up) Thu 10am + reminder set.' },
-      { e: '🔁', n: 'Follow-up', t: '2h ago · auto', tag: 'sent', tc: 'green', d: 'Sent post-visit check-in to 23 patients from yesterday.' },
-      { e: '⚠️', n: 'Front Desk Assistant', t: '6h ago · escalated', tag: 'needs you', tc: 'red', d: 'Patient asked about pricing for a procedure — AISAR offered a call-back. Review before sending?', cta: 'Approved \u2014 call-back scheduled.' }
-    ],
+      { e:'🩺', n:'Front Desk Assistant', t:'WhatsApp · 3m ago · auto', tag:'done', tc:'', d:'Answered "Do you open on Sundays?" with this week\u0027s hours.' },
+      { e:'📅', n:'Booking Agent', t:'40m ago · auto', tag:'confirmed', tc:'green', d:'Booked appointment for Azman (check-up) Thu 10am + reminder set.' },
+      { e:'🔁', n:'Follow-up', t:'2h ago · auto', tag:'sent', tc:'green', d:'Sent post-visit check-in to 23 patients from yesterday.' },
+      { e:'⚠️', n:'Front Desk Assistant', t:'6h ago · escalated', tag:'needs you', tc:'red', d:'Patient asked about pricing for a procedure — AISAR offered a call-back. Review before sending?', cta:'Approved — call-back scheduled.' } ],
     conns: [
-      { e: '💬', n: 'WhatsApp', s: 'Business API · linked', d: 'Front Desk Assistant &amp; Follow-up talk to patients here.', on: true },
-      { e: '📞', n: 'Phone', s: 'linked', d: 'Front Desk Assistant can make call-backs here.', on: true },
-      { e: '📅', n: 'Google Calendar', s: 'linked', d: 'Booking Agent manages appointments here.', on: true },
-      { e: '📊', n: 'Google Sheets', s: 'linked', d: 'Ops Assistant reads appointment stats here.', on: true },
-      { e: '🏥', n: 'Clinic system', s: 'not connected', d: 'Unlocks automatic patient records sync.', on: false, cta: 'Clinic system connection wizard will open \u2014 we\u0027ll guide you through it.' }
-    ]
+      { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Front Desk Assistant & Follow-up talk to patients here.', on:true },
+      { e:'📞', n:'Phone', s:'linked', d:'Front Desk Assistant can make call-backs here.', on:true },
+      { e:'📅', n:'Google Calendar', s:'linked', d:'Booking Agent manages appointments here.', on:true },
+      { e:'📊', n:'Google Sheets', s:'linked', d:'Ops Assistant reads appointment stats here.', on:true },
+      { e:'🏥', n:'Clinic system', s:'not connected', d:'Unlocks automatic patient records sync.', on:false, cta:'Clinic system connection wizard will open — we\u0027ll guide you through it.' } ]
+  },
+
+  salon: {
+    icon: '💇', keywords: ['salon','salun','dandan','rambut','hair','beauty','spa','kuku','nails','lash','makeup','mekap'],
+    name: 'Your Salon', type: 'Salon / Beauty', sub: 'Salon / Beauty', site: 'yoursalon.my', booking: 'Phone / WhatsApp', systems: 'Google Calendar · POS',
+    potential: 60, opportunities: 4, ch: ['WhatsApp','Instagram'],
+    detect: 'salon & beauty · Shah Alam',
+    loc: 'Shah Alam, MY',
+    confirm: 'I found that you run a salon/beauty business in Shah Alam. Is that correct?',
+    funcs: [['Customer service','','covered'],['Bookings','green','live'],['Reminders','green','live'],['Product retail','amber','opportunity'],['Loyalty & rebooking','amber','opportunity']],
+    stats: [
+      { d:'Today', v:'9', u:'', l:'appointments', s:'2 walk-in slots left' },
+      { d:'New clients', v:'14', u:'', l:'this week', s:'5 via Instagram' },
+      { d:'Hours saved', v:'16', u:' hrs', l:'saved this week by your AI team', p:57 } ],
+    sug: { t:'Automate booking reminders', d:'No-shows and last-minute cancellations eat your schedule. AISAR sends reminders + fill-from-waitlist automatically.', tag:'est. 3 hrs/month', cta:'Automation queued — I\u0027ll handle reminders + waitlist.' },
+    team: [
+      { e:'💬', n:'Reception Assistant', ch:'WhatsApp · Instagram', d:'Answers service prices, availability, and stylist questions — 24/7.', m:'Today · 9 chats · 2 escalated' },
+      { e:'📅', n:'Booking Agent', ch:'Calendar · Appointments', d:'Books services, manages waitlist, and sends confirmations.', m:'This week · 22 bookings' },
+      { e:'🔁', n:'Follow-up', ch:'Past clients', d:'Sends rebooking nudges and after-care messages to keep clients coming back.', m:'This month · 31 rebookings' },
+      { e:'📊', n:'Ops Assistant', ch:'Inventory · Reports', d:'Tracks product stock and prepares your weekly client report.', m:'', setup:true } ],
+    work: [
+      { e:'💬', n:'Reception Assistant', t:'WhatsApp · 5m ago · auto', tag:'done', tc:'', d:'Answered "Berapa untuk rebond panjang?" with price list + stylist availability.' },
+      { e:'📅', n:'Booking Agent', t:'1h ago · auto', tag:'confirmed', tc:'green', d:'Booked colour + treatment for Aina, Sat 11am + reminder set.' },
+      { e:'🔁', n:'Follow-up', t:'3h ago · auto', tag:'sent', tc:'green', d:'Sent rebooking nudge to 8 clients whose last visit was 6+ weeks ago.' },
+      { e:'⚠️', n:'Reception Assistant', t:'5h ago · escalated', tag:'needs you', tc:'red', d:'Client asked about bridal package pricing — AISAR offered a consultation call. Review before sending?', cta:'Approved — consultation call scheduled.' } ],
+    conns: [
+      { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Reception Assistant & Follow-up talk to clients here.', on:true },
+      { e:'📸', n:'Instagram', s:'DM · linked', d:'Booking Agent receives booking DMs here.', on:true },
+      { e:'📅', n:'Google Calendar', s:'linked', d:'Booking Agent manages appointments here.', on:true },
+      { e:'📊', n:'Google Sheets', s:'linked', d:'Ops Assistant reads client & stock data here.', on:true },
+      { e:'🧾', n:'POS / Accounting', s:'not connected', d:'Unlocks product retail automation + daily sales reports.', on:false, cta:'POS connection wizard will open — we\u0027ll guide you through it.' } ]
+  },
+
+  gym: {
+    icon: '🏋️', keywords: ['gym','fitness','futsal','badminton','yoga','pilates','crossfit','workout','sport','sukan','swim','swimming','bootcamp'],
+    name: 'Your Gym', type: 'Gym / Fitness', sub: 'Gym / Fitness', site: 'yourgym.my', booking: 'App / WhatsApp', systems: 'Google Sheets · App',
+    potential: 63, opportunities: 5, ch: ['WhatsApp','Instagram'],
+    detect: 'gym & fitness · Petaling Jaya',
+    loc: 'Petaling Jaya, MY',
+    confirm: 'I found that you run a gym/fitness studio in Petaling Jaya. Is that correct?',
+    funcs: [['Front desk','','covered'],['Class bookings','green','live'],['Member enquiries','green','live'],['Renewals','amber','opportunity'],['Trial sign-ups','amber','opportunity']],
+    stats: [
+      { d:'Today', v:'23', u:'', l:'check-ins', s:'3 class waitlists active' },
+      { d:'New leads', v:'11', u:'', l:'this week', s:'4 trial passes booked' },
+      { d:'Hours saved', v:'15', u:' hrs', l:'saved this week by your AI team', p:60 } ],
+    sug: { t:'Automate class schedule answers', d:'Members ask "is there a slot tonight?" every day. AISAR answers with live availability + waitlist signup.', tag:'est. 5 hrs/month', cta:'Automation queued — I\u0027ll handle class schedule answers.' },
+    team: [
+      { e:'💬', n:'Front Desk Assistant', ch:'WhatsApp · Instagram', d:'Answers membership, class schedule, and pricing questions — 24/7.', m:'Today · 23 chats · 5 escalated' },
+      { e:'📅', n:'Booking Agent', ch:'Classes · Waitlist', d:'Books classes, manages waitlists, and sends class reminders.', m:'This week · 48 class bookings' },
+      { e:'🔁', n:'Follow-up', ch:'Members', d:'Sends renewal reminders and re-engages lapsed members.', m:'This month · 14 renewals saved' },
+      { e:'📊', n:'Ops Assistant', ch:'Reports', d:'Prepares daily attendance and flags under-booked classes.', m:'', setup:true } ],
+    work: [
+      { e:'💬', n:'Front Desk Assistant', t:'WhatsApp · 4m ago · auto', tag:'done', tc:'', d:'Answered "Ada slot kelas malam ni?" with live availability + waitlist link.' },
+      { e:'📅', n:'Booking Agent', t:'50m ago · auto', tag:'confirmed', tc:'green', d:'Booked HIT class for Amir, 7pm + reminder set.' },
+      { e:'🔁', n:'Follow-up', t:'2h ago · auto', tag:'sent', tc:'green', d:'Sent renewal reminder to 6 members expiring this week.' },
+      { e:'⚠️', n:'Front Desk Assistant', t:'4h ago · escalated', tag:'needs you', tc:'red', d:'Prospect asked about corporate memberships — AISAR offered a call-back. Review before sending?', cta:'Approved — call-back scheduled.' } ],
+    conns: [
+      { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Front Desk Assistant & Follow-up talk to members here.', on:true },
+      { e:'📸', n:'Instagram', s:'DM · linked', d:'Trial sign-ups come in here.', on:true },
+      { e:'📅', n:'Google Calendar', s:'linked', d:'Booking Agent manages class schedules here.', on:true },
+      { e:'📊', n:'Google Sheets', s:'linked', d:'Ops Assistant reads attendance here.', on:true },
+      { e:'💳', n:'Member app / Payment', s:'not connected', d:'Unlocks automatic renewals & payment reminders.', on:false, cta:'Payment connection wizard will open — we\u0027ll guide you through it.' } ]
+  },
+
+  tuition: {
+    icon: '📚', keywords: ['tuition','tutor','tuto','pusat tuisyen','academy','akademi','kelas','belajar','music school','coding class','mengaji','tahfiz','daycare','taska','kindergarten','tadika'],
+    name: 'Your Tuition Centre', type: 'Tuition / Education', sub: 'Tuition / Education', site: 'yourtution.my', booking: 'Phone / WhatsApp', systems: 'Google Sheets · Excel',
+    potential: 59, opportunities: 5, ch: ['WhatsApp','Phone'],
+    detect: 'tuition & education · Kuala Lumpur',
+    loc: 'Kuala Lumpur, MY',
+    confirm: 'I found that you run a tuition/education centre in Kuala Lumpur. Is that correct?',
+    funcs: [['Parent enquiries','','covered'],['Class schedules','green','live'],['Fee reminders','green','live'],['Attendance','amber','opportunity'],['Progress reports','amber','opportunity']],
+    stats: [
+      { d:'Today', v:'18', u:'', l:'messages from parents', s:'5 new enquiries' },
+      { d:'New students', v:'5', u:'', l:'enquiries this week', s:'2 trials booked' },
+      { d:'Hours saved', v:'12', u:' hrs', l:'saved this week by your AI team', p:52 } ],
+    sug: { t:'Automate fee reminders', d:'You chase fees every month. AISAR sends polite reminders + receipts automatically.', tag:'est. 3 hrs/month', cta:'Automation queued — I\u0027ll handle fee reminders.' },
+    team: [
+      { e:'💬', n:'Parent Assistant', ch:'WhatsApp · Phone', d:'Answers class schedules, fees, and location questions — 24/7.', m:'Today · 18 chats · 3 escalated' },
+      { e:'📅', n:'Booking Agent', ch:'Classes · Trials', d:'Books trial classes and manages student slots.', m:'This week · 9 trials booked' },
+      { e:'🔁', n:'Follow-up', ch:'Parents', d:'Sends fee reminders, homework updates, and progress nudges.', m:'This month · 42 reminders sent' },
+      { e:'📊', n:'Ops Assistant', ch:'Attendance · Reports', d:'Tracks attendance and prepares monthly class reports.', m:'', setup:true } ],
+    work: [
+      { e:'💬', n:'Parent Assistant', t:'WhatsApp · 3m ago · auto', tag:'done', tc:'', d:'Answered "Berapa yuran untuk darjah 4?" with fee list + class times.' },
+      { e:'📅', n:'Booking Agent', t:'1h ago · auto', tag:'confirmed', tc:'green', d:'Booked trial class for Aiman, Sat 10am Mathematics.' },
+      { e:'🔁', n:'Follow-up', t:'2h ago · auto', tag:'sent', tc:'green', d:'Sent fee reminder to 12 parents (polite, with receipt attached).' },
+      { e:'⚠️', n:'Parent Assistant', t:'5h ago · escalated', tag:'needs you', tc:'red', d:'Parent asked about discount for 2 siblings — AISAR offered 10%. Review before sending?', cta:'Approved — 10% sibling discount offered.' } ],
+    conns: [
+      { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Parent Assistant & Follow-up talk to parents here.', on:true },
+      { e:'📞', n:'Phone', s:'linked', d:'Enquiries by call route here.', on:true },
+      { e:'📅', n:'Google Calendar', s:'linked', d:'Booking Agent manages class schedules here.', on:true },
+      { e:'📊', n:'Google Sheets', s:'linked', d:'Ops Assistant reads attendance & fees here.', on:true },
+      { e:'🧾', n:'Accounting', s:'not connected', d:'Unlocks automatic receipts & monthly statements.', on:false, cta:'Accounting connection wizard will open — we\u0027ll guide you through it.' } ]
+  },
+
+  generic: {
+    icon: '🏪', keywords: [],
+    name: 'Your Business', type: 'Small Business', sub: 'Small Business', site: 'yourbusiness.com', booking: 'Phone / WhatsApp', systems: 'Google Sheets',
+    potential: 55, opportunities: 3, ch: ['WhatsApp','Email'],
+    detect: 'small business · services',
+    loc: 'Malaysia',
+    confirm: 'I found what your business is about. Is this correct?',
+    funcs: [['Customer enquiries','','covered'],['Follow-up','green','live'],['Scheduling','amber','opportunity'],['Reports','amber','opportunity']],
+    stats: [
+      { d:'Today', v:'9', u:'', l:'customer conversations', s:'2 need you' },
+      { d:'New enquiries', v:'14', u:'', l:'this week', s:'via WhatsApp + Email' },
+      { d:'Hours saved', v:'11', u:' hrs', l:'saved this week by your AI team', p:48 } ],
+    sug: { t:'Automate your common questions', d:'Your customers ask the same things every day. AISAR answers them instantly — in your voice.', tag:'est. 2 hrs/month', cta:'Automation queued — I\u0027ll set up the Customer Assistant.' },
+    team: [
+      { e:'💬', n:'Customer Assistant', ch:'WhatsApp · Email', d:'Answers your FAQs instantly — hours, pricing, availability — 24/7.', m:'Today · 9 chats · 2 escalated' },
+      { e:'📅', n:'Booking Agent', ch:'Calendar', d:'Schedules appointments and sends confirmations automatically.', m:'This week · 6 bookings' },
+      { e:'🔁', n:'Follow-up', ch:'Past customers', d:'Follows up enquiries and past customers automatically.', m:'This month · 18 follow-ups' },
+      { e:'📊', n:'Ops Assistant', ch:'Reports', d:'Prepares a simple weekly summary of everything that happened.', m:'', setup:true } ],
+    work: [
+      { e:'💬', n:'Customer Assistant', t:'WhatsApp · 2m ago · auto', tag:'done', tc:'', d:'Answered "What are your opening hours?" instantly.' },
+      { e:'📅', n:'Booking Agent', t:'1h ago · auto', tag:'confirmed', tc:'green', d:'Booked an appointment + sent confirmation.' },
+      { e:'🔁', n:'Follow-up', t:'3h ago · auto', tag:'sent', tc:'green', d:'Followed up 2 enquiries from yesterday.' },
+      { e:'⚠️', n:'Customer Assistant', t:'5h ago · escalated', tag:'needs you', tc:'red', d:'Customer asked about special pricing — AISAR drafted a reply. Review before sending?', cta:'Approved — reply sent.' } ],
+    conns: [
+      { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Customer Assistant talks to customers here.', on:true },
+      { e:'✉️', n:'Email', s:'Gmail · linked', d:'Follow-ups and documents go through here.', on:true },
+      { e:'📅', n:'Google Calendar', s:'linked', d:'Booking Agent checks availability here.', on:true },
+      { e:'📊', n:'Google Sheets', s:'linked', d:'Ops Assistant reads your data here.', on:true },
+      { e:'🧾', n:'Accounting', s:'not connected', d:'Unlocks invoicing automation.', on:false, cta:'Accounting connection wizard will open — we\u0027ll guide you through it.' } ]
   }
 };
 
-/* ---- Helpers ---- */
-function kvBizType() { try { var t = localStorage.getItem('aisar-biz-type'); return BIZ[t] ? t : 'restaurant'; } catch (e) { return 'restaurant'; } }
-function kvSetupDone() { try { return localStorage.getItem('aisar-setup-done-v1') === '1'; } catch (e) { return false; } }
-function kvLiveChans() { try { var a = JSON.parse(localStorage.getItem('aisar-channels') || '[]'); return (a && a.length) ? a : null; } catch (e) { return null; } }
-function kvBump(v) { return kvSetupDone() ? Math.min(96, v + 20) : v; }
+/* ============================================================
+   CACHE — playbook dijadikan "business object" + override nama.
+   ============================================================ */
+var BIZ = {};
 
-function kvSetBiz(t) {
-  if (!BIZ[t]) return;
-  try { localStorage.setItem('aisar-biz-type', t); } catch (e) {}
-  kvRenderAll();
-  var pills = document.querySelectorAll('[data-switch]');
-  if (pills) pills.forEach(function (p) { p.classList.toggle('green', p.dataset.switch === t); });
+function kvPlaybook(key){
+  key = PLAYBOOKS[key] ? key : 'generic';
+  if (BIZ[key]) return BIZ[key];
+  var p = PLAYBOOKS[key];
+  var b = {
+    icon: p.icon, name: p.name, type: p.type, sub: p.sub, site: p.site,
+    loc: p.loc || 'Malaysia',
+    booking: p.booking, systems: p.systems, potential: p.potential,
+    opportunities: p.opportunities, ch: p.ch.slice(), detect: p.detect,
+    confirm: p.confirm, funcs: p.funcs, stats: p.stats, sug: p.sug,
+    team: p.team, work: p.work, conns: p.conns
+  };
+  var n = KV_STORE.get('aisar-biz-name', ''); if (n) b.name = n;
+  var l = KV_STORE.get('aisar-biz-loc', '');  if (l) b.loc = l;
+  BIZ[key] = b;
+  return b;
 }
 
-/* ---- Render all views ---- */
-function kvRenderAll() {
-  var b = BIZ[kvBizType()];
+/* ============================================================
+   INFERENCE — free-text user → playbook + lokasi + nama.
+   ============================================================ */
+function kvInfer(text){
+  text = (text || '').toLowerCase();
+  var best = 'generic', bestN = 0;
+  Object.keys(PLAYBOOKS).forEach(function(k){
+    if (k === 'generic') return;
+    var n = 0;
+    PLAYBOOKS[k].keywords.forEach(function(w){
+      if (text.indexOf(w) >= 0) n++;
+    });
+    if (n > bestN){ bestN = n; best = k; }
+  });
+  return { key: best, score: bestN };
+}
+
+var KV_CITIES = {
+  'kuala lumpur': 'Kuala Lumpur, MY', 'kl': 'Kuala Lumpur, MY',
+  'shah alam': 'Shah Alam, MY', 'petaling jaya': 'Petaling Jaya, MY', 'pj': 'Petaling Jaya, MY',
+  'subang': 'Subang Jaya, MY', 'cyberjaya': 'Cyberjaya, MY', 'putrajaya': 'Putrajaya, MY',
+  'penang': 'George Town, Penang, MY', 'george town': 'George Town, Penang, MY',
+  'johor': 'Johor Bahru, MY', 'johor bahru': 'Johor Bahru, MY', 'jb': 'Johor Bahru, MY',
+  'melaka': 'Melaka, MY', 'ipoh': 'Ipoh, MY', 'seremban': 'Seremban, MY',
+  'kota kinabalu': 'Kota Kinabalu, MY', 'kuching': 'Kuching, MY', 'singapore': 'Singapore, SG'
+};
+
+function kvExtractLoc(text){
+  text = (text || '').toLowerCase();
+  for (var c in KV_CITIES){ if (text.indexOf(c) >= 0) return KV_CITIES[c]; }
+  var m = text.match(/(?:di|in|at)\s+([a-z .,'-]{2,40})/);
+  if (m && m[1]){
+    var parts = m[1].trim().split(/[\s,]+/).filter(Boolean);
+    if (parts.length){
+      var cap = parts.map(function(w){ return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
+      return cap + ', MY';
+    }
+  }
+  return '';
+}
+
+function kvExtractName(text, fallback){
+  var t = (text || '').replace(/(?:di|in|at)\s+[a-z .,'-]{2,40}$/i, '')
+                   .replace(/[^a-zA-Z0-9 &'-]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!t || t.length < 3) return fallback;
+  var words = t.split(' ').map(function(w){ return w.charAt(0).toUpperCase() + w.slice(1); });
+  return words.slice(0, 5).join(' ');
+}
+
+/* ============================================================
+   SELF-IMPROVING — belajar dari pilihan user (demo local).
+   ============================================================ */
+function kvLearn(key, pick){
+  var k = 'aisar-learn:' + key;
+  var obj = {};
+  try { obj = JSON.parse(KV_STORE.get(k, '{}')); } catch(e){}
+  obj[pick] = (obj[pick] || 0) + 1;
+  KV_STORE.set(k, JSON.stringify(obj));
+}
+function kvPopular(key){
+  var obj = {};
+  try { obj = JSON.parse(KV_STORE.get('aisar-learn:' + key, '{}')); } catch(e){}
+  var best = null, bestN = 0;
+  for (var p in obj){ if (obj[p] > bestN){ bestN = obj[p]; best = p; } }
+  return bestN > 0 ? { pick: best, n: bestN } : null;
+}
+
+/* ============================================================
+   API
+   ============================================================ */
+function kvBizType(){
+  var t = KV_STORE.get('aisar-biz-type', '');
+  return PLAYBOOKS[t] ? t : 'generic';
+}
+function kvSetBiz(t){
+  if (!PLAYBOOKS[t]) return;
+  KV_STORE.set('aisar-biz-type', t);
+  delete BIZ[t];
+  kvRenderAll();
+  var pills = document.querySelectorAll('[data-switch]');
+  if (pills) pills.forEach(function(p){ p.classList.toggle('green', p.dataset.switch === t); });
+}
+/* Free-text → infer → simpan → render. Jantung "generate on the run". */
+function kvRegisterBiz(text){
+  var inf = kvInfer(text);
+  var key = inf.key;
+  KV_STORE.set('aisar-biz-type', key);
+  delete BIZ[key];
+  var fallback = PLAYBOOKS[key].name;
+  var name = kvExtractName(text, fallback);
+  KV_STORE.set('aisar-biz-name', name);
+  var loc = kvExtractLoc(text);
+  if (loc) KV_STORE.set('aisar-biz-loc', loc);
+  kvLearn(key, 'inferred:' + key);
+  var b = kvPlaybook(key);
+  return { key: key, score: inf.score, playbook: b };
+}
+
+function kvSetupDone(){ return KV_STORE.get('aisar-setup-done-v1', '') === '1'; }
+function kvLiveChans(){
+  try { var a = JSON.parse(KV_STORE.get('aisar-channels', '[]')); return (a && a.length) ? a : null; } catch(e){ return null; }
+}
+function kvBump(v){ return kvSetupDone() ? Math.min(96, v + 20) : v; }
+
+/* ============================================================
+   RENDER — satu set views, content ikut playbook.
+   ============================================================ */
+function kvRenderAll(){
+  var b = kvPlaybook(kvBizType());
   var chans = kvLiveChans() || b.ch;
 
   /* Sidebar */
@@ -171,8 +427,13 @@ function kvRenderAll() {
     }).join('');
   }
 
-  /* Home suggestion */
+  /* Home suggestion + self-improving signal */
   if ((el = document.getElementById('h-suggest'))) {
+    var pop = kvPopular(kvBizType());
+    var signal = '';
+    if (pop && pop.pick && pop.pick.indexOf('inferred:') !== 0){
+      signal = '<div class="mt-2 text-[11px] text-text-muted">🔥 ' + pop.n + ' other ' + b.sub.toLowerCase() + ' businesses started with this.</div>';
+    }
     el.innerHTML =
       '<div class="as-card flex flex-col gap-4 p-5">' +
       '<div class="as-row justify-between">' +
@@ -186,12 +447,11 @@ function kvRenderAll() {
       '<div class="as-row gap-3">' +
         '<button class="btn btn-primary px-5 py-2 text-sm" data-msg="' + b.sug.cta + '" onclick="kvToast(this.dataset.msg)">Automate it</button>' +
         '<button class="btn btn-outline px-5 py-2 text-sm">Not now</button>' +
-      '</div>' +
+      '</div>' + signal +
       '</div>';
   }
 
   /* Business profile rows */
-  if ((el = document.getElementById('kv-biz-name'))) el.textContent = b.name;
   if ((el = document.getElementById('kv-biz-site'))) el.textContent = b.site;
   if ((el = document.getElementById('kv-biz-contact'))) el.textContent = chans.join(' · ') || b.ch.join(' · ');
   if ((el = document.getElementById('kv-biz-booking'))) el.textContent = b.booking;
@@ -242,22 +502,13 @@ function kvRenderAll() {
   /* Connections */
   if ((el = document.getElementById('kv-conns'))) {
     el.innerHTML = b.conns.map(function (c) {
+      var action = c.on
+        ? '<span class="as-tag green">connected</span>'
+        : '<button class="btn btn-primary px-4 py-1.5 text-xs" data-msg="' + c.cta + '" onclick="kvToast(this.dataset.msg)">Connect</button>';
       return '<div class="as-card flex flex-col gap-3 p-4">' +
-        '<div class="as-row justify-between">' +
-          '<div class="as-row"><span class="as-avatar">' + c.e + '</span><div class="flex flex-col"><span class="text-sm">' + c.n + '</span><span class="text-[11px] text-text-muted">' + c.s + '</span></div></div>' +
-          (c.on
-            ? '<div class="as-toggle on" onclick="this.classList.toggle(\'on\')" role="switch" aria-label="' + c.n + ' toggle"></div>'
-            : '<button class="btn btn-primary px-4 py-1.5 text-xs" data-msg="' + c.cta + '" onclick="kvToast(this.dataset.msg)">Connect</button>') +
-        '</div>' +
+        '<div class="as-row justify-between"><div class="as-row"><span class="as-avatar">' + c.e + '</span><div class="flex flex-col"><span class="text-sm">' + c.n + '</span><span class="text-[11px] text-text-muted">' + c.s + '</span></div></div>' + action + '</div>' +
         '<p class="text-[13px] text-text-secondary">' + c.d + '</p>' +
         '</div>';
     }).join('');
   }
-}
-
-/* Auto-render bila DOM siap */
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', kvRenderAll);
-} else {
-  kvRenderAll();
 }

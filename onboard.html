@@ -68,20 +68,29 @@
 <div class="as-step active">
 <div class="flex flex-col gap-3">
 <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Step 1 · Your business</span>
-<h2 class="font-pixel text-xl tracking-tight md:text-2xl">Got a website? Drop the URL.</h2>
-<p class="text-[13px] text-text-secondary md:text-sm">AISAR will scan it and learn your business — menu, services, hours, contact channels. No website? Skip and answer a few questions.</p>
+<h2 class="font-pixel text-xl tracking-tight md:text-2xl">Tell us about your business.</h2>
+<p class="text-[13px] text-text-secondary md:text-sm">Type it in your own words — AISAR reads it, figures out your industry, and generates your dashboard. No forms, no setup.</p>
 <div class="flex flex-col gap-2">
-<span class="text-[12px] text-text-secondary">What kind of business is it?</span>
+<input type="text" id="kv-desc" class="as-input w-full rounded-lg px-4 py-3 text-sm text-text outline-none" placeholder="e.g. saya ada kedai kopi di Shah Alam, jual nasi lemak &amp; kek"/>
+<button class="btn btn-primary w-full px-6 py-3 text-sm" onclick="kvGenerate()">Generate my dashboard →</button>
+</div>
+<div class="as-row gap-3">
+<span class="as-check" style="background:#00d294;border-color:#00d294;color:#0a0a0a">✓</span>
+<span class="text-[13px] text-text-secondary">or pick a type</span>
+</div>
 <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
 <div class="as-opt as-type picked" data-type="restaurant"><div class="as-row"><span class="as-check">✓</span>🍜 Restaurant / Café</div></div>
 <div class="as-opt as-type" data-type="retail"><div class="as-row"><span class="as-check">✓</span>🛍️ Retail / E-commerce</div></div>
 <div class="as-opt as-type" data-type="services"><div class="as-row"><span class="as-check">✓</span>💼 Services / Agency</div></div>
 <div class="as-opt as-type" data-type="clinic"><div class="as-row"><span class="as-check">✓</span>🏥 Clinic / Health</div></div>
-</div>
+<div class="as-opt as-type" data-type="salon"><div class="as-row"><span class="as-check">✓</span>💇 Salon / Beauty</div></div>
+<div class="as-opt as-type" data-type="gym"><div class="as-row"><span class="as-check">✓</span>🏋️ Gym / Fitness</div></div>
+<div class="as-opt as-type" data-type="tuition"><div class="as-row"><span class="as-check">✓</span>📚 Tuition / Education</div></div>
+<div class="as-opt as-type" data-type="generic"><div class="as-row"><span class="as-check">✓</span>🏪 Other</div></div>
 </div>
 <div class="flex flex-col gap-3 sm:flex-row">
-<input type="text" id="kv-url" value="wagyu.my" class="as-input w-full rounded-lg px-4 py-3 font-mono text-sm text-text outline-none" placeholder="yourbusiness.com"/>
-<button class="btn btn-primary px-6 py-3 text-sm sm:w-auto" onclick="kvGoNext()">Scan my business →</button>
+<input type="text" id="kv-url" value="wagyu.my" class="as-input w-full rounded-lg px-4 py-3 font-mono text-sm text-text outline-none" placeholder="yourbusiness.com (optional — helps AISAR learn more)"/>
+<button class="btn btn-outline px-6 py-3 text-sm sm:w-auto" onclick="kvGoNext()">Scan website →</button>
 </div>
 <div class="flex flex-col gap-2">
 <div class="as-row gap-3">
@@ -210,15 +219,12 @@
 </div>
 </main>
 
+<script src="/biz-engine.js"></script>
 <script>
 /* ---- State ---- */
 var step = 0, channels = [], pain = null, bizType = 'restaurant';
-var BIZ_META = {
-  restaurant: { detect: 'restaurant · premium · Kuala Lumpur', confirm: 'I found that you operate a premium Japanese restaurant in Kuala Lumpur. Is that correct?', name: 'Wagyu Japanese Restaurant', type: 'Restaurant · Premium dining', loc: 'Kuala Lumpur, MY' },
-  retail:     { detect: 'e-commerce · home &amp; living · Shah Alam', confirm: 'I found that you run a home &amp; living e-commerce business in Shah Alam. Is that correct?', name: 'Serai Homeware', type: 'E-commerce · Home &amp; living', loc: 'Shah Alam, MY' },
-  services:   { detect: 'agency · design &amp; branding · Petaling Jaya', confirm: 'I found that you run a design &amp; branding agency in Petaling Jaya. Is that correct?', name: 'Nadi Studio', type: 'Agency · Design &amp; branding', loc: 'Petaling Jaya, MY' },
-  clinic:     { detect: 'clinic · GP &amp; family · Johor Bahru', confirm: 'I found that you run a GP &amp; family clinic in Johor Bahru. Is that correct?', name: 'Klinik Sejahtera', type: 'Clinic · GP &amp; family', loc: 'Johor Bahru, MY' }
-};
+/* Playbooks + inference datang dari biz-engine.js (PLAYBOOKS, kvRegisterBiz, kvPlaybook, kvInfer) */
+
 
 /* ---- Navigation ---- */
 function kvRenderNav(){
@@ -244,7 +250,7 @@ function kvStep(d){
   var next = Math.min(Math.max(step + d, 0), steps.length - 1);
   if (step === next) return;
   steps[step].classList.remove('active'); step = next; steps[step].classList.add('active');
-  if (step === 2) { var ct = document.getElementById('kv-confirm-text'); if (ct) ct.innerHTML = (BIZ_META[bizType] || BIZ_META.restaurant).confirm; }
+  if (step === 2) { var ct = document.getElementById('kv-confirm-text'); if (ct) ct.innerHTML = (PLAYBOOKS[bizType] ? PLAYBOOKS[bizType].confirm : PLAYBOOKS.generic.confirm); }
   kvRenderNav();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -252,13 +258,27 @@ function kvStep(d){
 /* ---- Step 1: URL / skip ---- */
 function kvSkipUrl(){
   /* fake a scan tanpa URL */
+  var desc = document.getElementById('kv-desc').value.trim();
+  if (desc){ var r = kvRegisterBiz(desc); bizType = r.key; }
   document.getElementById('kv-scan-url').textContent = 'no website (manual setup)';
   step = 0; kvStep(1);
-  document.getElementById('kv-scan-url').textContent = 'no website (manual setup)';
+  runScanLines();
+}
+function kvGenerate(){
+  var t = document.getElementById('kv-desc').value.trim();
+  if (!t){ kvToast('Tell us what you do — e.g. "saya ada kedai kopi di Shah Alam".'); return; }
+  var r = kvRegisterBiz(t);
+  bizType = r.key;
+  document.getElementById('kv-scan-url').textContent = t;
+  var url = document.getElementById('kv-url').value.trim();
+  if (url){ document.getElementById('p-url').textContent = url; document.getElementById('p-url').classList.remove('empty'); }
+  kvStep(1);
   runScanLines();
 }
 function kvScan(){
   var url = document.getElementById('kv-url').value.trim() || 'yourbusiness.com';
+  var desc = document.getElementById('kv-desc').value.trim();
+  if (desc){ var r = kvRegisterBiz(desc); bizType = r.key; }
   document.getElementById('kv-scan-url').textContent = url;
   document.getElementById('p-url').textContent = url;
   document.getElementById('p-url').classList.remove('empty');
@@ -266,11 +286,11 @@ function kvScan(){
   runScanLines();
 }
 function runScanLines(){
-  var m = BIZ_META[bizType] || BIZ_META.restaurant;
+  var b = kvPlaybook(bizType);
   var lines = [
-    '<span class="text-white/35">✓</span> fetching site',
-    '<span class="text-white/35">✓</span> parsing menu · about · contact',
-    '<span class="text-white/35">✓</span> detected: ' + m.detect
+    '<span class="text-white/35">✓</span> reading your description',
+    '<span class="text-white/35">✓</span> matching industry playbook (' + b.type + ')',
+    '<span class="text-white/35">✓</span> detected: ' + b.detect
   ];
   var box = document.getElementById('kv-scan');
   var i = 0;
@@ -282,9 +302,9 @@ function runScanLines(){
       clearInterval(t);
       /* populate profile */
       var name = document.getElementById('p-name'), typ = document.getElementById('p-type'), loc = document.getElementById('p-loc');
-      name.textContent = m.name; name.classList.remove('empty');
-      typ.textContent = m.type; typ.classList.remove('empty');
-      loc.textContent = m.loc; loc.classList.remove('empty');
+      name.textContent = b.name; name.classList.remove('empty');
+      typ.textContent = b.type; typ.classList.remove('empty');
+      loc.textContent = b.loc || 'Malaysia'; loc.classList.remove('empty');
       document.getElementById('kv-live-badge').textContent = 'learned ✓';
       document.getElementById('kv-live-badge').classList.add('green');
       setTimeout(function(){ kvStep(1); }, 800);
@@ -342,6 +362,7 @@ function kvSuggest(){
 function kvActivate(){
   kvSuggest();
   try { localStorage.setItem('aisar-onboarded-v1', '1'); } catch(e) {}
+  try { localStorage.setItem('aisar-biz-type', bizType); } catch(e) {}
   var btn = document.querySelector('#kv-steps .as-step.active .btn-primary, .as-step.active .btn-primary');
   if (btn){ btn.textContent = 'Setting up…'; btn.disabled = true; }
   setTimeout(function(){
