@@ -9,6 +9,18 @@
 <link rel="stylesheet" href="/_next/static/chunks/391k8ovo_r0qj.css" data-precedence="next"/>
 <link rel="stylesheet" href="/_next/static/chunks/07r-6xz-uoanc.css" data-precedence="next"/>
 <style>
+/* Button fix — CSS chunk (Tailwind v4 @layer components) paksa padding-block:0!important.
+   Override mesti duduk dalam layer SAMA + source order lewat supaya menang (cascade layers). */
+@layer components {
+  html.site-theme-dark .btn{padding-block:12px !important}
+  html.site-theme-dark .btn.py-4{padding-block:16px !important}
+  @media (min-width:48rem){html.site-theme-dark .btn.py-4{padding-block:12px !important}}
+  html.site-theme-dark .btn-primary,html.site-theme-dark .btn-primary:visited{border-color:var(--color-white);background:var(--color-white);color:var(--color-black)}
+  html.site-theme-dark .btn-primary:hover{background:rgb(255 255 255 / .88);border-color:rgb(255 255 255 / .88)}
+  html.site-theme-dark .btn-outline{border-color:rgb(255 255 255 / .5);color:var(--color-white);background:transparent}
+  html.site-theme-dark .btn-outline:hover{border-color:rgb(255 255 255 / .8);background:rgb(255 255 255 / .08)}
+}
+
 /* AISAR accent + layout — custom CSS (prebuilt CSS takde arbitrary/stateful classes) */
 .as-green{color:#00d294}
 .as-bg-green{background:#00d294;color:#0a0a0a}
