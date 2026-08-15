@@ -295,6 +295,41 @@ function kvApprovalDecide(id, ok){
   KV_STORE.set('aisar-approvals', JSON.stringify(q));
 }
 
+/* Approval queue UI — manusia kekal dalam loop */
+function kvApprovalsRender(){
+  var el = document.getElementById('kv-approvals');
+  if (!el) return;
+  var q = kvApprovals().filter(function(a){ return a.status === 'pending'; });
+  if (!q.length){
+    el.innerHTML = '<div class="as-card flex flex-col items-center gap-2 p-6 text-center"><span class="text-2xl">🛡️</span><p class="text-[13px] text-text-secondary">' + kvT('appr.empty') + '</p></div>';
+  } else {
+    el.innerHTML = q.map(function(a){
+      var riskCls = a.risk === 'high' ? 'red' : (a.risk === 'medium' ? 'amber' : 'green');
+      var args = '';
+      try { args = JSON.stringify(a.args || {}, null, 1).replace(/"/g,'').replace(/[{}]/g,'').replace(/\n/g,', ').trim(); } catch(e){}
+      return '<div class="as-card flex flex-col gap-3 p-4">' +
+        '<div class="as-row justify-between"><div class="as-row gap-2">' +
+        '<span class="as-avatar">🛡️</span>' +
+        '<div class="flex flex-col"><span class="text-sm">' + a.conn + ' · ' + a.op + '</span>' +
+        '<span class="text-[11px] text-text-muted">' + a.ts + '</span></div></div>' +
+        '<span class="as-tag ' + riskCls + '">' + kvT('appr.risk.' + a.risk) + '</span></div>' +
+        (args ? '<pre class="text-[11px] font-mono text-white/70 bg-white/[0.03] rounded-lg p-3 whitespace-pre-wrap">' + args + '</pre>' : '') +
+        '<div class="as-row justify-end gap-2">' +
+        '<button class="btn btn-outline px-4 py-1.5 text-xs" onclick="kvApprovalDecide(' + a.id + ',false);kvRenderAll();kvToast(kvT(\'appr.rejected\'))">' + kvT('appr.reject') + '</button>' +
+        '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvApprovalDecide(' + a.id + ',true);kvRenderAll();kvToast(kvT(\'appr.approved\'))">' + kvT('appr.approve') + '</button>' +
+        '</div></div>';
+    }).join('');
+  }
+  kvApprovalBadge();
+}
+function kvApprovalBadge(){
+  var n = kvApprovals().filter(function(a){ return a.status === 'pending'; }).length;
+  ['kv-side-approvals-badge','kv-drawer-approvals-badge'].forEach(function(id){
+    var b = document.getElementById(id);
+    if (b){ b.textContent = n; b.style.display = n ? 'inline-flex' : 'none'; }
+  });
+}
+
 
 /* ============================================================
    I18N — EN/BM language toggle (English-first, BM support).
@@ -302,6 +337,7 @@ function kvApprovalDecide(id, ok){
 var KV_I18N = {
   en: {
     'nav.home':'Home','nav.chat':'Chat','nav.team':'Team Chat','nav.business':'Your Business','nav.aiteam':'AI Team','nav.work':'Work','nav.connections':'Connections',
+    'nav.approvals':'Approvals','view.approvals':'Approvals','view.approvals.desc':'Actions your AI team wants to take — nothing goes out until you approve.','appr.approve':'Approve','appr.reject':'Reject','appr.approved':'Approved ✓','appr.rejected':'Rejected','appr.empty':'Nothing pending. The AI team will ask when an action needs you.','appr.risk.high':'High risk','appr.risk.medium':'Medium','appr.risk.low':'Low',
     'nav.landing':'← Landing','nav.getstarted':'Get started','nav.openchat':'Open chat →','nav.logout':'Log out',
     'cx.oauth':'one-click login','cx.link':'payment link / QR — no setup','cx.file':'file / email sync — you just connect Google','cx.bss':'we handle the credentials — you just approve',
     'view.home.greet':'Good morning 👋','view.home.desc':"Here's what happened while you were away.",
@@ -333,6 +369,7 @@ var KV_I18N = {
   },
   bm: {
     'nav.home':'Home','nav.chat':'Chat','nav.team':'Chat Pasukan','nav.business':'Perniagaan Anda','nav.aiteam':'Pasukan AI','nav.work':'Kerja','nav.connections':'Sambungan',
+    'nav.approvals':'Kelulusan','view.approvals':'Kelulusan','view.approvals.desc':'Tindakan yang pasukan AI mahu ambil — tiada apa keluar sebelum anda luluskan.','appr.approve':'Lulus','appr.reject':'Tolak','appr.approved':'Diluluskan ✓','appr.rejected':'Ditolak','appr.empty':'Tiada tergantung. Pasukan AI akan minta kelulusan bila perlu.','appr.risk.high':'Risiko tinggi','appr.risk.medium':'Sederhana','appr.risk.low':'Rendah',
     'nav.landing':'← Laman','nav.getstarted':'Mula sekarang','nav.openchat':'Buka chat →','nav.logout':'Keluar',
     'cx.oauth':'login satu klik','cx.link':'link / QR bayaran — tiada setup','cx.file':'sync fail / emel — anda cuma connect Google','cx.bss':'kami pegang credential — anda cuma approve',
     'view.home.greet':'Selamat pagi 👋','view.home.desc':'Apa yang berlaku semasa kau pergi.',
@@ -2920,6 +2957,8 @@ function kvRenderAll(){
         '</div>';
     }).join('');
   }
+
+  kvApprovalsRender();
 
   /* Chat — app penuh: senarai perbualan + thread + ambil alih */
   kvChatRender();
