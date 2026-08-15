@@ -2303,6 +2303,152 @@ function kvRenderAll(){
 
   /* Chat — app penuh: senarai perbualan + thread + ambil alih */
   kvChatRender();
+
+  /* Team — kolaborasi ala-Slack */
+  kvTeamRender();
+}
+
+/* ============================================================
+   TEAM ENGINE — ruang kolaborasi ala-Slack (manusia + AI agent)
+   ============================================================ */
+var kvTeamState = { msgs: [], typing: false, seeded: false };
+
+var KV_TEAM_TPL = [
+  'Apa status order hari ni? 📊',
+  '@Follow-up: hantar reminder promo minggu ni 🎁',
+  '@Ops Assistant: siapkan weekly report 📈',
+  'Ada apa-apa escalation yang perlu aku semak? ⚠️'
+];
+
+var KV_TEAM_REPLIES = {
+  'Customer Assistant': [
+    'On it! Saya dah semak — 2 pelanggan tanya waktu operasi, dah balas. Menu terkini hantar ke 3 chat. ✅',
+    'Dah settle. 1 pelanggan minta diskaun — aku dah escalate ke ⚡ Work untuk approval kau. ⚠️',
+    'Siap! Semua enquiry pagi ni dah dijawab. Tiada yang tertinggal. 👍'
+  ],
+  'Booking Agent': [
+    'Dah semak — 4 booking baru hari ni, semua confirmed. Satu minta tarikh alternatif, dah tawarkan Jumaat. ✅',
+    'Booking malam ni: 2 meja 4 orang, 1 meja 2 orang. Semua confirmed, reminder dihantar. 📅',
+    'Ada 1 no-show risk — reminder automatik dah hantar. Kalau tak jawab, aku escalate. ⚠️'
+  ],
+  'Follow-up': [
+    'Promo minggu ni dah jadual — 23 pelanggan terima mesej esok 10 pagi. 🎁',
+    'Reminder loyaliti dah hantar ke 15 regular. 5 dah reply, 3 booking baru! 🔁',
+    'Maklum balas minggu lepas: 8 positif, 2 cadangan. Dah ringkas dalam weekly report. 📊'
+  ],
+  'Ops Assistant': [
+    'Weekly report siap! Jualan naik 12% minggu ni, top item: wagyu set & udon. 📈',
+    'Stok wagyu tinggal 3 hari — aku cadang auto-order esok. Nak aku proceed? 📦',
+    'Dah track semua — 87 transaksi hari ini, peak hour 7-9pm. Operasi normal. ✅'
+  ]
+};
+
+var KV_TEAM_GENERAL = [
+  'Aku dengar! Semua agent sihat dan bekerja. Nak semak apa-apa, terus tag agent yang berkaitan. 😊',
+  'Noted! Semua sistem berjalan normal. Contoh: tag @Customer Assistant untuk enquiry, @Ops Assistant untuk report. 👍',
+  'Ok! Kalau nak status bahagian tertentu, tag agent dia — aku tolong sampaikan jugak. ✅'
+];
+
+function kvTeamSeed(){
+  if (kvTeamState.seeded) return;
+  kvTeamState.seeded = true;
+  var b = kvPlaybook(kvBizType());
+  var team = b.team || [];
+  var first = team.length ? team[0].n : 'Customer Assistant';
+  var last = team.length > 1 ? team[team.length-1].n : first;
+  kvTeamState.msgs = [
+    { f:'agent', n: first, d:'Morning! Semua channel aktif. 2 escalation menunggu approval kau kat ⚡ Work.', tm:'8:02 AM' },
+    { f:'you', n:'Kau', d:'Ok nanti aku semak. @' + last + ', boleh siapkan laporan sebelum Jumaat?', tm:'8:15 AM' },
+    { f:'agent', n: last, d:'Boleh. Laporan siap esok 9 pagi — aku tag kau bila dah sedia. ✅', tm:'8:16 AM' },
+    { f:'agent', n: first, d:'Update: 1 pelanggan minta diskaun 15% — aku dah draft balasan, tengok kat ⚡ Work. ⚠️', tm:'10:42 AM' }
+  ];
+}
+
+function kvTeamMention(tx, team){
+  var lower = (tx || '').toLowerCase();
+  for (var i=0;i<team.length;i++){
+    if (lower.indexOf('@' + team[i].n.toLowerCase()) >= 0) return team[i];
+  }
+  return null;
+}
+
+function kvTeamSend(){
+  var inp = document.getElementById('kv-team-inp');
+  if (!inp) return;
+  var tx = (inp.value || '').trim();
+  if (!tx) return;
+  inp.value = '';
+  kvTeamState.msgs.push({ f:'you', n:'Kau', d:tx, tm:'sekarang' });
+  var b = kvPlaybook(kvBizType());
+  var team = b.team || [];
+  var target = kvTeamMention(tx, team);
+  kvTeamRender();
+  var t = document.getElementById('kv-team-typing');
+  if (t) t.style.display = 'flex';
+  var box = document.getElementById('kv-team-msgs');
+  if (box) box.scrollTop = box.scrollHeight;
+  var pool = target ? (KV_TEAM_REPLIES[target.n] || KV_TEAM_GENERAL) : KV_TEAM_GENERAL;
+  setTimeout(function(){
+    var t2 = document.getElementById('kv-team-typing');
+    if (t2) t2.style.display = 'none';
+    var d = pool[Math.floor(Math.random()*pool.length)];
+    kvTeamState.msgs.push({ f:'agent', n: target ? target.n : (team.length ? team[0].n : 'Customer Assistant'), d:d, tm:'sekarang' });
+    kvTeamRender();
+  }, 1000 + Math.floor(Math.random()*700));
+}
+
+function kvTeamTpl(tx){
+  var inp = document.getElementById('kv-team-inp');
+  if (inp){ inp.value = tx; inp.focus(); }
+}
+
+function kvTeamRender(){
+  kvTeamSeed();
+  var b = kvPlaybook(kvBizType());
+  var team = b.team || [];
+  var el = document.getElementById('kv-team-app');
+  if (!el) return;
+
+  var members = '<div class="kv-team-members"><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Team</span>';
+  members += '<div class="as-row gap-2"><span class="kv-dot you"></span><span class="text-[12px]">Kau (boss)</span></div>';
+  team.forEach(function(t){
+    members += '<div class="as-row gap-2"><span class="kv-dot"></span><span class="text-[12px]">' + kvEsc(t.n) + '</span></div>';
+  });
+  members += '</div>';
+
+  var tpls = KV_TEAM_TPL.map(function(t){
+    return '<button class="kv-tpl" onclick="kvTeamTpl(\'' + t.replace(/'/g,"\\'") + '\')">' + kvEsc(t) + '</button>';
+  }).join('');
+
+  var iconFor = function(nm){
+    for (var i=0;i<team.length;i++) if (team[i].n === nm) return team[i].e;
+    return '🤖';
+  };
+  var msgs = kvTeamState.msgs.map(function(msg){
+    var cls = msg.f === 'you' ? 'kv-tm kv-tm-you' : 'kv-tm';
+    var av = msg.f === 'you' ? '🙋' : iconFor(msg.n);
+    return '<div class="' + cls + '">' +
+      '<span class="as-avatar">' + av + '</span>' +
+      '<div class="flex flex-col gap-1"><div class="as-row gap-2"><span class="text-[12px] font-semibold">' + kvEsc(msg.n) + '</span><span class="text-[10px] text-text-muted">' + kvEsc(msg.tm) + '</span></div>' +
+      '<div class="kv-tm-bubble">' + kvEsc(msg.d) + '</div></div></div>';
+  }).join('');
+
+  var typing = '<div class="kv-tm" id="kv-team-typing" style="display:none"><span class="as-avatar">🤖</span><div class="kv-typing"><i></i><i></i><i></i></div></div>';
+
+  var input = '<div class="kv-team-inp-row">' +
+    '<input id="kv-team-inp" placeholder="Mesej untuk pasukan — tag @agent kalau nak agent spesifik balas…" onkeydown="if(event.key===&quot;Enter&quot;)kvTeamSend()">' +
+    '<button class="kv-team-send" onclick="kvTeamSend()">➤</button></div>';
+
+  el.innerHTML =
+    '<div class="kv-team-main">' +
+      '<div class="kv-team-head"><span>💬 <b>#pasukan</b> — ruang kolaborasi semua agent</span><span class="text-text-muted">1 channel</span></div>' +
+      '<div class="kv-team-tpls">' + tpls + '</div>' +
+      '<div class="kv-team-msgs" id="kv-team-msgs">' + msgs + typing + '</div>' +
+      input +
+    '</div>' + members;
+
+  var box = document.getElementById('kv-team-msgs');
+  if (box) box.scrollTop = box.scrollHeight;
 }
 
 /* ============================================================

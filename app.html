@@ -72,6 +72,34 @@
   .kv-chat-header .kv-back{display:inline-block}
 }
 .as-link:hover{color:#00d294}
+/* Team channel — slack-style collaboration */
+.kv-team{display:flex;gap:14px;align-items:stretch}
+.kv-team-main{flex:1;min-width:0;display:flex;flex-direction:column;border:1px solid rgb(255 255 255/.1);background:rgb(255 255 255/.02);border-radius:14px;overflow:hidden}
+.kv-team-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 16px;border-bottom:1px solid rgb(255 255 255/.08);font-size:12px;flex-shrink:0}
+.kv-team-tpls{display:flex;gap:6px;overflow-x:auto;padding:10px 14px 0;flex-shrink:0}
+.kv-team-msgs{flex:1;display:flex;flex-direction:column;gap:12px;padding:16px;min-height:320px;max-height:50vh;overflow-y:auto}
+.kv-tm{display:flex;gap:10px;align-items:flex-start}
+.kv-tm .as-avatar{width:30px;height:30px;font-size:13px;border-radius:8px}
+.kv-tm-bubble{background:rgb(255 255 255/.05);border:1px solid rgb(255 255 255/.08);border-radius:10px;padding:8px 12px;font-size:12.5px;line-height:1.5;max-width:560px}
+.kv-tm-you .kv-tm-bubble{border-color:rgb(0 210 148/.35);background:rgb(0 210 148/.07)}
+.kv-tm-you .as-avatar{background:rgb(255 180 0/.14);border-color:rgb(255 180 0/.4)}
+.kv-team-inp-row{display:flex;gap:8px;padding:10px 14px;border-top:1px solid rgb(255 255 255/.08);align-items:center;background:rgb(0 0 0/.25)}
+.kv-team-inp-row input{flex:1;background:rgb(255 255 255/.06);border:1px solid rgb(255 255 255/.14);border-radius:10px;padding:9px 14px;font-size:13px;color:inherit;outline:none;min-width:0}
+.kv-team-inp-row input:focus{border-color:rgb(0 210 148/.6)}
+.kv-team-send{width:38px;height:38px;border-radius:10px;background:#00d294;border:none;color:#0a0a0a;font-size:16px;cursor:pointer;flex-shrink:0}
+.kv-team-send:hover{filter:brightness(1.1)}
+.kv-team-members{width:192px;flex-shrink:0;display:flex;flex-direction:column;gap:10px;border:1px solid rgb(255 255 255/.1);background:rgb(255 255 255/.02);border-radius:14px;padding:14px}
+.kv-dot{width:8px;height:8px;border-radius:50%;background:#00d294;flex-shrink:0}
+.kv-dot.you{background:#ffb400}
+@keyframes kv-typing-blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+.kv-typing{display:inline-flex;gap:3px;align-items:center;padding:10px 12px}
+.kv-typing i{width:5px;height:5px;border-radius:50%;background:rgb(0 210 148/.7);animation:kv-typing-blink 1.2s infinite}
+.kv-typing i:nth-child(2){animation-delay:.2s}
+.kv-typing i:nth-child(3){animation-delay:.4s}
+@media (max-width:768px){
+  .kv-team-members{display:none}
+  .kv-team-msgs{max-height:58vh}
+}
 .as-side{width:232px;flex-shrink:0}
 .as-side-item{display:flex;align-items:center;gap:10px;padding:9px 14px;font-size:13px;color:var(--text-secondary, rgb(160 160 170));border-radius:8px;transition:background .15s,color .15s;cursor:pointer}
 .as-side-item:hover{background:rgb(255 255 255 / .05);color:var(--text, #f2f2f2)}
@@ -189,6 +217,7 @@
 <nav class="flex flex-col gap-1" id="kv-side">
 <a class="as-side-item active" data-view="home"><span>🏠</span> Home</a>
 <a class="as-side-item" data-view="chat"><span>💬</span> Chat</a>
+<a class="as-side-item" data-view="team"><span>🤝</span> Team</a>
 <a class="as-side-item" data-view="business"><span>🏢</span> Your Business</a>
 <a class="as-side-item" data-view="aiteam"><span>🤖</span> AI Team</a>
 <a class="as-side-item" data-view="work"><span>⚡</span> Work</a>
@@ -221,6 +250,7 @@
 </div>
 <a class="as-side-item active" data-view="home"><span>🏠</span> Home</a>
 <a class="as-side-item" data-view="chat"><span>💬</span> Chat</a>
+<a class="as-side-item" data-view="team"><span>🤝</span> Team</a>
 <a class="as-side-item" data-view="business"><span>🏢</span> Your Business</a>
 <a class="as-side-item" data-view="aiteam"><span>🤖</span> AI Team</a>
 <a class="as-side-item" data-view="work"><span>⚡</span> Work</a>
@@ -252,6 +282,17 @@
 <p class="text-[13px] text-text-secondary">Progress AI team kau dalam masa nyata — macam chat dengan staff.</p>
 </div>
 <div id="kv-chat-app"><!-- engine: chat app penuh (senarai + thread + ambil alih) --></div>
+</div>
+</div>
+
+<!-- VIEW: TEAM (slack-style collaboration) -->
+<div class="as-view" id="view-team">
+<div class="flex flex-col gap-4">
+<div class="flex flex-col gap-1">
+<h2 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-3xl">Team</h2>
+<p class="text-[13px] text-text-secondary">Satu ruang untuk kau + semua AI agent berkolaborasi — tag <span class="as-green">@agent</span>, dia jawab.</p>
+</div>
+<div id="kv-team-app" class="kv-team"><!-- engine --></div>
 </div>
 </div>
 
