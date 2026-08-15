@@ -13,6 +13,117 @@ var KV_STORE = (function(){
 })();
 
 /* ============================================================
+   COUNTRY LAYER — AISAR is built Malaysia-first but country-aware.
+   Tambah negara baru = tambah SATU entri KV_COUNTRIES (cities,
+   language default, currency, TLD, channel stack).
+   Aktifkan: kvSetCountry('ID') — KV simpan di 'aisar-country'.
+   ============================================================ */
+var KV_COUNTRIES = {
+  MY: {
+    code: 'MY', name: 'Malaysia', lang: 'bm', currency: 'RM', tld: '.my',
+    defaultCh: ['WhatsApp', 'Instagram'],
+    cities: {
+      'kuala lumpur': 'Kuala Lumpur, MY', 'kl': 'Kuala Lumpur, MY',
+      'shah alam': 'Shah Alam, MY', 'petaling jaya': 'Petaling Jaya, MY', 'pj': 'Petaling Jaya, MY',
+      'subang': 'Subang Jaya, MY', 'cyberjaya': 'Cyberjaya, MY', 'putrajaya': 'Putrajaya, MY',
+      'penang': 'George Town, Penang, MY', 'george town': 'George Town, Penang, MY',
+      'johor': 'Johor Bahru, MY', 'johor bahru': 'Johor Bahru, MY', 'jb': 'Johor Bahru, MY',
+      'melaka': 'Melaka, MY', 'ipoh': 'Ipoh, MY', 'seremban': 'Seremban, MY',
+      'kota kinabalu': 'Kota Kinabalu, MY', 'kuching': 'Kuching, MY',
+      'singapore': 'Singapore, SG'
+    }
+  },
+  ID: {
+    code: 'ID', name: 'Indonesia', lang: 'id', currency: 'Rp', tld: '.co.id',
+    defaultCh: ['WhatsApp', 'Instagram', 'Shopee'],
+    cities: {
+      'jakarta': 'Jakarta, ID', 'bandung': 'Bandung, ID', 'surabaya': 'Surabaya, ID',
+      'medan': 'Medan, ID', 'bali': 'Denpasar, ID', 'denpasar': 'Denpasar, ID',
+      'yogyakarta': 'Yogyakarta, ID', 'semarang': 'Semarang, ID', 'makassar': 'Makassar, ID',
+      'bekasi': 'Bekasi, ID', 'depok': 'Depok, ID', 'tangerang': 'Tangerang, ID'
+    }
+  },
+  SG: {
+    code: 'SG', name: 'Singapore', lang: 'en', currency: 'S$', tld: '.sg',
+    defaultCh: ['WhatsApp', 'Instagram'],
+    cities: { 'singapore': 'Singapore, SG', 'jurong': 'Jurong, SG', 'woodlands': 'Woodlands, SG', 'tampines': 'Tampines, SG' }
+  },
+  TH: {
+    code: 'TH', name: 'Thailand', lang: 'th', currency: '฿', tld: '.co.th',
+    defaultCh: ['Line', 'Facebook'],
+    cities: {
+      'bangkok': 'Bangkok, TH', 'krung thep': 'Bangkok, TH', 'chiang mai': 'Chiang Mai, TH',
+      'phuket': 'Phuket, TH', 'pattaya': 'Pattaya, TH', 'hat yai': 'Hat Yai, TH',
+      'nakhon ratchasima': 'Nakhon Ratchasima, TH', 'khon kaen': 'Khon Kaen, TH'
+    }
+  },
+  VN: {
+    code: 'VN', name: 'Vietnam', lang: 'vi', currency: '₫', tld: '.vn',
+    defaultCh: ['Zalo', 'Facebook'],
+    cities: {
+      'ho chi minh': 'Ho Chi Minh City, VN', 'saigon': 'Ho Chi Minh City, VN',
+      'hanoi': 'Hanoi, VN', 'da nang': 'Da Nang, VN', 'can tho': 'Can Tho, VN',
+      'hai phong': 'Hai Phong, VN', 'nha trang': 'Nha Trang, VN'
+    }
+  },
+  PH: {
+    code: 'PH', name: 'Philippines', lang: 'fil', currency: '₱', tld: '.ph',
+    defaultCh: ['Facebook Messenger', 'Viber', 'WhatsApp'],
+    cities: {
+      'manila': 'Manila, PH', 'quezon city': 'Quezon City, PH', 'cebu': 'Cebu City, PH',
+      'davao': 'Davao City, PH', 'makati': 'Makati, PH', 'tagaytay': 'Tagaytay, PH'
+    }
+  }
+};
+var KV_COUNTRY = (function(){
+  var c = KV_STORE.get('aisar-country', 'MY');
+  return KV_COUNTRIES[c] ? c : 'MY';
+})();
+function kvCountry(){ return KV_COUNTRIES[KV_COUNTRY] || KV_COUNTRIES.MY; }
+function kvSetCountry(code){
+  if (!KV_COUNTRIES[code]) return;
+  KV_COUNTRY = code;
+  KV_STORE.set('aisar-country', code);
+  /* BIZ cache ikut negara — reset supaya loc/detect/site/ch segar */
+  try { if (typeof BIZ !== 'undefined') { for (var k in BIZ) delete BIZ[k]; } } catch(e){}
+}
+function kvCityList(){
+  var out = {};
+  for (var k in KV_COUNTRIES.MY.cities) out[k] = KV_COUNTRIES.MY.cities[k];
+  var cc = kvCountry().cities || {};
+  for (var j in cc) out[j] = cc[j];
+  return out;
+}
+function kvSite(p){
+  var c = kvCountry();
+  var s = String(p.site || '');
+  if (c.code === 'MY') return s;
+  /* Tukar only placeholder .my domain ke TLD negara; kekal .com/.co dsb */
+  return s.replace(/\.my$/i, c.tld || '.my');
+}
+function kvDetect(p){
+  var c = kvCountry();
+  if (c.code === 'MY' || !p.detect) return p.detect;
+  var cities = Object.keys(c.cities || {});
+  var first = cities.length ? c.cities[cities[0]] : c.name;
+  var city = first.split(',')[0].trim();
+  return String(p.detect).replace(/·\s*[^·]+$/, '· ' + city);
+}
+function kvKeywords(p){
+  var out = (p && p.keywords) ? p.keywords.slice() : [];
+  var extra = p && p.kw && p.kw[kvCountry().code];
+  if (extra && extra.length) out = out.concat(extra);
+  return out;
+}
+function kvChans(b){
+  var c = kvCountry();
+  if (c.code === 'MY' || !b || !b.ch) return (b && b.ch) || [];
+  var out = (c.defaultCh || []).slice();
+  b.ch.forEach(function(x){ if (out.indexOf(x) < 0) out.push(x); });
+  return out;
+}
+
+/* ============================================================
    I18N — EN/BM language toggle (English-first, BM support).
    ============================================================ */
 var KV_I18N = {
@@ -77,7 +188,13 @@ var KV_I18N = {
     'uc.suggested':'Cadangan seterusnya','uc.automate':'Automatikkan','uc.notnow':'Nanti dulu','uc.opportunity':'peluang — belum automatik','uc.see':'Lihat dalam Kerja','uc.more':'Lagi cara AISAR boleh bantu — pilih mana nak automatikkan'
   }
 };
-var KV_LANG = (KV_STORE.get('aisar-lang','en') === 'bm') ? 'bm' : 'en';
+var KV_LANG = (function(){
+  var l = KV_STORE.get('aisar-lang','');
+  if (l === 'en' || l === 'bm') return l;
+  var c = kvCountry();
+  if (c && c.lang && KV_I18N && KV_I18N[c.lang]) return c.lang;
+  return 'en';   /* English-first: fallback selamat sampai terjemahan negara siap */
+})();
 function kvT(k){
   var d = KV_I18N[KV_LANG] || KV_I18N.en;
   if (d && d[k]) return d[k];
@@ -111,7 +228,7 @@ function kvApplyLang(){
 var PLAYBOOKS = {
 
   restaurant: {
-    icon: '🍜', keywords: ['restaurant','cafe','café','kedai makan','kopi','kopitiam','food','bistro','warung','mamak','grill','sushi','pizza','burger','dapur','kafe'],
+    icon: '🍜', keywords: ['restaurant','cafe','café','kedai makan','kopi','kopitiam','food','bistro','warung','mamak','grill','sushi','pizza','burger','dapur','kafe'], kw: { ID: ['nasi padang','warteg','rumah makan'] },
     name: 'Your Restaurant', type: 'Restaurant / Café', sub: 'Restaurant / Café', site: 'yourbusiness.com', booking: 'Phone + Instagram DM', systems: 'Google Sheets · POS',
     potential: 62, opportunities: 4, ch: ['WhatsApp','Instagram'],
     detect: 'restaurant · premium · Kuala Lumpur',
@@ -173,7 +290,7 @@ var PLAYBOOKS = {
   },
 
   smallretail: {
-    icon: '🛒', keywords: ['butik','boutique','kasut','shoe','sneaker','aksesori','accessory','handbag','beg','tudung','hijab','reseller','preloved','apparel','clothing','vintage','kedai baju','kedai kasut','kedai aksesori','kedai hadiah','gift shop','baju kurung','baju melayu'],
+    icon: '🛒', keywords: ['butik','boutique','kasut','shoe','sneaker','aksesori','accessory','handbag','beg','tudung','hijab','reseller','preloved','apparel','clothing','vintage','kedai baju','kedai kasut','kedai aksesori','kedai hadiah','gift shop','baju kurung','baju melayu'], kw: { ID: ['toko baju','toko tas','toko aksesoris','konveksi'] },
     name: 'Your Boutique', type: 'Small Retail / Kedai', sub: 'Small Retail / Kedai', site: 'yourboutique.my', booking: 'WhatsApp / Walk-in', systems: 'WhatsApp · Instagram · Google Sheets',
     potential: 62, opportunities: 4, ch: ['WhatsApp','Instagram'],
     detect: 'small retail · fashion & lifestyle · Shah Alam',
@@ -1832,10 +1949,10 @@ function kvPlaybook(key){
   if (BIZ[key]) return BIZ[key];
   var p = PLAYBOOKS[key];
   var b = {
-    icon: p.icon, name: p.name, type: p.type, sub: p.sub, site: p.site,
-    loc: p.loc || 'Malaysia',
+    icon: p.icon, name: p.name, type: p.type, sub: p.sub, site: kvSite(p),
+    loc: (kvCountry().code !== 'MY' && p.loc) ? kvCountry().name : (p.loc || kvCountry().name),
     booking: p.booking, systems: p.systems, potential: p.potential,
-    opportunities: p.opportunities, ch: p.ch.slice(), detect: p.detect,
+    opportunities: p.opportunities, ch: p.ch.slice(), detect: kvDetect(p),
     confirm: p.confirm, funcs: p.funcs, stats: p.stats, sug: p.sug,
     team: p.team, work: p.work, conns: p.conns
   };
@@ -1855,7 +1972,7 @@ function kvInfer(text){
   Object.keys(PLAYBOOKS).forEach(function(k){
     if (k === 'generic') return;
     var n = 0;
-    PLAYBOOKS[k].keywords.forEach(function(w){
+    kvKeywords(PLAYBOOKS[k]).forEach(function(w){
       w = String(w).toLowerCase();
       if (w.indexOf(' ') >= 0){
         // multi-word: cari frasa penuh, weight lebih (lebih spesifik)
@@ -1888,13 +2005,14 @@ var KV_CITIES = {
 
 function kvExtractLoc(text){
   text = (text || '').toLowerCase();
-  for (var c in KV_CITIES){ if (text.indexOf(c) >= 0) return KV_CITIES[c]; }
+  var cities = kvCityList();
+  for (var c in cities){ if (text.indexOf(c) >= 0) return cities[c]; }
   var m = text.match(/(?:di|in|at)\s+([a-z .,'-]{2,40})/);
   if (m && m[1]){
     var parts = m[1].trim().split(/[\s,]+/).filter(Boolean);
     if (parts.length){
       var cap = parts.map(function(w){ return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
-      return cap + ', MY';
+      return cap + ', ' + kvCountry().code;
     }
   }
   return '';
@@ -2471,8 +2589,8 @@ function kvRenderAll(){
   }
 
   /* Business profile rows */
-  if ((el = document.getElementById('kv-biz-site'))) el.textContent = b.site;
-  if ((el = document.getElementById('kv-biz-contact'))) el.textContent = chans.join(' · ') || b.ch.join(' · ');
+  if ((el = document.getElementById('kv-biz-site'))) el.textContent = kvSite(b);
+  if ((el = document.getElementById('kv-biz-contact'))) el.textContent = chans.join(' · ') || kvChans(b).join(' · ');
   if ((el = document.getElementById('kv-biz-booking'))) el.textContent = b.booking;
   if ((el = document.getElementById('kv-biz-systems'))) el.textContent = b.systems;
 
@@ -2873,7 +2991,11 @@ function kvTeamRender(){
    ============================================================ */
 if (typeof document !== 'undefined') {
   function kvBoot(){
-    try { kvApplyLang(); kvSeedConns(); kvRenderAll(); }
+    try {
+      var q = (window.location.search || '').match(/[?&]country=([a-z]{2})/i);
+      if (q && q[1]) kvSetCountry(q[1].toUpperCase());
+      kvApplyLang(); kvSeedConns(); kvRenderAll();
+    }
     catch(e){ if (window.console) console.error('AISAR render error:', e); }
   }
   if (document.readyState === 'loading') {
