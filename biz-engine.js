@@ -170,6 +170,36 @@ var PLAYBOOKS = {
       { e:'💳', n:'Payment gateway', s:'not connected', d:'Unlocks automatic refunds & failed-payment follow-ups.', on:false, cta:'Payment connection wizard will open — we\u0027ll guide you through it.' } ]
   },
 
+  smallretail: {
+    icon: '🛒', keywords: ['butik','boutique','kasut','shoe','sneaker','aksesori','accessory','handbag','beg','tudung','hijab','reseller','preloved','apparel','clothing','vintage','kedai baju','kedai kasut','kedai aksesori','kedai hadiah','gift shop','baju kurung','baju melayu'],
+    name: 'Your Boutique', type: 'Small Retail / Kedai', sub: 'Small Retail / Kedai', site: 'yourboutique.my', booking: 'WhatsApp / Walk-in', systems: 'WhatsApp · Instagram · Google Sheets',
+    potential: 62, opportunities: 4, ch: ['WhatsApp','Instagram'],
+    detect: 'small retail · fashion & lifestyle · Shah Alam',
+    loc: 'Shah Alam, MY',
+    confirm: 'I found that you run a small retail shop — boutique or kedai — taking orders via WhatsApp and walk-ins. Is that correct?',
+    funcs: [['Customer service','','covered'],['WhatsApp orders','green','live'],['Inventory & ordering','amber','opportunity'],['Loyalty & rebooking','amber','opportunity'],['Weekly reports','amber','opportunity']],
+    stats: [
+      { d:'Today', v:'26', u:'', l:'enquiries answered', s:'3 needed you' },
+      { d:'Orders this week', v:'47', u:'', l:'via WhatsApp & walk-in', s:'2 pending payment' },
+      { d:'Hours saved', v:'15', u:' hrs', l:'saved this week by your AI team', p:58 } ],
+    sug: { t:'Automate WhatsApp order intake', d:'Customers order via WhatsApp all day — even when your shop is closed. AISAR captures orders, confirms sizes and prices, and sends receipts automatically.', tag:'est. 6 hrs/month', cta:'Automation queued — I\u0027ll take your orders on WhatsApp.' },
+    team: [
+      { e:'💬', n:'Customer Assistant', ch:'WhatsApp · Instagram', d:'Answers product, size, stock and shop-hours questions — 24/7.', m:'Today · 28 chats · 4 escalated' },
+      { e:'🛒', n:'Order Taker', ch:'WhatsApp · Walk-in', d:'Captures orders, confirms details and sends receipts — no pen needed.', m:'This week · 19 orders' },
+      { e:'🔁', n:'Follow-up', ch:'WhatsApp · Past customers', d:'Nudges repeat purchases and reminds customers about reserved items.', m:'This month · 12 campaigns' },
+      { e:'📊', n:'Ops Assistant', ch:'Stock · Reports', d:'Watches stock levels, flags low items, and prepares your weekly sales report.', m:'', setup:true } ],
+    work: [
+      { e:'💬', n:'Customer Assistant', t:'WhatsApp · 2m ago · auto', tag:'done', tc:'', d:'Answered "Kedai buka sampai pukul berapa?" with store hours + location.' },
+      { e:'🛒', n:'Order Taker', t:'1h ago · auto', tag:'confirmed', tc:'green', d:'Captured order #241: 2x baju kurung (S, M) — payment pending.' },
+      { e:'🔁', n:'Follow-up', t:'3h ago · auto', tag:'sent', tc:'green', d:'Sent reorder nudge to 6 past customers whose size restock just arrived.' },
+      { e:'⚠️', n:'Customer Assistant', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Customer asked about a bulk order (50 pcs) — AISAR checked with you before promising a price. Review?', cta:'Approved — offer sent with 8% bulk discount.' } ],
+    conns: [
+      { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Customer Assistant & Order Taker use this to talk to customers.', on:true },
+      { e:'📸', n:'Instagram', s:'Shop · linked', d:'Customer Assistant answers product DMs here.', on:true },
+      { e:'📊', n:'Google Sheets', s:'linked', d:'Ops Assistant reads stock & orders here.', on:true },
+      { e:'💳', n:'Payment gateway', s:'not connected', d:'Unlocks automatic receipts & payment reminders.', on:false, cta:'Payment connection wizard will open — we\u0027ll guide you through it.' } ]
+  },
+
   services: {
     icon: '💼', keywords: ['agency','service','services','studio','konsult','consult','design','branding','marketing','digital','freelance','architect','law','accounting','audit','photography'],
     name: 'Your Studio', type: 'Services / Agency', sub: 'Services / Agency', site: 'yourstudio.my', booking: 'Email / Calendly', systems: 'Notion · Google Calendar',
