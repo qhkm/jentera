@@ -2020,6 +2020,37 @@ function kvRenderAll(){
         '</div>';
     }).join('');
   }
+
+  /* Chat — progress AI team sebagai bubbles */
+  if ((el = document.getElementById('kv-chat'))) {
+    el.innerHTML = b.work.map(function (w, i) {
+      var approved = kvWorkDone(i);
+      var tag;
+      if (approved) tag = '<span class="as-tag green">approved ✓</span>';
+      else if (w.tag === 'needs you') tag = '<span class="as-tag red">needs you</span>';
+      else tag = '<span class="as-tag' + (w.tc ? ' ' + w.tc : '') + '">' + w.tag + '</span>';
+      var actions = '';
+      if (!approved && w.tag === 'needs you'){
+        actions = '<div class="as-row gap-2">' +
+          '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvApproveWork(' + i + ')">Approve &amp; send</button>' +
+          '<button class="btn btn-outline px-4 py-1.5 text-xs" onclick="kvNav(\'work\')">Edit in Work</button>' +
+        '</div>';
+      }
+      return '<div class="as-row items-start gap-3">' +
+        '<span class="as-avatar" style="flex-shrink:0">' + w.e + '</span>' +
+        '<div class="as-card flex flex-col gap-2 p-4" style="flex:1;min-width:0">' +
+          '<div class="as-row justify-between gap-2">' +
+            '<div class="flex flex-col min-w-0">' +
+              '<span class="text-sm" style="font-weight:600">' + w.n + '</span>' +
+              '<span class="text-[11px] text-text-muted">' + w.t + '</span>' +
+            '</div>' + tag +
+          '</div>' +
+          '<p class="text-[13px] text-text-secondary leading-relaxed">' + w.d + '</p>' +
+          actions +
+        '</div>' +
+      '</div>';
+    }).join('') || '<p class="text-[13px] text-text-muted">Belum ada aktiviti — AI team akan mula bercakap kat sini bila ada kerja.</p>';
+  }
 }
 
 /* ============================================================

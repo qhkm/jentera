@@ -128,6 +128,7 @@
 </div>
 <nav class="flex flex-col gap-1" id="kv-side">
 <a class="as-side-item active" data-view="home"><span>🏠</span> Home</a>
+<a class="as-side-item" data-view="chat"><span>💬</span> Chat</a>
 <a class="as-side-item" data-view="business"><span>🏢</span> Your Business</a>
 <a class="as-side-item" data-view="aiteam"><span>🤖</span> AI Team</a>
 <a class="as-side-item" data-view="work"><span>⚡</span> Work</a>
@@ -149,6 +150,7 @@
 <div class="as-app-col">
 <div class="as-mobile-nav gap-2 overflow-x-auto border-b border-(--rail) px-4 py-3" id="kv-side-m">
 <a class="as-side-item active" data-view="home">Home</a>
+<a class="as-side-item" data-view="chat">Chat</a>
 <a class="as-side-item" data-view="business">Business</a>
 <a class="as-side-item" data-view="aiteam">AI Team</a>
 <a class="as-side-item" data-view="work">Work</a>
@@ -168,6 +170,24 @@
 <div id="h-command"><!-- engine: state-driven command center --></div>
 <div class="grid grid-cols-1 gap-4 lg:grid-cols-3" id="h-stats"><!-- engine --></div>
 <div id="h-suggest"><!-- engine --></div>
+</div>
+</div>
+
+<!-- VIEW: CHAT -->
+<div class="as-view" id="view-chat">
+<div class="flex flex-col gap-8">
+<div class="flex flex-col gap-1">
+<h2 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-3xl">Chat</h2>
+<p class="text-[13px] text-text-secondary">Progress AI team kau dalam masa nyata — macam chat dengan staff.</p>
+</div>
+<div class="flex flex-col gap-4" id="kv-chat"><!-- engine --></div>
+<div class="as-card flex flex-col gap-2 p-4">
+<div class="as-row gap-2">
+<input class="as-input flex-1 rounded-lg px-3 py-2 text-[13px]" placeholder="Type to chat with your AI team…" disabled/>
+<button class="btn btn-primary px-4 py-2 text-xs" disabled>Send</button>
+</div>
+<p class="text-[11px] text-text-muted">💡 Live chat akan aktif bila WhatsApp disambung. Sekarang ni kau boleh tengok progress agent dalam masa nyata.</p>
+</div>
 </div>
 </div>
 
