@@ -17,11 +17,16 @@
 .as-progress{height:6px;border-radius:999px;background:rgb(255 255 255 / .07);overflow:hidden}
 .as-progress-fill{height:100%;background:linear-gradient(90deg,#00d294,#00b6fc);border-radius:999px}
 .as-row{display:flex;align-items:center;gap:10px}
-.as-opt{border:1px solid rgb(255 255 255 / .12);border-radius:10px;padding:14px 16px;cursor:pointer;transition:border-color .15s,background .15s}
-.as-opt:hover{border-color:rgb(0 210 148 / .4)}
-.as-opt.picked{border-color:rgb(0 210 148 / .6);background:rgb(0 210 148 / .07)}
-.as-check{width:18px;height:18px;border-radius:5px;border:1px solid rgb(255 255 255 / .2);display:flex;align-items:center;justify-content:center;font-size:11px;color:transparent;flex-shrink:0}
-.as-opt.picked .as-check{background:#00d294;border-color:#00d294;color:#0a0a0a}
+.as-opt{display:flex;align-items:center;gap:12px;border:1px solid rgb(255 255 255 / .12);border-radius:12px;padding:12px 14px;cursor:pointer;transition:border-color .15s,background .15s;background:rgb(255 255 255 / .02)}
+.as-opt:hover{border-color:rgb(0 210 148 / .4);background:rgb(0 210 148 / .06)}
+.as-opt.picked{border-color:rgb(0 210 148 / .6);background:rgb(0 210 148 / .08)}
+.as-av{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;background:rgb(0 210 148 / .12);border:1px solid rgb(0 210 148 / .3);flex-shrink:0}
+.as-opt-t{flex:1;font-size:13px;font-weight:500;line-height:1.35}
+.as-tick{width:20px;height:20px;border-radius:99px;border:1px solid rgb(255 255 255 / .25);display:flex;align-items:center;justify-content:center;font-size:11px;color:transparent;flex-shrink:0;transition:all .15s}
+.as-opt.picked .as-tick{background:#00d294;border-color:#00d294;color:#0a0a0a}
+.as-tick{width:20px;height:20px;border-radius:99px;border:1px solid rgb(255 255 255 / .25);display:flex;align-items:center;justify-content:center;font-size:11px;color:transparent;flex-shrink:0;transition:all .15s}
+.as-opt.picked .as-tick{background:#00d294;border-color:#00d294;color:#0a0a0a}
+.as-tick.on{background:#00d294;border-color:#00d294;color:#0a0a0a}
 .as-card{border:1px solid rgb(255 255 255 / .1);background:rgb(255 255 255 / .02);border-radius:12px}
 .as-input{border:1px solid rgb(255 255 255 / .15);background:rgb(0 0 0 / .3)}
 .as-input:focus{border-color:#00d294}
@@ -75,25 +80,25 @@
 <button class="btn btn-primary w-full px-6 py-3 text-sm" onclick="kvGenerate()">Generate my dashboard →</button>
 </div>
 <div class="as-row gap-3">
-<span class="as-check" style="background:#00d294;border-color:#00d294;color:#0a0a0a">✓</span>
+<span class="as-tick on">✓</span>
 <span class="text-[13px] text-text-secondary">or pick a type</span>
 </div>
 <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-<div class="as-opt as-type picked" data-type="restaurant"><div class="as-row"><span class="as-check">✓</span>🍜 Restaurant / Café</div></div>
-<div class="as-opt as-type" data-type="retail"><div class="as-row"><span class="as-check">✓</span>🛍️ Retail / E-commerce</div></div>
-<div class="as-opt as-type" data-type="services"><div class="as-row"><span class="as-check">✓</span>💼 Services / Agency</div></div>
-<div class="as-opt as-type" data-type="clinic"><div class="as-row"><span class="as-check">✓</span>🏥 Clinic / Health</div></div>
-<div class="as-opt as-type" data-type="salon"><div class="as-row"><span class="as-check">✓</span>💇 Salon / Beauty</div></div>
-<div class="as-opt as-type" data-type="gym"><div class="as-row"><span class="as-check">✓</span>🏋️ Gym / Fitness</div></div>
-<div class="as-opt as-type" data-type="tuition"><div class="as-row"><span class="as-check">✓</span>📚 Tuition / Education</div></div>
-<div class="as-opt as-type" data-type="laundry"><div class="as-row"><span class="as-check">✓</span>🧺 Laundry / Dobi</div></div>
-<div class="as-opt as-type" data-type="auto"><div class="as-row"><span class="as-check">✓</span>🔧 Auto / Bengkel</div></div>
-<div class="as-opt as-type" data-type="petcare"><div class="as-row"><span class="as-check">✓</span>🐾 Pet Care / Grooming</div></div>
-<div class="as-opt as-type" data-type="florist"><div class="as-row"><span class="as-check">✓</span>💐 Florist / Gifting</div></div>
-<div class="as-opt as-type" data-type="property"><div class="as-row"><span class="as-check">✓</span>🏠 Real Estate</div></div>
-<div class="as-opt as-type" data-type="cleaning"><div class="as-row"><span class="as-check">✓</span>🧽 Cleaning Services</div></div>
-<div class="as-opt as-type" data-type="minimart"><div class="as-row"><span class="as-check">✓</span>🏪 Minimart</div></div>
-<div class="as-opt as-type" data-type="generic"><div class="as-row"><span class="as-check">✓</span>🏪 Other</div></div>
+<div class="as-opt as-type picked" data-type="restaurant"><span class="as-av">🍜</span><span class="as-opt-t">Restaurant / Café</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-type" data-type="retail"><span class="as-av">🛍️</span><span class="as-opt-t">Retail / E-commerce</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-type" data-type="services"><span class="as-av">💼</span><span class="as-opt-t">Services / Agency</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-type" data-type="clinic"><span class="as-av">🏥</span><span class="as-opt-t">Clinic / Health</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-type" data-type="salon"><span class="as-av">💇</span><span class="as-opt-t">Salon / Beauty</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-type" data-type="gym"><span class="as-av">🏋️</span><span class="as-opt-t">Gym / Fitness</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-type" data-type="tuition"><span class="as-av">📚</span><span class="as-opt-t">Tuition / Education</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-type" data-type="laundry"><span class="as-av">🧺</span><span class="as-opt-t">Laundry / Dobi</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-type" data-type="auto"><span class="as-av">🔧</span><span class="as-opt-t">Auto / Bengkel</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-type" data-type="petcare"><span class="as-av">🐾</span><span class="as-opt-t">Pet Care / Grooming</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-type" data-type="florist"><span class="as-av">💐</span><span class="as-opt-t">Florist / Gifting</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-type" data-type="property"><span class="as-av">🏠</span><span class="as-opt-t">Real Estate</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-type" data-type="cleaning"><span class="as-av">🧽</span><span class="as-opt-t">Cleaning Services</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-type" data-type="minimart"><span class="as-av">🏪</span><span class="as-opt-t">Minimart</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-type" data-type="generic"><span class="as-av">🏪</span><span class="as-opt-t">Other</span><span class="as-tick">✓</span></div>
 </div>
 <div class="flex flex-col gap-3 sm:flex-row">
 <input type="text" id="kv-url" value="wagyu.my" class="as-input w-full rounded-lg px-4 py-3 font-mono text-sm text-text outline-none" placeholder="yourbusiness.com (optional — helps AISAR learn more)"/>
@@ -101,7 +106,7 @@
 </div>
 <div class="flex flex-col gap-2">
 <div class="as-row gap-3">
-<span class="as-check" style="background:#00d294;border-color:#00d294;color:#0a0a0a">✓</span>
+<span class="as-tick on">✓</span>
 <span class="text-[13px] text-text-secondary">No website? <a class="as-green" href="#" onclick="kvSkipUrl();return false">Answer a few questions instead</a></span>
 </div>
 </div>
@@ -140,10 +145,10 @@
 <h2 class="font-pixel text-xl tracking-tight md:text-2xl">Where do enquiries come in?</h2>
 <p class="text-[13px] text-text-secondary md:text-sm">Pick all that apply — AISAR focuses on where your customers actually are.</p>
 <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-<div class="as-opt as-multi" data-opt="WhatsApp"><div class="as-row"><span class="as-check">✓</span>💬 WhatsApp</div></div>
-<div class="as-opt as-multi" data-opt="Instagram"><div class="as-row"><span class="as-check">✓</span>📸 Instagram</div></div>
-<div class="as-opt as-multi" data-opt="Email"><div class="as-row"><span class="as-check">✓</span>✉️ Email</div></div>
-<div class="as-opt as-multi" data-opt="Phone"><div class="as-row"><span class="as-check">✓</span>📞 Phone</div></div>
+<div class="as-opt as-multi" data-opt="WhatsApp"><span class="as-av">💬</span><span class="as-opt-t">WhatsApp</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-multi" data-opt="Instagram"><span class="as-av">📸</span><span class="as-opt-t">Instagram</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-multi" data-opt="Email"><span class="as-av">✉️</span><span class="as-opt-t">Email</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-multi" data-opt="Phone"><span class="as-av">📞</span><span class="as-opt-t">Phone</span><span class="as-tick">✓</span></div>
 </div>
 </div>
 </div>
@@ -155,10 +160,10 @@
 <h2 class="font-pixel text-xl tracking-tight md:text-2xl">What eats your week?</h2>
 <p class="text-[13px] text-text-secondary md:text-sm">Pick the one that hurts most — that's where AISAR starts.</p>
 <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-<div class="as-opt as-radio" data-opt="Answering enquiries"><div class="as-row"><span class="as-check">✓</span> Answering enquiries</div></div>
-<div class="as-opt as-radio" data-opt="Reservations"><div class="as-row"><span class="as-check">✓</span> Reservations / bookings</div></div>
-<div class="as-opt as-radio" data-opt="Marketing"><div class="as-row"><span class="as-check">✓</span> Marketing &amp; social</div></div>
-<div class="as-opt as-radio" data-opt="Inventory"><div class="as-row"><span class="as-check">✓</span> Inventory &amp; ordering</div></div>
+<div class="as-opt as-radio" data-opt="Answering enquiries"><span class="as-av">💬</span><span class="as-opt-t">Answering enquiries</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-radio" data-opt="Reservations"><span class="as-av">📅</span><span class="as-opt-t">Reservations / bookings</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-radio" data-opt="Marketing"><span class="as-av">📣</span><span class="as-opt-t">Marketing &amp; social</span><span class="as-tick">✓</span></div>
+<div class="as-opt as-radio" data-opt="Inventory"><span class="as-av">📦</span><span class="as-opt-t">Inventory &amp; ordering</span><span class="as-tick">✓</span></div>
 </div>
 </div>
 </div>
@@ -176,9 +181,9 @@
 </div>
 <p class="mt-2 text-[13px] text-white/70">Handles: FAQs · menu questions · reservations · opening hours · follow-ups</p>
 <div class="mt-3 flex flex-col gap-1 text-[12px] text-white/45">
-<div class="as-row"><span class="as-check" style="background:#00d294;border-color:#00d294;color:#0a0a0a">✓</span> WhatsApp [Connect]</div>
-<div class="as-row"><span class="as-check" style="background:#00d294;border-color:#00d294;color:#0a0a0a">✓</span> Calendar [Connect]</div>
-<div class="as-row"><span class="as-check" style="background:#00d294;border-color:#00d294;color:#0a0a0a">✓</span> Menu [Found ✓]</div>
+<div class="as-row"><span class="as-tick on">✓</span> WhatsApp [Connect]</div>
+<div class="as-row"><span class="as-tick on">✓</span> Calendar [Connect]</div>
+<div class="as-row"><span class="as-tick on">✓</span> Menu [Found ✓]</div>
 </div>
 </div>
 <p class="text-[12px] text-text-muted" id="kv-reco-extra">+ 2 more suggestions based on your answers: Booking Agent · Follow-up</p>
