@@ -17,6 +17,12 @@
 .as-bg-green-soft{background:rgb(0 210 148 / .08)}
 .as-btn-reco{border:1px solid rgb(0 210 148 / .5);background:rgb(0 210 148 / .12);color:#00d294;transition:background .2s}
 .as-btn-reco:hover{background:rgb(0 210 148 / .22)}
+/* Buttons — template .btn guna currentColor/hitam utk border → tak nampak dalam dark theme. Fix: border warna jelas. */
+.btn{border-color:rgb(255 255 255 / .25)}
+.btn-primary{background:#00d294;color:#0a0a0a;border-color:#00d294}
+.btn-primary:hover{background:#00e6a3;color:#0a0a0a}
+.btn-outline{border-color:rgb(255 255 255 / .35);background:transparent;color:var(--text, #f2f2f2)}
+.btn-outline:hover{border-color:#00d294;color:#00d294}
 .as-link{color:rgb(0 210 148 / .7);transition:color .2s}
 .as-link:hover{color:#00d294}
 .as-side{width:232px;flex-shrink:0}
@@ -89,6 +95,16 @@
 <span class="font-pixel text-base text-text">Your Business</span>
 <span class="text-[11px] text-text-muted" id="kv-biz-sub">Premium Japanese Restaurant</span>
 <span class="text-[11px] text-text-muted" id="kv-biz-loc">Kuala Lumpur · MY</span>
+</div>
+<div class="mt-4 flex flex-col gap-2 rounded-xl border border-white/10 bg-white/[0.02] p-4" id="kv-industry">
+<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Your industry</span>
+<div class="as-row">
+<span class="as-avatar" id="kv-industry-icon">🍜</span>
+<div class="flex flex-col">
+<span class="text-[13px] text-text" id="kv-industry-type">Restaurant</span>
+<a class="text-[11px] as-link" id="kv-industry-status" href="/setup">Finish setup →</a>
+</div>
+</div>
 </div>
 <div class="mt-4 flex flex-col gap-1 px-2" id="kv-demo" style="display:none">
 <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Demo preview</span>

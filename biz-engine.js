@@ -1737,6 +1737,23 @@ function kvRenderAll(){
   if ((el = document.getElementById('kv-biz-name'))) el.textContent = b.name;
   if ((el = document.getElementById('kv-biz-sub'))) el.textContent = b.sub;
   if ((el = document.getElementById('kv-biz-loc'))) el.textContent = b.loc;
+
+  /* Your industry panel — peribadi utk user, auto dari playbook */
+  if ((el = document.getElementById('kv-industry-icon'))) el.textContent = b.icon;
+  if ((el = document.getElementById('kv-industry-type'))) el.textContent = b.type;
+  if ((el = document.getElementById('kv-industry-status'))) {
+    if (kvSetupDone()){
+      el.textContent = '✓ Setup complete';
+      el.href = '#';
+      el.style.pointerEvents = 'none';
+      el.style.cursor = 'default';
+    } else {
+      el.textContent = 'Finish setup →';
+      el.href = '/setup';
+      el.style.pointerEvents = '';
+      el.style.cursor = 'pointer';
+    }
+  }
   if ((el = document.getElementById('kv-potential'))) el.textContent = kvBump(b.potential) + '%';
   if ((el = document.getElementById('kv-potential-fill'))) el.style.width = kvBump(b.potential) + '%';
   if ((el = document.getElementById('kv-potential-txt'))) el.textContent = 'AISAR found ' + b.opportunities + ' more opportunities to automate.';
