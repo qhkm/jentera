@@ -2308,17 +2308,35 @@ function kvRenderAll(){
   kvTeamRender();
 }
 
-/* ============================================================
-   TEAM ENGINE — ruang kolaborasi ala-Slack (manusia + AI agent)
-   ============================================================ */
-var kvTeamState = { msgs: [], typing: false, seeded: false };
+var kvTeamState = { sel:'#pasukan', typing:false, chans:{} };
 
-var KV_TEAM_TPL = [
-  'Apa status order hari ni? 📊',
-  '@Follow-up: hantar reminder promo minggu ni 🎁',
-  '@Ops Assistant: siapkan weekly report 📈',
-  'Ada apa-apa escalation yang perlu aku semak? ⚠️'
-];
+var KV_TEAM_CHANS = {
+  '#pasukan': {
+    label: 'pasukan', desc: 'ruang kolaborasi semua agent',
+    tpl: [
+      'Apa status order hari ni? 📊',
+      '@Follow-up: hantar reminder promo minggu ni 🎁',
+      '@Ops Assistant: siapkan weekly report 📈',
+      'Ada apa-apa escalation yang perlu aku semak? ⚠️'
+    ]
+  },
+  '#escalations': {
+    label: 'escalations', desc: 'auto-log dari ⚡ Work — yang perlu kau approve',
+    tpl: [
+      'Senaraikan semua escalation hari ni ⚠️',
+      '@Follow-up: apa status escalation ni?',
+      'Yang dah approve, tutup & archive ✅'
+    ]
+  },
+  '#random': {
+    label: 'random', desc: 'sembang santai pasukan',
+    tpl: [
+      'Cadang promo hujung minggu 💡',
+      '@Customer Assistant: cerita customer paling lawak 😄',
+      'Teh tarik sesiapa? ☕'
+    ]
+  }
+};
 
 var KV_TEAM_REPLIES = {
   'Customer Assistant': [
@@ -2350,18 +2368,69 @@ var KV_TEAM_GENERAL = [
 ];
 
 function kvTeamSeed(){
-  if (kvTeamState.seeded) return;
-  kvTeamState.seeded = true;
   var b = kvPlaybook(kvBizType());
   var team = b.team || [];
   var first = team.length ? team[0].n : 'Customer Assistant';
   var last = team.length > 1 ? team[team.length-1].n : first;
-  kvTeamState.msgs = [
-    { f:'agent', n: first, d:'Morning! Semua channel aktif. 2 escalation menunggu approval kau kat ⚡ Work.', tm:'8:02 AM' },
-    { f:'you', n:'Kau', d:'Ok nanti aku semak. @' + last + ', boleh siapkan laporan sebelum Jumaat?', tm:'8:15 AM' },
-    { f:'agent', n: last, d:'Boleh. Laporan siap esok 9 pagi — aku tag kau bila dah sedia. ✅', tm:'8:16 AM' },
-    { f:'agent', n: first, d:'Update: 1 pelanggan minta diskaun 15% — aku dah draft balasan, tengok kat ⚡ Work. ⚠️', tm:'10:42 AM' }
-  ];
+
+  kvTeamState.chans['#pasukan'] = kvTeamState.chans['#pasukan'] || { seeded:false, msgs:[] };
+  if (!kvTeamState.chans['#pasukan'].seeded){
+    kvTeamState.chans['#pasukan'].seeded = true;
+    kvTeamState.chans['#pasukan'].msgs = [
+      { f:'agent', n: first, d:'Morning! Semua channel aktif. 2 escalation menunggu approval kau kat ⚡ Work.', tm:'8:02 AM' },
+      { f:'you', n:'Kau', d:'Ok nanti aku semak. @' + last + ', boleh siapkan laporan sebelum Jumaat?', tm:'8:15 AM' },
+      { f:'agent', n: last, d:'Boleh. Laporan siap esok 9 pagi — aku tag kau bila dah sedia. ✅', tm:'8:16 AM' },
+      { f:'agent', n: first, d:'Update: 1 pelanggan minta diskaun 15% — aku dah draft balasan, tengok kat ⚡ Work. ⚠️', tm:'10:42 AM' }
+    ];
+  }
+
+  kvTeamState.chans['#escalations'] = kvTeamState.chans['#escalations'] || { seeded:false, msgs:[] };
+  kvTeamState.chans['#random'] = kvTeamState.chans['#random'] || { seeded:false, msgs:[] };
+  if (!kvTeamState.chans['#random'].seeded){
+    kvTeamState.chans['#random'].seeded = true;
+    kvTeamState.chans['#random'].msgs = [
+      { f:'agent', n: first, d:'Channel ni untuk benda santai — share apa-apa je! 🎉', tm:'11:00 AM' },
+      { f:'you', n:'Kau', d:'Nice. Sesiapa boleh cadangkan promo hujung minggu? 💡', tm:'11:02 AM' },
+      { f:'agent', n: last, d:'Aku cadang bundle set + free dessert untuk regular. 😋', tm:'11:05 AM' }
+    ];
+  }
+  kvTeamSyncEscalations();
+}
+
+/* Auto-log escalation dari Work ke #escalations — dedupe ikut srcIdx */
+function kvTeamSyncEscalations(){
+  var b = kvPlaybook(kvBizType());
+  var work = b.work || [];
+  var chan = kvTeamState.chans['#escalations'];
+  if (!chan) return;
+  chan.msgs = chan.msgs || [];
+  var open = {}, done = {};
+  chan.msgs.forEach(function(m){
+    if (m.srcIdx !== undefined){
+      if (m.done) done[m.srcIdx] = true; else open[m.srcIdx] = true;
+    }
+  });
+  work.forEach(function(w, i){
+    var approved = kvWorkDone(i);
+    if (approved){
+      if (!done[i]){
+        chan.msgs.push({ f:'agent', n:(w.n||'AISAR'), srcIdx:i, done:true, tm:'sekarang',
+          d:'✅ Escalation ditutup — approved & dihantar. (dari ' + (w.n||'AISAR') + ')' });
+      }
+    } else if (w.tag === 'needs you' && !open[i]){
+      chan.msgs.push({ f:'agent', n:(w.n||'AISAR'), srcIdx:i, tm:'sekarang',
+        d:'⚠️ Escalation: ' + w.d + ' — approve kat ⚡ Work.' });
+    }
+  });
+}
+
+function kvTeamChanUnread(ch){
+  if (ch !== '#escalations') return 0;
+  var b = kvPlaybook(kvBizType());
+  var work = b.work || [];
+  var n = 0;
+  work.forEach(function(w,i){ if(!kvWorkDone(i) && w.tag==='needs you') n++; });
+  return n;
 }
 
 function kvTeamMention(tx, team){
@@ -2372,13 +2441,20 @@ function kvTeamMention(tx, team){
   return null;
 }
 
+function kvTeamOpen(chan){
+  kvTeamState.sel = chan;
+  kvTeamRender();
+}
+
 function kvTeamSend(){
   var inp = document.getElementById('kv-team-inp');
   if (!inp) return;
   var tx = (inp.value || '').trim();
   if (!tx) return;
   inp.value = '';
-  kvTeamState.msgs.push({ f:'you', n:'Kau', d:tx, tm:'sekarang' });
+  var chan = kvTeamState.chans[kvTeamState.sel];
+  if (!chan) return;
+  chan.msgs.push({ f:'you', n:'Kau', d:tx, tm:'sekarang' });
   var b = kvPlaybook(kvBizType());
   var team = b.team || [];
   var target = kvTeamMention(tx, team);
@@ -2392,7 +2468,7 @@ function kvTeamSend(){
     var t2 = document.getElementById('kv-team-typing');
     if (t2) t2.style.display = 'none';
     var d = pool[Math.floor(Math.random()*pool.length)];
-    kvTeamState.msgs.push({ f:'agent', n: target ? target.n : (team.length ? team[0].n : 'Customer Assistant'), d:d, tm:'sekarang' });
+    kvTeamState.chans[kvTeamState.sel].msgs.push({ f:'agent', n: target ? target.n : (team.length ? team[0].n : 'Customer Assistant'), d:d, tm:'sekarang' });
     kvTeamRender();
   }, 1000 + Math.floor(Math.random()*700));
 }
@@ -2408,7 +2484,19 @@ function kvTeamRender(){
   var team = b.team || [];
   var el = document.getElementById('kv-team-app');
   if (!el) return;
+  var sel = kvTeamState.sel;
+  var chan = kvTeamState.chans[sel] || { msgs: [] };
+  var meta = KV_TEAM_CHANS[sel] || KV_TEAM_CHANS['#pasukan'];
 
+  /* Channel list */
+  var chans = Object.keys(KV_TEAM_CHANS).map(function(key){
+    var c = KV_TEAM_CHANS[key];
+    var unread = kvTeamChanUnread(key);
+    var badge = unread ? '<span class="kv-badge">' + unread + '</span>' : '';
+    return '<button class="kv-chan' + (sel === key ? ' active' : '') + '" onclick="kvTeamOpen(\'' + key + '\')"><span># ' + c.label + '</span>' + badge + '</button>';
+  }).join('');
+
+  /* Members */
   var members = '<div class="kv-team-members"><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Team</span>';
   members += '<div class="as-row gap-2"><span class="kv-dot you"></span><span class="text-[12px]">Kau (boss)</span></div>';
   team.forEach(function(t){
@@ -2416,16 +2504,18 @@ function kvTeamRender(){
   });
   members += '</div>';
 
-  var tpls = KV_TEAM_TPL.map(function(t){
+  /* Templates ikut channel */
+  var tpls = meta.tpl.map(function(t){
     return '<button class="kv-tpl" onclick="kvTeamTpl(\'' + t.replace(/'/g,"\\'") + '\')">' + kvEsc(t) + '</button>';
   }).join('');
 
+  /* Messages */
   var iconFor = function(nm){
     for (var i=0;i<team.length;i++) if (team[i].n === nm) return team[i].e;
     return '🤖';
   };
-  var msgs = kvTeamState.msgs.map(function(msg){
-    var cls = msg.f === 'you' ? 'kv-tm kv-tm-you' : 'kv-tm';
+  var msgs = chan.msgs.map(function(msg){
+    var cls = 'kv-tm' + (msg.f === 'you' ? ' kv-tm-you' : '') + (msg.done ? ' kv-tm-done' : '');
     var av = msg.f === 'you' ? '🙋' : iconFor(msg.n);
     return '<div class="' + cls + '">' +
       '<span class="as-avatar">' + av + '</span>' +
@@ -2435,13 +2525,20 @@ function kvTeamRender(){
 
   var typing = '<div class="kv-tm" id="kv-team-typing" style="display:none"><span class="as-avatar">🤖</span><div class="kv-typing"><i></i><i></i><i></i></div></div>';
 
+  var ph = sel === '#pasukan'
+    ? 'Mesej untuk pasukan — tag @agent…'
+    : sel === '#escalations'
+      ? 'Update / arahan — tag @agent…'
+      : 'Sembang santai — tag @agent…';
+
   var input = '<div class="kv-team-inp-row">' +
-    '<input id="kv-team-inp" placeholder="Mesej untuk pasukan — tag @agent kalau nak agent spesifik balas…" onkeydown="if(event.key===&quot;Enter&quot;)kvTeamSend()">' +
+    '<input id="kv-team-inp" placeholder="' + ph + '" onkeydown="if(event.key===&quot;Enter&quot;)kvTeamSend()">' +
     '<button class="kv-team-send" onclick="kvTeamSend()">➤</button></div>';
 
   el.innerHTML =
+    '<div class="kv-team-chans"><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Channels</span>' + chans + '</div>' +
     '<div class="kv-team-main">' +
-      '<div class="kv-team-head"><span>💬 <b>#pasukan</b> — ruang kolaborasi semua agent</span><span class="text-text-muted">1 channel</span></div>' +
+      '<div class="kv-team-head"><span>💬 <b>#' + meta.label + '</b> — ' + kvEsc(meta.desc) + '</span><span class="text-text-muted">' + Object.keys(KV_TEAM_CHANS).length + ' channels</span></div>' +
       '<div class="kv-team-tpls">' + tpls + '</div>' +
       '<div class="kv-team-msgs" id="kv-team-msgs">' + msgs + typing + '</div>' +
       input +

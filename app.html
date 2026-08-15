@@ -74,6 +74,12 @@
 .as-link:hover{color:#00d294}
 /* Team channel — slack-style collaboration */
 .kv-team{display:flex;gap:14px;align-items:stretch}
+.kv-team-chans{width:168px;flex-shrink:0;display:flex;flex-direction:column;gap:6px;border:1px solid rgb(255 255 255/.1);background:rgb(255 255 255/.02);border-radius:14px;padding:14px}
+.kv-chan{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;text-align:left;background:none;border:1px solid transparent;border-radius:8px;padding:8px 10px;font-size:12.5px;color:rgb(160 160 170);cursor:pointer;transition:background .15s,color .15s,border-color .15s}
+.kv-chan:hover{background:rgb(255 255 255/.05);color:var(--text, #f2f2f2)}
+.kv-chan.active{background:rgb(0 210 148/.1);color:#00d294;border-color:rgb(0 210 148/.3)}
+.kv-badge{min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:#ff5c5c;color:#0a0a0a;font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.kv-tm-done .kv-tm-bubble{border-color:rgb(0 210 148/.25);background:rgb(0 210 148/.04);opacity:.85}
 .kv-team-main{flex:1;min-width:0;display:flex;flex-direction:column;border:1px solid rgb(255 255 255/.1);background:rgb(255 255 255/.02);border-radius:14px;overflow:hidden}
 .kv-team-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 16px;border-bottom:1px solid rgb(255 255 255/.08);font-size:12px;flex-shrink:0}
 .kv-team-tpls{display:flex;gap:6px;overflow-x:auto;padding:10px 14px 0;flex-shrink:0}
@@ -98,6 +104,9 @@
 .kv-typing i:nth-child(3){animation-delay:.4s}
 @media (max-width:768px){
   .kv-team-members{display:none}
+  .kv-team-chans{width:auto;flex-direction:row;overflow-x:auto;padding:10px 12px;border-radius:12px}
+  .kv-team-chans>span{display:none}
+  .kv-chan{white-space:nowrap;padding:6px 10px}
   .kv-team-msgs{max-height:58vh}
 }
 .as-side{width:232px;flex-shrink:0}
