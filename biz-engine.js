@@ -85,7 +85,7 @@ var PLAYBOOKS = {
   },
 
   services: {
-    icon: '💼', keywords: ['agency','service','services','studio','konsult','consult','design','branding','marketing','digital','freelance','architect','law','accounting','audit','event','photography','mekanik','bengkel'],
+    icon: '💼', keywords: ['agency','service','services','studio','konsult','consult','design','branding','marketing','digital','freelance','architect','law','accounting','audit','photography'],
     name: 'Your Studio', type: 'Services / Agency', sub: 'Services / Agency', site: 'yourstudio.my', booking: 'Email / Calendly', systems: 'Notion · Google Calendar',
     potential: 66, opportunities: 4, ch: ['Instagram','Email'],
     detect: 'agency · design & branding · Petaling Jaya',
@@ -239,6 +239,1132 @@ var PLAYBOOKS = {
       { e:'🧾', n:'Accounting', s:'not connected', d:'Unlocks automatic receipts & monthly statements.', on:false, cta:'Accounting connection wizard will open — we\u0027ll guide you through it.' } ]
   },
 
+  laundry: {
+    "icon": "🧺",
+    "keywords": [
+      "dobi",
+      "laundry",
+      "basuh",
+      "dry clean",
+      "dry cleaning",
+      "iron",
+      "seterika"
+    ],
+    "name": "Your Laundry",
+    "type": "Laundry / Dobi",
+    "sub": "Laundry / Dobi",
+    "site": "yourlaundry.my",
+    "booking": "Phone / WhatsApp",
+    "systems": "Google Sheets · POS",
+    "loc": "Kuala Lumpur, MY",
+    "potential": 57,
+    "opportunities": 5,
+    "ch": [
+      "WhatsApp",
+      "Phone"
+    ],
+    "detect": "laundry & dobi · Kuala Lumpur",
+    "confirm": "I found that you run a laundry/dobi service in Kuala Lumpur. Is that correct?",
+    "funcs": [
+      [
+        "Customer service",
+        "",
+        "covered"
+      ],
+      [
+        "Order intake",
+        "green",
+        "live"
+      ],
+      [
+        "Status updates",
+        "green",
+        "live"
+      ],
+      [
+        "Pickup & delivery",
+        "amber",
+        "opportunity"
+      ],
+      [
+        "Loyalty & repeat",
+        "amber",
+        "opportunity"
+      ]
+    ],
+    "stats": [
+      {
+        "d": "Today",
+        "v": "26",
+        "u": "",
+        "l": "orders collected",
+        "s": "5 pickup requests"
+      },
+      {
+        "d": "This week",
+        "v": "154",
+        "u": " kg",
+        "l": "laundry processed",
+        "s": "12 new customers"
+      },
+      {
+        "d": "Hours saved",
+        "v": "14",
+        "u": " hrs",
+        "l": "saved this week by your AI team",
+        "p": 53
+      }
+    ],
+    "sug": {
+      "t": "Automate order status updates",
+      "d": "Customers ask \"dah siap?\" every day. AISAR sends status updates + pickup reminders automatically.",
+      "tag": "est. 2 hrs/month",
+      "cta": "Automation queued — I'll set up status updates."
+    },
+    "team": [
+      {
+        "e": "💬",
+        "n": "Order Assistant",
+        "ch": "WhatsApp · Phone",
+        "d": "Answers pricing, services, and pickup questions — 24/7.",
+        "m": "Today · 26 chats · 4 escalated"
+      },
+      {
+        "e": "📦",
+        "n": "Delivery Coordinator",
+        "ch": "Pickup · Drop-off",
+        "d": "Arranges pickup & delivery slots and sends driver updates.",
+        "m": "This week · 18 pickups"
+      },
+      {
+        "e": "🔁",
+        "n": "Follow-up",
+        "ch": "Past customers",
+        "d": "Sends rebooking nudges and loyalty offers to regulars.",
+        "m": "This month · 21 rebookings"
+      },
+      {
+        "e": "📊",
+        "n": "Ops Assistant",
+        "ch": "Reports",
+        "d": "Tracks daily volume and prepares your weekly report.",
+        "m": "",
+        "setup": true
+      }
+    ],
+    "work": [
+      {
+        "e": "💬",
+        "n": "Order Assistant",
+        "t": "WhatsApp · 3m ago · auto",
+        "tag": "done",
+        "tc": "",
+        "d": "Answered \"Berapa harga basuh baju?\" with price list + today pickup slot."
+      },
+      {
+        "e": "📦",
+        "n": "Delivery Coordinator",
+        "t": "1h ago · auto",
+        "tag": "confirmed",
+        "tc": "green",
+        "d": "Confirmed pickup for 2 bags, 6pm — driver notified."
+      },
+      {
+        "e": "🔁",
+        "n": "Follow-up",
+        "t": "2h ago · auto",
+        "tag": "sent",
+        "tc": "green",
+        "d": "Sent \"your laundry is ready for pickup\" to 9 customers."
+      },
+      {
+        "e": "⚠️",
+        "n": "Order Assistant",
+        "t": "4h ago · escalated",
+        "tag": "needs you",
+        "tc": "red",
+        "d": "Customer complained about a missing item — AISAR apologised and offered 20% off next order.",
+        "cta": "Approved — 20% voucher sent."
+      }
+    ],
+    "conns": [
+      {
+        "e": "💬",
+        "n": "WhatsApp",
+        "s": "Business API · linked",
+        "d": "Order Assistant & Follow-up talk to customers here.",
+        "on": true
+      },
+      {
+        "e": "📞",
+        "n": "Phone",
+        "s": "linked",
+        "d": "Pickup requests come in here.",
+        "on": true
+      },
+      {
+        "e": "📅",
+        "n": "Google Calendar",
+        "s": "linked",
+        "d": "Delivery Coordinator schedules pickups here.",
+        "on": true
+      },
+      {
+        "e": "📊",
+        "n": "Google Sheets",
+        "s": "linked",
+        "d": "Ops Assistant reads orders here.",
+        "on": true
+      },
+      {
+        "e": "🧾",
+        "n": "POS / Accounting",
+        "s": "not connected",
+        "d": "Unlocks daily revenue reports.",
+        "on": false,
+        "cta": "POS connection wizard will open — we'll guide you through it."
+      }
+    ]
+  },
+  auto: {
+    "icon": "🔧",
+    "keywords": [
+      "bengkel",
+      "kereta",
+      "mekanik",
+      "tayar",
+      "workshop",
+      "servis kereta",
+      "sparepart",
+      "minyak hitam",
+      "pomen"
+    ],
+    "name": "Your Workshop",
+    "type": "Auto Workshop / Bengkel",
+    "sub": "Auto Workshop / Bengkel",
+    "site": "yourworkshop.my",
+    "booking": "Phone / WhatsApp",
+    "systems": "Google Sheets · POS",
+    "loc": "Shah Alam, MY",
+    "potential": 64,
+    "opportunities": 5,
+    "ch": [
+      "WhatsApp",
+      "Phone"
+    ],
+    "detect": "auto workshop & bengkel · Shah Alam",
+    "confirm": "I found that you run a car workshop/bengkel in Shah Alam. Is that correct?",
+    "funcs": [
+      [
+        "Customer enquiries",
+        "",
+        "covered"
+      ],
+      [
+        "Service bookings",
+        "green",
+        "live"
+      ],
+      [
+        "Service reminders",
+        "green",
+        "live"
+      ],
+      [
+        "Parts & inventory",
+        "amber",
+        "opportunity"
+      ],
+      [
+        "Invoices",
+        "amber",
+        "opportunity"
+      ]
+    ],
+    "stats": [
+      {
+        "d": "Today",
+        "v": "8",
+        "u": "",
+        "l": "cars in workshop",
+        "s": "2 ready for pickup"
+      },
+      {
+        "d": "This week",
+        "v": "31",
+        "u": "",
+        "l": "vehicles serviced",
+        "s": "4 new regulars"
+      },
+      {
+        "d": "Hours saved",
+        "v": "13",
+        "u": " hrs",
+        "l": "saved this week by your AI team",
+        "p": 59
+      }
+    ],
+    "sug": {
+      "t": "Automate service reminders",
+      "d": "Customers forget servicing. AISAR reminds them when their car is due + books the slot automatically.",
+      "tag": "est. 4 hrs/month",
+      "cta": "Automation queued — I'll set up service reminders."
+    },
+    "team": [
+      {
+        "e": "💬",
+        "n": "Service Assistant",
+        "ch": "WhatsApp · Phone",
+        "d": "Answers service pricing, tyre sizes, and booking questions — 24/7.",
+        "m": "Today · 8 chats · 2 escalated"
+      },
+      {
+        "e": "📅",
+        "n": "Booking Agent",
+        "ch": "Calendar · Appointments",
+        "d": "Books service slots and manages the workshop schedule.",
+        "m": "This week · 22 bookings"
+      },
+      {
+        "e": "🔁",
+        "n": "Follow-up",
+        "ch": "Service due",
+        "d": "Tracks service intervals and reminds customers when their car is due.",
+        "m": "This month · 31 reminders"
+      },
+      {
+        "e": "📊",
+        "n": "Ops Assistant",
+        "ch": "Parts · Reports",
+        "d": "Watches parts inventory and prepares daily workshop reports.",
+        "m": "",
+        "setup": true
+      }
+    ],
+    "work": [
+      {
+        "e": "💬",
+        "n": "Service Assistant",
+        "t": "WhatsApp · 2m ago · auto",
+        "tag": "done",
+        "tc": "",
+        "d": "Answered \"Berapa servis minyak hitam?\" with package prices + available slots."
+      },
+      {
+        "e": "📅",
+        "n": "Booking Agent",
+        "t": "40m ago · auto",
+        "tag": "confirmed",
+        "tc": "green",
+        "d": "Booked full service for Proton Saga, Thu 10am + reminder set."
+      },
+      {
+        "e": "🔁",
+        "n": "Follow-up",
+        "t": "2h ago · auto",
+        "tag": "sent",
+        "tc": "green",
+        "d": "Reminded 6 customers that their car is due for service this month."
+      },
+      {
+        "e": "⚠️",
+        "n": "Service Assistant",
+        "t": "5h ago · escalated",
+        "tag": "needs you",
+        "tc": "red",
+        "d": "Customer asked about brake pad replacement pricing — AISAR offered a call-back quote.",
+        "cta": "Approved — quote call-back scheduled."
+      }
+    ],
+    "conns": [
+      {
+        "e": "💬",
+        "n": "WhatsApp",
+        "s": "Business API · linked",
+        "d": "Service Assistant & Follow-up talk to customers here.",
+        "on": true
+      },
+      {
+        "e": "📞",
+        "n": "Phone",
+        "s": "linked",
+        "d": "Service bookings by call route here.",
+        "on": true
+      },
+      {
+        "e": "📅",
+        "n": "Google Calendar",
+        "s": "linked",
+        "d": "Booking Agent manages slots here.",
+        "on": true
+      },
+      {
+        "e": "📊",
+        "n": "Google Sheets",
+        "s": "linked",
+        "d": "Ops Assistant reads parts & jobs here.",
+        "on": true
+      },
+      {
+        "e": "🧾",
+        "n": "POS / Accounting",
+        "s": "not connected",
+        "d": "Unlocks automatic invoices & GST-ready reports.",
+        "on": false,
+        "cta": "POS connection wizard will open — we'll guide you through it."
+      }
+    ]
+  },
+  petcare: {
+    "icon": "🐾",
+    "keywords": [
+      "pet",
+      "petshop",
+      "pet shop",
+      "groom",
+      "grooming",
+      "anjing",
+      "kucing",
+      "haiwan",
+      "vet",
+      "klinik haiwan",
+      "boarding"
+    ],
+    "name": "Your Pet Shop",
+    "type": "Pet Care / Grooming",
+    "sub": "Pet Care / Grooming",
+    "site": "yourpetshop.my",
+    "booking": "Phone / WhatsApp",
+    "systems": "Google Sheets · POS",
+    "loc": "Petaling Jaya, MY",
+    "potential": 61,
+    "opportunities": 5,
+    "ch": [
+      "WhatsApp",
+      "Instagram"
+    ],
+    "detect": "pet care & grooming · Petaling Jaya",
+    "confirm": "I found that you run a pet care/grooming business in Petaling Jaya. Is that correct?",
+    "funcs": [
+      [
+        "Customer service",
+        "",
+        "covered"
+      ],
+      [
+        "Grooming bookings",
+        "green",
+        "live"
+      ],
+      [
+        "Reminders",
+        "green",
+        "live"
+      ],
+      [
+        "Product retail",
+        "amber",
+        "opportunity"
+      ],
+      [
+        "Loyalty & rebooking",
+        "amber",
+        "opportunity"
+      ]
+    ],
+    "stats": [
+      {
+        "d": "Today",
+        "v": "6",
+        "u": "",
+        "l": "grooming appointments",
+        "s": "2 boarding check-ins"
+      },
+      {
+        "d": "New pets",
+        "v": "9",
+        "u": "",
+        "l": "this week",
+        "s": "4 via Instagram"
+      },
+      {
+        "d": "Hours saved",
+        "v": "11",
+        "u": " hrs",
+        "l": "saved this week by your AI team",
+        "p": 55
+      }
+    ],
+    "sug": {
+      "t": "Automate grooming reminders",
+      "d": "Owners forget appointments — and no-shows cost you. AISAR sends reminders + rebooking nudges automatically.",
+      "tag": "est. 3 hrs/month",
+      "cta": "Automation queued — I'll handle grooming reminders."
+    },
+    "team": [
+      {
+        "e": "💬",
+        "n": "Pet Assistant",
+        "ch": "WhatsApp · Instagram",
+        "d": "Answers grooming prices, breed questions, and boarding availability — 24/7.",
+        "m": "Today · 9 chats · 2 escalated"
+      },
+      {
+        "e": "📅",
+        "n": "Booking Agent",
+        "ch": "Calendar · Appointments",
+        "d": "Books grooming slots and manages boarding reservations.",
+        "m": "This week · 18 bookings"
+      },
+      {
+        "e": "🔁",
+        "n": "Follow-up",
+        "ch": "Past clients",
+        "d": "Sends rebooking nudges and after-care messages for pets.",
+        "m": "This month · 26 rebookings"
+      },
+      {
+        "e": "📊",
+        "n": "Ops Assistant",
+        "ch": "Inventory · Reports",
+        "d": "Tracks pet food stock and prepares weekly client reports.",
+        "m": "",
+        "setup": true
+      }
+    ],
+    "work": [
+      {
+        "e": "💬",
+        "n": "Pet Assistant",
+        "t": "WhatsApp · 4m ago · auto",
+        "tag": "done",
+        "tc": "",
+        "d": "Answered \"Berapa harga groom kucing?\" with price list + groomer availability."
+      },
+      {
+        "e": "📅",
+        "n": "Booking Agent",
+        "t": "1h ago · auto",
+        "tag": "confirmed",
+        "tc": "green",
+        "d": "Booked full groom for Miko (shih tzu), Sat 10am + reminder set."
+      },
+      {
+        "e": "🔁",
+        "n": "Follow-up",
+        "t": "2h ago · auto",
+        "tag": "sent",
+        "tc": "green",
+        "d": "Sent rebooking nudge to 7 pet owners due for their next groom."
+      },
+      {
+        "e": "⚠️",
+        "n": "Pet Assistant",
+        "t": "5h ago · escalated",
+        "tag": "needs you",
+        "tc": "red",
+        "d": "Owner asked about boarding during Raya — AISAR offered a hold-slot.",
+        "cta": "Approved — boarding slot held."
+      }
+    ],
+    "conns": [
+      {
+        "e": "💬",
+        "n": "WhatsApp",
+        "s": "Business API · linked",
+        "d": "Pet Assistant & Follow-up talk to owners here.",
+        "on": true
+      },
+      {
+        "e": "📸",
+        "n": "Instagram",
+        "s": "DM · linked",
+        "d": "Grooming bookings come in here.",
+        "on": true
+      },
+      {
+        "e": "📅",
+        "n": "Google Calendar",
+        "s": "linked",
+        "d": "Booking Agent manages appointments here.",
+        "on": true
+      },
+      {
+        "e": "📊",
+        "n": "Google Sheets",
+        "s": "linked",
+        "d": "Ops Assistant reads client & stock data here.",
+        "on": true
+      },
+      {
+        "e": "🧾",
+        "n": "POS / Accounting",
+        "s": "not connected",
+        "d": "Unlocks product retail automation + sales reports.",
+        "on": false,
+        "cta": "POS connection wizard will open — we'll guide you through it."
+      }
+    ]
+  },
+  florist: {
+    "icon": "💐",
+    "keywords": [
+      "bunga",
+      "florist",
+      "floral",
+      "bouquet",
+      "taman bunga"
+    ],
+    "name": "Your Florist",
+    "type": "Florist / Gifting",
+    "sub": "Florist / Gifting",
+    "site": "yourflorist.my",
+    "booking": "Phone / WhatsApp",
+    "systems": "Google Sheets · POS",
+    "loc": "Kuala Lumpur, MY",
+    "potential": 56,
+    "opportunities": 4,
+    "ch": [
+      "WhatsApp",
+      "Instagram"
+    ],
+    "detect": "florist & gifting · Kuala Lumpur",
+    "confirm": "I found that you run a florist/gifting business in Kuala Lumpur. Is that correct?",
+    "funcs": [
+      [
+        "Customer service",
+        "",
+        "covered"
+      ],
+      [
+        "Order intake",
+        "green",
+        "live"
+      ],
+      [
+        "Delivery coordination",
+        "green",
+        "live"
+      ],
+      [
+        "Seasonal campaigns",
+        "amber",
+        "opportunity"
+      ],
+      [
+        "Same-day specials",
+        "amber",
+        "opportunity"
+      ]
+    ],
+    "stats": [
+      {
+        "d": "Today",
+        "v": "14",
+        "u": "",
+        "l": "orders taken",
+        "s": "6 out for delivery"
+      },
+      {
+        "d": "This week",
+        "v": "89",
+        "u": "",
+        "l": "bouquets delivered",
+        "s": "12 repeat gifters"
+      },
+      {
+        "d": "Hours saved",
+        "v": "10",
+        "u": " hrs",
+        "l": "saved this week by your AI team",
+        "p": 50
+      }
+    ],
+    "sug": {
+      "t": "Automate delivery updates",
+      "d": "Customers always ask \"sampai dah?\". AISAR sends delivery confirmations + photos automatically.",
+      "tag": "est. 2 hrs/month",
+      "cta": "Automation queued — I'll set up delivery updates."
+    },
+    "team": [
+      {
+        "e": "💬",
+        "n": "Florist Assistant",
+        "ch": "WhatsApp · Instagram",
+        "d": "Answers bouquet prices, delivery areas, and same-day orders — 24/7.",
+        "m": "Today · 14 chats · 3 escalated"
+      },
+      {
+        "e": "📦",
+        "n": "Delivery Coordinator",
+        "ch": "Orders · Routes",
+        "d": "Schedules deliveries and sends live status to customers.",
+        "m": "This week · 89 deliveries"
+      },
+      {
+        "e": "🔁",
+        "n": "Follow-up",
+        "ch": "Anniversaries · Birthdays",
+        "d": "Remembers occasions and suggests gifting moments to past customers.",
+        "m": "This month · 18 occasions"
+      },
+      {
+        "e": "📊",
+        "n": "Ops Assistant",
+        "ch": "Inventory · Reports",
+        "d": "Tracks flower stock and seasonal demand.",
+        "m": "",
+        "setup": true
+      }
+    ],
+    "work": [
+      {
+        "e": "💬",
+        "n": "Florist Assistant",
+        "t": "Instagram · 1m ago · auto",
+        "tag": "done",
+        "tc": "",
+        "d": "Answered \"Ada bouquet bawah RM100?\" with today's options + delivery time."
+      },
+      {
+        "e": "📦",
+        "n": "Delivery Coordinator",
+        "t": "1h ago · auto",
+        "tag": "confirmed",
+        "tc": "green",
+        "d": "Delivered anniversary bouquet — sent photo + confirmation to customer."
+      },
+      {
+        "e": "🔁",
+        "n": "Follow-up",
+        "t": "3h ago · auto",
+        "tag": "sent",
+        "tc": "green",
+        "d": "Reminded 5 past customers that their mum's birthday is next week."
+      },
+      {
+        "e": "⚠️",
+        "n": "Florist Assistant",
+        "t": "4h ago · escalated",
+        "tag": "needs you",
+        "tc": "red",
+        "d": "Customer needs urgent same-day delivery — driver unavailable. AISAR suggested express option.",
+        "cta": "Approved — express delivery arranged."
+      }
+    ],
+    "conns": [
+      {
+        "e": "💬",
+        "n": "WhatsApp",
+        "s": "Business API · linked",
+        "d": "Florist Assistant & Follow-up talk to customers here.",
+        "on": true
+      },
+      {
+        "e": "📸",
+        "n": "Instagram",
+        "s": "DM · linked",
+        "d": "Orders come in here.",
+        "on": true
+      },
+      {
+        "e": "📅",
+        "n": "Google Calendar",
+        "s": "linked",
+        "d": "Delivery Coordinator plans routes here.",
+        "on": true
+      },
+      {
+        "e": "📊",
+        "n": "Google Sheets",
+        "s": "linked",
+        "d": "Ops Assistant reads orders & stock here.",
+        "on": true
+      },
+      {
+        "e": "🧾",
+        "n": "POS / Accounting",
+        "s": "not connected",
+        "d": "Unlocks daily sales + refund handling.",
+        "on": false,
+        "cta": "POS connection wizard will open — we'll guide you through it."
+      }
+    ]
+  },
+  property: {
+    "icon": "🏠",
+    "keywords": [
+      "hartanah",
+      "property",
+      "real estate",
+      "ejen",
+      "landlord",
+      "tuan tanah",
+      "lelong",
+      "listing"
+    ],
+    "name": "Your Agency",
+    "type": "Real Estate / Property",
+    "sub": "Real Estate / Property",
+    "site": "youragency.my",
+    "booking": "Phone / WhatsApp",
+    "systems": "Google Sheets · CRM",
+    "loc": "Kuala Lumpur, MY",
+    "potential": 65,
+    "opportunities": 6,
+    "ch": [
+      "WhatsApp",
+      "Phone"
+    ],
+    "detect": "real estate agency · Kuala Lumpur",
+    "confirm": "I found that you run a real estate/property agency in Kuala Lumpur. Is that correct?",
+    "funcs": [
+      [
+        "Lead response",
+        "",
+        "covered"
+      ],
+      [
+        "Viewing scheduling",
+        "green",
+        "live"
+      ],
+      [
+        "Listing updates",
+        "green",
+        "live"
+      ],
+      [
+        "Buyer qualification",
+        "amber",
+        "opportunity"
+      ],
+      [
+        "Follow-up cadence",
+        "amber",
+        "opportunity"
+      ]
+    ],
+    "stats": [
+      {
+        "d": "Today",
+        "v": "12",
+        "u": "",
+        "l": "new leads",
+        "s": "3 viewings booked"
+      },
+      {
+        "d": "This week",
+        "v": "27",
+        "u": "",
+        "l": "enquiries",
+        "s": "9 active listings"
+      },
+      {
+        "d": "Hours saved",
+        "v": "16",
+        "u": " hrs",
+        "l": "saved this week by your AI team",
+        "p": 61
+      }
+    ],
+    "sug": {
+      "t": "Automate first-reply speed",
+      "d": "The first agent to reply wins the deal. AISAR answers enquiries instantly + books viewings.",
+      "tag": "est. 5 hrs/month",
+      "cta": "Automation queued — I'll handle lead response."
+    },
+    "team": [
+      {
+        "e": "🧲",
+        "n": "Lead Responder",
+        "ch": "WhatsApp · Phone",
+        "d": "Answers property questions, pricing, and viewing availability — 24/7.",
+        "m": "Today · 12 leads · 3 booked"
+      },
+      {
+        "e": "📅",
+        "n": "Booking Agent",
+        "ch": "Calendar · Viewings",
+        "d": "Books viewing slots and sends confirmations + location pins.",
+        "m": "This week · 9 viewings"
+      },
+      {
+        "e": "🔁",
+        "n": "Follow-up",
+        "ch": "Buyers · Sellers",
+        "d": "Nudges interested buyers and checks in with sellers.",
+        "m": "This month · 24 follow-ups"
+      },
+      {
+        "e": "📊",
+        "n": "Ops Assistant",
+        "ch": "CRM · Reports",
+        "d": "Tracks lead pipeline and prepares weekly reports.",
+        "m": "",
+        "setup": true
+      }
+    ],
+    "work": [
+      {
+        "e": "🧲",
+        "n": "Lead Responder",
+        "t": "WhatsApp · 1m ago · auto",
+        "tag": "done",
+        "tc": "",
+        "d": "Answered \"Ada unit bawah 500k dekat LRT?\" with 3 matching listings + viewing link."
+      },
+      {
+        "e": "📅",
+        "n": "Booking Agent",
+        "t": "30m ago · auto",
+        "tag": "confirmed",
+        "tc": "green",
+        "d": "Booked viewing for unit B-12, Sat 11am + sent location pin."
+      },
+      {
+        "e": "🔁",
+        "n": "Follow-up",
+        "t": "2h ago · auto",
+        "tag": "sent",
+        "tc": "green",
+        "d": "Followed up 4 buyers from yesterday's open house."
+      },
+      {
+        "e": "⚠️",
+        "n": "Lead Responder",
+        "t": "4h ago · escalated",
+        "tag": "needs you",
+        "tc": "red",
+        "d": "Buyer asked about negotiation on asking price — AISAR drafted a polite response.",
+        "cta": "Approved — response sent."
+      }
+    ],
+    "conns": [
+      {
+        "e": "💬",
+        "n": "WhatsApp",
+        "s": "Business API · linked",
+        "d": "Lead Responder & Follow-up talk to clients here.",
+        "on": true
+      },
+      {
+        "e": "📞",
+        "n": "Phone",
+        "s": "linked",
+        "d": "Call enquiries route here.",
+        "on": true
+      },
+      {
+        "e": "📅",
+        "n": "Google Calendar",
+        "s": "linked",
+        "d": "Booking Agent manages viewings here.",
+        "on": true
+      },
+      {
+        "e": "📊",
+        "n": "Google Sheets",
+        "s": "linked",
+        "d": "Ops Assistant reads listings & pipeline here.",
+        "on": true
+      },
+      {
+        "e": "🗂️",
+        "n": "CRM system",
+        "s": "not connected",
+        "d": "Unlocks full pipeline tracking + auto reports.",
+        "on": false,
+        "cta": "CRM connection wizard will open — we'll guide you through it."
+      }
+    ]
+  },
+  cleaning: {
+    "icon": "🧽",
+    "keywords": [
+      "cleaning",
+      "cuci",
+      "pembersihan",
+      "maid",
+      "domestik",
+      "disinfect"
+    ],
+    "name": "Your Cleaning Co",
+    "type": "Cleaning Services",
+    "sub": "Cleaning Services",
+    "site": "yourcleaning.my",
+    "booking": "Phone / WhatsApp",
+    "systems": "Google Sheets",
+    "loc": "Selangor, MY",
+    "potential": 58,
+    "opportunities": 5,
+    "ch": [
+      "WhatsApp",
+      "Phone"
+    ],
+    "detect": "cleaning services · Selangor",
+    "confirm": "I found that you run a cleaning services business in Selangor. Is that correct?",
+    "funcs": [
+      [
+        "Customer enquiries",
+        "",
+        "covered"
+      ],
+      [
+        "Quote requests",
+        "green",
+        "live"
+      ],
+      [
+        "Scheduling",
+        "green",
+        "live"
+      ],
+      [
+        "Recurring bookings",
+        "amber",
+        "opportunity"
+      ],
+      [
+        "Team dispatch",
+        "amber",
+        "opportunity"
+      ]
+    ],
+    "stats": [
+      {
+        "d": "Today",
+        "v": "7",
+        "u": "",
+        "l": "jobs scheduled",
+        "s": "3 quotes sent"
+      },
+      {
+        "d": "This week",
+        "v": "19",
+        "u": "",
+        "l": "bookings",
+        "s": "5 recurring clients"
+      },
+      {
+        "d": "Hours saved",
+        "v": "12",
+        "u": " hrs",
+        "l": "saved this week by your AI team",
+        "p": 54
+      }
+    ],
+    "sug": {
+      "t": "Automate quote requests",
+      "d": "AISAR collects details (type, size, frequency) and sends pricing quotes instantly — no back-and-forth.",
+      "tag": "est. 3 hrs/month",
+      "cta": "Automation queued — I'll set up instant quotes."
+    },
+    "team": [
+      {
+        "e": "💬",
+        "n": "Service Assistant",
+        "ch": "WhatsApp · Phone",
+        "d": "Answers service areas, pricing, and availability — 24/7.",
+        "m": "Today · 7 chats · 1 escalated"
+      },
+      {
+        "e": "📅",
+        "n": "Booking Agent",
+        "ch": "Calendar · Jobs",
+        "d": "Schedules jobs and assigns the right crew.",
+        "m": "This week · 19 jobs"
+      },
+      {
+        "e": "🔁",
+        "n": "Follow-up",
+        "ch": "Recurring clients",
+        "d": "Reminds recurring clients and nudges for monthly bookings.",
+        "m": "This month · 12 renewals"
+      },
+      {
+        "e": "📊",
+        "n": "Ops Assistant",
+        "ch": "Reports · Dispatch",
+        "d": "Prepares crew schedules and daily job reports.",
+        "m": "",
+        "setup": true
+      }
+    ],
+    "work": [
+      {
+        "e": "💬",
+        "n": "Service Assistant",
+        "t": "WhatsApp · 2m ago · auto",
+        "tag": "done",
+        "tc": "",
+        "d": "Answered \"Berapa untuk cuci rumah 3 bilik?\" with instant quote + slots."
+      },
+      {
+        "e": "📅",
+        "n": "Booking Agent",
+        "t": "1h ago · auto",
+        "tag": "confirmed",
+        "tc": "green",
+        "d": "Booked deep-clean for 3-room condo, Thu 9am + crew assigned."
+      },
+      {
+        "e": "🔁",
+        "n": "Follow-up",
+        "t": "2h ago · auto",
+        "tag": "sent",
+        "tc": "green",
+        "d": "Reminded 5 recurring clients their monthly clean is due."
+      },
+      {
+        "e": "⚠️",
+        "n": "Service Assistant",
+        "t": "5h ago · escalated",
+        "tag": "needs you",
+        "tc": "red",
+        "d": "Client asked about monthly discount packages — AISAR offered a 3-month plan.",
+        "cta": "Approved — 3-month plan offered."
+      }
+    ],
+    "conns": [
+      {
+        "e": "💬",
+        "n": "WhatsApp",
+        "s": "Business API · linked",
+        "d": "Service Assistant & Follow-up talk to clients here.",
+        "on": true
+      },
+      {
+        "e": "📞",
+        "n": "Phone",
+        "s": "linked",
+        "d": "Job enquiries route here.",
+        "on": true
+      },
+      {
+        "e": "📅",
+        "n": "Google Calendar",
+        "s": "linked",
+        "d": "Booking Agent schedules jobs here.",
+        "on": true
+      },
+      {
+        "e": "📊",
+        "n": "Google Sheets",
+        "s": "linked",
+        "d": "Ops Assistant reads job data here.",
+        "on": true
+      },
+      {
+        "e": "🧾",
+        "n": "Invoicing",
+        "s": "not connected",
+        "d": "Unlocks automatic invoices & monthly billing.",
+        "on": false,
+        "cta": "Invoicing connection wizard will open — we'll guide you through it."
+      }
+    ]
+  },
   generic: {
     icon: '🏪', keywords: [],
     name: 'Your Business', type: 'Small Business', sub: 'Small Business', site: 'yourbusiness.com', booking: 'Phone / WhatsApp', systems: 'Google Sheets',
