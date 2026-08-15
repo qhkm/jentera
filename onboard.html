@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en" class="site-theme-dark geist_a71539c9-module__T19VSG__variable geist_mono_8d43a2aa-module__8Li5zG__variable jetbrains_mono_9f74dd74-module__C4FFOW__variable geistpixelcircle_7ee616e3-module__nfyFIG__variable geistpixelline_d71857ef-module__8jKwvW__variable geistpixelsquare_cf225766-module__YQM0OG__variable urbanist_ad3a81cb-module___tKjeG__variable"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="theme-color" content="#0a0a0a"/>
+<title>Set up your business — AISAR</title>
+<meta name="description" content="AISAR onboarding — tell us how your business works, and AISAR sets up your AI team."/>
+<link rel="icon" href="/favicon.svg"/>
+<link rel="stylesheet" href="/_next/static/chunks/391k8ovo_r0qj.css" data-precedence="next"/>
+<link rel="stylesheet" href="/_next/static/chunks/07r-6xz-uoanc.css" data-precedence="next"/>
+<style>
+/* AISAR accent + onboarding layout — custom CSS */
+.as-green{color:#00d294}
+.as-tag{border:1px solid rgb(255 255 255 / .1);padding:2px 8px;font-family:var(--font-mono, monospace);font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:rgb(255 255 255 / .45);border-radius:4px}
+.as-tag.green{border-color:rgb(0 210 148 / .4);color:rgb(0 210 148 / .75)}
+.as-tag.amber{border-color:rgb(255 190 60 / .4);color:rgb(255 200 90 / .8)}
+.as-progress{height:6px;border-radius:999px;background:rgb(255 255 255 / .07);overflow:hidden}
+.as-progress-fill{height:100%;background:linear-gradient(90deg,#00d294,#00b6fc);border-radius:999px}
+.as-row{display:flex;align-items:center;gap:10px}
+.as-opt{border:1px solid rgb(255 255 255 / .12);border-radius:10px;padding:14px 16px;cursor:pointer;transition:border-color .15s,background .15s}
+.as-opt:hover{border-color:rgb(0 210 148 / .4)}
+.as-opt.picked{border-color:rgb(0 210 148 / .6);background:rgb(0 210 148 / .07)}
+.as-check{width:18px;height:18px;border-radius:5px;border:1px solid rgb(255 255 255 / .2);display:flex;align-items:center;justify-content:center;font-size:11px;color:transparent;flex-shrink:0}
+.as-opt.picked .as-check{background:#00d294;border-color:#00d294;color:#0a0a0a}
+.as-card{border:1px solid rgb(255 255 255 / .1);background:rgb(255 255 255 / .02);border-radius:12px}
+.as-input{border:1px solid rgb(255 255 255 / .15);background:rgb(0 0 0 / .3)}
+.as-input:focus{border-color:#00d294}
+.as-step{display:none}
+.as-step.active{display:block}
+.as-profile-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid rgb(255 255 255 / .06);font-size:13px}
+.as-profile-row:last-child{border-bottom:none}
+.as-profile-k{color:rgb(255 255 255 / .45);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+.as-profile-v{color:rgb(255 255 255 / .85)}
+.as-profile-v.empty{color:rgb(255 255 255 / .25)}
+@keyframes kv-blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+.kv-cursor{display:inline-block;width:8px;height:12px;margin-left:4px;background:#00d294;vertical-align:-1px;animation:kv-blink 1.2s steps(2,start) infinite}
+</style>
+</head>
+<body class="bg-bg text-text antialiased">
+<header class="sticky top-0 z-50 w-full border-b border-(--rail) backdrop-blur-lg">
+<div class="mx-auto flex h-(--nav-h) w-full max-w-(--site-width) items-center justify-between px-6 md:border-x border-(--rail)">
+<a href="/" aria-label="AISAR home"><span class="inline-flex items-center gap-2 text-xl md:text-2xl font-pixel font-pixel-logo tracking-wide text-text"><span class="as-green">aisar</span><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted hidden sm:inline">/setup</span></span></a>
+<div class="flex items-center gap-3">
+<a class="btn btn-outline px-5 py-2 text-sm" href="/app">← Dashboard</a>
+</div>
+</div>
+</header>
+
+<main class="mx-auto w-full max-w-(--site-width) md:border-x border-(--rail)">
+<div class="mx-auto flex w-full max-w-4xl flex-col gap-8 px-6 py-10 md:px-12 md:py-14">
+
+<!-- HEADER -->
+<div class="flex flex-col gap-2">
+<div class="as-row gap-2">
+<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Onboarding</span>
+<span class="as-tag green" id="kv-progress-pill">Step 1 of 6</span>
+</div>
+<h1 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-4xl">Let's set up your business</h1>
+<p class="text-[13px] text-text-secondary md:text-sm">AISAR learns how you work — then sets up your AI team. No agents to build, no workflows to configure.</p>
+<div class="as-progress mt-2 max-w-md"><div class="as-progress-fill" id="kv-obar" style="width:16%"></div></div>
+</div>
+
+<!-- 2-COLUMN LAYOUT: steps kiri, live profile kanan -->
+<div class="grid grid-cols-1 gap-8 lg:grid-cols-5">
+<div class="lg:col-span-3 flex flex-col gap-6">
+
+<!-- STEP 1: URL -->
+<div class="as-step active">
+<div class="flex flex-col gap-3">
+<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Step 1 · Your business</span>
+<h2 class="font-pixel text-xl tracking-tight md:text-2xl">Got a website? Drop the URL.</h2>
+<p class="text-[13px] text-text-secondary md:text-sm">AISAR will scan it and learn your business — menu, services, hours, contact channels. No website? Skip and answer a few questions.</p>
+<div class="flex flex-col gap-3 sm:flex-row">
+<input type="text" id="kv-url" value="wagyu.my" class="as-input w-full rounded-lg px-4 py-3 font-mono text-sm text-text outline-none" placeholder="yourbusiness.com"/>
+<button class="btn btn-primary px-6 py-3 text-sm sm:w-auto" onclick="kvGoNext()">Scan my business →</button>
+</div>
+<div class="flex flex-col gap-2">
+<div class="as-row gap-3">
+<span class="as-check" style="background:#00d294;border-color:#00d294;color:#0a0a0a">✓</span>
+<span class="text-[13px] text-text-secondary">No website? <a class="as-green" href="#" onclick="kvSkipUrl();return false">Answer a few questions instead</a></span>
+</div>
+</div>
+</div>
+</div>
+
+<!-- STEP 2: SCAN (auto) -->
+<div class="as-step">
+<div class="flex flex-col gap-3">
+<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Step 2 · Scanning</span>
+<h2 class="font-pixel text-xl tracking-tight md:text-2xl">Reading your business…</h2>
+<div class="rounded-lg border border-white/12 bg-black/30 p-4 font-mono text-[11px] leading-relaxed text-white/75 md:p-5" id="kv-scan">
+<span class="text-white/35">$ </span>aisar onboard --business <span id="kv-scan-url">yourbusiness.com</span><span class="kv-cursor" aria-hidden="true"></span>
+</div>
+<p class="text-[12px] text-text-muted">We're fetching your site and building a Business Profile. This only takes a few seconds.</p>
+</div>
+</div>
+
+<!-- STEP 3: CONFIRM -->
+<div class="as-step">
+<div class="flex flex-col gap-3">
+<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Step 3 · Did we get it right?</span>
+<h2 class="font-pixel text-xl tracking-tight md:text-2xl" id="kv-confirm-text">I found that you operate a premium Japanese restaurant in Kuala Lumpur. Is that correct?</h2>
+<p class="text-[13px] text-text-secondary md:text-sm">Your Business Profile drives every recommendation. If anything's off, tell us now — it gets better from here.</p>
+<div class="flex flex-col gap-2 sm:flex-row">
+<button class="btn btn-primary px-5 py-2.5 text-sm" onclick="kvGoNext()">Yes, that's right</button>
+<button class="btn btn-outline px-5 py-2.5 text-sm" onclick="kvFixProfile()">No, fix it</button>
+</div>
+</div>
+</div>
+
+<!-- STEP 4: CHANNELS -->
+<div class="as-step">
+<div class="flex flex-col gap-3">
+<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Step 4 · How customers reach you</span>
+<h2 class="font-pixel text-xl tracking-tight md:text-2xl">Where do enquiries come in?</h2>
+<p class="text-[13px] text-text-secondary md:text-sm">Pick all that apply — AISAR focuses on where your customers actually are.</p>
+<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+<div class="as-opt as-multi" data-opt="WhatsApp"><div class="as-row"><span class="as-check">✓</span>💬 WhatsApp</div></div>
+<div class="as-opt as-multi" data-opt="Instagram"><div class="as-row"><span class="as-check">✓</span>📸 Instagram</div></div>
+<div class="as-opt as-multi" data-opt="Email"><div class="as-row"><span class="as-check">✓</span>✉️ Email</div></div>
+<div class="as-opt as-multi" data-opt="Phone"><div class="as-row"><span class="as-check">✓</span>📞 Phone</div></div>
+</div>
+</div>
+</div>
+
+<!-- STEP 5: TIME SINKS -->
+<div class="as-step">
+<div class="flex flex-col gap-3">
+<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Step 5 · Where you spend time</span>
+<h2 class="font-pixel text-xl tracking-tight md:text-2xl">What eats your week?</h2>
+<p class="text-[13px] text-text-secondary md:text-sm">Pick the one that hurts most — that's where AISAR starts.</p>
+<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+<div class="as-opt as-radio" data-opt="Answering enquiries"><div class="as-row"><span class="as-check">✓</span> Answering enquiries</div></div>
+<div class="as-opt as-radio" data-opt="Reservations"><div class="as-row"><span class="as-check">✓</span> Reservations / bookings</div></div>
+<div class="as-opt as-radio" data-opt="Marketing"><div class="as-row"><span class="as-check">✓</span> Marketing &amp; social</div></div>
+<div class="as-opt as-radio" data-opt="Inventory"><div class="as-row"><span class="as-check">✓</span> Inventory &amp; ordering</div></div>
+</div>
+</div>
+</div>
+
+<!-- STEP 6: RECO -->
+<div class="as-step">
+<div class="flex flex-col gap-3">
+<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Step 6 · Your AI team</span>
+<h2 class="font-pixel text-xl tracking-tight md:text-2xl">I recommend starting here.</h2>
+<p class="text-[13px] text-text-secondary md:text-sm">Based on your business profile and answers, this is the highest-impact automation.</p>
+<div class="rounded-lg border border-white/12 bg-black/30 p-4 md:p-5">
+<div class="as-row justify-between">
+<div class="as-row"><span class="font-pixel text-sm md:text-base">Customer Assistant</span></div>
+<span class="as-tag green">recommended</span>
+</div>
+<p class="mt-2 text-[13px] text-white/70">Handles: FAQs · menu questions · reservations · opening hours · follow-ups</p>
+<div class="mt-3 flex flex-col gap-1 text-[12px] text-white/45">
+<div class="as-row"><span class="as-check" style="background:#00d294;border-color:#00d294;color:#0a0a0a">✓</span> WhatsApp [Connect]</div>
+<div class="as-row"><span class="as-check" style="background:#00d294;border-color:#00d294;color:#0a0a0a">✓</span> Calendar [Connect]</div>
+<div class="as-row"><span class="as-check" style="background:#00d294;border-color:#00d294;color:#0a0a0a">✓</span> Menu [Found ✓]</div>
+</div>
+</div>
+<p class="text-[12px] text-text-muted" id="kv-reco-extra">+ 2 more suggestions based on your answers: Booking Agent · Follow-up</p>
+<div class="flex flex-col gap-2 sm:flex-row">
+<button class="btn btn-primary px-6 py-3 text-sm" onclick="kvActivate()">Activate AISAR →</button>
+<button class="btn btn-outline px-5 py-3 text-sm" onclick="kvStep(-1)">Back</button>
+</div>
+</div>
+</div>
+
+<!-- NAV FOOTER (hidden on step 1 & 2 — actions inline) -->
+<div class="as-row justify-between" id="kv-navfoot" style="display:none">
+<span class="text-[11px] text-text-muted" id="kv-step-label">1 / 6</span>
+<div class="as-row gap-2">
+<button class="btn btn-outline px-4 py-2 text-sm" id="kv-back" style="visibility:hidden" onclick="kvStep(-1)">Back</button>
+<button class="btn btn-primary px-5 py-2 text-sm" id="kv-next" onclick="kvGoNext()">Continue →</button>
+</div>
+</div>
+
+</div>
+
+<!-- RIGHT: LIVE BUSINESS PROFILE -->
+<aside class="lg:col-span-2">
+<div class="as-card sticky top-24 flex flex-col gap-4 p-5">
+<div class="as-row justify-between">
+<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Business Profile</span>
+<span class="as-tag" id="kv-live-badge">building…</span>
+</div>
+<div id="kv-profile" class="flex flex-col">
+<div class="as-profile-row"><span class="as-profile-k">Name</span><span class="as-profile-v empty" id="p-name">—</span></div>
+<div class="as-profile-row"><span class="as-profile-k">Type</span><span class="as-profile-v empty" id="p-type">—</span></div>
+<div class="as-profile-row"><span class="as-profile-k">Location</span><span class="as-profile-v empty" id="p-loc">—</span></div>
+<div class="as-profile-row"><span class="as-profile-k">Website</span><span class="as-profile-v empty" id="p-url">—</span></div>
+<div class="as-profile-row"><span class="as-profile-k">Channels</span><span class="as-profile-v empty" id="p-ch">—</span></div>
+<div class="as-profile-row"><span class="as-profile-k">Top pain</span><span class="as-profile-v empty" id="p-pain">—</span></div>
+<div class="as-profile-row"><span class="as-profile-k">AI team</span><span class="as-profile-v empty" id="p-team">—</span></div>
+</div>
+<div class="border-t border-white/10 pt-3">
+<p class="text-[11px] leading-relaxed text-text-muted">This profile updates live as you answer. Every recommendation AISAR makes is based on this — correct it anytime in the dashboard.</p>
+</div>
+</div>
+</aside>
+</div>
+
+</div>
+</main>
+
+<script>
+/* ---- State ---- */
+var step = 0, channels = [], pain = null;
+
+/* ---- Navigation ---- */
+function kvRenderNav(){
+  document.getElementById('kv-progress-pill').textContent = 'Step ' + (step+1) + ' of 6';
+  document.getElementById('kv-obar').style.width = ((step+1)/6*100) + '%';
+  var navfoot = document.getElementById('kv-navfoot');
+  /* Step 1 & 2 ada action sendiri (Scan / auto) — sembunyi nav footer */
+  navfoot.style.display = (step === 0 || step === 1) ? 'none' : 'flex';
+  document.getElementById('kv-step-label').textContent = (step+1) + ' / 6';
+  document.getElementById('kv-back').style.visibility = (step <= 2) ? 'hidden' : 'visible';
+  var n = document.getElementById('kv-next');
+  if (step === 5) n.textContent = 'Activate AISAR →';
+  else if (step === 4) n.textContent = 'Show my plan →';
+  else n.textContent = 'Continue →';
+}
+function kvGoNext(){
+  if (step === 0){ kvScan(); return; }
+  if (step === 5){ kvActivate(); return; }
+  kvStep(1);
+}
+function kvStep(d){
+  var steps = document.querySelectorAll('.as-step');
+  var next = Math.min(Math.max(step + d, 0), steps.length - 1);
+  if (step === next) return;
+  steps[step].classList.remove('active'); step = next; steps[step].classList.add('active');
+  kvRenderNav();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* ---- Step 1: URL / skip ---- */
+function kvSkipUrl(){
+  /* fake a scan tanpa URL */
+  document.getElementById('kv-scan-url').textContent = 'no website (manual setup)';
+  step = 0; kvStep(1);
+  document.getElementById('kv-scan-url').textContent = 'no website (manual setup)';
+  runScanLines();
+}
+function kvScan(){
+  var url = document.getElementById('kv-url').value.trim() || 'yourbusiness.com';
+  document.getElementById('kv-scan-url').textContent = url;
+  document.getElementById('p-url').textContent = url;
+  document.getElementById('p-url').classList.remove('empty');
+  kvStep(1);
+  runScanLines();
+}
+function runScanLines(){
+  var lines = [
+    '<span class="text-white/35">✓</span> fetching site',
+    '<span class="text-white/35">✓</span> parsing menu · about · contact',
+    '<span class="text-white/35">✓</span> detected: restaurant · premium · Kuala Lumpur'
+  ];
+  var box = document.getElementById('kv-scan');
+  var i = 0;
+  var t = setInterval(function(){
+    i++;
+    if (i <= lines.length){
+      box.innerHTML = box.innerHTML.replace(/<span class="kv-cursor"[^>]*><\/span>/, '') + '<br/>' + lines[i-1] + '<span class="kv-cursor" aria-hidden="true"></span>';
+    } else {
+      clearInterval(t);
+      /* populate profile */
+      var name = document.getElementById('p-name'), typ = document.getElementById('p-type'), loc = document.getElementById('p-loc');
+      name.textContent = 'Wagyu Japanese Restaurant'; name.classList.remove('empty');
+      typ.textContent = 'Restaurant · Premium dining'; typ.classList.remove('empty');
+      loc.textContent = 'Kuala Lumpur, MY'; loc.classList.remove('empty');
+      document.getElementById('kv-live-badge').textContent = 'learned ✓';
+      document.getElementById('kv-live-badge').classList.add('green');
+      setTimeout(function(){ kvStep(1); }, 800);
+    }
+  }, 650);
+}
+
+/* ---- Step 3: confirm ---- */
+function kvFixProfile(){
+  kvToast('Editing the profile is the next step in the real product — the dashboard will have a full Business Profile editor.');
+}
+
+/* ---- Steps 4-5: picks ---- */
+document.querySelectorAll('.as-opt').forEach(function(el){
+  el.addEventListener('click', function(){
+    if (el.classList.contains('as-multi')){
+      el.classList.toggle('picked');
+      var label = el.dataset.opt;
+      var idx = channels.indexOf(label);
+      if (idx >= 0) channels.splice(idx, 1); else channels.push(label);
+      document.getElementById('p-ch').textContent = channels.join(', ') || '—';
+      document.getElementById('p-ch').classList.toggle('empty', channels.length === 0);
+    } else {
+      el.parentElement.querySelectorAll('.as-opt').forEach(function(o){ o.classList.remove('picked'); });
+      el.classList.add('picked');
+      pain = el.dataset.opt;
+      document.getElementById('p-pain').textContent = pain;
+      document.getElementById('p-pain').classList.remove('empty');
+    }
+  });
+});
+
+/* ---- Step 6: reco dynamic ---- */
+function kvSuggest(){
+  var extra = document.getElementById('kv-reco-extra');
+  if (pain === 'Reservations') extra.textContent = '+ 2 more suggestions: Booking Agent (you said reservations) · Follow-up';
+  else if (pain === 'Marketing') extra.textContent = '+ 2 more suggestions: Content Engine (you said marketing) · Follow-up';
+  else if (pain === 'Inventory') extra.textContent = '+ 2 more suggestions: Ops Assistant (you said inventory) · Customer Follow-up';
+  else if (pain === 'Answering enquiries') extra.textContent = '+ 2 more suggestions: Booking Agent · Follow-up';
+  else extra.textContent = '+ 2 more suggestions: Booking Agent · Follow-up';
+  document.getElementById('p-team').textContent = 'Customer Assistant + 2 more';
+  document.getElementById('p-team').classList.remove('empty');
+  document.getElementById('kv-live-badge').textContent = 'ready ✓';
+}
+
+/* ---- Activate ---- */
+function kvActivate(){
+  kvSuggest();
+  try { localStorage.setItem('aisar-onboarded-v1', '1'); } catch(e) {}
+  var btn = document.querySelector('#kv-steps .as-step.active .btn-primary, .as-step.active .btn-primary');
+  if (btn){ btn.textContent = 'Setting up…'; btn.disabled = true; }
+  setTimeout(function(){
+    window.location.href = '/setup';
+  }, 1600);
+}
+
+/* ---- Toast ---- */
+var toastTimer = null;
+function kvToast(msg){
+  var t = document.getElementById('kv-toast');
+  if (!t){
+    t = document.createElement('div');
+    t.id = 'kv-toast';
+    t.className = 'as-card fixed bottom-6 left-1/2 z-[100] px-5 py-3';
+    t.style.cssText = 'transform:translateX(-50%);background:#0a0a0a;border:1px solid rgb(255 255 255 / .12);';
+    t.innerHTML = '<span class="as-green">✓</span> <span id="kv-toast-msg" class="text-[13px]"></span>';
+    document.body.appendChild(t);
+  }
+  document.getElementById('kv-toast-msg').textContent = msg;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ t.style.display = 'none'; }, 3200);
+  t.style.display = 'block';
+}
+
+/* Go to step 6 → suggest */
+var _origNext = document.getElementById('kv-next');
+if (_origNext) _origNext.addEventListener('click', function(){ if (step === 4) kvSuggest(); });
+kvRenderNav();
+</script>
+</body>
+</html>
