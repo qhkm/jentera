@@ -2083,6 +2083,13 @@ function kvCommandCenter(b){
 /* ============================================================
    RENDER — satu set views, content ikut playbook.
    ============================================================ */
+var kvWorkFilter = 'needs you';
+
+function kvWorkSetFilter(f){
+  kvWorkFilter = f;
+  kvRenderAll();
+}
+
 function kvRenderAll(){
   var b = kvPlaybook(kvBizType());
   kvSeedConns();
@@ -2220,24 +2227,63 @@ function kvRenderAll(){
     }).join('');
   }
 
-  /* Work */
+  /* Work — decision inbox: ringkasan + filter + senarai */
   if ((el = document.getElementById('kv-work'))) {
-    el.innerHTML = b.work.map(function (w, i) {
-      var approved = kvWorkDone(i);
-      var status = approved ? 'approved' : w.tag;
-      var cta = approved
-        ? (w.tc === 'red' ? '<span class="as-tag green">approved ✓</span>' : '')
-        : (w.tag === 'needs you'
-          ? '<div class="as-row gap-2">' +
-              '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvApproveWork(' + i + ')">Approve &amp; send</button>' +
-              '<button class="btn btn-outline px-4 py-1.5 text-xs" onclick="kvEditWork(' + i + ')">Edit</button>' +
-            '</div>'
-          : '');
-      return '<div id="work-' + i + '" class="as-card flex flex-col gap-3 p-4">' +
-        '<div class="as-row justify-between"><div class="as-row"><span class="as-avatar">' + w.e + '</span><div class="flex flex-col"><span class="text-sm">' + w.n + '</span><span class="text-[11px] text-text-muted">' + w.t + '</span></div></div><span class="as-tag' + (approved ? ' green' : (w.tc ? ' ' + w.tc : '')) + '">' + status + '</span></div>' +
-        '<p class="text-[13px] text-text-secondary">' + w.d + '</p>' + cta +
-        '</div>';
-    }).join('');
+    var work = b.work || [];
+    var needCount = 0, doneCount = 0, autoCount = 0;
+    work.forEach(function(w, i){
+      if (kvWorkDone(i)) doneCount++;
+      else if (w.tag === 'needs you') needCount++;
+      else autoCount++;
+    });
+    /* Ringkasan */
+    var sum = document.getElementById('kv-work-sum');
+    if (sum){
+      sum.innerHTML =
+        '<div class="as-card flex flex-col gap-1 p-4"><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Perlu kau</span><span class="font-pixel text-2xl ' + (needCount ? 'text-[rgb(255 180 60)]' : '') + '">' + needCount + '</span></div>' +
+        '<div class="as-card flex flex-col gap-1 p-4"><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Selesai auto</span><span class="font-pixel text-2xl">' + doneCount + '</span></div>' +
+        '<div class="as-card flex flex-col gap-1 p-4"><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Aktiviti</span><span class="font-pixel text-2xl">' + (autoCount + doneCount) + '</span></div>';
+    }
+    /* Filter tabs */
+    var f = document.getElementById('kv-work-filters');
+    if (f){
+      var tabs = [
+        ['needs you', '⚠️ Perlu kau', needCount],
+        ['auto', '🤖 Auto', autoCount],
+        ['done', '✅ Selesai', doneCount],
+        ['all', '📋 Semua', work.length]
+      ];
+      f.innerHTML = tabs.map(function(t){
+        return '<button class="btn btn-outline px-4 py-1.5 text-xs' + (kvWorkFilter === t[0] ? ' btn-primary' : '') + '" onclick="kvWorkSetFilter(\'' + t[0] + '\')">' + t[1] + ' · ' + t[2] + '</button>';
+      }).join('');
+    }
+    /* Senarai ikut filter */
+    var shown = work.filter(function(w, i){
+      if (kvWorkFilter === 'all') return true;
+      if (kvWorkFilter === 'needs you') return !kvWorkDone(i) && w.tag === 'needs you';
+      if (kvWorkFilter === 'done') return kvWorkDone(i);
+      if (kvWorkFilter === 'auto') return !kvWorkDone(i) && w.tag !== 'needs you';
+      return true;
+    });
+    el.innerHTML = shown.length
+      ? shown.map(function (w, j) {
+          var idx = work.indexOf(w);
+          var approved = kvWorkDone(idx);
+          var status = approved ? 'approved' : w.tag;
+          var cta = approved
+            ? (w.tc === 'red' ? '<span class="as-tag green">approved ✓</span>' : '')
+            : (w.tag === 'needs you'
+              ? '<div class="as-row gap-2">' +
+                  '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvApproveWork(' + idx + ')">Approve &amp; send</button>' +
+                  '<button class="btn btn-outline px-4 py-1.5 text-xs" onclick="kvEditWork(' + idx + ')">Edit</button>' +
+                '</div>'
+              : '');
+          return '<div id="work-' + idx + '" class="as-card flex flex-col gap-3 p-4">' +
+            '<div class="as-row justify-between"><div class="as-row"><span class="as-avatar">' + w.e + '</span><div class="flex flex-col"><span class="text-sm">' + w.n + '</span><span class="text-[11px] text-text-muted">' + w.t + '</span></div></div><span class="as-tag' + (approved ? ' green' : (w.tc ? ' ' + w.tc : '')) + '">' + status + '</span></div>' +
+            '<p class="text-[13px] text-text-secondary">' + w.d + '</p>' + cta +
+            '</div>';
+        }).join('')
+      : '<div class="as-card p-6 text-center text-[13px] text-text-muted">Tiada item dalam kategori ni — semua dah settle. 🎉</div>';
   }
 
   /* Connections */
