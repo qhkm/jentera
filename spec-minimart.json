@@ -1,0 +1,13 @@
+{
+  "key": "minimart",
+  "name": "Your Minimart",
+  "type": "Minimart / Grocery",
+  "icon": "🏪",
+  "loc": "Kuala Lumpur, MY",
+  "potential": 58,
+  "opportunities": 5,
+  "ch": ["WhatsApp", "Phone"],
+  "detect": "minimart & grocery · Kuala Lumpur",
+  "confirm": "I found that you run a minimart/grocery shop in Kuala Lumpur. Is that correct?",
+  "keywords": ["minimart", "kedai runcit", "runcit", "grocery", "serbaneka", "stor runcit"]
+}

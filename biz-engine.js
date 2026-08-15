@@ -23,7 +23,7 @@ var KV_STORE = (function(){
 var PLAYBOOKS = {
 
   restaurant: {
-    icon: '🍜', keywords: ['restaurant','cafe','café','kedai makan','kedai','kopi','kopitiam','makan','food','bistro','warung','mamak','grill','sushi','pizza','burger','catering','dapur','kafe'],
+    icon: '🍜', keywords: ['restaurant','cafe','café','kedai makan','kopi','kopitiam','food','bistro','warung','mamak','grill','sushi','pizza','burger','catering','dapur','kafe'],
     name: 'Your Restaurant', type: 'Restaurant / Café', sub: 'Restaurant / Café', site: 'yourbusiness.com', booking: 'Phone + Instagram DM', systems: 'Google Sheets · POS',
     potential: 62, opportunities: 4, ch: ['WhatsApp','Instagram'],
     detect: 'restaurant · premium · Kuala Lumpur',
@@ -1365,7 +1365,194 @@ var PLAYBOOKS = {
       }
     ]
   },
-  generic: {
+
+  minimart: {
+      "key": "minimart",
+      "name": "Your Minimart",
+      "type": "Minimart / Grocery",
+      "icon": "🏪",
+      "loc": "Kuala Lumpur, MY",
+      "potential": 58,
+      "opportunities": 5,
+      "ch": [
+        "WhatsApp",
+        "Phone"
+      ],
+      "detect": "minimart & grocery · Kuala Lumpur",
+      "confirm": "I found that you run a minimart/grocery shop in Kuala Lumpur. Is that correct?",
+      "keywords": [
+        "minimart",
+        "kedai runcit",
+        "runcit",
+        "grocery",
+        "serbaneka",
+        "stor runcit"
+      ],
+      "sub": "Minimart / Grocery",
+      "site": "yourbusiness.my",
+      "booking": "Phone / WhatsApp",
+      "systems": "Google Sheets",
+      "funcs": [
+        [
+          "Customer enquiries",
+          "",
+          "covered"
+        ],
+        [
+          "Follow-up",
+          "green",
+          "live"
+        ],
+        [
+          "Scheduling",
+          "green",
+          "live"
+        ],
+        [
+          "Reports",
+          "amber",
+          "opportunity"
+        ],
+        [
+          "Invoicing",
+          "amber",
+          "opportunity"
+        ]
+      ],
+      "stats": [
+        {
+          "d": "Today",
+          "v": "9",
+          "u": "",
+          "l": "customer conversations",
+          "s": "2 need you"
+        },
+        {
+          "d": "New enquiries",
+          "v": "14",
+          "u": "",
+          "l": "this week",
+          "s": "via WhatsApp + Phone"
+        },
+        {
+          "d": "Hours saved",
+          "v": "11",
+          "u": " hrs",
+          "l": "saved this week by your AI team",
+          "p": 48
+        }
+      ],
+      "sug": {
+        "t": "Automate your common questions",
+        "d": "Your customers ask the same things every day. AISAR answers them instantly — in your voice.",
+        "tag": "est. 2 hrs/month",
+        "cta": "Automation queued — I'll set up the Customer Assistant."
+      },
+      "team": [
+        {
+          "e": "💬",
+          "n": "Customer Assistant",
+          "ch": "WhatsApp · Phone",
+          "d": "Answers your FAQs instantly — hours, pricing, availability — 24/7.",
+          "m": "Today · 9 chats · 2 escalated"
+        },
+        {
+          "e": "📅",
+          "n": "Booking Agent",
+          "ch": "Calendar",
+          "d": "Schedules appointments and sends confirmations automatically.",
+          "m": "This week · 6 bookings"
+        },
+        {
+          "e": "🔁",
+          "n": "Follow-up",
+          "ch": "Past customers",
+          "d": "Follows up enquiries and past customers automatically.",
+          "m": "This month · 18 follow-ups"
+        },
+        {
+          "e": "📊",
+          "n": "Ops Assistant",
+          "ch": "Reports",
+          "d": "Prepares a simple weekly summary of everything that happened.",
+          "m": "",
+          "setup": true
+        }
+      ],
+      "work": [
+        {
+          "e": "💬",
+          "n": "Customer Assistant",
+          "t": "WhatsApp · 2m ago · auto",
+          "tag": "done",
+          "tc": "",
+          "d": "Answered \"What are your opening hours?\" instantly."
+        },
+        {
+          "e": "📅",
+          "n": "Booking Agent",
+          "t": "1h ago · auto",
+          "tag": "confirmed",
+          "tc": "green",
+          "d": "Booked an appointment + sent confirmation."
+        },
+        {
+          "e": "🔁",
+          "n": "Follow-up",
+          "t": "3h ago · auto",
+          "tag": "sent",
+          "tc": "green",
+          "d": "Followed up 2 enquiries from yesterday."
+        },
+        {
+          "e": "⚠️",
+          "n": "Customer Assistant",
+          "t": "5h ago · escalated",
+          "tag": "needs you",
+          "tc": "red",
+          "d": "Customer asked about special pricing — AISAR drafted a reply.",
+          "cta": "Approved — reply sent."
+        }
+      ],
+      "conns": [
+        {
+          "e": "💬",
+          "n": "WhatsApp",
+          "s": "Business API · linked",
+          "d": "Customer Assistant talks to customers here.",
+          "on": true
+        },
+        {
+          "e": "📞",
+          "n": "Phone",
+          "s": "linked",
+          "d": "Enquiries by call route here.",
+          "on": true
+        },
+        {
+          "e": "📅",
+          "n": "Google Calendar",
+          "s": "linked",
+          "d": "Booking Agent checks availability here.",
+          "on": true
+        },
+        {
+          "e": "📊",
+          "n": "Google Sheets",
+          "s": "linked",
+          "d": "Ops Assistant reads your data here.",
+          "on": true
+        },
+        {
+          "e": "🧾",
+          "n": "Accounting",
+          "s": "not connected",
+          "d": "Unlocks invoicing automation.",
+          "on": false,
+          "cta": "Accounting connection wizard will open — we'll guide you through it."
+        }
+      ]
+  },  generic: {
     icon: '🏪', keywords: [],
     name: 'Your Business', type: 'Small Business', sub: 'Small Business', site: 'yourbusiness.com', booking: 'Phone / WhatsApp', systems: 'Google Sheets',
     potential: 55, opportunities: 3, ch: ['WhatsApp','Email'],
@@ -1426,11 +1613,25 @@ function kvPlaybook(key){
 function kvInfer(text){
   text = (text || '').toLowerCase();
   var best = 'generic', bestN = 0;
+  var tokens = text.split(/[^a-z0-9&]+/).filter(Boolean);
   Object.keys(PLAYBOOKS).forEach(function(k){
     if (k === 'generic') return;
     var n = 0;
     PLAYBOOKS[k].keywords.forEach(function(w){
-      if (text.indexOf(w) >= 0) n++;
+      w = String(w).toLowerCase();
+      if (w.indexOf(' ') >= 0){
+        // multi-word: cari frasa penuh, weight lebih (lebih spesifik)
+        if (text.indexOf(w) >= 0) n += 1 + (w.split(' ').length - 1) * 1.5;
+      } else if (w.length <= 3){
+        // perkataan pendek ('pet'): kena padan penuh supaya tak match "petaling"
+        if (tokens.indexOf(w) >= 0) n += 1;
+      } else {
+        // token penuh atau prefix pendek ('hair' → 'haircut')
+        var m = tokens.some(function(t){
+          return t === w || (t.indexOf(w) === 0 && t.length - w.length <= 3);
+        });
+        if (m) n += 1;
+      }
     });
     if (n > bestN){ bestN = n; best = k; }
   });
