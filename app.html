@@ -46,6 +46,18 @@
 .as-sidebar{position:sticky;top:0;height:100vh}
 .as-view{display:none}
 .as-view.active{display:block}
+
+/* Layout shells — prebuilt CSS md:hidden/md:flex tak reliable, jadi roll sendiri */
+.as-app-col{display:flex;flex-direction:column;width:100%;min-width:0}
+.as-mobile-nav{display:flex}
+.as-side-desktop{display:none}
+.as-modal{z-index:100}
+@media (min-width:48rem){
+  .as-mobile-nav{display:none}
+  .as-side-desktop{display:flex;flex-direction:column}
+}
+.as-input{border:1px solid rgb(255 255 255 / .15);background:rgb(0 0 0 / .3)}
+.as-input:focus{border-color:#00d294}
 .as-step{display:none}
 .as-step.active{display:block}
 .as-opt{border:1px solid rgb(255 255 255 / .12);border-radius:10px;padding:14px 16px;cursor:pointer;transition:border-color .15s,background .15s}
@@ -68,7 +80,7 @@
 
 <div class="mx-auto flex w-full max-w-(--site-width) md:border-x border-(--rail)">
 <!-- SIDEBAR -->
-<aside class="as-sidebar aside hidden flex-col gap-8 border-r border-(--rail) px-4 py-8 md:flex">
+<aside class="as-sidebar as-side-desktop gap-8 border-r border-(--rail) px-4 py-8">
 <div class="flex flex-col gap-1 px-2">
 <span class="font-pixel text-base text-text">Your Business</span>
 <span class="text-[11px] text-text-muted">Premium Japanese Restaurant</span>
@@ -94,8 +106,8 @@
 </aside>
 
 <!-- MOBILE NAV (top bar pills) -->
-<div class="flex w-full flex-col md:hidden">
-<div class="flex gap-2 overflow-x-auto border-b border-(--rail) px-4 py-3" id="kv-side-m">
+<div class="as-app-col">
+<div class="as-mobile-nav gap-2 overflow-x-auto border-b border-(--rail) px-4 py-3" id="kv-side-m">
 <a class="as-side-item active" data-view="home">Home</a>
 <a class="as-side-item" data-view="business">Business</a>
 <a class="as-side-item" data-view="aiteam">AI Team</a>
@@ -329,7 +341,7 @@
 </div>
 
 <!-- ONBOARDING MODAL -->
-<div id="kv-onboarding" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
+<div id="kv-onboarding" class="as-modal hidden fixed inset-0 flex items-center justify-center bg-black/70 p-4">
 <div class="as-card w-full max-w-2xl flex flex-col gap-6 bg-bg p-6 md:p-8">
 <div class="as-row justify-between">
 <div class="flex flex-col gap-1">
@@ -380,7 +392,7 @@
 <div class="flex flex-col gap-3">
 <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Step 4 · Your website</span>
 <h3 class="font-pixel text-lg">Got a website? Drop the URL.</h3>
-<input type="text" id="kv-url" value="wagyu.my" class="w-full rounded-lg border border-white/15 bg-black/30 px-4 py-3 font-mono text-sm text-text outline-none focus:border-[#00d294]" placeholder="yourbusiness.com"/>
+<input type="text" id="kv-url" value="wagyu.my" class="as-input w-full rounded-lg px-4 py-3 font-mono text-sm text-text outline-none" placeholder="yourbusiness.com"/>
 <div class="as-row justify-between"><span class="text-[11px] text-text-muted">Optional — questions above are enough</span><button class="btn btn-primary px-5 py-2 text-sm" onclick="kvFinishOnboarding()">Activate AISAR →</button></div>
 </div>
 </div>
