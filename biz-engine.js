@@ -248,6 +248,55 @@ function kvConnector(name){
 }
 
 /* ============================================================
+   TOOL CONTRACT — Agent Interface (spec v1)
+   Satu pattern untuk semua connector. Detail: AISAR-INTEGRATION-STRATEGY.md §8
+   ============================================================ */
+var KV_TOOL_RISK = { send:'high', pay:'high', cancel:'high', refund:'high',
+                     update:'medium', book:'medium', read:'low', list:'low', export:'low' };
+
+function kvTool(req){
+  /* req = { conn, op, args, dryRun } — dryRun default true kalau risk high/medium */
+  var out = { ok:true, t:Date.now(), req:req };
+  var cx = req.conn ? kvConnector(req.conn) : null;
+  if (!cx) return { ok:false, err:'unknown connector: ' + req.conn };
+  var risk = KV_TOOL_RISK[req.op] || 'medium';
+  var dry = (req.dryRun !== undefined) ? !!req.dryRun : (risk !== 'low');
+  var connected = kvConnOn(cx.n);
+  if (!connected){
+    return { ok:false, need:'connect', conn:cx.n, msg:'Connect ' + cx.n + ' dulu dalam Connections.' };
+  }
+  if (dry){
+    out.dryRun = true;
+    out.would = cx.n + ' → ' + req.op + ' ' + JSON.stringify(req.args || {});
+    out.risk = risk;
+    kvApprovalQueue(cx.n, req.op, req.args || {}, risk);
+    return out;
+  }
+  /* Mock real execution — backend nanti ganti dengan Workers + OAuth, contract sama */
+  out.mock = true;
+  out.msg = cx.n + ' → ' + req.op + ' OK (mock — belum ada executor backend).';
+  return out;
+}
+
+/* Approval queue — manusia kekal dalam loop untuk external action */
+function kvApprovalQueue(conn, op, args, risk){
+  var key = 'aisar-approvals';
+  var q = [];
+  try { q = JSON.parse(KV_STORE.get(key, '[]')); } catch(e){}
+  q.push({ id: Date.now(), conn:conn, op:op, args:args, risk:risk, ts:new Date().toISOString(), status:'pending' });
+  KV_STORE.set(key, JSON.stringify(q));
+}
+function kvApprovals(){
+  try { return JSON.parse(KV_STORE.get('aisar-approvals', '[]')); } catch(e){ return []; }
+}
+function kvApprovalDecide(id, ok){
+  var q = kvApprovals();
+  for (var i=0;i<q.length;i++){ if (q[i].id === id){ q[i].status = ok ? 'approved' : 'rejected'; q[i].decided = new Date().toISOString(); } }
+  KV_STORE.set('aisar-approvals', JSON.stringify(q));
+}
+
+
+/* ============================================================
    I18N — EN/BM language toggle (English-first, BM support).
    ============================================================ */
 var KV_I18N = {
