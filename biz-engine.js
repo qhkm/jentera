@@ -1788,7 +1788,30 @@ function kvSaveWork(i){
 /* ============================================================
    CHAT APP — perbualan per agent, kawalan macam WhatsApp/Telegram.
    ============================================================ */
-var kvChatState = { sel: null, who: {}, custom: {}, seeded: false };
+var kvChatState = { sel: null, who: {}, custom: {}, seeded: false, q: '' };
+
+var KV_TPL = {
+  'Customer Assistant': ['Hantar menu terkini 📄', 'Maklumkan waktu operasi 🕐', 'Promo minggu ini 🎉'],
+  'Booking Agent': ['Confirm booking 📅', 'Tanya tarikh alternatif 🔁', 'Hantar reminder ⏰'],
+  'Follow-up': ['Hantar promo peribadi 🎁', 'Tanya maklum balas 💬', 'Ucap terima kasih 🙏'],
+  'Ops Assistant': ['Minta weekly report 📊', 'Auto-order stok 📦', 'Update supplier 🔄']
+};
+
+function kvChatTmpl(n, tx){
+  var inp = document.getElementById('kv-inp');
+  if (inp){
+    inp.value = tx;
+    inp.focus();
+  } else {
+    kvChatState.custom[n].push({ f:'you', d:tx, tm:'sekarang' });
+    kvChatRender();
+  }
+}
+
+function kvChatSearch(v){
+  kvChatState.q = v;
+  kvChatRender();
+}
 
 function kvChatSeed(b){
   if (kvChatState.seeded) return;
@@ -1891,24 +1914,34 @@ function kvChatRender(){
   var team = b.team || [];
   var sel = kvChatState.sel;
 
-  /* Senarai perbualan */
-  var list = team.map(function(t){
-    var prev = kvEsc(kvChatPreview(t.n, b));
-    var unread = (t.n === 'Customer Assistant' || t.n === 'Booking Agent') ? 2 : 1;
-    var badge = '<span class="kv-unread">' + unread + '</span>';
-    return '<div class="kv-conv' + (sel === t.n ? ' active' : '') + '" onclick="kvChatOpen(\'' + t.n + '\')">' +
-      '<span class="as-avatar" style="width:34px;height:34px;font-size:15px;flex-shrink:0">' + t.e + '</span>' +
-      '<div class="flex flex-col min-w-0 gap-0.5" style="flex:1">' +
-        '<div class="as-row justify-between gap-2">' +
-          '<span class="kv-conv-name">' + t.n + '</span>' +
-          '<span class="kv-conv-time">' + (t.ch || '') + '</span>' +
-        '</div>' +
-        '<div class="as-row justify-between gap-2">' +
-          '<span class="kv-conv-prev">' + prev + '</span>' + badge +
-        '</div>' +
-      '</div>' +
-    '</div>';
-  }).join('');
+  /* Senarai perbualan — dengan search */
+  var q = (kvChatState.q || '').trim().toLowerCase();
+  var listTeam = team.filter(function(t){
+    if (!q) return true;
+    return t.n.toLowerCase().indexOf(q) >= 0 || (t.ch || '').toLowerCase().indexOf(q) >= 0 || kvChatPreview(t.n, b).toLowerCase().indexOf(q) >= 0;
+  });
+  var list = '<div class="kv-chat-search">' +
+      '<input id="kv-search" placeholder="🔍 Cari perbualan…" value="' + kvEsc(kvChatState.q || '') + '" oninput="kvChatSearch(this.value)"/>' +
+    '</div>' +
+    (listTeam.length
+      ? listTeam.map(function(t){
+          var prev = kvEsc(kvChatPreview(t.n, b));
+          var unread = (t.n === 'Customer Assistant' || t.n === 'Booking Agent') ? 2 : 1;
+          var badge = '<span class="kv-unread">' + unread + '</span>';
+          return '<div class="kv-conv' + (sel === t.n ? ' active' : '') + '" onclick="kvChatOpen(\'' + t.n + '\')">' +
+            '<span class="as-avatar" style="width:34px;height:34px;font-size:15px;flex-shrink:0">' + t.e + '</span>' +
+            '<div class="flex flex-col min-w-0 gap-0.5" style="flex:1">' +
+              '<div class="as-row justify-between gap-2">' +
+                '<span class="kv-conv-name">' + t.n + '</span>' +
+                '<span class="kv-conv-time">' + (t.ch || '') + '</span>' +
+              '</div>' +
+              '<div class="as-row justify-between gap-2">' +
+                '<span class="kv-conv-prev">' + prev + '</span>' + badge +
+              '</div>' +
+            '</div>' +
+          '</div>';
+        }).join('')
+      : '<div class="kv-empty">Tiada perbualan dijumpai untuk "' + kvEsc(kvChatState.q || '') + '"</div>');
 
   /* Thread */
   var thread = '';
@@ -1934,10 +1967,14 @@ function kvChatRender(){
       '</div>';
     }).join('');
     var banner = who === 'you'
-      ? '<div class="kv-banner you"><span>🙋 <b>Kau sedang control</b> — balasan dihantar sebagai bisnes kau.</span><button class="kv-take-btn" onclick="kvChatHandback(\'' + sel + '\')">Serah balik ke AI →</button></div>'
-      : '<div class="kv-banner ai"><span>🤖 <b>' + sel + '</b> sedang handle — balas pelanggan 24/7 dalam suara kau.</span><button class="kv-take-btn" onclick="kvChatTake(\'' + sel + '\')">Ambil alih →</button></div>';
+      ? '<div class="kv-banner you"><span>🙋 <b>Kau sedang control</b> <span class="kv-hint">— balasan dihantar sebagai bisnes kau. AI tengah stand-by.</span></span><button class="kv-take-btn" onclick="kvChatHandback(\'' + sel + '\')">Serah balik ke AI →</button></div>'
+      : '<div class="kv-banner ai"><span>🤖 <b>' + sel + '</b> sedang handle <span class="kv-hint">— balas pelanggan 24/7 dalam suara kau.</span></span><button class="kv-take-btn" onclick="kvChatTake(\'' + sel + '\')">Ambil alih →</button></div>';
+    var tpls = (KV_TPL[sel] || []).map(function(tx){
+      return '<button class="kv-tpl" onclick="kvChatTmpl(\'' + sel + '\',\'' + tx.replace(/'/g, "\\'") + '\')">' + kvEsc(tx) + '</button>';
+    }).join('');
     var input = who === 'you'
-      ? '<div class="kv-chat-input"><input id="kv-inp" placeholder="Type balasan…" onkeydown="if(event.key===\'Enter\')kvChatSend(\'' + sel + '\')"/><button onclick="kvChatSend(\'' + sel + '\')">Send</button></div>'
+      ? '<div class="kv-tpls">' + tpls + '</div>' +
+        '<div class="kv-chat-input"><input id="kv-inp" placeholder="Type balasan…" onkeydown="if(event.key===\'Enter\')kvChatSend(\'' + sel + '\')"/><button onclick="kvChatSend(\'' + sel + '\')">Send</button></div>'
       : '<div class="kv-chat-input"><input id="kv-inp" placeholder="💡 Ambil alih untuk reply sendiri…" disabled/><button disabled>Send</button></div>';
     thread =
       '<div class="kv-chat-header">' +

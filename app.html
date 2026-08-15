@@ -52,11 +52,18 @@
 .kv-chat-input button{background:#00d294;color:#0a0a0a;border:none;border-radius:99px;padding:9px 18px;font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0}
 .kv-chat-input button:disabled{opacity:.4;cursor:not-allowed}
 .kv-banner{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 16px;font-size:12px;border-bottom:1px solid rgb(255 255 255/.08);flex-shrink:0}
-.kv-banner.ai{background:rgb(0 210 148/.08);color:rgb(0 210 148/.9)}
-.kv-banner.you{background:rgb(255 180 0/.12);color:rgb(255 180 0/.95)}
-.kv-banner .kv-hint{font-size:11px;opacity:.85}
+.kv-banner.ai{background:rgb(0 210 148/.08);color:rgb(0 210 148/.9);border-bottom:1px solid rgb(0 210 148/.25)}
+.kv-banner.you{background:rgb(255 180 0/.16);color:rgb(255 200 60/.98);border-bottom:2px solid rgb(255 180 0/.5);box-shadow:0 0 0 1px rgb(255 180 0/.25), 0 2px 16px rgb(255 180 0/.12);font-size:13px;font-weight:600}
+.kv-banner .kv-hint{font-size:11px;opacity:.85;font-weight:400}
 .kv-take-btn{background:none;border:1px solid currentColor;border-radius:8px;font-size:11px;padding:4px 10px;cursor:pointer;color:inherit;flex-shrink:0}
 .kv-take-btn:hover{background:rgb(255 255 255/.08)}
+.kv-chat-search{padding:10px 12px;border-bottom:1px solid rgb(255 255 255/.06);flex-shrink:0}
+.kv-chat-search input{width:100%;background:rgb(255 255 255/.06);border:1px solid rgb(255 255 255/.12);border-radius:99px;padding:7px 14px;font-size:12px;color:inherit;outline:none}
+.kv-chat-search input:focus{border-color:rgb(0 210 148/.6)}
+.kv-tpls{display:flex;gap:6px;padding:8px 16px 0;flex-wrap:wrap;flex-shrink:0}
+.kv-tpl{background:rgb(0 210 148/.1);border:1px solid rgb(0 210 148/.35);color:rgb(0 210 148/.95);border-radius:99px;font-size:11px;padding:4px 11px;cursor:pointer;transition:background .15s;white-space:nowrap}
+.kv-tpl:hover{background:rgb(0 210 148/.22)}
+.kv-empty{padding:30px 16px;text-align:center;font-size:12px;color:var(--text-muted, rgb(150 150 150/.7))}
 .kv-chat-thread{flex:1;display:flex;flex-direction:column;min-width:0}
 @media (max-width:768px){
   .kv-chat-list{width:100%;border-right:none;max-height:none}
