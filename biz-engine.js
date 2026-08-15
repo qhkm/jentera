@@ -1863,7 +1863,7 @@ function kvCommandCenter(b){
           '<span class="as-tag green">live</span>' +
         '</div>' +
         needHtml +
-        (needsYou.length ? '' : '<p class="text-[12px] text-text-muted">Semua dah settle — takde benda yang perlu kau buat. 🎉</p>') +
+        (needHtml ? '' : '<p class="text-[12px] text-text-muted">Semua dah settle — takde benda yang perlu kau buat. 🎉</p>') +
       '</div>';
   }
   el.innerHTML = html;
