@@ -129,7 +129,7 @@ function kvChans(b){
 var KV_I18N = {
   en: {
     'nav.home':'Home','nav.chat':'Chat','nav.team':'Team Chat','nav.business':'Your Business','nav.aiteam':'AI Team','nav.work':'Work','nav.connections':'Connections',
-    'nav.landing':'← Landing','nav.getstarted':'Get started','nav.openchat':'Open chat →',
+    'nav.landing':'← Landing','nav.getstarted':'Get started','nav.openchat':'Open chat →','nav.logout':'Log out',
     'view.home.greet':'Good morning 👋','view.home.desc':"Here's what happened while you were away.",
     'view.chat':'Chat','view.chat.desc':'Your AI team in real time — like chatting with staff.',
     'view.team':'Team Chat','view.team.desc':'One space for you + all AI agents — tag @agent, they answer.',
@@ -159,7 +159,7 @@ var KV_I18N = {
   },
   bm: {
     'nav.home':'Home','nav.chat':'Chat','nav.team':'Chat Pasukan','nav.business':'Perniagaan Anda','nav.aiteam':'Pasukan AI','nav.work':'Kerja','nav.connections':'Sambungan',
-    'nav.landing':'← Laman','nav.getstarted':'Mula sekarang','nav.openchat':'Buka chat →',
+    'nav.landing':'← Laman','nav.getstarted':'Mula sekarang','nav.openchat':'Buka chat →','nav.logout':'Keluar',
     'view.home.greet':'Selamat pagi 👋','view.home.desc':'Apa yang berlaku semasa kau pergi.',
     'view.chat':'Chat','view.chat.desc':'Pasukan AI kau dalam masa nyata — macam chat dengan staff.',
     'view.team':'Chat Pasukan','view.team.desc':'Satu ruang untuk kau + semua AI agent — tag @agent, dia jawab.',
@@ -205,6 +205,13 @@ function kvToggleLang(){
   KV_STORE.set('aisar-lang', KV_LANG);
   kvApplyLang();
   try { kvRenderAll(); } catch(e){ if (window.console) console.error(e); }
+}
+function kvLogout(){
+  /* Logout = buang data onboarding/bisnes; kekal country & language pref. */
+  var keys = ['aisar-biz-type','aisar-biz-name','aisar-biz-loc','aisar-channels','aisar-conns','aisar-learn','aisar-work-done','aisar-onboarded-v1','aisar-setup-done-v1'];
+  try { keys.forEach(function(k){ localStorage.removeItem(k); }); }
+  catch(e){ if (window.console) console.error(e); }
+  try { window.location.href = '/'; } catch(e){}
 }
 function kvApplyLang(){
   document.querySelectorAll('[data-t]').forEach(function(el){

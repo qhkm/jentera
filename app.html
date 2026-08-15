@@ -125,6 +125,8 @@
 .as-side-item{display:flex;align-items:center;gap:10px;padding:9px 14px;font-size:13px;color:var(--text-secondary, rgb(160 160 170));border-radius:8px;transition:background .15s,color .15s;cursor:pointer}
 .as-side-item:hover{background:rgb(255 255 255 / .05);color:var(--text, #f2f2f2)}
 .as-side-item.active{background:rgb(0 210 148 / .1);color:#00d294}
+.as-side-item.logout-item{color:#f87171;border-top:1px solid rgb(255 255 255/.06);margin-top:2px}
+.as-side-item.logout-item:hover{background:rgb(248 113 113 / .08);color:#f87171}
 .as-card{border:1px solid rgb(255 255 255 / .1);background:rgb(255 255 255 / .02);border-radius:12px}
 .as-chips{display:flex;flex-wrap:wrap;gap:8px}
 .as-chip{border:1px solid rgb(255 255 255 / .1);padding:5px 12px;font-family:var(--font-mono, monospace);font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:rgb(255 255 255 / .5);border-radius:999px}
@@ -257,6 +259,7 @@
 <a class="as-side-item" data-view="work"><span>⚡</span> <span data-t="nav.work">Work</span></a>
 <a class="as-side-item" data-view="connections"><span>🔌</span> <span data-t="nav.connections">Connections</span></a>
 </nav>
+<a class="as-side-item logout-item" href="javascript:void(0)" onclick="kvLogout()"><span>🚪</span> <span data-t="nav.logout">Log out</span></a>
 <div class="mt-auto flex flex-col gap-2 rounded-xl border border-white/10 bg-white/[0.02] p-4">
 <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted" data-t="side.potential">AI Potential</span>
 <div class="flex items-end gap-1">
@@ -290,6 +293,8 @@
 <a class="as-side-item" data-view="aiteam"><span>🤖</span> <span data-t="nav.aiteam">AI Team</span></a>
 <a class="as-side-item" data-view="work"><span>⚡</span> <span data-t="nav.work">Work</span></a>
 <a class="as-side-item" data-view="connections"><span>🔌</span> <span data-t="nav.connections">Connections</span></a>
+<div class="mt-2 border-t border-(--rail)"></div>
+<a class="as-side-item logout-item" href="javascript:void(0)" onclick="kvLogout()"><span>🚪</span> <span data-t="nav.logout">Log out</span></a>
 </nav>
 
 <!-- MAIN CONTENT -->
