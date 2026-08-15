@@ -537,6 +537,8 @@ function kvSuggest(){
 function kvActivate(){
   var btn = document.querySelector('#kv-steps .as-step.active .btn-primary');
   if (btn){ btn.textContent = 'Setting up…'; btn.disabled = true; }
+  /* set flag supaya tak auto-buka lagi (demo) */
+  try { localStorage.setItem('aisar-onboarded-v1', '1'); } catch(e) {}
   setTimeout(function(){
     document.getElementById('kv-onboarding').classList.add('hidden');
     kvToast('AISAR is live. Customer Assistant activated — it\u0027s already learning your menu, hours and FAQs. ⚡');
@@ -548,11 +550,11 @@ function kvActivate(){
 function kvCloseOnboarding(){ document.getElementById('kv-onboarding').classList.add('hidden'); }
 function kvOpenOnboarding(){ document.getElementById('kv-onboarding').classList.remove('hidden'); }
 
-/* Auto-open onboarding kali pertama (demo: guna localStorage) */
+/* Auto-open onboarding kali pertama (demo: guna localStorage, fallback sentiasa buka) */
 (function(){
-  if (!localStorage.getItem('aisar-onboarded-v1')) {
-    kvOpenOnboarding();
-  }
+  var seen = false;
+  try { seen = localStorage.getItem('aisar-onboarded-v1') === '1'; } catch(e) { /* private mode — ignore */ }
+  if (!seen) kvOpenOnboarding();
 })();
 
 /* Toast */
