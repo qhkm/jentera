@@ -43,7 +43,8 @@ var KV_I18N = {
     'chat.search':'Search conversations…','chat.reply':'Type a reply…','chat.takeover':'Take over to reply yourself…','chat.send':'Send',
     'toast.approved':'✓ Approved & sent.',
     'rec.title':'AI recommends','rec.head':'More agents that could help','rec.desc':'Based on your business profile, these roles save you the most time next.','rec.rec':'recommended','rec.cta':'Add to team','rec.added':'✓ {n} added — connect channels to go live.',
-    'pot.txt':'AISAR found {n} more opportunities to automate.'
+    'pot.txt':'AISAR found {n} more opportunities to automate.',
+    'uc.suggested':'Suggested next','uc.automate':'Automate it','uc.notnow':'Not now','uc.opportunity':'opportunity — not automated yet','uc.see':'See in Work','uc.more':'More ways AISAR can help — pick an area to automate'
   },
   bm: {
     'nav.home':'Home','nav.chat':'Chat','nav.team':'Chat Pasukan','nav.business':'Perniagaan Anda','nav.aiteam':'Pasukan AI','nav.work':'Kerja','nav.connections':'Sambungan',
@@ -72,7 +73,8 @@ var KV_I18N = {
     'chat.search':'Cari perbualan…','chat.reply':'Type balasan…','chat.takeover':'Ambil alih untuk reply sendiri…','chat.send':'Send',
     'toast.approved':'✓ Diluluskan & dihantar.',
     'rec.title':'Cadangan AI','rec.head':'Agent lain yang boleh bantu','rec.desc':'Berdasarkan profil bisnes kau, peranan ni jimatkan masa paling banyak.','rec.rec':'disyorkan','rec.cta':'Tambah ke team','rec.added':'✓ {n} ditambah — sambung saluran untuk aktif.',
-    'pot.txt':'AISAR jumpa {n} lagi peluang untuk automasi.'
+    'pot.txt':'AISAR jumpa {n} lagi peluang untuk automasi.',
+    'uc.suggested':'Cadangan seterusnya','uc.automate':'Automatikkan','uc.notnow':'Nanti dulu','uc.opportunity':'peluang — belum automatik','uc.see':'Lihat dalam Kerja','uc.more':'Lagi cara AISAR boleh bantu — pilih mana nak automatikkan'
   }
 };
 var KV_LANG = (KV_STORE.get('aisar-lang','en') === 'bm') ? 'bm' : 'en';
@@ -109,7 +111,7 @@ function kvApplyLang(){
 var PLAYBOOKS = {
 
   restaurant: {
-    icon: '🍜', keywords: ['restaurant','cafe','café','kedai makan','kopi','kopitiam','food','bistro','warung','mamak','grill','sushi','pizza','burger','catering','dapur','kafe'],
+    icon: '🍜', keywords: ['restaurant','cafe','café','kedai makan','kopi','kopitiam','food','bistro','warung','mamak','grill','sushi','pizza','burger','dapur','kafe'],
     name: 'Your Restaurant', type: 'Restaurant / Café', sub: 'Restaurant / Café', site: 'yourbusiness.com', booking: 'Phone + Instagram DM', systems: 'Google Sheets · POS',
     potential: 62, opportunities: 4, ch: ['WhatsApp','Instagram'],
     detect: 'restaurant · premium · Kuala Lumpur',
@@ -200,8 +202,128 @@ var PLAYBOOKS = {
       { e:'💳', n:'Payment gateway', s:'not connected', d:'Unlocks automatic receipts & payment reminders.', on:false, cta:'Payment connection wizard will open — we\u0027ll guide you through it.' } ]
   },
 
+  catering: {
+    icon: '🎪', keywords: ['catering','katering','buffet','bento','bento box','tiffin','hi-tea','high tea','caterer'],
+    name: 'Your Catering', type: 'Catering / Event', sub: 'Catering / Event', site: 'yourcatering.my', booking: 'WhatsApp / Phone', systems: 'WhatsApp · Google Sheets',
+    potential: 64, opportunities: 4, ch: ['WhatsApp','Instagram'],
+    detect: 'catering & events · Kuala Lumpur',
+    loc: 'Kuala Lumpur, MY',
+    confirm: 'I found that you run a catering / event food business. Is that correct?',
+    funcs: [['Customer service','','covered'],['Event quotes','green','live'],['Order intake','green','live'],['Scheduling','amber','opportunity'],['Weekly reports','amber','opportunity']],
+    stats: [
+      { d:'Today', v:'14', u:'', l:'enquiries answered', s:'5 quote requests' },
+      { d:'Events this month', v:'9', u:'', l:'confirmed from quotes', s:'3 pending deposit' },
+      { d:'Hours saved', v:'12', u:' hrs', l:'saved this week by your AI team', p:55 } ],
+    sug: { t:'Automate event quote requests', d:'Clients ask for buffet quotes at all hours. AISAR collects event details (date, pax, menu) and sends a quote — no back-and-forth.', tag:'est. 5 hrs/month', cta:'Automation queued — I\u0027ll handle quote requests.' },
+    team: [
+      { e:'💬', n:'Customer Assistant', ch:'WhatsApp · Instagram', d:'Answers menu, pricing and availability questions — 24/7.', m:'Today · 16 chats · 3 escalated' },
+      { e:'📝', n:'Quote Agent', ch:'WhatsApp · Form', d:'Collects event details (date, pax, menu) and drafts quotes instantly.', m:'This week · 6 quotes' },
+      { e:'📅', n:'Event Coordinator', ch:'Calendar · WhatsApp', d:'Tracks confirmed events and reminds you about deposits and prep.', m:'This month · 9 events' },
+      { e:'📊', n:'Ops Assistant', ch:'Sheets · Reports', d:'Watches ingredient stock and prepares post-event summaries.', m:'', setup:true } ],
+    work: [
+      { e:'💬', n:'Customer Assistant', t:'WhatsApp · 2m ago · auto', tag:'done', tc:'', d:'Answered "Ada menu untuk 50 pax?" with package options + price range.' },
+      { e:'📝', n:'Quote Agent', t:'1h ago · auto', tag:'sent', tc:'green', d:'Sent buffet quote for 19 Aug (80 pax, RM 28/pax) — awaiting deposit.' },
+      { e:'📅', n:'Event Coordinator', t:'3h ago · auto', tag:'confirmed', tc:'green', d:'Booking confirmed for Saturday wedding — reminder set for prep day.' },
+      { e:'⚠️', n:'Customer Assistant', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Client asked for halal certification documents — AISAR needs your copy to send. Review?', cta:'Approved — cert sent.' } ],
+    conns: [
+      { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Customer Assistant & Quote Agent use this to talk to clients.', on:true },
+      { e:'📸', n:'Instagram', s:'Shop · linked', d:'Customer Assistant answers menu DMs here.', on:true },
+      { e:'📊', n:'Google Sheets', s:'linked', d:'Ops Assistant reads quotes & bookings here.', on:true },
+      { e:'💳', n:'Payment gateway', s:'not connected', d:'Unlocks automatic deposits & payment reminders.', on:false, cta:'Payment connection wizard will open — we\u0027ll guide you through it.' } ]
+  },
+
+  photography: {
+    icon: '📸', keywords: ['photography','photographer','foto','gambar','shoot','video shoot','videography','videographer','studio foto','wedding shoot','prewedding','seni foto','portfolio shoot'],
+    name: 'Your Studio', type: 'Photography / Video', sub: 'Photography / Video', site: 'yourstudio.my', booking: 'Calendly · WhatsApp', systems: 'Google Calendar · Portfolio',
+    potential: 60, opportunities: 4, ch: ['Instagram','WhatsApp'],
+    detect: 'photography & videography · Kuala Lumpur',
+    loc: 'Kuala Lumpur, MY',
+    confirm: 'I found that you run a photography / videography studio. Is that correct?',
+    funcs: [['Enquiry response','','covered'],['Booking slots','green','live'],['Gallery delivery','green','live'],['Scheduling','amber','opportunity'],['Invoicing','amber','opportunity']],
+    stats: [
+      { d:'Today', v:'18', u:'', l:'enquiries answered', s:'4 booking requests' },
+      { d:'Shoots this month', v:'11', u:'', l:'booked & scheduled', s:'2 rescheduled' },
+      { d:'Hours saved', v:'14', u:' hrs', l:'saved this week by your AI team', p:57 } ],
+    sug: { t:'Automate booking & reminder flow', d:'Clients ask "ada slot weekend ni?" every day. AISAR checks your calendar, books slots and sends reminders — no double-booking.', tag:'est. 4 hrs/month', cta:'Automation queued — I\u0027ll handle bookings.' },
+    team: [
+      { e:'💬', n:'Lead Responder', ch:'Instagram · WhatsApp', d:'Answers package, price and availability questions — in seconds.', m:'Today · 20 chats · 5 escalated' },
+      { e:'📅', n:'Booking Agent', ch:'Calendar · WhatsApp', d:'Checks studio availability and books shoots without the back-and-forth.', m:'This week · 7 bookings' },
+      { e:'🖼️', n:'Client Assistant', ch:'Email · Link', d:'Delivers galleries, sends previews and reminds clients about prints.', m:'This month · 12 deliveries' },
+      { e:'📊', n:'Ops Assistant', ch:'Sheets · Invoicing', d:'Tracks shoot invoices and chases late payments politely.', m:'', setup:true } ],
+    work: [
+      { e:'💬', n:'Lead Responder', t:'Instagram · 2m ago · auto', tag:'done', tc:'', d:'Answered "Berapa untuk prewedding outdoor?" with package + sample link.' },
+      { e:'📅', n:'Booking Agent', t:'1h ago · auto', tag:'confirmed', tc:'green', d:'Booked family shoot — Sat 10am, studio A. Reminder sent to client.' },
+      { e:'🖼️', n:'Client Assistant', t:'3h ago · auto', tag:'sent', tc:'green', d:'Delivered wedding gallery — 230 edited photos, 24h download link.' },
+      { e:'⚠️', n:'Lead Responder', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Client wants a rush quote for corporate event coverage (3 days notice). AISAR asked if you can accept. Review?', cta:'Approved — rush fee quoted.' } ],
+    conns: [
+      { e:'📸', n:'Instagram', s:'Shop · linked', d:'Lead Responder answers DMs & comments here.', on:true },
+      { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Booking Agent confirms sessions here.', on:true },
+      { e:'📅', n:'Google Calendar', s:'linked', d:'Booking Agent reads availability from your studio calendar.', on:true },
+      { e:'🧾', n:'Invoicing', s:'not connected', d:'Unlocks automatic invoices & payment follow-ups after each shoot.', on:false, cta:'Invoicing wizard will open — we\u0027ll guide you through it.' } ]
+  },
+
+  bakery: {
+    icon: '🍰', keywords: ['bakery','bakeri','kek','cake','cupcake','donut','brownie','tart','patisserie','kedai kek','biskut','cookies','artisan bread','rotibakar'],
+    name: 'Your Bakery', type: 'Bakery / Patisserie', sub: 'Bakery / Patisserie', site: 'yourbakery.my', booking: 'WhatsApp / Walk-in', systems: 'WhatsApp · Instagram · Google Sheets',
+    potential: 63, opportunities: 5, ch: ['WhatsApp','Instagram'],
+    detect: 'bakery & patisserie · Shah Alam',
+    loc: 'Shah Alam, MY',
+    confirm: 'I found that you run a bakery / patisserie with custom pre-orders. Is that correct?',
+    funcs: [['Customer service','','covered'],['Custom pre-orders','green','live'],['Order reminders','green','live'],['Inventory & ordering','amber','opportunity'],['Loyalty & rebooking','amber','opportunity']],
+    stats: [
+      { d:'Today', v:'22', u:'', l:'orders & questions handled', s:'3 needed you' },
+      { d:'Cakes this week', v:'31', u:'', l:'custom pre-orders', s:'2 cancellations' },
+      { d:'Hours saved', v:'16', u:' hrs', l:'saved this week by your AI team', p:61 } ],
+    sug: { t:'Automate custom cake orders', d:'Customers describe cakes on WhatsApp at midnight. AISAR captures flavour, size and pickup date — then reminds them to confirm.', tag:'est. 6 hrs/month', cta:'Automation queued — I\u0027ll take cake orders.' },
+    team: [
+      { e:'💬', n:'Customer Assistant', ch:'WhatsApp · Instagram', d:'Answers flavour, price and order-cutoff questions — 24/7.', m:'Today · 24 chats · 3 escalated' },
+      { e:'🎂', n:'Order Taker', ch:'WhatsApp', d:'Captures custom cake orders — flavour, size, pickup date, deposit.', m:'This week · 18 orders' },
+      { e:'🔁', n:'Follow-up', ch:'WhatsApp', d:'Reminds customers to confirm & pay, and nudges repeat orders.', m:'This month · 21 reminders' },
+      { e:'📊', n:'Ops Assistant', ch:'Stock · Reports', d:'Watches ingredient stock and flags what to bake more of.', m:'', setup:true } ],
+    work: [
+      { e:'💬', n:'Customer Assistant', t:'WhatsApp · 2m ago · auto', tag:'done', tc:'', d:'Answered "Boleh order kek untuk esok?" with cutoff + pickup info.' },
+      { e:'🎂', n:'Order Taker', t:'1h ago · auto', tag:'confirmed', tc:'green', d:'Captured order: chocolate 1kg, pickup Sat 3pm — deposit pending.' },
+      { e:'🔁', n:'Follow-up', t:'3h ago · auto', tag:'sent', tc:'green', d:'Reminded 4 customers about pickup tomorrow + payment confirmation.' },
+      { e:'⚠️', n:'Customer Assistant', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Customer wants a 3-tier wedding cake with custom design — needs your quote. Review?', cta:'Approved — quote sent.' } ],
+    conns: [
+      { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Customer Assistant & Order Taker use this to talk to customers.', on:true },
+      { e:'📸', n:'Instagram', s:'Shop · linked', d:'Customer Assistant answers DM orders here.', on:true },
+      { e:'📊', n:'Google Sheets', s:'linked', d:'Ops Assistant reads pre-orders & stock here.', on:true },
+      { e:'💳', n:'Payment gateway', s:'not connected', d:'Unlocks automatic deposit collection & receipts.', on:false, cta:'Payment connection wizard will open — we\u0027ll guide you through it.' } ]
+  },
+
+  wedding: {
+    icon: '💍', keywords: ['wedding','perkahwinan','nikah','kenduri','pelamin','bridal','hantaran','event planner','wedding planner','decor','dekorasi','tent','khemah','gubahan'],
+    name: 'Your Studio', type: 'Wedding / Events', sub: 'Wedding / Events', site: 'yourwedding.my', booking: 'WhatsApp / Site visit', systems: 'WhatsApp · Google Sheets',
+    potential: 62, opportunities: 5, ch: ['WhatsApp','Instagram'],
+    detect: 'wedding & events · Shah Alam',
+    loc: 'Shah Alam, MY',
+    confirm: 'I found that you run a wedding / event planning business. Is that correct?',
+    funcs: [['Enquiry response','','covered'],['Package quotes','green','live'],['Follow-up','green','live'],['Scheduling','amber','opportunity'],['Invoicing','amber','opportunity']],
+    stats: [
+      { d:'Today', v:'9', u:'', l:'enquiries answered', s:'3 wedding leads' },
+      { d:'Events this month', v:'5', u:'', l:'confirmed packages', s:'2 deposits pending' },
+      { d:'Hours saved', v:'11', u:' hrs', l:'saved this week by your AI team', p:54 } ],
+    sug: { t:'Automate wedding lead follow-up', d:'Couples enquire with 3 planners at once — the fastest reply wins. AISAR answers instantly and books site visits for the best-fit dates.', tag:'est. 5 hrs/month', cta:'Automation queued — I\u0027ll chase wedding leads.' },
+    team: [
+      { e:'💬', n:'Lead Responder', ch:'Instagram · WhatsApp', d:'Answers package, date and budget questions — in seconds, day or night.', m:'Today · 12 chats · 6 escalated' },
+      { e:'📝', n:'Quote Agent', ch:'WhatsApp · Form', d:'Collects wedding details (date, pax, theme) and drafts package quotes.', m:'This week · 4 quotes' },
+      { e:'📅', n:'Event Coordinator', ch:'Calendar · WhatsApp', d:'Books site visits, tracks deposits and reminds you about prep milestones.', m:'This month · 5 events' },
+      { e:'📊', n:'Ops Assistant', ch:'Sheets · Invoicing', d:'Tracks vendor payments and invoice status per event.', m:'', setup:true } ],
+    work: [
+      { e:'💬', n:'Lead Responder', t:'Instagram · 2m ago · auto', tag:'done', tc:'', d:'Answered "Harga package pelamin + hantaran?" with package link.' },
+      { e:'📝', n:'Quote Agent', t:'1h ago · auto', tag:'sent', tc:'green', d:'Sent package quote for Dec wedding (200 pax, theme garden).' },
+      { e:'📅', n:'Event Coordinator', t:'3h ago · auto', tag:'confirmed', tc:'green', d:'Site visit booked — Sunday 11am. Reminder set for both parties.' },
+      { e:'⚠️', n:'Lead Responder', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Couple wants custom theme + outside vendor — AISAR flagged before promising. Review?', cta:'Approved — custom quote sent.' } ],
+    conns: [
+      { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Lead Responder & Quote Agent use this to talk to couples.', on:true },
+      { e:'📸', n:'Instagram', s:'Shop · linked', d:'Lead Responder answers DMs & comments here.', on:true },
+      { e:'📊', n:'Google Sheets', s:'linked', d:'Ops Assistant reads quotes & event status here.', on:true },
+      { e:'🧾', n:'Invoicing', s:'not connected', d:'Unlocks automatic deposits & milestone invoice reminders.', on:false, cta:'Invoicing wizard will open — we\u0027ll guide you through it.' } ]
+  },
+
   services: {
-    icon: '💼', keywords: ['agency','service','services','studio','konsult','consult','design','branding','marketing','digital','freelance','architect','law','accounting','audit','photography'],
+    icon: '💼', keywords: ['agency','service','services','studio','konsult','consult','design','branding','marketing','digital','freelance','architect','law','accounting','audit'],
     name: 'Your Studio', type: 'Services / Agency', sub: 'Services / Agency', site: 'yourstudio.my', booking: 'Email / Calendly', systems: 'Notion · Google Calendar',
     potential: 66, opportunities: 4, ch: ['Instagram','Email'],
     detect: 'agency · design & branding · Petaling Jaya',
@@ -2314,20 +2436,37 @@ function kvRenderAll(){
     if (pop && pop.pick && pop.pick.indexOf('inferred:') !== 0){
       signal = '<div class="mt-2 text-[11px] text-text-muted">🔥 ' + pop.n + ' other ' + b.sub.toLowerCase() + ' businesses started with this.</div>';
     }
+    /* Use cases to automate: suggestion utama + opportunity funcs */
+    var ops = (b.funcs || []).filter(function(f){ return f[2] === 'opportunity'; });
+    var opCards = ops.map(function(f){
+      return '<div class="flex items-center justify-between gap-3 rounded-lg border border-(--rail) px-4 py-3">' +
+        '<div class="flex flex-col gap-0.5">' +
+          '<span class="text-[13px] text-text">' + f[0] + '</span>' +
+          '<span class="text-[11px] text-text-muted">' + kvT('uc.opportunity') + '</span>' +
+        '</div>' +
+        '<button class="btn btn-outline px-3 py-1 text-[11px] whitespace-nowrap" onclick="kvNav(\'work\');return false">' + kvT('uc.see') + '</button>' +
+      '</div>';
+    }).join('');
     el.innerHTML =
+      '<div class="flex flex-col gap-4">' +
       '<div class="as-card flex flex-col gap-4 p-5">' +
       '<div class="as-row justify-between">' +
         '<div class="flex flex-col gap-1">' +
-          '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Suggested next</span>' +
+          '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">' + kvT('uc.suggested') + '</span>' +
           '<h3 class="font-pixel text-lg tracking-tight">' + b.sug.t + '</h3>' +
           '<p class="text-[13px] text-text-secondary">' + b.sug.d + '</p>' +
         '</div>' +
         '<span class="as-tag green">' + b.sug.tag + '</span>' +
       '</div>' +
       '<div class="as-row gap-3">' +
-        '<button class="btn btn-primary px-5 py-2 text-sm" data-msg="' + b.sug.cta + '" onclick="kvToast(this.dataset.msg)">Automate it</button>' +
-        '<button class="btn btn-outline px-5 py-2 text-sm">Not now</button>' +
+        '<button class="btn btn-primary px-5 py-2 text-sm" data-msg="' + b.sug.cta + '" onclick="kvToast(this.dataset.msg)">' + kvT('uc.automate') + '</button>' +
+        '<button class="btn btn-outline px-5 py-2 text-sm">' + kvT('uc.notnow') + '</button>' +
       '</div>' + signal +
+      '</div>' +
+      (opCards ? '<div class="flex flex-col gap-2">' +
+        '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">' + kvT('uc.more') + '</span>' +
+        opCards +
+      '</div>' : '') +
       '</div>';
   }
 
