@@ -27,6 +27,15 @@
 /* AISAR accent — arbitrary Tailwind classes tak wujud dalam prebuilt CSS, jadi roll sendiri */
 .as-green{color:#00d294}
 .as-border-green{border-color:rgb(0 210 148 / .4)}
+
+/* Button fix — CSS chunk paksa padding-block:0!important + selector .theme-dark vs .site-theme-dark mismatch */
+html.site-theme-dark .btn{padding-block:12px !important}
+html.site-theme-dark .btn.py-4{padding-block:16px !important}
+@media (min-width:48rem){html.site-theme-dark .btn.py-4{padding-block:12px !important}}
+html.site-theme-dark .btn-primary,html.site-theme-dark .btn-primary:visited{border-color:var(--color-white);background:var(--color-white);color:var(--color-black)}
+html.site-theme-dark .btn-primary:hover{background:rgb(255 255 255 / .88);border-color:rgb(255 255 255 / .88)}
+html.site-theme-dark .btn-outline{border-color:rgb(255 255 255 / .5);color:var(--color-white);background:transparent}
+html.site-theme-dark .btn-outline:hover{border-color:rgb(255 255 255 / .8);background:rgb(255 255 255 / .08)}
 .as-reco-btn{border:1px solid rgb(0 210 148 / .5);background:rgb(0 210 148 / .1);color:#00d294;transition:background .2s}
 .as-reco-btn:hover{background:rgb(0 210 148 / .2)}
 .as-chat{min-height:380px}
