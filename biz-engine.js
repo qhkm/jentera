@@ -42,6 +42,7 @@ var KV_I18N = {
     'team.ph.pasukan':'Message for the team — tag @agent…','team.ph.escalation':'Update / instructions — tag @agent…','team.ph.random':'Casual chat — tag @agent…','team.channels':'channels',
     'chat.search':'Search conversations…','chat.reply':'Type a reply…','chat.takeover':'Take over to reply yourself…','chat.send':'Send',
     'toast.approved':'✓ Approved & sent.',
+    'rec.title':'AI recommends','rec.head':'More agents that could help','rec.desc':'Based on your business profile, these roles save you the most time next.','rec.rec':'recommended','rec.cta':'Add to team','rec.added':'✓ {n} added — connect channels to go live.',
     'pot.txt':'AISAR found {n} more opportunities to automate.'
   },
   bm: {
@@ -70,6 +71,7 @@ var KV_I18N = {
     'team.ph.pasukan':'Mesej untuk pasukan — tag @agent…','team.ph.escalation':'Update / arahan — tag @agent…','team.ph.random':'Sembang santai — tag @agent…','team.channels':'saluran',
     'chat.search':'Cari perbualan…','chat.reply':'Type balasan…','chat.takeover':'Ambil alih untuk reply sendiri…','chat.send':'Send',
     'toast.approved':'✓ Diluluskan & dihantar.',
+    'rec.title':'Cadangan AI','rec.head':'Agent lain yang boleh bantu','rec.desc':'Berdasarkan profil bisnes kau, peranan ni jimatkan masa paling banyak.','rec.rec':'disyorkan','rec.cta':'Tambah ke team','rec.added':'✓ {n} ditambah — sambung saluran untuk aktif.',
     'pot.txt':'AISAR jumpa {n} lagi peluang untuk automasi.'
   }
 };
@@ -1836,6 +1838,38 @@ function kvAgentReady(t){
   var match = keys.some(function(cn){ return ch.indexOf(cn.split(' ')[0].toLowerCase()) >= 0; });
   return match || keys.length > 0;
 }
+
+/* ---- AI Team: AI recommendations (opportunity functions -> agents) ---- */
+var KV_REC_MAP = {
+  'Inventory & ordering': { e:'📦', n:'Inventory Agent', d:'Watches your stock levels in Sheets or POS and auto-orders before you run out.', tag:'est. 4 hrs/month' },
+  'Weekly reports': { e:'📊', n:'Reporting Agent', d:'Builds your Monday business report automatically — sales, bookings, issues.', tag:'est. 2 hrs/month' },
+  'Returns': { e:'🔄', n:'Returns Agent', d:'Guides customers through returns and refunds 24/7, escalating only unusual cases.', tag:'est. 3 hrs/month' },
+  'Scheduling': { e:'📅', n:'Scheduling Agent', d:'Proposes follow-up times and books meetings without the back-and-forth.', tag:'est. 3 hrs/month' },
+  'Invoicing': { e:'🧾', n:'Invoicing Agent', d:'Drafts invoices after each job and chases late payments politely.', tag:'est. 4 hrs/month' },
+  'Billing': { e:'💳', n:'Billing Agent', d:'Sends payment reminders and receipts automatically after each visit.', tag:'est. 3 hrs/month' },
+  'Product retail': { e:'🛍️', n:'Retail Assistant', d:'Recommends products, checks stock and closes sales on WhatsApp and Instagram.', tag:'est. 5 hrs/month' },
+  'Loyalty & rebooking': { e:'🎁', n:'Loyalty Agent', d:'Turns one-time customers into regulars with rebooking offers and perks.', tag:'est. 4 hrs/month' },
+  'Renewals': { e:'🔁', n:'Renewals Agent', d:'Tracks memberships ending soon and sends renewal offers automatically.', tag:'est. 3 hrs/month' },
+  'Trial sign-ups': { e:'🎟️', n:'Trial Agent', d:'Books trial sessions and follows up to convert them into members.', tag:'est. 4 hrs/month' },
+  'Attendance': { e:'📋', n:'Attendance Agent', d:'Tracks attendance and flags patterns — fewer missed classes, fewer gaps.', tag:'est. 2 hrs/month' },
+  'Progress reports': { e:'📈', n:'Progress Agent', d:'Sends parents monthly progress updates without you writing them.', tag:'est. 3 hrs/month' },
+  'Reports': { e:'📊', n:'Reporting Agent', d:'Turns your daily data into a weekly summary you can read in 2 minutes.', tag:'est. 2 hrs/month' }
+};
+var KV_RECS_LAST = [];
+function kvTeamRecs(b){
+  var out = [];
+  (b.funcs || []).forEach(function(f){
+    if (f[2] !== 'opportunity') return;
+    var m = KV_REC_MAP[f[0]];
+    if (m) out.push({ icon:m.e, name:m.n, desc:m.d, tag:m.tag });
+  });
+  return out;
+}
+function kvAddRec(i){
+  var r = KV_RECS_LAST[i];
+  kvToast(kvT('rec.added').replace('{n}', r ? r.name : 'Agent'));
+  kvNav('connections');
+}
 function kvWorkDone(i){
   var k = 'aisar-work-done:' + kvBizType();
   try { return JSON.parse(KV_STORE.get(k, '[]')).indexOf(String(i)) >= 0; } catch(e){ return false; }
@@ -2309,6 +2343,33 @@ function kvRenderAll(){
         (meta ? '<div class="as-row justify-between"><span class="text-[11px] text-text-muted">' + meta + '</span></div>' : '') +
         '</div>';
     }).join('');
+  }
+
+  /* AI Team — AI recommends: opportunity funcs -> suggested agents */
+  if ((el = document.getElementById('kv-recs'))) {
+    var recs = kvTeamRecs(b);
+    if (!recs.length){
+      el.style.display = 'none';
+      el.innerHTML = '';
+    } else {
+      KV_RECS_LAST = recs;
+      el.style.display = '';
+      el.innerHTML =
+        '<div class="flex flex-col gap-1">' +
+          '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">' + kvT('rec.title') + '</span>' +
+          '<h3 class="font-pixel text-lg tracking-tight">' + kvT('rec.head') + '</h3>' +
+          '<p class="text-[13px] text-text-secondary">' + kvT('rec.desc') + '</p>' +
+        '</div>' +
+        '<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">' +
+        recs.map(function(r, i){
+          return '<div class="as-card flex flex-col gap-3 p-5" style="border-color:rgb(0 210 148/.35)">' +
+            '<div class="as-row justify-between"><div class="as-row"><span class="as-avatar">' + r.icon + '</span><div class="flex flex-col"><span class="text-sm">' + r.name + '</span><span class="text-[11px] text-text-muted">' + r.tag + '</span></div></div><span class="text-[10px] font-mono uppercase tracking-[0.18em]" style="color:#ffb43c;background:rgb(255 180 60/.12);border:1px solid rgb(255 180 60/.3);padding:3px 8px;border-radius:999px">' + kvT('rec.rec') + '</span></div>' +
+            '<p class="text-[13px] text-text-secondary">' + r.desc + '</p>' +
+            '<button class="btn btn-primary px-4 py-1.5 text-xs self-start" onclick="kvAddRec(' + i + ')">' + kvT('rec.cta') + '</button>' +
+          '</div>';
+        }).join('') +
+        '</div>';
+    }
   }
 
   /* Work — decision inbox: ringkasan + filter + senarai */
