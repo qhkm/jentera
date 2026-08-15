@@ -105,9 +105,22 @@
 .as-mobile-nav{display:flex}
 .as-side-desktop{display:none}
 .as-modal{z-index:100}
+/* Mobile hamburger — ganti pills horizontal scroll */
+.as-mobile-bar{display:flex;align-items:center;gap:12px;padding:10px 16px;position:sticky;top:0;z-index:40;background:var(--bg, #0a0a0a);backdrop-filter:blur(12px)}
+.kv-burger{display:flex;flex-direction:column;justify-content:center;gap:5px;width:38px;height:34px;padding:0 8px;background:none;border:1px solid rgb(255 255 255/.14);border-radius:8px;cursor:pointer;flex-shrink:0;color:inherit}
+.kv-burger span{display:block;height:2px;width:100%;background:currentColor;border-radius:2px;transition:transform .22s,opacity .22s}
+.kv-burger.open span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+.kv-burger.open span:nth-child(2){opacity:0}
+.kv-burger.open span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+.kv-drawer{position:fixed;top:0;left:0;bottom:0;width:272px;max-width:85vw;background:var(--bg, #0a0a0a);border-right:1px solid rgb(255 255 255/.1);z-index:60;transform:translateX(-102%);transition:transform .28s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;gap:2px;padding:14px 10px;overflow-y:auto}
+.kv-drawer.open{transform:translateX(0)}
+.kv-drawer-overlay{position:fixed;inset:0;background:rgb(0 0 0/.55);z-index:55;opacity:0;pointer-events:none;transition:opacity .25s}
+.kv-drawer-overlay.open{opacity:1;pointer-events:auto}
 @media (min-width:48rem){
   .as-mobile-nav{display:none}
   .as-side-desktop{display:flex;flex-direction:column}
+  .as-mobile-bar{display:none}
+  .kv-drawer,.kv-drawer-overlay{display:none}
 }
 .as-input{border:1px solid rgb(255 255 255 / .15);background:rgb(0 0 0 / .3)}
 .as-input:focus{border-color:#00d294}
@@ -193,16 +206,26 @@
 </div>
 </aside>
 
-<!-- MOBILE NAV (top bar pills) -->
+<!-- MOBILE top bar: hamburger + logo -->
 <div class="as-app-col">
-<div class="as-mobile-nav gap-2 overflow-x-auto border-b border-(--rail) px-4 py-3" id="kv-side-m">
-<a class="as-side-item active" data-view="home">Home</a>
-<a class="as-side-item" data-view="chat">Chat</a>
-<a class="as-side-item" data-view="business">Business</a>
-<a class="as-side-item" data-view="aiteam">AI Team</a>
-<a class="as-side-item" data-view="work">Work</a>
-<a class="as-side-item" data-view="connections">Connections</a>
+<div class="as-mobile-bar border-b border-(--rail)">
+<button id="kv-burger" class="kv-burger" aria-label="Buka menu" type="button"><span></span><span></span><span></span></button>
+<span class="font-pixel text-sm tracking-wide text-text"><span class="as-green">aisar</span><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">/app</span></span>
 </div>
+<!-- MOBILE drawer (slide-in dari kiri) -->
+<div class="kv-drawer-overlay" id="kv-drawer-overlay"></div>
+<nav class="kv-drawer" id="kv-drawer" aria-label="Mobile navigation">
+<div class="flex flex-col gap-1 px-2 pt-1 pb-3">
+<span class="font-pixel text-sm text-text">Menu</span>
+<span class="text-[11px] text-text-muted">AISAR platform</span>
+</div>
+<a class="as-side-item active" data-view="home"><span>🏠</span> Home</a>
+<a class="as-side-item" data-view="chat"><span>💬</span> Chat</a>
+<a class="as-side-item" data-view="business"><span>🏢</span> Your Business</a>
+<a class="as-side-item" data-view="aiteam"><span>🤖</span> AI Team</a>
+<a class="as-side-item" data-view="work"><span>⚡</span> Work</a>
+<a class="as-side-item" data-view="connections"><span>🔌</span> Connections</a>
+</nav>
 
 <!-- MAIN CONTENT -->
 <main class="flex-1 px-6 py-8 md:px-10 md:py-10" id="kv-main">
@@ -309,8 +332,39 @@
 function kvNav(view){
   document.querySelectorAll('.as-side-item').forEach(function(el){ el.classList.toggle('active', el.dataset.view===view); });
   document.querySelectorAll('.as-view').forEach(function(el){ el.classList.toggle('active', el.id==='view-'+view); });
+  kvDrawerClose();
+  if (typeof ScrollTrigger !== 'undefined' && window.scrollY > 0) window.scrollTo({top:0,behavior:'smooth'});
 }
 document.querySelectorAll('.as-side-item').forEach(function(el){ el.addEventListener('click', function(){ kvNav(el.dataset.view); }); });
+
+/* Mobile hamburger drawer */
+function kvDrawerOpen(){
+  var b = document.getElementById('kv-burger');
+  var d = document.getElementById('kv-drawer');
+  var o = document.getElementById('kv-drawer-overlay');
+  if (b) b.classList.add('open');
+  if (d) d.classList.add('open');
+  if (o) o.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function kvDrawerClose(){
+  var b = document.getElementById('kv-burger');
+  var d = document.getElementById('kv-drawer');
+  var o = document.getElementById('kv-drawer-overlay');
+  if (b) b.classList.remove('open');
+  if (d) d.classList.remove('open');
+  if (o) o.classList.remove('open');
+  document.body.style.overflow = '';
+}
+(function(){
+  var b = document.getElementById('kv-burger');
+  var o = document.getElementById('kv-drawer-overlay');
+  if (b) b.addEventListener('click', function(){
+    var d = document.getElementById('kv-drawer');
+    if (d && d.classList.contains('open')) kvDrawerClose(); else kvDrawerOpen();
+  });
+  if (o) o.addEventListener('click', kvDrawerClose);
+})();
 
 /* First visit -> onboarding page; lepas tu terus ke dashboard */
 (function(){
