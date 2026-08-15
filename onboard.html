@@ -110,6 +110,10 @@
 <button class="btn btn-outline px-6 py-3 text-sm sm:w-auto" onclick="kvGoNext()">Scan website →</button>
 </div>
 <div class="flex flex-col gap-2">
+<input type="text" id="kv-social" class="as-input w-full rounded-lg px-4 py-3 font-mono text-sm text-text outline-none" placeholder="Social media (optional) — instagram.com/yourbrand · tiktok.com/@yourbrand"/>
+<p class="text-[11px] text-text-muted">Share your social links too — AISAR learns your brand voice &amp; audience.</p>
+</div>
+<div class="flex flex-col gap-2">
 <div class="as-row gap-3">
 <span class="as-tick on">✓</span>
 <span class="text-[13px] text-text-secondary">No website? <a class="as-green" href="#" onclick="kvSkipUrl();return false">Answer a few questions instead</a></span>
@@ -222,6 +226,7 @@
 <div class="as-profile-row"><span class="as-profile-k">Type</span><span class="as-profile-v empty" id="p-type">—</span></div>
 <div class="as-profile-row"><span class="as-profile-k">Location</span><span class="as-profile-v empty" id="p-loc">—</span></div>
 <div class="as-profile-row"><span class="as-profile-k">Website</span><span class="as-profile-v empty" id="p-url">—</span></div>
+<div class="as-profile-row"><span class="as-profile-k">Social</span><span class="as-profile-v empty" id="p-social">—</span></div>
 <div class="as-profile-row"><span class="as-profile-k">Channels</span><span class="as-profile-v empty" id="p-ch">—</span></div>
 <div class="as-profile-row"><span class="as-profile-k">Top pain</span><span class="as-profile-v empty" id="p-pain">—</span></div>
 <div class="as-profile-row"><span class="as-profile-k">AI team</span><span class="as-profile-v empty" id="p-team">—</span></div>
@@ -289,6 +294,8 @@ function kvGenerate(){
   document.getElementById('kv-scan-url').textContent = t;
   var url = document.getElementById('kv-url').value.trim();
   if (url){ document.getElementById('p-url').textContent = url; document.getElementById('p-url').classList.remove('empty'); }
+  var social = document.getElementById('kv-social').value.trim();
+  if (social){ document.getElementById('p-social').textContent = social; document.getElementById('p-social').classList.remove('empty'); }
   kvStep(1);
   runScanLines();
 }
@@ -299,6 +306,8 @@ function kvScan(){
   document.getElementById('kv-scan-url').textContent = url;
   document.getElementById('p-url').textContent = url;
   document.getElementById('p-url').classList.remove('empty');
+  var social = document.getElementById('kv-social').value.trim();
+  if (social){ document.getElementById('p-social').textContent = social; document.getElementById('p-social').classList.remove('empty'); }
   kvStep(1);
   runScanLines();
 }
@@ -309,6 +318,8 @@ function runScanLines(){
     '<span class="text-white/35">✓</span> matching industry playbook (' + b.type + ')',
     '<span class="text-white/35">✓</span> detected: ' + b.detect
   ];
+  var social = (document.getElementById('kv-social') || {}).value || '';
+  if (social.trim()) lines.splice(2, 0, '<span class="text-white/35">✓</span> reading your social profiles');
   var box = document.getElementById('kv-scan');
   var i = 0;
   var t = setInterval(function(){
