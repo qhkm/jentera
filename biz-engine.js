@@ -13,6 +13,90 @@ var KV_STORE = (function(){
 })();
 
 /* ============================================================
+   I18N — EN/BM language toggle (English-first, BM support).
+   ============================================================ */
+var KV_I18N = {
+  en: {
+    'nav.home':'Home','nav.chat':'Chat','nav.team':'Team Chat','nav.business':'Your Business','nav.aiteam':'AI Team','nav.work':'Work','nav.connections':'Connections',
+    'nav.landing':'← Landing','nav.getstarted':'Get started','nav.openchat':'Open chat →',
+    'view.home.greet':'Good morning 👋','view.home.desc':"Here's what happened while you were away.",
+    'view.chat':'Chat','view.chat.desc':'Your AI team in real time — like chatting with staff.',
+    'view.team':'Team Chat','view.team.desc':'One space for you + all AI agents — tag @agent, they answer.',
+    'view.business':'Your Business','view.business.desc':'Everything AISAR knows about your business. Correct anything and it updates everywhere.',
+    'view.aiteam':'AI Team','view.aiteam.desc':'Your team, organised by job — not by agents, models or workflows.',
+    'view.work':'Work','view.work.desc':'Decisions that need you, and what your AI team has handled.',
+    'view.connections':'Connections','view.connections.desc':"The tools your AI team works with. Every connection is explained — you always know why it's there.",
+    'side.business':'Your Business','side.complete':'✓ Setup complete','side.industry':'Your industry','side.demo':'Demo preview','side.finish':'Finish setup →','side.potential':'AI Potential','side.routine':'of routine work','side.review':'Review →',
+    'drawer.menu':'Menu','drawer.platform':'AISAR platform',
+    'biz.profile':'Profile','biz.website':'Website','biz.contact':'Contact','biz.booking':'Booking','biz.systems':'Systems',
+    'conn.focus':'AISAR focuses on where your customers actually are.',
+    'conn.enable':'Connect & enable','conn.first':'Connect first','home.open':'Open',
+    'sub.step1':'One more step before AISAR can start working.',
+    'sub.step2':'AISAR is ready — connect channels to activate your AI team.',
+    'sub.step3':"Here's what happened while you were away.",
+    'cmd.step1.title':'One more step','cmd.step1.head':'Finish your business profile','cmd.step1.body':'AISAR needs to know your business before it can start.','cmd.step1.cta':'Continue setup →',
+    'cmd.step2.title':'Activate your AI team','cmd.step2.head':'Connect WhatsApp first','cmd.step2.body':'Customer Assistant will answer your customers 24/7 — but it needs a channel first.','cmd.step2.tag':'1 connection','cmd.step2.cta':'Connect now →',
+    'cmd.step3.title':'What AISAR did today',
+    'work.need':'Need you','work.auto':'Auto done','work.activity':'Activity',
+    'work.f.need':'⚠️ Need you','work.f.auto':'🤖 Auto','work.f.done':'✅ Done','work.f.all':'📋 All','work.respond':'Respond',
+    'team.ph.pasukan':'Message for the team — tag @agent…','team.ph.escalation':'Update / instructions — tag @agent…','team.ph.random':'Casual chat — tag @agent…','team.channels':'channels',
+    'chat.search':'Search conversations…','chat.reply':'Type a reply…','chat.takeover':'Take over to reply yourself…','chat.send':'Send',
+    'toast.approved':'✓ Approved & sent.',
+    'pot.txt':'AISAR found {n} more opportunities to automate.'
+  },
+  bm: {
+    'nav.home':'Home','nav.chat':'Chat','nav.team':'Chat Pasukan','nav.business':'Perniagaan Anda','nav.aiteam':'Pasukan AI','nav.work':'Kerja','nav.connections':'Sambungan',
+    'nav.landing':'← Laman','nav.getstarted':'Mula sekarang','nav.openchat':'Buka chat →',
+    'view.home.greet':'Selamat pagi 👋','view.home.desc':'Apa yang berlaku semasa kau pergi.',
+    'view.chat':'Chat','view.chat.desc':'Pasukan AI kau dalam masa nyata — macam chat dengan staff.',
+    'view.team':'Chat Pasukan','view.team.desc':'Satu ruang untuk kau + semua AI agent — tag @agent, dia jawab.',
+    'view.business':'Perniagaan Anda','view.business.desc':'Semua yang AISAR tahu tentang perniagaan kau. Betulkan sekali, ia update di mana-mana.',
+    'view.aiteam':'Pasukan AI','view.aiteam.desc':'Pasukan kau, diatur ikut kerja — bukan ikut agents, models atau workflows.',
+    'view.work':'Kerja','view.work.desc':'Keputusan yang perlukan kau, dan apa yang pasukan AI kau dah selesaikan.',
+    'view.connections':'Sambungan','view.connections.desc':'Alat yang pasukan AI kau guna. Setiap sambungan diterangkan — kau sentiasa tahu kenapa ia ada.',
+    'side.business':'Perniagaan Anda','side.complete':'✓ Setup selesai','side.industry':'Industri anda','side.demo':'Pratonton demo','side.finish':'Sambung setup →','side.potential':'Potensi AI','side.routine':'kerja rutin','side.review':'Semak →',
+    'drawer.menu':'Menu','drawer.platform':'Platform AISAR',
+    'biz.profile':'Profil','biz.website':'Laman web','biz.contact':'Hubungan','biz.booking':'Tempahan','biz.systems':'Sistem',
+    'conn.focus':'AISAR fokus di mana pelanggan kau sebenarnya berada.',
+    'conn.enable':'Sambung & aktifkan','conn.first':'Sambung dulu','home.open':'Buka',
+    'sub.step1':'Satu langkah lagi sebelum AISAR boleh mula bekerja.',
+    'sub.step2':'AISAR sedia — sambungkan saluran untuk hidupkan AI team.',
+    'sub.step3':'Apa yang berlaku semasa kau pergi.',
+    'cmd.step1.title':'Satu langkah lagi','cmd.step1.head':'Siapkan profil bisnes kau','cmd.step1.body':'AISAR perlu tahu bisnes kau sebelum boleh mula bekerja.','cmd.step1.cta':'Sambung setup →',
+    'cmd.step2.title':'Hidupkan AI team','cmd.step2.head':'Sambung WhatsApp dulu','cmd.step2.body':'Customer Assistant akan jawab pelanggan kau 24/7 — tapi dia perlukan saluran dulu.','cmd.step2.tag':'1 sambungan','cmd.step2.cta':'Sambung sekarang →',
+    'cmd.step3.title':'Apa yang AISAR buat hari ini',
+    'work.need':'Perlu kau','work.auto':'Selesai auto','work.activity':'Aktiviti',
+    'work.f.need':'⚠️ Perlu kau','work.f.auto':'🤖 Auto','work.f.done':'✅ Selesai','work.f.all':'📋 Semua','work.respond':'Balas',
+    'team.ph.pasukan':'Mesej untuk pasukan — tag @agent…','team.ph.escalation':'Update / arahan — tag @agent…','team.ph.random':'Sembang santai — tag @agent…','team.channels':'saluran',
+    'chat.search':'Cari perbualan…','chat.reply':'Type balasan…','chat.takeover':'Ambil alih untuk reply sendiri…','chat.send':'Send',
+    'toast.approved':'✓ Diluluskan & dihantar.',
+    'pot.txt':'AISAR jumpa {n} lagi peluang untuk automasi.'
+  }
+};
+var KV_LANG = (KV_STORE.get('aisar-lang','en') === 'bm') ? 'bm' : 'en';
+function kvT(k){
+  var d = KV_I18N[KV_LANG] || KV_I18N.en;
+  if (d && d[k]) return d[k];
+  return (KV_I18N.en && KV_I18N.en[k]) ? KV_I18N.en[k] : k;
+}
+function kvToggleLang(){
+  KV_LANG = (KV_LANG === 'en') ? 'bm' : 'en';
+  KV_STORE.set('aisar-lang', KV_LANG);
+  kvApplyLang();
+  try { kvRenderAll(); } catch(e){ if (window.console) console.error(e); }
+}
+function kvApplyLang(){
+  document.querySelectorAll('[data-t]').forEach(function(el){
+    var v = kvT(el.getAttribute('data-t'));
+    if (v) el.textContent = v;
+  });
+  document.querySelectorAll('.kv-lang-btn').forEach(function(el){
+    el.textContent = (KV_LANG === 'en') ? 'BM' : 'EN';
+  });
+  document.title = (KV_LANG === 'en') ? 'AISAR Platform — Your business, increasingly run by AI' : 'AISAR Platform — Perniagaan anda, semakin dikendalikan AI';
+}
+
+/* ============================================================
    PLAYBOOKS — pola per industri. Setiap entri = template
    dashboard lengkap. Fields:
    icon, keywords (untuk inference), name, type, sub, site,
@@ -1762,7 +1846,7 @@ function kvApproveWork(i){
   try { a = JSON.parse(KV_STORE.get(k, '[]')); } catch(e){}
   if (a.indexOf(String(i)) < 0) a.push(String(i));
   KV_STORE.set(k, JSON.stringify(a));
-  kvToast('✓ Approved & sent.');
+  kvToast(kvT('toast.approved'));
   kvRenderAll();
 }
 function kvEditWork(i){
@@ -1921,7 +2005,7 @@ function kvChatRender(){
     return t.n.toLowerCase().indexOf(q) >= 0 || (t.ch || '').toLowerCase().indexOf(q) >= 0 || kvChatPreview(t.n, b).toLowerCase().indexOf(q) >= 0;
   });
   var list = '<div class="kv-chat-search">' +
-      '<input id="kv-search" placeholder="🔍 Cari perbualan…" value="' + kvEsc(kvChatState.q || '') + '" oninput="kvChatSearch(this.value)"/>' +
+      '<input id="kv-search" placeholder="🔍 ' + kvT('chat.search') + '" value="' + kvEsc(kvChatState.q || '') + '" oninput="kvChatSearch(this.value)"/>' +
     '</div>' +
     (listTeam.length
       ? listTeam.map(function(t){
@@ -1974,8 +2058,8 @@ function kvChatRender(){
     }).join('');
     var input = who === 'you'
       ? '<div class="kv-tpls">' + tpls + '</div>' +
-        '<div class="kv-chat-input"><input id="kv-inp" placeholder="Type balasan…" onkeydown="if(event.key===\'Enter\')kvChatSend(\'' + sel + '\')"/><button onclick="kvChatSend(\'' + sel + '\')">Send</button></div>'
-      : '<div class="kv-chat-input"><input id="kv-inp" placeholder="💡 Ambil alih untuk reply sendiri…" disabled/><button disabled>Send</button></div>';
+        '<div class="kv-chat-input"><input id="kv-inp" placeholder="' + kvT('chat.reply') + '" onkeydown="if(event.key===\'Enter\')kvChatSend(\'' + sel + '\')"/><button onclick="kvChatSend(\'' + sel + '\')">' + kvT('chat.send') + '</button></div>'
+      : '<div class="kv-chat-input"><input id="kv-inp" placeholder="💡 ' + kvT('chat.takeover') + '" disabled/><button disabled>' + kvT('chat.send') + '</button></div>';
     thread =
       '<div class="kv-chat-header">' +
         '<button class="kv-back" onclick="kvChatBack()">←</button>' +
@@ -2014,41 +2098,41 @@ function kvCommandCenter(b){
 
   if (!setupDone){
     /* Stage 1 — setup belum siap: fokus setup je */
-    if (sub) sub.textContent = 'Satu langkah lagi sebelum AISAR boleh mula bekerja.';
+    if (sub) sub.textContent = kvT('sub.step1');
     html =
       '<div class="as-card flex flex-col gap-4 p-5">' +
         '<div class="as-row justify-between">' +
           '<div class="flex flex-col gap-1">' +
-            '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Satu langkah lagi</span>' +
-            '<h3 class="font-pixel text-lg tracking-tight">Siapkan profil bisnes kau</h3>' +
-            '<p class="text-[13px] text-text-secondary">AISAR perlu tahu bisnes kau sebelum boleh mula bekerja.</p>' +
+            '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">' + kvT('cmd.step1.title') + '</span>' +
+            '<h3 class="font-pixel text-lg tracking-tight">' + kvT('cmd.step1.head') + '</h3>' +
+            '<p class="text-[13px] text-text-secondary">' + kvT('cmd.step1.body') + '</p>' +
           '</div>' +
           '<span class="as-tag amber">setup</span>' +
         '</div>' +
         '<div class="as-row gap-3">' +
-          '<a class="btn btn-primary px-5 py-2 text-sm" href="/setup">Sambung setup →</a>' +
+          '<a class="btn btn-primary px-5 py-2 text-sm" href="/setup">' + kvT('cmd.step1.cta') + '</a>' +
         '</div>' +
       '</div>';
   } else if (!chans || !chans.length){
     /* Stage 2 — setup siap, belum connect: fokus connect */
-    if (sub) sub.textContent = 'AISAR sedia — sambungkan saluran untuk hidupkan AI team.';
+    if (sub) sub.textContent = kvT('sub.step2');
     html =
       '<div class="as-card flex flex-col gap-4 p-5">' +
         '<div class="as-row justify-between">' +
           '<div class="flex flex-col gap-1">' +
-            '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Hidupkan AI team</span>' +
-            '<h3 class="font-pixel text-lg tracking-tight">Sambung WhatsApp dulu</h3>' +
-            '<p class="text-[13px] text-text-secondary">Customer Assistant akan jawab pelanggan kau 24/7 — tapi dia perlukan saluran dulu.</p>' +
+            '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">' + kvT('cmd.step2.title') + '</span>' +
+            '<h3 class="font-pixel text-lg tracking-tight">' + kvT('cmd.step2.head') + '</h3>' +
+            '<p class="text-[13px] text-text-secondary">' + kvT('cmd.step2.body') + '</p>' +
           '</div>' +
-          '<span class="as-tag amber">1 sambungan</span>' +
+          '<span class="as-tag amber">' + kvT('cmd.step2.tag') + '</span>' +
         '</div>' +
         '<div class="as-row gap-3">' +
-          '<a class="btn btn-primary px-5 py-2 text-sm" href="/setup">Sambung sekarang →</a>' +
+          '<a class="btn btn-primary px-5 py-2 text-sm" href="/setup">' + kvT('cmd.step2.cta') + '</a>' +
         '</div>' +
       '</div>';
   } else {
     /* Stage 3 — operasi harian: narrative + eskalasi */
-    if (sub) sub.textContent = "Here's what happened while you were away.";
+    if (sub) sub.textContent = kvT('sub.step3');
     var work = b.work || [];
     var doneCount = work.filter(function(w){ return w.tag === 'done' || w.tag === 'confirmed' || w.tag === 'sent'; }).length;
     var teamNames = (b.team || []).slice(0,3).map(function(t){ return t.e + ' ' + t.n; }).join(' · ');
@@ -2060,14 +2144,14 @@ function kvCommandCenter(b){
           '<span class="text-[13px]">' + w.e + ' ' + kvEsc(w.n) + '</span>' +
           '<span class="text-[12px] text-text-secondary">' + kvEsc(w.d) + '</span>' +
         '</div>' +
-        '<button class="btn btn-primary px-4 py-1 text-xs" onclick="kvApproveWork(' + i + ')">Respond</button>' +
+        '<button class="btn btn-primary px-4 py-1 text-xs" onclick="kvApproveWork(' + i + ')">' + kvT('work.respond') + '</button>' +
       '</div>';
     });
     html =
       '<div class="as-card flex flex-col gap-4 p-5">' +
         '<div class="as-row justify-between">' +
           '<div class="flex flex-col gap-1">' +
-            '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Apa yang AISAR buat hari ini</span>' +
+            '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">' + kvT('cmd.step3.title') + '</span>' +
             '<h3 class="font-pixel text-lg tracking-tight">' + doneCount + ' tugasan diselesaikan auto</h3>' +
             '<p class="text-[13px] text-text-secondary">' + kvEsc(teamNames) + '</p>' +
           '</div>' +
@@ -2114,7 +2198,7 @@ function kvRenderAll(){
       '<div class="as-card flex flex-col gap-3 p-4">' +
         '<div class="as-row justify-between">' +
           '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">💬 AI team activity</span>' +
-          '<a class="text-[11px] as-link" onclick="kvNav(\'chat\');return false">Open chat →</a>' +
+          '<a class="text-[11px] as-link" onclick="kvNav(\'chat\');return false">' + kvT('nav.openchat') + '</a>' +
         '</div>' +
         (msgs || '<p class="text-[12px] text-text-muted">Belum ada aktiviti.</p>') +
       '</div>';
@@ -2131,12 +2215,12 @@ function kvRenderAll(){
   if ((el = document.getElementById('kv-industry-type'))) el.textContent = b.type;
   if ((el = document.getElementById('kv-industry-status'))) {
     if (kvSetupDone()){
-      el.textContent = '✓ Setup complete';
+      el.textContent = kvT('side.complete');
       el.href = '#';
       el.style.pointerEvents = 'none';
       el.style.cursor = 'default';
     } else {
-      el.textContent = 'Finish setup →';
+      el.textContent = kvT('side.finish');
       el.href = '/setup';
       el.style.pointerEvents = '';
       el.style.cursor = 'pointer';
@@ -2144,7 +2228,7 @@ function kvRenderAll(){
   }
   if ((el = document.getElementById('kv-potential'))) el.textContent = kvBump(b.potential) + '%';
   if ((el = document.getElementById('kv-potential-fill'))) el.style.width = kvBump(b.potential) + '%';
-  if ((el = document.getElementById('kv-potential-txt'))) el.textContent = 'AISAR found ' + b.opportunities + ' more opportunities to automate.';
+  if ((el = document.getElementById('kv-potential-txt'))) el.textContent = kvT('pot.txt').replace('{n}', b.opportunities);
 
   /* Home stats */
   if ((el = document.getElementById('h-stats'))) {
@@ -2212,11 +2296,11 @@ function kvRenderAll(){
       if (t.setup){
         action = ready
           ? '<span class="as-tag green">live</span>'
-          : '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvNav(\'connections\')">Connect &amp; enable</button>';
+          : '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvNav(\'connections\')">' + kvT('conn.enable') + '</button>';
       } else {
         action = ready
-          ? '<a class="btn btn-outline px-4 py-1.5 text-xs" href="#work" onclick="kvNav(\'work\');return false">Open</a>'
-          : '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvNav(\'connections\')">Connect first</button>';
+          ? '<a class="btn btn-outline px-4 py-1.5 text-xs" href="#work" onclick="kvNav(\'work\');return false">' + kvT('home.open') + '</a>'
+          : '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvNav(\'connections\')">' + kvT('conn.first') + '</button>';
       }
       var meta = ready ? (t.m || '') : 'Menunggu sambungan — connect channel dulu.';
       return '<div class="as-card flex flex-col gap-4 p-5">' +
@@ -2240,18 +2324,18 @@ function kvRenderAll(){
     var sum = document.getElementById('kv-work-sum');
     if (sum){
       sum.innerHTML =
-        '<div class="as-card flex flex-col gap-1 p-4"><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Perlu kau</span><span class="font-pixel text-2xl ' + (needCount ? 'text-[rgb(255 180 60)]' : '') + '">' + needCount + '</span></div>' +
-        '<div class="as-card flex flex-col gap-1 p-4"><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Selesai auto</span><span class="font-pixel text-2xl">' + doneCount + '</span></div>' +
-        '<div class="as-card flex flex-col gap-1 p-4"><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Aktiviti</span><span class="font-pixel text-2xl">' + (autoCount + doneCount) + '</span></div>';
+        '<div class="as-card flex flex-col gap-1 p-4"><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">' + kvT('work.need') + '</span><span class="font-pixel text-2xl ' + (needCount ? 'text-[rgb(255 180 60)]' : '') + '">' + needCount + '</span></div>' +
+        '<div class="as-card flex flex-col gap-1 p-4"><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">' + kvT('work.auto') + '</span><span class="font-pixel text-2xl">' + doneCount + '</span></div>' +
+        '<div class="as-card flex flex-col gap-1 p-4"><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">' + kvT('work.activity') + '</span><span class="font-pixel text-2xl">' + (autoCount + doneCount) + '</span></div>';
     }
     /* Filter tabs */
     var f = document.getElementById('kv-work-filters');
     if (f){
       var tabs = [
-        ['needs you', '⚠️ Perlu kau', needCount],
-        ['auto', '🤖 Auto', autoCount],
-        ['done', '✅ Selesai', doneCount],
-        ['all', '📋 Semua', work.length]
+        ['needs you', kvT('work.f.need'), needCount],
+        ['auto', kvT('work.f.auto'), autoCount],
+        ['done', kvT('work.f.done'), doneCount],
+        ['all', kvT('work.f.all'), work.length]
       ];
       f.innerHTML = tabs.map(function(t){
         return '<button class="btn btn-outline px-4 py-1.5 text-xs' + (kvWorkFilter === t[0] ? ' btn-primary' : '') + '" onclick="kvWorkSetFilter(\'' + t[0] + '\')">' + t[1] + ' · ' + t[2] + '</button>';
@@ -2526,10 +2610,10 @@ function kvTeamRender(){
   var typing = '<div class="kv-tm" id="kv-team-typing" style="display:none"><span class="as-avatar">🤖</span><div class="kv-typing"><i></i><i></i><i></i></div></div>';
 
   var ph = sel === '#pasukan'
-    ? 'Mesej untuk pasukan — tag @agent…'
+    ? kvT('team.ph.pasukan')
     : sel === '#escalations'
-      ? 'Update / arahan — tag @agent…'
-      : 'Sembang santai — tag @agent…';
+      ? kvT('team.ph.escalation')
+      : kvT('team.ph.random');
 
   var input = '<div class="kv-team-inp-row">' +
     '<input id="kv-team-inp" placeholder="' + ph + '" onkeydown="if(event.key===&quot;Enter&quot;)kvTeamSend()">' +
@@ -2538,7 +2622,7 @@ function kvTeamRender(){
   el.innerHTML =
     '<div class="kv-team-chans"><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Channels</span>' + chans + '</div>' +
     '<div class="kv-team-main">' +
-      '<div class="kv-team-head"><span>💬 <b>#' + meta.label + '</b> — ' + kvEsc(meta.desc) + '</span><span class="text-text-muted">' + Object.keys(KV_TEAM_CHANS).length + ' channels</span></div>' +
+      '<div class="kv-team-head"><span>💬 <b>#' + meta.label + '</b> — ' + kvEsc(meta.desc) + '</span><span class="text-text-muted">' + Object.keys(KV_TEAM_CHANS).length + ' ' + kvT('team.channels') + '</span></div>' +
       '<div class="kv-team-tpls">' + tpls + '</div>' +
       '<div class="kv-team-msgs" id="kv-team-msgs">' + msgs + typing + '</div>' +
       input +
@@ -2553,7 +2637,7 @@ function kvTeamRender(){
    ============================================================ */
 if (typeof document !== 'undefined') {
   function kvBoot(){
-    try { kvSeedConns(); kvRenderAll(); }
+    try { kvApplyLang(); kvSeedConns(); kvRenderAll(); }
     catch(e){ if (window.console) console.error('AISAR render error:', e); }
   }
   if (document.readyState === 'loading') {

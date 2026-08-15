@@ -191,8 +191,9 @@
 <div class="mx-auto flex h-(--nav-h) w-full max-w-(--site-width) items-center justify-between px-6 md:border-x border-(--rail)">
 <a href="/" aria-label="AISAR home"><span class="inline-flex items-center gap-2 text-xl md:text-2xl font-pixel font-pixel-logo tracking-wide text-text"><span class="as-green">aisar</span><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted hidden sm:inline">/platform</span></span></a>
 <div class="flex items-center gap-3">
-<a class="btn btn-outline px-5 py-2 text-sm" href="/">← Landing</a>
-<a class="btn btn-primary px-5 py-2 text-sm" href="/onboard">Get started</a>
+<button class="btn btn-outline px-3 py-2 text-xs kv-lang-btn" onclick="kvToggleLang()" title="Language / Bahasa">EN</button>
+<a class="btn btn-outline px-5 py-2 text-sm" href="/" data-t="nav.landing">← Landing</a>
+<a class="btn btn-primary px-5 py-2 text-sm" href="/onboard" data-t="nav.getstarted">Get started</a>
 </div>
 </div>
 </header>
@@ -201,22 +202,22 @@
 <!-- SIDEBAR -->
 <aside class="as-sidebar as-side-desktop gap-8 border-r border-(--rail) px-4 py-8">
 <div class="flex flex-col gap-1 px-2">
-<span class="font-pixel text-base text-text">Your Business</span>
+<span class="font-pixel text-base text-text" data-t="side.business">Your Business</span>
 <span class="text-[11px] text-text-muted" id="kv-biz-sub">Premium Japanese Restaurant</span>
 <span class="text-[11px] text-text-muted" id="kv-biz-loc">Kuala Lumpur · MY</span>
 </div>
 <div class="mt-4 flex flex-col gap-2 rounded-xl border border-white/10 bg-white/[0.02] p-4" id="kv-industry">
-<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Your industry</span>
+<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted" data-t="side.industry">Your industry</span>
 <div class="as-row">
 <span class="as-avatar" id="kv-industry-icon">🍜</span>
 <div class="flex flex-col">
 <span class="text-[13px] text-text" id="kv-industry-type">Restaurant</span>
-<a class="text-[11px] as-link" id="kv-industry-status" href="/setup">Finish setup →</a>
+<a class="text-[11px] as-link" id="kv-industry-status" href="/setup"><span data-t="side.finish">Finish setup →</span></a>
 </div>
 </div>
 </div>
 <div class="mt-4 flex flex-col gap-1 px-2" id="kv-demo" style="display:none">
-<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Demo preview</span>
+<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted" data-t="side.demo">Demo preview</span>
 <div class="flex flex-wrap gap-1">
 <button class="as-chip green" data-switch="restaurant" onclick="kvSetBiz('restaurant')">🍜 Restaurant</button>
 <button class="as-chip" data-switch="retail" onclick="kvSetBiz('retail')">🛍️ Retail</button>
@@ -236,23 +237,23 @@
 </div>
 </div>
 <nav class="flex flex-col gap-1" id="kv-side">
-<a class="as-side-item active" data-view="home"><span>🏠</span> Home</a>
-<a class="as-side-item" data-view="chat"><span>💬</span> Chat</a>
-<a class="as-side-item" data-view="team"><span>🤝</span> Team</a>
-<a class="as-side-item" data-view="business"><span>🏢</span> Your Business</a>
-<a class="as-side-item" data-view="aiteam"><span>🤖</span> AI Team</a>
-<a class="as-side-item" data-view="work"><span>⚡</span> Work</a>
-<a class="as-side-item" data-view="connections"><span>🔌</span> Connections</a>
+<a class="as-side-item active" data-view="home"><span>🏠</span> <span data-t="nav.home">Home</span></a>
+<a class="as-side-item" data-view="chat"><span>💬</span> <span data-t="nav.chat">Chat</span></a>
+<a class="as-side-item" data-view="team"><span>🤝</span> <span data-t="nav.team">Team Chat</span></a>
+<a class="as-side-item" data-view="business"><span>🏢</span> <span data-t="nav.business">Your Business</span></a>
+<a class="as-side-item" data-view="aiteam"><span>🤖</span> <span data-t="nav.aiteam">AI Team</span></a>
+<a class="as-side-item" data-view="work"><span>⚡</span> <span data-t="nav.work">Work</span></a>
+<a class="as-side-item" data-view="connections"><span>🔌</span> <span data-t="nav.connections">Connections</span></a>
 </nav>
 <div class="mt-auto flex flex-col gap-2 rounded-xl border border-white/10 bg-white/[0.02] p-4">
-<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">AI Potential</span>
+<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted" data-t="side.potential">AI Potential</span>
 <div class="flex items-end gap-1">
 <span class="font-pixel text-3xl text-text" id="kv-potential">62%</span>
-<span class="pb-1 text-[11px] text-text-muted">of routine work</span>
+<span class="pb-1 text-[11px] text-text-muted" data-t="side.routine">of routine work</span>
 </div>
 <div class="as-progress"><div class="as-progress-fill" id="kv-potential-fill" style="width:62%"></div></div>
 <p class="text-[11px] leading-relaxed text-text-muted" id="kv-potential-txt">AISAR found 4 more opportunities to automate.</p>
-<a href="#work" class="mt-1 text-[11px] as-link" onclick="kvNav('work');return false">Review →</a>
+<a href="#work" class="mt-1 text-[11px] as-link" onclick="kvNav('work');return false"><span data-t="side.review">Review →</span></a>
 </div>
 </aside>
 
@@ -261,21 +262,22 @@
 <div class="as-mobile-bar border-b border-(--rail)">
 <button id="kv-burger" class="kv-burger" aria-label="Buka menu" type="button"><span></span><span></span><span></span></button>
 <span class="font-pixel text-sm tracking-wide text-text"><span class="as-green">aisar</span><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">/app</span></span>
+<button class="kv-lang-btn ms-auto btn btn-outline px-2.5 py-1.5 text-[11px]" onclick="kvToggleLang()">EN</button>
 </div>
 <!-- MOBILE drawer (slide-in dari kiri) -->
 <div class="kv-drawer-overlay" id="kv-drawer-overlay"></div>
 <nav class="kv-drawer" id="kv-drawer" aria-label="Mobile navigation">
 <div class="flex flex-col gap-1 px-2 pt-1 pb-3">
-<span class="font-pixel text-sm text-text">Menu</span>
-<span class="text-[11px] text-text-muted">AISAR platform</span>
+<span class="font-pixel text-sm text-text" data-t="drawer.menu">Menu</span>
+<span class="text-[11px] text-text-muted" data-t="drawer.platform">AISAR platform</span>
 </div>
-<a class="as-side-item active" data-view="home"><span>🏠</span> Home</a>
-<a class="as-side-item" data-view="chat"><span>💬</span> Chat</a>
-<a class="as-side-item" data-view="team"><span>🤝</span> Team</a>
-<a class="as-side-item" data-view="business"><span>🏢</span> Your Business</a>
-<a class="as-side-item" data-view="aiteam"><span>🤖</span> AI Team</a>
-<a class="as-side-item" data-view="work"><span>⚡</span> Work</a>
-<a class="as-side-item" data-view="connections"><span>🔌</span> Connections</a>
+<a class="as-side-item active" data-view="home"><span>🏠</span> <span data-t="nav.home">Home</span></a>
+<a class="as-side-item" data-view="chat"><span>💬</span> <span data-t="nav.chat">Chat</span></a>
+<a class="as-side-item" data-view="team"><span>🤝</span> <span data-t="nav.team">Team Chat</span></a>
+<a class="as-side-item" data-view="business"><span>🏢</span> <span data-t="nav.business">Your Business</span></a>
+<a class="as-side-item" data-view="aiteam"><span>🤖</span> <span data-t="nav.aiteam">AI Team</span></a>
+<a class="as-side-item" data-view="work"><span>⚡</span> <span data-t="nav.work">Work</span></a>
+<a class="as-side-item" data-view="connections"><span>🔌</span> <span data-t="nav.connections">Connections</span></a>
 </nav>
 
 <!-- MAIN CONTENT -->
@@ -285,8 +287,8 @@
 <div class="as-view active" id="view-home">
 <div class="flex flex-col gap-8">
 <div class="flex flex-col gap-1">
-<div class="as-row"><h2 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-3xl">Selamat pagi 👋</h2><span class="as-tag green">live</span></div>
-<p class="text-[13px] text-text-secondary" id="kv-home-sub">Here's what happened while you were away.</p>
+<div class="as-row"><h2 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-3xl" data-t="view.home.greet">Good morning 👋</h2><span class="as-tag green">live</span></div>
+<p class="text-[13px] text-text-secondary" id="kv-home-sub" data-t="view.home.desc">Here's what happened while you were away.</p>
 </div>
 <div id="h-command"><!-- engine: state-driven command center --></div>
 <div id="h-chat"><!-- engine: chat widget → Chat view --></div>
@@ -299,8 +301,8 @@
 <div class="as-view" id="view-chat">
 <div class="flex flex-col gap-8">
 <div class="flex flex-col gap-1">
-<h2 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-3xl">Chat</h2>
-<p class="text-[13px] text-text-secondary">Progress AI team kau dalam masa nyata — macam chat dengan staff.</p>
+<h2 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-3xl" data-t="view.chat">Chat</h2>
+<p class="text-[13px] text-text-secondary" data-t="view.chat.desc">Your AI team in real time — like chatting with staff.</p>
 </div>
 <div id="kv-chat-app"><!-- engine: chat app penuh (senarai + thread + ambil alih) --></div>
 </div>
@@ -310,8 +312,8 @@
 <div class="as-view" id="view-team">
 <div class="flex flex-col gap-4">
 <div class="flex flex-col gap-1">
-<h2 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-3xl">Team</h2>
-<p class="text-[13px] text-text-secondary">Satu ruang untuk kau + semua AI agent berkolaborasi — tag <span class="as-green">@agent</span>, dia jawab.</p>
+<h2 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-3xl" data-t="view.team">Team Chat</h2>
+<p class="text-[13px] text-text-secondary" data-t="view.team.desc">One space for you + all AI agents — tag <span class="as-green">@agent</span>, they answer.</p>
 </div>
 <div id="kv-team-app" class="kv-team"><!-- engine --></div>
 </div>
@@ -321,24 +323,24 @@
 <div class="as-view" id="view-business">
 <div class="flex flex-col gap-8">
 <div class="flex flex-col gap-1">
-<h2 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-3xl">Your Business</h2>
-<p class="text-[13px] text-text-secondary">Everything AISAR knows about your business. Correct anything and it updates everywhere.</p>
+<h2 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-3xl" data-t="view.business">Your Business</h2>
+<p class="text-[13px] text-text-secondary" data-t="view.business.desc">Everything AISAR knows about your business. Correct anything and it updates everywhere.</p>
 </div>
 <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 <div class="as-card flex flex-col gap-4 p-5">
-<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Profile</span>
+<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted" data-t="biz.profile">Profile</span>
 <div class="as-row"><span class="as-avatar">🍜</span><div class="flex flex-col"><span class="text-sm" id="kv-biz-name">Wagyu Japanese Restaurant</span><span class="text-[11px] text-text-muted">Kuala Lumpur · Premium dining · 12 staff</span></div></div>
 <div class="flex flex-col gap-2 text-[13px]">
-<div class="as-row justify-between"><span class="text-text-muted">Website</span><span class="as-link" id="kv-biz-site">wagyu.my</span></div>
-<div class="as-row justify-between"><span class="text-text-muted">Contact</span><span id="kv-biz-contact">WhatsApp · Instagram</span></div>
-<div class="as-row justify-between"><span class="text-text-muted">Booking</span><span id="kv-biz-booking">Phone + Instagram DM</span></div>
-<div class="as-row justify-between"><span class="text-text-muted">Systems</span><span id="kv-biz-systems">Google Sheets · AutoCount</span></div>
+<div class="as-row justify-between"><span class="text-text-muted" data-t="biz.website">Website</span><span class="as-link" id="kv-biz-site">wagyu.my</span></div>
+<div class="as-row justify-between"><span class="text-text-muted" data-t="biz.contact">Contact</span><span id="kv-biz-contact">WhatsApp · Instagram</span></div>
+<div class="as-row justify-between"><span class="text-text-muted" data-t="biz.booking">Booking</span><span id="kv-biz-booking">Phone + Instagram DM</span></div>
+<div class="as-row justify-between"><span class="text-text-muted" data-t="biz.systems">Systems</span><span id="kv-biz-systems">Google Sheets · AutoCount</span></div>
 </div>
 </div>
 <div class="as-card flex flex-col gap-4 p-5">
 <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">How customers reach you</span>
 <div class="as-chips" id="kv-chips"><!-- engine --></div>
-<p class="text-[13px] text-text-secondary">AISAR focuses on where your customers actually are.</p>
+<p class="text-[13px] text-text-secondary" data-t="conn.focus">AISAR focuses on where your customers actually are.</p>
 </div>
 <div class="as-card flex flex-col gap-4 p-5">
 <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Business functions</span>
@@ -352,8 +354,8 @@
 <div class="as-view" id="view-aiteam">
 <div class="flex flex-col gap-8">
 <div class="flex flex-col gap-1">
-<h2 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-3xl">AI Team</h2>
-<p class="text-[13px] text-text-secondary">Your team, organised by job — not by agents, models or workflows.</p>
+<h2 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-3xl" data-t="view.aiteam">AI Team</h2>
+<p class="text-[13px] text-text-secondary" data-t="view.aiteam.desc">Your team, organised by job — not by agents, models or workflows.</p>
 </div>
 <div class="grid grid-cols-1 gap-4 lg:grid-cols-2" id="kv-team"><!-- engine --></div>
 </div>
@@ -363,8 +365,8 @@
 <div class="as-view" id="view-work">
 <div class="flex flex-col gap-8">
 <div class="flex flex-col gap-1">
-<h2 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-3xl">Work</h2>
-<p class="text-[13px] text-text-secondary">Keputusan yang perlu kau buat, dan apa yang AI team dah selesaikan.</p>
+<h2 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-3xl" data-t="view.work">Work</h2>
+<p class="text-[13px] text-text-secondary" data-t="view.work.desc">Decisions that need you, and what your AI team has handled.</p>
 </div>
 <div class="grid grid-cols-3 gap-3" id="kv-work-sum"><!-- engine: ringkasan --></div>
 <div class="as-row gap-2 flex-wrap" id="kv-work-filters"><!-- engine: filter tabs --></div>
@@ -376,8 +378,8 @@
 <div class="as-view" id="view-connections">
 <div class="flex flex-col gap-8">
 <div class="flex flex-col gap-1">
-<h2 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-3xl">Connections</h2>
-<p class="text-[13px] text-text-secondary">The tools your AI team works with. Every connection is explained — you always know why it's there.</p>
+<h2 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-3xl" data-t="view.connections">Connections</h2>
+<p class="text-[13px] text-text-secondary" data-t="view.connections.desc">The tools your AI team works with. Every connection is explained — you always know why it's there.</p>
 </div>
 <div class="flex flex-col gap-3" id="kv-conns"><!-- engine --></div>
 </div>
