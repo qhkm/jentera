@@ -24,6 +24,46 @@
 .btn-outline{border-color:rgb(255 255 255 / .35);background:transparent;color:var(--text, #f2f2f2)}
 .btn-outline:hover{border-color:#00d294;color:#00d294}
 .as-link{color:rgb(0 210 148 / .7);transition:color .2s}
+/* ============ Chat app — WhatsApp/Telegram style ============ */
+.kv-chat-wrap{display:flex;border:1px solid rgb(255 255 255/.08);border-radius:16px;overflow:hidden;min-height:520px;background:rgb(0 0 0/.2)}
+.kv-chat-list{width:260px;border-right:1px solid rgb(255 255 255/.08);flex-shrink:0;overflow-y:auto;display:flex;flex-direction:column;max-height:640px}
+.kv-chat-msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;min-height:340px}
+.kv-conv{display:flex;gap:10px;padding:12px;cursor:pointer;border-bottom:1px solid rgb(255 255 255/.05);transition:background .15s;align-items:flex-start}
+.kv-conv:hover{background:rgb(255 255 255/.04)}
+.kv-conv.active{background:rgb(0 210 148/.12)}
+.kv-conv-name{font-size:13px;font-weight:600}
+.kv-conv-prev{font-size:11px;color:var(--text-muted, rgb(150 150 150/.8));overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px}
+.kv-conv-time{font-size:10px;color:var(--text-muted, rgb(150 150 150/.6));flex-shrink:0}
+.kv-unread{background:#00d294;color:#0a0a0a;border-radius:99px;font-size:10px;font-weight:700;min-width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;flex-shrink:0}
+.kv-msg-row{display:flex;gap:8px;align-items:flex-end}
+.kv-msg-row.out{justify-content:flex-end}
+.kv-bubble{max-width:78%;padding:9px 13px;border-radius:16px;font-size:13px;line-height:1.45;border:1px solid rgb(255 255 255/.07)}
+.kv-bubble.in{background:rgb(255 255 255/.06);border-bottom-left-radius:4px}
+.kv-bubble.out{background:rgb(0 210 148/.16);border-bottom-right-radius:4px;border-color:rgb(0 210 148/.25)}
+.kv-msg-meta{display:flex;gap:6px;justify-content:flex-end;align-items:center;margin-top:4px;font-size:10px;color:var(--text-muted, rgb(150 150 150/.8))}
+.kv-msg-name{font-size:11px;font-weight:600;margin-bottom:2px;color:rgb(0 210 148/.9)}
+.kv-msg-row.out .kv-msg-name{color:rgb(0 210 148/.9)}
+.kv-chat-header{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid rgb(255 255 255/.08);background:rgb(255 255 255/.03);flex-shrink:0}
+.kv-chat-header .kv-back{display:none;background:none;border:1px solid rgb(255 255 255/.15);border-radius:8px;color:inherit;padding:4px 10px;font-size:12px;cursor:pointer}
+.kv-chat-input{display:flex;gap:8px;padding:12px 16px;border-top:1px solid rgb(255 255 255/.08);flex-shrink:0}
+.kv-chat-input input{flex:1;background:rgb(255 255 255/.06);border:1px solid rgb(255 255 255/.12);border-radius:99px;padding:9px 14px;font-size:13px;color:inherit;outline:none;min-width:0}
+.kv-chat-input input:focus{border-color:rgb(0 210 148/.6)}
+.kv-chat-input input:disabled{opacity:.4;cursor:not-allowed}
+.kv-chat-input button{background:#00d294;color:#0a0a0a;border:none;border-radius:99px;padding:9px 18px;font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0}
+.kv-chat-input button:disabled{opacity:.4;cursor:not-allowed}
+.kv-banner{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 16px;font-size:12px;border-bottom:1px solid rgb(255 255 255/.08);flex-shrink:0}
+.kv-banner.ai{background:rgb(0 210 148/.08);color:rgb(0 210 148/.9)}
+.kv-banner.you{background:rgb(255 180 0/.12);color:rgb(255 180 0/.95)}
+.kv-banner .kv-hint{font-size:11px;opacity:.85}
+.kv-take-btn{background:none;border:1px solid currentColor;border-radius:8px;font-size:11px;padding:4px 10px;cursor:pointer;color:inherit;flex-shrink:0}
+.kv-take-btn:hover{background:rgb(255 255 255/.08)}
+.kv-chat-thread{flex:1;display:flex;flex-direction:column;min-width:0}
+@media (max-width:768px){
+  .kv-chat-list{width:100%;border-right:none;max-height:none}
+  .kv-chat-thread{display:none}
+  .kv-chat-thread.open{display:flex;position:fixed;inset:0;z-index:50;background:var(--bg, #0a0a0a)}
+  .kv-chat-header .kv-back{display:inline-block}
+}
 .as-link:hover{color:#00d294}
 .as-side{width:232px;flex-shrink:0}
 .as-side-item{display:flex;align-items:center;gap:10px;padding:9px 14px;font-size:13px;color:var(--text-secondary, rgb(160 160 170));border-radius:8px;transition:background .15s,color .15s;cursor:pointer}
@@ -181,14 +221,7 @@
 <h2 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-3xl">Chat</h2>
 <p class="text-[13px] text-text-secondary">Progress AI team kau dalam masa nyata — macam chat dengan staff.</p>
 </div>
-<div class="flex flex-col gap-4" id="kv-chat"><!-- engine --></div>
-<div class="as-card flex flex-col gap-2 p-4">
-<div class="as-row gap-2">
-<input class="as-input flex-1 rounded-lg px-3 py-2 text-[13px]" placeholder="Type to chat with your AI team…" disabled/>
-<button class="btn btn-primary px-4 py-2 text-xs" disabled>Send</button>
-</div>
-<p class="text-[11px] text-text-muted">💡 Live chat akan aktif bila WhatsApp disambung. Sekarang ni kau boleh tengok progress agent dalam masa nyata.</p>
-</div>
+<div id="kv-chat-app"><!-- engine: chat app penuh (senarai + thread + ambil alih) --></div>
 </div>
 </div>
 
