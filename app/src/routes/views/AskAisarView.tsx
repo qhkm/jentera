@@ -55,14 +55,20 @@ export default function AskAisarView({
   ];
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
+    /* 100dvh minus the sticky header (64px) and the bottom nav (64px).
+       dvh rather than vh so mobile browser chrome does not clip it. */
+    <div className="flex h-[calc(100dvh-128px)] flex-col gap-0 lg:h-auto lg:gap-6">
+      <header className="hidden flex-col gap-2 lg:flex">
         <h1 className="font-pixel text-2xl tracking-tight">{t('view.chat')}</h1>
         <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.chat.desc')}</p>
       </header>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-rail" role="tablist" aria-label={t('view.chat')}>
+      <div
+        className="flex shrink-0 gap-1 border-b border-rail px-4 lg:px-0"
+        role="tablist"
+        aria-label={t('view.chat')}
+      >
         {TABS.map((item) => {
           const active = tab === item.id;
           return (
@@ -92,8 +98,11 @@ export default function AskAisarView({
       </div>
 
       {tab === 'assistant' ? (
-        <Card className="min-h-[360px] gap-0 p-0 sm:min-h-[440px]">
-          <div ref={thread} className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-5">
+        <Card className="min-h-0 flex-1 gap-0 rounded-none border-x-0 border-b-0 p-0 lg:min-h-[440px] lg:flex-none lg:rounded-card lg:border">
+          <div
+            ref={thread}
+            className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-5"
+          >
             {!ask.hasHistory ? (
               <div className="flex flex-col items-center gap-3 py-10 text-center">
                 <span className="text-3xl" aria-hidden="true">
@@ -126,7 +135,7 @@ export default function AskAisarView({
           </div>
 
           {/* Prompt chips */}
-          <div className="flex gap-2 overflow-x-auto border-t border-rail px-5 pt-3 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
+          <div className="flex shrink-0 gap-2 overflow-x-auto border-t border-rail px-4 pt-3 [scrollbar-width:none] sm:px-5 lg:flex-wrap lg:overflow-visible">
             {ASK_PROMPTS.map((key) => (
               <button
                 key={key}
@@ -140,7 +149,7 @@ export default function AskAisarView({
           </div>
 
           <form
-            className="flex items-end gap-2 p-4 sm:p-5"
+            className="flex shrink-0 items-end gap-2 p-4 sm:p-5"
             onSubmit={(e) => {
               e.preventDefault();
               submit();
@@ -170,11 +179,13 @@ export default function AskAisarView({
               <span className="hidden sm:inline">{t('ask.send')}</span>
             </Button>
           </form>
-          <p className="px-4 pb-4 text-[11px] text-text-muted sm:px-5">{t('ask.hint')}</p>
+          <p className="hidden px-4 pb-4 text-[11px] text-text-muted sm:px-5 lg:block">
+            {t('ask.hint')}
+          </p>
         </Card>
       ) : (
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:overflow-visible lg:p-0">
+          <div className="hidden flex-col gap-1 lg:flex">
             <Eyebrow>{t('ask.conversations')}</Eyebrow>
             <p className="max-w-[66ch] text-[13px] text-text-secondary">
               {t('ask.conversations.desc')}

@@ -120,8 +120,17 @@ export default function Dashboard() {
   );
 
   return (
-    <Shell suffix="/platform" onMenu={() => setDrawerOpen(true)} menuBadge={needsAttention}>
-      <div className="flex flex-col gap-8 pb-24 lg:flex-row lg:pb-0">
+    <Shell
+      suffix="/platform"
+      onMenu={() => setDrawerOpen(true)}
+      menuBadge={needsAttention}
+      fullBleed={view === 'chat'}
+    >
+      <div
+        className={`flex flex-col gap-8 lg:flex-row lg:pb-0 ${
+          view === 'chat' ? 'lg:gap-8' : 'pb-24'
+        }`}
+      >
         <aside className="hidden shrink-0 flex-col gap-6 lg:flex lg:w-[220px]">
           {profile}
           <nav className="flex flex-col gap-1" aria-label="Dashboard sections">

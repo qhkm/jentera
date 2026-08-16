@@ -28,6 +28,7 @@ export function Shell({
   actions,
   onMenu,
   menuBadge = 0,
+  fullBleed = false,
   children,
 }: {
   suffix?: string;
@@ -35,6 +36,12 @@ export function Shell({
   /** Supplied by the dashboard to open the mobile drawer. */
   onMenu?: () => void;
   menuBadge?: number;
+  /**
+   * Drop the main padding on mobile so a view can run edge-to-edge and
+   * own its own height — used by the chat, which should fill the screen
+   * rather than sit as a card inside a padded page.
+   */
+  fullBleed?: boolean;
   children: ReactNode;
 }) {
   const { lang, t, toggleLang } = useI18n();
@@ -84,7 +91,15 @@ export function Shell({
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-[1250px] px-6 py-10">{children}</main>
+      <main
+        className={
+          fullBleed
+            ? 'mx-auto max-w-[1250px] px-0 py-0 lg:px-6 lg:py-10'
+            : 'mx-auto max-w-[1250px] px-6 py-10'
+        }
+      >
+        {children}
+      </main>
     </div>
   );
 }
