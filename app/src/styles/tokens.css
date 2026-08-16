@@ -69,7 +69,7 @@
   /* ---- Radii ---- */
   --radius-tag:   4px;
   --radius-md:    .375rem;
-  --radius-item:  8px;
+  --radius-item:  0;
   --radius-lg:    .5rem;
   --radius-avatar:10px;
   --radius-card:  0;

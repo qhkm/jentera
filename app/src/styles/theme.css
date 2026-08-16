@@ -51,7 +51,12 @@
 
   /* Radii */
   --radius-tag:    4px;
-  --radius-item:   8px;
+  /* Square, like .btn and .card. This is the last radius on anything
+     the user types into or clicks — inputs, option rows, nav rows, the
+     mention list. Leaving it at 8px put rounded fields inside square
+     cards. --radius-avatar and --radius-pill stay round on purpose:
+     those are identity marks and status pills, not controls. */
+  --radius-item:   0;
   --radius-avatar: 10px;
   /* Square. Buttons already carry radius 0 — the upstream .btn shipped
      that way — and a 12px card around square controls read as two
