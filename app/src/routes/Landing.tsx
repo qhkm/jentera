@@ -192,7 +192,12 @@ export default function Landing() {
 
       <main id="main-content" className="w-full max-w-full overflow-x-clip">
         {/* ---- Hero ---- */}
-        <section className="relative z-[1] flex min-h-[calc(100svh-4rem)] w-full flex-col overflow-hidden border-b border-rail">
+        {/* No min-height. The upstream markup carries min-h-[calc(100svh-4rem)]
+            but that class was never generated in its prebuilt CSS, so the live
+            hero has always been content-height — 518px on mobile, 535px on
+            desktop. Reproducing the class faithfully made the hero 780px and
+            pushed everything into the middle of the screen. */}
+        <section className="relative z-[1] flex w-full flex-col overflow-hidden border-b border-rail">
           <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
             <div className="kv-particles" />
             <div className="kv-blob kv-blob-1" />
