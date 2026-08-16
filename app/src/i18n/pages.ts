@@ -70,6 +70,7 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'su.step45.done': 'connected',
 
     /* Dashboard */
+    'ask.placeholder.short': 'Ask AISAR anything…',
     'db.handled': '{n} handled automatically',
     'db.disconnect': 'Disconnect',
     'db.theme.toLight': 'Switch to light theme',
@@ -135,6 +136,7 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'su.step45.done': 'disambung',
 
     /* Dashboard */
+    'ask.placeholder.short': 'Tanya AISAR apa-apa…',
     'db.handled': '{n} diselesaikan automatik',
     'db.disconnect': 'Putuskan',
     'db.theme.toLight': 'Tukar ke tema cerah',

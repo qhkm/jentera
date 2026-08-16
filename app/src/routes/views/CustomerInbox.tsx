@@ -56,7 +56,7 @@ export default function CustomerInbox({ business }: { business: Business }) {
     <div className="flex flex-col gap-4">
       <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
         {/* ---- Conversation list ---- */}
-        <div className={`flex flex-col gap-2 ${selected ? 'hidden lg:flex' : 'flex'}`}>
+        <div className={`flex min-w-0 flex-col gap-2 ${selected ? 'hidden lg:flex' : 'flex'}`}>
           <Input
             value={chat.query}
             onChange={(e) => chat.setQuery(e.target.value)}
@@ -76,7 +76,9 @@ export default function CustomerInbox({ business }: { business: Business }) {
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="flex items-center justify-between gap-2">
                     <span className="truncate text-[13px] font-semibold">{m.n}</span>
-                    <span className="shrink-0 font-mono text-[10px] text-text-muted">{m.ch}</span>
+                    <span className="hidden shrink-0 font-mono text-[10px] text-text-muted sm:inline">
+                      {m.ch}
+                    </span>
                   </span>
                   <span className="flex items-center justify-between gap-2">
                     <span className="truncate text-[12px] text-text-secondary">
@@ -95,7 +97,7 @@ export default function CustomerInbox({ business }: { business: Business }) {
 
         {/* ---- Thread ---- */}
         <div
-          className={`card min-h-[460px] gap-0 p-0 ${selected ? 'flex' : 'hidden lg:flex'}`}
+          className={`card min-h-[360px] min-w-0 gap-0 p-0 sm:min-h-[460px] ${selected ? 'flex' : 'hidden lg:flex'}`}
         >
           {!selected || !agent ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">

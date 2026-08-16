@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button, Card, Eyebrow, Tag } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
 import { ASK_PROMPTS, useAsk } from '@/hooks/useAsk';
+import { useIsCompact } from '@/hooks/useMediaQuery';
 import CustomerInbox from './CustomerInbox';
 import type { Business } from '@/lib/types';
 
@@ -27,6 +28,9 @@ export default function AskAisarView({
 }) {
   const t = useT();
   const [tab, setTab] = useState<Tab>('assistant');
+  /* CSS cannot shorten placeholder text, and the full string clips
+     mid-word in the narrower mobile composer. */
+  const compact = useIsCompact();
   const [draft, setDraft] = useState('');
   const ask = useAsk(business, { handled, needs }, t);
   const thread = useRef<HTMLDivElement>(null);
@@ -68,15 +72,17 @@ export default function AskAisarView({
               role="tab"
               aria-selected={active}
               onClick={() => setTab(item.id)}
-              className={`-mb-px border-b-2 px-4 py-2.5 text-[13px] transition-colors ${
+              className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] transition-colors sm:px-4 ${
                 active
                   ? 'border-brand text-brand'
                   : 'border-transparent text-text-secondary hover:text-text'
               }`}
             >
               {t(item.labelKey)}
+              {/* Status tag is a nice-to-have; at 390px it doubled the tab
+                  width and forced both labels to wrap. */}
               {item.id === 'conversations' ? (
-                <Tag tone="green" className="ml-2">
+                <Tag tone="green" className="ml-2 hidden sm:inline-flex">
                   {t('ask.inbox.live')}
                 </Tag>
               ) : null}
@@ -86,8 +92,8 @@ export default function AskAisarView({
       </div>
 
       {tab === 'assistant' ? (
-        <Card className="min-h-[440px] gap-0 p-0">
-          <div ref={thread} className="flex flex-1 flex-col gap-4 overflow-y-auto p-5">
+        <Card className="min-h-[360px] gap-0 p-0 sm:min-h-[440px]">
+          <div ref={thread} className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-5">
             {!ask.hasHistory ? (
               <div className="flex flex-col items-center gap-3 py-10 text-center">
                 <span className="text-3xl" aria-hidden="true">
@@ -120,12 +126,12 @@ export default function AskAisarView({
           </div>
 
           {/* Prompt chips */}
-          <div className="flex flex-wrap gap-2 border-t border-rail px-5 pt-3">
+          <div className="flex gap-2 overflow-x-auto border-t border-rail px-5 pt-3 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
             {ASK_PROMPTS.map((key) => (
               <button
                 key={key}
                 type="button"
-                className="chip hover:border-brand-line"
+                className="chip shrink-0 hover:border-brand-line"
                 onClick={() => submit(t(`ask.prompt.${key}`))}
               >
                 {t(`ask.prompt.${key}`)}
@@ -134,7 +140,7 @@ export default function AskAisarView({
           </div>
 
           <form
-            className="flex items-end gap-2 p-5"
+            className="flex items-end gap-2 p-4 sm:p-5"
             onSubmit={(e) => {
               e.preventDefault();
               submit();
@@ -155,15 +161,16 @@ export default function AskAisarView({
                   submit();
                 }
               }}
-              placeholder={t('ask.placeholder')}
+              placeholder={compact ? t('ask.placeholder.short') : t('ask.placeholder')}
               aria-label={t('ask.placeholder')}
-              className="input max-h-[120px] flex-1 resize-none px-3"
+              className="input max-h-[120px] w-full min-w-0 flex-1 resize-none px-3"
             />
-            <Button type="submit" disabled={!draft.trim()}>
-              {t('ask.send')}
+            <Button type="submit" disabled={!draft.trim()} className="shrink-0 px-4 sm:px-6">
+              <span className="sm:hidden">{t('chat.send')}</span>
+              <span className="hidden sm:inline">{t('ask.send')}</span>
             </Button>
           </form>
-          <p className="px-5 pb-4 text-[11px] text-text-muted">{t('ask.hint')}</p>
+          <p className="px-4 pb-4 text-[11px] text-text-muted sm:px-5">{t('ask.hint')}</p>
         </Card>
       ) : (
         <div className="flex flex-col gap-4">
