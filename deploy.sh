@@ -41,16 +41,62 @@ npx wrangler pages deploy dist \
 
 echo
 echo "── 4/4 Verify ──"
-sleep 5
+
+# A SPA answers 200 for every path, including assets that do not exist —
+# the _redirects fallback returns index.html. So checking status codes
+# proves nothing. Fetch the real asset URLs out of the served HTML and
+# assert they are actually CSS and JS. A cutover once shipped with every
+# route returning 200 while the stylesheet was HTML and the whole site
+# rendered unstyled.
+
 if [ "$PROJECT" = "aisar" ]; then
-  TARGETS="https://aisar.ai https://aisar.ai/onboard https://aisar.ai/setup https://aisar.ai/app"
+  BASE="https://aisar.ai"
 else
-  TARGETS="https://${PROJECT}.pages.dev"
+  BASE="https://${PROJECT}.pages.dev"
 fi
-for url in $TARGETS; do
-  code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 20 "$url" || echo "ERR")
-  echo "   $url → HTTP $code"
+
+verify_assets() {
+  html=$(curl -sS --max-time 20 "$BASE/?cb=$(date +%s)" 2>/dev/null) || return 1
+  css=$(printf '%s' "$html" | grep -oE '/assets/[A-Za-z0-9_.-]+\.css' | head -1)
+  js=$(printf '%s' "$html" | grep -oE '/assets/[A-Za-z0-9_.-]+\.js' | head -1)
+  [ -n "$css" ] && [ -n "$js" ] || return 1
+
+  css_body=$(curl -sS --max-time 20 "$BASE$css" 2>/dev/null) || return 1
+  js_body=$(curl -sS --max-time 20 "$BASE$js" 2>/dev/null) || return 1
+
+  # The failure mode is an asset URL answering with index.html.
+  printf '%s' "$css_body" | head -c 200 | grep -qi "<!doctype\|<html" && return 1
+  printf '%s' "$js_body"  | head -c 200 | grep -qi "<!doctype\|<html" && return 1
+
+  # And an empty or truncated bundle is just as broken as an HTML one.
+  [ "${#css_body}" -gt 5000 ] || return 1
+  [ "${#js_body}"  -gt 5000 ] || return 1
+  return 0
+}
+
+ok=0
+for attempt in 1 2 3 4 5 6; do
+  if verify_assets; then ok=1; break; fi
+  echo "   assets not ready yet (attempt $attempt) — waiting…"
+  sleep 10
 done
 
-echo
+if [ "$ok" != "1" ]; then
+  echo
+  echo "❌ VERIFY FAILED: $BASE is serving HTML where CSS or JS should be."
+  echo "   The site is live but will render unstyled."
+  if [ "$PROJECT" = "aisar" ]; then
+    echo "   Roll back now from the Cloudflare Pages dashboard, or run:"
+    echo "     npx wrangler pages deploy . --project-name aisar --branch main"
+    echo "   which republishes the static site from the repository root."
+  fi
+  exit 1
+fi
+
+for p in "" /onboard /setup /app; do
+  code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 20 "$BASE$p/" || echo "ERR")
+  echo "   $BASE$p → HTTP $code"
+done
+echo "   assets verified: stylesheet and bundle both served as real files"
+
 echo "✅ Done."
