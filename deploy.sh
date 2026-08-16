@@ -1,35 +1,56 @@
 #!/usr/bin/env bash
-# Deploy AISAR site → Cloudflare Pages (aisar.ai)
-# The `aisar` project serves aisar.ai, staging.aisar.ai and aisar-ez8.pages.dev.
+# ============================================================
+#  Deploy AISAR (app/) → Cloudflare Pages → aisar.ai
+#
+#  The React app is the product of record as of the cutover. The
+#  old static site (index.html, biz-engine.js and the other root
+#  HTML) is still in the repository for reference but is no longer
+#  published by anything.
+#
+#  Preview instead of production:
+#    AISAR_PAGES_PROJECT=aisar-next ./deploy.sh "message"
+#
+#  Rollback: Cloudflare Pages keeps every deployment. The last
+#  static-site build is 26460b00 under the `aisar` project and can
+#  be restored from the dashboard in one click.
+# ============================================================
 set -euo pipefail
 cd "$(dirname "$0")"
 
-MSG="${1:-Deploy AISAR site update}"
+PROJECT="${AISAR_PAGES_PROJECT:-aisar}"
+MSG="${1:-Deploy AISAR React app}"
 
-echo "── 1/3 Git commit + push ──"
-git add -A
-if git diff --cached --quiet; then
-  echo "   Tiada perubahan — skip commit"
-else
-  git commit -m "$MSG"
-fi
-git push origin main || echo "   (push skipped — no remote or offline)"
+echo "── 1/4 Install ──"
+cd app
+pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 
 echo
-echo "── 2/3 Wrangler publish (Cloudflare Pages → aisar.ai) ──"
-wrangler pages project create aisar --production-branch main 2>/dev/null || true
-wrangler pages publish . --project-name aisar
-echo "   ✅ Cloudflare Pages deploy"
+echo "── 2/4 Typecheck + build ──"
+pnpm build
 
 echo
-echo "── 3/3 Verify ──"
+echo "── 3/4 Publish → Cloudflare Pages (project: $PROJECT) ──"
+npx wrangler pages project create "$PROJECT" --production-branch main 2>/dev/null || true
+# Deploy as the production branch so the stable <project>.pages.dev URL
+# serves it. Without --branch, wrangler uses the current git branch and
+# publishes a preview-only deployment whose apex URL 404s.
+npx wrangler pages deploy dist \
+  --project-name "$PROJECT" \
+  --branch main \
+  --commit-message "$MSG"
+
+echo
+echo "── 4/4 Verify ──"
 sleep 5
-# Both previous targets were wrong: aisar.kitakod.com has no DNS, and
-# aisar.pages.dev belongs to a different project (the old AI Agent
-# Builder), so it returned 200 no matter what this script published.
-for url in https://aisar.ai https://aisar-ez8.pages.dev; do
+if [ "$PROJECT" = "aisar" ]; then
+  TARGETS="https://aisar.ai https://aisar.ai/onboard https://aisar.ai/setup https://aisar.ai/app"
+else
+  TARGETS="https://${PROJECT}.pages.dev"
+fi
+for url in $TARGETS; do
   code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 20 "$url" || echo "ERR")
   echo "   $url → HTTP $code"
 done
+
 echo
-echo "✅ Selesai."
+echo "✅ Done."

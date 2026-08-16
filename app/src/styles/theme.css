@@ -74,17 +74,29 @@
    ============================================================ */
 
 @layer components {
+  /* Faithful to the upstream .btn, which Tailwind emits as two rules:
+     an earlier one carrying the type treatment and a square corner, and
+     a later one overriding size and padding. The earlier rule is the
+     one that gives these buttons their character — uppercase JetBrains
+     Mono at light weight, wide-tracked, with no radius. An earlier port
+     of this component captured only the later rule and produced rounded
+     sans-serif buttons that read as a different design entirely. */
   .btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: .5rem;
+    gap: .5rem;                  /* spacing * 2 */
     min-height: var(--control-h);
     padding-inline: 1.5rem;      /* spacing * 6 */
     padding-block: var(--control-pad-y);
     border: 1px solid transparent;
-    border-radius: var(--radius-item);
+    border-radius: 0;
+    font-family: var(--font-nav);
     font-size: 14px;
+    font-weight: 300;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    white-space: nowrap;
     line-height: 1;
     cursor: pointer;
     transition: background-color var(--dur-fast) var(--ease-signature),
