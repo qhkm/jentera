@@ -32,6 +32,12 @@ AISAR is built for business owners, not developers.
 
 Internally, AISAR is an autonomous AI implementation platform. Externally, it should feel like an on-demand implementation team that sets itself up.
 
+## Managed Autonomy
+
+AISAR should provide the capability of a powerful autonomous agent—persistent memory, tools, reusable skills, scheduled work, delegation, and multi-channel messaging—as a managed service. Owners should never have to install an agent, select a model, manage API keys, configure tools, or maintain infrastructure.
+
+The underlying agent runtime is replaceable. AISAR owns the durable business layer around it: verified business knowledge, permissions, integrations, approvals, audit history, reliability, and the non-technical customer experience. Internally there may be many specialist workers; externally the customer works with one AISAR.
+
 ## Product Experience
 
 AISAR follows a continuous loop:
@@ -44,12 +50,29 @@ AISAR follows a continuous loop:
 
 The interface begins with outcomes such as “answer customer enquiries” or “manage bookings,” never a blank agent or workflow builder.
 
+## Operational Visibility
+
+**Chat is where the owner asks. Activity is where the owner understands what happened.** A conversation transcript must never be the primary system of record.
+
+Every instruction, proactive job, and external action automatically becomes a structured business record. At a glance, the owner should see the outcome, status, channel, time, exception or approval required, and estimated time saved. Repeated work is grouped into useful summaries—for example, “18 Telegram enquiries handled, 2 bookings created, 1 escalated”—instead of displayed as dozens of messages or tool calls.
+
+Each product surface has one job:
+
+- **Ask AISAR:** give instructions and ask questions.
+- **Home:** see an automatic daily summary, exceptions, and the next useful action.
+- **Activity:** trace completed, active, failed, and approval-blocked work as structured records.
+- **Customer inbox:** read or take over actual customer conversations.
+- **My Business:** review knowledge, permissions, connections, and automation policies.
+
+Owner-facing summaries should lead with business outcomes. Raw messages, retrieved sources, model details, tool calls, and execution logs remain available under an expandable technical trace for support, debugging, and accountability.
+
 ## Language Principles
 
 - Say **put AISAR to work**, not “deploy an agent.”
 - Say **handle this task**, not “build a workflow.”
 - Say **connect your tools**, not “configure integrations.”
 - Show what AISAR is ready to do, what approval it needs, and what it completed.
+- Summarize repeated actions into business outcomes instead of exposing a stream of agent messages.
 - Keep models, prompts, APIs, orchestration, and implementation details behind the curtain.
 
 ## Trust and Control
@@ -59,3 +82,5 @@ Zero technical setup does not mean zero control. AISAR may automate low-risk int
 ## Primary Success Metric
 
 Optimize for **time to first useful work completed**, not onboarding completion, agents created, or workflows configured.
+
+The first proof of this promise is a complete loop: import the business, build reviewable memory, ask or instruct AISAR, approve a proposed action, execute it through a connected channel, and record the outcome.
