@@ -60,8 +60,17 @@ export function extractLocation(text: string): string {
   const lower = (text || '').toLowerCase();
   const cities = cityList();
 
-  for (const alias of Object.keys(cities)) {
-    if (lower.includes(alias)) return cities[alias];
+  /* Match on word boundaries, longest alias first.
+     A plain substring test made the two-letter aliases fire inside
+     ordinary words: "kl" is an alias for Kuala Lumpur, and "klinik gigi
+     di Ipoh" contains it, so every Malay-described clinic was relocated
+     to KL regardless of the city its owner actually named. "jb" and
+     "pj" carry the same hazard. Longest-first then keeps "kuala lumpur"
+     and "johor bahru" from losing to their own abbreviations. */
+  const aliases = Object.keys(cities).sort((a, b) => b.length - a.length);
+  for (const alias of aliases) {
+    const pattern = new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+    if (pattern.test(lower)) return cities[alias];
   }
 
   const m = lower.match(/(?:di|in|at)\s+([a-z .,'-]{2,40})/);
