@@ -1,5 +1,5 @@
 /* ============================================================
-   AISAR playbook engine — generate on the run, self-improving.
+   JENTERA playbook engine — generate on the run, self-improving.
    Bukan senarai profil hardcode: PLAYBOOKS (pola industri) +
    inference (free-text user → kategori) + generate dashboard.
    Tambah industri baru = tambah SATU entri PLAYBOOKS.
@@ -13,10 +13,10 @@ var KV_STORE = (function(){
 })();
 
 /* ============================================================
-   COUNTRY LAYER — AISAR is built Malaysia-first but country-aware.
+   COUNTRY LAYER — JENTERA is built Malaysia-first but country-aware.
    Tambah negara baru = tambah SATU entri KV_COUNTRIES (cities,
    language default, currency, TLD, channel stack).
-   Aktifkan: kvSetCountry('ID') — KV simpan di 'aisar-country'.
+   Aktifkan: kvSetCountry('ID') — KV simpan di 'jentera-country'.
    ============================================================ */
 var KV_COUNTRIES = {
   MY: {
@@ -76,14 +76,14 @@ var KV_COUNTRIES = {
   }
 };
 var KV_COUNTRY = (function(){
-  var c = KV_STORE.get('aisar-country', 'MY');
+  var c = KV_STORE.get('jentera-country', 'MY');
   return KV_COUNTRIES[c] ? c : 'MY';
 })();
 function kvCountry(){ return KV_COUNTRIES[KV_COUNTRY] || KV_COUNTRIES.MY; }
 function kvSetCountry(code){
   if (!KV_COUNTRIES[code]) return;
   KV_COUNTRY = code;
-  KV_STORE.set('aisar-country', code);
+  KV_STORE.set('jentera-country', code);
   /* BIZ cache ikut negara — reset supaya loc/detect/site/ch segar */
   try { if (typeof BIZ !== 'undefined') { for (var k in BIZ) delete BIZ[k]; } } catch(e){}
 }
@@ -124,13 +124,13 @@ function kvChans(b){
 }
 
 /* ============================================================
-   CONNECTOR REGISTRY — senarai semua platform yang AISAR boleh
+   CONNECTOR REGISTRY — senarai semua platform yang JENTERA boleh
    connect. Setiap connector: kaedah integrate (oauth|link|file|bss),
    auth flow, scope (apa yang boleh buat), negara sokongan.
 
    Prinsip: customer TAK PERNAH nampak API key/webhook — connect =
    login + approve (T1 oauth), link je (T2), file/email (T3),
-   atau key dipegang kami (T4/bss). Details: AISAR-INTEGRATION-STRATEGY.md
+   atau key dipegang kami (T4/bss). Details: JENTERA-INTEGRATION-STRATEGY.md
    ============================================================ */
 var KV_CONNECTORS = {
   whatsapp: {
@@ -249,7 +249,7 @@ function kvConnector(name){
 
 /* ============================================================
    TOOL CONTRACT — Agent Interface (spec v1)
-   Satu pattern untuk semua connector. Detail: AISAR-INTEGRATION-STRATEGY.md §8
+   Satu pattern untuk semua connector. Detail: JENTERA-INTEGRATION-STRATEGY.md §8
    ============================================================ */
 var KV_TOOL_RISK = { send:'high', pay:'high', cancel:'high', refund:'high',
                      update:'medium', book:'medium', read:'low', list:'low', export:'low' };
@@ -280,19 +280,19 @@ function kvTool(req){
 
 /* Approval queue — manusia kekal dalam loop untuk external action */
 function kvApprovalQueue(conn, op, args, risk){
-  var key = 'aisar-approvals';
+  var key = 'jentera-approvals';
   var q = [];
   try { q = JSON.parse(KV_STORE.get(key, '[]')); } catch(e){}
   q.push({ id: Date.now(), conn:conn, op:op, args:args, risk:risk, ts:new Date().toISOString(), status:'pending' });
   KV_STORE.set(key, JSON.stringify(q));
 }
 function kvApprovals(){
-  try { return JSON.parse(KV_STORE.get('aisar-approvals', '[]')); } catch(e){ return []; }
+  try { return JSON.parse(KV_STORE.get('jentera-approvals', '[]')); } catch(e){ return []; }
 }
 function kvApprovalDecide(id, ok){
   var q = kvApprovals();
   for (var i=0;i<q.length;i++){ if (q[i].id === id){ q[i].status = ok ? 'approved' : 'rejected'; q[i].decided = new Date().toISOString(); } }
-  KV_STORE.set('aisar-approvals', JSON.stringify(q));
+  KV_STORE.set('jentera-approvals', JSON.stringify(q));
 }
 
 /* Approval queue UI — manusia kekal dalam loop */
@@ -343,29 +343,29 @@ var KV_I18N = {
     'view.home.greet':'Good morning 👋','view.home.desc':"Here's what happened while you were away.",
     'view.chat':'Chat','view.chat.desc':'Your AI team in real time — like chatting with staff.',
     'view.team':'Team Chat','view.team.desc':'One space for you + all AI agents — tag @agent, they answer.',
-    'view.business':'Your Business','view.business.desc':'Everything AISAR knows about your business. Correct anything and it updates everywhere.',
+    'view.business':'Your Business','view.business.desc':'Everything JENTERA knows about your business. Correct anything and it updates everywhere.',
     'view.aiteam':'AI Team','view.aiteam.desc':'Your team, organised by job — not by agents, models or workflows.',
     'view.work':'Work','view.work.desc':'Decisions that need you, and what your AI team has handled.',
     'view.connections':'Connections','view.connections.desc':"The tools your AI team works with. Every connection is explained — you always know why it's there.",
     'side.business':'Your Business','side.complete':'✓ Setup complete','side.industry':'Your industry','side.demo':'Demo preview','side.finish':'Finish setup →','side.potential':'AI Potential','side.routine':'of routine work','side.review':'Review →',
-    'drawer.menu':'Menu','drawer.platform':'AISAR platform',
+    'drawer.menu':'Menu','drawer.platform':'JENTERA platform',
     'biz.profile':'Profile','biz.website':'Website','biz.contact':'Contact','biz.booking':'Booking','biz.systems':'Systems',
-    'conn.focus':'AISAR focuses on where your customers actually are.',
+    'conn.focus':'JENTERA focuses on where your customers actually are.',
     'conn.enable':'Connect & enable','conn.first':'Connect first','home.open':'Open',
-    'sub.step1':'One more step before AISAR can start working.',
-    'sub.step2':'AISAR is ready — connect channels to activate your AI team.',
+    'sub.step1':'One more step before JENTERA can start working.',
+    'sub.step2':'JENTERA is ready — connect channels to activate your AI team.',
     'sub.step3':"Here's what happened while you were away.",
-    'cmd.step1.title':'One more step','cmd.step1.head':'Finish your business profile','cmd.step1.body':'AISAR needs to know your business before it can start.','cmd.step1.cta':'Continue setup →',
+    'cmd.step1.title':'One more step','cmd.step1.head':'Finish your business profile','cmd.step1.body':'JENTERA needs to know your business before it can start.','cmd.step1.cta':'Continue setup →',
     'cmd.step2.title':'Activate your AI team','cmd.step2.head':'Connect WhatsApp first','cmd.step2.body':'Customer Assistant will answer your customers 24/7 — but it needs a channel first.','cmd.step2.tag':'1 connection','cmd.step2.cta':'Connect now →',
-    'cmd.step3.title':'What AISAR did today',
+    'cmd.step3.title':'What JENTERA did today',
     'work.need':'Need you','work.auto':'Auto done','work.activity':'Activity',
     'work.f.need':'⚠️ Need you','work.f.auto':'🤖 Auto','work.f.done':'✅ Done','work.f.all':'📋 All','work.respond':'Respond',
     'team.ph.pasukan':'Message for the team — tag @agent…','team.ph.escalation':'Update / instructions — tag @agent…','team.ph.random':'Casual chat — tag @agent…','team.channels':'channels',
     'chat.search':'Search conversations…','chat.reply':'Type a reply…','chat.takeover':'Take over to reply yourself…','chat.send':'Send',
     'toast.approved':'✓ Approved & sent.',
     'rec.title':'AI recommends','rec.head':'More agents that could help','rec.desc':'Based on your business profile, these roles save you the most time next.','rec.rec':'recommended','rec.cta':'Add to team','rec.added':'✓ {n} added — connect channels to go live.',
-    'pot.txt':'AISAR found {n} more opportunities to automate.',
-    'uc.suggested':'Suggested next','uc.automate':'Automate it','uc.notnow':'Not now','uc.opportunity':'opportunity — not automated yet','uc.see':'See in Work','uc.more':'More ways AISAR can help — pick an area to automate'
+    'pot.txt':'JENTERA found {n} more opportunities to automate.',
+    'uc.suggested':'Suggested next','uc.automate':'Automate it','uc.notnow':'Not now','uc.opportunity':'opportunity — not automated yet','uc.see':'See in Work','uc.more':'More ways JENTERA can help — pick an area to automate'
   },
   bm: {
     'nav.home':'Home','nav.chat':'Chat','nav.team':'Chat Pasukan','nav.business':'Perniagaan Anda','nav.aiteam':'Pasukan AI','nav.work':'Kerja','nav.connections':'Sambungan',
@@ -375,33 +375,33 @@ var KV_I18N = {
     'view.home.greet':'Selamat pagi 👋','view.home.desc':'Apa yang berlaku semasa kau pergi.',
     'view.chat':'Chat','view.chat.desc':'Pasukan AI kau dalam masa nyata — macam chat dengan staff.',
     'view.team':'Chat Pasukan','view.team.desc':'Satu ruang untuk kau + semua AI agent — tag @agent, dia jawab.',
-    'view.business':'Perniagaan Anda','view.business.desc':'Semua yang AISAR tahu tentang perniagaan kau. Betulkan sekali, ia update di mana-mana.',
+    'view.business':'Perniagaan Anda','view.business.desc':'Semua yang JENTERA tahu tentang perniagaan kau. Betulkan sekali, ia update di mana-mana.',
     'view.aiteam':'Pasukan AI','view.aiteam.desc':'Pasukan kau, diatur ikut kerja — bukan ikut agents, models atau workflows.',
     'view.work':'Kerja','view.work.desc':'Keputusan yang perlukan kau, dan apa yang pasukan AI kau dah selesaikan.',
     'view.connections':'Sambungan','view.connections.desc':'Alat yang pasukan AI kau guna. Setiap sambungan diterangkan — kau sentiasa tahu kenapa ia ada.',
     'side.business':'Perniagaan Anda','side.complete':'✓ Setup selesai','side.industry':'Industri anda','side.demo':'Pratonton demo','side.finish':'Sambung setup →','side.potential':'Potensi AI','side.routine':'kerja rutin','side.review':'Semak →',
-    'drawer.menu':'Menu','drawer.platform':'Platform AISAR',
+    'drawer.menu':'Menu','drawer.platform':'Platform JENTERA',
     'biz.profile':'Profil','biz.website':'Laman web','biz.contact':'Hubungan','biz.booking':'Tempahan','biz.systems':'Sistem',
-    'conn.focus':'AISAR fokus di mana pelanggan kau sebenarnya berada.',
+    'conn.focus':'JENTERA fokus di mana pelanggan kau sebenarnya berada.',
     'conn.enable':'Sambung & aktifkan','conn.first':'Sambung dulu','home.open':'Buka',
-    'sub.step1':'Satu langkah lagi sebelum AISAR boleh mula bekerja.',
-    'sub.step2':'AISAR sedia — sambungkan saluran untuk hidupkan AI team.',
+    'sub.step1':'Satu langkah lagi sebelum JENTERA boleh mula bekerja.',
+    'sub.step2':'JENTERA sedia — sambungkan saluran untuk hidupkan AI team.',
     'sub.step3':'Apa yang berlaku semasa kau pergi.',
-    'cmd.step1.title':'Satu langkah lagi','cmd.step1.head':'Siapkan profil bisnes kau','cmd.step1.body':'AISAR perlu tahu bisnes kau sebelum boleh mula bekerja.','cmd.step1.cta':'Sambung setup →',
+    'cmd.step1.title':'Satu langkah lagi','cmd.step1.head':'Siapkan profil bisnes kau','cmd.step1.body':'JENTERA perlu tahu bisnes kau sebelum boleh mula bekerja.','cmd.step1.cta':'Sambung setup →',
     'cmd.step2.title':'Hidupkan AI team','cmd.step2.head':'Sambung WhatsApp dulu','cmd.step2.body':'Customer Assistant akan jawab pelanggan kau 24/7 — tapi dia perlukan saluran dulu.','cmd.step2.tag':'1 sambungan','cmd.step2.cta':'Sambung sekarang →',
-    'cmd.step3.title':'Apa yang AISAR buat hari ini',
+    'cmd.step3.title':'Apa yang JENTERA buat hari ini',
     'work.need':'Perlu kau','work.auto':'Selesai auto','work.activity':'Aktiviti',
     'work.f.need':'⚠️ Perlu kau','work.f.auto':'🤖 Auto','work.f.done':'✅ Selesai','work.f.all':'📋 Semua','work.respond':'Balas',
     'team.ph.pasukan':'Mesej untuk pasukan — tag @agent…','team.ph.escalation':'Update / arahan — tag @agent…','team.ph.random':'Sembang santai — tag @agent…','team.channels':'saluran',
     'chat.search':'Cari perbualan…','chat.reply':'Type balasan…','chat.takeover':'Ambil alih untuk reply sendiri…','chat.send':'Send',
     'toast.approved':'✓ Diluluskan & dihantar.',
     'rec.title':'Cadangan AI','rec.head':'Agent lain yang boleh bantu','rec.desc':'Berdasarkan profil bisnes kau, peranan ni jimatkan masa paling banyak.','rec.rec':'disyorkan','rec.cta':'Tambah ke team','rec.added':'✓ {n} ditambah — sambung saluran untuk aktif.',
-    'pot.txt':'AISAR jumpa {n} lagi peluang untuk automasi.',
-    'uc.suggested':'Cadangan seterusnya','uc.automate':'Automatikkan','uc.notnow':'Nanti dulu','uc.opportunity':'peluang — belum automatik','uc.see':'Lihat dalam Kerja','uc.more':'Lagi cara AISAR boleh bantu — pilih mana nak automatikkan'
+    'pot.txt':'JENTERA jumpa {n} lagi peluang untuk automasi.',
+    'uc.suggested':'Cadangan seterusnya','uc.automate':'Automatikkan','uc.notnow':'Nanti dulu','uc.opportunity':'peluang — belum automatik','uc.see':'Lihat dalam Kerja','uc.more':'Lagi cara JENTERA boleh bantu — pilih mana nak automatikkan'
   }
 };
 var KV_LANG = (function(){
-  var l = KV_STORE.get('aisar-lang','');
+  var l = KV_STORE.get('jentera-lang','');
   if (l === 'en' || l === 'bm') return l;
   var c = kvCountry();
   if (c && c.lang && KV_I18N && KV_I18N[c.lang]) return c.lang;
@@ -414,7 +414,7 @@ function kvT(k){
 }
 function kvToggleLang(){
   KV_LANG = (KV_LANG === 'en') ? 'bm' : 'en';
-  KV_STORE.set('aisar-lang', KV_LANG);
+  KV_STORE.set('jentera-lang', KV_LANG);
   kvApplyLang();
   try { kvRenderAll(); } catch(e){ if (window.console) console.error(e); }
 }
@@ -430,7 +430,7 @@ function kvApplyLang(){
   document.querySelectorAll('.kv-lang-btn').forEach(function(el){
     el.textContent = (KV_LANG === 'en') ? 'BM' : 'EN';
   });
-  document.title = (KV_LANG === 'en') ? 'AISAR Platform — Your business, increasingly run by AI' : 'AISAR Platform — Perniagaan anda, semakin dikendalikan AI';
+  document.title = (KV_LANG === 'en') ? 'JENTERA Platform — Your business, increasingly run by AI' : 'JENTERA Platform — Perniagaan anda, semakin dikendalikan AI';
 }
 
 /* ============================================================
@@ -455,7 +455,7 @@ var PLAYBOOKS = {
       { d:'Today', v:'12', u:'', l:'conversations handled', s:'4 needed you' },
       { d:'Reservations', v:'7', u:'', l:'new bookings this week', s:'3 via WhatsApp' },
       { d:'Hours saved', v:'18', u:' hrs', l:'saved this week by your AI team', p:64 } ],
-    sug: { t:'Automate your Friday export', d:'You manually export reservations to Sheets every Friday. AISAR can do this automatically.', tag:'est. 1 hr/month', cta:'Automation queued — I\u0027ll take care of the Friday export.' },
+    sug: { t:'Automate your Friday export', d:'You manually export reservations to Sheets every Friday. JENTERA can do this automatically.', tag:'est. 1 hr/month', cta:'Automation queued — I\u0027ll take care of the Friday export.' },
     team: [
       { e:'💬', n:'Customer Assistant', ch:'WhatsApp · Instagram', d:'Answers FAQs, menu questions, opening hours and policies — 24/7, in your voice. Escalates complaints.', m:'Today · 12 chats · 4 escalated' },
       { e:'📅', n:'Booking Agent', ch:'Calendar · Confirmations', d:'Checks availability, creates bookings, sends confirmations and reminders automatically.', m:'This week · 7 bookings' },
@@ -465,7 +465,7 @@ var PLAYBOOKS = {
       { e:'💬', n:'Customer Assistant', t:'WhatsApp · 2m ago · auto', tag:'done', tc:'', d:'Answered "Do you have halal certification?" with menu + certification link.' },
       { e:'📅', n:'Booking Agent', t:'Instagram · 1h ago · auto', tag:'confirmed', tc:'green', d:'Created booking for 2 pax, Sat 8pm — sent confirmation + reminder.' },
       { e:'🔁', n:'Follow-up', t:'3h ago · auto', tag:'sent', tc:'green', d:'Sent birthday promo to 6 past customers (personalised, in brand voice).' },
-      { e:'⚠️', n:'Customer Assistant', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Customer complained about wrong order delivery — AISAR apologised and offered 10% off. Review before sending?', cta:'Approved — 10% discount voucher sent.' } ],
+      { e:'⚠️', n:'Customer Assistant', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Customer complained about wrong order delivery — JENTERA apologised and offered 10% off. Review before sending?', cta:'Approved — 10% discount voucher sent.' } ],
     conns: [
       { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Customer Assistant & Follow-up use this to talk to customers.', on:true },
       { e:'📸', n:'Instagram', s:'DM · linked', d:'Booking Agent receives reservation DMs here.', on:true },
@@ -486,7 +486,7 @@ var PLAYBOOKS = {
       { d:'Today', v:'34', u:'', l:'orders processed', s:'6 support tickets' },
       { d:'Orders this week', v:'211', u:'', l:'across your channels', s:'9 refunds handled' },
       { d:'Hours saved', v:'22', u:' hrs', l:'saved this week by your AI team', p:71 } ],
-    sug: { t:'Automate abandoned cart recovery', d:'Shoppers leave carts every day. AISAR follows up automatically with a personalised message + offer.', tag:'est. 3 hrs/month', cta:'Automation queued — I\u0027ll take care of cart recovery.' },
+    sug: { t:'Automate abandoned cart recovery', d:'Shoppers leave carts every day. JENTERA follows up automatically with a personalised message + offer.', tag:'est. 3 hrs/month', cta:'Automation queued — I\u0027ll take care of cart recovery.' },
     team: [
       { e:'💬', n:'Customer Assistant', ch:'WhatsApp · Instagram', d:'Answers product questions, stock, shipping and policy FAQs — 24/7.', m:'Today · 34 chats · 6 escalated' },
       { e:'📦', n:'Order Tracker', ch:'Store · Email', d:'Tracks orders and sends status updates automatically as items ship.', m:'This week · 41 updates' },
@@ -496,7 +496,7 @@ var PLAYBOOKS = {
       { e:'💬', n:'Customer Assistant', t:'WhatsApp · 2m ago · auto', tag:'done', tc:'', d:'Answered "Is this available in size L?" with stock + product link.' },
       { e:'📦', n:'Order Tracker', t:'1h ago · auto', tag:'confirmed', tc:'green', d:'Sent tracking update for order #1024 — out for delivery.' },
       { e:'🔁', n:'Follow-up', t:'3h ago · auto', tag:'sent', tc:'green', d:'Sent cart recovery to 5 shoppers who abandoned checkout yesterday.' },
-      { e:'⚠️', n:'Customer Assistant', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Customer complained about late delivery — AISAR apologised and offered free shipping. Review before sending?', cta:'Approved — free shipping voucher sent.' } ],
+      { e:'⚠️', n:'Customer Assistant', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Customer complained about late delivery — JENTERA apologised and offered free shipping. Review before sending?', cta:'Approved — free shipping voucher sent.' } ],
     conns: [
       { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Customer Assistant & Follow-up use this to talk to customers.', on:true },
       { e:'📸', n:'Instagram', s:'Shop · linked', d:'Customer Assistant answers product DMs here.', on:true },
@@ -517,7 +517,7 @@ var PLAYBOOKS = {
       { d:'Today', v:'26', u:'', l:'enquiries answered', s:'3 needed you' },
       { d:'Orders this week', v:'47', u:'', l:'via WhatsApp & walk-in', s:'2 pending payment' },
       { d:'Hours saved', v:'15', u:' hrs', l:'saved this week by your AI team', p:58 } ],
-    sug: { t:'Automate WhatsApp order intake', d:'Customers order via WhatsApp all day — even when your shop is closed. AISAR captures orders, confirms sizes and prices, and sends receipts automatically.', tag:'est. 6 hrs/month', cta:'Automation queued — I\u0027ll take your orders on WhatsApp.' },
+    sug: { t:'Automate WhatsApp order intake', d:'Customers order via WhatsApp all day — even when your shop is closed. JENTERA captures orders, confirms sizes and prices, and sends receipts automatically.', tag:'est. 6 hrs/month', cta:'Automation queued — I\u0027ll take your orders on WhatsApp.' },
     team: [
       { e:'💬', n:'Customer Assistant', ch:'WhatsApp · Instagram', d:'Answers product, size, stock and shop-hours questions — 24/7.', m:'Today · 28 chats · 4 escalated' },
       { e:'🛒', n:'Order Taker', ch:'WhatsApp · Walk-in', d:'Captures orders, confirms details and sends receipts — no pen needed.', m:'This week · 19 orders' },
@@ -527,7 +527,7 @@ var PLAYBOOKS = {
       { e:'💬', n:'Customer Assistant', t:'WhatsApp · 2m ago · auto', tag:'done', tc:'', d:'Answered "Kedai buka sampai pukul berapa?" with store hours + location.' },
       { e:'🛒', n:'Order Taker', t:'1h ago · auto', tag:'confirmed', tc:'green', d:'Captured order #241: 2x baju kurung (S, M) — payment pending.' },
       { e:'🔁', n:'Follow-up', t:'3h ago · auto', tag:'sent', tc:'green', d:'Sent reorder nudge to 6 past customers whose size restock just arrived.' },
-      { e:'⚠️', n:'Customer Assistant', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Customer asked about a bulk order (50 pcs) — AISAR checked with you before promising a price. Review?', cta:'Approved — offer sent with 8% bulk discount.' } ],
+      { e:'⚠️', n:'Customer Assistant', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Customer asked about a bulk order (50 pcs) — JENTERA checked with you before promising a price. Review?', cta:'Approved — offer sent with 8% bulk discount.' } ],
     conns: [
       { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Customer Assistant & Order Taker use this to talk to customers.', on:true },
       { e:'📸', n:'Instagram', s:'Shop · linked', d:'Customer Assistant answers product DMs here.', on:true },
@@ -547,7 +547,7 @@ var PLAYBOOKS = {
       { d:'Today', v:'14', u:'', l:'enquiries answered', s:'5 quote requests' },
       { d:'Events this month', v:'9', u:'', l:'confirmed from quotes', s:'3 pending deposit' },
       { d:'Hours saved', v:'12', u:' hrs', l:'saved this week by your AI team', p:55 } ],
-    sug: { t:'Automate event quote requests', d:'Clients ask for buffet quotes at all hours. AISAR collects event details (date, pax, menu) and sends a quote — no back-and-forth.', tag:'est. 5 hrs/month', cta:'Automation queued — I\u0027ll handle quote requests.' },
+    sug: { t:'Automate event quote requests', d:'Clients ask for buffet quotes at all hours. JENTERA collects event details (date, pax, menu) and sends a quote — no back-and-forth.', tag:'est. 5 hrs/month', cta:'Automation queued — I\u0027ll handle quote requests.' },
     team: [
       { e:'💬', n:'Customer Assistant', ch:'WhatsApp · Instagram', d:'Answers menu, pricing and availability questions — 24/7.', m:'Today · 16 chats · 3 escalated' },
       { e:'📝', n:'Quote Agent', ch:'WhatsApp · Form', d:'Collects event details (date, pax, menu) and drafts quotes instantly.', m:'This week · 6 quotes' },
@@ -557,7 +557,7 @@ var PLAYBOOKS = {
       { e:'💬', n:'Customer Assistant', t:'WhatsApp · 2m ago · auto', tag:'done', tc:'', d:'Answered "Ada menu untuk 50 pax?" with package options + price range.' },
       { e:'📝', n:'Quote Agent', t:'1h ago · auto', tag:'sent', tc:'green', d:'Sent buffet quote for 19 Aug (80 pax, RM 28/pax) — awaiting deposit.' },
       { e:'📅', n:'Event Coordinator', t:'3h ago · auto', tag:'confirmed', tc:'green', d:'Booking confirmed for Saturday wedding — reminder set for prep day.' },
-      { e:'⚠️', n:'Customer Assistant', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Client asked for halal certification documents — AISAR needs your copy to send. Review?', cta:'Approved — cert sent.' } ],
+      { e:'⚠️', n:'Customer Assistant', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Client asked for halal certification documents — JENTERA needs your copy to send. Review?', cta:'Approved — cert sent.' } ],
     conns: [
       { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Customer Assistant & Quote Agent use this to talk to clients.', on:true },
       { e:'📸', n:'Instagram', s:'Shop · linked', d:'Customer Assistant answers menu DMs here.', on:true },
@@ -577,7 +577,7 @@ var PLAYBOOKS = {
       { d:'Today', v:'18', u:'', l:'enquiries answered', s:'4 booking requests' },
       { d:'Shoots this month', v:'11', u:'', l:'booked & scheduled', s:'2 rescheduled' },
       { d:'Hours saved', v:'14', u:' hrs', l:'saved this week by your AI team', p:57 } ],
-    sug: { t:'Automate booking & reminder flow', d:'Clients ask "ada slot weekend ni?" every day. AISAR checks your calendar, books slots and sends reminders — no double-booking.', tag:'est. 4 hrs/month', cta:'Automation queued — I\u0027ll handle bookings.' },
+    sug: { t:'Automate booking & reminder flow', d:'Clients ask "ada slot weekend ni?" every day. JENTERA checks your calendar, books slots and sends reminders — no double-booking.', tag:'est. 4 hrs/month', cta:'Automation queued — I\u0027ll handle bookings.' },
     team: [
       { e:'💬', n:'Lead Responder', ch:'Instagram · WhatsApp', d:'Answers package, price and availability questions — in seconds.', m:'Today · 20 chats · 5 escalated' },
       { e:'📅', n:'Booking Agent', ch:'Calendar · WhatsApp', d:'Checks studio availability and books shoots without the back-and-forth.', m:'This week · 7 bookings' },
@@ -587,7 +587,7 @@ var PLAYBOOKS = {
       { e:'💬', n:'Lead Responder', t:'Instagram · 2m ago · auto', tag:'done', tc:'', d:'Answered "Berapa untuk prewedding outdoor?" with package + sample link.' },
       { e:'📅', n:'Booking Agent', t:'1h ago · auto', tag:'confirmed', tc:'green', d:'Booked family shoot — Sat 10am, studio A. Reminder sent to client.' },
       { e:'🖼️', n:'Client Assistant', t:'3h ago · auto', tag:'sent', tc:'green', d:'Delivered wedding gallery — 230 edited photos, 24h download link.' },
-      { e:'⚠️', n:'Lead Responder', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Client wants a rush quote for corporate event coverage (3 days notice). AISAR asked if you can accept. Review?', cta:'Approved — rush fee quoted.' } ],
+      { e:'⚠️', n:'Lead Responder', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Client wants a rush quote for corporate event coverage (3 days notice). JENTERA asked if you can accept. Review?', cta:'Approved — rush fee quoted.' } ],
     conns: [
       { e:'📸', n:'Instagram', s:'Shop · linked', d:'Lead Responder answers DMs & comments here.', on:true },
       { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Booking Agent confirms sessions here.', on:true },
@@ -607,7 +607,7 @@ var PLAYBOOKS = {
       { d:'Today', v:'22', u:'', l:'orders & questions handled', s:'3 needed you' },
       { d:'Cakes this week', v:'31', u:'', l:'custom pre-orders', s:'2 cancellations' },
       { d:'Hours saved', v:'16', u:' hrs', l:'saved this week by your AI team', p:61 } ],
-    sug: { t:'Automate custom cake orders', d:'Customers describe cakes on WhatsApp at midnight. AISAR captures flavour, size and pickup date — then reminds them to confirm.', tag:'est. 6 hrs/month', cta:'Automation queued — I\u0027ll take cake orders.' },
+    sug: { t:'Automate custom cake orders', d:'Customers describe cakes on WhatsApp at midnight. JENTERA captures flavour, size and pickup date — then reminds them to confirm.', tag:'est. 6 hrs/month', cta:'Automation queued — I\u0027ll take cake orders.' },
     team: [
       { e:'💬', n:'Customer Assistant', ch:'WhatsApp · Instagram', d:'Answers flavour, price and order-cutoff questions — 24/7.', m:'Today · 24 chats · 3 escalated' },
       { e:'🎂', n:'Order Taker', ch:'WhatsApp', d:'Captures custom cake orders — flavour, size, pickup date, deposit.', m:'This week · 18 orders' },
@@ -637,7 +637,7 @@ var PLAYBOOKS = {
       { d:'Today', v:'9', u:'', l:'enquiries answered', s:'3 wedding leads' },
       { d:'Events this month', v:'5', u:'', l:'confirmed packages', s:'2 deposits pending' },
       { d:'Hours saved', v:'11', u:' hrs', l:'saved this week by your AI team', p:54 } ],
-    sug: { t:'Automate wedding lead follow-up', d:'Couples enquire with 3 planners at once — the fastest reply wins. AISAR answers instantly and books site visits for the best-fit dates.', tag:'est. 5 hrs/month', cta:'Automation queued — I\u0027ll chase wedding leads.' },
+    sug: { t:'Automate wedding lead follow-up', d:'Couples enquire with 3 planners at once — the fastest reply wins. JENTERA answers instantly and books site visits for the best-fit dates.', tag:'est. 5 hrs/month', cta:'Automation queued — I\u0027ll chase wedding leads.' },
     team: [
       { e:'💬', n:'Lead Responder', ch:'Instagram · WhatsApp', d:'Answers package, date and budget questions — in seconds, day or night.', m:'Today · 12 chats · 6 escalated' },
       { e:'📝', n:'Quote Agent', ch:'WhatsApp · Form', d:'Collects wedding details (date, pax, theme) and drafts package quotes.', m:'This week · 4 quotes' },
@@ -647,7 +647,7 @@ var PLAYBOOKS = {
       { e:'💬', n:'Lead Responder', t:'Instagram · 2m ago · auto', tag:'done', tc:'', d:'Answered "Harga package pelamin + hantaran?" with package link.' },
       { e:'📝', n:'Quote Agent', t:'1h ago · auto', tag:'sent', tc:'green', d:'Sent package quote for Dec wedding (200 pax, theme garden).' },
       { e:'📅', n:'Event Coordinator', t:'3h ago · auto', tag:'confirmed', tc:'green', d:'Site visit booked — Sunday 11am. Reminder set for both parties.' },
-      { e:'⚠️', n:'Lead Responder', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Couple wants custom theme + outside vendor — AISAR flagged before promising. Review?', cta:'Approved — custom quote sent.' } ],
+      { e:'⚠️', n:'Lead Responder', t:'WhatsApp · 5h ago · escalated', tag:'needs you', tc:'red', d:'Couple wants custom theme + outside vendor — JENTERA flagged before promising. Review?', cta:'Approved — custom quote sent.' } ],
     conns: [
       { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Lead Responder & Quote Agent use this to talk to couples.', on:true },
       { e:'📸', n:'Instagram', s:'Shop · linked', d:'Lead Responder answers DMs & comments here.', on:true },
@@ -667,7 +667,7 @@ var PLAYBOOKS = {
       { d:'Today', v:'8', u:'', l:'new leads', s:'2 booked discovery calls' },
       { d:'Quotes', v:'3', u:'', l:'sent this week', s:'1 awaiting reply' },
       { d:'Hours saved', v:'14', u:' hrs', l:'saved this week by your AI team', p:55 } ],
-    sug: { t:'Automate proposal follow-up', d:'You draft quotes and chase replies manually. AISAR follows up on sent quotes automatically.', tag:'est. 4 hrs/month', cta:'Automation queued — I\u0027ll chase those quotes.' },
+    sug: { t:'Automate proposal follow-up', d:'You draft quotes and chase replies manually. JENTERA follows up on sent quotes automatically.', tag:'est. 4 hrs/month', cta:'Automation queued — I\u0027ll chase those quotes.' },
     team: [
       { e:'🧲', n:'Lead Responder', ch:'Instagram · Email', d:'Answers scope, pricing and availability questions — and books discovery calls.', m:'Today · 8 leads · 2 booked' },
       { e:'📅', n:'Booking Agent', ch:'Calendar · Scheduling', d:'Checks your calendar and schedules discovery calls without back-and-forth.', m:'This week · 10 calls booked' },
@@ -677,7 +677,7 @@ var PLAYBOOKS = {
       { e:'🧲', n:'Lead Responder', t:'Instagram · 1m ago · auto', tag:'done', tc:'', d:'Answered "Do you do branding for F&B brands?" with portfolio + case study.' },
       { e:'📅', n:'Booking Agent', t:'30m ago · auto', tag:'confirmed', tc:'green', d:'Booked discovery call with new lead for Tue 3pm + sent invite.' },
       { e:'🔁', n:'Follow-up', t:'2h ago · auto', tag:'sent', tc:'green', d:'Followed up quote #Q22 with a short personalised nudge.' },
-      { e:'⚠️', n:'Lead Responder', t:'4h ago · escalated', tag:'needs you', tc:'red', d:'Prospect asked for a discount on retainers — AISAR offered a 3-month option. Review before sending?', cta:'Approved — 3-month retainer offer sent.' } ],
+      { e:'⚠️', n:'Lead Responder', t:'4h ago · escalated', tag:'needs you', tc:'red', d:'Prospect asked for a discount on retainers — JENTERA offered a 3-month option. Review before sending?', cta:'Approved — 3-month retainer offer sent.' } ],
     conns: [
       { e:'📸', n:'Instagram', s:'DM · linked', d:'Lead Responder answers enquiries here.', on:true },
       { e:'✉️', n:'Email', s:'Gmail · linked', d:'Proposals and follow-up go through here.', on:true },
@@ -698,7 +698,7 @@ var PLAYBOOKS = {
       { d:'Today', v:'41', u:'', l:'appointments scheduled', s:'12 intake forms' },
       { d:'This week', v:'86', u:'', l:'patients seen', s:'3 no-shows prevented' },
       { d:'Hours saved', v:'25', u:' hrs', l:'saved this week by your AI team', p:68 } ],
-    sug: { t:'Automate appointment reminders', d:'No-shows cost you hours every month. AISAR sends reminders + reschedule links automatically.', tag:'est. 6 hrs/month', cta:'Automation queued — I\u0027ll set up reminders.' },
+    sug: { t:'Automate appointment reminders', d:'No-shows cost you hours every month. JENTERA sends reminders + reschedule links automatically.', tag:'est. 6 hrs/month', cta:'Automation queued — I\u0027ll set up reminders.' },
     team: [
       { e:'🩺', n:'Front Desk Assistant', ch:'WhatsApp · Phone', d:'Answers clinic hours, doctor schedules, and insurance FAQs — 24/7.', m:'Today · 41 chats · 8 escalated' },
       { e:'📅', n:'Booking Agent', ch:'Calendar · Appointments', d:'Books and confirms appointments, and manages the waitlist automatically.', m:'This week · 86 appointments' },
@@ -708,7 +708,7 @@ var PLAYBOOKS = {
       { e:'🩺', n:'Front Desk Assistant', t:'WhatsApp · 3m ago · auto', tag:'done', tc:'', d:'Answered "Do you open on Sundays?" with this week\u0027s hours.' },
       { e:'📅', n:'Booking Agent', t:'40m ago · auto', tag:'confirmed', tc:'green', d:'Booked appointment for Azman (check-up) Thu 10am + reminder set.' },
       { e:'🔁', n:'Follow-up', t:'2h ago · auto', tag:'sent', tc:'green', d:'Sent post-visit check-in to 23 patients from yesterday.' },
-      { e:'⚠️', n:'Front Desk Assistant', t:'6h ago · escalated', tag:'needs you', tc:'red', d:'Patient asked about pricing for a procedure — AISAR offered a call-back. Review before sending?', cta:'Approved — call-back scheduled.' } ],
+      { e:'⚠️', n:'Front Desk Assistant', t:'6h ago · escalated', tag:'needs you', tc:'red', d:'Patient asked about pricing for a procedure — JENTERA offered a call-back. Review before sending?', cta:'Approved — call-back scheduled.' } ],
     conns: [
       { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Front Desk Assistant & Follow-up talk to patients here.', on:true },
       { e:'📞', n:'Phone', s:'linked', d:'Front Desk Assistant can make call-backs here.', on:true },
@@ -729,7 +729,7 @@ var PLAYBOOKS = {
       { d:'Today', v:'9', u:'', l:'appointments', s:'2 walk-in slots left' },
       { d:'New clients', v:'14', u:'', l:'this week', s:'5 via Instagram' },
       { d:'Hours saved', v:'16', u:' hrs', l:'saved this week by your AI team', p:57 } ],
-    sug: { t:'Automate booking reminders', d:'No-shows and last-minute cancellations eat your schedule. AISAR sends reminders + fill-from-waitlist automatically.', tag:'est. 3 hrs/month', cta:'Automation queued — I\u0027ll handle reminders + waitlist.' },
+    sug: { t:'Automate booking reminders', d:'No-shows and last-minute cancellations eat your schedule. JENTERA sends reminders + fill-from-waitlist automatically.', tag:'est. 3 hrs/month', cta:'Automation queued — I\u0027ll handle reminders + waitlist.' },
     team: [
       { e:'💬', n:'Reception Assistant', ch:'WhatsApp · Instagram', d:'Answers service prices, availability, and stylist questions — 24/7.', m:'Today · 9 chats · 2 escalated' },
       { e:'📅', n:'Booking Agent', ch:'Calendar · Appointments', d:'Books services, manages waitlist, and sends confirmations.', m:'This week · 22 bookings' },
@@ -739,7 +739,7 @@ var PLAYBOOKS = {
       { e:'💬', n:'Reception Assistant', t:'WhatsApp · 5m ago · auto', tag:'done', tc:'', d:'Answered "Berapa untuk rebond panjang?" with price list + stylist availability.' },
       { e:'📅', n:'Booking Agent', t:'1h ago · auto', tag:'confirmed', tc:'green', d:'Booked colour + treatment for Aina, Sat 11am + reminder set.' },
       { e:'🔁', n:'Follow-up', t:'3h ago · auto', tag:'sent', tc:'green', d:'Sent rebooking nudge to 8 clients whose last visit was 6+ weeks ago.' },
-      { e:'⚠️', n:'Reception Assistant', t:'5h ago · escalated', tag:'needs you', tc:'red', d:'Client asked about bridal package pricing — AISAR offered a consultation call. Review before sending?', cta:'Approved — consultation call scheduled.' } ],
+      { e:'⚠️', n:'Reception Assistant', t:'5h ago · escalated', tag:'needs you', tc:'red', d:'Client asked about bridal package pricing — JENTERA offered a consultation call. Review before sending?', cta:'Approved — consultation call scheduled.' } ],
     conns: [
       { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Reception Assistant & Follow-up talk to clients here.', on:true },
       { e:'📸', n:'Instagram', s:'DM · linked', d:'Booking Agent receives booking DMs here.', on:true },
@@ -760,7 +760,7 @@ var PLAYBOOKS = {
       { d:'Today', v:'23', u:'', l:'check-ins', s:'3 class waitlists active' },
       { d:'New leads', v:'11', u:'', l:'this week', s:'4 trial passes booked' },
       { d:'Hours saved', v:'15', u:' hrs', l:'saved this week by your AI team', p:60 } ],
-    sug: { t:'Automate class schedule answers', d:'Members ask "is there a slot tonight?" every day. AISAR answers with live availability + waitlist signup.', tag:'est. 5 hrs/month', cta:'Automation queued — I\u0027ll handle class schedule answers.' },
+    sug: { t:'Automate class schedule answers', d:'Members ask "is there a slot tonight?" every day. JENTERA answers with live availability + waitlist signup.', tag:'est. 5 hrs/month', cta:'Automation queued — I\u0027ll handle class schedule answers.' },
     team: [
       { e:'💬', n:'Front Desk Assistant', ch:'WhatsApp · Instagram', d:'Answers membership, class schedule, and pricing questions — 24/7.', m:'Today · 23 chats · 5 escalated' },
       { e:'📅', n:'Booking Agent', ch:'Classes · Waitlist', d:'Books classes, manages waitlists, and sends class reminders.', m:'This week · 48 class bookings' },
@@ -770,7 +770,7 @@ var PLAYBOOKS = {
       { e:'💬', n:'Front Desk Assistant', t:'WhatsApp · 4m ago · auto', tag:'done', tc:'', d:'Answered "Ada slot kelas malam ni?" with live availability + waitlist link.' },
       { e:'📅', n:'Booking Agent', t:'50m ago · auto', tag:'confirmed', tc:'green', d:'Booked HIT class for Amir, 7pm + reminder set.' },
       { e:'🔁', n:'Follow-up', t:'2h ago · auto', tag:'sent', tc:'green', d:'Sent renewal reminder to 6 members expiring this week.' },
-      { e:'⚠️', n:'Front Desk Assistant', t:'4h ago · escalated', tag:'needs you', tc:'red', d:'Prospect asked about corporate memberships — AISAR offered a call-back. Review before sending?', cta:'Approved — call-back scheduled.' } ],
+      { e:'⚠️', n:'Front Desk Assistant', t:'4h ago · escalated', tag:'needs you', tc:'red', d:'Prospect asked about corporate memberships — JENTERA offered a call-back. Review before sending?', cta:'Approved — call-back scheduled.' } ],
     conns: [
       { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Front Desk Assistant & Follow-up talk to members here.', on:true },
       { e:'📸', n:'Instagram', s:'DM · linked', d:'Trial sign-ups come in here.', on:true },
@@ -791,7 +791,7 @@ var PLAYBOOKS = {
       { d:'Today', v:'18', u:'', l:'messages from parents', s:'5 new enquiries' },
       { d:'New students', v:'5', u:'', l:'enquiries this week', s:'2 trials booked' },
       { d:'Hours saved', v:'12', u:' hrs', l:'saved this week by your AI team', p:52 } ],
-    sug: { t:'Automate fee reminders', d:'You chase fees every month. AISAR sends polite reminders + receipts automatically.', tag:'est. 3 hrs/month', cta:'Automation queued — I\u0027ll handle fee reminders.' },
+    sug: { t:'Automate fee reminders', d:'You chase fees every month. JENTERA sends polite reminders + receipts automatically.', tag:'est. 3 hrs/month', cta:'Automation queued — I\u0027ll handle fee reminders.' },
     team: [
       { e:'💬', n:'Parent Assistant', ch:'WhatsApp · Phone', d:'Answers class schedules, fees, and location questions — 24/7.', m:'Today · 18 chats · 3 escalated' },
       { e:'📅', n:'Booking Agent', ch:'Classes · Trials', d:'Books trial classes and manages student slots.', m:'This week · 9 trials booked' },
@@ -801,7 +801,7 @@ var PLAYBOOKS = {
       { e:'💬', n:'Parent Assistant', t:'WhatsApp · 3m ago · auto', tag:'done', tc:'', d:'Answered "Berapa yuran untuk darjah 4?" with fee list + class times.' },
       { e:'📅', n:'Booking Agent', t:'1h ago · auto', tag:'confirmed', tc:'green', d:'Booked trial class for Aiman, Sat 10am Mathematics.' },
       { e:'🔁', n:'Follow-up', t:'2h ago · auto', tag:'sent', tc:'green', d:'Sent fee reminder to 12 parents (polite, with receipt attached).' },
-      { e:'⚠️', n:'Parent Assistant', t:'5h ago · escalated', tag:'needs you', tc:'red', d:'Parent asked about discount for 2 siblings — AISAR offered 10%. Review before sending?', cta:'Approved — 10% sibling discount offered.' } ],
+      { e:'⚠️', n:'Parent Assistant', t:'5h ago · escalated', tag:'needs you', tc:'red', d:'Parent asked about discount for 2 siblings — JENTERA offered 10%. Review before sending?', cta:'Approved — 10% sibling discount offered.' } ],
     conns: [
       { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Parent Assistant & Follow-up talk to parents here.', on:true },
       { e:'📞', n:'Phone', s:'linked', d:'Enquiries by call route here.', on:true },
@@ -888,7 +888,7 @@ var PLAYBOOKS = {
     ],
     "sug": {
       "t": "Automate order status updates",
-      "d": "Customers ask \"dah siap?\" every day. AISAR sends status updates + pickup reminders automatically.",
+      "d": "Customers ask \"dah siap?\" every day. JENTERA sends status updates + pickup reminders automatically.",
       "tag": "est. 2 hrs/month",
       "cta": "Automation queued — I'll set up status updates."
     },
@@ -954,7 +954,7 @@ var PLAYBOOKS = {
         "t": "4h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Customer complained about a missing item — AISAR apologised and offered 20% off next order.",
+        "d": "Customer complained about a missing item — JENTERA apologised and offered 20% off next order.",
         "cta": "Approved — 20% voucher sent."
       }
     ],
@@ -1077,7 +1077,7 @@ var PLAYBOOKS = {
     ],
     "sug": {
       "t": "Automate service reminders",
-      "d": "Customers forget servicing. AISAR reminds them when their car is due + books the slot automatically.",
+      "d": "Customers forget servicing. JENTERA reminds them when their car is due + books the slot automatically.",
       "tag": "est. 4 hrs/month",
       "cta": "Automation queued — I'll set up service reminders."
     },
@@ -1143,7 +1143,7 @@ var PLAYBOOKS = {
         "t": "5h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Customer asked about brake pad replacement pricing — AISAR offered a call-back quote.",
+        "d": "Customer asked about brake pad replacement pricing — JENTERA offered a call-back quote.",
         "cta": "Approved — quote call-back scheduled."
       }
     ],
@@ -1268,7 +1268,7 @@ var PLAYBOOKS = {
     ],
     "sug": {
       "t": "Automate grooming reminders",
-      "d": "Owners forget appointments — and no-shows cost you. AISAR sends reminders + rebooking nudges automatically.",
+      "d": "Owners forget appointments — and no-shows cost you. JENTERA sends reminders + rebooking nudges automatically.",
       "tag": "est. 3 hrs/month",
       "cta": "Automation queued — I'll handle grooming reminders."
     },
@@ -1334,7 +1334,7 @@ var PLAYBOOKS = {
         "t": "5h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Owner asked about boarding during Raya — AISAR offered a hold-slot.",
+        "d": "Owner asked about boarding during Raya — JENTERA offered a hold-slot.",
         "cta": "Approved — boarding slot held."
       }
     ],
@@ -1453,7 +1453,7 @@ var PLAYBOOKS = {
     ],
     "sug": {
       "t": "Automate delivery updates",
-      "d": "Customers always ask \"sampai dah?\". AISAR sends delivery confirmations + photos automatically.",
+      "d": "Customers always ask \"sampai dah?\". JENTERA sends delivery confirmations + photos automatically.",
       "tag": "est. 2 hrs/month",
       "cta": "Automation queued — I'll set up delivery updates."
     },
@@ -1519,7 +1519,7 @@ var PLAYBOOKS = {
         "t": "4h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Customer needs urgent same-day delivery — driver unavailable. AISAR suggested express option.",
+        "d": "Customer needs urgent same-day delivery — driver unavailable. JENTERA suggested express option.",
         "cta": "Approved — express delivery arranged."
       }
     ],
@@ -1641,7 +1641,7 @@ var PLAYBOOKS = {
     ],
     "sug": {
       "t": "Automate first-reply speed",
-      "d": "The first agent to reply wins the deal. AISAR answers enquiries instantly + books viewings.",
+      "d": "The first agent to reply wins the deal. JENTERA answers enquiries instantly + books viewings.",
       "tag": "est. 5 hrs/month",
       "cta": "Automation queued — I'll handle lead response."
     },
@@ -1707,7 +1707,7 @@ var PLAYBOOKS = {
         "t": "4h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Buyer asked about negotiation on asking price — AISAR drafted a polite response.",
+        "d": "Buyer asked about negotiation on asking price — JENTERA drafted a polite response.",
         "cta": "Approved — response sent."
       }
     ],
@@ -1827,7 +1827,7 @@ var PLAYBOOKS = {
     ],
     "sug": {
       "t": "Automate quote requests",
-      "d": "AISAR collects details (type, size, frequency) and sends pricing quotes instantly — no back-and-forth.",
+      "d": "JENTERA collects details (type, size, frequency) and sends pricing quotes instantly — no back-and-forth.",
       "tag": "est. 3 hrs/month",
       "cta": "Automation queued — I'll set up instant quotes."
     },
@@ -1893,7 +1893,7 @@ var PLAYBOOKS = {
         "t": "5h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Client asked about monthly discount packages — AISAR offered a 3-month plan.",
+        "d": "Client asked about monthly discount packages — JENTERA offered a 3-month plan.",
         "cta": "Approved — 3-month plan offered."
       }
     ],
@@ -2015,7 +2015,7 @@ var PLAYBOOKS = {
       ],
       "sug": {
         "t": "Automate your common questions",
-        "d": "Your customers ask the same things every day. AISAR answers them instantly — in your voice.",
+        "d": "Your customers ask the same things every day. JENTERA answers them instantly — in your voice.",
         "tag": "est. 2 hrs/month",
         "cta": "Automation queued — I'll set up the Customer Assistant."
       },
@@ -2081,7 +2081,7 @@ var PLAYBOOKS = {
           "t": "5h ago · escalated",
           "tag": "needs you",
           "tc": "red",
-          "d": "Customer asked about special pricing — AISAR drafted a reply.",
+          "d": "Customer asked about special pricing — JENTERA drafted a reply.",
           "cta": "Approved — reply sent."
         }
       ],
@@ -2135,7 +2135,7 @@ var PLAYBOOKS = {
       { d:'Today', v:'9', u:'', l:'customer conversations', s:'2 need you' },
       { d:'New enquiries', v:'14', u:'', l:'this week', s:'via WhatsApp + Email' },
       { d:'Hours saved', v:'11', u:' hrs', l:'saved this week by your AI team', p:48 } ],
-    sug: { t:'Automate your common questions', d:'Your customers ask the same things every day. AISAR answers them instantly — in your voice.', tag:'est. 2 hrs/month', cta:'Automation queued — I\u0027ll set up the Customer Assistant.' },
+    sug: { t:'Automate your common questions', d:'Your customers ask the same things every day. JENTERA answers them instantly — in your voice.', tag:'est. 2 hrs/month', cta:'Automation queued — I\u0027ll set up the Customer Assistant.' },
     team: [
       { e:'💬', n:'Customer Assistant', ch:'WhatsApp · Email', d:'Answers your FAQs instantly — hours, pricing, availability — 24/7.', m:'Today · 9 chats · 2 escalated' },
       { e:'📅', n:'Booking Agent', ch:'Calendar', d:'Schedules appointments and sends confirmations automatically.', m:'This week · 6 bookings' },
@@ -2145,7 +2145,7 @@ var PLAYBOOKS = {
       { e:'💬', n:'Customer Assistant', t:'WhatsApp · 2m ago · auto', tag:'done', tc:'', d:'Answered "What are your opening hours?" instantly.' },
       { e:'📅', n:'Booking Agent', t:'1h ago · auto', tag:'confirmed', tc:'green', d:'Booked an appointment + sent confirmation.' },
       { e:'🔁', n:'Follow-up', t:'3h ago · auto', tag:'sent', tc:'green', d:'Followed up 2 enquiries from yesterday.' },
-      { e:'⚠️', n:'Customer Assistant', t:'5h ago · escalated', tag:'needs you', tc:'red', d:'Customer asked about special pricing — AISAR drafted a reply. Review before sending?', cta:'Approved — reply sent.' } ],
+      { e:'⚠️', n:'Customer Assistant', t:'5h ago · escalated', tag:'needs you', tc:'red', d:'Customer asked about special pricing — JENTERA drafted a reply. Review before sending?', cta:'Approved — reply sent.' } ],
     conns: [
       { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Customer Assistant talks to customers here.', on:true },
       { e:'✉️', n:'Email', s:'Gmail · linked', d:'Follow-ups and documents go through here.', on:true },
@@ -2172,8 +2172,8 @@ function kvPlaybook(key){
     confirm: p.confirm, funcs: p.funcs, stats: p.stats, sug: p.sug,
     team: p.team, work: p.work, conns: p.conns
   };
-  var n = KV_STORE.get('aisar-biz-name', ''); if (n) b.name = n;
-  var l = KV_STORE.get('aisar-biz-loc', '');  if (l) b.loc = l;
+  var n = KV_STORE.get('jentera-biz-name', ''); if (n) b.name = n;
+  var l = KV_STORE.get('jentera-biz-loc', '');  if (l) b.loc = l;
   BIZ[key] = b;
   return b;
 }
@@ -2246,7 +2246,7 @@ function kvExtractName(text, fallback){
    SELF-IMPROVING — belajar dari pilihan user (demo local).
    ============================================================ */
 function kvLearn(key, pick){
-  var k = 'aisar-learn:' + key;
+  var k = 'jentera-learn:' + key;
   var obj = {};
   try { obj = JSON.parse(KV_STORE.get(k, '{}')); } catch(e){}
   obj[pick] = (obj[pick] || 0) + 1;
@@ -2254,7 +2254,7 @@ function kvLearn(key, pick){
 }
 function kvPopular(key){
   var obj = {};
-  try { obj = JSON.parse(KV_STORE.get('aisar-learn:' + key, '{}')); } catch(e){}
+  try { obj = JSON.parse(KV_STORE.get('jentera-learn:' + key, '{}')); } catch(e){}
   var best = null, bestN = 0;
   for (var p in obj){ if (obj[p] > bestN){ bestN = obj[p]; best = p; } }
   return bestN > 0 ? { pick: best, n: bestN } : null;
@@ -2264,12 +2264,12 @@ function kvPopular(key){
    API
    ============================================================ */
 function kvBizType(){
-  var t = KV_STORE.get('aisar-biz-type', '');
+  var t = KV_STORE.get('jentera-biz-type', '');
   return PLAYBOOKS[t] ? t : 'generic';
 }
 function kvSetBiz(t){
   if (!PLAYBOOKS[t]) return;
-  KV_STORE.set('aisar-biz-type', t);
+  KV_STORE.set('jentera-biz-type', t);
   delete BIZ[t];
   kvRenderAll();
   var pills = document.querySelectorAll('[data-switch]');
@@ -2279,21 +2279,21 @@ function kvSetBiz(t){
 function kvRegisterBiz(text){
   var inf = kvInfer(text);
   var key = inf.key;
-  KV_STORE.set('aisar-biz-type', key);
+  KV_STORE.set('jentera-biz-type', key);
   delete BIZ[key];
   var fallback = PLAYBOOKS[key].name;
   var name = kvExtractName(text, fallback);
-  KV_STORE.set('aisar-biz-name', name);
+  KV_STORE.set('jentera-biz-name', name);
   var loc = kvExtractLoc(text);
-  if (loc) KV_STORE.set('aisar-biz-loc', loc);
+  if (loc) KV_STORE.set('jentera-biz-loc', loc);
   kvLearn(key, 'inferred:' + key);
   var b = kvPlaybook(key);
   return { key: key, score: inf.score, playbook: b };
 }
 
-function kvSetupDone(){ return KV_STORE.get('aisar-setup-done-v1', '') === '1'; }
+function kvSetupDone(){ return KV_STORE.get('jentera-setup-done-v1', '') === '1'; }
 function kvLiveChans(){
-  try { var a = JSON.parse(KV_STORE.get('aisar-channels', '[]')); return (a && a.length) ? a : null; } catch(e){ return null; }
+  try { var a = JSON.parse(KV_STORE.get('jentera-channels', '[]')); return (a && a.length) ? a : null; } catch(e){ return null; }
 }
 function kvBump(v){ return kvSetupDone() ? Math.min(96, v + 20) : v; }
 
@@ -2301,19 +2301,19 @@ function kvBump(v){ return kvSetupDone() ? Math.min(96, v + 20) : v; }
    STATE — sambungan sebenar + kerja selesai (localStorage).
    ============================================================ */
 function kvConnKeys(){
-  try { var v = JSON.parse(KV_STORE.get('aisar-conns', 'null')); return Array.isArray(v) ? v : []; } catch(e){ return []; }
+  try { var v = JSON.parse(KV_STORE.get('jentera-conns', 'null')); return Array.isArray(v) ? v : []; } catch(e){ return []; }
 }
 function kvSeedConns(){
-  if (KV_STORE.get('aisar-conns', null) !== null) return;
+  if (KV_STORE.get('jentera-conns', null) !== null) return;
   var b = kvPlaybook(kvBizType());
-  KV_STORE.set('aisar-conns', JSON.stringify(b.conns.filter(function(c){ return c.on; }).map(function(c){ return c.n; })));
+  KV_STORE.set('jentera-conns', JSON.stringify(b.conns.filter(function(c){ return c.on; }).map(function(c){ return c.n; })));
 }
 function kvConnOn(n){ return kvConnKeys().indexOf(n) >= 0; }
 function kvToggleConn(n){
   var a = kvConnKeys();
   var i = a.indexOf(n);
   if (i >= 0) a.splice(i, 1); else a.push(n);
-  KV_STORE.set('aisar-conns', JSON.stringify(a));
+  KV_STORE.set('jentera-conns', JSON.stringify(a));
   kvToast(i >= 0 ? n + ' disconnected.' : n + ' connected ✓');
   kvRenderAll();
 }
@@ -2357,11 +2357,11 @@ function kvAddRec(i){
   kvNav('connections');
 }
 function kvWorkDone(i){
-  var k = 'aisar-work-done:' + kvBizType();
+  var k = 'jentera-work-done:' + kvBizType();
   try { return JSON.parse(KV_STORE.get(k, '[]')).indexOf(String(i)) >= 0; } catch(e){ return false; }
 }
 function kvApproveWork(i){
-  var k = 'aisar-work-done:' + kvBizType();
+  var k = 'jentera-work-done:' + kvBizType();
   var a = [];
   try { a = JSON.parse(KV_STORE.get(k, '[]')); } catch(e){}
   if (a.indexOf(String(i)) < 0) a.push(String(i));
@@ -3073,11 +3073,11 @@ function kvTeamSyncEscalations(){
     var approved = kvWorkDone(i);
     if (approved){
       if (!done[i]){
-        chan.msgs.push({ f:'agent', n:(w.n||'AISAR'), srcIdx:i, done:true, tm:'sekarang',
-          d:'✅ Escalation ditutup — approved & dihantar. (dari ' + (w.n||'AISAR') + ')' });
+        chan.msgs.push({ f:'agent', n:(w.n||'JENTERA'), srcIdx:i, done:true, tm:'sekarang',
+          d:'✅ Escalation ditutup — approved & dihantar. (dari ' + (w.n||'JENTERA') + ')' });
       }
     } else if (w.tag === 'needs you' && !open[i]){
-      chan.msgs.push({ f:'agent', n:(w.n||'AISAR'), srcIdx:i, tm:'sekarang',
+      chan.msgs.push({ f:'agent', n:(w.n||'JENTERA'), srcIdx:i, tm:'sekarang',
         d:'⚠️ Escalation: ' + w.d + ' — approve kat ⚡ Work.' });
     }
   });
@@ -3217,7 +3217,7 @@ if (typeof document !== 'undefined') {
       if (q && q[1]) kvSetCountry(q[1].toUpperCase());
       kvApplyLang(); kvSeedConns(); kvRenderAll();
     }
-    catch(e){ if (window.console) console.error('AISAR render error:', e); }
+    catch(e){ if (window.console) console.error('JENTERA render error:', e); }
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', kvBoot);

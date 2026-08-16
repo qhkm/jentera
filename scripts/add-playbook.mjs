@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /* ============================================================
-   AISAR playbook generator — tambah playbook baru, auto-validate.
+   JENTERA playbook generator — tambah playbook baru, auto-validate.
    "Dari description je terus generate" — spec minimal pun jadi.
 
-   Usage (run dari folder aisar-site):
+   Usage (run dari folder ini):
      node scripts/add-playbook.mjs --file spec.json [--deploy]
      node scripts/add-playbook.mjs '{ "key":"minimart", "name":"...", ... }' [--deploy]
      node scripts/add-playbook.mjs --key minimart --name "Your Minimart" \
@@ -84,7 +84,7 @@ function defaults(spec){
   ];
   if (!s.sug) s.sug = {
     t:'Automate your common questions',
-    d:'Your customers ask the same things every day. AISAR answers them instantly — in your voice.',
+    d:'Your customers ask the same things every day. JENTERA answers them instantly — in your voice.',
     tag:'est. 2 hrs/month',
     cta:"Automation queued — I'll set up the Customer Assistant."
   };
@@ -98,7 +98,7 @@ function defaults(spec){
     { e:'💬', n:'Customer Assistant', t:'WhatsApp · 2m ago · auto', tag:'done', tc:'', d:'Answered "What are your opening hours?" instantly.' },
     { e:'📅', n:'Booking Agent', t:'1h ago · auto', tag:'confirmed', tc:'green', d:'Booked an appointment + sent confirmation.' },
     { e:'🔁', n:'Follow-up', t:'3h ago · auto', tag:'sent', tc:'green', d:'Followed up 2 enquiries from yesterday.' },
-    { e:'⚠️', n:'Customer Assistant', t:'5h ago · escalated', tag:'needs you', tc:'red', d:'Customer asked about special pricing — AISAR drafted a reply.', cta:'Approved — reply sent.' }
+    { e:'⚠️', n:'Customer Assistant', t:'5h ago · escalated', tag:'needs you', tc:'red', d:'Customer asked about special pricing — JENTERA drafted a reply.', cta:'Approved — reply sent.' }
   ];
   if (!s.conns) s.conns = [
     { e:'💬', n:'WhatsApp', s:'Business API · linked', d:'Customer Assistant talks to customers here.', on:true },
@@ -207,7 +207,7 @@ function jsCheckHtml(filePath){
 const args = parseArgs(process.argv.slice(2));
 const repo = process.cwd();
 const enginePath = path.join(repo, 'biz-engine.js');
-if (!fs.existsSync(enginePath)) die('biz-engine.js tak jumpa — run script dari folder aisar-site');
+if (!fs.existsSync(enginePath)) die('biz-engine.js tak jumpa — run script dari folder ini');
 
 let spec = {};
 if (args.file){
@@ -251,7 +251,7 @@ if (args.deploy){
   console.log('\n🌎 Deploying…');
   const c = spawnSync('bash', ['-c',
     'git add -A && git -c user.email="dev@kitakod.com" -c user.name="kitakod" commit -qm "feat: playbook ' +
-    spec.key + ' (via add-playbook.mjs)" 2>/dev/null; wrangler pages publish . --project-name aisar 2>&1 | tail -3'],
+    spec.key + ' (via add-playbook.mjs)" 2>/dev/null; wrangler pages publish . --project-name jentera 2>&1 | tail -3'],
     { cwd: repo, stdio: 'inherit', shell: false });
   if (c.status !== 0) die('Deploy gagal.');
   ok('Deployed.');

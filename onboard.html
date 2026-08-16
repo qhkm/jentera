@@ -3,8 +3,8 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <meta name="theme-color" content="#0a0a0a"/>
-<title>Set up your business — AISAR</title>
-<meta name="description" content="AISAR onboarding — tell us how your business works, and AISAR sets up your AI team."/>
+<title>Set up your business — JENTERA</title>
+<meta name="description" content="JENTERA onboarding — tell us how your business works, and JENTERA sets up your AI team."/>
 <link rel="icon" href="/favicon.svg"/>
 <link rel="stylesheet" href="/_next/static/chunks/391k8ovo_r0qj.css" data-precedence="next"/>
 <link rel="stylesheet" href="/_next/static/chunks/07r-6xz-uoanc.css" data-precedence="next"/>
@@ -21,8 +21,8 @@
   html.site-theme-dark .btn-outline:hover{border-color:rgb(255 255 255 / .8);background:rgb(255 255 255 / .08)}
 }
 
-/* AISAR accent + onboarding layout — custom CSS */
-.as-green{color:#00d294}
+/* JENTERA accent + onboarding layout — custom CSS */
+.j-green{color:#00d294}
 .as-tag{border:1px solid rgb(255 255 255 / .1);padding:2px 8px;font-family:var(--font-mono, monospace);font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:rgb(255 255 255 / .45);border-radius:4px}
 .as-tag.green{border-color:rgb(0 210 148 / .4);color:rgb(0 210 148 / .75)}
 .as-tag.amber{border-color:rgb(255 190 60 / .4);color:rgb(255 200 90 / .8)}
@@ -61,7 +61,7 @@
 <body class="bg-bg text-text antialiased">
 <header class="sticky top-0 z-50 w-full border-b border-(--rail) backdrop-blur-lg">
 <div class="mx-auto flex h-(--nav-h) w-full max-w-(--site-width) items-center justify-between px-6 md:border-x border-(--rail)">
-<a href="/" aria-label="AISAR home"><span class="inline-flex items-center gap-2 text-xl md:text-2xl font-pixel font-pixel-logo tracking-wide text-text"><span class="as-green">aisar</span><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted hidden sm:inline">/setup</span></span></a>
+<a href="/" aria-label="JENTERA home"><span class="inline-flex items-center gap-2 text-xl md:text-2xl font-pixel font-pixel-logo tracking-wide text-text"><span class="j-green">jentera</span><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted hidden sm:inline">/setup</span></span></a>
 <div class="flex items-center gap-3">
 <a class="btn btn-outline px-5 py-2 text-sm" href="/app">← Dashboard</a>
 </div>
@@ -78,7 +78,7 @@
 <span class="as-tag green" id="kv-progress-pill">Step 1 of 6</span>
 </div>
 <h1 class="font-pixel text-2xl leading-[1.1] tracking-tight md:text-4xl">Let's set up your business</h1>
-<p class="text-[13px] text-text-secondary md:text-sm">AISAR learns how you work — then sets up your AI team. No agents to build, no workflows to configure.</p>
+<p class="text-[13px] text-text-secondary md:text-sm">JENTERA learns how you work — then sets up your AI team. No agents to build, no workflows to configure.</p>
 <div class="as-progress mt-2 max-w-md"><div class="as-progress-fill" id="kv-obar" style="width:16%"></div></div>
 </div>
 
@@ -91,7 +91,7 @@
 <div class="flex flex-col gap-3">
 <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Step 1 · Your business</span>
 <h2 class="font-pixel text-xl tracking-tight md:text-2xl">Tell us about your business.</h2>
-<p class="text-[13px] text-text-secondary md:text-sm">Type it in your own words — AISAR reads it, figures out your industry, and generates your dashboard. No forms, no setup.</p>
+<p class="text-[13px] text-text-secondary md:text-sm">Type it in your own words — JENTERA reads it, figures out your industry, and generates your dashboard. No forms, no setup.</p>
 <div class="flex flex-col gap-2">
 <input type="text" id="kv-desc" class="as-input w-full rounded-lg px-4 py-3 text-sm text-text outline-none" placeholder="e.g. saya ada kedai kopi di Shah Alam, jual nasi lemak &amp; kek"/>
 <button class="btn btn-primary w-full px-6 py-3 text-sm" onclick="kvGenerate()">Generate my dashboard →</button>
@@ -123,17 +123,17 @@
 <div class="as-opt as-type" data-type="generic"><span class="as-av">🏪</span><span class="as-opt-t">Other</span><span class="as-tick">✓</span></div>
 </div>
 <div class="flex flex-col gap-3 sm:flex-row">
-<input type="text" id="kv-url" value="wagyu.my" class="as-input w-full rounded-lg px-4 py-3 font-mono text-sm text-text outline-none" placeholder="yourbusiness.com (optional — helps AISAR learn more)"/>
+<input type="text" id="kv-url" value="wagyu.my" class="as-input w-full rounded-lg px-4 py-3 font-mono text-sm text-text outline-none" placeholder="yourbusiness.com (optional — helps JENTERA learn more)"/>
 <button class="btn btn-outline px-6 py-3 text-sm sm:w-auto" onclick="kvGoNext()">Scan website &amp; socials →</button>
 </div>
 <div class="flex flex-col gap-2">
 <input type="text" id="kv-social" class="as-input w-full rounded-lg px-4 py-3 font-mono text-sm text-text outline-none" placeholder="Social media (optional) — instagram.com/yourbrand · tiktok.com/@yourbrand"/>
-<p class="text-[11px] text-text-muted">Share your social links too — AISAR learns your brand voice &amp; audience.</p>
+<p class="text-[11px] text-text-muted">Share your social links too — JENTERA learns your brand voice &amp; audience.</p>
 </div>
 <div class="flex flex-col gap-2">
 <div class="as-row gap-3">
 <span class="as-tick on">✓</span>
-<span class="text-[13px] text-text-secondary">No website? <a class="as-green" href="#" onclick="kvSkipUrl();return false">Answer a few questions instead</a></span>
+<span class="text-[13px] text-text-secondary">No website? <a class="j-green" href="#" onclick="kvSkipUrl();return false">Answer a few questions instead</a></span>
 </div>
 </div>
 </div>
@@ -145,7 +145,7 @@
 <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Step 2 · Scanning</span>
 <h2 class="font-pixel text-xl tracking-tight md:text-2xl">Reading your business…</h2>
 <div class="rounded-lg border border-white/12 bg-black/30 p-4 font-mono text-[11px] leading-relaxed text-white/75 md:p-5" id="kv-scan">
-<span class="text-white/35">$ </span>aisar onboard --business <span id="kv-scan-url">yourbusiness.com</span><span class="kv-cursor" aria-hidden="true"></span>
+<span class="text-white/35">$ </span>jentera onboard --business <span id="kv-scan-url">yourbusiness.com</span><span class="kv-cursor" aria-hidden="true"></span>
 </div>
 <p class="text-[12px] text-text-muted">We're fetching your site and building a Business Profile. This only takes a few seconds.</p>
 </div>
@@ -169,7 +169,7 @@
 <div class="flex flex-col gap-3">
 <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Step 4 · How customers reach you</span>
 <h2 class="font-pixel text-xl tracking-tight md:text-2xl">Where do enquiries come in?</h2>
-<p class="text-[13px] text-text-secondary md:text-sm">Pick all that apply — AISAR focuses on where your customers actually are.</p>
+<p class="text-[13px] text-text-secondary md:text-sm">Pick all that apply — JENTERA focuses on where your customers actually are.</p>
 <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
 <div class="as-opt as-multi" data-opt="WhatsApp"><span class="as-av">💬</span><span class="as-opt-t">WhatsApp</span><span class="as-tick">✓</span></div>
 <div class="as-opt as-multi" data-opt="Instagram"><span class="as-av">📸</span><span class="as-opt-t">Instagram</span><span class="as-tick">✓</span></div>
@@ -184,7 +184,7 @@
 <div class="flex flex-col gap-3">
 <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Step 5 · Where you spend time</span>
 <h2 class="font-pixel text-xl tracking-tight md:text-2xl">What eats your week?</h2>
-<p class="text-[13px] text-text-secondary md:text-sm">Pick the one that hurts most — that's where AISAR starts.</p>
+<p class="text-[13px] text-text-secondary md:text-sm">Pick the one that hurts most — that's where JENTERA starts.</p>
 <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
 <div class="as-opt as-radio" data-opt="Answering enquiries"><span class="as-av">💬</span><span class="as-opt-t">Answering enquiries</span><span class="as-tick">✓</span></div>
 <div class="as-opt as-radio" data-opt="Reservations"><span class="as-av">📅</span><span class="as-opt-t">Reservations / bookings</span><span class="as-tick">✓</span></div>
@@ -214,7 +214,7 @@
 </div>
 <p class="text-[12px] text-text-muted" id="kv-reco-extra">+ 2 more suggestions based on your answers: Booking Agent · Follow-up</p>
 <div class="flex flex-col gap-2 sm:flex-row">
-<button class="btn btn-primary px-6 py-3 text-sm" onclick="kvActivate()">Activate AISAR →</button>
+<button class="btn btn-primary px-6 py-3 text-sm" onclick="kvActivate()">Activate JENTERA →</button>
 <button class="btn btn-outline px-5 py-3 text-sm" onclick="kvStep(-1)">Back</button>
 </div>
 </div>
@@ -249,7 +249,7 @@
 <div class="as-profile-row"><span class="as-profile-k">AI team</span><span class="as-profile-v empty" id="p-team">—</span></div>
 </div>
 <div class="border-t border-white/10 pt-3">
-<p class="text-[11px] leading-relaxed text-text-muted">This profile updates live as you answer. Every recommendation AISAR makes is based on this — correct it anytime in the dashboard.</p>
+<p class="text-[11px] leading-relaxed text-text-muted">This profile updates live as you answer. Every recommendation JENTERA makes is based on this — correct it anytime in the dashboard.</p>
 </div>
 </div>
 </aside>
@@ -275,7 +275,7 @@ function kvRenderNav(){
   document.getElementById('kv-step-label').textContent = (step+1) + ' / 6';
   document.getElementById('kv-back').style.visibility = (step <= 2) ? 'hidden' : 'visible';
   var n = document.getElementById('kv-next');
-  if (step === 5) n.textContent = 'Activate AISAR →';
+  if (step === 5) n.textContent = 'Activate JENTERA →';
   else if (step === 4) n.textContent = 'Show my plan →';
   else n.textContent = 'Continue →';
 }
@@ -369,7 +369,7 @@ document.querySelectorAll('.as-opt').forEach(function(el){
       el.parentElement.querySelectorAll('.as-opt.as-type').forEach(function(o){ o.classList.remove('picked'); });
       el.classList.add('picked');
       bizType = el.dataset.type;
-      try { localStorage.setItem('aisar-biz-type', bizType); } catch(e) {}
+      try { localStorage.setItem('jentera-biz-type', bizType); } catch(e) {}
       return;
     }
     if (el.classList.contains('as-multi')){
@@ -379,7 +379,7 @@ document.querySelectorAll('.as-opt').forEach(function(el){
       if (idx >= 0) channels.splice(idx, 1); else channels.push(label);
       document.getElementById('p-ch').textContent = channels.join(', ') || '—';
       document.getElementById('p-ch').classList.toggle('empty', channels.length === 0);
-      try { localStorage.setItem('aisar-channels', JSON.stringify(channels)); } catch(e) {}
+      try { localStorage.setItem('jentera-channels', JSON.stringify(channels)); } catch(e) {}
     } else {
       el.parentElement.querySelectorAll('.as-opt').forEach(function(o){ o.classList.remove('picked'); });
       el.classList.add('picked');
@@ -406,8 +406,8 @@ function kvSuggest(){
 /* ---- Activate ---- */
 function kvActivate(){
   kvSuggest();
-  try { localStorage.setItem('aisar-onboarded-v1', '1'); } catch(e) {}
-  try { localStorage.setItem('aisar-biz-type', bizType); } catch(e) {}
+  try { localStorage.setItem('jentera-onboarded-v1', '1'); } catch(e) {}
+  try { localStorage.setItem('jentera-biz-type', bizType); } catch(e) {}
   var btn = document.querySelector('#kv-steps .as-step.active .btn-primary, .as-step.active .btn-primary');
   if (btn){ btn.textContent = 'Setting up…'; btn.disabled = true; }
   setTimeout(function(){
@@ -424,7 +424,7 @@ function kvToast(msg){
     t.id = 'kv-toast';
     t.className = 'as-card fixed bottom-6 left-1/2 z-[100] px-5 py-3';
     t.style.cssText = 'transform:translateX(-50%);background:#0a0a0a;border:1px solid rgb(255 255 255 / .12);';
-    t.innerHTML = '<span class="as-green">✓</span> <span id="kv-toast-msg" class="text-[13px]"></span>';
+    t.innerHTML = '<span class="j-green">✓</span> <span id="kv-toast-msg" class="text-[13px]"></span>';
     document.body.appendChild(t);
   }
   document.getElementById('kv-toast-msg').textContent = msg;

@@ -3,8 +3,8 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <meta name="theme-color" content="#0a0a0a"/>
-<title>Setting up your AI team — AISAR</title>
-<meta name="description" content="AISAR setup — your AI team is being configured. Connect your channels and go live."/>
+<title>Setting up your AI team — JENTERA</title>
+<meta name="description" content="JENTERA setup — your AI team is being configured. Connect your channels and go live."/>
 <link rel="icon" href="/favicon.svg"/>
 <link rel="stylesheet" href="/_next/static/chunks/391k8ovo_r0qj.css" data-precedence="next"/>
 <link rel="stylesheet" href="/_next/static/chunks/07r-6xz-uoanc.css" data-precedence="next"/>
@@ -21,8 +21,8 @@
   html.site-theme-dark .btn-outline:hover{border-color:rgb(255 255 255 / .8);background:rgb(255 255 255 / .08)}
 }
 
-/* AISAR accent + setup layout — custom CSS */
-.as-green{color:#00d294}
+/* JENTERA accent + setup layout — custom CSS */
+.j-green{color:#00d294}
 .as-tag{border:1px solid rgb(255 255 255 / .1);padding:2px 8px;font-family:var(--font-mono, monospace);font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:rgb(255 255 255 / .45);border-radius:4px}
 .as-tag.green{border-color:rgb(0 210 148 / .4);color:rgb(0 210 148 / .75)}
 .as-tag.amber{border-color:rgb(255 190 60 / .4);color:rgb(255 200 90 / .8)}
@@ -51,7 +51,7 @@
 <body class="bg-bg text-text antialiased">
 <header class="sticky top-0 z-50 w-full border-b border-(--rail) backdrop-blur-lg">
 <div class="mx-auto flex h-(--nav-h) w-full max-w-(--site-width) items-center justify-between px-6 md:border-x border-(--rail)">
-<a href="/" aria-label="AISAR home"><span class="inline-flex items-center gap-2 text-xl md:text-2xl font-pixel font-pixel-logo tracking-wide text-text"><span class="as-green">aisar</span><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted hidden sm:inline">/setup</span></span></a>
+<a href="/" aria-label="JENTERA home"><span class="inline-flex items-center gap-2 text-xl md:text-2xl font-pixel font-pixel-logo tracking-wide text-text"><span class="j-green">jentera</span><span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted hidden sm:inline">/setup</span></span></a>
 <div class="flex items-center gap-3">
 <a class="btn btn-outline px-5 py-2 text-sm" href="/app">← Dashboard</a>
 </div>
@@ -148,7 +148,7 @@
 <div class="as-row justify-between text-[13px]"><span>Booking Agent</span><span class="as-tag green">live</span></div>
 <div class="as-row justify-between text-[13px]"><span>Follow-up</span><span class="as-tag green">live</span></div>
 </div>
-<p class="text-[12px] leading-relaxed text-text-muted">Everything they do is logged in <b class="text-text">Work</b> — you approve anything sensitive, and AISAR keeps finding more to automate.</p>
+<p class="text-[12px] leading-relaxed text-text-muted">Everything they do is logged in <b class="text-text">Work</b> — you approve anything sensitive, and JENTERA keeps finding more to automate.</p>
 <div class="flex flex-col gap-2 sm:flex-row">
 <button class="btn btn-primary px-6 py-3 text-sm" onclick="kvDone()">Open dashboard →</button>
 <button class="btn btn-outline px-5 py-3 text-sm" onclick="kvDone()">Browse Connections</button>
@@ -156,14 +156,14 @@
 </div>
 
 <div class="flex justify-center">
-<a class="text-[12px] as-green" href="#" onclick="kvSkip();return false">Skip for now — I'll connect later →</a>
+<a class="text-[12px] j-green" href="#" onclick="kvSkip();return false">Skip for now — I'll connect later →</a>
 </div>
 
 </div>
 </main>
 
 <div class="as-toast" id="kv-toast" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;transition:all .3s;z-index:999;pointer-events:none">
-<div class="as-card flex items-center gap-3 px-5 py-3 bg-bg"><span class="as-green">✓</span><span id="kv-toast-msg" class="text-[13px]">Done</span></div>
+<div class="as-card flex items-center gap-3 px-5 py-3 bg-bg"><span class="j-green">✓</span><span id="kv-toast-msg" class="text-[13px]">Done</span></div>
 </div>
 
 <script>
@@ -218,14 +218,14 @@ function kvAllDone(){
   document.getElementById('kv-sub').textContent = 'Everything is connected. Your AI team is live and will start working for you.';
   document.getElementById('kv-list').style.display = 'none';
   document.getElementById('kv-done').style.display = 'flex';
-  try { localStorage.setItem('aisar-setup-done-v1', '1'); } catch(e) {}
+  try { localStorage.setItem('jentera-setup-done-v1', '1'); } catch(e) {}
 }
 function kvDone(){
-  try { localStorage.setItem('aisar-setup-done-v1', '1'); } catch(e) {}
+  try { localStorage.setItem('jentera-setup-done-v1', '1'); } catch(e) {}
   window.location.href = '/app';
 }
 function kvSkip(){
-  try { localStorage.setItem('aisar-setup-done-v1', '1'); } catch(e) {}
+  try { localStorage.setItem('jentera-setup-done-v1', '1'); } catch(e) {}
   window.location.href = '/app';
 }
 
