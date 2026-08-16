@@ -11,6 +11,9 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { TEAM_GENERAL, TEAM_REPLIES } from '@/lib/data/conversations';
+import { TEAM_GENERAL_EN, TEAM_REPLIES_EN } from '@/i18n/agent-replies';
+import { stripEmoji } from '@/components/Icon';
+import type { Lang } from '@/lib/types';
 import { taggedAgent } from '@/hooks/useMentions';
 import type { Business } from '@/lib/types';
 
@@ -41,6 +44,7 @@ export function useAsk(
   business: Business,
   counts: AskCounts,
   t: (key: string, vars?: Record<string, string | number>) => string,
+  lang: Lang = 'en',
 ) {
   const [messages, setMessages] = useState<AskMessage[]>([]);
   /* Deterministic rotation — Math.random would change on every render. */
@@ -82,8 +86,12 @@ export function useAsk(
       const agent = taggedAgent(question, business.team);
       let reply: string;
       if (agent) {
-        const pool = TEAM_REPLIES[agent.n] ?? TEAM_GENERAL;
-        reply = pool[turn.current % pool.length];
+        /* The ported BM replies carry emoji; strip so an agent speaks in
+           the same voice as the rest of the product. */
+        const replies = lang === 'bm' ? TEAM_REPLIES : TEAM_REPLIES_EN;
+        const general = lang === 'bm' ? TEAM_GENERAL : TEAM_GENERAL_EN;
+        const pool = replies[agent.n] ?? general;
+        reply = stripEmoji(pool[turn.current % pool.length]);
         turn.current += 1;
       } else {
         reply = answer(question);
@@ -95,7 +103,7 @@ export function useAsk(
         { from: 'ai', text: reply, agent: agent?.n },
       ]);
     },
-    [answer, business.team],
+    [answer, business.team, lang],
   );
 
   return { messages, send, hasHistory: messages.length > 0 };

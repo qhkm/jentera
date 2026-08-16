@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Card, Eyebrow, Tag } from '@/components/ui';
-import { useT } from '@/i18n/I18nProvider';
+import { useI18n } from '@/i18n/I18nProvider';
 import { ASK_PROMPTS, useAsk } from '@/hooks/useAsk';
 import { useIsCompact } from '@/hooks/useMediaQuery';
 import { Icon, DataIcon } from '@/components/Icon';
@@ -28,13 +28,13 @@ export default function AskAisarView({
   handled: number;
   needs: number;
 }) {
-  const t = useT();
+  const { t, lang } = useI18n();
   const [tab, setTab] = useState<Tab>('assistant');
   /* CSS cannot shorten placeholder text, and the full string clips
      mid-word in the narrower mobile composer. */
   const compact = useIsCompact();
   const [draft, setDraft] = useState('');
-  const ask = useAsk(business, { handled, needs }, t);
+  const ask = useAsk(business, { handled, needs }, t, lang);
   const thread = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const mentions = useMentions(business.team);
