@@ -1,7 +1,11 @@
 /* ============================================================
-   Chat — one thread per agent, like messaging your staff.
-   You can take over any conversation and reply as the business,
+   Customer inbox — one thread per agent, like messaging your
+   staff. Take over any conversation to reply as the business,
    then hand it back to the AI.
+
+   This used to be the top-level "Chat" view. It now lives as the
+   secondary tab inside Ask AISAR, so owner instructions and
+   customer messages stop competing as two chat products.
    ============================================================ */
 
 import { useEffect, useRef, useState } from 'react';
@@ -27,7 +31,7 @@ function Bubble({ msg }: { msg: ChatMessage }) {
   );
 }
 
-export default function ChatView({ business }: { business: Business }) {
+export default function CustomerInbox({ business }: { business: Business }) {
   const t = useT();
   const chat = useChat(business);
   const [draft, setDraft] = useState('');
@@ -49,12 +53,7 @@ export default function ChatView({ business }: { business: Business }) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <h1 className="font-pixel text-2xl tracking-tight">{t('view.chat')}</h1>
-        <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.chat.desc')}</p>
-      </header>
-
+    <div className="flex flex-col gap-4">
       <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
         {/* ---- Conversation list ---- */}
         <div className={`flex flex-col gap-2 ${selected ? 'hidden lg:flex' : 'flex'}`}>

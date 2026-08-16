@@ -148,6 +148,31 @@ check(
   'static site now ships a 4-area IA',
 );
 
+/* ---- 7. Nav labels: the four areas the static site ships ---- */
+const staticNav = [
+  ...new Set([...read('app.html').matchAll(/data-t="(nav\.[a-z]+)"/g)].map((m) => m[1])),
+].filter((k) => k !== 'nav.logout');
+check(
+  'nav items match the static sidebar',
+  staticNav.filter((k) => !dashboard.includes(k)),
+);
+
+/* ---- 8. React must not resurrect retired top-level views ---- */
+const retired = ['nav.team', 'nav.aiteam', 'nav.connections', 'nav.approvals'];
+check(
+  'retired views are not top-level nav in React',
+  retired.filter((k) => new RegExp(`labelKey: '${k}'`).test(dashboard)),
+  'these belong inside Activity / My Business now',
+);
+
+/* ---- 9. work-done index format must match the engine (strings) ---- */
+const engineStoresStrings = /indexOf\(String\(i\)\)/.test(read('biz-engine.js'));
+const appTolerant = /String\(v\) === String\(i\)/.test(readApp('lib/business.ts'));
+check(
+  'work-done storage format is compatible with the engine',
+  engineStoresStrings && !appTolerant ? ['engine writes string indices; app does not read them'] : [],
+);
+
 /* ---- Report ---- */
 console.log('\n=== PARITY AUDIT ===\n');
 for (const p of pass) console.log(`  PASS  ${p}`);

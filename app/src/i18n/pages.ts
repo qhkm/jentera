@@ -15,11 +15,11 @@ import type { Lang } from '@/lib/types';
 export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
   en: {
     /* Landing */
-    'lp.eyebrow': 'Malaysia-first · AI operations',
-    'lp.headline': 'Your business, increasingly run by AI',
+    'lp.eyebrow': 'Malaysia-first · managed AI operations',
+    'lp.headline': 'Your business, without the busywork.',
     'lp.lede':
-      'Tell AISAR what you do. It works out your industry, builds an AI team around it, and starts handling the routine work — customer questions, bookings, follow-ups, reports.',
-    'lp.cta.primary': 'Tell us about your business',
+      'You explain the business. AISAR handles the technology — finding the work worth automating, setting it up, and putting the right AI help to work. No prompts, no API keys, no consultants.',
+    'lp.cta.primary': 'Tell AISAR about your business',
     'lp.cta.secondary': 'See the dashboard',
     'lp.industries': '{n} industries, no setup forms',
     'lp.potential': '{n}% potential',
@@ -75,11 +75,11 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
 
   bm: {
     /* Landing */
-    'lp.eyebrow': 'Malaysia dahulu · Operasi AI',
-    'lp.headline': 'Perniagaan anda, semakin dikendalikan AI',
+    'lp.eyebrow': 'Malaysia dahulu · operasi AI terurus',
+    'lp.headline': 'Perniagaan anda, tanpa kerja remeh.',
     'lp.lede':
-      'Beritahu AISAR apa yang anda buat. Ia kenal pasti industri anda, bina pasukan AI untuknya, dan mula uruskan kerja rutin — soalan pelanggan, tempahan, susulan, laporan.',
-    'lp.cta.primary': 'Ceritakan tentang perniagaan anda',
+      'Anda terangkan perniagaan. AISAR uruskan teknologinya — cari kerja yang patut diautomasikan, sediakan, dan gerakkan bantuan AI yang sesuai. Tiada prompt, tiada API key, tiada perunding.',
+    'lp.cta.primary': 'Ceritakan perniagaan anda kepada AISAR',
     'lp.cta.secondary': 'Lihat dashboard',
     'lp.industries': '{n} industri, tiada borang setup',
     'lp.potential': 'potensi {n}%',

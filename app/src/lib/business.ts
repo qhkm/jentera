@@ -164,16 +164,22 @@ export function isAgentReady(t: { setup?: boolean; ch?: string }): boolean {
 
 /* ---- Work items ---- */
 
+/**
+ * The engine writes these indices as strings (`JSON.stringify(["0","2"])`);
+ * an earlier version of this port wrote numbers. Read both, write strings,
+ * so a user who approved work on the static site does not find it
+ * un-approved after the cutover.
+ */
 export function isWorkDone(key: string, i: number): boolean {
-  return store.getJSON<number[]>(KEYS.workDone + key, []).includes(i);
+  const raw = store.getJSON<unknown[]>(KEYS.workDone + key, []);
+  return raw.some((v) => String(v) === String(i));
 }
 
 export function markWorkDone(key: string, i: number): void {
-  const a = store.getJSON<number[]>(KEYS.workDone + key, []);
-  if (!a.includes(i)) {
-    a.push(i);
-    store.setJSON(KEYS.workDone + key, a);
-  }
+  const raw = store.getJSON<unknown[]>(KEYS.workDone + key, []);
+  if (raw.some((v) => String(v) === String(i))) return;
+  // Normalise the whole array to strings, matching the engine's format.
+  store.setJSON(KEYS.workDone + key, [...raw.map(String), String(i)]);
 }
 
 /* ---- Recommendations: opportunity functions become suggested agents ---- */

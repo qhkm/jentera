@@ -54,7 +54,7 @@ export default function HomeView({
                 <Button className="px-5 py-2 text-sm">{t('cmd.step1.cta')}</Button>
               </Link>
             ) : (
-              <Button className="px-5 py-2 text-sm" onClick={() => onNavigate('connections')}>
+              <Button className="px-5 py-2 text-sm" onClick={() => onNavigate('business')}>
                 {t('cmd.step2.cta')}
               </Button>
             )}
@@ -102,7 +102,7 @@ export default function HomeView({
             ))
           ) : (
             <p className="text-[12px] text-text-muted">
-              Nothing needs you right now. 🎉
+              {t('home.empty')}
             </p>
           )}
         </Card>
@@ -125,13 +125,13 @@ export default function HomeView({
       {/* Latest agent activity — a way into Chat */}
       <Card className="gap-3">
         <div className="flex items-center justify-between">
-          <Eyebrow>💬 AI team activity</Eyebrow>
+          <Eyebrow>{t('home.recent')}</Eyebrow>
           <button
             type="button"
             className="text-[11px] text-brand hover:underline"
-            onClick={() => onNavigate('chat')}
+            onClick={() => onNavigate('work')}
           >
-            {t('nav.openchat')}
+            {t('home.openactivity')}
           </button>
         </div>
         {business.work.slice(0, 2).map((w, i) => (

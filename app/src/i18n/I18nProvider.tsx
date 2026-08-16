@@ -34,8 +34,8 @@ const MESSAGES: Record<Lang, Record<string, string>> = {
 };
 
 const TITLES: Record<Lang, string> = {
-  en: 'AISAR Platform — Your business, increasingly run by AI',
-  bm: 'AISAR Platform — Perniagaan anda, semakin dikendalikan AI',
+  en: 'AISAR — Your business, without the busywork',
+  bm: 'AISAR — Perniagaan anda, tanpa kerja remeh',
 };
 
 function isTranslated(code: string): code is Lang {

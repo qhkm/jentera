@@ -1,50 +1,39 @@
 /* ============================================================
-   Dashboard shell — sidebar on desktop, drawer + bottom bar on
-   mobile. Views are local state, matching the static site's
-   .as-view toggling.
+   Dashboard shell — four areas, deliberately not eight.
+
+   Agent rosters, connections and approvals were separate views
+   and read as competing technical products. They are now facts
+   inside My Business, or work records inside Activity.
+
+     Home        what happened, what needs you, what's next
+     Ask AISAR   ask or instruct (+ Customer inbox tab)
+     Activity    completed, active, and approval-blocked work
+     My Business knowledge, responsibilities, connections
    ============================================================ */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Shell } from '@/components/Shell';
 import { Avatar, Card, Eyebrow, Progress, Tag } from '@/components/ui';
 import { useBusiness } from '@/hooks/useBusiness';
 import { useT } from '@/i18n/I18nProvider';
 import HomeView from './views/HomeView';
-import ChatView from './views/ChatView';
-import TeamChatView from './views/TeamChatView';
-import BusinessView from './views/BusinessView';
-import AiTeamView from './views/AiTeamView';
-import WorkView from './views/WorkView';
-import ConnectionsView from './views/ConnectionsView';
-import ApprovalsView from './views/ApprovalsView';
+import AskAisarView from './views/AskAisarView';
+import ActivityView from './views/ActivityView';
+import MyBusinessView from './views/MyBusinessView';
 
-export type View =
-  | 'home'
-  | 'chat'
-  | 'team'
-  | 'business'
-  | 'aiteam'
-  | 'work'
-  | 'connections'
-  | 'approvals';
+export type View = 'home' | 'chat' | 'work' | 'business';
 
 interface NavItem {
   id: View;
   labelKey: string;
   icon: string;
-  /** shown in the mobile bottom bar */
-  primary?: boolean;
 }
 
 const NAV: NavItem[] = [
-  { id: 'home', labelKey: 'nav.home', icon: '🏠', primary: true },
-  { id: 'chat', labelKey: 'nav.chat', icon: '💬', primary: true },
-  { id: 'team', labelKey: 'nav.team', icon: '👥' },
-  { id: 'business', labelKey: 'nav.business', icon: '🏪' },
-  { id: 'aiteam', labelKey: 'nav.aiteam', icon: '🤖', primary: true },
-  { id: 'work', labelKey: 'nav.work', icon: '⚡', primary: true },
-  { id: 'connections', labelKey: 'nav.connections', icon: '🔌' },
-  { id: 'approvals', labelKey: 'nav.approvals', icon: '🛡️' },
+  { id: 'home', labelKey: 'nav.home', icon: '🏠' },
+  { id: 'chat', labelKey: 'nav.chat', icon: '💬' },
+  { id: 'work', labelKey: 'nav.work', icon: '⚡' },
+  { id: 'business', labelKey: 'nav.business', icon: '🏢' },
 ];
 
 export default function Dashboard() {
@@ -54,7 +43,14 @@ export default function Dashboard() {
   const b = useBusiness();
   const { business } = b;
 
-  // Lock the page behind the drawer while it's open.
+  /** Anything blocked on the owner, from either source. */
+  const needsAttention = b.needsYouCount + b.approvals.length;
+
+  const handled = useMemo(
+    () => business.work.filter((w, i) => w.tag !== 'needs you' || b.workDone(i)).length,
+    [business.work, b],
+  );
+
   useEffect(() => {
     document.body.style.overflow = drawerOpen ? 'hidden' : '';
     return () => {
@@ -62,7 +58,6 @@ export default function Dashboard() {
     };
   }, [drawerOpen]);
 
-  // Escape closes the drawer.
   useEffect(() => {
     if (!drawerOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -80,7 +75,7 @@ export default function Dashboard() {
 
   function navButton(item: NavItem) {
     const active = view === item.id;
-    const badge = item.id === 'approvals' ? b.approvals.length : 0;
+    const badge = item.id === 'work' ? needsAttention : 0;
     return (
       <button
         key={item.id}
@@ -125,13 +120,8 @@ export default function Dashboard() {
   );
 
   return (
-    <Shell
-      suffix="/platform"
-      onMenu={() => setDrawerOpen(true)}
-      menuBadge={b.approvals.length}
-    >
+    <Shell suffix="/platform" onMenu={() => setDrawerOpen(true)} menuBadge={needsAttention}>
       <div className="flex flex-col gap-8 pb-24 lg:flex-row lg:pb-0">
-        {/* ---- Desktop sidebar ---- */}
         <aside className="hidden shrink-0 flex-col gap-6 lg:flex lg:w-[220px]">
           {profile}
           <nav className="flex flex-col gap-1" aria-label="Dashboard sections">
@@ -139,7 +129,6 @@ export default function Dashboard() {
           </nav>
         </aside>
 
-        {/* ---- Mobile drawer ---- */}
         {drawerOpen ? (
           <>
             <div
@@ -172,35 +161,24 @@ export default function Dashboard() {
           </>
         ) : null}
 
-        {/* ---- Active view ---- */}
         <div className="min-w-0 flex-1">
           {view === 'home' && <HomeView b={b} onNavigate={go} />}
-          {view === 'chat' && <ChatView business={business} />}
-          {view === 'team' && <TeamChatView business={business} workDone={b.workDone} />}
-          {view === 'business' && (
-            <BusinessView
-              business={business}
-              connections={b.connections}
-              onChange={b.refresh}
-            />
+          {view === 'chat' && (
+            <AskAisarView business={business} handled={handled} needs={needsAttention} />
           )}
-          {view === 'aiteam' && <AiTeamView b={b} onNavigate={go} />}
-          {view === 'work' && (
-            <WorkView business={business} workDone={b.workDone} onApprove={b.completeWork} />
-          )}
-          {view === 'connections' && <ConnectionsView b={b} />}
-          {view === 'approvals' && <ApprovalsView b={b} />}
+          {view === 'work' && <ActivityView b={b} />}
+          {view === 'business' && <MyBusinessView b={b} />}
         </div>
       </div>
 
-      {/* ---- Mobile bottom bar ---- */}
+      {/* Four areas, so the bottom bar mirrors the sidebar exactly. */}
       <nav
         className="fixed inset-x-0 bottom-0 z-30 flex border-t border-rail bg-bg/95 backdrop-blur lg:hidden"
         aria-label="Primary"
       >
-        {NAV.filter((n) => n.primary).map((item) => {
+        {NAV.map((item) => {
           const active = view === item.id;
-          const badge = item.id === 'work' ? b.needsYouCount : 0;
+          const badge = item.id === 'work' ? needsAttention : 0;
           return (
             <button
               key={item.id}
@@ -216,7 +194,7 @@ export default function Dashboard() {
               </span>
               {t(item.labelKey)}
               {badge > 0 ? (
-                <span className="unread absolute right-[22%] top-1.5">{badge}</span>
+                <span className="unread absolute right-[18%] top-1.5">{badge}</span>
               ) : null}
             </button>
           );
