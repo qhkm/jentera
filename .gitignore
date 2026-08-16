@@ -1,0 +1,22 @@
+# Debug / temp
+.tmp-shots/
+aisar-site/
+*.log
+
+# Dependencies & builds
+node_modules/
+.next/
+dist/
+build/
+
+# Env & secrets
+.env
+.env.*
+*.pem
+*.key
+**/storage-state.json
+**/dash-state.json
+**/*-state.json
+
+# OS
+.DS_Store
