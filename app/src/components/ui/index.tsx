@@ -1,0 +1,128 @@
+/* ============================================================
+   Component kit. Every element resolves through the design tokens
+   — no literal colors — so the theme flip stays a single class on
+   <html> and the border-strength dial keeps working.
+
+   The classes here (.btn, .card, .tag, .chip …) are defined in
+   styles/theme.css, authored dark-first. That is what retires the
+   @layer components !important override the static site carries.
+   ============================================================ */
+
+import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
+
+function cx(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(' ');
+}
+
+/* ---- Button ---- */
+
+type ButtonVariant = 'primary' | 'outline' | 'ghost' | 'reco';
+
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant;
+}
+
+const BUTTON_VARIANT: Record<ButtonVariant, string> = {
+  primary: 'btn-primary',
+  outline: 'btn-outline',
+  ghost: 'btn-ghost',
+  reco: 'btn-reco',
+};
+
+export function Button({ variant = 'primary', className, ...rest }: ButtonProps) {
+  return <button className={cx('btn', BUTTON_VARIANT[variant], className)} {...rest} />;
+}
+
+/* ---- Surfaces ---- */
+
+export function Card({ className, ...rest }: HTMLAttributes<HTMLDivElement>) {
+  return <div className={cx('card', className)} {...rest} />;
+}
+
+/* ---- Labels. Mono, uppercase, .12em — the system's signature texture. ---- */
+
+export type Tone = 'neutral' | 'green' | 'red' | 'amber';
+
+const TAG_TONE: Record<Tone, string> = {
+  neutral: '',
+  green: 'tag-green',
+  red: 'tag-red',
+  amber: 'tag-amber',
+};
+
+export function Tag({ tone = 'neutral', className, ...rest }: HTMLAttributes<HTMLSpanElement> & { tone?: Tone }) {
+  return <span className={cx('tag', TAG_TONE[tone], className)} {...rest} />;
+}
+
+export function Chip({
+  active,
+  className,
+  ...rest
+}: ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
+  return <button type="button" className={cx('chip', active && 'chip-green', className)} {...rest} />;
+}
+
+export function Eyebrow({ className, ...rest }: HTMLAttributes<HTMLSpanElement>) {
+  return <span className={cx('eyebrow', className)} {...rest} />;
+}
+
+/* ---- Identity ---- */
+
+export function Avatar({ children, className, ...rest }: HTMLAttributes<HTMLSpanElement>) {
+  return (
+    <span className={cx('avatar', className)} aria-hidden="true" {...rest}>
+      {children}
+    </span>
+  );
+}
+
+/* ---- Input ---- */
+
+export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
+  return <input className={cx('input', className)} {...rest} />;
+}
+
+/* ---- Progress ---- */
+
+export function Progress({ value, label }: { value: number; label?: string }) {
+  const pct = Math.max(0, Math.min(100, value));
+  return (
+    <div
+      className="progress"
+      role="progressbar"
+      aria-valuenow={pct}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label={label ?? 'Progress'}
+    >
+      <div className="progress-fill" style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+/* ---- Section scaffold ---- */
+
+export function Section({
+  eyebrow,
+  title,
+  description,
+  children,
+}: {
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-5">
+      <header className="flex flex-col gap-2">
+        {eyebrow ? <Eyebrow>{eyebrow}</Eyebrow> : null}
+        <h2 className="font-pixel text-xl tracking-tight">{title}</h2>
+        {description ? (
+          <p className="max-w-[66ch] text-sm text-text-secondary">{description}</p>
+        ) : null}
+      </header>
+      {children}
+    </section>
+  );
+}

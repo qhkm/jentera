@@ -1,0 +1,47 @@
+@import "tailwindcss";
+@import "@fontsource/jetbrains-mono/latin-300.css";
+@import "@fontsource/jetbrains-mono/latin-400.css";
+@import "./fonts.css";
+@import "./tokens.css";
+@import "./theme.css";
+
+/* ============================================================
+   Base. Everything resolves through tokens — no literal colors
+   below this line, so the theme flip is a single class on <html>.
+   ============================================================ */
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-weight: 400;
+  text-wrap: pretty;
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-green);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
