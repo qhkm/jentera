@@ -31,9 +31,18 @@ body {
   box-sizing: border-box;
 }
 
-:focus-visible {
-  outline: 2px solid var(--accent-green);
-  outline-offset: 2px;
+/* Keyboard focus ring.
+   This MUST stay inside @layer base. Unlayered rules beat every layered
+   one regardless of specificity, so an unlayered version here silently
+   overrode `.input:focus { outline: none }` in @layer components and
+   painted a second green ring outside the green border. That is the same
+   cascade-layer trap that forced the !important button override on the
+   static site — worth not repeating. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--accent-green);
+    outline-offset: 2px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
