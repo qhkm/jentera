@@ -287,7 +287,7 @@ export default function AskAisarView({
               aria-autocomplete="list"
               placeholder={compact ? t('ask.placeholder.short') : t('ask.placeholder')}
               aria-label={t('ask.placeholder')}
-              className="input max-h-[120px] w-full min-w-0 flex-1 resize-none px-3"
+              className="input max-h-[120px] w-full min-w-0 flex-1 resize-none"
             />
             <Button type="submit" disabled={!draft.trim()} className="shrink-0 px-4 sm:px-6">
               <span className="sm:hidden">{t('chat.send')}</span>

@@ -53,7 +53,11 @@
   --radius-tag:    4px;
   --radius-item:   8px;
   --radius-avatar: 10px;
-  --radius-card:   12px;
+  /* Square. Buttons already carry radius 0 — the upstream .btn shipped
+     that way — and a 12px card around square controls read as two
+     different systems. Set on the token rather than on .card so the
+     rounded-card utility follows it. */
+  --radius-card:   0;
   --radius-pill:   999px;
 
   /* Layout */
@@ -218,6 +222,14 @@
   .input {
     min-height: var(--control-h);
     padding-block: var(--control-pad-y);
+    /* Owns its horizontal padding too, for the same reason it owns its
+       type. Without this the component had none at all, so text and
+       placeholder sat flush against the border; call sites had been
+       patching it with px-3 one at a time and two of them — the inbox
+       reply box and every onboarding field — had been missed entirely.
+       1rem matches the static site's .as-input (px-4). Narrower than
+       .btn's 1.5rem because this text is left-aligned, not centred. */
+    padding-inline: 1rem;
     /* Owns its own type, exactly as .btn does. A text-* utility would
        also set line-height and quietly break the shared height. */
     font-size: 14px;
