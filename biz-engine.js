@@ -145,6 +145,12 @@ var KV_CONNECTORS = {
     scope: ['jawab DM', 'baca komen', 'hantar promo'],
     countries: ['MY','ID','SG','TH','VN','PH'], meta: true
   },
+  telegram: {
+    n: 'Telegram', e: '✈️', tier: 'T2', method: 'bss',
+    flow: 'Guided Telegram bot authorization — AISAR handles the token, webhook, and setup securely',
+    scope: ['reply to customers', 'send updates', 'handle enquiries', 'escalate to owner'],
+    countries: ['MY','ID','SG','TH','VN','PH']
+  },
   google: {
     n: 'Google (Sheets & Calendar)', e: '📊', tier: 'T1', method: 'oauth',
     flow: 'Google OAuth — popup login, sync ke Sheets/Calendar',
@@ -300,34 +306,53 @@ function kvApprovalsRender(){
   var el = document.getElementById('kv-approvals');
   if (!el) return;
   var q = kvApprovals().filter(function(a){ return a.status === 'pending'; });
-  if (!q.length){
+  var b = kvPlaybook(kvBizType());
+  var pendingWork = (b.work || []).map(function(w, i){ return { item:w, index:i }; }).filter(function(x){ return x.item.tag === 'needs you' && !kvWorkDone(x.index); });
+  if (!q.length && !pendingWork.length){
     el.innerHTML = '<div class="as-card flex flex-col items-center gap-2 p-6 text-center"><span class="text-2xl">🛡️</span><p class="text-[13px] text-text-secondary">' + kvT('appr.empty') + '</p></div>';
   } else {
-    el.innerHTML = q.map(function(a){
+    var workHtml = pendingWork.map(function(x){
+      var w = x.item;
+      return '<div class="as-card flex flex-col gap-3 p-4">' +
+        '<div class="as-row justify-between"><div class="as-row"><span class="as-avatar">' + w.e + '</span><div class="flex flex-col"><span class="text-sm">' + kvEsc(w.n) + '</span><span class="text-[11px] text-text-muted">' + kvEsc(w.t) + '</span></div></div><span class="as-tag amber">' + kvT('work.need') + '</span></div>' +
+        '<p class="text-[13px] text-text-secondary">' + kvEsc(w.d) + '</p>' +
+        '<div class="as-row gap-2"><button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvApproveWork(' + x.index + ')">' + kvT('work.approve') + '</button><button class="btn btn-outline px-4 py-1.5 text-xs" onclick="kvEditWork(' + x.index + ')">' + kvT('work.edit') + '</button></div>' +
+        '</div>';
+    }).join('');
+    var toolHtml = q.map(function(a){
       var riskCls = a.risk === 'high' ? 'red' : (a.risk === 'medium' ? 'amber' : 'green');
-      var args = '';
-      try { args = JSON.stringify(a.args || {}, null, 1).replace(/"/g,'').replace(/[{}]/g,'').replace(/\n/g,', ').trim(); } catch(e){}
+      var opLabel = kvT('appr.op.' + a.op);
+      if (opLabel === 'appr.op.' + a.op) opLabel = a.op;
+      var args = Object.keys(a.args || {}).map(function(k){ return k + ': ' + a.args[k]; }).join(' · ');
+      var when = '';
+      try { when = new Date(a.ts).toLocaleString(); } catch(e){ when = a.ts; }
       return '<div class="as-card flex flex-col gap-3 p-4">' +
         '<div class="as-row justify-between"><div class="as-row gap-2">' +
         '<span class="as-avatar">🛡️</span>' +
-        '<div class="flex flex-col"><span class="text-sm">' + a.conn + ' · ' + a.op + '</span>' +
-        '<span class="text-[11px] text-text-muted">' + a.ts + '</span></div></div>' +
+        '<div class="flex flex-col"><span class="text-sm">' + kvEsc(opLabel) + ' · ' + kvEsc(a.conn) + '</span>' +
+        '<span class="text-[11px] text-text-muted">' + kvEsc(when) + '</span></div></div>' +
         '<span class="as-tag ' + riskCls + '">' + kvT('appr.risk.' + a.risk) + '</span></div>' +
-        (args ? '<pre class="text-[11px] font-mono text-white/70 bg-white/[0.03] rounded-lg p-3 whitespace-pre-wrap">' + args + '</pre>' : '') +
+        (args ? '<p class="text-[12px] text-text-secondary">' + kvEsc(args) + '</p>' : '') +
         '<div class="as-row justify-end gap-2">' +
         '<button class="btn btn-outline px-4 py-1.5 text-xs" onclick="kvApprovalDecide(' + a.id + ',false);kvRenderAll();kvToast(kvT(\'appr.rejected\'))">' + kvT('appr.reject') + '</button>' +
         '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvApprovalDecide(' + a.id + ',true);kvRenderAll();kvToast(kvT(\'appr.approved\'))">' + kvT('appr.approve') + '</button>' +
         '</div></div>';
     }).join('');
+    el.innerHTML = workHtml + toolHtml;
   }
   kvApprovalBadge();
 }
 function kvApprovalBadge(){
   var n = kvApprovals().filter(function(a){ return a.status === 'pending'; }).length;
+  var b = kvPlaybook(kvBizType());
+  var workNeeds = (b.work || []).filter(function(w, i){ return w.tag === 'needs you' && !kvWorkDone(i); }).length;
+  var total = n + workNeeds;
   ['kv-side-approvals-badge','kv-drawer-approvals-badge'].forEach(function(id){
     var b = document.getElementById(id);
-    if (b){ b.textContent = n; b.style.display = n ? 'inline-flex' : 'none'; }
+    if (b){ b.textContent = total; b.style.display = total ? 'inline-flex' : 'none'; }
   });
+  var mobile = document.getElementById('kv-bottom-work-badge');
+  if (mobile){ mobile.textContent = total; mobile.style.display = total ? 'inline-flex' : 'none'; }
 }
 
 
@@ -336,68 +361,68 @@ function kvApprovalBadge(){
    ============================================================ */
 var KV_I18N = {
   en: {
-    'nav.home':'Home','nav.chat':'Chat','nav.team':'Team Chat','nav.business':'Your Business','nav.aiteam':'AI Team','nav.work':'Work','nav.connections':'Connections',
-    'nav.approvals':'Approvals','view.approvals':'Approvals','view.approvals.desc':'Actions your AI team wants to take — nothing goes out until you approve.','appr.approve':'Approve','appr.reject':'Reject','appr.approved':'Approved ✓','appr.rejected':'Rejected','appr.empty':'Nothing pending. The AI team will ask when an action needs you.','appr.risk.high':'High risk','appr.risk.medium':'Medium','appr.risk.low':'Low',
-    'nav.landing':'← Landing','nav.getstarted':'Get started','nav.openchat':'Open chat →','nav.logout':'Log out',
-    'cx.oauth':'one-click login','cx.link':'payment link / QR — no setup','cx.file':'file / email sync — you just connect Google','cx.bss':'we handle the credentials — you just approve',
+    'nav.home':'Home','nav.chat':'Ask AISAR','nav.team':'Team Chat','nav.business':'My Business','nav.business.short':'Business','nav.aiteam':'AI Team','nav.work':'Activity','nav.connections':'Connections',
+    'nav.approvals':'Approvals','view.approvals':'Approvals','view.approvals.desc':'Actions your AI team wants to take — nothing goes out until you approve.','appr.approve':'Approve','appr.reject':'Reject','appr.approved':'Approved ✓','appr.rejected':'Rejected','appr.empty':'Nothing pending. AISAR will ask when a sensitive action needs you.','appr.risk.high':'High risk','appr.risk.medium':'Medium','appr.risk.low':'Low','appr.op.send':'Send a message','appr.op.pay':'Make a payment','appr.op.cancel':'Cancel an item','appr.op.refund':'Issue a refund','appr.op.update':'Update information','appr.op.book':'Confirm a booking','appr.op.export':'Export information',
+    'nav.landing':'← Landing','nav.getstarted':'Get started','nav.openchat':'Open activity →','nav.logout':'Log out','status.working':'AISAR working','status.setup':'Setup needed','status.connect':'Connection needed',
+    'cx.oauth':'one-click login','cx.link':'secure link — no setup','cx.file':'simple file or account sync','cx.bss':'we handle the credentials — you approve','conn.guide.oauth':'Sign in and approve. AISAR handles the setup.','conn.guide.link':'Follow a secure link. AISAR handles the rest.','conn.guide.file':'Choose a file or connect an account. No technical setup required.','conn.guide.bss':'Approve access. AISAR handles the credentials securely.',
     'view.home.greet':'Good morning 👋','view.home.desc':"Here's what happened while you were away.",
-    'view.chat':'Chat','view.chat.desc':'Your AI team in real time — like chatting with staff.',
+    'view.chat':'Ask AISAR','view.chat.desc':'Ask for an update or tell AISAR what to handle next.','ask.tab':'Ask AISAR','ask.tab.conversations':'Customer inbox','ask.ready':'Ready to handle your business','ask.empty.title':'What can I take off your plate?','ask.welcome':'Ask what happened, give me a job, or tell me what you want to improve. I’ll work from what I know about your business.','ask.placeholder':'Ask AISAR anything about your business…','ask.hint':'Enter to send · Shift + Enter for a new line','ask.prompt.status':'Give me today’s update','ask.prompt.approvals':'What needs my approval?','ask.prompt.next':'What should you handle next?','ask.send':'Ask AISAR','ask.conversations':'Customer conversations','ask.conversations.desc':'See what AISAR said and take over whenever you want.','ask.inbox.live':'AISAR is replying','ask.you':'You','ask.now':'Now','ask.status':'I handled {handled} items today. {needs} still need your attention.','ask.needone':'1 item needs your review. Open Activity to approve, edit, or reject it.','ask.needs':'{n} items need your review. Open Activity to approve, edit, or reject them.','ask.clear':'Nothing needs your attention right now.','ask.next':'I recommend “{title}” next. {detail}','ask.default':'I can help with that. I’ll use your business profile and connected tools, and I’ll ask before any sensitive action.',
     'view.team':'Team Chat','view.team.desc':'One space for you + all AI agents — tag @agent, they answer.',
-    'view.business':'Your Business','view.business.desc':'Everything AISAR knows about your business. Correct anything and it updates everywhere.',
+    'view.business':'My Business','view.business.desc':'Everything AISAR knows, handles, and can access. Correct or disconnect anything here.',
     'view.aiteam':'AI Team','view.aiteam.desc':'Your team, organised by job — not by agents, models or workflows.',
-    'view.work':'Work','view.work.desc':'Decisions that need you, and what your AI team has handled.',
+    'view.work':'Activity','view.work.desc':'What AISAR completed, what is in progress, and the decisions that need you.',
     'view.connections':'Connections','view.connections.desc':"The tools your AI team works with. Every connection is explained — you always know why it's there.",
-    'side.business':'Your Business','side.complete':'✓ Setup complete','side.industry':'Your industry','side.demo':'Demo preview','side.finish':'Finish setup →','side.potential':'AI Potential','side.routine':'of routine work','side.review':'Review →',
+    'side.business':'My Business','side.complete':'✓ Setup complete','side.industry':'Your industry','side.demo':'Demo preview','side.finish':'Finish setup →','side.potential':'AISAR can handle','side.routine':'of routine work','side.review':'Review opportunities →',
     'drawer.menu':'Menu','drawer.platform':'AISAR platform',
-    'biz.profile':'Profile','biz.website':'Website','biz.contact':'Contact','biz.booking':'Booking','biz.systems':'Systems',
-    'conn.focus':'AISAR focuses on where your customers actually are.',
+    'biz.profile':'Business profile','biz.website':'Website','biz.contact':'Contact','biz.booking':'Booking','biz.systems':'Systems','biz.handles':'What AISAR handles','biz.handles.desc':'The jobs AISAR is doing now and the next useful responsibilities it can take on.','biz.connections':'Connected tools & permissions','biz.connections.desc':'See what AISAR can access, why it needs each connection, and disconnect it at any time.','func.covered':'handled','func.live':'working','func.opportunity':'ready next',
+    'conn.focus':'AISAR focuses on where your customers actually are.','conn.ready':'Ready to connect','conn.telegram':'Lets AISAR answer enquiries and send updates through Telegram.','conn.connect':'Connect','conn.disconnect':'Disconnect','conn.connected':'connected','conn.off':'off',
     'conn.enable':'Connect & enable','conn.first':'Connect first','home.open':'Open',
-    'sub.step1':'One more step before AISAR can start working.',
-    'sub.step2':'AISAR is ready — connect channels to activate your AI team.',
+    'sub.step1':'AISAR has learned your business. Finish the final details so it can start working.',
+    'sub.step2':'AISAR is ready. Connect one customer channel to put it to work.',
     'sub.step3':"Here's what happened while you were away.",
-    'cmd.step1.title':'One more step','cmd.step1.head':'Finish your business profile','cmd.step1.body':'AISAR needs to know your business before it can start.','cmd.step1.cta':'Continue setup →',
-    'cmd.step2.title':'Activate your AI team','cmd.step2.head':'Connect WhatsApp first','cmd.step2.body':'Customer Assistant will answer your customers 24/7 — but it needs a channel first.','cmd.step2.tag':'1 connection','cmd.step2.cta':'Connect now →',
-    'cmd.step3.title':'What AISAR did today',
-    'work.need':'Need you','work.auto':'Auto done','work.activity':'Activity',
-    'work.f.need':'⚠️ Need you','work.f.auto':'🤖 Auto','work.f.done':'✅ Done','work.f.all':'📋 All','work.respond':'Respond',
+    'cmd.step1.title':'Ready to finish','cmd.step1.head':'Complete your business details','cmd.step1.body':'AISAR has learned the basics. Confirm the final details before it starts working.','cmd.step1.cta':'Finish setup →',
+    'cmd.step2.title':'Ready to work','cmd.step2.head':'Let AISAR answer customers','cmd.step2.body':'Connect WhatsApp or another customer channel. AISAR handles the technical setup.','cmd.step2.tag':'1 connection','cmd.step2.cta':'Connect a channel →',
+    'cmd.step3.title':'Today at a glance','cmd.step3.head':'AISAR handled {n} tasks today','cmd.step3.clear':'Everything is handled. Nothing needs your attention.','cmd.step3.need':'1 item needs your approval.','cmd.step3.needs':'{n} items need your approval.','cmd.step3.review':'Review now',
+    'work.need':'Needs you','work.auto':'Approved','work.activity':'Handled','work.approve':'Approve & send','work.edit':'Edit','work.empty':'Nothing in this category. Everything is handled. 🎉','activity.approvals':'Needs your approval','activity.approvals.desc':'Sensitive actions wait here until you approve or reject them.','activity.history':'Work history',
+    'work.f.need':'⚠️ Needs you','work.f.auto':'✓ Handled','work.f.done':'🛡️ Approved','work.f.all':'📋 All','work.respond':'Review',
     'team.ph.pasukan':'Message for the team — tag @agent…','team.ph.escalation':'Update / instructions — tag @agent…','team.ph.random':'Casual chat — tag @agent…','team.channels':'channels',
     'chat.search':'Search conversations…','chat.reply':'Type a reply…','chat.takeover':'Take over to reply yourself…','chat.send':'Send',
     'toast.approved':'✓ Approved & sent.',
-    'rec.title':'AI recommends','rec.head':'More agents that could help','rec.desc':'Based on your business profile, these roles save you the most time next.','rec.rec':'recommended','rec.cta':'Add to team','rec.added':'✓ {n} added — connect channels to go live.',
-    'pot.txt':'AISAR found {n} more opportunities to automate.',
-    'uc.suggested':'Suggested next','uc.automate':'Automate it','uc.notnow':'Not now','uc.opportunity':'opportunity — not automated yet','uc.see':'See in Work','uc.more':'More ways AISAR can help — pick an area to automate'
+    'rec.title':'AISAR found','rec.head':'More work AISAR can handle','rec.desc':'These responsibilities could save your business the most time next.','rec.rec':'ready','rec.cta':'Put AISAR to work','rec.added':'✓ {n} is being prepared. Review the required connections below.',
+    'pot.txt':'AISAR found {n} more ways it can help.',
+    'uc.suggested':'Ready next','uc.automate':'Put AISAR to work','uc.notnow':'Not now','uc.opportunity':'ready to set up','uc.see':'Review in Activity','uc.more':'More work AISAR is ready to handle','uc.started':'AISAR is preparing this. Review the required access when you are ready.','uc.savedlater':'Saved for later. AISAR will keep it available.','uc.reviewaccess':'Review required access','uc.preparing':'preparing','home.recent':'Recent activity','home.openactivity':'Open activity →','home.empty':'No activity yet. AISAR will show completed work here.','team.waiting':'Waiting for access — connect the required tool below.'
   },
   bm: {
-    'nav.home':'Home','nav.chat':'Chat','nav.team':'Chat Pasukan','nav.business':'Perniagaan Anda','nav.aiteam':'Pasukan AI','nav.work':'Kerja','nav.connections':'Sambungan',
-    'nav.approvals':'Kelulusan','view.approvals':'Kelulusan','view.approvals.desc':'Tindakan yang pasukan AI mahu ambil — tiada apa keluar sebelum anda luluskan.','appr.approve':'Lulus','appr.reject':'Tolak','appr.approved':'Diluluskan ✓','appr.rejected':'Ditolak','appr.empty':'Tiada tergantung. Pasukan AI akan minta kelulusan bila perlu.','appr.risk.high':'Risiko tinggi','appr.risk.medium':'Sederhana','appr.risk.low':'Rendah',
-    'nav.landing':'← Laman','nav.getstarted':'Mula sekarang','nav.openchat':'Buka chat →','nav.logout':'Keluar',
-    'cx.oauth':'login satu klik','cx.link':'link / QR bayaran — tiada setup','cx.file':'sync fail / emel — anda cuma connect Google','cx.bss':'kami pegang credential — anda cuma approve',
+    'nav.home':'Home','nav.chat':'Tanya AISAR','nav.team':'Chat Pasukan','nav.business':'Bisnes Saya','nav.business.short':'Bisnes','nav.aiteam':'Pasukan AI','nav.work':'Aktiviti','nav.connections':'Sambungan',
+    'nav.approvals':'Kelulusan','view.approvals':'Kelulusan','view.approvals.desc':'Tindakan yang pasukan AI mahu ambil — tiada apa keluar sebelum anda luluskan.','appr.approve':'Lulus','appr.reject':'Tolak','appr.approved':'Diluluskan ✓','appr.rejected':'Ditolak','appr.empty':'Tiada yang menunggu. AISAR akan bertanya apabila tindakan sensitif memerlukan anda.','appr.risk.high':'Risiko tinggi','appr.risk.medium':'Sederhana','appr.risk.low':'Rendah','appr.op.send':'Hantar mesej','appr.op.pay':'Buat bayaran','appr.op.cancel':'Batalkan item','appr.op.refund':'Buat bayaran balik','appr.op.update':'Kemas kini maklumat','appr.op.book':'Sahkan tempahan','appr.op.export':'Eksport maklumat',
+    'nav.landing':'← Laman','nav.getstarted':'Mula sekarang','nav.openchat':'Buka aktiviti →','nav.logout':'Keluar','status.working':'AISAR sedang bekerja','status.setup':'Setup diperlukan','status.connect':'Sambungan diperlukan',
+    'cx.oauth':'log masuk satu klik','cx.link':'pautan selamat — tiada setup','cx.file':'sync fail atau akaun ringkas','cx.bss':'kami urus kelayakan — anda luluskan','conn.guide.oauth':'Log masuk dan luluskan. AISAR menguruskan setup.','conn.guide.link':'Ikuti pautan selamat. AISAR menguruskan selebihnya.','conn.guide.file':'Pilih fail atau sambungkan akaun. Tiada setup teknikal diperlukan.','conn.guide.bss':'Luluskan akses. AISAR menguruskan kelayakan dengan selamat.',
     'view.home.greet':'Selamat pagi 👋','view.home.desc':'Apa yang berlaku semasa kau pergi.',
-    'view.chat':'Chat','view.chat.desc':'Pasukan AI kau dalam masa nyata — macam chat dengan staff.',
+    'view.chat':'Tanya AISAR','view.chat.desc':'Minta kemas kini atau beritahu AISAR apa yang perlu diurus seterusnya.','ask.tab':'Tanya AISAR','ask.tab.conversations':'Peti masuk pelanggan','ask.ready':'Sedia mengurus bisnes anda','ask.empty.title':'Apa yang boleh saya urus untuk anda?','ask.welcome':'Tanya apa yang berlaku, beri saya kerja, atau beritahu apa yang anda mahu tingkatkan. Saya akan gunakan apa yang saya tahu tentang bisnes anda.','ask.placeholder':'Tanya AISAR apa sahaja tentang bisnes anda…','ask.hint':'Enter untuk hantar · Shift + Enter untuk baris baharu','ask.prompt.status':'Beri kemas kini hari ini','ask.prompt.approvals':'Apa yang perlukan kelulusan saya?','ask.prompt.next':'Apa yang patut anda urus seterusnya?','ask.send':'Tanya AISAR','ask.conversations':'Perbualan pelanggan','ask.conversations.desc':'Lihat apa yang AISAR katakan dan ambil alih pada bila-bila masa.','ask.inbox.live':'AISAR sedang membalas','ask.you':'Anda','ask.now':'Sekarang','ask.status':'Saya mengurus {handled} perkara hari ini. {needs} masih perlukan perhatian anda.','ask.needone':'1 perkara perlukan semakan anda. Buka Aktiviti untuk luluskan, edit, atau tolak.','ask.needs':'{n} perkara perlukan semakan anda. Buka Aktiviti untuk luluskan, edit, atau tolak.','ask.clear':'Tiada apa yang perlukan perhatian anda sekarang.','ask.next':'Saya cadangkan “{title}” seterusnya. {detail}','ask.default':'Saya boleh bantu. Saya akan gunakan profil bisnes dan alat tersambung, serta meminta kelulusan sebelum tindakan sensitif.',
     'view.team':'Chat Pasukan','view.team.desc':'Satu ruang untuk kau + semua AI agent — tag @agent, dia jawab.',
-    'view.business':'Perniagaan Anda','view.business.desc':'Semua yang AISAR tahu tentang perniagaan kau. Betulkan sekali, ia update di mana-mana.',
+    'view.business':'Bisnes Saya','view.business.desc':'Semua yang AISAR tahu, urus, dan boleh akses. Betulkan atau putuskan sambungan di sini.',
     'view.aiteam':'Pasukan AI','view.aiteam.desc':'Pasukan kau, diatur ikut kerja — bukan ikut agents, models atau workflows.',
-    'view.work':'Kerja','view.work.desc':'Keputusan yang perlukan kau, dan apa yang pasukan AI kau dah selesaikan.',
+    'view.work':'Aktiviti','view.work.desc':'Apa yang AISAR telah siapkan, sedang lakukan, dan keputusan yang perlukan anda.',
     'view.connections':'Sambungan','view.connections.desc':'Alat yang pasukan AI kau guna. Setiap sambungan diterangkan — kau sentiasa tahu kenapa ia ada.',
-    'side.business':'Perniagaan Anda','side.complete':'✓ Setup selesai','side.industry':'Industri anda','side.demo':'Pratonton demo','side.finish':'Sambung setup →','side.potential':'Potensi AI','side.routine':'kerja rutin','side.review':'Semak →',
+    'side.business':'Bisnes Saya','side.complete':'✓ Setup selesai','side.industry':'Industri anda','side.demo':'Pratonton demo','side.finish':'Sambung setup →','side.potential':'AISAR boleh urus','side.routine':'kerja rutin','side.review':'Semak peluang →',
     'drawer.menu':'Menu','drawer.platform':'Platform AISAR',
-    'biz.profile':'Profil','biz.website':'Laman web','biz.contact':'Hubungan','biz.booking':'Tempahan','biz.systems':'Sistem',
-    'conn.focus':'AISAR fokus di mana pelanggan kau sebenarnya berada.',
+    'biz.profile':'Profil bisnes','biz.website':'Laman web','biz.contact':'Hubungan','biz.booking':'Tempahan','biz.systems':'Sistem','biz.handles':'Apa yang AISAR urus','biz.handles.desc':'Kerja yang AISAR sedang lakukan dan tanggungjawab berguna seterusnya yang boleh diambil alih.','biz.connections':'Alat & kebenaran tersambung','biz.connections.desc':'Lihat apa yang AISAR boleh akses, sebab ia diperlukan, dan putuskan sambungan bila-bila masa.','func.covered':'diurus','func.live':'sedang bekerja','func.opportunity':'sedia seterusnya',
+    'conn.focus':'AISAR fokus di mana pelanggan anda sebenarnya berada.','conn.ready':'Sedia disambung','conn.telegram':'Membolehkan AISAR menjawab pertanyaan dan menghantar kemas kini melalui Telegram.','conn.connect':'Sambung','conn.disconnect':'Putuskan','conn.connected':'tersambung','conn.off':'tidak aktif',
     'conn.enable':'Sambung & aktifkan','conn.first':'Sambung dulu','home.open':'Buka',
-    'sub.step1':'Satu langkah lagi sebelum AISAR boleh mula bekerja.',
-    'sub.step2':'AISAR sedia — sambungkan saluran untuk hidupkan AI team.',
+    'sub.step1':'AISAR sudah belajar bisnes anda. Lengkapkan butiran akhir supaya ia boleh mula bekerja.',
+    'sub.step2':'AISAR sudah sedia. Sambungkan satu saluran pelanggan untuk mula bekerja.',
     'sub.step3':'Apa yang berlaku semasa kau pergi.',
-    'cmd.step1.title':'Satu langkah lagi','cmd.step1.head':'Siapkan profil bisnes kau','cmd.step1.body':'AISAR perlu tahu bisnes kau sebelum boleh mula bekerja.','cmd.step1.cta':'Sambung setup →',
-    'cmd.step2.title':'Hidupkan AI team','cmd.step2.head':'Sambung WhatsApp dulu','cmd.step2.body':'Customer Assistant akan jawab pelanggan kau 24/7 — tapi dia perlukan saluran dulu.','cmd.step2.tag':'1 sambungan','cmd.step2.cta':'Sambung sekarang →',
-    'cmd.step3.title':'Apa yang AISAR buat hari ini',
-    'work.need':'Perlu kau','work.auto':'Selesai auto','work.activity':'Aktiviti',
-    'work.f.need':'⚠️ Perlu kau','work.f.auto':'🤖 Auto','work.f.done':'✅ Selesai','work.f.all':'📋 Semua','work.respond':'Balas',
+    'cmd.step1.title':'Sedia untuk dilengkapkan','cmd.step1.head':'Lengkapkan butiran bisnes','cmd.step1.body':'AISAR sudah belajar asasnya. Sahkan butiran akhir sebelum ia mula bekerja.','cmd.step1.cta':'Siapkan setup →',
+    'cmd.step2.title':'Sedia untuk bekerja','cmd.step2.head':'Biar AISAR jawab pelanggan','cmd.step2.body':'Sambungkan WhatsApp atau saluran pelanggan lain. AISAR urus setup teknikal.','cmd.step2.tag':'1 sambungan','cmd.step2.cta':'Sambung saluran →',
+    'cmd.step3.title':'Ringkasan hari ini','cmd.step3.head':'AISAR mengurus {n} tugasan hari ini','cmd.step3.clear':'Semuanya selesai. Tiada apa yang perlukan perhatian anda.','cmd.step3.need':'1 perkara perlukan kelulusan anda.','cmd.step3.needs':'{n} perkara perlukan kelulusan anda.','cmd.step3.review':'Semak sekarang',
+    'work.need':'Perlu anda','work.auto':'Diluluskan','work.activity':'Diurus','work.approve':'Lulus & hantar','work.edit':'Edit','work.empty':'Tiada apa dalam kategori ini. Semuanya selesai. 🎉','activity.approvals':'Perlukan kelulusan anda','activity.approvals.desc':'Tindakan sensitif menunggu di sini sehingga anda luluskan atau tolak.','activity.history':'Sejarah kerja',
+    'work.f.need':'⚠️ Perlu anda','work.f.auto':'✓ Diurus','work.f.done':'🛡️ Diluluskan','work.f.all':'📋 Semua','work.respond':'Semak',
     'team.ph.pasukan':'Mesej untuk pasukan — tag @agent…','team.ph.escalation':'Update / arahan — tag @agent…','team.ph.random':'Sembang santai — tag @agent…','team.channels':'saluran',
     'chat.search':'Cari perbualan…','chat.reply':'Type balasan…','chat.takeover':'Ambil alih untuk reply sendiri…','chat.send':'Send',
     'toast.approved':'✓ Diluluskan & dihantar.',
-    'rec.title':'Cadangan AI','rec.head':'Agent lain yang boleh bantu','rec.desc':'Berdasarkan profil bisnes kau, peranan ni jimatkan masa paling banyak.','rec.rec':'disyorkan','rec.cta':'Tambah ke team','rec.added':'✓ {n} ditambah — sambung saluran untuk aktif.',
-    'pot.txt':'AISAR jumpa {n} lagi peluang untuk automasi.',
-    'uc.suggested':'Cadangan seterusnya','uc.automate':'Automatikkan','uc.notnow':'Nanti dulu','uc.opportunity':'peluang — belum automatik','uc.see':'Lihat dalam Kerja','uc.more':'Lagi cara AISAR boleh bantu — pilih mana nak automatikkan'
+    'rec.title':'AISAR menjumpai','rec.head':'Lebih banyak kerja yang AISAR boleh urus','rec.desc':'Tanggungjawab ini boleh menjimatkan paling banyak masa bisnes anda seterusnya.','rec.rec':'sedia','rec.cta':'Mulakan AISAR','rec.added':'✓ {n} sedang disediakan. Semak sambungan yang diperlukan di bawah.',
+    'pot.txt':'AISAR menjumpai {n} lagi cara untuk membantu.',
+    'uc.suggested':'Sedia seterusnya','uc.automate':'Mulakan AISAR','uc.notnow':'Nanti dulu','uc.opportunity':'sedia untuk disediakan','uc.see':'Semak dalam Aktiviti','uc.more':'Lebih banyak kerja yang AISAR sedia urus','uc.started':'AISAR sedang menyediakannya. Semak akses yang diperlukan apabila anda sedia.','uc.savedlater':'Disimpan untuk kemudian. AISAR akan mengekalkannya di sini.','uc.reviewaccess':'Semak akses diperlukan','uc.preparing':'sedang disediakan','home.recent':'Aktiviti terkini','home.openactivity':'Buka aktiviti →','home.empty':'Belum ada aktiviti. AISAR akan tunjukkan kerja yang siap di sini.','team.waiting':'Menunggu akses — sambungkan alat yang diperlukan di bawah.'
   }
 };
 var KV_LANG = (function(){
@@ -430,7 +455,10 @@ function kvApplyLang(){
   document.querySelectorAll('.kv-lang-btn').forEach(function(el){
     el.textContent = (KV_LANG === 'en') ? 'BM' : 'EN';
   });
-  document.title = (KV_LANG === 'en') ? 'AISAR Platform — Your business, increasingly run by AI' : 'AISAR Platform — Perniagaan anda, semakin dikendalikan AI';
+  document.querySelectorAll('[data-t-placeholder]').forEach(function(el){
+    el.setAttribute('placeholder', kvT(el.getAttribute('data-t-placeholder')));
+  });
+  document.title = (KV_LANG === 'en') ? 'AISAR — Your business, without the busywork' : 'AISAR — Bisnes anda, tanpa kerja yang membebankan';
 }
 
 /* ============================================================
@@ -2354,7 +2382,86 @@ function kvTeamRecs(b){
 function kvAddRec(i){
   var r = KV_RECS_LAST[i];
   kvToast(kvT('rec.added').replace('{n}', r ? r.name : 'Agent'));
-  kvNav('connections');
+  kvOpenBusinessConnections();
+}
+function kvOpenBusinessConnections(){
+  kvNav('business');
+  setTimeout(function(){
+    var el = document.getElementById('business-connections');
+    if (el) el.scrollIntoView({ behavior:'smooth', block:'start' });
+  }, 50);
+}
+function kvStartSuggestion(){
+  KV_STORE.set('aisar-suggestion-started:' + kvBizType(), '1');
+  kvToast(kvT('uc.started'));
+  kvRenderAll();
+}
+function kvDismissSuggestion(){
+  kvToast(kvT('uc.savedlater'));
+}
+function kvAskTab(tab){
+  var active = tab === 'conversations' ? 'conversations' : 'assistant';
+  document.querySelectorAll('[data-ask-tab]').forEach(function(button){
+    var on = button.getAttribute('data-ask-tab') === active;
+    button.classList.toggle('active', on);
+    button.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  ['assistant','conversations'].forEach(function(name){
+    var panel = document.getElementById('kv-ask-panel-' + name);
+    if (!panel) return;
+    var on = name === active;
+    panel.classList.toggle('active', on);
+    panel.hidden = !on;
+  });
+  if (active === 'assistant') {
+    var input = document.getElementById('kv-ask-input');
+    if (input) input.focus();
+  } else {
+    kvChatRender();
+  }
+}
+function kvAskResize(input){
+  if (!input) return;
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+}
+function kvAskPrompt(key){
+  var input = document.getElementById('kv-ask-input');
+  if (!input) return;
+  input.value = kvT('ask.prompt.' + key);
+  kvAskResize(input);
+  kvAskAisar();
+}
+function kvAskAisar(prompt){
+  var input = document.getElementById('kv-ask-input');
+  var thread = document.getElementById('kv-ask-thread');
+  if (!input || !thread) return;
+  var question = String(prompt || input.value || '').trim();
+  if (!question) return;
+  var q = question.toLowerCase();
+  var b = kvPlaybook(kvBizType());
+  var work = b.work || [];
+  var handled = work.filter(function(w, i){ return w.tag !== 'needs you' || kvWorkDone(i); }).length;
+  var needs = work.filter(function(w, i){ return w.tag === 'needs you' && !kvWorkDone(i); }).length + kvApprovals().filter(function(a){ return a.status === 'pending'; }).length;
+  var reply;
+  if (/today|status|happen|hari|status|berlaku/.test(q)) {
+    reply = kvT('ask.status').replace('{handled}', handled).replace('{needs}', needs);
+  } else if (/need|approval|approve|perlu|lulus/.test(q)) {
+    reply = needs ? (needs === 1 ? kvT('ask.needone') : kvT('ask.needs').replace('{n}', needs)) : kvT('ask.clear');
+  } else if (/next|help|handle|seterus|bantu|urus/.test(q)) {
+    reply = kvT('ask.next').replace('{title}', b.sug.t).replace('{detail}', b.sug.d);
+  } else {
+    reply = kvT('ask.default');
+  }
+  var welcome = document.getElementById('kv-ask-welcome');
+  if (welcome) welcome.remove();
+  thread.insertAdjacentHTML('beforeend',
+    '<div class="kv-ask-message user"><span class="kv-ask-message-avatar">' + kvEsc(kvT('ask.you').charAt(0).toUpperCase()) + '</span><div class="kv-ask-bubble">' + kvEsc(question) + '<div class="kv-ask-meta">' + kvT('ask.you') + ' · ' + kvT('ask.now') + '</div></div></div>' +
+    '<div class="kv-ask-message ai"><span class="kv-ask-message-avatar">AI</span><div class="kv-ask-bubble">' + kvEsc(reply) + '<div class="kv-ask-meta">AISAR · ' + kvT('ask.now') + '</div></div></div>');
+  input.value = '';
+  input.style.height = 'auto';
+  thread.scrollTop = thread.scrollHeight;
+  input.focus();
 }
 function kvWorkDone(i){
   var k = 'aisar-work-done:' + kvBizType();
@@ -2655,16 +2762,17 @@ function kvCommandCenter(b){
     if (sub) sub.textContent = kvT('sub.step3');
     var work = b.work || [];
     var doneCount = work.filter(function(w){ return w.tag === 'done' || w.tag === 'confirmed' || w.tag === 'sent'; }).length;
-    var teamNames = (b.team || []).slice(0,3).map(function(t){ return t.e + ' ' + t.n; }).join(' · ');
+    var needCount = 0;
     var needHtml = '';
     work.forEach(function(w, i){
       if (w.tag !== 'needs you' || kvWorkDone(i)) return;
+      needCount++;
       needHtml += '<div class="as-row justify-between gap-3 border-t border-white/10 pt-3 mt-3">' +
         '<div class="flex flex-col gap-1">' +
           '<span class="text-[13px]">' + w.e + ' ' + kvEsc(w.n) + '</span>' +
           '<span class="text-[12px] text-text-secondary">' + kvEsc(w.d) + '</span>' +
         '</div>' +
-        '<button class="btn btn-primary px-4 py-1 text-xs" onclick="kvApproveWork(' + i + ')">' + kvT('work.respond') + '</button>' +
+        '<button class="btn btn-primary px-4 py-1 text-xs" onclick="kvNav(\'work\')">' + kvT('cmd.step3.review') + '</button>' +
       '</div>';
     });
     html =
@@ -2672,13 +2780,12 @@ function kvCommandCenter(b){
         '<div class="as-row justify-between">' +
           '<div class="flex flex-col gap-1">' +
             '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">' + kvT('cmd.step3.title') + '</span>' +
-            '<h3 class="font-pixel text-lg tracking-tight">' + doneCount + ' tugasan diselesaikan auto</h3>' +
-            '<p class="text-[13px] text-text-secondary">' + kvEsc(teamNames) + '</p>' +
+            '<h3 class="font-pixel text-lg tracking-tight">' + kvT('cmd.step3.head').replace('{n}', doneCount) + '</h3>' +
+            '<p class="text-[13px] text-text-secondary">' + (needCount ? (needCount === 1 ? kvT('cmd.step3.need') : kvT('cmd.step3.needs').replace('{n}', needCount)) : kvT('cmd.step3.clear')) + '</p>' +
           '</div>' +
-          '<span class="as-tag green">live</span>' +
+          '<span class="as-tag green">' + kvT('status.working') + '</span>' +
         '</div>' +
         needHtml +
-        (needHtml ? '' : '<p class="text-[12px] text-text-muted">Semua dah settle — takde benda yang perlu kau buat. 🎉</p>') +
       '</div>';
   }
   el.innerHTML = html;
@@ -2687,7 +2794,7 @@ function kvCommandCenter(b){
 /* ============================================================
    RENDER — satu set views, content ikut playbook.
    ============================================================ */
-var kvWorkFilter = 'needs you';
+var kvWorkFilter = 'auto';
 
 function kvWorkSetFilter(f){
   kvWorkFilter = f;
@@ -2701,7 +2808,7 @@ function kvRenderAll(){
 
   kvCommandCenter(b);
 
-  /* Home chat widget — mesej terkini dari AI team, klik → Chat view */
+  /* Home recent activity — outcomes, click → Activity */
   var hc = document.getElementById('h-chat');
   if (hc) {
     var work = b.work || [];
@@ -2717,10 +2824,10 @@ function kvRenderAll(){
     hc.innerHTML =
       '<div class="as-card flex flex-col gap-3 p-4">' +
         '<div class="as-row justify-between">' +
-          '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">💬 AI team activity</span>' +
-          '<a class="text-[11px] as-link" onclick="kvNav(\'chat\');return false">' + kvT('nav.openchat') + '</a>' +
+          '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">⚡ ' + kvT('home.recent') + '</span>' +
+          '<a class="text-[11px] as-link" onclick="kvNav(\'work\');return false">' + kvT('home.openactivity') + '</a>' +
         '</div>' +
-        (msgs || '<p class="text-[12px] text-text-muted">Belum ada aktiviti.</p>') +
+        (msgs || '<p class="text-[12px] text-text-muted">' + kvT('home.empty') + '</p>') +
       '</div>';
   }
 
@@ -2745,6 +2852,14 @@ function kvRenderAll(){
       el.style.pointerEvents = '';
       el.style.cursor = 'pointer';
     }
+  }
+  if ((el = document.getElementById('kv-header-status'))) {
+    var setupDone = kvSetupDone();
+    var liveChans = kvLiveChans();
+    var working = !!(setupDone && liveChans && liveChans.length);
+    el.textContent = !setupDone ? kvT('status.setup') : (!liveChans || !liveChans.length ? kvT('status.connect') : kvT('status.working'));
+    el.classList.toggle('green', working);
+    el.classList.toggle('amber', !working);
   }
   if ((el = document.getElementById('kv-potential'))) el.textContent = kvBump(b.potential) + '%';
   if ((el = document.getElementById('kv-potential-fill'))) el.style.width = kvBump(b.potential) + '%';
@@ -2781,6 +2896,10 @@ function kvRenderAll(){
         '<button class="btn btn-outline px-3 py-1 text-[11px] whitespace-nowrap" onclick="kvNav(\'work\');return false">' + kvT('uc.see') + '</button>' +
       '</div>';
     }).join('');
+    var suggestionStarted = KV_STORE.get('aisar-suggestion-started:' + kvBizType(), '') === '1';
+    var suggestionAction = suggestionStarted
+      ? '<div class="as-row gap-3"><button class="btn btn-primary px-5 py-2 text-sm" onclick="kvOpenBusinessConnections()">' + kvT('uc.reviewaccess') + '</button><span class="as-tag amber">' + kvT('uc.preparing') + '</span></div>'
+      : '<div class="as-row gap-3"><button class="btn btn-primary px-5 py-2 text-sm" onclick="kvStartSuggestion()">' + kvT('uc.automate') + '</button><button class="btn btn-outline px-5 py-2 text-sm" onclick="kvDismissSuggestion()">' + kvT('uc.notnow') + '</button></div>';
     el.innerHTML =
       '<div class="flex flex-col gap-4">' +
       '<div class="as-card flex flex-col gap-4 p-5">' +
@@ -2792,10 +2911,7 @@ function kvRenderAll(){
         '</div>' +
         '<span class="as-tag green">' + b.sug.tag + '</span>' +
       '</div>' +
-      '<div class="as-row gap-3">' +
-        '<button class="btn btn-primary px-5 py-2 text-sm" data-msg="' + b.sug.cta + '" onclick="kvToast(this.dataset.msg)">' + kvT('uc.automate') + '</button>' +
-        '<button class="btn btn-outline px-5 py-2 text-sm">' + kvT('uc.notnow') + '</button>' +
-      '</div>' + signal +
+      suggestionAction + signal +
       '</div>' +
       (opCards ? '<div class="flex flex-col gap-2">' +
         '<span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">' + kvT('uc.more') + '</span>' +
@@ -2812,7 +2928,7 @@ function kvRenderAll(){
 
   /* Channels chips */
   if ((el = document.getElementById('kv-chips'))) {
-    el.innerHTML = ['WhatsApp', 'Instagram', 'Email', 'Phone'].map(function (c) {
+    el.innerHTML = ['WhatsApp', 'Telegram', 'Instagram', 'Email', 'Phone'].map(function (c) {
       var act = chans.indexOf(c) >= 0;
       return '<span class="as-chip' + (act ? ' green' : ' dim') + '">' + c + '</span>';
     }).join('');
@@ -2821,7 +2937,7 @@ function kvRenderAll(){
   /* Business functions */
   if ((el = document.getElementById('kv-funcs'))) {
     el.innerHTML = b.funcs.map(function (f) {
-      return '<div class="as-row justify-between"><span class="text-[13px]">' + f[0] + '</span><span class="as-tag' + (f[1] ? ' ' + f[1] : '') + '">' + f[2] + '</span></div>';
+      return '<div class="as-row justify-between"><span class="text-[13px]">' + f[0] + '</span><span class="as-tag' + (f[1] ? ' ' + f[1] : '') + '">' + kvT('func.' + f[2]) + '</span></div>';
     }).join('');
   }
 
@@ -2833,13 +2949,13 @@ function kvRenderAll(){
       if (t.setup){
         action = ready
           ? '<span class="as-tag green">live</span>'
-          : '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvNav(\'connections\')">' + kvT('conn.enable') + '</button>';
+          : '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvOpenBusinessConnections()">' + kvT('conn.enable') + '</button>';
       } else {
         action = ready
           ? '<a class="btn btn-outline px-4 py-1.5 text-xs" href="#work" onclick="kvNav(\'work\');return false">' + kvT('home.open') + '</a>'
-          : '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvNav(\'connections\')">' + kvT('conn.first') + '</button>';
+          : '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvOpenBusinessConnections()">' + kvT('conn.first') + '</button>';
       }
-      var meta = ready ? (t.m || '') : 'Menunggu sambungan — connect channel dulu.';
+      var meta = ready ? (t.m || '') : kvT('team.waiting');
       return '<div class="as-card flex flex-col gap-4 p-5">' +
         '<div class="as-row justify-between"><div class="as-row"><span class="as-avatar">' + t.e + '</span><div class="flex flex-col"><span class="text-sm">' + t.n + '</span><span class="text-[11px] text-text-muted">' + t.ch + '</span></div></div>' + action + '</div>' +
         '<p class="text-[13px] text-text-secondary">' + t.d + '</p>' +
@@ -2902,7 +3018,6 @@ function kvRenderAll(){
     var f = document.getElementById('kv-work-filters');
     if (f){
       var tabs = [
-        ['needs you', kvT('work.f.need'), needCount],
         ['auto', kvT('work.f.auto'), autoCount],
         ['done', kvT('work.f.done'), doneCount],
         ['all', kvT('work.f.all'), work.length]
@@ -2928,8 +3043,8 @@ function kvRenderAll(){
             ? (w.tc === 'red' ? '<span class="as-tag green">approved ✓</span>' : '')
             : (w.tag === 'needs you'
               ? '<div class="as-row gap-2">' +
-                  '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvApproveWork(' + idx + ')">Approve &amp; send</button>' +
-                  '<button class="btn btn-outline px-4 py-1.5 text-xs" onclick="kvEditWork(' + idx + ')">Edit</button>' +
+                  '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvApproveWork(' + idx + ')">' + kvT('work.approve') + '</button>' +
+                  '<button class="btn btn-outline px-4 py-1.5 text-xs" onclick="kvEditWork(' + idx + ')">' + kvT('work.edit') + '</button>' +
                 '</div>'
               : '');
           return '<div id="work-' + idx + '" class="as-card flex flex-col gap-3 p-4">' +
@@ -2937,22 +3052,27 @@ function kvRenderAll(){
             '<p class="text-[13px] text-text-secondary">' + w.d + '</p>' + cta +
             '</div>';
         }).join('')
-      : '<div class="as-card p-6 text-center text-[13px] text-text-muted">Tiada item dalam kategori ni — semua dah settle. 🎉</div>';
+      : '<div class="as-card p-6 text-center text-[13px] text-text-muted">' + kvT('work.empty') + '</div>';
   }
 
   /* Connections */
   if ((el = document.getElementById('kv-conns'))) {
-    el.innerHTML = b.conns.map(function (c) {
+    var connectionCards = (b.conns || []).slice();
+    if (chans.indexOf('Telegram') >= 0 && !connectionCards.some(function(c){ return c.n === 'Telegram'; })) {
+      connectionCards.unshift({ e:'✈️', n:'Telegram', s:kvT('conn.ready'), d:kvT('conn.telegram') });
+    }
+    el.innerHTML = connectionCards.map(function (c) {
       var on = kvConnOn(c.n);
       var cx = kvConnector(c.n);
-      var meta = cx ? ('<span class="as-tag">' + cx.tier + '</span><span class="as-tag amber" title="' + cx.flow + '">' + kvT('cx.' + (cx.method||'oauth')) + '</span>') : '';
+      var method = cx ? (cx.method || 'oauth') : '';
+      var meta = cx ? '<span class="as-tag amber">' + kvT('cx.' + method) + '</span>' : '';
       var action = on
-        ? '<button class="btn btn-outline px-4 py-1.5 text-xs" onclick="kvToggleConn(\'' + c.n + '\')">Disconnect</button>'
-        : '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvToggleConn(\'' + c.n + '\')">Connect</button>';
+        ? '<button class="btn btn-outline px-4 py-1.5 text-xs" onclick="kvToggleConn(\'' + c.n + '\')">' + kvT('conn.disconnect') + '</button>'
+        : '<button class="btn btn-primary px-4 py-1.5 text-xs" onclick="kvToggleConn(\'' + c.n + '\')">' + kvT('conn.connect') + '</button>';
       return '<div class="as-card flex flex-col gap-3 p-4">' +
-        '<div class="as-row justify-between"><div class="as-row"><span class="as-avatar">' + c.e + '</span><div class="flex flex-col"><span class="text-sm">' + c.n + '</span><span class="text-[11px] text-text-muted">' + c.s + '</span></div></div><div class="as-row gap-1">' + meta + (on ? '<span class="as-tag green">connected</span>' : '<span class="as-tag dim">off</span>') + '</div></div>' +
+        '<div class="as-row justify-between"><div class="as-row"><span class="as-avatar">' + c.e + '</span><div class="flex flex-col"><span class="text-sm">' + c.n + '</span><span class="text-[11px] text-text-muted">' + c.s + '</span></div></div><div class="as-row gap-1">' + meta + (on ? '<span class="as-tag green">' + kvT('conn.connected') + '</span>' : '<span class="as-tag dim">' + kvT('conn.off') + '</span>') + '</div></div>' +
         '<p class="text-[13px] text-text-secondary">' + c.d + '</p>' +
-        '<p class="text-[11px] text-text-muted">' + (cx ? cx.flow : '') + '</p>' +
+        '<p class="text-[11px] text-text-muted">' + (cx ? kvT('conn.guide.' + method) : '') + '</p>' +
         '<div class="as-row justify-end">' + action + '</div>' +
         '</div>';
     }).join('');
