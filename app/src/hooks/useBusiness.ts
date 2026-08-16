@@ -34,6 +34,7 @@ export interface BusinessState {
   potential: number;
   stage: Stage;
   approvals: Approval[];
+  needsYouCount: number;
   recommended: ReturnType<typeof recommendations>;
   switchBusiness: (key: string) => void;
   toggleConn: (name: string) => void;
@@ -60,6 +61,12 @@ export function useBusiness(): BusinessState {
   const approvals = useMemo(() => pendingApprovals(), [tick]);
   const setupDone = useMemo(() => isSetupDone(), [tick]);
   const recommended = useMemo(() => recommendations(business), [business]);
+
+  const needsYouCount = useMemo(
+    () => business.work.filter((w, i) => w.tag === 'needs you' && !isWorkDone(bizKey, i)).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [business.work, bizKey, tick],
+  );
 
   const potential = useMemo(
     () => bumpPotential(business.potential),
@@ -110,6 +117,7 @@ export function useBusiness(): BusinessState {
     potential,
     stage,
     approvals,
+    needsYouCount,
     recommended,
     switchBusiness,
     toggleConn,

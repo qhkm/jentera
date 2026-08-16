@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
 import { I18nProvider } from '@/i18n/I18nProvider';
+import { ToastProvider } from '@/components/Toast';
 import { isOnboarded } from '@/lib/business';
 import Landing from '@/routes/Landing';
 import Onboard from '@/routes/Onboard';
@@ -19,7 +20,8 @@ function RequireOnboarded({ children }: { children: ReactElement }) {
 export default function App() {
   return (
     <I18nProvider>
-      <BrowserRouter>
+      <ToastProvider>
+        <BrowserRouter>
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/onboard" element={<Onboard />} />
@@ -34,7 +36,8 @@ export default function App() {
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </BrowserRouter>
+        </BrowserRouter>
+      </ToastProvider>
     </I18nProvider>
   );
 }

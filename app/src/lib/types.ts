@@ -182,3 +182,6 @@ export interface AgentRecommendation {
   d: string;
   tag: string;
 }
+
+/** Semantic tone shared by tags, chips and status marks. */
+export type Tone = 'neutral' | 'green' | 'red' | 'amber';

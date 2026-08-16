@@ -35,18 +35,29 @@ pnpm deploy       # build + wrangler pages deploy dist --project-name aisar
 
 **Default language is BM, not English.** Malaysia's country locale is `bm` and a `bm` table exists, so `initialLang()` resolves to it — same as the original engine. Any string rendered in a page must live in `i18n/pages.ts` or the UI mixes languages.
 
-## Still to port
+## Views
 
-The scaffold covers the flow end to end (landing → onboard → setup → dashboard) and five dashboard views. Not yet ported from `biz-engine.js`:
+All eight dashboard views are ported, plus the landing, onboarding and setup flows.
 
-- **Chat view** (`kvChatState`, ~210 lines) — per-agent conversations, takeover, templates
-- **Team Chat view** (~185 lines) — channels, @mentions, typing indicator
-- **Business view** — the editable profile panel
-- **Work filters** — the needs-you / auto / done / all tab strip
-- **Mobile drawer + bottom nav** — the dashboard is responsive but has no mobile nav yet
-- **Toast** — `kvToast` has no equivalent; connection toggles currently give no feedback
+| View | Notes |
+|---|---|
+| Home | Stage-driven — setup / connect / operating, one action each |
+| Chat | Per-agent threads, take over and hand back, quick replies, typing indicator |
+| Team Chat | Channels, @mention routing, and #escalations mirrored from Work |
+| Your Business | Editable name and location; edits propagate to every view |
+| AI Team | Agents plus recommendations derived from opportunity functions |
+| Work | Filter tabs, summary counts, approve and edit |
+| Connections | Tier, auth method and scope per connector |
+| Approvals | Risk-tiered queue; nothing sends without a human |
+
+Mobile has a hamburger drawer and a four-item bottom bar; the desktop sidebar is hidden below the `lg` breakpoint.
+
+### Cross-view wiring
+
+Approving an item in **Work** appends a closure message to **Team Chat → #escalations**, deduped by source index so the sync is idempotent. The escalation channel is derived state, not a hand-written thread.
 
 ## Known issues
 
 - **Light-theme accent contrast.** The emerald accent at 0.75–0.8 alpha was designed against a black ground; on the warm paper light theme, `.tag-green` and `.btn-reco` label text sit near the low end of legibility. Worth a contrast pass before shipping light mode.
+- **Demo conversation seeds only exist for four agent names.** The hand-written chat threads are keyed on the restaurant/retail agents; the other 16 playbooks fall back to their own `work` items, which are industry-correct but shorter. Quick replies now fall back to a business-neutral set.
 - **`extractName` is a weak heuristic.** "Saya buka kedai gunting rambut di Shah Alam" becomes the business name "Saya Buka Kedai Gunting Rambut". This is faithful to the original algorithm, not a port defect — but it is visible in the sidebar and worth improving.

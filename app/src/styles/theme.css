@@ -194,13 +194,19 @@
     border: 1px solid rgb(var(--accent-green-rgb) / .3);
   }
 
+  /* The original hardcoded rgb(0 0 0 / .3), which reads as a dark
+     smudge on the warm-paper light theme. Inverted through the ink
+     token so the well recedes in both themes. */
   .input {
     border: 1px solid var(--ov-line-3);
-    background: rgb(0 0 0 / .3);
+    background: rgb(var(--border-ink) / .04);
+    color: var(--text);
     border-radius: var(--radius-item);
     transition: border-color var(--dur-fast) var(--ease-signature);
   }
+  .input::placeholder { color: var(--text-muted); }
   .input:focus { border-color: var(--accent-green); outline: none; }
+  .input:disabled { opacity: .55; cursor: not-allowed; }
 
   .progress      { height: 6px; border-radius: var(--radius-pill); background: var(--ov-track); overflow: hidden; }
   .progress-fill { height: 100%; border-radius: var(--radius-pill);
@@ -220,4 +226,94 @@
     transition: color var(--dur-fast) var(--ease-signature);
   }
   .nav-link:hover { color: var(--text); }
+}
+
+/* ============================================================
+   Conversation surfaces. Ported from the .kv-* inline CSS, with
+   every literal color replaced by a token so both themes work —
+   the originals were hardcoded rgb(255 255 255 / a) and would
+   have been invisible on the warm-paper light theme.
+   ============================================================ */
+
+@layer components {
+  .bubble {
+    max-width: 78%;
+    padding: 9px 13px;
+    border-radius: 14px;
+    font-size: 13px;
+    line-height: 1.45;
+    word-break: break-word;
+  }
+  .bubble-in {
+    background: rgb(var(--border-ink) / 0.06);
+    border: 1px solid var(--ov-line);
+    border-bottom-left-radius: 4px;
+  }
+  .bubble-out {
+    background: rgb(var(--accent-green-rgb) / 0.14);
+    border: 1px solid rgb(var(--accent-green-rgb) / 0.3);
+    border-bottom-right-radius: 4px;
+  }
+  .bubble-meta {
+    margin-top: 4px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+  }
+  .bubble-name {
+    margin-bottom: 2px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent-green);
+  }
+
+  .conv {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-item);
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    background: transparent;
+    border: 1px solid transparent;
+    transition: background-color var(--dur-fast) var(--ease-signature);
+  }
+  .conv:hover { background: rgb(var(--border-ink) / 0.05); }
+  .conv-active {
+    background: rgb(var(--accent-green-rgb) / 0.1);
+    border-color: rgb(var(--accent-green-rgb) / 0.25);
+  }
+
+  .unread {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: var(--radius-pill);
+    background: rgb(var(--accent-green-rgb) / 0.18);
+    color: var(--accent-green);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Typing indicator */
+  .typing { display: inline-flex; gap: 4px; align-items: center; }
+  .typing i {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--text-muted);
+    animation: typing-bounce 1.1s infinite ease-in-out;
+  }
+  .typing i:nth-child(2) { animation-delay: 0.15s; }
+  .typing i:nth-child(3) { animation-delay: 0.3s; }
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
 }

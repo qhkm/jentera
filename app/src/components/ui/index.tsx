@@ -9,6 +9,9 @@
    ============================================================ */
 
 import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
+import type { Tone } from '@/lib/types';
+
+export type { Tone };
 
 function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(' ');
@@ -40,8 +43,6 @@ export function Card({ className, ...rest }: HTMLAttributes<HTMLDivElement>) {
 }
 
 /* ---- Labels. Mono, uppercase, .12em — the system's signature texture. ---- */
-
-export type Tone = 'neutral' | 'green' | 'red' | 'amber';
 
 const TAG_TONE: Record<Tone, string> = {
   neutral: '',

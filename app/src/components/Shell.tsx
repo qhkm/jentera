@@ -26,10 +26,15 @@ export function Logo({ suffix }: { suffix?: string }) {
 export function Shell({
   suffix,
   actions,
+  onMenu,
+  menuBadge = 0,
   children,
 }: {
   suffix?: string;
   actions?: ReactNode;
+  /** Supplied by the dashboard to open the mobile drawer. */
+  onMenu?: () => void;
+  menuBadge?: number;
   children: ReactNode;
 }) {
   const { lang, t, toggleLang } = useI18n();
@@ -37,9 +42,27 @@ export function Shell({
 
   return (
     <div className="min-h-dvh bg-bg text-text">
-      <header className="sticky top-0 z-50 border-b border-rail bg-bg/80 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-rail bg-bg/80 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1250px] items-center justify-between gap-4 px-6">
-          <Logo suffix={suffix} />
+          <div className="flex items-center gap-3">
+            {onMenu ? (
+              <button
+                type="button"
+                onClick={onMenu}
+                className="relative -ml-1 flex size-8 flex-col items-center justify-center gap-[5px] lg:hidden"
+                aria-label={t('drawer.menu')}
+              >
+                <span className="block h-[1.5px] w-5 bg-text" />
+                <span className="block h-[1.5px] w-5 bg-text" />
+                <span className="block h-[1.5px] w-5 bg-text" />
+                {menuBadge > 0 ? (
+                  <span className="absolute -right-1 -top-1 size-2 rounded-full bg-brand" />
+                ) : null}
+              </button>
+            ) : null}
+            <Logo suffix={suffix} />
+          </div>
+
           <div className="flex items-center gap-2">
             <button
               type="button"
