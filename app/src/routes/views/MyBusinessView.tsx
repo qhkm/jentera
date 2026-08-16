@@ -7,10 +7,11 @@
    product in its own right — they are facts about this business.
    ============================================================ */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Avatar, Button, Card, Eyebrow, Input, Tag } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
 import { DataIcon } from '@/components/Icon';
+import { Tabs, type TabDef } from '@/components/Tabs';
 import { useToast } from '@/components/Toast';
 import { isAgentReady } from '@/lib/business';
 import { findConnector } from '@/lib/tools';
@@ -34,7 +35,10 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+type BizTab = 'profile' | 'handles' | 'connections';
+
 export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness> }) {
+  const [tab, setTab] = useState<BizTab>('profile');
   const t = useT();
   const toast = useToast();
   const { business } = b;
@@ -51,14 +55,31 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
     toast('Business profile updated ✓');
   }
 
+  const TABS: TabDef<BizTab>[] = useMemo(
+    () => [
+      { id: 'profile', label: t('biz.tab.profile') },
+      { id: 'handles', label: t('biz.tab.handles') },
+      {
+        id: 'connections',
+        label: t('biz.tab.connections'),
+        trailing: <Tag tone="green">{b.connections.length}</Tag>,
+        trailingCompact: true,
+      },
+    ],
+    [t, b.connections.length],
+  );
+
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <h1 className="font-pixel text-2xl tracking-tight">{t('view.business')}</h1>
         <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.business.desc')}</p>
       </header>
 
+      <Tabs tabs={TABS} active={tab} onSelect={setTab} label={t('view.business')} />
+
       {/* ---- Profile ---- */}
+      {tab === 'profile' && (
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <Eyebrow>{t('biz.profile')}</Eyebrow>
@@ -101,8 +122,10 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
           </div>
         </Card>
       </div>
+      )}
 
       {/* ---- What AISAR handles (was the AI Team view) ---- */}
+      {tab === 'handles' && (
       <section className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <Eyebrow>{t('biz.handles')}</Eyebrow>
@@ -173,8 +196,10 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
           </>
         )}
       </section>
+      )}
 
       {/* ---- Connections (was its own view) ---- */}
+      {tab === 'connections' && (
       <section className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <Eyebrow>{t('biz.connections')}</Eyebrow>
@@ -230,6 +255,7 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
           })}
         </div>
       </section>
+      )}
     </div>
   );
 }

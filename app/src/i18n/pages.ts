@@ -71,6 +71,9 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
 
     /* Dashboard */
     'ask.placeholder.short': 'Ask AISAR anything…',
+    'biz.tab.profile': 'Profile',
+    'biz.tab.handles': 'What AISAR handles',
+    'biz.tab.connections': 'Connections',
     'db.handled': '{n} handled automatically',
     'db.disconnect': 'Disconnect',
     'db.theme.toLight': 'Switch to light theme',
@@ -137,6 +140,9 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
 
     /* Dashboard */
     'ask.placeholder.short': 'Tanya AISAR apa-apa…',
+    'biz.tab.profile': 'Profil',
+    'biz.tab.handles': 'Apa AISAR uruskan',
+    'biz.tab.connections': 'Sambungan',
     'db.handled': '{n} diselesaikan automatik',
     'db.disconnect': 'Putuskan',
     'db.theme.toLight': 'Tukar ke tema cerah',
