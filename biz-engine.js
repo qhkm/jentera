@@ -2250,7 +2250,19 @@ var KV_CITIES = {
 function kvExtractLoc(text){
   text = (text || '').toLowerCase();
   var cities = kvCityList();
-  for (var c in cities){ if (text.indexOf(c) >= 0) return cities[c]; }
+  /* Padan ikut sempadan perkataan, alias terpanjang dahulu.
+     Ujian indexOf dulu buatkan alias dua huruf tercetus dalam
+     perkataan biasa: 'kl' ialah alias Kuala Lumpur, jadi
+     'Klinik gigi di Ipoh' mengandunginya — setiap klinik dipindah
+     ke KL tak kira bandar mana yang ditulis. 'jb' dan 'pj' sama.
+     Susun terpanjang dahulu supaya 'kuala lumpur' dan 'johor bahru'
+     tak kalah kepada singkatan mereka sendiri. */
+  var aliases = Object.keys(cities).sort(function(a, b){ return b.length - a.length; });
+  for (var i = 0; i < aliases.length; i++){
+    var alias = aliases[i];
+    var re = new RegExp('\\b' + alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
+    if (re.test(text)) return cities[alias];
+  }
   var m = text.match(/(?:di|in|at)\s+([a-z .,'-]{2,40})/);
   if (m && m[1]){
     var parts = m[1].trim().split(/[\s,]+/).filter(Boolean);
