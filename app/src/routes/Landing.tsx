@@ -211,7 +211,15 @@ export default function Landing() {
 
           <div className="relative z-30 mx-auto flex w-full max-w-[1250px] flex-1 flex-col justify-center gap-4 px-6 py-8 md:gap-8 md:px-12 md:py-14">
             <div className="mx-auto flex w-full max-w-5xl flex-col items-center gap-4 text-center md:gap-5">
-              <h1 className="max-w-5xl font-pixel text-[1.9rem] leading-[1.1] tracking-tight sm:text-4xl md:text-[3.5rem] lg:text-[4.5rem] xl:text-[5rem] lg:leading-[1.05]">
+              {/* The mobile size is fluid rather than fixed because the line
+                  break after the comma is hard-coded, which caps how large the
+                  type can go: "without the busywork." is 9.84px wide per 1px of
+                  font-size, so it fills the content box (100vw - 3rem) at
+                  roughly 9.9vw. The calc lands that line at ~97% of the
+                  available width at every phone size — 26.9px at 320, 33.7px at
+                  390, 37.6px at 430 — instead of one fixed value that is too
+                  small on a Pro Max and overflows on an SE. */}
+              <h1 className="max-w-5xl font-pixel text-[clamp(1.65rem,calc(9.8vw-4.5px),2.35rem)] leading-[1.1] tracking-tight sm:text-4xl md:text-[3.5rem] lg:text-[4.5rem] xl:text-[5rem] lg:leading-[1.05]">
                 <span className="heading-shine-bright">
                   {HERO.headline[0]}
                   <br />
