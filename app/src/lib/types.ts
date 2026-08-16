@@ -174,6 +174,8 @@ export interface Approval {
   ts: string;
   status: 'pending' | 'approved' | 'rejected';
   decided?: string;
+  /** Present only when the row came from the Worker. */
+  remoteId?: string;
 }
 
 export interface AgentRecommendation {

@@ -56,8 +56,11 @@ Mobile has a hamburger drawer and a four-item bottom bar; the desktop sidebar is
 
 Approving an item in **Work** appends a closure message to **Team Chat → #escalations**, deduped by source index so the sync is idempotent. The escalation channel is derived state, not a hand-written thread.
 
+## Backend (optional)
+
+The app runs fully local by default — approvals in localStorage, tool calls mocked. Set `VITE_API_URL` (see `.env.example`) and approvals plus execution route to the Worker in `../worker`, which persists to D1 and enforces the risk gate server-side. Nothing else changes; that is what the tool contract buys.
+
 ## Known issues
 
-- **Light-theme accent contrast.** The emerald accent at 0.75–0.8 alpha was designed against a black ground; on the warm paper light theme, `.tag-green` and `.btn-reco` label text sit near the low end of legibility. Worth a contrast pass before shipping light mode.
 - **Demo conversation seeds only exist for four agent names.** The hand-written chat threads are keyed on the restaurant/retail agents; the other 16 playbooks fall back to their own `work` items, which are industry-correct but shorter. Quick replies now fall back to a business-neutral set.
 - **`extractName` is a weak heuristic.** "Saya buka kedai gunting rambut di Shah Alam" becomes the business name "Saya Buka Kedai Gunting Rambut". This is faithful to the original algorithm, not a port defect — but it is visible in the sidebar and worth improving.

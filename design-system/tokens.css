@@ -49,7 +49,13 @@
   /* ---- Accent (emerald-400) + its alpha ladder ---- */
   --accent-green:      #00d294;
   --accent-green-rgb:  0 210 148;
-  --accent-cyan:       #00b6fc;  /* only used as progress-gradient terminus */
+  --accent-cyan:       #00b6fc;  /* progress-gradient terminus only */
+
+  /* Accent strength knobs. Dark theme mutes a bright accent so it
+     doesn't glare; light theme must NOT (see the .theme-light block). */
+  --accent-label-alpha: .75;
+  --accent-chip-alpha:  .80;
+  --accent-fill-alpha:  .12;
 
   /* ---- Motion ---- */
   --ease-signature: cubic-bezier(.22, 1, .36, 1);   /* dominant curve, 14 uses */
@@ -87,11 +93,29 @@ body.site-theme-light {
   --foreground:     #000;
   --text:           #000;
   --text-secondary: #555;
-  --text-muted:     #777;
+
   --text-dim:       #505050;
   --accent:         #999;
   --naive-accent:   #555;
   --border-ink:     0 0 0;
+
+  /* ---- Accessibility fix, not part of the original extraction ----
+     #00d294 was designed against black. On warm paper it measures
+     1.60–1.88:1 — far below the 3.0 floor, unreadable in practice.
+     emerald-700 from their own pruned palette clears AA:
+       tag/chip label on card      4.94:1
+       button label on 6% fill     4.57:1
+     Muting also inverts: alpha softens a bright accent on black, but
+     only weakens an already-dark one on paper, so light runs at full
+     strength with a lighter fill. Dark theme is untouched. */
+  --accent-green:      #007956;
+  --accent-green-rgb:  0 121 86;
+  --accent-label-alpha: 1;
+  --accent-chip-alpha:  1;
+  --accent-fill-alpha:  .06;
+  /* #777 measured 4.26:1 on #fbf9f6 — just under AA for the 11px meta
+     text it is used for. */
+  --text-muted:        #6e6e6e;
   --lp-warm:        #fff;
 
   background-color: var(--bg);

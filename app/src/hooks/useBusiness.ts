@@ -20,6 +20,7 @@ import {
   toggleConnection,
 } from '@/lib/business';
 import { pendingApprovals } from '@/lib/tools';
+import { isRemote, listApprovalsRemote } from '@/lib/api';
 import type { Approval, Business } from '@/lib/types';
 
 /** Which stage the command centre should present. */
@@ -58,7 +59,27 @@ export function useBusiness(): BusinessState {
   const business = useMemo(() => resolveBusiness(bizKey), [bizKey, tick]);
   const connections = useMemo(() => getConnections(), [tick]);
   const channels = useMemo(() => getChannels(), [tick]);
-  const approvals = useMemo(() => pendingApprovals(), [tick]);
+  /* Local is synchronous; remote resolves into state. Same shape either way. */
+  const localApprovals = useMemo(() => (isRemote() ? [] : pendingApprovals()), [tick]);
+  const [remoteApprovals, setRemoteApprovals] = useState<Approval[]>([]);
+
+  useEffect(() => {
+    if (!isRemote()) return;
+    let cancelled = false;
+    listApprovalsRemote(bizKey)
+      .then((rows) => {
+        if (!cancelled) setRemoteApprovals(rows);
+      })
+      .catch(() => {
+        /* Backend unreachable — fall back to showing nothing pending. */
+        if (!cancelled) setRemoteApprovals([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bizKey, tick]);
+
+  const approvals = isRemote() ? remoteApprovals : localApprovals;
   const setupDone = useMemo(() => isSetupDone(), [tick]);
   const recommended = useMemo(() => recommendations(business), [business]);
 

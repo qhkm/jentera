@@ -31,7 +31,7 @@
   --color-border-light: var(--border-light);
 
   --color-brand:      var(--accent-green);
-  --color-brand-soft: rgb(var(--accent-green-rgb) / .12);
+  --color-brand-soft: rgb(var(--accent-green-rgb) / var(--accent-fill-alpha));
   --color-brand-line: rgb(var(--accent-green-rgb) / .40);
 
   /* Type */
@@ -122,11 +122,11 @@
 
   /* Brand-accent recommendation button */
   .btn-reco {
-    background: rgb(var(--accent-green-rgb) / .12);
+    background: rgb(var(--accent-green-rgb) / var(--accent-fill-alpha));
     border-color: rgb(var(--accent-green-rgb) / .5);
     color: var(--accent-green);
   }
-  .btn-reco:hover { background: rgb(var(--accent-green-rgb) / .2); }
+  .btn-reco:hover { background: rgb(var(--accent-green-rgb) / calc(var(--accent-fill-alpha) + .06)); }
 
   /* ---- Surfaces ----
      Stacking and padding are part of the component, not something
@@ -156,7 +156,7 @@
     letter-spacing: .12em;
     color: var(--ink-45);
   }
-  .tag-green { border-color: rgb(var(--accent-green-rgb) / .4); color: rgb(var(--accent-green-rgb) / .75); }
+  .tag-green { border-color: rgb(var(--accent-green-rgb) / .4); color: rgb(var(--accent-green-rgb) / var(--accent-label-alpha)); }
   .tag-red   { border-color: rgb(255 80 80 / .4);  color: rgb(255 120 120 / .8); }
   .tag-amber { border-color: rgb(255 190 60 / .4); color: rgb(255 200 90 / .8); }
 
@@ -172,7 +172,7 @@
     letter-spacing: .12em;
     color: var(--ink-50);
   }
-  .chip-green { border-color: rgb(var(--accent-green-rgb) / .4); color: rgb(var(--accent-green-rgb) / .8); }
+  .chip-green { border-color: rgb(var(--accent-green-rgb) / .4); color: rgb(var(--accent-green-rgb) / var(--accent-chip-alpha)); }
 
   .eyebrow {
     font-family: var(--font-mono);

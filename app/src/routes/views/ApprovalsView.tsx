@@ -8,7 +8,8 @@ import { Avatar, Button, Card, Tag } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
 import { useToast } from '@/components/Toast';
 import { decideApproval } from '@/lib/tools';
-import type { Tone } from '@/lib/types';
+import { decideApprovalRemote } from '@/lib/api';
+import type { Approval, Tone } from '@/lib/types';
 import type { useBusiness } from '@/hooks/useBusiness';
 
 function riskTone(risk: string): Tone {
@@ -21,10 +22,20 @@ export default function ApprovalsView({ b }: { b: ReturnType<typeof useBusiness>
   const t = useT();
   const toast = useToast();
 
-  function decide(id: number, ok: boolean) {
-    decideApproval(id, ok);
+  async function decide(approval: Approval, ok: boolean) {
+    if (approval.remoteId) {
+      try {
+        const res = await decideApprovalRemote(approval.remoteId, ok);
+        toast(res.detail ?? (ok ? t('appr.approved') : t('appr.rejected')));
+      } catch (err) {
+        toast(`Could not reach the server: ${(err as Error).message}`);
+        return;
+      }
+    } else {
+      decideApproval(approval.id, ok);
+      toast(ok ? t('appr.approved') : t('appr.rejected'));
+    }
     b.refresh();
-    toast(ok ? t('appr.approved') : t('appr.rejected'));
   }
 
   return (
@@ -72,11 +83,11 @@ export default function ApprovalsView({ b }: { b: ReturnType<typeof useBusiness>
                   <Button
                     variant="outline"
                     className="px-4 py-1.5 text-xs"
-                    onClick={() => decide(a.id, false)}
+                    onClick={() => void decide(a, false)}
                   >
                     {t('appr.reject')}
                   </Button>
-                  <Button className="px-4 py-1.5 text-xs" onClick={() => decide(a.id, true)}>
+                  <Button className="px-4 py-1.5 text-xs" onClick={() => void decide(a, true)}>
                     {t('appr.approve')}
                   </Button>
                 </div>

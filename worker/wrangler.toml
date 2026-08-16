@@ -1,0 +1,18 @@
+name = "aisar-api"
+main = "src/index.ts"
+compatibility_date = "2026-08-16"
+
+# Create the database, then paste its id here:
+#   npx wrangler d1 create aisar
+[[d1_databases]]
+binding = "DB"
+database_name = "aisar"
+database_id = "PASTE_DATABASE_ID_HERE"
+
+[vars]
+# Comma-separated origins allowed to call this API.
+ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173,https://aisar-next.pages.dev"
+
+# Connector credentials are secrets, never vars:
+#   npx wrangler secret put META_APP_SECRET
+#   npx wrangler secret put GOOGLE_CLIENT_SECRET
