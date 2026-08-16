@@ -224,6 +224,17 @@
   input.input.py-4 { height: auto; }
   @media (min-width: 48rem) { input.input.py-4 { height: var(--control-h); } }
 
+  /* A textarea top-aligns its text, so any slack between the box height
+     and one line of type shows up as the caret sitting high. Size the
+     padding so a single line exactly fills the control height — then one
+     line reads as vertically centred, and the box grows from there.
+     Leading stays readable for when it wraps. */
+  textarea.input {
+    min-height: var(--control-h);
+    line-height: 1.45;
+    padding-block: calc((var(--control-h) - 2px - 1.45em) / 2);
+  }
+
   .input::placeholder { color: var(--text-muted); }
   .input:focus { border-color: var(--accent-green); outline: none; }
   .input:disabled { opacity: .55; cursor: not-allowed; }

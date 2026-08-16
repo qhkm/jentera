@@ -157,7 +157,7 @@ export default function AskAisarView({
               }}
               placeholder={t('ask.placeholder')}
               aria-label={t('ask.placeholder')}
-              className="input max-h-[120px] min-h-[42px] flex-1 resize-none px-3 py-2.5 text-[13px]"
+              className="input max-h-[120px] flex-1 resize-none px-3"
             />
             <Button type="submit" disabled={!draft.trim()}>
               {t('ask.send')}
