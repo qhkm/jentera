@@ -1,0 +1,191 @@
+/* ============================================================
+   Landing page.
+
+   Two sources: the decorative CSS was inline in index.html, and
+   the shine / eyebrow / cta-band classes came from the upstream
+   prebuilt chunk. Neither is available to this build, so both are
+   ported here.
+
+   The static landing is dark-only (the site pins site-theme-dark).
+   The gradient text and glow effects assume a dark ground, so in
+   light theme they fall back to solid token colours rather than
+   rendering as unreadable mush.
+   ============================================================ */
+
+@layer components {
+  /* ---- Gradient headline text ---- */
+  .heading-shine,
+  .heading-shine-bright,
+  .heading-shine-dim {
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+  .heading-shine        { background-image: linear-gradient(#fff 0% 40%, #a6a6ad 100%); }
+  .heading-shine-bright { background-image: linear-gradient(#fff 0% 72%, #e3e3e9 100%); }
+  .heading-shine-dim    { background-image: linear-gradient(#9b9ba3 0%, #85858d 45%, #55555d 100%); }
+
+  /* Gradients tuned for black are illegible on warm paper. */
+  .theme-light .heading-shine,
+  .theme-light .heading-shine-bright {
+    background-image: none;
+    color: var(--text);
+    -webkit-text-fill-color: var(--text);
+  }
+  .theme-light .heading-shine-dim {
+    background-image: none;
+    color: var(--text-secondary);
+    -webkit-text-fill-color: var(--text-secondary);
+  }
+
+  .font-pixel-logo { -webkit-text-stroke: var(--pixel-stroke-logo) currentColor; }
+
+  /* ---- Section eyebrow pill ---- */
+  .lp-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.32rem 0.8rem;
+    border: 1px solid var(--ov-line-2);
+    border-radius: var(--radius-pill);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    line-height: 1;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+  .lp-eyebrow .lp-dot {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: var(--radius-pill);
+    background: var(--accent-green);
+    box-shadow: 0 0 0 3px rgb(var(--accent-green-rgb) / 0.18);
+  }
+
+  /* ---- Closing CTA band ---- */
+  .lp-cta-band {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background: linear-gradient(135deg, var(--accent-green) 0%, #00b6fc 100%);
+    box-shadow: 0 40px 90px -50px rgb(var(--accent-green-rgb) / 0.7);
+  }
+
+  /* ---- Terminal-style onboarding demo ---- */
+  .as-chat { min-height: 380px; }
+  .kv-chat-step { opacity: 0; animation: kv-fadein 0.5s ease forwards; }
+  .kv-chat-typing {
+    display: inline-block;
+    overflow: hidden;
+    white-space: nowrap;
+    vertical-align: bottom;
+    animation: kv-type 1.6s steps(30, end) forwards;
+  }
+  .kv-cursor {
+    display: inline-block;
+    width: 8px;
+    height: 12px;
+    margin-left: 4px;
+    vertical-align: -1px;
+    background: var(--accent-green);
+    animation: kv-blink 1.2s steps(2, start) infinite;
+  }
+  .as-reco-btn {
+    border: 1px solid rgb(var(--accent-green-rgb) / 0.5);
+    background: rgb(var(--accent-green-rgb) / 0.1);
+    color: var(--accent-green);
+    transition: background var(--dur-base) var(--ease-signature);
+  }
+  .as-reco-btn:hover { background: rgb(var(--accent-green-rgb) / 0.2); }
+  .as-border-green { border-color: rgb(var(--accent-green-rgb) / 0.4); }
+
+  /* ---- Ambient hero atmosphere ---- */
+  .kv-particles { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+  .kv-particles::before,
+  .kv-particles::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    will-change: transform;
+  }
+  .kv-particles::before {
+    background-image: radial-gradient(circle, rgb(var(--accent-green-rgb) / 0.75) 1.2px, transparent 1.5px);
+    background-size: 120px 120px;
+    animation: kv-rise 26s linear infinite;
+  }
+  .kv-particles::after {
+    background-image: radial-gradient(circle, rgb(0 188 254 / 0.55) 1.6px, transparent 2px);
+    background-size: 200px 200px;
+    animation: kv-rise 34s linear infinite 6s;
+  }
+
+  .kv-blob {
+    position: absolute;
+    border-radius: var(--radius-pill);
+    pointer-events: none;
+    filter: blur(70px);
+    will-change: transform;
+  }
+  .kv-blob-1 {
+    width: 520px; height: 520px; left: 6%; top: 8%;
+    background: radial-gradient(circle at 40% 40%, rgb(var(--accent-green-rgb) / 0.5), transparent 70%);
+    opacity: 0.55; animation: kv-drift-1 30s ease-in-out infinite;
+  }
+  .kv-blob-2 {
+    width: 460px; height: 460px; right: 4%; top: 26%;
+    background: radial-gradient(circle at 60% 40%, rgb(0 188 254 / 0.45), transparent 70%);
+    opacity: 0.5; animation: kv-drift-2 36s ease-in-out infinite;
+  }
+  .kv-blob-3 {
+    width: 380px; height: 380px; left: 22%; bottom: 2%;
+    background: radial-gradient(circle at 50% 50%, rgb(249 156 0 / 0.4), transparent 70%);
+    opacity: 0.4; animation: kv-drift-3 42s ease-in-out infinite;
+  }
+
+  /* The whole atmosphere assumes a black ground. */
+  .theme-light .kv-particles,
+  .theme-light .kv-blob { display: none; }
+
+  /* ---- Scroll reveal ---- */
+  .kv-reveal {
+    opacity: 0;
+    transform: translateY(18px);
+    transition:
+      opacity 0.7s var(--ease-signature),
+      transform 0.7s var(--ease-signature);
+  }
+  .kv-reveal.kv-in { opacity: 1; transform: none; }
+}
+
+@keyframes kv-rise {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(0, -120px, 0); }
+}
+@keyframes kv-drift-1 {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(40px, -30px, 0); }
+}
+@keyframes kv-drift-2 {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(-50px, 24px, 0); }
+}
+@keyframes kv-drift-3 {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(30px, -40px, 0); }
+}
+@keyframes kv-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes kv-type  { from { width: 0; } to { width: 100%; } }
+@keyframes kv-fadein { to { opacity: 1; } }
+
+/* Honour reduced motion: keep the composition, drop the movement. */
+@media (prefers-reduced-motion: reduce) {
+  .kv-particles::before,
+  .kv-particles::after { animation: none; opacity: 0; }
+  .kv-blob { animation: none; }
+  .kv-reveal { opacity: 1; transform: none; transition: none; }
+  .kv-chat-step { opacity: 1; animation: none; }
+  .kv-chat-typing { animation: none; }
+  .kv-cursor { animation: none; }
+}

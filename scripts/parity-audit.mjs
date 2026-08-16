@@ -173,6 +173,22 @@ check(
   engineStoresStrings && !appTolerant ? ['engine writes string indices; app does not read them'] : [],
 );
 
+/* ---- 10. Landing page composition ----
+   The earlier checks only cover data, strings and routes. They passed
+   while the React landing was a 56-line placeholder against a 456-line
+   designed page — the exact class of gap a key-coverage audit cannot
+   see. Anchor sections are the cheapest proxy for 'the page is there'. */
+const landingSections = [
+  ...new Set([...read('index.html').matchAll(/<section[^>]*id="([a-z-]+)"/g)].map((m) => m[1])),
+];
+/* Section ids may be declared in landing-content.ts and spread onto the
+   element, so match against all app sources rather than one file. */
+check(
+  'landing sections present in React',
+  landingSections.filter((id) => !new RegExp().test(src)),
+  `static landing has ${landingSections.length} anchor sections`,
+);
+
 /* ---- Report ---- */
 console.log('\n=== PARITY AUDIT ===\n');
 for (const p of pass) console.log(`  PASS  ${p}`);
