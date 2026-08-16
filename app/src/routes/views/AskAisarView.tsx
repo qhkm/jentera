@@ -7,7 +7,7 @@
                   used to be a competing top-level "Chat" view.
    ============================================================ */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Card, Eyebrow, Tag } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
 import { ASK_PROMPTS, useAsk } from '@/hooks/useAsk';
@@ -36,9 +36,30 @@ export default function AskAisarView({
   const thread = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
 
+  const stickToBottom = useCallback(() => {
+    const el = thread.current;
+    if (!el) return;
+    // Two frames: one for React's paint, one for the keyboard reflow.
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight;
+      });
+    });
+  }, []);
+
   useEffect(() => {
-    thread.current?.scrollTo({ top: thread.current.scrollHeight });
-  }, [ask.messages.length]);
+    stickToBottom();
+  }, [ask.messages.length, tab, stickToBottom]);
+
+  /* The keyboard opening changes the thread's height without adding a
+     message, so the effect above would not fire. */
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    vv.addEventListener('resize', stickToBottom);
+    return () => vv.removeEventListener('resize', stickToBottom);
+  }, [stickToBottom]);
 
   function submit(text?: string) {
     const body = (text ?? draft).trim();
@@ -46,7 +67,13 @@ export default function AskAisarView({
     ask.send(body);
     setDraft('');
     if (composer.current) composer.current.style.height = 'auto';
-    composer.current?.focus();
+    if (compact) {
+      // Dismissing the keyboard hands the screen back to the answer.
+      composer.current?.blur();
+    } else {
+      composer.current?.focus();
+    }
+    stickToBottom();
   }
 
   const TABS: { id: Tab; labelKey: string }[] = [
@@ -57,7 +84,7 @@ export default function AskAisarView({
   return (
     /* 100dvh minus the sticky header (64px) and the bottom nav (64px).
        dvh rather than vh so mobile browser chrome does not clip it. */
-    <div className="flex h-[calc(100dvh-128px)] flex-col gap-0 lg:h-auto lg:gap-6">
+    <div className="chat-shell flex flex-col gap-0 lg:h-auto lg:gap-6">
       <header className="hidden flex-col gap-2 lg:flex">
         <h1 className="font-pixel text-2xl tracking-tight">{t('view.chat')}</h1>
         <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.chat.desc')}</p>

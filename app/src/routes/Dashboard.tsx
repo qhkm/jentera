@@ -16,6 +16,8 @@ import { Shell } from '@/components/Shell';
 import { Avatar, Card, Eyebrow, Progress, Tag } from '@/components/ui';
 import { useBusiness } from '@/hooks/useBusiness';
 import { useT } from '@/i18n/I18nProvider';
+import { useIsCompact } from '@/hooks/useMediaQuery';
+import { useVisualViewport } from '@/hooks/useVisualViewport';
 import HomeView from './views/HomeView';
 import AskAisarView from './views/AskAisarView';
 import ActivityView from './views/ActivityView';
@@ -45,6 +47,11 @@ export default function Dashboard() {
 
   /** Anything blocked on the owner, from either source. */
   const needsAttention = b.needsYouCount + b.approvals.length;
+
+  /* While the software keyboard is up in the chat, the bottom bar would
+     sit between the composer and the keyboard. Hide it for the duration. */
+  const compact = useIsCompact();
+  const keyboardOpen = useVisualViewport(compact && view === 'chat');
 
   const handled = useMemo(
     () => business.work.filter((w, i) => w.tag !== 'needs you' || b.workDone(i)).length,
@@ -182,7 +189,9 @@ export default function Dashboard() {
 
       {/* Four areas, so the bottom bar mirrors the sidebar exactly. */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-30 flex border-t border-rail bg-bg/95 backdrop-blur lg:hidden"
+        className={`fixed inset-x-0 bottom-0 z-30 border-t border-rail bg-bg/95 backdrop-blur lg:hidden ${
+          keyboardOpen ? 'hidden' : 'flex'
+        }`}
         aria-label="Primary"
       >
         {NAV.map((item) => {

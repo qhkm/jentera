@@ -259,6 +259,28 @@
   .nav-link:hover { color: var(--text); }
 }
 
+@layer components {
+  /* Full-height chat. --vvh is published by useVisualViewport and is the
+     only measure that accounts for the software keyboard; 100dvh is the
+     fallback where visualViewport is unavailable.
+     64px header + 64px bottom nav, and the nav hides once the keyboard
+     is up so the composer sits directly above it. */
+  .chat-shell {
+    height: calc(var(--vvh, 100dvh) - 128px);
+  }
+  .kb-open .chat-shell {
+    height: calc(var(--vvh, 100dvh) - 64px);
+  }
+  /* The bottom nav is hidden from React, not here: it carries a `flex`
+     utility and the utilities layer outranks @layer components. */
+  @media (min-width: 64rem) {
+    .chat-shell,
+    .kb-open .chat-shell {
+      height: auto;
+    }
+  }
+}
+
 /* ============================================================
    Conversation surfaces. Ported from the .kv-* inline CSS, with
    every literal color replaced by a token so both themes work —
