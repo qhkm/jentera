@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Deploy AISAR site → Cloudflare Pages (aisar.kitakod.com)
-# Zone kitakod.com aktif di Cloudflare → custom domain auto-verify.
+# Deploy AISAR site → Cloudflare Pages (aisar.ai)
+# The `aisar` project serves aisar.ai, staging.aisar.ai and aisar-ez8.pages.dev.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -16,7 +16,7 @@ fi
 git push origin main || echo "   (push skipped — no remote or offline)"
 
 echo
-echo "── 2/3 Wrangler publish (Cloudflare Pages → aisar.kitakod.com) ──"
+echo "── 2/3 Wrangler publish (Cloudflare Pages → aisar.ai) ──"
 wrangler pages project create aisar --production-branch main 2>/dev/null || true
 wrangler pages publish . --project-name aisar
 echo "   ✅ Cloudflare Pages deploy"
@@ -24,7 +24,10 @@ echo "   ✅ Cloudflare Pages deploy"
 echo
 echo "── 3/3 Verify ──"
 sleep 5
-for url in https://aisar.kitakod.com https://aisar.pages.dev; do
+# Both previous targets were wrong: aisar.kitakod.com has no DNS, and
+# aisar.pages.dev belongs to a different project (the old AI Agent
+# Builder), so it returned 200 no matter what this script published.
+for url in https://aisar.ai https://aisar-ez8.pages.dev; do
   code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 20 "$url" || echo "ERR")
   echo "   $url → HTTP $code"
 done
