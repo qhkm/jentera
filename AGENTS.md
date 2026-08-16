@@ -12,6 +12,7 @@ This repository is a build-free static website deployed to Cloudflare Pages.
 - `scripts/add-playbook.mjs` updates playbook data in `biz-engine.js`.
 - `spec-minimart.json` is sample business input; `deploy.sh` publishes the site.
 - `PRODUCT_VISION.md` defines the target customer, positioning, language, and product principles.
+- `TECHNICAL_ARCHITECTURE.md` defines the managed-agent boundary, backend components, safety model, and MVP sequence.
 
 There is no separate source/build directory. Edit the deployed HTML, JavaScript, and assets directly.
 
