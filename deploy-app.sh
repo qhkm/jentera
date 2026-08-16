@@ -4,7 +4,7 @@
 #
 #  DELIBERATELY NOT a production cutover. This publishes to the
 #  `aisar-next` project, so the React rebuild gets its own URL and
-#  the live static site at aisar.kitakod.com is untouched.
+#  the live site at aisar.ai is untouched.
 #
 #  To cut over once you're happy, change PROJECT to "aisar" — that
 #  is the whole change. Existing deploy.sh keeps publishing the
@@ -17,7 +17,7 @@ PROJECT="${AISAR_PAGES_PROJECT:-aisar-next}"
 MSG="${1:-Deploy AISAR React app}"
 
 if [ "$PROJECT" = "aisar" ]; then
-  echo "⚠️  PROJECT is 'aisar' — this REPLACES the live site at aisar.kitakod.com."
+  echo "⚠️  PROJECT is 'aisar' — this REPLACES the live site at aisar.ai."
   read -r -p "    Type 'cutover' to continue: " confirm
   [ "$confirm" = "cutover" ] || { echo "    Aborted."; exit 1; }
 fi
@@ -48,4 +48,4 @@ code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 20 "https://${PROJECT}
 echo "   https://${PROJECT}.pages.dev → HTTP $code"
 
 echo
-echo "✅ Done. Production (aisar.kitakod.com) was not touched."
+echo "✅ Done. Production (aisar.ai) was not touched."

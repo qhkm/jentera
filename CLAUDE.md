@@ -10,7 +10,7 @@ This repo currently contains the same product twice. That is temporary and delib
 
 | | Path | Status |
 |---|---|---|
-| **Static site** | `index.html`, `onboard.html`, `setup.html`, `app.html`, `biz-engine.js` | Product of record. Live at `aisar.kitakod.com` |
+| **Static site** | `index.html`, `onboard.html`, `setup.html`, `app.html`, `biz-engine.js` | Product of record. Live at `aisar.ai` |
 | **React rebuild** | `app/` (branch `design-system`) | Feature-complete, deployed to `aisar-next.pages.dev`, not yet cut over |
 
 Every product change made to one has to be made to the other until the cutover happens. If you are changing behaviour, check whether both need it.
