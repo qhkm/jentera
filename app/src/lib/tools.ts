@@ -13,6 +13,7 @@ import type { Approval, Connector, Risk } from './types';
 import * as store from './storage';
 import { KEYS } from './storage';
 import { isConnected } from './business';
+import { policyFor } from './permissions';
 
 export function findConnector(nameOrKey: string): Connector | null {
   if (CONNECTORS[nameOrKey]) return CONNECTORS[nameOrKey];
@@ -36,6 +37,7 @@ export interface ToolRequest {
 
 export type ToolResult =
   | { ok: false; err: string }
+  | { ok: false; blocked: true; op: string; msg: string }
   | { ok: false; need: 'connect'; conn: string; msg: string }
   | { ok: true; dryRun: true; would: string; risk: Risk; queued: Approval }
   | { ok: true; mock: true; msg: string };
@@ -54,8 +56,21 @@ export function callTool(req: ToolRequest): ToolResult {
   }
 
   const risk = riskOf(req.op);
-  const dry = req.dryRun ?? risk !== 'low';
   const args = req.args ?? {};
+
+  /* The owner's policy outranks the risk tier: a blocked operation
+     never reaches the queue, and an automatic one skips it. */
+  const policy = policyFor(req.op);
+  if (policy === 'blocked') {
+    return {
+      ok: false,
+      blocked: true,
+      op: req.op,
+      msg: `"${req.op}" is blocked in your permissions. Enable it in My Business to allow this.`,
+    };
+  }
+
+  const dry = req.dryRun ?? policy === 'approval';
 
   if (dry) {
     return {

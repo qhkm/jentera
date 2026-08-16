@@ -12,6 +12,7 @@ import { Avatar, Button, Card, Eyebrow, Input, Tag } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
 import { DataIcon } from '@/components/Icon';
 import { Tabs, type TabDef } from '@/components/Tabs';
+import PermissionsPanel from './PermissionsPanel';
 import { useToast } from '@/components/Toast';
 import { isAgentReady } from '@/lib/business';
 import { findConnector } from '@/lib/tools';
@@ -35,7 +36,7 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-type BizTab = 'profile' | 'handles' | 'connections';
+type BizTab = 'profile' | 'handles' | 'connections' | 'permissions';
 
 export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness> }) {
   const [tab, setTab] = useState<BizTab>('profile');
@@ -65,6 +66,7 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
         trailing: <Tag tone="green">{b.connections.length}</Tag>,
         trailingCompact: true,
       },
+      { id: 'permissions', label: t('biz.tab.permissions') },
     ],
     [t, b.connections.length],
   );
@@ -256,6 +258,8 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
         </div>
       </section>
       )}
+
+      {tab === 'permissions' && <PermissionsPanel />}
     </div>
   );
 }

@@ -16,6 +16,8 @@ export const KEYS = {
   country: 'aisar-country',
   lang: 'aisar-lang',
   approvals: 'aisar-approvals',
+  /** Per-operation action policy. App-only; the engine has no equivalent. */
+  permissions: 'aisar-permissions',
   /** suffixed with the playbook key */
   workDone: 'aisar-work-done:',
   /** suffixed with the playbook key */
