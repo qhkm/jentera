@@ -9,7 +9,7 @@ import { Shell } from '@/components/Shell';
 import { Button, Card, Eyebrow, Input, Tag } from '@/components/ui';
 import { inferPlaybook } from '@/lib/infer';
 import { PLAYBOOKS } from '@/lib/data/playbooks';
-import { registerBusiness } from '@/lib/business';
+import { confirmFor, registerBusiness } from '@/lib/business';
 import { useT } from '@/i18n/I18nProvider';
 import * as store from '@/lib/storage';
 import { KEYS } from '@/lib/storage';
@@ -44,6 +44,8 @@ export default function Onboard() {
   }
 
   const playbook = match ? PLAYBOOKS[match.key] : null;
+  /* Confirmation names the city the user gave, not the playbook default. */
+  const confirmText = match ? confirmFor(match.key, text) : '';
 
   return (
     <Shell suffix="/setup">
@@ -111,7 +113,7 @@ export default function Onboard() {
                     {match && match.score > 0 ? t('ob.confirm.matched', { n: match.score }) : t('ob.confirm.guess')}
                   </Tag>
                 </div>
-                <p className="text-[15px]">{playbook.confirm}</p>
+                <p className="text-[15px]">{confirmText}</p>
                 <div className="flex flex-col gap-1 border-t border-rail pt-3">
                   <span className="text-[13px] text-text-secondary">{playbook.detect}</span>
                   <span className="text-[13px] text-text-muted">

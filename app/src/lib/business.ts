@@ -65,6 +65,32 @@ export function resolveBusiness(key: string): Business {
   };
 }
 
+/**
+ * Rewrite the city in a playbook's confirmation sentence to the one the
+ * user actually named.
+ *
+ * 14 of the 20 confirm strings hardcode the playbook's default city
+ * ("…a salon/beauty business in Shah Alam. Is that correct?"). Someone
+ * in Ipoh was being asked to confirm Shah Alam — on the one screen whose
+ * entire job is proving AISAR understood them. The location was already
+ * extracted correctly; only this sentence ignored it.
+ */
+export function confirmFor(playbookKey: string, text: string): string {
+  const p = PLAYBOOKS[isPlaybookKey(playbookKey) ? playbookKey : FALLBACK_KEY];
+  const loc = extractLocation(text);
+  if (!loc) return p.confirm;
+
+  const city = loc.split(',')[0].trim();
+  if (!city) return p.confirm;
+
+  // "... in <City>. Is that correct?" / "... di <Bandar>. Betul?"
+  const rewritten = p.confirm.replace(
+    /\b(in|di)\s+[^.]+?(\.\s*(?:Is that correct|Betul))/i,
+    (_m, prep: string, tail: string) => `${prep} ${city}${tail}`,
+  );
+  return rewritten;
+}
+
 /** Free text in, persisted business out. The onboarding entry point. */
 export function registerBusiness(text: string): { key: string; score: number; business: Business } {
   const { key, score } = inferPlaybook(text);

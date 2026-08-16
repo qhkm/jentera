@@ -33,7 +33,13 @@ pnpm build
 echo
 echo "── 3/4 Publish → Cloudflare Pages (project: $PROJECT) ──"
 npx wrangler pages project create "$PROJECT" --production-branch main 2>/dev/null || true
-npx wrangler pages deploy dist --project-name "$PROJECT" --commit-message "$MSG"
+# Deploy as the production branch so the stable <project>.pages.dev URL
+# serves it. Without --branch, wrangler uses the current git branch and
+# publishes a preview-only deployment whose apex URL 404s.
+npx wrangler pages deploy dist \
+  --project-name "$PROJECT" \
+  --branch main \
+  --commit-message "$MSG"
 
 echo
 echo "── 4/4 Verify ──"
