@@ -1,0 +1,110 @@
+/* ============================================================
+   Ask AISAR — the owner's instruction channel.
+
+   Distinct from the Customer inbox: this is where the owner asks
+   what happened or tells AISAR to handle something. Answers are
+   generated from live state (work handled, approvals pending, the
+   next suggested opportunity), never from a canned transcript —
+   "chat is where the owner asks, Activity is where they
+   understand what happened".
+   ============================================================ */
+
+import { useCallback, useRef, useState } from 'react';
+import { TEAM_GENERAL, TEAM_REPLIES } from '@/lib/data/conversations';
+import { TEAM_GENERAL_EN, TEAM_REPLIES_EN } from '@/i18n/agent-replies';
+import { stripEmoji } from '@/components/Icon';
+import type { Lang } from '@/lib/types';
+import { taggedAgent } from '@/hooks/useMentions';
+import type { Business } from '@/lib/types';
+
+export interface AskMessage {
+  from: 'you' | 'ai';
+  text: string;
+  /** Set when the question tagged a specific agent. */
+  agent?: string;
+}
+
+/** Prompt chips offered above the composer. */
+export const ASK_PROMPTS = ['status', 'approvals', 'next'] as const;
+export type AskPrompt = (typeof ASK_PROMPTS)[number];
+
+/** Keyword routing, matching the engine. EN and BM stems both covered. */
+const INTENTS: { test: RegExp; intent: 'status' | 'approvals' | 'next' }[] = [
+  { test: /today|status|happen|hari|berlaku/, intent: 'status' },
+  { test: /need|approval|approve|perlu|lulus/, intent: 'approvals' },
+  { test: /next|help|handle|seterus|bantu|urus/, intent: 'next' },
+];
+
+export interface AskCounts {
+  handled: number;
+  needs: number;
+}
+
+export function useAsk(
+  business: Business,
+  counts: AskCounts,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  lang: Lang = 'en',
+) {
+  const [messages, setMessages] = useState<AskMessage[]>([]);
+  /* Deterministic rotation — Math.random would change on every render. */
+  const turn = useRef(0);
+
+  const answer = useCallback(
+    (question: string): string => {
+      const q = question.toLowerCase();
+      const hit = INTENTS.find((i) => i.test.test(q));
+
+      switch (hit?.intent) {
+        case 'status':
+          return t('ask.status')
+            .replace('{handled}', String(counts.handled))
+            .replace('{needs}', String(counts.needs));
+        case 'approvals':
+          if (!counts.needs) return t('ask.clear');
+          return counts.needs === 1
+            ? t('ask.needone')
+            : t('ask.needs').replace('{n}', String(counts.needs));
+        case 'next':
+          return t('ask.next')
+            .replace('{title}', business.sug.t)
+            .replace('{detail}', business.sug.d);
+        default:
+          return t('ask.default');
+      }
+    },
+    [business.sug, counts, t],
+  );
+
+  const send = useCallback(
+    (raw: string) => {
+      const question = raw.trim();
+      if (!question) return;
+
+      /* Tagging an agent routes the reply to that agent rather than to
+         AISAR's general answer. */
+      const agent = taggedAgent(question, business.team);
+      let reply: string;
+      if (agent) {
+        /* The ported BM replies carry emoji; strip so an agent speaks in
+           the same voice as the rest of the product. */
+        const replies = lang === 'bm' ? TEAM_REPLIES : TEAM_REPLIES_EN;
+        const general = lang === 'bm' ? TEAM_GENERAL : TEAM_GENERAL_EN;
+        const pool = replies[agent.n] ?? general;
+        reply = stripEmoji(pool[turn.current % pool.length]);
+        turn.current += 1;
+      } else {
+        reply = answer(question);
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        { from: 'you', text: question },
+        { from: 'ai', text: reply, agent: agent?.n },
+      ]);
+    },
+    [answer, business.team, lang],
+  );
+
+  return { messages, send, hasHistory: messages.length > 0 };
+}

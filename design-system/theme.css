@@ -1,0 +1,260 @@
+/* ============================================================
+   Tailwind v4 theme — for the React/Vite rebuild.
+
+   Import order matters:
+     @import "tailwindcss";
+     @import "./tokens.css";
+     @import "./theme.css";
+
+   This re-declares the extracted tokens as Tailwind theme
+   variables, so `bg-bg`, `text-text-muted`, `border-rail`,
+   `font-pixel`, `ease-signature` etc. all generate as utilities.
+
+   Building this properly is what retires the @layer components
+   padding-block override that the static site has to carry.
+   ============================================================ */
+
+@theme {
+  /* Semantic — drive utilities off the runtime vars so theme
+     switching stays a single class flip on <html>. */
+  --color-bg:             var(--bg);
+  --color-bg-card:        var(--bg-card);
+  --color-bg-card-hover:  var(--bg-card-hover);
+  --color-text:           var(--text);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted:     var(--text-muted);
+  --color-text-dim:       var(--text-dim);
+  --color-accent:         var(--accent);
+
+  --color-border:       var(--border);
+  --color-rail:         var(--rail);
+  --color-border-light: var(--border-light);
+
+  --color-brand:      var(--accent-green);
+  --color-brand-soft: rgb(var(--accent-green-rgb) / var(--accent-fill-alpha));
+  --color-brand-line: rgb(var(--accent-green-rgb) / .40);
+
+  /* Type */
+  --font-sans:  var(--font-sans);
+  --font-mono:  var(--font-mono);
+  --font-pixel: var(--font-pixel);
+  --font-nav:   var(--font-nav);
+
+  /* Motion — expose the signature curve as a first-class utility
+     (`ease-signature`) so it gets used instead of Tailwind's default. */
+  --ease-signature: cubic-bezier(.22, 1, .36, 1);
+  --ease-out:       cubic-bezier(0, 0, .2, 1);
+  --ease-in-out:    cubic-bezier(.4, 0, .2, 1);
+
+  --default-transition-duration:        .15s;
+  --default-transition-timing-function: cubic-bezier(.22, 1, .36, 1);
+
+  /* Radii */
+  --radius-tag:    4px;
+  --radius-item:   8px;
+  --radius-avatar: 10px;
+  --radius-card:   12px;
+  --radius-pill:   999px;
+
+  /* Layout */
+  --container-site: 1250px;
+  --spacing-nav:    64px;
+}
+
+/* ============================================================
+   Component layer.
+
+   IMPORTANT: the upstream design is LIGHT-FIRST — its .btn-primary
+   is black-on-white. The static site runs dark and had to fight
+   that with an @layer components + !important override.
+
+   Here the buttons are authored dark-first with a light-theme
+   branch, so there is nothing to override. Do not port the old
+   !important block into the React app.
+   ============================================================ */
+
+@layer components {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    min-height: var(--control-h);
+    padding-inline: 1.5rem;      /* spacing * 6 */
+    padding-block: var(--control-pad-y);
+    border: 1px solid transparent;
+    border-radius: var(--radius-item);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-signature),
+                border-color     var(--dur-fast) var(--ease-signature),
+                color            var(--dur-fast) var(--ease-signature),
+                opacity          var(--dur-fast) var(--ease-signature);
+  }
+  .btn:hover  { opacity: .9; }
+  .btn:active { opacity: .8; transition-duration: var(--dur-press); }
+  /* Same rule for both control types, so a stacked input and button
+     stay the same height at every breakpoint. */
+  .btn.py-4,
+  .input.py-4 { padding-block: var(--control-pad-y-lg); }
+  @media (min-width: 48rem) {
+    .btn.py-4,
+    .input.py-4 { padding-block: var(--control-pad-y); }
+  }
+
+  /* Dark (default): inverted — white fill, black ink */
+  .btn-primary,
+  .btn-primary:visited {
+    background: var(--text);
+    border-color: var(--text);
+    color: var(--bg);
+  }
+  .btn-primary:hover { background: rgb(var(--border-ink) / .88); border-color: rgb(var(--border-ink) / .88); }
+
+  .btn-outline {
+    background: transparent;
+    color: var(--text);
+    border-color: rgb(var(--border-ink) / .5);
+  }
+  .btn-outline:hover { border-color: rgb(var(--border-ink) / .8); background: rgb(var(--border-ink) / .08); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--text);
+    border-color: rgb(var(--border-ink) / .2);
+  }
+  .btn-ghost:hover { border-color: rgb(var(--border-ink) / .35); }
+
+  /* Brand-accent recommendation button */
+  .btn-reco {
+    background: rgb(var(--accent-green-rgb) / var(--accent-fill-alpha));
+    border-color: rgb(var(--accent-green-rgb) / .5);
+    color: var(--accent-green);
+  }
+  .btn-reco:hover { background: rgb(var(--accent-green-rgb) / calc(var(--accent-fill-alpha) + .06)); }
+
+  /* ---- Surfaces ----
+     Stacking and padding belong to the component, not to each call
+     site. Override with utilities when a card needs a different
+     layout (e.g. p-0 for list cards). */
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1.125rem;
+    border: 1px solid var(--ov-line);
+    background: var(--ov-surface);
+    border-radius: var(--radius-card);
+  }
+
+  /* ---- Labels: mono, uppercase, wide-tracked. The system's
+     most recognisable texture. ---- */
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border: 1px solid var(--ov-line);
+    border-radius: var(--radius-tag);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--ink-45);
+  }
+  .tag-green { border-color: rgb(var(--accent-green-rgb) / .4); color: rgb(var(--accent-green-rgb) / var(--accent-label-alpha)); }
+  .tag-red   { border-color: rgb(255 80 80 / .4);  color: rgb(255 120 120 / .8); }
+  .tag-amber { border-color: rgb(255 190 60 / .4); color: rgb(255 200 90 / .8); }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 12px;
+    border: 1px solid var(--ov-line);
+    border-radius: var(--radius-pill);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--ink-50);
+  }
+  .chip-green { border-color: rgb(var(--accent-green-rgb) / .4); color: rgb(var(--accent-green-rgb) / var(--accent-chip-alpha)); }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: .75rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-avatar);
+    font-size: 15px;
+    background: rgb(var(--accent-green-rgb) / .12);
+    border: 1px solid rgb(var(--accent-green-rgb) / .3);
+  }
+
+  /* The original hardcoded rgb(0 0 0 / .3), which reads as a dark
+     smudge on the warm-paper light theme. Inverted through the ink
+     token so the well recedes in both themes. */
+  .input {
+    min-height: var(--control-h);
+    padding-block: var(--control-pad-y);
+    /* Owns its own type, exactly as .btn does. A text-* utility would
+       also set line-height and quietly break the shared height. */
+    font-size: 14px;
+    line-height: 1;
+    border: 1px solid var(--ov-line-3);
+    background: rgb(var(--border-ink) / .04);
+    color: var(--text);
+    border-radius: var(--radius-item);
+    transition: border-color var(--dur-fast) var(--ease-signature);
+  }
+  /* A single-line <input> sizes its content box from font metrics, which
+     line-height does not shrink — so min-height alone leaves it ~4px
+     taller than a .btn with identical padding. Pin the height for real
+     inputs only; textarea.input must stay auto-growing. */
+  input.input { height: var(--control-h); }
+  input.input.py-4 { height: auto; }
+  @media (min-width: 48rem) { input.input.py-4 { height: var(--control-h); } }
+
+  /* A textarea top-aligns its text, so any slack between the box height
+     and one line of type shows up as the caret sitting high. Size the
+     padding so a single line exactly fills the control height — then one
+     line reads as vertically centred, and the box grows from there.
+     Leading stays readable for when it wraps. */
+  textarea.input {
+    min-height: var(--control-h);
+    line-height: 1.45;
+    padding-block: calc((var(--control-h) - 2px - 1.45em) / 2);
+  }
+
+  .input::placeholder { color: var(--text-muted); }
+  .input:focus { border-color: var(--accent-green); outline: none; }
+  .input:disabled { opacity: .55; cursor: not-allowed; }
+
+  .progress      { height: 6px; border-radius: var(--radius-pill); background: var(--ov-track); overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: var(--radius-pill);
+                   background: linear-gradient(90deg, var(--accent-green), var(--accent-cyan)); }
+
+  .nav-link {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    font-family: var(--font-nav);
+    font-size: 12px;
+    font-weight: 300;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color var(--dur-fast) var(--ease-signature);
+  }
+  .nav-link:hover { color: var(--text); }
+}
