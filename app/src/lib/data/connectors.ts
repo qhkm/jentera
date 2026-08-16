@@ -46,6 +46,27 @@ export const CONNECTORS: Record<string, Connector> = {
     ],
     "meta": true
   },
+  "telegram": {
+    "n": "Telegram",
+    "e": "✈️",
+    "tier": "T2",
+    "method": "bss",
+    "flow": "Guided Telegram bot authorization — AISAR handles the token, webhook, and setup securely",
+    "scope": [
+      "reply to customers",
+      "send updates",
+      "handle enquiries",
+      "escalate to owner"
+    ],
+    "countries": [
+      "MY",
+      "ID",
+      "SG",
+      "TH",
+      "VN",
+      "PH"
+    ]
+  },
   "google": {
     "n": "Google (Sheets & Calendar)",
     "e": "📊",
