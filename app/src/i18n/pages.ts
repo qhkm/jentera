@@ -25,7 +25,12 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'lp.potential': '{n}% potential',
 
     /* Onboarding */
-    'ob.step': 'Step {n} of 2',
+    'ob.step': 'Step {n} of 3',
+    'ob.ch.head': 'Where do enquiries come in?',
+    'ob.ch.body': 'Pick every channel customers already use to reach you. AISAR connects them later — you never touch an API key.',
+    'ob.ch.cta': 'Activate AISAR →',
+    'ob.ch.back': '← Back',
+    'ob.ch.none': 'Pick at least one channel',
     'ob.ask.head': 'What do you do?',
     'ob.ask.body':
       'One sentence is enough. AISAR works out the rest — no forms, no category picker.',
@@ -36,7 +41,7 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'ob.confirm.matched': 'matched · {n}',
     'ob.confirm.guess': 'best guess',
     'ob.confirm.opportunities': '{n} automation opportunities found',
-    'ob.confirm.yes': 'Yes — activate AISAR →',
+    'ob.confirm.yes': "Yes — that's my business →",
     'ob.confirm.no': 'Not quite, let me rephrase',
 
     /* Setup */
@@ -85,7 +90,12 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'lp.potential': 'potensi {n}%',
 
     /* Onboarding */
-    'ob.step': 'Langkah {n} daripada 2',
+    'ob.step': 'Langkah {n} daripada 3',
+    'ob.ch.head': 'Di mana pelanggan hubungi anda?',
+    'ob.ch.body': 'Pilih setiap saluran yang pelanggan anda guna sekarang. AISAR sambungkan kemudian — anda tak perlu sentuh API key.',
+    'ob.ch.cta': 'Aktifkan AISAR →',
+    'ob.ch.back': '← Kembali',
+    'ob.ch.none': 'Pilih sekurang-kurangnya satu saluran',
     'ob.ask.head': 'Apa perniagaan anda?',
     'ob.ask.body':
       'Satu ayat sudah memadai. AISAR uruskan selebihnya — tiada borang, tiada senarai kategori.',
@@ -96,7 +106,7 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'ob.confirm.matched': 'padan · {n}',
     'ob.confirm.guess': 'anggaran terbaik',
     'ob.confirm.opportunities': '{n} peluang automasi dijumpai',
-    'ob.confirm.yes': 'Ya — aktifkan AISAR →',
+    'ob.confirm.yes': 'Ya — itu perniagaan saya →',
     'ob.confirm.no': 'Tak tepat, biar saya tulis semula',
 
     /* Setup */

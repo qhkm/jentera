@@ -20,7 +20,10 @@ const EXAMPLES = [
   'Klinik gigi di Johor Bahru',
 ];
 
-type Phase = 'ask' | 'confirm';
+/* Channels the static onboarding offers at "Where do enquiries come in?" */
+const CHANNELS = ['WhatsApp', 'Telegram', 'Instagram', 'Email', 'Phone'] as const;
+
+type Phase = 'ask' | 'confirm' | 'channels';
 
 export default function Onboard() {
   const t = useT();
@@ -28,6 +31,7 @@ export default function Onboard() {
   const [text, setText] = useState('');
   const [phase, setPhase] = useState<Phase>('ask');
   const [match, setMatch] = useState<{ key: string; score: number } | null>(null);
+  const [channels, setChannels] = useState<string[]>([]);
 
   function scan(value: string) {
     const input = value.trim();
@@ -37,8 +41,18 @@ export default function Onboard() {
     setPhase('confirm');
   }
 
+  function toggleChannel(name: string) {
+    setChannels((prev) =>
+      prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name],
+    );
+  }
+
   function activate() {
     registerBusiness(text);
+    /* The engine reads aisar-channels to decide the command-centre stage.
+       Without this step the user's actual channels were never captured and
+       the dashboard silently fell back to playbook defaults. */
+    store.setJSON(KEYS.channels, channels);
     store.set(KEYS.onboarded, '1');
     navigate('/setup');
   }
@@ -96,6 +110,63 @@ export default function Onboard() {
               </div>
             </div>
           </>
+        ) : phase === 'channels' ? (
+          <>
+            <div className="flex flex-col gap-3">
+              <Eyebrow>{t('ob.step', { n: 3 })}</Eyebrow>
+              <h1 className="font-pixel text-3xl tracking-tight">{t('ob.ch.head')}</h1>
+              <p className="text-text-secondary">{t('ob.ch.body')}</p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {CHANNELS.map((name) => {
+                const picked = channels.includes(name);
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    aria-pressed={picked}
+                    onClick={() => toggleChannel(name)}
+                    className={`flex items-center gap-3 rounded-card border px-4 py-3 text-left text-[13px] transition-colors ${
+                      picked
+                        ? 'border-brand-line bg-brand-soft text-text'
+                        : 'border-border text-text-secondary hover:border-border-light hover:text-text'
+                    }`}
+                  >
+                    <span
+                      className={`flex size-[18px] shrink-0 items-center justify-center rounded-pill border text-[10px] ${
+                        picked ? 'border-brand bg-brand text-bg' : 'border-border-light'
+                      }`}
+                      aria-hidden="true"
+                    >
+                      {picked ? '✓' : ''}
+                    </span>
+                    {name}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                onClick={activate}
+                disabled={channels.length === 0}
+                className="py-4 md:py-3"
+              >
+                {t('ob.ch.cta')}
+              </Button>
+              <Button
+                variant="outline"
+                className="py-4 md:py-3"
+                onClick={() => setPhase('confirm')}
+              >
+                {t('ob.ch.back')}
+              </Button>
+              {channels.length === 0 ? (
+                <span className="text-[12px] text-text-muted">{t('ob.ch.none')}</span>
+              ) : null}
+            </div>
+          </>
         ) : (
           playbook && (
             <>
@@ -123,7 +194,7 @@ export default function Onboard() {
               </Card>
 
               <div className="flex flex-wrap gap-3">
-                <Button onClick={activate} className="py-4 md:py-3">
+                <Button onClick={() => setPhase('channels')} className="py-4 md:py-3">
                   {t('ob.confirm.yes')}
                 </Button>
                 <Button

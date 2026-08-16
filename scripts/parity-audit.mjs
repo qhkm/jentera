@@ -189,6 +189,49 @@ check(
   `static landing has ${landingSections.length} anchor sections`,
 );
 
+/* ---- 11. Keys the engine WRITES must also be written by the app ----
+   Check 4 only proved the key names exist. aisar-channels was declared
+   and read, but nothing in the React app ever wrote it — so the user's
+   channel choice was silently dropped and the dashboard fell back to
+   playbook defaults. Presence is not the same as being populated. */
+const engineWrites = [
+  ...new Set(
+    [...read('biz-engine.js').matchAll(/KV_STORE\.set\('(aisar-[a-z0-9-]+)'/g)].map((m) => m[1]),
+  ),
+  ...new Set(
+    ['onboard.html', 'setup.html', 'app.html']
+      .map(read)
+      .join('\n')
+      .matchAll(/localStorage\.setItem\('(aisar-[a-z0-9-]+)'/g),
+  ).values ? [] : [],
+];
+const htmlWrites = [
+  ...new Set(
+    [...['onboard.html', 'setup.html', 'app.html'].map(read).join('\n')
+      .matchAll(/localStorage\.setItem\('(aisar-[a-z0-9-]+)'/g)].map((m) => m[1]),
+  ),
+];
+const mustWrite = [...new Set([...engineWrites, ...htmlWrites])];
+check(
+  'keys the static site writes are also written by the app',
+  mustWrite.filter((k) => {
+    const constName = Object.entries({
+      'aisar-onboarded-v1': 'onboarded',
+      'aisar-setup-done-v1': 'setupDone',
+      'aisar-biz-type': 'bizType',
+      'aisar-biz-name': 'bizName',
+      'aisar-biz-loc': 'bizLoc',
+      'aisar-channels': 'channels',
+      'aisar-conns': 'conns',
+      'aisar-country': 'country',
+      'aisar-lang': 'lang',
+      'aisar-approvals': 'approvals',
+    }).find(([key]) => key === k)?.[1];
+    if (!constName) return false;
+    return !new RegExp(`set(JSON)?\\(\\s*KEYS\\.${constName}`).test(src);
+  }),
+);
+
 /* ---- Report ---- */
 console.log('\n=== PARITY AUDIT ===\n');
 for (const p of pass) console.log(`  PASS  ${p}`);
