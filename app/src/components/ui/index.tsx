@@ -10,6 +10,7 @@
 
 import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
 import type { Tone } from '@/lib/types';
+import { DataIcon } from '@/components/Icon';
 
 export type { Tone };
 
@@ -69,10 +70,20 @@ export function Eyebrow({ className, ...rest }: HTMLAttributes<HTMLSpanElement>)
 
 /* ---- Identity ---- */
 
-export function Avatar({ children, className, ...rest }: HTMLAttributes<HTMLSpanElement>) {
+/**
+ * Pass `emoji` to render the mapped Phosphor glyph for a playbook value;
+ * `children` remains for the rare case a caller needs custom content.
+ */
+export function Avatar({
+  emoji,
+  size = 17,
+  children,
+  className,
+  ...rest
+}: HTMLAttributes<HTMLSpanElement> & { emoji?: string; size?: number }) {
   return (
     <span className={cx('avatar', className)} aria-hidden="true" {...rest}>
-      {children}
+      {emoji ? <DataIcon emoji={emoji} size={size} /> : children}
     </span>
   );
 }

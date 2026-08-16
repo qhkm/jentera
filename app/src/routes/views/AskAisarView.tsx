@@ -12,6 +12,7 @@ import { Button, Card, Eyebrow, Tag } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
 import { ASK_PROMPTS, useAsk } from '@/hooks/useAsk';
 import { useIsCompact } from '@/hooks/useMediaQuery';
+import { Icon } from '@/components/Icon';
 import CustomerInbox from './CustomerInbox';
 import type { Business } from '@/lib/types';
 
@@ -132,9 +133,7 @@ export default function AskAisarView({
           >
             {!ask.hasHistory ? (
               <div className="flex flex-col items-center gap-3 py-10 text-center">
-                <span className="text-3xl" aria-hidden="true">
-                  ✨
-                </span>
+                <Icon name="sparkle" size={30} weight="duotone" className="text-brand" />
                 <h2 className="font-pixel text-lg tracking-tight">{t('ask.empty.title')}</h2>
                 <p className="max-w-[46ch] text-[13px] text-text-secondary">{t('ask.welcome')}</p>
               </div>
@@ -148,7 +147,7 @@ export default function AskAisarView({
                     className="flex size-7 shrink-0 items-center justify-center rounded-avatar border border-brand-line bg-brand-soft font-mono text-[10px] text-brand"
                     aria-hidden="true"
                   >
-                    {m.from === 'you' ? t('ask.you').charAt(0).toUpperCase() : 'AI'}
+                    <Icon name={m.from === 'you' ? 'owner' : 'robot'} size={15} />
                   </span>
                   <div className={`bubble ${m.from === 'you' ? 'bubble-out' : 'bubble-in'}`}>
                     {m.text}

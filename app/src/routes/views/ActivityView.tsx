@@ -10,6 +10,7 @@
 import { useMemo, useState } from 'react';
 import { Avatar, Button, Card, Eyebrow, Tag } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
+import { Icon, stripEmoji } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
 import { decideApproval } from '@/lib/tools';
 import { decideApprovalRemote } from '@/lib/api';
@@ -98,7 +99,7 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Card className="gap-1">
-          <Eyebrow>{t('work.need')}</Eyebrow>
+          <Eyebrow>{stripEmoji(t('work.need'))}</Eyebrow>
           <span
             className={`font-pixel text-2xl tabular-nums ${counts.need + b.approvals.length ? 'text-[rgb(255_200_90)]' : ''}`}
           >
@@ -106,11 +107,11 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
           </span>
         </Card>
         <Card className="gap-1">
-          <Eyebrow>{t('work.auto')}</Eyebrow>
+          <Eyebrow>{stripEmoji(t('work.auto'))}</Eyebrow>
           <span className="font-pixel text-2xl tabular-nums">{counts.done}</span>
         </Card>
         <Card className="gap-1">
-          <Eyebrow>{t('work.activity')}</Eyebrow>
+          <Eyebrow>{stripEmoji(t('work.activity'))}</Eyebrow>
           <span className="font-pixel text-2xl tabular-nums">{counts.auto + counts.done}</span>
         </Card>
       </div>
@@ -125,7 +126,7 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
             className="px-4 py-1.5 text-xs"
             onClick={() => setFilter(tab.id)}
           >
-            {t(tab.labelKey)} · {tab.count}
+            {stripEmoji(t(tab.labelKey))} · {tab.count}
           </Button>
         ))}
       </div>
@@ -146,7 +147,9 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
               <Card key={a.id}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <Avatar>🛡️</Avatar>
+                    <Avatar>
+                      <Icon name="shield" size={17} />
+                    </Avatar>
                     <div className="flex flex-col">
                       <span className="text-sm">
                         {opLabel === `appr.op.${a.op}` ? a.op : opLabel} · {a.conn}
@@ -201,7 +204,7 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
               <Card key={`${w.n}-${i}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3">
-                    <Avatar>{w.e}</Avatar>
+                    <Avatar emoji={w.e} />
                     <div className="flex flex-col gap-1">
                       <span className="text-sm font-semibold">{w.n}</span>
                       <span className="text-[11px] text-text-muted">{w.t}</span>

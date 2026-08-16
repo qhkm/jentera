@@ -6,6 +6,7 @@
 import { Link } from 'react-router';
 import { Avatar, Button, Card, Eyebrow, Tag } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
+import { DataIcon, stripEmoji } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
 import type { useBusiness } from '@/hooks/useBusiness';
 import type { View } from '../Dashboard';
@@ -28,7 +29,7 @@ export default function HomeView({
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <h1 className="font-pixel text-2xl tracking-tight">{t('view.home.greet')}</h1>
+        <h1 className="font-pixel text-2xl tracking-tight">{stripEmoji(t('view.home.greet'))}</h1>
         <p className="text-sm text-text-secondary">
           {stage === 'setup' ? t('sub.step1') : stage === 'connect' ? t('sub.step2') : t('sub.step3')}
         </p>
@@ -70,8 +71,13 @@ export default function HomeView({
                   n: business.work.filter((w) => w.tag !== 'needs you').length,
                 })}
               </h2>
-              <p className="text-[13px] text-text-secondary">
-                {business.team.slice(0, 3).map((m) => `${m.e} ${m.n}`).join(' · ')}
+              <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-text-secondary">
+                {business.team.slice(0, 3).map((m) => (
+                  <span key={m.n} className="inline-flex items-center gap-1.5">
+                    <DataIcon emoji={m.e} size={14} />
+                    {m.n}
+                  </span>
+                ))}
               </p>
             </div>
             <Tag tone="green">live</Tag>
@@ -84,8 +90,9 @@ export default function HomeView({
                 className="flex flex-wrap items-start justify-between gap-3 border-t border-rail pt-3"
               >
                 <div className="flex flex-col gap-1">
-                  <span className="text-[13px]">
-                    {w.e} {w.n}
+                  <span className="inline-flex items-center gap-1.5 text-[13px]">
+                    <DataIcon emoji={w.e} size={14} />
+                    {w.n}
                   </span>
                   <span className="text-[12px] text-text-secondary">{w.d}</span>
                 </div>
@@ -136,7 +143,7 @@ export default function HomeView({
         </div>
         {business.work.slice(0, 2).map((w, i) => (
           <div key={i} className="flex items-start gap-2.5">
-            <Avatar className="size-7 text-[13px]">{w.e}</Avatar>
+            <Avatar emoji={w.e} size={14} className="size-7" />
             <div className="flex min-w-0 flex-col gap-0.5">
               <span className="text-[12px] font-semibold">{w.n}</span>
               <span className="text-[12px] leading-snug text-text-secondary">{w.d}</span>

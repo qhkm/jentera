@@ -16,6 +16,7 @@ import { Shell } from '@/components/Shell';
 import { Avatar, Card, Eyebrow, Progress, Tag } from '@/components/ui';
 import { useBusiness } from '@/hooks/useBusiness';
 import { useT } from '@/i18n/I18nProvider';
+import { Icon, type IconName } from '@/components/Icon';
 import { useIsCompact } from '@/hooks/useMediaQuery';
 import { useVisualViewport } from '@/hooks/useVisualViewport';
 import HomeView from './views/HomeView';
@@ -28,14 +29,14 @@ export type View = 'home' | 'chat' | 'work' | 'business';
 interface NavItem {
   id: View;
   labelKey: string;
-  icon: string;
+  icon: IconName;
 }
 
 const NAV: NavItem[] = [
-  { id: 'home', labelKey: 'nav.home', icon: '🏠' },
-  { id: 'chat', labelKey: 'nav.chat', icon: '💬' },
-  { id: 'work', labelKey: 'nav.work', icon: '⚡' },
-  { id: 'business', labelKey: 'nav.business', icon: '🏢' },
+  { id: 'home', labelKey: 'nav.home', icon: 'home' },
+  { id: 'chat', labelKey: 'nav.chat', icon: 'chat' },
+  { id: 'work', labelKey: 'nav.work', icon: 'activity' },
+  { id: 'business', labelKey: 'nav.business', icon: 'business' },
 ];
 
 export default function Dashboard() {
@@ -96,7 +97,7 @@ export default function Dashboard() {
         }`}
       >
         <span className="flex items-center gap-2.5">
-          <span aria-hidden="true">{item.icon}</span>
+          <Icon name={item.icon} size={17} />
           {t(item.labelKey)}
         </span>
         {badge > 0 ? <Tag tone="amber">{badge}</Tag> : null}
@@ -107,7 +108,7 @@ export default function Dashboard() {
   const profile = (
     <Card className="gap-2">
       <div className="flex items-center gap-3">
-        <Avatar>{business.icon}</Avatar>
+        <Avatar emoji={business.icon} />
         <div className="flex min-w-0 flex-col">
           <span className="truncate text-sm font-semibold">{business.name}</span>
           <span className="truncate text-[11px] text-text-muted">{business.loc}</span>
@@ -207,9 +208,7 @@ export default function Dashboard() {
                 active ? 'text-brand' : 'text-text-muted'
               }`}
             >
-              <span className="text-base" aria-hidden="true">
-                {item.icon}
-              </span>
+              <Icon name={item.icon} size={19} />
               {t(item.labelKey)}
               {badge > 0 ? (
                 <span className="unread absolute right-[18%] top-1.5">{badge}</span>

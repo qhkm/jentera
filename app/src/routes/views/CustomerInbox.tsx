@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Avatar, Button, Input } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
+import { Icon } from '@/components/Icon';
 import { templatesFor, useChat, type ChatMessage } from '@/hooks/useChat';
 import type { Business } from '@/lib/types';
 
@@ -60,7 +61,7 @@ export default function CustomerInbox({ business }: { business: Business }) {
           <Input
             value={chat.query}
             onChange={(e) => chat.setQuery(e.target.value)}
-            placeholder={`🔍 ${t('chat.search')}`}
+            placeholder={t('chat.search')}
             aria-label={t('chat.search')}
             className="w-full px-3 text-[13px]"
           />
@@ -72,7 +73,7 @@ export default function CustomerInbox({ business }: { business: Business }) {
                 onClick={() => chat.open(m.n)}
                 className={`conv ${selected === m.n ? 'conv-active' : ''}`}
               >
-                <Avatar>{m.e}</Avatar>
+                <Avatar emoji={m.e} />
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="flex items-center justify-between gap-2">
                     <span className="truncate text-[13px] font-semibold">{m.n}</span>
@@ -101,9 +102,7 @@ export default function CustomerInbox({ business }: { business: Business }) {
         >
           {!selected || !agent ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
-              <span className="text-4xl" aria-hidden="true">
-                💬
-              </span>
+              <Icon name="chat" size={34} weight="duotone" className="text-text-muted" />
               <p className="max-w-[34ch] text-[13px] text-text-secondary">
                 Pick a conversation to see what the agent has been doing — like opening a chat
                 with a member of staff.
@@ -132,12 +131,12 @@ export default function CustomerInbox({ business }: { business: Business }) {
                 <span className="text-[12px] text-text-secondary">
                   {controlling === 'you' ? (
                     <>
-                      🙋 <b className="text-text">You have control</b> — replies send as your
+                      <b className="text-text">You have control</b> — replies send as your
                       business.
                     </>
                   ) : (
                     <>
-                      🤖 <b className="text-text">{agent.n}</b> is handling this — 24/7, in your
+                      <b className="text-text">{agent.n}</b> is handling this — 24/7, in your
                       voice.
                     </>
                   )}
@@ -197,7 +196,7 @@ export default function CustomerInbox({ business }: { business: Business }) {
                   onChange={(e) => setDraft(e.target.value)}
                   disabled={controlling !== 'you'}
                   placeholder={
-                    controlling === 'you' ? t('chat.reply') : `💡 ${t('chat.takeover')}`
+                    controlling === 'you' ? t('chat.reply') : t('chat.takeover')
                   }
                   aria-label={t('chat.reply')}
                   className="flex-1 px-3 text-[13px]"

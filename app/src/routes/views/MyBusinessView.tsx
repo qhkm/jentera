@@ -10,6 +10,7 @@
 import { useState } from 'react';
 import { Avatar, Button, Card, Eyebrow, Input, Tag } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
+import { DataIcon } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
 import { isAgentReady } from '@/lib/business';
 import { findConnector } from '@/lib/tools';
@@ -82,8 +83,9 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
               <Button className="px-4 py-1.5 text-xs" onClick={save} disabled={!dirty}>
                 Save changes
               </Button>
-              <span className="text-[11px] text-text-muted">
-                {business.icon} {business.type}
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-text-muted">
+                <DataIcon emoji={business.icon} size={13} />
+                {business.type}
               </span>
             </div>
           </div>
@@ -123,7 +125,7 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
               <Card key={m.n}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <Avatar>{m.e}</Avatar>
+                    <Avatar emoji={m.e} />
                     <div className="flex flex-col">
                       <span className="text-sm font-semibold">{m.n}</span>
                       <span className="text-[11px] text-text-muted">{m.ch}</span>
@@ -150,7 +152,7 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
                 <Card key={r.n}>
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <Avatar>{r.e}</Avatar>
+                      <Avatar emoji={r.e} />
                       <span className="text-sm font-semibold">{r.n}</span>
                     </div>
                     <Tag>{r.tag}</Tag>
@@ -197,7 +199,7 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
               <Card key={c.n}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex items-start gap-3">
-                    <Avatar>{c.e}</Avatar>
+                    <Avatar emoji={c.e} />
                     <div className="flex flex-col gap-1">
                       <span className="text-sm font-semibold">{c.n}</span>
                       <span className="text-[11px] text-text-muted">{c.s}</span>
