@@ -106,6 +106,22 @@ The UI reveals information progressively:
 2. **Business details:** customer, channel, result, time saved, and related records.
 3. **Technical trace:** source messages, prompts, retrieved knowledge, tool calls, model/runtime version, errors, and retry history.
 
+### Procedure Derivation Requirements
+
+Phase 4 converts successful repeated runs into versioned business procedures. It has no separate source of truth: it mines the work records and traces that Phase 2 writes. Anything not captured then cannot be recovered later, so the recording requirements below belong to Phase 2 even though nothing consumes them until Phase 4.
+
+Each run should additionally record:
+
+- **Trigger shape.** Not only the channel and customer, but what pattern caused the run — an inbound enquiry about pricing, a scheduled weekly report, a direct owner instruction. Two runs belong to the same candidate procedure when their trigger shapes match, so this is the grouping key.
+- **Decision taken.** Which option AISAR chose and the business reason, in a form that can be compared across runs. "Offered a consultation call" is derivable; "called the messaging tool" is not.
+- **Inputs relied upon.** Which business facts and connector data the decision used, so a procedure can declare its preconditions and a later fact correction can invalidate the runs that depended on the old value.
+- **Owner corrections.** The delta between what AISAR proposed and what the owner actually approved. An approve or reject is a weak signal; an edit is the strongest one available, and it is the easiest to lose because it arrives as a modified draft rather than an event. Edits must be recorded as first-class events, with both versions retained.
+- **Outcome quality.** Whether the result held: the customer replied, the booking was kept, no refund followed, the owner did not intervene afterwards. Success at execution time is not the same as success in the business.
+
+A procedure becomes a candidate when a trigger shape recurs, the same decision was taken, and outcome quality was good across a threshold of runs. Candidates are proposed to the owner in business language, never as a skill or a workflow. Activation requires replay against historical cases, as Phase 4 already specifies.
+
+This is also where the product becomes difficult to copy. Industry playbooks are a month of work for a competitor. A year of one business's tested, versioned procedures, each derived from its own run history and corrections, is not.
+
 ## Suggested Infrastructure
 
 - Keep the static frontend on Cloudflare Pages.
@@ -133,6 +149,7 @@ The UI reveals information progressively:
 - Create an approval card containing the exact proposed message.
 - Send only after approval and record the delivery result in Activity.
 - Group multiple Telegram replies into an automatic outcome summary while preserving per-message traceability.
+- Record trigger shape, decision taken, inputs relied upon, owner corrections, and outcome quality on every run. See Procedure Derivation Requirements: Phase 4 has no other source, and an owner edit is the strongest signal available and the easiest to lose.
 
 ### Phase 3 — Managed Autonomy
 
@@ -142,7 +159,7 @@ The UI reveals information progressively:
 
 ### Phase 4 — Learning Business Operator
 
-- Convert successful repeated runs into versioned business procedures.
+- Convert successful repeated runs into versioned business procedures, derived from the Phase 2 run history rather than authored by hand.
 - Test procedure updates against historical cases before activation.
 - Add specialist delegation behind the single AISAR identity.
 
@@ -169,3 +186,30 @@ The primary metric remains **time to first useful work completed**. Track import
 - A large integration marketplace before one complete workflow is reliable.
 - Chat transcripts or raw tool logs as the primary activity interface.
 - Unreviewed self-modifying skills in production.
+
+## Open Questions
+
+Recorded so the reasoning is not lost. Neither is scheduled, and neither should compete with Phase 1.
+
+### Dashboard customisation
+
+Should owners be able to arrange or personalise their dashboard?
+
+The case for: the generated dashboard is a playbook template with the owner's name applied, and it does not yet feel like their business.
+
+The case against: it contradicts the core promise. The product exists because customers "value a working outcome more than a configurable platform", and a layout editor hands implementation decisions back to exactly the customer who said they did not know where to begin. It also ends the property that makes twenty industries cheap to support, since per-owner layout state means migrations and divergent support cases forever.
+
+Current position: the underlying complaint is most likely content, not layout. A dashboard filled with a real business's imported services and channels should stop feeling generic without any layout control. Re-evaluate after Phase 1, when that can actually be observed.
+
+If some form of ownership is wanted sooner, two cheaper answers cover most of it:
+
+- **Business identity** — logo, name, brand colour, and reply tone. Visible to the owner's own customers, near-zero decision burden, no layout state.
+- **Correction in place** — every dashboard element can be marked wrong or irrelevant, and the system learns. This is customisation as teaching, which improves the product rather than merely differentiating one instance of it, and it feeds the same run history Phase 4 depends on.
+
+### Surfacing skills as an owner-facing concept
+
+Should the agent-runtime skill model be exposed to owners?
+
+No, on the product's own terms. Owner-facing language avoids models, prompts, APIs, agent counts, and workflow builders; "skill" belongs to that vocabulary. The capability is already planned as Phase 4 under the name that suits the audience — versioned business procedures — and internal complexity is meant to stay behind the product.
+
+The runtime's skill mechanism remains an implementation detail behind the provider-neutral adapter. Adopting an existing agent framework's skill format wholesale would import its developer-facing shape, and with it its audience.
