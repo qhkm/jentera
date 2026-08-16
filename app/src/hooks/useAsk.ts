@@ -9,12 +9,16 @@
    understand what happened".
    ============================================================ */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { TEAM_GENERAL, TEAM_REPLIES } from '@/lib/data/conversations';
+import { taggedAgent } from '@/hooks/useMentions';
 import type { Business } from '@/lib/types';
 
 export interface AskMessage {
   from: 'you' | 'ai';
   text: string;
+  /** Set when the question tagged a specific agent. */
+  agent?: string;
 }
 
 /** Prompt chips offered above the composer. */
@@ -39,6 +43,8 @@ export function useAsk(
   t: (key: string, vars?: Record<string, string | number>) => string,
 ) {
   const [messages, setMessages] = useState<AskMessage[]>([]);
+  /* Deterministic rotation — Math.random would change on every render. */
+  const turn = useRef(0);
 
   const answer = useCallback(
     (question: string): string => {
@@ -70,13 +76,26 @@ export function useAsk(
     (raw: string) => {
       const question = raw.trim();
       if (!question) return;
+
+      /* Tagging an agent routes the reply to that agent rather than to
+         AISAR's general answer. */
+      const agent = taggedAgent(question, business.team);
+      let reply: string;
+      if (agent) {
+        const pool = TEAM_REPLIES[agent.n] ?? TEAM_GENERAL;
+        reply = pool[turn.current % pool.length];
+        turn.current += 1;
+      } else {
+        reply = answer(question);
+      }
+
       setMessages((prev) => [
         ...prev,
         { from: 'you', text: question },
-        { from: 'ai', text: answer(question) },
+        { from: 'ai', text: reply, agent: agent?.n },
       ]);
     },
-    [answer],
+    [answer, business.team],
   );
 
   return { messages, send, hasHistory: messages.length > 0 };
