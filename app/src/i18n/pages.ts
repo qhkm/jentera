@@ -25,7 +25,90 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'lp.potential': '{n}% potential',
 
     /* Onboarding */
-    'ob.step': 'Step {n} of 3',
+    'ob.step': 'Step {n} of 6',
+
+    /* Step 1 — setup path */
+    'ob.m.eyebrow': 'Step 1 · Choose a setup path',
+    'ob.m.head': 'How should AISAR learn your business?',
+    'ob.m.body': 'Choose one to get started. You can add or correct details later.',
+    'ob.m.auto.tag': 'Recommended',
+    'ob.m.auto.title': 'Import automatically',
+    'ob.m.auto.body': 'Share your website or social profiles. AISAR creates a business profile for you to review.',
+    'ob.m.auto.panelHead': 'Import from your online presence',
+    'ob.m.auto.panelBody': 'Add at least one link. More sources produce a better first draft.',
+    'ob.m.auto.website': 'Website',
+    'ob.m.auto.social': 'Social profile',
+    'ob.m.auto.cta': 'Import my business →',
+    'ob.m.auto.note': 'AISAR creates a draft only. Nothing goes live until you approve it.',
+    'ob.m.manual.tag': 'Full control',
+    'ob.m.manual.title': 'Enter manually',
+    'ob.m.manual.body': 'Describe your business and choose its type yourself. Best if you are not online yet.',
+    'ob.m.manual.panelHead': 'Describe it in your own words',
+    'ob.m.manual.panelBody': 'A sentence is enough. You can also pick the closest business type below.',
+    'ob.m.manual.summary': 'Choose a business type instead',
+    'ob.m.manual.cta': 'Build my profile →',
+    'ob.m.need': 'Add a website or social profile to import your business.',
+
+    /* Step 2 — scan */
+    'ob.scan.eyebrow': 'Step 2 · Scanning',
+    'ob.scan.head': 'Reading your business…',
+    'ob.scan.note': "We're reading your sources and building a Business Profile. This only takes a few seconds.",
+    'ob.scan.web': 'reading your website',
+    'ob.scan.social': 'reading your social profiles',
+    'ob.scan.desc': 'reading your description',
+    'ob.scan.match': 'matching industry playbook ({type})',
+    'ob.scan.detected': 'detected: {detect}',
+
+    /* Step 3 — confirm */
+    'ob.confirm.eyebrow': 'Step 3 · Did we get it right?',
+    'ob.confirm.body': 'Your Business Profile drives every recommendation. If anything is off, tell us now — it gets better from here.',
+
+    /* Step 4 — channels */
+    'ob.ch.eyebrow': 'Step 4 · How customers reach you',
+
+    /* Step 5 — time sinks */
+    'ob.pain.eyebrow': 'Step 5 · Where you spend time',
+    'ob.pain.head': 'What eats your week?',
+    'ob.pain.body': "Pick the one that hurts most — that's where AISAR starts.",
+    'ob.pain.enquiries': 'Answering enquiries',
+    'ob.pain.reservations': 'Reservations / bookings',
+    'ob.pain.marketing': 'Marketing & social',
+    'ob.pain.inventory': 'Inventory & ordering',
+
+    /* Step 6 — recommendation */
+    'ob.reco.eyebrow': 'Step 6 · Your AI team',
+    'ob.reco.head': 'I recommend starting here.',
+    'ob.reco.body': 'Based on your business profile and answers, this is the highest-impact automation.',
+    'ob.reco.agent': 'Customer Assistant',
+    'ob.reco.tag': 'recommended',
+    'ob.reco.handles': 'Handles: FAQs · product questions · bookings · opening hours · follow-ups',
+    'ob.reco.activating': 'Setting up…',
+    'ob.reco.extra.default': '+ 2 more suggestions: Booking Agent · Follow-up',
+    'ob.reco.extra.reservations': '+ 2 more suggestions: Booking Agent (you said reservations) · Follow-up',
+    'ob.reco.extra.marketing': '+ 2 more suggestions: Content Engine (you said marketing) · Follow-up',
+    'ob.reco.extra.inventory': '+ 2 more suggestions: Ops Assistant (you said inventory) · Customer Follow-up',
+
+    /* Footer */
+    'ob.nav.back': 'Back',
+    'ob.nav.continue': 'Continue →',
+    'ob.nav.plan': 'Show my plan →',
+    'ob.nav.activate': 'Activate AISAR →',
+
+    /* Live profile */
+    'ob.p.title': 'Business Profile',
+    'ob.p.building': 'building…',
+    'ob.p.learned': 'learned ✓',
+    'ob.p.ready': 'ready ✓',
+    'ob.p.name': 'Name',
+    'ob.p.type': 'Type',
+    'ob.p.loc': 'Location',
+    'ob.p.url': 'Website',
+    'ob.p.social': 'Social',
+    'ob.p.ch': 'Channels',
+    'ob.p.pain': 'Top pain',
+    'ob.p.team': 'AI team',
+    'ob.p.teamValue': 'Customer Assistant + 2 more',
+    'ob.p.note': 'This profile updates live as you answer. Every recommendation AISAR makes is based on this — correct it anytime in the dashboard.',
     'ob.ch.head': 'Where do enquiries come in?',
     'ob.ch.body': 'Pick every channel customers already use to reach you. AISAR connects them later — you never touch an API key.',
     'ob.ch.cta': 'Activate AISAR →',
@@ -116,7 +199,90 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'lp.potential': 'potensi {n}%',
 
     /* Onboarding */
-    'ob.step': 'Langkah {n} daripada 3',
+    'ob.step': 'Langkah {n} daripada 6',
+
+    /* Langkah 1 — cara mula */
+    'ob.m.eyebrow': 'Langkah 1 · Pilih cara mula',
+    'ob.m.head': 'Macam mana AISAR patut kenal perniagaan anda?',
+    'ob.m.body': 'Pilih satu untuk mula. Anda boleh tambah atau betulkan butiran kemudian.',
+    'ob.m.auto.tag': 'Disyorkan',
+    'ob.m.auto.title': 'Import automatik',
+    'ob.m.auto.body': 'Kongsi laman web atau profil sosial anda. AISAR sediakan profil perniagaan untuk anda semak.',
+    'ob.m.auto.panelHead': 'Import dari kehadiran dalam talian anda',
+    'ob.m.auto.panelBody': 'Tambah sekurang-kurangnya satu pautan. Lebih banyak sumber, lebih baik draf pertama.',
+    'ob.m.auto.website': 'Laman web',
+    'ob.m.auto.social': 'Profil sosial',
+    'ob.m.auto.cta': 'Import perniagaan saya →',
+    'ob.m.auto.note': 'AISAR sediakan draf sahaja. Tiada apa yang keluar sebelum anda luluskan.',
+    'ob.m.manual.tag': 'Kawalan penuh',
+    'ob.m.manual.title': 'Isi sendiri',
+    'ob.m.manual.body': 'Terangkan perniagaan anda dan pilih jenisnya sendiri. Sesuai jika anda belum ada dalam talian.',
+    'ob.m.manual.panelHead': 'Terangkan dalam ayat anda sendiri',
+    'ob.m.manual.panelBody': 'Satu ayat pun cukup. Anda juga boleh pilih jenis perniagaan yang paling hampir di bawah.',
+    'ob.m.manual.summary': 'Pilih jenis perniagaan sebaliknya',
+    'ob.m.manual.cta': 'Bina profil saya →',
+    'ob.m.need': 'Tambah laman web atau profil sosial untuk import perniagaan anda.',
+
+    /* Langkah 2 — imbasan */
+    'ob.scan.eyebrow': 'Langkah 2 · Mengimbas',
+    'ob.scan.head': 'Membaca perniagaan anda…',
+    'ob.scan.note': 'Kami sedang baca sumber anda dan bina Profil Perniagaan. Ambil masa beberapa saat sahaja.',
+    'ob.scan.web': 'membaca laman web anda',
+    'ob.scan.social': 'membaca profil sosial anda',
+    'ob.scan.desc': 'membaca penerangan anda',
+    'ob.scan.match': 'memadankan playbook industri ({type})',
+    'ob.scan.detected': 'dikesan: {detect}',
+
+    /* Langkah 3 — sahkan */
+    'ob.confirm.eyebrow': 'Langkah 3 · Betul ke?',
+    'ob.confirm.body': 'Profil Perniagaan anda menentukan setiap cadangan. Kalau ada yang tak kena, beritahu sekarang — ia jadi lebih tepat selepas ini.',
+
+    /* Langkah 4 — saluran */
+    'ob.ch.eyebrow': 'Langkah 4 · Cara pelanggan hubungi anda',
+
+    /* Langkah 5 — masa habis di mana */
+    'ob.pain.eyebrow': 'Langkah 5 · Masa anda habis di mana',
+    'ob.pain.head': 'Apa yang makan masa anda?',
+    'ob.pain.body': 'Pilih satu yang paling menyusahkan — di situ AISAR bermula.',
+    'ob.pain.enquiries': 'Jawab pertanyaan',
+    'ob.pain.reservations': 'Tempahan / booking',
+    'ob.pain.marketing': 'Pemasaran & sosial',
+    'ob.pain.inventory': 'Stok & pesanan',
+
+    /* Langkah 6 — cadangan */
+    'ob.reco.eyebrow': 'Langkah 6 · Pasukan AI anda',
+    'ob.reco.head': 'Saya cadang mula di sini.',
+    'ob.reco.body': 'Berdasarkan profil dan jawapan anda, ini automasi paling berkesan.',
+    'ob.reco.agent': 'Pembantu Pelanggan',
+    'ob.reco.tag': 'disyorkan',
+    'ob.reco.handles': 'Uruskan: FAQ · soalan produk · tempahan · waktu operasi · susulan',
+    'ob.reco.activating': 'Sedang sediakan…',
+    'ob.reco.extra.default': '+ 2 cadangan lagi: Ejen Tempahan · Susulan',
+    'ob.reco.extra.reservations': '+ 2 cadangan lagi: Ejen Tempahan (anda kata tempahan) · Susulan',
+    'ob.reco.extra.marketing': '+ 2 cadangan lagi: Enjin Kandungan (anda kata pemasaran) · Susulan',
+    'ob.reco.extra.inventory': '+ 2 cadangan lagi: Pembantu Operasi (anda kata stok) · Susulan Pelanggan',
+
+    /* Footer */
+    'ob.nav.back': 'Kembali',
+    'ob.nav.continue': 'Teruskan →',
+    'ob.nav.plan': 'Tunjuk pelan saya →',
+    'ob.nav.activate': 'Aktifkan AISAR →',
+
+    /* Profil langsung */
+    'ob.p.title': 'Profil Perniagaan',
+    'ob.p.building': 'membina…',
+    'ob.p.learned': 'dipelajari ✓',
+    'ob.p.ready': 'sedia ✓',
+    'ob.p.name': 'Nama',
+    'ob.p.type': 'Jenis',
+    'ob.p.loc': 'Lokasi',
+    'ob.p.url': 'Laman web',
+    'ob.p.social': 'Sosial',
+    'ob.p.ch': 'Saluran',
+    'ob.p.pain': 'Masalah utama',
+    'ob.p.team': 'Pasukan AI',
+    'ob.p.teamValue': 'Pembantu Pelanggan + 2 lagi',
+    'ob.p.note': 'Profil ini dikemas kini secara langsung sambil anda menjawab. Setiap cadangan AISAR berdasarkan ini — betulkan bila-bila masa dalam dashboard.',
     'ob.ch.head': 'Di mana pelanggan hubungi anda?',
     'ob.ch.body': 'Pilih setiap saluran yang pelanggan anda guna sekarang. AISAR sambungkan kemudian — anda tak perlu sentuh API key.',
     'ob.ch.cta': 'Aktifkan AISAR →',
