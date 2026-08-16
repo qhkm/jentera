@@ -67,7 +67,7 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-3 py-2 text-[13px]"
+                className="w-full px-3 text-[13px]"
               />
             </label>
             <label className="flex flex-col gap-1.5">
@@ -75,7 +75,7 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
               <Input
                 value={loc}
                 onChange={(e) => setLoc(e.target.value)}
-                className="w-full px-3 py-2 text-[13px]"
+                className="w-full px-3 text-[13px]"
               />
             </label>
             <div className="flex items-center gap-2">

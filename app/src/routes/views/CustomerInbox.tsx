@@ -62,7 +62,7 @@ export default function CustomerInbox({ business }: { business: Business }) {
             onChange={(e) => chat.setQuery(e.target.value)}
             placeholder={`🔍 ${t('chat.search')}`}
             aria-label={t('chat.search')}
-            className="w-full px-3 py-2 text-[13px]"
+            className="w-full px-3 text-[13px]"
           />
           {chat.visibleAgents.length ? (
             chat.visibleAgents.map((m) => (
@@ -198,7 +198,7 @@ export default function CustomerInbox({ business }: { business: Business }) {
                     controlling === 'you' ? t('chat.reply') : `💡 ${t('chat.takeover')}`
                   }
                   aria-label={t('chat.reply')}
-                  className="flex-1 px-3 py-2.5 text-[13px]"
+                  className="flex-1 px-3 text-[13px]"
                 />
                 <Button type="submit" disabled={controlling !== 'you' || !draft.trim()}>
                   {t('chat.send')}

@@ -73,7 +73,7 @@ export default function Onboard() {
                 onChange={(e) => setText(e.target.value)}
                 placeholder={t('ob.ask.placeholder')}
                 aria-label="Describe your business"
-                className="w-full px-4 py-4 text-base"
+                className="w-full px-4 py-4 md:py-3"
               />
               <Button type="submit" disabled={!text.trim()} className="py-4 md:py-3">
                 {t('ob.ask.cta')}

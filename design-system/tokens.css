@@ -78,6 +78,14 @@
   --radius-3xl:   1.5rem;
   --radius-pill:  999px;
 
+  /* ---- Controls ----
+     Buttons and inputs must line up when stacked. Giving them one
+     height and one block-padding rule makes that structural instead
+     of a coincidence of utility classes at each call site. */
+  --control-h:      2.5rem;   /* 40px */
+  --control-pad-y:  12px;
+  --control-pad-y-lg: 16px;   /* mobile tap target */
+
   color-scheme: dark;
   background-color: var(--bg);
   color: var(--text);

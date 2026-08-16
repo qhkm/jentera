@@ -79,9 +79,9 @@
     align-items: center;
     justify-content: center;
     gap: .5rem;
-    min-height: 2.25rem;         /* spacing * 9 */
+    min-height: var(--control-h);
     padding-inline: 1.5rem;      /* spacing * 6 */
-    padding-block: 12px;
+    padding-block: var(--control-pad-y);
     border: 1px solid transparent;
     border-radius: var(--radius-item);
     font-size: 14px;
@@ -94,8 +94,14 @@
   }
   .btn:hover  { opacity: .9; }
   .btn:active { opacity: .8; transition-duration: var(--dur-press); }
-  .btn.py-4   { padding-block: 16px; }
-  @media (min-width: 48rem) { .btn.py-4 { padding-block: 12px; } }
+  /* Same rule for both control types, so a stacked input and button
+     stay the same height at every breakpoint. */
+  .btn.py-4,
+  .input.py-4 { padding-block: var(--control-pad-y-lg); }
+  @media (min-width: 48rem) {
+    .btn.py-4,
+    .input.py-4 { padding-block: var(--control-pad-y); }
+  }
 
   /* Dark (default): inverted — white fill, black ink */
   .btn-primary,
@@ -198,12 +204,26 @@
      smudge on the warm-paper light theme. Inverted through the ink
      token so the well recedes in both themes. */
   .input {
+    min-height: var(--control-h);
+    padding-block: var(--control-pad-y);
+    /* Owns its own type, exactly as .btn does. A text-* utility would
+       also set line-height and quietly break the shared height. */
+    font-size: 14px;
+    line-height: 1;
     border: 1px solid var(--ov-line-3);
     background: rgb(var(--border-ink) / .04);
     color: var(--text);
     border-radius: var(--radius-item);
     transition: border-color var(--dur-fast) var(--ease-signature);
   }
+  /* A single-line <input> sizes its content box from font metrics, which
+     line-height does not shrink — so min-height alone leaves it ~4px
+     taller than a .btn with identical padding. Pin the height for real
+     inputs only; textarea.input must stay auto-growing. */
+  input.input { height: var(--control-h); }
+  input.input.py-4 { height: auto; }
+  @media (min-width: 48rem) { input.input.py-4 { height: var(--control-h); } }
+
   .input::placeholder { color: var(--text-muted); }
   .input:focus { border-color: var(--accent-green); outline: none; }
   .input:disabled { opacity: .55; cursor: not-allowed; }
