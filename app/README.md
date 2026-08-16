@@ -33,7 +33,7 @@ pnpm deploy       # build + wrangler pages deploy dist --project-name aisar
 
 **Fonts install from npm.** Geist Sans / Mono / Pixel via `geist` (SIL OFL), JetBrains Mono via `@fontsource`. `fonts.css` declares `@font-face` against the raw `.woff2` in `node_modules` because the `geist` package's own entry points are `next/font` wrappers. Paths are relative — a bare `geist/...` specifier does **not** resolve in CSS `url()` and fails silently to system fonts.
 
-**Default language is BM, not English.** Malaysia's country locale is `bm` and a `bm` table exists, so `initialLang()` resolves to it — same as the original engine. Any string rendered in a page must live in `i18n/pages.ts` or the UI mixes languages.
+**English by default.** The engine defaulted from the country locale, so Malaysia opened in BM; `initialLang()` now returns `DEFAULT_LANG` (`en`) unless the user has explicitly picked a language. Any string rendered in a page must still live in `i18n/pages.ts` or the UI mixes languages when someone switches to BM.
 
 ## Views
 

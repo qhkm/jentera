@@ -1,6 +1,10 @@
 /* ============================================================
-   i18n. English-first with BM support; the active country's
-   language seeds the default, and an explicit choice wins.
+   i18n. English by default, BM on request.
+
+   The engine defaulted from the country's locale, which meant
+   Malaysia opened in BM. English-first is the intent (the engine's
+   own comment said so; its code disagreed), so the country locale
+   no longer seeds the default — only an explicit choice does.
 
    The old engine swept the DOM for [data-t] on every toggle.
    Here `t` comes from context, so a language change re-renders
@@ -20,14 +24,14 @@ import { MESSAGES as PORTED } from '@/lib/data/i18n';
 import { PAGE_MESSAGES } from './pages';
 import type { Lang } from '@/lib/types';
 
+import * as store from '@/lib/storage';
+import { KEYS } from '@/lib/storage';
+
 /** Ported engine strings, with the React app's page copy layered on top. */
 const MESSAGES: Record<Lang, Record<string, string>> = {
   en: { ...PORTED.en, ...PAGE_MESSAGES.en },
   bm: { ...PORTED.bm, ...PAGE_MESSAGES.bm },
 };
-import { getCountry } from '@/lib/country';
-import * as store from '@/lib/storage';
-import { KEYS } from '@/lib/storage';
 
 const TITLES: Record<Lang, string> = {
   en: 'AISAR Platform — Your business, increasingly run by AI',
@@ -38,12 +42,12 @@ function isTranslated(code: string): code is Lang {
   return Object.prototype.hasOwnProperty.call(MESSAGES, code);
 }
 
+export const DEFAULT_LANG: Lang = 'en';
+
 function initialLang(): Lang {
+  // Only a language the user picked themselves overrides English.
   const stored = store.get(KEYS.lang, '');
-  if (isTranslated(stored)) return stored;
-  // A country's preferred locale may not be translated yet (id/th/vi/fil).
-  const preferred = getCountry().lang;
-  return isTranslated(preferred) ? preferred : 'en';
+  return isTranslated(stored) ? stored : DEFAULT_LANG;
 }
 
 /** Named-slot interpolation: t('su.count', { done: 2, total: 5 }). */
