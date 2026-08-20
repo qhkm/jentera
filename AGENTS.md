@@ -32,7 +32,7 @@ There is no compilation step or automated test command. Before committing, visit
 curl -I http://localhost:5173/
 ```
 
-Use `./deploy.sh "type: concise description"` only when intentionally releasing: it stages all changes, commits, pushes `main`, and publishes to Cloudflare Pages.
+Use `./deploy.sh "type: concise description"` only when intentionally releasing: it builds `app/` and publishes to the `aisar-jentera` Pages project, live at `jentera.aisar.ai`. The apex `aisar.ai` is a separate project and is only published with `AISAR_PAGES_PROJECT=aisar ./deploy.sh "msg"`.
 
 ## Coding Style & Naming Conventions
 

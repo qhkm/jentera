@@ -10,8 +10,10 @@ This repo currently contains the same product twice. That is temporary and delib
 
 | | Path | Status |
 |---|---|---|
-| **Static site** | `index.html`, `onboard.html`, `setup.html`, `app.html`, `biz-engine.js` | Product of record. Live at `aisar.ai` |
-| **React rebuild** | `app/` (branch `design-system`) | Feature-complete, deployed to `aisar-next.pages.dev`, not yet cut over |
+| **Static site** | `index.html`, `onboard.html`, `setup.html`, `app.html`, `biz-engine.js` | Reference only. No longer published by any script |
+| **React rebuild** | `app/` (branch `design-system`) | Product of record. `./deploy.sh` publishes it to **`jentera.aisar.ai`** (Pages project `aisar-jentera`) |
+
+The apex `aisar.ai` is a **separate** Pages project (`aisar`) and is not touched by `./deploy.sh`. Publishing there is deliberately manual: `AISAR_PAGES_PROJECT=aisar ./deploy.sh "msg"`.
 
 Every product change made to one has to be made to the other until the cutover happens. If you are changing behaviour, check whether both need it.
 
@@ -73,7 +75,7 @@ pnpm build      # tsc -b && vite build
 pnpm typecheck
 ```
 
-Deploy with `./deploy-app.sh` — publishes to the **`aisar-next`** project, deliberately not production. Cutover is one variable in that script, gated behind a typed confirmation.
+Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-jentera`** project, live at `jentera.aisar.ai`. Preview instead with `AISAR_PAGES_PROJECT=aisar-next ./deploy.sh "msg"`. The script verifies the served CSS and JS are real assets, not the SPA fallback HTML, and fails loudly if they are not.
 
 `app/README.md` has the detail. The parts worth knowing here:
 

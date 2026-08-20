@@ -1,23 +1,29 @@
 #!/usr/bin/env bash
 # ============================================================
-#  Deploy AISAR (app/) → Cloudflare Pages → aisar.ai
+#  Deploy AISAR (app/) → Cloudflare Pages → jentera.aisar.ai
 #
 #  The React app is the product of record as of the cutover. The
 #  old static site (index.html, biz-engine.js and the other root
 #  HTML) is still in the repository for reference but is no longer
 #  published by anything.
 #
-#  Preview instead of production:
+#  This script publishes to the `aisar-jentera` project, which is
+#  the only project serving jentera.aisar.ai. The apex aisar.ai is
+#  a separate project (`aisar`) and is NOT touched by this script.
+#
+#  Preview instead:
 #    AISAR_PAGES_PROJECT=aisar-next ./deploy.sh "message"
 #
-#  Rollback: Cloudflare Pages keeps every deployment. The last
-#  static-site build is 26460b00 under the `aisar` project and can
-#  be restored from the dashboard in one click.
+#  Publishing to the apex is deliberately manual — set
+#  AISAR_PAGES_PROJECT=aisar only when you mean to change aisar.ai.
+#
+#  Rollback: Cloudflare Pages keeps every deployment; restore an
+#  earlier one from the dashboard in one click.
 # ============================================================
 set -euo pipefail
 cd "$(dirname "$0")"
 
-PROJECT="${AISAR_PAGES_PROJECT:-aisar}"
+PROJECT="${AISAR_PAGES_PROJECT:-aisar-jentera}"
 MSG="${1:-Deploy AISAR React app}"
 
 echo "── 1/4 Install ──"
@@ -49,11 +55,11 @@ echo "── 4/4 Verify ──"
 # route returning 200 while the stylesheet was HTML and the whole site
 # rendered unstyled.
 
-if [ "$PROJECT" = "aisar" ]; then
-  BASE="https://aisar.ai"
-else
-  BASE="https://${PROJECT}.pages.dev"
-fi
+case "$PROJECT" in
+  aisar-jentera) BASE="https://jentera.aisar.ai" ;;
+  aisar)         BASE="https://aisar.ai" ;;
+  *)             BASE="https://${PROJECT}.pages.dev" ;;
+esac
 
 verify_assets() {
   html=$(curl -sS --max-time 20 "$BASE/?cb=$(date +%s)" 2>/dev/null) || return 1
@@ -85,11 +91,8 @@ if [ "$ok" != "1" ]; then
   echo
   echo "❌ VERIFY FAILED: $BASE is serving HTML where CSS or JS should be."
   echo "   The site is live but will render unstyled."
-  if [ "$PROJECT" = "aisar" ]; then
-    echo "   Roll back now from the Cloudflare Pages dashboard, or run:"
-    echo "     npx wrangler pages deploy . --project-name aisar --branch main"
-    echo "   which republishes the static site from the repository root."
-  fi
+  echo "   Roll back to the previous deployment of the '$PROJECT' project"
+  echo "   from the Cloudflare Pages dashboard."
   exit 1
 fi
 
