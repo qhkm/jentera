@@ -155,6 +155,42 @@
   }
   .btn-reco:hover { background: rgb(var(--accent-green-rgb) / calc(var(--accent-fill-alpha) + .06)); }
 
+  /* ---- Light branch ----
+     Two controls dragged pure black onto the paper theme. .btn-primary
+     inherited it from --text, and .btn-outline ran a 50% ink border,
+     which resolves to #7d7c7b on #fbf9f6 — a hard dark edge next to
+     hairlines that sit at 10%. Everything else in light already reads
+     as a paper line and is left alone.
+
+     Primary takes the brand fill instead of black. Measured on the
+     button's own paper-white type:
+       #007956 base   5.15:1
+       #005e43 hover  7.43:1 (5.83:1 once .btn:hover's opacity lands)
+     Hover has to go darker, not lighter — emerald-600 measures 3.55:1
+     and fails. Dark theme is untouched: its primary is still white
+     fill on the charcoal ground. */
+  .theme-light .btn-primary,
+  .theme-light .btn-primary:visited,
+  .site-theme-light .btn-primary,
+  .site-theme-light .btn-primary:visited {
+    background: var(--accent-green);
+    border-color: var(--accent-green);
+    color: var(--bg);
+  }
+  .theme-light .btn-primary:hover,
+  .site-theme-light .btn-primary:hover {
+    background: #005e43;
+    border-color: #005e43;
+  }
+
+  .theme-light .btn-outline,
+  .site-theme-light .btn-outline { border-color: rgb(var(--border-ink) / .18); }
+  .theme-light .btn-outline:hover,
+  .site-theme-light .btn-outline:hover {
+    border-color: rgb(var(--border-ink) / .35);
+    background: rgb(var(--border-ink) / .05);
+  }
+
   /* ---- Surfaces ----
      Stacking and padding are part of the component, not something
      each call site re-declares. Override with utilities when a card
