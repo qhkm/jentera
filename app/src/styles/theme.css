@@ -113,12 +113,20 @@
                 color            var(--dur-fast) var(--ease-signature),
                 opacity          var(--dur-fast) var(--ease-signature);
   }
-  .btn:hover  { opacity: .9; }
-  .btn:active { opacity: .8; transition-duration: var(--dur-press); }
+  /* --live guards every hover and active state below. The argument sits
+     inside :where(), which contributes no specificity, so each selector
+     keeps the exact weight it had before the guard was added and the
+     cascade between them is unchanged. An unguarded :hover leaves a
+     disabled button still brightening its fill under the pointer, which
+     reads as "clickable" at the precise moment it is not. */
+  .btn:hover:not(:where(:disabled, [aria-disabled="true"]))  { opacity: .9; }
+  .btn:active:not(:where(:disabled, [aria-disabled="true"])) { opacity: .8; transition-duration: var(--dur-press); }
+
   /* The base-layer `button:disabled` rule cannot reach these — .btn sets
      cursor in @layer components, and components outrank base whatever the
-     specificity. Matches .input:disabled, which had the same problem. */
-  .btn:disabled { cursor: not-allowed; }
+     specificity. Same dim as .input:disabled, which had both problems. */
+  .btn:disabled,
+  .btn[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
   /* Same rule for both control types, so a stacked input and button
      stay the same height at every breakpoint. */
   .btn.py-4,
@@ -135,21 +143,21 @@
     border-color: var(--text);
     color: var(--bg);
   }
-  .btn-primary:hover { background: rgb(var(--border-ink) / .88); border-color: rgb(var(--border-ink) / .88); }
+  .btn-primary:hover:not(:where(:disabled, [aria-disabled="true"])) { background: rgb(var(--border-ink) / .88); border-color: rgb(var(--border-ink) / .88); }
 
   .btn-outline {
     background: transparent;
     color: var(--text);
     border-color: rgb(var(--border-ink) / .5);
   }
-  .btn-outline:hover { border-color: rgb(var(--border-ink) / .8); background: rgb(var(--border-ink) / .08); }
+  .btn-outline:hover:not(:where(:disabled, [aria-disabled="true"])) { border-color: rgb(var(--border-ink) / .8); background: rgb(var(--border-ink) / .08); }
 
   .btn-ghost {
     background: transparent;
     color: var(--text);
     border-color: rgb(var(--border-ink) / .2);
   }
-  .btn-ghost:hover { border-color: rgb(var(--border-ink) / .35); }
+  .btn-ghost:hover:not(:where(:disabled, [aria-disabled="true"])) { border-color: rgb(var(--border-ink) / .35); }
 
   /* Brand-accent recommendation button */
   .btn-reco {
@@ -157,7 +165,7 @@
     border-color: rgb(var(--accent-green-rgb) / .5);
     color: var(--accent-green);
   }
-  .btn-reco:hover { background: rgb(var(--accent-green-rgb) / calc(var(--accent-fill-alpha) + .06)); }
+  .btn-reco:hover:not(:where(:disabled, [aria-disabled="true"])) { background: rgb(var(--accent-green-rgb) / calc(var(--accent-fill-alpha) + .06)); }
 
   /* ---- Light branch ----
      Two controls dragged pure black onto the paper theme. .btn-primary
@@ -181,16 +189,16 @@
     border-color: var(--accent-green);
     color: var(--bg);
   }
-  .theme-light .btn-primary:hover,
-  .site-theme-light .btn-primary:hover {
+  .theme-light .btn-primary:hover:not(:where(:disabled, [aria-disabled="true"])),
+  .site-theme-light .btn-primary:hover:not(:where(:disabled, [aria-disabled="true"])) {
     background: #005e43;
     border-color: #005e43;
   }
 
   .theme-light .btn-outline,
   .site-theme-light .btn-outline { border-color: rgb(var(--border-ink) / .18); }
-  .theme-light .btn-outline:hover,
-  .site-theme-light .btn-outline:hover {
+  .theme-light .btn-outline:hover:not(:where(:disabled, [aria-disabled="true"])),
+  .site-theme-light .btn-outline:hover:not(:where(:disabled, [aria-disabled="true"])) {
     border-color: rgb(var(--border-ink) / .35);
     background: rgb(var(--border-ink) / .05);
   }
