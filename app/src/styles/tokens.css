@@ -115,11 +115,14 @@ body.site-theme-light {
   --accent:         #999;
   --naive-accent:   #555;
   --border-ink:     0 0 0;
-  /* The card fill stays a wash on paper. Dark switches it to an opaque
-     --bg-card (see the overlay ladder); doing the same here would darken
-     the light card past the extracted value. This block outranks the
-     bare :root ladder on specificity, so it wins regardless of order. */
-  --ov-surface:     rgb(var(--border-ink) / .02);
+  /* Paper takes ink differently from a dark ground: at a given alpha a
+     black line on #fbf9f6 reads as a hard grey rule, where the same
+     alpha of white on charcoal reads as a soft edge. So light halves
+     the card/tag/chip line and lets the card's own fill do the work of
+     separating it — bounded by value, not framed by a rule. --bg-card
+     was extracted but never painted; the ladder now points at it in
+     both themes, which is what finally puts it to use. */
+  --ov-line:        rgb(var(--border-ink) / .055);
 
   /* ---- Accessibility fix, not part of the original extraction ----
      #00d294 was designed against black. On warm paper it measures
@@ -199,9 +202,10 @@ body.site-theme-light {
    white (or black, in light theme) overlay at a fixed step.
    ============================================================ */
 :root {
-  /* Opaque in dark rather than a 2% wash: over the #1f1f1f ground the
-     wash lands on #232323, short of the #262626 the surface scale asks
-     for. Light overrides this back to a wash in the theme block above. */
+  /* Opaque rather than the 2% wash this used to be. Over the #1f1f1f
+     ground the wash lands on #232323, short of the #262626 the surface
+     scale asks for; on paper it landed on #f6f4f1, all but invisible
+     against #fbf9f6. Both themes now paint the extracted --bg-card. */
   --ov-surface:  var(--bg-card);                /* card fill        */
   --ov-track:    rgb(var(--border-ink) / .07);  /* progress track   */
   --ov-line:     rgb(var(--border-ink) / .10);  /* default border   */
