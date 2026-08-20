@@ -88,23 +88,42 @@ if ! curl -sS --max-time 10 -o /dev/null "$BASE/" 2>/dev/null; then
 fi
 
 SERVED_JS=""
+BAD_ASSET=""
+BAD_REASON=""
+
+# An asset is "real" if it is not the SPA shell and not a stub. Both
+# failure modes answer 200, which is why status codes prove nothing here.
+asset_real() {
+  body=$(curl -sS --max-time 30 "$1" 2>/dev/null) || return 1
+  printf '%s' "$body" | head -c 200 | grep -qi "<!doctype\|<html" && return 1
+  [ "${#body}" -gt 5000 ] || return 1
+  return 0
+}
+
 verify_assets() {
+  BAD_ASSET=""; BAD_REASON=""
   html=$(curl -sS --max-time 20 "$BASE/?cb=$(date +%s)" 2>/dev/null) || return 1
   SERVED_JS=$(printf '%s' "$html" | grep -oE '/assets/[A-Za-z0-9_.-]+\.js' | head -1)
   css=$(printf '%s' "$html" | grep -oE '/assets/[A-Za-z0-9_.-]+\.css' | head -1)
   [ -n "$SERVED_JS" ] && [ -n "$css" ] || return 1
 
   # The build just published, not merely some build.
-  [ "$SERVED_JS" = "$EXPECT_JS" ] || return 1
+  [ "$SERVED_JS" = "$EXPECT_JS" ] || { BAD_REASON=other-build; return 1; }
 
-  css_body=$(curl -sS --max-time 20 "$BASE$css" 2>/dev/null) || return 1
-  js_body=$(curl -sS --max-time 20 "$BASE$SERVED_JS" 2>/dev/null) || return 1
-
-  printf '%s' "$css_body" | head -c 200 | grep -qi "<!doctype\|<html" && return 1
-  printf '%s' "$js_body"  | head -c 200 | grep -qi "<!doctype\|<html" && return 1
-
-  [ "${#css_body}" -gt 5000 ] || return 1
-  [ "${#js_body}"  -gt 5000 ] || return 1
+  # Fetch the way a browser would — no cache-buster — so a poisoned edge
+  # entry is caught rather than skipped past.
+  for a in "$css" "$SERVED_JS"; do
+    asset_real "$BASE$a" && continue
+    BAD_ASSET="$a"
+    # Same URL, cache-bypassed. If that comes back real, the file is
+    # fine at origin and only the edge copy is wrong.
+    if asset_real "$BASE$a?cb=$(date +%s)"; then
+      BAD_REASON=stale-edge
+    else
+      BAD_REASON=missing
+    fi
+    return 1
+  done
   return 0
 }
 
@@ -117,20 +136,36 @@ done
 
 if [ "$ok" != "1" ]; then
   echo
-  if [ -n "$SERVED_JS" ] && [ "$SERVED_JS" != "$EXPECT_JS" ]; then
-    echo "❌ VERIFY FAILED: $BASE is serving a different build."
-    echo "     expected $EXPECT_JS"
-    echo "     serving  $SERVED_JS"
-    echo
-    echo "   The deploy itself succeeded, so this is not a build problem."
-    echo "   Most likely another project published to the '$PROJECT' Pages"
-    echo "   project after this one. Check the deployment list:"
-    echo "     npx wrangler pages deployment list --project-name $PROJECT"
-  else
-    echo "❌ VERIFY FAILED: $BASE is serving HTML where CSS or JS should be."
-    echo "   The site is live but will render unstyled."
-    echo "   Roll back from the Cloudflare Pages dashboard."
-  fi
+  case "$BAD_REASON" in
+    other-build)
+      echo "❌ VERIFY FAILED: $BASE is serving a different build."
+      echo "     expected $EXPECT_JS"
+      echo "     serving  $SERVED_JS"
+      echo
+      echo "   The deploy itself succeeded, so this is not a build problem."
+      echo "   Most likely another project published to the '$PROJECT' Pages"
+      echo "   project after this one. Check the deployment list:"
+      echo "     npx wrangler pages deployment list --project-name $PROJECT"
+      ;;
+    stale-edge)
+      echo "❌ VERIFY FAILED: $BASE$BAD_ASSET is HTML at the edge but correct at origin."
+      echo
+      echo "   Cloudflare cached the SPA fallback under that asset URL while the"
+      echo "   file was briefly absent, and _headers marks /assets/* immutable —"
+      echo "   so the bad copy is pinned for a year. Rolling back does NOT fix"
+      echo "   this: the deployment is fine, the cache is not. Either:"
+      echo "     • purge it — Caching → Configuration → Purge Custom URL:"
+      echo "         $BASE$BAD_ASSET"
+      echo "     • or move the bundle to a fresh hash (bump the rev in the"
+      echo "       banner at the top of app/src/styles/index.css) and redeploy."
+      ;;
+    *)
+      echo "❌ VERIFY FAILED: ${BAD_ASSET:-an asset} is missing from the deployment."
+      echo "   $BASE serves the SPA fallback for it, so the site renders unstyled."
+      echo "   wrangler skips uploads it believes are already stored, so a plain"
+      echo "   re-run of this script is the first thing to try."
+      ;;
+  esac
   exit 1
 fi
 
