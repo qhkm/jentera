@@ -9,9 +9,13 @@
 
 :root {
   /* ---- Semantic surface + ink ---- */
-  --bg:              #000;
-  --bg-card:         #161616;
-  --bg-card-hover:   #1d1d1d;
+  /* Deliberate deviation from the extraction: upstream ran pure black
+     with near-black cards. AISAR runs a lifted charcoal — #1f1f1f
+     ground, #262626 card — so a surface separates by its own value
+     instead of depending on a 7% hairline being visible. */
+  --bg:              #1f1f1f;
+  --bg-card:         #262626;
+  --bg-card-hover:   #2e2e2e;
   --foreground:      #fff;
   --text:            #fff;
   --text-secondary:  #b4b4b4;
@@ -111,6 +115,11 @@ body.site-theme-light {
   --accent:         #999;
   --naive-accent:   #555;
   --border-ink:     0 0 0;
+  /* The card fill stays a wash on paper. Dark switches it to an opaque
+     --bg-card (see the overlay ladder); doing the same here would darken
+     the light card past the extracted value. This block outranks the
+     bare :root ladder on specificity, so it wins regardless of order. */
+  --ov-surface:     rgb(var(--border-ink) / .02);
 
   /* ---- Accessibility fix, not part of the original extraction ----
      #00d294 was designed against black. On warm paper it measures
@@ -190,7 +199,10 @@ body.site-theme-light {
    white (or black, in light theme) overlay at a fixed step.
    ============================================================ */
 :root {
-  --ov-surface:  rgb(var(--border-ink) / .02);  /* card fill        */
+  /* Opaque in dark rather than a 2% wash: over the #1f1f1f ground the
+     wash lands on #232323, short of the #262626 the surface scale asks
+     for. Light overrides this back to a wash in the theme block above. */
+  --ov-surface:  var(--bg-card);                /* card fill        */
   --ov-track:    rgb(var(--border-ink) / .07);  /* progress track   */
   --ov-line:     rgb(var(--border-ink) / .10);  /* default border   */
   --ov-line-2:   rgb(var(--border-ink) / .12);  /* raised border    */

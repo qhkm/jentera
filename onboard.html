@@ -2,13 +2,19 @@
 <html lang="en" class="site-theme-dark geist_a71539c9-module__T19VSG__variable geist_mono_8d43a2aa-module__8Li5zG__variable jetbrains_mono_9f74dd74-module__C4FFOW__variable geistpixelcircle_7ee616e3-module__nfyFIG__variable geistpixelline_d71857ef-module__8jKwvW__variable geistpixelsquare_cf225766-module__YQM0OG__variable urbanist_ad3a81cb-module___tKjeG__variable"><head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<meta name="theme-color" content="#0a0a0a"/>
+<meta name="theme-color" content="#1f1f1f"/>
 <title>Set up your business — AISAR</title>
 <meta name="description" content="Set up AISAR by importing your website and social profiles or entering your business details manually."/>
 <link rel="icon" href="/favicon.svg"/>
 <link rel="stylesheet" href="/_next/static/chunks/391k8ovo_r0qj.css" data-precedence="next"/>
 <link rel="stylesheet" href="/_next/static/chunks/07r-6xz-uoanc.css" data-precedence="next"/>
 <style>
+/* Surfaces — ground #1f1f1f, card #262626. Chunk hardcode `.site-theme-dark`
+   pada #000/#161616. Override ini unlayered + specificity lebih tinggi
+   (html.site-theme-dark), jadi menang tanpa !important. Kekal selari dengan
+   app/src/styles/tokens.css — tukar satu, tukar semua lima. */
+html.site-theme-dark{--bg:#1f1f1f;--bg-card:#262626;--bg-card-hover:#2e2e2e}
+
 /* Button fix — CSS chunk (Tailwind v4 @layer components) paksa padding-block:0!important.
    Override mesti duduk dalam layer SAMA + source order lewat supaya menang (cascade layers). */
 @layer components {
