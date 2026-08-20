@@ -10,7 +10,7 @@
   src: url("../../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2") format("woff2-variations");
   font-weight: 100 900;
   font-style: normal;
-  font-display: swap;
+  font-display: auto;
 }
 
 @font-face {
@@ -18,7 +18,7 @@
   src: url("../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2") format("woff2-variations");
   font-weight: 100 900;
   font-style: normal;
-  font-display: swap;
+  font-display: auto;
 }
 
 /* Display face. The upstream design wires only the Circle cut;
@@ -29,5 +29,32 @@
   src: url("../../node_modules/geist/dist/fonts/geist-pixel/GeistPixel-Circle.woff2") format("woff2");
   font-weight: 500;
   font-style: normal;
-  font-display: swap;
+  font-display: auto;
+}
+
+/* ============================================================
+   JetBrains Mono — SIL Open Font License, © JetBrains s.r.o.
+   Declared here rather than importing @fontsource/jetbrains-mono's
+   own `latin-300.css` / `latin-400.css`: those hardcode
+   `font-display: swap`, and a descriptor cannot be overridden from
+   outside the @font-face that declares it. Redeclaring against the
+   same files is the only way the whole stack shares one policy.
+   ============================================================ */
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-300-normal.woff2") format("woff2"),
+       url("../../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-300-normal.woff") format("woff");
+  font-weight: 300;
+  font-style: normal;
+  font-display: auto;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2") format("woff2"),
+       url("../../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+  font-display: auto;
 }

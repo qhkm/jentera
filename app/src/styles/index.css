@@ -1,6 +1,4 @@
 @import "tailwindcss";
-@import "@fontsource/jetbrains-mono/latin-300.css";
-@import "@fontsource/jetbrains-mono/latin-400.css";
 @import "./fonts.css";
 @import "./tokens.css";
 @import "./theme.css";
