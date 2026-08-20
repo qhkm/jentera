@@ -26,6 +26,7 @@
   --color-text-dim:       var(--text-dim);
   --color-accent:         var(--accent);
 
+  --color-well:         var(--ov-well);
   --color-border:       var(--border);
   --color-rail:         var(--rail);
   --color-border-light: var(--border-light);

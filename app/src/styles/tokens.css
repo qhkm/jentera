@@ -123,6 +123,7 @@ body.site-theme-light {
      was extracted but never painted; the ladder now points at it in
      both themes, which is what finally puts it to use. */
   --ov-line:        rgb(var(--border-ink) / .055);
+  --ov-well:        rgb(0 0 0 / .05);
 
   /* ---- Accessibility fix, not part of the original extraction ----
      #00d294 was designed against black. On warm paper it measures
@@ -212,6 +213,13 @@ body.site-theme-light {
   --ov-line-2:   rgb(var(--border-ink) / .12);  /* raised border    */
   --ov-line-3:   rgb(var(--border-ink) / .15);  /* input border     */
   --ov-hover:    rgb(var(--border-ink) / .08);  /* hover wash       */
+  /* A well is a shadow, so it keeps black ink in both themes rather
+     than inverting — but paper takes that ink far harder than charcoal
+     does. At .30 the onboarding terminal lands on #161616 over the
+     #1f1f1f ground, exactly the recess it wants; the same .30 on
+     #fbf9f6 is #b0aeac, a slab of mid grey. Light runs the same ink at
+     a sixth of the strength — see the theme block. */
+  --ov-well:     rgb(0 0 0 / .30);              /* recessed panel   */
   --ink-45:      rgb(var(--border-ink) / .45);  /* tag label        */
   --ink-50:      rgb(var(--border-ink) / .50);  /* chip label       */
 }

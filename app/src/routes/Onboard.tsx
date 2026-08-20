@@ -312,7 +312,7 @@ export default function Onboard() {
                 <h2 className="font-pixel text-xl tracking-tight md:text-2xl">
                   {t('ob.scan.head')}
                 </h2>
-                <div className="rounded-item border border-border bg-black/30 p-4 font-mono text-[11px] leading-relaxed text-text-secondary md:p-5">
+                <div className="rounded-item border border-border bg-well p-4 font-mono text-[11px] leading-relaxed text-text-secondary md:p-5">
                   <span className="text-text-muted">$ </span>
                   aisar onboard --business{' '}
                   <span className="text-text">{url || social || desc || playbook.type}</span>
