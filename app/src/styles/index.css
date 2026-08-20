@@ -37,6 +37,30 @@ body {
    cascade-layer trap that forced the !important button override on the
    static site — worth not repeating. */
 @layer base {
+  /* Tailwind v4's Preflight sets `button { cursor: default }` to match the
+     bare browser default, which left 12 of the 14 interactive targets on
+     the dashboard showing an arrow — the whole sidebar, the bottom nav,
+     both header toggles. Anchors already get pointer from the UA sheet;
+     this covers everything else that takes a click. Base layer, so a
+     component or utility can still override it per element. */
+  button:not(:disabled),
+  summary,
+  select:not(:disabled),
+  label[for],
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"]:not([aria-disabled="true"]),
+  [role="switch"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  select:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
   :focus-visible {
     outline: 2px solid var(--accent-green);
     outline-offset: 2px;

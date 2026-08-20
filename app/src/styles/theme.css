@@ -115,6 +115,10 @@
   }
   .btn:hover  { opacity: .9; }
   .btn:active { opacity: .8; transition-duration: var(--dur-press); }
+  /* The base-layer `button:disabled` rule cannot reach these — .btn sets
+     cursor in @layer components, and components outrank base whatever the
+     specificity. Matches .input:disabled, which had the same problem. */
+  .btn:disabled { cursor: not-allowed; }
   /* Same rule for both control types, so a stacked input and button
      stay the same height at every breakpoint. */
   .btn.py-4,
