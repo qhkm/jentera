@@ -2,10 +2,31 @@
 
 Reverse-engineered from the prebuilt CSS shipped in `_next/static/chunks/`. Everything documented here was read out of `07r-6xz-uoanc.css` (197 KB) and `391k8ovo_r0qj.css` (14 KB); nothing is guessed.
 
-`ink-and-strength.html` beside this file is the rendered version of the same readout —
-open it in a browser to see the alpha ladder, the semantic tokens, the easing curves and
-the light-mode swatches drawn rather than described. `tokens.css` and `theme.css` are what
-the app actually consumes.
+## Where the design system actually lives
+
+**`app/src/styles/` is the source of truth.** This folder is documentation — the *why*
+behind the tokens — and holds no CSS of its own.
+
+| File | Lines | Holds |
+|---|---|---|
+| `app/src/styles/tokens.css` | 225 | Semantic custom properties, both themes |
+| `app/src/styles/theme.css` | 450 | Component classes: `.btn`, `.card`, `.input`, `.tag`, `.chip`, control sizing |
+| `app/src/styles/fonts.css` | 60 | `@font-face` for Geist and JetBrains Mono |
+| `app/src/styles/landing.css` | 191 | AISAR marketing page only — not part of the system |
+
+This folder previously carried its own `tokens.css` and `theme.css`. They were a snapshot
+taken at extraction and drifted badly: 49 changed lines in the tokens and 200 in the theme,
+against 19 commits to the app's copies and 5 to theirs. Most damagingly they still had
+`--bg: #000`, the pure-black ground that `0322bca` deliberately lifted to `#1f1f1f`. Anyone
+seeding a new project from them would have inherited a fixed bug. They were deleted on
+2026-08-21 rather than resynchronised, because two copies of one thing is the problem, not
+the fix. Recover them from `63baaa1` if you ever need the historical state.
+
+`ink-and-strength.html` beside this file is the rendered readout — open it in a browser to
+see the alpha ladder, the semantic tokens, the easing curves and the light-mode swatches
+drawn rather than described. **Its dark swatches are stale for the same reason** (`#000`
+and `#161616` appear in it); the structure it illustrates is still accurate, the two
+darkest values are not.
 
 ## What the upstream stack was
 
@@ -48,12 +69,18 @@ Two, and the light one is the interesting half.
 
 | Token | Dark (default) | Light |
 |---|---|---|
-| `--bg` | `#000` | `#fbf9f6` |
-| `--bg-card` | `#161616` | `#efedeb` |
+| `--bg` | `#1f1f1f` | `#fbf9f6` |
+| `--bg-card` | `#262626` | `#efedeb` |
+| `--bg-card-hover` | `#2e2e2e` | `#eee` |
 | `--text` | `#fff` | `#000` |
 | `--text-secondary` | `#b4b4b4` | `#555` |
-| `--text-muted` | `#8a8a8a` | `#777` |
+| `--text-muted` | `#8a8a8a` | `#6e6e6e` |
 | `--border-ink` | `255 255 255` | `0 0 0` |
+
+The dark ground is **`#1f1f1f`, not black**. It was `#000` at extraction and was lifted
+deliberately: pure black gives cards nothing to sit on, so every surface had to be
+separated by a border rather than by fill. Raising the ground two steps let the alpha
+ladder do that work instead. Going back to `#000` undoes the whole surface system.
 
 Light mode is **warm paper (`#fbf9f6`), not white** — and the card surface is a warmer grey than a neutral tint would give. That's a deliberate signature; a naive `#fff` / `#f5f5f5` light theme loses the character immediately.
 
@@ -132,14 +159,58 @@ The static site runs dark and inverts that, which is the entire origin of the ov
 
 **In the React rebuild this problem does not exist**, because you generate the CSS yourself. `theme.css` authors the buttons dark-first with the semantic vars, so nothing needs overriding. Do not port the old `!important` block across — it's a workaround for a constraint you're leaving behind.
 
-## Using it
+## Using it in this repo
+
+`app/src/styles/index.css` already wires everything, in this order:
 
 ```css
 @import "tailwindcss";
-@import "./design-system/tokens.css";
-@import "./design-system/theme.css";
+@import "./fonts.css";
+@import "./tokens.css";
+@import "./theme.css";
+@import "./landing.css";
 ```
 
-Then `bg-bg`, `text-text-muted`, `border-rail`, `font-pixel`, `ease-signature`, `.card`, `.tag`, `.chip` are all available. Theme switching is one class on `<html>`.
+Then `bg-bg`, `text-text-muted`, `border-rail`, `font-pixel`, `ease-signature`, `.card`,
+`.tag`, `.chip` are all available. Theme switching is one class on `<html>`.
 
-To make it yours rather than a clone: keep the **structure** — ink+strength borders, the alpha ladder, the mono-uppercase label texture, the signature curve, the warm light mode — and change the **accent** off `#00d294` plus the display face off Geist Pixel. Those two carry nearly all of the brand identity; the rest is a well-built neutral chassis.
+## Reusing it in another app
+
+Copy these three files — they are plain CSS with no framework dependency, so they work in
+React, Vue, Svelte, or hand-written HTML:
+
+```
+app/src/styles/tokens.css     →  the palette and both themes
+app/src/styles/theme.css      →  the component classes
+app/src/styles/fonts.css      →  the faces
+```
+
+Skip `landing.css` — it is AISAR's marketing page, not part of the system.
+
+For React, `app/src/components/ui/index.tsx` (140 lines) is a thin set of wrappers over
+those classes: `Button`, `Card`, `Tag`, `Chip`, `Eyebrow`, `Avatar`, `Input`, `Progress`,
+`Section`. `Tabs.tsx` and `Toast.tsx` are generic too. Do **not** take `Shell.tsx` (AISAR's
+navigation) or `Icon.tsx` (a domain-specific emoji map).
+
+Install the fonts from source rather than copying `.woff2` files — see *Sourcing the fonts*
+above.
+
+### Two traps that cost real debugging time here
+
+**Controls own their own type and padding.** `.btn` and `.input` share `--control-h` and
+`--control-pad-y` so they line up. Putting a `text-*` or `py-*` utility on either overrides
+the component and silently breaks the shared height. That caused three separate visual bugs
+in this repo before the pattern was understood. Let the component own it.
+
+**Cascade layers outrank importance.** A rule inside `@layer components` beats an unlayered
+`!important` rule, regardless of the `!important`. If a rule mysteriously wins or loses,
+check layering before you check specificity. This is only a problem when you inherit
+someone else's layered CSS — authoring your own from these files, it does not arise.
+
+### Making it yours rather than a clone
+
+Keep the **structure**: ink+strength borders, the alpha ladder, the mono-uppercase label
+texture, the signature curve, the warm light mode. Change the **accent** off `#00d294` and
+the display face off Geist Pixel. Those two carry nearly all of the brand identity; the
+rest is a well-built neutral chassis.
+
