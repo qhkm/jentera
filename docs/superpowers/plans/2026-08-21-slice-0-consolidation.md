@@ -43,7 +43,7 @@
 
 **Deleted (Task 7 only):** `index.html` · `onboard.html` · `setup.html` · `app.html` · `biz-engine.js` · `scripts/parity-audit.mjs`
 
-**Left alone, deliberately:** `spec.html` (62 KB, `<title>Ink &amp; Strength</title>`, referenced by nothing — an orphan unrelated to the static product flow; Task 7 asks about it rather than deleting it), `spec-minimart.json` (input fixture for the generator, still used), `_next/` (opaque upstream artifacts), `worker/`.
+**Left alone, deliberately:** `spec-minimart.json` (input fixture for the generator, still used), `_next/` (opaque upstream artifacts), `worker/`, `design-system/ink-and-strength.html` (the design system's rendered spec, moved there from the repository root before this plan ran).
 
 ---
 
@@ -1576,9 +1576,11 @@ grep -n "biz-engine\|onboard.html\|app.html\|setup.html\|parity" AGENTS.md app/R
 
 In each hit, replace the reference with its React equivalent (`biz-engine.js` → `app/src/lib/data/`) or delete the line if it described only the static site. In `app/README.md`, the line "It was extracted by evaluating `biz-engine.js` in Node… re-extract rather than hand-merging" is now false — replace it with a pointer to `scripts/add-playbook.mjs` as the way playbooks are added.
 
-- [ ] **Step 6: Ask about `spec.html` rather than deleting it**
+- [ ] **Step 6: Nothing to do — `spec.html` is already handled**
 
-`spec.html` is 62 KB, titled "Ink & Strength", and referenced by nothing in the repository. It is not part of the static product flow and is not covered by this plan. Report it and ask before removing it. Do not delete it as part of this task.
+It turned out to be the design system's own rendered specification, not an orphan, and it
+was moved to `design-system/ink-and-strength.html` on 2026-08-21 before this plan ran. No
+action here. If it is still at the repository root, the move was reverted — stop and ask.
 
 - [ ] **Step 7: Verify the build and the full suite**
 

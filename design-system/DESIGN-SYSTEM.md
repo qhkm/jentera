@@ -2,6 +2,11 @@
 
 Reverse-engineered from the prebuilt CSS shipped in `_next/static/chunks/`. Everything documented here was read out of `07r-6xz-uoanc.css` (197 KB) and `391k8ovo_r0qj.css` (14 KB); nothing is guessed.
 
+`ink-and-strength.html` beside this file is the rendered version of the same readout —
+open it in a browser to see the alpha ladder, the semantic tokens, the easing curves and
+the light-mode swatches drawn rather than described. `tokens.css` and `theme.css` are what
+the app actually consumes.
+
 ## What the upstream stack was
 
 - **Tailwind v4** — the `@layer theme` / `@layer properties` structure and `--tw-*` property registration are v4-specific.
