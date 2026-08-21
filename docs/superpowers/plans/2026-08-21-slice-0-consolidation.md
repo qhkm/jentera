@@ -1597,26 +1597,14 @@ AISAR_PAGES_PROJECT=aisar-next ./deploy.sh "chore: verify slice 0 build"
 
 Expected: publishes to the preview project and all four route probes return HTTP 200. **Deploy to `aisar-next` (preview), not the default `aisar-jentera`.**
 
-- [ ] **Step 8b: Point the apex at the React build — owner approval required**
+**The apex is deliberately not part of this slice.** Spec §3 slice 0 originally read "Apex
+to React build"; the repository owner deferred that on 2026-08-21. `aisar.ai` is a separate
+Pages project (`aisar`) still serving the static site, and flipping it is an outward-facing
+release decision independent of this refactor.
 
-Spec §3 slice 0 includes "Apex to React build". This is the one outward-facing action in
-the whole slice: `aisar.ai` is a separate Pages project (`aisar`) that until now served the
-static site, and publishing there replaces what the public sees.
-
-**Do not run this without the repository owner's explicit go-ahead in this session.** Show
-them the preview URL from Step 8 first. When they approve:
-
-```bash
-cd /Users/dr.noranizaahmad/ios/aisar-site
-AISAR_PAGES_PROJECT=aisar ./deploy.sh "feat: apex serves the React app"
-```
-
-`deploy.sh` already knows this project — its `case` maps `aisar` to `https://aisar.ai` with
-`https://aisar-ez8.pages.dev` as the fallback host, and its verify loop will fail loudly if
-the apex serves a different build or a stale edge-cached asset.
-
-If the owner defers, say so plainly in the Task 7 commit message and leave the apex alone.
-Slice 1 does not depend on it.
+**Do not deploy to `aisar` or to `aisar-jentera` in this slice.** Preview only. Slice 1 does
+not depend on the apex, and `deploy.sh` already knows the `aisar` project when the owner
+decides to make the switch.
 
 - [ ] **Step 9: Commit**
 
