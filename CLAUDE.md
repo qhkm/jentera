@@ -8,6 +8,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repo currently contains the same product twice. That is temporary and deliberate.
 
+**This section and everything it describes is scheduled for deletion.** Slice 0 of the
+backend integration retires the static implementation and `scripts/parity-audit.mjs`
+outright, because a backend cannot be integrated against two front-ends. Until that lands,
+the dual-maintenance rules below still apply. See
+`docs/superpowers/specs/2026-08-21-backend-integration-design.md`.
+
 | | Path | Status |
 |---|---|---|
 | **Static site** | `index.html`, `onboard.html`, `setup.html`, `app.html`, `biz-engine.js` | Reference only. No longer published by any script |

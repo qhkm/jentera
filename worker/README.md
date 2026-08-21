@@ -23,9 +23,18 @@ Anything above low risk is queued for a human and never executed on the agent's 
 
 | Risk | Ops | Behaviour |
 |---|---|---|
-| high | `send` `pay` `cancel` `refund` | queue for approval |
+| blocked | `pay` `refund` | refuse until explicitly enabled |
+| high | `send` `cancel` | queue for approval |
 | medium | `update` `book` | queue for approval |
 | low | `read` `list` `export` | execute immediately |
+
+`pay` and `refund` are blocked rather than queued because approval fatigue is real: a
+queue that mixes routine customer replies with irreversible money movement trains the
+owner to tap through both. Enabling payments should be a deliberate act, not a tired tap.
+
+**The code does not yet match this table** — `TOOL_RISK` in `src/index.ts` still classifies
+`pay` and `refund` as high, which routes them to approval. Correcting that is part of the
+backend integration; see `docs/superpowers/specs/2026-08-21-backend-integration-design.md`.
 
 `TOOL_RISK` in `src/index.ts` mirrors `src/lib/data/risk.ts` in the app. **Keep the two in step** — the client uses its copy to predict behaviour, but the server's copy is the one that governs.
 

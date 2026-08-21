@@ -106,6 +106,18 @@ The UI reveals information progressively:
 2. **Business details:** customer, channel, result, time saved, and related records.
 3. **Technical trace:** source messages, prompts, retrieved knowledge, tool calls, model/runtime version, errors, and retry history.
 
+### Beginner and Advanced Disclosure
+
+Owners differ in how much they want to see. That difference is served by the three levels above, not by a second interface.
+
+An account carries a detail preference. In **beginner** mode—the default—level 1 is shown and levels 2 and 3 are collapsed. In **advanced** mode level 3 is expanded by default and a small set of controls is unlocked: per-operation action policy, and the ability to edit a proposed action before approving it.
+
+This is one codebase, one backend, and one information architecture with a preference applied. A separate "advanced UI" is not planned, because every feature would then have to decide which of two interfaces it belongs to, and both would have to be designed, tested, and kept consistent forever.
+
+Draft editing is listed here as a disclosure control, but it is not a convenience. The delta between what AISAR proposed and what the owner approved is the strongest correction signal the product will ever receive, and Procedure Derivation Requirements below depends on it being captured as a first-class event rather than an overwritten field.
+
+What advanced mode does **not** unlock in the first release: model selection, custom instructions, custom tools, terminal or browser access, and agent-runtime choice. Those are separate decisions with their own costs, addressed under Non-Goals and in the delivery plan.
+
 ### Procedure Derivation Requirements
 
 Phase 4 converts successful repeated runs into versioned business procedures. It has no separate source of truth: it mines the work records and traces that Phase 2 writes. Anything not captured then cannot be recovered later, so the recording requirements below belong to Phase 2 even though nothing consumes them until Phase 4.
@@ -168,11 +180,21 @@ This is also where the product becomes difficult to copy. Industry playbooks are
 The first production slice is complete when a non-technical owner can:
 
 1. submit a business URL and confirm the extracted profile;
-2. connect Telegram without handling API keys manually;
+2. connect Telegram through a guided flow;
 3. ask AISAR to respond to a realistic enquiry;
-4. review and approve the exact outgoing message;
+4. review, edit if wanted, and approve the exact outgoing message;
 5. see successful delivery and a complete activity record; and
 6. correct a business fact and have the next response use the correction.
+
+Criterion 2 was previously written as "connect Telegram without handling API keys
+manually." Telegram offers two connection paths and only one of them is tokenless: a
+business account can attach an existing bot from its own settings, which needs no token
+and does not require Telegram Premium, but it covers only chats the owner already has,
+permits one connected bot per account, and exposes a narrower API surface. The first
+release therefore uses a guided walkthrough in which the owner creates a bot and supplies
+its token once, and the tokenless path is added later behind the same connector contract.
+The original promise is deferred, not abandoned. Reasoning in
+`docs/superpowers/specs/2026-08-21-backend-integration-design.md`.
 
 The owner must be able to understand what happened from the Home and Activity summaries without reading the Ask AISAR or Telegram transcript. Expanding a record must still reveal the exact source message, approved action, delivery result, and technical trace.
 
@@ -180,7 +202,7 @@ The primary metric remains **time to first useful work completed**. Track import
 
 ## Non-Goals for the First Release
 
-- A public workflow, prompt, model, or agent builder.
+- A public workflow, prompt, model, or agent builder. Advanced disclosure is bounded to inspection and to the two controls named above—per-operation action policy and draft editing. It does not extend to composing workflows, authoring prompts, selecting models, or choosing an agent runtime.
 - Unrestricted terminal or browser access.
 - Fully autonomous payments or destructive operations.
 - A large integration marketplace before one complete workflow is reliable.

@@ -113,9 +113,9 @@ The first complete loop should be:
 It is complete when a non-technical owner can:
 
 1. submit a business URL and confirm the extracted profile;
-2. connect Telegram without manually managing API keys;
+2. connect Telegram through a guided flow;
 3. ask AISAR to respond to a realistic enquiry;
-4. review and approve the exact outgoing message;
+4. review, edit if wanted, and approve the exact outgoing message;
 5. see successful delivery and a structured Activity record; and
 6. correct a business fact and have the next response use it.
 
