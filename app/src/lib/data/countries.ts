@@ -1,5 +1,5 @@
-/* Ported verbatim from biz-engine.js (KV_COUNTRIES).
-   Data only — regenerate rather than hand-edit if the source moves. */
+/* Ported from the old engine (KV_COUNTRIES).
+   Data only — hand-edit directly; there's no generator anymore. */
 
 import type { Country, CountryCode } from '../types';
 

@@ -7,11 +7,11 @@
       an emoji literal.
 
    2. `DataIcon` — the playbook data carries an emoji per business,
-      agent, connector and work item (`icon`, `e`). That data is
-      generated from biz-engine.js and should stay a verbatim port,
-      so rather than rewriting it we map each emoji to a Phosphor
-      glyph at render time. Unmapped values fall back to a neutral
-      icon rather than leaking an emoji into the UI.
+      agent, connector and work item (`icon`, `e`). New playbooks are
+      added via scripts/add-playbook.mjs with emoji intact, so rather
+      than rewriting the data we map each emoji to a Phosphor glyph
+      at render time. Unmapped values fall back to a neutral icon
+      rather than leaking an emoji into the UI.
 
    Weight is "duotone" for identity marks and "regular" for chrome,
    matching the restrained, monoline feel of the rest of the system.
@@ -174,9 +174,8 @@ export function DataIcon({
 }
 
 /**
- * The ported i18n strings carry emoji inline ('⚠️ Need you'). The data
- * is a verbatim port of biz-engine.js and should stay that way, so
- * strip them at the point of render instead.
+ * The i18n strings carry emoji inline ('⚠️ Need you'). Leave them in the
+ * data — strip them at the point of render instead.
  */
 export function stripEmoji(text: string): string {
   return text

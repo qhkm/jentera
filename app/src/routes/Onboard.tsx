@@ -8,7 +8,7 @@
    the user answers. Without them the flow reads as a signup form
    rather than as AISAR learning the business.
 
-   Steps, matching onboard.html:
+   Steps, matching the original flow:
      1 setup path   — import from web/social, or describe manually
      2 scan         — terminal readout while the playbook is matched
      3 confirm      — "did I get it right?"

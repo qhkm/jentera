@@ -2,37 +2,32 @@
 
 ## Project Structure & Module Organization
 
-This repository is a build-free static website deployed to Cloudflare Pages.
+This repository is a Vite + React app deployed to Cloudflare Pages.
 
-- `index.html` contains the public landing page.
-- `onboard.html`, `setup.html`, and `app.html` implement the onboarding and dashboard flow.
-- `biz-engine.js` contains shared client-side state, translations, navigation, and business-demo behavior.
-- `_next/static/` stores exported CSS and font assets referenced by the HTML pages.
-- `_headers` defines Cloudflare cache behavior for pages and shared scripts.
-- `scripts/add-playbook.mjs` updates playbook data in `biz-engine.js`.
-- `spec-minimart.json` is sample business input; `deploy.sh` publishes the site.
+- `app/` is the whole product: source, build config, and tests. See `app/README.md`.
+- `app/src/lib/data/` holds the playbook, connector, country, i18n, recommendation, and risk data. Add a playbook with `scripts/add-playbook.mjs`, not by hand-editing it.
+- `design-system/` documents the design system extracted into `app/src/styles/`.
+- `_next/static/` stores exported CSS and font assets from the upstream build this design system was reverse-engineered from; not loaded by the app.
+- `_headers` defines Cloudflare cache behavior: immutable for hashed assets, no-cache for everything else.
+- `worker/` is an unauthenticated backend the app can optionally call via `VITE_API_URL`; not deployed.
 - `PRODUCT_VISION.md` defines the target customer, positioning, language, and product principles.
 - `TECHNICAL_ARCHITECTURE.md` defines the managed-agent boundary, backend components, safety model, and MVP sequence.
 
-There is no separate source/build directory. Edit the deployed HTML, JavaScript, and assets directly.
-
 ## Development, Verification & Deployment
 
-Run commands from the repository root:
+Run commands from `app/`:
 
 ```bash
-wrangler pages dev . --port 5173
+pnpm install
+pnpm dev          # http://localhost:5173
+pnpm typecheck
+pnpm test
+pnpm build        # tsc -b && vite build
 ```
 
-This serves the site with Cloudflare Pages routing, including extensionless paths such as `/app` and `/onboard`. Open `http://localhost:5173/` for the landing page.
+Before committing, visit `/`, `/onboard`, `/setup`, and `/app`; check browser-console errors, mobile layout, navigation, and local-storage-driven flows.
 
-There is no compilation step or automated test command. Before committing, visit `/`, `/onboard`, `/setup`, and `/app`; check browser-console errors, mobile layout, navigation, and local-storage-driven flows. A quick response check is:
-
-```bash
-curl -I http://localhost:5173/
-```
-
-Use `./deploy.sh "type: concise description"` only when intentionally releasing: it builds `app/` and publishes to the `aisar-jentera` Pages project, live at `jentera.ai` and `jentera.aisar.ai`. The apex `aisar.ai` is a separate project and is only published with `AISAR_PAGES_PROJECT=aisar ./deploy.sh "msg"`.
+Use `./deploy.sh "type: concise description"` from the repository root only when intentionally releasing: it builds `app/` and publishes to the `aisar-jentera` Pages project, live at `jentera.ai` and `jentera.aisar.ai`. The apex `aisar.ai` is a separate project and is only published with `AISAR_PAGES_PROJECT=aisar ./deploy.sh "msg"`.
 
 ## Coding Style & Naming Conventions
 

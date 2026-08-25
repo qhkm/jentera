@@ -1,5 +1,5 @@
-/* Ported verbatim from biz-engine.js (KV_TOOL_RISK).
-   Data only — regenerate rather than hand-edit if the source moves. */
+/* Ported from the old engine (KV_TOOL_RISK).
+   Data only — hand-edit directly; there's no generator anymore. */
 
 import type { Risk } from '../types';
 

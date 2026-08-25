@@ -14,7 +14,7 @@ pnpm deploy       # build + wrangler pages deploy dist --project-name aisar
 
 | Path | Contents |
 |---|---|
-| `src/lib/data/` | **Generated.** Verbatim port of the engine's data — 20 playbooks, 16 connectors, 6 countries, i18n, recommendations, risk table. Regenerate rather than hand-edit. |
+| `src/lib/data/` | Hand-maintained data: 20 playbooks, 16 connectors, 6 countries, i18n, recommendations, risk table. Add playbooks via `../scripts/add-playbook.mjs`, not by hand-editing `playbooks.ts`. |
 | `src/lib/` | Ported logic: storage, country resolution, inference, business resolution, agent tool contract + approval queue |
 | `src/i18n/` | `I18nProvider` + `useT()`. `pages.ts` holds copy new to the React app; `lib/data/i18n.ts` stays a pure port |
 | `src/components/ui/` | Component kit — every element resolves through tokens, no literal colors |
@@ -23,7 +23,7 @@ pnpm deploy       # build + wrangler pages deploy dist --project-name aisar
 
 ## Things worth knowing
 
-**The data layer is generated.** It was extracted by evaluating `biz-engine.js` in Node and serialising the globals. If the static site's playbooks change, re-extract rather than hand-merging.
+**The data layer is hand-maintained.** Add a playbook with `../scripts/add-playbook.mjs`, which edits `playbooks.ts` directly, typechecks, and verifies the new keywords infer back to the new key — don't hand-merge entries.
 
 **Business resolution is a pure function.** The old engine memoised into a module-level `BIZ` cache and hand-invalidated it on every mutation (`delete BIZ[key]`). Here `resolveBusiness(key)` is pure and `useBusiness` memoises it, so there is no cache to forget to clear.
 
