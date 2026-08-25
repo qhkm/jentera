@@ -15,6 +15,8 @@ export const KEYS = {
   conns: 'aisar-conns',
   country: 'aisar-country',
   lang: 'aisar-lang',
+  /** Was defined locally in useTheme.ts and missing from this list. */
+  theme: 'aisar-theme',
   approvals: 'aisar-approvals',
   /** Per-operation action policy. App-only; the engine has no equivalent. */
   permissions: 'aisar-permissions',

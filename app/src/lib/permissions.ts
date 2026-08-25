@@ -18,7 +18,8 @@ import { TOOL_RISK } from './data/risk';
 import * as store from './storage';
 import { KEYS } from './storage';
 
-export type Policy = 'automatic' | 'approval' | 'blocked';
+export type { Policy } from './types';
+import type { Policy } from './types';
 
 /** Operations the tool contract knows about, in the order shown. */
 export const OPERATIONS = [

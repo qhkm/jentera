@@ -7,6 +7,8 @@
 
 export type CountryCode = 'MY' | 'ID' | 'SG' | 'TH' | 'VN' | 'PH';
 
+export type Policy = 'automatic' | 'approval' | 'blocked';
+
 /** Languages that actually have a translation table. */
 export type Lang = 'en' | 'bm';
 
