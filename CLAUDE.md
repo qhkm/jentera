@@ -17,7 +17,7 @@ the dual-maintenance rules below still apply. See
 | | Path | Status |
 |---|---|---|
 | **Static site** | `index.html`, `onboard.html`, `setup.html`, `app.html`, `biz-engine.js` | Reference only. No longer published by any script |
-| **React rebuild** | `app/` (branch `design-system`) | Product of record. `./deploy.sh` publishes it to **`jentera.aisar.ai`** (Pages project `aisar-jentera`) |
+| **React rebuild** | `app/` (branch `design-system`) | Product of record. `./deploy.sh` publishes it to **`jentera.ai`** (Pages project `aisar-jentera`, which also serves `jentera.aisar.ai`) |
 
 The apex `aisar.ai` is a **separate** Pages project (`aisar`) and is not touched by `./deploy.sh`. Publishing there is deliberately manual: `AISAR_PAGES_PROJECT=aisar ./deploy.sh "msg"`.
 
@@ -81,7 +81,7 @@ pnpm build      # tsc -b && vite build
 pnpm typecheck
 ```
 
-Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-jentera`** project, live at `jentera.aisar.ai`. Preview instead with `AISAR_PAGES_PROJECT=aisar-next ./deploy.sh "msg"`. The script verifies the served CSS and JS are real assets, not the SPA fallback HTML, and fails loudly if they are not.
+Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-jentera`** project, live at `jentera.ai`. That project serves two hostnames, `jentera.ai` and `jentera.aisar.ai`, from the same deployment; `deploy.sh` verifies the first. Preview instead with `AISAR_PAGES_PROJECT=aisar-next ./deploy.sh "msg"`. The script verifies the served CSS and JS are real assets, not the SPA fallback HTML, and fails loudly if they are not.
 
 `app/README.md` has the detail. The parts worth knowing here:
 

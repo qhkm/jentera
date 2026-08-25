@@ -68,7 +68,9 @@ echo "   expecting $EXPECT_JS"
 # not attached yet. Note aisar's is aisar-ez8 — plain aisar.pages.dev is a
 # different project entirely and answers 200 no matter what we publish.
 case "$PROJECT" in
-  aisar-jentera) BASE="https://jentera.aisar.ai";     FALLBACK="https://aisar-jentera.pages.dev" ;;
+  # jentera.ai is the primary host. jentera.aisar.ai is still attached to the
+  # same project and serves the same deployment; only one host is verified.
+  aisar-jentera) BASE="https://jentera.ai";           FALLBACK="https://aisar-jentera.pages.dev" ;;
   aisar)         BASE="https://aisar.ai";             FALLBACK="https://aisar-ez8.pages.dev" ;;
   *)             BASE="https://${PROJECT}.pages.dev"; FALLBACK="" ;;
 esac
