@@ -6,9 +6,15 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import * as store from '@/lib/storage';
 import { KEYS } from '@/lib/storage';
 import {
+  bumpPotential,
+  confirmFor,
   getBizType,
+  getChannels,
   getConnections,
+  isAgentReady,
   isConnected,
+  isOnboarded,
+  isSetupDone,
   isWorkDone,
   learn,
   markWorkDone,
@@ -19,9 +25,17 @@ import {
   setBizType,
   toggleConnection,
 } from '@/lib/business';
-import { getCountryCode, setCountry } from '@/lib/country';
+import {
+  cityList,
+  getCountryCode,
+  localizeChannels,
+  localizeDetect,
+  localizeKeywords,
+  localizeSite,
+  setCountry,
+} from '@/lib/country';
 import { defaultPolicy, getPolicies, isCustomised, policyFor, setPolicy } from '@/lib/permissions';
-import { listApprovals, pendingApprovals, queueApproval, riskOf } from '@/lib/tools';
+import { callTool, listApprovals, pendingApprovals, queueApproval, riskOf } from '@/lib/tools';
 
 beforeEach(() => {
   localStorage.clear();
@@ -200,5 +214,185 @@ describe('tool risk and the approval queue', () => {
     expect(listApprovals()).toHaveLength(1);
     expect(pendingApprovals()).toHaveLength(1);
     expect(pendingApprovals()[0].status).toBe('pending');
+  });
+});
+
+describe('callTool', () => {
+  it('rejects an unknown connector', () => {
+    const result = callTool({ conn: 'NotAThing', op: 'read' });
+    expect(result).toEqual({ ok: false, err: 'unknown connector: NotAThing' });
+  });
+
+  it('asks to connect first when the connector is known but not connected', () => {
+    const result = callTool({ conn: 'WhatsApp', op: 'read' });
+    expect(result).toEqual({
+      ok: false,
+      need: 'connect',
+      conn: 'WhatsApp',
+      msg: 'Connect WhatsApp first, in Connections.',
+    });
+  });
+
+  it('blocks a blocked-policy op even when connected', () => {
+    store.setJSON(KEYS.conns, ['WhatsApp']);
+    const result = callTool({ conn: 'WhatsApp', op: 'pay' });
+    expect(result).toEqual({
+      ok: false,
+      blocked: true,
+      op: 'pay',
+      msg: '"pay" is blocked in your permissions. Enable it in My Business to allow this.',
+    });
+  });
+
+  it('dry-runs an approval-policy op and queues it at the right risk', () => {
+    store.setJSON(KEYS.conns, ['WhatsApp']);
+    const result = callTool({ conn: 'WhatsApp', op: 'send', args: { to: '+60123' } });
+    expect(result).toMatchObject({
+      ok: true,
+      dryRun: true,
+      would: 'WhatsApp → send {"to":"+60123"}',
+      risk: 'high',
+    });
+    if (result.ok && 'queued' in result) {
+      expect(result.queued.status).toBe('pending');
+      expect(result.queued.risk).toBe('high');
+    } else {
+      throw new Error('expected a dry-run result with a queued approval');
+    }
+    expect(pendingApprovals()).toHaveLength(1);
+  });
+
+  it('runs the mock path when dryRun is explicitly false, even for a low-risk op', () => {
+    store.setJSON(KEYS.conns, ['WhatsApp']);
+    const result = callTool({ conn: 'WhatsApp', op: 'read', dryRun: false });
+    expect(result).toEqual({
+      ok: true,
+      mock: true,
+      msg: 'WhatsApp → read OK (mock — no backend executor yet).',
+    });
+  });
+});
+
+describe('country localization family (non-MY)', () => {
+  it('localizeSite swaps a .my domain for the country tld', () => {
+    setCountry('SG');
+    expect(localizeSite({ site: 'yourbakery.my' })).toBe('yourbakery.sg');
+  });
+
+  it('localizeSite leaves a domain without .my alone', () => {
+    setCountry('SG');
+    expect(localizeSite({ site: 'yourbusiness.com' })).toBe('yourbusiness.com');
+  });
+
+  it('localizeDetect rewrites the trailing city to the countrys first listed city', () => {
+    setCountry('SG');
+    expect(localizeDetect({ detect: 'restaurant · premium · Kuala Lumpur' })).toBe(
+      'restaurant · premium · Singapore',
+    );
+  });
+
+  it('localizeKeywords appends the country pack when the playbook defines one', () => {
+    setCountry('ID');
+    expect(
+      localizeKeywords({ keywords: ['restaurant'], kw: { ID: ['nasi padang', 'warteg', 'rumah makan'] } }),
+    ).toEqual(['restaurant', 'nasi padang', 'warteg', 'rumah makan']);
+  });
+
+  it('localizeKeywords returns the base list unchanged when there is nothing to add for this country', () => {
+    setCountry('SG');
+    expect(
+      localizeKeywords({ keywords: ['restaurant'], kw: { ID: ['nasi padang'] } }),
+    ).toEqual(['restaurant']);
+  });
+
+  it('localizeChannels puts the country default channels first, then anything new the playbook adds', () => {
+    setCountry('TH');
+    expect(localizeChannels(['WhatsApp', 'Instagram'])).toEqual([
+      'Line',
+      'Facebook',
+      'WhatsApp',
+      'Instagram',
+    ]);
+  });
+
+  it('cityList merges the always-available MY cities with the active country cities', () => {
+    setCountry('SG');
+    const cities = cityList();
+    expect(cities['kuala lumpur']).toBe('Kuala Lumpur, MY');
+    expect(cities['jurong']).toBe('Jurong, SG');
+  });
+});
+
+describe('permissions: getPolicies override merge', () => {
+  it('merges a stored override over the defaults, leaving the rest untouched', () => {
+    setPolicy('read', 'approval');
+    const policies = getPolicies();
+    expect(policies.read).toBe('approval');
+    expect(policies.pay).toBe('blocked');
+    expect(policies.list).toBe('automatic');
+  });
+});
+
+describe('business.ts: cheap accessors', () => {
+  it('isSetupDone reflects the setupDone key', () => {
+    expect(isSetupDone()).toBe(false);
+    store.set(KEYS.setupDone, '1');
+    expect(isSetupDone()).toBe(true);
+  });
+
+  it('isOnboarded reflects the onboarded key', () => {
+    expect(isOnboarded()).toBe(false);
+    store.set(KEYS.onboarded, '1');
+    expect(isOnboarded()).toBe(true);
+  });
+
+  it('bumpPotential leaves the value unchanged when setup is not done', () => {
+    expect(bumpPotential(50)).toBe(50);
+  });
+
+  it('bumpPotential adds 20 once setup is done, capped at 96', () => {
+    store.set(KEYS.setupDone, '1');
+    expect(bumpPotential(50)).toBe(70);
+    expect(bumpPotential(90)).toBe(96);
+  });
+
+  it('getChannels returns null when nothing is stored', () => {
+    expect(getChannels()).toBeNull();
+  });
+
+  it('getChannels returns the stored array', () => {
+    store.setJSON(KEYS.channels, ['WhatsApp', 'Instagram']);
+    expect(getChannels()).toEqual(['WhatsApp', 'Instagram']);
+  });
+});
+
+describe('isAgentReady', () => {
+  it('a setup agent is ready once Accounting is connected', () => {
+    expect(isAgentReady({ setup: true })).toBe(false);
+    toggleConnection('Accounting');
+    expect(isAgentReady({ setup: true })).toBe(true);
+  });
+
+  // The `ch` match (`keys.some(...)`) is OR'd with `keys.length > 0`, and any
+  // match implies keys.length > 0 — so today this reduces to "any connection
+  // at all", and the channel argument never actually gates readiness.
+  it('a channel agent is ready once ANY connection exists, even one that does not match its channel', () => {
+    expect(isAgentReady({ ch: 'WhatsApp' })).toBe(false);
+    toggleConnection('Instagram');
+    expect(isAgentReady({ ch: 'WhatsApp' })).toBe(true);
+  });
+});
+
+describe('confirmFor', () => {
+  it('rewrites the confirm sentence to the city extracted from the text', () => {
+    expect(confirmFor('restaurant', 'saya ada kedai makan di Penang')).toBe(
+      'I found that you operate a restaurant/café in George Town. Is that correct?',
+    );
+  });
+
+  it('falls back to the playbook default confirm sentence when no location is found', () => {
+    expect(confirmFor('restaurant', 'saya suka masak je')).toBe(
+      'I found that you operate a restaurant/café in Kuala Lumpur. Is that correct?',
+    );
   });
 });
