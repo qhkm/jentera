@@ -19,11 +19,11 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
 
 - `app/src/lib/data/` is hand-maintained TypeScript. Add a playbook with `scripts/add-playbook.mjs`, which edits `playbooks.ts` directly — don't hand-merge.
 - Controls share `--control-h` / `--control-pad-y`. A `text-*` or `py-*` utility on a `.btn`/`.input` overrides the component and breaks the shared height — this caused three separate visual bugs. Let components own their type and padding.
-- The engine writes work-done indices as **strings**; the app reads either format and writes strings, so existing users' approvals survive the cutover.
+- The old static engine wrote work-done indices as **strings**; the app reads either format and writes strings, so existing users' approvals survive the cutover.
 
 ## localStorage keys
 
-The full persisted surface. Changing or adding one affects the flow gates, so call it out in the commit — and make sure both implementations write it, not just read it.
+The full persisted surface. Changing or adding one affects the flow gates, so call it out in the commit.
 
 | Key | Meaning |
 |---|---|
@@ -54,9 +54,8 @@ A Cloudflare Worker implementing the client's tool contract — risk gate, appro
 
 ## Conventions
 
-- HTML: two-space indent, Tailwind utilities, page-specific CSS/JS inline in that page.
-- Engine JS: two spaces, semicolons, single quotes, camelCase, `var`, `kv`/`kv-` prefix.
-- Escape interpolated strings with `kvEsc()` when building innerHTML.
+- TypeScript + React under `app/`, two-space indent, semicolons, single quotes, camelCase.
+- Import shared modules via the `@/` alias rather than long relative paths.
 - Preserve `prefers-reduced-motion` handling and accessibility labels.
 - Commits: Conventional Commit subjects, one visible behaviour per commit.
 

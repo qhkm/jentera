@@ -31,7 +31,7 @@ Use `./deploy.sh "type: concise description"` from the repository root only when
 
 ## Coding Style & Naming Conventions
 
-Match the surrounding style. HTML uses two-space indentation and utility classes; keep inline page-specific CSS and scripts localized. JavaScript uses two spaces, semicolons, single-quoted strings, and camelCase functions. Shared helpers and DOM IDs commonly use the `kv`/`kv-` prefix. Preserve accessibility labels, responsive behavior, and `prefers-reduced-motion` handling. Update cache-busting query strings when changing cached shared assets.
+Match the surrounding style. TypeScript and React under `app/`, two-space indentation, semicolons, single-quoted strings, camelCase. Import shared modules via the `@/` alias rather than long relative paths. Preserve accessibility labels, responsive behavior, and `prefers-reduced-motion` handling.
 
 ## Commit & Pull Request Guidelines
 
