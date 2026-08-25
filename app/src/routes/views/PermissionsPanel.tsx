@@ -6,16 +6,14 @@
    the agent is actually allowed to do.
    ============================================================ */
 
-import { useState } from 'react';
 import { Button, Card, Eyebrow, Tag } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
 import { useToast } from '@/components/Toast';
+import { useMutate, useSnapshot } from '@/lib/repo';
 import {
   OPERATIONS,
   getPolicies,
   isCustomised,
-  resetPolicies,
-  setPolicy,
   type Operation,
   type Policy,
 } from '@/lib/permissions';
@@ -30,21 +28,21 @@ const LEVELS: { id: Policy; tone: Tone }[] = [
 export default function PermissionsPanel() {
   const t = useT();
   const toast = useToast();
-  const [policies, setPolicies] = useState<Record<string, Policy>>(() => getPolicies());
+  const snap = useSnapshot();
+  const mutate = useMutate();
+  const policies = getPolicies(snap);
 
   function change(op: Operation, next: Policy) {
-    setPolicy(op, next);
-    setPolicies(getPolicies());
+    void mutate((r) => r.setPolicy(op, next));
     toast(t('perm.saved'));
   }
 
   function reset() {
-    resetPolicies();
-    setPolicies(getPolicies());
+    void mutate((r) => r.resetPolicies());
     toast(t('perm.reset'));
   }
 
-  const customised = OPERATIONS.filter((op) => isCustomised(op)).length;
+  const customised = OPERATIONS.filter((op) => isCustomised(snap, op)).length;
 
   return (
     <section className="flex flex-col gap-5">
@@ -73,7 +71,7 @@ export default function PermissionsPanel() {
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="flex items-center gap-2 text-[13px] font-semibold">
                   {t(`perm.op.${op}`)}
-                  {isCustomised(op) ? <Tag>{t('perm.changed')}</Tag> : null}
+                  {isCustomised(snap, op) ? <Tag>{t('perm.changed')}</Tag> : null}
                 </span>
                 <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted">
                   {op}

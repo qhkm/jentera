@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
-import { RepositoryProvider } from '@/lib/repo';
+import { RepositoryProvider, useSnapshot } from '@/lib/repo';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { ToastProvider } from '@/components/Toast';
 import { isOnboarded } from '@/lib/business';
@@ -15,7 +15,8 @@ import type { ReactElement } from 'react';
    with no hydration hazard.
    ============================================================ */
 function RequireOnboarded({ children }: { children: ReactElement }) {
-  return isOnboarded() ? children : <Navigate to="/onboard" replace />;
+  const snap = useSnapshot();
+  return isOnboarded(snap) ? children : <Navigate to="/onboard" replace />;
 }
 
 export default function App() {

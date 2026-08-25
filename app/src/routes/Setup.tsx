@@ -7,8 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Shell } from '@/components/Shell';
 import { Button, Card, Eyebrow, Progress, Tag } from '@/components/ui';
-import * as store from '@/lib/storage';
-import { KEYS } from '@/lib/storage';
+import { useMutate } from '@/lib/repo';
 import { useT } from '@/i18n/I18nProvider';
 
 type Status = 'pending' | 'running' | 'waiting' | 'done';
@@ -34,6 +33,7 @@ const AUTO_TIMINGS = [900, 1700, 2600];
 export default function Setup() {
   const t = useT();
   const navigate = useNavigate();
+  const mutate = useMutate();
   const [status, setStatus] = useState<Record<number, Status>>({
     1: 'pending',
     2: 'pending',
@@ -62,8 +62,8 @@ export default function Setup() {
   const allDone = doneCount === STEPS.length;
 
   useEffect(() => {
-    if (allDone) store.set(KEYS.setupDone, '1');
-  }, [allDone]);
+    if (allDone) void mutate((r) => r.setSetupDone(true));
+  }, [allDone, mutate]);
 
   function connect(id: number) {
     setStatus((s) => ({ ...s, [id]: 'running' }));
@@ -73,7 +73,7 @@ export default function Setup() {
   }
 
   function finish() {
-    store.set(KEYS.setupDone, '1');
+    void mutate((r) => r.setSetupDone(true));
     navigate('/app');
   }
 

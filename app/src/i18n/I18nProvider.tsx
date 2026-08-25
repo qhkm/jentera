@@ -17,15 +17,13 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useState,
   type ReactNode,
 } from 'react';
 import { MESSAGES as PORTED } from '@/lib/data/i18n';
 import { PAGE_MESSAGES } from './pages';
 import type { Lang } from '@/lib/types';
 
-import * as store from '@/lib/storage';
-import { KEYS } from '@/lib/storage';
+import { useMutate, useSnapshot } from '@/lib/repo';
 
 /** Ported engine strings, with the React app's page copy layered on top. */
 const MESSAGES: Record<Lang, Record<string, string>> = {
@@ -38,17 +36,7 @@ const TITLES: Record<Lang, string> = {
   bm: 'AISAR — Perniagaan anda, tanpa kerja remeh',
 };
 
-function isTranslated(code: string): code is Lang {
-  return Object.prototype.hasOwnProperty.call(MESSAGES, code);
-}
-
 export const DEFAULT_LANG: Lang = 'en';
-
-function initialLang(): Lang {
-  // Only a language the user picked themselves overrides English.
-  const stored = store.get(KEYS.lang, '');
-  return isTranslated(stored) ? stored : DEFAULT_LANG;
-}
 
 /** Named-slot interpolation: t('su.count', { done: 2, total: 5 }). */
 export type Vars = Record<string, string | number>;
@@ -70,25 +58,23 @@ function interpolate(template: string, vars?: Vars): string {
 const I18nContext = createContext<I18nValue | null>(null);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Lang>(initialLang);
+  const { lang } = useSnapshot();
+  const mutate = useMutate();
 
   useEffect(() => {
     document.title = TITLES[lang];
     document.documentElement.lang = lang === 'bm' ? 'ms' : 'en';
   }, [lang]);
 
-  const setLang = useCallback((next: Lang) => {
-    store.set(KEYS.lang, next);
-    setLangState(next);
-  }, []);
+  const setLang = useCallback(
+    (next: Lang) => void mutate((r) => r.setLang(next)),
+    [mutate],
+  );
 
-  const toggleLang = useCallback(() => {
-    setLangState((prev) => {
-      const next: Lang = prev === 'en' ? 'bm' : 'en';
-      store.set(KEYS.lang, next);
-      return next;
-    });
-  }, []);
+  const toggleLang = useCallback(
+    () => void mutate((r) => r.setLang(lang === 'en' ? 'bm' : 'en')),
+    [mutate, lang],
+  );
 
   /** Falls back through the active language, then English, then the key. */
   const t = useCallback(

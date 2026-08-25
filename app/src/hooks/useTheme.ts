@@ -1,39 +1,26 @@
-/* ============================================================
-   Theme. The whole flip is one class on <html> — every token
-   downstream re-resolves, including --border-ink, which is what
-   re-themes every border in the product.
-   ============================================================ */
+import { useCallback, useEffect } from 'react';
+import { useMutate, useSnapshot } from '@/lib/repo';
+import type { Theme } from '@/lib/repo';
 
-import { useCallback, useEffect, useState } from 'react';
-import * as store from '@/lib/storage';
-
-const KEY = 'aisar-theme';
-export type Theme = 'dark' | 'light';
-
-function initial(): Theme {
-  const v = store.get(KEY, '');
-  return v === 'light' ? 'light' : 'dark';
-}
+export type { Theme };
 
 export function useTheme() {
-  const [theme, setThemeState] = useState<Theme>(initial);
+  const { theme } = useSnapshot();
+  const mutate = useMutate();
 
   useEffect(() => {
     document.documentElement.classList.toggle('theme-light', theme === 'light');
   }, [theme]);
 
-  const setTheme = useCallback((next: Theme) => {
-    store.set(KEY, next);
-    setThemeState(next);
-  }, []);
+  const setTheme = useCallback(
+    (next: Theme) => void mutate((r) => r.setTheme(next)),
+    [mutate],
+  );
 
-  const toggleTheme = useCallback(() => {
-    setThemeState((prev) => {
-      const next: Theme = prev === 'dark' ? 'light' : 'dark';
-      store.set(KEY, next);
-      return next;
-    });
-  }, []);
+  const toggleTheme = useCallback(
+    () => void mutate((r) => r.setTheme(theme === 'dark' ? 'light' : 'dark')),
+    [mutate, theme],
+  );
 
   return { theme, setTheme, toggleTheme };
 }

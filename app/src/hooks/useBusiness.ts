@@ -10,17 +10,17 @@ import {
   getBizType,
   getChannels,
   getConnections,
+  isPlaybookKey,
   isSetupDone,
   isWorkDone,
-  markWorkDone,
+  planSeedConnections,
+  planToggleConnection,
   recommendations,
   resolveBusiness,
-  seedConnections,
-  setBizType,
-  toggleConnection,
 } from '@/lib/business';
 import { pendingApprovals } from '@/lib/tools';
 import { isRemote, listApprovalsRemote } from '@/lib/api';
+import { useMutate, useSnapshot } from '@/lib/repo';
 import type { Approval, Business } from '@/lib/types';
 
 /** Which stage the command centre should present. */
@@ -45,22 +45,26 @@ export interface BusinessState {
 }
 
 export function useBusiness(): BusinessState {
-  const [bizKey, setKey] = useState(getBizType);
-  const [tick, setTick] = useState(0);
+  const snap = useSnapshot();
+  const mutate = useMutate();
+  const bizKey = getBizType(snap);
 
+  /* Remote approvals live outside the snapshot, so a manual refetch still
+     needs a tick to hang its effect dependency on. */
+  const [tick, setTick] = useState(0);
   const refresh = useCallback(() => setTick((n) => n + 1), []);
 
   // Seed default connections once per business, before first paint.
   useEffect(() => {
-    seedConnections(bizKey);
-    refresh();
-  }, [bizKey, refresh]);
+    const seed = planSeedConnections(snap, bizKey);
+    if (seed) void mutate((r) => r.setConnections(seed));
+  }, [snap, bizKey, mutate]);
 
-  const business = useMemo(() => resolveBusiness(bizKey), [bizKey, tick]);
-  const connections = useMemo(() => getConnections(), [tick]);
-  const channels = useMemo(() => getChannels(), [tick]);
+  const business = useMemo(() => resolveBusiness(snap, bizKey), [snap, bizKey]);
+  const connections = getConnections(snap);
+  const channels = getChannels(snap);
   /* Local is synchronous; remote resolves into state. Same shape either way. */
-  const localApprovals = useMemo(() => (isRemote() ? [] : pendingApprovals()), [tick]);
+  const localApprovals = useMemo(() => (isRemote() ? [] : pendingApprovals(snap)), [snap]);
   const [remoteApprovals, setRemoteApprovals] = useState<Approval[]>([]);
 
   useEffect(() => {
@@ -80,18 +84,18 @@ export function useBusiness(): BusinessState {
   }, [bizKey, tick]);
 
   const approvals = isRemote() ? remoteApprovals : localApprovals;
-  const setupDone = useMemo(() => isSetupDone(), [tick]);
+  const setupDone = isSetupDone(snap);
   const recommended = useMemo(() => recommendations(business), [business]);
 
   const needsYouCount = useMemo(
-    () => business.work.filter((w, i) => w.tag === 'needs you' && !isWorkDone(bizKey, i)).length,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [business.work, bizKey, tick],
+    () =>
+      business.work.filter((w, i) => w.tag === 'needs you' && !isWorkDone(snap, bizKey, i)).length,
+    [business.work, snap, bizKey],
   );
 
   const potential = useMemo(
-    () => bumpPotential(business.potential),
-    [business.potential, tick],
+    () => bumpPotential(snap, business.potential),
+    [snap, business.potential],
   );
 
   const stage: Stage = useMemo(() => {
@@ -102,31 +106,28 @@ export function useBusiness(): BusinessState {
 
   const switchBusiness = useCallback(
     (key: string) => {
-      if (setBizType(key)) setKey(key);
+      if (isPlaybookKey(key)) void mutate((r) => r.setBizType(key));
     },
-    [],
+    [mutate],
   );
 
   const toggleConn = useCallback(
     (name: string) => {
-      toggleConnection(name);
-      refresh();
+      void mutate((r) => r.setConnections(planToggleConnection(snap, name)));
     },
-    [refresh],
+    [mutate, snap],
   );
 
   const completeWork = useCallback(
     (index: number) => {
-      markWorkDone(bizKey, index);
-      refresh();
+      void mutate((r) => r.markWorkDone(bizKey, index));
     },
-    [bizKey, refresh],
+    [mutate, bizKey],
   );
 
   const workDone = useCallback(
-    (index: number) => isWorkDone(bizKey, index),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [bizKey, tick],
+    (index: number) => isWorkDone(snap, bizKey, index),
+    [snap, bizKey],
   );
 
   return {

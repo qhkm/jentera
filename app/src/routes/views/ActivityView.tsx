@@ -12,7 +12,7 @@ import { Avatar, Button, Card, Eyebrow, Tag } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
 import { Icon, stripEmoji } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
-import { decideApproval } from '@/lib/tools';
+import { useMutate } from '@/lib/repo';
 import { decideApprovalRemote } from '@/lib/api';
 import type { Approval, Business, Tone, WorkItem } from '@/lib/types';
 import type { useBusiness } from '@/hooks/useBusiness';
@@ -32,6 +32,7 @@ function riskTone(risk: string): Tone {
 export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> }) {
   const t = useT();
   const toast = useToast();
+  const mutate = useMutate();
   const [filter, setFilter] = useState<ActivityFilter>('needs you');
   const business: Business = b.business;
 
@@ -82,7 +83,7 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
         return;
       }
     } else {
-      decideApproval(approval.id, ok);
+      void mutate((r) => r.decideApproval(approval.id, ok));
       toast(ok ? t('appr.approved') : t('appr.rejected'));
     }
     b.refresh();
