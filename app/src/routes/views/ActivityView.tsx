@@ -13,13 +13,8 @@ import { useT } from '@/i18n/I18nProvider';
 import { Icon, stripEmoji } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
 import { useMutate } from '@/lib/repo';
-import { decideApprovalRemote } from '@/lib/api';
 import type { Approval, Business, Tone, WorkItem } from '@/lib/types';
 import type { useBusiness } from '@/hooks/useBusiness';
-
-/* Writes are fire-and-forget by design; the provider surfaces failures
-   centrally, so this only stops an unhandled rejection. */
-const noop = () => {};
 
 export type ActivityFilter = 'needs you' | 'auto' | 'done' | 'all';
 
@@ -78,19 +73,17 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
   }
 
   async function decideTool(approval: Approval, ok: boolean) {
-    if (approval.remoteId) {
-      try {
-        const res = await decideApprovalRemote(approval.remoteId, ok);
-        toast(res.detail ?? (ok ? t('appr.approved') : t('appr.rejected')));
-      } catch (err) {
-        toast(`Could not reach the server: ${(err as Error).message}`);
-        return;
-      }
-    } else {
-      void mutate((r) => r.decideApproval(approval.id, ok)).catch(noop);
+    /* One path: the repository decides, local or remote. Awaited rather
+       than fire-and-forget because the toast has to tell the truth — a
+       rejected decide (already decided, or another tenant's) must not
+       report success. */
+    try {
+      await mutate((r) => r.decideApproval(approval.id, ok));
       toast(ok ? t('appr.approved') : t('appr.rejected'));
+    } catch (err) {
+      toast((err as Error).message);
+      return;
     }
-    b.refresh();
   }
 
   const showApprovals = filter === 'needs you' || filter === 'all';

@@ -4,7 +4,7 @@
    mutate through these setters and React re-renders what changed.
    ============================================================ */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import {
   bumpPotential,
   getBizType,
@@ -19,7 +19,6 @@ import {
   resolveBusiness,
 } from '@/lib/business';
 import { pendingApprovals } from '@/lib/tools';
-import { isRemote, listApprovalsRemote } from '@/lib/api';
 import { useMutate, useSnapshot } from '@/lib/repo';
 import type { Approval, Business } from '@/lib/types';
 
@@ -45,18 +44,12 @@ export interface BusinessState {
   toggleConn: (name: string) => void;
   completeWork: (index: number) => void;
   workDone: (index: number) => boolean;
-  refresh: () => void;
 }
 
 export function useBusiness(): BusinessState {
   const snap = useSnapshot();
   const mutate = useMutate();
   const bizKey = getBizType(snap);
-
-  /* Remote approvals live outside the snapshot, so a manual refetch still
-     needs a tick to hang its effect dependency on. */
-  const [tick, setTick] = useState(0);
-  const refresh = useCallback(() => setTick((n) => n + 1), []);
 
   // Seed default connections once per business, before first paint. `snap` is
   // deliberately left out of the deps: it gets a new identity after *every*
@@ -75,27 +68,11 @@ export function useBusiness(): BusinessState {
   const business = useMemo(() => resolveBusiness(snap, bizKey), [snap, bizKey]);
   const connections = getConnections(snap);
   const channels = getChannels(snap);
-  /* Local is synchronous; remote resolves into state. Same shape either way. */
-  const localApprovals = useMemo(() => (isRemote() ? [] : pendingApprovals(snap)), [snap]);
-  const [remoteApprovals, setRemoteApprovals] = useState<Approval[]>([]);
-
-  useEffect(() => {
-    if (!isRemote()) return;
-    let cancelled = false;
-    listApprovalsRemote(bizKey)
-      .then((rows) => {
-        if (!cancelled) setRemoteApprovals(rows);
-      })
-      .catch(() => {
-        /* Backend unreachable — fall back to showing nothing pending. */
-        if (!cancelled) setRemoteApprovals([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [bizKey, tick]);
-
-  const approvals = isRemote() ? remoteApprovals : localApprovals;
+  /* One path. The snapshot carries approvals whichever repository
+     produced it, which is the whole point of the interface — the old
+     dual path here predated it and fetched from an endpoint that no
+     longer trusts a caller-supplied business. */
+  const approvals = useMemo(() => pendingApprovals(snap), [snap]);
   const setupDone = isSetupDone(snap);
   const recommended = useMemo(() => recommendations(business), [business]);
 
@@ -157,6 +134,5 @@ export function useBusiness(): BusinessState {
     toggleConn,
     completeWork,
     workDone,
-    refresh,
   };
 }

@@ -1,10 +1,12 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
-import { RepositoryProvider, useSnapshot } from '@/lib/repo';
+import { useSnapshot } from '@/lib/repo';
+import { RepositoryGate } from '@/lib/repo/gate';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { ToastProvider } from '@/components/Toast';
 import { isOnboarded } from '@/lib/business';
 import Landing from '@/routes/Landing';
 import Onboard from '@/routes/Onboard';
+import SignIn from '@/routes/SignIn';
 import Setup from '@/routes/Setup';
 import Dashboard from '@/routes/Dashboard';
 import type { ReactElement } from 'react';
@@ -21,13 +23,14 @@ function RequireOnboarded({ children }: { children: ReactElement }) {
 
 export default function App() {
   return (
-    <RepositoryProvider>
+    <RepositoryGate>
     <I18nProvider>
       <ToastProvider>
         <BrowserRouter>
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/onboard" element={<Onboard />} />
+            <Route path="/signin" element={<SignIn />} />
           <Route path="/setup" element={<Setup />} />
           <Route
             path="/app"
@@ -42,6 +45,6 @@ export default function App() {
         </BrowserRouter>
       </ToastProvider>
     </I18nProvider>
-    </RepositoryProvider>
+    </RepositoryGate>
   );
 }
