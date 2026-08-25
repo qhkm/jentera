@@ -4,18 +4,19 @@
    "Dari description je terus generate" — spec minimal pun jadi.
 
    Usage (run dari folder aisar-site):
-     node scripts/add-playbook.mjs --file spec.json [--deploy]
-     node scripts/add-playbook.mjs '{ "key":"minimart", "name":"...", ... }' [--deploy]
+     node scripts/add-playbook.mjs --file spec.json
+     node scripts/add-playbook.mjs '{ "key":"minimart", "name":"...", ... }'
      node scripts/add-playbook.mjs --key minimart --name "Your Minimart" \
          --type "Minimart / Grocery" --icon "🏪" --loc "Kuala Lumpur, MY" \
-         --keywords "kedai runcit,minimart,grocery" --detect "minimart & grocery · Kuala Lumpur" \
-         [--deploy]
+         --keywords "kedai runcit,minimart,grocery" --detect "minimart & grocery · Kuala Lumpur"
 
    Spec fields (semua optional kecuali key + keywords):
      key, icon, name, type, site, booking, systems, loc, potential,
      opportunities, ch[], detect, confirm, keywords[],
      funcs[][], stats[], sug{}, team[], work[], conns[]
    Field yang takde → auto-generate dari template generic.
+
+   Script ni tak deploy apa-apa — ./deploy.sh je jalan deploy production.
    ============================================================ */
 
 import fs from 'fs';
@@ -30,8 +31,7 @@ function parseArgs(argv){
   const a = { _: [] };
   for (let i = 0; i < argv.length; i++){
     const x = argv[i];
-    if (x === '--deploy') a.deploy = true;
-    else if (x === '--file') a.file = argv[++i];
+    if (x === '--file') a.file = argv[++i];
     else if (x === '--key') a.key = argv[++i];
     else if (x === '--name') a.name = argv[++i];
     else if (x === '--type') a.type = argv[++i];
@@ -204,13 +204,3 @@ ok('Inference test lulus (' + spec.keywords.length + ' keywords → ' + spec.key
 
 console.log('\n=== Selesai: ' + spec.key + ' ===');
 console.log(JSON.stringify({ key: spec.key, name: spec.type, detect: spec.detect, loc: spec.loc }, null, 2));
-
-if (args.deploy){
-  console.log('\n🌎 Deploying…');
-  const c = spawnSync('bash', ['-c',
-    'git add -A && git -c user.email="dev@kitakod.com" -c user.name="kitakod" commit -qm "feat: playbook ' +
-    spec.key + ' (via add-playbook.mjs)" 2>/dev/null; wrangler pages publish . --project-name aisar 2>&1 | tail -3'],
-    { cwd: repo, stdio: 'inherit', shell: false });
-  if (c.status !== 0) die('Deploy gagal.');
-  ok('Deployed.');
-}
