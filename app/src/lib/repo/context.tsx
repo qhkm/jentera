@@ -6,7 +6,7 @@
    which refreshes the snapshot afterwards.
    ============================================================ */
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { LocalRepository } from './local';
 import type { BusinessSnapshot, Repository } from './types';
@@ -26,7 +26,19 @@ export function RepositoryProvider({
   repository?: Repository;
   children: ReactNode;
 }) {
-  const repo = useMemo(() => repository ?? new LocalRepository(), [repository]);
+  /* Bind one repository for the provider's lifetime. `useMemo` would
+     recompute whenever `repository`'s identity changes — which happens on
+     every render for a caller who writes `<RepositoryProvider repository=
+     {new LocalRepository()}>` inline — and that recomputation would cascade
+     into `refresh` and re-fire the hydration effect below. A ref sidesteps
+     that: the first non-null value wins and later renders are ignored.
+     Swapping repositories at runtime is not supported — remount with a
+     `key` if a different one is genuinely needed. */
+  const repoRef = useRef<Repository | null>(null);
+  if (repoRef.current === null) {
+    repoRef.current = repository ?? new LocalRepository();
+  }
+  const repo = repoRef.current;
   const [snapshot, setSnapshot] = useState<BusinessSnapshot | null>(null);
 
   const refresh = useCallback(async () => {

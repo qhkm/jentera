@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { RepositoryProvider, useMutate, useSnapshot } from '@/lib/repo/context';
@@ -42,6 +43,43 @@ describe('RepositoryProvider', () => {
     });
 
     await waitFor(() => expect(screen.getByTestId('type').textContent).toBe('clinic'));
+  });
+});
+
+describe('RepositoryProvider identity handling', () => {
+  it('binds the repository once, ignoring later identity changes of the prop', async () => {
+    let loadCalls = 0;
+    class CountingRepo extends LocalRepository {
+      async load() {
+        loadCalls++;
+        return super.load();
+      }
+    }
+
+    function Parent() {
+      const [, rerender] = useState(0);
+      return (
+        <div>
+          <button onClick={() => rerender((n) => n + 1)}>rerender</button>
+          <RepositoryProvider repository={new CountingRepo()}>
+            <Probe />
+          </RepositoryProvider>
+        </div>
+      );
+    }
+
+    render(<Parent />);
+    await waitFor(() => expect(screen.getByTestId('type').textContent).toBe('none'));
+    expect(loadCalls).toBe(1);
+
+    await act(async () => {
+      screen.getByText('rerender').click();
+    });
+    await act(async () => {
+      screen.getByText('rerender').click();
+    });
+
+    expect(loadCalls).toBe(1);
   });
 });
 
