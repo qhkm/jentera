@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
+import { RepositoryProvider } from '@/lib/repo';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { ToastProvider } from '@/components/Toast';
 import { isOnboarded } from '@/lib/business';
@@ -19,6 +20,7 @@ function RequireOnboarded({ children }: { children: ReactElement }) {
 
 export default function App() {
   return (
+    <RepositoryProvider>
     <I18nProvider>
       <ToastProvider>
         <BrowserRouter>
@@ -39,5 +41,6 @@ export default function App() {
         </BrowserRouter>
       </ToastProvider>
     </I18nProvider>
+    </RepositoryProvider>
   );
 }
