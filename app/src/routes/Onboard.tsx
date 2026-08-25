@@ -45,6 +45,10 @@ import { confirmFor, planRegisterBusiness, resolveBusiness } from '@/lib/busines
 import { useT } from '@/i18n/I18nProvider';
 import { useMutate, useSnapshot } from '@/lib/repo';
 
+/* Writes are fire-and-forget by design; the provider surfaces failures
+   centrally, so this only stops an unhandled rejection. */
+const noop = () => {};
+
 const STEP_COUNT = 6;
 
 /** The static flow defaults to restaurant and only moves off it when
@@ -169,7 +173,7 @@ export default function Onboard() {
       const guess = inferPlaybook(snap, `${url} ${social}`);
       if (guess.score > 0) {
         setType(guess.key);
-        void mutate((r) => r.setBizType(guess.key));
+        void mutate((r) => r.setBizType(guess.key)).catch(noop);
       }
       if (url.trim()) lines.push(t('ob.scan.web'));
       if (social.trim()) lines.push(t('ob.scan.social'));
@@ -183,7 +187,7 @@ export default function Onboard() {
           await r.recordLearn(plan.key, plan.learnPick);
         });
       } else {
-        void mutate((r) => r.setBizType(bizType));
+        void mutate((r) => r.setBizType(bizType)).catch(noop);
       }
       lines.push(t('ob.scan.desc'));
     }
@@ -231,26 +235,31 @@ export default function Onboard() {
   function toggleChannel(name: string) {
     setChannels((prev) => {
       const next = prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name];
-      void mutate((r) => r.setChannels(next));
+      void mutate((r) => r.setChannels(next)).catch(noop);
       return next;
     });
   }
 
   function pickType(key: string) {
     setType(key);
-    void mutate((r) => r.setBizType(key));
+    void mutate((r) => r.setBizType(key)).catch(noop);
   }
 
   /* ---- Activate ---- */
 
   function activate() {
     setActivating(true);
-    void mutate(async (r) => {
+    void (async () => { try { await mutate(async (r) => {
       await r.setChannels(channels);
       await r.setBizType(bizType);
       await r.setOnboarded(true);
     });
-    setTimeout(() => navigate('/setup'), 1200);
+    } catch { /* surfaced by the provider */ }
+      /* The 1200ms is presentation, not a write budget. The write is
+         awaited above; setOnboarded gates whether /app bounces back
+         to /onboard, so it must land before we leave. */
+      setTimeout(() => navigate('/setup'), 1200);
+    })();
   }
 
   function next() {

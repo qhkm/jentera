@@ -19,6 +19,10 @@ import {
 } from '@/lib/permissions';
 import type { Tone } from '@/lib/types';
 
+/* Writes are fire-and-forget by design; the provider surfaces failures
+   centrally, so this only stops an unhandled rejection. */
+const noop = () => {};
+
 const LEVELS: { id: Policy; tone: Tone }[] = [
   { id: 'automatic', tone: 'green' },
   { id: 'approval', tone: 'amber' },
@@ -33,12 +37,12 @@ export default function PermissionsPanel() {
   const policies = getPolicies(snap);
 
   function change(op: Operation, next: Policy) {
-    void mutate((r) => r.setPolicy(op, next));
+    void mutate((r) => r.setPolicy(op, next)).catch(noop);
     toast(t('perm.saved'));
   }
 
   function reset() {
-    void mutate((r) => r.resetPolicies());
+    void mutate((r) => r.resetPolicies()).catch(noop);
     toast(t('perm.reset'));
   }
 

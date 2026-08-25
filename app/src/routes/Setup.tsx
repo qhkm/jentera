@@ -72,8 +72,17 @@ export default function Setup() {
     );
   }
 
-  function finish() {
-    void mutate((r) => r.setSetupDone(true));
+  async function finish() {
+    /* Await before navigating. setSetupDone gates the command-centre
+       stage, so arriving at /app before it lands shows the wrong one.
+       Harmless while writes are synchronous; a race the moment they
+       cross a network. */
+    try {
+      await mutate((r) => r.setSetupDone(true));
+    } catch {
+      /* The provider surfaces it; still navigate rather than trapping
+         the user on a screen whose only action just failed. */
+    }
     navigate('/app');
   }
 

@@ -20,6 +20,10 @@ import { useMutate, useSnapshot } from '@/lib/repo';
 import type { PlaybookFunc, Tone } from '@/lib/types';
 import type { useBusiness } from '@/hooks/useBusiness';
 
+/* Writes are fire-and-forget by design; the provider surfaces failures
+   centrally, so this only stops an unhandled rejection. */
+const noop = () => {};
+
 const CHANNELS = ['WhatsApp', 'Telegram', 'Instagram', 'Email', 'Phone'];
 
 function funcTone(colour: string): Tone {
@@ -51,7 +55,7 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
   const dirty = name.trim() !== business.name || loc.trim() !== business.loc;
 
   function save() {
-    void mutate((r) => r.setBizProfile({ name: name.trim(), loc: loc.trim() }));
+    void mutate((r) => r.setBizProfile({ name: name.trim(), loc: loc.trim() })).catch(noop);
     toast('Business profile updated ✓');
   }
 

@@ -23,6 +23,10 @@ import { isRemote, listApprovalsRemote } from '@/lib/api';
 import { useMutate, useSnapshot } from '@/lib/repo';
 import type { Approval, Business } from '@/lib/types';
 
+/* Writes are fire-and-forget by design; the provider surfaces failures
+   centrally, so this only stops an unhandled rejection. */
+const noop = () => {};
+
 /** Which stage the command centre should present. */
 export type Stage = 'setup' | 'connect' | 'operating';
 
@@ -121,14 +125,14 @@ export function useBusiness(): BusinessState {
 
   const toggleConn = useCallback(
     (name: string) => {
-      void mutate((r) => r.setConnections(planToggleConnection(snap, name)));
+      void mutate((r) => r.setConnections(planToggleConnection(snap, name))).catch(noop);
     },
     [mutate, snap],
   );
 
   const completeWork = useCallback(
     (index: number) => {
-      void mutate((r) => r.markWorkDone(bizKey, index));
+      void mutate((r) => r.markWorkDone(bizKey, index)).catch(noop);
     },
     [mutate, bizKey],
   );

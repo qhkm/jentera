@@ -15,7 +15,19 @@ interface Ctx {
   repository: Repository;
   snapshot: BusinessSnapshot;
   refresh: () => Promise<void>;
+  reportWriteError: (e: Error) => void;
 }
+
+export type RepoStatus = 'loading' | 'ready' | 'error';
+
+interface StatusCtx {
+  status: RepoStatus;
+  /** The load failure that blocked startup, or the most recent write failure. */
+  error: Error | null;
+  retry: () => void;
+}
+
+const StatusContext = createContext<StatusCtx | null>(null);
 
 const RepoContext = createContext<Ctx | null>(null);
 
@@ -40,25 +52,59 @@ export function RepositoryProvider({
   }
   const repo = repoRef.current;
   const [snapshot, setSnapshot] = useState<BusinessSnapshot | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
+  /* A rejecting load() used to leave snapshot null forever, and the
+     `if (!value) return null` below then rendered a permanently blank
+     app — no spinner, no message, no retry. Unreachable with
+     LocalRepository, which cannot throw; routine the moment a network
+     sits behind this. */
   const refresh = useCallback(async () => {
-    setSnapshot(await repo.load());
+    try {
+      setSnapshot(await repo.load());
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e : new Error(String(e)));
+    }
   }, [repo]);
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, attempt]);
+
+  const retry = useCallback(() => {
+    setError(null);
+    setAttempt((n) => n + 1);
+  }, []);
+
+  /* Writes reject rather than resolving silently, but every call site
+     uses fire-and-forget `void mutate(...)`. Routing failures here gives
+     them one place to surface without each caller inventing its own. */
+  const reportWriteError = useCallback((e: Error) => setError(e), []);
 
   const value = useMemo(
-    () => (snapshot ? { repository: repo, snapshot, refresh } : null),
-    [repo, snapshot, refresh],
+    () => (snapshot ? { repository: repo, snapshot, refresh, reportWriteError } : null),
+    [repo, snapshot, refresh, reportWriteError],
   );
 
-  /* Nothing renders until state exists. Every consumer may then assume
-     a snapshot, which is what keeps reads synchronous. */
-  if (!value) return null;
+  const status: RepoStatus = snapshot ? 'ready' : error ? 'error' : 'loading';
+  const statusValue = useMemo(() => ({ status, error, retry }), [status, error, retry]);
 
-  return <RepoContext.Provider value={value}>{children}</RepoContext.Provider>;
+  return (
+    <StatusContext.Provider value={statusValue}>
+      {value ? (
+        <RepoContext.Provider value={value}>{children}</RepoContext.Provider>
+      ) : status === 'error' ? (
+        <div role="alert" className="card" style={{ margin: '2rem', padding: '1.5rem' }}>
+          <p>Could not load your business. {error?.message}</p>
+          <button className="btn" onClick={retry} type="button">
+            Try again
+          </button>
+        </div>
+      ) : null}
+    </StatusContext.Provider>
+  );
 }
 
 function useCtx(): Ctx {
@@ -77,14 +123,31 @@ export function useSnapshot(): BusinessSnapshot {
   return useCtx().snapshot;
 }
 
+/**
+ * Load and write status. Unlike useSnapshot this works outside a loaded
+ * provider, which is the point — something has to render the failure.
+ */
+export function useRepoStatus(): StatusCtx {
+  const ctx = useContext(StatusContext);
+  if (!ctx) throw new Error('useRepoStatus requires a <RepositoryProvider> above it.');
+  return ctx;
+}
+
 /** Run a write, then refresh the snapshot so the UI reflects it. */
 export function useMutate(): (fn: (r: Repository) => Promise<void>) => Promise<void> {
-  const { repository, refresh } = useCtx();
+  const { repository, refresh, reportWriteError } = useCtx();
   return useCallback(
     async (fn) => {
-      await fn(repository);
+      try {
+        await fn(repository);
+      } catch (e) {
+        // Surface it, then rethrow: a caller that awaits still sees the
+        // failure, and one that fire-and-forgets no longer loses it.
+        reportWriteError(e instanceof Error ? e : new Error(String(e)));
+        throw e;
+      }
       await refresh();
     },
-    [repository, refresh],
+    [repository, refresh, reportWriteError],
   );
 }

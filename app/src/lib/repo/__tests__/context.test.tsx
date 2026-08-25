@@ -92,3 +92,65 @@ describe('useSnapshot outside a provider', () => {
     expect(() => render(<Bare />)).toThrow(/RepositoryProvider/);
   });
 });
+
+/* ---- failure paths -------------------------------------------------
+   LocalRepository cannot fail: storage.ts catches every accessor. A
+   network-backed one fails routinely, so these describe the behaviour
+   RemoteRepository will actually exercise. */
+
+class FailingLoad extends LocalRepository {
+  async load(): Promise<never> {
+    throw new Error('network down');
+  }
+}
+
+class FailingWrite extends LocalRepository {
+  async setTheme(): Promise<never> {
+    throw new Error('write rejected');
+  }
+}
+
+describe('load failure', () => {
+  it('surfaces an error state instead of rendering nothing forever', async () => {
+    render(
+      <RepositoryProvider repository={new FailingLoad()}>
+        <Probe />
+      </RepositoryProvider>,
+    );
+    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+    expect(screen.getByRole('alert').textContent).toContain('network down');
+  });
+});
+
+describe('write failure', () => {
+  it('rejects rather than resolving silently', async () => {
+    let captured: Error | null = null;
+
+    function WriteProbe() {
+      const mutate = useMutate();
+      return (
+        <button
+          onClick={() => {
+            void mutate((r) => r.setTheme('light')).catch((e: Error) => {
+              captured = e;
+            });
+          }}
+        >
+          write
+        </button>
+      );
+    }
+
+    render(
+      <RepositoryProvider repository={new FailingWrite()}>
+        <WriteProbe />
+      </RepositoryProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('write')).toBeTruthy());
+    await act(async () => {
+      screen.getByText('write').click();
+    });
+    await waitFor(() => expect(captured).not.toBeNull());
+    expect((captured as unknown as Error).message).toBe('write rejected');
+  });
+});

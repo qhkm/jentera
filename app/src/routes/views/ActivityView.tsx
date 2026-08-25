@@ -17,6 +17,10 @@ import { decideApprovalRemote } from '@/lib/api';
 import type { Approval, Business, Tone, WorkItem } from '@/lib/types';
 import type { useBusiness } from '@/hooks/useBusiness';
 
+/* Writes are fire-and-forget by design; the provider surfaces failures
+   centrally, so this only stops an unhandled rejection. */
+const noop = () => {};
+
 export type ActivityFilter = 'needs you' | 'auto' | 'done' | 'all';
 
 function toneFor(tc: string): Tone {
@@ -83,7 +87,7 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
         return;
       }
     } else {
-      void mutate((r) => r.decideApproval(approval.id, ok));
+      void mutate((r) => r.decideApproval(approval.id, ok)).catch(noop);
       toast(ok ? t('appr.approved') : t('appr.rejected'));
     }
     b.refresh();
