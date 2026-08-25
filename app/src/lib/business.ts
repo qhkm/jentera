@@ -1,60 +1,41 @@
-/* ============================================================
-   Business resolution — playbook + country + user overrides into
-   the single object the UI renders from.
-
-   The old engine memoised this in a module-level BIZ cache and
-   hand-invalidated it on every mutation. Here resolution is a pure
-   function of (key, country, overrides); React memoises it in
-   useBusiness, so there is no cache to forget to clear.
-   ============================================================ */
-
 import { PLAYBOOKS } from './data/playbooks';
 import { REC_MAP } from './data/recommendations';
 import type { AgentRecommendation, Business } from './types';
 import { getCountry, localizeDetect, localizeSite } from './country';
 import { FALLBACK_KEY, extractLocation, extractName, inferPlaybook } from './infer';
-import * as store from './storage';
-import { KEYS } from './storage';
+import type { BusinessSnapshot } from '@/lib/repo/types';
 
 export function isPlaybookKey(key: string): boolean {
   return Object.prototype.hasOwnProperty.call(PLAYBOOKS, key);
 }
 
-export function getBizType(): string {
-  const t = store.get(KEYS.bizType, '');
-  return isPlaybookKey(t) ? t : FALLBACK_KEY;
-}
-
-export function setBizType(key: string): boolean {
-  if (!isPlaybookKey(key)) return false;
-  store.set(KEYS.bizType, key);
-  return true;
+export function getBizType(snap: BusinessSnapshot): string {
+  return isPlaybookKey(snap.bizType) ? snap.bizType : FALLBACK_KEY;
 }
 
 /** Resolve a playbook into the renderable business object. */
-export function resolveBusiness(key: string): Business {
+export function resolveBusiness(snap: BusinessSnapshot, key: string): Business {
   const k = isPlaybookKey(key) ? key : FALLBACK_KEY;
   const p = PLAYBOOKS[k];
-  const country = getCountry();
+  const country = getCountry(snap);
 
-  const name = store.get(KEYS.bizName, '') || p.name;
+  const name = snap.bizName || p.name;
   const loc =
-    store.get(KEYS.bizLoc, '') ||
-    (country.code !== 'MY' && p.loc ? country.name : p.loc || country.name);
+    snap.bizLoc || (country.code !== 'MY' && p.loc ? country.name : p.loc || country.name);
 
   return {
     icon: p.icon,
     name,
     type: p.type,
     sub: p.sub,
-    site: localizeSite(p),
+    site: localizeSite(snap, p),
     loc,
     booking: p.booking,
     systems: p.systems,
     potential: p.potential,
     opportunities: p.opportunities,
     ch: [...p.ch],
-    detect: localizeDetect(p),
+    detect: localizeDetect(snap, p),
     confirm: p.confirm,
     funcs: p.funcs,
     stats: p.stats,
@@ -75,15 +56,14 @@ export function resolveBusiness(key: string): Business {
  * entire job is proving AISAR understood them. The location was already
  * extracted correctly; only this sentence ignored it.
  */
-export function confirmFor(playbookKey: string, text: string): string {
+export function confirmFor(snap: BusinessSnapshot, playbookKey: string, text: string): string {
   const p = PLAYBOOKS[isPlaybookKey(playbookKey) ? playbookKey : FALLBACK_KEY];
-  const loc = extractLocation(text);
+  const loc = extractLocation(snap, text);
   if (!loc) return p.confirm;
 
   const city = loc.split(',')[0].trim();
   if (!city) return p.confirm;
 
-  // "... in <City>. Is that correct?" / "... di <Bandar>. Betul?"
   const rewritten = p.confirm.replace(
     /\b(in|di)\s+[^.]+?(\.\s*(?:Is that correct|Betul))/i,
     (_m, prep: string, tail: string) => `${prep} ${city}${tail}`,
@@ -91,78 +71,76 @@ export function confirmFor(playbookKey: string, text: string): string {
   return rewritten;
 }
 
-/** Free text in, persisted business out. The onboarding entry point. */
-export function registerBusiness(text: string): { key: string; score: number; business: Business } {
-  const { key, score } = inferPlaybook(text);
-
-  store.set(KEYS.bizType, key);
-  store.set(KEYS.bizName, extractName(text, PLAYBOOKS[key].name));
-
-  const loc = extractLocation(text);
-  if (loc) store.set(KEYS.bizLoc, loc);
-
-  learn(key, `inferred:${key}`);
-
-  return { key, score, business: resolveBusiness(key) };
+/** Free text in, the writes a caller should apply out. Performs none of them. */
+export function planRegisterBusiness(
+  snap: BusinessSnapshot,
+  text: string,
+): {
+  key: string;
+  score: number;
+  bizName: string;
+  bizLoc: string | null;
+  learnPick: string;
+} {
+  const { key, score } = inferPlaybook(snap, text);
+  return {
+    key,
+    score,
+    bizName: extractName(text, PLAYBOOKS[key].name),
+    bizLoc: extractLocation(snap, text) || null,
+    learnPick: `inferred:${key}`,
+  };
 }
 
-/* ---- Setup / connection state ---- */
-
-export function isSetupDone(): boolean {
-  return store.get(KEYS.setupDone, '') === '1';
+export function isSetupDone(snap: BusinessSnapshot): boolean {
+  return snap.setupDone;
 }
 
-export function isOnboarded(): boolean {
-  return store.get(KEYS.onboarded, '') === '1';
+export function isOnboarded(snap: BusinessSnapshot): boolean {
+  return snap.onboarded;
 }
 
 /** Completing setup lifts the headline potential score. */
-export function bumpPotential(v: number): number {
-  return isSetupDone() ? Math.min(96, v + 20) : v;
+export function bumpPotential(snap: BusinessSnapshot, v: number): number {
+  return snap.setupDone ? Math.min(96, v + 20) : v;
 }
 
-export function getChannels(): string[] | null {
-  const a = store.getJSON<string[]>(KEYS.channels, []);
-  return a.length ? a : null;
+export function getChannels(snap: BusinessSnapshot): string[] | null {
+  return snap.channels;
 }
 
-export function getConnections(): string[] {
-  const v = store.getJSON<unknown>(KEYS.conns, null);
-  return Array.isArray(v) ? (v as string[]) : [];
+export function getConnections(snap: BusinessSnapshot): string[] {
+  return snap.conns;
 }
 
-/** Seed connections from the playbook defaults, once. */
-export function seedConnections(key: string): void {
-  if (!store.isUnset(KEYS.conns)) return;
-  const b = resolveBusiness(key);
-  store.setJSON(
-    KEYS.conns,
-    b.conns.filter((c) => c.on).map((c) => c.n),
-  );
+/** The playbook's default connections, or null when the owner already has some. */
+export function planSeedConnections(snap: BusinessSnapshot, key: string): string[] | null {
+  if (snap.conns.length > 0) return null;
+  return resolveBusiness(snap, key)
+    .conns.filter((c) => c.on)
+    .map((c) => c.n);
 }
 
-export function toggleConnection(name: string): string[] {
-  const a = getConnections();
+/** The connection list after toggling one name. Caller persists it. */
+export function planToggleConnection(snap: BusinessSnapshot, name: string): string[] {
+  const a = [...snap.conns];
   const i = a.indexOf(name);
   if (i >= 0) a.splice(i, 1);
   else a.push(name);
-  store.setJSON(KEYS.conns, a);
   return a;
 }
 
-export function isConnected(name: string): boolean {
-  return getConnections().includes(name);
+export function isConnected(snap: BusinessSnapshot, name: string): boolean {
+  return snap.conns.includes(name);
 }
 
 /** An agent is live once its channel is connected (or accounting, for setup agents). */
-export function isAgentReady(t: { setup?: boolean; ch?: string }): boolean {
-  if (t.setup) return isConnected('Accounting');
+export function isAgentReady(snap: BusinessSnapshot, t: { setup?: boolean; ch?: string }): boolean {
+  if (t.setup) return isConnected(snap, 'Accounting');
   const ch = String(t.ch ?? '').toLowerCase();
-  const keys = getConnections();
+  const keys = snap.conns;
   return keys.some((cn) => ch.includes(cn.split(' ')[0].toLowerCase())) || keys.length > 0;
 }
-
-/* ---- Work items ---- */
 
 /**
  * The engine writes these indices as strings (`JSON.stringify(["0","2"])`);
@@ -170,19 +148,9 @@ export function isAgentReady(t: { setup?: boolean; ch?: string }): boolean {
  * so a user who approved work on the static site does not find it
  * un-approved after the cutover.
  */
-export function isWorkDone(key: string, i: number): boolean {
-  const raw = store.getJSON<unknown[]>(KEYS.workDone + key, []);
-  return raw.some((v) => String(v) === String(i));
+export function isWorkDone(snap: BusinessSnapshot, key: string, i: number): boolean {
+  return (snap.workDone[key] ?? []).some((v) => String(v) === String(i));
 }
-
-export function markWorkDone(key: string, i: number): void {
-  const raw = store.getJSON<unknown[]>(KEYS.workDone + key, []);
-  if (raw.some((v) => String(v) === String(i))) return;
-  // Normalise the whole array to strings, matching the engine's format.
-  store.setJSON(KEYS.workDone + key, [...raw.map(String), String(i)]);
-}
-
-/* ---- Recommendations: opportunity functions become suggested agents ---- */
 
 export function recommendations(b: Business): AgentRecommendation[] {
   return b.funcs
@@ -191,16 +159,8 @@ export function recommendations(b: Business): AgentRecommendation[] {
     .filter((r): r is AgentRecommendation => Boolean(r));
 }
 
-/* ---- Self-improving (local demo) ---- */
-
-export function learn(key: string, pick: string): void {
-  const obj = store.getJSON<Record<string, number>>(KEYS.learn + key, {});
-  obj[pick] = (obj[pick] ?? 0) + 1;
-  store.setJSON(KEYS.learn + key, obj);
-}
-
-export function popular(key: string): { pick: string; n: number } | null {
-  const obj = store.getJSON<Record<string, number>>(KEYS.learn + key, {});
+export function popular(snap: BusinessSnapshot, key: string): { pick: string; n: number } | null {
+  const obj = snap.learn[key] ?? {};
   let best: string | null = null;
   let bestN = 0;
   for (const [pick, n] of Object.entries(obj)) {

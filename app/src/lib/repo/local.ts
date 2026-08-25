@@ -7,8 +7,7 @@
 
 import * as store from '@/lib/storage';
 import { KEYS } from '@/lib/storage';
-import type { Approval, CountryCode, Lang } from '@/lib/types';
-import type { Policy } from '@/lib/permissions';
+import type { Approval, CountryCode, Lang, Policy } from '@/lib/types';
 import type { BusinessSnapshot, Repository, Theme } from './types';
 
 /** Collect every `prefix{suffix}` key into a map keyed by suffix. */

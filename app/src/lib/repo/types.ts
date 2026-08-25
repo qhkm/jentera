@@ -1,5 +1,4 @@
-import type { Approval, CountryCode, Lang } from '@/lib/types';
-import type { Policy } from '@/lib/permissions';
+import type { Approval, CountryCode, Lang, Policy } from '@/lib/types';
 
 export type Theme = 'dark' | 'light';
 

@@ -1,22 +1,5 @@
-/* ============================================================
-   Action policy.
-
-   DISCUSSION_SUMMARY: "Zero setup does not mean zero control."
-   Every operation sits at one of three levels:
-
-     automatic  read-only or reversible, low-risk internal work
-     approval   customer messages, bookings, exports, record changes
-     blocked    payments, destructive operations, anything outside
-                the business policy
-
-   This is not a settings screen that describes behaviour elsewhere —
-   callTool reads it, so changing a level here changes what the agent
-   is actually allowed to do.
-   ============================================================ */
-
 import { TOOL_RISK } from './data/risk';
-import * as store from './storage';
-import { KEYS } from './storage';
+import type { BusinessSnapshot } from '@/lib/repo/types';
 
 export type { Policy } from './types';
 import type { Policy } from './types';
@@ -57,29 +40,17 @@ export function defaultPolicy(op: string): Policy {
   return DEFAULTS[op as Operation] ?? (TOOL_RISK[op] === 'low' ? 'automatic' : 'approval');
 }
 
-export function getPolicies(): Record<string, Policy> {
-  const stored = store.getJSON<Record<string, Policy>>(KEYS.permissions, {});
+export function getPolicies(snap: BusinessSnapshot): Record<string, Policy> {
   const out: Record<string, Policy> = {};
-  for (const op of OPERATIONS) out[op] = stored[op] ?? DEFAULTS[op];
+  for (const op of OPERATIONS) out[op] = snap.permissions[op] ?? DEFAULTS[op];
   return out;
 }
 
-export function policyFor(op: string): Policy {
-  const stored = store.getJSON<Record<string, Policy>>(KEYS.permissions, {});
-  return stored[op] ?? defaultPolicy(op);
-}
-
-export function setPolicy(op: string, policy: Policy): void {
-  const stored = store.getJSON<Record<string, Policy>>(KEYS.permissions, {});
-  store.setJSON(KEYS.permissions, { ...stored, [op]: policy });
-}
-
-export function resetPolicies(): void {
-  store.setJSON(KEYS.permissions, {});
+export function policyFor(snap: BusinessSnapshot, op: string): Policy {
+  return snap.permissions[op] ?? defaultPolicy(op);
 }
 
 /** True when the owner has moved an operation off its default. */
-export function isCustomised(op: string): boolean {
-  const stored = store.getJSON<Record<string, Policy>>(KEYS.permissions, {});
-  return op in stored && stored[op] !== defaultPolicy(op);
+export function isCustomised(snap: BusinessSnapshot, op: string): boolean {
+  return op in snap.permissions && snap.permissions[op] !== defaultPolicy(op);
 }
