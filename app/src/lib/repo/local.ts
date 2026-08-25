@@ -108,6 +108,17 @@ export class LocalRepository implements Repository {
 
   async decideApproval(id: number, approved: boolean): Promise<void> {
     const q = store.getJSON<Approval[]>(KEYS.approvals, []);
+
+    /* Reject a second decide rather than silently re-setting the status.
+       The server enforces this with a conditional UPDATE — it is what
+       stops an approved message being sent to a customer twice — and the
+       two implementations have to agree, or a screen written against the
+       forgiving one breaks against the strict one. */
+    const target = q.find((a) => a.id === id);
+    if (!target || target.status !== 'pending') {
+      throw new Error('That approval is no longer pending.');
+    }
+
     store.setJSON(
       KEYS.approvals,
       q.map((a) =>
