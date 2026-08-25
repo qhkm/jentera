@@ -1,13 +1,17 @@
 name = "aisar-api"
 main = "src/index.ts"
 compatibility_date = "2026-08-16"
+# postgres.js needs Node built-ins (net, crypto) on Workers.
+compatibility_flags = ["nodejs_compat"]
 
-# Create the database, then paste its id here:
-#   npx wrangler d1 create aisar
-[[d1_databases]]
-binding = "DB"
-database_name = "aisar"
-database_id = "PASTE_DATABASE_ID_HERE"
+# Postgres on Neon (ap-southeast-1) via Hyperdrive.
+# The connection string embedded in this config uses the non-owner role
+# `aisar_app`, not neondb_owner — Postgres silently bypasses row-level
+# security for table owners, so an owner connection would leave RLS
+# configured and enforcing nothing.
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "f77c72f8d6614bb0b6955170caadad07"
 
 [vars]
 # Comma-separated origins allowed to call this API.
