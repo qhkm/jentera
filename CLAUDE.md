@@ -41,7 +41,7 @@ The full persisted surface. Changing or adding one affects the flow gates, so ca
 ## Adding a playbook
 
 ```bash
-node scripts/add-playbook.mjs --file spec.json          # or --deploy
+node scripts/add-playbook.mjs --file spec.json
 ```
 
 Only `key` (lowercase/underscore, not `generic`) and `keywords` (3–8 terms, BM + EN) are required. The script injects the new entry into `app/src/lib/data/playbooks.ts` ahead of `generic`, typechecks, and asserts every keyword infers back to the new key.
