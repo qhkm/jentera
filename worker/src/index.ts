@@ -9,6 +9,7 @@
    ============================================================ */
 
 import { execute } from './connectors';
+import { handleSession } from './routes/session';
 import type { Env } from './env';
 import {
   decideApproval,
@@ -76,6 +77,11 @@ export default {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers });
     }
+
+    /* Sign-in, session and identity. Returns null when the path is not
+       one of these, so the tool-contract routes below still run. */
+    const session = await handleSession(request, env, url, headers);
+    if (session) return session;
 
     try {
       /* ---- POST /api/tools/call ---------------------------------- */

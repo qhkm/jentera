@@ -34,10 +34,15 @@ export async function withTenant<T>(
 ): Promise<T> {
   const sql = connect(env);
   try {
-    return await sql.begin(async (tx) => {
+    // postgres.js types begin() as UnwrapPromiseArray<T>, which does not
+    // unify with a bare generic. The runtime value is exactly what `fn`
+    // returned, so the assertion is narrowing the library's type, not
+    // claiming anything about the data.
+    const out = await sql.begin(async (tx) => {
       await tx`select set_config('app.business_id', ${businessId}, true)`;
       return fn(tx);
     });
+    return out as T;
   } finally {
     await sql.end({ timeout: 5 });
   }
