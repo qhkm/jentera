@@ -10,6 +10,7 @@
 
 import { execute } from './connectors';
 import { handleSession } from './routes/session';
+import { handleRepo } from './routes/repo';
 import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
 import {
@@ -82,6 +83,10 @@ export default {
        one of these, so the tool-contract routes below still run. */
     const session = await handleSession(request, env, url, headers);
     if (session) return session;
+
+    /* The Repository interface's 17 methods. */
+    const repo = await handleRepo(request, env, url, headers);
+    if (repo) return repo;
 
     try {
       /* ---- POST /api/tools/call ---------------------------------- */
