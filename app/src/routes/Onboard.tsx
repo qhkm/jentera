@@ -8,7 +8,7 @@
    the user answers. Without them the flow reads as a signup form
    rather than as AISAR learning the business.
 
-   Steps, matching onboard.html:
+   Steps, matching the original flow:
      1 setup path   — import from web/social, or describe manually
      2 scan         — terminal readout while the playbook is matched
      3 confirm      — "did I get it right?"
@@ -41,10 +41,9 @@ import { DataIcon } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
 import { inferPlaybook } from '@/lib/infer';
 import { PLAYBOOKS } from '@/lib/data/playbooks';
-import { confirmFor, registerBusiness, resolveBusiness, setBizType } from '@/lib/business';
+import { confirmFor, planRegisterBusiness, resolveBusiness } from '@/lib/business';
 import { useT } from '@/i18n/I18nProvider';
-import * as store from '@/lib/storage';
-import { KEYS } from '@/lib/storage';
+import { useMutate, useSnapshot } from '@/lib/repo';
 
 const STEP_COUNT = 6;
 
@@ -120,6 +119,8 @@ export default function Onboard() {
   const t = useT();
   const navigate = useNavigate();
   const toast = useToast();
+  const snap = useSnapshot();
+  const mutate = useMutate();
 
   const [step, setStep] = useState(0);
   const [mode, setMode] = useState<Mode>(null);
@@ -139,7 +140,7 @@ export default function Onboard() {
 
   const topRef = useRef<HTMLDivElement | null>(null);
 
-  const business = useMemo(() => resolveBusiness(bizType), [bizType]);
+  const business = useMemo(() => resolveBusiness(snap, bizType), [snap, bizType]);
   const playbook = PLAYBOOKS[bizType] ?? PLAYBOOKS[DEFAULT_TYPE];
 
   const go = useCallback((next: number) => {
@@ -165,19 +166,24 @@ export default function Onboard() {
          import feel like it did something, but a zero-score match is
          ignored so an unrecognisable domain still lands somewhere
          sensible rather than on the generic playbook. */
-      const guess = inferPlaybook(`${url} ${social}`);
+      const guess = inferPlaybook(snap, `${url} ${social}`);
       if (guess.score > 0) {
         setType(guess.key);
-        setBizType(guess.key);
+        void mutate((r) => r.setBizType(guess.key));
       }
       if (url.trim()) lines.push(t('ob.scan.web'));
       if (social.trim()) lines.push(t('ob.scan.social'));
     } else {
       if (desc.trim()) {
-        const r = registerBusiness(desc.trim());
-        setType(r.key);
+        const plan = planRegisterBusiness(snap, desc.trim());
+        setType(plan.key);
+        void mutate(async (r) => {
+          await r.setBizType(plan.key);
+          await r.setBizProfile({ name: plan.bizName, loc: plan.bizLoc ?? undefined });
+          await r.recordLearn(plan.key, plan.learnPick);
+        });
       } else {
-        setBizType(bizType);
+        void mutate((r) => r.setBizType(bizType));
       }
       lines.push(t('ob.scan.desc'));
     }
@@ -187,11 +193,11 @@ export default function Onboard() {
     const key =
       chosen === 'auto'
         ? (() => {
-            const g = inferPlaybook(`${url} ${social}`);
+            const g = inferPlaybook(snap, `${url} ${social}`);
             return g.score > 0 ? g.key : bizType;
           })()
         : desc.trim()
-          ? inferPlaybook(desc.trim()).key
+          ? inferPlaybook(snap, desc.trim()).key
           : bizType;
     const p = PLAYBOOKS[key] ?? PLAYBOOKS[DEFAULT_TYPE];
 
@@ -225,23 +231,25 @@ export default function Onboard() {
   function toggleChannel(name: string) {
     setChannels((prev) => {
       const next = prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name];
-      store.setJSON(KEYS.channels, next);
+      void mutate((r) => r.setChannels(next));
       return next;
     });
   }
 
   function pickType(key: string) {
     setType(key);
-    setBizType(key);
+    void mutate((r) => r.setBizType(key));
   }
 
   /* ---- Activate ---- */
 
   function activate() {
     setActivating(true);
-    store.setJSON(KEYS.channels, channels);
-    store.set(KEYS.bizType, bizType);
-    store.set(KEYS.onboarded, '1');
+    void mutate(async (r) => {
+      await r.setChannels(channels);
+      await r.setBizType(bizType);
+      await r.setOnboarded(true);
+    });
     setTimeout(() => navigate('/setup'), 1200);
   }
 
@@ -253,7 +261,7 @@ export default function Onboard() {
     go(step + 1);
   }
 
-  const confirmText = confirmFor(bizType, desc);
+  const confirmText = confirmFor(snap, bizType, desc);
 
   const recoExtra =
     pain === 'Reservations'

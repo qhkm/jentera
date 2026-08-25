@@ -4,18 +4,19 @@
    "Dari description je terus generate" — spec minimal pun jadi.
 
    Usage (run dari folder aisar-site):
-     node scripts/add-playbook.mjs --file spec.json [--deploy]
-     node scripts/add-playbook.mjs '{ "key":"minimart", "name":"...", ... }' [--deploy]
+     node scripts/add-playbook.mjs --file spec.json
+     node scripts/add-playbook.mjs '{ "key":"minimart", "name":"...", ... }'
      node scripts/add-playbook.mjs --key minimart --name "Your Minimart" \
          --type "Minimart / Grocery" --icon "🏪" --loc "Kuala Lumpur, MY" \
-         --keywords "kedai runcit,minimart,grocery" --detect "minimart & grocery · Kuala Lumpur" \
-         [--deploy]
+         --keywords "kedai runcit,minimart,grocery" --detect "minimart & grocery · Kuala Lumpur"
 
    Spec fields (semua optional kecuali key + keywords):
      key, icon, name, type, site, booking, systems, loc, potential,
      opportunities, ch[], detect, confirm, keywords[],
      funcs[][], stats[], sug{}, team[], work[], conns[]
    Field yang takde → auto-generate dari template generic.
+
+   Script ni tak deploy apa-apa — ./deploy.sh je jalan deploy production.
    ============================================================ */
 
 import fs from 'fs';
@@ -30,8 +31,7 @@ function parseArgs(argv){
   const a = { _: [] };
   for (let i = 0; i < argv.length; i++){
     const x = argv[i];
-    if (x === '--deploy') a.deploy = true;
-    else if (x === '--file') a.file = argv[++i];
+    if (x === '--file') a.file = argv[++i];
     else if (x === '--key') a.key = argv[++i];
     else if (x === '--name') a.name = argv[++i];
     else if (x === '--type') a.type = argv[++i];
@@ -110,104 +110,68 @@ function defaults(spec){
   return s;
 }
 
-/* ---------- format blok JS ---------- */
+/* ---------- format blok JSON (playbooks.ts) ---------- */
 function formatBlock(key, obj){
   const json = JSON.stringify(obj, null, 2);           // 2-space
   const lines = json.split('\n');
   const out = [];
-  out.push('  ' + key + ': ' + lines[0]);             // "  key: {"
-  for (let i = 1; i < lines.length - 1; i++) out.push('    ' + lines[i]);
+  out.push('  "' + key + '": ' + lines[0]);           // '  "key": {'
+  for (let i = 1; i < lines.length - 1; i++) out.push('  ' + lines[i]);
   out.push('  },');
   return out.join('\n');
 }
 
-/* ---------- inject ke biz-engine.js sebelum generic ---------- */
+/* ---------- inject ke playbooks.ts sebelum generic ---------- */
 function inject(enginePath, key, block){
-  let js = fs.readFileSync(enginePath, 'utf8');
-  if (new RegExp('^\\s+' + key + ': \\{', 'm').test(js))
-    die('Playbook "' + key + '" sudah wujud dalam biz-engine.js');
-  const marker = '\n  generic: {';
-  const idx = js.indexOf(marker);
-  if (idx < 0) die('Marker "generic: {" tak jumpa — struktur engine dah berubah?');
-  js = js.slice(0, idx + 1) + '\n' + block + js.slice(idx + 1);
-  fs.writeFileSync(enginePath, js);
+  let ts = fs.readFileSync(enginePath, 'utf8');
+  if (new RegExp('^\\s*"' + key + '":\\s*\\{', 'm').test(ts))
+    die('Playbook "' + key + '" sudah wujud dalam playbooks.ts');
+  const marker = '\n  "generic": {';
+  const idx = ts.indexOf(marker);
+  if (idx < 0) die('Marker `"generic": {` tak jumpa — struktur playbooks.ts dah berubah?');
+  ts = ts.slice(0, idx + 1) + block + '\n' + ts.slice(idx + 1);
+  fs.writeFileSync(enginePath, ts);
 }
 
-/* ---------- validate JS ---------- */
-function jsCheck(enginePath){
-  const src = fs.readFileSync(enginePath, 'utf8');
-  const r = spawnSync(process.execPath, ['-e',
-    'new Function(process.argv[1]); console.log("JS OK")', src],
-    { encoding: 'utf8' });
-  return r.status === 0 ? null : (r.stderr || r.stdout || 'unknown error');
+/* ---------- validate TypeScript (app/) ---------- */
+function tsCheck(repo){
+  const r = spawnSync('pnpm', ['typecheck'], { cwd: path.join(repo, 'app'), encoding: 'utf8' });
+  return r.status === 0 ? null : ((r.stdout || '') + (r.stderr || '') || 'unknown error');
 }
 
-/* ---------- inference sanity test ---------- */
-function inferTest(enginePath, spec){
-  const src = fs.readFileSync(enginePath, 'utf8');
-  const testSrc = `
-    global.localStorage = { _d:{}, getItem(k){ return this._d[k]||null; }, setItem(k,v){ this._d[k]=String(v); } };
-    eval(process.argv[1]);
-    var key = ${JSON.stringify(spec.key)};
-    var kws = ${JSON.stringify(spec.keywords)};
-    var fail = 0;
-    kws.forEach(function(w){
-      var got = kvInfer('saya ada ' + w).key;
-      if (got !== key){ fail++; console.log('FAIL: "' + w + '" -> ' + got); }
-    });
-    console.log(fail === 0 ? 'INFER OK' : 'INFER FAIL');
-    process.exit(fail === 0 ? 0 : 1);
-  `;
-  const r = spawnSync(process.execPath, ['-e', testSrc, src], { encoding: 'utf8' });
-  return { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim() };
-}
+/* ---------- inference sanity test — guna inferPlaybook app sendiri, bukan salinan logik ---------- */
+function verifyKeywords(repo, key, keywords){
+  const appDir = path.join(repo, 'app');
+  const testRel = path.join('src', 'lib', '__verify-playbook__.test.ts');
+  const testPath = path.join(appDir, testRel);
+  const testSrc = `import { describe, expect, it } from 'vitest';
+import { inferPlaybook } from '@/lib/infer';
+import { LocalRepository } from '@/lib/repo/local';
 
-/* ---------- inject UI: chip (app.html) + pill (onboard.html) ---------- */
-function injectUi(repo, key, label, icon){
-  // app.html — demo chip sebelum chip generic
-  const appPath = path.join(repo, 'app.html');
-  let app = fs.readFileSync(appPath, 'utf8');
-  const chipAnchor = '<button class="as-chip" data-switch="generic"';
-  if (!app.includes('data-switch="' + key + '"')){
-    const idx = app.indexOf(chipAnchor);
-    if (idx < 0) die('Anchor chip generic tak jumpa di app.html');
-    const chip = '<button class="as-chip" data-switch="' + key + '" onclick="kvSetBiz(\'' + key + '\')">' + icon + ' ' + label + '</button>\n';
-    app = app.slice(0, idx) + chip + app.slice(idx);
-    fs.writeFileSync(appPath, app);
-    ok('Chip ditambah ke app.html (' + key + ')');
-  } else {
-    ok('Chip ' + key + ' sudah wujud di app.html');
-  }
-  // onboard.html — type pill sebelum pill generic
-  const onboardPath = path.join(repo, 'onboard.html');
-  let ob = fs.readFileSync(onboardPath, 'utf8');
-  const pillAnchor = '<div class="as-opt as-type" data-type="generic"';
-  if (!ob.includes('data-type="' + key + '"')){
-    const idx = ob.indexOf(pillAnchor);
-    if (idx < 0) die('Anchor pill generic tak jumpa di onboard.html');
-    const pill = '<div class="as-opt as-type" data-type="' + key + '"><div class="as-row"><span class="as-check">✓</span>' + icon + ' ' + label + '</div></div>\n';
-    ob = ob.slice(0, idx) + pill + ob.slice(idx);
-    fs.writeFileSync(onboardPath, ob);
-    ok('Pill ditambah ke onboard.html (' + key + ')');
-  } else {
-    ok('Pill ' + key + ' sudah wujud di onboard.html');
-  }
-}
-
-function jsCheckHtml(filePath){
-  const h = fs.readFileSync(filePath, 'utf8');
-  const scripts = h.match(/<script>([\s\S]*?)<\/script>/g) || [];
-  for (const s of scripts){
-    const r = spawnSync(process.execPath, ['-e', 'new Function(process.argv[1])', s.replace(/<\/?script>/g, '')], { encoding: 'utf8' });
-    if (r.status !== 0) die('Inline script dalam ' + path.basename(filePath) + ' gagal: ' + (r.stderr || '').slice(0, 300));
+/* Generated sementara oleh scripts/add-playbook.mjs — dipadam lepas run. */
+describe('generated playbook keyword verification', () => {
+  it('setiap keyword untuk "${key}" infer balik ke key tu', async () => {
+    const snap = await new LocalRepository().load();
+    const keywords = ${JSON.stringify(keywords)};
+    const bad = keywords.filter((k) => inferPlaybook(snap, k).key !== ${JSON.stringify(key)});
+    expect(bad, 'keywords tak infer balik ke "${key}": ' + bad.join(', ')).toEqual([]);
+  });
+});
+`;
+  fs.writeFileSync(testPath, testSrc);
+  try {
+    const r = spawnSync('pnpm', ['vitest', 'run', testRel], { cwd: appDir, encoding: 'utf8' });
+    return { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim() };
+  } finally {
+    fs.unlinkSync(testPath);
   }
 }
 
 /* ---------- main ---------- */
 const args = parseArgs(process.argv.slice(2));
 const repo = process.cwd();
-const enginePath = path.join(repo, 'biz-engine.js');
-if (!fs.existsSync(enginePath)) die('biz-engine.js tak jumpa — run script dari folder aisar-site');
+const enginePath = path.join(repo, 'app', 'src', 'lib', 'data', 'playbooks.ts');
+if (!fs.existsSync(enginePath)) die('app/src/lib/data/playbooks.ts tak jumpa — run script dari folder aisar-site');
 
 let spec = {};
 if (args.file){
@@ -225,34 +189,18 @@ if (spec.key === 'generic') die('Key "generic" adalah reserved — pilih nama la
 if (!spec.keywords || !spec.keywords.length) die('Spec perlukan "keywords" (3-8 istilah user akan taip: BM + EN).');
 
 spec = defaults(spec);
-const block = formatBlock(spec.key, spec);
+const { key: _omitKey, ...entry } = spec; // "key" hidup dalam spec sahaja — bukan medan Playbook
+const block = formatBlock(spec.key, entry);
 inject(enginePath, spec.key, block);
-ok('Playbook "' + spec.key + '" ditambah ke biz-engine.js');
+ok('Playbook "' + spec.key + '" ditambah ke app/src/lib/data/playbooks.ts');
 
-const jsErr = jsCheck(enginePath);
-if (jsErr) die('JS validation gagal:\n' + jsErr);
-ok('JS validation lulus');
+const tsErr = tsCheck(repo);
+if (tsErr) die('Semakan TypeScript gagal:\n' + tsErr);
+ok('Semakan TypeScript lulus');
 
-const inf = inferTest(enginePath, spec);
-if (!inf.ok || inf.out.indexOf('INFER FAIL') >= 0) die('Inference test gagal:\n' + inf.out + '\n' + inf.err);
+const inf = verifyKeywords(repo, spec.key, spec.keywords);
+if (!inf.ok) die('Inference test gagal:\n' + inf.out + '\n' + inf.err);
 ok('Inference test lulus (' + spec.keywords.length + ' keywords → ' + spec.key + ')');
-
-// UI: auto-add chip + pill supaya playbook baru terus nampak dalam demo
-const label = (spec.type || spec.name || spec.key).split('/')[0].trim();
-injectUi(repo, spec.key, label, spec.icon);
-jsCheckHtml(path.join(repo, 'app.html'));
-jsCheckHtml(path.join(repo, 'onboard.html'));
-ok('UI injection lulus (app.html + onboard.html masih JS-valid)');
 
 console.log('\n=== Selesai: ' + spec.key + ' ===');
 console.log(JSON.stringify({ key: spec.key, name: spec.type, detect: spec.detect, loc: spec.loc }, null, 2));
-
-if (args.deploy){
-  console.log('\n🌎 Deploying…');
-  const c = spawnSync('bash', ['-c',
-    'git add -A && git -c user.email="dev@kitakod.com" -c user.name="kitakod" commit -qm "feat: playbook ' +
-    spec.key + ' (via add-playbook.mjs)" 2>/dev/null; wrangler pages publish . --project-name aisar 2>&1 | tail -3'],
-    { cwd: repo, stdio: 'inherit', shell: false });
-  if (c.status !== 0) die('Deploy gagal.');
-  ok('Deployed.');
-}

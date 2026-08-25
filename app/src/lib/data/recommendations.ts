@@ -1,5 +1,5 @@
-/* Ported verbatim from biz-engine.js (KV_REC_MAP).
-   Data only — regenerate rather than hand-edit if the source moves. */
+/* Ported from the old engine (KV_REC_MAP).
+   Data only — hand-edit directly; there's no generator anymore. */
 
 import type { AgentRecommendation } from '../types';
 

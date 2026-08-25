@@ -1,5 +1,5 @@
-/* Ported verbatim from biz-engine.js (PLAYBOOKS).
-   Data only — regenerate rather than hand-edit if the source moves. */
+/* Ported from the old engine (PLAYBOOKS).
+   New playbooks are added via scripts/add-playbook.mjs, which edits this file directly. */
 
 import type { Playbook } from '../types';
 

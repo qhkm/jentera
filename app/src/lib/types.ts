@@ -1,11 +1,12 @@
 /* ============================================================
-   Shapes recovered from biz-engine.js. The abbreviated keys are
-   preserved deliberately — the playbook data is ported verbatim,
-   and renaming ~1700 lines of it buys nothing. The comments carry
-   the meaning the key names don't.
+   Shapes for the playbook data in app/src/lib/data/. The abbreviated
+   keys are preserved deliberately — renaming ~1700 lines of data
+   buys nothing. The comments carry the meaning the key names don't.
    ============================================================ */
 
 export type CountryCode = 'MY' | 'ID' | 'SG' | 'TH' | 'VN' | 'PH';
+
+export type Policy = 'automatic' | 'approval' | 'blocked';
 
 /** Languages that actually have a translation table. */
 export type Lang = 'en' | 'bm';

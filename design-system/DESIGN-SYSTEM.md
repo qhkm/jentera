@@ -147,7 +147,7 @@ Worth knowing which half is which before you rebuild:
 | | Where | What |
 |---|---|---|
 | **Upstream** | `_next/static/chunks/` | All tokens, both themes, border system, type scale, fonts, `.btn*`, `.link`, `.nav-link`, `.section-eyebrow`, `.cli-chip` |
-| **AISAR-added** | inline `<style>` in the HTML pages (~17 KB in `app.html` alone) | Every `.as-*` and `.kv-*` class — cards, tags, chips, sidebar, chat UI, drawer, toast, toggle, avatar, steps |
+| **AISAR-added** | inline `<style>` in the static site's HTML pages (~17 KB in the former `app.html` alone; the static site is gone, see `theme.css` for where this lives now) | Every `.as-*` and `.kv-*` class — cards, tags, chips, sidebar, chat UI, drawer, toast, toggle, avatar, steps |
 
 The AISAR layer is more systematic than it looks; it just wasn't tokenized. `theme.css` promotes it into proper components (`.card`, `.tag`, `.chip`, `.avatar`, `.input`, `.progress`).
 
@@ -155,7 +155,7 @@ The AISAR layer is more systematic than it looks; it just wasn't tokenized. `the
 
 **The upstream design system is light-first.** Its `.btn-primary` is `background: var(--color-black); color: var(--color-white)` — black button on a light page.
 
-The static site runs dark and inverts that, which is the entire origin of the override war in `CLAUDE.md`: the prebuilt chunk sets `padding-block: 0 !important` inside `@layer components`, and unlayered `!important` *loses* to a layered rule regardless of importance. Hence the duplicated `@layer components` block at the top of all four HTML files.
+The static site ran dark and inverted that, which was the entire origin of its override war: the prebuilt chunk sets `padding-block: 0 !important` inside `@layer components`, and unlayered `!important` *loses* to a layered rule regardless of importance. Hence the duplicated `@layer components` block that used to sit at the top of all four HTML files.
 
 **In the React rebuild this problem does not exist**, because you generate the CSS yourself. `theme.css` authors the buttons dark-first with the semantic vars, so nothing needs overriding. Do not port the old `!important` block across — it's a workaround for a constraint you're leaving behind.
 

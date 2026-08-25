@@ -1,4 +1,4 @@
-/* Ported verbatim from biz-engine.js. Data only — regenerate rather than hand-edit. */
+/* Ported from the old engine. Data only — hand-edit directly; there's no generator anymore. */
 
 export const CHAT_TEMPLATES: Record<string, string[]> = {
   "Customer Assistant": [

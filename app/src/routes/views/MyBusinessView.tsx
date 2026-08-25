@@ -16,8 +16,7 @@ import PermissionsPanel from './PermissionsPanel';
 import { useToast } from '@/components/Toast';
 import { isAgentReady } from '@/lib/business';
 import { findConnector } from '@/lib/tools';
-import * as store from '@/lib/storage';
-import { KEYS } from '@/lib/storage';
+import { useMutate, useSnapshot } from '@/lib/repo';
 import type { PlaybookFunc, Tone } from '@/lib/types';
 import type { useBusiness } from '@/hooks/useBusiness';
 
@@ -42,6 +41,8 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
   const [tab, setTab] = useState<BizTab>('profile');
   const t = useT();
   const toast = useToast();
+  const snap = useSnapshot();
+  const mutate = useMutate();
   const { business } = b;
   const [name, setName] = useState(business.name);
   const [loc, setLoc] = useState(business.loc);
@@ -50,9 +51,7 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
   const dirty = name.trim() !== business.name || loc.trim() !== business.loc;
 
   function save() {
-    store.set(KEYS.bizName, name.trim());
-    store.set(KEYS.bizLoc, loc.trim());
-    b.refresh();
+    void mutate((r) => r.setBizProfile({ name: name.trim(), loc: loc.trim() }));
     toast('Business profile updated ✓');
   }
 
@@ -145,7 +144,7 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
 
         <div className="grid gap-3 md:grid-cols-2">
           {business.team.map((m) => {
-            const ready = isAgentReady(m);
+            const ready = isAgentReady(snap, m);
             return (
               <Card key={m.n}>
                 <div className="flex items-start justify-between gap-3">

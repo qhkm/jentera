@@ -1,5 +1,5 @@
-/* Ported verbatim from biz-engine.js (KV_CONNECTORS).
-   Data only — regenerate rather than hand-edit if the source moves. */
+/* Ported from the old engine (KV_CONNECTORS).
+   Data only — hand-edit directly; there's no generator anymore. */
 
 import type { Connector } from '../types';
 

@@ -2,10 +2,9 @@
 # ============================================================
 #  Deploy AISAR (app/) → Cloudflare Pages → jentera.ai
 #
-#  The React app is the product of record as of the cutover. The
-#  old static site (index.html, biz-engine.js and the other root
-#  HTML) is still in the repository for reference but is no longer
-#  published by anything.
+#  The React app under app/ is the only implementation. The old
+#  static site (index.html, biz-engine.js and the other root HTML)
+#  was deleted once the React rebuild reached parity.
 #
 #  This script publishes to the `aisar-jentera` project, which serves
 #  two hostnames from one deployment: jentera.ai (primary, verified

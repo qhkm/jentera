@@ -13,6 +13,7 @@
 
 import { PLAYBOOKS } from './data/playbooks';
 import { cityList, getCountry, localizeKeywords } from './country';
+import type { BusinessSnapshot } from '@/lib/repo/types';
 
 export const FALLBACK_KEY = 'generic';
 
@@ -21,7 +22,7 @@ export interface InferResult {
   score: number;
 }
 
-export function inferPlaybook(text: string): InferResult {
+export function inferPlaybook(snap: BusinessSnapshot, text: string): InferResult {
   const lower = (text || '').toLowerCase();
   const tokens = lower.split(/[^a-z0-9&]+/).filter(Boolean);
 
@@ -32,7 +33,7 @@ export function inferPlaybook(text: string): InferResult {
     if (key === FALLBACK_KEY) continue;
     let score = 0;
 
-    for (const raw of localizeKeywords(PLAYBOOKS[key])) {
+    for (const raw of localizeKeywords(snap, PLAYBOOKS[key])) {
       const w = String(raw).toLowerCase();
 
       if (w.includes(' ')) {
@@ -56,9 +57,9 @@ export function inferPlaybook(text: string): InferResult {
 }
 
 /** Pull a location out of free text — known city alias first, then "di/in/at X". */
-export function extractLocation(text: string): string {
+export function extractLocation(snap: BusinessSnapshot, text: string): string {
   const lower = (text || '').toLowerCase();
-  const cities = cityList();
+  const cities = cityList(snap);
 
   /* Match on word boundaries, longest alias first.
      A plain substring test made the two-letter aliases fire inside
@@ -77,7 +78,7 @@ export function extractLocation(text: string): string {
   const parts = m?.[1]?.trim().split(/[\s,]+/).filter(Boolean);
   if (parts?.length) {
     const cap = parts.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-    return `${cap}, ${getCountry().code}`;
+    return `${cap}, ${getCountry(snap).code}`;
   }
 
   return '';
