@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { RepositoryProvider, useMutate } from '@/lib/repo/context';
 import { LocalRepository } from '@/lib/repo/local';
 import { useBusiness } from '@/hooks/useBusiness';
+import { I18nProvider } from '@/i18n/I18nProvider';
+import { ToastProvider } from '@/components/Toast';
+import { PLAYBOOKS } from '@/lib/data/playbooks';
+import Onboard from '@/routes/Onboard';
 
 function Probe() {
   const b = useBusiness();
@@ -49,5 +54,68 @@ describe('useBusiness connection seeding', () => {
     });
 
     expect(screen.getByTestId('conns').textContent).toBe('[]');
+  });
+});
+
+function ConnectionsProbe() {
+  const b = useBusiness();
+  return <span data-testid="live-conns">{JSON.stringify(b.connections)}</span>;
+}
+
+describe('useBusiness connection seeding after a corrected onboarding guess', () => {
+  it('seeds connections for the playbook the user confirmed, not the scan step\'s first guess', async () => {
+    const onboarding = render(
+      <RepositoryProvider>
+        <I18nProvider>
+          <ToastProvider>
+            <MemoryRouter>
+              <Onboard />
+            </MemoryRouter>
+          </ToastProvider>
+        </I18nProvider>
+      </RepositoryProvider>,
+    );
+
+    // Describe a bakery manually. The scan step guesses "bakery" from that text
+    // and, pre-fix, eagerly seeded bakery's connections before the user ever
+    // confirmed anything.
+    fireEvent.click(await screen.findByText('Enter manually'));
+    fireEvent.change(screen.getByPlaceholderText('e.g. I run a grocery shop in Kuala Lumpur'), {
+      target: { value: 'I run a bakery' },
+    });
+    fireEvent.click(screen.getByText('Build my profile →'));
+
+    // Ride out the scan animation into the confirm step.
+    await waitFor(() => screen.getByText('Not quite, let me rephrase'), { timeout: 3000 });
+
+    // Reject the guess, then explicitly pick a different playbook.
+    fireEvent.click(screen.getByText('Not quite, let me rephrase'));
+    fireEvent.click(await screen.findByText('Choose a business type instead'));
+    fireEvent.click(screen.getByText('Salon / Beauty'));
+
+    // Leave onboarding and mount the dashboard the way production actually
+    // reaches useBusiness -- /onboard itself never calls the hook, so any
+    // eager seed from the scan step can only be observed on a later mount
+    // reading the same persisted store.
+    onboarding.unmount();
+    render(
+      <RepositoryProvider>
+        <ConnectionsProbe />
+      </RepositoryProvider>,
+    );
+
+    const salonConns = PLAYBOOKS.salon.conns.filter((c) => c.on).map((c) => c.n);
+    const bakeryConns = PLAYBOOKS.bakery.conns.filter((c) => c.on).map((c) => c.n);
+
+    await waitFor(
+      () => {
+        const live = JSON.parse(screen.getByTestId('live-conns').textContent ?? '[]') as string[];
+        expect(live).toEqual(salonConns);
+      },
+      { timeout: 3000 },
+    );
+
+    const live = JSON.parse(screen.getByTestId('live-conns').textContent ?? '[]') as string[];
+    expect(live).not.toEqual(bakeryConns);
   });
 });

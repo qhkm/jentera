@@ -41,12 +41,7 @@ import { DataIcon } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
 import { inferPlaybook } from '@/lib/infer';
 import { PLAYBOOKS } from '@/lib/data/playbooks';
-import {
-  confirmFor,
-  planRegisterBusiness,
-  planSeedConnections,
-  resolveBusiness,
-} from '@/lib/business';
+import { confirmFor, planRegisterBusiness, resolveBusiness } from '@/lib/business';
 import { useT } from '@/i18n/I18nProvider';
 import { useMutate, useSnapshot } from '@/lib/repo';
 
@@ -186,7 +181,6 @@ export default function Onboard() {
           await r.setBizType(plan.key);
           await r.setBizProfile({ name: plan.bizName, loc: plan.bizLoc ?? undefined });
           await r.recordLearn(plan.key, plan.learnPick);
-          await r.setConnections(planSeedConnections(snap, plan.key) ?? snap.conns);
         });
       } else {
         void mutate((r) => r.setBizType(bizType));
