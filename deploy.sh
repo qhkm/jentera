@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # ============================================================
-#  Deploy AISAR (app/) → Cloudflare Pages → jentera.aisar.ai
+#  Deploy AISAR (app/) → Cloudflare Pages → jentera.ai
 #
 #  The React app is the product of record as of the cutover. The
 #  old static site (index.html, biz-engine.js and the other root
 #  HTML) is still in the repository for reference but is no longer
 #  published by anything.
 #
-#  This script publishes to the `aisar-jentera` project, which is
-#  the only project serving jentera.aisar.ai. The apex aisar.ai is
-#  a separate project (`aisar`) and is NOT touched by this script.
+#  This script publishes to the `aisar-jentera` project, which serves
+#  two hostnames from one deployment: jentera.ai (primary, verified
+#  below) and jentera.aisar.ai. The apex aisar.ai is a separate
+#  project (`aisar`) and is NOT touched by this script.
 #
 #  Preview instead:
 #    AISAR_PAGES_PROJECT=aisar-next ./deploy.sh "message"
@@ -77,14 +78,39 @@ esac
 
 # Fail over immediately rather than burning six retries on a hostname that
 # has no DNS record.
-if ! curl -sS --max-time 10 -o /dev/null "$BASE/" 2>/dev/null; then
+# "Unreachable" has two very different causes and they need different advice.
+# A name that does not resolve here may still be perfectly attached — a stale
+# negative DNS entry on this machine looks identical to a missing domain, and
+# reporting the wrong one sends you to the dashboard to fix nothing.
+curl -sS --max-time 10 -o /dev/null "$BASE/" 2>/dev/null
+REACH=$?
+if [ "$REACH" -ne 0 ]; then
+  HOST=$(printf '%s' "$BASE" | sed -E 's#^https?://##; s#/.*##')
+  # curl exit 6 is "couldn't resolve host", and it uses the same resolver the
+  # rest of this script does — `host` and `dig` bypass it and would lie here.
+  if [ "$REACH" -eq 6 ]; then
+    echo "   ⚠️  $HOST does not resolve from this machine."
+    if dig @1.1.1.1 +short A "$HOST" | grep -qE '^[0-9]'; then
+      echo "      It DOES resolve via 1.1.1.1, so the domain is fine and your"
+      echo "      local resolver is stale. Negative DNS entries are cached for"
+      echo "      the zone's SOA minimum — often 30 minutes. To clear it now:"
+      echo "        sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder"
+    else
+      echo "      It does not resolve publicly either — the domain is probably"
+      echo "      not attached. Cloudflare dashboard → Workers & Pages →"
+      echo "      $PROJECT → Custom domains → Set up a domain."
+      echo "      Note that adding a DNS record by hand is NOT the same thing;"
+      echo "      that yields a 522 because Pages never learns the hostname."
+    fi
+  else
+    echo "   ⚠️  $BASE resolves but did not respond."
+  fi
+
   if [ -n "$FALLBACK" ]; then
-    echo "   ⚠️  $BASE unreachable — custom domain not attached to '$PROJECT'."
-    echo "      Verifying $FALLBACK instead. Attach the domain in the"
-    echo "      Cloudflare Pages dashboard to make $BASE serve this."
+    echo "      Verifying $FALLBACK instead."
     BASE="$FALLBACK"
   else
-    echo "❌ $BASE is unreachable and there is no fallback host to check."
+    echo "❌ ...and there is no fallback host to check."
     exit 1
   fi
 fi
