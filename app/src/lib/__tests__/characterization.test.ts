@@ -1,3 +1,14 @@
+/* Describes what the domain modules (business/country/permissions/tools)
+   do — characterized before the Repository refactor (Task 1) and carried
+   forward across it (Task 4). Task 4 changed every function's call shape:
+   a BusinessSnapshot comes in first, and nothing writes any more. Every
+   assertion below still proves the same behaviour as before the change.
+   If an assertion doesn't compile under the new signatures, change how
+   the function is called — build a snapshot, seed storage directly where
+   a deleted writer used to run the setup — never what it asserts.
+   Weakening an assertion to make this file compile means the refactor
+   changed behaviour and nobody is testing for it any more. */
+
 import { beforeEach, describe, expect, it } from 'vitest';
 import * as store from '@/lib/storage';
 import { KEYS } from '@/lib/storage';
@@ -49,7 +60,7 @@ describe('business type', () => {
     expect(isPlaybookKey('not-a-real-playbook')).toBe(false);
   });
 
-  it('accepts a real playbook key and persists it', async () => {
+  it('recognizes a real playbook key and reads back what is stored', async () => {
     expect(isPlaybookKey('restaurant')).toBe(true);
     store.set(KEYS.bizType, 'restaurant');
     expect(getBizType(await snap())).toBe('restaurant');
@@ -72,14 +83,10 @@ describe('business profile overrides', () => {
 });
 
 describe('planRegisterBusiness', () => {
-  it('infers a playbook from free text', async () => {
+  it('infers a playbook from free text and records it as a learning signal', async () => {
     const plan = planRegisterBusiness(await snap(), 'saya ada kedai makan nasi kandar di Penang');
     expect(plan.key).toBe('restaurant');
-  });
-
-  it('records the inference as a learning signal', async () => {
-    const plan = planRegisterBusiness(await snap(), 'saya ada kedai makan nasi kandar di Penang');
-    expect(plan.learnPick).toBe(`inferred:${plan.key}`);
+    expect(plan.learnPick).toBe('inferred:restaurant');
   });
 });
 
@@ -155,7 +162,7 @@ describe('country', () => {
     expect(isCountryCode('ZZ')).toBe(false);
   });
 
-  it('accepts a known code and persists it', async () => {
+  it('recognizes a known code and reads back what is stored', async () => {
     expect(isCountryCode('SG')).toBe(true);
     store.set(KEYS.country, 'SG');
     expect(getCountryCode(await snap())).toBe('SG');
@@ -204,7 +211,7 @@ describe('tool risk and the approval queue', () => {
     expect(riskOf('teleport')).toBe('medium');
   });
 
-  it('queues an approval as pending and lists it', async () => {
+  it('lists a queued approval as pending', async () => {
     store.setJSON(KEYS.approvals, [
       {
         id: 1,

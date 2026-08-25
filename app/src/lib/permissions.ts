@@ -1,3 +1,19 @@
+/* ============================================================
+   Action policy.
+
+   DISCUSSION_SUMMARY: "Zero setup does not mean zero control."
+   Every operation sits at one of three levels:
+
+     automatic  read-only or reversible, low-risk internal work
+     approval   customer messages, bookings, exports, record changes
+     blocked    payments, destructive operations, anything outside
+                the business policy
+
+   This is not a settings screen that describes behaviour elsewhere —
+   callTool reads it, so changing a level here changes what the agent
+   is actually allowed to do.
+   ============================================================ */
+
 import { TOOL_RISK } from './data/risk';
 import type { BusinessSnapshot } from '@/lib/repo/types';
 

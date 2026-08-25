@@ -1,3 +1,8 @@
+/* ============================================================
+   Country layer. Malaysia-first but country-aware: adding a
+   country is one COUNTRIES entry, not a code change.
+   ============================================================ */
+
 import { COUNTRIES } from './data/countries';
 import type { Country, CountryCode, Playbook } from './types';
 import type { BusinessSnapshot } from '@/lib/repo/types';

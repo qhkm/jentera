@@ -90,6 +90,23 @@ describe('writes land on the exact legacy keys', () => {
     expect(JSON.parse(localStorage.getItem('aisar-work-done:restaurant') ?? 'null')).toEqual(['1']);
   });
 
+  /**
+   * The engine wrote these indices as numbers before this port switched to
+   * strings. Seeding a pre-existing numeric entry proves markWorkDone
+   * coerces it on write, not just on read — a user who approved work on
+   * the old format must not find it un-approved after the cutover.
+   */
+  it('markWorkDone coerces a pre-existing numeric entry to a string on write', async () => {
+    store.setJSON(KEYS.workDone + 'restaurant', [0]);
+    const r = repo();
+    await r.markWorkDone('restaurant', 1);
+    await r.markWorkDone('restaurant', 1);
+    expect(JSON.parse(localStorage.getItem('aisar-work-done:restaurant') ?? 'null')).toEqual([
+      '0',
+      '1',
+    ]);
+  });
+
   it('recordLearn increments a counter', async () => {
     const r = repo();
     await r.recordLearn('restaurant', 'a');

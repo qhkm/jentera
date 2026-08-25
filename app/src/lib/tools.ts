@@ -1,3 +1,12 @@
+/* ============================================================
+   Agent tool contract (spec v1).
+
+   One pattern for every connector. Risky operations do not execute
+   — they queue for human approval. Execution is mocked; the point
+   of the contract is that a real Workers executor can replace
+   `execute` without any caller changing.
+   ============================================================ */
+
 import { CONNECTORS } from './data/connectors';
 import { TOOL_RISK } from './data/risk';
 import type { Approval, Connector, Risk } from './types';
@@ -42,6 +51,8 @@ export function callTool(snap: BusinessSnapshot, req: ToolRequest): ToolResult {
 
   const risk = riskOf(req.op);
   const args = req.args ?? {};
+  /* The owner's policy outranks the risk tier: a blocked operation
+     never reaches the queue, and an automatic one skips it. */
   const policy = policyFor(snap, req.op);
 
   if (policy === 'blocked') {
@@ -68,8 +79,11 @@ export function callTool(snap: BusinessSnapshot, req: ToolRequest): ToolResult {
     };
   }
 
+  // Replace this branch with the real executor; the contract is unchanged.
   return { ok: true, mock: true, msg: `${cx.n} → ${req.op} OK (mock — no backend executor yet).` };
 }
+
+/* ---- Approval queue: the human stays in the loop for outbound actions ---- */
 
 export function listApprovals(snap: BusinessSnapshot): Approval[] {
   return snap.approvals;

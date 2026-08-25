@@ -1,3 +1,16 @@
+/* ============================================================
+   Inference — free text to a playbook. The heart of "generate on
+   the run": there is no per-customer profile anywhere, only a
+   keyword match into PLAYBOOKS.
+
+   Scoring rules are load-bearing and ported exactly:
+     · multi-word phrases score higher (more specific)
+     · <=3-char keywords need a whole-token match, so 'pet' does
+       not match 'petaling'
+     · longer keywords allow a short prefix, so 'hair' catches
+       'haircut' but not an unrelated long word
+   ============================================================ */
+
 import { PLAYBOOKS } from './data/playbooks';
 import { cityList, getCountry, localizeKeywords } from './country';
 import type { BusinessSnapshot } from '@/lib/repo/types';
@@ -48,6 +61,13 @@ export function extractLocation(snap: BusinessSnapshot, text: string): string {
   const lower = (text || '').toLowerCase();
   const cities = cityList(snap);
 
+  /* Match on word boundaries, longest alias first.
+     A plain substring test made the two-letter aliases fire inside
+     ordinary words: "kl" is an alias for Kuala Lumpur, and "klinik gigi
+     di Ipoh" contains it, so every Malay-described clinic was relocated
+     to KL regardless of the city its owner actually named. "jb" and
+     "pj" carry the same hazard. Longest-first then keeps "kuala lumpur"
+     and "johor bahru" from losing to their own abbreviations. */
   const aliases = Object.keys(cities).sort((a, b) => b.length - a.length);
   for (const alias of aliases) {
     const pattern = new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);

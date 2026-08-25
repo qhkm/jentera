@@ -1,3 +1,13 @@
+/* ============================================================
+   Business resolution — playbook + country + user overrides into
+   the single object the UI renders from.
+
+   The old engine memoised this in a module-level BIZ cache and
+   hand-invalidated it on every mutation. Here resolution is a pure
+   function of (key, country, overrides); React memoises it in
+   useBusiness, so there is no cache to forget to clear.
+   ============================================================ */
+
 import { PLAYBOOKS } from './data/playbooks';
 import { REC_MAP } from './data/recommendations';
 import type { AgentRecommendation, Business } from './types';
@@ -64,6 +74,7 @@ export function confirmFor(snap: BusinessSnapshot, playbookKey: string, text: st
   const city = loc.split(',')[0].trim();
   if (!city) return p.confirm;
 
+  // "... in <City>. Is that correct?" / "... di <Bandar>. Betul?"
   const rewritten = p.confirm.replace(
     /\b(in|di)\s+[^.]+?(\.\s*(?:Is that correct|Betul))/i,
     (_m, prep: string, tail: string) => `${prep} ${city}${tail}`,
@@ -91,6 +102,8 @@ export function planRegisterBusiness(
     learnPick: `inferred:${key}`,
   };
 }
+
+/* ---- Setup / connection state ---- */
 
 export function isSetupDone(snap: BusinessSnapshot): boolean {
   return snap.setupDone;
@@ -142,6 +155,8 @@ export function isAgentReady(snap: BusinessSnapshot, t: { setup?: boolean; ch?: 
   return keys.some((cn) => ch.includes(cn.split(' ')[0].toLowerCase())) || keys.length > 0;
 }
 
+/* ---- Work items ---- */
+
 /**
  * The engine writes these indices as strings (`JSON.stringify(["0","2"])`);
  * an earlier version of this port wrote numbers. Read both, write strings,
@@ -152,12 +167,16 @@ export function isWorkDone(snap: BusinessSnapshot, key: string, i: number): bool
   return (snap.workDone[key] ?? []).some((v) => String(v) === String(i));
 }
 
+/* ---- Recommendations: opportunity functions become suggested agents ---- */
+
 export function recommendations(b: Business): AgentRecommendation[] {
   return b.funcs
     .filter(([, , state]) => state === 'opportunity')
     .map(([label]) => REC_MAP[label])
     .filter((r): r is AgentRecommendation => Boolean(r));
 }
+
+/* ---- Self-improving (local demo) ---- */
 
 export function popular(snap: BusinessSnapshot, key: string): { pick: string; n: number } | null {
   const obj = snap.learn[key] ?? {};
