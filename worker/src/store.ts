@@ -111,10 +111,14 @@ export async function decideApproval(
   db: D1Database,
   id: string,
   status: Extract<ApprovalStatus, 'approved' | 'rejected'>,
+  business: string,
 ): Promise<boolean> {
   const res = await db
-    .prepare(`UPDATE approvals SET status = ?, decided_at = ? WHERE id = ? AND status = 'pending'`)
-    .bind(status, new Date().toISOString(), id)
+    .prepare(
+      `UPDATE approvals SET status = ?, decided_at = ?
+        WHERE id = ? AND status = 'pending' AND business = ?`,
+    )
+    .bind(status, new Date().toISOString(), id, business)
     .run();
   return (res.meta.changes ?? 0) > 0;
 }

@@ -10,6 +10,7 @@
 
 import { execute } from './connectors';
 import { handleSession } from './routes/session';
+import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
 import {
   decideApproval,
@@ -61,7 +62,6 @@ function json(body: unknown, init: ResponseInit = {}, headers: Record<string, st
 }
 
 interface ToolRequest {
-  business?: string;
   conn?: string;
   op?: string;
   args?: Record<string, unknown>;
@@ -86,13 +86,18 @@ export default {
     try {
       /* ---- POST /api/tools/call ---------------------------------- */
       if (url.pathname === '/api/tools/call' && request.method === 'POST') {
+        const identity = await resolveTenant(env, request);
+        if (!hasBusiness(identity)) {
+          return json({ ok: false, err: 'not signed in' }, { status: 401 }, headers);
+        }
+        const business = identity.businessId;
+
         const body = (await request.json()) as ToolRequest;
-        const business = body.business?.trim();
         const conn = body.conn?.trim();
         const op = body.op?.trim();
 
-        if (!business || !conn || !op) {
-          return json({ ok: false, err: 'business, conn and op are required' }, { status: 400 }, headers);
+        if (!conn || !op) {
+          return json({ ok: false, err: 'conn and op are required' }, { status: 400 }, headers);
         }
 
         const args = body.args ?? {};
@@ -128,10 +133,11 @@ export default {
 
       /* ---- GET /api/approvals?business=…&status=… ---------------- */
       if (url.pathname === '/api/approvals' && request.method === 'GET') {
-        const business = url.searchParams.get('business');
-        if (!business) {
-          return json({ ok: false, err: 'business is required' }, { status: 400 }, headers);
+        const identity = await resolveTenant(env, request);
+        if (!hasBusiness(identity)) {
+          return json({ ok: false, err: 'not signed in' }, { status: 401 }, headers);
         }
+        const business = identity.businessId;
         const status = url.searchParams.get('status') as
           | 'pending'
           | 'approved'
@@ -144,10 +150,15 @@ export default {
       /* ---- POST /api/approvals/:id/decide ------------------------ */
       const decide = url.pathname.match(/^\/api\/approvals\/([^/]+)\/decide$/);
       if (decide && request.method === 'POST') {
+        const identity = await resolveTenant(env, request);
+        if (!hasBusiness(identity)) {
+          return json({ ok: false, err: 'not signed in' }, { status: 401 }, headers);
+        }
+
         const id = decide[1];
         const { approved } = (await request.json()) as { approved?: boolean };
 
-        const changed = await decideApproval(env.DB, id, approved ? 'approved' : 'rejected');
+        const changed = await decideApproval(env.DB, id, approved ? 'approved' : 'rejected', identity.businessId);
         if (!changed) {
           // Already decided, or no such row — never execute twice.
           return json({ ok: false, err: 'not pending' }, { status: 409 }, headers);
