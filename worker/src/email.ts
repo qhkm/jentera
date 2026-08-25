@@ -8,16 +8,19 @@
 import type { Env } from './env';
 
 /**
- * No AISAR domain is verified in Resend yet — the account has loyca.ai,
- * pantas.ai and three .app domains, none of which should appear on an
- * AISAR sign-in email. Sending from an unrelated brand reads as phishing
- * to the recipient and costs deliverability.
+ * The sender must match the domain the link points at.
  *
- * Until `aisar.ai` (or `jentera.ai`) is verified, set MAGIC_FROM to a
- * verified sender and this will use it; otherwise the link is logged
- * rather than sent, so the whole flow stays testable.
+ * APP_ORIGIN is https://jentera.ai — that is the live site and what sits
+ * in the user's URL bar. An email from a different domain than the link
+ * it carries is the exact shape of a phishing message, and both spam
+ * filters and cautious recipients treat it that way. So: jentera.ai,
+ * not aisar.ai, whatever the product is called.
+ *
+ * Overridable because staging and preview origins differ. Until the
+ * domain is verified in Resend the link is logged rather than sent, so
+ * the flow stays testable without delivery.
  */
-const FROM = 'AISAR <hello@aisar.ai>';
+const FROM = 'AISAR <hello@jentera.ai>';
 
 export async function sendMagicLink(env: Env, email: string, url: string): Promise<void> {
   if (!env.RESEND_API_KEY) {
@@ -32,7 +35,7 @@ export async function sendMagicLink(env: Env, email: string, url: string): Promi
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: FROM,
+      from: env.MAGIC_FROM || FROM,
       to: [email],
       subject: 'Your AISAR sign-in link',
       text: [

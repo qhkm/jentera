@@ -7,4 +7,7 @@ export interface Env {
   RESEND_API_KEY: string;
   /** Where magic links point, e.g. https://jentera.ai */
   APP_ORIGIN: string;
+  /** Override the sender, e.g. for a staging origin. Must be a domain
+      verified in Resend, and should match APP_ORIGIN. */
+  MAGIC_FROM?: string;
 }
