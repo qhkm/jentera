@@ -54,11 +54,19 @@ export function useBusiness(): BusinessState {
   const [tick, setTick] = useState(0);
   const refresh = useCallback(() => setTick((n) => n + 1), []);
 
-  // Seed default connections once per business, before first paint.
+  // Seed default connections once per business, before first paint. `snap` is
+  // deliberately left out of the deps: it gets a new identity after *every*
+  // mutate anywhere in the app (theme, language, profile, permissions,
+  // approvals, ...), and this effect must not re-run on those. If it did,
+  // a user disconnecting their last connection would see it undone in the
+  // same render cycle, because `planSeedConnections` treats an empty list as
+  // "never seeded" — see the incident this guards against in
+  // .superpowers/sdd/2026-08-21-slice-0-consolidation/task-5-report.md.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const seed = planSeedConnections(snap, bizKey);
     if (seed) void mutate((r) => r.setConnections(seed));
-  }, [snap, bizKey, mutate]);
+  }, [bizKey, mutate]);
 
   const business = useMemo(() => resolveBusiness(snap, bizKey), [snap, bizKey]);
   const connections = getConnections(snap);
