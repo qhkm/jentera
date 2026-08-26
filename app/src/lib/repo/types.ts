@@ -84,6 +84,16 @@ export interface Connection {
   lastError: string | null;
 }
 
+export interface ConnectionHealth {
+  url: string;
+  pending: number;
+  lastError: string | null;
+  lastErrorAt: string | null;
+  /** False when the far side is pointing somewhere else entirely,
+      which looks identical to nothing happening. */
+  pointsHere: boolean;
+}
+
 export interface AskAnswer {
   text: string;
   /** Fact keys the answer drew on, so a wrong answer is traceable. */
@@ -157,6 +167,9 @@ export interface Repository {
   /** Connect a Telegram bot the owner created. */
   connectTelegram(token: string): Promise<Connection>;
   disconnect(id: string): Promise<void>;
+  /** What the far side thinks the connection is doing. The answer to
+      "I messaged the bot and nothing happened". */
+  connectionHealth(id: string): Promise<ConnectionHealth>;
 
   reset(): Promise<void>;
 }

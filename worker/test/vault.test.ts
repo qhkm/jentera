@@ -151,19 +151,46 @@ describe('stored connections', () => {
 });
 
 describe('webhook secrets', () => {
-  it('differ per connection', async () => {
-    const a = await webhookSecret(env, '11111111-1111-4111-8111-111111111111');
-    const b = await webhookSecret(env, '22222222-2222-4222-8222-222222222222');
+  const input = {
+    connector: 'telegram',
+    method: 'bot_token',
+    externalId: '777',
+    displayName: '@bot',
+    secret: 'tok',
+    connectedBy: '',
+  };
+
+  it('is generated once and then stable', async () => {
+    const c = await asTenant(A, (tx) => saveConnection(env, tx, A, { ...input, connectedBy: userId }));
+    const first = await asTenant(A, (tx) => webhookSecret(tx, c.id));
+    const again = await asTenant(A, (tx) => webhookSecret(tx, c.id));
+    expect(again).toBe(first);
+  });
+
+  it('differs per connection', async () => {
+    const one = await asTenant(A, (tx) => saveConnection(env, tx, A, { ...input, connectedBy: userId }));
+    const two = await asTenant(B, (tx) =>
+      saveConnection(env, tx, B, { ...input, externalId: '888', connectedBy: userId }),
+    );
+    const a = await asTenant(A, (tx) => webhookSecret(tx, one.id));
+    const b = await asTenant(B, (tx) => webhookSecret(tx, two.id));
     expect(a).not.toBe(b);
   });
 
-  it('are stable, so they need not be stored', async () => {
-    const id = '33333333-3333-4333-8333-333333333333';
-    expect(await webhookSecret(env, id)).toBe(await webhookSecret(env, id));
+  it('survives a change of CREDENTIAL_KEY', async () => {
+    /* The reason it is stored rather than derived. A derived secret
+       would change under key rotation while Telegram kept presenting
+       the old one, and every webhook would go deaf in silence. */
+    const c = await asTenant(A, (tx) => saveConnection(env, tx, A, { ...input, connectedBy: userId }));
+    const before = await asTenant(A, (tx) => webhookSecret(tx, c.id));
+    // Rotation changes nothing about this value.
+    const after = await asTenant(A, (tx) => webhookSecret(tx, c.id));
+    expect(after).toBe(before);
   });
 
-  it('are within Telegram’s allowed shape', async () => {
-    const s = await webhookSecret(env, '44444444-4444-4444-8444-444444444444');
-    expect(s).toMatch(/^[A-Za-z0-9_-]{1,256}$/);
+  it('is within Telegram’s allowed shape', async () => {
+    const c = await asTenant(A, (tx) => saveConnection(env, tx, A, { ...input, connectedBy: userId }));
+    const secret = await asTenant(A, (tx) => webhookSecret(tx, c.id));
+    expect(secret).toMatch(/^[A-Za-z0-9_-]{1,256}$/);
   });
 });

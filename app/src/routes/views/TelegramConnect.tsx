@@ -36,6 +36,8 @@ export default function TelegramConnect() {
   const [rows, setRows] = useState<Connection[] | null>(null);
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState<string | null>(null);
+  const [health, setHealth] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -66,6 +68,34 @@ export default function TelegramConnect() {
     }
   }
 
+  /* Telegram's own answer to "I messaged it and nothing happened".
+     Without this the owner cannot tell a bot they never messaged from
+     one whose webhook is pointing at the wrong place — both look like
+     silence. */
+  async function check(id: string) {
+    setChecking(id);
+    try {
+      const h = await repo.connectionHealth(id);
+      setHealth((prev) => ({
+        ...prev,
+        [id]: !h.pointsHere
+          ? 'Telegram is sending messages somewhere else. Disconnect and connect again.'
+          : h.lastError
+            ? `Telegram could not reach us: ${h.lastError}`
+            : h.pending > 0
+              ? `${h.pending} message${h.pending === 1 ? '' : 's'} waiting to come through.`
+              : 'Receiving normally. Send your bot a message to try it.',
+      }));
+    } catch (e) {
+      setHealth((prev) => ({
+        ...prev,
+        [id]: e instanceof Error ? e.message : 'Could not check.',
+      }));
+    } finally {
+      setChecking(null);
+    }
+  }
+
   async function drop(id: string) {
     setRows((prev) => (prev ?? []).filter((r) => r.id !== id));
     await repo.disconnect(id).catch(() => setRows(null));
@@ -89,9 +119,15 @@ export default function TelegramConnect() {
                 {c.lastError && (
                   <span className="text-[12px] text-text-secondary">{c.lastError}</span>
                 )}
+                {health[c.id] && (
+                  <span className="text-[12px] text-text-secondary">{health[c.id]}</span>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <Tag tone={statusTone(c)}>{c.status}</Tag>
+                <Button variant="ghost" onClick={() => void check(c.id)}>
+                  {checking === c.id ? 'Checking…' : 'Test'}
+                </Button>
                 <Button variant="ghost" onClick={() => void drop(c.id)}>
                   Disconnect
                 </Button>

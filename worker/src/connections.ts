@@ -153,23 +153,27 @@ export async function removeConnection(
 /**
  * The per-connection webhook secret.
  *
- * Derived from the connection id and the vault key rather than stored:
- * it is reproducible on every request without a second lookup, and
- * there is no extra secret to leak. Someone who learns one connection's
- * secret learns nothing about another's.
+ * Stored, not derived. Deriving it from CREDENTIAL_KEY coupled it to a
+ * key that key_version exists to let us rotate — and a rotation would
+ * have changed every secret while Telegram kept presenting the old
+ * one, breaking every webhook with no symptom but silence.
+ *
+ * Generated once and returned on read, so a connection made before
+ * this column existed gets one on next use rather than staying
+ * mysteriously deaf.
  */
-export async function webhookSecret(env: Env, connectionId: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(env.CREDENTIAL_KEY ?? 'local-dev-only'),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`webhook:${connectionId}`));
-  return [...new Uint8Array(sig)]
+export async function webhookSecret(
+  tx: postgres.TransactionSql,
+  connectionId: string,
+): Promise<string> {
+  const [row] = await tx<{ webhook_secret: string | null }[]>`
+    select webhook_secret from connection where id = ${connectionId}`;
+  if (row?.webhook_secret) return row.webhook_secret;
+
+  // Telegram allows A-Z a-z 0-9 _ - up to 256 characters.
+  const fresh = [...crypto.getRandomValues(new Uint8Array(32))]
     .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
-    // Telegram caps secret_token at 256 chars and allows A-Z a-z 0-9 _ -
-    .slice(0, 64);
+    .join('');
+  await tx`update connection set webhook_secret = ${fresh} where id = ${connectionId}`;
+  return fresh;
 }

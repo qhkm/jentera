@@ -145,3 +145,49 @@ export function parseUpdate(body: unknown): IncomingMessage | null {
     text: text.slice(0, 4000),
   };
 }
+
+export interface WebhookHealth {
+  url: string;
+  pending: number;
+  lastError: string | null;
+  lastErrorAt: string | null;
+  /** Telegram will not deliver until this is cleared. */
+  ip: string | null;
+}
+
+/**
+ * What Telegram thinks it is doing with this bot.
+ *
+ * The one authoritative answer to "why did nothing arrive". Telegram
+ * keeps the last delivery error for a while, so a webhook pointing at
+ * the wrong host, or one whose certificate it dislikes, says so here
+ * rather than being invisible on our side — where the symptom is
+ * simply an absence.
+ */
+export async function webhookHealth(token: string): Promise<WebhookHealth> {
+  const res = await fetch(`${API}/bot${token}/getWebhookInfo`, {
+    signal: AbortSignal.timeout(10_000),
+  });
+  const body = (await res.json().catch(() => null)) as {
+    ok?: boolean;
+    result?: {
+      url?: string;
+      pending_update_count?: number;
+      last_error_message?: string;
+      last_error_date?: number;
+      ip_address?: string;
+    };
+    description?: string;
+  } | null;
+  if (!body?.ok || !body.result) {
+    throw new Error(body?.description ?? 'Telegram would not answer');
+  }
+  const r = body.result;
+  return {
+    url: r.url ?? '',
+    pending: r.pending_update_count ?? 0,
+    lastError: r.last_error_message ?? null,
+    lastErrorAt: r.last_error_date ? new Date(r.last_error_date * 1000).toISOString() : null,
+    ip: r.ip_address ?? null,
+  };
+}

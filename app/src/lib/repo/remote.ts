@@ -16,6 +16,7 @@ import type {
   FactSource,
   AskAnswer,
   Connection,
+  ConnectionHealth,
   IngestResult,
   Repository,
   Theme,
@@ -263,6 +264,13 @@ export class RemoteRepository implements Repository {
 
   async disconnect(id: string): Promise<void> {
     await call<void>(`/api/connections/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  async connectionHealth(id: string): Promise<ConnectionHealth> {
+    const r = await call<{ health: ConnectionHealth; pointsHere: boolean }>(
+      `/api/connections/${encodeURIComponent(id)}/health`,
+    );
+    return { ...r.health, pointsHere: r.pointsHere };
   }
 
   async activity(): Promise<Activity> {

@@ -15,6 +15,7 @@ import type {
   FactSource,
   AskAnswer,
   Connection,
+  ConnectionHealth,
   IngestResult,
   Repository,
   Theme,
@@ -255,6 +256,10 @@ export class LocalRepository implements Repository {
 
   async disconnect(): Promise<void> {
     throw new NeedsAccountError('Disconnecting an account');
+  }
+
+  async connectionHealth(): Promise<ConnectionHealth> {
+    throw new NeedsAccountError('Checking a connection');
   }
 
   async reset(): Promise<void> {

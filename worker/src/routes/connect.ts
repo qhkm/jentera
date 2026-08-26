@@ -8,7 +8,7 @@
    ============================================================ */
 
 import type { Env } from '../env';
-import { withTenant, withUser } from '../db';
+import { withTenant } from '../db';
 import { hasBusiness, resolveTenant } from '../tenancy';
 import {
   findConnection,
@@ -19,7 +19,14 @@ import {
   useCredential,
   webhookSecret,
 } from '../connections';
-import { clearWebhook, parseUpdate, sendMessage, setWebhook, verifyToken } from '../connectors/telegram';
+import {
+  clearWebhook,
+  parseUpdate,
+  sendMessage,
+  setWebhook,
+  verifyToken,
+  webhookHealth,
+} from '../connectors/telegram';
 import { append, finishRun, recordWork, startRun, updateWorkForRun } from '../runs';
 import { answer, retrieve } from '../ask';
 import { MODEL } from '../ingest';
@@ -39,9 +46,24 @@ export async function handleConnect(
 ): Promise<Response | null> {
   /* ---- the webhook, before any auth ----------------------------------- */
 
-  const hook = url.pathname.match(/^\/api\/webhooks\/telegram\/([0-9a-f-]{36})$/i);
+  /* The tenant is in the path, and it has to be.
+
+     RLS is forced on `connection`, so a read with no app.business_id
+     set returns nothing — which meant the webhook could never load the
+     row it needed to authenticate itself, and every update was dropped
+     for want of a secret that was sitting right there. Same shape as
+     the business-creation bootstrap: the thing that establishes the
+     tenant cannot be read without one.
+
+     Naming the business in the URL is safe because the URL is not the
+     authority. It only says which tenant to look inside; the secret
+     compared below is what proves the caller is Telegram. A guessed
+     business id buys nothing without it. */
+  const hook = url.pathname.match(
+    /^\/api\/webhooks\/telegram\/([0-9a-f-]{36})\/([0-9a-f-]{36})$/i,
+  );
   if (hook && request.method === 'POST') {
-    return telegramWebhook(request, env, hook[1]);
+    return telegramWebhook(request, env, hook[1], hook[2]);
   }
 
   if (!url.pathname.startsWith('/api/connections')) return null;
@@ -101,11 +123,10 @@ export async function handleConnect(
        reverse would leave Telegram posting at an id we have no
        credential for. */
     try {
-      await setWebhook(
-        token,
-        `${env.API_ORIGIN}/api/webhooks/telegram/${saved.id}`,
-        await webhookSecret(env, saved.id),
+      const secret = await withTenant(env, id.businessId, (tx) =>
+        webhookSecret(tx, saved.id),
       );
+      await setWebhook(token, `${env.API_ORIGIN}/api/webhooks/telegram/${id.businessId}/${saved.id}`, secret);
     } catch (e) {
       const why = e instanceof Error ? e.message : 'webhook setup failed';
       await withTenant(env, id.businessId, (tx) => markBroken(tx, saved.id, why));
@@ -113,6 +134,74 @@ export async function handleConnect(
     }
 
     return json({ ok: true, connection: { ...saved, status: 'connected' } }, {}, cors);
+  }
+
+  /* ---- is it actually working? ---------------------------------------- */
+
+  const health = url.pathname.match(/^\/api\/connections\/([0-9a-f-]{36})\/health$/i);
+  if (health && request.method === 'GET') {
+    try {
+      const info = await withTenant(env, id.businessId, async (tx) => {
+        const token = await useCredential(env, tx, health[1]);
+        return webhookHealth(token);
+      });
+      const expected = `${env.API_ORIGIN}/api/webhooks/telegram/${id.businessId}/${health[1]}`;
+
+      /* A Worker cannot usefully fetch its own custom domain — the
+         request loops at the edge and times out with a 522 — so there
+         is no self-test here.
+
+         Instead this repairs. A connection whose webhook is pointing
+         elsewhere, or which predates the stored secret, is deaf in a
+         way the owner cannot see or fix; re-registering costs one call
+         and turns "Test" into something that helps rather than just
+         reporting bad news. */
+      const secretStored = await withTenant(env, id.businessId, async (tx) => {
+        const [r] = await tx<{ ok: boolean }[]>`
+          select webhook_secret is not null as ok from connection where id = ${health[1]}`;
+        return r?.ok ?? false;
+      });
+
+      /* A correct URL is not enough. A connection made before the
+         secret was stored has the right address and no way to prove an
+         update came from Telegram, so every one is refused — the URL
+         looks perfect and nothing works. Repair on either fault. */
+      let repaired = false;
+      if (!info.url || info.url !== expected || !secretStored) {
+        await withTenant(env, id.businessId, async (tx) => {
+          const token = await useCredential(env, tx, health[1]);
+          await setWebhook(token, expected, await webhookSecret(tx, health[1]));
+        });
+        repaired = true;
+      }
+
+      const hasSecret = await withTenant(env, id.businessId, async (tx) => {
+        const [r] = await tx<{ ok: boolean }[]>`
+          select webhook_secret is not null as ok from connection where id = ${health[1]}`;
+        return r?.ok ?? false;
+      });
+
+      return json(
+        {
+          ok: true,
+          health: info,
+          hasSecret,
+          repaired,
+          /* Telegram pointing somewhere else is the failure that looks
+             like nothing happening at all. */
+          pointsHere: info.url === expected,
+          expected,
+        },
+        {},
+        cors,
+      );
+    } catch (e) {
+      return json(
+        { ok: false, err: e instanceof Error ? e.message : 'could not check' },
+        { status: 400 },
+        cors,
+      );
+    }
   }
 
   const drop = url.pathname.match(/^\/api\/connections\/([0-9a-f-]{36})$/i);
@@ -144,33 +233,60 @@ export async function handleConnect(
  * a message we cannot process is not improved by receiving it again
  * every few seconds for a day.
  */
-async function telegramWebhook(request: Request, env: Env, connectionId: string): Promise<Response> {
+async function telegramWebhook(
+  request: Request,
+  env: Env,
+  businessId: string,
+  connectionId: string,
+): Promise<Response> {
   const ok = new Response(null, { status: 200 });
+  /* Every path here answers 200, which is right for Telegram and awful
+     for diagnosis: a dropped update and a handled one look identical
+     from outside. So each drop says why, once, in the log. Without
+     this the only symptom of a broken webhook is silence. */
+  const drop = (why: string) => {
+    console.warn(`[telegram] dropped update on ${connectionId}: ${why}`);
+    return ok;
+  };
 
   const presented = request.headers.get('X-Telegram-Bot-Api-Secret-Token') ?? '';
-  const expected = await webhookSecret(env, connectionId);
+
+  /* Scoped to the business named in the URL, which is the only way this
+     row is visible at all. Nothing is trusted yet — the secret decides. */
+  const found = await withTenant(env, businessId, async (tx) => {
+    const [row] = await tx<{ webhook_secret: string | null; status: string }[]>`
+      select webhook_secret, status from connection where id = ${connectionId}`;
+    return row ?? null;
+  }).catch(() => null);
+
+  if (!found) return drop('no such connection for that business');
+  if (found.status !== 'connected') return drop(`connection is ${found.status}`);
+  const expected = found.webhook_secret ?? '';
+  if (!expected) return drop('no stored secret for that connection');
   /* Constant time: a byte-by-byte comparison would leak the secret to
      anyone willing to measure enough requests. */
-  if (presented.length !== expected.length) return ok;
+  if (presented.length !== expected.length) {
+    return drop(`secret length ${presented.length} != ${expected.length}`);
+  }
   let diff = 0;
   for (let i = 0; i < expected.length; i++) diff |= presented.charCodeAt(i) ^ expected.charCodeAt(i);
-  if (diff !== 0) return ok;
+  if (diff !== 0) return drop('secret mismatch');
 
-  const incoming = parseUpdate(await request.json().catch(() => null));
-  if (!incoming) return ok;
+  const raw = await request.json().catch(() => null);
+  const incoming = parseUpdate(raw);
+  if (!incoming) {
+    return drop(`unhandled update shape: ${JSON.stringify(raw).slice(0, 200)}`);
+  }
 
-  /* The webhook has no session, so the tenant comes from the
-     connection row — the one place a business id may be derived from
-     something other than a session, and only because the URL was
-     proven authentic above. */
-  const owner = await withUser(env, async (sql) => {
-    const [row] = await sql<{ business_id: string }[]>`
-      select business_id from connection where id = ${connectionId} and status = 'connected'`;
-    return row?.business_id ?? null;
-  });
-  if (!owner) return ok;
-
-  await handleIncoming(env, owner, connectionId, incoming);
+  /* Past the secret check, so the business in the URL is confirmed:
+     only its own connection could have produced that value. */
+  try {
+    await handleIncoming(env, businessId, connectionId, incoming);
+  } catch (e) {
+    /* handleIncoming records its own failures, so reaching here means
+       something outside that — the database, the tenant scope. */
+    console.error(`[telegram] handling failed on ${connectionId}: ${String(e)}`);
+  }
   return ok;
 }
 
@@ -241,7 +357,10 @@ async function handleIncoming(
                     draft: draft.text,
                   } as never)}, 'medium')
           returning id`;
-        await append(tx, businessId, run.id, 'approval.requested', { approvalId: appr.id });
+        /* finishRun writes approval.requested for this status, so
+           writing it here too doubled the event. The vocabulary exists
+           for later phases to count and compare runs by what happened
+           inside them; a duplicate quietly skews every such count. */
         await recordWork(tx, businessId, {
           runId: run.id,
           objective: `Reply to ${incoming.from} on Telegram`,
