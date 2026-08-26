@@ -15,6 +15,7 @@
    limits how many valid links exist at once, not how many were sent.
    ============================================================ */
 
+import type postgres from 'postgres';
 import type { Env } from './env';
 import { withUser } from './db';
 
@@ -94,10 +95,27 @@ export async function checkAuthRate(
   const ipHash = await hashIp(env, ip);
 
   return withUser(env, async (sql) => {
-    /* One statement, one round trip: count the window, record this
-       attempt, and sweep expired rows. The counts come from the same
-       snapshot as the insert, so the row being written is not counted
-       against its own request. */
+    const { byEmail, byIp } = await countAndRecord(sql, email, ipHash);
+    if (byIp >= PER_IP_PER_DAY) return 'throttled-ip';
+    if (byEmail >= PER_EMAIL_PER_DAY) return 'throttled-email';
+    return 'ok';
+  });
+}
+
+/**
+ * Count the window, record the attempt, sweep old rows — one statement.
+ *
+ * Takes a connection rather than an Env so the tests exercise this
+ * exact SQL. The subtlety worth protecting is that the counts and the
+ * insert share a snapshot, so a request is never counted against
+ * itself; a copied query in a test would not notice that changing.
+ */
+export async function countAndRecord(
+  sql: postgres.Sql,
+  email: string,
+  ipHash: string,
+): Promise<{ byEmail: number; byIp: number }> {
+  {
     const [row] = await sql<{ by_email: string; by_ip: string }[]>`
       with counts as (
         select count(*) filter (where email = ${email})     as by_email,
@@ -116,10 +134,8 @@ export async function checkAuthRate(
       )
       select by_email::text, by_ip::text from counts`;
 
-    if (Number(row.by_ip) >= PER_IP_PER_DAY) return 'throttled-ip';
-    if (Number(row.by_email) >= PER_EMAIL_PER_DAY) return 'throttled-email';
-    return 'ok';
-  });
+    return { byEmail: Number(row.by_email), byIp: Number(row.by_ip) };
+  }
 }
 
 /**

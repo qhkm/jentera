@@ -220,6 +220,25 @@ export async function signInWithGoogle(
   profile: { subject: string; email: string; name: string | null },
 ): Promise<Session> {
   return withUser(env, async (sql) => {
+    const userId = await claimGoogleIdentity(sql, profile);
+    return startSession(sql, userId);
+  });
+}
+
+/**
+ * The linking decision, as a function of a connection rather than an
+ * Env.
+ *
+ * Split out so the test suite executes THIS query rather than a copy
+ * of it. A copied query is a test that passes while production drifts
+ * away from it — and the branch below is one where drifting silently
+ * means handing over accounts.
+ */
+export async function claimGoogleIdentity(
+  sql: postgres.Sql,
+  profile: { subject: string; email: string; name: string | null },
+): Promise<string> {
+  {
     const [linked] = await sql<{ user_id: string }[]>`
       select user_id from oauth_identity
        where provider = 'google' and subject = ${profile.subject}
@@ -254,8 +273,8 @@ export async function signInWithGoogle(
       `;
     }
 
-    return startSession(sql, userId);
-  });
+    return userId;
+  }
 }
 
 export interface Identity {
