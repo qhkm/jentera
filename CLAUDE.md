@@ -94,6 +94,9 @@ separate, stricter short-range brake on concurrent live links.
 
 **Still missing, and known:** no webhook verification, connector
 execution stubbed in `src/connectors.ts` pending OAuth registrations.
+
+### Testing the worker
+
 ```bash
 cd worker && pnpm test     # needs Docker running
 ```
