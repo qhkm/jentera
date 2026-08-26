@@ -361,6 +361,15 @@ export async function handleRepo(
     });
     if (!changed) return json({ ok: false, err: 'not pending' }, { status: 409 }, cors);
 
+    /* A refusal is as much a part of the record as a send. Without it
+       the trace of a rejected action simply stops, and later phases
+       cannot tell "the owner said no" from "something crashed". */
+    if (!approved && changed.runId) {
+      await withTenant(env, id.businessId, (tx) =>
+        append(tx, id.businessId, changed.runId!, 'approval.rejected', { approvalId: decide[1] }),
+      ).catch(() => {});
+    }
+
     /* Approving is not merely a status change: it is the moment the
        thing the owner approved actually happens. Doing it here rather
        than in a consumer keeps the guarantee simple — the conditional
@@ -379,6 +388,15 @@ export async function handleRepo(
                      body.text.trim() !== (a.draft ?? '').trim();
       const text = edited ? String(body.text).trim() : a.draft;
 
+      /* Before the send, not after. The trace is the evidence for what
+         happened, and an approval recorded after the action it
+         authorised reads as though the send came first. Nothing
+         malfunctioned when it was written last — but anyone
+         reconstructing the sequence later would be reading a lie. */
+      /* The edit happens before the approval, so it is recorded
+         first. Both land in one request, which makes the order a
+         choice rather than an accident — and the trace should read the
+         way the events actually occurred. */
       /* Recorded before the send, because it is true whether or not
          the send succeeds — and because later phases mine these to
          learn how this owner actually writes. */
@@ -390,6 +408,19 @@ export async function handleRepo(
           }),
         );
       }
+
+      if (changed.runId) {
+        await withTenant(env, id.businessId, (tx) =>
+          append(tx, id.businessId, changed.runId!, 'approval.granted', {
+            approvalId: decide[1],
+            edited,
+          }),
+        ).catch(() => {
+          /* Bookkeeping. A missing event must not stop a reply the
+             owner has already approved. */
+        });
+      }
+
       if (a.chatId && a.connectionId && text) {
         try {
           await sendAndRecord(
@@ -420,13 +451,6 @@ export async function handleRepo(
           }
           return json({ ok: true, status: 'approved', sent: false, err: why }, {}, cors);
         }
-        await withTenant(env, id.businessId, (tx) =>
-          append(tx, id.businessId, changed.runId ?? '', 'approval.granted', {}),
-        ).catch(() => {
-          /* The send already happened and is recorded; a missing
-             bookkeeping event must not turn a delivered message into
-             an error the owner sees. */
-        });
         return json({ ok: true, status: 'approved', sent: true }, {}, cors);
       }
     }
