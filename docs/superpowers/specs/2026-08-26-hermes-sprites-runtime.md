@@ -225,9 +225,27 @@ Set `business.runtime = 'hermes-sprite'` only after readiness succeeds. The exis
 
 ### Runtime adapter and run spine
 
-Implement `startRun`, `resumeRun`, `cancelRun`, and `streamEvents` against Hermes' Runs
-API. AISAR run ids map to Hermes run and session ids, but Hermes events are translated
-into AISAR's own append-only event vocabulary.
+**Amended 2026-08-26, after the seam was built.** The four methods below describe a runtime
+that outlives its request. The inline runtime — which is what everything runs on today, and
+the fallback for everything after — can implement `startRun` and would have to stub the
+other three. An interface whose contract nothing satisfies, shaped by a runtime that does
+not exist yet, is worse than a smaller one that is honest.
+
+`src/runtime/types.ts` therefore names what actually varies between runtimes today:
+`readPage` and `answerQuestion`, plus `id`, `model`, and `mode: 'inline' | 'durable'`.
+`mode` is how a caller distinguishes the two once a durable runtime exists. The lifecycle
+methods arrive with the first implementation that needs them, and the contract test in
+`test/runtime.test.ts` is where a new adapter proves it satisfies both halves.
+
+One rule the seam adds that this document did not state: an adapter reads and reasons, and
+never writes AISAR data or sends anything. The control plane decides what to persist and
+what needs approval. A runtime able to act directly would be a runtime able to bypass the
+approval gate, which would make every guarantee in section 9 unenforceable.
+
+When Hermes lands, implement `startRun`, `resumeRun`, `cancelRun`, and `streamEvents`
+against its Runs API alongside the existing methods. AISAR run ids map to Hermes run and
+session ids, but Hermes events are translated into AISAR's own append-only event
+vocabulary.
 
 The `run`, `run_event`, `work_record`, and approval lifecycle must exist before general
 customer provisioning. A runtime without this spine can perform work that AISAR cannot
