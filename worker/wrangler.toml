@@ -4,6 +4,12 @@ compatibility_date = "2026-08-16"
 # postgres.js needs Node built-ins (net, crypto) on Workers.
 compatibility_flags = ["nodejs_compat"]
 
+# Keep the workers.dev hostname alive alongside the custom domain.
+# Passing --domain once silently DISABLED it, because wrangler defaults
+# workers_dev to false as soon as any other route exists — which took
+# the API offline for the frontend that was still pointing at it.
+workers_dev = true
+
 # Postgres on Neon (ap-southeast-1) via Hyperdrive.
 # The connection string embedded in this config uses the non-owner role
 # `aisar_app`, not neondb_owner — Postgres silently bypasses row-level
@@ -26,7 +32,11 @@ APP_ORIGIN = "https://jentera.ai"
 # This Worker's own origin. Google redirects the browser back here, and
 # the URI must match one registered on the OAuth client character for
 # character — including the /api/auth/google/callback path.
-API_ORIGIN = "https://aisar-api.qhkmdev90.workers.dev"
+# api.jentera.ai, not the workers.dev name: Google requires the OAuth
+# redirect's domain to be an authorized domain on the consent screen,
+# and a published app must prove ownership of it in Search Console.
+# qhkmdev90.workers.dev is not ours to verify; jentera.ai is.
+API_ORIGIN = "https://api.jentera.ai"
 
 # Connector credentials are secrets, never vars:
 #   npx wrangler secret put META_APP_SECRET
