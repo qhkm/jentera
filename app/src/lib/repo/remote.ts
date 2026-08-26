@@ -19,6 +19,7 @@ import type {
   ConnectionHealth,
   IngestResult,
   Repository,
+  TraceEvent,
   Theme,
 } from './types';
 
@@ -271,6 +272,20 @@ export class RemoteRepository implements Repository {
       `/api/connections/${encodeURIComponent(id)}/health`,
     );
     return { ...r.health, pointsHere: r.pointsHere };
+  }
+
+  async detailLevel(): Promise<'beginner' | 'advanced'> {
+    const me = await call<{ detailLevel?: string }>('/api/me');
+    return me.detailLevel === 'advanced' ? 'advanced' : 'beginner';
+  }
+
+  setDetailLevel = (level: 'beginner' | 'advanced') => post('/api/me/detail-level', { level });
+
+  async runTrace(runId: string): Promise<TraceEvent[]> {
+    const { events } = await call<{ events: TraceEvent[] }>(
+      `/api/runs/${encodeURIComponent(runId)}/trace`,
+    );
+    return events;
   }
 
   async activity(): Promise<Activity> {

@@ -94,6 +94,13 @@ export interface ConnectionHealth {
   pointsHere: boolean;
 }
 
+export interface TraceEvent {
+  seq: number;
+  type: string;
+  payload: unknown;
+  createdAt: string;
+}
+
 export interface AskAnswer {
   text: string;
   /** Fact keys the answer drew on, so a wrong answer is traceable. */
@@ -159,6 +166,12 @@ export interface Repository {
   ingest(url: string): Promise<IngestResult>;
   /** What AISAR has actually done, and the counts Home shows. */
   activity(): Promise<Activity>;
+  /** How much technical detail this person wants. */
+  detailLevel(): Promise<'beginner' | 'advanced'>;
+  setDetailLevel(level: 'beginner' | 'advanced'): Promise<void>;
+  /** The append-only trace of one run, newest last. */
+  runTrace(runId: string): Promise<TraceEvent[]>;
+
   /** Answer a question from confirmed facts and real work records. */
   ask(question: string): Promise<AskAnswer>;
 

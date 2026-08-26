@@ -31,6 +31,7 @@ import {
 import { append, finishRun, recordWork, startRun, updateWorkForRun } from '../runs';
 import { answer, retrieve } from '../ask';
 import { MODEL } from '../ingest';
+import { policyFor } from '../policy';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -296,12 +297,12 @@ async function handleIncoming(
   );
 
   try {
-    const { facts, policy } = await withTenant(env, businessId, async (tx) => {
-      const f = await retrieve(tx, incoming.text);
-      const [p] = await tx<{ policy: string }[]>`
-        select policy from action_policy where op = 'send_message'`;
-      return { facts: f, policy: p?.policy ?? 'approval' };
-    });
+    const { facts, policy } = await withTenant(env, businessId, async (tx) => ({
+      facts: await retrieve(tx, incoming.text),
+      /* Resolved through policy.ts, which is the only place the
+         connector's vocabulary and the Permissions screen's meet. */
+      policy: await policyFor(tx, 'telegram', 'send_message'),
+    }));
 
     const draft = await answer(env, incoming.text, facts, []);
 

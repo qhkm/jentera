@@ -18,6 +18,7 @@ import type {
   ConnectionHealth,
   IngestResult,
   Repository,
+  TraceEvent,
   Theme,
 } from './types';
 import { NeedsAccountError } from './types';
@@ -260,6 +261,20 @@ export class LocalRepository implements Repository {
 
   async connectionHealth(): Promise<ConnectionHealth> {
     throw new NeedsAccountError('Checking a connection');
+  }
+
+  /* The demo is the beginner view by definition — there is no server,
+     so there is no trace to show and nothing technical to reveal. */
+  async detailLevel(): Promise<'beginner' | 'advanced'> {
+    return 'beginner';
+  }
+
+  async setDetailLevel(): Promise<void> {
+    throw new NeedsAccountError('Changing how much detail you see');
+  }
+
+  async runTrace(): Promise<TraceEvent[]> {
+    return [];
   }
 
   async reset(): Promise<void> {

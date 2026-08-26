@@ -11,6 +11,7 @@ import { useI18n } from '@/i18n/I18nProvider';
 import { Button } from '@/components/ui';
 import { useTheme } from '@/hooks/useTheme';
 import { useSignedIn } from '@/lib/repo/gate';
+import { useDetailLevel } from '@/hooks/useDetailLevel';
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
@@ -51,6 +52,7 @@ export function Shell({
   const { lang, t, toggleLang } = useI18n();
   const { theme, toggleTheme } = useTheme();
   const signedIn = useSignedIn();
+  const detail = useDetailLevel();
   const [leaving, setLeaving] = useState(false);
 
   async function signOut() {
@@ -112,6 +114,23 @@ export function Shell({
             >
               {lang === 'en' ? 'BM' : 'EN'}
             </button>
+            {/* Only when signed in: the demo has no trace to reveal, so
+                the control would promise something it cannot give. */}
+            {detail.canChange ? (
+              <button
+                type="button"
+                onClick={() => detail.set(detail.advanced ? 'beginner' : 'advanced')}
+                className="nav-link px-2 py-1"
+                aria-pressed={detail.advanced}
+                title={
+                  detail.advanced
+                    ? 'Showing the technical trace'
+                    : 'Show the technical trace and raw operation names'
+                }
+              >
+                {detail.advanced ? 'SIMPLE' : 'DETAIL'}
+              </button>
+            ) : null}
             {/* Only for a server-backed session. The anonymous demo has
                 nothing to log out of, and offering it there would imply
                 an account the visitor does not have. */}

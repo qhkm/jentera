@@ -282,6 +282,10 @@ export interface Identity {
   email: string;
   businessId: string | null;
   role: 'owner' | 'staff' | null;
+  /** 'advanced' shows the technical trace and the raw operation names.
+      A property of the person, not the business: two people running one
+      shop need not want the same amount of detail. */
+  detailLevel: 'beginner' | 'advanced';
 }
 
 /** Resolve a session cookie to an identity, or null. */
@@ -289,9 +293,15 @@ export async function verifySession(env: Env, token: string): Promise<Identity |
   const id = await hashToken(token);
   return withUser(env, async (sql) => {
     const rows = await sql<
-      { user_id: string; email: string; business_id: string | null; role: string | null }[]
+      {
+        user_id: string;
+        email: string;
+        business_id: string | null;
+        role: string | null;
+        detail_level: string;
+      }[]
     >`
-      select s.user_id, u.email, m.business_id, m.role
+      select s.user_id, u.email, u.detail_level, m.business_id, m.role
         from session s
         join app_user u on u.id = s.user_id
         left join membership m on m.user_id = s.user_id
@@ -307,6 +317,7 @@ export async function verifySession(env: Env, token: string): Promise<Identity |
       email: r.email,
       businessId: r.business_id,
       role: (r.role as 'owner' | 'staff' | null) ?? null,
+      detailLevel: r.detail_level === 'advanced' ? 'advanced' : 'beginner',
     };
   });
 }
@@ -343,4 +354,15 @@ export function readCookie(request: Request): string | null {
     if (k === COOKIE_NAME) return v.join('=') || null;
   }
   return null;
+}
+
+/** Change how much detail this person wants to see. */
+export async function setDetailLevel(
+  env: Env,
+  userId: string,
+  level: 'beginner' | 'advanced',
+): Promise<void> {
+  await withUser(env, async (sql) => {
+    await sql`update app_user set detail_level = ${level} where id = ${userId}`;
+  });
 }

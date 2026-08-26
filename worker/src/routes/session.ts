@@ -8,6 +8,7 @@ import {
   sessionCookie,
   verifySession,
   loginWithPassword,
+  setDetailLevel,
   setPassword,
   signInWithGoogle,
   signUpWithPassword,
@@ -34,6 +35,9 @@ const EMAIL = /^[^@\s]+@[^@\s.]+\.[^@\s]+$/;
 
 const noContentCors = (headers: Record<string, string>) =>
   new Response(null, { status: 204, headers });
+
+const badRequest = (cors: Record<string, string>, err: string) =>
+  json({ ok: false, err }, { status: 400 }, cors);
 
 /** Short-lived holder for the OAuth state and PKCE verifier. Scoped to
     /api/auth so it is not sent on ordinary API calls. */
@@ -192,6 +196,21 @@ export async function handleSession(
     }
 
     return json({ ok: true }, { headers: { 'Set-Cookie': sessionCookie(result.token, result.expiresAt) } }, cors);
+  }
+
+  /* ---- how much detail to show ---------------------------------------- */
+
+  if (url.pathname === '/api/me/detail-level' && request.method === 'POST') {
+    const token = readCookie(request);
+    const identity = token ? await verifySession(env, token) : null;
+    if (!identity) return json({ ok: false, err: 'not signed in' }, { status: 401 }, cors);
+
+    const body = (await request.json().catch(() => ({}))) as { level?: string };
+    const level = body.level === 'advanced' ? 'advanced' : body.level === 'beginner' ? 'beginner' : null;
+    if (!level) return badRequest(cors, 'level must be beginner or advanced');
+
+    await setDetailLevel(env, identity.userId, level);
+    return noContentCors(cors);
   }
 
   /* ---- password: set one on the signed-in account --------------------- */

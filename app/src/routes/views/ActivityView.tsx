@@ -11,6 +11,8 @@ import { useMemo, useState } from 'react';
 import { Avatar, Button, Card, Eyebrow, Tag } from '@/components/ui';
 import { useActivity } from '@/hooks/useActivity';
 import ApprovalInbox from './ApprovalInbox';
+import RunTrace from './RunTrace';
+import { useDetailLevel } from '@/hooks/useDetailLevel';
 import { useT } from '@/i18n/I18nProvider';
 import { Icon, stripEmoji } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
@@ -47,6 +49,7 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
   const [filter, setFilter] = useState<ActivityFilter>('needs you');
   const business: Business = b.business;
   const activity = useActivity();
+  const detail = useDetailLevel();
   const snap = useSnapshot();
   const refresh = useRefresh();
 
@@ -164,6 +167,19 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
                   {new Date(w.occurredAt).toLocaleString()}
                   {w.function ? ` · ${w.function}` : ''}
                 </span>
+                {/* Advanced mode only, and only where there is a run to
+                    trace. Collapsed by default: the trace is for the
+                    moment something looks wrong, not for every glance. */}
+                {detail.advanced && w.runId && (
+                  <details className="mt-1">
+                    <summary className="cursor-pointer text-[11px] text-text-muted">
+                      Technical trace
+                    </summary>
+                    <div className="mt-2">
+                      <RunTrace runId={w.runId} />
+                    </div>
+                  </details>
+                )}
               </div>
             ))}
           </div>

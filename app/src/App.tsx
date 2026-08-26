@@ -3,6 +3,7 @@ import { useSnapshot } from '@/lib/repo';
 import { RepositoryGate, useSignedIn } from '@/lib/repo/gate';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { ToastProvider } from '@/components/Toast';
+import { DetailLevelProvider } from '@/hooks/useDetailLevel';
 import { isOnboarded } from '@/lib/business';
 import Landing from '@/routes/Landing';
 import Onboard from '@/routes/Onboard';
@@ -55,7 +56,12 @@ function AppShell() {
     <RepositoryGate>
       <I18nProvider>
         <ToastProvider>
-          <Outlet />
+          {/* Inside the gate, because it asks the repository what this
+              person chose; above the routes, because the header toggle
+              and the traces below it must read one value. */}
+          <DetailLevelProvider>
+            <Outlet />
+          </DetailLevelProvider>
         </ToastProvider>
       </I18nProvider>
     </RepositoryGate>
