@@ -269,7 +269,11 @@ export class LocalRepository implements Repository {
     return 'beginner';
   }
 
-  async setDetailLevel(): Promise<void> {
+  /* Parameter kept despite being unused: matching the interface means
+     a caller — or a test — can substitute this for the real thing
+     without TypeScript objecting to a signature the contract does
+     declare. */
+  async setDetailLevel(_level: 'beginner' | 'advanced'): Promise<void> {
     throw new NeedsAccountError('Changing how much detail you see');
   }
 

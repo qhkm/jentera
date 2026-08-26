@@ -25,6 +25,26 @@ type Chosen = { repo: LocalRepository | RemoteRepository; mode: 'local' | 'remot
 const SignedInContext = createContext(false);
 
 /**
+ * Declare a session as server-backed.
+ *
+ * RepositoryGate wraps this around its children once it has chosen.
+ * Exported because anything composing the providers directly — App's
+ * shell, and tests — needs to say which case it is arranging;
+ * otherwise the default of `false` silently disables everything that
+ * depends on being signed in, which reads as a component doing
+ * nothing rather than a missing wrapper.
+ */
+export function SignedInProvider({
+  value,
+  children,
+}: {
+  value: boolean;
+  children: ReactNode;
+}) {
+  return <SignedInContext.Provider value={value}>{children}</SignedInContext.Provider>;
+}
+
+/**
  * True when this session is server-backed.
  *
  * False in the anonymous demo, and false when the API is unreachable —
