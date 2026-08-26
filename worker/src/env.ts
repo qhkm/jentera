@@ -13,6 +13,13 @@ export interface Env {
   /** Key for the IP HMAC in the rate-limit ledger. A Worker secret;
       without it the stored hashes are brute-forceable. */
   RATE_LIMIT_PEPPER?: string;
+  /** This Worker's own public origin, used to build the Google OAuth
+      redirect URI. Must match a redirect registered on the client. */
+  API_ORIGIN: string;
+  /** Google OAuth client. Absent means the button is simply not
+      offered — the other two ways in keep working. */
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
   /** Override the sender, e.g. for a staging origin. Must be a domain
       verified in Resend, and should match APP_ORIGIN. */
   MAGIC_FROM?: string;

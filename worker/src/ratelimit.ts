@@ -121,3 +121,29 @@ export async function checkAuthRate(
     return 'ok';
   });
 }
+
+/**
+ * Burst brake for password login.
+ *
+ * Two keys, because they stop different shapes of attack: per IP stops
+ * one host grinding through passwords, per address stops a botnet
+ * grinding through one account from many hosts. Both share the
+ * AUTH_BURST binding — the namespace is keyed by string, so a prefix
+ * keeps these counters separate from the magic-link ones rather than
+ * having link requests and login attempts consume each other's budget.
+ *
+ * No database write. A failed login should cost an attacker everything
+ * and us nothing.
+ */
+export async function checkLoginBurst(
+  env: Env,
+  request: Request,
+  email: string,
+): Promise<boolean> {
+  const ip = clientIp(request);
+  const [byIp, byEmail] = await Promise.all([
+    env.AUTH_BURST.limit({ key: `login-ip:${ip}` }),
+    env.AUTH_BURST.limit({ key: `login-email:${email}` }),
+  ]);
+  return byIp.success && byEmail.success;
+}

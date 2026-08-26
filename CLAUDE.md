@@ -62,6 +62,24 @@ Two invariants hold the tenancy model up, and both are load-bearing:
   `app.business_id` that only `withTenant` sets. The predicates in route SQL
   are deliberate belt-and-braces, not the actual boundary.
 
+**Hyperdrive query caching is disabled on the `aisar-db` config, and must
+stay disabled.** It is on by default and caches plain SELECTs for ~60s.
+`verifySession`, `resolveTenant` and the password lookup all run outside a
+transaction, so all three were cacheable — meaning a logout would not take
+effect until the entry expired, and a revoked session kept authenticating.
+It surfaced as a freshly verified account still being told it was
+unverified; the database said one thing and the Worker read another.
+Hyperdrive is here for connection pooling, which is unaffected.
+
+There are three ways in — magic link, password, and Google — and all three
+converge on the same session cookie, so nothing downstream distinguishes
+them. `email_verified` is what keeps them safe together: a password alone
+never proves ownership of an address, only consuming a link or Google
+asserting it does. Signing up on an address that already exists never
+overwrites its password and never says so, and Google claiming an
+*unverified* account clears whatever password it held — otherwise someone
+could register against a stranger's address and wait for them to arrive.
+
 Auth is a magic link: the token is stored SHA-256 hashed, single-use via a
 conditional UPDATE, and exchanged for an HttpOnly/Secure/SameSite=Lax session
 cookie. Because the cookie travels cross-origin, `ALLOWED_ORIGINS` must list

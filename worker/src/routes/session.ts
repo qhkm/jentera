@@ -7,9 +7,21 @@ import {
   revokeSession,
   sessionCookie,
   verifySession,
+  loginWithPassword,
+  setPassword,
+  signInWithGoogle,
+  signUpWithPassword,
 } from '../auth';
 import { sendMagicLink } from '../email';
-import { checkAuthRate } from '../ratelimit';
+import { checkAuthRate, checkLoginBurst } from '../ratelimit';
+import { DUMMY_HASH, hashPassword, passwordProblem, verifyPassword } from '../password';
+import {
+  authorizeUrl,
+  exchangeCode,
+  googleConfigured,
+  randomUrlSafe,
+  s256,
+} from '../oauth';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -19,6 +31,23 @@ function json(body: unknown, init: ResponseInit = {}, headers: Record<string, st
 }
 
 const EMAIL = /^[^@\s]+@[^@\s.]+\.[^@\s]+$/;
+
+const noContentCors = (headers: Record<string, string>) =>
+  new Response(null, { status: 204, headers });
+
+/** Short-lived holder for the OAuth state and PKCE verifier. Scoped to
+    /api/auth so it is not sent on ordinary API calls. */
+const OAUTH_COOKIE = 'aisar_oauth';
+
+function readNamedCookie(request: Request, name: string): string | null {
+  const header = request.headers.get('Cookie');
+  if (!header) return null;
+  for (const part of header.split(';')) {
+    const [k, ...v] = part.trim().split('=');
+    if (k === name) return v.join('=') || null;
+  }
+  return null;
+}
 
 /** Returns null when the path is not ours, so the caller can fall through. */
 export async function handleSession(
@@ -84,6 +113,175 @@ export async function handleSession(
         Location: `${env.APP_ORIGIN}/app`,
         'Set-Cookie': sessionCookie(session.token, session.expiresAt),
       },
+    });
+  }
+
+  /* ---- password: sign up --------------------------------------------- */
+
+  if (url.pathname === '/api/auth/signup' && request.method === 'POST') {
+    const body = (await request.json().catch(() => ({}))) as {
+      email?: string;
+      password?: string;
+    };
+    const addr = (body.email ?? '').trim().toLowerCase();
+    const problem = passwordProblem(body.password);
+
+    /* Password shape is the caller's own mistake and safe to report.
+       Anything about the ADDRESS is not — see below. */
+    if (problem) return json({ ok: false, err: problem }, { status: 400 }, cors);
+    if (!EMAIL.test(addr)) return json({ ok: false, err: 'invalid email' }, { status: 400 }, cors);
+
+    const verdict = await checkAuthRate(env, request, addr);
+    if (verdict === 'throttled-ip') {
+      return new Response(null, { status: 429, headers: { ...cors, 'Retry-After': '60' } });
+    }
+
+    if (verdict === 'ok') {
+      const outcome = await signUpWithPassword(env, addr, await hashPassword(body.password!));
+      /* Either way a link goes to the address, and either way the
+         answer below is the same. On 'created' the link verifies the
+         new account; on 'exists' it is an ordinary sign-in link for
+         whoever actually owns the address — which is the point. A
+         signup attempt on someone else's address must not tell its
+         author that the account is taken, and must not disturb it. */
+      const { token } = await issueLoginToken(env, addr);
+      if (token) {
+        const link = `${env.APP_ORIGIN}/api/auth/consume?token=${encodeURIComponent(token)}`;
+        await sendMagicLink(env, addr, link, outcome === 'created' ? 'verify' : 'exists');
+      }
+    }
+
+    /* 202, not 201: nothing is usable yet. The account does not work
+       until the link is followed, and saying "created" would be a lie
+       on the 'exists' path anyway. */
+    return json({ ok: true, next: 'check-email' }, { status: 202 }, cors);
+  }
+
+  /* ---- password: sign in --------------------------------------------- */
+
+  if (url.pathname === '/api/auth/login' && request.method === 'POST') {
+    const body = (await request.json().catch(() => ({}))) as {
+      email?: string;
+      password?: string;
+    };
+    const addr = (body.email ?? '').trim().toLowerCase();
+    const password = typeof body.password === 'string' ? body.password : '';
+
+    if (!EMAIL.test(addr) || !password) {
+      return json({ ok: false, err: 'invalid credentials' }, { status: 401 }, cors);
+    }
+
+    if (!(await checkLoginBurst(env, request, addr))) {
+      return new Response(null, { status: 429, headers: { ...cors, 'Retry-After': '60' } });
+    }
+
+    const result = await loginWithPassword(env, addr, password, verifyPassword, DUMMY_HASH);
+
+    if (result === 'bad-credentials') {
+      return json({ ok: false, err: 'invalid credentials' }, { status: 401 }, cors);
+    }
+    if (result === 'unverified') {
+      /* Only reachable with a CORRECT password, so the caller already
+         controls the account and learns nothing new. */
+      return json(
+        { ok: false, err: 'Check your email for the link that activates this account.',
+          code: 'UNVERIFIED' },
+        { status: 403 },
+        cors,
+      );
+    }
+
+    return json({ ok: true }, { headers: { 'Set-Cookie': sessionCookie(result.token, result.expiresAt) } }, cors);
+  }
+
+  /* ---- password: set one on the signed-in account --------------------- */
+
+  if (url.pathname === '/api/auth/password' && request.method === 'POST') {
+    const token = readCookie(request);
+    const identity = token ? await verifySession(env, token) : null;
+    if (!identity) return json({ ok: false, err: 'not signed in' }, { status: 401 }, cors);
+
+    const body = (await request.json().catch(() => ({}))) as { password?: string };
+    const problem = passwordProblem(body.password);
+    if (problem) return json({ ok: false, err: problem }, { status: 400 }, cors);
+
+    /* How a magic-link or Google user acquires a password without ever
+       proving the address twice: they are already authenticated. */
+    await setPassword(env, identity.userId, await hashPassword(body.password!));
+    return noContentCors(cors);
+  }
+
+  /* ---- google: start -------------------------------------------------- */
+
+  if (url.pathname === '/api/auth/google' && request.method === 'GET') {
+    /* This route is reached by a browser NAVIGATION, not by fetch, so
+       an error body renders as raw JSON on a blank page. Bounce back to
+       the sign-in screen instead and let it explain in words — the same
+       shape as every other failure in this flow. */
+    if (!googleConfigured(env)) {
+      return new Response(null, {
+        status: 302,
+        headers: { Location: `${env.APP_ORIGIN}/signin?error=google-unavailable` },
+      });
+    }
+    const state = randomUrlSafe();
+    const verifier = randomUrlSafe();
+
+    /* state and verifier ride back in a cookie rather than a server
+       table: the callback is the same browser, and this keeps the flow
+       stateless. Lax survives the top-level GET Google navigates back
+       with; Strict would not, and the flow would break on arrival. */
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: authorizeUrl(env, { state, codeChallenge: await s256(verifier) }),
+        'Set-Cookie': `${OAUTH_COOKIE}=${state}.${verifier}; HttpOnly; Secure; SameSite=Lax; Path=/api/auth; Max-Age=600`,
+      },
+    });
+  }
+
+  /* ---- google: return ------------------------------------------------- */
+
+  if (url.pathname === '/api/auth/google/callback' && request.method === 'GET') {
+    const fail = (why: string) =>
+      new Response(null, {
+        status: 302,
+        headers: {
+          Location: `${env.APP_ORIGIN}/signin?error=${why}`,
+          'Set-Cookie': `${OAUTH_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/api/auth; Max-Age=0`,
+        },
+      });
+
+    if (!googleConfigured(env)) return fail('google-unavailable');
+
+    const code = url.searchParams.get('code');
+    const state = url.searchParams.get('state');
+    const stash = readNamedCookie(request, OAUTH_COOKIE);
+    const [wantState, verifier] = (stash ?? '').split('.');
+
+    /* The CSRF check. Without it an attacker can hand a victim a
+       callback URL carrying the ATTACKER's code, silently signing the
+       victim into the attacker's account — where anything they then do
+       is visible to its owner. */
+    if (!code || !state || !wantState || state !== wantState || !verifier) {
+      return fail('google-failed');
+    }
+
+    const profile = await exchangeCode(env, code, verifier);
+    if (!profile) return fail('google-failed');
+
+    /* An unverified Google address proves nothing, and this whole flow
+       leans on Google's assertion of ownership to claim accounts. */
+    if (!profile.emailVerified) return fail('google-unverified');
+
+    const session = await signInWithGoogle(env, profile);
+    return new Response(null, {
+      status: 302,
+      headers: [
+        ['Location', `${env.APP_ORIGIN}/app`],
+        ['Set-Cookie', sessionCookie(session.token, session.expiresAt)],
+        ['Set-Cookie', `${OAUTH_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/api/auth; Max-Age=0`],
+      ],
     });
   }
 

@@ -23,6 +23,11 @@ ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173,https://jentera.a
 # email carries a link to a different domain than it came from.
 APP_ORIGIN = "https://jentera.ai"
 
+# This Worker's own origin. Google redirects the browser back here, and
+# the URI must match one registered on the OAuth client character for
+# character — including the /api/auth/google/callback path.
+API_ORIGIN = "https://aisar-api.qhkmdev90.workers.dev"
+
 # Connector credentials are secrets, never vars:
 #   npx wrangler secret put META_APP_SECRET
 #   npx wrangler secret put GOOGLE_CLIENT_SECRET

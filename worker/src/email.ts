@@ -22,7 +22,37 @@ import type { Env } from './env';
  */
 const FROM = 'AISAR <hello@jentera.ai>';
 
-export async function sendMagicLink(env: Env, email: string, url: string): Promise<void> {
+/**
+ * Which message to send with the link.
+ *
+ * 'exists' goes out when someone tries to sign up with an address that
+ * already has an account. The HTTP response is identical to a real
+ * signup so the attempt reveals nothing, but the person who actually
+ * owns the address deserves to know what happened — and gets a working
+ * sign-in link rather than a confusing "verify your new account".
+ */
+export type LinkKind = 'signin' | 'verify' | 'exists';
+
+const COPY: Record<LinkKind, { subject: string; lead: string }> = {
+  signin: { subject: 'Your AISAR sign-in link', lead: 'Sign in to AISAR:' },
+  verify: {
+    subject: 'Confirm your AISAR account',
+    lead: 'Confirm this address to finish setting up your AISAR account:',
+  },
+  exists: {
+    subject: 'Your AISAR sign-in link',
+    lead:
+      'Someone tried to create an AISAR account with this address, and one ' +
+      'already exists. Your password was not changed. Sign in here:',
+  },
+};
+
+export async function sendMagicLink(
+  env: Env,
+  email: string,
+  url: string,
+  kind: LinkKind = 'signin',
+): Promise<void> {
   if (!env.RESEND_API_KEY) {
     console.log(`[email] no RESEND_API_KEY — link for ${email}: ${url}`);
     return;
@@ -37,9 +67,9 @@ export async function sendMagicLink(env: Env, email: string, url: string): Promi
     body: JSON.stringify({
       from: env.MAGIC_FROM || FROM,
       to: [email],
-      subject: 'Your AISAR sign-in link',
+      subject: COPY[kind].subject,
       text: [
-        'Sign in to AISAR:',
+        COPY[kind].lead,
         '',
         url,
         '',
