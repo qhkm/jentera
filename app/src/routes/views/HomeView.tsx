@@ -9,6 +9,7 @@ import { useT } from '@/i18n/I18nProvider';
 import { DataIcon, stripEmoji } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
 import type { useBusiness } from '@/hooks/useBusiness';
+import { useActivity } from '@/hooks/useActivity';
 import type { View } from '../Dashboard';
 
 export default function HomeView({
@@ -19,6 +20,33 @@ export default function HomeView({
   onNavigate: (v: View) => void;
 }) {
   const t = useT();
+  const activity = useActivity();
+
+  /* Only when the figures are genuinely this business's. A signed-in
+     owner with nothing done yet sees three zeros and a reason why,
+     which is honest; borrowing the demo's numbers would not be. */
+  const realStats = activity.real
+    ? [
+        {
+          d: t('db.stat.handled'),
+          v: String(activity.data!.counters.handled),
+          u: '',
+          l: t('db.stat.handled.sub'),
+        },
+        {
+          d: t('db.stat.needs'),
+          v: String(activity.data!.counters.needsYou),
+          u: '',
+          l: t('db.stat.needs.sub'),
+        },
+        {
+          d: t('db.stat.saved'),
+          v: String(Math.round(activity.data!.counters.minutesSaved / 6) / 10),
+          u: t('db.stat.saved.unit'),
+          l: t('db.stat.saved.sub'),
+        },
+      ]
+    : null;
   const toast = useToast();
   const { business, stage } = b;
 
@@ -68,7 +96,9 @@ export default function HomeView({
               <Eyebrow>{t('cmd.step3.title')}</Eyebrow>
               <h2 className="font-pixel text-lg tracking-tight">
                 {t('db.handled', {
-                  n: business.work.filter((w) => w.tag !== 'needs you').length,
+                  n: activity.real
+                    ? activity.data!.counters.handled
+                    : business.work.filter((w) => w.tag !== 'needs you').length,
                 })}
               </h2>
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-text-secondary">
@@ -83,7 +113,7 @@ export default function HomeView({
             <Tag tone="green">live</Tag>
           </div>
 
-          {pending.length ? (
+          {!activity.real && pending.length ? (
             pending.map(({ w, i }) => (
               <div
                 key={i}
@@ -115,8 +145,22 @@ export default function HomeView({
         </Card>
       )}
 
+      {/* Real figures when there is a server to ask; the playbook's
+          illustrations otherwise. Never a mix — an owner cannot tell
+          which half of a blended row is true. */}
       <div className="grid gap-3 sm:grid-cols-3">
-        {business.stats.map((s) => (
+        {realStats
+          ? realStats.map((s) => (
+              <Card key={s.d} className="gap-3">
+                <Eyebrow>{s.d}</Eyebrow>
+                <span className="font-pixel text-3xl tabular-nums">
+                  {s.v}
+                  {s.u ? <span className="text-lg text-text-muted">{s.u}</span> : null}
+                </span>
+                <span className="text-[13px] text-text-secondary">{s.l}</span>
+              </Card>
+            ))
+          : business.stats.map((s) => (
           <Card key={s.d} className="gap-3">
             <Eyebrow>{s.d}</Eyebrow>
             <span className="font-pixel text-3xl tabular-nums">
@@ -124,9 +168,9 @@ export default function HomeView({
               {s.u ? <span className="text-lg text-text-muted">{s.u}</span> : null}
             </span>
             <span className="text-[13px] text-text-secondary">{s.l}</span>
-            {s.s ? <span className="text-[11px] text-text-muted">{s.s}</span> : null}
-          </Card>
-        ))}
+              {s.s ? <span className="text-[11px] text-text-muted">{s.s}</span> : null}
+            </Card>
+            ))}
       </div>
 
       {/* Latest agent activity — a way into Chat */}
@@ -141,15 +185,35 @@ export default function HomeView({
             {t('home.openactivity')}
           </button>
         </div>
-        {business.work.slice(0, 2).map((w, i) => (
-          <div key={i} className="flex items-start gap-2.5">
-            <Avatar emoji={w.e} size={14} className="size-7" />
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-[12px] font-semibold">{w.n}</span>
-              <span className="text-[12px] leading-snug text-text-secondary">{w.d}</span>
+        {activity.real ? (
+          activity.data!.work.length === 0 ? (
+            /* A signed-in owner with nothing done yet gets told what to
+               do about it, not a borrowed example of someone else's
+               activity. */
+            <p className="text-[12px] leading-snug text-text-secondary">
+              {t('home.nothingyet')}
+            </p>
+          ) : (
+            activity.data!.work.slice(0, 3).map((w) => (
+              <div key={w.id} className="flex min-w-0 flex-col gap-0.5">
+                <span className="text-[12px] font-semibold">{w.objective}</span>
+                {w.outcome && (
+                  <span className="text-[12px] leading-snug text-text-secondary">{w.outcome}</span>
+                )}
+              </div>
+            ))
+          )
+        ) : (
+          business.work.slice(0, 2).map((w, i) => (
+            <div key={i} className="flex items-start gap-2.5">
+              <Avatar emoji={w.e} size={14} className="size-7" />
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="text-[12px] font-semibold">{w.n}</span>
+                <span className="text-[12px] leading-snug text-text-secondary">{w.d}</span>
+              </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </Card>
     </div>
   );

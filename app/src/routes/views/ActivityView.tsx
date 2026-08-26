@@ -9,6 +9,7 @@
 
 import { useMemo, useState } from 'react';
 import { Avatar, Button, Card, Eyebrow, Tag } from '@/components/ui';
+import { useActivity } from '@/hooks/useActivity';
 import { useT } from '@/i18n/I18nProvider';
 import { Icon, stripEmoji } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
@@ -34,6 +35,7 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
   const mutate = useMutate();
   const [filter, setFilter] = useState<ActivityFilter>('needs you');
   const business: Business = b.business;
+  const activity = useActivity();
 
   const indexed = useMemo(() => business.work.map((w, i) => ({ w, i })), [business.work]);
 
@@ -87,6 +89,46 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
   }
 
   const showApprovals = filter === 'needs you' || filter === 'all';
+
+  /* Real work replaces the illustration outright rather than sitting
+     beside it. A list mixing things that happened with things that are
+     a demonstration is unreadable — the owner cannot tell which rows
+     are theirs. */
+  if (activity.real && activity.data!.work.length > 0) {
+    return (
+      <div className="flex flex-col gap-6">
+        <header className="flex flex-col gap-2">
+          <h1 className="font-pixel text-2xl tracking-tight">{t('view.work')}</h1>
+          <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.work.desc')}</p>
+        </header>
+
+        <Card>
+          <div className="flex flex-col">
+            {activity.data!.work.map((w) => (
+              <div
+                key={w.id}
+                className="flex flex-col gap-1 border-b border-rail py-3 last:border-b-0"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm">{w.objective}</span>
+                  <Tag tone={w.status === 'completed' ? 'green' : 'red'}>
+                    {w.status === 'completed' ? t('work.done') : t('work.failed')}
+                  </Tag>
+                </div>
+                {w.outcome && (
+                  <span className="text-[13px] text-text-secondary">{w.outcome}</span>
+                )}
+                <span className="text-[11px] text-text-muted">
+                  {new Date(w.occurredAt).toLocaleString()}
+                  {w.function ? ` · ${w.function}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">

@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Shell } from '@/components/Shell';
 import { Avatar, Card, Eyebrow, Progress, Tag } from '@/components/ui';
 import { useBusiness } from '@/hooks/useBusiness';
+import { useActivity } from '@/hooks/useActivity';
 import { useT } from '@/i18n/I18nProvider';
 import { Icon, type IconName } from '@/components/Icon';
 import { useIsCompact } from '@/hooks/useMediaQuery';
@@ -47,17 +48,24 @@ export default function Dashboard() {
   const { business } = b;
 
   /** Anything blocked on the owner, from either source. */
-  const needsAttention = b.needsYouCount + b.approvals.length;
+  /* Real approvals when there is a server, the playbook's illustration
+     otherwise. Mixing them put an amber "1" on the Activity tab of an
+     account whose own dashboard said nothing was waiting. */
+  const activity = useActivity();
+  const needsAttention = activity.real
+    ? activity.data!.counters.needsYou
+    : b.needsYouCount + b.approvals.length;
 
   /* While the software keyboard is up in the chat, the bottom bar would
      sit between the composer and the keyboard. Hide it for the duration. */
   const compact = useIsCompact();
   const keyboardOpen = useVisualViewport(compact && view === 'chat');
 
-  const handled = useMemo(
+  const playbookHandled = useMemo(
     () => business.work.filter((w, i) => w.tag !== 'needs you' || b.workDone(i)).length,
     [business.work, b],
   );
+  const handled = activity.real ? activity.data!.counters.handled : playbookHandled;
 
   useEffect(() => {
     document.body.style.overflow = drawerOpen ? 'hidden' : '';
