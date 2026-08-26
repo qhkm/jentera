@@ -4,11 +4,15 @@
    component, which is most of why the React port shrinks.
    ============================================================ */
 
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useI18n } from '@/i18n/I18nProvider';
 import { Button } from '@/components/ui';
 import { useTheme } from '@/hooks/useTheme';
+import { useSignedIn } from '@/lib/repo/gate';
+
+const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
 export function Logo({ suffix }: { suffix?: string }) {
   return (
@@ -46,6 +50,27 @@ export function Shell({
 }) {
   const { lang, t, toggleLang } = useI18n();
   const { theme, toggleTheme } = useTheme();
+  const signedIn = useSignedIn();
+  const [leaving, setLeaving] = useState(false);
+
+  async function signOut() {
+    setLeaving(true);
+    try {
+      /* Ask the server to destroy the session row before dropping the
+         cookie. Clearing the cookie alone would leave a live session
+         behind — usable by anyone who captured it, and still counted
+         as active on the account. */
+      await fetch(`${API}/api/auth/logout`, { method: 'POST', credentials: 'include' });
+    } catch {
+      /* Offline, or the API is unreachable. Fall through to the reload
+         anyway: the cookie may survive, but stranding someone on a
+         dashboard with a dead Log out button is worse. */
+    }
+    /* Hard navigation, not a route change. RepositoryGate picks local
+       or remote once at startup, so the app has to boot again to drop
+       back to the anonymous demo. */
+    window.location.href = '/';
+  }
 
   return (
     <div className="min-h-dvh bg-bg text-text">
@@ -87,6 +112,19 @@ export function Shell({
             >
               {lang === 'en' ? 'BM' : 'EN'}
             </button>
+            {/* Only for a server-backed session. The anonymous demo has
+                nothing to log out of, and offering it there would imply
+                an account the visitor does not have. */}
+            {signedIn ? (
+              <button
+                type="button"
+                onClick={signOut}
+                className="nav-link px-2 py-1"
+                disabled={leaving}
+              >
+                {t('nav.logout')}
+              </button>
+            ) : null}
             {actions}
           </div>
         </div>
