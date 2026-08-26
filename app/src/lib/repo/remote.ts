@@ -15,6 +15,7 @@ import type {
   Fact,
   FactSource,
   AskAnswer,
+  Connection,
   IngestResult,
   Repository,
   Theme,
@@ -245,6 +246,23 @@ export class RemoteRepository implements Repository {
       method: 'POST',
       body: JSON.stringify({ question }),
     });
+  }
+
+  async connections(): Promise<Connection[]> {
+    const { connections } = await call<{ connections: Connection[] }>('/api/connections');
+    return connections;
+  }
+
+  async connectTelegram(token: string): Promise<Connection> {
+    const { connection } = await call<{ connection: Connection }>('/api/connections/telegram', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+    return connection;
+  }
+
+  async disconnect(id: string): Promise<void> {
+    await call<void>(`/api/connections/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
   async activity(): Promise<Activity> {

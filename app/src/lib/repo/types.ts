@@ -72,6 +72,18 @@ export interface WorkSummary {
   occurredAt: string;
 }
 
+export interface Connection {
+  id: string;
+  connector: string;
+  method: string;
+  status: 'connected' | 'expired' | 'revoked' | 'error';
+  displayName: string | null;
+  externalId: string | null;
+  connectedAt: string;
+  lastOkAt: string | null;
+  lastError: string | null;
+}
+
 export interface AskAnswer {
   text: string;
   /** Fact keys the answer drew on, so a wrong answer is traceable. */
@@ -136,6 +148,12 @@ export interface Repository {
   activity(): Promise<Activity>;
   /** Answer a question from confirmed facts and real work records. */
   ask(question: string): Promise<AskAnswer>;
+
+  /** Accounts this business has connected. Never includes secrets. */
+  connections(): Promise<Connection[]>;
+  /** Connect a Telegram bot the owner created. */
+  connectTelegram(token: string): Promise<Connection>;
+  disconnect(id: string): Promise<void>;
 
   reset(): Promise<void>;
 }

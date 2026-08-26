@@ -1,0 +1,147 @@
+/* ============================================================
+   Telegram, via a bot token the business owner supplies.
+
+   Each business connects its own bot. That is not incidental: a shared
+   bot would put every customer conversation from every business
+   through one identity, and messages would arrive from a name that is
+   not the business's own. The owner's bot is their brand, their
+   customers, and their token to revoke.
+
+   The token never leaves the vault except to be used. It is not
+   logged, not returned by any endpoint, and not shown back to the
+   owner after it is saved.
+   ============================================================ */
+
+const API = 'https://api.telegram.org';
+
+export interface BotIdentity {
+  id: number;
+  username: string;
+  name: string;
+}
+
+/** A token is only real if Telegram says so. */
+export async function verifyToken(token: string): Promise<BotIdentity> {
+  const res = await fetch(`${API}/bot${token}/getMe`, {
+    signal: AbortSignal.timeout(10_000),
+  });
+  const body = (await res.json().catch(() => null)) as {
+    ok?: boolean;
+    result?: { id?: number; username?: string; first_name?: string };
+    description?: string;
+  } | null;
+
+  if (!body?.ok || !body.result?.id || !body.result.username) {
+    /* Telegram's own words where it has any — "Unauthorized" tells the
+       owner they pasted the wrong thing far better than a generic
+       failure would. */
+    throw new Error(body?.description ?? 'Telegram did not recognise that token');
+  }
+  return {
+    id: body.result.id,
+    username: body.result.username,
+    name: body.result.first_name ?? body.result.username,
+  };
+}
+
+/**
+ * Point the bot at us.
+ *
+ * `secret_token` is the whole verification story for the webhook:
+ * Telegram sends it back in a header on every update, so an endpoint
+ * that checks it cannot be fed forged updates by anyone who merely
+ * guesses the URL. Without it the webhook path is a public write
+ * endpoint into a business's conversation history.
+ */
+export async function setWebhook(
+  token: string,
+  url: string,
+  secret: string,
+): Promise<void> {
+  const res = await fetch(`${API}/bot${token}/setWebhook`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      url,
+      secret_token: secret,
+      // Only what we act on. Fewer update types is less to validate and
+      // less that arrives unhandled.
+      allowed_updates: ['message'],
+      // A connection being re-made should not replay a backlog the
+      // owner never saw.
+      drop_pending_updates: true,
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  const body = (await res.json().catch(() => null)) as { ok?: boolean; description?: string } | null;
+  if (!body?.ok) throw new Error(body?.description ?? 'Telegram refused the webhook');
+}
+
+/** Stop receiving. Called when a connection is removed. */
+export async function clearWebhook(token: string): Promise<void> {
+  await fetch(`${API}/bot${token}/deleteWebhook`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(10_000),
+  }).catch(() => {
+    /* The connection is going away regardless. A bot we cannot reach
+       is not a reason to leave a row behind claiming it is connected. */
+  });
+}
+
+export async function sendMessage(
+  token: string,
+  chatId: number | string,
+  text: string,
+): Promise<{ messageId: number }> {
+  const res = await fetch(`${API}/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const body = (await res.json().catch(() => null)) as {
+    ok?: boolean;
+    result?: { message_id?: number };
+    description?: string;
+  } | null;
+  if (!body?.ok || !body.result?.message_id) {
+    throw new Error(body?.description ?? 'Telegram would not deliver that message');
+  }
+  return { messageId: body.result.message_id };
+}
+
+export interface IncomingMessage {
+  chatId: number;
+  messageId: number;
+  from: string;
+  text: string;
+}
+
+/**
+ * Pull the one update shape we handle out of a webhook body.
+ *
+ * Returns null for everything else — edits, joins, stickers, channel
+ * posts. Silence is correct: Telegram retries on a non-2xx, so
+ * treating an unhandled update as an error would have it redelivered
+ * forever.
+ */
+export function parseUpdate(body: unknown): IncomingMessage | null {
+  if (typeof body !== 'object' || body === null) return null;
+  const msg = (body as { message?: Record<string, unknown> }).message;
+  if (!msg) return null;
+
+  const chat = msg.chat as { id?: number } | undefined;
+  const from = msg.from as { first_name?: string; username?: string } | undefined;
+  const text = msg.text;
+
+  if (typeof chat?.id !== 'number' || typeof text !== 'string' || text.trim() === '') return null;
+  if (typeof msg.message_id !== 'number') return null;
+
+  return {
+    chatId: chat.id,
+    messageId: msg.message_id,
+    from: from?.first_name ?? from?.username ?? 'Someone',
+    // Long enough for a real question, short enough not to be a payload.
+    text: text.slice(0, 4000),
+  };
+}

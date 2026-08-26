@@ -11,6 +11,7 @@
 import { handleSession } from './routes/session';
 import { handleRepo } from './routes/repo';
 import { handleRuns } from './routes/runs';
+import { handleConnect } from './routes/connect';
 import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
 
@@ -75,6 +76,11 @@ export default {
     /* Runs: ingestion, activity, and one run's trace. */
     const runs = await handleRuns(request, env, url, headers);
     if (runs) return runs;
+
+    /* Connections, and the Telegram webhook — the one route here that
+       is called by someone other than our own frontend. */
+    const conn = await handleConnect(request, env, url, headers);
+    if (conn) return conn;
 
     try {
       /* ---- POST /api/tools/call ---------------------------------- */

@@ -7,6 +7,9 @@ export interface Env {
   RESEND_API_KEY: string;
   /** Where magic links point, e.g. https://jentera.ai */
   APP_ORIGIN: string;
+  /** 32 random bytes, base64. Encrypts the credentials business
+      owners paste in — their secrets, not ours. */
+  CREDENTIAL_KEY: string;
   /** Workers AI. Ingestion runs on this rather than an external
       provider so the feature needs no third-party credential. */
   AI: Ai;

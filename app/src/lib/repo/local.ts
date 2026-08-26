@@ -14,6 +14,7 @@ import type {
   Fact,
   FactSource,
   AskAnswer,
+  Connection,
   IngestResult,
   Repository,
   Theme,
@@ -242,6 +243,18 @@ export class LocalRepository implements Repository {
 
   async ask(): Promise<AskAnswer> {
     throw new NeedsAccountError('Asking AISAR about your business');
+  }
+
+  async connections(): Promise<Connection[]> {
+    return [];
+  }
+
+  async connectTelegram(): Promise<Connection> {
+    throw new NeedsAccountError('Connecting Telegram');
+  }
+
+  async disconnect(): Promise<void> {
+    throw new NeedsAccountError('Disconnecting an account');
   }
 
   async reset(): Promise<void> {

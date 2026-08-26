@@ -1,0 +1,144 @@
+/* ============================================================
+   Connecting the business's own Telegram bot.
+
+   Their bot, not ours. A shared bot would put every business's
+   customer conversations through one identity, and messages would
+   arrive from a name that is not theirs. Their bot is their brand,
+   their customers, and — importantly — their token to revoke without
+   asking us.
+
+   The cost is that the owner has to make one, so the walkthrough is
+   part of the screen rather than a link to documentation. Four steps,
+   in the order Telegram actually presents them.
+   ============================================================ */
+
+import { useEffect, useState } from 'react';
+import { Button, Card, Eyebrow, Input, Tag } from '@/components/ui';
+import { useRepository } from '@/lib/repo';
+import type { Connection } from '@/lib/repo';
+import { useSignedIn } from '@/lib/repo/gate';
+
+const STEPS = [
+  'Open Telegram and message @BotFather',
+  'Send /newbot, then pick a name and a username for it',
+  'BotFather replies with a token that looks like 123456789:AA…',
+  'Paste that token below',
+];
+
+function statusTone(c: Connection) {
+  if (c.status === 'connected') return 'green' as const;
+  return c.status === 'error' ? 'red' as const : 'amber' as const;
+}
+
+export default function TelegramConnect() {
+  const repo = useRepository();
+  const signedIn = useSignedIn();
+  const [rows, setRows] = useState<Connection[] | null>(null);
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!signedIn) return setRows([]);
+    let live = true;
+    void repo.connections().then(
+      (c) => live && setRows(c),
+      () => live && setRows([]),
+    );
+    return () => {
+      live = false;
+    };
+  }, [repo, signedIn]);
+
+  async function connect() {
+    setBusy(true);
+    setError(null);
+    try {
+      const c = await repo.connectTelegram(token.trim());
+      setRows((prev) => [c, ...(prev ?? []).filter((r) => r.id !== c.id)]);
+      // Cleared immediately on success: there is no reason for a live
+      // bot token to sit in a form field afterwards.
+      setToken('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not connect that bot.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function drop(id: string) {
+    setRows((prev) => (prev ?? []).filter((r) => r.id !== id));
+    await repo.disconnect(id).catch(() => setRows(null));
+  }
+
+  const telegram = (rows ?? []).filter((r) => r.connector === 'telegram');
+
+  return (
+    <Card>
+      <Eyebrow>Telegram</Eyebrow>
+
+      {telegram.length > 0 ? (
+        <div className="mt-2 flex flex-col">
+          {telegram.map((c) => (
+            <div
+              key={c.id}
+              className="flex flex-wrap items-center justify-between gap-2 border-b border-rail py-3 last:border-b-0"
+            >
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm">{c.displayName ?? 'Telegram bot'}</span>
+                {c.lastError && (
+                  <span className="text-[12px] text-text-secondary">{c.lastError}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Tag tone={statusTone(c)}>{c.status}</Tag>
+                <Button variant="ghost" onClick={() => void drop(c.id)}>
+                  Disconnect
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
+          <p className="mt-2 text-sm text-text-secondary">
+            AISAR replies to customers through a bot that belongs to you — so messages come from
+            your name, and you can switch it off in Telegram at any time without asking us.
+          </p>
+          <ol className="mt-3 flex list-decimal flex-col gap-1 pl-5 text-[13px] text-text-secondary">
+            {STEPS.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Input
+              className="min-w-[14rem] flex-1"
+              placeholder="123456789:AA…"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              aria-label="Your bot token"
+              // Not `password`: the owner is pasting and should be able
+              // to see they pasted the right thing. It is cleared the
+              // moment it is saved, and never shown back afterwards.
+              autoComplete="off"
+              spellCheck={false}
+              disabled={busy}
+            />
+            <Button onClick={() => void connect()} disabled={busy || !token.trim()}>
+              {busy ? 'Checking…' : 'Connect'}
+            </Button>
+          </div>
+          {error && (
+            <p role="alert" className="mt-3 text-sm text-text-secondary">
+              {error}
+            </p>
+          )}
+          <p className="mt-3 text-[12px] text-text-muted">
+            Replies wait for your approval by default. Nothing is sent to a customer until you say
+            so — you can change that per action under Permissions.
+          </p>
+        </>
+      )}
+    </Card>
+  );
+}

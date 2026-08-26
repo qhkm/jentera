@@ -1,0 +1,175 @@
+/* ============================================================
+   Connecting, disconnecting, and using a business's own accounts.
+
+   The credential is loaded only at the moment of use and never
+   returned upward. `listConnections` deliberately reads a table with
+   no secret in it, so the screen that shows what is connected cannot
+   accidentally show what opens it.
+   ============================================================ */
+
+import type postgres from 'postgres';
+import type { Env } from './env';
+import { KEY_VERSION, open, seal } from './vault';
+
+export interface ConnectionRow {
+  id: string;
+  connector: string;
+  method: string;
+  status: 'connected' | 'expired' | 'revoked' | 'error';
+  displayName: string | null;
+  externalId: string | null;
+  connectedAt: Date;
+  lastOkAt: Date | null;
+  lastError: string | null;
+}
+
+interface Raw {
+  id: string;
+  connector: string;
+  method: string;
+  status: ConnectionRow['status'];
+  display_name: string | null;
+  external_id: string | null;
+  connected_at: Date;
+  last_ok_at: Date | null;
+  last_error: string | null;
+}
+
+const toRow = (r: Raw): ConnectionRow => ({
+  id: r.id,
+  connector: r.connector,
+  method: r.method,
+  status: r.status,
+  displayName: r.display_name,
+  externalId: r.external_id,
+  connectedAt: r.connected_at,
+  lastOkAt: r.last_ok_at,
+  lastError: r.last_error,
+});
+
+export async function listConnections(tx: postgres.TransactionSql): Promise<ConnectionRow[]> {
+  const rows = await tx<Raw[]>`
+    select id, connector, method, status, display_name, external_id,
+           connected_at, last_ok_at, last_error
+      from connection order by connected_at desc`;
+  return rows.map(toRow);
+}
+
+/**
+ * Store a connection and its secret together, or neither.
+ *
+ * One transaction because a connection without its credential is a row
+ * claiming to be connected that cannot do anything — and it would look
+ * fine on the connections screen, which reads only the metadata table.
+ */
+export async function saveConnection(
+  env: Env,
+  tx: postgres.TransactionSql,
+  businessId: string,
+  input: {
+    connector: string;
+    method: string;
+    externalId: string;
+    displayName: string;
+    secret: string;
+    connectedBy: string;
+  },
+): Promise<ConnectionRow> {
+  const [row] = await tx<Raw[]>`
+    insert into connection
+      (business_id, connector, method, status, external_id, display_name, connected_by, last_ok_at)
+    values
+      (${businessId}, ${input.connector}, ${input.method}, 'connected',
+       ${input.externalId}, ${input.displayName}, ${input.connectedBy}, now())
+    on conflict (business_id, connector, external_id) do update
+      set status = 'connected',
+          display_name = excluded.display_name,
+          connected_by = excluded.connected_by,
+          connected_at = now(),
+          last_ok_at = now(),
+          -- Reconnecting is how an owner fixes a broken connection, so
+          -- the old failure must not linger on a working one.
+          last_error = null
+    returning id, connector, method, status, display_name, external_id,
+              connected_at, last_ok_at, last_error`;
+
+  const sealed = await seal(env, input.secret);
+  await tx`
+    insert into credential (connection_id, ciphertext, key_version)
+    values (${row.id}, ${sealed}, ${KEY_VERSION})
+    on conflict (connection_id) do update
+      set ciphertext = excluded.ciphertext,
+          key_version = excluded.key_version,
+          refreshed_at = now()`;
+
+  return toRow(row);
+}
+
+/** The secret, for one use. Callers must not store what comes back. */
+export async function useCredential(
+  env: Env,
+  tx: postgres.TransactionSql,
+  connectionId: string,
+): Promise<string> {
+  const [row] = await tx<{ ciphertext: Uint8Array; key_version: number }[]>`
+    select ciphertext, key_version from credential where connection_id = ${connectionId}`;
+  if (!row) throw new Error('that connection has no credential');
+  return open(env, row.ciphertext, row.key_version);
+}
+
+export async function findConnection(
+  tx: postgres.TransactionSql,
+  connector: string,
+): Promise<ConnectionRow | null> {
+  const [row] = await tx<Raw[]>`
+    select id, connector, method, status, display_name, external_id,
+           connected_at, last_ok_at, last_error
+      from connection
+     where connector = ${connector} and status = 'connected'
+     order by connected_at desc limit 1`;
+  return row ? toRow(row) : null;
+}
+
+/** Record that a connection stopped working, in words the owner can act on. */
+export async function markBroken(
+  tx: postgres.TransactionSql,
+  connectionId: string,
+  why: string,
+): Promise<void> {
+  await tx`
+    update connection set status = 'error', last_error = ${why.slice(0, 500)}
+     where id = ${connectionId}`;
+}
+
+export async function removeConnection(
+  tx: postgres.TransactionSql,
+  connectionId: string,
+): Promise<boolean> {
+  // credential cascades.
+  const rows = await tx`delete from connection where id = ${connectionId} returning id`;
+  return rows.length > 0;
+}
+
+/**
+ * The per-connection webhook secret.
+ *
+ * Derived from the connection id and the vault key rather than stored:
+ * it is reproducible on every request without a second lookup, and
+ * there is no extra secret to leak. Someone who learns one connection's
+ * secret learns nothing about another's.
+ */
+export async function webhookSecret(env: Env, connectionId: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(env.CREDENTIAL_KEY ?? 'local-dev-only'),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`webhook:${connectionId}`));
+  return [...new Uint8Array(sig)]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+    // Telegram caps secret_token at 256 chars and allows A-Z a-z 0-9 _ -
+    .slice(0, 64);
+}

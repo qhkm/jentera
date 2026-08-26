@@ -178,6 +178,9 @@ export interface WorkRecordInput {
   channel?: string | null;
   subject?: string | null;
   risk?: 'low' | 'medium' | 'high' | null;
+  /** Links the summary to the approval it is waiting on, so the
+      decision can find its way back to the run that raised it. */
+  approvalId?: string | null;
   counters?: Record<string, unknown>;
   minutesSaved?: number | null;
   artifacts?: unknown[];
@@ -193,11 +196,11 @@ export async function recordWork(
   const [row] = await tx<{ id: string }[]>`
     insert into work_record
       (business_id, run_id, objective, outcome, status, function, channel,
-       subject, risk, counters, minutes_saved, artifacts, decision, inputs_used)
+       subject, risk, approval_id, counters, minutes_saved, artifacts, decision, inputs_used)
     values
       (${businessId}, ${w.runId ?? null}, ${w.objective}, ${w.outcome ?? null},
        ${w.status}, ${w.function ?? null}, ${w.channel ?? null}, ${w.subject ?? null},
-       ${w.risk ?? null}, ${tx.json((w.counters ?? {}) as never)},
+       ${w.risk ?? null}, ${w.approvalId ?? null}, ${tx.json((w.counters ?? {}) as never)},
        ${w.minutesSaved ?? null}, ${tx.json((w.artifacts ?? []) as never)},
        ${w.decision ?? null},
        ${w.inputsUsed === undefined ? null : tx.json(w.inputsUsed as never)})

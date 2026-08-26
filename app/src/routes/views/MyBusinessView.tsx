@@ -14,6 +14,7 @@ import { DataIcon } from '@/components/Icon';
 import { Tabs, type TabDef } from '@/components/Tabs';
 import PermissionsPanel from './PermissionsPanel';
 import KnowledgePanel from './KnowledgePanel';
+import TelegramConnect from './TelegramConnect';
 import { useToast } from '@/components/Toast';
 import { isAgentReady } from '@/lib/business';
 import { findConnector } from '@/lib/tools';
@@ -219,6 +220,9 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
       {/* ---- Connections (was its own view) ---- */}
       {tab === 'connections' && (
       <section className="flex flex-col gap-4">
+        {/* Real connections first. The catalogue below is what AISAR
+            could connect to; this is what it actually can. */}
+        <TelegramConnect />
         <div className="flex flex-col gap-1">
           <Eyebrow>{t('biz.connections')}</Eyebrow>
           <p className="max-w-[66ch] text-[13px] text-text-secondary">

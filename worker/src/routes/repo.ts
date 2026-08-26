@@ -9,6 +9,7 @@
 
 import type { Env } from '../env';
 import { withTenant } from '../db';
+import { sendAndRecord } from './connect';
 import { hasBusiness, resolveTenant, type TenantIdentity } from '../tenancy';
 import {
   SOURCES,
@@ -342,17 +343,61 @@ export async function handleRepo(
        UPDATE carrying both single-execution and tenant scoping. RLS makes
        the business_id predicate redundant — belt and braces, deliberately. */
     const changed = await withTenant(env, id.businessId, async (tx) => {
-      const rows = await tx`
+      const rows = await tx<
+        { id: string; connector: string; op: string; args: unknown; run_id: string | null }[]
+      >`
         update approval
            set status = ${approved ? 'approved' : 'rejected'},
                decided_at = now(), decided_by = ${id.userId}
          where id = ${decide[1]}::uuid
            and status = 'pending'
            and business_id = ${id.businessId}
-        returning id`;
-      return rows.length > 0;
+        returning id, connector, op, args,
+                  (select run_id from work_record w where w.approval_id = approval.id limit 1) as run_id`;
+      return rows.length > 0
+        ? { connector: rows[0].connector, op: rows[0].op, args: rows[0].args, runId: rows[0].run_id }
+        : null;
     });
     if (!changed) return json({ ok: false, err: 'not pending' }, { status: 409 }, cors);
+
+    /* Approving is not merely a status change: it is the moment the
+       thing the owner approved actually happens. Doing it here rather
+       than in a consumer keeps the guarantee simple — the conditional
+       UPDATE above already ensured exactly one caller got here. */
+    if (approved && changed.connector === 'telegram' && changed.op === 'send_message') {
+      const a = changed.args as {
+        chatId?: number;
+        connectionId?: string;
+        from?: string;
+        question?: string;
+        draft?: string;
+      };
+      /* The owner may have edited the draft before approving. What
+         they send is what they saw, not what the model first wrote. */
+      const text = typeof body.text === 'string' && body.text.trim() ? body.text.trim() : a.draft;
+      if (a.chatId && a.connectionId && text) {
+        try {
+          await sendAndRecord(
+            env,
+            id.businessId,
+            a.connectionId,
+            changed.runId ?? '',
+            { chatId: a.chatId, from: a.from ?? 'Someone', text: a.question ?? '' },
+            text,
+            [],
+          );
+        } catch (e) {
+          return json(
+            { ok: true, status: 'approved', sent: false,
+              err: e instanceof Error ? e.message : 'could not send' },
+            {},
+            cors,
+          );
+        }
+        return json({ ok: true, status: 'approved', sent: true }, {}, cors);
+      }
+    }
+
     return json({ ok: true, status: approved ? 'approved' : 'rejected' }, {}, cors);
   }
 
