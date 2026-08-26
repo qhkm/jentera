@@ -10,6 +10,16 @@
 import type { Env } from '../env';
 import { withTenant } from '../db';
 import { hasBusiness, resolveTenant, type TenantIdentity } from '../tenancy';
+import {
+  SOURCES,
+  confirmFact,
+  factHistory,
+  forgetFact,
+  keyProblem,
+  liveFacts,
+  recordFact,
+  type FactSource,
+} from '../facts';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -91,6 +101,8 @@ async function loadSnapshot(env: Env, id: TenantIdentity) {
     const permissions: Record<string, string> = {};
     for (const p of policies) permissions[p.op] = p.policy;
 
+    const facts = await liveFacts(tx);
+
     return {
       onboarded: biz.onboarded,
       setupDone: biz.setup_done,
@@ -117,6 +129,7 @@ async function loadSnapshot(env: Env, id: TenantIdentity) {
       permissions,
       workDone,
       learn,
+      facts,
     };
   });
 }
@@ -341,6 +354,66 @@ export async function handleRepo(
     });
     if (!changed) return json({ ok: false, err: 'not pending' }, { status: 409 }, cors);
     return json({ ok: true, status: approved ? 'approved' : 'rejected' }, {}, cors);
+  }
+
+  /* ---- business memory ------------------------------------------------ */
+
+  if (url.pathname === '/api/state/facts') {
+    const problem = keyProblem(body.key);
+    if (problem) return badRequest(cors, problem);
+    if (body.value === undefined) return badRequest(cors, 'value is required');
+
+    const source = oneOf(body.source ?? 'owner', SOURCES as readonly FactSource[]);
+    if (!source) return badRequest(cors, 'invalid source');
+
+    const confidence = body.confidence === undefined ? 1 : Number(body.confidence);
+    if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
+      return badRequest(cors, 'confidence must be between 0 and 1');
+    }
+
+    const fact = await withTenant(env, id.businessId, (tx) =>
+      recordFact(tx, id.businessId, {
+        key: String(body.key),
+        value: body.value,
+        source,
+        sourceRef: body.sourceRef === undefined ? null : String(body.sourceRef),
+        confidence,
+        /* An owner typing a value is simultaneously stating and
+           vouching for it. Any other source has to be confirmed
+           separately, by a person, later. */
+        confirmedBy: source === 'owner' ? id.userId : null,
+      }),
+    );
+    return json({ ok: true, fact }, {}, cors);
+  }
+
+  if (url.pathname === '/api/state/facts/confirm') {
+    const problem = keyProblem(body.key);
+    if (problem) return badRequest(cors, problem);
+    const ok = await withTenant(env, id.businessId, (tx) =>
+      confirmFact(tx, id.businessId, String(body.key), id.userId),
+    );
+    if (!ok) return json({ ok: false, err: 'no live fact for that key' }, { status: 404 }, cors);
+    return noContent(cors);
+  }
+
+  if (url.pathname === '/api/state/facts/forget') {
+    const problem = keyProblem(body.key);
+    if (problem) return badRequest(cors, problem);
+    const ok = await withTenant(env, id.businessId, (tx) =>
+      forgetFact(tx, id.businessId, String(body.key)),
+    );
+    if (!ok) return json({ ok: false, err: 'no live fact for that key' }, { status: 404 }, cors);
+    return noContent(cors);
+  }
+
+  if (url.pathname === '/api/state/facts/history') {
+    const problem = keyProblem(body.key);
+    if (problem) return badRequest(cors, problem);
+    const history = await withTenant(env, id.businessId, (tx) =>
+      factHistory(tx, id.businessId, String(body.key)),
+    );
+    return json({ ok: true, history }, {}, cors);
   }
 
   if (url.pathname === '/api/state/reset') {
