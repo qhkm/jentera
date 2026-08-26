@@ -193,3 +193,41 @@ describe('approval decisions', () => {
     expect(rows).toHaveLength(0);
   });
 });
+
+describe('the run trace', () => {
+  const RUN = '55555555-5555-4555-8555-555555555555';
+
+  beforeEach(async () => {
+    await asOwner(async (sql) => {
+      await sql`insert into run (id, business_id, kind, trigger_shape, runtime)
+                values (${RUN}, ${A}, 'ingest', 'owner.ingest.url', 'worker-inline')`;
+      await sql`insert into run_event (run_id, business_id, seq, type, payload)
+                values (${RUN}, ${A}, 1, 'work.requested', '{}'::jsonb)`;
+    });
+  });
+
+  it('cannot be edited, ever', async () => {
+    /* The trace is the evidence for everything the product claims it
+       did. An edit leaves nothing behind that disagrees with it. */
+    await expect(
+      asTenant(A, (tx) => tx`update run_event set type = 'forged' where run_id = ${RUN}`),
+    ).rejects.toThrow(/append-only/i);
+  });
+
+  it('can be deleted, so an account can be erased', async () => {
+    /* Refusing DELETE too made a business with any history undeletable
+       — the cascade from `business` fires the same row-level trigger —
+       which broke account closure and erasure requests. Deleting an
+       event leaves a gap in a contiguous seq, so tampering by deletion
+       is self-reporting in a way editing is not. */
+    await expect(
+      asOwner((sql) => sql`delete from run_event where run_id = ${RUN}`),
+    ).resolves.toBeDefined();
+  });
+
+  it('lets a whole business be removed, events and all', async () => {
+    await asOwner((sql) => sql`delete from business where id = ${A}`);
+    const left = await asOwner((sql) => sql`select 1 from run_event where run_id = ${RUN}`);
+    expect(left).toHaveLength(0);
+  });
+});

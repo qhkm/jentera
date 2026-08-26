@@ -59,7 +59,11 @@ create index if not exists idx_run_event_run on run_event (run_id, seq);
 
    The trace is the evidence for everything the product later claims it
    did. A trace that can be edited after the fact is not evidence, and
-   the edit would be invisible precisely when it mattered most. */
+   the edit would be invisible precisely when it mattered most.
+
+   NOTE: 008 narrows this to UPDATE only. Refusing DELETE as well made
+   a business with any history impossible to erase, because the cascade
+   from `business` fires this same row-level trigger. */
 create or replace function run_event_immutable() returns trigger as $$
 begin
   raise exception 'run_event is append-only (attempted % on run_event)', tg_op;
