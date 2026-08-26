@@ -73,7 +73,7 @@ async function loadSnapshot(env: Env, id: TenantIdentity) {
         onboarded: boolean;
         setup_done: boolean;
         channels: string[];
-        connections: string[];
+        connections: string[] | null;
         theme: string;
       }[]
     >`select name, playbook_key, country, lang, locality, onboarded, setup_done,
@@ -112,6 +112,9 @@ async function loadSnapshot(env: Env, id: TenantIdentity) {
       bizName: biz.name,
       bizLoc: biz.locality ?? '',
       channels: biz.channels.length ? biz.channels : null,
+      /* Null travels through: it means never seeded, which the client
+         needs in order to tell a fresh business from one whose owner
+         disconnected everything. */
       conns: biz.connections,
       country: biz.country,
       lang: biz.lang,

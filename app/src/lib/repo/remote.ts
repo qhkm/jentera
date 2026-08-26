@@ -137,7 +137,7 @@ export class RemoteRepository implements Repository {
       // LocalRepository applies. Normalised here rather than trusted from
       // the wire so the two cannot drift.
       channels: ((c) => (c && c.length ? c : null))(snapshot.channels as string[] | null),
-      conns: (snapshot.conns as string[]) ?? [],
+      conns: (snapshot.conns as string[] | null) ?? null,
       country: (snapshot.country as CountryCode) ?? 'MY',
       lang: (snapshot.lang === 'bm' ? 'bm' : 'en') as Lang,
       theme: (snapshot.theme === 'light' ? 'light' : 'dark') as Theme,

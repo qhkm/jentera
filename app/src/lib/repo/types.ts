@@ -39,7 +39,10 @@ export interface BusinessSnapshot {
   bizName: string;
   bizLoc: string;
   channels: string[] | null;
-  conns: string[];
+  /** Null means never set up, the same distinction `channels` draws.
+      An empty array is a choice — the owner disconnected everything —
+      and must not be re-seeded with defaults. */
+  conns: string[] | null;
   country: CountryCode;
   lang: Lang;
   theme: Theme;

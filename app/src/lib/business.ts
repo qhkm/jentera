@@ -123,12 +123,15 @@ export function getChannels(snap: BusinessSnapshot): string[] | null {
 }
 
 export function getConnections(snap: BusinessSnapshot): string[] {
-  return snap.conns;
+  return snap.conns ?? [];
 }
 
 /** The playbook's default connections, or null when the owner already has some. */
 export function planSeedConnections(snap: BusinessSnapshot, key: string): string[] | null {
-  if (snap.conns.length > 0) return null;
+  /* Null, not empty. An owner who disconnected everything has made a
+     choice; reading that as "never seeded" put it all back on their
+     next load. */
+  if (snap.conns !== null) return null;
   return resolveBusiness(snap, key)
     .conns.filter((c) => c.on)
     .map((c) => c.n);
@@ -136,7 +139,7 @@ export function planSeedConnections(snap: BusinessSnapshot, key: string): string
 
 /** The connection list after toggling one name. Caller persists it. */
 export function planToggleConnection(snap: BusinessSnapshot, name: string): string[] {
-  const a = [...snap.conns];
+  const a = [...(snap.conns ?? [])];
   const i = a.indexOf(name);
   if (i >= 0) a.splice(i, 1);
   else a.push(name);
@@ -144,14 +147,14 @@ export function planToggleConnection(snap: BusinessSnapshot, name: string): stri
 }
 
 export function isConnected(snap: BusinessSnapshot, name: string): boolean {
-  return snap.conns.includes(name);
+  return (snap.conns ?? []).includes(name);
 }
 
 /** An agent is live once its channel is connected (or accounting, for setup agents). */
 export function isAgentReady(snap: BusinessSnapshot, t: { setup?: boolean; ch?: string }): boolean {
   if (t.setup) return isConnected(snap, 'Accounting');
   const ch = String(t.ch ?? '').toLowerCase();
-  const keys = snap.conns;
+  const keys = snap.conns ?? [];
   return keys.some((cn) => ch.includes(cn.split(' ')[0].toLowerCase())) || keys.length > 0;
 }
 

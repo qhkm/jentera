@@ -67,7 +67,7 @@ export class LocalRepository implements Repository {
       bizName: store.get(KEYS.bizName, ''),
       bizLoc: store.get(KEYS.bizLoc, ''),
       channels: channels.length ? channels : null,
-      conns: Array.isArray(conns) ? (conns as string[]) : [],
+      conns: Array.isArray(conns) ? (conns as string[]) : null,
       country: store.get(KEYS.country, 'MY') as CountryCode,
       lang: (store.get(KEYS.lang, 'en') === 'bm' ? 'bm' : 'en') as Lang,
       theme: theme === 'light' ? 'light' : 'dark',

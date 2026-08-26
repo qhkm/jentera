@@ -18,7 +18,10 @@ describe('load', () => {
     expect(snap.setupDone).toBe(false);
     expect(snap.bizType).toBe('');
     expect(snap.channels).toBeNull();
-    expect(snap.conns).toEqual([]);
+    /* Null, not empty: nothing has been chosen yet. An empty array
+       would mean the owner disconnected everything, and the seeding
+       rule must be able to tell those apart. */
+    expect(snap.conns).toBeNull();
     expect(snap.country).toBe('MY');
     expect(snap.lang).toBe('en');
     expect(snap.theme).toBe('dark');

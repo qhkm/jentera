@@ -14,7 +14,7 @@ import * as store from '@/lib/storage';
 
 /** True when the browser holds a business worth carrying over. */
 export function hasLocalState(snap: BusinessSnapshot): boolean {
-  return Boolean(snap.bizType) || snap.onboarded || snap.conns.length > 0 || snap.facts.length > 0;
+  return Boolean(snap.bizType) || snap.onboarded || (snap.conns?.length ?? 0) > 0 || snap.facts.length > 0;
 }
 
 /**
@@ -43,7 +43,7 @@ export async function migrateLocalToRemote(
      dies halfway, the owner lands mid-onboarding with partial data
      rather than on a dashboard that claims to be set up and is not. */
   if (snap.channels?.length) await remote.setChannels(snap.channels);
-  if (snap.conns.length) await remote.setConnections(snap.conns);
+  if (snap.conns?.length) await remote.setConnections(snap.conns);
   if (snap.theme !== 'dark') await remote.setTheme(snap.theme);
 
   for (const [op, policy] of Object.entries(snap.permissions)) {

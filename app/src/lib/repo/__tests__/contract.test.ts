@@ -25,7 +25,7 @@ interface FakeState {
   bizName: string;
   bizLoc: string;
   channels: string[] | null;
-  conns: string[];
+  conns: string[] | null;
   country: string;
   lang: string;
   theme: string;
@@ -38,7 +38,7 @@ interface FakeState {
 function installFakeWorker(): FakeState {
   const state: FakeState = {
     onboarded: false, setupDone: false, bizType: '', bizName: '', bizLoc: '',
-    channels: null, conns: [], country: 'MY', lang: 'en', theme: 'dark',
+    channels: null, conns: null, country: 'MY', lang: 'en', theme: 'dark',
     approvals: [], permissions: {}, workDone: {}, learn: {},
   };
   let seq = 0;
@@ -116,7 +116,10 @@ describe.each(IMPLS)('%s satisfies the Repository contract', (_name, make) => {
     const s = await repo.load();
     expect(s.onboarded).toBe(false);
     expect(s.channels).toBeNull();
-    expect(s.conns).toEqual([]);
+    /* Null rather than empty. Both implementations must agree that
+       "nothing chosen yet" is distinct from "chose nothing", or the
+       connection defaults get re-seeded over a deliberate choice. */
+    expect(s.conns).toBeNull();
     expect(s.country).toBe('MY');
     expect(s.lang).toBe('en');
     expect(s.theme).toBe('dark');
