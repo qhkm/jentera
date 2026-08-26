@@ -94,10 +94,27 @@ separate, stricter short-range brake on concurrent live links.
 
 **Still missing, and known:** no webhook verification, connector
 execution stubbed in `src/connectors.ts` pending OAuth registrations.
-There is **no server-side test suite** — the RLS bootstrap bug and the jsonb
-double-encoding bug both reached production because nothing exercised a real
-insert. Until one exists, `worker/` changes need an end-to-end run against the
-deployed API, asserting status codes on every write rather than discarding them.
+```bash
+cd worker && pnpm test     # needs Docker running
+```
+
+The suite runs a throwaway Postgres in Docker and applies `migrations/`
+in order, including `000_role.sql`, which is the only description
+anywhere of the `aisar_app` role and its grants.
+
+**Assert as `aisar_app`, arrange as `owner`.** `harness.ts` hands out
+both. RLS does not exist for a superuser, so a test that asserts as the
+owner passes while production leaks — that split is the point of the
+harness, not a convenience.
+
+Tests import the production queries (`claimGoogleIdentity`,
+`countAndRecord` take a connection rather than an `Env` for this
+reason) instead of copying the SQL. A copied query is a test that keeps
+passing while the real one drifts.
+
+Still worth an end-to-end run against the deployed API for anything
+touching routes, asserting status codes on every write — sending them
+to `/dev/null` hid a 500 on every policy write for two full runs.
 
 Magic links are really delivered. `RESEND_API_KEY` holds a key scoped to
 `sending_access` on jentera.ai alone, so a leak cannot send as the other
