@@ -21,6 +21,32 @@ function json(body: unknown, init: ResponseInit = {}, headers: Record<string, st
 const noContent = (headers: Record<string, string>) =>
   new Response(null, { status: 204, headers });
 
+/* The schema enforces these already, via CHECK constraints. Enforcing
+   them here too is not redundancy for its own sake: without it a bad
+   value reaches Postgres, the constraint fires, and the caller gets a
+   500 for what is plainly a malformed request. A public API should not
+   report the client's mistake as its own. */
+const POLICIES = ['automatic', 'approval', 'blocked'] as const;
+const RISKS = ['low', 'medium', 'high'] as const;
+// No CHECK backs this one — the column is plain text. The client's
+// CountryCode union is the real contract, so it is enforced here.
+const COUNTRIES = ['MY', 'ID', 'SG', 'TH', 'VN', 'PH'] as const;
+
+function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T | null {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : null;
+}
+
+/** Non-empty string, or null. `op` and `conn` are free text with no
+    constraint behind them, so this is the only thing keeping '' out. */
+function text(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() !== '' ? value : null;
+}
+
+const badRequest = (cors: Record<string, string>, err: string) =>
+  json({ ok: false, err }, { status: 400 }, cors);
+
 /* ---------- load ---------------------------------------------------- */
 
 async function loadSnapshot(env: Env, id: TenantIdentity) {
@@ -129,12 +155,22 @@ export async function handleRepo(
        every prior test wrote rows that already existed. */
     const businessId = crypto.randomUUID();
 
+    /* lang is CHECK-constrained and country is the client's union, so
+       both are validated here for the same reason as the setters: an
+       unrecognised value must be a 400, not a constraint violation
+       surfacing as a 500. */
+    const name = text(b.name) ?? 'My business';
+    const playbookKey = text(b.playbookKey) ?? 'generic';
+    const country = oneOf(b.country ?? 'MY', COUNTRIES);
+    const lang = oneOf(b.lang ?? 'en', ['en', 'bm'] as const);
+    if (!country) return badRequest(cors, 'invalid country');
+    if (!lang) return badRequest(cors, 'invalid lang');
+
     await withTenant(env, businessId, async (tx) => {
       await tx`
         insert into business (id, name, playbook_key, country, lang, locality)
-        values (${businessId}, ${String(b.name ?? 'My business')},
-                ${String(b.playbookKey ?? 'generic')}, ${String(b.country ?? 'MY')},
-                ${String(b.lang ?? 'en')}, ${b.locality ? String(b.locality) : null})`;
+        values (${businessId}, ${name}, ${playbookKey}, ${country}, ${lang},
+                ${b.locality ? String(b.locality) : null})`;
       /* membership carries no policy — resolveTenant reads it before a
          tenant is known — so it is written inside the same transaction
          purely so a failure leaves neither row. */
@@ -158,21 +194,25 @@ export async function handleRepo(
   const body = (await request.json().catch(() => ({}))) as Body;
 
   /* Scalars that live on the business row. Each is one guarded UPDATE. */
-  const scalar: Record<string, { col: string; value: () => unknown }> = {
+  const scalar: Record<string, { col: string; value: () => unknown | null }> = {
     '/api/state/biz-type': { col: 'playbook_key', value: () => String(body.key ?? '') },
     '/api/state/onboarded': { col: 'onboarded', value: () => Boolean(body.value) },
     '/api/state/setup-done': { col: 'setup_done', value: () => Boolean(body.value) },
-    '/api/state/country': { col: 'country', value: () => String(body.code ?? 'MY') },
+    '/api/state/country': { col: 'country', value: () => oneOf(body.code ?? 'MY', COUNTRIES) },
     '/api/state/lang': { col: 'lang', value: () => (body.lang === 'bm' ? 'bm' : 'en') },
     '/api/state/theme': { col: 'theme', value: () => (body.theme === 'light' ? 'light' : 'dark') },
   };
 
   const hit = scalar[url.pathname];
   if (hit) {
+    // null means the value failed validation; no entry above returns
+    // null for a legitimate input.
+    const value = hit.value();
+    if (value === null) return badRequest(cors, `invalid ${hit.col}`);
     await withTenant(env, id.businessId, async (tx) => {
       // Column name comes from the table above, never from the request.
       await tx.unsafe(`update business set ${hit.col} = $1 where id = $2`, [
-        hit.value() as never,
+        value as never,
         id.businessId as never,
       ]);
     });
@@ -221,9 +261,13 @@ export async function handleRepo(
   }
 
   if (url.pathname === '/api/state/policy') {
+    const op = text(body.op);
+    const policy = oneOf(body.policy, POLICIES);
+    if (!op) return badRequest(cors, 'invalid op');
+    if (!policy) return badRequest(cors, 'invalid policy');
     await withTenant(env, id.businessId, async (tx) => {
       await tx`insert into action_policy (business_id, op, policy, updated_by)
-               values (${id.businessId}, ${String(body.op)}, ${String(body.policy)}, ${id.userId})
+               values (${id.businessId}, ${op}, ${policy}, ${id.userId})
                on conflict (business_id, op)
                do update set policy = excluded.policy, updated_by = excluded.updated_by,
                              updated_at = now()`;
@@ -239,6 +283,7 @@ export async function handleRepo(
   }
 
   if (url.pathname === '/api/state/work-done') {
+    if (!text(body.playbookKey)) return badRequest(cors, 'invalid playbookKey');
     await withTenant(env, id.businessId, async (tx) => {
       await tx`insert into work_done (business_id, playbook_key, idx)
                values (${id.businessId}, ${String(body.playbookKey)}, ${String(body.index)})
@@ -248,6 +293,9 @@ export async function handleRepo(
   }
 
   if (url.pathname === '/api/state/learn') {
+    if (!text(body.playbookKey) || !text(body.pick)) {
+      return badRequest(cors, 'invalid playbookKey or pick');
+    }
     await withTenant(env, id.businessId, async (tx) => {
       await tx`insert into learn (business_id, playbook_key, pick)
                values (${id.businessId}, ${String(body.playbookKey)}, ${String(body.pick)})
@@ -258,11 +306,16 @@ export async function handleRepo(
   }
 
   if (url.pathname === '/api/state/approvals') {
+    const conn = text(body.conn);
+    const op = text(body.op);
+    const risk = oneOf(body.risk ?? 'medium', RISKS);
+    if (!conn || !op) return badRequest(cors, 'conn and op are required');
+    if (!risk) return badRequest(cors, 'invalid risk');
     const created = await withTenant(env, id.businessId, async (tx) => {
       const [row] = await tx<{ id: string }[]>`
         insert into approval (business_id, connector, op, args, risk)
-        values (${id.businessId}, ${String(body.conn)}, ${String(body.op)},
-                ${tx.json((body.args ?? {}) as never)}, ${String(body.risk ?? 'medium')})
+        values (${id.businessId}, ${conn}, ${op},
+                ${tx.json((body.args ?? {}) as never)}, ${risk})
         returning id`;
       return row.id;
     });
