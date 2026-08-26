@@ -95,6 +95,27 @@ separate, stricter short-range brake on concurrent live links.
 **Still missing, and known:** no webhook verification, connector
 execution stubbed in `src/connectors.ts` pending OAuth registrations.
 
+### Where work runs
+
+`src/runtime/` is the seam. `run.runtime` and `run.model` are snapshots
+taken from whichever adapter executed the work, so history stays
+truthful after a runtime change — never look them up live.
+
+An adapter reads and reasons; it never writes AISAR data or sends
+anything. The control plane decides what to persist and what needs
+approval. A runtime that could act directly would be a runtime that
+could bypass the approval gate.
+
+`test/runtime.test.ts` runs a contract over every adapter in one list.
+A new runtime is added there and either passes or is not finished.
+
+The spec (`2026-08-26-hermes-sprites-runtime.md`) specifies
+`startRun/resumeRun/cancelRun/streamEvents`. Those describe a runtime
+that outlives its request; the inline one cannot implement them
+meaningfully, so they arrive with the first adapter that needs them
+rather than as stubs nothing verifies. `mode` is how a caller will tell
+the two apart.
+
 ### Testing the worker
 
 ```bash

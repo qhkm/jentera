@@ -29,9 +29,9 @@ import {
   webhookHealth,
 } from '../connectors/telegram';
 import { append, finishRun, recordWork, startRun, updateWorkForRun } from '../runs';
-import { answer, retrieve } from '../ask';
-import { MODEL } from '../ingest';
+import { retrieve } from '../ask';
 import { policyFor } from '../policy';
+import { runtimeFor } from '../runtime';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -286,13 +286,14 @@ async function handleIncoming(
   connectionId: string,
   incoming: { chatId: number; from: string; text: string },
 ): Promise<void> {
+  const runtime = runtimeFor(env, businessId);
   const run = await withTenant(env, businessId, (tx) =>
     startRun(tx, businessId, {
       kind: 'reply',
       triggerShape: 'customer.message.telegram',
       triggerRef: { chatId: incoming.chatId, from: incoming.from },
-      runtime: 'worker-inline',
-      model: MODEL,
+      runtime: runtime.id,
+      model: runtime.model,
     }),
   );
 
@@ -304,7 +305,7 @@ async function handleIncoming(
       policy: await policyFor(tx, 'telegram', 'send_message'),
     }));
 
-    const draft = await answer(env, incoming.text, facts, []);
+    const draft = await runtime.answerQuestion(incoming.text, facts, []);
 
     await withTenant(env, businessId, (tx) =>
       append(tx, businessId, run.id, 'action.proposed', {

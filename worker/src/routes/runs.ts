@@ -15,8 +15,9 @@ import { withTenant } from '../db';
 import { hasBusiness, resolveTenant } from '../tenancy';
 import { append, finishRun, homeCounters, recentWork, recordWork, runTrace, startRun } from '../runs';
 import { recordFact } from '../facts';
-import { MODEL, extractFacts, fetchPage, urlProblem } from '../ingest';
-import { answer, retrieve } from '../ask';
+import { urlProblem } from '../ingest';
+import { runtimeFor } from '../runtime';
+import { retrieve } from '../ask';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -48,28 +49,30 @@ export async function handleRuns(
     if (problem) return json({ ok: false, err: problem }, { status: 400 }, cors);
     const target = String(body.url).trim();
 
+    const runtime = runtimeFor(env, id.businessId);
     const run = await withTenant(env, id.businessId, (tx) =>
       startRun(tx, id.businessId, {
         kind: 'ingest',
         triggerShape: 'owner.ingest.url',
         triggerRef: { url: target },
         requestedBy: id.userId,
-        runtime: 'worker-inline',
-        model: MODEL,
+        // Whatever actually ran it, not a hardcoded guess.
+        runtime: runtime.id,
+        model: runtime.model,
       }),
     );
 
     try {
-      const page = await fetchPage(target);
+      const page = await runtime.readPage(target);
       await withTenant(env, id.businessId, (tx) =>
         append(tx, id.businessId, run.id, 'work.started', {
           url: target,
           title: page.title,
-          chars: page.text.length,
+          chars: page.chars,
         }),
       );
 
-      const candidates = await extractFacts(env, page.text, page.title);
+      const candidates = page.candidates;
 
       /* Written as unconfirmed agent facts, each carrying the page it
          came from. A correction later supersedes rather than deletes,
@@ -104,7 +107,7 @@ export async function handleRuns(
           // Reading a site by hand and typing it up is roughly this.
           minutesSaved: keys.length * 2,
           artifacts: [{ kind: 'url', ref: target }],
-          inputsUsed: { url: target, chars: page.text.length },
+          inputsUsed: { url: target, chars: page.chars },
         });
         await finishRun(tx, id.businessId, run.id, 'completed', { facts: keys.length });
         return keys;
@@ -141,14 +144,15 @@ export async function handleRuns(
       return json({ ok: false, err: 'that question is too long' }, { status: 400 }, cors);
     }
 
+    const askRuntime = runtimeFor(env, id.businessId);
     const run = await withTenant(env, id.businessId, (tx) =>
       startRun(tx, id.businessId, {
         kind: 'ask',
         triggerShape: 'owner.ask',
         triggerRef: { question },
         requestedBy: id.userId,
-        runtime: 'worker-inline',
-        model: MODEL,
+        runtime: askRuntime.id,
+        model: askRuntime.model,
       }),
     );
 
@@ -165,11 +169,10 @@ export async function handleRuns(
     );
 
     try {
-      const result = await answer(
-        env,
+      const result = await askRuntime.answerQuestion(
         question,
         facts,
-        work.map((w) => ({ objective: w.objective, outcome: w.outcome, occurredAt: w.occurredAt })),
+        work.map((w) => ({ objective: w.objective, outcome: w.outcome })),
       );
       await withTenant(env, id.businessId, async (tx) => {
         await recordWork(tx, id.businessId, {

@@ -1,0 +1,28 @@
+/* ============================================================
+   Choosing a runtime for a piece of work.
+
+   One implementation today, so the choice is trivial — but it is a
+   function rather than a constructor call at each site, which is the
+   whole point. A second runtime becomes a branch here instead of an
+   edit everywhere work is started.
+   ============================================================ */
+
+import type { Env } from '../env';
+import { InlineRuntime } from './inline';
+import type { RuntimeAdapter } from './types';
+
+export type { RuntimeAdapter, RetrievedFact, PriorWork } from './types';
+export { InlineRuntime } from './inline';
+
+/**
+ * The runtime for this business.
+ *
+ * Takes the business id it does not yet use, deliberately: the first
+ * real decision this function makes will be per-business — a
+ * provisioned Sprite for one, the inline fallback for the rest — and a
+ * signature that cannot express that would have to change at every
+ * call site on the day it matters.
+ */
+export function runtimeFor(env: Env, _businessId: string): RuntimeAdapter {
+  return new InlineRuntime(env);
+}
