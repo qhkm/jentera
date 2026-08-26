@@ -12,7 +12,11 @@ build/
 
 # Env & secrets
 .env
-.env.*
+.env.local
+.env.*.local
+# .env.production is deliberately NOT ignored: it holds VITE_API_URL,
+# a public URL that must be baked into every build. Ignoring it once
+# shipped a bundle with the backend tree-shaken out entirely.
 *.pem
 *.key
 **/storage-state.json

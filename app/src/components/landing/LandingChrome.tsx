@@ -43,6 +43,13 @@ export function LandingHeader() {
         </nav>
 
         <div className="flex items-center justify-end gap-3">
+          {/* The /signin route existed but nothing linked to it, so the
+              only way in was to type the URL. A text link rather than a
+              second .btn: two adjacent buttons would compete with the
+              primary CTA, and .btn carries the shared control height. */}
+          <Link to="/signin" className="nav-link hidden text-sm normal-case tracking-normal sm:inline-flex">
+            Sign in
+          </Link>
           <Link to="/onboard" className="btn btn-primary hidden px-5 py-2 text-sm sm:inline-flex">
             Start now
           </Link>
@@ -74,6 +81,13 @@ export function LandingHeader() {
                 {l.label}
               </a>
             ))}
+            <Link
+              to="/signin"
+              onClick={() => setOpen(false)}
+              className="nav-link py-3 text-sm normal-case tracking-normal"
+            >
+              Sign in
+            </Link>
             <Link
               to="/onboard"
               onClick={() => setOpen(false)}

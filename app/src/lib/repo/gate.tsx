@@ -8,7 +8,7 @@
    which is why it lives here rather than inside the provider.
    ============================================================ */
 
-import { useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { LocalRepository } from './local';
 import { NoBusinessError, RemoteRepository } from './remote';
@@ -18,6 +18,22 @@ import { migrateLocalToRemote } from './migrate';
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
 type Chosen = { repo: LocalRepository | RemoteRepository; mode: 'local' | 'remote' };
+
+/* `mode` was computed and then thrown away, so nothing downstream could
+   tell an authenticated session from the anonymous demo — which is why
+   /app was reachable by setting a localStorage flag in devtools. */
+const SignedInContext = createContext(false);
+
+/**
+ * True when this session is server-backed.
+ *
+ * False in the anonymous demo, and false when the API is unreachable —
+ * `choose` falls back to LocalRepository there, and a visitor who never
+ * had an account should see the demo rather than a sign-in wall.
+ */
+export function useSignedIn(): boolean {
+  return useContext(SignedInContext);
+}
 
 async function choose(): Promise<Chosen> {
   /* No backend configured: this is the anonymous demo, and it must keep
@@ -73,5 +89,9 @@ export function RepositoryGate({ children }: { children: ReactNode }) {
   }
   if (!chosen) return null;
 
-  return <RepositoryProvider repository={chosen.repo}>{children}</RepositoryProvider>;
+  return (
+    <SignedInContext.Provider value={chosen.mode === 'remote'}>
+      <RepositoryProvider repository={chosen.repo}>{children}</RepositoryProvider>
+    </SignedInContext.Provider>
+  );
 }

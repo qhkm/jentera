@@ -34,6 +34,23 @@ echo
 echo "── 2/4 Typecheck + build ──"
 pnpm build
 
+# The bundle must actually contain the backend. VITE_API_URL is read at
+# BUILD time by gate.tsx; when it is missing, Vite inlines '' , the
+# `if (!API)` branch becomes statically true, and the tree-shaker strips
+# every backend call out. The result looks fine — it just silently runs
+# on localStorage with no sign-in, which is what jentera.ai served until
+# app/.env.production existed. Nothing downstream can detect that, so it
+# is checked here against the built artefact.
+BUILT_JS=$(grep -oE '/assets/[A-Za-z0-9_.-]+\.js' dist/index.html | head -1)
+if ! grep -q '/api/auth/request' "dist${BUILT_JS}"; then
+  echo "❌ BUILD FAILED: the bundle contains no backend calls."
+  echo "   VITE_API_URL was not set at build time, so the app would run"
+  echo "   entirely on localStorage with no sign-in."
+  echo "   Expected it in app/.env.production — check that file exists."
+  exit 1
+fi
+echo "   bundle carries the API — VITE_API_URL baked in ✓"
+
 echo
 echo "── 3/4 Publish → Cloudflare Pages (project: $PROJECT) ──"
 npx wrangler pages project create "$PROJECT" --production-branch main 2>/dev/null || true
