@@ -133,6 +133,17 @@ export function useRepoStatus(): StatusCtx {
   return ctx;
 }
 
+/**
+ * Reload the snapshot.
+ *
+ * Exposed for writes that do not go through useMutate — a run changes
+ * server state without the client naming a Repository setter, so the
+ * caller has to ask for the reload itself.
+ */
+export function useRefresh(): () => Promise<void> {
+  return useCtx().refresh;
+}
+
 /** Run a write, then refresh the snapshot so the UI reflects it. */
 export function useMutate(): (fn: (r: Repository) => Promise<void>) => Promise<void> {
   const { repository, refresh, reportWriteError } = useCtx();

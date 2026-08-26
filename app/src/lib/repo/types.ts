@@ -53,6 +53,38 @@ export interface BusinessSnapshot {
   facts: Fact[];
 }
 
+export interface IngestResult {
+  runId: string;
+  facts: number;
+  keys: string[];
+}
+
+export interface WorkSummary {
+  id: string;
+  runId: string | null;
+  objective: string;
+  outcome: string | null;
+  status: string;
+  function: string | null;
+  channel: string | null;
+  subject: string | null;
+  minutesSaved: number | null;
+  occurredAt: string;
+}
+
+export interface Activity {
+  work: WorkSummary[];
+  counters: { handled: number; needsYou: number; minutesSaved: number; thisWeek: number };
+}
+
+/** Thrown when a feature needs the server and there is no session. */
+export class NeedsAccountError extends Error {
+  constructor(what: string) {
+    super(`${what} needs an AISAR account — the demo runs entirely in this browser.`);
+    this.name = 'NeedsAccountError';
+  }
+}
+
 export interface Repository {
   load(): Promise<BusinessSnapshot>;
 
@@ -89,6 +121,11 @@ export interface Repository {
   forgetFact(key: string): Promise<void>;
   /** Every version of one key, newest first. */
   factHistory(key: string): Promise<Fact[]>;
+
+  /** Read a business's own website and propose facts from it. */
+  ingest(url: string): Promise<IngestResult>;
+  /** What AISAR has actually done, and the counts Home shows. */
+  activity(): Promise<Activity>;
 
   reset(): Promise<void>;
 }

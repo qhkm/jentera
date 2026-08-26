@@ -8,7 +8,16 @@
 import * as store from '@/lib/storage';
 import { KEYS } from '@/lib/storage';
 import type { Approval, CountryCode, Lang, Policy } from '@/lib/types';
-import type { BusinessSnapshot, Repository, Theme, Fact, FactSource } from './types';
+import type {
+  Activity,
+  BusinessSnapshot,
+  Fact,
+  FactSource,
+  IngestResult,
+  Repository,
+  Theme,
+} from './types';
+import { NeedsAccountError } from './types';
 
 /** Collect every `prefix{suffix}` key into a map keyed by suffix. */
 function collectPrefixed<T>(prefix: string, fallback: T): Record<string, T> {
@@ -215,6 +224,19 @@ export class LocalRepository implements Repository {
     return allVersions()
       .filter((r) => r.key === key)
       .sort((a, b) => b.version - a.version);
+  }
+
+  /* The demo has no server, so it cannot fetch anything. Saying so
+     plainly is better than a silent no-op that looks like a failure of
+     the feature rather than of the demo. */
+  async ingest(): Promise<IngestResult> {
+    throw new NeedsAccountError('Reading your website');
+  }
+
+  async activity(): Promise<Activity> {
+    // Nothing has really happened in the demo; the screens fall back
+    // to their playbook illustrations when this is empty.
+    return { work: [], counters: { handled: 0, needsYou: 0, minutesSaved: 0, thisWeek: 0 } };
   }
 
   async reset(): Promise<void> {

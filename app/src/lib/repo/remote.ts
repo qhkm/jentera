@@ -9,7 +9,15 @@
    ============================================================ */
 
 import type { Approval, CountryCode, Lang, Policy } from '@/lib/types';
-import type { BusinessSnapshot, Fact, FactSource, Repository, Theme } from './types';
+import type {
+  Activity,
+  BusinessSnapshot,
+  Fact,
+  FactSource,
+  IngestResult,
+  Repository,
+  Theme,
+} from './types';
 
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
@@ -207,6 +215,32 @@ export class RemoteRepository implements Repository {
       body: JSON.stringify({ key }),
     });
     return history;
+  }
+
+  async ingest(url: string): Promise<IngestResult> {
+    /* The server answers 200 with ok:false when the RUN happened but
+       the reading failed — the run is on record either way, so `call`
+       would throw on a result worth showing. Handled here instead. */
+    const res = await fetch(`${BASE}/api/runs/ingest`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const body = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      err?: string;
+      runId?: string;
+      facts?: number;
+      keys?: string[];
+    };
+    if (res.status === 401) throw new NotSignedInError();
+    if (!body.ok) throw new Error(body.err ?? 'Could not read that page.');
+    return { runId: body.runId ?? '', facts: body.facts ?? 0, keys: body.keys ?? [] };
+  }
+
+  async activity(): Promise<Activity> {
+    return call<Activity>('/api/runs/activity');
   }
 
   reset = () => post('/api/state/reset');

@@ -14,8 +14,7 @@
 
 import { useState } from 'react';
 import { Button, Card, Eyebrow, Input, Tag } from '@/components/ui';
-import { useMutate, useSnapshot } from '@/lib/repo';
-import { useRepository } from '@/lib/repo';
+import { useMutate, useRefresh, useRepository, useSnapshot } from '@/lib/repo';
 import type { Fact } from '@/lib/repo/types';
 import type { Tone } from '@/lib/types';
 
@@ -130,6 +129,32 @@ export default function KnowledgePanel() {
   const mutate = useMutate();
   const [key, setKey] = useState('');
   const [value, setValue] = useState('');
+  const [site, setSite] = useState('');
+  const [reading, setReading] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const repo = useRepository();
+  const refresh = useRefresh();
+
+  async function read() {
+    setReading(true);
+    setNote(null);
+    try {
+      const r = await repo.ingest(site.trim());
+      setNote(
+        r.facts === 0
+          ? 'AISAR read the page but found nothing clear enough to suggest. A page with your hours, prices or services works best.'
+          : `AISAR found ${r.facts} thing${r.facts === 1 ? '' : 's'}. They are listed above, waiting for you to confirm.`,
+      );
+      setSite('');
+      // The facts live on the snapshot, so it has to be reloaded before
+      // the list above reflects what was just written.
+      await refresh();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : 'Could not read that page.');
+    } finally {
+      setReading(false);
+    }
+  }
 
   /* Unconfirmed first: those are the ones needing a decision. Within
      each group, least confident first. */
@@ -176,6 +201,32 @@ export default function KnowledgePanel() {
               <FactRow key={f.key} fact={f} />
             ))}
           </div>
+        )}
+      </Card>
+
+      <Card>
+        <Eyebrow>Let AISAR read your website</Eyebrow>
+        <p className="mt-2 text-sm text-text-secondary">
+          Paste the address and AISAR will read the page and suggest what it learned. Nothing is
+          sent to anyone and nothing goes live — you confirm each item first.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Input
+            className="min-w-[14rem] flex-1"
+            placeholder="https://yourbusiness.com"
+            value={site}
+            onChange={(e) => setSite(e.target.value)}
+            aria-label="Your website address"
+            disabled={reading}
+          />
+          <Button onClick={() => void read()} disabled={reading || !site.trim()}>
+            {reading ? 'Reading…' : 'Read it'}
+          </Button>
+        </div>
+        {note && (
+          <p role="status" className="mt-3 text-sm text-text-secondary">
+            {note}
+          </p>
         )}
       </Card>
 
