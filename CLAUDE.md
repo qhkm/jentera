@@ -81,9 +81,16 @@ double-encoding bug both reached production because nothing exercised a real
 insert. Until one exists, `worker/` changes need an end-to-end run against the
 deployed API, asserting status codes on every write rather than discarding them.
 
-`RESEND_API_KEY` is intentionally unset, so `sendMagicLink` logs the link
-instead of sending it (`npx wrangler tail`). Setting it starts real delivery,
-which needs jentera.ai verified in Resend first.
+Magic links are really delivered. `RESEND_API_KEY` holds a key scoped to
+`sending_access` on jentera.ai alone, so a leak cannot send as the other
+domains on that Resend account. jentera.ai carries SPF, DKIM and DMARC
+(`p=none`, reports to admin@kitakodventures.com — tighten to `quarantine`
+once a week of reports is clean).
+
+Unsetting the secret falls back to logging the link to `npx wrangler tail`,
+which is how to test without sending. Resend's `delivered@resend.dev`
+simulates a delivery and is the right recipient for load tests: a bounce
+from a made-up address would damage the sending reputation being tested.
 
 ## Conventions
 
