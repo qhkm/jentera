@@ -64,6 +64,15 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
   const TABS: TabDef<BizTab>[] = useMemo(
     () => [
       { id: 'profile', label: t('biz.tab.profile') },
+      {
+        id: 'knows',
+        label: t('biz.tab.knows'),
+        /* The count is unconfirmed facts, not the total. A badge
+           reading "31" teaches people to ignore it; one showing how
+           many decisions are waiting is worth a glance. */
+        trailing: unconfirmed > 0 ? <Tag tone="amber">{unconfirmed}</Tag> : undefined,
+        trailingCompact: true,
+      },
       { id: 'handles', label: t('biz.tab.handles') },
       {
         id: 'connections',

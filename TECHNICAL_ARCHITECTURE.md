@@ -60,6 +60,11 @@ flowchart LR
 - Runs each task in a tenant-isolated workspace with explicit tool access.
 - Supports memory, skills, planning, delegation, and long-running jobs.
 - Uses a provider-neutral adapter such as `startRun`, `resumeRun`, `cancelRun`, and `streamEvents`.
+- Places a narrow AISAR-owned agent runner in front of Hermes for workload identity,
+  task leases, event translation, usage metering, health, and upgrades. The control plane
+  does not depend directly on Hermes' process model.
+- Executes one active task per business runtime in the first release; queued work remains
+  durable until the current lease finishes or pauses for approval.
 - Receives short-lived scoped credentials; it does not own master secrets.
 
 ### Business Memory
@@ -73,6 +78,8 @@ flowchart LR
 
 - Presents stable AISAR tools such as `telegram.sendMessage`, `calendar.createBooking`, and `crm.updateLead`.
 - Handles OAuth, credential refresh, rate limits, retries, idempotency, and provider-specific APIs.
+- Terminates provider webhooks and push events centrally so cold runtimes do not maintain
+  Telegram, WhatsApp, Slack, email, or calendar connections.
 - Prefers APIs over browser automation; browser execution is a restricted fallback.
 
 ### Policy, Approval, and Audit

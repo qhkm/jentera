@@ -62,6 +62,127 @@ AISAR tool gateway
 The browser never calls Hermes directly. It calls the AISAR Worker, which derives the
 business from the authenticated session and resolves the corresponding runtime.
 
+## Control plane and runtime plane
+
+The control plane is the product. Hermes is an execution engine and Fly supplies compute.
+Neither owns the customer relationship or the durable business record.
+
+The always-running, multi-tenant control plane owns:
+
+- users, businesses, membership, authentication, and billing;
+- business facts, agent configuration, permissions, and schedules;
+- connector credentials and webhook routing;
+- durable tasks, approvals, usage, and audit events;
+- runtime placement, desired version, and lifecycle state; and
+- the owner-facing projection of what happened.
+
+The runtime plane owns only isolated execution-time concerns:
+
+- the AISAR agent runner and Hermes process;
+- terminal, browser, and local tool execution;
+- a business-specific working directory and hot cache; and
+- temporary files needed while a task is active.
+
+Hermes is replaceable. Fly is replaceable. The database event history, business memory,
+policies, connector records, and customer experience are not.
+
+### Central connector ingress
+
+Telegram, WhatsApp, Slack, email, calendars, webhooks, and schedules terminate centrally
+at AISAR's connector gateway. A sleeping runtime must not hold a provider websocket or
+poll an inbox.
+
+```text
+Provider webhook or schedule
+          │
+          ▼
+AISAR connector gateway
+  verify → identify business → deduplicate
+          │
+          ▼
+Create durable run and enqueue
+          │
+          ▼
+Wake the business runtime only when work exists
+```
+
+This is what makes “always available” compatible with “not always running.” The connector
+gateway remains available while the business Sprite is cold.
+
+## AISAR agent runner
+
+The control plane should not depend directly on Hermes' process model. A small AISAR-owned
+`agent-runner` daemon sits in front of it and is the only process the runtime adapter
+targets.
+
+The runner is responsible for:
+
+- authenticating as exactly one business runtime with workload credentials;
+- accepting one leased task at a time;
+- starting, stopping, and health-checking the pinned Hermes process;
+- translating AISAR tasks into Hermes runs and Hermes output into AISAR events;
+- streaming bounded, secret-redacted logs while work is active;
+- reporting runtime, browser, and token usage;
+- managing workspace sync, checkpoints, and graceful shutdown; and
+- reporting its runner, Hermes, browser, and skills versions.
+
+Hermes listens only on loopback behind the runner. The runner exposes the narrow AISAR
+protocol and rejects calls whose business, task lease, or capability grant does not match
+its workload identity.
+
+The first implementation may be a small TypeScript service to minimise initial piece
+count. Move it to Go or Rust only if startup time, resident memory, or distribution
+becomes material. The protocol is the durable abstraction; its implementation language
+is not.
+
+Today the runner invokes Hermes. The same contract may later invoke another harness
+without changing queues, approvals, connectors, billing, or the frontend.
+
+## Provider boundary
+
+Keep infrastructure lifecycle separate from the task-level `RuntimeAdapter`:
+
+```ts
+interface RuntimeProvider {
+  create(runtime: DesiredRuntime): Promise<ObservedRuntime>;
+  wake(runtime: ObservedRuntime): Promise<void>;
+  stop(runtime: ObservedRuntime): Promise<void>;
+  status(runtime: ObservedRuntime): Promise<RuntimeStatus>;
+  checkpoint(runtime: ObservedRuntime): Promise<string>;
+  restore(runtime: ObservedRuntime, checkpoint: string): Promise<void>;
+  destroy(runtime: ObservedRuntime): Promise<void>;
+}
+```
+
+`FlySpriteProvider` is first. `LocalProvider` supports development and contract tests.
+Hetzner, EC2, or another provider is added only when measurement justifies it. Provider
+ids, regions, and machine ids live in `agent_runtime`; Fly-specific values do not spread
+through product tables or routes.
+
+`RuntimeProvider` manages compute. `RuntimeAdapter` manages agent work. Keeping them
+separate prevents infrastructure migration from changing task semantics.
+
+## Runtime lifecycle
+
+Do not model lifecycle with an `is_running` boolean. Use explicit desired and observed
+states:
+
+```text
+PROVISIONING → READY → COLD
+                       │ task
+                       ▼
+                     WAKING → IDLE ⇄ BUSY
+                                │
+                                └── idle timeout → COLD
+
+Side states: ERROR · UPGRADING · MIGRATING · DELETING
+```
+
+The provider may internally distinguish warm from cold. AISAR only promises whether the
+runtime is ready to accept work, waking, active, or unavailable. Every transition is
+idempotent and recorded; reconciliation compares desired state in Postgres with observed
+provider and runner state.
+
 ## Provisioning contract
 
 Provision lazily when the owner first puts AISAR to work or completes the runtime-requiring
@@ -112,6 +233,24 @@ The `run`, `run_event`, `work_record`, and approval lifecycle must exist before 
 customer provisioning. A runtime without this spine can perform work that AISAR cannot
 reliably resume, explain, approve, replay, or charge.
 
+### Durable task invariants
+
+Every external event creates a durable run before compute is requested. The request path
+never waits for Hermes to finish.
+
+```text
+event → persist run → enqueue → acquire runtime → lease task → execute → persist result
+```
+
+V1 permits **one active task per business runtime**. Additional work stays ordered in the
+business queue. This avoids workspace conflicts, competing browser sessions, memory
+writes from two Hermes processes, and duplicate side effects. Parallel workers are a
+future runtime capability, not a launch requirement.
+
+Task delivery and queue messages are at-least-once. A task lease, event uniqueness, and
+connector idempotency keys make replay harmless. Long approval waits consume no runtime:
+the run becomes `needs_approval`, the lease ends, and approval enqueues a new resume step.
+
 ### Credentials and ingress
 
 - Store the Sprites organisation token only as a Worker secret.
@@ -139,6 +278,58 @@ Hermes proposal → AISAR tool gateway → policy → approval if required → c
 Provider credentials stay in AISAR's vault or in a connector system with a policy that
 cannot bypass AISAR approval. Connector calls carry AISAR approval ids as idempotency
 keys.
+
+### Storage and recovery
+
+The Sprite filesystem is persistent working state, but it is not the sole source of
+truth. Data ownership is split deliberately:
+
+| Store | Owns |
+|---|---|
+| Neon Postgres | identities, businesses, facts, tasks, events, approvals, settings, usage ledger |
+| R2 | documents, attachments, exports, large artifacts, workspace recovery bundles |
+| Sprite filesystem | Hermes profile, browser profile, working files, caches, checked-out repositories |
+| Sprite checkpoints | fast operational rollback of a known runtime version |
+
+At bounded task-completion or upgrade points, while the Sprite is already active, the
+runner emits a versioned recovery bundle to R2 and records its hash and source checkpoint
+in Postgres. A backup schedule must not wake an otherwise cold fleet. Checkpoints make
+same-provider rollback fast; R2 recovery keeps the business portable if a Sprite is lost
+or AISAR moves providers. No irreplaceable customer state may exist only inside a runtime
+disk.
+
+### Versioning and rollout
+
+Record one immutable runtime release such as `2026.08.26-1`, containing compatible
+versions of the runner, Hermes, Python, browser, Playwright, common skills, and bootstrap
+logic. Customer data and secrets are never baked into the release.
+
+Roll out through a development runtime, an internal canary group, a small production
+percentage, then the fleet. Create a checkpoint before upgrade, run readiness and harmless
+task probes afterwards, and automatically restore or replace a runtime that fails.
+
+### Telemetry and usage ledger
+
+The runner emits structured events only while awake: task and tool lifecycle, active
+heartbeat, runtime resource samples, versions, and bounded logs. Use OpenTelemetry
+semantics where practical, while keeping the append-only AISAR run event log as the
+business source of truth.
+
+Do **not** heartbeat every cold runtime. A permanent heartbeat would wake the fleet and
+destroy the scale-to-zero economics. Silence is the expected state for a cold Sprite;
+provider status plus the last successful readiness check represents it centrally.
+
+Meter usage independently of provider invoices:
+
+- runtime active milliseconds and CPU time;
+- peak and sampled memory;
+- browser active milliseconds;
+- model input, output, and cached tokens;
+- hot and durable storage byte-hours; and
+- connector operations and external references.
+
+Every usage entry carries `business_id`, `run_id`, type, quantity, unit, timestamp, and a
+deduplication key. Provider invoices reconcile the ledger; they do not replace it.
 
 ## Cost model
 
@@ -236,6 +427,36 @@ LLM usage is expected to dominate COGS for normal businesses. Optimise model rou
 context size, caching, and runaway-run limits before optimising away approximately one
 dollar of runtime cost per active business.
 
+## Ten-thousand-runtime operating model
+
+Ten thousand registered business runtimes must not imply ten thousand running servers.
+Capacity follows active work:
+
+```text
+10,000 business runtime records and persistent workspaces
+   600 active runtimes at a representative peak
+ 9,400 cold runtimes consuming storage but no compute
+```
+
+The control plane scales with incoming events, queued tasks, active runtimes, and event
+writes. It does not fan out health polling, permanent connections, or scheduled processes
+to every registered runtime.
+
+At that scale, maintain quotas for concurrently active and warm Sprites, provisioning
+rate, queue depth, wake latency, and work per business. Admission control must leave
+capacity for interactive owner work instead of allowing a bulk schedule to wake the
+entire fleet simultaneously.
+
+Runtime-aware product tiers are a possible pricing lever, not yet a product decision:
+
+- a cold, on-demand runtime with an included usage allowance;
+- a faster or temporarily warm runtime with higher limits; and
+- a dedicated high-duty runtime with concurrency and support commitments.
+
+Plan names and prices require measured usage and customer research. The architecture
+records the usage needed to price them without committing to `$29`, `$79`, or `$199`
+before those measurements exist.
+
 ## Rollout gates
 
 Do not enable automatic customer provisioning until all are true:
@@ -248,4 +469,3 @@ Do not enable automatic customer provisioning until all are true:
 - per-business runtime and model spend ceilings exist;
 - health reconciliation, upgrade, rollback, and deletion paths are tested; and
 - one read-only AISAR run succeeds before any live connector is enabled.
-
