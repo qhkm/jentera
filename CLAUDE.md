@@ -106,6 +106,13 @@ anything. The control plane decides what to persist and what needs
 approval. A runtime that could act directly would be a runtime that
 could bypass the approval gate.
 
+`test/orchestration.test.ts` exercises the real control-plane path:
+`testEnv()` points Hyperdrive at the test container, so `withTenant`,
+RLS and the transactions all run for real. Only the model and outbound
+HTTP are faked — the two things that would otherwise leave the machine.
+Prefer that over stubbing the data layer; the bugs here have all been
+in the seams a stub would hide.
+
 `test/runtime.test.ts` runs a contract over every adapter in one list.
 A new runtime is added there and either passes or is not finished.
 

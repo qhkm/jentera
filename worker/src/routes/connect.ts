@@ -280,7 +280,7 @@ async function telegramWebhook(
   return ok;
 }
 
-async function handleIncoming(
+export async function handleIncoming(
   env: Env,
   businessId: string,
   connectionId: string,

@@ -163,3 +163,28 @@ export async function truncateAll(): Promise<void> {
       restart identity cascade`);
   });
 }
+
+/**
+ * An Env the real control-plane code will accept.
+ *
+ * `withTenant` only needs a connection string, so pointing Hyperdrive
+ * at the test container makes the genuine transaction-and-RLS path
+ * run — no fake, no in-memory stand-in. Only the model and the
+ * outbound HTTP are substituted, because those are the two things
+ * that leave the machine.
+ */
+export function testEnv(over: Partial<Record<string, unknown>> = {}): import('../src/env').Env {
+  return {
+    HYPERDRIVE: {
+      connectionString: `postgres://aisar_app:${APP_PASSWORD}@127.0.0.1:${PORT}/aisar_test`,
+    },
+    ALLOWED_ORIGINS: 'http://localhost:5173',
+    APP_ORIGIN: 'http://localhost:5173',
+    API_ORIGIN: 'http://localhost:8787',
+    CREDENTIAL_KEY: btoa(String.fromCharCode(...new Uint8Array(32).fill(5))),
+    RESEND_API_KEY: '',
+    AI: { run: async () => ({ response: 'A drafted reply.' }) },
+    AUTH_BURST: { limit: async () => ({ success: true }) },
+    ...over,
+  } as unknown as import('../src/env').Env;
+}
