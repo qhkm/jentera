@@ -16,6 +16,7 @@ import {
   markBroken,
   removeConnection,
   saveConnection,
+  verifyWebhook,
   useCredential,
   webhookSecret,
 } from '../connections';
@@ -251,26 +252,14 @@ async function telegramWebhook(
 
   const presented = request.headers.get('X-Telegram-Bot-Api-Secret-Token') ?? '';
 
-  /* Scoped to the business named in the URL, which is the only way this
-     row is visible at all. Nothing is trusted yet — the secret decides. */
-  const found = await withTenant(env, businessId, async (tx) => {
-    const [row] = await tx<{ webhook_secret: string | null; status: string }[]>`
-      select webhook_secret, status from connection where id = ${connectionId}`;
-    return row ?? null;
-  }).catch(() => null);
+  /* Scoped to the business named in the URL, which is the only way
+     this row is visible at all. Nothing is trusted yet — the secret
+     decides. */
+  const verdict = await withTenant(env, businessId, (tx) =>
+    verifyWebhook(tx, connectionId, presented),
+  ).catch((e: unknown) => ({ ok: false as const, why: `lookup failed: ${String(e)}` }));
 
-  if (!found) return drop('no such connection for that business');
-  if (found.status !== 'connected') return drop(`connection is ${found.status}`);
-  const expected = found.webhook_secret ?? '';
-  if (!expected) return drop('no stored secret for that connection');
-  /* Constant time: a byte-by-byte comparison would leak the secret to
-     anyone willing to measure enough requests. */
-  if (presented.length !== expected.length) {
-    return drop(`secret length ${presented.length} != ${expected.length}`);
-  }
-  let diff = 0;
-  for (let i = 0; i < expected.length; i++) diff |= presented.charCodeAt(i) ^ expected.charCodeAt(i);
-  if (diff !== 0) return drop('secret mismatch');
+  if (!verdict.ok) return drop(verdict.why);
 
   const raw = await request.json().catch(() => null);
   const incoming = parseUpdate(raw);

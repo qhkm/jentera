@@ -177,3 +177,47 @@ export async function webhookSecret(
   await tx`update connection set webhook_secret = ${fresh} where id = ${connectionId}`;
   return fresh;
 }
+
+export type WebhookVerdict =
+  | { ok: true }
+  | { ok: false; why: string };
+
+/**
+ * Decide whether an incoming webhook really came from the connector.
+ *
+ * Takes a transaction rather than an Env so the tests execute this
+ * exact code. That matters more here than anywhere else in the Worker:
+ * this is the only unauthenticated write path, and the one bug it has
+ * already had was invisible from both ends — Telegram reported
+ * successful delivery while every update was refused.
+ *
+ * The caller must already have opened the transaction scoped to the
+ * business named in the URL. `connection` has RLS forced, so a read
+ * with no app.business_id returns nothing and this returns a miss —
+ * which is exactly how that bug behaved, and why there is a test for
+ * it below rather than a comment.
+ */
+export async function verifyWebhook(
+  tx: postgres.TransactionSql,
+  connectionId: string,
+  presented: string,
+): Promise<WebhookVerdict> {
+  const [row] = await tx<{ webhook_secret: string | null; status: string }[]>`
+    select webhook_secret, status from connection where id = ${connectionId}`;
+
+  if (!row) return { ok: false, why: 'no such connection for that business' };
+  if (row.status !== 'connected') return { ok: false, why: `connection is ${row.status}` };
+
+  const expected = row.webhook_secret ?? '';
+  if (!expected) return { ok: false, why: 'no stored secret for that connection' };
+
+  /* Constant time. A byte-by-byte early return would leak the secret
+     to anyone willing to measure enough requests — and this endpoint
+     invites unlimited attempts by design. */
+  if (presented.length !== expected.length) {
+    return { ok: false, why: `secret length ${presented.length} != ${expected.length}` };
+  }
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= presented.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0 ? { ok: true } : { ok: false, why: 'secret mismatch' };
+}

@@ -78,11 +78,64 @@ describe('row-level security', () => {
     expect(rows).toHaveLength(0);
   });
 
-  it('forces RLS on the owner too, so the policy cannot be bypassed by table ownership', async () => {
-    const [row] = await asOwner(
-      (sql) => sql`select relforcerowsecurity as forced from pg_class where relname = 'business'`,
+  it('enables and FORCES RLS on every tenant table', async () => {
+    /* Enumerated rather than checked one table at a time, so a new
+       tenant table added without a policy fails here instead of
+       shipping open.
+
+       `force` is invisible to these tests otherwise: it governs the
+       table OWNER, and everything here asserts as aisar_app, which is
+       not the owner. Removing `force` from a table therefore breaks
+       nothing any other test can see — which is exactly why it needs
+       an assertion of its own rather than an implicit one. It is the
+       guard against the day something connects as the owner. */
+    const TENANT_TABLES = [
+      'business',
+      'approval',
+      'action_policy',
+      'work_done',
+      'learn',
+      'business_fact',
+      'run',
+      'run_event',
+      'work_record',
+      'connection',
+      'credential',
+    ];
+
+    const rows = await asOwner(
+      (sql) => sql<{ relname: string; enabled: boolean; forced: boolean; policies: number }[]>`
+        select c.relname,
+               c.relrowsecurity      as enabled,
+               c.relforcerowsecurity as forced,
+               (select count(*)::int from pg_policy p where p.polrelid = c.oid) as policies
+          from pg_class c join pg_namespace n on n.oid = c.relnamespace
+         where n.nspname = 'public' and c.relkind = 'r'`,
     );
-    expect(row.forced).toBe(true);
+    const byName = new Map(rows.map((r) => [r.relname, r]));
+
+    for (const table of TENANT_TABLES) {
+      const r = byName.get(table);
+      expect(r, `${table} is missing`).toBeDefined();
+      expect(r!.enabled, `${table}: RLS not enabled`).toBe(true);
+      expect(r!.forced, `${table}: RLS not forced`).toBe(true);
+      expect(r!.policies, `${table}: no policy`).toBeGreaterThan(0);
+    }
+  });
+
+  it('leaves the pre-tenant tables open, deliberately', async () => {
+    /* These are read while establishing who the caller is, strictly
+       before any business_id exists to scope them by. Putting RLS on
+       them would deadlock authentication — which is the bug the
+       webhook already had, in the one table that got this wrong. */
+    const rows = await asOwner(
+      (sql) => sql<{ relname: string; enabled: boolean }[]>`
+        select relname, relrowsecurity as enabled from pg_class
+         where relname in ('app_user', 'session', 'login_token', 'membership', 'auth_attempt')`,
+    );
+    for (const r of rows) {
+      expect(r.enabled, `${r.relname}: RLS would block authentication`).toBe(false);
+    }
   });
 });
 
