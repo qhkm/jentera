@@ -8,7 +8,7 @@
    ============================================================ */
 
 import type { Env } from '../env';
-import { withTenant, withUser } from '../db';
+import { withTenant } from '../db';
 import { hasBusiness, resolveTenant, type TenantIdentity } from '../tenancy';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
@@ -116,18 +116,33 @@ export async function handleRepo(
       return json({ ok: false, err: 'already has a business' }, { status: 409 }, cors);
     }
     const b = (await request.json().catch(() => ({}))) as Body;
-    const created = await withUser(env, async (sql) => {
-      const [row] = await sql<{ id: string }[]>`
-        insert into business (name, playbook_key, country, lang, locality)
-        values (${String(b.name ?? 'My business')}, ${String(b.playbookKey ?? 'generic')},
-                ${String(b.country ?? 'MY')}, ${String(b.lang ?? 'en')},
-                ${b.locality ? String(b.locality) : null})
-        returning id`;
-      await sql`insert into membership (user_id, business_id, role)
-                values (${identity.userId}, ${row.id}, 'owner')`;
-      return row.id;
+
+    /* Mint the id here rather than letting the database default it.
+       `business`'s RLS policy covers ALL commands and has no WITH CHECK,
+       so Postgres reuses its USING expression as the insert check —
+       meaning a row is only insertable when app.business_id already
+       equals its id. Creating a business looks pre-tenant, but it cannot
+       be: the row being inserted is the thing that defines the tenant.
+       Generating the id first lets the transaction be scoped to it, so
+       the insert satisfies its own policy instead of being rejected by
+       it. Found by the first real insert against the deployed Worker;
+       every prior test wrote rows that already existed. */
+    const businessId = crypto.randomUUID();
+
+    await withTenant(env, businessId, async (tx) => {
+      await tx`
+        insert into business (id, name, playbook_key, country, lang, locality)
+        values (${businessId}, ${String(b.name ?? 'My business')},
+                ${String(b.playbookKey ?? 'generic')}, ${String(b.country ?? 'MY')},
+                ${String(b.lang ?? 'en')}, ${b.locality ? String(b.locality) : null})`;
+      /* membership carries no policy — resolveTenant reads it before a
+         tenant is known — so it is written inside the same transaction
+         purely so a failure leaves neither row. */
+      await tx`insert into membership (user_id, business_id, role)
+               values (${identity.userId}, ${businessId}, 'owner')`;
     });
-    return json({ ok: true, businessId: created }, {}, cors);
+
+    return json({ ok: true, businessId }, {}, cors);
   }
 
   if (!hasBusiness(identity)) {
