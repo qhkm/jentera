@@ -191,7 +191,14 @@ export async function extractFacts(env: Env, page: string, title: string): Promi
      where a string was expected. Normalising here keeps the shape
      question in one place instead of scattering `?.` through parsing. */
   const text = asText(res);
-  if (!text) console.error(`[ingest] unrecognised AI response: ${JSON.stringify(res).slice(0, 400)}`);
+  if (!text) {
+    /* String() around the stringify: JSON.stringify(undefined) returns
+       undefined, not "undefined", so calling .slice on it threw — and
+       the line that threw was the one reporting that something had
+       gone wrong. A model returning nothing crashed the run instead of
+       degrading, which is the opposite of what this function promises. */
+    console.error(`[ingest] unrecognised AI response: ${String(JSON.stringify(res)).slice(0, 400)}`);
+  }
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start === -1 || end <= start) return [];
