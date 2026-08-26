@@ -14,8 +14,14 @@ binding = "HYPERDRIVE"
 id = "f77c72f8d6614bb0b6955170caadad07"
 
 [vars]
-# Comma-separated origins allowed to call this API.
-ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173,https://aisar-next.pages.dev"
+# Comma-separated origins allowed to call this API. Credentialed requests
+# need an exact origin match — a wildcard is rejected by the browser when
+# credentials: 'include' is set, which is how the session cookie travels.
+ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173,https://jentera.ai,https://jentera.aisar.ai,https://aisar-next.pages.dev"
+
+# Where magic links point. Must match the Resend sender domain, or the
+# email carries a link to a different domain than it came from.
+APP_ORIGIN = "https://jentera.ai"
 
 # Connector credentials are secrets, never vars:
 #   npx wrangler secret put META_APP_SECRET

@@ -19,8 +19,18 @@ function cors(env: Env, origin: string | null): Record<string, string> {
     .map((s) => s.trim())
     .filter(Boolean);
   const ok = origin && allowed.includes(origin);
+
+  /* Credentialed requests are strict in two ways the non-credentialed
+     case is not: the browser rejects a wildcard origin outright, and it
+     drops the cookie unless Allow-Credentials is present. RemoteRepository
+     sends credentials: 'include' on every call, so an unlisted origin must
+     get no CORS headers at all rather than a permissive default — echoing
+     allowed[0] back would be a lie the browser then refuses anyway. */
+  if (!ok) return { Vary: 'Origin' };
+
   return {
-    'Access-Control-Allow-Origin': ok ? origin : allowed[0] ?? '',
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Max-Age': '86400',
