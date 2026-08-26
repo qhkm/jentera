@@ -165,11 +165,6 @@ export async function handleRepo(
     '/api/state/country': { col: 'country', value: () => String(body.code ?? 'MY') },
     '/api/state/lang': { col: 'lang', value: () => (body.lang === 'bm' ? 'bm' : 'en') },
     '/api/state/theme': { col: 'theme', value: () => (body.theme === 'light' ? 'light' : 'dark') },
-    '/api/state/channels': { col: 'channels', value: () => JSON.stringify(body.channels ?? []) },
-    '/api/state/connections': {
-      col: 'connections',
-      value: () => JSON.stringify(body.connections ?? []),
-    },
   };
 
   const hit = scalar[url.pathname];
@@ -180,6 +175,35 @@ export async function handleRepo(
         hit.value() as never,
         id.businessId as never,
       ]);
+    });
+    return noContent(cors);
+  }
+
+  /* channels and connections are jsonb, and jsonb is NOT a scalar.
+     Passing JSON.stringify(...) here wrote the *text* as a jsonb string:
+     postgres.js JSON-encodes the value it is given, so a string that
+     already held JSON came back out as "[\"whatsapp\"]" rather than
+     ["whatsapp"]. jsonb_typeof said `string` where the client expected
+     `array`. sql.json states the intent explicitly rather than relying
+     on postgres.js inferring jsonb from a bare JS array. */
+  const list = url.pathname === '/api/state/channels'
+    ? { col: 'channels', from: body.channels }
+    : url.pathname === '/api/state/connections'
+      ? { col: 'connections', from: body.connections }
+      : null;
+
+  if (list) {
+    // The column no longer passes through String(), so nothing else
+    // stops a caller storing an arbitrary object here.
+    const values = Array.isArray(list.from)
+      ? list.from.filter((v): v is string => typeof v === 'string')
+      : [];
+    await withTenant(env, id.businessId, async (tx) => {
+      if (list.col === 'channels') {
+        await tx`update business set channels = ${tx.json(values)} where id = ${id.businessId}`;
+      } else {
+        await tx`update business set connections = ${tx.json(values)} where id = ${id.businessId}`;
+      }
     });
     return noContent(cors);
   }
@@ -238,7 +262,7 @@ export async function handleRepo(
       const [row] = await tx<{ id: string }[]>`
         insert into approval (business_id, connector, op, args, risk)
         values (${id.businessId}, ${String(body.conn)}, ${String(body.op)},
-                ${JSON.stringify(body.args ?? {})}, ${String(body.risk ?? 'medium')})
+                ${tx.json((body.args ?? {}) as never)}, ${String(body.risk ?? 'medium')})
         returning id`;
       return row.id;
     });
