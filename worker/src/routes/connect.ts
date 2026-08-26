@@ -20,7 +20,7 @@ import {
   webhookSecret,
 } from '../connections';
 import { clearWebhook, parseUpdate, sendMessage, setWebhook, verifyToken } from '../connectors/telegram';
-import { append, finishRun, recordWork, startRun } from '../runs';
+import { append, finishRun, recordWork, startRun, updateWorkForRun } from '../runs';
 import { answer, retrieve } from '../ask';
 import { MODEL } from '../ingest';
 
@@ -296,19 +296,28 @@ export async function sendAndRecord(
       connector: 'telegram',
       messageId: sent.messageId,
     });
-    await recordWork(tx, businessId, {
-      runId,
-      objective: `Reply to ${incoming.from} on Telegram`,
-      outcome: text.slice(0, 500),
+    /* Update the row the approval pause already wrote, if there is
+       one. Only an automatic send has no prior record to amend. */
+    const amended = await updateWorkForRun(tx, businessId, runId, {
       status: 'completed',
-      function: 'reply',
-      channel: 'telegram',
-      subject: incoming.text.slice(0, 200),
-      risk: 'medium',
+      outcome: text,
       // Answering a customer by hand, found and typed.
       minutesSaved: 3,
-      inputsUsed: { factKeys: usedKeys },
     });
+    if (!amended) {
+      await recordWork(tx, businessId, {
+        runId,
+        objective: `Reply to ${incoming.from} on Telegram`,
+        outcome: text.slice(0, 500),
+        status: 'completed',
+        function: 'reply',
+        channel: 'telegram',
+        subject: incoming.text.slice(0, 200),
+        risk: 'medium',
+        minutesSaved: 3,
+        inputsUsed: { factKeys: usedKeys },
+      });
+    }
     await tx`update connection set last_ok_at = now() where id = ${connectionId}`;
     await finishRun(tx, businessId, runId, 'completed', { messageId: sent.messageId });
   });

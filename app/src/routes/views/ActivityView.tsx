@@ -10,10 +10,11 @@
 import { useMemo, useState } from 'react';
 import { Avatar, Button, Card, Eyebrow, Tag } from '@/components/ui';
 import { useActivity } from '@/hooks/useActivity';
+import ApprovalInbox from './ApprovalInbox';
 import { useT } from '@/i18n/I18nProvider';
 import { Icon, stripEmoji } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
-import { useMutate } from '@/lib/repo';
+import { useMutate, useRefresh, useSnapshot } from '@/lib/repo';
 import type { Approval, Business, Tone, WorkItem } from '@/lib/types';
 import type { useBusiness } from '@/hooks/useBusiness';
 
@@ -29,6 +30,16 @@ function riskTone(risk: string): Tone {
   return 'green';
 }
 
+const WORK_STATUS: Record<string, { tone: Tone; label: string }> = {
+  completed: { tone: 'green', label: 'work.done' },
+  needs_approval: { tone: 'amber', label: 'work.waiting' },
+  blocked: { tone: 'neutral', label: 'work.blocked' },
+  failed: { tone: 'red', label: 'work.failed' },
+};
+
+const workTone = (status: string): Tone => WORK_STATUS[status]?.tone ?? 'neutral';
+const workLabel = (status: string): string => WORK_STATUS[status]?.label ?? 'work.inprogress';
+
 export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> }) {
   const t = useT();
   const toast = useToast();
@@ -36,6 +47,8 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
   const [filter, setFilter] = useState<ActivityFilter>('needs you');
   const business: Business = b.business;
   const activity = useActivity();
+  const snap = useSnapshot();
+  const refresh = useRefresh();
 
   const indexed = useMemo(() => business.work.map((w, i) => ({ w, i })), [business.work]);
 
@@ -94,7 +107,25 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
      beside it. A list mixing things that happened with things that are
      a demonstration is unreadable — the owner cannot tell which rows
      are theirs. */
-  if (activity.real && activity.data!.work.length > 0) {
+  if (activity.real) {
+    /* Approvals come first and are never skipped. An earlier version of
+       this branch returned before the approvals block below, so a
+       Telegram reply could sit waiting forever on a screen that did not
+       render it — the gate raised, and no way to answer it. */
+    const pending = snap.approvals.filter((a) => a.status === 'pending');
+    if (pending.length === 0 && activity.data!.work.length === 0) {
+      return (
+        <div className="flex flex-col gap-6">
+          <header className="flex flex-col gap-2">
+            <h1 className="font-pixel text-2xl tracking-tight">{t('view.work')}</h1>
+            <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.work.desc')}</p>
+          </header>
+          <Card className="items-center py-8 text-center">
+            <p className="text-sm text-text-secondary">{t('home.nothingyet')}</p>
+          </Card>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col gap-6">
         <header className="flex flex-col gap-2">
@@ -102,6 +133,15 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
           <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.work.desc')}</p>
         </header>
 
+        <ApprovalInbox
+          approvals={pending}
+          onDecided={() => {
+            void refresh();
+            activity.reload();
+          }}
+        />
+
+        {activity.data!.work.length > 0 && (
         <Card>
           <div className="flex flex-col">
             {activity.data!.work.map((w) => (
@@ -111,9 +151,11 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-sm">{w.objective}</span>
-                  <Tag tone={w.status === 'completed' ? 'green' : 'red'}>
-                    {w.status === 'completed' ? t('work.done') : t('work.failed')}
-                  </Tag>
+                  {/* Not a binary. `needs_approval` reading as red
+                      "did not finish" tells the owner something broke
+                      when in fact it is waiting on them, and `blocked`
+                      is a setting of theirs working as intended. */}
+                  <Tag tone={workTone(w.status)}>{t(workLabel(w.status))}</Tag>
                 </div>
                 {w.outcome && (
                   <span className="text-[13px] text-text-secondary">{w.outcome}</span>
@@ -126,6 +168,7 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
             ))}
           </div>
         </Card>
+        )}
       </div>
     );
   }

@@ -281,3 +281,29 @@ export async function homeCounters(
     thisWeek: Number(row.this_week),
   };
 }
+
+/**
+ * Bring an existing summary up to date, or report that there was none.
+ *
+ * A run that paused for approval already wrote a work record saying so.
+ * Inserting a second one when the decision lands would leave the owner
+ * reading two rows about one event, one of them permanently claiming to
+ * be waiting for them. Updating in place keeps a piece of work to a
+ * single line in the history.
+ */
+export async function updateWorkForRun(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  runId: string,
+  patch: { status: string; outcome: string; minutesSaved?: number | null },
+): Promise<boolean> {
+  const rows = await tx`
+    update work_record
+       set status = ${patch.status},
+           outcome = ${patch.outcome.slice(0, 500)},
+           minutes_saved = ${patch.minutesSaved ?? null},
+           updated_at = now()
+     where business_id = ${businessId} and run_id = ${runId}
+    returning id`;
+  return rows.length > 0;
+}

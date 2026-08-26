@@ -10,6 +10,7 @@
 import type { Env } from '../env';
 import { withTenant } from '../db';
 import { sendAndRecord } from './connect';
+import { append, updateWorkForRun } from '../runs';
 import { hasBusiness, resolveTenant, type TenantIdentity } from '../tenancy';
 import {
   SOURCES,
@@ -374,7 +375,21 @@ export async function handleRepo(
       };
       /* The owner may have edited the draft before approving. What
          they send is what they saw, not what the model first wrote. */
-      const text = typeof body.text === 'string' && body.text.trim() ? body.text.trim() : a.draft;
+      const edited = typeof body.text === 'string' && body.text.trim() !== '' &&
+                     body.text.trim() !== (a.draft ?? '').trim();
+      const text = edited ? String(body.text).trim() : a.draft;
+
+      /* Recorded before the send, because it is true whether or not
+         the send succeeds — and because later phases mine these to
+         learn how this owner actually writes. */
+      if (edited && changed.runId) {
+        await withTenant(env, id.businessId, (tx) =>
+          append(tx, id.businessId, changed.runId!, 'owner.edited', {
+            was: (a.draft ?? '').slice(0, 2000),
+            now: String(body.text).trim().slice(0, 2000),
+          }),
+        );
+      }
       if (a.chatId && a.connectionId && text) {
         try {
           await sendAndRecord(
@@ -387,13 +402,31 @@ export async function handleRepo(
             [],
           );
         } catch (e) {
-          return json(
-            { ok: true, status: 'approved', sent: false,
-              err: e instanceof Error ? e.message : 'could not send' },
-            {},
-            cors,
-          );
+          const why = e instanceof Error ? e.message : 'could not send';
+          /* An approved reply that failed to send must not leave the
+             screen saying it is still waiting for the owner. They
+             already decided; what they need to know is that it did not
+             go out, and why. */
+          if (changed.runId) {
+            await withTenant(env, id.businessId, async (tx) => {
+              await append(tx, id.businessId, changed.runId!, 'work.failed', { error: why });
+              await updateWorkForRun(tx, id.businessId, changed.runId!, {
+                status: 'failed',
+                outcome: `You approved this, but it could not be sent: ${why}`,
+              });
+              await tx`update run set status = 'failed', ended_at = now()
+                        where id = ${changed.runId}`;
+            });
+          }
+          return json({ ok: true, status: 'approved', sent: false, err: why }, {}, cors);
         }
+        await withTenant(env, id.businessId, (tx) =>
+          append(tx, id.businessId, changed.runId ?? '', 'approval.granted', {}),
+        ).catch(() => {
+          /* The send already happened and is recorded; a missing
+             bookkeeping event must not turn a delivered message into
+             an error the owner sees. */
+        });
         return json({ ok: true, status: 'approved', sent: true }, {}, cors);
       }
     }

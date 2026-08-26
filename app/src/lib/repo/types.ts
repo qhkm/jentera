@@ -122,7 +122,10 @@ export interface Repository {
   resetPolicies(): Promise<void>;
 
   queueApproval(a: Approval): Promise<void>;
-  decideApproval(id: number, approved: boolean): Promise<void>;
+  /** `text` replaces the draft when the owner edited it before
+      approving. Sent with the decision, not saved separately, so there
+      is no window where an approval points at a half-finished edit. */
+  decideApproval(id: number, approved: boolean, text?: string): Promise<void>;
 
   markWorkDone(playbookKey: string, index: number): Promise<void>;
   recordLearn(playbookKey: string, pick: string): Promise<void>;

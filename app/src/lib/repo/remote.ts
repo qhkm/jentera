@@ -184,14 +184,14 @@ export class RemoteRepository implements Repository {
     this.ids.set(a.id, remoteId);
   }
 
-  async decideApproval(id: number, approved: boolean): Promise<void> {
+  async decideApproval(id: number, approved: boolean, text?: string): Promise<void> {
     const remoteId = this.ids.get(id);
     if (!remoteId) {
       // The map is rebuilt on every load, so a miss means the caller is
       // acting on a snapshot older than the last refresh.
       throw new Error('That approval is no longer current. Reload and try again.');
     }
-    await post(`/api/state/approvals/${encodeURIComponent(remoteId)}/decide`, { approved });
+    await post(`/api/state/approvals/${encodeURIComponent(remoteId)}/decide`, { approved, text });
   }
 
   markWorkDone = (playbookKey: string, index: number) =>
