@@ -22,7 +22,7 @@ import type { Activity } from '@/lib/repo';
 
 const EMPTY: Activity = {
   work: [],
-  counters: { handled: 0, needsYou: 0, minutesSaved: 0, thisWeek: 0 },
+  counters: { handled: 0, needsYou: 0, minutesSaved: 0, thisWeek: 0, connections: 0 },
 };
 
 function Probe() {
@@ -86,7 +86,7 @@ describe('a signed-in business', () => {
     const repo = new LocalRepository();
     repo.activity = async () => ({
       work: [],
-      counters: { handled: 7, needsYou: 2, minutesSaved: 30, thisWeek: 4 },
+      counters: { handled: 7, needsYou: 2, minutesSaved: 30, thisWeek: 4, connections: 1 },
     });
     mount(repo, true);
     await waitFor(() => expect(screen.getByTestId('handled')).toHaveTextContent('7'));

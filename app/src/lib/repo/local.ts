@@ -240,7 +240,10 @@ export class LocalRepository implements Repository {
   async activity(): Promise<Activity> {
     // Nothing has really happened in the demo; the screens fall back
     // to their playbook illustrations when this is empty.
-    return { work: [], counters: { handled: 0, needsYou: 0, minutesSaved: 0, thisWeek: 0 } };
+    return {
+      work: [],
+      counters: { handled: 0, needsYou: 0, minutesSaved: 0, thisWeek: 0, connections: 0 },
+    };
   }
 
   async ask(): Promise<AskAnswer> {

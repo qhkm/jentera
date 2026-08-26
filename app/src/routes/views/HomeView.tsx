@@ -110,7 +110,16 @@ export default function HomeView({
                 ))}
               </p>
             </div>
-            <Tag tone="green">live</Tag>
+            {/* "live" is a claim about now. An agent roster with
+                nothing behind it is a capability list, and saying
+                otherwise on a dashboard whose own counters read zero
+                is the sort of small untruth that makes a person stop
+                believing the rest. */}
+            {!activity.real || activity.data!.counters.handled > 0 ? (
+              <Tag tone="green">live</Tag>
+            ) : (
+              <Tag>{t('roster.ready')}</Tag>
+            )}
           </div>
 
           {!activity.real && pending.length ? (

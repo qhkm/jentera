@@ -193,3 +193,49 @@ export function popular(snap: BusinessSnapshot, key: string): { pick: string; n:
   }
   return best !== null ? { pick: best, n: bestN } : null;
 }
+
+/* ---- Real readiness ---------------------------------------------- */
+
+export interface Milestone {
+  key: string;
+  done: boolean;
+}
+
+/**
+ * How far this business actually is, from things that are true.
+ *
+ * The sidebar used to show a percentage taken from the playbook —
+ * "AISAR can handle 82%" — identical for every business of that type
+ * and unmoved by anything the owner did. It read as a measurement and
+ * was a brochure figure, which is the worst combination: precise,
+ * prominent, and untethered.
+ *
+ * These three are checkable and move. They are also the actual arc of
+ * the product: it has to know something, have a way to reach people,
+ * and have done something.
+ */
+export function milestones(
+  snap: BusinessSnapshot,
+  handled: number,
+  connections: number,
+): Milestone[] {
+  return [
+    { key: 'knows', done: snap.facts.some((f) => f.confirmed) },
+    /* The real connection count, not `snap.conns`. That list is seeded
+       from the playbook — it named WhatsApp, Instagram, Google Calendar
+       and Google Sheets for a business that had connected none of them,
+       and a milestone reading it reported success for nothing. */
+    { key: 'connected', done: connections > 0 },
+    { key: 'working', done: handled > 0 },
+  ];
+}
+
+/** Whole percent, so the bar and the number cannot disagree. */
+export function readiness(
+  snap: BusinessSnapshot,
+  handled: number,
+  connections: number,
+): number {
+  const m = milestones(snap, handled, connections);
+  return Math.round((m.filter((x) => x.done).length / m.length) * 100);
+}

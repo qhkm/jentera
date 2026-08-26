@@ -264,13 +264,30 @@ export async function recentWork(
  */
 export async function homeCounters(
   tx: postgres.TransactionSql,
-): Promise<{ handled: number; needsYou: number; minutesSaved: number; thisWeek: number }> {
+): Promise<{
+  handled: number;
+  needsYou: number;
+  minutesSaved: number;
+  thisWeek: number;
+  connections: number;
+}> {
   const [row] = await tx<
-    { handled: string; needs_you: string; minutes_saved: string; this_week: string }[]
+    {
+      handled: string;
+      needs_you: string;
+      minutes_saved: string;
+      this_week: string;
+      connections: string;
+    }[]
   >`
     select
       count(*) filter (where status = 'completed')::text                       as handled,
       (select count(*)::text from approval where status = 'pending')           as needs_you,
+      -- Real accounts, from the connection table. business.connections
+      -- is a playbook-seeded list of what a business of this type
+      -- typically uses: it named WhatsApp and Instagram for a business
+      -- that had connected neither.
+      (select count(*)::text from connection where status = 'connected')       as connections,
       coalesce(sum(minutes_saved), 0)::text                                    as minutes_saved,
       count(*) filter (where occurred_at > now() - interval '7 days')::text    as this_week
     from work_record`;
@@ -279,6 +296,7 @@ export async function homeCounters(
     needsYou: Number(row.needs_you),
     minutesSaved: Number(row.minutes_saved),
     thisWeek: Number(row.this_week),
+    connections: Number(row.connections),
   };
 }
 

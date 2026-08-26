@@ -114,7 +114,14 @@ export interface AskAnswer {
 
 export interface Activity {
   work: WorkSummary[];
-  counters: { handled: number; needsYou: number; minutesSaved: number; thisWeek: number };
+  counters: {
+    handled: number;
+    needsYou: number;
+    minutesSaved: number;
+    thisWeek: number;
+    /** Accounts genuinely connected, not the playbook's suggestions. */
+    connections: number;
+  };
 }
 
 /** Thrown when a feature needs the server and there is no session. */

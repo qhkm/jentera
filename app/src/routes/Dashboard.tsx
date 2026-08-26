@@ -16,6 +16,8 @@ import { Shell } from '@/components/Shell';
 import { Avatar, Card, Eyebrow, Progress, Tag } from '@/components/ui';
 import { useBusiness } from '@/hooks/useBusiness';
 import { useActivity } from '@/hooks/useActivity';
+import { useSnapshot } from '@/lib/repo';
+import { milestones, readiness } from '@/lib/business';
 import { useT } from '@/i18n/I18nProvider';
 import { Icon, type IconName } from '@/components/Icon';
 import { useIsCompact } from '@/hooks/useMediaQuery';
@@ -52,6 +54,7 @@ export default function Dashboard() {
      otherwise. Mixing them put an amber "1" on the Activity tab of an
      account whose own dashboard said nothing was waiting. */
   const activity = useActivity();
+  const snap = useSnapshot();
   const needsAttention = activity.real
     ? activity.data!.counters.needsYou
     : b.needsYouCount + b.approvals.length;
@@ -66,6 +69,13 @@ export default function Dashboard() {
     [business.work, b],
   );
   const handled = activity.real ? activity.data!.counters.handled : playbookHandled;
+
+  /* Milestones, not a projection: knows something, can reach someone,
+     has done something. All three are checkable and all three move. */
+  const done = activity.real ? activity.data!.counters.handled : 0;
+  const linked = activity.real ? activity.data!.counters.connections : 0;
+  const ready = readiness(snap, done, linked);
+  const nextStep = milestones(snap, done, linked).find((m) => !m.done);
 
   useEffect(() => {
     document.body.style.overflow = drawerOpen ? 'hidden' : '';
@@ -122,16 +132,33 @@ export default function Dashboard() {
           <span className="truncate text-[11px] text-text-muted">{business.loc}</span>
         </div>
       </div>
-      <div className="flex flex-col gap-2 border-t border-rail pt-3">
-        <div className="flex items-center justify-between">
-          <Eyebrow>{t('side.potential')}</Eyebrow>
-          <span className="font-pixel text-sm tabular-nums text-brand">{b.potential}%</span>
+      {/* Real progress for a real business; the playbook's projection
+          for the demo. "AISAR can handle 82%" was the same number for
+          every business of a type and moved for nobody — precise,
+          prominent, and untethered to anything the owner had done. */}
+      {activity.real ? (
+        <div className="flex flex-col gap-2 border-t border-rail pt-3">
+          <div className="flex items-center justify-between">
+            <Eyebrow>{t('side.ready')}</Eyebrow>
+            <span className="font-pixel text-sm tabular-nums text-brand">{ready}%</span>
+          </div>
+          <Progress value={ready} label={t('side.ready')} />
+          <span className="text-[11px] text-text-muted">
+            {nextStep ? t(`ms.${nextStep.key}`) : t('ms.alldone')}
+          </span>
         </div>
-        <Progress value={b.potential} label={t('side.potential')} />
-        <span className="text-[11px] text-text-muted">
-          {t('pot.txt').replace('{n}', String(business.opportunities))}
-        </span>
-      </div>
+      ) : (
+        <div className="flex flex-col gap-2 border-t border-rail pt-3">
+          <div className="flex items-center justify-between">
+            <Eyebrow>{t('side.potential')}</Eyebrow>
+            <span className="font-pixel text-sm tabular-nums text-brand">{b.potential}%</span>
+          </div>
+          <Progress value={b.potential} label={t('side.potential')} />
+          <span className="text-[11px] text-text-muted">
+            {t('pot.txt').replace('{n}', String(business.opportunities))}
+          </span>
+        </div>
+      )}
     </Card>
   );
 
