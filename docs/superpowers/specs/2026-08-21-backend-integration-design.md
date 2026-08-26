@@ -597,22 +597,26 @@ conversation than after.
 
 ### 9.7 Escape-hatch tier (slice 8)
 
-Fly Sprites: $0.07/CPU-hour, $0.04375/GB-hour RAM, scale-to-zero, dormant after 30 seconds
-with the filesystem preserved. Plans from $20/mo (20 concurrent) to $2,000/mo (2,000
-concurrent).
+The accepted first hosted-Hermes shape is one Fly Sprite per business, provisioned lazily
+behind the AISAR control plane. It is a business runtime, not one runtime per login or per
+agent name displayed in the UI.
 
-At 50 businesses × 15 active hours/month × 1 CPU / 2 GB, the Veteran plan at **$50/month**
-covers it — roughly **$1–3 per business per month**, against $15–20 of Claude for the same
-business.
+At current pay-as-you-go rates, a representative business active for 30 hours/month at
+0.2 average vCPU and 1 GB RAM costs approximately **$1.89/month** in Sprite compute and
+storage. Cloudflare Containers are materially cheaper per active hour, but their disk is
+currently ephemeral across sleep. A stopped-on-idle Singapore EC2 instance can approach
+the Sprite cost after roughly 20–25 active hours/month, at the price of substantially more
+lifecycle and recovery machinery.
 
-**Cost is therefore not an argument against the escape hatch.** Engineering time and
-support surface remain the real objections.
+**Cost is therefore not an argument against the first Sprite implementation.** Durable
+filesystem semantics and engineering time are the deciding factors. Dormancy still
+protects against idle, not busy-wait: polling, open connections, or active tasks can turn a
+roughly $2 runtime into a roughly $44/month runtime under the representative model.
+Per-tenant runtime caps are required, and `run.cost_cents` must count Sprite usage.
 
-Two caveats: **concurrency binds before hours do** (size the plan on peak simultaneous
-sprites, not monthly usage), and **dormancy protects against idle but not busy-wait** — a
-harness that polls never sleeps, and Fly's own worst case for one continuously-maxed sprite
-is ~$655/month. Per-tenant runtime caps are required, and `run.cost_cents` must count
-sprite-seconds.
+The deployment contract, security boundary, price model, and re-evaluation triggers are
+recorded in
+[`2026-08-26-hermes-sprites-runtime.md`](2026-08-26-hermes-sprites-runtime.md).
 
 ---
 

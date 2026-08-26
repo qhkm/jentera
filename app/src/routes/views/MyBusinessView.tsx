@@ -13,6 +13,7 @@ import { useT } from '@/i18n/I18nProvider';
 import { DataIcon } from '@/components/Icon';
 import { Tabs, type TabDef } from '@/components/Tabs';
 import PermissionsPanel from './PermissionsPanel';
+import KnowledgePanel from './KnowledgePanel';
 import { useToast } from '@/components/Toast';
 import { isAgentReady } from '@/lib/business';
 import { findConnector } from '@/lib/tools';
@@ -39,7 +40,7 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-type BizTab = 'profile' | 'handles' | 'connections' | 'permissions';
+type BizTab = 'profile' | 'knows' | 'handles' | 'connections' | 'permissions';
 
 export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness> }) {
   const [tab, setTab] = useState<BizTab>('profile');
@@ -48,6 +49,7 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
   const snap = useSnapshot();
   const mutate = useMutate();
   const { business } = b;
+  const unconfirmed = snap.facts.filter((f) => !f.confirmed).length;
   const [name, setName] = useState(business.name);
   const [loc, setLoc] = useState(business.loc);
 
@@ -71,7 +73,7 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
       },
       { id: 'permissions', label: t('biz.tab.permissions') },
     ],
-    [t, b.connections.length],
+    [t, b.connections.length, unconfirmed],
   );
 
   return (
@@ -82,6 +84,8 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
       </header>
 
       <Tabs tabs={TABS} active={tab} onSelect={setTab} label={t('view.business')} />
+
+      {tab === 'knows' && <KnowledgePanel />}
 
       {/* ---- Profile ---- */}
       {tab === 'profile' && (

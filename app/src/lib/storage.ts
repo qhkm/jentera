@@ -24,6 +24,8 @@ export const KEYS = {
   workDone: 'aisar-work-done:',
   /** suffixed with the playbook key */
   learn: 'aisar-learn:',
+  /** Business facts in the anonymous demo, keyed by fact key. */
+  facts: 'aisar-facts',
 } as const;
 
 export function get(key: string, fallback = ''): string {

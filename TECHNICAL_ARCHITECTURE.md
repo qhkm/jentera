@@ -140,6 +140,11 @@ This is also where the product becomes difficult to copy. Industry playbooks are
 - Add a TypeScript control-plane API using Cloudflare Workers.
 - Use Cloudflare Queues/Workflows for durable coordination and retries.
 - Run Hermes or another full agent runtime in isolated containers outside Workers; terminal and browser tasks require a real sandboxed compute environment.
+- Use one Fly Sprite per business for the first hosted Hermes runtime. Provision lazily,
+  keep Hermes behind the AISAR control plane, and revisit Cloudflare Containers or a
+  shared EC2 fleet when measured duty cycle or durable-container support changes the
+  trade-off. See
+  [`docs/superpowers/specs/2026-08-26-hermes-sprites-runtime.md`](docs/superpowers/specs/2026-08-26-hermes-sprites-runtime.md).
 - Store relational state in managed Postgres with row-level tenant isolation; add vector retrieval only where normal indexed search is insufficient.
 - Store imported documents and large run artifacts in the existing private R2 environment.
 - Keep credentials in a managed secret vault and issue short-lived connector grants.

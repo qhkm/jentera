@@ -52,3 +52,9 @@ namespace_id = "1001"
   [ratelimits.simple]
   limit = 5
   period = 60
+
+# Workers AI runs the extraction in src/ingest.ts. Chosen over an
+# external provider so the feature needs no third-party key; the model
+# id is a constant in that file and the call is one function.
+[ai]
+binding = "AI"

@@ -8,7 +8,7 @@
 import * as store from '@/lib/storage';
 import { KEYS } from '@/lib/storage';
 import type { Approval, CountryCode, Lang, Policy } from '@/lib/types';
-import type { BusinessSnapshot, Repository, Theme } from './types';
+import type { BusinessSnapshot, Repository, Theme, Fact, FactSource } from './types';
 
 /** Collect every `prefix{suffix}` key into a map keyed by suffix. */
 function collectPrefixed<T>(prefix: string, fallback: T): Record<string, T> {
@@ -22,6 +22,18 @@ function collectPrefixed<T>(prefix: string, fallback: T): Record<string, T> {
     /* storage unavailable — an empty map is the correct answer */
   }
   return out;
+}
+
+/* The demo keeps retired versions, exactly as the server does. A
+   correction that silently dropped its history here would make the two
+   implementations disagree about the one property business memory
+   exists to provide. */
+interface StoredFact extends Fact {
+  live: boolean;
+}
+
+function allVersions(): StoredFact[] {
+  return store.getJSON<StoredFact[]>(KEYS.facts, []);
 }
 
 export class LocalRepository implements Repository {
@@ -48,6 +60,7 @@ export class LocalRepository implements Repository {
       theme: theme === 'light' ? 'light' : 'dark',
       approvals: store.getJSON<Approval[]>(KEYS.approvals, []),
       permissions: store.getJSON<Record<string, Policy>>(KEYS.permissions, {}),
+      facts: allVersions().filter((f) => f.live).sort((a, b) => a.key.localeCompare(b.key)),
       workDone,
       learn: collectPrefixed<Record<string, number>>(KEYS.learn, {}),
     };
@@ -144,6 +157,64 @@ export class LocalRepository implements Repository {
     const obj = store.getJSON<Record<string, number>>(KEYS.learn + playbookKey, {});
     obj[pick] = (obj[pick] ?? 0) + 1;
     store.setJSON(KEYS.learn + playbookKey, obj);
+  }
+
+  async setFact(f: {
+    key: string;
+    value: unknown;
+    source?: FactSource;
+    sourceRef?: string | null;
+    confidence?: number;
+  }): Promise<void> {
+    const rows = allVersions();
+    const source = f.source ?? 'owner';
+    // Version counts over the whole history, not over the live row:
+    // a key that was forgotten has no live row, and restarting at 1
+    // would collide with the 1 already stored.
+    const version = rows.reduce((n, r) => (r.key === f.key ? Math.max(n, r.version) : n), 0) + 1;
+    const now = new Date().toISOString();
+
+    store.setJSON(KEYS.facts, [
+      ...rows.map((r) => (r.key === f.key && r.live ? { ...r, live: false } : r)),
+      {
+        key: f.key,
+        value: f.value,
+        source,
+        sourceRef: f.sourceRef ?? null,
+        confidence: f.confidence ?? 1,
+        // The owner stating a value is also vouching for it; any other
+        // source has to be confirmed separately.
+        confirmed: source === 'owner',
+        confirmedAt: source === 'owner' ? now : null,
+        version,
+        createdAt: now,
+        live: true,
+      },
+    ]);
+  }
+
+  async confirmFact(key: string): Promise<void> {
+    store.setJSON(
+      KEYS.facts,
+      allVersions().map((r) =>
+        r.key === key && r.live
+          ? { ...r, confirmed: true, confirmedAt: new Date().toISOString() }
+          : r,
+      ),
+    );
+  }
+
+  async forgetFact(key: string): Promise<void> {
+    store.setJSON(
+      KEYS.facts,
+      allVersions().map((r) => (r.key === key && r.live ? { ...r, live: false } : r)),
+    );
+  }
+
+  async factHistory(key: string): Promise<Fact[]> {
+    return allVersions()
+      .filter((r) => r.key === key)
+      .sort((a, b) => b.version - a.version);
   }
 
   async reset(): Promise<void> {

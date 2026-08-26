@@ -7,6 +7,9 @@ export interface Env {
   RESEND_API_KEY: string;
   /** Where magic links point, e.g. https://jentera.ai */
   APP_ORIGIN: string;
+  /** Workers AI. Ingestion runs on this rather than an external
+      provider so the feature needs no third-party credential. */
+  AI: Ai;
   /** Edge burst limiter for /api/auth/request. Per-colo, so it is a
       brake on floods rather than an exact quota. */
   AUTH_BURST: RateLimit;

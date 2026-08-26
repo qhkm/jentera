@@ -10,6 +10,7 @@
 
 import { handleSession } from './routes/session';
 import { handleRepo } from './routes/repo';
+import { handleRuns } from './routes/runs';
 import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
 
@@ -70,6 +71,10 @@ export default {
     /* The Repository interface's 17 methods. */
     const repo = await handleRepo(request, env, url, headers);
     if (repo) return repo;
+
+    /* Runs: ingestion, activity, and one run's trace. */
+    const runs = await handleRuns(request, env, url, headers);
+    if (runs) return runs;
 
     try {
       /* ---- POST /api/tools/call ---------------------------------- */

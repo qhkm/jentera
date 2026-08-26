@@ -9,7 +9,7 @@
    ============================================================ */
 
 import type { Approval, CountryCode, Lang, Policy } from '@/lib/types';
-import type { BusinessSnapshot, Repository, Theme } from './types';
+import type { BusinessSnapshot, Fact, FactSource, Repository, Theme } from './types';
 
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
@@ -133,6 +133,7 @@ export class RemoteRepository implements Repository {
       permissions: (snapshot.permissions as Record<string, Policy>) ?? {},
       workDone: (snapshot.workDone as Record<string, string[]>) ?? {},
       learn: (snapshot.learn as Record<string, Record<string, number>>) ?? {},
+      facts: (snapshot.facts as Fact[]) ?? [],
     };
   }
 
@@ -188,6 +189,25 @@ export class RemoteRepository implements Repository {
 
   recordLearn = (playbookKey: string, pick: string) =>
     post('/api/state/learn', { playbookKey, pick });
+
+  setFact = (f: {
+    key: string;
+    value: unknown;
+    source?: FactSource;
+    sourceRef?: string | null;
+    confidence?: number;
+  }) => post('/api/state/facts', f);
+
+  confirmFact = (key: string) => post('/api/state/facts/confirm', { key });
+  forgetFact = (key: string) => post('/api/state/facts/forget', { key });
+
+  async factHistory(key: string): Promise<Fact[]> {
+    const { history } = await call<{ history: Fact[] }>('/api/state/facts/history', {
+      method: 'POST',
+      body: JSON.stringify({ key }),
+    });
+    return history;
+  }
 
   reset = () => post('/api/state/reset');
 }

@@ -14,7 +14,7 @@ import * as store from '@/lib/storage';
 
 /** True when the browser holds a business worth carrying over. */
 export function hasLocalState(snap: BusinessSnapshot): boolean {
-  return Boolean(snap.bizType) || snap.onboarded || snap.conns.length > 0;
+  return Boolean(snap.bizType) || snap.onboarded || snap.conns.length > 0 || snap.facts.length > 0;
 }
 
 /**
@@ -59,6 +59,18 @@ export async function migrateLocalToRemote(
   }
   for (const a of snap.approvals) {
     if (a.status === 'pending') await remote.queueApproval(a);
+  }
+  /* Live facts only. Replaying superseded versions would rewrite the
+     history in the wrong order, and the demo's history is not worth
+     more than a clean starting point on the server. */
+  for (const f of snap.facts) {
+    await remote.setFact({
+      key: f.key,
+      value: f.value,
+      source: f.source,
+      sourceRef: f.sourceRef,
+      confidence: f.confidence,
+    });
   }
 
   if (snap.onboarded) await remote.setOnboarded(true);
