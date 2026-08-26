@@ -67,8 +67,15 @@ conditional UPDATE, and exchanged for an HttpOnly/Secure/SameSite=Lax session
 cookie. Because the cookie travels cross-origin, `ALLOWED_ORIGINS` must list
 each origin exactly — a wildcard is rejected by the browser outright.
 
-**Still missing, and known:** no rate limiting, no webhook verification,
-connector execution stubbed in `src/connectors.ts` pending OAuth registrations.
+`/api/auth/request` is rate limited three ways: an edge burst binding
+(5/60s per IP), and Postgres counters of 50/24h per IP and 10/24h per
+address. IP limits answer 429; the per-address one answers 204, because
+its counter includes requests made by anyone for that address and a 429
+would leak third-party activity. `MAX_OUTSTANDING` in `auth.ts` is a
+separate, stricter short-range brake on concurrent live links.
+
+**Still missing, and known:** no webhook verification, connector
+execution stubbed in `src/connectors.ts` pending OAuth registrations.
 There is **no server-side test suite** — the RLS bootstrap bug and the jsonb
 double-encoding bug both reached production because nothing exercised a real
 insert. Until one exists, `worker/` changes need an end-to-end run against the
