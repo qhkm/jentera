@@ -1,4 +1,4 @@
-export type { Activity, BusinessSnapshot, Fact, IngestResult, Repository, Theme, WorkSummary } from './types';
+export type { Activity, AskAnswer, BusinessSnapshot, Fact, IngestResult, Repository, Theme, WorkSummary } from './types';
 export { NeedsAccountError } from './types';
 export { LocalRepository } from './local';
 export { RemoteRepository, NotSignedInError, NoBusinessError } from './remote';

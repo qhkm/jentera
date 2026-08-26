@@ -10,6 +10,8 @@
    ============================================================ */
 
 import { useCallback, useRef, useState } from 'react';
+import { useRepository } from '@/lib/repo';
+import { useSignedIn } from '@/lib/repo/gate';
 import { TEAM_GENERAL, TEAM_REPLIES } from '@/lib/data/conversations';
 import { TEAM_GENERAL_EN, TEAM_REPLIES_EN } from '@/i18n/agent-replies';
 import { stripEmoji } from '@/components/Icon';
@@ -47,6 +49,8 @@ export function useAsk(
   lang: Lang = 'en',
 ) {
   const [messages, setMessages] = useState<AskMessage[]>([]);
+  const repo = useRepository();
+  const grounded = useSignedIn();
   /* Deterministic rotation — Math.random would change on every render. */
   const turn = useRef(0);
 
@@ -81,6 +85,26 @@ export function useAsk(
       const question = raw.trim();
       if (!question) return;
 
+      /* Signed in: the server answers from confirmed facts and real
+         work records, and says so when it does not know. The canned
+         replies below stay for the anonymous demo, which has no
+         backend to ask and no facts to ground an answer in. */
+      if (grounded) {
+        setMessages((prev) => [...prev, { from: 'you', text: question }, { from: 'ai', text: '…' }]);
+        void repo
+          .ask(question)
+          .then(
+            (a) => a.text,
+            (e: Error) => e.message,
+          )
+          .then((text) => {
+            // Replace the placeholder rather than appending, so the
+            // thinking indicator does not stay in the transcript.
+            setMessages((prev) => [...prev.slice(0, -1), { from: 'ai', text }]);
+          });
+        return;
+      }
+
       /* Tagging an agent routes the reply to that agent rather than to
          AISAR's general answer. */
       const agent = taggedAgent(question, business.team);
@@ -103,7 +127,7 @@ export function useAsk(
         { from: 'ai', text: reply, agent: agent?.n },
       ]);
     },
-    [answer, business.team, lang],
+    [answer, business.team, lang, grounded, repo],
   );
 
   return { messages, send, hasHistory: messages.length > 0 };

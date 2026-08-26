@@ -72,6 +72,14 @@ export interface WorkSummary {
   occurredAt: string;
 }
 
+export interface AskAnswer {
+  text: string;
+  /** Fact keys the answer drew on, so a wrong answer is traceable. */
+  usedKeys: string[];
+  /** False when nothing confirmed was available to reason from. */
+  grounded: boolean;
+}
+
 export interface Activity {
   work: WorkSummary[];
   counters: { handled: number; needsYou: number; minutesSaved: number; thisWeek: number };
@@ -126,6 +134,8 @@ export interface Repository {
   ingest(url: string): Promise<IngestResult>;
   /** What AISAR has actually done, and the counts Home shows. */
   activity(): Promise<Activity>;
+  /** Answer a question from confirmed facts and real work records. */
+  ask(question: string): Promise<AskAnswer>;
 
   reset(): Promise<void>;
 }

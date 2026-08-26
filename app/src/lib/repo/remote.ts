@@ -14,6 +14,7 @@ import type {
   BusinessSnapshot,
   Fact,
   FactSource,
+  AskAnswer,
   IngestResult,
   Repository,
   Theme,
@@ -237,6 +238,13 @@ export class RemoteRepository implements Repository {
     if (res.status === 401) throw new NotSignedInError();
     if (!body.ok) throw new Error(body.err ?? 'Could not read that page.');
     return { runId: body.runId ?? '', facts: body.facts ?? 0, keys: body.keys ?? [] };
+  }
+
+  async ask(question: string): Promise<AskAnswer> {
+    return call<AskAnswer>('/api/runs/ask', {
+      method: 'POST',
+      body: JSON.stringify({ question }),
+    });
   }
 
   async activity(): Promise<Activity> {

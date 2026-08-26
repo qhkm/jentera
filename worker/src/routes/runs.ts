@@ -16,6 +16,7 @@ import { hasBusiness, resolveTenant } from '../tenancy';
 import { append, finishRun, homeCounters, recentWork, recordWork, runTrace, startRun } from '../runs';
 import { recordFact } from '../facts';
 import { MODEL, extractFacts, fetchPage, urlProblem } from '../ingest';
+import { answer, retrieve } from '../ask';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -126,6 +127,71 @@ export async function handleRuns(
       });
       /* 200 with ok:false — the run genuinely happened and is on
          record; it is the reading that failed, not the request. */
+      return json({ ok: false, runId: run.id, err: message }, {}, cors);
+    }
+  }
+
+  /* ---- ask a question about the business ------------------------------ */
+
+  if (url.pathname === '/api/runs/ask' && request.method === 'POST') {
+    const body = (await request.json().catch(() => ({}))) as { question?: string };
+    const question = typeof body.question === 'string' ? body.question.trim() : '';
+    if (!question) return json({ ok: false, err: 'ask me something' }, { status: 400 }, cors);
+    if (question.length > 1000) {
+      return json({ ok: false, err: 'that question is too long' }, { status: 400 }, cors);
+    }
+
+    const run = await withTenant(env, id.businessId, (tx) =>
+      startRun(tx, id.businessId, {
+        kind: 'ask',
+        triggerShape: 'owner.ask',
+        triggerRef: { question },
+        requestedBy: id.userId,
+        runtime: 'worker-inline',
+        model: MODEL,
+      }),
+    );
+
+    /* Retrieval and recent work are read first, in their own
+       transaction, so the model call is not holding a database
+       connection open while it thinks. */
+    const { facts, work } = await withTenant(env, id.businessId, async (tx) => ({
+      facts: await retrieve(tx, question),
+      work: await recentWork(tx, 8),
+    }));
+
+    await withTenant(env, id.businessId, (tx) =>
+      append(tx, id.businessId, run.id, 'fact.retrieved', { keys: facts.map((f) => f.key) }),
+    );
+
+    try {
+      const result = await answer(
+        env,
+        question,
+        facts,
+        work.map((w) => ({ objective: w.objective, outcome: w.outcome, occurredAt: w.occurredAt })),
+      );
+      await withTenant(env, id.businessId, async (tx) => {
+        await recordWork(tx, id.businessId, {
+          runId: run.id,
+          objective: question,
+          outcome: result.text.slice(0, 500),
+          status: 'completed',
+          function: 'ask',
+          channel: 'app',
+          risk: 'low',
+          // What it leaned on, so a wrong answer is traceable to a
+          // wrong input rather than being unexplainable.
+          inputsUsed: { factKeys: result.usedKeys },
+        });
+        await finishRun(tx, id.businessId, run.id, 'completed', { grounded: result.grounded });
+      });
+      return json({ ok: true, runId: run.id, ...result }, {}, cors);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'could not answer that';
+      await withTenant(env, id.businessId, (tx) =>
+        finishRun(tx, id.businessId, run.id, 'failed', { error: message }),
+      );
       return json({ ok: false, runId: run.id, err: message }, {}, cors);
     }
   }
