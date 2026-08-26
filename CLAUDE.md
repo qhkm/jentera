@@ -48,9 +48,35 @@ Only `key` (lowercase/underscore, not `generic`) and `keywords` (3–8 terms, BM
 
 ## Backend (`worker/`)
 
-A Cloudflare Worker implementing the client's tool contract — risk gate, approval queue in D1, audit log. The app runs fully without it; set `VITE_API_URL` to route through it.
+A Cloudflare Worker serving the `Repository` interface, deployed at
+`https://aisar-api.qhkmdev90.workers.dev`. State lives in **Neon Postgres**
+(ap-southeast-1) reached through Hyperdrive — not D1; that was the earlier
+design. The app still runs fully without it, on `LocalRepository`; setting
+`VITE_API_URL` routes through the Worker instead.
 
-**Not deployed, and must not be until it has authentication.** `business` is caller-supplied, so any caller could read or approve another tenant's queue. No rate limiting, no webhook verification. Connector execution is stubbed in `src/connectors.ts` pending OAuth app registrations.
+Two invariants hold the tenancy model up, and both are load-bearing:
+
+- **`resolveTenant` is the only source of a business id.** No route may read
+  one from a request body. That was the hole this replaced.
+- **RLS is forced on every tenant table**, scoped by a transaction-local
+  `app.business_id` that only `withTenant` sets. The predicates in route SQL
+  are deliberate belt-and-braces, not the actual boundary.
+
+Auth is a magic link: the token is stored SHA-256 hashed, single-use via a
+conditional UPDATE, and exchanged for an HttpOnly/Secure/SameSite=Lax session
+cookie. Because the cookie travels cross-origin, `ALLOWED_ORIGINS` must list
+each origin exactly — a wildcard is rejected by the browser outright.
+
+**Still missing, and known:** no rate limiting, no webhook verification,
+connector execution stubbed in `src/connectors.ts` pending OAuth registrations.
+There is **no server-side test suite** — the RLS bootstrap bug and the jsonb
+double-encoding bug both reached production because nothing exercised a real
+insert. Until one exists, `worker/` changes need an end-to-end run against the
+deployed API, asserting status codes on every write rather than discarding them.
+
+`RESEND_API_KEY` is intentionally unset, so `sendMagicLink` logs the link
+instead of sending it (`npx wrangler tail`). Setting it starts real delivery,
+which needs jentera.ai verified in Resend first.
 
 ## Conventions
 

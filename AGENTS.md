@@ -9,7 +9,7 @@ This repository is a Vite + React app deployed to Cloudflare Pages.
 - `design-system/` documents the design system extracted into `app/src/styles/`.
 - `_next/static/` stores exported CSS and font assets from the upstream build this design system was reverse-engineered from; not loaded by the app.
 - `_headers` defines Cloudflare cache behavior: immutable for hashed assets, no-cache for everything else.
-- `worker/` is an unauthenticated backend the app can optionally call via `VITE_API_URL`; not deployed.
+- `worker/` is the deployed backend (Neon via Hyperdrive, magic-link auth, RLS per tenant); the app can call it via `VITE_API_URL`, and runs on localStorage without it. No rate limiting, no webhook verification, no server-side tests yet.
 - `PRODUCT_VISION.md` defines the target customer, positioning, language, and product principles.
 - `TECHNICAL_ARCHITECTURE.md` defines the managed-agent boundary, backend components, safety model, and MVP sequence.
 
