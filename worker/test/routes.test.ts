@@ -1,0 +1,329 @@
+/* ============================================================
+   The HTTP surface: status codes, validation, and who may call what.
+
+   These go through the handlers as a browser would — a real Request
+   with a real session cookie, resolved by resolveTenant like anything
+   else. Auth gating and tenant scoping are route behaviour, and a test
+   handed a ready-made identity would not be testing the route.
+
+   This layer is where a whole class of bug lived: a value outside a
+   CHECK constraint reached Postgres, the constraint fired, and the
+   caller got a 500 for what was plainly a malformed request. Two full
+   acceptance runs reported success while every policy write failed
+   that way, because the script discarded status codes.
+   ============================================================ */
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { asOwner, asTenant, req, signIn, testEnv, truncateAll } from './harness';
+import { handleRepo } from '../src/routes/repo';
+import { handleConnect } from '../src/routes/connect';
+import { saveConnection } from '../src/connections';
+import type { Env } from '../src/env';
+
+const A = '11111111-1111-4111-8111-111111111111';
+const B = '22222222-2222-4222-8222-222222222222';
+
+let env: Env;
+let alice: string;
+let bob: string;
+let orphan: string;
+let cookieA: string;
+let cookieB: string;
+let cookieOrphan: string;
+
+const cors = {};
+
+/** Call the fact/state routes the way index.ts does. */
+async function state(method: string, path: string, opts: { cookie?: string; body?: unknown } = {}) {
+  const { request, url } = req(method, path, opts);
+  const res = await handleRepo(request, env, url, cors);
+  if (!res) throw new Error(`no route matched ${method} ${path}`);
+  const text = await res.text();
+  return { status: res.status, body: text ? (JSON.parse(text) as Record<string, unknown>) : null };
+}
+
+async function conn(method: string, path: string, opts: { cookie?: string; body?: unknown } = {}) {
+  const { request, url } = req(method, path, opts);
+  const res = await handleConnect(request, env, url, cors);
+  if (!res) throw new Error(`no route matched ${method} ${path}`);
+  const text = await res.text();
+  return { status: res.status, body: text ? (JSON.parse(text) as Record<string, unknown>) : null };
+}
+
+beforeEach(async () => {
+  await truncateAll();
+  env = testEnv();
+  await asOwner(async (sql) => {
+    await sql`insert into business (id, name, playbook_key) values (${A}, 'Alpha', 'restaurant')`;
+    await sql`insert into business (id, name, playbook_key) values (${B}, 'Beta', 'salon')`;
+    const [a] = await sql<{ id: string }[]>`
+      insert into app_user (email, email_verified) values ('alice@example.com', true) returning id`;
+    const [b] = await sql<{ id: string }[]>`
+      insert into app_user (email, email_verified) values ('bob@example.com', true) returning id`;
+    const [o] = await sql<{ id: string }[]>`
+      insert into app_user (email, email_verified) values ('orphan@example.com', true) returning id`;
+    alice = a.id;
+    bob = b.id;
+    orphan = o.id;
+    await sql`insert into membership (user_id, business_id, role) values (${alice}, ${A}, 'owner')`;
+    await sql`insert into membership (user_id, business_id, role) values (${bob}, ${B}, 'owner')`;
+  });
+  cookieA = await signIn(alice);
+  cookieB = await signIn(bob);
+  cookieOrphan = await signIn(orphan);
+});
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe('who may call these at all', () => {
+  it('refuses without a session', async () => {
+    for (const [m, p] of [
+      ['POST', '/api/state/facts'],
+      ['POST', '/api/state/facts/confirm'],
+      ['GET', '/api/state'],
+      ['GET', '/api/connections'],
+      ['POST', '/api/connections/telegram'],
+    ] as const) {
+      const call = p.startsWith('/api/connections') ? conn : state;
+      expect((await call(m, p, { body: {} })).status, `${m} ${p}`).toBe(401);
+    }
+  });
+
+  it('refuses an expired session', async () => {
+    await asOwner((sql) => sql`update session set expires_at = now() - interval '1 second'`);
+    expect((await state('GET', '/api/state', { cookie: cookieA })).status).toBe(401);
+  });
+
+  it('refuses a revoked session, immediately', async () => {
+    /* The property Hyperdrive's query cache silently broke once: a
+       logout that does not take effect until a cache entry expires is
+       a session that outlives its revocation. */
+    await asOwner((sql) => sql`update session set revoked_at = now()`);
+    expect((await state('GET', '/api/state', { cookie: cookieA })).status).toBe(401);
+  });
+
+  it('tells a signed-in user with no business what is missing', async () => {
+    const r = await state('GET', '/api/state', { cookie: cookieOrphan });
+    expect(r.status).toBe(404);
+    // The client branches on this to run the local-to-remote migration.
+    expect(r.body?.code).toBe('NO_BUSINESS');
+  });
+});
+
+describe('recording a fact', () => {
+  it('stores it and answers with what was stored', async () => {
+    const r = await state('POST', '/api/state/facts', {
+      cookie: cookieA,
+      body: { key: 'hours.monday', value: '9am to 6pm' },
+    });
+    expect(r.status).toBe(200);
+    const fact = r.body?.fact as Record<string, unknown>;
+    expect(fact.key).toBe('hours.monday');
+    expect(fact.version).toBe(1);
+    // An owner stating a value is also vouching for it.
+    expect(fact.source).toBe('owner');
+    expect(fact.confirmed).toBe(true);
+  });
+
+  it('answers 400, never 500, for anything malformed', async () => {
+    /* The regression. Each of these violates a CHECK constraint or a
+       column type; reaching Postgres with them turns the caller's
+       mistake into the server's error. */
+    const bad: [string, unknown][] = [
+      ['no key', { value: 1 }],
+      ['empty key', { key: '', value: 1 }],
+      ['capitalised key', { key: 'Hours.Monday', value: 1 }],
+      ['spaced key', { key: 'hours monday', value: 1 }],
+      ['no value', { key: 'a.b' }],
+      ['confidence above one', { key: 'a.b', value: 1, confidence: 5 }],
+      ['confidence below zero', { key: 'a.b', value: 1, confidence: -1 }],
+      ['confidence not a number', { key: 'a.b', value: 1, confidence: 'high' }],
+      ['unknown source', { key: 'a.b', value: 1, source: 'telepathy' }],
+    ];
+    for (const [why, body] of bad) {
+      const r = await state('POST', '/api/state/facts', { cookie: cookieA, body });
+      expect(r.status, why).toBe(400);
+      expect(r.body?.err, why).toBeTruthy();
+    }
+  });
+
+  it('keeps an agent guess unconfirmed', async () => {
+    const r = await state('POST', '/api/state/facts', {
+      cookie: cookieA,
+      body: { key: 'a.b', value: 'x', source: 'agent', confidence: 0.5, sourceRef: 'https://x.com' },
+    });
+    const fact = r.body?.fact as Record<string, unknown>;
+    expect(fact.confirmed).toBe(false);
+    expect(fact.sourceRef).toBe('https://x.com');
+  });
+
+  it('supersedes rather than overwriting', async () => {
+    await state('POST', '/api/state/facts', { cookie: cookieA, body: { key: 'a.b', value: 'one' } });
+    const second = await state('POST', '/api/state/facts', {
+      cookie: cookieA,
+      body: { key: 'a.b', value: 'two' },
+    });
+    expect((second.body?.fact as Record<string, unknown>).version).toBe(2);
+
+    const hist = await state('POST', '/api/state/facts/history', {
+      cookie: cookieA,
+      body: { key: 'a.b' },
+    });
+    expect((hist.body?.history as unknown[]).map((f) => (f as { value: unknown }).value)).toEqual([
+      'two',
+      'one',
+    ]);
+  });
+
+  it('appears in the snapshot', async () => {
+    await state('POST', '/api/state/facts', { cookie: cookieA, body: { key: 'a.b', value: 'x' } });
+    const snap = await state('GET', '/api/state', { cookie: cookieA });
+    const facts = (snap.body?.snapshot as { facts: { key: string }[] }).facts;
+    expect(facts.map((f) => f.key)).toEqual(['a.b']);
+  });
+});
+
+describe('confirming and forgetting', () => {
+  it('reports 404 for a key that is not live', async () => {
+    for (const path of ['/api/state/facts/confirm', '/api/state/facts/forget']) {
+      const r = await state('POST', path, { cookie: cookieA, body: { key: 'never.existed' } });
+      expect(r.status, path).toBe(404);
+    }
+  });
+
+  it('confirms without changing confidence', async () => {
+    await state('POST', '/api/state/facts', {
+      cookie: cookieA,
+      body: { key: 'a.b', value: 'x', source: 'agent', confidence: 0.4 },
+    });
+    expect((await state('POST', '/api/state/facts/confirm', { cookie: cookieA, body: { key: 'a.b' } })).status).toBe(204);
+
+    const snap = await state('GET', '/api/state', { cookie: cookieA });
+    const [fact] = (snap.body?.snapshot as { facts: { confirmed: boolean; confidence: number }[] }).facts;
+    expect(fact.confirmed).toBe(true);
+    // A human vouching does not make the model's guess a confident one.
+    expect(fact.confidence).toBeCloseTo(0.4, 5);
+  });
+
+  it('forgets without losing the history', async () => {
+    await state('POST', '/api/state/facts', { cookie: cookieA, body: { key: 'a.b', value: 'x' } });
+    expect((await state('POST', '/api/state/facts/forget', { cookie: cookieA, body: { key: 'a.b' } })).status).toBe(204);
+
+    const snap = await state('GET', '/api/state', { cookie: cookieA });
+    expect((snap.body?.snapshot as { facts: unknown[] }).facts).toHaveLength(0);
+
+    const hist = await state('POST', '/api/state/facts/history', { cookie: cookieA, body: { key: 'a.b' } });
+    expect((hist.body?.history as unknown[])).toHaveLength(1);
+  });
+});
+
+describe('one business cannot reach another', () => {
+  it('sees only its own facts in the snapshot', async () => {
+    await state('POST', '/api/state/facts', { cookie: cookieA, body: { key: 'alpha.only', value: 'x' } });
+    const snap = await state('GET', '/api/state', { cookie: cookieB });
+    expect((snap.body?.snapshot as { facts: unknown[] }).facts).toHaveLength(0);
+  });
+
+  it('cannot read another business’s history', async () => {
+    await state('POST', '/api/state/facts', { cookie: cookieA, body: { key: 'alpha.only', value: 'x' } });
+    const hist = await state('POST', '/api/state/facts/history', {
+      cookie: cookieB,
+      body: { key: 'alpha.only' },
+    });
+    expect(hist.body?.history).toHaveLength(0);
+  });
+
+  it('cannot confirm or forget another business’s fact', async () => {
+    await state('POST', '/api/state/facts', { cookie: cookieA, body: { key: 'alpha.only', value: 'x' } });
+    for (const path of ['/api/state/facts/confirm', '/api/state/facts/forget']) {
+      const r = await state(path === '' ? 'POST' : 'POST', path, {
+        cookie: cookieB,
+        body: { key: 'alpha.only' },
+      });
+      expect(r.status, path).toBe(404);
+    }
+    // And A's fact is untouched.
+    const snap = await state('GET', '/api/state', { cookie: cookieA });
+    const [fact] = (snap.body?.snapshot as { facts: { confirmed: boolean }[] }).facts;
+    expect(fact.confirmed).toBe(true);
+  });
+});
+
+describe('connections', () => {
+  it('rejects a token that is not shaped like one, before any network call', async () => {
+    /* Checked before the value reaches anything that might log it, and
+       before a request goes out carrying it. */
+    const spy = vi.fn();
+    vi.stubGlobal('fetch', spy);
+    for (const token of ['', 'nonsense', '123:short', 'abcdef:AA' + 'x'.repeat(40)]) {
+      const r = await conn('POST', '/api/connections/telegram', { cookie: cookieA, body: { token } });
+      expect(r.status, token).toBe(400);
+    }
+    expect(spy, 'a malformed token was sent to Telegram').not.toHaveBeenCalled();
+  });
+
+  it('reports Telegram’s own words when it rejects a token', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ ok: false, description: 'Unauthorized' }))),
+    );
+    const r = await conn('POST', '/api/connections/telegram', {
+      cookie: cookieA,
+      body: { token: `123456789:${'A'.repeat(35)}` },
+    });
+    expect(r.status).toBe(400);
+    // "Unauthorized" tells the owner they pasted the wrong thing.
+    expect(String(r.body?.err)).toMatch(/unauthorized/i);
+  });
+
+  it('lists connections without ever including a secret', async () => {
+    await asTenant(A, (tx) =>
+      saveConnection(env, tx, A, {
+        connector: 'telegram',
+        method: 'bot_token',
+        externalId: '1',
+        displayName: '@alpha_bot',
+        secret: '123456789:SUPERSECRETTOKEN',
+        connectedBy: alice,
+      }),
+    );
+    const r = await conn('GET', '/api/connections', { cookie: cookieA });
+    expect(r.status).toBe(200);
+    expect(JSON.stringify(r.body)).not.toContain('SUPERSECRETTOKEN');
+    expect((r.body?.connections as { displayName: string }[])[0].displayName).toBe('@alpha_bot');
+  });
+
+  it('shows one business nothing of another’s', async () => {
+    await asTenant(A, (tx) =>
+      saveConnection(env, tx, A, {
+        connector: 'telegram',
+        method: 'bot_token',
+        externalId: '1',
+        displayName: '@alpha_bot',
+        secret: 'x',
+        connectedBy: alice,
+      }),
+    );
+    const r = await conn('GET', '/api/connections', { cookie: cookieB });
+    expect(r.body?.connections).toHaveLength(0);
+  });
+
+  it('will not let one business disconnect another’s bot', async () => {
+    const c = await asTenant(A, (tx) =>
+      saveConnection(env, tx, A, {
+        connector: 'telegram',
+        method: 'bot_token',
+        externalId: '1',
+        displayName: '@alpha_bot',
+        secret: 'x',
+        connectedBy: alice,
+      }),
+    );
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true }))));
+    await conn('DELETE', `/api/connections/${c.id}`, { cookie: cookieB });
+
+    // Still there for its owner.
+    const mine = await conn('GET', '/api/connections', { cookie: cookieA });
+    expect(mine.body?.connections).toHaveLength(1);
+  });
+});

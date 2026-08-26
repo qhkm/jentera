@@ -188,3 +188,48 @@ export function testEnv(over: Partial<Record<string, unknown>> = {}): import('..
     ...over,
   } as unknown as import('../src/env').Env;
 }
+
+/**
+ * A session cookie for a real user, minted the way the Worker mints
+ * one: random token, SHA-256 stored.
+ *
+ * Route tests go through resolveTenant like every real request, rather
+ * than being handed an identity. Auth gating and tenant scoping are
+ * route behaviour, and a test that skipped them would not be testing
+ * the route.
+ */
+export async function signIn(userId: string): Promise<string> {
+  const token = [...crypto.getRandomValues(new Uint8Array(32))]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+  const hash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  await asOwner(
+    (sql) => sql`insert into session (id, user_id, expires_at)
+                 values (${hash}, ${userId}, now() + interval '1 hour')`,
+  );
+  return `aisar_session=${token}`;
+}
+
+/** A request shaped like one the frontend sends. */
+export function req(
+  method: string,
+  path: string,
+  opts: { cookie?: string; body?: unknown } = {},
+): { request: Request; url: URL } {
+  const url = new URL(`https://api.test${path}`);
+  const request = new Request(url, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(opts.cookie ? { Cookie: opts.cookie } : {}),
+    },
+    /* GET and HEAD cannot carry one, and a caller passing a body with
+       a GET is describing a request the browser could not make. */
+    body:
+      opts.body === undefined || method === 'GET' || method === 'HEAD'
+        ? undefined
+        : JSON.stringify(opts.body),
+  });
+  return { request, url };
+}
