@@ -7,6 +7,12 @@ export interface Env {
   RESEND_API_KEY: string;
   /** Where magic links point, e.g. https://jentera.ai */
   APP_ORIGIN: string;
+  /** Edge burst limiter for /api/auth/request. Per-colo, so it is a
+      brake on floods rather than an exact quota. */
+  AUTH_BURST: RateLimit;
+  /** Key for the IP HMAC in the rate-limit ledger. A Worker secret;
+      without it the stored hashes are brute-forceable. */
+  RATE_LIMIT_PEPPER?: string;
   /** Override the sender, e.g. for a staging origin. Must be a domain
       verified in Resend, and should match APP_ORIGIN. */
   MAGIC_FROM?: string;

@@ -9,6 +9,7 @@ import {
   verifySession,
 } from '../auth';
 import { sendMagicLink } from '../email';
+import { checkAuthRate } from '../ratelimit';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -31,14 +32,33 @@ export async function handleSession(
     const { email } = (await request.json().catch(() => ({}))) as { email?: string };
     const addr = (email ?? '').trim().toLowerCase();
 
-    /* 204 for everything, including a malformed address and a
-       rate-limited one. Any other answer turns this into an
-       account-existence oracle. */
+    /* 204 for a malformed or unknown address, always. Any other
+       answer turns this into an account-existence oracle.
+
+       Throttling splits from that rule, and the split is the point:
+
+       - Over an IP limit answers 429. It reveals only the caller's own
+         request volume, which they already know, and a silent refusal
+         would leave a legitimate user retrying into a void.
+       - Over the per-address limit answers 204. That counter includes
+         requests made by ANYONE for that address, so a 429 would tell
+         an attacker that somebody else has been asking for links to
+         it. Silence costs the rare over-eager user a confusing minute;
+         a 429 would leak third-party activity. */
     if (EMAIL.test(addr)) {
-      const { token } = await issueLoginToken(env, addr);
-      if (token) {
-        const link = `${env.APP_ORIGIN}/api/auth/consume?token=${encodeURIComponent(token)}`;
-        await sendMagicLink(env, addr, link);
+      const verdict = await checkAuthRate(env, request, addr);
+      if (verdict === 'throttled-ip') {
+        return new Response(null, {
+          status: 429,
+          headers: { ...cors, 'Retry-After': '60' },
+        });
+      }
+      if (verdict === 'ok') {
+        const { token } = await issueLoginToken(env, addr);
+        if (token) {
+          const link = `${env.APP_ORIGIN}/api/auth/consume?token=${encodeURIComponent(token)}`;
+          await sendMagicLink(env, addr, link);
+        }
       }
     }
     return new Response(null, { status: 204, headers: cors });

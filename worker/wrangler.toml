@@ -26,3 +26,14 @@ APP_ORIGIN = "https://jentera.ai"
 # Connector credentials are secrets, never vars:
 #   npx wrangler secret put META_APP_SECRET
 #   npx wrangler secret put GOOGLE_CLIENT_SECRET
+
+# Edge burst brake on the magic-link endpoint, keyed by client IP.
+# Refuses before any database or email work, so a flood costs nothing.
+# `period` accepts only 10 or 60. The field is `name`, not `binding`.
+[[ratelimits]]
+name = "AUTH_BURST"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 5
+  period = 60
