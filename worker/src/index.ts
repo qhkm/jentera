@@ -112,10 +112,20 @@ export default {
         const result = await handleRuntimeMessage(env, message.body);
         if (result.action === 'ack') message.ack();
         else if (result.action === 'requeue') {
+          console.warn(
+            `[runtime-queue] task=${message.body.taskId} action=requeue ` +
+            `reason=${logValue(result.reason)}`,
+          );
           if (!env.RUNTIME_QUEUE) throw new Error('RUNTIME_QUEUE is not configured');
           await env.RUNTIME_QUEUE.send(message.body, { delaySeconds: result.delaySeconds });
           message.ack();
-        } else message.retry({ delaySeconds: result.delaySeconds });
+        } else {
+          console.warn(
+            `[runtime-queue] task=${message.body.taskId} action=retry ` +
+            `reason=${logValue(result.reason)}`,
+          );
+          message.retry({ delaySeconds: result.delaySeconds });
+        }
       } catch (error) {
         console.error(`[runtime-queue] ${String(error)}`);
         message.retry({ delaySeconds: 30 });
@@ -123,3 +133,7 @@ export default {
     }
   },
 } satisfies ExportedHandler<Env, RuntimeQueueMessage>;
+
+function logValue(value: string): string {
+  return value.replace(/[\r\n\t\u0000-\u001f]/g, ' ').slice(0, 500);
+}
