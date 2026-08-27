@@ -110,6 +110,23 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
      beside it. A list mixing things that happened with things that are
      a demonstration is unreadable — the owner cannot tell which rows
      are theirs. */
+  /* Pending is not the demo. Falling through to the illustration below
+     showed an owner a stranger's work list for the length of the fetch,
+     then replaced it — the same flash the dashboard had. */
+  if (activity.mode === 'pending') {
+    return (
+      <div className="flex flex-col gap-6">
+        <header className="flex flex-col gap-2">
+          <h1 className="font-pixel text-2xl tracking-tight">{t('view.work')}</h1>
+          <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.work.desc')}</p>
+        </header>
+        <Card className="items-center py-8 text-center">
+          <p className="text-sm text-text-secondary">&nbsp;</p>
+        </Card>
+      </div>
+    );
+  }
+
   if (activity.real) {
     /* Approvals come first and are never skipped. An earlier version of
        this branch returned before the approvals block below, so a

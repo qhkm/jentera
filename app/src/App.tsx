@@ -4,6 +4,7 @@ import { RepositoryGate, useSignedIn } from '@/lib/repo/gate';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { ToastProvider } from '@/components/Toast';
 import { DetailLevelProvider } from '@/hooks/useDetailLevel';
+import { ActivityProvider } from '@/hooks/useActivity';
 import { isOnboarded } from '@/lib/business';
 import Landing from '@/routes/Landing';
 import Onboard from '@/routes/Onboard';
@@ -88,7 +89,12 @@ export default function App() {
                  at /signin, not part-way through the demo. */
               <RequireAuth>
                 <RequireOnboarded>
-                  <Dashboard />
+                  {/* One activity fetch for the whole dashboard. The
+                      sidebar, Home and Activity all read it, and all
+                      three settle at the same moment. */}
+                  <ActivityProvider>
+                    <Dashboard />
+                  </ActivityProvider>
                 </RequireOnboarded>
               </RequireAuth>
             }

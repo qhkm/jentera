@@ -52,12 +52,17 @@ export default function Dashboard() {
   /** Anything blocked on the owner, from either source. */
   /* Real approvals when there is a server, the playbook's illustration
      otherwise. Mixing them put an amber "1" on the Activity tab of an
-     account whose own dashboard said nothing was waiting. */
+     account whose own dashboard said nothing was waiting — and reading
+     `pending` as "otherwise" put that same "1" there for the length of
+     the fetch, on every load. */
   const activity = useActivity();
   const snap = useSnapshot();
+  const demo = activity.mode === 'demo';
   const needsAttention = activity.real
     ? activity.data!.counters.needsYou
-    : b.needsYouCount + b.approvals.length;
+    : demo
+      ? b.needsYouCount + b.approvals.length
+      : 0;
 
   /* While the software keyboard is up in the chat, the bottom bar would
      sit between the composer and the keyboard. Hide it for the duration. */
@@ -68,7 +73,7 @@ export default function Dashboard() {
     () => business.work.filter((w, i) => w.tag !== 'needs you' || b.workDone(i)).length,
     [business.work, b],
   );
-  const handled = activity.real ? activity.data!.counters.handled : playbookHandled;
+  const handled = activity.real ? activity.data!.counters.handled : demo ? playbookHandled : 0;
 
   /* Milestones, not a projection: knows something, can reach someone,
      has done something. All three are checkable and all three move. */
@@ -136,15 +141,17 @@ export default function Dashboard() {
           for the demo. "AISAR can handle 82%" was the same number for
           every business of a type and moved for nobody — precise,
           prominent, and untethered to anything the owner had done. */}
-      {activity.real ? (
+      {activity.mode !== 'demo' ? (
         <div className="flex flex-col gap-2 border-t border-rail pt-3">
           <div className="flex items-center justify-between">
             <Eyebrow>{t('side.ready')}</Eyebrow>
-            <span className="font-pixel text-sm tabular-nums text-brand">{ready}%</span>
+            <span className="font-pixel text-sm tabular-nums text-brand">
+              {activity.real ? `${ready}%` : '—'}
+            </span>
           </div>
-          <Progress value={ready} label={t('side.ready')} />
+          <Progress value={activity.real ? ready : 0} label={t('side.ready')} />
           <span className="text-[11px] text-text-muted">
-            {nextStep ? t(`ms.${nextStep.key}`) : t('ms.alldone')}
+            {!activity.real ? '\u00a0' : nextStep ? t(`ms.${nextStep.key}`) : t('ms.alldone')}
           </span>
         </div>
       ) : (

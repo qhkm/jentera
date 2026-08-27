@@ -12,6 +12,9 @@ import type { useBusiness } from '@/hooks/useBusiness';
 import { useActivity } from '@/hooks/useActivity';
 import type { View } from '../Dashboard';
 
+/** The three counters, in the order they are rendered when real. */
+const PENDING_STATS = ['handled', 'needs', 'saved'] as const;
+
 export default function HomeView({
   b,
   onNavigate,
@@ -21,6 +24,11 @@ export default function HomeView({
 }) {
   const t = useT();
   const activity = useActivity();
+  /* The illustration belongs to the anonymous demo alone. While a
+     signed-in owner's figures are still in flight the layout is the
+     real one, empty — not someone else's dashboard that then has to
+     be taken away from them. */
+  const demo = activity.mode === 'demo';
 
   /* Only when the figures are genuinely this business's. A signed-in
      owner with nothing done yet sees three zeros and a reason why,
@@ -98,7 +106,9 @@ export default function HomeView({
                 {t('db.handled', {
                   n: activity.real
                     ? activity.data!.counters.handled
-                    : business.work.filter((w) => w.tag !== 'needs you').length,
+                    : demo
+                      ? business.work.filter((w) => w.tag !== 'needs you').length
+                      : 0,
                 })}
               </h2>
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-text-secondary">
@@ -115,14 +125,14 @@ export default function HomeView({
                 otherwise on a dashboard whose own counters read zero
                 is the sort of small untruth that makes a person stop
                 believing the rest. */}
-            {!activity.real || activity.data!.counters.handled > 0 ? (
+            {demo || (activity.real && activity.data!.counters.handled > 0) ? (
               <Tag tone="green">live</Tag>
             ) : (
               <Tag>{t('roster.ready')}</Tag>
             )}
           </div>
 
-          {!activity.real && pending.length ? (
+          {demo && pending.length ? (
             pending.map(({ w, i }) => (
               <div
                 key={i}
@@ -169,17 +179,29 @@ export default function HomeView({
                 <span className="text-[13px] text-text-secondary">{s.l}</span>
               </Card>
             ))
-          : business.stats.map((s) => (
-          <Card key={s.d} className="gap-3">
-            <Eyebrow>{s.d}</Eyebrow>
-            <span className="font-pixel text-3xl tabular-nums">
-              {s.v}
-              {s.u ? <span className="text-lg text-text-muted">{s.u}</span> : null}
-            </span>
-            <span className="text-[13px] text-text-secondary">{s.l}</span>
-              {s.s ? <span className="text-[11px] text-text-muted">{s.s}</span> : null}
-            </Card>
-            ))}
+          : demo
+            ? business.stats.map((s) => (
+                <Card key={s.d} className="gap-3">
+                  <Eyebrow>{s.d}</Eyebrow>
+                  <span className="font-pixel text-3xl tabular-nums">
+                    {s.v}
+                    {s.u ? <span className="text-lg text-text-muted">{s.u}</span> : null}
+                  </span>
+                  <span className="text-[13px] text-text-secondary">{s.l}</span>
+                  {s.s ? <span className="text-[11px] text-text-muted">{s.s}</span> : null}
+                </Card>
+              ))
+            : /* Same three cards, same three lines, no numbers. The
+                 labels are already known — only the figures are in
+                 flight — so the row lands at its final height and the
+                 counts fill in where the dashes were. */
+              PENDING_STATS.map((k) => (
+                <Card key={k} className="gap-3">
+                  <Eyebrow>{t(`db.stat.${k}`)}</Eyebrow>
+                  <span className="font-pixel text-3xl tabular-nums text-text-muted">—</span>
+                  <span className="text-[13px] text-text-secondary">{t(`db.stat.${k}.sub`)}</span>
+                </Card>
+              ))}
       </div>
 
       {/* Latest agent activity — a way into Chat */}
@@ -212,7 +234,7 @@ export default function HomeView({
               </div>
             ))
           )
-        ) : (
+        ) : demo ? (
           business.work.slice(0, 2).map((w, i) => (
             <div key={i} className="flex items-start gap-2.5">
               <Avatar emoji={w.e} size={14} className="size-7" />
@@ -222,6 +244,11 @@ export default function HomeView({
               </div>
             </div>
           ))
+        ) : (
+          /* One line, which is what an owner with no activity ends up
+             with. Two demo entries here and one real line after was a
+             third of the jump on every load. */
+          <p className="text-[12px] leading-snug text-text-secondary">&nbsp;</p>
         )}
       </Card>
     </div>
