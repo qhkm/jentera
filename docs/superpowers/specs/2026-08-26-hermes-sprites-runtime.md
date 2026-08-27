@@ -1,6 +1,6 @@
 # Hermes Runtime on Fly Sprites
 
-**Status:** one allow-listed production canary ready; customer task selection remains disabled
+**Status:** one allow-listed production canary serves Ask AISAR through durable Hermes execution
 **Last verification:** 2026-08-28
 **Decision owner:** AISAR
 
@@ -28,6 +28,9 @@ Implemented in the repository:
   wake-ups without consuming the queue retry budget; successful polls do not increment
   attempts, remote identity is stored before the first poll, and terminal failure stops
   and meters an addressable Hermes run only after lease-owned exhaustion succeeds;
+- a canary-only Ask AISAR producer and tenant-scoped status projection with atomic HTTP
+  idempotency, browser polling, shared grounding rules, safe failure responses, and a
+  separate fail-closed paid-run rate limit;
 - contract, RLS, retry, duplicate-delivery, checkpoint, bootstrap, runner protocol,
   canary gate, and provider tests;
 - an AISAR-owned Node runner with authenticated readiness, one-task concurrency,
@@ -92,28 +95,31 @@ separate OpenRouter inference key with a $5 monthly hard limit and 90-day expiry
 $10 weekly shared bridge key was revoked and the shared Worker secret and allow-list were
 removed. The key, customer prompts, and model results cross only HTTPS.
 
-The API applies authentication, dual-key general burst, and dual-key runtime-mutation
-brakes before database/provider work. General limiter failure fails open for health and
-ordinary reads, while the expensive runtime-mutation limiter fails closed. Cloudflare
+The API applies authentication, dual-key general burst, dual-key runtime-mutation, and
+dual-key agent-run brakes before database/provider work. General limiter failure fails
+open for health and ordinary reads, while both paid-operation limiters fail closed. Cloudflare
 stable rule `aisar_dynamic_abuse_v1` is live and caps non-verified `/api` traffic at 100
 requests per 10 seconds per IP/colo before Worker invocation. Cloudflare Free exposes Path
 and Verified Bot in rate-limit expressions but not Host or Method, so `/api` path scoping
 is the available zone-safe boundary and `OPTIONS` shares that outer ceiling.
 
-This does **not** enable customer Hermes execution. `business.runtime` records readiness,
-but `runtimeFor()` still selects `InlineRuntime`. A ready compute resource is not authority
-to use connectors or tools.
+The separate execution allow-list now routes only the I Run Cafe canary's Ask AISAR work
+through durable Hermes tasks. `runtimeFor()` remains the inline adapter for ingestion and
+for every non-canary business. A ready compute resource is still not authority to use
+connectors or tools: every grant has an empty operation set and the runner attests
+`toolMode: no-tools`.
 
 Still gated and therefore intentionally unavailable to customers:
 
 - incremental Hermes event translation and Hermes-native approval resume before any
   non-empty grant vocabulary is introduced;
-- business runtime selection after those gates pass.
+- non-empty tool grants or wider business rollout.
 
 Creating provider compute is not readiness. The canary's `business.runtime` changed from
 `aisar-native` to `hermes-sprite` only after runner installation, authenticated readiness,
-browser smoke, and a baseline checkpoint passed. Runtime selection remains a separate
-code gate and still resolves customer work to `InlineRuntime`.
+browser smoke, and a baseline checkpoint passed. Execution remains a separate code gate:
+removing the canary business from `RUNTIME_EXECUTION_BUSINESS_IDS` immediately returns its
+Ask AISAR traffic to the inline path without changing or deleting its Sprite.
 
 ## Decision
 
@@ -608,8 +614,8 @@ before those measurements exist.
 
 ## Rollout gates
 
-Do not expand provisioning beyond the explicit canary or select Hermes for customer work
-until every open item is complete.
+Do not expand provisioning or durable execution beyond the explicit canary until every
+open item is complete.
 
 Completed:
 
@@ -621,14 +627,13 @@ Completed:
 - one read-only OpenRouter run and duplicate-delivery proof succeeded without enabling a
   live connector path; and
 - separate capped OpenRouter key issuance, encrypted storage, response attestation,
-  rotation, durable revocation retry, and deletion cleanup pass integration tests.
+  rotation, durable revocation retry, and deletion cleanup pass integration tests; and
+- the existing Ask AISAR UI creates and polls an idempotent, tenant-scoped durable run for
+  the canary while every tool grant remains empty.
 
 Open:
 
-- configure the OpenRouter management secret and migrate the legacy canary onto its own
-  issued key;
-- apply and verify migration 015, then deploy the Worker safety release;
 - add incremental event translation and Hermes-native approval resume before allowing
   non-empty tool grants; and
-- install a zone-level WAF rate rule for `api.jentera.ai` using a credential with WAF
-  ruleset permission, because Worker bindings cannot prevent invocation charges.
+- run the canary long enough to measure cold-start latency, active runtime time, token use,
+  and failure rate before widening `RUNTIME_EXECUTION_BUSINESS_IDS`.

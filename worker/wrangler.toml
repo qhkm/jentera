@@ -48,23 +48,20 @@ SPRITES_API_ORIGIN = "https://api.sprites.dev"
 RUNTIME_PROVISIONING_ENABLED = "true"
 MODEL_TRANSPORT_READY = "true"
 RUNTIME_CANARY_BUSINESS_IDS = "d5fb6dbb-428a-4215-86c0-8713d12ed73b"
+# Separate from provisioning: only this session-derived business may
+# route Ask AISAR work into Hermes. Removing it falls back to InlineRuntime.
+RUNTIME_EXECUTION_BUSINESS_IDS = "d5fb6dbb-428a-4215-86c0-8713d12ed73b"
 RUNTIME_BOOTSTRAP_ENABLED = "true"
 RUNTIME_BUNDLE_COMMIT = "c1af6c7f68719b18ff7f45dadbf19327ecd64b2f"
 AISAR_MODEL_PROVIDER = "openrouter"
 AISAR_MODEL_BASE = "https://openrouter.ai/api/v1"
 AISAR_MODEL_NAME = "deepseek/deepseek-v4-flash-0731"
-# Temporary bridge for the already-provisioned canary only. Expanding the
-# runtime canary list does not expand this list; new runtimes require the
-# management-key workflow and receive their own capped inference key.
-
 # Connector credentials are secrets, never vars:
 #   npx wrangler secret put META_APP_SECRET
 #   npx wrangler secret put GOOGLE_CLIENT_SECRET
 # Runtime-provider credentials are also secrets:
 #   npx wrangler secret put SPRITES_TOKEN
 #   npx wrangler secret put AISAR_OPENROUTER_MANAGEMENT_KEY
-# Temporary named-canary bridge only:
-#   npx wrangler secret put AISAR_MODEL_KEY
 
 # Edge burst brake on the magic-link endpoint, keyed by client IP.
 # Refuses before any database or email work, so a flood costs nothing.
@@ -96,6 +93,16 @@ namespace_id = "1003"
 
   [ratelimits.simple]
   limit = 3
+  period = 60
+
+# Starting an agent run can buy compute and model tokens. This remains
+# usable as chat while independently failing closed on limiter failure.
+[[ratelimits]]
+name = "AGENT_RUN_BURST"
+namespace_id = "1004"
+
+  [ratelimits.simple]
+  limit = 10
   period = 60
 
 # Workers AI runs the extraction in src/ingest.ts. Chosen over an

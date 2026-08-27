@@ -20,6 +20,9 @@ export interface Env {
       before session verification or any database/provider work. */
   API_BURST: RateLimit;
   RUNTIME_MUTATION_BURST: RateLimit;
+  /** Paid agent-run admission. Separate from lifecycle mutations so
+      normal conversation does not share a three-per-minute bucket with provisioning. */
+  AGENT_RUN_BURST: RateLimit;
   /** Key for the IP HMAC in the rate-limit ledger. A Worker secret;
       without it the stored hashes are brute-forceable. */
   RATE_LIMIT_PEPPER?: string;
@@ -42,6 +45,9 @@ export interface Env {
   RUNTIME_PROVISIONING_ENABLED?: string;
   MODEL_TRANSPORT_READY?: string;
   RUNTIME_CANARY_BUSINESS_IDS?: string;
+  /** Independent execution gate. Provisioned compute is not authority
+      to route customer questions into it. */
+  RUNTIME_EXECUTION_BUSINESS_IDS?: string;
   /** Immutable public Git commit containing runner release assets. */
   RUNTIME_BUNDLE_COMMIT?: string;
   /** Second half of provisioning; false leaves raw provider compute unselected. */

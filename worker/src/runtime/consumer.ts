@@ -52,8 +52,17 @@ export async function publishRuntimeTask(
   const task = await withTenant(env, businessId, (tx) =>
     enqueueRuntimeTask(tx, businessId, input),
   );
-  await env.RUNTIME_QUEUE.send({ version: 1, businessId, taskId: task.id });
+  await signalRuntimeTask(env, businessId, task.id);
   return task;
+}
+
+export async function signalRuntimeTask(
+  env: Env,
+  businessId: string,
+  taskId: string,
+): Promise<void> {
+  if (!env.RUNTIME_QUEUE) throw new Error('RUNTIME_QUEUE is not configured');
+  await env.RUNTIME_QUEUE.send({ version: 1, businessId, taskId });
 }
 
 export async function handleRuntimeMessage(
@@ -162,6 +171,10 @@ export async function handleRuntimeMessage(
             function: outcome.payload.function ?? 'agent',
             channel: outcome.payload.channel ?? 'runtime',
             risk: 'low',
+            inputsUsed: {
+              factKeys: outcome.payload.factKeys ?? [],
+              grounded: outcome.payload.grounded ?? false,
+            },
           });
           await finishRun(
             tx,

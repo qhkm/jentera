@@ -94,6 +94,29 @@ export async function enqueueRuntimeTask(
   return task(row);
 }
 
+export async function runtimeTaskByDedupeKey(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  dedupeKey: string,
+): Promise<RuntimeTask | null> {
+  const [row] = await tx<TaskRow[]>`
+    select ${tx.unsafe(cols)} from runtime_task
+     where business_id = ${businessId} and dedupe_key = ${dedupeKey}`;
+  return row ? task(row) : null;
+}
+
+export async function runtimeTaskForRun(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  runId: string,
+): Promise<RuntimeTask | null> {
+  const [row] = await tx<TaskRow[]>`
+    select ${tx.unsafe(cols)} from runtime_task
+     where business_id = ${businessId} and run_id = ${runId}
+     order by created_at desc limit 1`;
+  return row ? task(row) : null;
+}
+
 export type LeaseResult =
   | { outcome: 'leased'; task: RuntimeTask }
   | { outcome: 'busy' }

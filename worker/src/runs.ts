@@ -110,6 +110,18 @@ export async function startRun(
   return toRun(row);
 }
 
+export async function getRun(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  runId: string,
+): Promise<Run | null> {
+  const [row] = await tx<RunRow[]>`
+    select id, kind, status, trigger_shape, runtime, model,
+           started_at, ended_at, created_at
+      from run where id = ${runId} and business_id = ${businessId}`;
+  return row ? toRun(row) : null;
+}
+
 /**
  * Append one event to a run's trace.
  *

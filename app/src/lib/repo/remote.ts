@@ -277,10 +277,28 @@ export class RemoteRepository implements Repository {
   }
 
   async ask(question: string): Promise<AskAnswer> {
-    return call<AskAnswer>('/api/runs/ask', {
+    const requestId = crypto.randomUUID();
+    const start = () => call<AskAnswer & {
+      pending?: boolean;
+      status?: string;
+      runId?: string;
+    }>('/api/runs/ask', {
       method: 'POST',
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, requestId }),
     });
+    let begun;
+    try {
+      begun = await start();
+    } catch (error) {
+      /* The server commits the idempotent task before Queue delivery.
+         Retrying this one explicit failure with the same requestId
+         sends another wake-up without creating another run. */
+      if (!(error instanceof Error) || !error.message.includes('could not queue')) throw error;
+      begun = await start();
+    }
+    if (!begun.pending) return begun;
+    if (!begun.runId) throw new Error('AISAR returned no run identifier.');
+    return pollAsk(begun.runId);
   }
 
   async connections(): Promise<Connection[]> {
@@ -328,3 +346,29 @@ export class RemoteRepository implements Repository {
 
   reset = () => post('/api/state/reset');
 }
+
+async function pollAsk(runId: string): Promise<AskAnswer> {
+  const started = Date.now();
+  const deadline = started + 16 * 60 * 1_000;
+  let first = true;
+  while (Date.now() < deadline) {
+    if (!first) {
+      const elapsed = Date.now() - started;
+      await wait(elapsed < 30_000 ? 1_500 : 5_000);
+    }
+    first = false;
+    const state = await call<AskAnswer & {
+      pending?: boolean;
+      status?: string;
+      err?: string;
+    }>(`/api/runs/${encodeURIComponent(runId)}`);
+    if (!state.pending && state.status === 'completed') return state;
+    if (!state.pending && state.status) {
+      throw new Error(state.err ?? 'AISAR could not complete that answer.');
+    }
+  }
+  throw new Error('AISAR is taking longer than expected. Check Activity for the result.');
+}
+
+const wait = (milliseconds: number) =>
+  new Promise<void>((resolve) => globalThis.setTimeout(resolve, milliseconds));

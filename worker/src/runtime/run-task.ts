@@ -19,6 +19,8 @@ interface RunPayload {
   objective?: string;
   function?: string;
   channel?: string;
+  factKeys?: string[];
+  grounded?: boolean;
 }
 
 export type RuntimeRunOutcome =
@@ -212,7 +214,18 @@ function runPayload(value: unknown): RunPayload {
     objective: optional('objective', 1_000),
     function: optional('function', 100),
     channel: optional('channel', 100),
+    factKeys: stringArray(body.factKeys, 24, 200),
+    grounded: typeof body.grounded === 'boolean' ? body.grounded : undefined,
   };
+}
+
+function stringArray(value: unknown, maxItems: number, maxLength: number): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > maxItems ||
+      value.some((item) => typeof item !== 'string' || item.length > maxLength)) {
+    throw new Error('runtime run factKeys is invalid');
+  }
+  return value as string[];
 }
 
 function boundedStatus(value: unknown): string {

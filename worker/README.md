@@ -23,7 +23,8 @@ must be running.
 - forced Postgres RLS and server-side repository storage;
 - versioned business facts with source, confidence, confirmation, and correction;
 - append-only run events and structured work records;
-- website ingestion and grounded Ask AISAR through the inline runtime;
+- website ingestion plus grounded Ask AISAR through the inline runtime by default and
+  the durable Hermes runtime for the explicit production canary;
 - encrypted connector credentials;
 - a verified Telegram webhook, real Telegram sends, permissions, approvals, and edited
   drafts; and
@@ -32,17 +33,14 @@ must be running.
 
 ## What is not live yet
 
-Every customer agent task still runs through `InlineRuntime`. The allow-listed I Run Cafe
-business has one ready production-canary Sprite running the AISAR runner, pinned
-Hermes, Chromium, and pinned OpenRouter model `deepseek/deepseek-v4-flash-0731` over
-HTTPS with its own capped inference key. Provisioning is enabled only for that business
-through four independent gates:
-explicit provisioning, secure model transport, immutable production bootstrap, and the
-business canary allow-list. The database runtime marker is `hermes-sprite`, but
-`runtimeFor()` intentionally continues to select `InlineRuntime` for all customer work.
-Hermes task selection stays disabled until the remaining event/approval bridge and
-runtime-selection gates in
-`../docs/superpowers/specs/2026-08-26-hermes-sprites-runtime.md` pass.
+The allow-listed I Run Cafe business can ask AISAR through its ready production Sprite.
+All other businesses remain on `InlineRuntime`; expanding durable execution requires an
+explicit `RUNTIME_EXECUTION_BUSINESS_IDS` rollout change and a ready runtime record.
+Hermes is still read-only and boots in `no-tools` mode. Connector calls, browser actions,
+and other side effects remain unavailable until incremental event translation and
+Hermes-native approval resume are implemented and reviewed. Provisioning remains a
+separate four-gate canary decision: explicit enablement, secure model transport,
+immutable production bootstrap, and the provisioning business allow-list.
 
 ## Runtime boundaries
 
@@ -63,13 +61,14 @@ compare-and-set proves that worker still owns the lease.
 
 ## Customer interaction path
 
-Customers interact with AISAR, never with a Sprite or Hermes endpoint. Today, Ask AISAR
-still selects `InlineRuntime`. When the remaining selection gate is enabled, the existing
-authenticated request will derive the business from the session, create a durable `run`
-and `runtime_task`, enqueue a wake-up signal, and project the runner result into AISAR's
-run events, work record, Activity, and answer UI. Telegram and future channels enter
-through the same central connector gateway and task path; they do not maintain a
-connection inside each Sprite.
+Customers interact with AISAR, never with a Sprite or Hermes endpoint. For an execution-
+allow-listed business, the existing Ask AISAR request derives the business from the
+authenticated session, creates an idempotent durable `run` and `runtime_task`, and sends
+only a business/task wake-up signal to the Queue. The browser polls the tenant-scoped run
+and replaces its working indicator with the projected Hermes result. Non-canary
+businesses keep the synchronous inline answer contract. Telegram and future channels
+will enter through the same central connector gateway and task path; they do not maintain
+a connection inside each Sprite.
 
 The control plane never accepts a business id from the browser for this decision. Queue
 messages are wake-up hints only: task kind, payload, run id, and tenant all come from the
@@ -134,13 +133,15 @@ Queues, Sprites, or model calls:
   identity and source address so rotating fake cookies cannot bypass the IP brake;
 - `RUNTIME_MUTATION_BURST`: 3 requests/minute, checked against both session-shaped identity
   and source address before provision, reconcile, upgrade, cancel, or delete; and
+- `AGENT_RUN_BURST`: 10 Ask AISAR starts/minute, checked against both keys and failed
+  closed because each accepted start can buy compute and model tokens; and
 - 128 KiB declared-body and 8 KiB request-target ceilings, method restrictions, `429`
   responses with `Retry-After`, no-store error responses, and secret-free bounded logs.
 
 Workers rate-limit bindings execute after a Worker invocation and are per-colo burst
 brakes, not exact global quotas. Failure of the broad binding fails open so health and
-ordinary reads remain available; failure of the dedicated runtime-mutation binding fails
-closed before any provider work.
+ordinary reads remain available; failure of either paid-operation binding fails closed
+before provider or model work.
 
 `pnpm waf:dry-run` renders the reviewed Free-plan rule. `pnpm waf:apply` installs or
 updates only its stable rule reference and refuses to overwrite another Free-plan rule.

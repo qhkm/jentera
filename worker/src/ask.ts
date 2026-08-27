@@ -25,7 +25,7 @@ export interface Answer {
   grounded: boolean;
 }
 
-interface FactRow {
+export interface FactRow {
   key: string;
   value: unknown;
   source: string;
@@ -125,12 +125,14 @@ function renderFacts(facts: FactRow[]): string {
     .join('\n');
 }
 
-export async function answer(
-  env: Env,
+/** The same grounded request shape is used by both execution planes.
+    Keeping it here prevents Hermes and the inline model from drifting
+    into two products with different truthfulness rules. */
+export function prepareAsk(
   question: string,
   facts: FactRow[],
-  work: { objective: string; outcome: string | null; occurredAt: Date }[],
-): Promise<Answer> {
+  work: { objective: string; outcome: string | null }[],
+): { instructions: string; input: string; usedKeys: string[]; grounded: boolean } {
   const recent =
     work.length === 0
       ? '(nothing yet)'
@@ -138,14 +140,27 @@ export async function answer(
           .slice(0, 8)
           .map((w) => `- ${w.objective}${w.outcome ? ` — ${w.outcome}` : ''}`)
           .join('\n');
+  return {
+    instructions: PROMPT,
+    input: `What is known about this business:\n${renderFacts(facts)}\n\n` +
+      `Recent work AISAR did:\n${recent}\n\nQuestion: ${question}`,
+    usedKeys: facts.map((f) => f.key),
+    grounded: facts.length > 0,
+  };
+}
+
+export async function answer(
+  env: Env,
+  question: string,
+  facts: FactRow[],
+  work: { objective: string; outcome: string | null; occurredAt: Date }[],
+): Promise<Answer> {
+  const prepared = prepareAsk(question, facts, work);
 
   const res = (await env.AI.run(MODEL, {
     messages: [
-      { role: 'system', content: PROMPT },
-      {
-        role: 'user',
-        content: `What is known about this business:\n${renderFacts(facts)}\n\nRecent work AISAR did:\n${recent}\n\nQuestion: ${question}`,
-      },
+      { role: 'system', content: prepared.instructions },
+      { role: 'user', content: prepared.input },
     ],
     max_tokens: 400,
     temperature: 0.2,
@@ -158,10 +173,10 @@ export async function answer(
 
   return {
     text,
-    usedKeys: facts.map((f) => f.key),
+    usedKeys: prepared.usedKeys,
     /* Grounded means there was something confirmed to reason from.
        An ungrounded answer is still returned — the model is told to
        admit ignorance — but the caller can present it differently. */
-    grounded: facts.length > 0,
+    grounded: prepared.grounded,
   };
 }

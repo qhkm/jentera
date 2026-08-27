@@ -24,6 +24,8 @@ export interface AskMessage {
   text: string;
   /** Set when the question tagged a specific agent. */
   agent?: string;
+  /** Correlates an in-flight answer without exposing runtime ids in the UI. */
+  pendingId?: string;
 }
 
 /** Prompt chips offered above the composer. */
@@ -90,7 +92,12 @@ export function useAsk(
          replies below stay for the anonymous demo, which has no
          backend to ask and no facts to ground an answer in. */
       if (grounded) {
-        setMessages((prev) => [...prev, { from: 'you', text: question }, { from: 'ai', text: '…' }]);
+        const pendingId = crypto.randomUUID();
+        setMessages((prev) => [
+          ...prev,
+          { from: 'you', text: question },
+          { from: 'ai', text: t('ask.working'), pendingId },
+        ]);
         void repo
           .ask(question)
           .then(
@@ -100,7 +107,9 @@ export function useAsk(
           .then((text) => {
             // Replace the placeholder rather than appending, so the
             // thinking indicator does not stay in the transcript.
-            setMessages((prev) => [...prev.slice(0, -1), { from: 'ai', text }]);
+            setMessages((prev) => prev.map((message) =>
+              message.pendingId === pendingId ? { from: 'ai', text } : message,
+            ));
           });
         return;
       }

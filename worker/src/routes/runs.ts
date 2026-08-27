@@ -1,23 +1,36 @@
 /* ============================================================
    Run endpoints.
 
-   Ingestion runs inline rather than through a queue. That is a
-   deliberate limit, not an oversight: fetch plus one model call fits
-   inside a request, and a queue would add a delivery guarantee, a
-   consumer, and a polling UI before there is anything to poll for.
-   When a run type appears that cannot finish inside a request — a
-   multi-page crawl, a scheduled sweep — the `run` row already exists
-   to hand to a consumer, which is why the spine went in first.
+   Ingestion remains a short inline operation. Ask AISAR is also inline
+   by default, but an explicit business execution canary persists a
+   durable Hermes task and exposes only its tenant-scoped run status to
+   the browser. Both paths share the same grounding instructions.
    ============================================================ */
 
 import type { Env } from './../env';
 import { withTenant } from '../db';
 import { hasBusiness, resolveTenant } from '../tenancy';
-import { append, finishRun, homeCounters, recentWork, recordWork, runTrace, startRun } from '../runs';
+import {
+  append,
+  finishRun,
+  getRun,
+  homeCounters,
+  recentWork,
+  recordWork,
+  runTrace,
+  startRun,
+} from '../runs';
 import { recordFact } from '../facts';
 import { urlProblem } from '../ingest';
-import { runtimeFor } from '../runtime';
-import { retrieve } from '../ask';
+import { runtimeFor, signalRuntimeTask } from '../runtime';
+import { prepareAsk, retrieve } from '../ask';
+import { getRuntime } from '../agent-runtime';
+import {
+  enqueueRuntimeTask,
+  runtimeTaskByDedupeKey,
+  runtimeTaskForRun,
+  type RuntimeTask,
+} from '../runtime/tasks';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -145,11 +158,29 @@ export async function handleRuns(
   /* ---- ask a question about the business ------------------------------ */
 
   if (url.pathname === '/api/runs/ask' && request.method === 'POST') {
-    const body = (await request.json().catch(() => ({}))) as { question?: string };
+    const body = (await request.json().catch(() => ({}))) as {
+      question?: string;
+      requestId?: unknown;
+    };
     const question = typeof body.question === 'string' ? body.question.trim() : '';
     if (!question) return json({ ok: false, err: 'ask me something' }, { status: 400 }, cors);
     if (question.length > 1000) {
       return json({ ok: false, err: 'that question is too long' }, { status: 400 }, cors);
+    }
+    if (body.requestId !== undefined &&
+        (typeof body.requestId !== 'string' || !uuid(body.requestId))) {
+      return json({ ok: false, err: 'request id is invalid' }, { status: 400 }, cors);
+    }
+
+    if (durableAskEnabled(env, id.businessId)) {
+      return startDurableAsk(
+        env,
+        id.businessId,
+        id.userId,
+        question,
+        typeof body.requestId === 'string' ? body.requestId : crypto.randomUUID(),
+        cors,
+      );
     }
 
     const askRuntime = runtimeFor(env, id.businessId);
@@ -217,6 +248,56 @@ export async function handleRuns(
     return json({ ok: true, work, counters }, {}, cors);
   }
 
+  const status = url.pathname.match(/^\/api\/runs\/([0-9a-f-]{36})$/i);
+  if (status && request.method === 'GET') {
+    const privateHeaders = { ...cors, 'Cache-Control': 'private, no-store' };
+    const state = await withTenant(env, id.businessId, async (tx) => {
+      const run = await getRun(tx, id.businessId, status[1]);
+      const task = run ? await runtimeTaskForRun(tx, id.businessId, run.id) : null;
+      return { run, task };
+    });
+    if (!state.run) {
+      return json({ ok: false, err: 'run not found' }, { status: 404 }, privateHeaders);
+    }
+    if (!state.task || state.run.runtime !== 'hermes-sprite') {
+      return json({
+        ok: true,
+        runId: state.run.id,
+        status: state.run.status,
+        pending: !terminalRun(state.run.status),
+      }, {}, privateHeaders);
+    }
+    if (state.run.status === 'completed') {
+      const metadata = askMetadata(state.task);
+      return json({
+        ok: true,
+        runId: state.run.id,
+        status: 'completed',
+        pending: false,
+        text: answerText(state.task.result),
+        usedKeys: metadata.usedKeys,
+        grounded: metadata.grounded,
+      }, {}, privateHeaders);
+    }
+    if (state.run.status === 'failed' || state.run.status === 'cancelled') {
+      return json({
+        ok: true,
+        runId: state.run.id,
+        status: state.run.status,
+        pending: false,
+        err: state.run.status === 'cancelled'
+          ? 'AISAR stopped that answer.'
+          : 'AISAR could not answer that just now. Please try again.',
+      }, {}, privateHeaders);
+    }
+    return json({
+      ok: true,
+      runId: state.run.id,
+      status: state.run.status,
+      pending: true,
+    }, {}, privateHeaders);
+  }
+
   const trace = url.pathname.match(/^\/api\/runs\/([0-9a-f-]{36})\/trace$/i);
   if (trace && request.method === 'GET') {
     const events = await withTenant(env, id.businessId, (tx) => runTrace(tx, trace[1]));
@@ -224,4 +305,133 @@ export async function handleRuns(
   }
 
   return null;
+}
+
+async function startDurableAsk(
+  env: Env,
+  businessId: string,
+  userId: string,
+  question: string,
+  requestId: string,
+  cors: Record<string, string>,
+): Promise<Response> {
+  if (!env.RUNTIME_QUEUE || !env.AISAR_MODEL_NAME?.trim()) {
+    return json({ ok: false, err: 'AISAR agent execution is unavailable' }, { status: 503 }, cors);
+  }
+  const runtime = await withTenant(env, businessId, (tx) => getRuntime(tx, businessId));
+  if (!runtime || runtime.observedRelease !== runtime.desiredRelease ||
+      !['ready', 'cold', 'idle', 'busy'].includes(runtime.status)) {
+    return json({
+      ok: false,
+      err: 'AISAR is preparing your agent. Please try again shortly.',
+    }, { status: 503 }, cors);
+  }
+
+  const { facts, work } = await withTenant(env, businessId, async (tx) => ({
+    facts: await retrieve(tx, question),
+    work: await recentWork(tx, 8),
+  }));
+  const prepared = prepareAsk(question, facts, work);
+  const dedupeKey = `ask:${requestId}`;
+  const created = await withTenant(env, businessId, async (tx) => {
+    /* The advisory lock makes the HTTP idempotency key atomic with run
+       creation. Without it, two simultaneous retries could leave an
+       orphan run before the task's unique dedupe constraint wins. */
+    await tx`select pg_advisory_xact_lock(hashtextextended(${dedupeKey}, 0))`;
+    const existing = await runtimeTaskByDedupeKey(tx, businessId, dedupeKey);
+    if (existing) {
+      if (!existing.runId) throw new Error('durable ask task has no run');
+      return { runId: existing.runId, task: existing };
+    }
+
+    const run = await startRun(tx, businessId, {
+      kind: 'ask',
+      triggerShape: 'owner.ask',
+      triggerRef: { question, requestId },
+      requestedBy: userId,
+      runtime: 'hermes-sprite',
+      model: env.AISAR_MODEL_NAME!.trim(),
+    });
+    await append(tx, businessId, run.id, 'fact.retrieved', {
+      keys: prepared.usedKeys,
+    });
+    const task = await enqueueRuntimeTask(tx, businessId, {
+      kind: 'run',
+      runId: run.id,
+      dedupeKey,
+      payload: {
+        input: boundedAskInput(prepared.input, question),
+        instructions: prepared.instructions,
+        sessionId: run.id,
+        objective: question,
+        function: 'ask',
+        channel: 'app',
+        factKeys: prepared.usedKeys,
+        grounded: prepared.grounded,
+      },
+    });
+    return { runId: run.id, task };
+  });
+
+  /* Sending after commit avoids a message racing an invisible row. If
+     delivery fails, the browser can repeat the same requestId: it finds
+     this row and safely sends another wake-up signal. */
+  try {
+    await signalRuntimeTask(env, businessId, created.task.id);
+  } catch {
+    /* Queue errors are intentionally not interpolated. Provider/library
+       exceptions are not a safe logging contract for credentials. */
+    console.error('[durable-ask] queue signal failed');
+    return json({
+      ok: false,
+      err: 'AISAR could not queue that answer. Please try again.',
+    }, { status: 503 }, cors);
+  }
+  return json({
+    ok: true,
+    pending: true,
+    status: created.task.status,
+    runId: created.runId,
+  }, { status: 202 }, cors);
+}
+
+function durableAskEnabled(env: Env, businessId: string): boolean {
+  return new Set((env.RUNTIME_EXECUTION_BUSINESS_IDS ?? '')
+    .split(',').map((value) => value.trim()).filter(uuid)).has(businessId);
+}
+
+function boundedAskInput(input: string, question: string): string {
+  const max = 19_500;
+  if (input.length <= max) return input;
+  const suffix = `\n\nQuestion: ${question}`;
+  return `${input.slice(0, Math.max(0, max - suffix.length))}${suffix}`;
+}
+
+function askMetadata(task: RuntimeTask): { usedKeys: string[]; grounded: boolean } {
+  if (!task.payload || typeof task.payload !== 'object') {
+    return { usedKeys: [], grounded: false };
+  }
+  const payload = task.payload as Record<string, unknown>;
+  const usedKeys = Array.isArray(payload.factKeys)
+    ? payload.factKeys.filter((key): key is string => typeof key === 'string').slice(0, 24)
+    : [];
+  return { usedKeys, grounded: payload.grounded === true };
+}
+
+function answerText(result: unknown): string {
+  if (typeof result === 'string' && result.trim()) return result.trim().slice(0, 20_000);
+  if (result && typeof result === 'object') {
+    const text = (result as Record<string, unknown>).text;
+    if (typeof text === 'string' && text.trim()) return text.trim().slice(0, 20_000);
+  }
+  return 'AISAR completed the work but returned no readable answer.';
+}
+
+function terminalRun(status: string): boolean {
+  return ['completed', 'failed', 'cancelled'].includes(status);
+}
+
+function uuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    .test(value);
 }

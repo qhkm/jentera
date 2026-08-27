@@ -187,6 +187,7 @@ export function testEnv(over: Partial<Record<string, unknown>> = {}): import('..
     AUTH_BURST: { limit: async () => ({ success: true }) },
     API_BURST: { limit: async () => ({ success: true }) },
     RUNTIME_MUTATION_BURST: { limit: async () => ({ success: true }) },
+    AGENT_RUN_BURST: { limit: async () => ({ success: true }) },
     ...over,
   } as unknown as import('../src/env').Env;
 }

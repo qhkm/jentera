@@ -84,6 +84,7 @@ export async function guardApiRequest(
 
   const identity = requestIdentity(request, url);
   const runtimeMutation = isRuntimeMutation(request.method, url.pathname);
+  const agentRun = request.method === 'POST' && url.pathname === '/api/runs/ask';
   try {
     /* The cookie is not authenticated yet, so it cannot be the only key: a
        bot could rotate fake cookie values. The source-address brake remains
@@ -121,6 +122,26 @@ export async function guardApiRequest(
       /* Expensive provider mutations remain fail-closed even if their
          dedicated limiter binding is unavailable. */
       console.error(`[request-guard] runtime limiter unavailable: ${String(error)}`);
+      return response(503, 'request protection unavailable', cors, { 'Retry-After': '60' });
+    }
+  }
+
+  if (agentRun) {
+    try {
+      const [byIdentity, byIp] = await Promise.all([
+        opaqueKey(env, `agent-run:${identity}`).then((key) =>
+          env.AGENT_RUN_BURST.limit({ key })),
+        opaqueKey(env, `agent-run-ip:${clientIp(request)}`).then((key) =>
+          env.AGENT_RUN_BURST.limit({ key })),
+      ]);
+      if (!byIdentity.success || !byIp.success) {
+        console.warn(`[request-guard] agent run refused ray=${request.headers.get('CF-Ray') ?? 'none'}`);
+        return response(429, 'too many agent requests', cors, { 'Retry-After': '60' });
+      }
+    } catch (error) {
+      /* Model/runtime admission is a spend boundary, so it has the same
+         fail-closed posture as provider lifecycle mutations. */
+      console.error(`[request-guard] agent limiter unavailable: ${String(error)}`);
       return response(503, 'request protection unavailable', cors, { 'Retry-After': '60' });
     }
   }

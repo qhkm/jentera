@@ -119,4 +119,33 @@ describe('pre-route API request guard', () => {
 
     expect(response?.status).toBe(503);
   });
+
+  it('rate limits agent runs by both opaque identity and source address', async () => {
+    const keys: string[] = [];
+    const env = testEnv({
+      AGENT_RUN_BURST: {
+        limit: async ({ key }: { key: string }) => {
+          keys.push(key);
+          return { success: true };
+        },
+      },
+    });
+    const req = request('/api/runs/ask', {
+      method: 'POST',
+      headers: { Cookie: `aisar_session=${'b'.repeat(64)}` },
+    });
+
+    expect(await guardApiRequest(req, env, new URL(req.url), cors)).toBeNull();
+    expect(keys).toHaveLength(2);
+    expect(keys.every((key) => /^[0-9a-f]{64}$/.test(key))).toBe(true);
+  });
+
+  it('fails closed when dedicated agent-run protection is unavailable', async () => {
+    const env = testEnv({
+      AGENT_RUN_BURST: { limit: async () => { throw new Error('binding failed'); } },
+    });
+    const req = request('/api/runs/ask', { method: 'POST' });
+
+    expect((await guardApiRequest(req, env, new URL(req.url), cors))?.status).toBe(503);
+  });
 });
