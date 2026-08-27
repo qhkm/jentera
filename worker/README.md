@@ -77,7 +77,8 @@ flyctl tokens create org --org aisar --name "AISAR Sprites exchange" --expiry 1h
 Exchange that source token for a dedicated Sprites API token through Fly's Sprites token
 API, then pipe the returned Sprite token directly into `wrangler secret put SPRITES_TOKEN`.
 Do not print it, put it in shell history, or reuse it as a runtime credential. The deployed
-Worker has a dedicated Sprites token as of 2026-08-27. See Fly's current
+Worker has a dedicated Sprites token, rotated from this scoped flow with the short-lived
+exchange token revoked, as of 2026-08-27. See Fly's current
 [access-token guidance](https://fly.io/docs/security/tokens/).
 
 Customer provisioning additionally requires `AISAR_VRS_KEY`, but that secret must not be

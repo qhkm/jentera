@@ -48,9 +48,11 @@ assertion passed.
 
 Production migration `014_runtime_task_execution.sql` was applied transactionally on
 2026-08-27 and verified through both `neondb_owner` and the restricted `aisar_app` role.
-Worker version `123d72c9-8a4b-4ad0-8c3a-362f963478bb` is live with all provisioning gates
-false/empty. The live API health check passes, the runtime route rejects unauthenticated
-requests, and deployment did not create a customer Sprite.
+Worker version `99124b8a-9c58-4edf-ad81-e7bb911b7063` is live with all provisioning gates
+false/empty. Its dedicated Sprites secret was rotated from a 10-minute org-scoped token
+created with `flyctl tokens create org`; the exchange token was immediately revoked. The
+live API health check passes, the runtime route rejects unauthenticated requests, and
+deployment did not create a customer Sprite.
 
 This does **not** make the model path production-ready. The available VRS endpoint is
 plain HTTP on a public IP, so its bearer credential, customer prompts, and model results
