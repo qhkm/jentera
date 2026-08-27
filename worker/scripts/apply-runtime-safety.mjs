@@ -35,9 +35,17 @@ try {
         pg_get_constraintdef((
           select oid from pg_constraint
            where conrelid = 'runtime_task'::regclass and conname = 'runtime_task_kind_check'
-        )) like '%cancel%' as cancellation`;
+        )) like '%cancel%' as cancellation,
+        (
+          select count(*) = 5 from information_schema.columns
+           where table_schema = 'public' and table_name = 'agent_runtime'
+             and column_name in (
+               'model_key_ciphertext', 'model_key_version', 'model_key_hash',
+               'model_key_expires_at', 'model_key_pending_revocation_hash'
+             )
+        ) as model_key_rotation`;
     if (row.budgets !== 'runtime_budget' || row.usage !== 'runtime_usage' ||
-        !row.exhausted || !row.cancellation) {
+        !row.exhausted || !row.cancellation || !row.model_key_rotation) {
       throw new Error('runtime safety migration verification failed');
     }
     return row;

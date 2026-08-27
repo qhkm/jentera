@@ -174,6 +174,7 @@ describe('provider provisioning', () => {
       AISAR_MODEL_PROVIDER: 'openrouter',
       AISAR_MODEL_BASE: 'https://openrouter.ai/api/v1',
       AISAR_MODEL_KEY: 'dedicated-aisar-openrouter-key',
+      RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS: A,
       AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
     });
     const row = await ensureProviderRuntime(runtimeEnv, A, {

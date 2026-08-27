@@ -14,6 +14,28 @@ alter table runtime_task drop constraint if exists runtime_task_kind_check;
 alter table runtime_task add constraint runtime_task_kind_check
   check (kind in ('provision','run','resume','reconcile','upgrade','delete','cancel'));
 
+alter table agent_runtime add column if not exists model_key_ciphertext bytea;
+alter table agent_runtime add column if not exists model_key_version int;
+alter table agent_runtime add column if not exists model_key_hash text;
+alter table agent_runtime add column if not exists model_key_expires_at timestamptz;
+alter table agent_runtime add column if not exists model_key_pending_revocation_hash text;
+alter table agent_runtime drop constraint if exists agent_runtime_model_key_pair;
+alter table agent_runtime add constraint agent_runtime_model_key_pair check (
+  (model_key_ciphertext is null and model_key_version is null and model_key_hash is null
+   and model_key_expires_at is null) or
+  (model_key_ciphertext is not null and model_key_version is not null
+   and model_key_hash is not null and model_key_expires_at is not null)
+);
+alter table agent_runtime drop constraint if exists agent_runtime_model_key_hash;
+alter table agent_runtime add constraint agent_runtime_model_key_hash check (
+  model_key_hash is null or model_key_hash ~ '^[0-9a-fA-F]{64}$'
+);
+alter table agent_runtime drop constraint if exists agent_runtime_model_key_pending_hash;
+alter table agent_runtime add constraint agent_runtime_model_key_pending_hash check (
+  model_key_pending_revocation_hash is null or
+  model_key_pending_revocation_hash ~ '^[0-9a-fA-F]{64}$'
+);
+
 create table if not exists runtime_budget (
   business_id              uuid primary key references business(id) on delete cascade,
   monthly_input_tokens     bigint not null default 2000000 check (monthly_input_tokens > 0),

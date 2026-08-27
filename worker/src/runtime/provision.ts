@@ -21,6 +21,7 @@ import {
 } from '../agent-runtime';
 import { FlySpriteProvider } from './fly-sprite-provider';
 import { canBootstrap, type BootstrapRuntimeProvider, type RuntimeProvider } from './provider';
+import { runtimeModelKey } from './openrouter-keys';
 
 export interface ProvisionOptions {
   provider?: RuntimeProvider;
@@ -96,18 +97,18 @@ async function bootstrapRuntime(
   const commit = env.RUNTIME_BUNDLE_COMMIT?.trim() ?? '';
   const modelProvider = env.AISAR_MODEL_PROVIDER?.trim() ?? '';
   const modelBase = env.AISAR_MODEL_BASE?.trim() ?? '';
-  const modelKey = env.AISAR_MODEL_KEY?.trim() ?? '';
   const modelName = env.AISAR_MODEL_NAME?.trim() ?? '';
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('RUNTIME_BUNDLE_COMMIT is invalid');
   if (modelProvider !== 'openrouter') throw new Error('AISAR model provider is not allowed');
   if (modelBase !== 'https://openrouter.ai/api/v1') {
     throw new Error('AISAR OpenRouter endpoint is not pinned');
   }
-  if (modelKey.length < 20) throw new Error('AISAR_MODEL_KEY is unavailable');
   if (!/^[A-Za-z0-9._~-]+\/[A-Za-z0-9._:~-]+$/.test(modelName)) {
     throw new Error('AISAR model name is invalid');
   }
   if (!runtime.providerId || !runtime.providerUrl) throw new Error('provider runtime is incomplete');
+
+  const modelKey = await runtimeModelKey(env, businessId, runtime.providerName);
 
   const secrets = await withTenant(env, businessId, (tx) =>
     getRuntimeSecrets(env, tx, businessId),

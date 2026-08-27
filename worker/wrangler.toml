@@ -53,12 +53,18 @@ RUNTIME_BUNDLE_COMMIT = "0a6c256842a27912057ef34c28af808cc102fa6c"
 AISAR_MODEL_PROVIDER = "openrouter"
 AISAR_MODEL_BASE = "https://openrouter.ai/api/v1"
 AISAR_MODEL_NAME = "deepseek/deepseek-v4-flash-0731"
+# Temporary bridge for the already-provisioned canary only. Expanding the
+# runtime canary list does not expand this list; new runtimes require the
+# management-key workflow and receive their own capped inference key.
+RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS = "d5fb6dbb-428a-4215-86c0-8713d12ed73b"
 
 # Connector credentials are secrets, never vars:
 #   npx wrangler secret put META_APP_SECRET
 #   npx wrangler secret put GOOGLE_CLIENT_SECRET
 # Runtime-provider credentials are also secrets:
 #   npx wrangler secret put SPRITES_TOKEN
+#   npx wrangler secret put AISAR_OPENROUTER_MANAGEMENT_KEY
+# Temporary named-canary bridge only:
 #   npx wrangler secret put AISAR_MODEL_KEY
 
 # Edge burst brake on the magic-link endpoint, keyed by client IP.

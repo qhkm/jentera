@@ -50,7 +50,10 @@ Implemented in the repository:
 - durable control-plane cancellation and implemented reconcile, upgrade, restore-recovery,
   rollback checkpoint, and deletion paths; and
 - an idempotent Free-plan Cloudflare WAF deployment script that refuses to overwrite an
-  unrelated existing rule.
+  unrelated existing rule; and
+- per-runtime OpenRouter inference-key issuance through a control-plane-only management
+  credential, with a $5 monthly hard limit, 90-day expiry, encrypted storage, seven-day
+  rotation, durable old-key revocation retry, and deletion-time revocation.
 
 The I Run Cafe canary Sprite `aisar-b-3602f62e8aec2e6174b3` is ready at release
 `2026.08.28-3`, pinned for future reconciliation to bundle commit
@@ -71,7 +74,8 @@ Production migration `014_runtime_task_execution.sql` was applied transactionall
 2026-08-27 and verified through both `neondb_owner` and the restricted `aisar_app` role.
 Worker version `b18b6840-c1d9-4fd8-bb57-e20715b95b35` is live with provisioning limited to
 one business canary. Its Sprites credential is organization-scoped and dedicated. Its
-OpenRouter inference key has a $10 weekly hard limit, expires on 2026-09-03, and had used
+legacy canary OpenRouter inference key has a $10 weekly hard limit, expires on 2026-09-03,
+and had used
 $0.000968077 after canary verification. The key, customer prompts, and model results cross
 only HTTPS. The API now applies authentication, general-host, and runtime-mutation burst
 brakes before database/provider work. The live tail confirmed generic WordPress bot scans
@@ -84,7 +88,8 @@ to use connectors or tools.
 
 Still gated and therefore intentionally unavailable to customers:
 
-- per-runtime OpenRouter keys with hard spend limits, expiry, rotation, and revocation;
+- configuration of the OpenRouter management secret and replacement of the legacy canary
+  bridge; the issuance, limits, encrypted storage, rotation, and revocation code is ready;
 - incremental Hermes event translation and Hermes-native approval resume before any
   non-empty grant vocabulary is introduced;
 - production application and restricted-role verification of migration
@@ -605,11 +610,14 @@ Completed:
   runtime keys, authenticated runner readiness, browser smoke, and baseline checkpoint
   are deployed; and
 - one read-only OpenRouter run and duplicate-delivery proof succeeded without enabling a
-  live connector path.
+  live connector path; and
+- separate capped OpenRouter key issuance, encrypted storage, response attestation,
+  rotation, durable revocation retry, and deletion cleanup pass integration tests.
 
 Open:
 
-- issue and rotate separate capped OpenRouter keys per runtime;
+- configure the OpenRouter management secret and migrate the legacy canary onto its own
+  issued key;
 - apply and verify migration 015, then deploy the Worker safety release;
 - add incremental event translation and Hermes-native approval resume before allowing
   non-empty tool grants; and

@@ -16,11 +16,24 @@ export interface AgentRuntimeRecord {
   latestCheckpointId: string | null;
   lastReadyAt: Date | null;
   lastError: string | null;
+  modelKeyHash: string | null;
+  modelKeyExpiresAt: Date | null;
+  modelKeyPendingRevocationHash: string | null;
 }
 
 export interface RuntimeSecrets {
   runnerKey: string;
   hermesApiKey: string;
+}
+
+export interface RuntimeModelCredential {
+  key: string;
+  hash: string;
+  expiresAt: Date;
+}
+
+export interface StoredRuntimeModelCredential extends RuntimeModelCredential {
+  pendingRevocationHash: string | null;
 }
 
 interface RuntimeRow {
@@ -36,11 +49,15 @@ interface RuntimeRow {
   latest_checkpoint_id: string | null;
   last_ready_at: Date | null;
   last_error: string | null;
+  model_key_hash: string | null;
+  model_key_expires_at: Date | null;
+  model_key_pending_revocation_hash: string | null;
 }
 
 const columns = `id, business_id, provider, provider_id, provider_name, provider_url,
                  status, desired_release, observed_release, latest_checkpoint_id,
-                 last_ready_at, last_error`;
+                 last_ready_at, last_error, model_key_hash, model_key_expires_at,
+                 model_key_pending_revocation_hash`;
 
 const toRecord = (row: RuntimeRow): AgentRuntimeRecord => ({
   id: row.id,
@@ -55,6 +72,9 @@ const toRecord = (row: RuntimeRow): AgentRuntimeRecord => ({
   latestCheckpointId: row.latest_checkpoint_id,
   lastReadyAt: row.last_ready_at,
   lastError: row.last_error,
+  modelKeyHash: row.model_key_hash,
+  modelKeyExpiresAt: row.model_key_expires_at,
+  modelKeyPendingRevocationHash: row.model_key_pending_revocation_hash,
 });
 
 /** Stable, opaque, and free of customer-identifying text. */
@@ -134,6 +154,74 @@ export async function getRuntimeSecrets(
     open(env, row.hermes_key_ciphertext, row.hermes_key_version),
   ]);
   return { runnerKey, hermesApiKey };
+}
+
+export async function getRuntimeModelCredential(
+  env: Env,
+  tx: postgres.TransactionSql,
+  businessId: string,
+): Promise<StoredRuntimeModelCredential | null> {
+  const [row] = await tx<{
+    model_key_ciphertext: Uint8Array | null;
+    model_key_version: number | null;
+    model_key_hash: string | null;
+    model_key_expires_at: Date | null;
+    model_key_pending_revocation_hash: string | null;
+  }[]>`
+    select model_key_ciphertext, model_key_version, model_key_hash, model_key_expires_at,
+           model_key_pending_revocation_hash
+      from agent_runtime where business_id = ${businessId}`;
+  if (!row?.model_key_ciphertext || row.model_key_version === null ||
+      !row.model_key_hash || !row.model_key_expires_at) return null;
+  return {
+    key: await open(env, row.model_key_ciphertext, row.model_key_version),
+    hash: row.model_key_hash,
+    expiresAt: row.model_key_expires_at,
+    pendingRevocationHash: row.model_key_pending_revocation_hash,
+  };
+}
+
+export async function storeRuntimeModelCredential(
+  env: Env,
+  tx: postgres.TransactionSql,
+  businessId: string,
+  credential: RuntimeModelCredential,
+): Promise<void> {
+  if (!/^[0-9a-f]{64}$/i.test(credential.hash) || credential.key.length < 32 ||
+      credential.expiresAt.getTime() <= Date.now()) {
+    throw new Error('runtime model credential is invalid');
+  }
+  const ciphertext = await seal(env, credential.key);
+  const rows = await tx`
+    update agent_runtime
+       set model_key_ciphertext = ${ciphertext}, model_key_version = ${KEY_VERSION},
+           model_key_hash = ${credential.hash},
+           model_key_expires_at = ${credential.expiresAt},
+           model_key_pending_revocation_hash = case
+             when model_key_hash is null or model_key_hash = ${credential.hash}
+               then model_key_pending_revocation_hash
+             else coalesce(model_key_pending_revocation_hash, model_key_hash)
+           end,
+           updated_at = now()
+     where business_id = ${businessId}
+    returning id`;
+  if (rows.length !== 1) throw new Error('runtime disappeared while storing model credential');
+}
+
+export async function markRuntimeModelKeyRevoked(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  hash: string,
+): Promise<void> {
+  if (!/^[0-9a-f]{64}$/i.test(hash)) throw new Error('runtime model key hash is invalid');
+  await tx`
+    update agent_runtime
+       set model_key_pending_revocation_hash = case
+             when model_key_pending_revocation_hash = ${hash} then null
+             else model_key_pending_revocation_hash
+           end,
+           updated_at = now()
+     where business_id = ${businessId}`;
 }
 
 export async function recordProviderRuntime(

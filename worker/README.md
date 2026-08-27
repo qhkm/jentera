@@ -63,6 +63,9 @@ npx wrangler secret put CREDENTIAL_KEY
 npx wrangler secret put RATE_LIMIT_PEPPER
 npx wrangler secret put GOOGLE_CLIENT_SECRET
 npx wrangler secret put SPRITES_TOKEN
+# Fleet key issuer; use a dedicated OpenRouter management key.
+npx wrangler secret put AISAR_OPENROUTER_MANAGEMENT_KEY
+# Temporary inference-only key for the single named canary bridge.
 npx wrangler secret put AISAR_MODEL_KEY
 ```
 
@@ -84,12 +87,20 @@ Worker has a dedicated Sprites token, rotated from this scoped flow with the sho
 exchange token revoked, as of 2026-08-27. See Fly's current
 [access-token guidance](https://fly.io/docs/security/tokens/).
 
-Customer provisioning additionally requires `AISAR_MODEL_KEY`. The current canary key is
-an inference-only OpenRouter key with a $10 weekly ceiling and an expiry of 2026-09-03;
-it must be rotated before expiry. It is injected through Worker secrets and a mode-0600
-runtime file, never the repository, browser, queue payload, or logs. Production fleet
-rollout requires a management-key workflow that issues a separate capped, expiring key
-per runtime rather than copying one shared key into many Sprites.
+Customer provisioning requires `AISAR_OPENROUTER_MANAGEMENT_KEY`. The control plane uses
+it only against OpenRouter's HTTPS management API to issue one inference key per runtime:
+$5 monthly hard limit, 90-day UTC expiry, encrypted-at-rest storage, seven-day rotation,
+durable prior-key revocation retry, and deletion-time revocation. Plaintext inference
+keys are transferred through the authenticated Sprites filesystem API into a mode-0600
+runtime file; they never enter the repository, browser, queue payload, or logs. See
+OpenRouter's official [create](https://openrouter.ai/docs/api/api-reference/api-keys/create-keys)
+and [delete](https://openrouter.ai/docs/api/api-reference/api-keys/delete-keys) contracts.
+
+`AISAR_MODEL_KEY` is only a temporary bridge for the exact business UUID in
+`RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS`. The current canary key has a $10 weekly ceiling
+and expires on 2026-09-03. Adding a business to the runtime provisioning allow-list does
+not grant access to this shared bridge; new fleet provisioning fails closed until the
+management secret is configured.
 
 ## Abuse and DDoS protection
 
@@ -136,8 +147,8 @@ bypass RLS unless every table is forced, and using the intended role is part of 
 security boundary.
 
 Migration `015_runtime_safety.sql` adds RLS-protected per-business budgets and usage,
-terminal retry exhaustion, and durable cancellation. Apply it transactionally with the
-reviewed target guard:
+terminal retry exhaustion, durable cancellation, and encrypted per-runtime model-key
+metadata with tracked revocation. Apply it transactionally with the reviewed target guard:
 
 ```bash
 AISAR_NEON_OWNER_URL='postgresql://neondb_owner:...@.../neondb?sslmode=require' \

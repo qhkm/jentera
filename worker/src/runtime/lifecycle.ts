@@ -11,6 +11,7 @@ import { withTenant } from '../db';
 import type { ObservedRuntime, RuntimeProvider } from './provider';
 import { ensureProviderRuntime, runtimeProviderFor } from './provision';
 import { RunnerClient } from './runner-client';
+import { OpenRouterKeyManager } from './openrouter-keys';
 
 export async function upgradeRuntime(
   env: Env,
@@ -84,6 +85,16 @@ export async function deleteRuntime(
     const provider = providerInput ?? runtimeProviderFor(env);
     if (provider.id !== current.provider) throw new Error('runtime provider mismatch');
     await provider.destroy(observed(current));
+  }
+  const modelKeyHashes = [
+    current.modelKeyHash,
+    current.modelKeyPendingRevocationHash,
+  ].filter((hash): hash is string => Boolean(hash));
+  if (modelKeyHashes.length) {
+    const managementKey = env.AISAR_OPENROUTER_MANAGEMENT_KEY?.trim() ?? '';
+    if (!managementKey) throw new Error('OpenRouter management key is required for revocation');
+    const manager = new OpenRouterKeyManager(managementKey);
+    for (const hash of new Set(modelKeyHashes)) await manager.revoke(hash);
   }
   await withTenant(env, businessId, (tx) => removeRuntimeRecord(tx, businessId));
 }

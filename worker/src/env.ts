@@ -50,6 +50,10 @@ export interface Env {
   AISAR_MODEL_PROVIDER?: string;
   AISAR_MODEL_BASE?: string;
   AISAR_MODEL_KEY?: string;
+  /** Management credential stays control-plane-only and issues separate
+      capped/expiring inference keys. The shared key is a one-canary bridge. */
+  AISAR_OPENROUTER_MANAGEMENT_KEY?: string;
+  RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS?: string;
   AISAR_MODEL_NAME?: string;
   /** Durable provisioning and Hermes task delivery. */
   RUNTIME_QUEUE?: Queue<import('./runtime/consumer').RuntimeQueueMessage>;
