@@ -1,11 +1,10 @@
 # Hermes Runtime on Fly Sprites
 
-**Status:** fail-closed control plane deployed; development Sprite smoke running;
-customer provisioning disabled
-**Last price verification:** 2026-08-26  
+**Status:** one allow-listed production canary ready; customer task selection remains disabled
+**Last verification:** 2026-08-28
 **Decision owner:** AISAR
 
-## Implementation status — 2026-08-27
+## Implementation status — 2026-08-28
 
 Implemented in the repository:
 
@@ -35,47 +34,61 @@ Implemented in the repository:
 - a private `jentera` development Sprite with Hermes v0.20.5 pinned to release tag
   `v2026.8.19`, loopback-only Hermes, the runner on port 8080, verified headless
   Chromium, and known-good checkpoint `v6`; and
-- an AISAR VRS custom OpenAI-compatible model configuration using `ds4-flash`, with a
-  successful real task through the runner and a successful duplicate-delivery check.
+- native Hermes OpenRouter configuration pinned to HTTPS endpoint
+  `https://openrouter.ai/api/v1` and exact model
+  `deepseek/deepseek-v4-flash-0731`, with a successful real task and duplicate-delivery
+  check through the production canary runner;
+- Worker-compatible Sprite HTTP POST exec, exact-name reconciliation for both historical
+  400 and current 409 conflict responses, and repair of partial Playwright installs on
+  the Sprite Ubuntu 26.04 image using the reviewed Ubuntu 24.04 platform build; and
+- pre-route API, authentication, and runtime-mutation burst limits that refuse before
+  Neon or provider work, plus bounded request shape and body-size guards.
 
-The development smoke currently reports healthy state DB, config, model, disk, gateway,
-background queues, and authenticated API checks. A real `ds4-flash` request completed
-with the expected bounded response, and resubmitting the same task returned the original
-Hermes run rather than creating a second run. The initial Node/browser install failed
-against Ubuntu 26.04; pinning `node-gyp` to Hermes's Python and Playwright to its supported
-Ubuntu 24.04 x64 fallback completed the install, and a real Chromium launch plus DOM
-assertion passed.
+The I Run Cafe canary Sprite `aisar-b-3602f62e8aec2e6174b3` is ready at release
+`2026.08.28-2`, pinned to bundle commit
+`b6ce8b7b2d3931b8ce6dcd55726600be7a679feb`. Its authenticated readiness reports both
+runner and Hermes healthy, a real Chromium launch and DOM assertion pass, and the durable
+provision task completed with a baseline checkpoint. A no-tools OpenRouter run returned
+exactly `AISAR_OPENROUTER_OK` using 18,045 input and 11 output tokens. Redelivery returned
+the same completed Hermes run rather than making a second model request.
 
 Production migration `014_runtime_task_execution.sql` was applied transactionally on
 2026-08-27 and verified through both `neondb_owner` and the restricted `aisar_app` role.
-Worker version `99124b8a-9c58-4edf-ad81-e7bb911b7063` is live with all provisioning gates
-false/empty. Its dedicated Sprites secret was rotated from a 10-minute org-scoped token
-created with `flyctl tokens create org`; the exchange token was immediately revoked. The
-live API health check passes, the runtime route rejects unauthenticated requests, and
-deployment did not create a customer Sprite.
+Worker version `b18b6840-c1d9-4fd8-bb57-e20715b95b35` is live with provisioning limited to
+one business canary. Its Sprites credential is organization-scoped and dedicated. Its
+OpenRouter inference key has a $10 weekly hard limit, expires on 2026-09-03, and had used
+$0.000968077 after canary verification. The key, customer prompts, and model results cross
+only HTTPS. The API now applies authentication, general-host, and runtime-mutation burst
+brakes before database/provider work. The live tail confirmed generic WordPress bot scans
+are reaching the API hostname; the general-host guard now covers those paths as well as
+documented `/api/*` routes.
 
-This does **not** make the model path production-ready. The available VRS endpoint is
-plain HTTP on a public IP, so its bearer credential, customer prompts, and model results
-would cross the network without transport encryption. Customer data stays disabled until
-VRS provides HTTPS or an authenticated private tunnel/network path. Production also
-needs a dedicated AISAR credential, controlled secret injection, bounded request retries,
-and measurement of VRS cold-connect reliability.
+This does **not** enable customer Hermes execution. `business.runtime` records readiness,
+but `runtimeFor()` still selects `InlineRuntime`. A ready compute resource is not authority
+to use connectors or tools.
 
 Still gated and therefore intentionally unavailable to customers:
 
-- HTTPS or private-network transport to VRS and a dedicated AISAR production credential;
+- per-runtime OpenRouter keys with hard spend limits, expiry, rotation, and revocation;
 - review or patch the pinned Hermes Node tree's four high-severity `npm audit`
   findings (`nanoid` through `postcss`/`sanitize-html`/`vite`) without silently
   moving the Hermes release;
-- full ready/sleep/wake/restore proof of the automated bootstrap on an allow-listed canary;
+- sleep/wake/restore proof after the successful automated ready/checkpoint canary;
 - incremental Hermes event translation, control-plane cancellation, approval resume, and
   business runtime selection after the canary passes;
 - short-lived AISAR tool grants and proof that Hermes cannot bypass policy;
 - usage/spend ceilings, recovery bundles, reconciliation, upgrade, rollback, and
   deletion operations.
 
-Creating provider compute is not readiness. `business.runtime` remains `aisar-native`
-until runner installation, authenticated readiness, and a baseline checkpoint all pass.
+Zone-level Cloudflare WAF rate limiting also remains open. Worker rate-limit bindings run
+after invocation and are per-colo. The current Wrangler OAuth credential cannot read or
+edit WAF rulesets, so a properly scoped Cloudflare credential or dashboard change is
+required to block API floods before Worker billing and execution.
+
+Creating provider compute is not readiness. The canary's `business.runtime` changed from
+`aisar-native` to `hermes-sprite` only after runner installation, authenticated readiness,
+browser smoke, and a baseline checkpoint passed. Runtime selection remains a separate
+code gate and still resolves customer work to `InlineRuntime`.
 
 ## Decision
 
@@ -424,7 +437,7 @@ deduplication key. Provider invoices reconcile the ledger; they do not replace i
 
 ## Cost model
 
-The following comparison uses pay-as-you-go public rates verified on 2026-08-26. It is a
+The following comparison uses pay-as-you-go public rates rechecked on 2026-08-28. It is a
 planning model, not an invoice forecast. It excludes model tokens, taxes, observability,
 request charges, and platform-specific network extras.
 
@@ -500,6 +513,26 @@ boundary and adds scheduling and noisy-neighbour controls.
 Sources: <https://aws.amazon.com/ec2/pricing/on-demand/> and
 <https://aws.amazon.com/ebs/pricing/>
 
+### Model cost
+
+OpenRouter's live model catalog on 2026-08-28 reports the pinned
+`deepseek/deepseek-v4-flash-0731` endpoint at **$0.06/M input tokens** and **$0.12/M
+output tokens**, with a 1,310,720-token context window, tool calling, and no announced
+expiration. OpenRouter's marketing comparison page showed a lower rate at the same time,
+so operational estimates use the API catalog returned to clients rather than the
+comparison page.
+
+The production canary's 18,045-input/11-output verification consumed $0.000968077 as
+reported by the key metadata endpoint, including any provider-side cache pricing. Model
+cost is currently tiny relative to bootstrap compute, but unbounded agent loops remain a
+larger financial risk than a single inference. The existing canary key is capped at $10
+per week and expires on 2026-09-03; fleet rollout needs separate capped keys and a durable
+per-business usage ledger.
+
+Sources: <https://openrouter.ai/docs/api/api-reference/models/get-models>,
+<https://openrouter.ai/docs/api/api-reference/api-keys/get-current-key>, and
+<https://openrouter.ai/docs/api/api-reference/api-keys/create-keys>
+
 ## Re-evaluation rules
 
 Keep Sprites for the initial isolated-runtime rollout, then measure actual active CPU,
@@ -550,13 +583,25 @@ before those measurements exist.
 
 ## Rollout gates
 
-Do not enable automatic customer provisioning until all are true:
+Do not expand provisioning beyond the explicit canary or select Hermes for customer work
+until every open item is complete.
 
-- one manual `aisar-dev-smoke` Sprite passes Hermes install, run, sleep, wake, and restore;
-- the runtime table and idempotent provisioner are deployed;
-- the run/event spine and `RuntimeAdapter` are deployed;
-- runtime keys are encrypted and never reach the browser;
-- Hermes tools cannot bypass AISAR policy and approvals;
-- per-business runtime and model spend ceilings exist;
-- health reconciliation, upgrade, rollback, and deletion paths are tested; and
-- one read-only AISAR run succeeds before any live connector is enabled.
+Completed:
+
+- development and production-canary Sprites pass pinned Hermes installation and a real
+  no-tools model run;
+- runtime table, idempotent provisioner, run/event spine, `RuntimeAdapter`, encrypted
+  runtime keys, authenticated runner readiness, browser smoke, and baseline checkpoint
+  are deployed; and
+- one read-only OpenRouter run and duplicate-delivery proof succeeded without enabling a
+  live connector path.
+
+Open:
+
+- prove cold sleep, wake, and restore from the recorded checkpoint;
+- prevent Hermes tools from bypassing AISAR policy and approvals with short-lived grants;
+- add durable per-business runtime/model spend ceilings and per-runtime capped model keys;
+- test health reconciliation, upgrade, rollback, and deletion;
+- review the pinned Hermes dependency audit findings; and
+- install a zone-level WAF rate rule for `api.jentera.ai` using a credential with WAF
+  ruleset permission, because Worker bindings cannot prevent invocation charges.

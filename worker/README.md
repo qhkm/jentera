@@ -32,13 +32,15 @@ must be running.
 
 ## What is not live yet
 
-Every customer agent task still runs through `InlineRuntime`. A private development Sprite
-runs the AISAR runner, pinned Hermes, Chromium, and the `ds4-flash` VRS model, but it is
-not connected to a customer. The queued, idempotent bootstrap path and an owner-only
-provisioning endpoint now exist, but four independent production gates default to false:
-provisioning enabled, secure VRS transport ready, canary business allow-list, and
-production bootstrap enabled. Hermes selection stays disabled until the remaining
-tool-policy, metering, reconciliation, recovery, and security gates in
+Every customer agent task still runs through `InlineRuntime`. The allow-listed I Run Cafe
+business now has one ready production-canary Sprite running the AISAR runner, pinned
+Hermes, Chromium, and pinned OpenRouter model `deepseek/deepseek-v4-flash-0731` over
+HTTPS. Provisioning is enabled only for that business through four independent gates:
+explicit provisioning, secure model transport, immutable production bootstrap, and the
+business canary allow-list. The database runtime marker is `hermes-sprite`, but
+`runtimeFor()` intentionally continues to select `InlineRuntime` for all customer work.
+Hermes task selection stays disabled until the remaining tool-policy, metering,
+reconciliation, recovery, and security gates in
 `../docs/superpowers/specs/2026-08-26-hermes-sprites-runtime.md` pass.
 
 ## Runtime boundaries
@@ -61,6 +63,7 @@ npx wrangler secret put CREDENTIAL_KEY
 npx wrangler secret put RATE_LIMIT_PEPPER
 npx wrangler secret put GOOGLE_CLIENT_SECRET
 npx wrangler secret put SPRITES_TOKEN
+npx wrangler secret put AISAR_MODEL_KEY
 ```
 
 `SPRITES_TOKEN` is a dedicated Sprites API token for the AISAR organization and must never
@@ -81,9 +84,30 @@ Worker has a dedicated Sprites token, rotated from this scoped flow with the sho
 exchange token revoked, as of 2026-08-27. See Fly's current
 [access-token guidance](https://fly.io/docs/security/tokens/).
 
-Customer provisioning additionally requires `AISAR_VRS_KEY`, but that secret must not be
-installed until the configured `AISAR_VRS_BASE` uses HTTPS or an authenticated private
-network path. The non-secret gates in `wrangler.toml` intentionally remain false/empty.
+Customer provisioning additionally requires `AISAR_MODEL_KEY`. The current canary key is
+an inference-only OpenRouter key with a $10 weekly ceiling and an expiry of 2026-09-03;
+it must be rotated before expiry. It is injected through Worker secrets and a mode-0600
+runtime file, never the repository, browser, queue payload, or logs. Production fleet
+rollout requires a management-key workflow that issues a separate capped, expiring key
+per runtime rather than copying one shared key into many Sprites.
+
+## Abuse and DDoS protection
+
+The Worker rejects abusive requests before session verification, Hyperdrive, email,
+Queues, Sprites, or model calls:
+
+- `AUTH_BURST`: 5 requests/minute for authentication, plus durable daily IP/address caps;
+- `API_BURST`: 120 requests/minute for the API hostname, including common bot-scan paths;
+- `RUNTIME_MUTATION_BURST`: 3 requests/minute, checked against both session-shaped identity
+  and source address before the owner/canary provisioning route; and
+- 128 KiB declared-body and 8 KiB request-target ceilings, method restrictions, `429`
+  responses with `Retry-After`, no-store error responses, and secret-free bounded logs.
+
+Workers rate-limit bindings execute after a Worker invocation and are per-colo burst
+brakes, not exact global quotas. A Cloudflare zone WAF rate-limiting rule for
+`api.jentera.ai` is still required to stop floods before invocation. The current Wrangler
+OAuth credential has Worker/zone-read access but no WAF ruleset read/edit permission, so
+that zone change could not be safely inspected or applied from this rollout.
 
 Before deploying the Queue bindings for the first time, create the primary queue:
 

@@ -55,6 +55,22 @@ flowchart LR
 - Exposes APIs for onboarding, Ask AISAR, Activity, approvals, and My Business.
 - Never gives the browser direct access to model or connector credentials.
 
+### Edge Abuse and Cost Containment
+
+- Stop floods at the Cloudflare zone WAF before Worker invocation; Worker rate-limit
+  bindings are a second, per-colo brake before session, database, queue, email, runtime,
+  or model work.
+- Use separate limits for authentication, ordinary API traffic, connector webhooks, and
+  high-cost mutations such as provisioning. Key authenticated traffic by stable opaque
+  identity where possible and keep an IP brake on unauthenticated expensive routes.
+- Reject unsupported methods, oversized bodies, and excessive request targets before
+  parsing. Emit bounded, secret-free refusal logs with `Retry-After` and no-store errors.
+- Treat provider throttles as burst protection, not billing truth. Durable per-business
+  ledgers, concurrency admission, capped/expiring model keys, and maximum run/tool budgets
+  are authoritative spend controls.
+- Never retry overload signals blindly. Retry only idempotent operations with bounded
+  exponential backoff and dead-letter inspection; provisioning is exact-name idempotent.
+
 ### Agent Runtime
 
 - Runs each task in a tenant-isolated workspace with explicit tool access.
