@@ -66,8 +66,6 @@ export async function guardApiRequest(
   url: URL,
   cors: Record<string, string>,
 ): Promise<Response | null> {
-  if (!url.pathname.startsWith('/api/')) return null;
-
   if (!['GET', 'POST', 'DELETE', 'HEAD'].includes(request.method)) {
     return response(405, 'method not allowed', cors, { Allow: 'GET, POST, DELETE, HEAD, OPTIONS' });
   }

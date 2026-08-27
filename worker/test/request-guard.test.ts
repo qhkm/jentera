@@ -23,6 +23,23 @@ describe('pre-route API request guard', () => {
     expect(response?.headers.get('Cache-Control')).toBe('no-store');
   });
 
+  it('also throttles bot scans outside the documented API paths', async () => {
+    let calls = 0;
+    const env = testEnv({
+      API_BURST: {
+        limit: async () => {
+          calls += 1;
+          return { success: false };
+        },
+      },
+    });
+    const req = request('/wp-login.php');
+    const response = await guardApiRequest(req, env, new URL(req.url), cors);
+
+    expect(calls).toBe(1);
+    expect(response?.status).toBe(429);
+  });
+
   it('rejects oversized declared bodies without consulting a limiter', async () => {
     let calls = 0;
     const env = testEnv({
