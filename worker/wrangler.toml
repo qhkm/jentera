@@ -56,7 +56,6 @@ AISAR_MODEL_NAME = "deepseek/deepseek-v4-flash-0731"
 # Temporary bridge for the already-provisioned canary only. Expanding the
 # runtime canary list does not expand this list; new runtimes require the
 # management-key workflow and receive their own capped inference key.
-RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS = "d5fb6dbb-428a-4215-86c0-8713d12ed73b"
 
 # Connector credentials are secrets, never vars:
 #   npx wrangler secret put META_APP_SECRET
