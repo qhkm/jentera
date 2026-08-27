@@ -44,6 +44,7 @@ export function createRunner(input) {
           ok: ready,
           release: config.release,
           toolMode: config.toolMode,
+          edgeAuthorizationForwarded: typeof req.headers.authorization === 'string',
           hermes: boundedReadiness(body),
         });
       }

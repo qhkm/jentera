@@ -57,6 +57,17 @@ describe('runtime usage safety ledger', () => {
     expect(count).toBe('0');
   });
 
+  it('charges the reservation instead of zero when abnormal usage is unknown', async () => {
+    const task = await runTask(A);
+    await asTenant(A, (tx) => reserveRuntimeUsage(tx, A, task.id, MODEL));
+    await asTenant(A, (tx) => finalizeRuntimeUsage(tx, A, task.id, 'failed'));
+
+    const snapshot = await asTenant(A, (tx) => runtimeBudgetSnapshot(tx, A));
+    expect(snapshot.usage.inputTokens).toBe(100_000);
+    expect(snapshot.usage.outputTokens).toBe(25_000);
+    expect(snapshot.usage.costMicrousd).toBe(9_000);
+  });
+
   it('does not expose one business usage to another tenant', async () => {
     const task = await runTask(A);
     await asTenant(A, (tx) => reserveRuntimeUsage(tx, A, task.id, MODEL));

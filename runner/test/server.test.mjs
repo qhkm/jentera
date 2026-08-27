@@ -77,7 +77,17 @@ test('detailed readiness requires the per-runtime key', async () => {
   assert.equal((await fetch(`${runnerOrigin}/readyz`)).status, 401);
   const response = await call('/readyz');
   assert.equal(response.status, 200);
-  assert.equal((await response.json()).hermes.status, 'ok');
+  const body = await response.json();
+  assert.equal(body.hermes.status, 'ok');
+  assert.equal(body.edgeAuthorizationForwarded, false);
+
+  const simulatedForward = await fetch(`${runnerOrigin}/readyz`, {
+    headers: {
+      'X-Aisar-Runner-Key': RUNNER_KEY,
+      Authorization: 'Bearer edge-credential-that-must-be-stripped',
+    },
+  });
+  assert.equal((await simulatedForward.json()).edgeAuthorizationForwarded, true);
 });
 
 test('starts one Hermes run for a valid leased AISAR task', async () => {

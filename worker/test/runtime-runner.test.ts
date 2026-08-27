@@ -4,6 +4,7 @@ import { startRun } from '../src/runs';
 import { handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
 import { enqueueRuntimeTask } from '../src/runtime/tasks';
 import { ensureProviderRuntime } from '../src/runtime/provision';
+import { reserveRuntimeUsage } from '../src/runtime/usage';
 import { asOwner, asTenant, testEnv, truncateAll } from './harness';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -56,7 +57,13 @@ describe('durable Hermes run delivery', () => {
         authorization: headers.get('Authorization'),
         runnerKey: headers.get('X-Aisar-Runner-Key'),
       });
-      if (url.endsWith('/readyz')) return response({ ok: true, toolMode: 'no-tools' });
+      if (url.endsWith('/readyz')) {
+        return response({
+          ok: true,
+          toolMode: 'no-tools',
+          edgeAuthorizationForwarded: false,
+        });
+      }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
         return response({ ok: true, hermesRunId: 'run-hermes-1', status: 'started' }, 202);
       }
@@ -84,6 +91,9 @@ describe('durable Hermes run delivery', () => {
     expect(pending).toEqual({
       status: 'queued', remote_run_id: 'run-hermes-1', remote_status: 'running',
     });
+    const [firstPoll] = await asOwner((sql) => sql<{ attempt: number }[]>`
+      select attempt from runtime_task where id = ${task.id}`);
+    expect(firstPoll.attempt).toBe(0);
 
     await asOwner((sql) => sql`
       update runtime_task set available_at = now() where id = ${task.id}`);
@@ -97,6 +107,9 @@ describe('durable Hermes run delivery', () => {
     expect(completed).toEqual({
       status: 'completed', remote_status: 'completed', result: 'The business is ready.',
     });
+    const [secondPoll] = await asOwner((sql) => sql<{ attempt: number }[]>`
+      select attempt from runtime_task where id = ${task.id}`);
+    expect(secondPoll.attempt).toBe(0);
     const [finished] = await asOwner((sql) => sql<{ status: string }[]>`
       select status from run where id = ${run.id}`);
     expect(finished.status).toBe('completed');
@@ -143,7 +156,11 @@ describe('durable Hermes run delivery', () => {
     let fetches = 0;
     const fetcher: typeof fetch = async () => {
       fetches += 1;
-      return response({ ok: true, toolMode: 'no-tools' });
+      return response({
+        ok: true,
+        toolMode: 'no-tools',
+        edgeAuthorizationForwarded: false,
+      });
     };
 
     await expect(handleRuntimeMessage(
@@ -156,6 +173,71 @@ describe('durable Hermes run delivery', () => {
       select t.status as task, r.status as run
         from runtime_task t join run r on r.id = t.run_id where t.id = ${task.id}`);
     expect(state).toEqual({ task: 'exhausted', run: 'failed' });
+  });
+
+  it('stops and meters an existing remote run before exhausting its fifth real failure', async () => {
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.08.27-1',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.27-1', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: env.AISAR_MODEL_NAME,
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `run:${run.id}`, payload: { input: 'hello' },
+    }));
+    await asTenant(A, async (tx) => {
+      await reserveRuntimeUsage(tx, A, task.id, env.AISAR_MODEL_NAME!);
+    });
+    await asOwner((sql) => sql`
+      update runtime_task
+         set attempt = 4, remote_run_id = 'run-existing', remote_status = 'running',
+             started_at = now()
+       where id = ${task.id}`);
+
+    let stops = 0;
+    const fetcher: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith(`/v1/tasks/${task.id}/stop`) && init?.method === 'POST') {
+        stops += 1;
+        return response({
+          ok: true,
+          status: 'stopped',
+          usage: { input_tokens: 12, output_tokens: 3 },
+        });
+      }
+      if (url.endsWith('/readyz')) return response({ error: 'temporary runner failure' }, 503);
+      return response({ error: 'not found' }, 404);
+    };
+
+    await expect(handleRuntimeMessage(
+      env,
+      { version: 1, businessId: A, taskId: task.id },
+      { provider, fetch: fetcher },
+    )).resolves.toEqual({ action: 'ack', reason: 'failed' });
+    expect(stops).toBe(1);
+    const [state] = await asOwner((sql) => sql<{
+      task_status: string; attempt: number; usage_status: string;
+      input_tokens: string; output_tokens: string;
+    }[]>`
+      select t.status as task_status, t.attempt,
+             u.status as usage_status, u.input_tokens::text, u.output_tokens::text
+        from runtime_task t join runtime_usage u on u.runtime_task_id = t.id
+       where t.id = ${task.id}`);
+    expect(state).toEqual({
+      task_status: 'exhausted',
+      attempt: 5,
+      usage_status: 'failed',
+      input_tokens: '12',
+      output_tokens: '3',
+    });
   });
 });
 

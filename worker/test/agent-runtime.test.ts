@@ -181,6 +181,11 @@ describe('provider provisioning', () => {
       provider,
       runnerKey: 'runner-key-for-alpha'.repeat(2),
       hermesApiKey: 'hermes-key-for-alpha',
+      fetch: async () => new Response(JSON.stringify({
+        ok: true,
+        toolMode: 'no-tools',
+        edgeAuthorizationForwarded: false,
+      })),
     });
     expect(row.status).toBe('ready');
     expect(row.latestCheckpointId).toBe('v1');
@@ -196,6 +201,52 @@ describe('provider provisioning', () => {
     const [business] = await asOwner((sql) => sql<{ runtime: string }[]>`
       select runtime from business where id = ${A}`);
     expect(business.runtime).toBe('hermes-sprite');
+  });
+
+  it('does not checkpoint or select Hermes when the edge forwards its bearer token', async () => {
+    class GuardedBootstrapProvider extends LocalRuntimeProvider {
+      checkpointCalls = 0;
+
+      async writeFile() {}
+
+      async exec() {
+        return { exitCode: 0, stdout: '{"ok":true}', stderr: '' };
+      }
+
+      async checkpoint(runtime: ObservedRuntime) {
+        this.checkpointCalls += 1;
+        return super.checkpoint(runtime);
+      }
+    }
+    const provider = new GuardedBootstrapProvider();
+    const runtimeEnv = testEnv({
+      RUNTIME_RELEASE: '2026.08.27-1',
+      RUNTIME_BOOTSTRAP_ENABLED: 'true',
+      RUNTIME_BUNDLE_COMMIT: 'a'.repeat(40),
+      AISAR_MODEL_PROVIDER: 'openrouter',
+      AISAR_MODEL_BASE: 'https://openrouter.ai/api/v1',
+      AISAR_MODEL_KEY: 'dedicated-aisar-openrouter-key',
+      RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS: A,
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+      SPRITES_TOKEN: 'organization-sprite-token',
+    });
+
+    await expect(ensureProviderRuntime(runtimeEnv, A, {
+      provider,
+      runnerKey: 'runner-key-for-alpha'.repeat(2),
+      hermesApiKey: 'hermes-key-for-alpha',
+      fetch: async () => Response.json({
+        ok: true,
+        toolMode: 'no-tools',
+        edgeAuthorizationForwarded: true,
+      }),
+    })).rejects.toThrow('edge credential isolation');
+    expect(provider.checkpointCalls).toBe(0);
+    const runtime = await asTenant(A, (tx) => getRuntime(tx, A));
+    expect(runtime?.status).toBe('error');
+    const [business] = await asOwner((sql) => sql<{ runtime: string }[]>`
+      select runtime from business where id = ${A}`);
+    expect(business.runtime).toBe('aisar-native');
   });
 
   it('refuses to silently move a claimed runtime between providers', async () => {

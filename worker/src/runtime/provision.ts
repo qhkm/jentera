@@ -21,12 +21,14 @@ import {
 } from '../agent-runtime';
 import { FlySpriteProvider } from './fly-sprite-provider';
 import { canBootstrap, type BootstrapRuntimeProvider, type RuntimeProvider } from './provider';
-import { runtimeModelKey } from './openrouter-keys';
+import { finalizeRuntimeModelKeyRotation, runtimeModelKey } from './openrouter-keys';
+import { RunnerClient } from './runner-client';
 
 export interface ProvisionOptions {
   provider?: RuntimeProvider;
   runnerKey?: string;
   hermesApiKey?: string;
+  fetch?: typeof globalThis.fetch;
 }
 
 export function runtimeProviderFor(env: Env): RuntimeProvider {
@@ -80,7 +82,7 @@ export async function ensureProviderRuntime(
     );
     if (env.RUNTIME_BOOTSTRAP_ENABLED !== 'true') return recorded;
     if (!canBootstrap(provider)) throw new Error('runtime provider cannot bootstrap releases');
-    return await bootstrapRuntime(env, businessId, recorded, provider);
+    return await bootstrapRuntime(env, businessId, recorded, provider, options.fetch);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await withTenant(env, businessId, (tx) => markRuntimeFailed(tx, businessId, message));
@@ -93,6 +95,7 @@ async function bootstrapRuntime(
   businessId: string,
   runtime: AgentRuntimeRecord,
   provider: BootstrapRuntimeProvider,
+  fetcher?: typeof globalThis.fetch,
 ): Promise<AgentRuntimeRecord> {
   const commit = env.RUNTIME_BUNDLE_COMMIT?.trim() ?? '';
   const modelProvider = env.AISAR_MODEL_PROVIDER?.trim() ?? '';
@@ -164,8 +167,23 @@ async function bootstrapRuntime(
     ['/home/sprite/aisar/bootstrap.env.in'],
     { env: ['AISAR_BOOTSTRAP_CONTROL_PLANE=1'] },
   );
-  await provider.wake(observed);
-  const checkpoint = await provider.checkpoint(observed, `AISAR runtime ${runtime.desiredRelease}`);
+  const awakened = await provider.wake(observed);
+  const client = new RunnerClient({
+    origin: awakened.url,
+    runnerKey: secrets.runnerKey,
+    edgeToken: runtime.provider === 'fly-sprite' ? env.SPRITES_TOKEN : undefined,
+    fetch: fetcher,
+  });
+  /* Readiness is authenticated and attests both no-tools mode and that Fly's
+     edge did not forward its organization bearer token into the tenant. */
+  await client.ready();
+  const checkpoint = await provider.checkpoint(
+    awakened,
+    `AISAR runtime ${runtime.desiredRelease}`,
+  );
+  /* Only revoke the prior inference key after the Sprite has attested and a
+     known-good checkpoint containing the replacement exists. */
+  await finalizeRuntimeModelKeyRotation(env, businessId);
   await withTenant(env, businessId, (tx) =>
     markRuntimeReady(tx, businessId, runtime.desiredRelease, checkpoint),
   );

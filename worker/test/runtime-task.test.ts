@@ -63,7 +63,7 @@ describe('durable runtime tasks', () => {
       retryRuntimeTask(tx, A, row.id, 'lease-1', 'temporary failure', 0))).toBe(true);
     const retried = await lease(A, row.id, 'lease-2');
     expect(retried.outcome).toBe('leased');
-    if (retried.outcome === 'leased') expect(retried.task.attempt).toBe(2);
+    if (retried.outcome === 'leased') expect(retried.task.attempt).toBe(1);
   });
 
   it('reclaims an expired lease', async () => {
@@ -89,4 +89,3 @@ const queued = (businessId: string, dedupeKey: string) =>
 
 const lease = (businessId: string, taskId: string, token: string) =>
   asTenant(businessId, (tx) => leaseRuntimeTask(tx, businessId, taskId, token));
-

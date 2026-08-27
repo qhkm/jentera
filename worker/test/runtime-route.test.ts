@@ -95,7 +95,7 @@ describe('runtime canary route', () => {
     expect(count).toBe('1');
   });
 
-  it('cancels a durable run exactly once and queues a provider stop', async () => {
+  it('cancels a durable run once and safely repeats its deduplicated stop signal', async () => {
     const send = vi.fn(async () => {});
     const run = await asTenant(A, (tx) => startRun(tx, A, {
       kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite',
@@ -119,7 +119,7 @@ describe('runtime canary route', () => {
       'POST', `/api/runtime/tasks/${task.id}/cancel`, enabled(send), ownerCookie,
     );
     expect(second.status).toBe(200);
-    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(2);
 
     const [state] = await asOwner((sql) => sql<{
       task_status: string; run_status: string; usage_status: string;
@@ -129,7 +129,7 @@ describe('runtime canary route', () => {
         join runtime_usage u on u.runtime_task_id = t.id
        where t.id = ${task.id}`);
     expect(state).toEqual({
-      task_status: 'cancelled', run_status: 'cancelled', usage_status: 'cancelled',
+      task_status: 'cancelled', run_status: 'cancelled', usage_status: 'reserved',
     });
     const [{ count }] = await asOwner((sql) => sql<{ count: string }[]>`
       select count(*)::text as count from runtime_task where kind = 'cancel'`);

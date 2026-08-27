@@ -11,15 +11,16 @@ import { withTenant } from '../db';
 import type { ObservedRuntime, RuntimeProvider } from './provider';
 import { ensureProviderRuntime, runtimeProviderFor } from './provision';
 import { RunnerClient } from './runner-client';
-import { OpenRouterKeyManager } from './openrouter-keys';
+import { OpenRouterKeyManager, runtimeModelKeyNeedsRotation } from './openrouter-keys';
 
 export async function upgradeRuntime(
   env: Env,
   businessId: string,
   provider?: RuntimeProvider,
+  fetcher?: typeof globalThis.fetch,
 ): Promise<void> {
   await withTenant(env, businessId, (tx) => markRuntimeState(tx, businessId, 'upgrading'));
-  await ensureProviderRuntime(env, businessId, { provider });
+  await ensureProviderRuntime(env, businessId, { provider, fetch: fetcher });
 }
 
 export async function reconcileRuntime(
@@ -30,11 +31,15 @@ export async function reconcileRuntime(
 ): Promise<void> {
   const current = await withTenant(env, businessId, (tx) => getRuntime(tx, businessId));
   if (!current?.providerId || !current.providerUrl) {
-    await ensureProviderRuntime(env, businessId, { provider: providerInput });
+    await ensureProviderRuntime(env, businessId, { provider: providerInput, fetch: fetcher });
     return;
   }
   if (current.observedRelease !== current.desiredRelease) {
-    await upgradeRuntime(env, businessId, providerInput);
+    await upgradeRuntime(env, businessId, providerInput, fetcher);
+    return;
+  }
+  if (await runtimeModelKeyNeedsRotation(env, businessId)) {
+    await upgradeRuntime(env, businessId, providerInput, fetcher);
     return;
   }
 

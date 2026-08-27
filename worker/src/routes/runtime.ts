@@ -113,10 +113,12 @@ export async function handleRuntime(
       const outcome = await cancelRuntimeTask(tx, identity.businessId, cancel[1]);
       if (!outcome) return null;
       if (outcome.changed && outcome.task.kind === 'run') {
-        await finalizeRuntimeUsage(tx, identity.businessId, outcome.task.id, 'cancelled', {
-          inputTokens: 0,
-          outputTokens: 0,
-        });
+        if (!outcome.task.remoteRunId) {
+          await finalizeRuntimeUsage(tx, identity.businessId, outcome.task.id, 'cancelled', {
+            inputTokens: 0,
+            outputTokens: 0,
+          });
+        }
         if (outcome.task.runId) {
           await finishRun(tx, identity.businessId, outcome.task.runId, 'cancelled', {
             runtimeTaskId: outcome.task.id,
@@ -129,13 +131,14 @@ export async function handleRuntime(
     if (!cancelled) {
       return json({ ok: false, err: 'runtime task not found' }, { status: 404 }, cors);
     }
-    if (!cancelled.changed && cancelled.task.status !== 'cancelled') {
+    if (!cancelled.changed && !['cancelled', 'exhausted'].includes(cancelled.task.status)) {
       return json({ ok: false, err: 'runtime task is already terminal' }, { status: 409 }, cors);
     }
-    if (cancelled.changed && cancelled.task.remoteRunId) {
+    if (cancelled.task.kind === 'run' && cancelled.task.remoteRunId) {
+      const window = Math.floor(Date.now() / 60_000);
       await publishRuntimeTask(env, identity.businessId, {
         kind: 'cancel',
-        dedupeKey: `cancel:${cancelled.task.id}`,
+        dedupeKey: `cancel:${cancelled.task.id}:${window}`,
         payload: { targetTaskId: cancelled.task.id },
       });
     }
@@ -151,7 +154,7 @@ export async function handleRuntime(
     if (!runtime) return json({ ok: true, status: 'absent' }, {}, cors);
     const task = await publishRuntimeTask(env, identity.businessId, {
       kind: 'delete',
-      dedupeKey: `delete:${runtime.id}`,
+      dedupeKey: `delete:${runtime.id}:${Math.floor(Date.now() / 60_000)}`,
     });
     return json({ ok: true, taskId: task.id, status: task.status }, { status: 202 }, cors);
   }

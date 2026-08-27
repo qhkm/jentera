@@ -14,8 +14,10 @@ const token = process.env.CLOUDFLARE_API_TOKEN;
 
 const rule = {
   ref: REF,
-  description: 'AISAR: cap non-verified dynamic traffic before Worker invocation',
-  expression: '(not cf.client.bot and not starts_with(http.request.uri.path, "/assets/") and not starts_with(http.request.uri.path, "/_next/static/"))',
+  description: 'AISAR: cap non-verified API traffic before Worker invocation',
+  // Free rate-limit rules support Path and Verified Bot, but not Host or Method.
+  // Restricting to /api keeps this zone-wide rule away from the main Pages site.
+  expression: '(not cf.client.bot and (http.request.uri.path eq "/api" or starts_with(http.request.uri.path, "/api/")))',
   action: 'block',
   action_parameters: {
     response: {

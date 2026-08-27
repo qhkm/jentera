@@ -4,10 +4,11 @@ import { withTenant } from '../db';
 import type { RuntimeProvider } from './provider';
 import { runtimeProviderFor } from './provision';
 import { RunnerClient, type RunnerTaskResponse } from './runner-client';
-import type { RuntimeTask } from './tasks';
+import { recordRuntimeTaskRemoteRun, type RuntimeTask } from './tasks';
 import { issueNoToolsGrant } from './tool-grant';
 import { reserveRuntimeUsage } from './usage';
 import { runtimeTaskIsCancelled } from './tasks';
+import { append } from '../runs';
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped']);
 
@@ -29,7 +30,7 @@ export type RuntimeRunOutcome =
       result: unknown;
       summary: string;
       payload: RunPayload;
-      usage: { inputTokens: number; outputTokens: number };
+      usage?: { inputTokens: number; outputTokens: number };
     };
 
 export async function dispatchRuntimeRun(
@@ -105,6 +106,28 @@ export async function dispatchRuntimeRun(
   });
   const remoteRunId = started.hermesRunId;
   if (!remoteRunId) throw new Error('runner returned no Hermes run id');
+  const recorded = await withTenant(env, task.businessId, async (tx) => {
+    const saved = await recordRuntimeTaskRemoteRun(
+      tx,
+      task.businessId,
+      task.id,
+      leaseToken,
+      remoteRunId,
+      boundedStatus(started.status),
+    );
+    if (saved && !task.startedAt && task.runId) {
+      await append(tx, task.businessId, task.runId, 'work.started', {
+        runtimeTaskId: task.id,
+        remoteRunId,
+      });
+    }
+    return saved;
+  });
+  if (!recorded) {
+    await client.stop(task.id).catch(() => {});
+    throw new Error('runtime task lease was lost after Hermes start');
+  }
+  task.remoteRunId = remoteRunId;
 
   const cancelled = await withTenant(env, task.businessId, (tx) =>
     runtimeTaskIsCancelled(tx, task.businessId, task.id));
@@ -133,7 +156,7 @@ export async function dispatchRuntimeRun(
     result: boundedResult(current),
     summary: summaryOf(current),
     payload,
-    usage: usageOf(current),
+    usage: measuredUsageOf(current) ?? undefined,
   };
 }
 
@@ -142,19 +165,32 @@ export async function stopRuntimeTask(
   businessId: string,
   taskId: string,
   fetcher?: typeof globalThis.fetch,
-): Promise<void> {
-  const { runtime, secrets } = await withTenant(env, businessId, async (tx) => ({
-    runtime: await getRuntime(tx, businessId),
-    secrets: await getRuntimeSecrets(env, tx, businessId),
-  }));
-  if (!runtime?.providerUrl) return;
+): Promise<RunnerTaskResponse | null> {
+  const { runtime, secrets } = await withTenant(env, businessId, async (tx) => {
+    const runtime = await getRuntime(tx, businessId);
+    return {
+      runtime,
+      secrets: runtime ? await getRuntimeSecrets(env, tx, businessId) : null,
+    };
+  });
+  if (!runtime?.providerUrl) return null;
+  if (!secrets) return null;
   const client = new RunnerClient({
     origin: runtime.providerUrl,
     runnerKey: secrets.runnerKey,
     edgeToken: runtime.provider === 'fly-sprite' ? env.SPRITES_TOKEN : undefined,
     fetch: fetcher,
   });
-  await client.stop(taskId);
+  return client.stop(taskId);
+}
+
+export function measuredUsageOf(
+  response: RunnerTaskResponse,
+): { inputTokens: number; outputTokens: number } | null {
+  const usage = response.usage;
+  if (!usage || typeof usage !== 'object' ||
+      !validToken(usage.input_tokens) || !validToken(usage.output_tokens)) return null;
+  return { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens };
 }
 
 function runPayload(value: unknown): RunPayload {
@@ -195,15 +231,6 @@ function summaryOf(response: RunnerTaskResponse): string {
   return (typeof result === 'string' ? result : JSON.stringify(result)).slice(0, 500);
 }
 
-function usageOf(response: RunnerTaskResponse): { inputTokens: number; outputTokens: number } {
-  const usage = response.usage;
-  if (!usage || typeof usage !== 'object') return { inputTokens: 0, outputTokens: 0 };
-  return {
-    inputTokens: token(usage.input_tokens),
-    outputTokens: token(usage.output_tokens),
-  };
-}
-
-function token(value: unknown): number {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+function validToken(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }

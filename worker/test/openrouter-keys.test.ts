@@ -5,7 +5,11 @@ import {
   runtimeName,
   storeRuntimeModelCredential,
 } from '../src/agent-runtime';
-import { OpenRouterKeyManager, runtimeModelKey } from '../src/runtime/openrouter-keys';
+import {
+  finalizeRuntimeModelKeyRotation,
+  OpenRouterKeyManager,
+  runtimeModelKey,
+} from '../src/runtime/openrouter-keys';
 import { asOwner, asTenant, testEnv, truncateAll } from './harness';
 
 const A = '99999999-9999-4999-8999-999999999999';
@@ -139,8 +143,7 @@ describe('per-runtime OpenRouter keys', () => {
         .mockResolvedValue(undefined),
     } as unknown as OpenRouterKeyManager;
 
-    await expect(runtimeModelKey(env, A, name, { manager }))
-      .rejects.toThrow('temporary OpenRouter failure');
+    await expect(runtimeModelKey(env, A, name, { manager })).resolves.toBe(INFERENCE_KEY);
     const pending = await asTenant(A, (tx) => getRuntimeModelCredential(env, tx, A));
     expect(pending).toMatchObject({
       key: INFERENCE_KEY,
@@ -148,7 +151,9 @@ describe('per-runtime OpenRouter keys', () => {
       pendingRevocationHash: 'e'.repeat(64),
     });
 
-    await expect(runtimeModelKey(env, A, name, { manager })).resolves.toBe(INFERENCE_KEY);
+    await expect(finalizeRuntimeModelKeyRotation(env, A, { manager }))
+      .rejects.toThrow('temporary OpenRouter failure');
+    await expect(finalizeRuntimeModelKeyRotation(env, A, { manager })).resolves.toBeUndefined();
     expect(manager.create).toHaveBeenCalledTimes(1);
     const cleaned = await asTenant(A, (tx) => getRuntimeModelCredential(env, tx, A));
     expect(cleaned?.pendingRevocationHash).toBeNull();

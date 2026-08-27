@@ -20,8 +20,8 @@ import {
   type RuntimeTask,
   type RuntimeTaskKind,
 } from './tasks';
-import { append, finishRun, recordWork } from '../runs';
-import { dispatchRuntimeRun, stopRuntimeTask } from './run-task';
+import { finishRun, recordWork } from '../runs';
+import { dispatchRuntimeRun, measuredUsageOf, stopRuntimeTask } from './run-task';
 import { finalizeRuntimeUsage, RuntimeBudgetExceeded } from './usage';
 import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
 
@@ -73,19 +73,22 @@ export async function handleRuntimeMessage(
   if (lease.outcome === 'missing') return { action: 'ack', reason: 'missing' };
   if (lease.outcome === 'done') return { action: 'ack', reason: 'already_done' };
   if (lease.outcome === 'busy') {
-    return { action: 'retry', delaySeconds: 10, reason: 'business runtime is busy' };
+    return { action: 'requeue', delaySeconds: 10, reason: 'business runtime is busy' };
   }
 
   try {
     switch (lease.task.kind) {
       case 'provision':
-        await ensureProviderRuntime(env, message.businessId, { provider: options.provider });
+        await ensureProviderRuntime(env, message.businessId, {
+          provider: options.provider,
+          fetch: options.fetch,
+        });
         break;
       case 'reconcile':
         await reconcileRuntime(env, message.businessId, options.provider, options.fetch);
         break;
       case 'upgrade':
-        await upgradeRuntime(env, message.businessId, options.provider);
+        await upgradeRuntime(env, message.businessId, options.provider, options.fetch);
         break;
       case 'delete':
         await deleteRuntime(env, message.businessId, options.provider);
@@ -95,19 +98,22 @@ export async function handleRuntimeMessage(
         if (typeof payload?.targetTaskId !== 'string' || !uuid(payload.targetTaskId)) {
           throw new Error('runtime cancel target is invalid');
         }
-        await stopRuntimeTask(env, message.businessId, payload.targetTaskId, options.fetch);
+        const stopped = await stopRuntimeTask(
+          env, message.businessId, payload.targetTaskId, options.fetch,
+        );
+        await withTenant(env, message.businessId, (tx) => finalizeRuntimeUsage(
+          tx,
+          message.businessId,
+          payload.targetTaskId as string,
+          'cancelled',
+          stopped ? measuredUsageOf(stopped) ?? undefined : undefined,
+        ));
         break;
       }
       case 'run': {
         const outcome = await dispatchRuntimeRun(env, lease.task, leaseToken, options);
         if (outcome.state === 'pending') {
           const deferred = await withTenant(env, message.businessId, async (tx) => {
-            if (!lease.task.remoteRunId && lease.task.runId) {
-              await append(tx, message.businessId, lease.task.runId, 'work.started', {
-                runtimeTaskId: lease.task.id,
-                remoteRunId: outcome.remoteRunId,
-              });
-            }
             return deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
               remoteRunId: outcome.remoteRunId,
               remoteStatus: outcome.remoteStatus,
@@ -116,18 +122,12 @@ export async function handleRuntimeMessage(
           if (!deferred) {
             await stopRuntimeTask(env, message.businessId, message.taskId, options.fetch)
               .catch(() => {});
-            return { action: 'retry', delaySeconds: 10, reason: 'runtime task lease was lost' };
+            return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
           }
           return { action: 'requeue', delaySeconds: 5, reason: 'Hermes run is still active' };
         }
 
         const completed = await withTenant(env, message.businessId, async (tx) => {
-          if (!lease.task.remoteRunId && lease.task.runId) {
-            await append(tx, message.businessId, lease.task.runId, 'work.started', {
-              runtimeTaskId: lease.task.id,
-              remoteRunId: outcome.remoteRunId,
-            });
-          }
           const done = await completeRuntimeTask(
             tx,
             message.businessId,
@@ -175,7 +175,7 @@ export async function handleRuntimeMessage(
         if (!completed) {
           await stopRuntimeTask(env, message.businessId, message.taskId, options.fetch)
             .catch(() => {});
-          return { action: 'retry', delaySeconds: 10, reason: 'runtime task lease was lost' };
+          return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
         }
         return { action: 'ack', reason: 'completed' };
       }
@@ -193,8 +193,15 @@ export async function handleRuntimeMessage(
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     const terminal = error instanceof RuntimeBudgetExceeded ||
-      lease.task.attempt >= MAX_TASK_ATTEMPTS;
+      lease.task.attempt + 1 >= MAX_TASK_ATTEMPTS;
     if (terminal) {
+      let measured: { inputTokens: number; outputTokens: number } | undefined;
+      if (lease.task.kind === 'run' && lease.task.remoteRunId) {
+        const stopped = await stopRuntimeTask(
+          env, message.businessId, message.taskId, options.fetch,
+        ).catch(() => null);
+        measured = stopped ? measuredUsageOf(stopped) ?? undefined : undefined;
+      }
       await withTenant(env, message.businessId, async (tx) => {
         await exhaustRuntimeTask(tx, message.businessId, message.taskId, leaseToken, reason);
         if (lease.task.kind === 'run') {
@@ -203,7 +210,7 @@ export async function handleRuntimeMessage(
             message.businessId,
             message.taskId,
             'failed',
-            { inputTokens: 0, outputTokens: 0 },
+            measured,
           );
           if (lease.task.runId) {
             await finishRun(tx, message.businessId, lease.task.runId, 'failed', {
@@ -218,7 +225,7 @@ export async function handleRuntimeMessage(
     await withTenant(env, message.businessId, (tx) =>
       retryRuntimeTask(tx, message.businessId, message.taskId, leaseToken, reason),
     );
-    return { action: 'retry', delaySeconds: 30, reason };
+    return { action: 'requeue', delaySeconds: 30, reason };
   }
 }
 

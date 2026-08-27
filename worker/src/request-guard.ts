@@ -83,15 +83,27 @@ export async function guardApiRequest(
   }
 
   const identity = requestIdentity(request, url);
+  const runtimeMutation = isRuntimeMutation(request.method, url.pathname);
   try {
-    const key = await opaqueKey(env, `api:${identity}`);
-    const general = await env.API_BURST.limit({ key });
-    if (!general.success) {
+    /* The cookie is not authenticated yet, so it cannot be the only key: a
+       bot could rotate fake cookie values. The source-address brake remains
+       stable across those rotations. */
+    const [byIdentity, byIp] = await Promise.all([
+      opaqueKey(env, `api:${identity}`).then((key) => env.API_BURST.limit({ key })),
+      opaqueKey(env, `api-ip:${clientIp(request)}`).then((key) => env.API_BURST.limit({ key })),
+    ]);
+    if (!byIdentity.success || !byIp.success) {
       console.warn(`[request-guard] api burst refused path=${url.pathname} ray=${request.headers.get('CF-Ray') ?? 'none'}`);
       return response(429, 'too many requests', cors, { 'Retry-After': '60' });
     }
+  } catch (error) {
+    /* The broad limiter is defence in depth behind the zone WAF. Ordinary
+       reads and health checks remain available during a binding outage. */
+    console.error(`[request-guard] general limiter unavailable: ${String(error)}`);
+  }
 
-    if (isRuntimeMutation(request.method, url.pathname)) {
+  if (runtimeMutation) {
+    try {
       /* Provisioning is rare and expensive. Check both the session-shaped
          identity and the source address so rotating fake cookies cannot buy
          unlimited provider API calls before authentication rejects them. */
@@ -105,12 +117,12 @@ export async function guardApiRequest(
         console.warn(`[request-guard] runtime mutation refused ray=${request.headers.get('CF-Ray') ?? 'none'}`);
         return response(429, 'too many runtime requests', cors, { 'Retry-After': '60' });
       }
+    } catch (error) {
+      /* Expensive provider mutations remain fail-closed even if their
+         dedicated limiter binding is unavailable. */
+      console.error(`[request-guard] runtime limiter unavailable: ${String(error)}`);
+      return response(503, 'request protection unavailable', cors, { 'Retry-After': '60' });
     }
-  } catch (error) {
-    /* A broken protection binding must not silently turn an expensive route
-       into an unprotected one. Returning 503 also avoids touching Neon. */
-    console.error(`[request-guard] limiter unavailable: ${String(error)}`);
-    return response(503, 'request protection unavailable', cors, { 'Retry-After': '60' });
   }
 
   return null;

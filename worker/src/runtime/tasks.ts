@@ -111,7 +111,8 @@ export async function leaseRuntimeTask(
      lease index decides whether this business may start something. */
   await tx`
     update runtime_task
-       set status = 'queued', lease_token = null, lease_expires_at = null,
+       set status = 'failed', lease_token = null, lease_expires_at = null,
+           attempt = attempt + 1, available_at = now(),
            last_error = 'lease expired', updated_at = now()
      where business_id = ${businessId} and status = 'leased'
        and lease_expires_at <= now()`;
@@ -136,7 +137,7 @@ export async function leaseRuntimeTask(
     update runtime_task
        set status = 'leased', lease_token = ${leaseToken},
            lease_expires_at = now() + (${leaseSeconds} * interval '1 second'),
-           attempt = attempt + 1, last_error = null, updated_at = now()
+           last_error = null, updated_at = now()
      where id = ${taskId} and business_id = ${businessId}
        and status in ('queued','failed') and available_at <= now()
     returning ${tx.unsafe(cols)}`;
@@ -184,6 +185,26 @@ export async function deferRuntimeTask(
   return rows.length === 1;
 }
 
+/** Persist the remote identity before the first status poll. A timeout after
+    Hermes accepts work must never leave an unaddressable paid run. */
+export async function recordRuntimeTaskRemoteRun(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+  leaseToken: string,
+  remoteRunId: string,
+  remoteStatus: string,
+): Promise<boolean> {
+  const rows = await tx`
+    update runtime_task
+       set remote_run_id = ${remoteRunId}, remote_status = ${remoteStatus},
+           started_at = coalesce(started_at, now()), updated_at = now()
+     where id = ${taskId} and business_id = ${businessId}
+       and status = 'leased' and lease_token = ${leaseToken}
+    returning id`;
+  return rows.length === 1;
+}
+
 export async function retryRuntimeTask(
   tx: postgres.TransactionSql,
   businessId: string,
@@ -195,6 +216,7 @@ export async function retryRuntimeTask(
   const rows = await tx`
     update runtime_task
        set status = 'failed', lease_token = null, lease_expires_at = null,
+           attempt = attempt + 1,
            available_at = now() + (${delaySeconds} * interval '1 second'),
            last_error = ${error.slice(0, 1000)}, updated_at = now()
      where id = ${taskId} and business_id = ${businessId}
@@ -214,6 +236,7 @@ export async function exhaustRuntimeTask(
   const rows = await tx`
     update runtime_task
        set status = 'exhausted', lease_token = null, lease_expires_at = null,
+           attempt = attempt + 1,
            last_error = ${error.slice(0, 1000)}, completed_at = now(), updated_at = now()
      where id = ${taskId} and business_id = ${businessId}
        and status = 'leased' and lease_token = ${leaseToken}

@@ -1,6 +1,7 @@
 import type { Env } from '../env';
 import {
   getRuntimeModelCredential,
+  getRuntime,
   markRuntimeModelKeyRevoked,
   storeRuntimeModelCredential,
   type RuntimeModelCredential,
@@ -100,10 +101,9 @@ export async function runtimeModelKey(
 
   const managementKey = env.AISAR_OPENROUTER_MANAGEMENT_KEY?.trim() ?? '';
   const manager = options.manager ?? (managementKey ? new OpenRouterKeyManager(managementKey) : null);
-  if (current?.pendingRevocationHash) {
-    if (!manager) throw new Error('OpenRouter management key is required for pending revocation');
-    await revokeAndForget(env, businessId, manager, current.pendingRevocationHash);
-  }
+  /* A pending hash means the new current key is staged but has not yet been
+     proven inside the Sprite. Keep the old key alive until bootstrap passes. */
+  if (current?.pendingRevocationHash) return current.key;
   if (current && current.expiresAt.getTime() > rotateAt) return current.key;
 
   if (!manager) {
@@ -122,8 +122,36 @@ export async function runtimeModelKey(
     await manager.revoke(created.hash).catch(() => {});
     throw error;
   }
-  if (current) await revokeAndForget(env, businessId, manager, current.hash);
   return created.key;
+}
+
+export async function runtimeModelKeyNeedsRotation(
+  env: Env,
+  businessId: string,
+): Promise<boolean> {
+  if (!env.AISAR_OPENROUTER_MANAGEMENT_KEY?.trim()) return false;
+  const { runtime, current } = await withTenant(env, businessId, async (tx) => ({
+    runtime: await getRuntime(tx, businessId),
+    current: await getRuntimeModelCredential(env, tx, businessId),
+  }));
+  if (!runtime) return false;
+  if (!current || current.pendingRevocationHash) return true;
+  return current.expiresAt.getTime() <=
+    Date.now() + ROTATE_BEFORE_DAYS * 24 * 60 * 60 * 1_000;
+}
+
+export async function finalizeRuntimeModelKeyRotation(
+  env: Env,
+  businessId: string,
+  options: { manager?: OpenRouterKeyManager } = {},
+): Promise<void> {
+  const current = await withTenant(env, businessId, (tx) =>
+    getRuntimeModelCredential(env, tx, businessId));
+  if (!current?.pendingRevocationHash) return;
+  const managementKey = env.AISAR_OPENROUTER_MANAGEMENT_KEY?.trim() ?? '';
+  const manager = options.manager ?? (managementKey ? new OpenRouterKeyManager(managementKey) : null);
+  if (!manager) throw new Error('OpenRouter management key is required for pending revocation');
+  await revokeAndForget(env, businessId, manager, current.pendingRevocationHash);
 }
 
 async function revokeAndForget(

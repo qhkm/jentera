@@ -17,6 +17,8 @@ import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
 import { handleRuntimeMessage, type RuntimeQueueMessage } from './runtime/consumer';
 import { guardApiRequest } from './request-guard';
+import { runtimeModelKeyNeedsRotation } from './runtime/openrouter-keys';
+import { publishRuntimeTask } from './runtime/consumer';
 
 function cors(env: Env, origin: string | null): Record<string, string> {
   const allowed = (env.ALLOWED_ORIGINS ?? '')
@@ -128,7 +130,28 @@ export default {
         }
       } catch (error) {
         console.error(`[runtime-queue] ${String(error)}`);
-        message.retry({ delaySeconds: 30 });
+        message.retry({ delaySeconds: 60 });
+      }
+    }
+  },
+
+  async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+    /* This scans only the explicit canary set and reads Postgres; it does not
+       wake a Sprite unless its model key is missing, staged, or within the
+       seven-day rotation window. A fleet scheduler will use its own index. */
+    const canaries = new Set((env.RUNTIME_CANARY_BUSINESS_IDS ?? '')
+      .split(',').map((value) => value.trim()).filter(uuid));
+    const day = Math.floor(Date.now() / (24 * 60 * 60 * 1_000));
+    for (const businessId of canaries) {
+      try {
+        if (!await runtimeModelKeyNeedsRotation(env, businessId)) continue;
+        await publishRuntimeTask(env, businessId, {
+          kind: 'upgrade',
+          dedupeKey: `model-key-rotation:${businessId}:${day}`,
+          payload: { reason: 'model_key_rotation' },
+        });
+      } catch (error) {
+        console.error(`[runtime-rotation] business=${businessId} error=${logValue(String(error))}`);
       }
     }
   },
@@ -136,4 +159,9 @@ export default {
 
 function logValue(value: string): string {
   return value.replace(/[\r\n\t\u0000-\u001f]/g, ' ').slice(0, 500);
+}
+
+function uuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    .test(value);
 }

@@ -54,7 +54,7 @@ describe('the runtime queue consumer', () => {
       { version: 1, businessId: A, taskId: task.id },
       { provider: broken },
     );
-    expect(result.action).toBe('retry');
+    expect(result.action).toBe('requeue');
     const row = await taskStatus(task.id);
     expect(row.status).toBe('failed');
     expect(row.lease_token).toBeNull();
@@ -83,7 +83,7 @@ describe('the runtime queue consumer', () => {
     const message = { version: 1 as const, businessId: A, taskId: task.id };
     for (let attempt = 1; attempt <= 4; attempt += 1) {
       const result = await handleRuntimeMessage(env, message, { provider: broken });
-      expect(result.action).toBe('retry');
+      expect(result.action).toBe('requeue');
       await asOwner((sql) => sql`
         update runtime_task set available_at = now() where id = ${task.id}`);
     }

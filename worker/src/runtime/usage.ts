@@ -114,14 +114,25 @@ export async function finalizeRuntimeUsage(
   businessId: string,
   taskId: string,
   status: 'completed' | 'failed' | 'cancelled',
-  usage: { inputTokens: number; outputTokens: number },
+  usage?: { inputTokens: number; outputTokens: number },
 ): Promise<void> {
-  const [row] = await tx<{ model: string }[]>`
-    select model from runtime_usage
+  const [row] = await tx<{
+    model: string;
+    reserved_input_tokens: string;
+    reserved_output_tokens: string;
+  }[]>`
+    select model, reserved_input_tokens::text, reserved_output_tokens::text
+      from runtime_usage
      where business_id = ${businessId} and runtime_task_id = ${taskId}`;
   if (!row) return;
-  const inputTokens = tokenCount(usage.inputTokens);
-  const outputTokens = tokenCount(usage.outputTokens);
+  /* Unknown abnormal termination is charged at the reserved ceiling. This is
+     deliberately conservative: recording zero would create unmetered spend. */
+  const inputTokens = usage
+    ? tokenCount(usage.inputTokens)
+    : number(row.reserved_input_tokens);
+  const outputTokens = usage
+    ? tokenCount(usage.outputTokens)
+    : number(row.reserved_output_tokens);
   const cost = modelCostMicrousd(row.model, inputTokens, outputTokens);
   await tx`
     update runtime_usage

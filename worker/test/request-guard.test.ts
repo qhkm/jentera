@@ -36,7 +36,7 @@ describe('pre-route API request guard', () => {
     const req = request('/wp-login.php');
     const response = await guardApiRequest(req, env, new URL(req.url), cors);
 
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
     expect(response?.status).toBe(429);
   });
 
@@ -100,9 +100,19 @@ describe('pre-route API request guard', () => {
     expect(mutations).toBe(2);
   });
 
-  it('fails closed when request protection is unavailable', async () => {
+  it('keeps ordinary API reads available when the broad limiter is unavailable', async () => {
     const env = testEnv({
       API_BURST: { limit: async () => { throw new Error('binding failed'); } },
+    });
+    const req = request('/api/runtime/provision', { method: 'POST' });
+    const response = await guardApiRequest(req, env, new URL(req.url), cors);
+
+    expect(response).toBeNull();
+  });
+
+  it('still fails closed when dedicated runtime protection is unavailable', async () => {
+    const env = testEnv({
+      RUNTIME_MUTATION_BURST: { limit: async () => { throw new Error('binding failed'); } },
     });
     const req = request('/api/runtime/provision', { method: 'POST' });
     const response = await guardApiRequest(req, env, new URL(req.url), cors);

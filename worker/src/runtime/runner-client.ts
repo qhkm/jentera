@@ -31,6 +31,7 @@ export interface RunnerTaskResponse {
   error?: unknown;
   usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
   toolMode?: string;
+  edgeAuthorizationForwarded?: boolean;
 }
 
 /** Authenticated client for AISAR's narrow per-business runner API. */
@@ -57,6 +58,9 @@ export class RunnerClient {
     const body = await this.request('/readyz');
     if (body.toolMode !== 'no-tools') {
       throw new Error('runner did not attest the required no-tools mode');
+    }
+    if (body.edgeAuthorizationForwarded !== false) {
+      throw new Error('runner did not attest edge credential isolation');
     }
   }
 
