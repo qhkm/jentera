@@ -171,9 +171,10 @@ describe('provider provisioning', () => {
       RUNTIME_RELEASE: '2026.08.27-1',
       RUNTIME_BOOTSTRAP_ENABLED: 'true',
       RUNTIME_BUNDLE_COMMIT: 'a'.repeat(40),
-      AISAR_VRS_BASE: 'https://vrs.example/v1',
-      AISAR_VRS_KEY: 'dedicated-aisar-vrs-key',
-      AISAR_VRS_MODEL: 'ds4-flash',
+      AISAR_MODEL_PROVIDER: 'openrouter',
+      AISAR_MODEL_BASE: 'https://openrouter.ai/api/v1',
+      AISAR_MODEL_KEY: 'dedicated-aisar-openrouter-key',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
     });
     const row = await ensureProviderRuntime(runtimeEnv, A, {
       provider,
@@ -187,7 +188,7 @@ describe('provider provisioning', () => {
       path: '/home/sprite/aisar/bootstrap.env.in',
       mode: 0o600,
     });
-    expect(provider.writes[0].data).not.toContain('dedicated-aisar-vrs-key');
+    expect(provider.writes[0].data).not.toContain('dedicated-aisar-openrouter-key');
     expect(provider.commands.map((entry) => entry.command)).toEqual([
       '/bin/bash', '/home/sprite/aisar/runner/bootstrap-runtime.sh',
     ]);

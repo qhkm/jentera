@@ -48,7 +48,7 @@ export async function handleRuntime(
     if (env.RUNTIME_PROVISIONING_ENABLED !== 'true') {
       return json({ ok: false, err: 'runtime provisioning is disabled' }, { status: 503 }, cors);
     }
-    if (env.VRS_TRANSPORT_READY !== 'true') {
+    if (env.MODEL_TRANSPORT_READY !== 'true') {
       return json({ ok: false, err: 'secure model transport is not ready' }, { status: 503 }, cors);
     }
     if (env.RUNTIME_BOOTSTRAP_ENABLED !== 'true') {

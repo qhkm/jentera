@@ -94,12 +94,19 @@ async function bootstrapRuntime(
   provider: BootstrapRuntimeProvider,
 ): Promise<AgentRuntimeRecord> {
   const commit = env.RUNTIME_BUNDLE_COMMIT?.trim() ?? '';
-  const vrsBase = env.AISAR_VRS_BASE?.trim() ?? '';
-  const vrsKey = env.AISAR_VRS_KEY?.trim() ?? '';
-  const vrsModel = env.AISAR_VRS_MODEL?.trim() || 'ds4-flash';
+  const modelProvider = env.AISAR_MODEL_PROVIDER?.trim() ?? '';
+  const modelBase = env.AISAR_MODEL_BASE?.trim() ?? '';
+  const modelKey = env.AISAR_MODEL_KEY?.trim() ?? '';
+  const modelName = env.AISAR_MODEL_NAME?.trim() ?? '';
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('RUNTIME_BUNDLE_COMMIT is invalid');
-  if (!vrsBase.startsWith('https://')) throw new Error('AISAR VRS must use HTTPS');
-  if (vrsKey.length < 8) throw new Error('AISAR_VRS_KEY is unavailable');
+  if (modelProvider !== 'openrouter') throw new Error('AISAR model provider is not allowed');
+  if (modelBase !== 'https://openrouter.ai/api/v1') {
+    throw new Error('AISAR OpenRouter endpoint is not pinned');
+  }
+  if (modelKey.length < 20) throw new Error('AISAR_MODEL_KEY is unavailable');
+  if (!/^[A-Za-z0-9._~-]+\/[A-Za-z0-9._:~-]+$/.test(modelName)) {
+    throw new Error('AISAR model name is invalid');
+  }
   if (!runtime.providerId || !runtime.providerUrl) throw new Error('provider runtime is incomplete');
 
   const secrets = await withTenant(env, businessId, (tx) =>
@@ -110,9 +117,10 @@ async function bootstrapRuntime(
     field('RUNTIME_RELEASE_B64', runtime.desiredRelease),
     field('RUNNER_KEY_B64', secrets.runnerKey),
     field('HERMES_KEY_B64', secrets.hermesApiKey),
-    field('VRS_BASE_B64', vrsBase),
-    field('VRS_KEY_B64', vrsKey),
-    field('VRS_MODEL_B64', vrsModel),
+    field('MODEL_PROVIDER_B64', modelProvider),
+    field('MODEL_BASE_B64', modelBase),
+    field('MODEL_KEY_B64', modelKey),
+    field('MODEL_NAME_B64', modelName),
     field('HERMES_TAG_B64', 'v2026.8.19'),
     field('HERMES_COMMIT_B64', 'fcbd1076a93841fa88855acce810e342a5b78101'),
   ].join('\n') + '\n';
@@ -129,7 +137,7 @@ async function bootstrapRuntime(
   const assets = [
     'runner/src/server.mjs',
     'runner/bin/browser-smoke.mjs',
-    'runner/bin/configure-vrs.py',
+    'runner/bin/configure-model-provider.py',
     'runner/bin/hermes-service.sh',
     'runner/bin/runner-service.sh',
     'runner/bin/bootstrap-runtime.sh',
@@ -142,7 +150,7 @@ async function bootstrapRuntime(
       return `curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 ` +
         `'${raw}/${asset}' --output '/home/sprite/aisar/runner/${target}'`;
     }),
-    'chmod 755 /home/sprite/aisar/runner/configure-vrs.py ' +
+    'chmod 755 /home/sprite/aisar/runner/configure-model-provider.py ' +
       '/home/sprite/aisar/runner/hermes-service.sh ' +
       '/home/sprite/aisar/runner/runner-service.sh ' +
       '/home/sprite/aisar/runner/bootstrap-runtime.sh',

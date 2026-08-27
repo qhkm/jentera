@@ -48,7 +48,7 @@ describe('runtime canary route', () => {
     expect((await insecure.json()).err).toMatch(/secure model transport/);
     const noBootstrap = await call('POST', '/api/runtime/provision', testEnv({
       RUNTIME_PROVISIONING_ENABLED: 'true',
-      VRS_TRANSPORT_READY: 'true',
+      MODEL_TRANSPORT_READY: 'true',
     }), ownerCookie);
     expect(noBootstrap.status).toBe(503);
     expect((await noBootstrap.json()).err).toMatch(/bootstrap is disabled/);
@@ -57,7 +57,7 @@ describe('runtime canary route', () => {
   it('requires the session-derived business to be in the canary', async () => {
     const response = await call('POST', '/api/runtime/provision', testEnv({
       RUNTIME_PROVISIONING_ENABLED: 'true',
-      VRS_TRANSPORT_READY: 'true',
+      MODEL_TRANSPORT_READY: 'true',
       RUNTIME_BOOTSTRAP_ENABLED: 'true',
       RUNTIME_CANARY_BUSINESS_IDS: '22222222-2222-4222-8222-222222222222',
     }), ownerCookie);
@@ -84,7 +84,7 @@ function enabled(send = vi.fn(async () => {})): Env {
   return testEnv({
     RUNTIME_RELEASE: '2026.08.27-1',
     RUNTIME_PROVISIONING_ENABLED: 'true',
-    VRS_TRANSPORT_READY: 'true',
+    MODEL_TRANSPORT_READY: 'true',
     RUNTIME_BOOTSTRAP_ENABLED: 'true',
     RUNTIME_CANARY_BUSINESS_IDS: A,
     RUNTIME_QUEUE: { send },

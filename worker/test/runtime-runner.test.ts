@@ -28,7 +28,7 @@ describe('durable Hermes run delivery', () => {
       kind: 'ask',
       triggerShape: 'owner.ask',
       runtime: 'hermes-sprite',
-      model: 'ds4-flash',
+      model: 'deepseek/deepseek-v4-flash-0731',
     }));
     const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
       kind: 'run',

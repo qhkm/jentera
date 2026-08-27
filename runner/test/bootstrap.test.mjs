@@ -20,17 +20,17 @@ test('bootstrap treats its transfer as data, not shell code', async () => {
   assert.match(result.stderr, /unknown field/);
 });
 
-test('bootstrap refuses plaintext VRS before installing anything', async () => {
-  const transfer = await tempTransfer(fields({ vrsBase: 'http://model.internal/v1' }));
+test('bootstrap refuses an unreviewed model endpoint before installing anything', async () => {
+  const transfer = await tempTransfer(fields({ modelBase: 'https://model.internal/v1' }));
   const result = run(transfer);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /refusing plaintext VRS/);
+  assert.match(result.stderr, /base URL is not pinned/);
 });
 
 function run(transfer) {
   return spawnSync('bash', [SCRIPT, transfer], {
     encoding: 'utf8',
-    env: { ...process.env, AISAR_ALLOW_INSECURE_VRS: '0' },
+    env: process.env,
   });
 }
 
@@ -48,9 +48,10 @@ function fields(overrides = {}) {
     runtimeRelease: '2026.08.27-1',
     runnerKey: 'r'.repeat(64),
     hermesKey: 'h'.repeat(64),
-    vrsBase: 'https://model.internal/v1',
-    vrsKey: 'v'.repeat(32),
-    vrsModel: 'ds4-flash',
+    modelProvider: 'openrouter',
+    modelBase: 'https://openrouter.ai/api/v1',
+    modelKey: 'o'.repeat(64),
+    modelName: 'deepseek/deepseek-v4-flash-0731',
     hermesTag: 'v2026.8.19',
     hermesCommit: 'fcbd1076a93841fa88855acce810e342a5b78101',
     ...overrides,
@@ -60,9 +61,10 @@ function fields(overrides = {}) {
     ['RUNTIME_RELEASE_B64', input.runtimeRelease],
     ['RUNNER_KEY_B64', input.runnerKey],
     ['HERMES_KEY_B64', input.hermesKey],
-    ['VRS_BASE_B64', input.vrsBase],
-    ['VRS_KEY_B64', input.vrsKey],
-    ['VRS_MODEL_B64', input.vrsModel],
+    ['MODEL_PROVIDER_B64', input.modelProvider],
+    ['MODEL_BASE_B64', input.modelBase],
+    ['MODEL_KEY_B64', input.modelKey],
+    ['MODEL_NAME_B64', input.modelName],
     ['HERMES_TAG_B64', input.hermesTag],
     ['HERMES_COMMIT_B64', input.hermesCommit],
   ].map(([key, value]) => `${key}=${Buffer.from(value).toString('base64')}`).join('\n') + '\n';
