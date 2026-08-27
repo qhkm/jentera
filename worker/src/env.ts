@@ -16,6 +16,10 @@ export interface Env {
   /** Edge burst limiter for /api/auth/request. Per-colo, so it is a
       brake on floods rather than an exact quota. */
   AUTH_BURST: RateLimit;
+  /** General API and high-cost runtime mutation burst brakes. Both run
+      before session verification or any database/provider work. */
+  API_BURST: RateLimit;
+  RUNTIME_MUTATION_BURST: RateLimit;
   /** Key for the IP HMAC in the rate-limit ledger. A Worker secret;
       without it the stored hashes are brute-forceable. */
   RATE_LIMIT_PEPPER?: string;

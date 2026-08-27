@@ -72,6 +72,27 @@ namespace_id = "1001"
   limit = 5
   period = 60
 
+# Broad API brake before session verification, Neon, or any provider call.
+# This is intentionally generous enough for normal dashboard bursts. WAF
+# rules at api.jentera.ai remain the first line of defence before invocation.
+[[ratelimits]]
+name = "API_BURST"
+namespace_id = "1002"
+
+  [ratelimits.simple]
+  limit = 120
+  period = 60
+
+# Provisioning can create paid infrastructure, so it gets its own tight
+# namespace in addition to the broad API limit and owner/canary gates.
+[[ratelimits]]
+name = "RUNTIME_MUTATION_BURST"
+namespace_id = "1003"
+
+  [ratelimits.simple]
+  limit = 3
+  period = 60
+
 # Workers AI runs the extraction in src/ingest.ts. Chosen over an
 # external provider so the feature needs no third-party key; the model
 # id is a constant in that file and the call is one function.

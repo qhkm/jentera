@@ -185,6 +185,8 @@ export function testEnv(over: Partial<Record<string, unknown>> = {}): import('..
     RESEND_API_KEY: '',
     AI: { run: async () => ({ response: 'A drafted reply.' }) },
     AUTH_BURST: { limit: async () => ({ success: true }) },
+    API_BURST: { limit: async () => ({ success: true }) },
+    RUNTIME_MUTATION_BURST: { limit: async () => ({ success: true }) },
     ...over,
   } as unknown as import('../src/env').Env;
 }

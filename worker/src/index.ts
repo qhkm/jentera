@@ -16,6 +16,7 @@ import { handleRuntime } from './routes/runtime';
 import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
 import { handleRuntimeMessage, type RuntimeQueueMessage } from './runtime/consumer';
+import { guardApiRequest } from './request-guard';
 
 function cors(env: Env, origin: string | null): Record<string, string> {
   const allowed = (env.ALLOWED_ORIGINS ?? '')
@@ -65,6 +66,9 @@ export default {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers });
     }
+
+    const guarded = await guardApiRequest(request, env, url, headers);
+    if (guarded) return guarded;
 
     /* Sign-in, session and identity. Returns null when the path is not
        one of these, so the tool-contract routes below still run. */
