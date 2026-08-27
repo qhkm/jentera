@@ -33,11 +33,12 @@ must be running.
 ## What is not live yet
 
 Every customer agent task still runs through `InlineRuntime`. A private development Sprite
-now runs the AISAR runner and pinned Hermes, but has no model-provider credential and is
-not connected to a customer. The runtime foundation creates no customer resources by
-itself and exposes no provisioning endpoint. Hermes selection stays disabled until the
-remaining readiness, browser, automated bootstrap, tool-policy, metering, and recovery
-gates in
+runs the AISAR runner, pinned Hermes, Chromium, and the `ds4-flash` VRS model, but it is
+not connected to a customer. The queued, idempotent bootstrap path and an owner-only
+provisioning endpoint now exist, but four independent production gates default to false:
+provisioning enabled, secure VRS transport ready, canary business allow-list, and
+production bootstrap enabled. Hermes selection stays disabled until the remaining
+tool-policy, metering, reconciliation, recovery, and security gates in
 `../docs/superpowers/specs/2026-08-26-hermes-sprites-runtime.md` pass.
 
 ## Runtime boundaries
@@ -62,8 +63,25 @@ npx wrangler secret put GOOGLE_CLIENT_SECRET
 npx wrangler secret put SPRITES_TOKEN
 ```
 
-`SPRITES_TOKEN` is an organization-scoped API token and must never be placed in a customer
-runtime or frontend. `RUNTIME_RELEASE` is immutable; never replace it with `latest`.
+`SPRITES_TOKEN` is a dedicated Sprites API token for the AISAR organization and must never
+be placed in a customer runtime or frontend. `RUNTIME_RELEASE` is immutable; never replace
+it with `latest`.
+
+Do not use the deprecated `fly auth token` command when creating or rotating Fly
+credentials. Create a short-lived, organization-scoped source token with the current CLI:
+
+```bash
+flyctl tokens create org --org aisar --name "AISAR Sprites exchange" --expiry 1h
+```
+
+Exchange that source token for a dedicated Sprites API token through Fly's Sprites token
+API, then pipe the returned Sprite token directly into `wrangler secret put SPRITES_TOKEN`.
+Do not print it, put it in shell history, or reuse it as a runtime credential. The deployed
+Worker has a dedicated Sprites token as of 2026-08-27.
+
+Customer provisioning additionally requires `AISAR_VRS_KEY`, but that secret must not be
+installed until the configured `AISAR_VRS_BASE` uses HTTPS or an authenticated private
+network path. The non-secret gates in `wrangler.toml` intentionally remain false/empty.
 
 Before deploying the Queue bindings for the first time, create the primary queue:
 
@@ -96,4 +114,6 @@ curl -fsS https://api.jentera.ai/api/health
 ```
 
 Do not deploy the runtime Queue configuration until `aisar-runtime` exists. Do not publish
-a provisioning producer until the Hermes rollout gates are complete.
+a provisioning producer until the Hermes rollout gates are complete. Applying migration
+`014_runtime_task_execution.sql` with the Neon database owner is required before deploying
+the durable Hermes dispatch code.

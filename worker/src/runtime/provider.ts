@@ -54,3 +54,24 @@ export interface RuntimeProvider {
   destroy(runtime: ObservedRuntime): Promise<void>;
 }
 
+export interface RuntimeExecResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+/** Extra capabilities needed only while installing an immutable release. */
+export interface BootstrapRuntimeProvider extends RuntimeProvider {
+  writeFile(runtime: ObservedRuntime, path: string, data: string, mode: number): Promise<void>;
+  exec(
+    runtime: ObservedRuntime,
+    command: string,
+    args?: string[],
+    options?: { env?: string[]; dir?: string },
+  ): Promise<RuntimeExecResult>;
+}
+
+export function canBootstrap(provider: RuntimeProvider): provider is BootstrapRuntimeProvider {
+  const candidate = provider as Partial<BootstrapRuntimeProvider>;
+  return typeof candidate.writeFile === 'function' && typeof candidate.exec === 'function';
+}

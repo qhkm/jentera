@@ -24,6 +24,8 @@ export { FlySpriteProvider } from './fly-sprite-provider';
 export { ensureProviderRuntime, runtimeProviderFor } from './provision';
 export { handleRuntimeMessage, publishRuntimeTask } from './consumer';
 export type { RuntimeQueueMessage, RuntimeMessageResult } from './consumer';
+export { RunnerClient } from './runner-client';
+export { dispatchRuntimeRun } from './run-task';
 
 /**
  * The runtime for this business.

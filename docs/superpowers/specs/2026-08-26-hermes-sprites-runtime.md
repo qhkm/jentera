@@ -19,7 +19,15 @@ Implemented in the repository:
   guarantee of one leased task per business;
 - a Cloudflare Queue producer/consumer contract that treats messages as wake-up signals
   and Postgres as task truth;
-- contract, RLS, retry, duplicate-delivery, checkpoint, and provider tests;
+- an idempotent, version-pinned bootstrap protocol that writes the runner bundle and
+  mode-0600 credential transfer through the official Sprites filesystem API, proves
+  authenticated runner/Hermes/browser readiness, and creates a baseline checkpoint;
+- an owner-only provisioning route guarded by provisioning, secure-transport,
+  production-bootstrap, and business allow-list gates that all fail closed;
+- durable Hermes run dispatch, polling, bounded result persistence, and delayed queue
+  wake-ups without consuming the queue retry budget;
+- contract, RLS, retry, duplicate-delivery, checkpoint, bootstrap, runner protocol,
+  canary gate, and provider tests;
 - an AISAR-owned Node runner with authenticated readiness, one-task concurrency,
   idempotent Hermes run creation, polling, cancellation, and persistent task identity;
   and
@@ -50,14 +58,14 @@ Still gated and therefore intentionally unavailable to customers:
 - review or patch the pinned Hermes Node tree's four high-severity `npm audit`
   findings (`nanoid` through `postcss`/`sanitize-html`/`vite`) without silently
   moving the Hermes release;
-- automated, idempotent production bootstrap using the two control-plane credentials;
-- full ready/sleep/wake/restore proof after model and browser readiness;
-- the durable Hermes `RuntimeAdapter`, event translation, cancellation, and approval
-  resume path;
+- apply production migration `014_runtime_task_execution.sql` using the Neon database
+  owner, then deploy and verify the fail-closed control-plane changes;
+- full ready/sleep/wake/restore proof of the automated bootstrap on an allow-listed canary;
+- incremental Hermes event translation, control-plane cancellation, approval resume, and
+  business runtime selection after the canary passes;
 - short-lived AISAR tool grants and proof that Hermes cannot bypass policy;
 - usage/spend ceilings, recovery bundles, reconciliation, upgrade, rollback, and
-  deletion operations; and
-- a provisioning trigger or customer-facing endpoint.
+  deletion operations.
 
 Creating provider compute is not readiness. `business.runtime` remains `aisar-native`
 until runner installation, authenticated readiness, and a baseline checkpoint all pass.

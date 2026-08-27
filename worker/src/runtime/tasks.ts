@@ -23,6 +23,10 @@ export interface RuntimeTask {
   attempt: number;
   leaseToken: string | null;
   leaseExpiresAt: Date | null;
+  remoteRunId: string | null;
+  remoteStatus: string | null;
+  result: unknown;
+  startedAt: Date | null;
 }
 
 interface TaskRow {
@@ -36,6 +40,10 @@ interface TaskRow {
   attempt: number;
   lease_token: string | null;
   lease_expires_at: Date | null;
+  remote_run_id: string | null;
+  remote_status: string | null;
+  result: unknown;
+  started_at: Date | null;
 }
 
 const task = (row: TaskRow): RuntimeTask => ({
@@ -49,10 +57,15 @@ const task = (row: TaskRow): RuntimeTask => ({
   attempt: row.attempt,
   leaseToken: row.lease_token,
   leaseExpiresAt: row.lease_expires_at,
+  remoteRunId: row.remote_run_id,
+  remoteStatus: row.remote_status,
+  result: row.result,
+  startedAt: row.started_at,
 });
 
 const cols = `id, business_id, run_id, kind, status, payload, dedupe_key,
-              attempt, lease_token, lease_expires_at`;
+              attempt, lease_token, lease_expires_at, remote_run_id,
+              remote_status, result, started_at`;
 
 export async function enqueueRuntimeTask(
   tx: postgres.TransactionSql,
@@ -127,11 +140,36 @@ export async function completeRuntimeTask(
   businessId: string,
   taskId: string,
   leaseToken: string,
+  detail: { remoteRunId?: string; remoteStatus?: string; result?: unknown } = {},
 ): Promise<boolean> {
   const rows = await tx`
     update runtime_task
        set status = 'completed', lease_token = null, lease_expires_at = null,
+           remote_run_id = coalesce(${detail.remoteRunId ?? null}, remote_run_id),
+           remote_status = coalesce(${detail.remoteStatus ?? null}, remote_status),
+           result = ${detail.result === undefined ? tx`result` : tx.json(detail.result as never)},
            completed_at = now(), updated_at = now()
+     where id = ${taskId} and business_id = ${businessId}
+       and status = 'leased' and lease_token = ${leaseToken}
+    returning id`;
+  return rows.length === 1;
+}
+
+/** Release a healthy in-flight remote task and ask Queue to poll it later. */
+export async function deferRuntimeTask(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+  leaseToken: string,
+  detail: { remoteRunId: string; remoteStatus: string; delaySeconds?: number },
+): Promise<boolean> {
+  const rows = await tx`
+    update runtime_task
+       set status = 'queued', lease_token = null, lease_expires_at = null,
+           remote_run_id = ${detail.remoteRunId}, remote_status = ${detail.remoteStatus},
+           started_at = coalesce(started_at, now()),
+           available_at = now() + (${detail.delaySeconds ?? 5} * interval '1 second'),
+           updated_at = now()
      where id = ${taskId} and business_id = ${businessId}
        and status = 'leased' and lease_token = ${leaseToken}
     returning id`;

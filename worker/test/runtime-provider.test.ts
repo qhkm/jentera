@@ -104,6 +104,63 @@ describe('FlySpriteProvider', () => {
     expect(await provider.checkpoint(observed('ready'))).toBe('v2');
   });
 
+  it('writes bootstrap data only below the AISAR runtime directory', async () => {
+    const seen: { url: string; init: RequestInit }[] = [];
+    const provider = fly(async (url, init) => {
+      seen.push({ url: String(url), init: init ?? {} });
+      return new Response(null, { status: 201 });
+    });
+    await provider.writeFile(
+      observed('cold'),
+      '/home/sprite/aisar/bootstrap.env.in',
+      'encoded-data',
+      0o600,
+    );
+    expect(seen[0].url).toContain('/fs/write?');
+    expect(seen[0].url).toContain('mode=0600');
+    expect(seen[0].init.method).toBe('PUT');
+    expect(seen[0].init.body).toBe('encoded-data');
+    await expect(provider.writeFile(observed('cold'), '/etc/passwd', 'x', 0o600))
+      .rejects.toThrow(/not allowed/);
+    await expect(provider.writeFile(
+      observed('cold'),
+      '/home/sprite/aisar/../../etc/passwd',
+      'x',
+      0o600,
+    )).rejects.toThrow(/not allowed/);
+  });
+
+  it('executes a bounded non-TTY bootstrap over the official stream protocol', async () => {
+    const socket = new FakeSocket();
+    const seen: { url: string; init: RequestInit }[] = [];
+    const provider = fly(async (url, init) => {
+      seen.push({ url: String(url), init: init ?? {} });
+      setTimeout(() => {
+        socket.emit(new Uint8Array([1, ...new TextEncoder().encode('ready')]).buffer);
+        socket.emit(new Uint8Array([3, 0]).buffer);
+      }, 0);
+      return {
+        status: 101,
+        ok: false,
+        webSocket: socket,
+        text: async () => '',
+      } as unknown as Response;
+    });
+    const result = await provider.exec(
+      observed('cold'),
+      '/home/sprite/aisar/runner/bootstrap-runtime.sh',
+      ['/home/sprite/aisar/bootstrap.env.in'],
+      { env: ['AISAR_BOOTSTRAP_CONTROL_PLANE=1'] },
+    );
+    expect(result).toEqual({ exitCode: 0, stdout: 'ready', stderr: '' });
+    expect(socket.accepted).toBe(true);
+    expect([...new Uint8Array(socket.sent[0])]).toEqual([4]);
+    expect(seen[0].url).toContain('/exec?');
+    expect(seen[0].url).toContain('stdin=false');
+    expect(header(seen[0].init, 'Authorization')).toBe('Bearer secret-token');
+    expect(header(seen[0].init, 'Upgrade')).toBe('websocket');
+  });
+
   it('surfaces an error carried inside a 200 streaming response', async () => {
     const provider = fly(async () =>
       new Response('{"type":"error","error":"disk full"}\n'),
@@ -151,3 +208,24 @@ function header(init: RequestInit, name: string): string | null {
   return new Headers(init.headers).get(name);
 }
 
+class FakeSocket extends EventTarget {
+  accepted = false;
+  sent: ArrayBuffer[] = [];
+
+  accept() {
+    this.accepted = true;
+  }
+
+  close() {}
+
+  send(data: ArrayBuffer | ArrayBufferView) {
+    const bytes = data instanceof ArrayBuffer
+      ? new Uint8Array(data)
+      : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    this.sent.push(bytes.slice().buffer);
+  }
+
+  emit(data: ArrayBuffer) {
+    this.dispatchEvent(new MessageEvent('message', { data }));
+  }
+}

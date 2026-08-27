@@ -12,12 +12,15 @@ import { ensureProviderRuntime } from './provision';
 import type { RuntimeProvider } from './provider';
 import {
   completeRuntimeTask,
+  deferRuntimeTask,
   enqueueRuntimeTask,
   leaseRuntimeTask,
   retryRuntimeTask,
   type RuntimeTask,
   type RuntimeTaskKind,
 } from './tasks';
+import { append, finishRun, recordWork } from '../runs';
+import { dispatchRuntimeRun } from './run-task';
 
 export interface RuntimeQueueMessage {
   version: 1;
@@ -27,6 +30,7 @@ export interface RuntimeQueueMessage {
 
 export type RuntimeMessageResult =
   | { action: 'ack'; reason: 'completed' | 'already_done' | 'missing' }
+  | { action: 'requeue'; delaySeconds: number; reason: string }
   | { action: 'retry'; delaySeconds: number; reason: string };
 
 export async function publishRuntimeTask(
@@ -50,7 +54,7 @@ export async function publishRuntimeTask(
 export async function handleRuntimeMessage(
   env: Env,
   message: RuntimeQueueMessage,
-  options: { provider?: RuntimeProvider } = {},
+  options: { provider?: RuntimeProvider; fetch?: typeof globalThis.fetch } = {},
 ): Promise<RuntimeMessageResult> {
   if (message.version !== 1 || !uuid(message.businessId) || !uuid(message.taskId)) {
     return { action: 'ack', reason: 'missing' };
@@ -73,6 +77,70 @@ export async function handleRuntimeMessage(
       case 'reconcile':
         await ensureProviderRuntime(env, message.businessId, { provider: options.provider });
         break;
+      case 'run': {
+        const outcome = await dispatchRuntimeRun(env, lease.task, leaseToken, options);
+        if (outcome.state === 'pending') {
+          const deferred = await withTenant(env, message.businessId, async (tx) => {
+            if (!lease.task.remoteRunId && lease.task.runId) {
+              await append(tx, message.businessId, lease.task.runId, 'work.started', {
+                runtimeTaskId: lease.task.id,
+                remoteRunId: outcome.remoteRunId,
+              });
+            }
+            return deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
+              remoteRunId: outcome.remoteRunId,
+              remoteStatus: outcome.remoteStatus,
+            });
+          });
+          if (!deferred) {
+            return { action: 'retry', delaySeconds: 10, reason: 'runtime task lease was lost' };
+          }
+          return { action: 'requeue', delaySeconds: 5, reason: 'Hermes run is still active' };
+        }
+
+        const completed = await withTenant(env, message.businessId, async (tx) => {
+          if (!lease.task.remoteRunId && lease.task.runId) {
+            await append(tx, message.businessId, lease.task.runId, 'work.started', {
+              runtimeTaskId: lease.task.id,
+              remoteRunId: outcome.remoteRunId,
+            });
+          }
+          const done = await completeRuntimeTask(
+            tx,
+            message.businessId,
+            message.taskId,
+            leaseToken,
+            {
+              remoteRunId: outcome.remoteRunId,
+              remoteStatus: outcome.remoteStatus,
+              result: outcome.result,
+            },
+          );
+          if (!done || !lease.task.runId) return done;
+          const successful = outcome.remoteStatus === 'completed';
+          await recordWork(tx, message.businessId, {
+            runId: lease.task.runId,
+            objective: outcome.payload.objective ?? outcome.payload.input.slice(0, 1_000),
+            outcome: outcome.summary,
+            status: successful ? 'completed' : 'failed',
+            function: outcome.payload.function ?? 'agent',
+            channel: outcome.payload.channel ?? 'runtime',
+            risk: 'low',
+          });
+          await finishRun(
+            tx,
+            message.businessId,
+            lease.task.runId,
+            successful ? 'completed' : 'failed',
+            { runtimeTaskId: lease.task.id, remoteStatus: outcome.remoteStatus },
+          );
+          return true;
+        });
+        if (!completed) {
+          return { action: 'retry', delaySeconds: 10, reason: 'runtime task lease was lost' };
+        }
+        return { action: 'ack', reason: 'completed' };
+      }
       default:
         throw new Error(`runtime task ${lease.task.kind} is not implemented`);
     }
@@ -97,4 +165,3 @@ function uuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     .test(value);
 }
-

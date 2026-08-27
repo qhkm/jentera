@@ -62,3 +62,26 @@ The currently configured VRS endpoint is plain HTTP on a public IP. It is suitab
 for this non-customer development smoke: prompts, results, and the bearer credential do
 not have transport encryption. Do not enable customer traffic until VRS is available
 through HTTPS or an authenticated private tunnel/network path.
+
+## Reproducible Sprite bootstrap
+
+`bin/provision-sprite.sh` is the trusted operator entrypoint for an internal canary. Run
+it from the repository root with the business id, release, control-plane-generated runner
+and Hermes keys, and VRS settings in the environment. It deterministically names one
+Sprite per business, uploads the narrow runtime bundle and a mode-0600 transfer, then
+invokes `bin/bootstrap-runtime.sh` inside the Sprite.
+
+The in-Sprite bootstrap pins Hermes to tag `v2026.8.19` and commit
+`fcbd1076a93841fa88855acce810e342a5b78101`, verifies the upstream installer's SHA-256,
+writes the runtime environment atomically, configures VRS without inlining its key,
+recreates both services, proves authenticated readiness and Chromium, and creates a
+baseline checkpoint. Repeating it reconciles the same Sprite rather than creating a
+second one.
+
+Both scripts refuse an HTTP VRS endpoint by default. `AISAR_ALLOW_INSECURE_VRS=1` exists
+only to reproduce the current non-customer `jentera` smoke and must never be set by a
+production provisioner. The Worker now implements the same bootstrap protocol for an
+allow-listed canary, using an immutable public bundle commit. It remains fail-closed
+behind the production-bootstrap, secure-VRS, provisioning, and business allow-list gates.
+This operator path remains useful for a non-customer smoke and does not itself enable
+customer provisioning.

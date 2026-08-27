@@ -12,6 +12,7 @@ import { handleSession } from './routes/session';
 import { handleRepo } from './routes/repo';
 import { handleRuns } from './routes/runs';
 import { handleConnect } from './routes/connect';
+import { handleRuntime } from './routes/runtime';
 import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
 import { handleRuntimeMessage, type RuntimeQueueMessage } from './runtime/consumer';
@@ -83,6 +84,9 @@ export default {
     const conn = await handleConnect(request, env, url, headers);
     if (conn) return conn;
 
+    const runtime = await handleRuntime(request, env, url, headers);
+    if (runtime) return runtime;
+
     try {
       /* ---- POST /api/tools/call ---------------------------------- */
       /* ---- GET /api/approvals?business=…&status=… ---------------- */
@@ -103,7 +107,11 @@ export default {
       try {
         const result = await handleRuntimeMessage(env, message.body);
         if (result.action === 'ack') message.ack();
-        else message.retry({ delaySeconds: result.delaySeconds });
+        else if (result.action === 'requeue') {
+          if (!env.RUNTIME_QUEUE) throw new Error('RUNTIME_QUEUE is not configured');
+          await env.RUNTIME_QUEUE.send(message.body, { delaySeconds: result.delaySeconds });
+          message.ack();
+        } else message.retry({ delaySeconds: result.delaySeconds });
       } catch (error) {
         console.error(`[runtime-queue] ${String(error)}`);
         message.retry({ delaySeconds: 30 });

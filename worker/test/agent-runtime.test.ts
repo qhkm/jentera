@@ -152,6 +152,50 @@ describe('provider provisioning', () => {
     expect(row?.lastError).toBe('capacity unavailable');
   });
 
+  it('bootstraps a pinned release before selecting Hermes for the business', async () => {
+    class BootstrapLocalProvider extends LocalRuntimeProvider {
+      writes: { path: string; data: string; mode: number }[] = [];
+      commands: { command: string; args: string[] }[] = [];
+
+      async writeFile(_runtime: ObservedRuntime, path: string, data: string, mode: number) {
+        this.writes.push({ path, data, mode });
+      }
+
+      async exec(_runtime: ObservedRuntime, command: string, args: string[] = []) {
+        this.commands.push({ command, args });
+        return { exitCode: 0, stdout: '{"ok":true}', stderr: '' };
+      }
+    }
+    const provider = new BootstrapLocalProvider();
+    const runtimeEnv = testEnv({
+      RUNTIME_RELEASE: '2026.08.27-1',
+      RUNTIME_BOOTSTRAP_ENABLED: 'true',
+      RUNTIME_BUNDLE_COMMIT: 'a'.repeat(40),
+      AISAR_VRS_BASE: 'https://vrs.example/v1',
+      AISAR_VRS_KEY: 'dedicated-aisar-vrs-key',
+      AISAR_VRS_MODEL: 'ds4-flash',
+    });
+    const row = await ensureProviderRuntime(runtimeEnv, A, {
+      provider,
+      runnerKey: 'runner-key-for-alpha'.repeat(2),
+      hermesApiKey: 'hermes-key-for-alpha',
+    });
+    expect(row.status).toBe('ready');
+    expect(row.latestCheckpointId).toBe('v1');
+    expect(provider.writes).toHaveLength(1);
+    expect(provider.writes[0]).toMatchObject({
+      path: '/home/sprite/aisar/bootstrap.env.in',
+      mode: 0o600,
+    });
+    expect(provider.writes[0].data).not.toContain('dedicated-aisar-vrs-key');
+    expect(provider.commands.map((entry) => entry.command)).toEqual([
+      '/bin/bash', '/home/sprite/aisar/runner/bootstrap-runtime.sh',
+    ]);
+    const [business] = await asOwner((sql) => sql<{ runtime: string }[]>`
+      select runtime from business where id = ${A}`);
+    expect(business.runtime).toBe('hermes-sprite');
+  });
+
   it('refuses to silently move a claimed runtime between providers', async () => {
     const runtimeEnv = testEnv({ RUNTIME_RELEASE: '2026.08.27-1' });
     await ensureProviderRuntime(runtimeEnv, A, { provider: new LocalRuntimeProvider() });

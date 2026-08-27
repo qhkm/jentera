@@ -1,4 +1,10 @@
-import type { DesiredRuntime, ObservedRuntime, RuntimeProvider, RuntimeState } from './provider';
+import type {
+  BootstrapRuntimeProvider,
+  DesiredRuntime,
+  ObservedRuntime,
+  RuntimeExecResult,
+  RuntimeState,
+} from './provider';
 
 interface SpriteWire {
   id: string;
@@ -19,7 +25,7 @@ export interface FlySpriteProviderOptions {
 }
 
 /** Workers-compatible Sprites REST client; no CLI or Node process. */
-export class FlySpriteProvider implements RuntimeProvider {
+export class FlySpriteProvider implements BootstrapRuntimeProvider {
   readonly id = 'fly-sprite' as const;
   private readonly token: string;
   private readonly apiOrigin: string;
@@ -117,6 +123,62 @@ export class FlySpriteProvider implements RuntimeProvider {
     if (!res.ok && res.status !== 404) throw await apiError('destroy Sprite', res);
   }
 
+  async writeFile(
+    runtime: ObservedRuntime,
+    path: string,
+    data: string,
+    mode: number,
+  ): Promise<void> {
+    if (!safeRuntimePath(path)) throw new Error('runtime write path is not allowed');
+    const query = new URLSearchParams({
+      path,
+      workingDir: '/',
+      mode: mode.toString(8).padStart(4, '0'),
+      mkdirParents: 'true',
+    });
+    const response = await this.request(
+      `/v1/sprites/${encodeURIComponent(runtime.name)}/fs/write?${query}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: data,
+      },
+    );
+    if (!response.ok) throw await apiError('write Sprite runtime file', response);
+  }
+
+  async exec(
+    runtime: ObservedRuntime,
+    command: string,
+    args: string[] = [],
+    options: { env?: string[]; dir?: string } = {},
+  ): Promise<RuntimeExecResult> {
+    if (command !== '/home/sprite/aisar/runner/bootstrap-runtime.sh' && command !== '/bin/bash') {
+      throw new Error('runtime bootstrap command is not allowed');
+    }
+    const url = new URL(
+      `${this.apiOrigin}/v1/sprites/${encodeURIComponent(runtime.name)}/exec`,
+    );
+    for (const value of [command, ...args]) url.searchParams.append('cmd', value);
+    url.searchParams.set('path', command);
+    url.searchParams.set('stdin', 'false');
+    if (options.dir) url.searchParams.set('dir', options.dir);
+    for (const value of options.env ?? []) url.searchParams.append('env', value);
+
+    const response = await this.fetcher(url, {
+      headers: { ...this.authHeaders(), Upgrade: 'websocket' },
+    });
+    const socket = response.webSocket;
+    if (response.status !== 101 || !socket) {
+      throw await apiError('exec Sprite bootstrap', response);
+    }
+    socket.accept();
+    // The official direct-exec client closes stdin explicitly even when stdin=false.
+    // Without this frame a command can remain attached waiting for EOF on some releases.
+    socket.send(new Uint8Array([4]));
+    return readExec(socket);
+  }
+
   private async get(name: string, allowMissing: boolean): Promise<ObservedRuntime | null> {
     const res = await this.request(`/v1/sprites/${encodeURIComponent(name)}`);
     if (allowMissing && res.status === 404) return null;
@@ -144,6 +206,14 @@ export class FlySpriteProvider implements RuntimeProvider {
   private authHeaders(): Record<string, string> {
     return { Authorization: `Bearer ${this.token}` };
   }
+}
+
+function safeRuntimePath(path: string): boolean {
+  const prefix = '/home/sprite/aisar/';
+  if (!path.startsWith(prefix)) return false;
+  const parts = path.slice(prefix.length).split('/');
+  return parts.length > 0 && parts.every((part) =>
+    part.length > 0 && part !== '.' && part !== '..' && /^[A-Za-z0-9._-]+$/.test(part));
 }
 
 function spriteState(status: string): RuntimeState {
@@ -188,3 +258,49 @@ async function assertStreamSucceeded(res: Response): Promise<void> {
   if (failed) throw new Error(failed.error ?? failed.data ?? 'Sprite operation failed');
 }
 
+function readExec(socket: WebSocket): Promise<RuntimeExecResult> {
+  return new Promise((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    let finished = false;
+    const timeout = setTimeout(() => finish(new Error('Sprite bootstrap timed out')), 12 * 60_000);
+    const append = (current: string, value: string) => (current + value).slice(-128 * 1024);
+    const done = (exitCode: number) => {
+      if (exitCode === 0) finish(undefined, { exitCode, stdout, stderr });
+      else finish(new Error(`Sprite bootstrap exited ${exitCode}: ${stderr.slice(-500)}`));
+    };
+    const finish = (error?: Error, result?: RuntimeExecResult) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      try { socket.close(1000, 'complete'); } catch { /* already closed */ }
+      if (error) reject(error);
+      else resolve(result!);
+    };
+
+    socket.addEventListener('message', (event) => {
+      if (typeof event.data === 'string') {
+        try {
+          const message = JSON.parse(event.data) as { type?: string; exit_code?: number };
+          if (message.type === 'exit') done(message.exit_code ?? 0);
+        } catch {
+          // Session metadata is advisory; binary frames carry command output.
+        }
+        return;
+      }
+      const bytes = event.data instanceof ArrayBuffer
+        ? new Uint8Array(event.data)
+        : new Uint8Array(0);
+      if (bytes.length === 0) return;
+      const stream = bytes[0];
+      const value = new TextDecoder().decode(bytes.subarray(1));
+      if (stream === 1) stdout = append(stdout, value);
+      else if (stream === 2) stderr = append(stderr, value);
+      else if (stream === 3) done(bytes[1] ?? 0);
+    });
+    socket.addEventListener('error', () => finish(new Error('Sprite bootstrap WebSocket failed')));
+    socket.addEventListener('close', () => {
+      if (!finished) finish(new Error('Sprite bootstrap connection closed before exit'));
+    });
+  });
+}

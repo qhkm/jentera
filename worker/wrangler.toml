@@ -43,6 +43,14 @@ API_ORIGIN = "https://api.jentera.ai"
 # it must never silently track "latest".
 RUNTIME_RELEASE = "2026.08.27-1"
 SPRITES_API_ORIGIN = "https://api.sprites.dev"
+# Fail closed. Production provisioning additionally requires secure VRS
+# transport and an explicit comma-separated business canary allowlist.
+RUNTIME_PROVISIONING_ENABLED = "false"
+VRS_TRANSPORT_READY = "false"
+RUNTIME_CANARY_BUSINESS_IDS = ""
+RUNTIME_BOOTSTRAP_ENABLED = "false"
+RUNTIME_BUNDLE_COMMIT = ""
+AISAR_VRS_MODEL = "ds4-flash"
 
 # Connector credentials are secrets, never vars:
 #   npx wrangler secret put META_APP_SECRET

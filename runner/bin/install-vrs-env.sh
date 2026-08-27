@@ -40,7 +40,12 @@ model_name="$(printf '%s' "$VRS_MODEL_B64" | base64 --decode)"
 [[ ${#vrs_key} -ge 8 ]] || exit 1
 [[ -n "$model_name" ]] || exit 1
 
-key_env=HERMES_CUSTOM_60_51_17_97_9999_API_KEY
+endpoint_identity="${base_url#*://}"
+endpoint_identity="${endpoint_identity%%/*}"
+key_slug="$(printf '%s' "$endpoint_identity" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9' '_')"
+key_slug="${key_slug##_}"
+key_slug="${key_slug%%_}"
+key_env="HERMES_CUSTOM_${key_slug}_API_KEY"
 runtime_tmp="$(mktemp /home/sprite/aisar/runtime.env.XXXXXX)"
 trap 'rm -f "$runtime_tmp"' EXIT
 grep -v "^${key_env}=" "$runtime_env" > "$runtime_tmp"

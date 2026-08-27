@@ -32,6 +32,20 @@ export interface Env {
   SPRITES_API_ORIGIN?: string;
   /** Immutable runner + Hermes + browser release identifier. */
   RUNTIME_RELEASE?: string;
+  /** Customer provisioning requires four gates: explicit enable,
+      verified secure VRS transport, production bootstrap, and membership
+      in the canary set. */
+  RUNTIME_PROVISIONING_ENABLED?: string;
+  VRS_TRANSPORT_READY?: string;
+  RUNTIME_CANARY_BUSINESS_IDS?: string;
+  /** Immutable public Git commit containing runner release assets. */
+  RUNTIME_BUNDLE_COMMIT?: string;
+  /** Second half of provisioning; false leaves raw provider compute unselected. */
+  RUNTIME_BOOTSTRAP_ENABLED?: string;
+  /** Dedicated AISAR model credential. Never use the shared development key. */
+  AISAR_VRS_BASE?: string;
+  AISAR_VRS_KEY?: string;
+  AISAR_VRS_MODEL?: string;
   /** Durable provisioning and Hermes task delivery. */
   RUNTIME_QUEUE?: Queue<import('./runtime/consumer').RuntimeQueueMessage>;
   /** Override the sender, e.g. for a staging origin. Must be a domain
