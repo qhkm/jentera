@@ -15,6 +15,9 @@ import { Tabs, type TabDef } from '@/components/Tabs';
 import PermissionsPanel from './PermissionsPanel';
 import KnowledgePanel from './KnowledgePanel';
 import TelegramConnect from './TelegramConnect';
+import { isLive, withoutLinkClaim } from '@/lib/live-connectors';
+import { connectedNames, useConnections } from '@/hooks/useConnections';
+import { useSignedIn } from '@/lib/repo/gate';
 import { useToast } from '@/components/Toast';
 import { isAgentReady } from '@/lib/business';
 import { findConnector } from '@/lib/tools';
@@ -51,10 +54,24 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
   const mutate = useMutate();
   const { business } = b;
   const unconfirmed = snap.facts.filter((f) => !f.confirmed).length;
+  const signedIn = useSignedIn();
   const [name, setName] = useState(business.name);
   const [loc, setLoc] = useState(business.loc);
 
-  const active = business.ch.length ? business.ch : b.connections;
+  /* One fetch for the whole screen. The badge, the chips and the
+     Telegram card all read it, so disconnecting a bot moves all three. */
+  const conns = useConnections();
+  const linked = useMemo(() => connectedNames(conns.rows), [conns.rows]);
+
+  /* Signed in, "active" means connected — not what onboarding said the
+     business uses, and not what the playbook seeded. Those two were
+     lighting WhatsApp and Instagram for an account whose only
+     connection was the Telegram bot sitting directly above them. */
+  const active = conns.real
+    ? [...linked]
+    : business.ch.length
+      ? business.ch
+      : b.connections;
   const dirty = name.trim() !== business.name || loc.trim() !== business.loc;
 
   function save() {
@@ -78,12 +95,14 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
       {
         id: 'connections',
         label: t('biz.tab.connections'),
-        trailing: <Tag tone="green">{b.connections.length}</Tag>,
+        /* Real connections when there is a server to ask. The seeded
+           playbook list said "4" for a business that had one. */
+        trailing: <Tag tone="green">{conns.real ? linked.size : b.connections.length}</Tag>,
         trailingCompact: true,
       },
       { id: 'permissions', label: t('biz.tab.permissions') },
     ],
-    [t, b.connections.length, unconfirmed],
+    [t, b.connections.length, unconfirmed, conns.real, linked],
   );
 
   return (
@@ -222,7 +241,7 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
       <section className="flex flex-col gap-4">
         {/* Real connections first. The catalogue below is what AISAR
             could connect to; this is what it actually can. */}
-        <TelegramConnect />
+        <TelegramConnect rows={conns.rows} setRows={conns.setRows} />
         <div className="flex flex-col gap-1">
           <Eyebrow>{t('biz.connections')}</Eyebrow>
           <p className="max-w-[66ch] text-[13px] text-text-secondary">
@@ -242,6 +261,13 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
           {business.conns.map((c) => {
             const on = b.connections.includes(c.n);
             const cx = findConnector(c.n);
+            /* Signed in, this is a real business: a connector with no
+               implementation behind it cannot be marked connected,
+               because the toggle only ever wrote a name into a list.
+               Telegram has its own card above; the rest are honest
+               about not being ready. The demo keeps the simulation —
+               it is showing what the product will do. */
+            const pretend = signedIn && !isLive(c.n);
             return (
               <Card key={c.n}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -249,13 +275,22 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
                     <Avatar emoji={c.e} />
                     <div className="flex flex-col gap-1">
                       <span className="text-sm font-semibold">{c.n}</span>
-                      <span className="text-[11px] text-text-muted">{c.s}</span>
+                      {/* "Business API · linked" is a claim baked into
+                          static data. Drop it for a real business; the
+                          demo keeps the illustration. */}
+                      {(pretend ? withoutLinkClaim(c.s) : c.s) && (
+                        <span className="text-[11px] text-text-muted">
+                          {pretend ? withoutLinkClaim(c.s) : c.s}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    {cx ? <Tag tone="amber">{t(`conn.guide.${cx.method}`)}</Tag> : null}
-                    <Tag tone={on ? 'green' : 'neutral'}>
-                      {on ? t('conn.connected') : t('conn.off')}
+                    {cx && !pretend ? (
+                      <Tag tone="amber">{t(`conn.guide.${cx.method}`)}</Tag>
+                    ) : null}
+                    <Tag tone={pretend ? 'neutral' : on ? 'green' : 'neutral'}>
+                      {pretend ? t('conn.soon') : on ? t('conn.connected') : t('conn.off')}
                     </Tag>
                   </div>
                 </div>
@@ -264,12 +299,14 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
                   <Button
                     variant={on ? 'outline' : 'primary'}
                     className="px-4 py-1.5 text-xs"
+                    disabled={pretend}
                     onClick={() => {
+                      if (pretend) return;
                       b.toggleConn(c.n);
                       toast(on ? `${c.n} disconnected.` : `${c.n} connected ✓`);
                     }}
                   >
-                    {on ? t('conn.disconnect') : t('conn.connect')}
+                    {pretend ? t('conn.soon.cta') : on ? t('conn.disconnect') : t('conn.connect')}
                   </Button>
                 </div>
               </Card>

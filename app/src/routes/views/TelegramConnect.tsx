@@ -12,11 +12,11 @@
    in the order Telegram actually presents them.
    ============================================================ */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Button, Card, Eyebrow, Input, Tag } from '@/components/ui';
 import { useRepository } from '@/lib/repo';
 import type { Connection } from '@/lib/repo';
-import { useSignedIn } from '@/lib/repo/gate';
+import type { ConnectionsState } from '@/hooks/useConnections';
 
 const STEPS = [
   'Open Telegram and message @BotFather',
@@ -30,27 +30,15 @@ function statusTone(c: Connection) {
   return c.status === 'error' ? 'red' as const : 'amber' as const;
 }
 
-export default function TelegramConnect() {
+/* Rows come from the screen rather than from here, so the tab badge
+   and this card cannot disagree about what is connected. */
+export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState, 'rows' | 'setRows'>) {
   const repo = useRepository();
-  const signedIn = useSignedIn();
-  const [rows, setRows] = useState<Connection[] | null>(null);
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState<string | null>(null);
   const [health, setHealth] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!signedIn) return setRows([]);
-    let live = true;
-    void repo.connections().then(
-      (c) => live && setRows(c),
-      () => live && setRows([]),
-    );
-    return () => {
-      live = false;
-    };
-  }, [repo, signedIn]);
 
   async function connect() {
     setBusy(true);
