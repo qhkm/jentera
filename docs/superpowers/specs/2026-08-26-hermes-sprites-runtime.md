@@ -1,6 +1,7 @@
 # Hermes Runtime on Fly Sprites
 
-**Status:** development Sprite smoke running; customer provisioning disabled
+**Status:** fail-closed control plane deployed; development Sprite smoke running;
+customer provisioning disabled
 **Last price verification:** 2026-08-26  
 **Decision owner:** AISAR
 
@@ -45,6 +46,12 @@ against Ubuntu 26.04; pinning `node-gyp` to Hermes's Python and Playwright to it
 Ubuntu 24.04 x64 fallback completed the install, and a real Chromium launch plus DOM
 assertion passed.
 
+Production migration `014_runtime_task_execution.sql` was applied transactionally on
+2026-08-27 and verified through both `neondb_owner` and the restricted `aisar_app` role.
+Worker version `123d72c9-8a4b-4ad0-8c3a-362f963478bb` is live with all provisioning gates
+false/empty. The live API health check passes, the runtime route rejects unauthenticated
+requests, and deployment did not create a customer Sprite.
+
 This does **not** make the model path production-ready. The available VRS endpoint is
 plain HTTP on a public IP, so its bearer credential, customer prompts, and model results
 would cross the network without transport encryption. Customer data stays disabled until
@@ -58,8 +65,6 @@ Still gated and therefore intentionally unavailable to customers:
 - review or patch the pinned Hermes Node tree's four high-severity `npm audit`
   findings (`nanoid` through `postcss`/`sanitize-html`/`vite`) without silently
   moving the Hermes release;
-- apply production migration `014_runtime_task_execution.sql` using the Neon database
-  owner, then deploy and verify the fail-closed control-plane changes;
 - full ready/sleep/wake/restore proof of the automated bootstrap on an allow-listed canary;
 - incremental Hermes event translation, control-plane cancellation, approval resume, and
   business runtime selection after the canary passes;

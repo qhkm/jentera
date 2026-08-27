@@ -77,7 +77,8 @@ flyctl tokens create org --org aisar --name "AISAR Sprites exchange" --expiry 1h
 Exchange that source token for a dedicated Sprites API token through Fly's Sprites token
 API, then pipe the returned Sprite token directly into `wrangler secret put SPRITES_TOKEN`.
 Do not print it, put it in shell history, or reuse it as a runtime credential. The deployed
-Worker has a dedicated Sprites token as of 2026-08-27.
+Worker has a dedicated Sprites token as of 2026-08-27. See Fly's current
+[access-token guidance](https://fly.io/docs/security/tokens/).
 
 Customer provisioning additionally requires `AISAR_VRS_KEY`, but that secret must not be
 installed until the configured `AISAR_VRS_BASE` uses HTTPS or an authenticated private
@@ -114,6 +115,7 @@ curl -fsS https://api.jentera.ai/api/health
 ```
 
 Do not deploy the runtime Queue configuration until `aisar-runtime` exists. Do not publish
-a provisioning producer until the Hermes rollout gates are complete. Applying migration
-`014_runtime_task_execution.sql` with the Neon database owner is required before deploying
-the durable Hermes dispatch code.
+a provisioning producer until the Hermes rollout gates are complete. Migration
+`014_runtime_task_execution.sql` was applied to AISAR production as `neondb_owner` and
+verified as `aisar_app` on 2026-08-27; it remains required when restoring or creating an
+environment.
