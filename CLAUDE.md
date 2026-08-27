@@ -20,6 +20,7 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
 - `app/src/lib/data/` is hand-maintained TypeScript. Add a playbook with `scripts/add-playbook.mjs`, which edits `playbooks.ts` directly — don't hand-merge.
 - Controls share `--control-h` / `--control-pad-y`. A `text-*` or `py-*` utility on a `.btn`/`.input` overrides the component and breaks the shared height — this caused three separate visual bugs. Let components own their type and padding.
 - The old static engine wrote work-done indices as **strings**; the app reads either format and writes strings, so existing users' approvals survive the cutover.
+- **Playbook figures are for the anonymous demo only.** Every playbook carries plausible counters, work items and customer conversations; they are the same for every business of a type and move for nobody. Shown to a signed-in owner they are lies, and they were shipped as lies three times: a "4 connections" badge for an account with one, a dashboard that read 82% handled, and an inbox naming customers who do not exist. `useActivity` answers `real` / `pending` / `demo` — branch on `demo` before borrowing anything, and treat `pending` as the real layout with nothing in it. A boolean is what caused this: "not real yet" and "show the demo" are different answers.
 
 ## localStorage keys
 
@@ -92,8 +93,17 @@ its counter includes requests made by anyone for that address and a 429
 would leak third-party activity. `MAX_OUTSTANDING` in `auth.ts` is a
 separate, stricter short-range brake on concurrent live links.
 
-**Still missing, and known:** no webhook verification, connector
-execution stubbed in `src/connectors.ts` pending OAuth registrations.
+**Still missing, and known:** connector execution is stubbed in
+`src/connectors.ts` for everything but Telegram, pending OAuth
+registrations. `app/src/lib/live-connectors.ts` mirrors that list, and
+its test reads this directory rather than restating it, so the
+Connections tab offers a working button only where something is behind
+it.
+
+Webhook verification is done — this line used to say it was not.
+`verifyWebhook` compares a stored per-connection secret in constant
+time. Stored rather than derived from `CREDENTIAL_KEY`, because
+deriving it would break every live webhook on a key rotation.
 
 ### Where work runs
 
