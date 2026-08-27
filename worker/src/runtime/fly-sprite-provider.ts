@@ -53,10 +53,10 @@ export class FlySpriteProvider implements BootstrapRuntimeProvider {
 
     if (res.ok) return this.observed((await res.json()) as SpriteWire);
 
-    /* POST is not specified with a conflict status; today an existing
-       name is one of the 400 responses. Resolve the exact resource
-       before treating it as idempotent, so an invalid name still fails. */
-    if (res.status === 400) {
+    /* Sprites has returned both 400 and 409 for an existing name across
+       API releases. Resolve the exact resource before treating either as
+       idempotent, so an invalid name or unrelated conflict still fails. */
+    if (res.status === 400 || res.status === 409) {
       const existing = await this.get(desired.name, true);
       if (existing) return existing;
     }

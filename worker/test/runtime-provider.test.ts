@@ -60,17 +60,22 @@ describe('FlySpriteProvider', () => {
     });
   });
 
-  it('makes create idempotent without hiding an invalid request', async () => {
-    let calls = 0;
-    const provider = fly(async () => {
-      calls += 1;
-      return calls === 1
-        ? new Response('name already exists', { status: 400 })
-        : spriteResponse('running');
-    });
-    expect((await provider.create(desired)).state).toBe('ready');
-    expect(calls).toBe(2);
+  it.each([400, 409])(
+    'makes a %i existing-name response idempotent without hiding an invalid request',
+    async (status) => {
+      let calls = 0;
+      const provider = fly(async () => {
+        calls += 1;
+        return calls === 1
+          ? new Response('name already exists', { status })
+          : spriteResponse('running');
+      });
+      expect((await provider.create(desired)).state).toBe('ready');
+      expect(calls).toBe(2);
+    },
+  );
 
+  it('does not hide an invalid create request', async () => {
     const invalid = fly(async () => new Response('invalid name', { status: 400 }));
     await expect(invalid.create(desired)).rejects.toThrow(/get Sprite failed \(400\)/);
   });
