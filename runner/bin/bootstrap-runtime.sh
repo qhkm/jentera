@@ -139,9 +139,18 @@ browser_binary="$(find "$browser_cache" -type f \
   -path '*/chrome-headless-shell-linux64/chrome-headless-shell' \
   -perm -111 -print -quit 2>/dev/null || true)"
 if [[ -z "$browser_binary" ]]; then
+  case "$(uname -m)" in
+    x86_64|amd64) playwright_platform=ubuntu24.04-x64 ;;
+    aarch64|arm64) playwright_platform=ubuntu24.04-arm64 ;;
+    *)
+      echo "Playwright has no reviewed Linux build for this architecture" >&2
+      exit 1
+      ;;
+  esac
   (
     cd "$install_dir"
-    timeout --foreground -k 10 600 npx playwright install --with-deps chromium
+    PLAYWRIGHT_HOST_PLATFORM_OVERRIDE="$playwright_platform" \
+      timeout --foreground -k 10 600 npx playwright install --with-deps chromium
   )
   browser_binary="$(find "$browser_cache" -type f \
     -path '*/chrome-headless-shell-linux64/chrome-headless-shell' \
