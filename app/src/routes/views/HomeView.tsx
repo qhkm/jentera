@@ -62,6 +62,21 @@ export default function HomeView({
     .map((w, i) => ({ w, i }))
     .filter(({ w, i }) => w.tag === 'needs you' && !b.workDone(i));
 
+  /* The line under the counter. It was unconditional for anyone signed
+     in, so a business with one completed reply read "No activity yet.
+     AISAR will show completed work here." directly beneath "1 handled
+     automatically" — the card contradicting itself in two adjacent
+     lines, because the counter comes from the run counters and this
+     line came from the playbook's work list. Say it only when it is
+     true; when there is activity the heading already carries it. */
+  const glanceNote = demo
+    ? t('home.empty')
+    : activity.mode === 'pending'
+      ? '\u00a0'
+      : activity.data!.counters.handled === 0 && activity.data!.counters.needsYou === 0
+        ? t('home.empty')
+        : null;
+
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
@@ -156,11 +171,9 @@ export default function HomeView({
                 </Button>
               </div>
             ))
-          ) : (
-            <p className="text-[12px] text-text-muted">
-              {t('home.empty')}
-            </p>
-          )}
+          ) : glanceNote ? (
+            <p className="text-[12px] text-text-muted">{glanceNote}</p>
+          ) : null}
         </Card>
       )}
 
