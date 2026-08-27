@@ -25,7 +25,9 @@ Implemented in the repository:
 - an owner-only provisioning route guarded by provisioning, secure-transport,
   production-bootstrap, and business allow-list gates that all fail closed;
 - durable Hermes run dispatch, polling, bounded result persistence, and delayed queue
-  wake-ups without consuming the queue retry budget;
+  wake-ups without consuming the queue retry budget; successful polls do not increment
+  attempts, remote identity is stored before the first poll, and terminal failure stops
+  and meters an addressable Hermes run only after lease-owned exhaustion succeeds;
 - contract, RLS, retry, duplicate-delivery, checkpoint, bootstrap, runner protocol,
   canary gate, and provider tests;
 - an AISAR-owned Node runner with authenticated readiness, one-task concurrency,
@@ -44,11 +46,12 @@ Implemented in the repository:
 - pre-route API, authentication, and runtime-mutation burst limits that refuse before
   Neon or provider work, plus bounded request shape and body-size guards;
 - signed five-minute business/task-scoped grants whose current capability set is
-  deliberately empty, plus an authenticated `toolMode: no-tools` readiness attestation;
+  deliberately empty, plus authenticated `toolMode: no-tools` and Fly edge-credential
+  isolation attestations;
 - an RLS-protected per-business budget and measured usage ledger, pre-compute reservations,
   a 15-minute per-run ceiling, and terminal exhaustion after five attempts;
 - durable control-plane cancellation and implemented reconcile, upgrade, restore-recovery,
-  rollback checkpoint, and deletion paths; and
+  rollback checkpoint, deletion, primary Queue, and DLQ recovery paths; and
 - an idempotent Free-plan Cloudflare WAF deployment script that refuses to overwrite an
   unrelated existing rule; and
 - per-runtime OpenRouter inference-key issuance through a control-plane-only management
@@ -56,13 +59,22 @@ Implemented in the repository:
   rotation, durable old-key revocation retry, and deletion-time revocation.
 
 The I Run Cafe canary Sprite `aisar-b-3602f62e8aec2e6174b3` is ready at release
-`2026.08.28-3`, pinned for future reconciliation to bundle commit
-`0a6c256842a27912057ef34c28af808cc102fa6c`. Its authenticated readiness reports runner,
-Hermes, and `toolMode: no-tools` healthy. A signed-grant OpenRouter run completed with
+`2026.08.28-4`, pinned for future reconciliation to bundle commit
+`c1af6c7f68719b18ff7f45dadbf19327ecd64b2f`. Its authenticated readiness reports runner,
+Hermes, `toolMode: no-tools`, and `edgeAuthorizationForwarded: false` healthy. The latter
+settles the external security question: Fly stripped the organization bearer header
+before the request reached tenant code. A signed-grant OpenRouter run completed with
 `AISAR VRS OK.` and duplicate delivery returned the same Hermes run. Checkpoint `v2` was
 created, a marker was written afterward, `v2` was restored, the marker disappeared, and
 authenticated readiness still passed. This proves the canary's wake/restore path rather
 than merely proving checkpoint creation.
+
+After the shared key was revoked, a production Queue smoke used the same signed no-tools
+path intended for the UI and completed with `AISAR PER-RUNTIME KEY OK.`. Healthy polls
+left the task at attempt `0`; the ledger finalized 844 input tokens, 58 output tokens,
+356,413 runtime milliseconds, and 58 micro-USD. This proves the dedicated model key,
+Sprite wake, runner, Hermes, result projection, and metering together rather than merely
+proving bootstrap.
 
 The pinned Hermes audit now reports two linked high-severity findings rather than four:
 `nanoid 3.3.17` beneath `postcss` in `sanitize-html` and `vite`. Release bootstrap applies
@@ -70,17 +82,23 @@ only the registry-verified `3.3.18` override and lock records, refuses upstream 
 drift, and requires `npm audit --omit=dev --audit-level=high` to pass. The canary upgrade
 reported zero production vulnerabilities.
 
-Production migration `014_runtime_task_execution.sql` was applied transactionally on
-2026-08-27 and verified through both `neondb_owner` and the restricted `aisar_app` role.
-Worker version `b18b6840-c1d9-4fd8-bb57-e20715b95b35` is live with provisioning limited to
-one business canary. Its Sprites credential is organization-scoped and dedicated. Its
-legacy canary OpenRouter inference key has a $10 weekly hard limit, expires on 2026-09-03,
-and had used
-$0.000968077 after canary verification. The key, customer prompts, and model results cross
-only HTTPS. The API now applies authentication, general-host, and runtime-mutation burst
-brakes before database/provider work. The live tail confirmed generic WordPress bot scans
-are reaching the API hostname; the general-host guard now covers those paths as well as
-documented `/api/*` routes.
+Production migrations `014_runtime_task_execution.sql` and `015_runtime_safety.sql` were
+applied transactionally and verified through both `neondb_owner` and the restricted
+`aisar_app` role. A rollback-only probe confirmed forced RLS returns zero unscoped rows and
+the exact tenant row when scoped. Worker version
+`a5bcbbaa-0090-4f42-9ed1-a380c878694f` is live with provisioning limited to one business
+canary. Its Sprites credential is organization-scoped and dedicated. The canary now has a
+separate OpenRouter inference key with a $5 monthly hard limit and 90-day expiry. Its old
+$10 weekly shared bridge key was revoked and the shared Worker secret and allow-list were
+removed. The key, customer prompts, and model results cross only HTTPS.
+
+The API applies authentication, dual-key general burst, and dual-key runtime-mutation
+brakes before database/provider work. General limiter failure fails open for health and
+ordinary reads, while the expensive runtime-mutation limiter fails closed. Cloudflare
+stable rule `aisar_dynamic_abuse_v1` is live and caps non-verified `/api` traffic at 100
+requests per 10 seconds per IP/colo before Worker invocation. Cloudflare Free exposes Path
+and Verified Bot in rate-limit expressions but not Host or Method, so `/api` path scoping
+is the available zone-safe boundary and `OPTIONS` shares that outer ceiling.
 
 This does **not** enable customer Hermes execution. `business.runtime` records readiness,
 but `runtimeFor()` still selects `InlineRuntime`. A ready compute resource is not authority
@@ -88,18 +106,9 @@ to use connectors or tools.
 
 Still gated and therefore intentionally unavailable to customers:
 
-- configuration of the OpenRouter management secret and replacement of the legacy canary
-  bridge; the issuance, limits, encrypted storage, rotation, and revocation code is ready;
 - incremental Hermes event translation and Hermes-native approval resume before any
   non-empty grant vocabulary is introduced;
-- production application and restricted-role verification of migration
-  `015_runtime_safety.sql`, followed by the Worker deployment; and
 - business runtime selection after those gates pass.
-
-Zone-level Cloudflare WAF rate limiting also remains open. Worker rate-limit bindings run
-after invocation and are per-colo. The current Wrangler OAuth credential cannot read or
-edit WAF rulesets, so a properly scoped Cloudflare credential or dashboard change is
-required to block API floods before Worker billing and execution.
 
 Creating provider compute is not readiness. The canary's `business.runtime` changed from
 `aisar-native` to `hermes-sprite` only after runner installation, authenticated readiness,

@@ -33,14 +33,15 @@ must be running.
 ## What is not live yet
 
 Every customer agent task still runs through `InlineRuntime`. The allow-listed I Run Cafe
-business now has one ready production-canary Sprite running the AISAR runner, pinned
+business has one ready production-canary Sprite running the AISAR runner, pinned
 Hermes, Chromium, and pinned OpenRouter model `deepseek/deepseek-v4-flash-0731` over
-HTTPS. Provisioning is enabled only for that business through four independent gates:
+HTTPS with its own capped inference key. Provisioning is enabled only for that business
+through four independent gates:
 explicit provisioning, secure model transport, immutable production bootstrap, and the
 business canary allow-list. The database runtime marker is `hermes-sprite`, but
 `runtimeFor()` intentionally continues to select `InlineRuntime` for all customer work.
-Hermes task selection stays disabled until the remaining per-runtime model-key,
-event/approval-bridge, database-migration, and edge-WAF gates in
+Hermes task selection stays disabled until the remaining event/approval bridge and
+runtime-selection gates in
 `../docs/superpowers/specs/2026-08-26-hermes-sprites-runtime.md` pass.
 
 ## Runtime boundaries
@@ -52,6 +53,28 @@ signals; `runtime_task` in Postgres is authoritative.
 
 One business gets at most one leased runtime task. Owners and staff share the business
 runtime; AISAR does not create one Sprite per login.
+
+Successful status polls do not consume an attempt. Only a real dispatch failure or an
+expired lease increments the five-attempt budget. The runner identity is persisted before
+the first poll so terminal exhaustion and owner cancellation can stop and meter the remote
+run. Primary Queue retries are backed by a DLQ consumer; Postgres leases remain the source
+of truth for replay. Terminal usage and run finalization occur only when the exhaustion
+compare-and-set proves that worker still owns the lease.
+
+## Customer interaction path
+
+Customers interact with AISAR, never with a Sprite or Hermes endpoint. Today, Ask AISAR
+still selects `InlineRuntime`. When the remaining selection gate is enabled, the existing
+authenticated request will derive the business from the session, create a durable `run`
+and `runtime_task`, enqueue a wake-up signal, and project the runner result into AISAR's
+run events, work record, Activity, and answer UI. Telegram and future channels enter
+through the same central connector gateway and task path; they do not maintain a
+connection inside each Sprite.
+
+The control plane never accepts a business id from the browser for this decision. Queue
+messages are wake-up hints only: task kind, payload, run id, and tenant all come from the
+leased Postgres row. Incremental Hermes event translation and approval resume remain
+gated before any non-empty tool grant is allowed.
 
 ## Configuration
 
@@ -65,13 +88,14 @@ npx wrangler secret put GOOGLE_CLIENT_SECRET
 npx wrangler secret put SPRITES_TOKEN
 # Fleet key issuer; use a dedicated OpenRouter management key.
 npx wrangler secret put AISAR_OPENROUTER_MANAGEMENT_KEY
-# Temporary inference-only key for the single named canary bridge.
-npx wrangler secret put AISAR_MODEL_KEY
 ```
 
 `SPRITES_TOKEN` is a dedicated Sprites API token for the AISAR organization and must never
-be placed in a customer runtime or frontend. `RUNTIME_RELEASE` is immutable; never replace
-it with `latest`.
+be placed in a customer runtime or frontend. It authenticates at Fly's edge; authenticated
+readiness must report `edgeAuthorizationForwarded: false`, proving the bearer header was
+removed before the request reached tenant code. Bootstrap fails before checkpointing,
+marking ready, or revoking an old model key if this invariant changes. `RUNTIME_RELEASE`
+is immutable; never replace it with `latest`.
 
 Do not use the deprecated `fly auth token` command when creating or rotating Fly
 credentials. Create a short-lived, organization-scoped source token with the current CLI:
@@ -90,17 +114,15 @@ exchange token revoked, as of 2026-08-27. See Fly's current
 Customer provisioning requires `AISAR_OPENROUTER_MANAGEMENT_KEY`. The control plane uses
 it only against OpenRouter's HTTPS management API to issue one inference key per runtime:
 $5 monthly hard limit, 90-day UTC expiry, encrypted-at-rest storage, seven-day rotation,
-durable prior-key revocation retry, and deletion-time revocation. Plaintext inference
+daily canary rotation checks, post-readiness prior-key revocation with durable retry, and
+deletion-time revocation. Plaintext inference
 keys are transferred through the authenticated Sprites filesystem API into a mode-0600
 runtime file; they never enter the repository, browser, queue payload, or logs. See
 OpenRouter's official [create](https://openrouter.ai/docs/api/api-reference/api-keys/create-keys)
 and [delete](https://openrouter.ai/docs/api/api-reference/api-keys/delete-keys) contracts.
 
-`AISAR_MODEL_KEY` is only a temporary bridge for the exact business UUID in
-`RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS`. The current canary key has a $10 weekly ceiling
-and expires on 2026-09-03. Adding a business to the runtime provisioning allow-list does
-not grant access to this shared bridge; new fleet provisioning fails closed until the
-management secret is configured.
+The temporary shared `AISAR_MODEL_KEY` bridge was removed from production on 2026-08-28
+after the canary received and proved its dedicated key. The old shared key was revoked.
 
 ## Abuse and DDoS protection
 
@@ -108,24 +130,27 @@ The Worker rejects abusive requests before session verification, Hyperdrive, ema
 Queues, Sprites, or model calls:
 
 - `AUTH_BURST`: 5 requests/minute for authentication, plus durable daily IP/address caps;
-- `API_BURST`: 120 requests/minute for the API hostname, including common bot-scan paths;
+- `API_BURST`: 120 requests/minute, checked against both the unverified session-shaped
+  identity and source address so rotating fake cookies cannot bypass the IP brake;
 - `RUNTIME_MUTATION_BURST`: 3 requests/minute, checked against both session-shaped identity
   and source address before provision, reconcile, upgrade, cancel, or delete; and
 - 128 KiB declared-body and 8 KiB request-target ceilings, method restrictions, `429`
   responses with `Retry-After`, no-store error responses, and secret-free bounded logs.
 
 Workers rate-limit bindings execute after a Worker invocation and are per-colo burst
-brakes, not exact global quotas. A Cloudflare zone WAF rate-limiting rule for
-`api.jentera.ai` is still required to stop floods before invocation. The current Wrangler
-OAuth credential has Worker/zone-read access but no WAF ruleset read/edit permission, so
-that zone change could not be safely inspected or applied from this rollout.
+brakes, not exact global quotas. Failure of the broad binding fails open so health and
+ordinary reads remain available; failure of the dedicated runtime-mutation binding fails
+closed before any provider work.
 
 `pnpm waf:dry-run` renders the reviewed Free-plan rule. `pnpm waf:apply` installs or
 updates only its stable rule reference and refuses to overwrite another Free-plan rule.
 Application requires `CLOUDFLARE_ZONE_ID` and a `CLOUDFLARE_API_TOKEN` with Zone WAF Read
-and Write. The rule caps non-verified, non-static traffic at 100 requests per 10 seconds
-per IP/colo before Worker invocation; stricter route-specific limits remain inside the
-Worker.
+and Write. Stable rule `aisar_dynamic_abuse_v1` was applied on 2026-08-28 and caps
+non-verified `/api` traffic at 100 requests per 10 seconds per IP/colo before Worker
+invocation. Cloudflare Free rate-limit expressions expose Path and Verified Bot, but not
+Host or Method, so the zone rule cannot add an `http.host` clause or exempt `OPTIONS`.
+Restricting it to `/api` keeps it away from ordinary Pages routes; stricter route-specific
+limits and CORS responses remain inside the Worker.
 
 Before deploying the Queue bindings for the first time, create the primary queue:
 
@@ -156,9 +181,9 @@ AISAR_NEON_OWNER_URL='postgresql://neondb_owner:...@.../neondb?sslmode=require' 
 ```
 
 The script refuses any host, database, or username other than AISAR's reviewed production
-owner target and prints no connection details. As of 2026-08-28, migration 015 is ready
-but not applied because this workstation has no saved owner password. Do not deploy the
-Worker safety release until it succeeds.
+owner target and prints no connection details. Migration 015 was applied transactionally
+to production on 2026-08-28. A rollback-only probe then verified the `aisar_app` role sees
+zero unscoped rows and exactly its tenant row under forced RLS.
 
 ## Deployment checks
 
@@ -171,8 +196,8 @@ npx wrangler deploy
 curl -fsS https://api.jentera.ai/api/health
 ```
 
-Do not deploy the runtime Queue configuration until `aisar-runtime` exists. Do not publish
-a provisioning producer until the Hermes rollout gates are complete. Migration
+Do not publish a customer provisioning producer until the Hermes rollout gates are
+complete. Both runtime queues exist and the Worker consumes the primary and DLQ. Migration
 `014_runtime_task_execution.sql` was applied to AISAR production as `neondb_owner` and
 verified as `aisar_app` on 2026-08-27; it remains required when restoring or creating an
 environment.
