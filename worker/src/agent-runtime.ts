@@ -182,3 +182,22 @@ export async function markRuntimeFailed(
        set status = 'error', last_error = ${error.slice(0, 1000)}, updated_at = now()
      where business_id = ${businessId}`;
 }
+
+export async function markRuntimeState(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  status: RuntimeState,
+): Promise<void> {
+  await tx`
+    update agent_runtime set status = ${status}, updated_at = now()
+     where business_id = ${businessId}`;
+}
+
+/** Remove both encrypted runtime credentials and the product routing marker. */
+export async function removeRuntimeRecord(
+  tx: postgres.TransactionSql,
+  businessId: string,
+): Promise<void> {
+  await tx`delete from agent_runtime where business_id = ${businessId}`;
+  await tx`update business set runtime = 'aisar-native' where id = ${businessId}`;
+}

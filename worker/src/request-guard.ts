@@ -91,7 +91,7 @@ export async function guardApiRequest(
       return response(429, 'too many requests', cors, { 'Retry-After': '60' });
     }
 
-    if (url.pathname === '/api/runtime/provision' && request.method === 'POST') {
+    if (isRuntimeMutation(request.method, url.pathname)) {
       /* Provisioning is rare and expensive. Check both the session-shaped
          identity and the source address so rotating fake cookies cannot buy
          unlimited provider API calls before authentication rejects them. */
@@ -114,4 +114,11 @@ export async function guardApiRequest(
   }
 
   return null;
+}
+
+function isRuntimeMutation(method: string, path: string): boolean {
+  if (method === 'DELETE' && path === '/api/runtime') return true;
+  if (method !== 'POST') return false;
+  return ['/api/runtime/provision', '/api/runtime/reconcile', '/api/runtime/upgrade']
+    .includes(path) || /^\/api\/runtime\/tasks\/[0-9a-f-]{36}\/cancel$/i.test(path);
 }

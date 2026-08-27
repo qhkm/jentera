@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 
 const required = ['AISAR_BUSINESS_ID', 'AISAR_RUNNER_KEY'];
 for (const name of required) {
@@ -6,6 +6,18 @@ for (const name of required) {
 }
 
 const taskId = randomUUID();
+const now = Math.floor(Date.now() / 1000);
+const grantPayload = Buffer.from(JSON.stringify({
+  version: 1,
+  businessId: process.env.AISAR_BUSINESS_ID,
+  taskId,
+  operations: [],
+  issuedAt: now,
+  expiresAt: now + 300,
+  nonce: randomUUID(),
+})).toString('base64url');
+const toolGrant = `${grantPayload}.${createHmac('sha256', process.env.AISAR_RUNNER_KEY)
+  .update(grantPayload).digest('base64url')}`;
 const headers = {
   'Content-Type': 'application/json',
   'X-Aisar-Runner-Key': process.env.AISAR_RUNNER_KEY,
@@ -17,6 +29,7 @@ const payload = JSON.stringify({
   sessionId: `vrs-smoke-${taskId}`,
   input: 'Reply with exactly: AISAR VRS OK. Do not use tools.',
   instructions: 'This is a model connectivity check. Do not call tools or perform actions.',
+  toolGrant,
 });
 const start = () => fetch('http://127.0.0.1:8080/v1/tasks', {
   method: 'POST',

@@ -4,9 +4,11 @@ The narrow per-business HTTP service placed in front of Hermes. The Sprite URL r
 the runner on port 8080; Hermes listens only on `127.0.0.1:8642`.
 
 The runner provides liveness, authenticated detailed readiness, idempotent task start,
-status, and cancellation. Its small state file survives a process restart and contains
-only AISAR task ids, Hermes run ids, statuses, and a hash of the task lease—never the
-plaintext lease or an API key.
+status, and cancellation. Every start additionally requires a five-minute HMAC grant
+bound to that business and task. The current grant vocabulary permits zero tools. Its
+small state file survives a process restart and contains only AISAR task ids, Hermes run
+ids, statuses, and hashes of task leases and grant nonces—never plaintext values or an
+API key.
 
 Required environment:
 
@@ -27,9 +29,12 @@ AISAR_RUNNER_STATE=/var/lib/aisar/runner-state.json
 
 Verify locally with `npm test`. No package installation is required.
 
-This runner does not yet proxy Hermes event streams or approvals. More importantly,
-instructions are not a security boundary: production bootstrap remains disabled until
-Hermes tools and Sprite egress are proven unable to bypass the AISAR tool gateway.
+This runner does not yet proxy Hermes event streams or Hermes-native approvals. The
+bootstrap instead configures `platform_toolsets.api_server` to an explicit empty list,
+verifies the pinned Hermes resolver returns no tools, and makes `toolMode: no-tools` part
+of authenticated readiness. The control plane rejects a runtime that does not attest
+that mode. External actions therefore remain solely in AISAR's existing policy and
+approval flow; widening the grant vocabulary requires a separately reviewed gateway.
 
 `bin/hermes-service.sh` and `bin/runner-service.sh` are the Sprite service
 entrypoints. Both read a mode-0600 environment file instead of embedding credentials
@@ -73,10 +78,11 @@ invokes `bin/bootstrap-runtime.sh` inside the Sprite.
 
 The in-Sprite bootstrap pins Hermes to tag `v2026.8.19` and commit
 `fcbd1076a93841fa88855acce810e342a5b78101`, verifies the upstream installer's SHA-256,
-writes the runtime environment atomically, configures VRS without inlining its key,
-recreates both services, proves authenticated readiness and Chromium, and creates a
-baseline checkpoint. Repeating it reconciles the same Sprite rather than creating a
-second one.
+writes the runtime environment atomically, configures OpenRouter without inlining its
+key, enforces the no-tools profile, applies the reviewed `nanoid` security override,
+requires a clean high-severity production dependency audit, recreates both services,
+proves authenticated readiness and Chromium, and creates a baseline checkpoint.
+Repeating it reconciles the same Sprite rather than creating a second one.
 
 Both scripts refuse an HTTP VRS endpoint by default. `AISAR_ALLOW_INSECURE_VRS=1` exists
 only to reproduce the current non-customer `jentera` smoke and must never be set by a

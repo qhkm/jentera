@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHmac, randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -49,6 +50,7 @@ beforeEach(async () => {
     hermesKey: HERMES_KEY,
     hermesOrigin,
     release: '2026.08.27-1',
+    toolMode: 'no-tools',
     stateFile: join(directory, 'state.json'),
   });
   runnerOrigin = await listen(runnerServer);
@@ -67,6 +69,7 @@ test('liveness reveals no credential and requires no runner key', async () => {
     ok: true,
     service: 'aisar-agent-runner',
     release: '2026.08.27-1',
+    toolMode: 'no-tools',
   });
 });
 
@@ -87,6 +90,20 @@ test('starts one Hermes run for a valid leased AISAR task', async () => {
     session_id: 'business-thread',
     instructions: 'Propose actions; do not send them directly.',
   });
+});
+
+test('rejects missing, expired, non-empty, and cross-task grants', async () => {
+  for (const toolGrant of [
+    undefined,
+    grant(TASK, { issuedAt: 1, expiresAt: 2 }),
+    grant(TASK, { operations: ['telegram:send_message'] }),
+    grant(TASK_2),
+  ]) {
+    const response = await start(TASK, { toolGrant });
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /tool grant/);
+  }
+  assert.equal(starts.length, 0);
 });
 
 test('rejects a task for another business identity', async () => {
@@ -136,9 +153,26 @@ const start = (taskId, overrides = {}) => call('/v1/tasks', {
     input: 'Help the owner',
     sessionId: 'business-thread',
     instructions: 'Propose actions; do not send them directly.',
+    toolGrant: grant(taskId),
     ...overrides,
   }),
 });
+
+function grant(taskId, overrides = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  const payload = Buffer.from(JSON.stringify({
+    version: 1,
+    businessId: BUSINESS,
+    taskId,
+    operations: [],
+    issuedAt: now,
+    expiresAt: now + 300,
+    nonce: randomUUID(),
+    ...overrides,
+  })).toString('base64url');
+  const signature = createHmac('sha256', RUNNER_KEY).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
+}
 
 function reply(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -165,4 +199,3 @@ function close(server) {
     server.close((error) => error ? reject(error) : resolve());
   });
 }
-

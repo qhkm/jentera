@@ -8,6 +8,7 @@ import sys
 from urllib.parse import urlparse
 
 from hermes_cli.config import load_config, save_config
+from hermes_cli.tools_config import _get_platform_tools
 
 
 def main() -> None:
@@ -45,6 +46,27 @@ def main() -> None:
         }
     )
     config["model"] = model
+
+    # The public Sprite URL reaches AISAR's runner, never Hermes. Hermes' own
+    # API also remains loopback-only and receives an explicit empty toolset.
+    # Re-evaluate the pinned resolver during every bootstrap so an upstream
+    # default/plugin change fails the release instead of silently adding tools.
+    platform_toolsets = dict(config.get("platform_toolsets") or {})
+    platform_toolsets["api_server"] = []
+    config["platform_toolsets"] = platform_toolsets
+
+    agent = dict(config.get("agent") or {})
+    agent.update({"max_turns": 20, "run_budget_seconds": 900, "gateway_timeout": 900})
+    config["agent"] = agent
+
+    gateway = dict(config.get("gateway") or {})
+    api_server = dict(gateway.get("api_server") or {})
+    api_server["max_concurrent_runs"] = 1
+    gateway["api_server"] = api_server
+    config["gateway"] = gateway
+
+    if _get_platform_tools(config, "api_server"):
+        raise SystemExit("Hermes API server resolved tools in AISAR no-tools mode")
     save_config(config)
 
 

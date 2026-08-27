@@ -6,7 +6,7 @@
    token (at Fly's edge) and a separate per-runtime runner key.
    ============================================================ */
 
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { dirname } from 'node:path';
@@ -18,6 +18,7 @@ const BODY_LIMIT = 64 * 1024;
 export function createRunner(input) {
   const config = validated(input);
   const state = new StateStore(config.stateFile);
+  let admitting = false;
 
   return createServer(async (req, res) => {
     try {
@@ -27,6 +28,7 @@ export function createRunner(input) {
           ok: true,
           service: 'aisar-agent-runner',
           release: config.release,
+          toolMode: config.toolMode,
         });
       }
 
@@ -41,13 +43,14 @@ export function createRunner(input) {
         return json(res, ready ? 200 : 503, {
           ok: ready,
           release: config.release,
+          toolMode: config.toolMode,
           hermes: boundedReadiness(body),
         });
       }
 
       if (req.method === 'POST' && url.pathname === '/v1/tasks') {
         const body = await readJson(req);
-        const problem = taskProblem(body, config.businessId);
+        const problem = taskProblem(body, config);
         if (problem) return json(res, 400, { ok: false, error: problem });
 
         const previous = await state.get(body.taskId);
@@ -62,41 +65,46 @@ export function createRunner(input) {
         }
 
         const active = await activeTask(config, state);
-        if (active) {
+        if (active || admitting) {
           return json(res, 409, {
             ok: false,
             error: 'runtime_busy',
-            activeTaskId: active.taskId,
+            activeTaskId: active?.taskId,
           });
         }
+        admitting = true;
+        try {
+          const started = await hermes(config, '/v1/runs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              input: body.input,
+              session_id: body.sessionId,
+              instructions: body.instructions,
+            }),
+          });
+          const result = await responseJson(started);
+          if (!started.ok || typeof result?.run_id !== 'string') {
+            return json(res, 502, { ok: false, error: 'Hermes refused the run' });
+          }
 
-        const started = await hermes(config, '/v1/runs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            input: body.input,
-            session_id: body.sessionId,
-            instructions: body.instructions,
-          }),
-        });
-        const result = await responseJson(started);
-        if (!started.ok || typeof result?.run_id !== 'string') {
-          return json(res, 502, { ok: false, error: 'Hermes refused the run' });
+          await state.put(body.taskId, {
+            taskId: body.taskId,
+            businessId: body.businessId,
+            hermesRunId: result.run_id,
+            status: typeof result.status === 'string' ? result.status : 'started',
+            leaseHash: hash(body.leaseToken),
+            grantNonceHash: hash(grantClaims(body.toolGrant).nonce),
+          });
+          return json(res, 202, {
+            ok: true,
+            taskId: body.taskId,
+            hermesRunId: result.run_id,
+            status: result.status ?? 'started',
+          });
+        } finally {
+          admitting = false;
         }
-
-        await state.put(body.taskId, {
-          taskId: body.taskId,
-          businessId: body.businessId,
-          hermesRunId: result.run_id,
-          status: typeof result.status === 'string' ? result.status : 'started',
-          leaseHash: hash(body.leaseToken),
-        });
-        return json(res, 202, {
-          ok: true,
-          taskId: body.taskId,
-          hermesRunId: result.run_id,
-          status: result.status ?? 'started',
-        });
       }
 
       const taskPath = url.pathname.match(/^\/v1\/tasks\/([0-9a-f-]{36})$/i);
@@ -144,6 +152,7 @@ export function configFromEnv(env = process.env) {
     hermesKey: env.HERMES_API_KEY,
     hermesOrigin: env.HERMES_ORIGIN ?? 'http://127.0.0.1:8642',
     stateFile: env.AISAR_RUNNER_STATE ?? '/var/lib/aisar/runner-state.json',
+    toolMode: env.AISAR_TOOL_MODE,
     port: Number(env.PORT ?? 8080),
   };
 }
@@ -158,6 +167,9 @@ function validated(config) {
   }
   if (typeof config.release !== 'string' || !config.release.trim()) {
     throw new Error('AISAR_RUNTIME_RELEASE is required');
+  }
+  if (config.toolMode !== 'no-tools') {
+    throw new Error('AISAR_TOOL_MODE must be no-tools');
   }
   return {
     ...config,
@@ -182,9 +194,9 @@ async function activeTask(config, state) {
   return null;
 }
 
-function taskProblem(body, businessId) {
+function taskProblem(body, config) {
   if (!body || typeof body !== 'object') return 'invalid JSON object';
-  if (body.businessId !== businessId) return 'business does not match runtime identity';
+  if (body.businessId !== config.businessId) return 'business does not match runtime identity';
   if (!uuid(body.taskId)) return 'taskId must be a UUID';
   if (typeof body.leaseToken !== 'string' || body.leaseToken.length < 16) {
     return 'leaseToken is required';
@@ -198,7 +210,42 @@ function taskProblem(body, businessId) {
   if (body.instructions !== undefined && typeof body.instructions !== 'string') {
     return 'instructions must be a string';
   }
+  const grant = validateGrant(body.toolGrant, config, body.taskId);
+  if (grant) return grant;
   return null;
+}
+
+function validateGrant(token, config, taskId, now = Math.floor(Date.now() / 1000)) {
+  if (typeof token !== 'string' || token.length > 4096) return 'tool grant is required';
+  const parts = token.split('.');
+  if (parts.length !== 2 || !parts.every((part) => /^[A-Za-z0-9_-]+$/.test(part))) {
+    return 'tool grant is invalid';
+  }
+  const expected = createHmac('sha256', config.runnerKey).update(parts[0]).digest();
+  const received = Buffer.from(parts[1], 'base64url');
+  if (received.length !== expected.length || !timingSafeEqual(received, expected)) {
+    return 'tool grant is invalid';
+  }
+  let claims;
+  try {
+    claims = grantClaims(token);
+  } catch {
+    return 'tool grant is invalid';
+  }
+  if (claims.version !== 1 || claims.businessId !== config.businessId ||
+      claims.taskId !== taskId || !uuid(claims.taskId) ||
+      !Array.isArray(claims.operations) || claims.operations.length !== 0 ||
+      !Number.isInteger(claims.issuedAt) || !Number.isInteger(claims.expiresAt) ||
+      claims.issuedAt > now + 30 || claims.expiresAt <= now ||
+      claims.expiresAt - claims.issuedAt > 300 ||
+      typeof claims.nonce !== 'string' || !uuid(claims.nonce)) {
+    return 'tool grant is invalid or expired';
+  }
+  return null;
+}
+
+function grantClaims(token) {
+  return JSON.parse(Buffer.from(token.split('.')[0], 'base64url').toString('utf8'));
 }
 
 async function hermes(config, path, init = {}) {
@@ -325,4 +372,3 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     }));
   });
 }
-

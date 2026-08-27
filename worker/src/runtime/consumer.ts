@@ -14,13 +14,18 @@ import {
   completeRuntimeTask,
   deferRuntimeTask,
   enqueueRuntimeTask,
+  exhaustRuntimeTask,
   leaseRuntimeTask,
   retryRuntimeTask,
   type RuntimeTask,
   type RuntimeTaskKind,
 } from './tasks';
 import { append, finishRun, recordWork } from '../runs';
-import { dispatchRuntimeRun } from './run-task';
+import { dispatchRuntimeRun, stopRuntimeTask } from './run-task';
+import { finalizeRuntimeUsage, RuntimeBudgetExceeded } from './usage';
+import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
+
+const MAX_TASK_ATTEMPTS = 5;
 
 export interface RuntimeQueueMessage {
   version: 1;
@@ -29,7 +34,7 @@ export interface RuntimeQueueMessage {
 }
 
 export type RuntimeMessageResult =
-  | { action: 'ack'; reason: 'completed' | 'already_done' | 'missing' }
+  | { action: 'ack'; reason: 'completed' | 'failed' | 'already_done' | 'missing' }
   | { action: 'requeue'; delaySeconds: number; reason: string }
   | { action: 'retry'; delaySeconds: number; reason: string };
 
@@ -74,9 +79,25 @@ export async function handleRuntimeMessage(
   try {
     switch (lease.task.kind) {
       case 'provision':
-      case 'reconcile':
         await ensureProviderRuntime(env, message.businessId, { provider: options.provider });
         break;
+      case 'reconcile':
+        await reconcileRuntime(env, message.businessId, options.provider, options.fetch);
+        break;
+      case 'upgrade':
+        await upgradeRuntime(env, message.businessId, options.provider);
+        break;
+      case 'delete':
+        await deleteRuntime(env, message.businessId, options.provider);
+        break;
+      case 'cancel': {
+        const payload = lease.task.payload as { targetTaskId?: unknown };
+        if (typeof payload?.targetTaskId !== 'string' || !uuid(payload.targetTaskId)) {
+          throw new Error('runtime cancel target is invalid');
+        }
+        await stopRuntimeTask(env, message.businessId, payload.targetTaskId, options.fetch);
+        break;
+      }
       case 'run': {
         const outcome = await dispatchRuntimeRun(env, lease.task, leaseToken, options);
         if (outcome.state === 'pending') {
@@ -93,6 +114,8 @@ export async function handleRuntimeMessage(
             });
           });
           if (!deferred) {
+            await stopRuntimeTask(env, message.businessId, message.taskId, options.fetch)
+              .catch(() => {});
             return { action: 'retry', delaySeconds: 10, reason: 'runtime task lease was lost' };
           }
           return { action: 'requeue', delaySeconds: 5, reason: 'Hermes run is still active' };
@@ -116,8 +139,21 @@ export async function handleRuntimeMessage(
               result: outcome.result,
             },
           );
-          if (!done || !lease.task.runId) return done;
+          if (!done) return done;
           const successful = outcome.remoteStatus === 'completed';
+          const usageStatus = successful
+            ? 'completed'
+            : outcome.remoteStatus === 'cancelled' || outcome.remoteStatus === 'stopped'
+              ? 'cancelled'
+              : 'failed';
+          await finalizeRuntimeUsage(
+            tx,
+            message.businessId,
+            message.taskId,
+            usageStatus,
+            outcome.usage,
+          );
+          if (!lease.task.runId) return done;
           await recordWork(tx, message.businessId, {
             runId: lease.task.runId,
             objective: outcome.payload.objective ?? outcome.payload.input.slice(0, 1_000),
@@ -137,6 +173,8 @@ export async function handleRuntimeMessage(
           return true;
         });
         if (!completed) {
+          await stopRuntimeTask(env, message.businessId, message.taskId, options.fetch)
+            .catch(() => {});
           return { action: 'retry', delaySeconds: 10, reason: 'runtime task lease was lost' };
         }
         return { action: 'ack', reason: 'completed' };
@@ -154,6 +192,29 @@ export async function handleRuntimeMessage(
     return { action: 'ack', reason: 'completed' };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
+    const terminal = error instanceof RuntimeBudgetExceeded ||
+      lease.task.attempt >= MAX_TASK_ATTEMPTS;
+    if (terminal) {
+      await withTenant(env, message.businessId, async (tx) => {
+        await exhaustRuntimeTask(tx, message.businessId, message.taskId, leaseToken, reason);
+        if (lease.task.kind === 'run') {
+          await finalizeRuntimeUsage(
+            tx,
+            message.businessId,
+            message.taskId,
+            'failed',
+            { inputTokens: 0, outputTokens: 0 },
+          );
+          if (lease.task.runId) {
+            await finishRun(tx, message.businessId, lease.task.runId, 'failed', {
+              runtimeTaskId: lease.task.id,
+              reason: error instanceof RuntimeBudgetExceeded ? error.code : 'attempts_exhausted',
+            });
+          }
+        }
+      });
+      return { action: 'ack', reason: 'failed' };
+    }
     await withTenant(env, message.businessId, (tx) =>
       retryRuntimeTask(tx, message.businessId, message.taskId, leaseToken, reason),
     );

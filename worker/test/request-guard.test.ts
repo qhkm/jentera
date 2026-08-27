@@ -80,6 +80,26 @@ describe('pre-route API request guard', () => {
     expect(keys.some((key) => key.includes('203.0.113.7') || key.includes('aaaa'))).toBe(false);
   });
 
+  it.each([
+    ['POST', '/api/runtime/reconcile'],
+    ['POST', '/api/runtime/upgrade'],
+    ['POST', '/api/runtime/tasks/11111111-1111-4111-8111-111111111111/cancel'],
+    ['DELETE', '/api/runtime'],
+  ])('applies the expensive-mutation brake to %s %s', async (method, path) => {
+    let mutations = 0;
+    const env = testEnv({
+      RUNTIME_MUTATION_BURST: {
+        limit: async () => {
+          mutations += 1;
+          return { success: true };
+        },
+      },
+    });
+    const req = request(path, { method });
+    expect(await guardApiRequest(req, env, new URL(req.url), cors)).toBeNull();
+    expect(mutations).toBe(2);
+  });
+
   it('fails closed when request protection is unavailable', async () => {
     const env = testEnv({
       API_BURST: { limit: async () => { throw new Error('binding failed'); } },

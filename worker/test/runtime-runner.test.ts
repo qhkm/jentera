@@ -16,7 +16,10 @@ beforeEach(async () => {
 
 describe('durable Hermes run delivery', () => {
   it('starts once, defers polling, then completes the AISAR history atomically', async () => {
-    const env = testEnv({ RUNTIME_RELEASE: '2026.08.27-1' });
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.08.27-1',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+    });
     const provider = new LocalRuntimeProvider();
     await ensureProviderRuntime(env, A, {
       provider,
@@ -53,7 +56,7 @@ describe('durable Hermes run delivery', () => {
         authorization: headers.get('Authorization'),
         runnerKey: headers.get('X-Aisar-Runner-Key'),
       });
-      if (url.endsWith('/readyz')) return response({ ok: true });
+      if (url.endsWith('/readyz')) return response({ ok: true, toolMode: 'no-tools' });
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
         return response({ ok: true, hermesRunId: 'run-hermes-1', status: 'started' }, 202);
       }
@@ -62,6 +65,9 @@ describe('durable Hermes run delivery', () => {
           ok: true,
           status: remoteStatus,
           output: remoteStatus === 'completed' ? 'The business is ready.' : undefined,
+          usage: remoteStatus === 'completed'
+            ? { input_tokens: 18_000, output_tokens: 20, total_tokens: 18_020 }
+            : undefined,
         });
       }
       return response({ error: 'not found' }, 404);
@@ -99,8 +105,57 @@ describe('durable Hermes run delivery', () => {
     expect(events.map((event) => event.type)).toEqual([
       'work.requested', 'work.started', 'work.completed',
     ]);
+    const [usage] = await asOwner((sql) => sql<{
+      status: string; input_tokens: string; output_tokens: string; cost_microusd: string;
+    }[]>`
+      select status, input_tokens::text, output_tokens::text, cost_microusd::text
+        from runtime_usage where runtime_task_id = ${task.id}`);
+    expect(usage).toEqual({
+      status: 'completed', input_tokens: '18000', output_tokens: '20', cost_microusd: '1083',
+    });
     expect(seen.every((call) => call.authorization === null)).toBe(true);
     expect(seen.every((call) => call.runnerKey === 'r'.repeat(64))).toBe(true);
+  });
+
+  it('exhausts a budget-blocked task before waking provider or runner compute', async () => {
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.08.27-1',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.27-1', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: env.AISAR_MODEL_NAME,
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `run:${run.id}`, payload: { input: 'hello' },
+    }));
+    await asOwner((sql) => sql`
+      insert into runtime_budget
+        (business_id, monthly_input_tokens, monthly_output_tokens,
+         monthly_runtime_seconds, monthly_cost_microusd, max_run_seconds)
+      values (${A}, 99999, 500000, 360000, 5000000, 900)`);
+    let fetches = 0;
+    const fetcher: typeof fetch = async () => {
+      fetches += 1;
+      return response({ ok: true, toolMode: 'no-tools' });
+    };
+
+    await expect(handleRuntimeMessage(
+      env,
+      { version: 1, businessId: A, taskId: task.id },
+      { provider, fetch: fetcher },
+    )).resolves.toEqual({ action: 'ack', reason: 'failed' });
+    expect(fetches).toBe(0);
+    const [state] = await asOwner((sql) => sql<{ task: string; run: string }[]>`
+      select t.status as task, r.status as run
+        from runtime_task t join run r on r.id = t.run_id where t.id = ${task.id}`);
+    expect(state).toEqual({ task: 'exhausted', run: 'failed' });
   });
 });
 

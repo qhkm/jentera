@@ -5,6 +5,9 @@ import type { RuntimeProvider } from './provider';
 import { runtimeProviderFor } from './provision';
 import { RunnerClient, type RunnerTaskResponse } from './runner-client';
 import type { RuntimeTask } from './tasks';
+import { issueNoToolsGrant } from './tool-grant';
+import { reserveRuntimeUsage } from './usage';
+import { runtimeTaskIsCancelled } from './tasks';
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped']);
 
@@ -26,6 +29,7 @@ export type RuntimeRunOutcome =
       result: unknown;
       summary: string;
       payload: RunPayload;
+      usage: { inputTokens: number; outputTokens: number };
     };
 
 export async function dispatchRuntimeRun(
@@ -35,10 +39,21 @@ export async function dispatchRuntimeRun(
   options: { provider?: RuntimeProvider; fetch?: typeof globalThis.fetch } = {},
 ): Promise<RuntimeRunOutcome> {
   const payload = runPayload(task.payload);
-  const { runtime, secrets } = await withTenant(env, task.businessId, async (tx) => ({
-    runtime: await getRuntime(tx, task.businessId),
-    secrets: await getRuntimeSecrets(env, tx, task.businessId),
-  }));
+  const { runtime, secrets, reservation } = await withTenant(
+    env,
+    task.businessId,
+    async (tx) => {
+      const runtime = await getRuntime(tx, task.businessId);
+      const secrets = await getRuntimeSecrets(env, tx, task.businessId);
+      const reservation = await reserveRuntimeUsage(
+        tx,
+        task.businessId,
+        task.id,
+        env.AISAR_MODEL_NAME?.trim() ?? '',
+      );
+      return { runtime, secrets, reservation };
+    },
+  );
   if (!runtime?.providerId || !runtime.providerUrl) throw new Error('runtime is not provisioned');
   if (!['ready', 'cold', 'idle', 'busy'].includes(runtime.status)) {
     throw new Error(`runtime is not dispatchable (${runtime.status})`);
@@ -62,6 +77,23 @@ export async function dispatchRuntimeRun(
     fetch: options.fetch,
   });
   await client.ready();
+  if (Date.now() - reservation.startedAt.getTime() > reservation.maxRunSeconds * 1_000) {
+    if (task.remoteRunId) await client.stop(task.id).catch(() => {});
+    return {
+      state: 'terminal',
+      remoteRunId: task.remoteRunId ?? 'not-started',
+      remoteStatus: 'cancelled',
+      result: { error: 'runtime task exceeded its time limit' },
+      summary: 'Runtime task exceeded its time limit.',
+      payload,
+      usage: { inputTokens: 0, outputTokens: 0 },
+    };
+  }
+  const toolGrant = await issueNoToolsGrant(
+    secrets.runnerKey,
+    task.businessId,
+    task.id,
+  );
   const started = await client.start({
     businessId: task.businessId,
     taskId: task.id,
@@ -69,9 +101,25 @@ export async function dispatchRuntimeRun(
     input: payload.input,
     sessionId: payload.sessionId,
     instructions: payload.instructions,
+    toolGrant,
   });
   const remoteRunId = started.hermesRunId;
   if (!remoteRunId) throw new Error('runner returned no Hermes run id');
+
+  const cancelled = await withTenant(env, task.businessId, (tx) =>
+    runtimeTaskIsCancelled(tx, task.businessId, task.id));
+  if (cancelled) {
+    await client.stop(task.id).catch(() => {});
+    return {
+      state: 'terminal',
+      remoteRunId,
+      remoteStatus: 'cancelled',
+      result: { error: 'runtime task was cancelled' },
+      summary: 'Runtime task was cancelled.',
+      payload,
+      usage: { inputTokens: 0, outputTokens: 0 },
+    };
+  }
 
   const current = await client.status(task.id);
   const remoteStatus = boundedStatus(current.status);
@@ -85,7 +133,28 @@ export async function dispatchRuntimeRun(
     result: boundedResult(current),
     summary: summaryOf(current),
     payload,
+    usage: usageOf(current),
   };
+}
+
+export async function stopRuntimeTask(
+  env: Env,
+  businessId: string,
+  taskId: string,
+  fetcher?: typeof globalThis.fetch,
+): Promise<void> {
+  const { runtime, secrets } = await withTenant(env, businessId, async (tx) => ({
+    runtime: await getRuntime(tx, businessId),
+    secrets: await getRuntimeSecrets(env, tx, businessId),
+  }));
+  if (!runtime?.providerUrl) return;
+  const client = new RunnerClient({
+    origin: runtime.providerUrl,
+    runnerKey: secrets.runnerKey,
+    edgeToken: runtime.provider === 'fly-sprite' ? env.SPRITES_TOKEN : undefined,
+    fetch: fetcher,
+  });
+  await client.stop(taskId);
 }
 
 function runPayload(value: unknown): RunPayload {
@@ -124,4 +193,17 @@ function boundedResult(response: RunnerTaskResponse): unknown {
 function summaryOf(response: RunnerTaskResponse): string {
   const result = response.output ?? response.result ?? response.response ?? response.error ?? '';
   return (typeof result === 'string' ? result : JSON.stringify(result)).slice(0, 500);
+}
+
+function usageOf(response: RunnerTaskResponse): { inputTokens: number; outputTokens: number } {
+  const usage = response.usage;
+  if (!usage || typeof usage !== 'object') return { inputTokens: 0, outputTokens: 0 };
+  return {
+    inputTokens: token(usage.input_tokens),
+    outputTokens: token(usage.output_tokens),
+  };
+}
+
+function token(value: unknown): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }

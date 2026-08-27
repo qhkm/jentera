@@ -7,10 +7,17 @@ export const RUNTIME_TASK_KINDS = [
   'reconcile',
   'upgrade',
   'delete',
+  'cancel',
 ] as const;
 
 export type RuntimeTaskKind = (typeof RUNTIME_TASK_KINDS)[number];
-export type RuntimeTaskStatus = 'queued' | 'leased' | 'completed' | 'failed' | 'cancelled';
+export type RuntimeTaskStatus =
+  | 'queued'
+  | 'leased'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'exhausted';
 
 export interface RuntimeTask {
   id: string;
@@ -113,7 +120,8 @@ export async function leaseRuntimeTask(
     select ${tx.unsafe(cols)} from runtime_task
      where id = ${taskId} and business_id = ${businessId} for update`;
   if (!current) return { outcome: 'missing' };
-  if (current.status === 'completed' || current.status === 'cancelled') {
+  if (current.status === 'completed' || current.status === 'cancelled' ||
+      current.status === 'exhausted') {
     return { outcome: 'done' };
   }
   if (current.status === 'leased') return { outcome: 'busy' };
@@ -193,4 +201,54 @@ export async function retryRuntimeTask(
        and status = 'leased' and lease_token = ${leaseToken}
     returning id`;
   return rows.length === 1;
+}
+
+/** Terminal failure. Queue redelivery becomes a harmless acknowledgement. */
+export async function exhaustRuntimeTask(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+  leaseToken: string,
+  error: string,
+): Promise<boolean> {
+  const rows = await tx`
+    update runtime_task
+       set status = 'exhausted', lease_token = null, lease_expires_at = null,
+           last_error = ${error.slice(0, 1000)}, completed_at = now(), updated_at = now()
+     where id = ${taskId} and business_id = ${businessId}
+       and status = 'leased' and lease_token = ${leaseToken}
+    returning id`;
+  return rows.length === 1;
+}
+
+export async function cancelRuntimeTask(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+): Promise<{ task: RuntimeTask; changed: boolean } | null> {
+  const [current] = await tx<TaskRow[]>`
+    select ${tx.unsafe(cols)} from runtime_task
+     where id = ${taskId} and business_id = ${businessId} for update`;
+  if (!current) return null;
+  if (['completed', 'cancelled', 'exhausted'].includes(current.status)) {
+    return { task: task(current), changed: false };
+  }
+  const [cancelled] = await tx<TaskRow[]>`
+    update runtime_task
+       set status = 'cancelled', lease_token = null, lease_expires_at = null,
+           completed_at = now(), updated_at = now()
+     where id = ${taskId} and business_id = ${businessId}
+    returning ${tx.unsafe(cols)}`;
+  return { task: task(cancelled), changed: true };
+}
+
+export async function runtimeTaskIsCancelled(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+): Promise<boolean> {
+  const [row] = await tx<{ cancelled: boolean }[]>`
+    select status = 'cancelled' as cancelled from runtime_task
+     where id = ${taskId} and business_id = ${businessId}`;
+  return row?.cancelled ?? false;
 }

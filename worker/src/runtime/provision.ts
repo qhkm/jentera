@@ -138,6 +138,7 @@ async function bootstrapRuntime(
     'runner/src/server.mjs',
     'runner/bin/browser-smoke.mjs',
     'runner/bin/configure-model-provider.py',
+    'runner/bin/patch-hermes-dependencies.mjs',
     'runner/bin/hermes-service.sh',
     'runner/bin/runner-service.sh',
     'runner/bin/bootstrap-runtime.sh',

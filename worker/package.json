@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "waf:dry-run": "node scripts/apply-waf.mjs",
+    "waf:apply": "node scripts/apply-waf.mjs --apply",
     "typecheck": "tsc --noEmit",
     "db:local": "wrangler d1 execute aisar --local --file=./schema.sql",
     "db:remote": "wrangler d1 execute aisar --remote --file=./schema.sql",

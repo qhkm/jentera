@@ -130,6 +130,22 @@ if [[ "$installed_commit" != "$hermes_commit" ]]; then
   trap 'rm -f "$incoming"' EXIT
 fi
 
+# Hermes' reviewed commit pins nanoid 3.3.17, which is affected by
+# GHSA-2v37-7h3g-55p8. Apply the narrow patched release without allowing a
+# broad audit fix to rewrite unrelated dependencies, then make future high
+# severity production advisories a release-blocking event.
+/.sprite/bin/node /home/sprite/aisar/runner/patch-hermes-dependencies.mjs "$install_dir"
+(
+  cd "$install_dir"
+  npm install --ignore-scripts --no-audit --no-fund
+)
+/.sprite/bin/node /home/sprite/aisar/runner/patch-hermes-dependencies.mjs \
+  "$install_dir" --verify
+(
+  cd "$install_dir"
+  npm audit --omit=dev --audit-level=high
+)
+
 # A terminated installer can leave the pinned Git commit and node_modules in
 # place before Playwright downloads Chromium. The commit alone is therefore
 # not proof of a complete runtime. Repair the browser layer independently and
@@ -167,6 +183,7 @@ trap 'rm -f "$incoming" "$runtime_tmp"' EXIT
 {
   printf 'AISAR_BUSINESS_ID=%q\n' "$business_id"
   printf 'AISAR_RUNTIME_RELEASE=%q\n' "$runtime_release"
+  printf 'AISAR_TOOL_MODE=%q\n' 'no-tools'
   printf 'AISAR_RUNNER_KEY=%q\n' "$runner_key"
   printf 'HERMES_API_KEY=%q\n' "$hermes_key"
   printf 'API_SERVER_KEY=%q\n' "$hermes_key"

@@ -2,6 +2,9 @@ import type { Env } from '../env';
 import { getRuntime } from '../agent-runtime';
 import { withTenant } from '../db';
 import { publishRuntimeTask } from '../runtime';
+import { cancelRuntimeTask } from '../runtime/tasks';
+import { finalizeRuntimeUsage, runtimeBudgetSnapshot } from '../runtime/usage';
+import { finishRun } from '../runs';
 import { hasBusiness, resolveTenant } from '../tenancy';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
@@ -26,9 +29,10 @@ export async function handleRuntime(
   }
 
   if (url.pathname === '/api/runtime' && request.method === 'GET') {
-    const runtime = await withTenant(env, identity.businessId, (tx) =>
-      getRuntime(tx, identity.businessId),
-    );
+    const { runtime, budget } = await withTenant(env, identity.businessId, async (tx) => ({
+      runtime: await getRuntime(tx, identity.businessId),
+      budget: await runtimeBudgetSnapshot(tx, identity.businessId),
+    }));
     return json({
       ok: true,
       runtime: runtime ? {
@@ -38,6 +42,7 @@ export async function handleRuntime(
         lastReadyAt: runtime.lastReadyAt,
         lastError: runtime.lastError,
       } : null,
+      budget,
     }, {}, cors);
   }
 
@@ -73,5 +78,100 @@ export async function handleRuntime(
     return json({ ok: true, taskId: task.id, status: task.status }, { status: 202 }, cors);
   }
 
+  if (url.pathname === '/api/runtime/reconcile' && request.method === 'POST') {
+    const blocked = mutationProblem(identity.role, identity.businessId, env);
+    if (blocked) return json({ ok: false, err: blocked.message }, { status: blocked.status }, cors);
+    const window = Math.floor(Date.now() / (5 * 60 * 1_000));
+    const task = await publishRuntimeTask(env, identity.businessId, {
+      kind: 'reconcile',
+      dedupeKey: `reconcile:${identity.businessId}:${window}`,
+    });
+    return json({ ok: true, taskId: task.id, status: task.status }, { status: 202 }, cors);
+  }
+
+  if (url.pathname === '/api/runtime/upgrade' && request.method === 'POST') {
+    const blocked = mutationProblem(identity.role, identity.businessId, env);
+    if (blocked) return json({ ok: false, err: blocked.message }, { status: blocked.status }, cors);
+    const release = env.RUNTIME_RELEASE?.trim();
+    if (!release) {
+      return json({ ok: false, err: 'runtime release is not configured' }, { status: 503 }, cors);
+    }
+    const task = await publishRuntimeTask(env, identity.businessId, {
+      kind: 'upgrade',
+      dedupeKey: `upgrade:${identity.businessId}:${release}`,
+      payload: { release },
+    });
+    return json({ ok: true, taskId: task.id, status: task.status }, { status: 202 }, cors);
+  }
+
+  const cancel = url.pathname.match(/^\/api\/runtime\/tasks\/([0-9a-f-]{36})\/cancel$/i);
+  if (cancel && request.method === 'POST') {
+    if (identity.role !== 'owner') {
+      return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+    }
+    const cancelled = await withTenant(env, identity.businessId, async (tx) => {
+      const outcome = await cancelRuntimeTask(tx, identity.businessId, cancel[1]);
+      if (!outcome) return null;
+      if (outcome.changed && outcome.task.kind === 'run') {
+        await finalizeRuntimeUsage(tx, identity.businessId, outcome.task.id, 'cancelled', {
+          inputTokens: 0,
+          outputTokens: 0,
+        });
+        if (outcome.task.runId) {
+          await finishRun(tx, identity.businessId, outcome.task.runId, 'cancelled', {
+            runtimeTaskId: outcome.task.id,
+            reason: 'owner_cancelled',
+          });
+        }
+      }
+      return outcome;
+    });
+    if (!cancelled) {
+      return json({ ok: false, err: 'runtime task not found' }, { status: 404 }, cors);
+    }
+    if (!cancelled.changed && cancelled.task.status !== 'cancelled') {
+      return json({ ok: false, err: 'runtime task is already terminal' }, { status: 409 }, cors);
+    }
+    if (cancelled.changed && cancelled.task.remoteRunId) {
+      await publishRuntimeTask(env, identity.businessId, {
+        kind: 'cancel',
+        dedupeKey: `cancel:${cancelled.task.id}`,
+        payload: { targetTaskId: cancelled.task.id },
+      });
+    }
+    return json({ ok: true, taskId: cancelled.task.id, status: 'cancelled' }, {}, cors);
+  }
+
+  if (url.pathname === '/api/runtime' && request.method === 'DELETE') {
+    if (identity.role !== 'owner') {
+      return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+    }
+    const runtime = await withTenant(env, identity.businessId, (tx) =>
+      getRuntime(tx, identity.businessId));
+    if (!runtime) return json({ ok: true, status: 'absent' }, {}, cors);
+    const task = await publishRuntimeTask(env, identity.businessId, {
+      kind: 'delete',
+      dedupeKey: `delete:${runtime.id}`,
+    });
+    return json({ ok: true, taskId: task.id, status: task.status }, { status: 202 }, cors);
+  }
+
   return json({ ok: false, err: 'not found' }, { status: 404 }, cors);
+}
+
+function mutationProblem(
+  role: string | null,
+  businessId: string,
+  env: Env,
+): { status: number; message: string } | null {
+  if (role !== 'owner') return { status: 403, message: 'owner access required' };
+  if (env.RUNTIME_PROVISIONING_ENABLED !== 'true' ||
+      env.MODEL_TRANSPORT_READY !== 'true' ||
+      env.RUNTIME_BOOTSTRAP_ENABLED !== 'true') {
+    return { status: 503, message: 'runtime mutations are disabled' };
+  }
+  const canaries = new Set((env.RUNTIME_CANARY_BUSINESS_IDS ?? '')
+    .split(',').map((value) => value.trim()).filter(Boolean));
+  if (!canaries.has(businessId)) return { status: 403, message: 'business is not in the runtime canary' };
+  return null;
 }

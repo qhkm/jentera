@@ -14,6 +14,8 @@ export interface RunnerTaskRequest {
   input: string;
   sessionId?: string;
   instructions?: string;
+  /** HMAC-signed, task-bound, five-minute capability grant. */
+  toolGrant: string;
 }
 
 export interface RunnerTaskResponse {
@@ -27,6 +29,8 @@ export interface RunnerTaskResponse {
   result?: unknown;
   response?: unknown;
   error?: unknown;
+  usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
+  toolMode?: string;
 }
 
 /** Authenticated client for AISAR's narrow per-business runner API. */
@@ -50,7 +54,10 @@ export class RunnerClient {
   }
 
   async ready(): Promise<void> {
-    await this.request('/readyz');
+    const body = await this.request('/readyz');
+    if (body.toolMode !== 'no-tools') {
+      throw new Error('runner did not attest the required no-tools mode');
+    }
   }
 
   async start(task: RunnerTaskRequest): Promise<RunnerTaskResponse> {
