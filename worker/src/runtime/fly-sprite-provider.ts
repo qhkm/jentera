@@ -35,7 +35,7 @@ export class FlySpriteProvider implements BootstrapRuntimeProvider {
     if (!options.token.trim()) throw new Error('SPRITES_TOKEN is required');
     this.token = options.token;
     this.apiOrigin = (options.apiOrigin ?? 'https://api.sprites.dev').replace(/\/$/, '');
-    this.fetcher = options.fetch ?? globalThis.fetch;
+    this.fetcher = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
   }
 
   async create(desired: DesiredRuntime): Promise<ObservedRuntime> {

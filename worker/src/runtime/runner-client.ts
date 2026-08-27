@@ -40,7 +40,7 @@ export class RunnerClient {
     this.origin = options.origin.replace(/\/$/, '');
     this.runnerKey = options.runnerKey;
     this.edgeToken = options.edgeToken;
-    this.fetcher = options.fetch ?? globalThis.fetch;
+    this.fetcher = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
     if (!this.origin.startsWith('https://') &&
         !this.origin.startsWith('http://127.0.0.1') &&
         !this.origin.startsWith('http://localhost')) {
