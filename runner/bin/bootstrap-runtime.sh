@@ -130,6 +130,28 @@ if [[ "$installed_commit" != "$hermes_commit" ]]; then
   trap 'rm -f "$incoming"' EXIT
 fi
 
+# A terminated installer can leave the pinned Git commit and node_modules in
+# place before Playwright downloads Chromium. The commit alone is therefore
+# not proof of a complete runtime. Repair the browser layer independently and
+# assert the executable exists before any service can be marked ready.
+browser_cache=/home/sprite/.cache/ms-playwright
+browser_binary="$(find "$browser_cache" -type f \
+  -path '*/chrome-headless-shell-linux64/chrome-headless-shell' \
+  -perm -111 -print -quit 2>/dev/null || true)"
+if [[ -z "$browser_binary" ]]; then
+  (
+    cd "$install_dir"
+    timeout --foreground -k 10 600 npx playwright install --with-deps chromium
+  )
+  browser_binary="$(find "$browser_cache" -type f \
+    -path '*/chrome-headless-shell-linux64/chrome-headless-shell' \
+    -perm -111 -print -quit 2>/dev/null || true)"
+fi
+[[ -n "$browser_binary" ]] || {
+  echo "Playwright Chromium is unavailable after installation" >&2
+  exit 1
+}
+
 runtime_env=/home/sprite/aisar/runtime.env
 runtime_tmp="$(mktemp /home/sprite/aisar/runtime.env.XXXXXX)"
 trap 'rm -f "$incoming" "$runtime_tmp"' EXIT
