@@ -14,6 +14,7 @@ import { handleRuns } from './routes/runs';
 import { handleConnect } from './routes/connect';
 import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
+import { handleRuntimeMessage, type RuntimeQueueMessage } from './runtime/consumer';
 
 function cors(env: Env, origin: string | null): Record<string, string> {
   const allowed = (env.ALLOWED_ORIGINS ?? '')
@@ -96,4 +97,17 @@ export default {
       return json({ ok: false, err: (err as Error).message }, { status: 500 }, headers);
     }
   },
-} satisfies ExportedHandler<Env>;
+
+  async queue(batch: MessageBatch<RuntimeQueueMessage>, env: Env): Promise<void> {
+    for (const message of batch.messages) {
+      try {
+        const result = await handleRuntimeMessage(env, message.body);
+        if (result.action === 'ack') message.ack();
+        else message.retry({ delaySeconds: result.delaySeconds });
+      } catch (error) {
+        console.error(`[runtime-queue] ${String(error)}`);
+        message.retry({ delaySeconds: 30 });
+      }
+    }
+  },
+} satisfies ExportedHandler<Env, RuntimeQueueMessage>;

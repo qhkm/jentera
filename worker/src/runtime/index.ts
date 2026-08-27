@@ -13,6 +13,17 @@ import type { RuntimeAdapter } from './types';
 
 export type { RuntimeAdapter, RetrievedFact, PriorWork } from './types';
 export { InlineRuntime } from './inline';
+export type {
+  DesiredRuntime,
+  ObservedRuntime,
+  RuntimeProvider,
+  RuntimeState,
+} from './provider';
+export { LocalRuntimeProvider } from './local-provider';
+export { FlySpriteProvider } from './fly-sprite-provider';
+export { ensureProviderRuntime, runtimeProviderFor } from './provision';
+export { handleRuntimeMessage, publishRuntimeTask } from './consumer';
+export type { RuntimeQueueMessage, RuntimeMessageResult } from './consumer';
 
 /**
  * The runtime for this business.

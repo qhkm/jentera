@@ -26,6 +26,14 @@ export interface Env {
       offered — the other two ways in keep working. */
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  /** Organization-scoped Fly Sprites API token. Control plane only. */
+  SPRITES_TOKEN?: string;
+  /** Override only for tests or a future compatible provider gateway. */
+  SPRITES_API_ORIGIN?: string;
+  /** Immutable runner + Hermes + browser release identifier. */
+  RUNTIME_RELEASE?: string;
+  /** Durable provisioning and Hermes task delivery. */
+  RUNTIME_QUEUE?: Queue<import('./runtime/consumer').RuntimeQueueMessage>;
   /** Override the sender, e.g. for a staging origin. Must be a domain
       verified in Resend, and should match APP_ORIGIN. */
   MAGIC_FROM?: string;

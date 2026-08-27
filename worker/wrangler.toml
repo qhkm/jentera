@@ -38,9 +38,17 @@ APP_ORIGIN = "https://jentera.ai"
 # qhkmdev90.workers.dev is not ours to verify; jentera.ai is.
 API_ORIGIN = "https://api.jentera.ai"
 
+# The immutable runner/Hermes/browser bundle requested for newly
+# provisioned runtimes. Changing this asks reconciliation to upgrade;
+# it must never silently track "latest".
+RUNTIME_RELEASE = "2026.08.27-1"
+SPRITES_API_ORIGIN = "https://api.sprites.dev"
+
 # Connector credentials are secrets, never vars:
 #   npx wrangler secret put META_APP_SECRET
 #   npx wrangler secret put GOOGLE_CLIENT_SECRET
+# Runtime-provider credentials are also secrets:
+#   npx wrangler secret put SPRITES_TOKEN
 
 # Edge burst brake on the magic-link endpoint, keyed by client IP.
 # Refuses before any database or email work, so a flood costs nothing.
@@ -58,3 +66,18 @@ namespace_id = "1001"
 # id is a constant in that file and the call is one function.
 [ai]
 binding = "AI"
+
+# Durable wake-up signals. runtime_task in Postgres owns status and
+# leases; Queue delivery is intentionally treated as at-least-once.
+[[queues.producers]]
+binding = "RUNTIME_QUEUE"
+queue = "aisar-runtime"
+
+[[queues.consumers]]
+queue = "aisar-runtime"
+max_batch_size = 5
+max_batch_timeout = 2
+max_retries = 8
+retry_delay = 30
+dead_letter_queue = "aisar-runtime-dlq"
+max_concurrency = 20

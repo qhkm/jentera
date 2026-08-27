@@ -1,8 +1,55 @@
 # Hermes Runtime on Fly Sprites
 
-**Status:** accepted direction; implementation pending  
+**Status:** development Sprite smoke running; customer provisioning disabled
 **Last price verification:** 2026-08-26  
 **Decision owner:** AISAR
+
+## Implementation status — 2026-08-27
+
+Implemented in the repository:
+
+- an RLS-protected `agent_runtime` record with explicit lifecycle states, release,
+  provider identity, readiness, failure, checkpoint, and separate encrypted runner and
+  Hermes credentials;
+- a provider-neutral `RuntimeProvider`, a deterministic `LocalRuntimeProvider`, and a
+  Workers-compatible `FlySpriteProvider` using the official authenticated REST API;
+- idempotent provider-resource creation that records failures but does not prematurely
+  select Hermes for the business;
+- a durable `runtime_task` table with deduplication, expiring leases, and a database
+  guarantee of one leased task per business;
+- a Cloudflare Queue producer/consumer contract that treats messages as wake-up signals
+  and Postgres as task truth;
+- contract, RLS, retry, duplicate-delivery, checkpoint, and provider tests;
+- an AISAR-owned Node runner with authenticated readiness, one-task concurrency,
+  idempotent Hermes run creation, polling, cancellation, and persistent task identity;
+  and
+- a private `jentera` development Sprite with Hermes v0.20.5 pinned to release tag
+  `v2026.8.19`, loopback-only Hermes, the runner on port 8080, verified headless
+  Chromium, and checkpoint `v3`.
+
+The development smoke currently reports healthy state DB, config, disk, gateway, and
+authenticated API checks. Its readiness is deliberately degraded because no model
+provider is configured. The initial Node/browser install failed against Ubuntu 26.04;
+pinning `node-gyp` to Hermes's Python and Playwright to its supported Ubuntu 24.04 x64
+fallback completed the install, and a real Chromium launch plus DOM assertion passed.
+
+Still gated and therefore intentionally unavailable to customers:
+
+- a model-provider credential and one real Hermes run through the runner;
+- review or patch the pinned Hermes Node tree's four high-severity `npm audit`
+  findings (`nanoid` through `postcss`/`sanitize-html`/`vite`) without silently
+  moving the Hermes release;
+- automated, idempotent production bootstrap using the two control-plane credentials;
+- full ready/sleep/wake/restore proof after model and browser readiness;
+- the durable Hermes `RuntimeAdapter`, event translation, cancellation, and approval
+  resume path;
+- short-lived AISAR tool grants and proof that Hermes cannot bypass policy;
+- usage/spend ceilings, recovery bundles, reconciliation, upgrade, rollback, and
+  deletion operations; and
+- a provisioning trigger or customer-facing endpoint.
+
+Creating provider compute is not readiness. `business.runtime` remains `aisar-native`
+until runner installation, authenticated readiness, and a baseline checkpoint all pass.
 
 ## Decision
 
@@ -217,7 +264,7 @@ Add an RLS-protected `agent_runtime` table with at least:
 - desired and observed Hermes versions;
 - last readiness time and bounded failure detail;
 - latest known-good checkpoint id;
-- an encrypted reference to the per-runtime Hermes API key; and
+- encrypted per-runtime runner and Hermes API credentials; and
 - creation, update, and deletion timestamps.
 
 Set `business.runtime = 'hermes-sprite'` only after readiness succeeds. The existing

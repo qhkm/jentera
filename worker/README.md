@@ -1,82 +1,99 @@
-# aisar-api — the executor behind the tool contract
+# aisar-api
 
-A Cloudflare Worker implementing the same tool contract the client already speaks. The app runs fine without it; set `VITE_API_URL` and approvals plus execution move server-side.
+The Cloudflare Worker control plane behind AISAR. It uses Neon Postgres through
+Hyperdrive, derives the active business from an authenticated session, and forces RLS on
+tenant-owned tables.
+
+## Local verification
 
 ```bash
 pnpm install
-pnpm db:local          # apply schema.sql to the local D1
-pnpm dev               # http://localhost:8788
 pnpm typecheck
+pnpm test
 ```
 
-## What is real, and what is not
+The test suite starts one temporary Postgres 16 container, applies every file in
+`migrations/`, and executes application queries as the non-owner `aisar_app` role. Docker
+must be running.
 
-**Real and tested:** the HTTP contract, the risk gate, the approval queue in D1, the append-only audit log, business scoping, and the single-execution guarantee.
+## What is real
 
-**Not real:** outbound calls to providers. `src/connectors.ts` is the boundary — every connector returns "not wired to a live provider yet". Executing against WhatsApp, Google or Shopee needs OAuth app registrations and per-tenant tokens that must be created in each provider's console first. That is the only thing standing between this and production.
+- magic-link, password, and Google authentication;
+- owner/staff membership with a session-derived tenant;
+- forced Postgres RLS and server-side repository storage;
+- versioned business facts with source, confidence, confirmation, and correction;
+- append-only run events and structured work records;
+- website ingestion and grounded Ask AISAR through the inline runtime;
+- encrypted connector credentials;
+- a verified Telegram webhook, real Telegram sends, permissions, approvals, and edited
+  drafts; and
+- the provider-neutral runtime foundation, Fly Sprites REST provider, durable runtime
+  tasks, leases, and Cloudflare Queue consumer.
 
-To go live for one connector: register the app, `wrangler secret put ITS_SECRET`, and replace that connector's `execute` body. Nothing upstream changes.
+## What is not live yet
 
-## The rule this enforces
+Every customer agent task still runs through `InlineRuntime`. A private development Sprite
+now runs the AISAR runner and pinned Hermes, but has no model-provider credential and is
+not connected to a customer. The runtime foundation creates no customer resources by
+itself and exposes no provisioning endpoint. Hermes selection stays disabled until the
+remaining readiness, browser, automated bootstrap, tool-policy, metering, and recovery
+gates in
+`../docs/superpowers/specs/2026-08-26-hermes-sprites-runtime.md` pass.
 
-Anything above low risk is queued for a human and never executed on the agent's say-so. Risk comes from the op, not the caller:
+## Runtime boundaries
 
-| Risk | Ops | Behaviour |
-|---|---|---|
-| blocked | `pay` `refund` | refuse until explicitly enabled |
-| high | `send` `cancel` | queue for approval |
-| medium | `update` `book` | queue for approval |
-| low | `read` `list` `export` | execute immediately |
+`src/runtime/types.ts` is the task-level `RuntimeAdapter`: it reads and reasons but never
+writes AISAR state or calls a connector. `src/runtime/provider.ts` owns compute lifecycle.
+`src/runtime/tasks.ts` owns durable leases. Queue messages are at-least-once wake-up
+signals; `runtime_task` in Postgres is authoritative.
 
-`pay` and `refund` are blocked rather than queued because approval fatigue is real: a
-queue that mixes routine customer replies with irreversible money movement trains the
-owner to tap through both. Enabling payments should be a deliberate act, not a tired tap.
+One business gets at most one leased runtime task. Owners and staff share the business
+runtime; AISAR does not create one Sprite per login.
 
-**The code does not yet match this table** — `TOOL_RISK` in `src/index.ts` still classifies
-`pay` and `refund` as high, which routes them to approval. Correcting that is part of the
-backend integration; see `docs/superpowers/specs/2026-08-21-backend-integration-design.md`.
+## Configuration
 
-`TOOL_RISK` in `src/index.ts` mirrors `src/lib/data/risk.ts` in the app. **Keep the two in step** — the client uses its copy to predict behaviour, but the server's copy is the one that governs.
-
-## Endpoints
-
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/api/tools/call` | Queue or execute, per risk |
-| GET | `/api/approvals?business=&status=` | List, scoped to one business |
-| POST | `/api/approvals/:id/decide` | Approve (executes) or reject |
-| GET | `/api/health` | Liveness |
-
-### Single execution
-
-`decideApproval` updates with `WHERE id = ? AND status = 'pending'` and checks `meta.changes`. Two concurrent approvals of the same row cannot both execute — the second matches no rows and gets a 409. This is the guarantee that matters most, since approving is what actually sends things to customers.
-
-Verified locally:
-
-```
-POST /api/tools/call  {op:"send"}   → queued, risk=high, not executed
-POST /api/tools/call  {op:"read"}   → executed immediately (low risk)
-POST /api/approvals/:id/decide      → reaches executor
-POST /api/approvals/:id/decide      → HTTP 409, "not pending"
-GET  /api/approvals?business=other  → [] (scoping holds)
-```
-
-## Deploying
+Public bindings and variables are in `wrangler.toml`. Secrets are set separately:
 
 ```bash
-npx wrangler d1 create aisar          # paste the id into wrangler.toml
-pnpm db:remote                        # apply the schema
-npx wrangler deploy
+npx wrangler secret put RESEND_API_KEY
+npx wrangler secret put CREDENTIAL_KEY
+npx wrangler secret put RATE_LIMIT_PEPPER
+npx wrangler secret put GOOGLE_CLIENT_SECRET
+npx wrangler secret put SPRITES_TOKEN
 ```
 
-Then set `VITE_API_URL` in the app to the deployed URL and add its origin to `ALLOWED_ORIGINS`.
+`SPRITES_TOKEN` is an organization-scoped API token and must never be placed in a customer
+runtime or frontend. `RUNTIME_RELEASE` is immutable; never replace it with `latest`.
 
-## Before it faces the internet
+Before deploying the Queue bindings for the first time, create the primary queue:
 
-Not done here, and required before this handles anyone's real business:
+```bash
+npx wrangler queues create aisar-runtime
+npx wrangler queues create aisar-runtime-dlq
+```
 
-- **No authentication.** Every endpoint is open, and `business` is caller-supplied — anyone could read or approve another tenant's queue. Needs real auth and a server-derived tenant id.
-- **No rate limiting.**
-- **No webhook verification** for inbound provider callbacks.
+Both queues were created in the AISAR Cloudflare account on 2026-08-27. The commands are
+kept here for a new account or disaster-recovery setup; an already-existing queue should
+be treated as success after verifying its exact name.
 
-The schema and routing are shaped to accept these; none of them are written yet.
+## Database migrations
+
+Production uses Neon Postgres, not D1. Apply `migrations/*.sql` in filename order using
+the database owner. `000_role.sql` must run through `psql` because it creates and grants
+the non-owner application role. Never run the Worker through the database owner: owners
+bypass RLS unless every table is forced, and using the intended role is part of the
+security boundary.
+
+## Deployment checks
+
+After applying migrations and configuring bindings/secrets:
+
+```bash
+pnpm typecheck
+pnpm test
+npx wrangler deploy
+curl -fsS https://api.jentera.ai/api/health
+```
+
+Do not deploy the runtime Queue configuration until `aisar-runtime` exists. Do not publish
+a provisioning producer until the Hermes rollout gates are complete.
