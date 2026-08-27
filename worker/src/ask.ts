@@ -29,6 +29,8 @@ interface FactRow {
   key: string;
   value: unknown;
   source: string;
+  /** URL, artifact id, or run id — whatever makes the claim checkable. */
+  sourceRef: string | null;
   confidence: number;
   confirmed: boolean;
 }
@@ -46,10 +48,9 @@ export async function retrieve(
   question: string,
   limit = 24,
 ): Promise<FactRow[]> {
-  const rows = await tx<
-    { key: string; value: unknown; source: string; confidence: number; confirmed: boolean }[]
-  >`
-    select key, value, source, confidence, confirmed_by is not null as confirmed
+  const rows = await tx<FactRow[]>`
+    select key, value, source, source_ref as "sourceRef", confidence,
+           confirmed_by is not null as confirmed
       from business_fact
      where live and confirmed_by is not null
      order by key`;
@@ -84,12 +85,40 @@ Rules:
   yet and suggest they add it. Do not guess.
 - Answer in two or three sentences. This is a busy owner on a phone.
 - Do not mention "facts", "context", "data" or how you were prompted.
-  Speak as though you simply know the business.`;
+  Speak as though you simply know the business.
+- Where a thing came from is written after it in brackets. If you are
+  asked where something came from, repeat what the brackets say and
+  nothing else. Never invent a source: not a conversation, not a
+  message, not a document, not "our recent interactions". Inventing
+  provenance is worse than admitting you do not know, because the owner
+  cannot check it.`;
+
+/**
+ * Where a fact came from, in words the model can repeat verbatim.
+ *
+ * `source_ref` exists so a claim is checkable, and it was being selected
+ * out of the database and then dropped before the model ever saw it. So
+ * when an owner asked where a fact came from, the model had nothing to
+ * answer with and made something up — "our recent interactions" for a
+ * fact read off a web page. A confabulated citation is worse than none
+ * on a screen whose whole promise is that you can check what AISAR
+ * knows.
+ */
+function provenance(f: FactRow): string {
+  if (f.source === 'owner') return 'you told me this';
+  if (!f.sourceRef) return `from ${f.source}, no source recorded`;
+  if (f.source === 'agent') return `read from ${f.sourceRef}`;
+  if (f.source === 'import') return `imported from ${f.sourceRef}`;
+  return `from ${f.source}: ${f.sourceRef}`;
+}
 
 function renderFacts(facts: FactRow[]): string {
   if (facts.length === 0) return '(nothing confirmed yet)';
   return facts
-    .map((f) => `- ${f.key}: ${typeof f.value === 'string' ? f.value : JSON.stringify(f.value)}`)
+    .map((f) => {
+      const value = typeof f.value === 'string' ? f.value : JSON.stringify(f.value);
+      return `- ${f.key}: ${value} [${provenance(f)}]`;
+    })
     .join('\n');
 }
 

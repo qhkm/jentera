@@ -171,3 +171,94 @@ describe('the answer', () => {
     }
   });
 });
+
+/* ============================================================
+   Provenance.
+
+   `source_ref` exists so a claim is checkable — the schema says as
+   much. It was selected out of the database and then dropped before
+   the model ever saw it, so when an owner asked where a fact came
+   from, the model had nothing to answer with and invented something:
+   "I learned that from our recent interactions" about a fact read off
+   a web page.
+
+   A confabulated citation is worse than no citation on a screen whose
+   promise is that you can check what AISAR knows and where it came
+   from. Found on production, not by a test.
+   ============================================================ */
+
+/** An agent-read fact, confirmed by the owner, carrying its source. */
+const readFromWeb = (key: string, value: unknown, url: string) =>
+  asTenant(A, (tx) =>
+    recordFact(tx, A, {
+      key,
+      value,
+      source: 'agent',
+      sourceRef: url,
+      confidence: 0.9,
+      confirmedBy: userId,
+    }),
+  );
+
+describe('where a fact came from', () => {
+  it('survives retrieval instead of being dropped', async () => {
+    await readFromWeb('business.name', 'AISAR', 'https://jentera.ai');
+    const [fact] = await asTenant(A, (tx) => retrieve(tx, 'what is my business called'));
+    expect(fact.sourceRef).toBe('https://jentera.ai');
+  });
+
+  it('reaches the model with the fact it belongs to', async () => {
+    /* The bug. The model was shown "business.name: AISAR" and nothing
+       else, then asked where that came from. */
+    await readFromWeb('business.name', 'AISAR', 'https://jentera.ai');
+    const { env, seen } = spyModel();
+    const facts = await asTenant(A, (tx) => retrieve(tx, 'where did you learn my name'));
+
+    await answer(env, 'where did you learn my name', facts, []);
+
+    expect(seen[0]).toContain('https://jentera.ai');
+    expect(seen[0]).toMatch(/business\.name: AISAR \[read from https:\/\/jentera\.ai\]/);
+  });
+
+  it('says the owner told it, when the owner did', async () => {
+    /* `source_ref` is null for an owner-stated fact by design — the
+       source is the person. That must not render as a missing source. */
+    await stated('hours.monday', '9am - 6pm');
+    const { env, seen } = spyModel();
+    const facts = await asTenant(A, (tx) => retrieve(tx, 'what are my monday hours'));
+
+    await answer(env, 'what are my monday hours', facts, []);
+
+    expect(seen[0]).toContain('[you told me this]');
+    expect(seen[0]).not.toContain('no source recorded');
+  });
+
+  it('is honest when a source is genuinely missing', async () => {
+    await asTenant(A, (tx) =>
+      recordFact(tx, A, {
+        key: 'menu.vegetarian',
+        value: 'yes',
+        source: 'connector',
+        confidence: 0.8,
+        confirmedBy: userId,
+      }),
+    );
+    const { env, seen } = spyModel();
+    const facts = await asTenant(A, (tx) => retrieve(tx, 'vegetarian'));
+
+    await answer(env, 'vegetarian', facts, []);
+    expect(seen[0]).toContain('no source recorded');
+  });
+
+  it('tells the model not to invent one', async () => {
+    /* The prompt is half the fix. Without a source the model still had
+       to say something, and the standing instruction to never sound
+       like a machine pushed it toward inventing a plausible history. */
+    await readFromWeb('business.name', 'AISAR', 'https://jentera.ai');
+    const { env, seen } = spyModel();
+    const facts = await asTenant(A, (tx) => retrieve(tx, 'name'));
+
+    await answer(env, 'name', facts, []);
+    expect(seen[0]).toMatch(/never invent a source/i);
+  });
+});
