@@ -239,6 +239,77 @@ describe('durable Hermes run delivery', () => {
       output_tokens: '3',
     });
   });
+
+  it('does not finalize usage when another worker owns the lease at exhaustion', async () => {
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.08.27-1',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.27-1', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: env.AISAR_MODEL_NAME,
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `run:${run.id}`, payload: { input: 'hello' },
+    }));
+    await asTenant(A, (tx) => reserveRuntimeUsage(tx, A, task.id, env.AISAR_MODEL_NAME!));
+    await asOwner((sql) => sql`
+      update runtime_task
+         set attempt = 4, remote_run_id = 'run-existing', remote_status = 'running',
+             started_at = now()
+       where id = ${task.id}`);
+
+    let leaseStolen = false;
+    const fetcher: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        if (!leaseStolen) {
+          leaseStolen = true;
+          await asOwner((sql) => sql`
+            update runtime_task
+               set lease_token = 'concurrent-worker',
+                   lease_expires_at = now() + interval '5 minutes'
+             where id = ${task.id}`);
+        }
+        return response({ error: 'temporary runner failure' }, 503);
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}/stop`) && init?.method === 'POST') {
+        return response({
+          ok: true,
+          status: 'stopped',
+          usage: { input_tokens: 12, output_tokens: 3 },
+        });
+      }
+      return response({ error: 'not found' }, 404);
+    };
+
+    await expect(handleRuntimeMessage(
+      env,
+      { version: 1, businessId: A, taskId: task.id },
+      { provider, fetch: fetcher },
+    )).resolves.toEqual({
+      action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost',
+    });
+    const [state] = await asOwner((sql) => sql<{
+      task_status: string; attempt: number; lease_token: string; usage_status: string;
+    }[]>`
+      select t.status as task_status, t.attempt, t.lease_token,
+             u.status as usage_status
+        from runtime_task t join runtime_usage u on u.runtime_task_id = t.id
+       where t.id = ${task.id}`);
+    expect(state).toEqual({
+      task_status: 'leased',
+      attempt: 4,
+      lease_token: 'concurrent-worker',
+      usage_status: 'reserved',
+    });
+  });
 });
 
 function response(body: unknown, status = 200): Response {

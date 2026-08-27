@@ -202,8 +202,15 @@ export async function handleRuntimeMessage(
         ).catch(() => null);
         measured = stopped ? measuredUsageOf(stopped) ?? undefined : undefined;
       }
-      await withTenant(env, message.businessId, async (tx) => {
-        await exhaustRuntimeTask(tx, message.businessId, message.taskId, leaseToken, reason);
+      const exhausted = await withTenant(env, message.businessId, async (tx) => {
+        const changed = await exhaustRuntimeTask(
+          tx,
+          message.businessId,
+          message.taskId,
+          leaseToken,
+          reason,
+        );
+        if (!changed) return false;
         if (lease.task.kind === 'run') {
           await finalizeRuntimeUsage(
             tx,
@@ -219,7 +226,11 @@ export async function handleRuntimeMessage(
             });
           }
         }
+        return true;
       });
+      if (!exhausted) {
+        return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
+      }
       return { action: 'ack', reason: 'failed' };
     }
     await withTenant(env, message.businessId, (tx) =>
