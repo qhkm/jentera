@@ -13,7 +13,7 @@ afterEach(async () => {
 });
 
 test('narrowly updates the reviewed vulnerable override and verifies its lock', async () => {
-  const root = await fixture('3.3.17', '3.3.18');
+  const root = await fixture('3.3.17', '3.3.17');
   assert.equal(run(root).status, 0);
   const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
   assert.equal(manifest.overrides['nanoid@^3'], '3.3.18');
