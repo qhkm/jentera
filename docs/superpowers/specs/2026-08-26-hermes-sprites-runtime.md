@@ -42,15 +42,30 @@ Implemented in the repository:
   400 and current 409 conflict responses, and repair of partial Playwright installs on
   the Sprite Ubuntu 26.04 image using the reviewed Ubuntu 24.04 platform build; and
 - pre-route API, authentication, and runtime-mutation burst limits that refuse before
-  Neon or provider work, plus bounded request shape and body-size guards.
+  Neon or provider work, plus bounded request shape and body-size guards;
+- signed five-minute business/task-scoped grants whose current capability set is
+  deliberately empty, plus an authenticated `toolMode: no-tools` readiness attestation;
+- an RLS-protected per-business budget and measured usage ledger, pre-compute reservations,
+  a 15-minute per-run ceiling, and terminal exhaustion after five attempts;
+- durable control-plane cancellation and implemented reconcile, upgrade, restore-recovery,
+  rollback checkpoint, and deletion paths; and
+- an idempotent Free-plan Cloudflare WAF deployment script that refuses to overwrite an
+  unrelated existing rule.
 
 The I Run Cafe canary Sprite `aisar-b-3602f62e8aec2e6174b3` is ready at release
-`2026.08.28-2`, pinned to bundle commit
-`b6ce8b7b2d3931b8ce6dcd55726600be7a679feb`. Its authenticated readiness reports both
-runner and Hermes healthy, a real Chromium launch and DOM assertion pass, and the durable
-provision task completed with a baseline checkpoint. A no-tools OpenRouter run returned
-exactly `AISAR_OPENROUTER_OK` using 18,045 input and 11 output tokens. Redelivery returned
-the same completed Hermes run rather than making a second model request.
+`2026.08.28-3`, pinned for future reconciliation to bundle commit
+`0a6c256842a27912057ef34c28af808cc102fa6c`. Its authenticated readiness reports runner,
+Hermes, and `toolMode: no-tools` healthy. A signed-grant OpenRouter run completed with
+`AISAR VRS OK.` and duplicate delivery returned the same Hermes run. Checkpoint `v2` was
+created, a marker was written afterward, `v2` was restored, the marker disappeared, and
+authenticated readiness still passed. This proves the canary's wake/restore path rather
+than merely proving checkpoint creation.
+
+The pinned Hermes audit now reports two linked high-severity findings rather than four:
+`nanoid 3.3.17` beneath `postcss` in `sanitize-html` and `vite`. Release bootstrap applies
+only the registry-verified `3.3.18` override and lock records, refuses upstream version
+drift, and requires `npm audit --omit=dev --audit-level=high` to pass. The canary upgrade
+reported zero production vulnerabilities.
 
 Production migration `014_runtime_task_execution.sql` was applied transactionally on
 2026-08-27 and verified through both `neondb_owner` and the restricted `aisar_app` role.
@@ -70,15 +85,11 @@ to use connectors or tools.
 Still gated and therefore intentionally unavailable to customers:
 
 - per-runtime OpenRouter keys with hard spend limits, expiry, rotation, and revocation;
-- review or patch the pinned Hermes Node tree's four high-severity `npm audit`
-  findings (`nanoid` through `postcss`/`sanitize-html`/`vite`) without silently
-  moving the Hermes release;
-- sleep/wake/restore proof after the successful automated ready/checkpoint canary;
-- incremental Hermes event translation, control-plane cancellation, approval resume, and
-  business runtime selection after the canary passes;
-- short-lived AISAR tool grants and proof that Hermes cannot bypass policy;
-- usage/spend ceilings, recovery bundles, reconciliation, upgrade, rollback, and
-  deletion operations.
+- incremental Hermes event translation and Hermes-native approval resume before any
+  non-empty grant vocabulary is introduced;
+- production application and restricted-role verification of migration
+  `015_runtime_safety.sql`, followed by the Worker deployment; and
+- business runtime selection after those gates pass.
 
 Zone-level Cloudflare WAF rate limiting also remains open. Worker rate-limit bindings run
 after invocation and are per-colo. The current Wrangler OAuth credential cannot read or
@@ -598,10 +609,9 @@ Completed:
 
 Open:
 
-- prove cold sleep, wake, and restore from the recorded checkpoint;
-- prevent Hermes tools from bypassing AISAR policy and approvals with short-lived grants;
-- add durable per-business runtime/model spend ceilings and per-runtime capped model keys;
-- test health reconciliation, upgrade, rollback, and deletion;
-- review the pinned Hermes dependency audit findings; and
+- issue and rotate separate capped OpenRouter keys per runtime;
+- apply and verify migration 015, then deploy the Worker safety release;
+- add incremental event translation and Hermes-native approval resume before allowing
+  non-empty tool grants; and
 - install a zone-level WAF rate rule for `api.jentera.ai` using a credential with WAF
   ruleset permission, because Worker bindings cannot prevent invocation charges.

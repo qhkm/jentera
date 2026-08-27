@@ -39,8 +39,8 @@ HTTPS. Provisioning is enabled only for that business through four independent g
 explicit provisioning, secure model transport, immutable production bootstrap, and the
 business canary allow-list. The database runtime marker is `hermes-sprite`, but
 `runtimeFor()` intentionally continues to select `InlineRuntime` for all customer work.
-Hermes task selection stays disabled until the remaining tool-policy, metering,
-reconciliation, recovery, and security gates in
+Hermes task selection stays disabled until the remaining per-runtime model-key,
+event/approval-bridge, database-migration, and edge-WAF gates in
 `../docs/superpowers/specs/2026-08-26-hermes-sprites-runtime.md` pass.
 
 ## Runtime boundaries
@@ -99,7 +99,7 @@ Queues, Sprites, or model calls:
 - `AUTH_BURST`: 5 requests/minute for authentication, plus durable daily IP/address caps;
 - `API_BURST`: 120 requests/minute for the API hostname, including common bot-scan paths;
 - `RUNTIME_MUTATION_BURST`: 3 requests/minute, checked against both session-shaped identity
-  and source address before the owner/canary provisioning route; and
+  and source address before provision, reconcile, upgrade, cancel, or delete; and
 - 128 KiB declared-body and 8 KiB request-target ceilings, method restrictions, `429`
   responses with `Retry-After`, no-store error responses, and secret-free bounded logs.
 
@@ -108,6 +108,13 @@ brakes, not exact global quotas. A Cloudflare zone WAF rate-limiting rule for
 `api.jentera.ai` is still required to stop floods before invocation. The current Wrangler
 OAuth credential has Worker/zone-read access but no WAF ruleset read/edit permission, so
 that zone change could not be safely inspected or applied from this rollout.
+
+`pnpm waf:dry-run` renders the reviewed Free-plan rule. `pnpm waf:apply` installs or
+updates only its stable rule reference and refuses to overwrite another Free-plan rule.
+Application requires `CLOUDFLARE_ZONE_ID` and a `CLOUDFLARE_API_TOKEN` with Zone WAF Read
+and Write. The rule caps non-verified, non-static traffic at 100 requests per 10 seconds
+per IP/colo before Worker invocation; stricter route-specific limits remain inside the
+Worker.
 
 Before deploying the Queue bindings for the first time, create the primary queue:
 
@@ -127,6 +134,20 @@ the database owner. `000_role.sql` must run through `psql` because it creates an
 the non-owner application role. Never run the Worker through the database owner: owners
 bypass RLS unless every table is forced, and using the intended role is part of the
 security boundary.
+
+Migration `015_runtime_safety.sql` adds RLS-protected per-business budgets and usage,
+terminal retry exhaustion, and durable cancellation. Apply it transactionally with the
+reviewed target guard:
+
+```bash
+AISAR_NEON_OWNER_URL='postgresql://neondb_owner:...@.../neondb?sslmode=require' \
+  pnpm db:migrate:runtime-safety
+```
+
+The script refuses any host, database, or username other than AISAR's reviewed production
+owner target and prints no connection details. As of 2026-08-28, migration 015 is ready
+but not applied because this workstation has no saved owner password. Do not deploy the
+Worker safety release until it succeeds.
 
 ## Deployment checks
 
