@@ -66,12 +66,13 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
   /* Signed in, "active" means connected — not what onboarding said the
      business uses, and not what the playbook seeded. Those two were
      lighting WhatsApp and Instagram for an account whose only
-     connection was the Telegram bot sitting directly above them. */
-  const active = conns.real
-    ? [...linked]
-    : business.ch.length
-      ? business.ch
-      : b.connections;
+     connection was the Telegram bot sitting directly above them.
+
+     Pending is not the demo here either: falling back while the fetch
+     was in flight lit those same two chips for a moment on every
+     visit. Nothing lit until the answer arrives. */
+  const active =
+    conns.mode === 'demo' ? (business.ch.length ? business.ch : b.connections) : [...linked];
   const dirty = name.trim() !== business.name || loc.trim() !== business.loc;
 
   function save() {
@@ -96,13 +97,19 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
         id: 'connections',
         label: t('biz.tab.connections'),
         /* Real connections when there is a server to ask. The seeded
-           playbook list said "4" for a business that had one. */
-        trailing: <Tag tone="green">{conns.real ? linked.size : b.connections.length}</Tag>,
+           playbook list said "4" for a business that had one — and said
+           it again for a moment on every load, until `pending` stopped
+           being answered with the demo. */
+        trailing: (
+          <Tag tone="green">
+            {conns.mode === 'demo' ? b.connections.length : conns.real ? linked.size : '—'}
+          </Tag>
+        ),
         trailingCompact: true,
       },
       { id: 'permissions', label: t('biz.tab.permissions') },
     ],
-    [t, b.connections.length, unconfirmed, conns.real, linked],
+    [t, b.connections.length, unconfirmed, conns.mode, conns.real, linked],
   );
 
   return (

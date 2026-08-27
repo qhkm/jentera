@@ -113,7 +113,15 @@ export async function handleRuns(
         return keys;
       });
 
-      return json({ ok: true, runId: run.id, facts: written.length, keys: written }, {}, cors);
+      /* `chars` goes back too. A JavaScript-rendered page returns a
+         shell — jentera.ai is 43 characters of <title> once the scripts
+         are stripped — and reporting "found 1 thing" for that reads as
+         "I read your site" when nothing of the site was read. */
+      return json(
+        { ok: true, runId: run.id, facts: written.length, keys: written, chars: page.chars },
+        {},
+        cors,
+      );
     } catch (e) {
       const message = e instanceof Error ? e.message : 'something went wrong';
       await withTenant(env, id.businessId, async (tx) => {

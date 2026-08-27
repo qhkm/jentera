@@ -18,6 +18,35 @@ import { useMutate, useRefresh, useRepository, useSnapshot } from '@/lib/repo';
 import type { Fact } from '@/lib/repo/types';
 import type { Tone } from '@/lib/types';
 
+/* Below this, a page gave up little more than its <title>: almost
+   certainly a JavaScript-rendered shell rather than a thin site. 400
+   characters is roughly a short paragraph — under it there is nothing
+   an owner would recognise as their page. */
+const SHELL_CHARS = 400;
+
+/**
+ * What to tell the owner about a read.
+ *
+ * Reporting "found 1 thing" for a page AISAR could not actually see
+ * reads as "I read your site". jentera.ai returns a 727-byte shell
+ * that strips to 43 characters of title, and AISAR duly reported a
+ * successful read of a site whose text it never received. Saying which
+ * happened costs one sentence and saves the owner trusting a fact base
+ * built from a page title.
+ */
+export function describeRead(r: { facts: number; chars: number }): string {
+  if (r.chars < SHELL_CHARS) {
+    const found =
+      r.facts === 0
+        ? 'nothing to suggest'
+        : `${r.facts} thing${r.facts === 1 ? '' : 's'} from the title alone`;
+    return `That page needs JavaScript to show its content, so AISAR only saw ${r.chars} characters of it — ${found}. Point it at a page that works with JavaScript off, or add what matters below.`;
+  }
+  return r.facts === 0
+    ? 'AISAR read the page but found nothing clear enough to suggest. A page with your hours, prices or services works best.'
+    : `AISAR found ${r.facts} thing${r.facts === 1 ? '' : 's'}. They are listed above, waiting for you to confirm.`;
+}
+
 const noop = () => {};
 
 /** Human-readable rendering of a jsonb value. */
@@ -140,11 +169,7 @@ export default function KnowledgePanel() {
     setNote(null);
     try {
       const r = await repo.ingest(site.trim());
-      setNote(
-        r.facts === 0
-          ? 'AISAR read the page but found nothing clear enough to suggest. A page with your hours, prices or services works best.'
-          : `AISAR found ${r.facts} thing${r.facts === 1 ? '' : 's'}. They are listed above, waiting for you to confirm.`,
-      );
+      setNote(describeRead(r));
       setSite('');
       // The facts live on the snapshot, so it has to be reloaded before
       // the list above reflects what was just written.

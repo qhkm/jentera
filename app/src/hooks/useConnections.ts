@@ -18,9 +18,22 @@ import type { Connection } from '@/lib/repo';
 import { useSignedIn } from '@/lib/repo/gate';
 import { findConnector } from '@/lib/tools';
 
+/**
+ * The same three answers `useActivity` gives, for the same reason.
+ *
+ * `real` alone had to say `false` while the request was in flight, and
+ * the Connections tab read `false` as "use the playbook's list" — so
+ * the badge showed 4 for an account with one connection, and the chip
+ * row lit WhatsApp and Instagram, until the fetch landed a moment
+ * later and it all corrected itself. The fix for the value missed the
+ * loading state; this is that half.
+ */
+export type ConnectionsMode = 'real' | 'pending' | 'demo';
+
 export interface ConnectionsState {
   /** Null while loading. Empty array means "asked, and there are none". */
   rows: Connection[] | null;
+  mode: ConnectionsMode;
   /** True when `rows` describes this business rather than a demo. */
   real: boolean;
   /** Optimistic updates from the connect/disconnect controls. */
@@ -64,7 +77,9 @@ export function useConnections(): ConnectionsState {
     };
   }, [repo, signedIn]);
 
-  return { rows, real: signedIn && rows !== null, setRows };
+  const mode: ConnectionsMode = !signedIn ? 'demo' : rows !== null ? 'real' : 'pending';
+
+  return { rows, mode, real: mode === 'real', setRows };
 }
 
 /**

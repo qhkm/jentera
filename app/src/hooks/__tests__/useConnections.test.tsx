@@ -101,3 +101,86 @@ describe('stripping the subtitle’s connection claim', () => {
     }
   });
 });
+
+/* ============================================================
+   The loading state, which the first fix missed.
+
+   `real` was a boolean, so it said `false` while the request was in
+   flight and the tab read that as "use the playbook's list". The badge
+   showed 4 for an account with one connection and the chip row lit
+   WhatsApp and Instagram — for about a second, on every visit, then it
+   corrected itself. Exactly the bug that was fixed for the activity
+   counters the same morning, in the one hook that did not get the
+   third state.
+   ============================================================ */
+
+import { render, screen, waitFor } from '@testing-library/react';
+import { useConnections } from '@/hooks/useConnections';
+import { RepositoryProvider } from '@/lib/repo/context';
+import { LocalRepository } from '@/lib/repo/local';
+import { SignedInProvider } from '@/lib/repo/gate';
+
+function held() {
+  const repo = new LocalRepository();
+  let release: ((c: Connection[]) => void) | null = null;
+  const calls = { connections: 0 };
+  repo.connections = () => {
+    calls.connections += 1;
+    return new Promise<Connection[]>((resolve) => {
+      release = resolve;
+    });
+  };
+  return { repo, calls, answer: (c: Connection[] = []) => release?.(c) };
+}
+
+function Probe() {
+  const c = useConnections();
+  return <span data-testid="mode">{c.mode}</span>;
+}
+
+function mountWith(repo: LocalRepository, signedIn = true) {
+  return render(
+    <SignedInProvider value={signedIn}>
+      <RepositoryProvider repository={repo}>
+        <Probe />
+      </RepositoryProvider>
+    </SignedInProvider>,
+  );
+}
+
+describe('what mode says before the answer arrives', () => {
+  it('is pending, not demo', async () => {
+    /* `demo` here is what put the playbook's 4 on the badge. */
+    const { repo, calls, answer } = held();
+    mountWith(repo);
+
+    /* Wait on the request, not on `pending`. `pending` is already true
+       on the first render — before the effect fires — so waiting for it
+       proves nothing, and `answer()` called that early finds no
+       resolver and silently does nothing. Same race as activity-mode,
+       reintroduced by copying the assertion instead of the lesson. */
+    await waitFor(() => expect(calls.connections).toBe(1));
+    expect(screen.getByTestId('mode')).toHaveTextContent('pending');
+
+    answer([row('telegram')]);
+    await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('real'));
+  });
+
+  it('is demo only when nobody is signed in', async () => {
+    mountWith(new LocalRepository(), false);
+    await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('demo'));
+  });
+
+  it('stays out of demo when the request fails', async () => {
+    /* A failed fetch is not permission to show the playbook's guesses
+       as this business's connections. */
+    const repo = new LocalRepository();
+    repo.connections = async () => {
+      throw new Error('offline');
+    };
+    mountWith(repo);
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByTestId('mode')).toHaveTextContent('pending');
+  });
+});

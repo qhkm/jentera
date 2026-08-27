@@ -60,6 +60,9 @@ export interface IngestResult {
   runId: string;
   facts: number;
   keys: string[];
+  /** Readable characters the page yielded. Tiny means a JavaScript
+      shell was read rather than the site. */
+  chars: number;
 }
 
 export interface WorkSummary {

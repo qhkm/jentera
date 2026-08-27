@@ -264,10 +264,16 @@ export class RemoteRepository implements Repository {
       runId?: string;
       facts?: number;
       keys?: string[];
+      chars?: number;
     };
     if (res.status === 401) throw new NotSignedInError();
     if (!body.ok) throw new Error(body.err ?? 'Could not read that page.');
-    return { runId: body.runId ?? '', facts: body.facts ?? 0, keys: body.keys ?? [] };
+    return {
+      runId: body.runId ?? '',
+      facts: body.facts ?? 0,
+      keys: body.keys ?? [],
+      chars: body.chars ?? 0,
+    };
   }
 
   async ask(question: string): Promise<AskAnswer> {
