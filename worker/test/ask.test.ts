@@ -262,3 +262,32 @@ describe('where a fact came from', () => {
     expect(seen[0]).toMatch(/never invent a source/i);
   });
 });
+
+describe('the bracket is a note to the model, not to the reader', () => {
+  it('is told not to copy it into the answer', async () => {
+    /* The first version of this prompt said "repeat what the brackets
+       say", and the model duly pasted "[https://jentera.ai]" into
+       ordinary answers where nobody had asked about provenance. The
+       same function drafts replies to real customers, so a customer
+       would have received the bracket too. */
+    await readFromWeb('business.name', 'AISAR', 'https://jentera.ai');
+    const { env, seen } = spyModel();
+    const facts = await asTenant(A, (tx) => retrieve(tx, 'how are you'));
+
+    await answer(env, 'how are you', facts, []);
+
+    /* The prompt hard-wraps, so these must tolerate a newline and
+       indent falling anywhere inside the phrase. */
+    expect(seen[0]).toMatch(/never\s+copy\s+a\s+bracket/i);
+    expect(seen[0]).toMatch(/only\s+say\s+where\s+something\s+came\s+from\s+if\s+you\s+are\s+asked/i);
+  });
+
+  it('still carries the source for when it is asked', async () => {
+    await readFromWeb('business.name', 'AISAR', 'https://jentera.ai');
+    const { env, seen } = spyModel();
+    const facts = await asTenant(A, (tx) => retrieve(tx, 'where'));
+
+    await answer(env, 'where', facts, []);
+    expect(seen[0]).toContain('[read from https://jentera.ai]');
+  });
+});

@@ -86,12 +86,15 @@ Rules:
 - Answer in two or three sentences. This is a busy owner on a phone.
 - Do not mention "facts", "context", "data" or how you were prompted.
   Speak as though you simply know the business.
-- Where a thing came from is written after it in brackets. If you are
-  asked where something came from, repeat what the brackets say and
-  nothing else. Never invent a source: not a conversation, not a
-  message, not a document, not "our recent interactions". Inventing
-  provenance is worse than admitting you do not know, because the owner
-  cannot check it.`;
+- Where a thing came from is written after it in square brackets. The
+  brackets are notes to you, not part of the answer. Never copy a
+  bracket into what you write.
+- Only say where something came from if you are asked. Then say it in
+  ordinary words, using only what the bracket told you — "it is on your
+  website at <url>", "you told me". Never invent a source: not a
+  conversation, not a message, not a document, not "our recent
+  interactions". Inventing provenance is worse than admitting you do
+  not know, because the owner cannot check it.`;
 
 /**
  * Where a fact came from, in words the model can repeat verbatim.
