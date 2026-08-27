@@ -131,8 +131,12 @@ describe('one fetch for the whole dashboard', () => {
       </SignedInProvider>,
     );
 
-    await waitFor(() => expect(screen.getByTestId('one')).toHaveTextContent('pending'));
-    expect(calls.activity).toBe(1);
+    /* Wait on the request, not on `pending`. `pending` is already true
+       on the first render — before the effect fires — so waiting for it
+       proved nothing and the count assertion below raced the fetch. */
+    await waitFor(() => expect(calls.activity).toBe(1));
+    expect(screen.getByTestId('one')).toHaveTextContent('pending');
+    expect(screen.getByTestId('two')).toHaveTextContent('pending');
 
     answer();
     await waitFor(() => expect(screen.getByTestId('one')).toHaveTextContent('real'));
@@ -154,8 +158,8 @@ describe('one fetch for the whole dashboard', () => {
       </SignedInProvider>,
     );
 
-    await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('pending'));
-    expect(calls.activity).toBe(1);
+    await waitFor(() => expect(calls.activity).toBe(1));
+    expect(screen.getByTestId('mode')).toHaveTextContent('pending');
     answer();
     await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('real'));
   });

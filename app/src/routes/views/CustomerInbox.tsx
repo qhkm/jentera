@@ -9,10 +9,11 @@
    ============================================================ */
 
 import { useEffect, useRef, useState } from 'react';
-import { Avatar, Button, Input } from '@/components/ui';
+import { Avatar, Button, Card, Input } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
 import { Icon } from '@/components/Icon';
 import { templatesFor, useChat, type ChatMessage } from '@/hooks/useChat';
+import { useSignedIn } from '@/lib/repo/gate';
 import type { Business } from '@/lib/types';
 
 function Bubble({ msg }: { msg: ChatMessage }) {
@@ -34,6 +35,7 @@ function Bubble({ msg }: { msg: ChatMessage }) {
 
 export default function CustomerInbox({ business }: { business: Business }) {
   const t = useT();
+  const signedIn = useSignedIn();
   const chat = useChat(business);
   const [draft, setDraft] = useState('');
   const scroller = useRef<HTMLDivElement>(null);
@@ -46,6 +48,24 @@ export default function CustomerInbox({ business }: { business: Business }) {
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
   }, [messages.length, chat.typing, selected]);
+
+  /* The threads below are hand-written demonstrations — named
+     customers, invented messages, an owner who can "take over" and
+     reply to them. That is the point of the anonymous demo and a lie
+     to anyone signed in, and the worst-shaped one in the app: a real
+     owner could type an answer to Farid believing it reached him.
+
+     Real customer messages arrive through a connected channel and are
+     recorded as runs, so Activity is where they are. Until this screen
+     reads them, it says so. */
+  if (signedIn) {
+    return (
+      <Card className="items-center gap-1 py-10 text-center">
+        <p className="text-sm">{t('inbox.none')}</p>
+        <p className="max-w-[46ch] text-[13px] text-text-secondary">{t('inbox.none.desc')}</p>
+      </Card>
+    );
+  }
 
   function submit() {
     if (!selected || controlling !== 'you') return;

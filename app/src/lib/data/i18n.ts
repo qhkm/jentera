@@ -56,6 +56,9 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
     "ms.alldone": "Set up. AISAR is working.",
     "roster.ready": "ready",
     "conn.soon": "not available yet",
+    "inbox.none": "No customer conversations yet",
+    "inbox.none.desc":
+      "When someone messages a connected channel, the conversation and AISAR's reply appear under Activity.",
     "conn.soon.cta": "Coming soon",
     "status.working": "AISAR working",
     "status.setup": "Setup needed",
@@ -251,6 +254,9 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
     "ms.alldone": "Siap. AISAR sedang bekerja.",
     "roster.ready": "sedia",
     "conn.soon": "belum tersedia",
+    "inbox.none": "Belum ada perbualan pelanggan",
+    "inbox.none.desc":
+      "Apabila seseorang menghantar mesej ke saluran yang disambungkan, perbualan dan jawapan AISAR akan muncul di bawah Aktiviti.",
     "conn.soon.cta": "Akan datang",
     "status.working": "AISAR sedang bekerja",
     "status.setup": "Setup diperlukan",

@@ -63,7 +63,7 @@ function ConnectionsProbe() {
 }
 
 describe('useBusiness connection seeding after a corrected onboarding guess', () => {
-  it('seeds connections for the playbook the user confirmed, not the scan step\'s first guess', async () => {
+  it('seeds connections for the playbook the user confirmed, not the scan step\'s first guess', { timeout: 20_000 }, async () => {
     const onboarding = render(
       <RepositoryProvider>
         <I18nProvider>
@@ -85,8 +85,15 @@ describe('useBusiness connection seeding after a corrected onboarding guess', ()
     });
     fireEvent.click(screen.getByText('Build my profile →'));
 
-    // Ride out the scan animation into the confirm step.
-    await waitFor(() => screen.getByText('Not quite, let me rephrase'), { timeout: 3000 });
+    /* Ride out the scan animation into the confirm step. The wait is
+       generous because the bound is the animation, not the assertion:
+       at 3s this failed once under the load of a fuller suite, which is
+       a flake reported as a regression and the worst kind of noise.
+
+       It must stay under this test's own timeout, raised alongside it
+       below: a waitFor that outlives the test hangs it instead of
+       failing it, which starves the rest of the suite. */
+    await waitFor(() => screen.getByText('Not quite, let me rephrase'), { timeout: 8_000 });
 
     // Reject the guess, then explicitly pick a different playbook.
     fireEvent.click(screen.getByText('Not quite, let me rephrase'));

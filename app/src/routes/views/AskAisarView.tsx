@@ -15,6 +15,7 @@ import { useIsCompact } from '@/hooks/useMediaQuery';
 import { Icon, DataIcon } from '@/components/Icon';
 import { useMentions } from '@/hooks/useMentions';
 import CustomerInbox from './CustomerInbox';
+import { useSignedIn } from '@/lib/repo/gate';
 import type { Business } from '@/lib/types';
 
 type Tab = 'assistant' | 'conversations';
@@ -38,6 +39,7 @@ export default function AskAisarView({
   const thread = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const mentions = useMentions(business.team);
+  const signedIn = useSignedIn();
 
   const stickToBottom = useCallback(() => {
     const el = thread.current;
@@ -129,7 +131,12 @@ export default function AskAisarView({
               {t(item.labelKey)}
               {/* Status tag is a nice-to-have; at 390px it doubled the tab
                   width and forced both labels to wrap. */}
-              {item.id === 'conversations' ? (
+              {/* "AISAR is replying" is a claim about right now, and it
+                  was unconditional — so it sat in green beside a tab
+                  whose own contents read "no customer conversations
+                  yet". It belongs to the demo, where something really
+                  is replying. */}
+              {item.id === 'conversations' && !signedIn ? (
                 <Tag tone="green" className="ml-2 hidden sm:inline-flex">
                   {t('ask.inbox.live')}
                 </Tag>

@@ -34,6 +34,11 @@ export class NotSignedInError extends Error {
   }
 }
 
+/** What /api/me answers with. Only the parts anything here reads. */
+export interface MeResponse {
+  detailLevel?: string;
+}
+
 /** No business yet — first sign-in, before the local state is migrated. */
 export class NoBusinessError extends Error {
   constructor() {
@@ -106,7 +111,29 @@ export class RemoteRepository implements Repository {
   /** numeric id → server uuid, rebuilt on every load. */
   private ids = new Map<number, string>();
 
+  /* Answers the gate has already paid for.
+
+     `choose()` fetches /api/me to decide whether this session is
+     server-backed, and calls load() to detect a first sign-in. It threw
+     both away, and the provider and the detail-level hook asked for
+     them again a moment later — four requests on every load of the app
+     where two would do.
+
+     Each is consumed exactly once. A reload always goes to the network:
+     a primed value that outlived startup would be a stale-data bug, and
+     the two callers below run during the same startup that primes it. */
+  private primed: { state?: BusinessSnapshot; me?: MeResponse } = {};
+
+  prime(answers: { state?: BusinessSnapshot; me?: MeResponse }) {
+    this.primed = { ...this.primed, ...answers };
+  }
+
   async load(): Promise<BusinessSnapshot> {
+    const already = this.primed.state;
+    if (already) {
+      this.primed.state = undefined;
+      return already;
+    }
     const { snapshot } = await call<{ snapshot: Record<string, unknown> }>('/api/state');
     const wire = (snapshot.approvals ?? []) as WireApproval[];
 
@@ -275,7 +302,8 @@ export class RemoteRepository implements Repository {
   }
 
   async detailLevel(): Promise<'beginner' | 'advanced'> {
-    const me = await call<{ detailLevel?: string }>('/api/me');
+    const me = this.primed.me ?? (await call<MeResponse>('/api/me'));
+    this.primed.me = undefined;
     return me.detailLevel === 'advanced' ? 'advanced' : 'beginner';
   }
 

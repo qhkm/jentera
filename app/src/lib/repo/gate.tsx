@@ -12,6 +12,7 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { LocalRepository } from './local';
 import { NoBusinessError, RemoteRepository } from './remote';
+import type { MeResponse } from './remote';
 import { RepositoryProvider } from './context';
 import { migrateLocalToRemote } from './migrate';
 
@@ -61,9 +62,14 @@ async function choose(): Promise<Chosen> {
   if (!API) return { repo: new LocalRepository(), mode: 'local' };
 
   let signedIn = false;
+  /* The body, not just the status. It carries the detail-level setting,
+     which the hook below used to fetch from this same endpoint a moment
+     later — the response was here all along and was being discarded. */
+  let me: MeResponse | null = null;
   try {
     const res = await fetch(`${API}/api/me`, { credentials: 'include' });
     signedIn = res.ok;
+    if (res.ok) me = (await res.json().catch(() => null)) as MeResponse | null;
   } catch {
     /* Unreachable API is not the same as signed out, but the honest
        fallback is the local demo rather than an error page for a visitor
@@ -74,8 +80,11 @@ async function choose(): Promise<Chosen> {
   if (!signedIn) return { repo: new LocalRepository(), mode: 'local' };
 
   const remote = new RemoteRepository();
+  if (me) remote.prime({ me });
   try {
-    await remote.load();
+    /* Handed to the provider rather than dropped; it mounts and asks
+       for exactly this a moment later. */
+    remote.prime({ state: await remote.load() });
   } catch (e) {
     /* Signed in with no business: first sign-in. Carry the browser state
        over, once. Any other failure belongs to the provider's error
