@@ -39,3 +39,26 @@ environments; production provisioning must write the two control-plane-generated
 inside a Sprite without printing either credential.
 `bin/browser-smoke.mjs` is a model-free Chromium launch and DOM check for the pinned
 Sprite image; it is diagnostic, not part of the runner service.
+
+## Development VRS model setup
+
+The `jentera` development Sprite currently uses AISAR VRS through Hermes's custom
+OpenAI-compatible provider with `ds4-flash`. `bin/configure-vrs.py` writes only the
+provider configuration and an environment-variable reference; it never writes the model
+credential into Hermes's config file.
+
+`bin/install-vrs-env.sh` is a manual development helper for installing that credential
+into the Sprite's mode-0600 runtime environment. Its input file is base64-encoded only to
+make shell transfer unambiguous—base64 is **not encryption**. Keep the transfer file mode
+0600, remove it immediately after installation, and never commit it. Production bootstrap
+must obtain a dedicated AISAR VRS credential from the control plane's encrypted secret
+store instead of copying a credential from another project.
+
+After restarting Hermes and the runner, `bin/task-smoke-sprite.sh` submits a real,
+tool-free connectivity task, waits for completion, and replays the request to verify the
+runner's idempotency behavior.
+
+The currently configured VRS endpoint is plain HTTP on a public IP. It is suitable only
+for this non-customer development smoke: prompts, results, and the bearer credential do
+not have transport encryption. Do not enable customer traffic until VRS is available
+through HTTPS or an authenticated private tunnel/network path.

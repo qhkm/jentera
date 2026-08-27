@@ -25,17 +25,28 @@ Implemented in the repository:
   and
 - a private `jentera` development Sprite with Hermes v0.20.5 pinned to release tag
   `v2026.8.19`, loopback-only Hermes, the runner on port 8080, verified headless
-  Chromium, and checkpoint `v3`.
+  Chromium, and known-good checkpoint `v6`; and
+- an AISAR VRS custom OpenAI-compatible model configuration using `ds4-flash`, with a
+  successful real task through the runner and a successful duplicate-delivery check.
 
-The development smoke currently reports healthy state DB, config, disk, gateway, and
-authenticated API checks. Its readiness is deliberately degraded because no model
-provider is configured. The initial Node/browser install failed against Ubuntu 26.04;
-pinning `node-gyp` to Hermes's Python and Playwright to its supported Ubuntu 24.04 x64
-fallback completed the install, and a real Chromium launch plus DOM assertion passed.
+The development smoke currently reports healthy state DB, config, model, disk, gateway,
+background queues, and authenticated API checks. A real `ds4-flash` request completed
+with the expected bounded response, and resubmitting the same task returned the original
+Hermes run rather than creating a second run. The initial Node/browser install failed
+against Ubuntu 26.04; pinning `node-gyp` to Hermes's Python and Playwright to its supported
+Ubuntu 24.04 x64 fallback completed the install, and a real Chromium launch plus DOM
+assertion passed.
+
+This does **not** make the model path production-ready. The available VRS endpoint is
+plain HTTP on a public IP, so its bearer credential, customer prompts, and model results
+would cross the network without transport encryption. Customer data stays disabled until
+VRS provides HTTPS or an authenticated private tunnel/network path. Production also
+needs a dedicated AISAR credential, controlled secret injection, bounded request retries,
+and measurement of VRS cold-connect reliability.
 
 Still gated and therefore intentionally unavailable to customers:
 
-- a model-provider credential and one real Hermes run through the runner;
+- HTTPS or private-network transport to VRS and a dedicated AISAR production credential;
 - review or patch the pinned Hermes Node tree's four high-severity `npm audit`
   findings (`nanoid` through `postcss`/`sanitize-html`/`vite`) without silently
   moving the Hermes release;
