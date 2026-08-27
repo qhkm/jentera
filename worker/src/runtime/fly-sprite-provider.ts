@@ -166,17 +166,13 @@ export class FlySpriteProvider implements BootstrapRuntimeProvider {
     for (const value of options.env ?? []) url.searchParams.append('env', value);
 
     const response = await this.fetcher(url, {
-      headers: { ...this.authHeaders(), Upgrade: 'websocket' },
+      method: 'POST',
+      headers: this.authHeaders(),
     });
-    const socket = response.webSocket;
-    if (response.status !== 101 || !socket) {
+    if (!response.ok) {
       throw await apiError('exec Sprite bootstrap', response);
     }
-    socket.accept();
-    // The official direct-exec client closes stdin explicitly even when stdin=false.
-    // Without this frame a command can remain attached waiting for EOF on some releases.
-    socket.send(new Uint8Array([4]));
-    return readExec(socket);
+    return readHttpExec(response);
   }
 
   private async get(name: string, allowMissing: boolean): Promise<ObservedRuntime | null> {
@@ -258,49 +254,32 @@ async function assertStreamSucceeded(res: Response): Promise<void> {
   if (failed) throw new Error(failed.error ?? failed.data ?? 'Sprite operation failed');
 }
 
-function readExec(socket: WebSocket): Promise<RuntimeExecResult> {
-  return new Promise((resolve, reject) => {
-    let stdout = '';
-    let stderr = '';
-    let finished = false;
-    const timeout = setTimeout(() => finish(new Error('Sprite bootstrap timed out')), 12 * 60_000);
-    const append = (current: string, value: string) => (current + value).slice(-128 * 1024);
-    const done = (exitCode: number) => {
-      if (exitCode === 0) finish(undefined, { exitCode, stdout, stderr });
-      else finish(new Error(`Sprite bootstrap exited ${exitCode}: ${stderr.slice(-500)}`));
-    };
-    const finish = (error?: Error, result?: RuntimeExecResult) => {
-      if (finished) return;
-      finished = true;
-      clearTimeout(timeout);
-      try { socket.close(1000, 'complete'); } catch { /* already closed */ }
-      if (error) reject(error);
-      else resolve(result!);
-    };
+async function readHttpExec(response: Response): Promise<RuntimeExecResult> {
+  /* HTTP exec is the provider-supported escape hatch for environments such as
+     Workers that cannot keep a long-lived outbound WebSocket attached. The
+     response ends with the two-byte exit frame: stream 3, then exit code.
 
-    socket.addEventListener('message', (event) => {
-      if (typeof event.data === 'string') {
-        try {
-          const message = JSON.parse(event.data) as { type?: string; exit_code?: number };
-          if (message.type === 'exit') done(message.exit_code ?? 0);
-        } catch {
-          // Session metadata is advisory; binary frames carry command output.
-        }
-        return;
-      }
-      const bytes = event.data instanceof ArrayBuffer
-        ? new Uint8Array(event.data)
-        : new Uint8Array(0);
-      if (bytes.length === 0) return;
-      const stream = bytes[0];
-      const value = new TextDecoder().decode(bytes.subarray(1));
-      if (stream === 1) stdout = append(stdout, value);
-      else if (stream === 2) stderr = append(stderr, value);
-      else if (stream === 3) done(bytes[1] ?? 0);
-    });
-    socket.addEventListener('error', () => finish(new Error('Sprite bootstrap WebSocket failed')));
-    socket.addEventListener('close', () => {
-      if (!finished) finish(new Error('Sprite bootstrap connection closed before exit'));
-    });
-  });
+     The current protocol does not length-prefix output frames, so intermediaries
+     may coalesce them. Bootstrap output is diagnostic only; correctness comes
+     from the terminal exit frame and subsequent authenticated readiness probe. */
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.length < 2 || bytes[bytes.length - 2] !== 3) {
+    throw new Error('Sprite bootstrap HTTP stream ended without an exit frame');
+  }
+  const exitCode = bytes[bytes.length - 1];
+  const output = bytes.subarray(0, -2);
+  const stream = output[0];
+  const detail = new TextDecoder()
+    .decode(stream === 1 || stream === 2 ? output.subarray(1) : output)
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '')
+    .slice(-128 * 1024);
+  const result = {
+    exitCode,
+    stdout: stream === 2 ? '' : detail,
+    stderr: stream === 2 ? detail : '',
+  };
+  if (exitCode !== 0) {
+    throw new Error(`Sprite bootstrap exited ${exitCode}: ${detail.slice(-500)}`);
+  }
+  return result;
 }

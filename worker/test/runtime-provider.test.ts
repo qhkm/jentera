@@ -130,21 +130,16 @@ describe('FlySpriteProvider', () => {
     )).rejects.toThrow(/not allowed/);
   });
 
-  it('executes a bounded non-TTY bootstrap over the official stream protocol', async () => {
-    const socket = new FakeSocket();
+  it('executes a bounded non-TTY bootstrap over the official HTTP protocol', async () => {
     const seen: { url: string; init: RequestInit }[] = [];
     const provider = fly(async (url, init) => {
       seen.push({ url: String(url), init: init ?? {} });
-      setTimeout(() => {
-        socket.emit(new Uint8Array([1, ...new TextEncoder().encode('ready')]).buffer);
-        socket.emit(new Uint8Array([3, 0]).buffer);
-      }, 0);
-      return {
-        status: 101,
-        ok: false,
-        webSocket: socket,
-        text: async () => '',
-      } as unknown as Response;
+      return new Response(new Uint8Array([
+        1,
+        ...new TextEncoder().encode('ready'),
+        3,
+        0,
+      ]));
     });
     const result = await provider.exec(
       observed('cold'),
@@ -153,12 +148,30 @@ describe('FlySpriteProvider', () => {
       { env: ['AISAR_BOOTSTRAP_CONTROL_PLANE=1'] },
     );
     expect(result).toEqual({ exitCode: 0, stdout: 'ready', stderr: '' });
-    expect(socket.accepted).toBe(true);
-    expect([...new Uint8Array(socket.sent[0])]).toEqual([4]);
     expect(seen[0].url).toContain('/exec?');
     expect(seen[0].url).toContain('stdin=false');
+    expect(seen[0].init.method).toBe('POST');
     expect(header(seen[0].init, 'Authorization')).toBe('Bearer secret-token');
-    expect(header(seen[0].init, 'Upgrade')).toBe('websocket');
+    expect(header(seen[0].init, 'Upgrade')).toBeNull();
+  });
+
+  it('refuses an incomplete or failed HTTP exec stream', async () => {
+    const incomplete = fly(async () => new Response(new Uint8Array([1, 111, 107])));
+    await expect(incomplete.exec(
+      observed('cold'),
+      '/home/sprite/aisar/runner/bootstrap-runtime.sh',
+    )).rejects.toThrow(/without an exit frame/);
+
+    const failed = fly(async () => new Response(new Uint8Array([
+      2,
+      ...new TextEncoder().encode('install failed'),
+      3,
+      7,
+    ])));
+    await expect(failed.exec(
+      observed('cold'),
+      '/home/sprite/aisar/runner/bootstrap-runtime.sh',
+    )).rejects.toThrow(/exited 7: install failed/);
   });
 
   it('surfaces an error carried inside a 200 streaming response', async () => {
@@ -206,26 +219,4 @@ function spriteResponse(status: string, responseStatus = 200) {
 
 function header(init: RequestInit, name: string): string | null {
   return new Headers(init.headers).get(name);
-}
-
-class FakeSocket extends EventTarget {
-  accepted = false;
-  sent: ArrayBuffer[] = [];
-
-  accept() {
-    this.accepted = true;
-  }
-
-  close() {}
-
-  send(data: ArrayBuffer | ArrayBufferView) {
-    const bytes = data instanceof ArrayBuffer
-      ? new Uint8Array(data)
-      : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    this.sent.push(bytes.slice().buffer);
-  }
-
-  emit(data: ArrayBuffer) {
-    this.dispatchEvent(new MessageEvent('message', { data }));
-  }
 }
