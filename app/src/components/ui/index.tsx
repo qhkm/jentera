@@ -112,6 +112,45 @@ export function Progress({ value, label }: { value: number; label?: string }) {
   );
 }
 
+/* ---- Async feedback --------------------------------------------------- */
+
+export function LoadingState({
+  title,
+  detail,
+  compact = false,
+  className,
+}: {
+  title: string;
+  detail?: string;
+  compact?: boolean;
+  className?: string;
+}) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className={cx(
+        'flex items-center text-left',
+        compact ? 'gap-3 py-1' : 'gap-4 py-2',
+        className,
+      )}
+    >
+      <span
+        className={cx(
+          'loading-ring shrink-0 rounded-full border border-brand-line border-t-brand',
+          compact ? 'size-7' : 'size-10',
+        )}
+        aria-hidden="true"
+      />
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-sm text-text">{title}</span>
+        {detail ? <span className="text-[12px] leading-relaxed text-text-secondary">{detail}</span> : null}
+      </span>
+    </div>
+  );
+}
+
 /* ---- Section scaffold ---- */
 
 export function Section({

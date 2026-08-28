@@ -4,7 +4,7 @@
    ============================================================ */
 
 import { Link } from 'react-router';
-import { Avatar, Button, Card, Eyebrow, Tag } from '@/components/ui';
+import { Avatar, Button, Card, Eyebrow, LoadingState, Tag } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
 import { DataIcon, stripEmoji } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
@@ -72,7 +72,7 @@ export default function HomeView({
   const glanceNote = demo
     ? t('home.empty')
     : activity.mode === 'pending'
-      ? '\u00a0'
+      ? t('loading.home.summary')
       : activity.data!.counters.handled === 0 && activity.data!.counters.needsYou === 0
         ? t('home.empty')
         : null;
@@ -180,7 +180,11 @@ export default function HomeView({
       {/* Real figures when there is a server to ask; the playbook's
           illustrations otherwise. Never a mix — an owner cannot tell
           which half of a blended row is true. */}
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div
+        className="grid gap-3 sm:grid-cols-3"
+        aria-busy={activity.mode === 'pending'}
+        aria-label={activity.mode === 'pending' ? t('loading.home.metrics') : undefined}
+      >
         {realStats
           ? realStats.map((s) => (
               <Card key={s.d} className="gap-3">
@@ -209,7 +213,7 @@ export default function HomeView({
                  flight — so the row lands at its final height and the
                  counts fill in where the dashes were. */
               PENDING_STATS.map((k) => (
-                <Card key={k} className="gap-3">
+                <Card key={k} className="gap-3" aria-hidden="true">
                   <Eyebrow>{t(`db.stat.${k}`)}</Eyebrow>
                   <span className="font-pixel text-3xl tabular-nums text-text-muted">—</span>
                   <span className="text-[13px] text-text-secondary">{t(`db.stat.${k}.sub`)}</span>
@@ -258,10 +262,11 @@ export default function HomeView({
             </div>
           ))
         ) : (
-          /* One line, which is what an owner with no activity ends up
-             with. Two demo entries here and one real line after was a
-             third of the jump on every load. */
-          <p className="text-[12px] leading-snug text-text-secondary">&nbsp;</p>
+          <LoadingState
+            compact
+            title={t('loading.home.recent')}
+            detail={t('loading.home.recent.detail')}
+          />
         )}
       </Card>
     </div>

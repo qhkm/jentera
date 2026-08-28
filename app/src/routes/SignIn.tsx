@@ -17,6 +17,7 @@ import { LandingFooter, LandingHeader } from '@/components/landing/LandingChrome
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
 type Mode = 'signin' | 'signup';
+type BusyAction = 'password' | 'link' | null;
 
 /* Errors the server can put in the query string when it bounces the
    browser back here. Mapped rather than printed, so a crafted ?error=
@@ -34,7 +35,7 @@ export default function SignIn() {
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<BusyAction>(null);
   const [sent, setSent] = useState<'link' | 'verify' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,7 +43,7 @@ export default function SignIn() {
 
   async function submitPassword(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
+    setBusy('password');
     setError(null);
     try {
       const res = await fetch(`${API}/api/auth/${mode === 'signup' ? 'signup' : 'login'}`, {
@@ -79,12 +80,12 @@ export default function SignIn() {
     } catch {
       setError('Could not reach Jentera. Check your connection.');
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
   async function sendLink() {
-    setBusy(true);
+    setBusy('link');
     setError(null);
     try {
       /* Answers 204 whether or not the address has an account, so
@@ -99,7 +100,7 @@ export default function SignIn() {
     } catch {
       setSent('link');
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -189,8 +190,10 @@ export default function SignIn() {
               </p>
             ) : null}
 
-            <button className="btn mt-4 w-full" type="submit" disabled={busy || !email || !password}>
-              {busy ? 'Working…' : mode === 'signup' ? 'Create account' : 'Sign in'}
+            <button className="btn mt-4 w-full" type="submit" disabled={Boolean(busy) || !email || !password}>
+              {busy === 'password'
+                ? mode === 'signup' ? 'Creating your account…' : 'Signing you in…'
+                : mode === 'signup' ? 'Create account' : 'Sign in'}
             </button>
           </form>
 
@@ -200,9 +203,9 @@ export default function SignIn() {
             type="button"
             className="nav-link mt-4 w-full text-sm normal-case tracking-normal"
             onClick={sendLink}
-            disabled={busy || !email}
+            disabled={Boolean(busy) || !email}
           >
-            Email me a link instead
+            {busy === 'link' ? 'Sending your secure link…' : 'Email me a link instead'}
           </button>
 
           <p className="mt-6 text-center text-sm opacity-70">

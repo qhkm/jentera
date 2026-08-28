@@ -8,7 +8,7 @@
    ============================================================ */
 
 import { useMemo, useState } from 'react';
-import { Avatar, Button, Card, Eyebrow, Input, Tag } from '@/components/ui';
+import { Avatar, Button, Card, Eyebrow, Input, LoadingState, Tag } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
 import { DataIcon } from '@/components/Icon';
 import { Tabs, type TabDef } from '@/components/Tabs';
@@ -248,7 +248,16 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
       <section className="flex flex-col gap-4">
         {/* Real connections first. The catalogue below is what Jentera
             could connect to; this is what it actually can. */}
-        <TelegramConnect rows={conns.rows} setRows={conns.setRows} />
+        {conns.mode === 'pending' ? (
+          <Card>
+            <LoadingState
+              title={t('loading.connections.title')}
+              detail={t('loading.connections.detail')}
+            />
+          </Card>
+        ) : (
+          <TelegramConnect rows={conns.rows} setRows={conns.setRows} />
+        )}
         <div className="flex flex-col gap-1">
           <Eyebrow>{t('biz.connections')}</Eyebrow>
           <p className="max-w-[66ch] text-[13px] text-text-secondary">

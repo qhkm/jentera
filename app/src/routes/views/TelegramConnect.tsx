@@ -11,7 +11,7 @@
    ============================================================ */
 
 import { useEffect, useState } from 'react';
-import { Button, Card, Eyebrow, Input, Tag } from '@/components/ui';
+import { Button, Card, Eyebrow, Input, LoadingState, Tag } from '@/components/ui';
 import { useRepository } from '@/lib/repo';
 import type { Connection } from '@/lib/repo';
 import type { ConnectionsState } from '@/hooks/useConnections';
@@ -119,6 +119,11 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
                 {health[c.id] && (
                   <span className="text-[12px] text-text-secondary">{health[c.id]}</span>
                 )}
+                {checking === c.id ? (
+                  <span role="status" className="text-[12px] text-text-secondary">
+                    Checking the webhook and recent delivery status…
+                  </span>
+                ) : null}
               </div>
               <div className="flex items-center gap-2">
                 <Tag tone={statusTone(c)}>
@@ -170,9 +175,17 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
               disabled={busy}
             />
             <Button onClick={() => void connect()} disabled={busy || !token.trim()}>
-              {busy ? 'Checking…' : 'Connect'}
+              {busy ? 'Securing bot…' : 'Connect'}
             </Button>
           </div>
+          {busy ? (
+            <LoadingState
+              compact
+              className="mt-3"
+              title="Checking your Telegram bot…"
+              detail="Verifying the token and securing its private webhook. The token is cleared after it is saved."
+            />
+          ) : null}
           {error && (
             <p role="alert" className="mt-3 text-sm text-text-secondary">
               {error}

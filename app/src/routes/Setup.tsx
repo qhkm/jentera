@@ -131,6 +131,7 @@ function LiveSetup() {
       : runtime?.status === 'error' || runtimeError
         ? t('su.live.attention')
         : runtime ? t('su.state.linking') : t('su.state.queued');
+  const runtimeStage = t(runtimeStageKey(runtimeLoaded, runtime));
 
   return (
     <Shell suffix="/setup">
@@ -148,6 +149,10 @@ function LiveSetup() {
           </p>
           <Progress value={(completed / 3) * 100} label="Setup progress" />
         </div>
+
+        {!runtimeReady && !runtimeError ? (
+          <RuntimePreparing stage={runtimeStage} />
+        ) : null}
 
         <Card className="gap-0 p-0">
           <SetupStatusRow
@@ -194,6 +199,58 @@ function LiveSetup() {
         </div>
       </div>
     </Shell>
+  );
+}
+
+function runtimeStageKey(loaded: boolean, runtime: RuntimeSummary | null): string {
+  if (!loaded) return 'su.live.stage.checking';
+  if (!runtime) return 'su.live.stage.queued';
+  if (runtime.status === 'provisioning') return 'su.live.stage.provisioning';
+  if (runtime.status === 'upgrading' || runtime.status === 'migrating') {
+    return 'su.live.stage.installing';
+  }
+  if (runtime.status === 'waking') return 'su.live.stage.starting';
+  if (runtime.observedRelease !== runtime.desiredRelease) return 'su.live.stage.verifying';
+  return 'su.live.stage.installing';
+}
+
+function RuntimePreparing({ stage }: { stage: string }) {
+  const t = useT();
+  return (
+    <section
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className="relative overflow-hidden border border-brand-line bg-brand-soft p-5 sm:p-6"
+    >
+      <div className="absolute inset-x-0 top-0 h-px overflow-hidden bg-brand-line" aria-hidden="true">
+        <span className="loading-sweep block h-full w-1/3 bg-brand" />
+      </div>
+      <div className="flex items-start gap-4 sm:items-center sm:gap-5">
+        <div className="relative flex size-14 shrink-0 items-center justify-center" aria-hidden="true">
+          <span className="loading-ring absolute inset-0 rounded-full border border-brand-line border-t-brand" />
+          <span className="absolute inset-2 border border-brand-line" />
+          <span className="font-pixel text-lg text-brand">J</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <Eyebrow>{t('su.live.loader.eyebrow')}</Eyebrow>
+          <h2 className="mt-1 text-lg font-medium text-text">{stage}</h2>
+          <p className="mt-1 text-sm leading-relaxed text-text-secondary">
+            {t('su.live.loader.note')}
+          </p>
+        </div>
+      </div>
+      <div className="mt-5 grid gap-2 border-t border-brand-line pt-4 text-[12px] text-text-secondary sm:grid-cols-2">
+        <span className="flex items-center gap-2">
+          <span className="size-1.5 bg-brand" aria-hidden="true" />
+          {t('su.live.loader.private')}
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="size-1.5 bg-brand" aria-hidden="true" />
+          {t('su.live.loader.continue')}
+        </span>
+      </div>
+    </section>
   );
 }
 

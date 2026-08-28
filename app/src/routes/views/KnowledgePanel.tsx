@@ -13,7 +13,7 @@
    ============================================================ */
 
 import { useState } from 'react';
-import { Button, Card, Eyebrow, Input, Tag } from '@/components/ui';
+import { Button, Card, Eyebrow, Input, LoadingState, Tag } from '@/components/ui';
 import { useMutate, useRefresh, useRepository, useSnapshot } from '@/lib/repo';
 import type { Fact } from '@/lib/repo/types';
 import type { Tone } from '@/lib/types';
@@ -245,9 +245,17 @@ export default function KnowledgePanel() {
             disabled={reading}
           />
           <Button onClick={() => void read()} disabled={reading || !site.trim()}>
-            {reading ? 'Reading…' : 'Read it'}
+            {reading ? 'Reading website…' : 'Read it'}
           </Button>
         </div>
+        {reading ? (
+          <LoadingState
+            compact
+            className="mt-3"
+            title="Reading your website…"
+            detail="Checking the page and extracting suggestions. Nothing is saved until you confirm it."
+          />
+        ) : null}
         {note && (
           <p role="status" className="mt-3 text-sm text-text-secondary">
             {note}

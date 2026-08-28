@@ -8,7 +8,7 @@
    ============================================================ */
 
 import { useMemo, useState } from 'react';
-import { Avatar, Button, Card, Eyebrow, Tag } from '@/components/ui';
+import { Avatar, Button, Card, Eyebrow, LoadingState, Tag } from '@/components/ui';
 import { useActivity } from '@/hooks/useActivity';
 import ApprovalInbox from './ApprovalInbox';
 import RunTrace from './RunTrace';
@@ -120,8 +120,11 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
           <h1 className="font-pixel text-2xl tracking-tight">{t('view.work')}</h1>
           <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.work.desc')}</p>
         </header>
-        <Card className="items-center py-8 text-center">
-          <p className="text-sm text-text-secondary">&nbsp;</p>
+        <Card className="py-7">
+          <LoadingState
+            title={t('loading.activity.title')}
+            detail={t('loading.activity.detail')}
+          />
         </Card>
       </div>
     );
