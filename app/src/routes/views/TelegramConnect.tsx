@@ -133,6 +133,11 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
                 {health[c.id] && (
                   <span className="text-[12px] text-text-secondary">{health[c.id]}</span>
                 )}
+                {!c.paired && c.pairingUrl ? (
+                  <span className="max-w-[32rem] text-[12px] leading-relaxed text-text-secondary">
+                    One step left: open Telegram and press Start to authorise your private chat.
+                  </span>
+                ) : null}
                 {checking === c.id ? (
                   <span role="status" className="text-[12px] text-text-secondary">
                     Checking the webhook and recent delivery status…

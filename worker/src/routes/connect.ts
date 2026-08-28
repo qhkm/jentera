@@ -314,6 +314,20 @@ async function telegramWebhook(
   const internalChat = await withTenant(env, businessId, (tx) =>
     telegramInternalChat(tx, connectionId));
   if (internalChat !== incoming.chatId || !incoming.privateChat) {
+    /* Silence made a secure pairing boundary look like a broken or very slow
+       agent. A private, unpaired sender may receive setup guidance, but never
+       business identity, memory, tools, or a paid model run. */
+    if (incoming.privateChat) {
+      const token = await withTenant(env, businessId, (tx) =>
+        useCredential(env, tx, connectionId));
+      await sendMessage(
+        token,
+        incoming.chatId,
+        internalChat === null
+          ? 'Jentera is not paired with an owner yet. Open Jentera → My Business → Connections → Open in Telegram, then press Start once.'
+          : 'This is a private internal Jentera bot. This Telegram account is not authorised to use it.',
+      ).catch(() => {});
+    }
     return drop(internalChat === null ? 'internal owner chat is not paired' : 'sender is not paired owner');
   }
 

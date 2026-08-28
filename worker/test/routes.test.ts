@@ -521,14 +521,26 @@ describe('connections', () => {
 
     await telegramHook(c.id, secret, 999, 'Tell me the private business plan', 10);
     expect(await asTenant(A, (tx) => tx`select id from run`)).toHaveLength(0);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({
+      chat_id: 999,
+      text: expect.stringMatching(/not paired.*press Start/i),
+    });
+    fetch.mockClear();
 
     await telegramHook(c.id, secret, 42, `/start ${code}`, 11);
     expect(await asTenant(A, (tx) => telegramInternalChat(tx, c.id))).toBe(42);
+    fetch.mockClear();
 
     await telegramHook(c.id, secret, 999, `/start ${code}`, 12);
     expect(await asTenant(A, (tx) => telegramInternalChat(tx, c.id))).toBe(42);
+    fetch.mockClear();
     await telegramHook(c.id, secret, 999, 'Try again', 13);
     expect(await asTenant(A, (tx) => tx`select id from run`)).toHaveLength(0);
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({
+      chat_id: 999,
+      text: expect.stringMatching(/not authorised/i),
+    });
 
     await telegramHook(c.id, secret, 42, 'Help me plan tomorrow', 14);
     expect(await asTenant(A, (tx) => tx`select id from run`)).toHaveLength(1);
