@@ -163,10 +163,10 @@ beforeEach(async () => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('the default: nothing goes out unasked', () => {
+describe('when the owner requires approval', () => {
+  beforeEach(() => setPolicy('approval'));
+
   it('drafts, stops, and sends nothing', async () => {
-    /* No policy set at all. The default has to be the safe one,
-       because most businesses will never open this screen. */
     await handleIncoming(env, A, connId, incoming);
 
     expect(sent, 'a customer was messaged without approval').toHaveLength(0);
@@ -226,9 +226,8 @@ describe('when the owner has blocked sending', () => {
   });
 });
 
-describe('when the owner has allowed it', () => {
-  it('sends without asking', async () => {
-    await setPolicy('automatic');
+describe('the automatic default', () => {
+  it('sends without requiring permission setup', async () => {
     await handleIncoming(env, A, connId, incoming);
 
     expect(sent).toHaveLength(1);
@@ -238,7 +237,6 @@ describe('when the owner has allowed it', () => {
   });
 
   it('shows typing while composing an automatic reply', async () => {
-    await setPolicy('automatic');
     await handleIncoming(env, A, connId, incoming);
 
     expect(typing).toContainEqual({ chatId: 42, action: 'typing' });
@@ -482,8 +480,9 @@ describe('tenancy', () => {
   });
 
   it('reads the policy of that business only', async () => {
-    /* B allowing automatic sending must not make A send without
-       asking. */
+    /* B's automatic default must not override A's explicit approval
+       requirement. */
+    await setPolicy('approval');
     await asTenant(
       B,
       (tx) => tx`insert into action_policy (business_id, op, policy) values (${B}, 'send', 'automatic')`,

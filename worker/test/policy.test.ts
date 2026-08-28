@@ -43,7 +43,7 @@ describe('the two vocabularies agree', () => {
 
   it('the worker defaults match the screen defaults', () => {
     for (const op of OPERATIONS) {
-      // e.g. `send: 'approval',` in the client's DEFAULTS
+      // e.g. `send: 'automatic',` in the client's DEFAULTS
       const found = client.match(new RegExp(`\\b${op}:\\s*'(automatic|approval|blocked)'`));
       expect(found, `${op} missing from client defaults`).not.toBeNull();
       expect(DEFAULTS[op], `${op} default differs`).toBe(found![1]);
@@ -65,7 +65,7 @@ describe('the two vocabularies agree', () => {
 
 describe('resolving a policy', () => {
   it('falls back to the default when the owner has set nothing', async () => {
-    expect(await asTenant(A, (tx) => policyFor(tx, 'telegram', 'send_message'))).toBe('approval');
+    expect(await asTenant(A, (tx) => policyFor(tx, 'telegram', 'send_message'))).toBe('automatic');
   });
 
   it('honours what the owner set', async () => {
@@ -98,6 +98,6 @@ describe('resolving a policy', () => {
       (tx) => tx`insert into action_policy (business_id, op, policy) values (${B}, 'send', 'automatic')`,
     );
     // A has set nothing, so it must see its own default, not B's choice.
-    expect(await asTenant(A, (tx) => policyFor(tx, 'telegram', 'send_message'))).toBe('approval');
+    expect(await asTenant(A, (tx) => policyFor(tx, 'telegram', 'send_message'))).toBe('automatic');
   });
 });

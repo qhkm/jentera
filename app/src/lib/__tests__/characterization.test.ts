@@ -175,9 +175,10 @@ describe('permissions', () => {
     expect(defaultPolicy('refund')).toBe('blocked');
   });
 
-  it('automates read and list by default', () => {
+  it('automates read, list, and customer replies by default', () => {
     expect(defaultPolicy('read')).toBe('automatic');
     expect(defaultPolicy('list')).toBe('automatic');
+    expect(defaultPolicy('send')).toBe('automatic');
   });
 
   it('returns every operation from getPolicies', async () => {
@@ -188,9 +189,9 @@ describe('permissions', () => {
 
   it('remembers an override and reports it as customised', async () => {
     expect(isCustomised(await snap(), 'send')).toBe(false);
-    store.setJSON(KEYS.permissions, { send: 'automatic' });
+    store.setJSON(KEYS.permissions, { send: 'approval' });
     const s = await snap();
-    expect(policyFor(s, 'send')).toBe('automatic');
+    expect(policyFor(s, 'send')).toBe('approval');
     expect(isCustomised(s, 'send')).toBe(true);
   });
 
@@ -259,6 +260,7 @@ describe('callTool', () => {
 
   it('dry-runs an approval-policy op and queues it at the right risk', async () => {
     store.setJSON(KEYS.conns, ['WhatsApp']);
+    store.setJSON(KEYS.permissions, { send: 'approval' });
     const result = callTool(await snap(), { conn: 'WhatsApp', op: 'send', args: { to: '+60123' } });
     expect(result).toMatchObject({
       ok: true,

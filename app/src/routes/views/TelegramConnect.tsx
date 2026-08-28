@@ -158,8 +158,8 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
             </p>
           )}
           <p className="mt-3 text-[12px] text-text-muted">
-            Replies wait for your approval by default. Nothing is sent to a customer until you say
-            so — you can change that per action under Permissions.
+            AISAR replies automatically as soon as the bot is connected. You can require approval
+            or block customer messages at any time under Permissions.
           </p>
         </>
       )}
