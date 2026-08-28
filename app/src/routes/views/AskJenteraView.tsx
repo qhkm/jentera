@@ -13,6 +13,12 @@ import { useI18n } from '@/i18n/I18nProvider';
 import { ASK_PROMPTS, useAsk } from '@/hooks/useAsk';
 import { useIsCompact } from '@/hooks/useMediaQuery';
 import { Icon, DataIcon } from '@/components/Icon';
+import {
+  LiveWorkCard,
+  OutcomeReceipt,
+  WorkStatusBar,
+  type WorkSignalState,
+} from '@/components/WorkSignal';
 import { useMentions } from '@/hooks/useMentions';
 import CustomerInbox from './CustomerInbox';
 import { useSignedIn } from '@/lib/repo/gate';
@@ -45,6 +51,42 @@ export default function AskJenteraView({
   const composer = useRef<HTMLTextAreaElement>(null);
   const mentions = useMentions(business.team);
   const signedIn = useSignedIn();
+
+  const latestAssistant = [...ask.messages].reverse().find((message) => message.from === 'ai');
+  /* A newer quick answer can finish while an earlier durable task is still
+     running. The Pulse must keep reporting the active task in that case. */
+  const activeAssistant = [...ask.messages].reverse().find((message) => message.pendingId);
+  const pulseState: WorkSignalState = activeAssistant
+    ? (activeAssistant.state ?? 'working')
+    : latestAssistant?.failedQuestion
+      ? 'failed'
+      : latestAssistant?.mode === 'work' && latestAssistant.state === 'done'
+        ? 'done'
+        : 'ready';
+  const pulseTitle = pulseState === 'ready'
+    ? t('ask.ready')
+    : pulseState === 'done'
+      ? t('ask.pulse.done')
+      : pulseState === 'failed'
+        ? t('ask.pulse.failed')
+        : pulseState === 'retrying'
+          ? t('ask.pulse.retrying')
+          : pulseState === 'working'
+            ? t('ask.pulse.working')
+            : t('ask.pulse.starting');
+
+  function workSteps(state: WorkSignalState) {
+    const position = state === 'sending' || state === 'queued' ? 0
+      : state === 'waking' ? 1 : 2;
+    return [
+      t('ask.live.received'),
+      t('ask.live.started'),
+      t('ask.live.working'),
+    ].map((label, index) => ({
+      label,
+      state: index < position ? 'done' as const : index === position ? 'active' as const : 'next' as const,
+    }));
+  }
 
   const stickToBottom = useCallback(() => {
     const el = thread.current;
@@ -153,6 +195,13 @@ export default function AskJenteraView({
 
       {tab === 'assistant' ? (
         <Card className="min-h-0 flex-1 gap-0 rounded-none border-x-0 border-b-0 p-0 lg:min-h-[440px] lg:flex-none lg:rounded-card lg:border">
+          {signedIn ? (
+            <WorkStatusBar
+              state={pulseState}
+              title={pulseTitle}
+              audience={t('ask.private.short')}
+            />
+          ) : null}
           <div
             ref={thread}
             className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-5"
@@ -169,35 +218,69 @@ export default function AskJenteraView({
               ask.messages.map((m, i) => (
                 <div
                   key={i}
-                  className={`flex items-start gap-2.5 ${m.from === 'you' ? 'flex-row-reverse' : ''}`}
+                  className={`flex items-start gap-2.5 ${m.from === 'you' ? 'flex-row-reverse' : ''} ${
+                    m.from === 'ai' && (m.pendingId || (m.mode === 'work' && m.state === 'done'))
+                      ? 'w-full'
+                      : ''
+                  }`}
                 >
-                  <span
-                    className="flex size-7 shrink-0 items-center justify-center rounded-avatar border border-brand-line bg-brand-soft font-mono text-[10px] text-brand"
-                    aria-hidden="true"
-                  >
-                    {m.from === 'you' ? (
-                      <Icon name="owner" size={15} />
-                    ) : m.agent ? (
-                      <DataIcon emoji={business.team.find((x) => x.n === m.agent)?.e ?? ''} size={15} />
-                    ) : (
-                      <Icon name="robot" size={15} />
-                    )}
-                  </span>
-                  <div className={`bubble ${m.from === 'you' ? 'bubble-out' : 'bubble-in'}`}>
-                    <span role={m.failedQuestion ? 'alert' : undefined}>{m.text}</span>
-                    {m.failedQuestion ? (
-                      <button
-                        type="button"
-                        className="mt-2 block text-[11px] font-semibold text-brand hover:underline"
-                        onClick={() => submit(m.failedQuestion, m.failedMode ?? 'ask')}
+                  {m.from === 'ai' && m.pendingId ? (
+                    <LiveWorkCard
+                      state={m.state ?? 'working'}
+                      title={m.state === 'retrying'
+                        ? t('ask.pulse.retrying')
+                        : m.state === 'working'
+                          ? t('ask.pulse.working')
+                          : t('ask.pulse.starting')}
+                      detail={m.text}
+                      audience={t('ask.private.short')}
+                      steps={workSteps(m.state ?? 'working')}
+                    />
+                  ) : m.from === 'ai' && m.mode === 'work' && m.state === 'done' ? (
+                    <OutcomeReceipt
+                      title={t('ask.receipt.title')}
+                      outcome={m.text}
+                      audience={t('ask.private')}
+                      evidence={m.grounded
+                        ? m.usedKeys?.length
+                          ? t('ask.receipt.facts', { n: m.usedKeys.length })
+                          : t('ask.receipt.grounded')
+                        : t('ask.receipt.noFacts')}
+                      statusLabel={t('ask.receipt.done')}
+                      actionLabel={onOpenActivity ? t('ask.receipt.activity') : undefined}
+                      onAction={onOpenActivity}
+                    />
+                  ) : (
+                    <>
+                      <span
+                        className="flex size-7 shrink-0 items-center justify-center rounded-avatar border border-brand-line bg-brand-soft font-mono text-[10px] text-brand"
+                        aria-hidden="true"
                       >
-                        {t('ask.retry')}
-                      </button>
-                    ) : null}
-                    <div className="bubble-meta">
-                      {m.from === 'you' ? t('ask.you') : (m.agent ?? 'Jentera')} · {t('ask.now')}
-                    </div>
-                  </div>
+                        {m.from === 'you' ? (
+                          <Icon name="owner" size={15} />
+                        ) : m.agent ? (
+                          <DataIcon emoji={business.team.find((x) => x.n === m.agent)?.e ?? ''} size={15} />
+                        ) : (
+                          <Icon name="robot" size={15} />
+                        )}
+                      </span>
+                      <div className={`bubble ${m.from === 'you' ? 'bubble-out' : 'bubble-in'}`}>
+                        <span role={m.failedQuestion ? 'alert' : undefined}>{m.text}</span>
+                        {m.failedQuestion ? (
+                          <button
+                            type="button"
+                            className="mt-2 block text-[11px] font-semibold text-brand hover:underline"
+                            onClick={() => submit(m.failedQuestion, m.failedMode ?? 'ask')}
+                          >
+                            {t('ask.retry')}
+                          </button>
+                        ) : null}
+                        <div className="bubble-meta">
+                          {m.from === 'you' ? t('ask.you') : (m.agent ?? 'Jentera')} · {t('ask.now')}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))
             )}

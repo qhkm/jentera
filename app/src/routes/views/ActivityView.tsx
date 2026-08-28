@@ -15,6 +15,7 @@ import RunTrace from './RunTrace';
 import { useDetailLevel } from '@/hooks/useDetailLevel';
 import { useT } from '@/i18n/I18nProvider';
 import { Icon, stripEmoji } from '@/components/Icon';
+import { OutcomeReceipt, type WorkSignalState } from '@/components/WorkSignal';
 import { useToast } from '@/components/Toast';
 import { useMutate, useRefresh, useSnapshot } from '@/lib/repo';
 import type { Approval, Business, Tone, WorkItem } from '@/lib/types';
@@ -41,6 +42,13 @@ const WORK_STATUS: Record<string, { tone: Tone; label: string }> = {
 
 const workTone = (status: string): Tone => WORK_STATUS[status]?.tone ?? 'neutral';
 const workLabel = (status: string): string => WORK_STATUS[status]?.label ?? 'work.inprogress';
+
+function workSignal(status: string): WorkSignalState {
+  if (status === 'completed') return 'done';
+  if (status === 'failed') return 'failed';
+  if (status === 'needs_approval' || status === 'blocked') return 'waiting';
+  return 'working';
+}
 
 export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> }) {
   const t = useT();
@@ -183,28 +191,23 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
         />
 
         {activity.data!.work.length > 0 && (
-        <Card>
-          <div className="flex flex-col">
+          <div className="grid gap-3">
             {activity.data!.work.map((w) => (
-              <div
+              <OutcomeReceipt
                 key={w.id}
-                className="flex flex-col gap-1 border-b border-rail py-3 last:border-b-0"
+                title={w.objective}
+                outcome={w.outcome}
+                audience={t('ask.private')}
+                evidence={w.minutesSaved && w.minutesSaved > 0
+                  ? t('work.receipt.saved', { n: w.minutesSaved })
+                  : w.channel
+                    ? t('work.receipt.channel', { channel: w.channel })
+                    : undefined}
+                meta={`${new Date(w.occurredAt).toLocaleString()}${w.function ? ` · ${w.function}` : ''}`}
+                statusLabel={t(workLabel(w.status))}
+                statusTone={workTone(w.status)}
+                state={workSignal(w.status)}
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-sm">{w.objective}</span>
-                  {/* Not a binary. `needs_approval` reading as red
-                      "did not finish" tells the owner something broke
-                      when in fact it is waiting on them, and `blocked`
-                      is a setting of theirs working as intended. */}
-                  <Tag tone={workTone(w.status)}>{t(workLabel(w.status))}</Tag>
-                </div>
-                {w.outcome && (
-                  <span className="text-[13px] text-text-secondary">{w.outcome}</span>
-                )}
-                <span className="text-[11px] text-text-muted">
-                  {new Date(w.occurredAt).toLocaleString()}
-                  {w.function ? ` · ${w.function}` : ''}
-                </span>
                 {/* Advanced mode only, and only where there is a run to
                     trace. Collapsed by default: the trace is for the
                     moment something looks wrong, not for every glance. */}
@@ -218,10 +221,9 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
                     </div>
                   </details>
                 )}
-              </div>
+              </OutcomeReceipt>
             ))}
           </div>
-        </Card>
         )}
       </div>
     );

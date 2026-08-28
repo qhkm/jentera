@@ -84,9 +84,15 @@ describe('useAsk durable answers', () => {
     expect(result.current!.messages[1].text).toBe('Waking');
 
     await act(async () => {
-      resolveAnswer?.({ text: 'done', usedKeys: [], grounded: false });
+      resolveAnswer?.({ text: 'done', usedKeys: ['business.name'], grounded: true });
     });
     expect(result.current!.messages[1].text).toBe('done');
+    expect(result.current!.messages[1]).toMatchObject({
+      state: 'done',
+      mode: 'work',
+      usedKeys: ['business.name'],
+      grounded: true,
+    });
   });
 
   it('keeps a failed question retryable instead of presenting the error as an answer', async () => {
@@ -107,7 +113,11 @@ describe('useAsk durable answers', () => {
 
     act(() => result.current!.send('check the orders'));
     await waitFor(() => expect(result.current!.messages[1].text).toBe('temporarily offline'));
-    expect(result.current!.messages[1].failedQuestion).toBe('check the orders');
+    expect(result.current!.messages[1]).toMatchObject({
+      failedQuestion: 'check the orders',
+      state: 'failed',
+      mode: 'ask',
+    });
   });
 
   it('restores completed conversation history in the same browser tab', async () => {

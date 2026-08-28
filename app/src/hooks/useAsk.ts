@@ -30,6 +30,12 @@ export interface AskMessage {
   /** The request that failed, retained so the UI can offer a real retry. */
   failedQuestion?: string;
   failedMode?: AskMode;
+  /** Real runtime state used by the live work card. */
+  state?: 'sending' | AskProgress | 'done' | 'failed';
+  mode?: AskMode;
+  /** Completion evidence returned by the server. */
+  usedKeys?: string[];
+  grounded?: boolean;
 }
 
 const ASK_HISTORY_KEY = 'jentera-ask-history-v1';
@@ -129,7 +135,7 @@ export function useAsk(
         setMessages((prev) => [
           ...prev,
           { from: 'you', text: question },
-          { from: 'ai', text: t('ask.working'), pendingId },
+          { from: 'ai', text: t('ask.working'), pendingId, state: 'sending', mode },
         ]);
         void repo
           .ask(question, {
@@ -139,7 +145,7 @@ export function useAsk(
                 : progress === 'waking' ? 'ask.waking'
                   : progress === 'retrying' ? 'ask.retrying' : 'ask.working';
               setMessages((prev) => prev.map((message) =>
-                message.pendingId === pendingId ? { ...message, text: t(key) } : message,
+                message.pendingId === pendingId ? { ...message, text: t(key), state: progress } : message,
               ));
             },
           })
@@ -147,13 +153,29 @@ export function useAsk(
             // Replace the placeholder rather than appending, so the
             // thinking indicator does not stay in the transcript.
             setMessages((prev) => prev.map((message) =>
-              message.pendingId === pendingId ? { from: 'ai', text: a.text } : message,
+              message.pendingId === pendingId
+                ? {
+                    from: 'ai',
+                    text: a.text,
+                    state: 'done',
+                    mode,
+                    usedKeys: a.usedKeys,
+                    grounded: a.grounded,
+                  }
+                : message,
             ));
           }, (reason: unknown) => {
             const text = reason instanceof Error ? reason.message : 'Jentera could not answer.';
             setMessages((prev) => prev.map((message) =>
               message.pendingId === pendingId
-                ? { from: 'ai', text, failedQuestion: question, failedMode: mode }
+                ? {
+                    from: 'ai',
+                    text,
+                    failedQuestion: question,
+                    failedMode: mode,
+                    state: 'failed',
+                    mode,
+                  }
                 : message,
             ));
           });
