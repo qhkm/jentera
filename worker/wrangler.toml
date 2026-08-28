@@ -48,9 +48,20 @@ SPRITES_API_ORIGIN = "https://api.sprites.dev"
 RUNTIME_PROVISIONING_ENABLED = "true"
 MODEL_TRANSPORT_READY = "true"
 RUNTIME_CANARY_BUSINESS_IDS = "d5fb6dbb-428a-4215-86c0-8713d12ed73b"
-# Separate from provisioning: only this session-derived business may
-# route Ask AISAR work into Hermes. Removing it falls back to InlineRuntime.
-RUNTIME_EXECUTION_BUSINESS_IDS = "d5fb6dbb-428a-4215-86c0-8713d12ed73b"
+# Which businesses route Ask AISAR into Hermes. Empty means everyone
+# falls back to InlineRuntime, which is deliberate right now.
+#
+# Hermes answers in about 90 seconds against InlineRuntime's two, and
+# today it brings nothing in exchange: the tool grant carries an empty
+# operations array and the runner refuses to boot outside no-tools, so
+# a durable Ask can do precisely what an inline Ask can, slower and for
+# money. Owner questions are answered from confirmed facts; they need
+# retrieval and one model call, not a woken Sprite.
+#
+# The path stays built, tested and provisioned. Put a business id back
+# here when Hermes can do something inline cannot - tools, a browser, or
+# work that genuinely outlives a request.
+RUNTIME_EXECUTION_BUSINESS_IDS = ""
 RUNTIME_BOOTSTRAP_ENABLED = "true"
 RUNTIME_BUNDLE_COMMIT = "c1af6c7f68719b18ff7f45dadbf19327ecd64b2f"
 AISAR_MODEL_PROVIDER = "openrouter"
