@@ -39,6 +39,39 @@ describe('the runtime queue consumer', () => {
       .toEqual({ action: 'ack', reason: 'already_done' });
   });
 
+  it('does not rerun a stale release repair after the current runtime is ready', async () => {
+    const env = testEnv({ RUNTIME_RELEASE: '2026.08.28-12' });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.28-12', 'v1'));
+    const repair = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'upgrade',
+      dedupeKey: 'upgrade:stale-release-repair',
+      payload: { release: '2026.08.28-11', reason: 'release_drift' },
+    }));
+    const unavailable: RuntimeProvider = {
+      id: 'local',
+      create: async () => { throw new Error('stale repair touched provider compute'); },
+      wake: async (runtime) => runtime,
+      stop: async () => {},
+      status: async (runtime) => runtime,
+      checkpoint: async () => 'v1',
+      restore: async () => {},
+      destroy: async () => {},
+    };
+
+    await expect(handleRuntimeMessage(
+      env,
+      { version: 1, businessId: A, taskId: repair.id },
+      { provider: unavailable },
+    )).resolves.toEqual({ action: 'ack', reason: 'completed' });
+    expect((await taskStatus(repair.id)).status).toBe('completed');
+  });
+
   it('releases a failed lease before asking Queue to retry', async () => {
     const task = await provisionTask();
     const broken: RuntimeProvider = {

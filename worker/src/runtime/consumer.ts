@@ -32,6 +32,7 @@ import { hermesDraftId, sendTyping, TelegramDraftStream } from '../connectors/te
 import { runtimeModelKeyNeedsRotation } from './openrouter-keys';
 import { RuntimeBusyError } from './runner-client';
 import { getRuntime } from '../agent-runtime';
+import { runtimeReady } from './execution';
 
 const MAX_TASK_ATTEMPTS = 5;
 const BUSY_RETRY_SECONDS = 2;
@@ -168,9 +169,18 @@ export async function handleRuntimeMessage(
         ));
         break;
       case 'upgrade':
-        lifecycleResult = runtimeDiagnostic(await upgradeRuntime(
-          env, message.businessId, options.provider, options.fetch,
-        ));
+        {
+          const satisfied = await satisfiedReleaseRepair(
+            env, message.businessId, lease.task,
+          );
+          if (satisfied) {
+            lifecycleResult = runtimeDiagnostic(satisfied);
+          } else {
+            lifecycleResult = runtimeDiagnostic(await upgradeRuntime(
+              env, message.businessId, options.provider, options.fetch,
+            ));
+          }
+        }
         break;
       case 'delete':
         await deleteRuntime(env, message.businessId, options.provider);
@@ -441,6 +451,22 @@ export async function handleRuntimeMessage(
     }
     return { action: 'requeue', delaySeconds: 30, reason };
   }
+}
+
+async function satisfiedReleaseRepair(
+  env: Env,
+  businessId: string,
+  task: RuntimeTask,
+) {
+  const payload = task.payload as { reason?: unknown } | null;
+  if (payload?.reason !== 'release_drift') return null;
+  const release = env.RUNTIME_RELEASE?.trim();
+  if (!release) return null;
+  const runtime = await withTenant(env, businessId, (tx) => getRuntime(tx, businessId));
+  return runtimeReady(runtime) &&
+    runtime.desiredRelease === release && runtime.observedRelease === release
+    ? runtime
+    : null;
 }
 
 function runtimeDiagnostic(runtime: { observedRegion: string | null }) {
