@@ -77,13 +77,18 @@ export class RunStream extends DurableObject<Env> {
     const type = progressType(body.type);
     if (!identity || !type) return new Response('invalid event', { status: 400 });
 
-    const event = await this.ctx.storage.transaction(async (tx) => {
+    const outcome = await this.ctx.storage.transaction(async (tx) => {
       const existing = await tx.get<StreamIdentity>('identity');
       if (existing &&
           (existing.businessId !== identity.businessId || existing.runId !== identity.runId)) {
-        return null;
+        return { kind: 'conflict' } as const;
       }
       const seq = (await tx.get<number>('seq') ?? 0) + 1;
+      const lastType = await tx.get<RunProgressType>('lastType');
+      if (lastType === type) {
+        await tx.setAlarm(Date.now() + RETENTION_MS);
+        return { kind: 'duplicate', seq: seq - 1 } as const;
+      }
       const next: RunProgressEvent = {
         version: 1,
         seq,
@@ -93,14 +98,21 @@ export class RunStream extends DurableObject<Env> {
       await tx.put({
         identity,
         seq,
+        lastType: type,
         [eventKey(seq)]: next,
       });
       if (seq > MAX_EVENTS) await tx.delete(eventKey(seq - MAX_EVENTS));
       await tx.setAlarm(Date.now() + RETENTION_MS);
-      return next;
+      return { kind: 'published', event: next } as const;
     });
-    if (!event) return new Response('stream identity conflict', { status: 409 });
+    if (outcome.kind === 'conflict') {
+      return new Response('stream identity conflict', { status: 409 });
+    }
+    if (outcome.kind === 'duplicate') {
+      return Response.json({ ok: true, seq: outcome.seq, duplicate: true });
+    }
 
+    const event = outcome.event;
     const encoded = JSON.stringify(event);
     for (const socket of this.ctx.getWebSockets()) {
       safeSend(socket, encoded);

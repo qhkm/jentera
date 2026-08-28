@@ -90,6 +90,13 @@ the browser. It completed through `hermes-sprite`, returned a non-empty answer, 
 finalized 1,426 input tokens, 109 output tokens, and 99 micro-USD. One transient failure
 recovered before completion; healthy polls do not consume the attempt counter.
 
+WebSocket production verification then submitted explicit Work run
+`423ee728-c692-427e-99f3-8d75bc4c2a49`. One uninterrupted socket observed
+`queued → waking → working → completed`, every frame contained only `version`, `seq`,
+`type`, and `at`, and the final tenant-scoped read returned a 242-character answer. Usage
+finalized 1,313 input tokens, 122 output tokens, 118,277 runtime milliseconds, and 94
+micro-USD. The short-lived verification session was deleted afterward.
+
 ## Configuration
 
 Public bindings and variables are in `wrangler.toml`. Secrets are set separately:

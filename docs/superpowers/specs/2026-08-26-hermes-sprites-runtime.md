@@ -100,9 +100,11 @@ applied transactionally and verified through both `neondb_owner` and the restric
 the exact tenant row when scoped. Worker version
 `1fd1d9fe-3054-441a-8856-c2430b4ddb8b` carried provisioning plus durable Ask execution for
 one business canary; version `74ae271a` superseded it the same morning with the execution
-allow-list emptied, so Ask is inline again while provisioning stays live. Pages deployment `038b5de8` serves bundle
-`index-C-cDCbAN.js` at `jentera.ai`. Its Sprites credential is organization-scoped and
-dedicated. The canary now has a
+allow-list emptied, so Ask returned inline while provisioning stayed live. Worker version
+`b2edd791-00d8-44e6-a890-b1f943b12ace` now keeps Ask inline but enables explicit durable
+Work for that canary, with the `RunStream` Durable Object migration and stream-admission
+limiter. Pages deployment `546472f6` serves bundle `index-DQuCW9sD.js` at `jentera.ai`.
+Its Sprites credential is organization-scoped and dedicated. The canary now has a
 separate OpenRouter inference key with a $5 monthly hard limit and 90-day expiry. Its old
 $10 weekly shared bridge key was revoked and the shared Worker secret and allow-list were
 removed. The key, customer prompts, and model results cross only HTTPS.
@@ -121,12 +123,18 @@ the inline adapter for ordinary Ask and ingestion. A ready compute resource is s
 authority to use connectors or tools: every grant has an empty operation set and the
 runner attests `toolMode: no-tools`.
 
-The allow-list held the I Run Cafe canary for part of 28 August, which is how the numbers
-below were obtained, and was emptied the same morning. Four durable Ask runs completed in
-106s, 100s, 93s and 91s against roughly 1.5s inline — and with an empty operation set,
-that time bought no capability the inline path lacks. The reversal cost one config line
-because execution was gated separately from provisioning, which is the property that
-separation exists to provide.
+The allow-list first held the I Run Cafe canary for part of 28 August, was emptied after
+four durable Ask runs measured 106s, 100s, 93s and 91s against roughly 1.5s inline, then
+was restored only after the product split Ask from explicit Work. That history proved the
+execution gate can change independently of provisioning; the current mode field means
+restoring the canary no longer routes ordinary owner questions into Hermes.
+
+Production Work run `423ee728-c692-427e-99f3-8d75bc4c2a49` then proved the new path. One
+WebSocket observed `queued → waking → working → completed`; every frame had exactly
+`version`, `seq`, `type`, and `at`. The final authenticated read returned a 242-character
+answer and usage finalized 1,313 input tokens, 122 output tokens, 118,277 runtime
+milliseconds, and 94 micro-USD. Consecutive duplicate states are now collapsed before
+broadcast. The temporary verification session was deleted.
 
 The product now makes this latency boundary explicit. Ask stays fast; Work opts into the
 durable runtime and shows `queued`, `waking`, `working`, and `retrying` progress before a
@@ -142,10 +150,9 @@ Still gated and therefore intentionally unavailable to customers:
 Creating provider compute is not readiness, and readiness is not use. The canary's
 `business.runtime` changed from `aisar-native` to `hermes-sprite` only after runner
 installation, authenticated readiness, browser smoke, and a baseline checkpoint passed —
-and its Ask traffic still runs inline. Execution is a separate code gate: emptying
-`RUNTIME_EXECUTION_BUSINESS_IDS` returned that traffic to the inline path immediately,
-without changing or deleting the Sprite. That was exercised on 28 August, not merely
-designed.
+and its ordinary Ask traffic still runs inline. Execution is a separate code gate:
+emptying `RUNTIME_EXECUTION_BUSINESS_IDS` disables only explicit Work without changing or
+deleting the Sprite. That separation was exercised on 28 August, not merely designed.
 
 ## Decision
 
