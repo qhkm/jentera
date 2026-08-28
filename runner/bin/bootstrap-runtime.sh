@@ -4,8 +4,7 @@ set -euo pipefail
 # Idempotent bootstrap executed inside one newly-created Sprite. The transfer
 # file contains base64 data, never shell code, and is removed on every exit.
 incoming="${1:-/home/sprite/aisar/bootstrap.env.in}"
-hermes_installer_url="https://hermes-agent.nousresearch.com/install.sh"
-hermes_installer_sha256="c0380bc1f78d3d662a77663ce20cc17e14cbc4bec35e61ab7a33bac5f3afed2d"
+hermes_installer_sha256="0582d9b1562efcb6e0ac62f4451021667830b830a72ce7d91eaea9fee8b6c09b"
 
 if [[ ! -r "$incoming" ]]; then
   echo "runtime bootstrap transfer is unavailable" >&2
@@ -87,6 +86,7 @@ hermes_commit="$(decode "$HERMES_COMMIT_B64")"
 }
 [[ "$hermes_tag" =~ ^v[0-9]{4}\.[0-9]+\.[0-9]+$ ]] || exit 1
 [[ "$hermes_commit" =~ ^[0-9a-f]{40}$ ]] || exit 1
+hermes_installer_url="https://raw.githubusercontent.com/NousResearch/hermes-agent/${hermes_commit}/scripts/install.sh"
 [[ "$model_provider" == "openrouter" ]] || {
   echo "only the reviewed OpenRouter provider is allowed" >&2
   exit 1

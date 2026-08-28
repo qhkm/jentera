@@ -86,7 +86,8 @@ Sprite per business, uploads the narrow runtime bundle and a mode-0600 transfer,
 invokes `bin/bootstrap-runtime.sh` inside the Sprite.
 
 The in-Sprite bootstrap pins Hermes to tag `v2026.8.19` and commit
-`fcbd1076a93841fa88855acce810e342a5b78101`, verifies the upstream installer's SHA-256,
+`fcbd1076a93841fa88855acce810e342a5b78101`, downloads the installer from that same
+immutable commit and verifies its SHA-256,
 writes the runtime environment atomically, configures OpenRouter without inlining its
 key, pins DS4 Flash to medium reasoning without latency-first provider routing, installs and
 live-tests the pinned keyless DDGS search backend, enforces the full pinned API-server tool profile,

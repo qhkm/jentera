@@ -36,6 +36,16 @@ test('production runtime pins and proves its keyless search backend', async () =
   assert.match(source, /web_search_ready/);
 });
 
+test('Hermes installer bytes come from the reviewed Hermes commit', async () => {
+  const source = await readFile(SCRIPT, 'utf8');
+  assert.match(
+    source,
+    /raw\.githubusercontent\.com\/NousResearch\/hermes-agent\/\$\{hermes_commit\}\/scripts\/install\.sh/,
+  );
+  assert.match(source, /0582d9b1562efcb6e0ac62f4451021667830b830a72ce7d91eaea9fee8b6c09b/);
+  assert.doesNotMatch(source, /hermes-agent\.nousresearch\.com\/install\.sh/);
+});
+
 test('model configuration favors DS4 agent quality and tool compatibility', async () => {
   const source = await readFile(CONFIGURE, 'utf8');
   assert.match(source, /provider_routing\.pop\("sort", None\)/);
