@@ -186,11 +186,12 @@ so the exact per-object socket caps remain necessary.
 
 Automatic Telegram replies show activity immediately. Inline replies use
 `sendChatAction(typing)` every four seconds with a 30-second cap; durable Hermes replies
-refresh typing on each queue poll for group chats. In private chats they mirror Hermes's
-native Telegram presentation: an empty rich `Thinking…` draft, then cumulative rich
-Markdown frames sent immediately and thereafter at its 800 ms or 24-new-character
-threshold. Each run derives a fresh random 49-bit draft id from its durable task id, and
-the completed response replaces the ephemeral preview with one persistent rich message.
+refresh typing on each queue poll for group chats. In private chats they preserve the
+separate typing status throughout the active stream while mirroring Hermes's native
+Telegram presentation: an empty rich `Thinking…` draft, then cumulative rich Markdown
+frames sent immediately and thereafter at its 800 ms or 24-new-character threshold. Each
+run derives a fresh random 49-bit draft id from its durable task id, and the completed
+response replaces the ephemeral preview with one persistent rich message.
 Explicit Bot API rejection falls back to the ordinary draft/text methods. Approval-gated
 replies never stream because no immediate customer reply has been authorized.
 

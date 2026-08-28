@@ -104,9 +104,12 @@ allow-list emptied, so Ask returned inline while provisioning stayed live. Worke
 `b2edd791-00d8-44e6-a890-b1f943b12ace` introduced the split and the `RunStream` Durable
 Object migration; version `8a20dca9-0069-46af-a578-f46230d33fe5` also collapsed
 duplicate progress states before broadcast. Current Worker version
-`339f831e-ed5a-45b5-8344-7ec3c34b3494` mirrors Hermes's native Telegram presentation:
+`b5a4cf15-4379-434b-8726-6af04d2bceee` mirrors Hermes's native Telegram presentation:
 rich Thinking drafts, cumulative rich Markdown at the 800 ms/24-character threshold,
-fresh 49-bit per-turn ids, rich final delivery, and cross-chunk think-tag suppression.
+fresh 49-bit per-turn ids, rich final delivery, and cross-chunk think-tag suppression. It
+also preserves Telegram's separate typing status from webhook receipt through the active
+Hermes stream, refreshing it every four seconds without coupling typing failure to draft
+or final delivery.
 Pages deployment `958d6182` serves bundle
 `index-De-GFrgZ.js` at `jentera.ai`.
 Its Sprites credential is organization-scoped and dedicated. The canary now has a
