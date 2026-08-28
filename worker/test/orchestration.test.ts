@@ -26,6 +26,7 @@ const B = '22222222-2222-4222-8222-222222222222';
 let connId: string;
 let userId: string;
 let sent: { chatId: unknown; text: unknown }[];
+let typing: { chatId: unknown; action: unknown }[];
 
 const incoming = { chatId: 42, from: 'Aminah', text: 'Are you open on Sunday?' };
 
@@ -33,6 +34,7 @@ const incoming = { chatId: 42, from: 'Aminah', text: 'Are you open on Sunday?' }
     still runs. Records what would have gone to a customer. */
 function telegramAccepts() {
   sent = [];
+  typing = [];
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init: RequestInit) => {
@@ -40,6 +42,11 @@ function telegramAccepts() {
         const body = JSON.parse(String(init.body)) as { chat_id: unknown; text: unknown };
         sent.push({ chatId: body.chat_id, text: body.text });
         return new Response(JSON.stringify({ ok: true, result: { message_id: 99 } }));
+      }
+      if (String(url).includes('sendChatAction')) {
+        const body = JSON.parse(String(init.body)) as { chat_id: unknown; action: unknown };
+        typing.push({ chatId: body.chat_id, action: body.action });
+        return new Response(JSON.stringify({ ok: true, result: true }));
       }
       return new Response(JSON.stringify({ ok: true, result: {} }));
     }),
@@ -189,6 +196,13 @@ describe('when the owner has allowed it', () => {
     expect(sent[0].chatId).toBe(42);
     expect(await approvals()).toHaveLength(0);
     expect((await runRow()).status).toBe('completed');
+  });
+
+  it('shows typing while composing an automatic reply', async () => {
+    await setPolicy('automatic');
+    await handleIncoming(env, A, connId, incoming);
+
+    expect(typing).toContainEqual({ chatId: 42, action: 'typing' });
   });
 
   it('records that it executed, and what it saved', async () => {

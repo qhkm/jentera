@@ -110,6 +110,65 @@ export async function sendMessage(
   return { messageId: body.result.message_id };
 }
 
+/** Tell Telegram that the bot is composing a reply. This is deliberately a
+    separate best-effort signal: failure must never suppress the real answer. */
+export async function sendTyping(token: string, chatId: number | string): Promise<void> {
+  const res = await fetch(`${API}/bot${token}/sendChatAction`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, action: 'typing' }),
+    signal: AbortSignal.timeout(3_000),
+  });
+  const body = (await res.json().catch(() => null)) as { ok?: boolean } | null;
+  if (!body?.ok) throw new Error('Telegram refused the typing indicator');
+}
+
+/**
+ * Keep Telegram's five-second typing status alive only while one automatic
+ * response is being generated. Pulses never overlap, stop on the first
+ * connector failure, and have a hard lifetime even if model work stalls.
+ */
+export async function withTypingIndicator<T>(
+  token: string,
+  chatId: number | string,
+  work: () => Promise<T>,
+  timing: { refreshMs?: number; maxMs?: number } = {},
+): Promise<T> {
+  const refreshMs = timing.refreshMs ?? 4_000;
+  const maxMs = timing.maxMs ?? 30_000;
+  const startedAt = Date.now();
+  let active = true;
+  let inFlight = false;
+  let timer: ReturnType<typeof setInterval> | undefined;
+
+  const pulse = async () => {
+    if (!active || inFlight || Date.now() - startedAt >= maxMs) {
+      if (Date.now() - startedAt >= maxMs && timer) clearInterval(timer);
+      return;
+    }
+    inFlight = true;
+    try {
+      await sendTyping(token, chatId);
+    } catch {
+      /* A typing indicator is cosmetic. Stop retrying a broken chat action,
+         but let generation and the real send continue normally. */
+      active = false;
+      if (timer) clearInterval(timer);
+    } finally {
+      inFlight = false;
+    }
+  };
+
+  void pulse();
+  timer = setInterval(() => void pulse(), refreshMs);
+  try {
+    return await work();
+  } finally {
+    active = false;
+    clearInterval(timer);
+  }
+}
+
 export interface IncomingMessage {
   chatId: number;
   messageId: number;

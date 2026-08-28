@@ -142,6 +142,15 @@ durable runtime and shows `queued`, `waking`, `working`, and `retrying` progress
 terminal state. This is lifecycle streaming, not incremental model-token output. Keep
 Telegram last, since a customer is waiting there and the inline path already serves it.
 
+The pinned canary's authenticated `/v1/capabilities` response confirms
+`run_events_sse`, `tool_progress_events`, `approval_events`, and real message streaming.
+Its source emits `message.delta`, tool lifecycle, approval, reasoning, and terminal events.
+AISAR must never persist or expose `reasoning.available`, token deltas, raw tool previews,
+or the terminal transcript bundle. Deltas are ephemeral transport only; allow-listed
+task/tool/todo/artifact lifecycle events may be translated into bounded structured AISAR
+events. The durable context is the objective, status, approvals, checkpoints, artifacts,
+usage and outcome—not the Hermes chat transcript.
+
 Still gated and therefore intentionally unavailable to customers:
 
 - incremental Hermes event translation and Hermes-native approval resume before any

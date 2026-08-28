@@ -27,6 +27,7 @@ import {
   setWebhook,
   verifyToken,
   webhookHealth,
+  withTypingIndicator,
 } from '../connectors/telegram';
 import { append, finishRun, recordWork, startRun, updateWorkForRun } from '../runs';
 import { retrieve } from '../ask';
@@ -305,7 +306,19 @@ export async function handleIncoming(
       policy: await policyFor(tx, 'telegram', 'send_message'),
     }));
 
-    const draft = await runtime.answerQuestion(incoming.text, facts, []);
+    /* Typing is shown only when this path will send immediately. Showing it
+       before an approval pause would promise the customer a reply that may
+       never arrive. The token remains control-plane memory only. */
+    const automaticToken = policy === 'automatic'
+      ? await withTenant(env, businessId, (tx) => useCredential(env, tx, connectionId))
+      : undefined;
+    const draft = automaticToken
+      ? await withTypingIndicator(
+          automaticToken,
+          incoming.chatId,
+          () => runtime.answerQuestion(incoming.text, facts, []),
+        )
+      : await runtime.answerQuestion(incoming.text, facts, []);
 
     await withTenant(env, businessId, (tx) =>
       append(tx, businessId, run.id, 'action.proposed', {
@@ -369,7 +382,16 @@ export async function handleIncoming(
       return;
     }
 
-    await sendAndRecord(env, businessId, connectionId, run.id, incoming, draft.text, draft.usedKeys);
+    await sendAndRecord(
+      env,
+      businessId,
+      connectionId,
+      run.id,
+      incoming,
+      draft.text,
+      draft.usedKeys,
+      automaticToken,
+    );
   } catch (e) {
     const why = e instanceof Error ? e.message : 'could not reply';
     await withTenant(env, businessId, async (tx) => {
@@ -397,8 +419,10 @@ export async function sendAndRecord(
   incoming: { chatId: number; from: string; text: string },
   text: string,
   usedKeys: string[],
+  existingToken?: string,
 ): Promise<void> {
-  const token = await withTenant(env, businessId, (tx) => useCredential(env, tx, connectionId));
+  const token = existingToken ??
+    await withTenant(env, businessId, (tx) => useCredential(env, tx, connectionId));
   const sent = await sendMessage(token, incoming.chatId, text);
 
   await withTenant(env, businessId, async (tx) => {

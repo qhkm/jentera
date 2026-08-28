@@ -13,10 +13,10 @@
    tests exist because nothing short of a real message found it.
    ============================================================ */
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { asApp, asOwner, asTenant, truncateAll } from './harness';
 import { saveConnection, verifyWebhook, webhookSecret } from '../src/connections';
-import { parseUpdate } from '../src/connectors/telegram';
+import { parseUpdate, withTypingIndicator } from '../src/connectors/telegram';
 import type { Env } from '../src/env';
 
 const env = { CREDENTIAL_KEY: btoa(String.fromCharCode(...new Uint8Array(32).fill(3))) } as Env;
@@ -27,6 +27,11 @@ const B = '22222222-2222-4222-8222-222222222222';
 let connId: string;
 let secret: string;
 let userId: string;
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 beforeEach(async () => {
   await truncateAll();
@@ -200,5 +205,40 @@ describe('reading an update', () => {
   it('does not mistake a caption or a sticker for text', () => {
     expect(parseUpdate(message({ text: undefined, caption: 'a photo' }))).toBeNull();
     expect(parseUpdate(message({ text: undefined, sticker: { emoji: '👍' } }))).toBeNull();
+  });
+});
+
+describe('automatic reply typing', () => {
+  it('refreshes without overlap, stops with the work, and has a hard cap', async () => {
+    vi.useFakeTimers();
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: true })));
+    vi.stubGlobal('fetch', fetch);
+    let finish!: (value: string) => void;
+    const work = new Promise<string>((resolve) => { finish = resolve; });
+
+    const result = withTypingIndicator('123456789:AAtoken', 42, () => work, {
+      refreshMs: 10,
+      maxMs: 25,
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(fetch).toHaveBeenCalledTimes(3);
+
+    finish('done');
+    await expect(result).resolves.toBe('done');
+    await vi.advanceTimersByTimeAsync(100);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not fail the answer when Telegram refuses the indicator', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({ ok: false }), { status: 400 })));
+
+    await expect(withTypingIndicator(
+      '123456789:AAtoken',
+      42,
+      async () => 'answer',
+      { refreshMs: 10, maxMs: 20 },
+    )).resolves.toBe('answer');
   });
 });

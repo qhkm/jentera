@@ -44,6 +44,12 @@ final tenant-scoped HTTP read for the result; bounded polling is recovery only w
 WebSocket cannot be established or is interrupted. This is lifecycle streaming, not yet
 token streaming: Hermes still returns its text at completion.
 
+The pinned Hermes canary advertises `run_events_sse`, `tool_progress_events`, and real
+message deltas. Any future bridge treats those deltas as ephemeral transport: it must
+discard `reasoning.available`, never persist token chunks or raw tool chatter, and project
+only allow-listed lifecycle/todo/artifact events into AISAR's structured run record. Chat
+is an interface; `run`, `run_event`, and `work_record` remain the queryable source of truth.
+
 Hermes remains read-only and boots in `no-tools` mode. Connector calls, browser actions,
 and other side effects remain unavailable until incremental Hermes event translation and
 Hermes-native approval resume are implemented and reviewed. Provisioning remains a
@@ -176,6 +182,11 @@ Cloudflare's [WebSocket Hibernation API](https://developers.cloudflare.com/durab
 so idle connections do not keep object compute active. Rate-limit bindings are a
 [per-colo, eventually consistent brake](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/),
 so the exact per-object socket caps remain necessary.
+
+Automatic Telegram replies emit `sendChatAction(typing)` immediately and refresh every
+four seconds while the inline answer is being composed. Pulses never overlap, stop on the
+first Telegram failure, and are hard-capped at 30 seconds. Approval-gated replies do not
+show typing because no immediate customer reply has been authorized.
 
 `pnpm waf:dry-run` renders the reviewed Free-plan rule. `pnpm waf:apply` installs or
 updates only its stable rule reference and refuses to overwrite another Free-plan rule.

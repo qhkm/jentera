@@ -112,6 +112,13 @@ An approval stores the exact action, parameters, risk, expiry, and approving own
 
 Chat transcripts and raw agent logs are evidence, not the owner-facing activity model. Every run emits append-only events such as `work.requested`, `work.started`, `action.proposed`, `approval.requested`, `action.executed`, `work.completed`, and `work.failed`. A projector turns those events into a concise work record for Home and Activity.
 
+Realtime model deltas, chain-of-thought, and intermediate chat narration are transport,
+not business state. They may be forwarded live after redaction but are never persisted in
+Neon, Durable Object storage, logs, or Activity. Persist only the bounded structured facts
+needed to resume and audit work: objective, status, approvals, todos/checkpoints,
+artifacts, usage, outcome, and the final customer-visible action where accountability
+requires it. This keeps context queryable without rebuilding it from a chat transcript.
+
 A work record should contain:
 
 - business objective and plain-language outcome;
