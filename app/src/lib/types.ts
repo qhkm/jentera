@@ -91,6 +91,8 @@ export interface TeamMember {
   m: string;
   /** true when the agent is gated behind a connection */
   setup?: boolean;
+  /** Internal agents work with the owner and do not appear as customer threads. */
+  audience?: 'internal' | 'customer';
 }
 
 export interface WorkItem {

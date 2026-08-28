@@ -81,17 +81,20 @@ run. Primary Queue retries are backed by a DLQ consumer; Postgres leases remain 
 of truth for replay. Terminal usage and run finalization occur only when the exhaustion
 compare-and-set proves that worker still owns the lease.
 
-## Customer interaction path
+## Private owner Telegram path
 
-Customers interact with AISAR, never with a Sprite or Hermes endpoint. When an
-owner with a ready runtime explicitly chooses Work on this, or when that business's
-verified Telegram webhook receives a text message, the control plane creates an
+Telegram is internal by default. A signed-in owner receives an HMAC-protected deep link,
+pairs exactly one private chat, and the connection refuses every other chat before business
+memory, rate-limited model work, or tools are reached. When an owner with a ready runtime
+explicitly chooses Work on this, or when that paired private Telegram chat sends a text
+message, the control plane creates an
 idempotent durable `run` and `runtime_task` and sends only a business/task wake-up signal
 to the Queue. Telegram uses connection, chat, and message ids for admission and dedupe;
-webhook retries cannot create a second paid Hermes run. The send policy is checked again
-when Hermes finishes, before the control plane sends, blocks, or creates an approval. Ordinary
-Ask stays inline; Telegram falls back inline only while its runtime is not ready or execution
-is globally paused.
+webhook retries cannot create a second paid Hermes run. A reply to the paired owner is an
+internal response rather than a customer-send action, so customer messaging permissions do
+not disable the owner's assistant. Ordinary Ask stays inline; Telegram falls back inline
+only while its runtime is not ready or execution is globally paused. Customer-facing bots
+require a separate explicit audience mode and are not enabled by this path.
 
 The control plane never accepts a business id from the browser for this decision. Queue
 messages are wake-up hints only: task kind, payload, run id, and tenant all come from the
@@ -193,19 +196,19 @@ so idle connections do not keep object compute active. Rate-limit bindings are a
 [per-colo, eventually consistent brake](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/),
 so the exact per-object socket caps remain necessary.
 
-Automatic Telegram replies show activity immediately. Inline replies use
+Internal Telegram replies show activity immediately. Inline replies use
 `sendChatAction(typing)` every four seconds with a 30-second cap; durable Hermes replies
 refresh typing on each queue poll for group chats. In private chats they preserve the
 separate typing status throughout the active stream while mirroring Hermes's native
 Telegram presentation: an empty rich `Thinking…` draft, then cumulative rich Markdown
 frames sent immediately and thereafter at its 800 ms or 24-new-character threshold. Each
 run derives a fresh random 49-bit draft id from its durable task id, and the completed
-response replaces the ephemeral preview with one persistent rich message.
-Explicit Bot API rejection falls back to the ordinary draft/text methods. Approval-gated
-replies never stream because no immediate customer reply has been authorized.
+response replaces the ephemeral preview with one persistent ordinary message,
+so Telegram clients expose their normal select-and-copy controls.
+Explicit Bot API rejection falls back to the ordinary draft/text methods.
 
 Hermes deltas remain in bounded process memory only: after delivery the task payload is
-scrubbed and its result contains delivery metadata, while the final customer-visible
+scrubbed and its result contains delivery metadata, while the final owner-visible
 reply is retained once in the structured work audit. The runner accepts only
 `message.delta` plus bounded tool lifecycle presentation events and also applies Hermes's
 streaming think-tag scrubber across chunk boundaries. Telegram receives native-style tool

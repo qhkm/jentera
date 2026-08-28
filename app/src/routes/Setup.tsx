@@ -108,7 +108,8 @@ function LiveSetup() {
     runtime && ['ready', 'cold', 'idle', 'busy'].includes(runtime.status) &&
       runtime.observedRelease === runtime.desiredRelease,
   );
-  const connected = (connections.rows ?? []).filter((row) => row.status === 'connected').length;
+  const connected = (connections.rows ?? []).filter((row) =>
+    row.status === 'connected' && (row.connector !== 'telegram' || row.paired === true)).length;
   const completed = 1 + Number(runtimeReady) + Number(connected > 0);
 
   async function finish() {

@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { asOwner, asTenant, req, signIn, testEnv, truncateAll } from './harness';
 import { handleRepo } from '../src/routes/repo';
 import { handleConnect } from '../src/routes/connect';
-import { saveConnection } from '../src/connections';
+import { saveConnection, telegramInternalChat, webhookSecret } from '../src/connections';
 import type { Env } from '../src/env';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -48,6 +48,36 @@ async function conn(method: string, path: string, opts: { cookie?: string; body?
   if (!res) throw new Error(`no route matched ${method} ${path}`);
   const text = await res.text();
   return { status: res.status, body: text ? (JSON.parse(text) as Record<string, unknown>) : null };
+}
+
+async function telegramHook(
+  connectionId: string,
+  secret: string,
+  chatId: number,
+  text: string,
+  messageId = 1,
+) {
+  const url = new URL(`https://api.test/api/webhooks/telegram/${A}/${connectionId}`);
+  const request = new Request(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Telegram-Bot-Api-Secret-Token': secret,
+    },
+    body: JSON.stringify({
+      update_id: messageId,
+      message: {
+        message_id: messageId,
+        date: 1,
+        chat: { id: chatId, type: 'private' },
+        from: { id: chatId, first_name: 'Owner' },
+        text,
+      },
+    }),
+  });
+  const response = await handleConnect(request, env, url, cors);
+  if (!response) throw new Error('Telegram webhook did not match');
+  return response;
 }
 
 beforeEach(async () => {
@@ -445,7 +475,51 @@ describe('connections', () => {
     const r = await conn('GET', '/api/connections', { cookie: cookieA });
     expect(r.status).toBe(200);
     expect(JSON.stringify(r.body)).not.toContain('SUPERSECRETTOKEN');
-    expect((r.body?.connections as { displayName: string }[])[0].displayName).toBe('@alpha_bot');
+    const [connection] = r.body?.connections as {
+      displayName: string; paired: boolean; pairingUrl: string;
+    }[];
+    expect(connection.displayName).toBe('@alpha_bot');
+    expect(connection.paired).toBe(false);
+    expect(connection.pairingUrl).toMatch(/^https:\/\/t\.me\/alpha_bot\?start=/);
+  });
+
+  it('pairs one private owner chat and refuses every other Telegram user', async () => {
+    const c = await asTenant(A, (tx) =>
+      saveConnection(env, tx, A, {
+        connector: 'telegram',
+        method: 'bot_token',
+        externalId: '1',
+        displayName: '@alpha_bot',
+        secret: '123456789:SUPERSECRETTOKEN',
+        connectedBy: alice,
+      }));
+    const secret = await asTenant(A, (tx) => webhookSecret(tx, c.id));
+    const listed = await conn('GET', '/api/connections', { cookie: cookieA });
+    const [view] = listed.body?.connections as { pairingUrl: string }[];
+    const code = new URL(view.pairingUrl).searchParams.get('start');
+    expect(code).toMatch(/^[A-Za-z0-9_-]{32}$/);
+
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
+    vi.stubGlobal('fetch', fetch);
+
+    await telegramHook(c.id, secret, 999, 'Tell me the private business plan', 10);
+    expect(await asTenant(A, (tx) => tx`select id from run`)).toHaveLength(0);
+
+    await telegramHook(c.id, secret, 42, `/start ${code}`, 11);
+    expect(await asTenant(A, (tx) => telegramInternalChat(tx, c.id))).toBe(42);
+
+    await telegramHook(c.id, secret, 999, `/start ${code}`, 12);
+    expect(await asTenant(A, (tx) => telegramInternalChat(tx, c.id))).toBe(42);
+    await telegramHook(c.id, secret, 999, 'Try again', 13);
+    expect(await asTenant(A, (tx) => tx`select id from run`)).toHaveLength(0);
+
+    await telegramHook(c.id, secret, 42, 'Help me plan tomorrow', 14);
+    expect(await asTenant(A, (tx) => tx`select id from run`)).toHaveLength(1);
+
+    const refreshed = await conn('GET', '/api/connections', { cookie: cookieA });
+    const [paired] = refreshed.body?.connections as { paired: boolean; pairingUrl: null }[];
+    expect(paired).toMatchObject({ paired: true, pairingUrl: null });
   });
 
   it('shows one business nothing of another’s', async () => {

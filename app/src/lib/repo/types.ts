@@ -99,6 +99,10 @@ export interface Connection {
   connectedAt: string;
   lastOkAt: string | null;
   lastError: string | null;
+  /** Telegram is internal by default and becomes usable only after the
+      signed-in owner claims one private chat through this deep link. */
+  paired?: boolean;
+  pairingUrl?: string | null;
 }
 
 export interface ConnectionHealth {

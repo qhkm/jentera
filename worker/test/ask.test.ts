@@ -173,6 +173,20 @@ describe('the answer', () => {
 });
 
 describe('the durable Hermes agent request', () => {
+  it('acts as a private agent for the owner rather than a customer-facing bot', () => {
+    const prepared = prepareHermesAgent(
+      'help me plan the week',
+      [],
+      [],
+      new Date('2026-08-28T05:00:00.000Z'),
+    );
+
+    expect(prepared.instructions).toMatch(/private internal business agent/i);
+    expect(prepared.instructions).toMatch(/owner and their team/i);
+    expect(prepared.instructions).toMatch(/never as one of the business's customers/i);
+    expect(prepared.instructions).toMatch(/do not behave as a public customer-support bot/i);
+  });
+
   it('requires live research for current questions and keeps source links in the answer', () => {
     const prepared = prepareHermesAgent(
       "what's latest today in tech?",

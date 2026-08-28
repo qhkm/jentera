@@ -10,7 +10,7 @@
 
 import { PLAYBOOKS } from './data/playbooks';
 import { REC_MAP } from './data/recommendations';
-import type { AgentRecommendation, Business } from './types';
+import type { AgentRecommendation, Business, TeamMember } from './types';
 import { getCountry, localizeDetect, localizeSite } from './country';
 import { FALLBACK_KEY, extractLocation, extractName, inferPlaybook } from './infer';
 import type { BusinessSnapshot } from '@/lib/repo/types';
@@ -50,9 +50,23 @@ export function resolveBusiness(snap: BusinessSnapshot, key: string): Business {
     funcs: p.funcs,
     stats: p.stats,
     sug: p.sug,
-    team: p.team,
+    /* Every industry playbook historically put a customer responder first.
+       The default AISAR identity is now the owner's internal agent; the rest
+       industry-specific team remains available as later automation. */
+    team: [internalBusinessAssistant(), ...p.team],
     work: p.work,
     conns: p.conns,
+  };
+}
+
+function internalBusinessAssistant(): TeamMember {
+  return {
+    e: '🧭',
+    n: 'Business Assistant',
+    ch: 'Private workspace · Telegram',
+    d: 'Works with you on operations, research, planning, writing, and day-to-day business tasks. Not customer-facing by default.',
+    m: 'Private · ready for your instructions',
+    audience: 'internal',
   };
 }
 

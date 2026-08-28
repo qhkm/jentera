@@ -38,7 +38,7 @@ export const DEFAULTS: Record<Operation, Policy> = {
   export: 'approval',
   book: 'approval',
   update: 'approval',
-  send: 'automatic',
+  send: 'approval',
   cancel: 'approval',
   refund: 'blocked',
   pay: 'blocked',

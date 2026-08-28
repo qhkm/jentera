@@ -51,12 +51,12 @@ export const CONNECTORS: Record<string, Connector> = {
     "e": "✈️",
     "tier": "T2",
     "method": "bss",
-    "flow": "Guided Telegram bot authorization — AISAR handles the token, webhook, and setup securely",
+    "flow": "Guided private-agent pairing — AISAR handles the token, webhook, and owner-chat lock securely",
     "scope": [
-      "reply to customers",
-      "send updates",
-      "handle enquiries",
-      "escalate to owner"
+      "chat with your business agent",
+      "research and planning",
+      "business memory",
+      "internal task updates"
     ],
     "countries": [
       "MY",

@@ -38,7 +38,7 @@ pnpm deploy       # build + wrangler pages deploy dist --project-name aisar
 ## Views
 
 All eight dashboard views are ported, plus the landing and onboarding flows. Signed-in
-setup reads the real private-runtime state and embeds the live Telegram connection flow;
+setup reads the real private-runtime state and embeds the live, private-owner Telegram pairing flow;
 only the anonymous demo uses the original timed setup preview.
 
 | View | Notes |

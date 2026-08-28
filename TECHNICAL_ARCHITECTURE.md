@@ -26,7 +26,7 @@ Connector performs the action
 Structured work record captures the result and updates memory
 ```
 
-The first implementation should use Telegram because it supports both owner interaction and customer messaging with a relatively direct integration path. WhatsApp follows through the same connector contract.
+The first implementation uses Telegram as a private owner/internal interface. One private chat must be paired from the authenticated setup flow; discovering the public bot username grants no business access. Customer messaging is a separate, explicit audience mode. WhatsApp follows through the same connector contract.
 
 ## System Components
 
@@ -190,9 +190,9 @@ This is also where the product becomes difficult to copy. Industry playbooks are
 - Keep ordinary Ask AISAR inline and fast. Route the explicit
   "Work on this" action through the business's durable, tenant-scoped Hermes task, with authenticated
   hibernating-WebSocket lifecycle progress and bounded polling only as recovery.
-- Route verified Telegram messages for businesses with ready runtimes through the same
-  durable Hermes task plane. Deduplicate on the Telegram connection/chat/message identity,
-  re-check send policy at completion, and retain only structured state plus the final sent
+- Route paired owner Telegram messages for businesses with ready runtimes through the same
+  durable Hermes task plane. Deduplicate on the Telegram connection/chat/message identity
+  and retain only structured state plus the final sent
   reply—not Hermes reasoning, token deltas, or raw transcripts.
 - For automatic private Telegram replies, relay allow-listed `message.delta` output using
   Hermes's native presentation contract: a rich Thinking placeholder, a fresh 49-bit
@@ -204,9 +204,10 @@ This is also where the product becomes difficult to copy. Industry playbooks are
   Postgres stores token chunks.
 - Persist each request and proposed action as a structured work record, separate from chat text.
 
-### Phase 2 — Prepare and Approve Work
+### Phase 2 — Explicit Customer-Facing Mode
 
-- Connect an owner Telegram account and one customer-facing Telegram bot.
+- Keep the paired owner Telegram agent internal by default.
+- Add a separate, explicit customer-facing connection and audience choice.
 - Let AISAR draft a customer reply from the business profile.
 - Create an approval card containing the exact proposed message.
 - Send only after approval and record the delivery result in Activity.

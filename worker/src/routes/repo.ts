@@ -242,7 +242,7 @@ export async function handleRepo(
           .map((v) => v.trim()))]
       : [];
     if (!playbookKey) return badRequest(cors, 'business type is required');
-    if (channels.length === 0) return badRequest(cors, 'at least one customer channel is required');
+    if (channels.length === 0) return badRequest(cors, 'at least one business channel is required');
 
     const problem = runtimeProvisioningProblem(env);
     if (problem) return json({ ok: false, err: problem }, { status: 503 }, cors);

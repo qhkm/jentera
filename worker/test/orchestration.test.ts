@@ -1,11 +1,10 @@
 /* ============================================================
-   What happens when a customer sends a message.
+   What happens when the paired owner sends a message.
 
-   The sequencing, not the pieces. Retrieval, drafting, the approval
-   gate and the send each have their own tests; this asks whether they
-   fire in the right order, whether the run and the work record agree
-   with each other afterwards, and — the part that actually matters —
-   whether anything reaches a customer that the owner did not allow.
+   The sequencing, not the pieces. Retrieval, drafting and sending each
+   have their own tests; this asks whether they fire in the right order
+   and whether the run and work record agree afterwards. Telegram is the
+   paired owner's internal chat here, not a customer-facing channel.
 
    The database is real, and so is `withTenant`: Hyperdrive needs only
    a connection string, so the genuine transaction-and-RLS path runs.
@@ -42,7 +41,7 @@ const incoming = {
 };
 
 /** Telegram, faked at the wire so sendMessage's real request-building
-    still runs. Records what would have gone to a customer. */
+    still runs. Records what would have gone to the paired owner. */
 function telegramAccepts() {
   sent = [];
   typing = [];
@@ -163,36 +162,22 @@ beforeEach(async () => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('when the owner requires approval', () => {
-  beforeEach(() => setPolicy('approval'));
-
-  it('drafts, stops, and sends nothing', async () => {
+describe('the private owner chat', () => {
+  it('does not apply the customer-send approval gate', async () => {
+    await setPolicy('approval');
     await handleIncoming(env, A, connId, incoming);
 
-    expect(sent, 'a customer was messaged without approval').toHaveLength(0);
-    expect((await runRow()).status).toBe('needs_approval');
-    expect((await approvals())[0].status).toBe('pending');
+    expect(sent).toHaveLength(1);
+    expect(await approvals()).toHaveLength(0);
+    expect((await runRow()).status).toBe('completed');
   });
 
-  it('puts the question and the draft in front of the owner', async () => {
+  it('does not let a customer-send block disable the owner assistant', async () => {
+    await setPolicy('blocked');
     await handleIncoming(env, A, connId, incoming);
-    const [a] = await approvals();
-    expect(a.args.question).toBe('Are you open on Sunday?');
-    expect(a.args.from).toBe('Aminah');
-    expect(a.args.draft).toBeTruthy();
-    // The connection travels with it, or approving cannot find the bot.
-    expect(a.args.connectionId).toBe(connId);
-    expect(a.args.chatId).toBe(42);
-  });
-
-  it('leaves one work record, tied to the approval', async () => {
-    /* The link the decision follows back: without it, approving finds
-       no run to amend and the record stays "waiting for you" forever. */
-    await handleIncoming(env, A, connId, incoming);
-    const w = await workRow();
-    const [a] = await approvals();
-    expect(w.status).toBe('needs_approval');
-    expect(w.approval_id).toBe(a.id);
+    expect(sent).toHaveLength(1);
+    expect(await approvals()).toHaveLength(0);
+    expect((await runRow()).status).toBe('completed');
   });
 
   it('records the sequence in order', async () => {
@@ -200,29 +185,9 @@ describe('when the owner requires approval', () => {
     expect(await trace()).toEqual([
       'work.requested',
       'action.proposed',
-      'approval.requested',
+      'action.executed',
+      'work.completed',
     ]);
-  });
-});
-
-describe('when the owner has blocked sending', () => {
-  it('stops before drafting is offered, and sends nothing', async () => {
-    await setPolicy('blocked');
-    await handleIncoming(env, A, connId, incoming);
-
-    expect(sent).toHaveLength(0);
-    expect(await approvals(), 'a blocked action must not queue for approval').toHaveLength(0);
-    expect((await runRow()).status).toBe('cancelled');
-  });
-
-  it('says it was their setting, not a failure', async () => {
-    /* An owner who blocked sending and then sees "failed" will think
-       the product is broken rather than obedient. */
-    await setPolicy('blocked');
-    await handleIncoming(env, A, connId, incoming);
-    const w = await workRow();
-    expect(w.status).toBe('blocked');
-    expect(w.outcome).toMatch(/your settings/i);
   });
 });
 
@@ -479,17 +444,15 @@ describe('tenancy', () => {
     expect(await asTenant(B, (tx) => tx`select id from work_record`)).toHaveLength(0);
   });
 
-  it('reads the policy of that business only', async () => {
-    /* B's automatic default must not override A's explicit approval
-       requirement. */
-    await setPolicy('approval');
+  it('keeps another business’s policy irrelevant to this owner chat', async () => {
+    await setPolicy('blocked');
     await asTenant(
       B,
       (tx) => tx`insert into action_policy (business_id, op, policy) values (${B}, 'send', 'automatic')`,
     );
     await handleIncoming(env, A, connId, incoming);
-    expect(sent).toHaveLength(0);
-    expect((await runRow()).status).toBe('needs_approval');
+    expect(sent).toHaveLength(1);
+    expect((await runRow()).status).toBe('completed');
   });
 });
 

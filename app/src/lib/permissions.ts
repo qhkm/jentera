@@ -5,7 +5,7 @@
    Every operation sits at one of three levels:
 
      automatic  read-only or reversible, low-risk internal work
-     approval   bookings, exports, record changes, or an owner override
+     approval   customer messages, bookings, exports, record changes
      blocked    payments, destructive operations, anything outside
                 the business policy
 
@@ -46,7 +46,7 @@ const DEFAULTS: Record<Operation, Policy> = {
   export: 'approval',
   book: 'approval',
   update: 'approval',
-  send: 'automatic',
+  send: 'approval',
   cancel: 'approval',
   refund: 'blocked',
   pay: 'blocked',

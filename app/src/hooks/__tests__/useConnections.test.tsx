@@ -28,6 +28,7 @@ const row = (connector: string, status: Connection['status'] = 'connected'): Con
   connectedAt: '2026-08-26T00:00:00.000Z',
   lastOkAt: null,
   lastError: null,
+  paired: connector === 'telegram' ? true : undefined,
 });
 
 describe('which connectors count as connected', () => {
@@ -55,6 +56,10 @@ describe('which connectors count as connected', () => {
     expect(connectedNames([row('telegram', 'error')])).toEqual(new Set());
     expect(connectedNames([row('telegram', 'revoked')])).toEqual(new Set());
     expect(connectedNames([row('telegram', 'expired')])).toEqual(new Set());
+  });
+
+  it('does not call a Telegram bot usable before the owner chat is paired', () => {
+    expect(connectedNames([{ ...row('telegram'), paired: false }])).toEqual(new Set());
   });
 
   it('counts each connector once, however many rows it has', () => {

@@ -130,6 +130,65 @@ export async function findConnection(
   return row ? toRow(row) : null;
 }
 
+const INTERNAL_CHAT_SCOPE = 'telegram-internal-chat:';
+
+/** The private Telegram chat paired by the signed-in business owner. A bot
+    username is public, so treating every person who discovers it as internal
+    staff would expose business memory and tools. */
+export async function telegramInternalChat(
+  tx: postgres.TransactionSql,
+  connectionId: string,
+): Promise<number | null> {
+  const [row] = await tx<{ internal_scope: string | null }[]>`
+    select (
+      select scope from unnest(coalesce(scopes, '{}'::text[])) as scope
+       where scope like ${`${INTERNAL_CHAT_SCOPE}%`} limit 1
+    ) as internal_scope
+      from connection where id = ${connectionId}`;
+  const scope = row?.internal_scope;
+  if (!scope) return null;
+  const chatId = Number(scope.slice(INTERNAL_CHAT_SCOPE.length));
+  return Number.isSafeInteger(chatId) && chatId > 0 ? chatId : null;
+}
+
+/** Claim an unpaired bot for one private owner chat. Pairing is one-way: an
+    old deep link cannot silently move an established internal agent to a
+    different Telegram account. Disconnecting and reconnecting is the explicit
+    recovery path when the wrong account was paired. */
+export async function bindTelegramInternalChat(
+  tx: postgres.TransactionSql,
+  connectionId: string,
+  chatId: number,
+): Promise<'paired' | 'already_paired' | 'conflict' | 'missing'> {
+  if (!Number.isSafeInteger(chatId) || chatId <= 0) return 'conflict';
+  const [row] = await tx<{ internal_scope: string | null }[]>`
+    select (
+      select scope from unnest(coalesce(scopes, '{}'::text[])) as scope
+       where scope like ${`${INTERNAL_CHAT_SCOPE}%`} limit 1
+    ) as internal_scope
+      from connection where id = ${connectionId} for update`;
+  if (!row) return 'missing';
+  const current = row.internal_scope;
+  if (current) {
+    return current === `${INTERNAL_CHAT_SCOPE}${chatId}` ? 'already_paired' : 'conflict';
+  }
+  const chatScope = `${INTERNAL_CHAT_SCOPE}${chatId}`;
+  await tx`
+    update connection
+       set scopes = array_append(
+         array_append(
+           array_remove(
+             array_remove(coalesce(scopes, '{}'::text[]), 'audience:customer'),
+             'audience:internal'
+           ),
+           'audience:internal'
+         ),
+         ${chatScope}
+       )
+     where id = ${connectionId}`;
+  return 'paired';
+}
+
 /** Record that a connection stopped working, in words the owner can act on. */
 export async function markBroken(
   tx: postgres.TransactionSql,

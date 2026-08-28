@@ -80,6 +80,15 @@ describe('business profile overrides', () => {
     store.set(KEYS.bizLoc, 'Ipoh, Perak');
     expect(resolveBusiness(await snap(), 'restaurant').loc).toBe('Ipoh, Perak');
   });
+
+  it('starts every business with a private internal assistant', async () => {
+    const business = resolveBusiness(await snap(), 'restaurant');
+    expect(business.team[0]).toMatchObject({
+      n: 'Business Assistant',
+      audience: 'internal',
+    });
+    expect(business.team[1].audience).not.toBe('internal');
+  });
 });
 
 describe('planRegisterBusiness', () => {
@@ -175,10 +184,9 @@ describe('permissions', () => {
     expect(defaultPolicy('refund')).toBe('blocked');
   });
 
-  it('automates read, list, and customer replies by default', () => {
+  it('automates read and list by default', () => {
     expect(defaultPolicy('read')).toBe('automatic');
     expect(defaultPolicy('list')).toBe('automatic');
-    expect(defaultPolicy('send')).toBe('automatic');
   });
 
   it('returns every operation from getPolicies', async () => {
@@ -189,9 +197,9 @@ describe('permissions', () => {
 
   it('remembers an override and reports it as customised', async () => {
     expect(isCustomised(await snap(), 'send')).toBe(false);
-    store.setJSON(KEYS.permissions, { send: 'approval' });
+    store.setJSON(KEYS.permissions, { send: 'automatic' });
     const s = await snap();
-    expect(policyFor(s, 'send')).toBe('approval');
+    expect(policyFor(s, 'send')).toBe('automatic');
     expect(isCustomised(s, 'send')).toBe(true);
   });
 

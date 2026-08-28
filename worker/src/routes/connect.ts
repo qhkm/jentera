@@ -11,11 +11,13 @@ import type { Env } from '../env';
 import { withTenant } from '../db';
 import { hasBusiness, resolveTenant } from '../tenancy';
 import {
+  bindTelegramInternalChat,
   findConnection,
   listConnections,
   markBroken,
   removeConnection,
   saveConnection,
+  telegramInternalChat,
   verifyWebhook,
   useCredential,
   webhookSecret,
@@ -24,6 +26,7 @@ import {
   clearWebhook,
   hermesDraftId,
   parseUpdate,
+  sendMessage,
   sendTyping,
   sendMessageDraft,
   setWebhook,
@@ -33,13 +36,17 @@ import {
 } from '../connectors/telegram';
 import { finishRun, recentWork, recordWork, startRun } from '../runs';
 import { prepareHermesAgent, retrieve } from '../ask';
-import { policyFor } from '../policy';
 import { runtimeFor, signalRuntimeTask } from '../runtime';
 import { getRuntime } from '../agent-runtime';
 import { enqueueRuntimeTask, runtimeTaskByDedupeKey } from '../runtime/tasks';
 import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
 import { deliverTelegramDraft, type TelegramIncoming } from '../telegram-delivery';
 import { admitPaidAgentRun } from '../request-guard';
+import {
+  telegramPairingUrl,
+  validTelegramPairingCode,
+} from '../telegram-pairing';
+import type { ConnectionRow } from '../connections';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -86,7 +93,10 @@ export async function handleConnect(
   const id = identity;
 
   if (url.pathname === '/api/connections' && request.method === 'GET') {
-    const rows = await withTenant(env, id.businessId, (tx) => listConnections(tx));
+    const rows = await withTenant(env, id.businessId, async (tx) => {
+      const connections = await listConnections(tx);
+      return Promise.all(connections.map((row) => connectionView(env, tx, row)));
+    });
     return json({ ok: true, connections: rows }, {}, cors);
   }
 
@@ -143,7 +153,9 @@ export async function handleConnect(
       return json({ ok: false, err: why }, { status: 400 }, cors);
     }
 
-    return json({ ok: true, connection: { ...saved, status: 'connected' } }, {}, cors);
+    const connection = await withTenant(env, id.businessId, (tx) =>
+      connectionView(env, tx, { ...saved, status: 'connected' }));
+    return json({ ok: true, connection }, {}, cors);
   }
 
   /* ---- is it actually working? ---------------------------------------- */
@@ -276,6 +288,35 @@ async function telegramWebhook(
     return drop(`unhandled update shape: ${JSON.stringify(raw).slice(0, 200)}`);
   }
 
+  /* A connected bot is an internal business agent by default. Telegram bot
+     usernames are public, so webhook authentication alone proves only that
+     Telegram delivered the update—not that its sender owns this business.
+     The signed-in owner receives a one-time deep link and claims one private
+     chat before any business memory or paid tools become reachable. */
+  const pair = incoming.text.trim().match(/^\/start(?:@[A-Za-z0-9_]+)?\s+([A-Za-z0-9_-]{32})$/);
+  if (pair && incoming.privateChat &&
+      await validTelegramPairingCode(env, connectionId, pair[1])) {
+    const bound = await withTenant(env, businessId, (tx) =>
+      bindTelegramInternalChat(tx, connectionId, incoming.chatId));
+    if (bound === 'paired' || bound === 'already_paired') {
+      const token = await withTenant(env, businessId, (tx) =>
+        useCredential(env, tx, connectionId));
+      await sendMessage(
+        token,
+        incoming.chatId,
+        'AISAR is connected to your business. Ask me about your operations, research, planning, or anything you need to get done.',
+      ).catch(() => {});
+      return ok;
+    }
+    return drop(`pairing refused: ${bound}`);
+  }
+
+  const internalChat = await withTenant(env, businessId, (tx) =>
+    telegramInternalChat(tx, connectionId));
+  if (internalChat !== incoming.chatId || !incoming.privateChat) {
+    return drop(internalChat === null ? 'internal owner chat is not paired' : 'sender is not paired owner');
+  }
+
   /* This is after Telegram's secret has authenticated the connection, so an
      attacker who merely guesses the webhook URL cannot consume its paid-run
      quota. Both the whole bot and the individual chat have a spend brake. */
@@ -298,6 +339,20 @@ async function telegramWebhook(
   return ok;
 }
 
+async function connectionView(
+  env: Env,
+  tx: Parameters<typeof listConnections>[0],
+  row: ConnectionRow,
+) {
+  if (row.connector !== 'telegram') return row;
+  const paired = await telegramInternalChat(tx, row.id) !== null;
+  return {
+    ...row,
+    paired,
+    pairingUrl: paired ? null : await telegramPairingUrl(env, row.id, row.displayName),
+  };
+}
+
 export async function handleIncoming(
   env: Env,
   businessId: string,
@@ -315,8 +370,8 @@ export async function handleIncoming(
   const runtime = runtimeFor(env, businessId);
   const run = await withTenant(env, businessId, (tx) =>
     startRun(tx, businessId, {
-      kind: 'reply',
-      triggerShape: 'customer.message.telegram',
+      kind: 'ask',
+      triggerShape: 'owner.message.telegram',
       triggerRef: { chatId: incoming.chatId, from: incoming.from },
       runtime: runtime.id,
       model: runtime.model,
@@ -324,26 +379,17 @@ export async function handleIncoming(
   );
 
   try {
-    const { facts, policy } = await withTenant(env, businessId, async (tx) => ({
+    const { facts } = await withTenant(env, businessId, async (tx) => ({
       facts: await retrieve(tx, incoming.text),
-      /* Resolved through policy.ts, which is the only place the
-         connector's vocabulary and the Permissions screen's meet. */
-      policy: await policyFor(tx, 'telegram', 'send_message'),
     }));
 
-    /* Typing is shown only when this path will send immediately. Showing it
-       before an approval pause would promise the customer a reply that may
-       never arrive. The token remains control-plane memory only. */
-    const automaticToken = policy === 'automatic'
-      ? await withTenant(env, businessId, (tx) => useCredential(env, tx, connectionId))
-      : undefined;
-    const draft = automaticToken
-      ? await withTypingIndicator(
-          automaticToken,
-          incoming.chatId,
-          () => runtime.answerQuestion(incoming.text, facts, []),
-        )
-      : await runtime.answerQuestion(incoming.text, facts, []);
+    const automaticToken = await withTenant(env, businessId, (tx) =>
+      useCredential(env, tx, connectionId));
+    const draft = await withTypingIndicator(
+      automaticToken,
+      incoming.chatId,
+      () => runtime.answerQuestion(incoming.text, facts, []),
+    );
 
     await deliverTelegramDraft(
       env,
@@ -353,7 +399,7 @@ export async function handleIncoming(
       incoming,
       draft.text,
       draft.usedKeys,
-      policy,
+      'automatic',
       automaticToken,
     );
   } catch (e) {
@@ -361,10 +407,10 @@ export async function handleIncoming(
     await withTenant(env, businessId, async (tx) => {
       await recordWork(tx, businessId, {
         runId: run.id,
-        objective: `Reply to ${incoming.from} on Telegram`,
+        objective: `Help ${incoming.from} on Telegram`,
         outcome: why,
         status: 'failed',
-        function: 'reply',
+        function: 'assistant',
         channel: 'telegram',
         risk: 'medium',
       });
@@ -389,36 +435,14 @@ async function handleDurableIncoming(
     throw new Error('Telegram message id is missing');
   }
 
-  const { facts, work, policy } = await withTenant(
+  const { facts, work } = await withTenant(
     env,
     businessId,
     async (tx) => ({
       facts: await retrieve(tx, incoming.text),
       work: await recentWork(tx, 8),
-      policy: await policyFor(tx, 'telegram', 'send_message'),
     }),
   );
-
-  /* A blocked action should not wake paid compute merely to produce text
-     that policy guarantees cannot leave the control plane. */
-  if (policy === 'blocked') {
-    const run = await withTenant(env, businessId, (tx) => startRun(tx, businessId, {
-      kind: 'reply',
-      triggerShape: 'customer.message.telegram',
-      triggerRef: {
-        chatId: incoming.chatId,
-        messageId: incoming.messageId,
-        from: incoming.from,
-        question: incoming.text,
-      },
-      runtime: 'hermes-sprite',
-      model: env.AISAR_MODEL_NAME!.trim(),
-    }));
-    await deliverTelegramDraft(
-      env, businessId, connectionId, run.id, incoming, '', [], policy,
-    );
-    return;
-  }
 
   const prepared = prepareHermesAgent(incoming.text, facts, work);
   const dedupeKey = `telegram:${connectionId}:${incoming.chatId}:${incoming.messageId}`;
@@ -428,8 +452,8 @@ async function handleDurableIncoming(
     if (existing) return existing;
 
     const run = await startRun(tx, businessId, {
-      kind: 'reply',
-      triggerShape: 'customer.message.telegram',
+      kind: 'ask',
+      triggerShape: 'owner.message.telegram',
       triggerRef: {
         chatId: incoming.chatId,
         messageId: incoming.messageId,
@@ -447,8 +471,8 @@ async function handleDurableIncoming(
         input: boundedRuntimeInput(prepared.input, incoming.text),
         instructions: prepared.instructions,
         sessionId: run.id,
-        objective: `Reply to ${incoming.from} on Telegram`,
-        function: 'reply',
+        objective: `Help ${incoming.from} on Telegram`,
+        function: 'assistant',
         channel: 'telegram',
         factKeys: prepared.usedKeys,
         grounded: prepared.grounded,
@@ -466,20 +490,18 @@ async function handleDurableIncoming(
 
   if (['completed', 'cancelled', 'exhausted'].includes(created.status)) return;
   await signalRuntimeTask(env, businessId, created.id);
-  if (policy === 'automatic') {
-    const token = await withTenant(env, businessId, (tx) =>
-      useCredential(env, tx, connectionId));
-    if (incoming.privateChat) {
-      await sendMessageDraft(
-        token,
-        incoming.chatId,
-        hermesDraftId(created.id),
-        '',
-      ).catch(() => {});
-      await sendTyping(token, incoming.chatId).catch(() => {});
-    } else {
-      await sendTyping(token, incoming.chatId).catch(() => {});
-    }
+  const token = await withTenant(env, businessId, (tx) =>
+    useCredential(env, tx, connectionId));
+  if (incoming.privateChat) {
+    await sendMessageDraft(
+      token,
+      incoming.chatId,
+      hermesDraftId(created.id),
+      '',
+    ).catch(() => {});
+    await sendTyping(token, incoming.chatId).catch(() => {});
+  } else {
+    await sendTyping(token, incoming.chatId).catch(() => {});
   }
 }
 

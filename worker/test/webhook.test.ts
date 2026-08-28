@@ -19,6 +19,7 @@ import { saveConnection, verifyWebhook, webhookSecret } from '../src/connections
 import {
   hermesDraftId,
   parseUpdate,
+  sendHermesMessage,
   sendMessageDraft,
   TelegramDraftStream,
   withTypingIndicator,
@@ -251,6 +252,22 @@ describe('automatic reply typing', () => {
 });
 
 describe('Hermes-style Telegram drafts', () => {
+  it('persists the final answer as a copyable ordinary message', async () => {
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(sendHermesMessage('123456789:AAtoken', 42, 'Copy this answer'))
+      .resolves.toEqual({ messageId: 91 });
+
+    expect(String(fetch.mock.calls[0][0])).toContain('/sendMessage');
+    expect(String(fetch.mock.calls[0][0])).not.toContain('/sendRichMessage');
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({
+      chat_id: 42,
+      text: 'Copy this answer',
+    });
+  });
+
   it('derives a fresh Telegram-safe 49-bit id from each durable task', () => {
     const first = hermesDraftId('11111111-1111-4111-8111-111111111111');
     const second = hermesDraftId('22222222-2222-4222-8222-222222222222');

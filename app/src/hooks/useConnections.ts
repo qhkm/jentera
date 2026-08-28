@@ -94,6 +94,7 @@ export function connectedNames(rows: Connection[] | null): Set<string> {
   const names = new Set<string>();
   for (const r of rows ?? []) {
     if (r.status !== 'connected') continue;
+    if (r.connector === 'telegram' && r.paired !== true) continue;
     names.add(findConnector(r.connector)?.n ?? r.connector);
   }
   return names;

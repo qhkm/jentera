@@ -78,6 +78,10 @@ export function useChat(business: Business) {
   const [custom, setCustom] = useState<Record<string, ChatMessage[]>>({});
   const [typing, setTyping] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
+  const customerTeam = useMemo(
+    () => business.team.filter((member) => member.audience !== 'internal'),
+    [business.team],
+  );
 
   /** Seed messages for an agent: hand-written thread + its work items. */
   const baseFor = useCallback(
@@ -93,11 +97,11 @@ export function useChat(business: Business) {
 
   const conversation = useCallback(
     (agentName: string): ChatMessage[] => {
-      const agent = business.team.find((m) => m.n === agentName);
+      const agent = customerTeam.find((m) => m.n === agentName);
       if (!agent) return [];
       return [...baseFor(agent), ...(custom[agentName] ?? [])];
     },
-    [business.team, baseFor, custom],
+    [customerTeam, baseFor, custom],
   );
 
   const preview = useCallback(
@@ -110,14 +114,14 @@ export function useChat(business: Business) {
 
   const visibleAgents = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return business.team;
-    return business.team.filter(
+    if (!q) return customerTeam;
+    return customerTeam.filter(
       (m) =>
         m.n.toLowerCase().includes(q) ||
         (m.ch ?? '').toLowerCase().includes(q) ||
         preview(m.n).toLowerCase().includes(q),
     );
-  }, [business.team, query, preview]);
+  }, [customerTeam, query, preview]);
 
   const push = useCallback((agent: string, msg: ChatMessage) => {
     setCustom((prev) => ({ ...prev, [agent]: [...(prev[agent] ?? []), msg] }));

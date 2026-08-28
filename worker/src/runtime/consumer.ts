@@ -27,7 +27,6 @@ import { finalizeRuntimeUsage, RuntimeBudgetExceeded } from './usage';
 import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
 import { publishRunProgressSafely } from './progress';
 import { deliverTelegramDraft } from '../telegram-delivery';
-import { policyFor } from '../policy';
 import { useCredential } from '../connections';
 import { hermesDraftId, sendTyping, TelegramDraftStream } from '../connectors/telegram';
 import { runtimeModelKeyNeedsRotation } from './openrouter-keys';
@@ -229,6 +228,7 @@ export async function handleRuntimeMessage(
               },
               runtimeText(outcome.result),
               outcome.payload.factKeys ?? [],
+              'automatic',
             );
           }
         }
@@ -371,11 +371,9 @@ export async function handleRuntimeMessage(
 async function pulseTelegramTyping(env: Env, task: RuntimeTask): Promise<void> {
   const telegram = telegramHint(task.payload);
   if (!telegram) return;
-  const token = await withTenant(env, task.businessId, async (tx) => {
-    if (await policyFor(tx, 'telegram', 'send_message') !== 'automatic') return null;
-    return useCredential(env, tx, telegram.connectionId);
-  });
-  if (token) await sendTyping(token, telegram.chatId);
+  const token = await withTenant(env, task.businessId, (tx) =>
+    useCredential(env, tx, telegram.connectionId));
+  await sendTyping(token, telegram.chatId);
 }
 
 async function telegramDraftStream(
@@ -384,13 +382,9 @@ async function telegramDraftStream(
 ): Promise<TelegramDraftStream | null> {
   const telegram = telegramHint(task.payload);
   if (!telegram?.privateChat) return null;
-  const token = await withTenant(env, task.businessId, async (tx) => {
-    if (await policyFor(tx, 'telegram', 'send_message') !== 'automatic') return null;
-    return useCredential(env, tx, telegram.connectionId);
-  });
-  return token
-    ? new TelegramDraftStream(token, telegram.chatId, hermesDraftId(task.id))
-    : null;
+  const token = await withTenant(env, task.businessId, (tx) =>
+    useCredential(env, tx, telegram.connectionId));
+  return new TelegramDraftStream(token, telegram.chatId, hermesDraftId(task.id));
 }
 
 function telegramHint(value: unknown): {

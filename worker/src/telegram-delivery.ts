@@ -13,8 +13,9 @@ export interface TelegramIncoming {
   privateChat?: boolean;
 }
 
-/** Apply the policy at delivery time, not when generation started. An owner
-    can therefore block sending while Hermes is still working. */
+/** Deliver a Telegram response. Internal paired chats pass a known automatic
+    policy because replying to the authenticated owner is not a customer-facing
+    action; legacy customer drafts still resolve the owner's send policy here. */
 export async function deliverTelegramDraft(
   env: Env,
   businessId: string,
@@ -44,10 +45,10 @@ export async function deliverTelegramDraft(
     await withTenant(env, businessId, async (tx) => {
       await recordWork(tx, businessId, {
         runId,
-        objective: `Reply to ${incoming.from} on Telegram`,
+        objective: `Help ${incoming.from} on Telegram`,
         outcome: 'Blocked by your settings — nothing was sent',
         status: 'blocked',
-        function: 'reply',
+        function: 'assistant',
         channel: 'telegram',
         subject: incoming.text.slice(0, 200),
         risk: 'medium',
@@ -72,10 +73,10 @@ export async function deliverTelegramDraft(
         returning id`;
       await recordWork(tx, businessId, {
         runId,
-        objective: `Reply to ${incoming.from} on Telegram`,
+        objective: `Help ${incoming.from} on Telegram`,
         outcome: 'Waiting for you to approve the reply',
         status: 'needs_approval',
-        function: 'reply',
+        function: 'assistant',
         channel: 'telegram',
         subject: incoming.text.slice(0, 200),
         risk: 'medium',
@@ -100,7 +101,7 @@ export async function deliverTelegramDraft(
   return 'sent';
 }
 
-/** Send, then preserve only the customer-visible result and structured audit. */
+/** Send, then preserve only the user-visible result and structured audit. */
 export async function sendAndRecord(
   env: Env,
   businessId: string,
@@ -128,10 +129,10 @@ export async function sendAndRecord(
     if (!amended) {
       await recordWork(tx, businessId, {
         runId,
-        objective: `Reply to ${incoming.from} on Telegram`,
+        objective: `Help ${incoming.from} on Telegram`,
         outcome: text.slice(0, 500),
         status: 'completed',
-        function: 'reply',
+        function: 'assistant',
         channel: 'telegram',
         subject: incoming.text.slice(0, 200),
         risk: 'medium',

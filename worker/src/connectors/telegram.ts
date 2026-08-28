@@ -2,10 +2,9 @@
    Telegram, via a bot token the business owner supplies.
 
    Each business connects its own bot. That is not incidental: a shared
-   bot would put every customer conversation from every business
-   through one identity, and messages would arrive from a name that is
-   not the business's own. The owner's bot is their brand, their
-   customers, and their token to revoke.
+   bot would put every owner's private business conversation through one
+   identity. The owner's bot is their private agent and their token to
+   revoke. Customer-facing use is a separate, explicit mode.
 
    The token never leaves the vault except to be used. It is not
    logged, not returned by any endpoint, and not shown back to the
@@ -110,32 +109,16 @@ export async function sendMessage(
   return { messageId: body.result.message_id };
 }
 
-/** Hermes final replies use Telegram's native rich-message lane. Rich Markdown
-    accepts the model's GitHub-flavoured Markdown without the destructive
-    escaping required by MarkdownV2. A bot/API combination that cannot render
-    it gets the ordinary text message instead. */
+/** Persist the final answer as an ordinary Telegram message. Telegram's newer
+    rich-message lane is useful for ephemeral streaming drafts, but some clients
+    do not expose their normal copy controls. The durable answer must remain
+    selectable and copyable, so it deliberately uses sendMessage. */
 export async function sendHermesMessage(
   token: string,
   chatId: number | string,
   text: string,
 ): Promise<{ messageId: number }> {
-  const res = await fetch(`${API}/bot${token}/sendRichMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      rich_message: { markdown: text },
-    }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  const body = (await res.json().catch(() => null)) as {
-    ok?: boolean;
-    result?: { message_id?: number };
-    description?: string;
-  } | null;
-  if (body?.ok && body.result?.message_id) return { messageId: body.result.message_id };
-  if (res.status === 400 || res.status === 404) return sendMessage(token, chatId, text);
-  throw new Error(body?.description ?? 'Telegram would not deliver that message');
+  return sendMessage(token, chatId, text);
 }
 
 /** Tell Telegram that the bot is composing a reply. This is deliberately a

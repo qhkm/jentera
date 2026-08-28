@@ -1,18 +1,16 @@
 /* ============================================================
-   Connecting the business's own Telegram bot.
+   Connecting the business's private Telegram agent.
 
-   Their bot, not ours. A shared bot would put every business's
-   customer conversations through one identity, and messages would
-   arrive from a name that is not theirs. Their bot is their brand,
-   their customers, and — importantly — their token to revoke without
-   asking us.
+   Their bot, not ours. One private owner chat is paired after the token
+   is saved; a public bot username alone never grants access to internal
+   business memory or tools.
 
    The cost is that the owner has to make one, so the walkthrough is
    part of the screen rather than a link to documentation. Four steps,
    in the order Telegram actually presents them.
    ============================================================ */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, Card, Eyebrow, Input, Tag } from '@/components/ui';
 import { useRepository } from '@/lib/repo';
 import type { Connection } from '@/lib/repo';
@@ -26,7 +24,7 @@ const STEPS = [
 ];
 
 function statusTone(c: Connection) {
-  if (c.status === 'connected') return 'green' as const;
+  if (c.status === 'connected' && c.paired) return 'green' as const;
   return c.status === 'error' ? 'red' as const : 'amber' as const;
 }
 
@@ -39,6 +37,17 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
   const [checking, setChecking] = useState<string | null>(null);
   const [health, setHealth] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+
+  /* Pairing happens in Telegram, outside this tab. Poll only while a row is
+     waiting so returning to the browser turns the card green without asking
+     the owner to reload or understand two separate states. */
+  useEffect(() => {
+    if (!(rows ?? []).some((row) => row.connector === 'telegram' && !row.paired)) return;
+    const timer = window.setInterval(() => {
+      void repo.connections().then(setRows).catch(() => {});
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [repo, rows, setRows]);
 
   async function connect() {
     setBusy(true);
@@ -112,7 +121,19 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <Tag tone={statusTone(c)}>{c.status}</Tag>
+                <Tag tone={statusTone(c)}>
+                  {c.status === 'connected' && !c.paired ? 'pair owner' : c.status}
+                </Tag>
+                {!c.paired && c.pairingUrl ? (
+                  <a
+                    className="btn btn-primary"
+                    href={c.pairingUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open in Telegram
+                  </a>
+                ) : null}
                 <Button variant="ghost" onClick={() => void check(c.id)}>
                   {checking === c.id ? 'Checking…' : 'Test'}
                 </Button>
@@ -126,8 +147,8 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
       ) : (
         <>
           <p className="mt-2 text-sm text-text-secondary">
-            AISAR replies to customers through a bot that belongs to you — so messages come from
-            your name, and you can switch it off in Telegram at any time without asking us.
+            Chat privately with AISAR about your own business. The bot works for you and your team,
+            not as a public customer-support agent.
           </p>
           <ol className="mt-3 flex list-decimal flex-col gap-1 pl-5 text-[13px] text-text-secondary">
             {STEPS.map((step) => (
@@ -158,8 +179,8 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
             </p>
           )}
           <p className="mt-3 text-[12px] text-text-muted">
-            AISAR replies automatically as soon as the bot is connected. You can require approval
-            or block customer messages at any time under Permissions.
+            After connecting, open the secure pairing link once from your Telegram account. Only
+            that private chat can access your business agent.
           </p>
         </>
       )}
