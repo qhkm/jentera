@@ -4,7 +4,7 @@ The narrow per-business HTTP service placed in front of Hermes. The Sprite URL r
 the runner on port 8080; Hermes listens only on `127.0.0.1:8642`.
 
 The runner provides liveness, authenticated detailed readiness, idempotent task start,
-status, and cancellation. Every start additionally requires a five-minute HMAC grant
+status, cancellation, and a filtered assistant-delta stream. Every start additionally requires a five-minute HMAC grant
 bound to that business and task. The current grant vocabulary permits zero tools. Its
 small state file survives a process restart and contains only AISAR task ids, Hermes run
 ids, statuses, and hashes of task leases and grant nonces—never plaintext values or an
@@ -29,8 +29,11 @@ AISAR_RUNNER_STATE=/var/lib/aisar/runner-state.json
 
 Verify locally with `npm test`. No package installation is required.
 
-This runner does not yet proxy Hermes event streams or Hermes-native approvals. The
-bootstrap instead configures `platform_toolsets.api_server` to an explicit empty list,
+The runner is Hermes's sole run-event subscriber and exposes only bounded
+`message.delta` text from process memory. It discards reasoning, tool, approval, unknown,
+and terminal-transcript events before they cross the runtime boundary, and writes none of
+the stream to its state file. It does not yet proxy Hermes-native approvals. The bootstrap
+configures `platform_toolsets.api_server` to an explicit empty list,
 verifies the pinned Hermes resolver returns no tools, and makes `toolMode: no-tools` part
 of authenticated readiness. The control plane rejects a runtime that does not attest
 that mode. External actions therefore remain solely in AISAR's existing policy and

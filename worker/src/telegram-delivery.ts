@@ -10,6 +10,7 @@ export interface TelegramIncoming {
   messageId?: number;
   from: string;
   text: string;
+  privateChat?: boolean;
 }
 
 /** Apply the policy at delivery time, not when generation started. An owner

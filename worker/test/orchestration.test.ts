@@ -30,12 +30,14 @@ let connId: string;
 let userId: string;
 let sent: { chatId: unknown; text: unknown }[];
 let typing: { chatId: unknown; action: unknown }[];
+let drafts: { chatId: unknown; draftId: unknown; text: unknown }[];
 
 const incoming = {
   chatId: 42,
   messageId: 501,
   from: 'Aminah',
   text: 'Are you open on Sunday?',
+  privateChat: true,
 };
 
 /** Telegram, faked at the wire so sendMessage's real request-building
@@ -43,9 +45,17 @@ const incoming = {
 function telegramAccepts() {
   sent = [];
   typing = [];
+  drafts = [];
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init: RequestInit) => {
+      if (String(url).includes('sendMessageDraft')) {
+        const body = JSON.parse(String(init.body)) as {
+          chat_id: unknown; draft_id: unknown; text: unknown;
+        };
+        drafts.push({ chatId: body.chat_id, draftId: body.draft_id, text: body.text });
+        return new Response(JSON.stringify({ ok: true, result: true }));
+      }
       if (String(url).includes('sendMessage')) {
         const body = JSON.parse(String(init.body)) as { chat_id: unknown; text: unknown };
         sent.push({ chatId: body.chat_id, text: body.text });
@@ -267,7 +277,7 @@ describe('durable Hermes Telegram replies', () => {
     });
     expect(queued).toHaveLength(2);
     expect(sent).toHaveLength(0);
-    expect(typing).toContainEqual({ chatId: 42, action: 'typing' });
+    expect(drafts).toContainEqual({ chatId: 42, draftId: 501, text: '' });
   });
 
   it('delivers the final Hermes answer and does not retain it on the runtime task', async () => {
@@ -304,6 +314,18 @@ describe('durable Hermes Telegram replies', () => {
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
         return runnerResponse({ ok: true, hermesRunId: 'telegram-hermes-1', status: 'started' }, 202);
       }
+      if (url.endsWith('/events')) {
+        return new Response([
+          'data: {"type":"delta","seq":1,"delta":"Yes, "}',
+          '',
+          'data: {"type":"reasoning.available","text":"never show this"}',
+          '',
+          'data: {"type":"delta","seq":2,"delta":"we are open on Sunday."}',
+          '',
+          'data: {"type":"done"}',
+          '',
+        ].join('\n'), { headers: { 'Content-Type': 'text/event-stream' } });
+      }
       if (url.includes('/v1/tasks/')) {
         return runnerResponse({
           ok: true,
@@ -318,6 +340,13 @@ describe('durable Hermes Telegram replies', () => {
       .resolves.toEqual({ action: 'ack', reason: 'completed' });
 
     expect(sent).toContainEqual({ chatId: 42, text: 'Yes, we are open on Sunday.' });
+    expect(drafts).toContainEqual({ chatId: 42, draftId: 501, text: '' });
+    expect(drafts).toContainEqual({
+      chatId: 42,
+      draftId: 501,
+      text: 'Yes, we are open on Sunday.',
+    });
+    expect(JSON.stringify(drafts)).not.toContain('never show this');
     const [state] = await asOwner((sql) => sql<{
       task_result: unknown; task_payload: unknown; work_outcome: string; run_status: string;
     }[]>`

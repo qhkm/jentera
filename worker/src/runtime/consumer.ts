@@ -16,6 +16,7 @@ import {
   enqueueRuntimeTask,
   exhaustRuntimeTask,
   leaseRuntimeTask,
+  renewRuntimeTaskLease,
   retryRuntimeTask,
   type RuntimeTask,
   type RuntimeTaskKind,
@@ -28,7 +29,7 @@ import { publishRunProgressSafely } from './progress';
 import { deliverTelegramDraft } from '../telegram-delivery';
 import { policyFor } from '../policy';
 import { useCredential } from '../connections';
-import { sendTyping } from '../connectors/telegram';
+import { sendTyping, TelegramDraftStream } from '../connectors/telegram';
 
 const MAX_TASK_ATTEMPTS = 5;
 
@@ -134,7 +135,30 @@ export async function handleRuntimeMessage(
         break;
       }
       case 'run': {
-        const outcome = await dispatchRuntimeRun(env, lease.task, leaseToken, options);
+        const draftStream = await telegramDraftStream(env, lease.task);
+        let lastLeaseRenewal = Date.now();
+        const outcome = await dispatchRuntimeRun(env, lease.task, leaseToken, {
+          ...options,
+          onDelta: draftStream
+            ? (delta) => draftStream.push(delta)
+            : undefined,
+          onHeartbeat: draftStream
+            ? async () => {
+                await draftStream.heartbeat();
+                if (Date.now() - lastLeaseRenewal < 60_000) return;
+                const renewed = await withTenant(env, message.businessId, (tx) =>
+                  renewRuntimeTaskLease(
+                    tx,
+                    message.businessId,
+                    message.taskId,
+                    leaseToken,
+                  ));
+                if (!renewed) throw new Error('runtime task lease was lost while streaming');
+                lastLeaseRenewal = Date.now();
+              }
+            : undefined,
+        });
+        await draftStream?.flush();
         if (outcome.state === 'pending') {
           const deferred = await withTenant(env, message.businessId, async (tx) => {
             return deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
@@ -326,14 +350,45 @@ async function pulseTelegramTyping(env: Env, task: RuntimeTask): Promise<void> {
   if (token) await sendTyping(token, telegram.chatId);
 }
 
-function telegramHint(value: unknown): { connectionId: string; chatId: number } | null {
+async function telegramDraftStream(
+  env: Env,
+  task: RuntimeTask,
+): Promise<TelegramDraftStream | null> {
+  const telegram = telegramHint(task.payload);
+  if (!telegram?.privateChat) return null;
+  const token = await withTenant(env, task.businessId, async (tx) => {
+    if (await policyFor(tx, 'telegram', 'send_message') !== 'automatic') return null;
+    return useCredential(env, tx, telegram.connectionId);
+  });
+  return token
+    ? new TelegramDraftStream(token, telegram.chatId, liveDraftId(telegram.messageId))
+    : null;
+}
+
+function telegramHint(value: unknown): {
+  connectionId: string;
+  chatId: number;
+  messageId: number;
+  privateChat: boolean;
+} | null {
   if (!value || typeof value !== 'object') return null;
   const telegram = (value as Record<string, unknown>).telegram;
   if (!telegram || typeof telegram !== 'object') return null;
   const body = telegram as Record<string, unknown>;
   if (typeof body.connectionId !== 'string' || !uuid(body.connectionId) ||
-      typeof body.chatId !== 'number' || !Number.isSafeInteger(body.chatId)) return null;
-  return { connectionId: body.connectionId, chatId: body.chatId };
+      typeof body.chatId !== 'number' || !Number.isSafeInteger(body.chatId) ||
+      typeof body.messageId !== 'number' || !Number.isSafeInteger(body.messageId) ||
+      typeof body.privateChat !== 'boolean') return null;
+  return {
+    connectionId: body.connectionId,
+    chatId: body.chatId,
+    messageId: body.messageId,
+    privateChat: body.privateChat,
+  };
+}
+
+function liveDraftId(messageId: number): number {
+  return messageId === 0 ? 1 : messageId;
 }
 
 function runtimeText(result: unknown): string {

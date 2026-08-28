@@ -27,6 +27,7 @@ export interface RunPayload {
     messageId: number;
     from: string;
     question: string;
+    privateChat: boolean;
   };
 }
 
@@ -46,7 +47,12 @@ export async function dispatchRuntimeRun(
   env: Env,
   task: RuntimeTask,
   leaseToken: string,
-  options: { provider?: RuntimeProvider; fetch?: typeof globalThis.fetch } = {},
+  options: {
+    provider?: RuntimeProvider;
+    fetch?: typeof globalThis.fetch;
+    onDelta?: (delta: string) => Promise<void>;
+    onHeartbeat?: () => Promise<void>;
+  } = {},
 ): Promise<RuntimeRunOutcome> {
   const payload = runPayload(task.payload);
   const { runtime, secrets, reservation } = await withTenant(
@@ -153,6 +159,13 @@ export async function dispatchRuntimeRun(
     };
   }
 
+  if (options.onDelta) {
+    await client.stream(task.id, {
+      onDelta: options.onDelta,
+      onHeartbeat: options.onHeartbeat,
+    });
+  }
+
   const current = await client.status(task.id);
   const remoteStatus = boundedStatus(current.status);
   if (!TERMINAL.has(remoteStatus)) {
@@ -235,7 +248,8 @@ function telegramDelivery(value: unknown): RunPayload['telegram'] {
       typeof body.chatId !== 'number' || !Number.isSafeInteger(body.chatId) ||
       typeof body.messageId !== 'number' || !Number.isSafeInteger(body.messageId) ||
       typeof body.from !== 'string' || !body.from || body.from.length > 200 ||
-      typeof body.question !== 'string' || !body.question || body.question.length > 4_000) {
+      typeof body.question !== 'string' || !body.question || body.question.length > 4_000 ||
+      typeof body.privateChat !== 'boolean') {
     throw new Error('runtime run telegram is invalid');
   }
   return {
@@ -244,6 +258,7 @@ function telegramDelivery(value: unknown): RunPayload['telegram'] {
     messageId: body.messageId,
     from: body.from,
     question: body.question,
+    privateChat: body.privateChat,
   };
 }
 

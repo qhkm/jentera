@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHmac, randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -32,6 +32,17 @@ beforeEach(async () => {
       const body = await bodyOf(req);
       starts.push(body);
       return reply(res, 202, { run_id: `run-${starts.length}`, status: 'started' });
+    }
+    if (req.url?.endsWith('/events')) {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      for (const event of [
+        { event: 'message.delta', delta: 'Hello' },
+        { event: 'reasoning.available', text: 'private chain of thought' },
+        { event: 'tool.started', preview: 'secret tool input' },
+        { event: 'message.delta', delta: ' from Hermes' },
+        { event: 'run.completed', output: 'terminal transcript must not cross' },
+      ]) res.write(`data: ${JSON.stringify(event)}\n\n`);
+      return res.end();
     }
     if (req.method === 'POST' && req.url?.endsWith('/stop')) {
       hermesStatus = 'stopping';
@@ -146,6 +157,22 @@ test('polls and stops by AISAR task id without exposing Hermes directly', async 
   const stopped = await call(`/v1/tasks/${TASK}/stop`, { method: 'POST' });
   assert.equal(stopped.status, 200);
   assert.equal((await stopped.json()).status, 'stopping');
+});
+
+test('streams only assistant deltas and never writes them to runner state', async () => {
+  await start(TASK);
+  const response = await call(`/v1/tasks/${TASK}/events`, {
+    headers: { Accept: 'text/event-stream' },
+  });
+  assert.equal(response.status, 200);
+  const stream = await response.text();
+  assert.match(stream, /"delta":"Hello"/);
+  assert.match(stream, /"delta":" from Hermes"/);
+  assert.doesNotMatch(stream, /chain of thought|secret tool input|terminal transcript/);
+  assert.match(stream, /"type":"done"/);
+
+  const state = await readFile(join(directory, 'state.json'), 'utf8');
+  assert.doesNotMatch(state, /Hello|Hermes|chain of thought|terminal transcript/);
 });
 
 const call = (path, init = {}) => fetch(`${runnerOrigin}${path}`, {

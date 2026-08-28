@@ -4,6 +4,7 @@ import {
   completeRuntimeTask,
   enqueueRuntimeTask,
   leaseRuntimeTask,
+  renewRuntimeTaskLease,
   retryRuntimeTask,
 } from '../src/runtime/tasks';
 
@@ -73,6 +74,15 @@ describe('durable runtime tasks', () => {
       update runtime_task set lease_expires_at = now() - interval '1 second'
        where id = ${row.id}`);
     expect((await lease(A, row.id, 'new-lease')).outcome).toBe('leased');
+  });
+
+  it('renews only the invocation that owns a streaming lease', async () => {
+    const row = await queued(A, 'run:stream');
+    await lease(A, row.id, 'stream-owner');
+    expect(await asTenant(A, (tx) =>
+      renewRuntimeTaskLease(tx, A, row.id, 'wrong-owner'))).toBe(false);
+    expect(await asTenant(A, (tx) =>
+      renewRuntimeTaskLease(tx, A, row.id, 'stream-owner'))).toBe(true);
   });
 
   it('keeps another tenant from leasing a guessed task', async () => {

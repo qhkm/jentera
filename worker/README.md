@@ -41,14 +41,16 @@ and creates an idempotent durable Hermes task.
 The browser receives lifecycle progress over an authenticated, tenant-scoped hibernating
 WebSocket: `queued`, `waking`, `working`, `retrying`, then a terminal state. It makes one
 final tenant-scoped HTTP read for the result; bounded polling is recovery only when the
-WebSocket cannot be established or is interrupted. This is lifecycle streaming, not yet
-token streaming: Hermes still returns its text at completion.
+WebSocket cannot be established or is interrupted. The browser Work path currently
+streams lifecycle rather than tokens; automatic private Telegram replies use ephemeral
+Telegram live drafts for incremental Hermes output.
 
 The pinned Hermes canary advertises `run_events_sse`, `tool_progress_events`, and real
-message deltas. Any future bridge treats those deltas as ephemeral transport: it must
-discard `reasoning.available`, never persist token chunks or raw tool chatter, and project
-only allow-listed lifecycle/todo/artifact events into AISAR's structured run record. Chat
-is an interface; `run`, `run_event`, and `work_record` remain the queryable source of truth.
+message deltas. The runner is the sole subscriber to Hermes's destructive event queue and
+allow-lists only bounded `message.delta` text into process memory. It discards
+`reasoning.available`, tool/approval events, unknown events, and the terminal transcript
+before the Worker can see them. Chat is an interface; `run`, `run_event`, and
+`work_record` remain the queryable source of truth.
 
 Hermes remains read-only and boots in `no-tools` mode. Connector calls, browser actions,
 and other side effects remain unavailable until incremental Hermes event translation and
@@ -182,13 +184,15 @@ so idle connections do not keep object compute active. Rate-limit bindings are a
 [per-colo, eventually consistent brake](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/),
 so the exact per-object socket caps remain necessary.
 
-Automatic Telegram replies emit `sendChatAction(typing)` immediately. Inline replies
-refresh every four seconds with a 30-second cap; durable Hermes replies refresh on each
-five-second queue poll until completion. Approval-gated replies do not show typing because
-no immediate customer reply has been authorized. Hermes output and intermediate events
-remain in Worker memory only: after Telegram delivery the task payload is scrubbed and its
-result contains delivery metadata, while the final customer-visible reply is retained once
-in the structured work audit. Reasoning, token deltas, and raw tool chatter are never stored.
+Automatic Telegram replies show activity immediately. Inline replies use
+`sendChatAction(typing)` every four seconds with a 30-second cap; durable Hermes replies
+refresh typing on each queue poll for group chats. In private chats, automatic durable replies use Telegram's
+ephemeral `sendMessageDraft` with one stable draft id, coalesced to at most roughly one
+update per second, followed by one normal final message. Approval-gated replies never
+stream because no immediate customer reply has been authorized. Hermes deltas remain in
+bounded process memory only: after delivery the task payload is scrubbed and its result
+contains delivery metadata, while the final customer-visible reply is retained once in
+the structured work audit. Reasoning and raw tool chatter never cross the runner boundary.
 
 Production verification on 2026-08-28 routed Telegram run
 `283e203c-f379-4e0c-8bc5-9c8d87557e78` through `hermes-sprite`. Telegram accepted one

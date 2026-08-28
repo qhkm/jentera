@@ -123,6 +123,70 @@ export async function sendTyping(token: string, chatId: number | string): Promis
   if (!body?.ok) throw new Error('Telegram refused the typing indicator');
 }
 
+/** Telegram's ephemeral private-chat streaming preview. The same non-zero
+    draft id replaces the prior preview; sendMessage persists the final text. */
+export async function sendMessageDraft(
+  token: string,
+  chatId: number | string,
+  draftId: number,
+  text: string,
+): Promise<void> {
+  if (!Number.isSafeInteger(draftId) || draftId === 0) throw new Error('draft id is invalid');
+  const res = await fetch(`${API}/bot${token}/sendMessageDraft`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, draft_id: draftId, text }),
+    signal: AbortSignal.timeout(5_000),
+  });
+  const body = (await res.json().catch(() => null)) as { ok?: boolean } | null;
+  if (!body?.ok) throw new Error('Telegram refused the live draft');
+}
+
+/** Coalesce model tokens into Telegram-safe cumulative drafts. It stores text
+    only in this Worker invocation and never emits more than about one update
+    per second, inside Telegram's documented per-peer limits. */
+export class TelegramDraftStream {
+  private text = '';
+  private sent = '';
+  private lastSentAt = 0;
+  private available = true;
+
+  constructor(
+    private readonly token: string,
+    private readonly chatId: number | string,
+    private readonly draftId: number,
+  ) {}
+
+  async push(delta: string): Promise<void> {
+    if (!this.available || !delta) return;
+    this.text = `${this.text}${delta}`.slice(0, 4_000);
+    if (this.text === this.sent || Date.now() - this.lastSentAt < 900) return;
+    await this.publish();
+  }
+
+  async flush(): Promise<void> {
+    if (!this.available || this.text === this.sent) return;
+    await this.publish();
+  }
+
+  async heartbeat(): Promise<void> {
+    if (!this.available || Date.now() - this.lastSentAt < 15_000) return;
+    await this.publish();
+  }
+
+  private async publish(): Promise<void> {
+    try {
+      await sendMessageDraft(this.token, this.chatId, this.draftId, this.text);
+      this.sent = this.text;
+      this.lastSentAt = Date.now();
+    } catch {
+      /* Preview support is cosmetic and private-chat-only. A failure disables
+         this stream but never suppresses the durable final reply. */
+      this.available = false;
+    }
+  }
+}
+
 /**
  * Keep Telegram's five-second typing status alive only while one automatic
  * response is being generated. Pulses never overlap, stop on the first
@@ -174,6 +238,7 @@ export interface IncomingMessage {
   messageId: number;
   from: string;
   text: string;
+  privateChat: boolean;
 }
 
 /**
@@ -189,7 +254,7 @@ export function parseUpdate(body: unknown): IncomingMessage | null {
   const msg = (body as { message?: Record<string, unknown> }).message;
   if (!msg) return null;
 
-  const chat = msg.chat as { id?: number } | undefined;
+  const chat = msg.chat as { id?: number; type?: string } | undefined;
   const from = msg.from as { first_name?: string; username?: string } | undefined;
   const text = msg.text;
 
@@ -202,6 +267,7 @@ export function parseUpdate(body: unknown): IncomingMessage | null {
     from: from?.first_name ?? from?.username ?? 'Someone',
     // Long enough for a real question, short enough not to be a payload.
     text: text.slice(0, 4000),
+    privateChat: chat.type === 'private',
   };
 }
 

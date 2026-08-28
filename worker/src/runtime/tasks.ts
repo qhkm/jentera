@@ -214,6 +214,25 @@ export async function deferRuntimeTask(
   return rows.length === 1;
 }
 
+/** Keep ownership while one Worker invocation consumes an ephemeral runtime
+    stream. A dead invocation stops renewing and becomes recoverable normally. */
+export async function renewRuntimeTaskLease(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+  leaseToken: string,
+  leaseSeconds = 300,
+): Promise<boolean> {
+  const rows = await tx`
+    update runtime_task
+       set lease_expires_at = now() + (${leaseSeconds} * interval '1 second'),
+           updated_at = now()
+     where id = ${taskId} and business_id = ${businessId}
+       and status = 'leased' and lease_token = ${leaseToken}
+    returning id`;
+  return rows.length === 1;
+}
+
 /** Persist the remote identity before the first status poll. A timeout after
     Hermes accepts work must never leave an unaddressable paid run. */
 export async function recordRuntimeTaskRemoteRun(

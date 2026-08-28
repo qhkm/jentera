@@ -24,6 +24,7 @@ import {
   clearWebhook,
   parseUpdate,
   sendTyping,
+  sendMessageDraft,
   setWebhook,
   verifyToken,
   webhookHealth,
@@ -458,6 +459,7 @@ async function handleDurableIncoming(
           messageId: incoming.messageId,
           from: incoming.from,
           question: incoming.text,
+          privateChat: incoming.privateChat === true,
         },
       },
     });
@@ -468,8 +470,21 @@ async function handleDurableIncoming(
   if (policy === 'automatic') {
     const token = await withTenant(env, businessId, (tx) =>
       useCredential(env, tx, connectionId));
-    await sendTyping(token, incoming.chatId).catch(() => {});
+    if (incoming.privateChat) {
+      await sendMessageDraft(
+        token,
+        incoming.chatId,
+        liveDraftId(incoming.messageId as number),
+        '',
+      ).catch(() => sendTyping(token, incoming.chatId).catch(() => {}));
+    } else {
+      await sendTyping(token, incoming.chatId).catch(() => {});
+    }
   }
+}
+
+function liveDraftId(messageId: number): number {
+  return messageId === 0 ? 1 : messageId;
 }
 
 function boundedRuntimeInput(input: string, question: string): string {

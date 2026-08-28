@@ -168,6 +168,7 @@ describe('reading an update', () => {
       messageId: 5,
       from: 'Aminah',
       text: 'Are you open?',
+      privateChat: true,
     });
   });
 

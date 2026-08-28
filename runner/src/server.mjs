@@ -14,10 +14,14 @@ import { pathToFileURL } from 'node:url';
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped']);
 const BODY_LIMIT = 64 * 1024;
+const STREAM_TEXT_LIMIT = 64 * 1024;
+const STREAM_EVENT_LIMIT = 8 * 1024;
+const STREAM_TTL_MS = 5 * 60 * 1000;
 
 export function createRunner(input) {
   const config = validated(input);
   const state = new StateStore(config.stateFile);
+  const streams = new SafeDeltaStreams(config);
   let admitting = false;
 
   return createServer(async (req, res) => {
@@ -56,6 +60,9 @@ export function createRunner(input) {
 
         const previous = await state.get(body.taskId);
         if (previous) {
+          if (!TERMINAL.has(previous.status)) {
+            streams.start(previous.taskId, previous.hermesRunId);
+          }
           return json(res, 200, {
             ok: true,
             duplicate: true,
@@ -97,6 +104,7 @@ export function createRunner(input) {
             leaseHash: hash(body.leaseToken),
             grantNonceHash: hash(grantClaims(body.toolGrant).nonce),
           });
+          streams.start(body.taskId, result.run_id);
           return json(res, 202, {
             ok: true,
             taskId: body.taskId,
@@ -106,6 +114,14 @@ export function createRunner(input) {
         } finally {
           admitting = false;
         }
+      }
+
+      const eventsPath = url.pathname.match(/^\/v1\/tasks\/([0-9a-f-]{36})\/events$/i);
+      if (eventsPath && req.method === 'GET') {
+        const saved = await state.get(eventsPath[1]);
+        if (!saved) return json(res, 404, { ok: false, error: 'task not found' });
+        streams.start(saved.taskId, saved.hermesRunId);
+        return streams.pipe(saved.taskId, req, res);
       }
 
       const taskPath = url.pathname.match(/^\/v1\/tasks\/([0-9a-f-]{36})$/i);
@@ -260,6 +276,16 @@ async function hermes(config, path, init = {}) {
   });
 }
 
+async function hermesEvents(config, runId) {
+  return fetch(`${config.hermesOrigin}/v1/runs/${encodeURIComponent(runId)}/events`, {
+    headers: {
+      Authorization: `Bearer ${config.hermesKey}`,
+      Accept: 'text/event-stream',
+    },
+    signal: AbortSignal.timeout(15 * 60 * 1000),
+  });
+}
+
 function readiness(body) {
   const top = String(body?.status ?? '').toLowerCase();
   const nested = String(body?.readiness?.status ?? '').toLowerCase();
@@ -360,6 +386,135 @@ class StateStore {
       throw error;
     }
   }
+}
+
+/**
+ * The sole subscriber to Hermes's destructive run-event queue.
+ *
+ * Only assistant text deltas are copied into bounded process memory. Reasoning,
+ * tools, approvals, terminal transcripts, and every unknown event are dropped
+ * here and can never reach the control plane. Nothing in this class touches the
+ * state file.
+ */
+class SafeDeltaStreams {
+  constructor(config) {
+    this.config = config;
+    this.streams = new Map();
+  }
+
+  start(taskId, runId) {
+    const existing = this.streams.get(taskId);
+    if (existing) return existing;
+    const stream = {
+      taskId,
+      runId,
+      nextSeq: 1,
+      bytes: 0,
+      history: [],
+      subscribers: new Set(),
+      done: false,
+    };
+    this.streams.set(taskId, stream);
+    void this.pump(stream);
+    return stream;
+  }
+
+  pipe(taskId, req, res) {
+    const stream = this.streams.get(taskId);
+    if (!stream) return json(res, 404, { ok: false, error: 'stream not found' });
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-store',
+      'X-Accel-Buffering': 'no',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'no-referrer',
+    });
+    for (const event of stream.history) writeSse(res, event);
+    if (stream.done) {
+      writeSse(res, { type: 'done' });
+      res.end();
+      return;
+    }
+
+    stream.subscribers.add(res);
+    const heartbeat = setInterval(() => writeSse(res, { type: 'heartbeat' }), 1_000);
+    heartbeat.unref?.();
+    const close = () => {
+      clearInterval(heartbeat);
+      stream.subscribers.delete(res);
+    };
+    req.once('close', close);
+    res.once('close', close);
+  }
+
+  async pump(stream) {
+    try {
+      const response = await hermesEvents(this.config, stream.runId);
+      if (!response.ok || !response.body) return;
+      let pending = '';
+      const decoder = new TextDecoder();
+      for await (const chunk of response.body) {
+        pending += decoder.decode(chunk, { stream: true });
+        const frames = pending.split(/\r?\n\r?\n/);
+        pending = frames.pop() ?? '';
+        for (const frame of frames) this.acceptFrame(stream, frame);
+      }
+      pending += decoder.decode();
+      if (pending.trim()) this.acceptFrame(stream, pending);
+    } catch {
+      /* Final status polling remains authoritative. Stream loss degrades the
+         preview, never task completion, and no provider error is logged. */
+    } finally {
+      this.finish(stream);
+    }
+  }
+
+  acceptFrame(stream, frame) {
+    const data = frame.split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart())
+      .join('\n');
+    if (!data) return;
+    let event;
+    try {
+      event = JSON.parse(data);
+    } catch {
+      return;
+    }
+    if (event?.event !== 'message.delta' || typeof event.delta !== 'string' ||
+        event.delta.length === 0 || stream.bytes >= STREAM_TEXT_LIMIT ||
+        stream.history.length >= STREAM_EVENT_LIMIT) return;
+    const remaining = STREAM_TEXT_LIMIT - stream.bytes;
+    const delta = truncateUtf8(event.delta, remaining);
+    if (!delta) return;
+    stream.bytes += Buffer.byteLength(delta);
+    const safe = { type: 'delta', seq: stream.nextSeq++, delta };
+    stream.history.push(safe);
+    for (const subscriber of stream.subscribers) writeSse(subscriber, safe);
+  }
+
+  finish(stream) {
+    if (stream.done) return;
+    stream.done = true;
+    for (const subscriber of stream.subscribers) {
+      writeSse(subscriber, { type: 'done' });
+      subscriber.end();
+    }
+    stream.subscribers.clear();
+    const cleanup = setTimeout(() => this.streams.delete(stream.taskId), STREAM_TTL_MS);
+    cleanup.unref?.();
+  }
+}
+
+function writeSse(res, event) {
+  if (res.destroyed || res.writableEnded) return;
+  res.write(`data: ${JSON.stringify(event)}\n\n`);
+}
+
+function truncateUtf8(value, maxBytes) {
+  const encoded = Buffer.from(value);
+  if (encoded.length <= maxBytes) return value;
+  return encoded.subarray(0, maxBytes).toString('utf8').replace(/\uFFFD$/, '');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

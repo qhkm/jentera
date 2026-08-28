@@ -1,4 +1,5 @@
 const RESPONSE_LIMIT = 256 * 1024;
+const STREAM_LIMIT = 64 * 1024;
 
 export interface RunnerClientOptions {
   origin: string;
@@ -82,6 +83,65 @@ export class RunnerClient {
     });
   }
 
+  /** Consume the runner's already-filtered assistant stream. Unknown event
+      shapes are ignored; only bounded text deltas and heartbeats cross. */
+  async stream(
+    taskId: string,
+    handlers: {
+      onDelta: (delta: string) => Promise<void>;
+      onHeartbeat?: () => Promise<void>;
+    },
+  ): Promise<void> {
+    const response = await this.fetcher(
+      `${this.origin}/v1/tasks/${encodeURIComponent(taskId)}/events`,
+      {
+        headers: {
+          ...(this.edgeToken ? { Authorization: `Bearer ${this.edgeToken}` } : {}),
+          'X-Aisar-Runner-Key': this.runnerKey,
+          Accept: 'text/event-stream',
+        },
+        signal: AbortSignal.timeout(15 * 60 * 1_000),
+      },
+    );
+    if (response.status !== 200 || !response.body ||
+        !response.headers.get('Content-Type')?.startsWith('text/event-stream')) {
+      throw new Error(`runner stream failed (${response.status})`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let pending = '';
+    let received = 0;
+    let done = false;
+    try {
+      while (!done) {
+        const chunk = await reader.read();
+        pending += decoder.decode(chunk.value, { stream: !chunk.done });
+        const frames = pending.split(/\r?\n\r?\n/);
+        pending = frames.pop() ?? '';
+        if (pending.length > STREAM_LIMIT) throw new Error('runner stream frame exceeded limit');
+        for (const frame of frames) {
+          const event = safeStreamEvent(frame);
+          if (!event) continue;
+          if (event.type === 'done') {
+            done = true;
+            break;
+          }
+          if (event.type === 'heartbeat') {
+            await handlers.onHeartbeat?.();
+            continue;
+          }
+          received += event.delta.length;
+          if (received > STREAM_LIMIT) throw new Error('runner stream exceeded limit');
+          await handlers.onDelta(event.delta);
+        }
+        if (chunk.done) break;
+      }
+    } finally {
+      await reader.cancel().catch(() => {});
+    }
+  }
+
   private async request(
     path: string,
     init: RequestInit = {},
@@ -110,4 +170,32 @@ export class RunnerClient {
     }
     return body;
   }
+}
+
+type SafeStreamEvent =
+  | { type: 'delta'; delta: string }
+  | { type: 'heartbeat' }
+  | { type: 'done' };
+
+function safeStreamEvent(frame: string): SafeStreamEvent | null {
+  const data = frame.split(/\r?\n/)
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trimStart())
+    .join('\n');
+  if (!data || data.length > 16 * 1024) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(data);
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== 'object') return null;
+  const event = value as Record<string, unknown>;
+  if (event.type === 'heartbeat') return { type: 'heartbeat' };
+  if (event.type === 'done') return { type: 'done' };
+  if (event.type === 'delta' && typeof event.delta === 'string' &&
+      event.delta.length > 0 && event.delta.length <= 8 * 1024) {
+    return { type: 'delta', delta: event.delta };
+  }
+  return null;
 }

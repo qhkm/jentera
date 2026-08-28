@@ -141,7 +141,9 @@ queue = "aisar-runtime"
 
 [[queues.consumers]]
 queue = "aisar-runtime"
-max_batch_size = 5
+# A streamed Hermes task holds one invocation while it relays ephemeral deltas.
+# Keep batches at one so a long response cannot head-of-line block four tenants.
+max_batch_size = 1
 max_batch_timeout = 2
 max_retries = 8
 retry_delay = 60

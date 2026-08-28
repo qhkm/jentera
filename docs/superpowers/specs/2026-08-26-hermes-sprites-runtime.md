@@ -141,8 +141,9 @@ broadcast. The temporary verification session was deleted.
 
 The product now makes this latency boundary explicit. Ask stays fast; Work opts into the
 durable runtime and shows `queued`, `waking`, `working`, and `retrying` progress before a
-terminal state. This is lifecycle streaming, not incremental model-token output. Keep
-Telegram last, since a customer is waiting there and the inline path already serves it.
+terminal state. The browser remains lifecycle-only. Automatic private Telegram replies
+add an ephemeral live-draft bridge for incremental model output while retaining the same
+durable finalization and audit path.
 
 The pinned canary's authenticated `/v1/capabilities` response confirms
 `run_events_sse`, `tool_progress_events`, `approval_events`, and real message streaming.
@@ -155,8 +156,8 @@ usage and outcome—not the Hermes chat transcript.
 
 Still gated and therefore intentionally unavailable to customers:
 
-- incremental Hermes event translation and Hermes-native approval resume before any
-  non-empty grant vocabulary is introduced;
+- structured tool/todo/artifact event translation and Hermes-native approval resume before
+  any non-empty grant vocabulary is introduced;
 - non-empty tool grants or wider business rollout.
 
 Creating provider compute is not readiness, and readiness is not use. The canary's
