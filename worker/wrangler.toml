@@ -51,7 +51,7 @@ RUNTIME_CANARY_BUSINESS_IDS = "d5fb6dbb-428a-4215-86c0-8713d12ed73b"
 # Which businesses may explicitly choose "Work on this". Ordinary Ask AISAR
 # requests stay inline even for these businesses; this is authority for the
 # durable mode, not a global runtime switch.
-RUNTIME_EXECUTION_BUSINESS_IDS = ""
+RUNTIME_EXECUTION_BUSINESS_IDS = "d5fb6dbb-428a-4215-86c0-8713d12ed73b"
 RUNTIME_BOOTSTRAP_ENABLED = "true"
 RUNTIME_BUNDLE_COMMIT = "b8b3c25a6e306353769ec201bba6f64d40fcea0f"
 AISAR_MODEL_PROVIDER = "openrouter"
