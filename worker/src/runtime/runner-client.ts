@@ -30,9 +30,19 @@ export interface RunnerTaskResponse {
   result?: unknown;
   response?: unknown;
   error?: unknown;
+  activeTaskId?: string;
   usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
   toolMode?: string;
   edgeAuthorizationForwarded?: boolean;
+}
+
+/** The isolated runtime is still finishing an earlier task. This is normal
+    backpressure, not a failed model attempt, and callers should poll shortly. */
+export class RuntimeBusyError extends Error {
+  constructor(readonly activeTaskId?: string) {
+    super('business runtime is busy');
+    this.name = 'RuntimeBusyError';
+  }
 }
 
 /** Authenticated client for AISAR's narrow per-business runner API. */
@@ -66,11 +76,13 @@ export class RunnerClient {
   }
 
   async start(task: RunnerTaskRequest): Promise<RunnerTaskResponse> {
-    return this.request('/v1/tasks', {
+    const body = await this.request('/v1/tasks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(task),
-    }, [200, 202]);
+    }, [200, 202, 409]);
+    if (body.error === 'runtime_busy') throw new RuntimeBusyError(body.activeTaskId);
+    return body;
   }
 
   async status(taskId: string): Promise<RunnerTaskResponse> {

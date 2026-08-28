@@ -130,6 +130,53 @@ describe('durable Hermes run delivery', () => {
     expect(seen.every((call) => call.runnerKey === 'r'.repeat(64))).toBe(true);
   });
 
+  it('polls a busy runtime after two seconds without consuming a failed attempt', async () => {
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.08.27-1',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.27-1', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: env.AISAR_MODEL_NAME,
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `run:${run.id}`, payload: { input: 'hello' },
+    }));
+    const fetcher: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return response({ ok: true, toolMode: 'full-tools', edgeAuthorizationForwarded: false });
+      }
+      if (url.endsWith('/v1/tasks')) {
+        return response({
+          ok: false,
+          error: 'runtime_busy',
+          activeTaskId: '22222222-2222-4222-8222-222222222222',
+        }, 409);
+      }
+      return response({ error: 'not found' }, 404);
+    };
+
+    await expect(handleRuntimeMessage(
+      env,
+      { version: 1, businessId: A, taskId: task.id },
+      { provider, fetch: fetcher },
+    )).resolves.toEqual({
+      action: 'requeue', delaySeconds: 2, reason: 'business runtime is busy',
+    });
+    const [state] = await asOwner((sql) => sql<{
+      status: string; attempt: number; lease_token: string | null;
+    }[]>`
+      select status, attempt, lease_token from runtime_task where id = ${task.id}`);
+    expect(state).toEqual({ status: 'queued', attempt: 0, lease_token: null });
+  });
+
   it('exhausts a budget-blocked task before waking provider or runner compute', async () => {
     const env = testEnv({
       RUNTIME_RELEASE: '2026.08.27-1',

@@ -35,6 +35,17 @@ describe('durable runtime tasks', () => {
     expect((await lease(A, second.id, 'lease-2')).outcome).toBe('busy');
   });
 
+  it('turns simultaneous lease attempts into leased plus busy, never a unique-index error', async () => {
+    const first = await queued(A, 'run:race-1');
+    const second = await queued(A, 'run:race-2');
+    const outcomes = await Promise.all([
+      lease(A, first.id, 'lease-race-1'),
+      lease(A, second.id, 'lease-race-2'),
+    ]);
+
+    expect(outcomes.map((result) => result.outcome).sort()).toEqual(['busy', 'leased']);
+  });
+
   it('allows different businesses to work concurrently', async () => {
     const first = await queued(A, 'run:1');
     const second = await queued(B, 'run:1');

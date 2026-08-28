@@ -130,6 +130,15 @@ export async function leaseRuntimeTask(
   leaseToken: string,
   leaseSeconds = 300,
 ): Promise<LeaseResult> {
+  /* Serialize the lease decision on the tenant itself. Merely checking for an
+     existing leased row is not enough under MVCC: two Queue deliveries can
+     both see "none", update different tasks, and make the partial unique index
+     throw. The business row gives every contender the same short-lived lock,
+     so the loser observes the winner and returns busy normally. */
+  const [business] = await tx<{ id: string }[]>`
+    select id from business where id = ${businessId} for update`;
+  if (!business) return { outcome: 'missing' };
+
   /* Expired work is recoverable. Clear it before the unique active-
      lease index decides whether this business may start something. */
   await tx`

@@ -30,8 +30,10 @@ import { deliverTelegramDraft } from '../telegram-delivery';
 import { useCredential } from '../connections';
 import { hermesDraftId, sendTyping, TelegramDraftStream } from '../connectors/telegram';
 import { runtimeModelKeyNeedsRotation } from './openrouter-keys';
+import { RuntimeBusyError } from './runner-client';
 
 const MAX_TASK_ATTEMPTS = 5;
+const BUSY_RETRY_SECONDS = 2;
 
 export interface RuntimeQueueMessage {
   version: 1;
@@ -88,7 +90,11 @@ export async function handleRuntimeMessage(
   if (lease.outcome === 'missing') return { action: 'ack', reason: 'missing' };
   if (lease.outcome === 'done') return { action: 'ack', reason: 'already_done' };
   if (lease.outcome === 'busy') {
-    return { action: 'requeue', delaySeconds: 10, reason: 'business runtime is busy' };
+    return {
+      action: 'requeue',
+      delaySeconds: BUSY_RETRY_SECONDS,
+      reason: 'business runtime is busy',
+    };
   }
 
   if (lease.task.kind === 'run' && lease.task.runId) {
@@ -313,6 +319,20 @@ export async function handleRuntimeMessage(
     return { action: 'ack', reason: 'completed' };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
+    /* A runner can remain busy for a moment after the durable lease in the
+       control plane is released. Poll it promptly without charging this as a
+       failed attempt or imposing the generic 30-second retry penalty. */
+    if (error instanceof RuntimeBusyError) {
+      const deferred = await withTenant(env, message.businessId, (tx) =>
+        deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
+          delaySeconds: BUSY_RETRY_SECONDS,
+        }));
+      return {
+        action: 'requeue',
+        delaySeconds: BUSY_RETRY_SECONDS,
+        reason: deferred ? 'business runtime is busy' : 'runtime task lease was lost',
+      };
+    }
     const terminal = error instanceof RuntimeBudgetExceeded ||
       lease.task.attempt + 1 >= MAX_TASK_ATTEMPTS;
     if (terminal) {
