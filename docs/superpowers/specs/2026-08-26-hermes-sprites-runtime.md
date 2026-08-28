@@ -63,8 +63,8 @@ Implemented in the repository:
   rotation, durable old-key revocation retry, and deletion-time revocation.
 
 The I Run Cafe canary Sprite `aisar-b-3602f62e8aec2e6174b3` is ready at release
-`2026.08.28-4`, pinned for future reconciliation to bundle commit
-`c1af6c7f68719b18ff7f45dadbf19327ecd64b2f`. Its authenticated readiness reports runner,
+`2026.08.28-6`, pinned for future reconciliation to bundle commit
+`b8b3c25a6e306353769ec201bba6f64d40fcea0f`. Its authenticated readiness reports runner,
 Hermes, `toolMode: no-tools`, and `edgeAuthorizationForwarded: false` healthy. The latter
 settles the external security question: Fly stripped the organization bearer header
 before the request reached tenant code. A signed-grant OpenRouter run completed with
@@ -104,8 +104,10 @@ allow-list emptied, so Ask returned inline while provisioning stayed live. Worke
 `b2edd791-00d8-44e6-a890-b1f943b12ace` introduced the split and the `RunStream` Durable
 Object migration; version `8a20dca9-0069-46af-a578-f46230d33fe5` also collapsed
 duplicate progress states before broadcast. Current Worker version
-`c5ea93a5-6f21-43e5-999b-233932f43081` adds bounded Telegram typing for automatic
-replies. Pages deployment `958d6182` serves bundle
+`339f831e-ed5a-45b5-8344-7ec3c34b3494` mirrors Hermes's native Telegram presentation:
+rich Thinking drafts, cumulative rich Markdown at the 800 ms/24-character threshold,
+fresh 49-bit per-turn ids, rich final delivery, and cross-chunk think-tag suppression.
+Pages deployment `958d6182` serves bundle
 `index-De-GFrgZ.js` at `jentera.ai`.
 Its Sprites credential is organization-scoped and dedicated. The canary now has a
 separate OpenRouter inference key with a $5 monthly hard limit and 90-day expiry. Its old
@@ -142,8 +144,9 @@ broadcast. The temporary verification session was deleted.
 The product now makes this latency boundary explicit. Ask stays fast; Work opts into the
 durable runtime and shows `queued`, `waking`, `working`, and `retrying` progress before a
 terminal state. The browser remains lifecycle-only. Automatic private Telegram replies
-add an ephemeral live-draft bridge for incremental model output while retaining the same
-durable finalization and audit path.
+use Telegram's native rich draft lane with Hermes's timing and identity rules while
+retaining the same durable finalization and audit path. Bot credentials remain in the
+control plane; only filtered answer deltas leave the Sprite.
 
 The pinned canary's authenticated `/v1/capabilities` response confirms
 `run_events_sse`, `tool_progress_events`, `approval_events`, and real message streaming.
