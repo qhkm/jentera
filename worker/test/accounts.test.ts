@@ -8,9 +8,9 @@
    ============================================================ */
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { asApp, asOwner, truncateAll } from './harness';
+import { asApp, asOwner, testEnv, truncateAll } from './harness';
 import { DUMMY_HASH, hashPassword, passwordProblem, verifyPassword } from '../src/password';
-import { claimGoogleIdentity } from '../src/auth';
+import { authLandingPath, claimGoogleIdentity } from '../src/auth';
 import { countAndRecord } from '../src/ratelimit';
 
 beforeEach(async () => {
@@ -164,6 +164,24 @@ describe('account linking', () => {
     );
     expect(row.password_hash).toBe(original);
     expect(row.email_verified).toBe(true);
+  });
+});
+
+describe('first authenticated destination', () => {
+  it('sends every new identity method to onboarding until membership exists', async () => {
+    const [user] = await asOwner((sql) => sql<{ id: string }[]>`
+      insert into app_user (email, email_verified)
+      values ('new@example.com', true) returning id`);
+    expect(await authLandingPath(testEnv(), user.id)).toBe('/onboard');
+
+    const businessId = '11111111-1111-4111-8111-111111111111';
+    await asOwner(async (sql) => {
+      await sql`insert into business (id, name, playbook_key)
+                values (${businessId}, 'New business', 'generic')`;
+      await sql`insert into membership (user_id, business_id, role)
+                values (${user.id}, ${businessId}, 'owner')`;
+    });
+    expect(await authLandingPath(testEnv(), user.id)).toBe('/app');
   });
 });
 

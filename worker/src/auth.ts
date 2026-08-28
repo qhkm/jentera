@@ -69,6 +69,21 @@ export interface Session {
 }
 
 /**
+ * The first authenticated destination is derived from server state, never a
+ * browser-supplied return URL. A user without membership is new and must land
+ * in onboarding, where RepositoryGate creates the business and Activate AISAR
+ * durably starts its Hermes runtime. Existing members continue to the app;
+ * its onboarding guard still catches a partially completed business.
+ */
+export async function authLandingPath(env: Env, userId: string): Promise<'/onboard' | '/app'> {
+  return withUser(env, async (sql) => {
+    const [membership] = await sql<{ found: number }[]>`
+      select 1 as found from membership where user_id = ${userId} limit 1`;
+    return membership ? '/app' : '/onboard';
+  });
+}
+
+/**
  * Consume a link token and mint a session, or return null.
  *
  * The consume is a single conditional UPDATE. That is what makes a

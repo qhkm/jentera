@@ -7,6 +7,7 @@ import {
   revokeSession,
   sessionCookie,
   verifySession,
+  authLandingPath,
   loginWithPassword,
   setDetailLevel,
   setPassword,
@@ -114,7 +115,7 @@ export async function handleSession(
     return new Response(null, {
       status: 302,
       headers: {
-        Location: `${env.APP_ORIGIN}/app`,
+        Location: `${env.APP_ORIGIN}${await authLandingPath(env, session.userId)}`,
         'Set-Cookie': sessionCookie(session.token, session.expiresAt),
       },
     });
@@ -195,7 +196,11 @@ export async function handleSession(
       );
     }
 
-    return json({ ok: true }, { headers: { 'Set-Cookie': sessionCookie(result.token, result.expiresAt) } }, cors);
+    return json(
+      { ok: true, next: await authLandingPath(env, result.userId) },
+      { headers: { 'Set-Cookie': sessionCookie(result.token, result.expiresAt) } },
+      cors,
+    );
   }
 
   /* ---- how much detail to show ---------------------------------------- */
@@ -297,7 +302,7 @@ export async function handleSession(
     return new Response(null, {
       status: 302,
       headers: [
-        ['Location', `${env.APP_ORIGIN}/app`],
+        ['Location', `${env.APP_ORIGIN}${await authLandingPath(env, session.userId)}`],
         ['Set-Cookie', sessionCookie(session.token, session.expiresAt)],
         ['Set-Cookie', `${OAUTH_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/api/auth; Max-Age=0`],
       ],
