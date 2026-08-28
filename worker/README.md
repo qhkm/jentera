@@ -190,6 +190,11 @@ remain in Worker memory only: after Telegram delivery the task payload is scrubb
 result contains delivery metadata, while the final customer-visible reply is retained once
 in the structured work audit. Reasoning, token deltas, and raw tool chatter are never stored.
 
+Production verification on 2026-08-28 routed Telegram run
+`283e203c-f379-4e0c-8bc5-9c8d87557e78` through `hermes-sprite`. Telegram accepted one
+reply, usage finalized at 1,501 input and 56 output tokens, the task payload was scrubbed,
+and the task retained only `{ "delivery": "sent" }` rather than the Hermes output.
+
 `pnpm waf:dry-run` renders the reviewed Free-plan rule. `pnpm waf:apply` installs or
 updates only its stable rule reference and refuses to overwrite another Free-plan rule.
 Application requires `CLOUDFLARE_ZONE_ID` and a `CLOUDFLARE_API_TOKEN` with Zone WAF Read
