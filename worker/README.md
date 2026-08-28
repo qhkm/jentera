@@ -75,6 +75,12 @@ messages are wake-up hints only: task kind, payload, run id, and tenant all come
 leased Postgres row. Incremental Hermes event translation and approval resume remain
 gated before any non-empty tool grant is allowed.
 
+Production verification on 2026-08-28 submitted run
+`7b3eef5e-95cf-49f5-ad85-532d9641a334` through the same authenticated HTTP path used by
+the browser. It completed through `hermes-sprite`, returned a non-empty answer, and
+finalized 1,426 input tokens, 109 output tokens, and 99 micro-USD. One transient failure
+recovered before completion; healthy polls do not consume the attempt counter.
+
 ## Configuration
 
 Public bindings and variables are in `wrangler.toml`. Secrets are set separately:

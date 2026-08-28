@@ -79,6 +79,14 @@ left the task at attempt `0`; the ledger finalized 844 input tokens, 58 output t
 Sprite wake, runner, Hermes, result projection, and metering together rather than merely
 proving bootstrap.
 
+After the Ask AISAR producer and polling UI were deployed, a second production proof used
+the public authenticated `/api/runs/ask` route rather than a temporary queue producer or
+direct runner call. Run `7b3eef5e-95cf-49f5-ad85-532d9641a334` completed through
+`hermes-sprite` and returned a 144-character answer. The ledger finalized 1,426 input
+tokens, 109 output tokens, and 99 micro-USD. One real transient dispatch failure was
+recovered (`attempt = 1`), demonstrating that the failure-count invariant permits recovery
+while healthy polling itself does not consume attempts.
+
 The pinned Hermes audit now reports two linked high-severity findings rather than four:
 `nanoid 3.3.17` beneath `postcss` in `sanitize-html` and `vite`. Release bootstrap applies
 only the registry-verified `3.3.18` override and lock records, refuses upstream version
@@ -89,8 +97,10 @@ Production migrations `014_runtime_task_execution.sql` and `015_runtime_safety.s
 applied transactionally and verified through both `neondb_owner` and the restricted
 `aisar_app` role. A rollback-only probe confirmed forced RLS returns zero unscoped rows and
 the exact tenant row when scoped. Worker version
-`a5bcbbaa-0090-4f42-9ed1-a380c878694f` is live with provisioning limited to one business
-canary. Its Sprites credential is organization-scoped and dedicated. The canary now has a
+`1fd1d9fe-3054-441a-8856-c2430b4ddb8b` is live with provisioning and durable Ask execution
+limited to one business canary. Pages deployment `038b5de8` serves bundle
+`index-C-cDCbAN.js` at `jentera.ai`. Its Sprites credential is organization-scoped and
+dedicated. The canary now has a
 separate OpenRouter inference key with a $5 monthly hard limit and 90-day expiry. Its old
 $10 weekly shared bridge key was revoked and the shared Worker secret and allow-list were
 removed. The key, customer prompts, and model results cross only HTTPS.
