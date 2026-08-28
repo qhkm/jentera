@@ -103,6 +103,7 @@ function installFakeWorker(): FakeState {
       state.learn[k][String(body.pick)] = (state.learn[k][String(body.pick)] ?? 0) + 1;
       return done();
     }
+    if (path === '/api/state/facts/confirm-batch') return done();
     if (path === '/api/runtime') return ok({ ok: true, runtime: null });
     if (path === '/api/runtime/provision') return ok({ ok: true, status: 'queued' });
     return new Response(JSON.stringify({ ok: false, err: 'not found' }), { status: 404 });

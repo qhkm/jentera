@@ -223,6 +223,29 @@ describe('finishing onboarding provisions one Hermes runtime', () => {
 });
 
 describe('recording a fact', () => {
+  it('confirms the imported facts reviewed during onboarding in one request', async () => {
+    for (const [key, value] of [
+      ['business.name', 'Nora Bakes'],
+      ['business.address', 'Shah Alam'],
+    ]) {
+      expect((await state('POST', '/api/state/facts', {
+        cookie: cookieA,
+        body: { key, value, source: 'agent', confidence: 0.9 },
+      })).status).toBe(200);
+    }
+
+    const confirmed = await state('POST', '/api/state/facts/confirm-batch', {
+      cookie: cookieA,
+      body: { keys: ['business.name', 'business.address'] },
+    });
+    expect(confirmed.status).toBe(204);
+
+    const snapshot = await state('GET', '/api/state', { cookie: cookieA });
+    const facts = (snapshot.body?.snapshot as { facts: { confirmed: boolean }[] }).facts;
+    expect(facts).toHaveLength(2);
+    expect(facts.every((fact) => fact.confirmed)).toBe(true);
+  });
+
   it('stores it and answers with what was stored', async () => {
     const r = await state('POST', '/api/state/facts', {
       cookie: cookieA,

@@ -226,6 +226,10 @@ export class LocalRepository implements Repository {
     );
   }
 
+  async confirmFacts(keys: string[]): Promise<void> {
+    for (const key of [...new Set(keys)]) await this.confirmFact(key);
+  }
+
   async forgetFact(key: string): Promise<void> {
     store.setJSON(
       KEYS.facts,

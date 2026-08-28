@@ -243,6 +243,7 @@ export class RemoteRepository implements Repository {
   }) => post('/api/state/facts', f);
 
   confirmFact = (key: string) => post('/api/state/facts/confirm', { key });
+  confirmFacts = (keys: string[]) => post('/api/state/facts/confirm-batch', { keys });
   forgetFact = (key: string) => post('/api/state/facts/forget', { key });
 
   async factHistory(key: string): Promise<Fact[]> {

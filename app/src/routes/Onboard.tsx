@@ -152,6 +152,10 @@ export default function Onboard() {
   const [scanPending, setScanPending] = useState(false);
   const [scanProblem, setScanProblem] = useState<string | null>(null);
   const [importedProfile, setImportedProfile] = useState<{ name?: string; locality?: string }>({});
+  const [importedFacts, setImportedFacts] = useState<
+    { key: string; value: string; confidence: number }[]
+  >([]);
+  const [confirmingProfile, setConfirmingProfile] = useState(false);
 
   const topRef = useRef<HTMLDivElement | null>(null);
 
@@ -226,6 +230,7 @@ export default function Onboard() {
     setScanShown(0);
     setProfileLearned(false);
     setScanProblem(null);
+    setImportedFacts([]);
     go(1);
 
     /* A signed-in import now uses the real, SSRF-guarded ingestion route.
@@ -258,6 +263,8 @@ export default function Onboard() {
           name: importedName,
           locality: importedLocality,
         };
+        const factsByKey = new Map(suggestions.map((fact) => [fact.key, fact]));
+        setImportedFacts([...factsByKey.values()]);
         setImportedProfile(learnedProfile);
         if (learnedType.score > 0) setType(learnedType.key);
         if (learnedType.score > 0 || importedName || importedLocality) {
@@ -321,6 +328,21 @@ export default function Onboard() {
   function pickType(key: string) {
     setType(key);
     void mutate((r) => r.setBizType(key)).catch(noop);
+  }
+
+  async function confirmProfile() {
+    if (importedFacts.length === 0) {
+      go(3);
+      return;
+    }
+    setConfirmingProfile(true);
+    try {
+      await mutate((r) => r.confirmFacts(importedFacts.map((fact) => fact.key)));
+      go(3);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : t('ob.confirm.failed'));
+      setConfirmingProfile(false);
+    }
   }
 
   /* ---- Activate ---- */
@@ -446,9 +468,33 @@ export default function Onboard() {
                 <p className="text-[13px] text-text-secondary md:text-sm">
                   {t('ob.confirm.body')}
                 </p>
+                {importedFacts.length > 0 ? (
+                  <Card className="gap-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <Eyebrow>{t('ob.confirm.imported')}</Eyebrow>
+                      <Tag>{t('ob.confirm.factCount', { n: importedFacts.length })}</Tag>
+                    </div>
+                    <div className="max-h-72 overflow-y-auto">
+                      {importedFacts.map((fact) => (
+                        <div
+                          key={fact.key}
+                          className="grid gap-1 border-b border-rail py-3 last:border-b-0 sm:grid-cols-[9rem_1fr]"
+                        >
+                          <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
+                            {fact.key.replace(/[._-]+/g, ' ')}
+                          </span>
+                          <span className="text-[13px] text-text-secondary">{fact.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-text-muted">{t('ob.confirm.factNote')}</p>
+                  </Card>
+                ) : null}
                 <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button onClick={() => go(3)}>{t('ob.confirm.yes')}</Button>
-                  <Button variant="outline" onClick={() => go(0)}>
+                  <Button onClick={() => void confirmProfile()} disabled={confirmingProfile}>
+                    {confirmingProfile ? t('ob.confirm.saving') : t('ob.confirm.yes')}
+                  </Button>
+                  <Button variant="outline" onClick={() => go(0)} disabled={confirmingProfile}>
                     {t('ob.confirm.no')}
                   </Button>
                 </div>

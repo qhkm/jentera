@@ -65,6 +65,11 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     /* Step 3 — confirm */
     'ob.confirm.eyebrow': 'Step 3 · Did we get it right?',
     'ob.confirm.body': 'Your Business Profile drives every recommendation. If anything is off, tell us now — it gets better from here.',
+    'ob.confirm.imported': 'Facts found in your sources',
+    'ob.confirm.factCount': '{n} to review',
+    'ob.confirm.factNote': 'Approving confirms these facts as business memory. You can correct or remove them later in My Business.',
+    'ob.confirm.saving': 'Saving profile…',
+    'ob.confirm.failed': 'Could not confirm the imported business facts.',
 
     /* Step 4 — channels */
     'ob.ch.eyebrow': 'Step 4 · How customers reach you',
@@ -261,6 +266,11 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     /* Langkah 3 — sahkan */
     'ob.confirm.eyebrow': 'Langkah 3 · Betul ke?',
     'ob.confirm.body': 'Profil Perniagaan anda menentukan setiap cadangan. Kalau ada yang tak kena, beritahu sekarang — ia jadi lebih tepat selepas ini.',
+    'ob.confirm.imported': 'Fakta yang dijumpai dalam sumber anda',
+    'ob.confirm.factCount': '{n} untuk disemak',
+    'ob.confirm.factNote': 'Kelulusan mengesahkan fakta ini sebagai memori perniagaan. Anda boleh membetulkan atau membuangnya kemudian dalam Perniagaan Saya.',
+    'ob.confirm.saving': 'Menyimpan profil…',
+    'ob.confirm.failed': 'Fakta perniagaan yang diimport tidak dapat disahkan.',
 
     /* Langkah 4 — saluran */
     'ob.ch.eyebrow': 'Langkah 4 · Cara pelanggan hubungi anda',

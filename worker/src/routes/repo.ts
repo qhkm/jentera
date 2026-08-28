@@ -590,6 +590,32 @@ export async function handleRepo(
     return noContent(cors);
   }
 
+  if (url.pathname === '/api/state/facts/confirm-batch') {
+    const keys = Array.isArray(body.keys)
+      ? [...new Set(body.keys.filter((key): key is string => typeof key === 'string'))]
+      : [];
+    if (keys.length === 0) return badRequest(cors, 'at least one fact key is required');
+    if (keys.length > 50) return badRequest(cors, 'too many fact keys');
+    for (const key of keys) {
+      const problem = keyProblem(key);
+      if (problem) return badRequest(cors, problem);
+    }
+    const confirmed = await withTenant(env, id.businessId, async (tx) => {
+      for (const key of keys) {
+        const [current] = await tx<{ found: number }[]>`
+          select 1 as found from business_fact
+           where business_id = ${id.businessId} and key = ${key} and live`;
+        if (!current) return false;
+      }
+      for (const key of keys) await confirmFact(tx, id.businessId, key, id.userId);
+      return true;
+    });
+    if (!confirmed) {
+      return json({ ok: false, err: 'one or more facts are no longer current' }, { status: 409 }, cors);
+    }
+    return noContent(cors);
+  }
+
   if (url.pathname === '/api/state/facts/forget') {
     const problem = keyProblem(body.key);
     if (problem) return badRequest(cors, problem);

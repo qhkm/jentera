@@ -214,6 +214,8 @@ export interface Repository {
   }): Promise<void>;
   /** Vouch for the live value without changing its confidence. */
   confirmFact(key: string): Promise<void>;
+  /** Confirm the imported facts the owner reviewed during onboarding. */
+  confirmFacts(keys: string[]): Promise<void>;
   /** Retire the fact, keeping its history. */
   forgetFact(key: string): Promise<void>;
   /** Every version of one key, newest first. */
