@@ -197,6 +197,9 @@ describe('the durable Hermes agent request', () => {
 
     expect(prepared.instructions).toContain('Current date (UTC): 2026-08-28');
     expect(prepared.instructions).toMatch(/research it now/i);
+    expect(prepared.instructions).toMatch(/briefly narrate what you are checking/i);
+    expect(prepared.instructions).toMatch(/primary or authoritative sources/i);
+    expect(prepared.instructions).toMatch(/not hidden chain-of-thought/i);
     expect(prepared.instructions).toMatch(/Markdown links/i);
     expect(prepared.instructions).toMatch(/execute code|inspect files|use the browser/i);
     expect(prepared.input).toContain("User request: what's latest today in tech?");
