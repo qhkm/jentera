@@ -32,6 +32,7 @@ import {
   type RuntimeTask,
 } from '../runtime/tasks';
 import { publishRunProgressSafely } from '../runtime/progress';
+import { runtimeExecutionEnabled } from '../runtime/execution';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -179,7 +180,7 @@ export async function handleRuns(
     }
 
     if (mode === 'work') {
-      if (!durableAskEnabled(env, id.businessId)) {
+      if (!runtimeExecutionEnabled(env, id.businessId)) {
         return json({ ok: false, err: 'AISAR agent work is not available yet' }, { status: 403 }, cors);
       }
       return startDurableAsk(
@@ -437,11 +438,6 @@ async function startDurableAsk(
     status: created.task.status,
     runId: created.runId,
   }, { status: 202 }, cors);
-}
-
-function durableAskEnabled(env: Env, businessId: string): boolean {
-  return new Set((env.RUNTIME_EXECUTION_BUSINESS_IDS ?? '')
-    .split(',').map((value) => value.trim()).filter(uuid)).has(businessId);
 }
 
 function boundedAskInput(input: string, question: string): string {

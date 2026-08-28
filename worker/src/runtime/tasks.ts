@@ -172,7 +172,12 @@ export async function completeRuntimeTask(
   businessId: string,
   taskId: string,
   leaseToken: string,
-  detail: { remoteRunId?: string; remoteStatus?: string; result?: unknown } = {},
+  detail: {
+    remoteRunId?: string;
+    remoteStatus?: string;
+    result?: unknown;
+    scrubPayload?: boolean;
+  } = {},
 ): Promise<boolean> {
   const rows = await tx`
     update runtime_task
@@ -180,6 +185,7 @@ export async function completeRuntimeTask(
            remote_run_id = coalesce(${detail.remoteRunId ?? null}, remote_run_id),
            remote_status = coalesce(${detail.remoteStatus ?? null}, remote_status),
            result = ${detail.result === undefined ? tx`result` : tx.json(detail.result as never)},
+           payload = ${detail.scrubPayload ? tx.json({} as never) : tx`payload`},
            completed_at = now(), updated_at = now()
      where id = ${taskId} and business_id = ${businessId}
        and status = 'leased' and lease_token = ${leaseToken}
@@ -255,11 +261,13 @@ export async function exhaustRuntimeTask(
   taskId: string,
   leaseToken: string,
   error: string,
+  scrubPayload = false,
 ): Promise<boolean> {
   const rows = await tx`
     update runtime_task
        set status = 'exhausted', lease_token = null, lease_expires_at = null,
            attempt = attempt + 1,
+           payload = ${scrubPayload ? tx.json({} as never) : tx`payload`},
            last_error = ${error.slice(0, 1000)}, completed_at = now(), updated_at = now()
      where id = ${taskId} and business_id = ${businessId}
        and status = 'leased' and lease_token = ${leaseToken}

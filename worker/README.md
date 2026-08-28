@@ -26,8 +26,8 @@ must be running.
 - website ingestion and fast grounded Ask AISAR through the inline runtime, plus an
   explicit durable "Work on this" path for the production canary;
 - encrypted connector credentials;
-- a verified Telegram webhook, real Telegram sends, permissions, approvals, and edited
-  drafts; and
+- a verified Telegram webhook, real Telegram sends, permissions, approvals, edited
+  drafts, and durable Hermes replies for execution-canary businesses; and
 - the provider-neutral runtime foundation, Fly Sprites REST provider, durable runtime
   tasks, leases, and Cloudflare Queue consumer.
 
@@ -76,14 +76,13 @@ compare-and-set proves that worker still owns the lease.
 ## Customer interaction path
 
 Customers interact with AISAR, never with a Sprite or Hermes endpoint. When an
-execution-allow-listed owner explicitly chooses Work on this, the request derives the
-business from the authenticated session, creates an idempotent durable `run` and
-`runtime_task`, and sends only a business/task wake-up signal to the Queue. The browser
-subscribes to a tenant-scoped WebSocket for bounded state events and reads the projected
-Hermes result once terminal. Ordinary Ask and non-canary businesses keep the synchronous
-inline answer contract. Telegram and future channels
-will enter through the same central connector gateway and task path; they do not maintain
-a connection inside each Sprite.
+execution-allow-listed owner explicitly chooses Work on this, or when that business's
+verified Telegram webhook receives a text message, the control plane creates an
+idempotent durable `run` and `runtime_task` and sends only a business/task wake-up signal
+to the Queue. Telegram uses connection, chat, and message ids for admission and dedupe;
+webhook retries cannot create a second paid Hermes run. The policy is checked again when
+Hermes finishes, before the control plane sends, blocks, or creates an approval. Ordinary
+Ask and non-canary Telegram businesses keep the synchronous inline answer contract.
 
 The control plane never accepts a business id from the browser for this decision. Queue
 messages are wake-up hints only: task kind, payload, run id, and tenant all come from the
@@ -183,10 +182,13 @@ so idle connections do not keep object compute active. Rate-limit bindings are a
 [per-colo, eventually consistent brake](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/),
 so the exact per-object socket caps remain necessary.
 
-Automatic Telegram replies emit `sendChatAction(typing)` immediately and refresh every
-four seconds while the inline answer is being composed. Pulses never overlap, stop on the
-first Telegram failure, and are hard-capped at 30 seconds. Approval-gated replies do not
-show typing because no immediate customer reply has been authorized.
+Automatic Telegram replies emit `sendChatAction(typing)` immediately. Inline replies
+refresh every four seconds with a 30-second cap; durable Hermes replies refresh on each
+five-second queue poll until completion. Approval-gated replies do not show typing because
+no immediate customer reply has been authorized. Hermes output and intermediate events
+remain in Worker memory only: after Telegram delivery the task payload is scrubbed and its
+result contains delivery metadata, while the final customer-visible reply is retained once
+in the structured work audit. Reasoning, token deltas, and raw tool chatter are never stored.
 
 `pnpm waf:dry-run` renders the reviewed Free-plan rule. `pnpm waf:apply` installs or
 updates only its stable rule reference and refuses to overwrite another Free-plan rule.

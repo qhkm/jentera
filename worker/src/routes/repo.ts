@@ -9,7 +9,7 @@
 
 import type { Env } from '../env';
 import { withTenant } from '../db';
-import { sendAndRecord } from './connect';
+import { sendAndRecord } from '../telegram-delivery';
 import { append, updateWorkForRun } from '../runs';
 import { hasBusiness, resolveTenant, type TenantIdentity } from '../tenancy';
 import {

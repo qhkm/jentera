@@ -23,16 +23,21 @@ import {
 import {
   clearWebhook,
   parseUpdate,
-  sendMessage,
+  sendTyping,
   setWebhook,
   verifyToken,
   webhookHealth,
   withTypingIndicator,
 } from '../connectors/telegram';
-import { append, finishRun, recordWork, startRun, updateWorkForRun } from '../runs';
-import { retrieve } from '../ask';
+import { finishRun, recentWork, recordWork, startRun } from '../runs';
+import { prepareAsk, retrieve } from '../ask';
 import { policyFor } from '../policy';
-import { runtimeFor } from '../runtime';
+import { runtimeFor, signalRuntimeTask } from '../runtime';
+import { getRuntime } from '../agent-runtime';
+import { enqueueRuntimeTask, runtimeTaskByDedupeKey } from '../runtime/tasks';
+import { runtimeExecutionEnabled } from '../runtime/execution';
+import { deliverTelegramDraft, type TelegramIncoming } from '../telegram-delivery';
+import { admitPaidAgentRun } from '../request-guard';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -269,6 +274,16 @@ async function telegramWebhook(
     return drop(`unhandled update shape: ${JSON.stringify(raw).slice(0, 200)}`);
   }
 
+  /* This is after Telegram's secret has authenticated the connection, so an
+     attacker who merely guesses the webhook URL cannot consume its paid-run
+     quota. Both the whole bot and the individual chat have a spend brake. */
+  if (!await admitPaidAgentRun(env, [
+    `telegram-connection:${connectionId}`,
+    `telegram-chat:${connectionId}:${incoming.chatId}`,
+  ])) {
+    return drop('agent admission limit exceeded');
+  }
+
   /* Past the secret check, so the business in the URL is confirmed:
      only its own connection could have produced that value. */
   try {
@@ -285,8 +300,13 @@ export async function handleIncoming(
   env: Env,
   businessId: string,
   connectionId: string,
-  incoming: { chatId: number; from: string; text: string },
+  incoming: TelegramIncoming,
 ): Promise<void> {
+  if (runtimeExecutionEnabled(env, businessId)) {
+    await handleDurableIncoming(env, businessId, connectionId, incoming);
+    return;
+  }
+
   const runtime = runtimeFor(env, businessId);
   const run = await withTenant(env, businessId, (tx) =>
     startRun(tx, businessId, {
@@ -320,69 +340,7 @@ export async function handleIncoming(
         )
       : await runtime.answerQuestion(incoming.text, facts, []);
 
-    await withTenant(env, businessId, (tx) =>
-      append(tx, businessId, run.id, 'action.proposed', {
-        connector: 'telegram',
-        op: 'send_message',
-        chatId: incoming.chatId,
-      }),
-    );
-
-    if (policy === 'blocked') {
-      await withTenant(env, businessId, async (tx) => {
-        await recordWork(tx, businessId, {
-          runId: run.id,
-          objective: `Reply to ${incoming.from} on Telegram`,
-          outcome: 'Blocked by your settings — nothing was sent',
-          status: 'blocked',
-          function: 'reply',
-          channel: 'telegram',
-          subject: incoming.text.slice(0, 200),
-          risk: 'medium',
-        });
-        await finishRun(tx, businessId, run.id, 'cancelled', { reason: 'blocked' });
-      });
-      return;
-    }
-
-    if (policy !== 'automatic') {
-      /* The default. A reply to a customer is a real external effect
-         in the business's name, so it waits for a person unless the
-         owner has explicitly said otherwise. */
-      await withTenant(env, businessId, async (tx) => {
-        const [appr] = await tx<{ id: string }[]>`
-          insert into approval (business_id, connector, op, args, risk)
-          values (${businessId}, 'telegram', 'send_message',
-                  ${tx.json({
-                    chatId: incoming.chatId,
-                    connectionId,
-                    from: incoming.from,
-                    question: incoming.text,
-                    draft: draft.text,
-                  } as never)}, 'medium')
-          returning id`;
-        /* finishRun writes approval.requested for this status, so
-           writing it here too doubled the event. The vocabulary exists
-           for later phases to count and compare runs by what happened
-           inside them; a duplicate quietly skews every such count. */
-        await recordWork(tx, businessId, {
-          runId: run.id,
-          objective: `Reply to ${incoming.from} on Telegram`,
-          outcome: 'Waiting for you to approve the reply',
-          status: 'needs_approval',
-          function: 'reply',
-          channel: 'telegram',
-          subject: incoming.text.slice(0, 200),
-          risk: 'medium',
-          approvalId: appr.id,
-          inputsUsed: { factKeys: draft.usedKeys },
-        });
-        await finishRun(tx, businessId, run.id, 'needs_approval', { approvalId: appr.id });
-      });
-      return;
-    }
-
-    await sendAndRecord(
+    await deliverTelegramDraft(
       env,
       businessId,
       connectionId,
@@ -390,6 +348,7 @@ export async function handleIncoming(
       incoming,
       draft.text,
       draft.usedKeys,
+      policy,
       automaticToken,
     );
   } catch (e) {
@@ -409,50 +368,113 @@ export async function handleIncoming(
   }
 }
 
-/** Send, and record that it happened. Shared by the automatic path and
-    the approval path, so both leave identical evidence. */
-export async function sendAndRecord(
+/** Persist one Telegram update as durable Hermes work and return before the
+    model runs. Telegram retries use the same message id and cannot create a
+    second paid task. */
+async function handleDurableIncoming(
   env: Env,
   businessId: string,
   connectionId: string,
-  runId: string,
-  incoming: { chatId: number; from: string; text: string },
-  text: string,
-  usedKeys: string[],
-  existingToken?: string,
+  incoming: TelegramIncoming,
 ): Promise<void> {
-  const token = existingToken ??
-    await withTenant(env, businessId, (tx) => useCredential(env, tx, connectionId));
-  const sent = await sendMessage(token, incoming.chatId, text);
+  if (!env.RUNTIME_QUEUE || !env.AISAR_MODEL_NAME?.trim()) {
+    throw new Error('durable Telegram execution is unavailable');
+  }
+  if (!Number.isSafeInteger(incoming.messageId)) {
+    throw new Error('Telegram message id is missing');
+  }
 
-  await withTenant(env, businessId, async (tx) => {
-    await append(tx, businessId, runId, 'action.executed', {
-      connector: 'telegram',
-      messageId: sent.messageId,
+  const { runtime, facts, work, policy } = await withTenant(
+    env,
+    businessId,
+    async (tx) => ({
+      runtime: await getRuntime(tx, businessId),
+      facts: await retrieve(tx, incoming.text),
+      work: await recentWork(tx, 8),
+      policy: await policyFor(tx, 'telegram', 'send_message'),
+    }),
+  );
+  if (!runtime || runtime.observedRelease !== runtime.desiredRelease ||
+      !['ready', 'cold', 'idle', 'busy'].includes(runtime.status)) {
+    throw new Error('Telegram agent runtime is not ready');
+  }
+
+  /* A blocked action should not wake paid compute merely to produce text
+     that policy guarantees cannot leave the control plane. */
+  if (policy === 'blocked') {
+    const run = await withTenant(env, businessId, (tx) => startRun(tx, businessId, {
+      kind: 'reply',
+      triggerShape: 'customer.message.telegram',
+      triggerRef: {
+        chatId: incoming.chatId,
+        messageId: incoming.messageId,
+        from: incoming.from,
+        question: incoming.text,
+      },
+      runtime: 'hermes-sprite',
+      model: env.AISAR_MODEL_NAME!.trim(),
+    }));
+    await deliverTelegramDraft(
+      env, businessId, connectionId, run.id, incoming, '', [], policy,
+    );
+    return;
+  }
+
+  const prepared = prepareAsk(incoming.text, facts, work);
+  const dedupeKey = `telegram:${connectionId}:${incoming.chatId}:${incoming.messageId}`;
+  const created = await withTenant(env, businessId, async (tx) => {
+    await tx`select pg_advisory_xact_lock(hashtextextended(${dedupeKey}, 0))`;
+    const existing = await runtimeTaskByDedupeKey(tx, businessId, dedupeKey);
+    if (existing) return existing;
+
+    const run = await startRun(tx, businessId, {
+      kind: 'reply',
+      triggerShape: 'customer.message.telegram',
+      triggerRef: {
+        chatId: incoming.chatId,
+        messageId: incoming.messageId,
+        from: incoming.from,
+        question: incoming.text,
+      },
+      runtime: 'hermes-sprite',
+      model: env.AISAR_MODEL_NAME!.trim(),
     });
-    /* Update the row the approval pause already wrote, if there is
-       one. Only an automatic send has no prior record to amend. */
-    const amended = await updateWorkForRun(tx, businessId, runId, {
-      status: 'completed',
-      outcome: text,
-      // Answering a customer by hand, found and typed.
-      minutesSaved: 3,
-    });
-    if (!amended) {
-      await recordWork(tx, businessId, {
-        runId,
+    return enqueueRuntimeTask(tx, businessId, {
+      kind: 'run',
+      runId: run.id,
+      dedupeKey,
+      payload: {
+        input: boundedRuntimeInput(prepared.input, incoming.text),
+        instructions: prepared.instructions,
+        sessionId: run.id,
         objective: `Reply to ${incoming.from} on Telegram`,
-        outcome: text.slice(0, 500),
-        status: 'completed',
         function: 'reply',
         channel: 'telegram',
-        subject: incoming.text.slice(0, 200),
-        risk: 'medium',
-        minutesSaved: 3,
-        inputsUsed: { factKeys: usedKeys },
-      });
-    }
-    await tx`update connection set last_ok_at = now() where id = ${connectionId}`;
-    await finishRun(tx, businessId, runId, 'completed', { messageId: sent.messageId });
+        factKeys: prepared.usedKeys,
+        grounded: prepared.grounded,
+        telegram: {
+          connectionId,
+          chatId: incoming.chatId,
+          messageId: incoming.messageId,
+          from: incoming.from,
+          question: incoming.text,
+        },
+      },
+    });
   });
+
+  if (['completed', 'cancelled', 'exhausted'].includes(created.status)) return;
+  await signalRuntimeTask(env, businessId, created.id);
+  if (policy === 'automatic') {
+    const token = await withTenant(env, businessId, (tx) =>
+      useCredential(env, tx, connectionId));
+    await sendTyping(token, incoming.chatId).catch(() => {});
+  }
+}
+
+function boundedRuntimeInput(input: string, question: string): string {
+  const max = 19_500;
+  if (input.length <= max) return input;
+  const suffix = `\n\nQuestion: ${question}`;
+  return `${input.slice(0, Math.max(0, max - suffix.length))}${suffix}`;
 }

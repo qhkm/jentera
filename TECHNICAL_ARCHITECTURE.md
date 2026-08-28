@@ -190,6 +190,10 @@ This is also where the product becomes difficult to copy. Industry playbooks are
 - Keep ordinary Ask AISAR inline and fast. Route the explicit production-canary
   "Work on this" action through a durable, tenant-scoped Hermes task, with authenticated
   hibernating-WebSocket lifecycle progress and bounded polling only as recovery.
+- Route verified Telegram messages for execution-canary businesses through the same
+  durable Hermes task plane. Deduplicate on the Telegram connection/chat/message identity,
+  re-check send policy at completion, and retain only structured state plus the final sent
+  reply—not Hermes reasoning, token deltas, or raw transcripts.
 - Persist each request and proposed action as a structured work record, separate from chat text.
 
 ### Phase 2 — Prepare and Approve Work

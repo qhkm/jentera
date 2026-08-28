@@ -12,7 +12,7 @@ import { append } from '../runs';
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped']);
 
-interface RunPayload {
+export interface RunPayload {
   input: string;
   instructions?: string;
   sessionId?: string;
@@ -21,6 +21,13 @@ interface RunPayload {
   channel?: string;
   factKeys?: string[];
   grounded?: boolean;
+  telegram?: {
+    connectionId: string;
+    chatId: number;
+    messageId: number;
+    from: string;
+    question: string;
+  };
 }
 
 export type RuntimeRunOutcome =
@@ -216,6 +223,27 @@ function runPayload(value: unknown): RunPayload {
     channel: optional('channel', 100),
     factKeys: stringArray(body.factKeys, 24, 200),
     grounded: typeof body.grounded === 'boolean' ? body.grounded : undefined,
+    telegram: telegramDelivery(body.telegram),
+  };
+}
+
+function telegramDelivery(value: unknown): RunPayload['telegram'] {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object') throw new Error('runtime run telegram is invalid');
+  const body = value as Record<string, unknown>;
+  if (typeof body.connectionId !== 'string' || !uuid(body.connectionId) ||
+      typeof body.chatId !== 'number' || !Number.isSafeInteger(body.chatId) ||
+      typeof body.messageId !== 'number' || !Number.isSafeInteger(body.messageId) ||
+      typeof body.from !== 'string' || !body.from || body.from.length > 200 ||
+      typeof body.question !== 'string' || !body.question || body.question.length > 4_000) {
+    throw new Error('runtime run telegram is invalid');
+  }
+  return {
+    connectionId: body.connectionId,
+    chatId: body.chatId,
+    messageId: body.messageId,
+    from: body.from,
+    question: body.question,
   };
 }
 
@@ -246,4 +274,9 @@ function summaryOf(response: RunnerTaskResponse): string {
 
 function validToken(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function uuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    .test(value);
 }

@@ -22,6 +22,21 @@ async function opaqueKey(env: Env, value: string): Promise<string> {
     .join('');
 }
 
+/** Fail-closed admission for authenticated external events that can buy model
+    tokens. Callers provide stable, non-secret tenant/channel identities. */
+export async function admitPaidAgentRun(env: Env, identities: string[]): Promise<boolean> {
+  if (identities.length === 0 || identities.length > 3) return false;
+  try {
+    const verdicts = await Promise.all(identities.map((identity) =>
+      opaqueKey(env, `agent-run:${identity}`).then((key) =>
+        env.AGENT_RUN_BURST.limit({ key }))));
+    return verdicts.every((verdict) => verdict.success);
+  } catch {
+    console.error('[request-guard] authenticated agent limiter unavailable');
+    return false;
+  }
+}
+
 function response(
   status: number,
   err: string,

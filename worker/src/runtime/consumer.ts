@@ -25,6 +25,10 @@ import { dispatchRuntimeRun, measuredUsageOf, stopRuntimeTask } from './run-task
 import { finalizeRuntimeUsage, RuntimeBudgetExceeded } from './usage';
 import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
 import { publishRunProgressSafely } from './progress';
+import { deliverTelegramDraft } from '../telegram-delivery';
+import { policyFor } from '../policy';
+import { useCredential } from '../connections';
+import { sendTyping } from '../connectors/telegram';
 
 const MAX_TASK_ATTEMPTS = 5;
 
@@ -146,7 +150,35 @@ export async function handleRuntimeMessage(
           if (lease.task.runId) {
             await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'working');
           }
+          await pulseTelegramTyping(env, lease.task).catch(() => {});
           return { action: 'requeue', delaySeconds: 5, reason: 'Hermes run is still active' };
+        }
+
+        const successful = outcome.remoteStatus === 'completed';
+        let telegramDelivery: 'sent' | 'needs_approval' | 'blocked' | undefined;
+        if (successful && outcome.payload.telegram && lease.task.runId) {
+          const alreadyHandled = await withTenant(env, message.businessId, async (tx) => {
+            const [row] = await tx<{ status: string }[]>`
+              select status from run where id = ${lease.task.runId}`;
+            return row && row.status !== 'working';
+          });
+          if (!alreadyHandled) {
+            const telegram = outcome.payload.telegram;
+            telegramDelivery = await deliverTelegramDraft(
+              env,
+              message.businessId,
+              telegram.connectionId,
+              lease.task.runId,
+              {
+                chatId: telegram.chatId,
+                messageId: telegram.messageId,
+                from: telegram.from,
+                text: telegram.question,
+              },
+              runtimeText(outcome.result),
+              outcome.payload.factKeys ?? [],
+            );
+          }
         }
 
         const completed = await withTenant(env, message.businessId, async (tx) => {
@@ -158,11 +190,16 @@ export async function handleRuntimeMessage(
             {
               remoteRunId: outcome.remoteRunId,
               remoteStatus: outcome.remoteStatus,
-              result: outcome.result,
+              /* Hermes output is ephemeral here. App answers keep their bounded
+                 result; Telegram retains only delivery state because the final
+                 customer-visible message is already in the audit record. */
+              result: outcome.payload.telegram
+                ? { delivery: telegramDelivery ?? 'already_handled' }
+                : outcome.result,
+              scrubPayload: Boolean(outcome.payload.telegram),
             },
           );
           if (!done) return done;
-          const successful = outcome.remoteStatus === 'completed';
           const usageStatus = successful
             ? 'completed'
             : outcome.remoteStatus === 'cancelled' || outcome.remoteStatus === 'stopped'
@@ -175,7 +212,7 @@ export async function handleRuntimeMessage(
             usageStatus,
             outcome.usage,
           );
-          if (!lease.task.runId) return done;
+          if (!lease.task.runId || (successful && outcome.payload.telegram)) return done;
           await recordWork(tx, message.businessId, {
             runId: lease.task.runId,
             objective: outcome.payload.objective ?? outcome.payload.input.slice(0, 1_000),
@@ -241,6 +278,7 @@ export async function handleRuntimeMessage(
           message.taskId,
           leaseToken,
           reason,
+          Boolean(telegramHint(lease.task.payload)),
         );
         if (!changed) return false;
         if (lease.task.kind === 'run') {
@@ -276,6 +314,38 @@ export async function handleRuntimeMessage(
     }
     return { action: 'requeue', delaySeconds: 30, reason };
   }
+}
+
+async function pulseTelegramTyping(env: Env, task: RuntimeTask): Promise<void> {
+  const telegram = telegramHint(task.payload);
+  if (!telegram) return;
+  const token = await withTenant(env, task.businessId, async (tx) => {
+    if (await policyFor(tx, 'telegram', 'send_message') !== 'automatic') return null;
+    return useCredential(env, tx, telegram.connectionId);
+  });
+  if (token) await sendTyping(token, telegram.chatId);
+}
+
+function telegramHint(value: unknown): { connectionId: string; chatId: number } | null {
+  if (!value || typeof value !== 'object') return null;
+  const telegram = (value as Record<string, unknown>).telegram;
+  if (!telegram || typeof telegram !== 'object') return null;
+  const body = telegram as Record<string, unknown>;
+  if (typeof body.connectionId !== 'string' || !uuid(body.connectionId) ||
+      typeof body.chatId !== 'number' || !Number.isSafeInteger(body.chatId)) return null;
+  return { connectionId: body.connectionId, chatId: body.chatId };
+}
+
+function runtimeText(result: unknown): string {
+  if (typeof result === 'string' && result.trim()) return result.trim().slice(0, 4_000);
+  if (result && typeof result === 'object') {
+    const body = result as Record<string, unknown>;
+    for (const key of ['text', 'output', 'response']) {
+      const value = body[key];
+      if (typeof value === 'string' && value.trim()) return value.trim().slice(0, 4_000);
+    }
+  }
+  throw new Error('Hermes returned no Telegram reply');
 }
 
 function uuid(value: string): boolean {

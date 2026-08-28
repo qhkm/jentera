@@ -19,6 +19,9 @@ import { handleIncoming } from '../src/routes/connect';
 import { saveConnection } from '../src/connections';
 import { recordFact } from '../src/facts';
 import type { Env } from '../src/env';
+import { markRuntimeReady } from '../src/agent-runtime';
+import { ensureProviderRuntime } from '../src/runtime/provision';
+import { handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
@@ -28,7 +31,12 @@ let userId: string;
 let sent: { chatId: unknown; text: unknown }[];
 let typing: { chatId: unknown; action: unknown }[];
 
-const incoming = { chatId: 42, from: 'Aminah', text: 'Are you open on Sunday?' };
+const incoming = {
+  chatId: 42,
+  messageId: 501,
+  from: 'Aminah',
+  text: 'Are you open on Sunday?',
+};
 
 /** Telegram, faked at the wire so sendMessage's real request-building
     still runs. Records what would have gone to a customer. */
@@ -222,6 +230,112 @@ describe('when the owner has allowed it', () => {
   });
 });
 
+describe('durable Hermes Telegram replies', () => {
+  it('deduplicates Telegram retries before they can buy a second Hermes run', async () => {
+    await setPolicy('automatic');
+    const provider = new LocalRuntimeProvider();
+    const queued: unknown[] = [];
+    const durableEnv = testEnv({
+      RUNTIME_RELEASE: '2026.08.28-4',
+      RUNTIME_EXECUTION_BUSINESS_IDS: A,
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+      RUNTIME_QUEUE: { send: async (message: unknown) => { queued.push(message); } },
+    });
+    await ensureProviderRuntime(durableEnv, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.28-4', 'v1'));
+
+    await handleIncoming(durableEnv, A, connId, incoming);
+    await handleIncoming(durableEnv, A, connId, incoming);
+
+    const tasks = await asOwner((sql) => sql<{
+      runtime: string; kind: string; payload: Record<string, unknown>;
+    }[]>`
+      select r.runtime, t.kind, t.payload
+        from runtime_task t join run r on r.id = t.run_id
+       where t.business_id = ${A}`);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].runtime).toBe('hermes-sprite');
+    expect(tasks[0].kind).toBe('run');
+    expect(tasks[0].payload.telegram).toMatchObject({
+      connectionId: connId,
+      chatId: 42,
+      messageId: 501,
+    });
+    expect(queued).toHaveLength(2);
+    expect(sent).toHaveLength(0);
+    expect(typing).toContainEqual({ chatId: 42, action: 'typing' });
+  });
+
+  it('delivers the final Hermes answer and does not retain it on the runtime task', async () => {
+    await setPolicy('automatic');
+    const provider = new LocalRuntimeProvider();
+    const queued: { version: 1; businessId: string; taskId: string }[] = [];
+    const durableEnv = testEnv({
+      RUNTIME_RELEASE: '2026.08.28-4',
+      RUNTIME_EXECUTION_BUSINESS_IDS: A,
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+      RUNTIME_QUEUE: {
+        send: async (message: { version: 1; businessId: string; taskId: string }) => {
+          queued.push(message);
+        },
+      },
+    });
+    await ensureProviderRuntime(durableEnv, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.28-4', 'v1'));
+    await handleIncoming(durableEnv, A, connId, incoming);
+
+    const fetcher: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return runnerResponse({
+          ok: true,
+          toolMode: 'no-tools',
+          edgeAuthorizationForwarded: false,
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        return runnerResponse({ ok: true, hermesRunId: 'telegram-hermes-1', status: 'started' }, 202);
+      }
+      if (url.includes('/v1/tasks/')) {
+        return runnerResponse({
+          ok: true,
+          status: 'completed',
+          output: 'Yes, we are open on Sunday.',
+          usage: { input_tokens: 120, output_tokens: 9 },
+        });
+      }
+      return runnerResponse({ error: 'not found' }, 404);
+    };
+    await expect(handleRuntimeMessage(durableEnv, queued[0], { provider, fetch: fetcher }))
+      .resolves.toEqual({ action: 'ack', reason: 'completed' });
+
+    expect(sent).toContainEqual({ chatId: 42, text: 'Yes, we are open on Sunday.' });
+    const [state] = await asOwner((sql) => sql<{
+      task_result: unknown; task_payload: unknown; work_outcome: string; run_status: string;
+    }[]>`
+      select t.result as task_result, t.payload as task_payload,
+             w.outcome as work_outcome, r.status as run_status
+        from runtime_task t
+        join run r on r.id = t.run_id
+        join work_record w on w.run_id = r.id
+       where t.id = ${queued[0].taskId}`);
+    expect(state).toEqual({
+      task_result: { delivery: 'sent' },
+      task_payload: {},
+      work_outcome: 'Yes, we are open on Sunday.',
+      run_status: 'completed',
+    });
+  });
+});
+
 describe('when the send fails', () => {
   it('records the failure rather than claiming success', async () => {
     await setPolicy('automatic');
@@ -309,3 +423,10 @@ describe('tenancy', () => {
     expect((await runRow()).status).toBe('needs_approval');
   });
 });
+
+function runnerResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { guardApiRequest, MAX_API_BODY_BYTES } from '../src/request-guard';
+import { admitPaidAgentRun, guardApiRequest, MAX_API_BODY_BYTES } from '../src/request-guard';
 import { testEnv } from './harness';
 
 const cors = { 'Access-Control-Allow-Origin': 'https://jentera.ai' };
@@ -147,6 +147,30 @@ describe('pre-route API request guard', () => {
     const req = request('/api/runs/ask', { method: 'POST' });
 
     expect((await guardApiRequest(req, env, new URL(req.url), cors))?.status).toBe(503);
+  });
+
+  it('admits authenticated connector work only when every opaque spend bucket allows it', async () => {
+    const keys: string[] = [];
+    const env = testEnv({
+      AGENT_RUN_BURST: {
+        limit: async ({ key }: { key: string }) => {
+          keys.push(key);
+          return { success: keys.length === 1 };
+        },
+      },
+    });
+
+    expect(await admitPaidAgentRun(env, ['telegram:connection', 'telegram:chat']))
+      .toBe(false);
+    expect(keys).toHaveLength(2);
+    expect(keys.every((key) => /^[0-9a-f]{64}$/.test(key))).toBe(true);
+  });
+
+  it('fails closed for authenticated connector work when its limiter is unavailable', async () => {
+    const env = testEnv({
+      AGENT_RUN_BURST: { limit: async () => { throw new Error('binding failed'); } },
+    });
+    expect(await admitPaidAgentRun(env, ['telegram:connection'])).toBe(false);
   });
 
   it('rate limits run WebSocket admission by identity and source address', async () => {
