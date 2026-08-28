@@ -12,7 +12,7 @@ import { useT } from '@/i18n/I18nProvider';
 import { useToast } from '@/components/Toast';
 import { useMutate, useSnapshot } from '@/lib/repo';
 import {
-  OPERATIONS,
+  PRIVATE_OPERATIONS,
   getPolicies,
   isCustomised,
   type Operation,
@@ -58,7 +58,7 @@ export default function PermissionsPanel() {
     }
   }
 
-  const customised = OPERATIONS.filter((op) => isCustomised(snap, op)).length;
+  const customised = PRIVATE_OPERATIONS.filter((op) => isCustomised(snap, op)).length;
 
   return (
     <section className="flex flex-col gap-5">
@@ -90,7 +90,7 @@ export default function PermissionsPanel() {
         </div>
 
         <div className="mt-4 flex flex-col gap-2">
-        {OPERATIONS.map((op) => {
+        {PRIVATE_OPERATIONS.map((op) => {
           const current = policies[op];
           return (
             <Card key={op} className="gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -99,8 +99,8 @@ export default function PermissionsPanel() {
                   {t(`perm.op.${op}`)}
                   {isCustomised(snap, op) ? <Tag>{t('perm.changed')}</Tag> : null}
                 </span>
-                <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted">
-                  {op}
+                <span className="text-[11px] leading-relaxed text-text-muted">
+                  {t(`perm.op.${op}.desc`)}
                 </span>
               </div>
 
@@ -148,6 +148,16 @@ export default function PermissionsPanel() {
           </div>
         ) : null}
       </details>
+
+      <Card className="gap-2 border-dashed">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Eyebrow>{t('perm.future.title')}</Eyebrow>
+          <Tag>{t('perm.future.tag')}</Tag>
+        </div>
+        <p className="text-[12px] leading-relaxed text-text-secondary">
+          {t('perm.future.desc')}
+        </p>
+      </Card>
 
     </section>
   );

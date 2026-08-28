@@ -35,6 +35,27 @@ export const OPERATIONS = [
 
 export type Operation = (typeof OPERATIONS)[number];
 
+/** Controls that belong to the private Business Assistant today. */
+export const PRIVATE_OPERATIONS = [
+  'read',
+  'list',
+  'export',
+  'update',
+] as const satisfies readonly Operation[];
+
+/**
+ * Kept in the policy contract for the future customer-facing runtime, but not
+ * offered as active controls until that runtime exists and the business has a
+ * genuinely connected WhatsApp or email account.
+ */
+export const CUSTOMER_OPERATIONS = [
+  'book',
+  'send',
+  'cancel',
+  'refund',
+  'pay',
+] as const satisfies readonly Operation[];
+
 /**
  * Defaults follow the summary's three categories rather than the raw
  * risk tier: `export` is low-risk but leaves the business, and

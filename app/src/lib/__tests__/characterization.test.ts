@@ -41,7 +41,15 @@ import {
   localizeKeywords,
   localizeSite,
 } from '@/lib/country';
-import { defaultPolicy, getPolicies, isCustomised, policyFor } from '@/lib/permissions';
+import {
+  CUSTOMER_OPERATIONS,
+  OPERATIONS,
+  PRIVATE_OPERATIONS,
+  defaultPolicy,
+  getPolicies,
+  isCustomised,
+  policyFor,
+} from '@/lib/permissions';
 import { callTool, listApprovals, pendingApprovals, riskOf } from '@/lib/tools';
 
 const repo = new LocalRepository();
@@ -194,6 +202,12 @@ describe('permissions', () => {
     expect(Object.keys(getPolicies(await snap())).sort()).toEqual(
       ['book', 'cancel', 'export', 'list', 'pay', 'read', 'refund', 'send', 'update'].sort(),
     );
+  });
+
+  it('keeps private controls separate from unavailable customer actions', () => {
+    expect(PRIVATE_OPERATIONS).toEqual(['read', 'list', 'export', 'update']);
+    expect(CUSTOMER_OPERATIONS).toEqual(['book', 'send', 'cancel', 'refund', 'pay']);
+    expect([...PRIVATE_OPERATIONS, ...CUSTOMER_OPERATIONS].sort()).toEqual([...OPERATIONS].sort());
   });
 
   it('remembers an override and reports it as customised', async () => {
