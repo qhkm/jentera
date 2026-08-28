@@ -133,7 +133,14 @@ export async function handleRuns(
          are stripped — and reporting "found 1 thing" for that reads as
          "I read your site" when nothing of the site was read. */
       return json(
-        { ok: true, runId: run.id, facts: written.length, keys: written, chars: page.chars },
+        {
+          ok: true,
+          runId: run.id,
+          facts: written.length,
+          keys: written,
+          chars: page.chars,
+          suggestions: candidates.map(({ key, value, confidence }) => ({ key, value, confidence })),
+        },
         {},
         cors,
       );

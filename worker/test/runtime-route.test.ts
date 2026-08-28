@@ -15,7 +15,8 @@ beforeEach(async () => {
   let ownerId = '';
   let staffId = '';
   await asOwner(async (sql) => {
-    await sql`insert into business (id, name, playbook_key) values (${A}, 'Alpha', 'restaurant')`;
+    await sql`insert into business (id, name, playbook_key, onboarded)
+              values (${A}, 'Alpha', 'restaurant', true)`;
     const [owner] = await sql<{ id: string }[]>`
       insert into app_user (email, email_verified) values ('owner@example.com', true) returning id`;
     const [staff] = await sql<{ id: string }[]>`
@@ -52,6 +53,12 @@ describe('runtime provisioning route', () => {
   it('requires authentication and an owner', async () => {
     expect((await call('POST', '/api/runtime/provision', testEnv())).status).toBe(401);
     expect((await call('POST', '/api/runtime/provision', enabled(), staffCookie)).status).toBe(403);
+  });
+
+  it('does not create paid compute before onboarding is complete', async () => {
+    await asOwner((sql) => sql`update business set onboarded = false where id = ${A}`);
+    const response = await call('POST', '/api/runtime/provision', enabled(), ownerCookie);
+    expect(response.status).toBe(409);
   });
 
   it('fails closed unless provisioning and secure transport are explicit', async () => {
@@ -134,6 +141,7 @@ function enabled(send = vi.fn(async () => {})): Env {
     RUNTIME_PROVISIONING_ENABLED: 'true',
     MODEL_TRANSPORT_READY: 'true',
     RUNTIME_BOOTSTRAP_ENABLED: 'true',
+    RUNTIME_EXECUTION_ENABLED: 'true',
     SPRITES_TOKEN: 'sprite-test-token',
     AISAR_OPENROUTER_MANAGEMENT_KEY: 'm'.repeat(32),
     AISAR_MODEL_PROVIDER: 'openrouter',

@@ -23,6 +23,8 @@ import type {
   Repository,
   TraceEvent,
   Theme,
+  OnboardingCompletion,
+  RuntimeOverview,
 } from './types';
 
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
@@ -196,7 +198,8 @@ export class RemoteRepository implements Repository {
 
   setBizType = (key: string) => post('/api/state/biz-type', { key });
   setBizProfile = (p: { name?: string; loc?: string }) => post('/api/state/biz-profile', p);
-  setOnboarded = (value: boolean) => post('/api/state/onboarded', { value });
+  completeOnboarding = (input: OnboardingCompletion) =>
+    post('/api/state/onboarding/complete', input);
   setSetupDone = (value: boolean) => post('/api/state/setup-done', { value });
   setChannels = (channels: string[]) => post('/api/state/channels', { channels });
   setConnections = (connections: string[]) => post('/api/state/connections', { connections });
@@ -267,6 +270,7 @@ export class RemoteRepository implements Repository {
       facts?: number;
       keys?: string[];
       chars?: number;
+      suggestions?: { key?: unknown; value?: unknown; confidence?: unknown }[];
     };
     if (res.status === 401) throw new NotSignedInError();
     if (!body.ok) throw new Error(body.err ?? 'Could not read that page.');
@@ -275,6 +279,14 @@ export class RemoteRepository implements Repository {
       facts: body.facts ?? 0,
       keys: body.keys ?? [],
       chars: body.chars ?? 0,
+      suggestions: (body.suggestions ?? []).flatMap((suggestion) =>
+        typeof suggestion.key === 'string' && typeof suggestion.value === 'string'
+          ? [{
+              key: suggestion.key,
+              value: suggestion.value,
+              confidence: Number(suggestion.confidence) || 0,
+            }]
+          : []),
     };
   }
 
@@ -327,6 +339,14 @@ export class RemoteRepository implements Repository {
       `/api/connections/${encodeURIComponent(id)}/health`,
     );
     return { ...r.health, pointsHere: r.pointsHere };
+  }
+
+  async runtimeStatus(): Promise<RuntimeOverview> {
+    return call<RuntimeOverview>('/api/runtime');
+  }
+
+  async provisionRuntime(): Promise<void> {
+    await call('/api/runtime/provision', { method: 'POST', body: '{}' });
   }
 
   async detailLevel(): Promise<'beginner' | 'advanced'> {

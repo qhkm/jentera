@@ -8,7 +8,7 @@
 
 import type postgres from 'postgres';
 import type { Env } from './env';
-import { withUser } from './db';
+import { withTenant, withUser } from './db';
 
 /** 15 minutes. Long enough to walk to a laptop, short enough to matter. */
 const LINK_TTL_MS = 15 * 60 * 1000;
@@ -72,14 +72,28 @@ export interface Session {
  * The first authenticated destination is derived from server state, never a
  * browser-supplied return URL. A user without membership is new and must land
  * in onboarding, where RepositoryGate creates the business and Activate AISAR
- * durably starts its Hermes runtime. Existing members continue to the app;
- * its onboarding guard still catches a partially completed business.
+ * durably starts its Hermes runtime. Existing members resume the first
+ * unfinished stage instead of relying on a later client-side bounce.
  */
-export async function authLandingPath(env: Env, userId: string): Promise<'/onboard' | '/app'> {
-  return withUser(env, async (sql) => {
-    const [membership] = await sql<{ found: number }[]>`
-      select 1 as found from membership where user_id = ${userId} limit 1`;
-    return membership ? '/app' : '/onboard';
+export type AuthLandingPath = '/onboard' | '/setup' | '/app';
+
+export async function authLandingPath(env: Env, userId: string): Promise<AuthLandingPath> {
+  const businessId = await withUser(env, async (sql) => {
+    const [membership] = await sql<{ business_id: string }[]>`
+      select business_id from membership where user_id = ${userId}
+       order by created_at limit 1`;
+    return membership?.business_id ?? null;
+  });
+  if (!businessId) return '/onboard';
+
+  /* business is RLS-protected, so it must not be joined into the pre-tenant
+     membership lookup above. Resolve the id first, then read the two flow
+     gates inside the tenant transaction they belong to. */
+  return withTenant(env, businessId, async (tx) => {
+    const [business] = await tx<{ onboarded: boolean; setup_done: boolean }[]>`
+      select onboarded, setup_done from business where id = ${businessId}`;
+    if (!business?.onboarded) return '/onboard';
+    return business.setup_done ? '/app' : '/setup';
   });
 }
 

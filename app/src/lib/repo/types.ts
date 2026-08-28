@@ -63,6 +63,9 @@ export interface IngestResult {
   /** Readable characters the page yielded. Tiny means a JavaScript
       shell was read rather than the site. */
   chars: number;
+  /** Proposed public-page facts returned to onboarding so its review panel
+      can reflect the source it actually read. They remain unconfirmed. */
+  suggestions?: { key: string; value: string; confidence: number }[];
 }
 
 export type AskProgress = 'queued' | 'waking' | 'working' | 'retrying';
@@ -135,6 +138,37 @@ export interface Activity {
   };
 }
 
+export interface OnboardingCompletion {
+  playbookKey: string;
+  channels: string[];
+  name?: string;
+  locality?: string;
+}
+
+export type RuntimeState =
+  | 'provisioning'
+  | 'ready'
+  | 'cold'
+  | 'waking'
+  | 'idle'
+  | 'busy'
+  | 'error'
+  | 'upgrading'
+  | 'migrating'
+  | 'deleting';
+
+export interface RuntimeSummary {
+  status: RuntimeState;
+  desiredRelease: string;
+  observedRelease: string | null;
+  lastReadyAt: string | null;
+  lastError: string | null;
+}
+
+export interface RuntimeOverview {
+  runtime: RuntimeSummary | null;
+}
+
 /** Thrown when a feature needs the server and there is no session. */
 export class NeedsAccountError extends Error {
   constructor(what: string) {
@@ -148,7 +182,9 @@ export interface Repository {
 
   setBizType(key: string): Promise<void>;
   setBizProfile(p: { name?: string; loc?: string }): Promise<void>;
-  setOnboarded(v: boolean): Promise<void>;
+  /** Commit the owner's final answers and start their runtime as one
+      server-side onboarding transition. */
+  completeOnboarding(input: OnboardingCompletion): Promise<void>;
   setSetupDone(v: boolean): Promise<void>;
   setChannels(ch: string[]): Promise<void>;
   setConnections(conns: string[]): Promise<void>;
@@ -204,6 +240,11 @@ export interface Repository {
   /** What the far side thinks the connection is doing. The answer to
       "I messaged the bot and nothing happened". */
   connectionHealth(id: string): Promise<ConnectionHealth>;
+
+  /** Owner-safe runtime state; provider ids, URLs and credentials are never returned. */
+  runtimeStatus(): Promise<RuntimeOverview>;
+  /** Idempotently create or re-signal this business's provisioning task. */
+  provisionRuntime(): Promise<void>;
 
   reset(): Promise<void>;
 }

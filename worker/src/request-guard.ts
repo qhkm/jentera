@@ -99,7 +99,8 @@ export async function guardApiRequest(
 
   const identity = requestIdentity(request, url);
   const runtimeMutation = isRuntimeMutation(request.method, url.pathname);
-  const agentRun = request.method === 'POST' && url.pathname === '/api/runs/ask';
+  const agentRun = request.method === 'POST' &&
+    ['/api/runs/ask', '/api/runs/ingest'].includes(url.pathname);
   const runStream = request.method === 'GET' &&
     /^\/api\/runs\/[0-9a-f-]{36}\/events$/i.test(url.pathname);
   try {
@@ -188,6 +189,11 @@ export async function guardApiRequest(
 function isRuntimeMutation(method: string, path: string): boolean {
   if (method === 'DELETE' && path === '/api/runtime') return true;
   if (method !== 'POST') return false;
-  return ['/api/runtime/provision', '/api/runtime/reconcile', '/api/runtime/upgrade']
+  return [
+    '/api/runtime/provision',
+    '/api/runtime/reconcile',
+    '/api/runtime/upgrade',
+    '/api/state/onboarding/complete',
+  ]
     .includes(path) || /^\/api\/runtime\/tasks\/[0-9a-f-]{36}\/cancel$/i.test(path);
 }

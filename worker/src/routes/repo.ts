@@ -24,7 +24,7 @@ import {
 } from '../facts';
 import { signalRuntimeTask } from '../runtime';
 import { runtimeProvisioningProblem } from '../runtime/execution';
-import { enqueueRuntimeTask, type RuntimeTask } from '../runtime/tasks';
+import { enqueueRuntimeTask } from '../runtime/tasks';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -214,23 +214,36 @@ export async function handleRepo(
   if (request.method !== 'POST') return null;
   const body = (await request.json().catch(() => ({}))) as Body;
 
-  /* Completing onboarding is also the durable handoff that creates this
-     business's isolated Hermes runtime. The business flag and provisioning
-     task are committed together, so a crash cannot leave an onboarded tenant
-     with no recoverable setup record. Repeating the request reuses the task's
-     per-business release key and only sends another harmless Queue wake-up. */
-  if (url.pathname === '/api/state/onboarded') {
-    const onboarded = Boolean(body.value);
-    const provision = onboarded && env.RUNTIME_PROVISIONING_ENABLED === 'true';
-    if (provision) {
-      const problem = runtimeProvisioningProblem(env);
-      if (problem) return json({ ok: false, err: problem }, { status: 503 }, cors);
+  /* The authenticated onboarding transition. All owner answers that define
+     the initial business state land in the same transaction as the flow gate
+     and the deduplicated provisioning task. A browser crash therefore cannot
+     produce an "onboarded" business with stale channels or playbook data. */
+  if (url.pathname === '/api/state/onboarding/complete') {
+    if (id.role !== 'owner') {
+      return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
+    const playbookKey = text(body.playbookKey);
+    const channels = Array.isArray(body.channels)
+      ? [...new Set(body.channels
+          .filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+          .map((v) => v.trim()))]
+      : [];
+    if (!playbookKey) return badRequest(cors, 'business type is required');
+    if (channels.length === 0) return badRequest(cors, 'at least one customer channel is required');
 
-    const task: RuntimeTask | null = await withTenant(env, id.businessId, async (tx) => {
-      await tx`update business set onboarded = ${onboarded} where id = ${id.businessId}`;
-      if (!provision) return null;
-      const release = env.RUNTIME_RELEASE!.trim();
+    const problem = runtimeProvisioningProblem(env);
+    if (problem) return json({ ok: false, err: problem }, { status: 503 }, cors);
+    const release = env.RUNTIME_RELEASE!.trim();
+    const name = text(body.name);
+    const locality = text(body.locality);
+
+    const task = await withTenant(env, id.businessId, async (tx) => {
+      await tx`
+        update business
+           set playbook_key = ${playbookKey}, channels = ${tx.json(channels)},
+               name = coalesce(${name}, name), locality = coalesce(${locality}, locality),
+               onboarded = true
+         where id = ${id.businessId}`;
       return enqueueRuntimeTask(tx, id.businessId, {
         kind: 'provision',
         dedupeKey: `provision:${id.businessId}:${release}`,
@@ -238,16 +251,52 @@ export async function handleRepo(
       });
     });
 
-    if (task) {
-      try {
-        await signalRuntimeTask(env, id.businessId, task.id);
-      } catch {
-        console.error('[onboarding] runtime queue signal failed');
-        return json({
-          ok: false,
-          err: 'Your agent setup could not be started. Please try again.',
-        }, { status: 503 }, cors);
-      }
+    try {
+      await signalRuntimeTask(env, id.businessId, task.id);
+    } catch {
+      console.error('[onboarding] runtime queue signal failed');
+      return json({
+        ok: false,
+        err: 'Your agent setup could not be started. Please try again.',
+      }, { status: 503 }, cors);
+    }
+    return noContent(cors);
+  }
+
+  /* Kept only for reopening onboarding through the Repository contract.
+     Completion must go through /onboarding/complete so an older client or a
+     direct API call cannot set the gate without the final answers and runtime
+     task that now define that transition. */
+  if (url.pathname === '/api/state/onboarded') {
+    if (id.role !== 'owner') {
+      return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+    }
+    const onboarded = Boolean(body.value);
+    if (onboarded) {
+      return json({
+        ok: false,
+        err: 'complete onboarding with the final business answers',
+      }, { status: 409 }, cors);
+    }
+    await withTenant(env, id.businessId, (tx) => tx`
+      update business set onboarded = false, setup_done = false
+       where id = ${id.businessId}`);
+    return noContent(cors);
+  }
+
+  /* setup_done is a flow transition, not a free scalar. It cannot be used
+     to skip onboarding, and only the owner may complete or reopen setup. */
+  if (url.pathname === '/api/state/setup-done') {
+    if (id.role !== 'owner') {
+      return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+    }
+    const setupDone = Boolean(body.value);
+    const changed = await withTenant(env, id.businessId, async (tx) => tx`
+      update business set setup_done = ${setupDone}
+       where id = ${id.businessId} and (${!setupDone} or onboarded = true)
+      returning id`);
+    if (setupDone && changed.length === 0) {
+      return json({ ok: false, err: 'finish onboarding before setup' }, { status: 409 }, cors);
     }
     return noContent(cors);
   }
@@ -255,7 +304,6 @@ export async function handleRepo(
   /* Scalars that live on the business row. Each is one guarded UPDATE. */
   const scalar: Record<string, { col: string; value: () => unknown | null }> = {
     '/api/state/biz-type': { col: 'playbook_key', value: () => String(body.key ?? '') },
-    '/api/state/setup-done': { col: 'setup_done', value: () => Boolean(body.value) },
     '/api/state/country': { col: 'country', value: () => oneOf(body.code ?? 'MY', COUNTRIES) },
     '/api/state/lang': { col: 'lang', value: () => (body.lang === 'bm' ? 'bm' : 'en') },
     '/api/state/theme': { col: 'theme', value: () => (body.theme === 'light' ? 'light' : 'dark') },

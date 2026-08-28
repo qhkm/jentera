@@ -57,6 +57,14 @@ function installFakeWorker(): FakeState {
       return done();
     }
     if (path === '/api/state/onboarded') { state.onboarded = Boolean(body.value); return done(); }
+    if (path === '/api/state/onboarding/complete') {
+      state.bizType = String(body.playbookKey);
+      state.channels = body.channels as string[];
+      if (body.name !== undefined) state.bizName = String(body.name);
+      if (body.locality !== undefined) state.bizLoc = String(body.locality);
+      state.onboarded = true;
+      return done();
+    }
     if (path === '/api/state/setup-done') { state.setupDone = Boolean(body.value); return done(); }
     if (path === '/api/state/channels') { state.channels = body.channels as string[]; return done(); }
     if (path === '/api/state/connections') { state.conns = body.connections as string[]; return done(); }
@@ -95,6 +103,8 @@ function installFakeWorker(): FakeState {
       state.learn[k][String(body.pick)] = (state.learn[k][String(body.pick)] ?? 0) + 1;
       return done();
     }
+    if (path === '/api/runtime') return ok({ ok: true, runtime: null });
+    if (path === '/api/runtime/provision') return ok({ ok: true, status: 'queued' });
     return new Response(JSON.stringify({ ok: false, err: 'not found' }), { status: 404 });
   }) as typeof fetch;
 
@@ -136,11 +146,28 @@ describe.each(IMPLS)('%s satisfies the Repository contract', (_name, make) => {
   });
 
   it('round-trips the flow gates', async () => {
-    await repo.setOnboarded(true);
+    await repo.completeOnboarding({ playbookKey: 'generic', channels: ['Telegram'] });
     await repo.setSetupDone(true);
     const s = await repo.load();
     expect(s.onboarded).toBe(true);
     expect(s.setupDone).toBe(true);
+  });
+
+  it('completes onboarding from one final payload', async () => {
+    await repo.completeOnboarding({
+      playbookKey: 'bakery',
+      channels: ['Telegram'],
+      name: 'Nora Bakes',
+      locality: 'Shah Alam',
+    });
+    const s = await repo.load();
+    expect(s).toMatchObject({
+      onboarded: true,
+      bizType: 'bakery',
+      channels: ['Telegram'],
+      bizName: 'Nora Bakes',
+      bizLoc: 'Shah Alam',
+    });
   });
 
   it('treats empty channels as null, not an empty array', async () => {

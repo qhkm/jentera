@@ -1,13 +1,18 @@
 /* ============================================================
-   Setup. A scripted sequence: three steps run themselves, two
-   wait for the user to connect a channel.
+   Setup. Signed-in owners see control-plane runtime state and the real
+   Telegram connector. The anonymous demo keeps the original scripted
+   preview because it has no server resources to observe or connect.
    ============================================================ */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Shell } from '@/components/Shell';
 import { Button, Card, Eyebrow, Progress, Tag } from '@/components/ui';
-import { useMutate } from '@/lib/repo';
+import { useMutate, useRepository } from '@/lib/repo';
+import type { RuntimeSummary } from '@/lib/repo';
+import { useSignedIn } from '@/lib/repo/gate';
+import { useConnections } from '@/hooks/useConnections';
+import TelegramConnect from '@/routes/views/TelegramConnect';
 import { useT } from '@/i18n/I18nProvider';
 
 type Status = 'pending' | 'running' | 'waiting' | 'done';
@@ -31,6 +36,191 @@ const STEPS: Step[] = [
 const AUTO_TIMINGS = [900, 1700, 2600];
 
 export default function Setup() {
+  return useSignedIn() ? <LiveSetup /> : <DemoSetup />;
+}
+
+/** The real account handoff. Provisioning is idempotently re-signalled when
+    this screen mounts, which also recovers the narrow case where onboarding
+    committed its durable task but Queue delivery failed before the response. */
+function LiveSetup() {
+  const t = useT();
+  const navigate = useNavigate();
+  const repo = useRepository();
+  const mutate = useMutate();
+  const connections = useConnections();
+  const [runtime, setRuntime] = useState<RuntimeSummary | null>(null);
+  const [runtimeLoaded, setRuntimeLoaded] = useState(false);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [finishing, setFinishing] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
+
+  const refreshRuntime = useCallback(async () => {
+    try {
+      const current = await repo.runtimeStatus();
+      setRuntime(current.runtime);
+      setRuntimeLoaded(true);
+      if (current.runtime?.lastError) setRuntimeError(current.runtime.lastError);
+      else if (current.runtime) setRuntimeError(null);
+      return current.runtime;
+    } catch (error) {
+      setRuntimeLoaded(true);
+      setRuntimeError(error instanceof Error ? error.message : 'Could not check agent setup.');
+      return null;
+    }
+  }, [repo]);
+
+  const startRuntime = useCallback(async () => {
+    setRuntimeError(null);
+    try {
+      await repo.provisionRuntime();
+    } catch (error) {
+      setRuntimeError(error instanceof Error ? error.message : 'Could not start agent setup.');
+    }
+    await refreshRuntime();
+  }, [refreshRuntime, repo]);
+
+  useEffect(() => {
+    let live = true;
+    let timer: number | null = null;
+    const poll = async () => {
+      const current = await refreshRuntime();
+      if (!live) return;
+      const settled = current && ['ready', 'cold', 'idle', 'busy'].includes(current.status) &&
+        current.observedRelease === current.desiredRelease;
+      if (!settled) timer = window.setTimeout(poll, 3000);
+    };
+    void repo.provisionRuntime()
+      .catch((error) => {
+        if (live) {
+          setRuntimeError(error instanceof Error ? error.message : 'Could not start agent setup.');
+        }
+      })
+      .finally(() => {
+        if (live) void poll();
+      });
+    return () => {
+      live = false;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [refreshRuntime, repo]);
+
+  const runtimeReady = Boolean(
+    runtime && ['ready', 'cold', 'idle', 'busy'].includes(runtime.status) &&
+      runtime.observedRelease === runtime.desiredRelease,
+  );
+  const connected = (connections.rows ?? []).filter((row) => row.status === 'connected').length;
+  const completed = 1 + Number(runtimeReady) + Number(connected > 0);
+
+  async function finish() {
+    setFinishing(true);
+    setFinishError(null);
+    try {
+      await mutate((r) => r.setSetupDone(true));
+      navigate('/app');
+    } catch (error) {
+      setFinishError(error instanceof Error ? error.message : t('su.live.finishFailed'));
+      setFinishing(false);
+    }
+  }
+
+  const runtimeLabel = !runtimeLoaded
+    ? t('su.live.checking')
+    : runtimeReady
+      ? t('su.live.ready')
+      : runtime?.status === 'error' || runtimeError
+        ? t('su.live.attention')
+        : runtime ? t('su.state.linking') : t('su.state.queued');
+
+  return (
+    <Shell suffix="/setup">
+      <div className="mx-auto flex max-w-[720px] flex-col gap-8 py-8">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-4">
+            <Eyebrow>{t('su.eyebrow')}</Eyebrow>
+            <Tag tone={runtimeReady ? 'green' : runtimeError ? 'red' : 'amber'}>
+              {runtimeReady ? t('su.live.agentReady') : t('su.live.settingUp')}
+            </Tag>
+          </div>
+          <h1 className="font-pixel text-3xl tracking-tight">{t('su.head')}</h1>
+          <p className="text-text-secondary">
+            {t('su.live.body')}
+          </p>
+          <Progress value={(completed / 3) * 100} label="Setup progress" />
+        </div>
+
+        <Card className="gap-0 p-0">
+          <SetupStatusRow
+            label={t('su.live.profile')}
+            detail={t('su.live.profileSaved')}
+            state={t('su.state.done')}
+          />
+          <SetupStatusRow
+            label={t('su.live.agent')}
+            detail={runtimeError ?? (runtimeReady ? t('su.live.verified') : t('su.live.provisioning'))}
+            state={runtimeLabel}
+            tone={runtimeReady ? 'green' : runtimeError ? 'red' : 'amber'}
+          />
+          <SetupStatusRow
+            label={t('su.live.channel')}
+            detail={connected > 0 ? t('su.live.connected', { n: connected }) : t('su.live.connectTelegram')}
+            state={connected > 0 ? t('su.state.done') : t('su.state.waiting')}
+            tone={connected > 0 ? 'green' : 'neutral'}
+            last
+          />
+        </Card>
+
+        {runtimeError ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <p role="alert" className="flex-1 text-sm text-text-secondary">{runtimeError}</p>
+            <Button variant="outline" onClick={() => void startRuntime()}>
+              {t('su.live.retry')}
+            </Button>
+          </div>
+        ) : null}
+
+        <TelegramConnect rows={connections.rows} setRows={connections.setRows} />
+
+        <div className="flex flex-col gap-3">
+          <Button onClick={() => void finish()} disabled={finishing} className="py-4 md:py-3">
+            {finishing ? t('su.live.finishing') : runtimeReady ? t('su.open') : t('su.live.continue')}
+          </Button>
+          {finishError ? <p role="alert" className="text-sm text-text-secondary">{finishError}</p> : null}
+          {!runtimeReady ? (
+            <p className="text-[12px] text-text-muted">
+              {t('su.live.fallback')}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+function SetupStatusRow({
+  label,
+  detail,
+  state,
+  tone = 'green',
+  last = false,
+}: {
+  label: string;
+  detail: string;
+  state: string;
+  tone?: 'neutral' | 'green' | 'amber' | 'red';
+  last?: boolean;
+}) {
+  return (
+    <div className={`flex items-center justify-between gap-4 px-5 py-4 ${last ? '' : 'border-b border-rail'}`}>
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="text-sm">{label}</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted">{detail}</span>
+      </div>
+      <Tag tone={tone}>{state}</Tag>
+    </div>
+  );
+}
+
+function DemoSetup() {
   const t = useT();
   const navigate = useNavigate();
   const mutate = useMutate();

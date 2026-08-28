@@ -52,6 +52,14 @@ export async function handleRuntime(
     if (identity.role !== 'owner') {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
+    const onboarded = await withTenant(env, identity.businessId, async (tx) => {
+      const [business] = await tx<{ onboarded: boolean }[]>`
+        select onboarded from business where id = ${identity.businessId}`;
+      return business?.onboarded ?? false;
+    });
+    if (!onboarded) {
+      return json({ ok: false, err: 'finish onboarding before creating an agent' }, { status: 409 }, cors);
+    }
     const problem = runtimeProvisioningProblem(env);
     if (problem) return json({ ok: false, err: problem }, { status: 503 }, cors);
     const release = env.RUNTIME_RELEASE!.trim();

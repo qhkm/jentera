@@ -43,7 +43,8 @@ import { inferPlaybook } from '@/lib/infer';
 import { PLAYBOOKS } from '@/lib/data/playbooks';
 import { confirmFor, planRegisterBusiness, resolveBusiness } from '@/lib/business';
 import { useT } from '@/i18n/I18nProvider';
-import { useMutate, useSnapshot } from '@/lib/repo';
+import { useMutate, useRepository, useSnapshot } from '@/lib/repo';
+import { useSignedIn } from '@/lib/repo/gate';
 
 /* Writes are fire-and-forget by design; the provider surfaces failures
    centrally, so this only stops an unhandled rejection. */
@@ -125,6 +126,8 @@ export default function Onboard() {
   const toast = useToast();
   const snap = useSnapshot();
   const mutate = useMutate();
+  const repo = useRepository();
+  const signedIn = useSignedIn();
 
   const [step, setStep] = useState(0);
   const [mode, setMode] = useState<Mode>(null);
@@ -132,8 +135,13 @@ export default function Onboard() {
   const [social, setSocial] = useState('');
   const [desc, setDesc] = useState('');
   const [typeOpen, setTypeOpen] = useState(false);
-  const [bizType, setType] = useState(DEFAULT_TYPE);
-  const [channels, setChannels] = useState<string[]>([]);
+  /* Resume durable answers when an owner comes back to an unfinished
+     onboarding. The screen index is presentation state, but the business
+     type and channels are real account state and must not reset to defaults. */
+  const [bizType, setType] = useState(
+    PLAYBOOKS[snap.bizType] ? snap.bizType : DEFAULT_TYPE,
+  );
+  const [channels, setChannels] = useState<string[]>(snap.channels ?? []);
   const [pain, setPain] = useState<string | null>(null);
   const [activating, setActivating] = useState(false);
 
@@ -141,6 +149,9 @@ export default function Onboard() {
   const [scanLines, setScanLines] = useState<string[]>([]);
   const [scanShown, setScanShown] = useState(0);
   const [profileLearned, setProfileLearned] = useState(false);
+  const [scanPending, setScanPending] = useState(false);
+  const [scanProblem, setScanProblem] = useState<string | null>(null);
+  const [importedProfile, setImportedProfile] = useState<{ name?: string; locality?: string }>({});
 
   const topRef = useRef<HTMLDivElement | null>(null);
 
@@ -205,14 +216,79 @@ export default function Onboard() {
           : bizType;
     const p = PLAYBOOKS[key] ?? PLAYBOOKS[DEFAULT_TYPE];
 
-    lines.push(t('ob.scan.match', { type: p.type }));
-    lines.push(t('ob.scan.detected', { detect: p.detect }));
+    if (!(chosen === 'auto' && signedIn)) {
+      lines.push(t('ob.scan.match', { type: p.type }));
+      lines.push(t('ob.scan.detected', { detect: p.detect }));
+    }
 
     setMode(chosen);
     setScanLines(lines);
     setScanShown(0);
     setProfileLearned(false);
+    setScanProblem(null);
     go(1);
+
+    /* A signed-in import now uses the real, SSRF-guarded ingestion route.
+       The anonymous flow remains a local preview because it has nowhere
+       durable to record proposed facts. Multiple links are attempted
+       independently so one blocked social site does not discard a readable
+       business website. */
+    if (chosen === 'auto' && signedIn) {
+      const sources = [...new Set([url, social].map(normalizeWebUrl).filter(Boolean))];
+      setScanPending(true);
+      void (async () => {
+        let imported = 0;
+        const suggestions: { key: string; value: string; confidence: number }[] = [];
+        const failures: string[] = [];
+        for (const source of sources) {
+          try {
+            const result = await repo.ingest(source);
+            imported += result.facts;
+            suggestions.push(...(result.suggestions ?? []));
+          } catch (error) {
+            failures.push(error instanceof Error ? error.message : 'source could not be read');
+          }
+        }
+        const importedName = suggestions.find((fact) => fact.key === 'business.name')?.value;
+        const importedLocality = suggestions.find((fact) =>
+          fact.key === 'business.address')?.value;
+        const importedText = suggestions.map((fact) => fact.value).join(' ');
+        const learnedType = inferPlaybook(snap, `${url} ${social} ${importedText}`);
+        const learnedProfile = {
+          name: importedName,
+          locality: importedLocality,
+        };
+        setImportedProfile(learnedProfile);
+        if (learnedType.score > 0) setType(learnedType.key);
+        if (learnedType.score > 0 || importedName || importedLocality) {
+          try {
+            await mutate(async (r) => {
+              if (learnedType.score > 0) await r.setBizType(learnedType.key);
+              if (importedName || importedLocality) {
+                await r.setBizProfile({ name: importedName, loc: importedLocality });
+              }
+            });
+          } catch (error) {
+            failures.push(error instanceof Error ? error.message : 'profile could not be saved');
+          }
+        }
+        const learnedPlaybook = PLAYBOOKS[
+          learnedType.score > 0 ? learnedType.key : bizType
+        ] ?? PLAYBOOKS[DEFAULT_TYPE];
+        setScanLines((current) => [
+          ...current,
+          t('ob.scan.imported', { n: imported }),
+          t('ob.scan.match', { type: learnedPlaybook.type }),
+          t('ob.scan.detected', { detect: learnedPlaybook.detect }),
+        ]);
+        if (failures.length > 0) {
+          setScanProblem(t('ob.scan.failed', { n: failures.length }));
+        }
+        setScanPending(false);
+      })();
+    } else {
+      setScanPending(false);
+    }
   }
 
   /* ---- Step 2: play the readout, then advance ---- */
@@ -225,10 +301,12 @@ export default function Onboard() {
       return () => clearTimeout(id);
     }
 
+    if (scanPending) return;
     setProfileLearned(true);
+    if (scanProblem) return;
     const id = setTimeout(() => go(2), 800);
     return () => clearTimeout(id);
-  }, [step, scanShown, scanLines, go]);
+  }, [step, scanShown, scanLines, scanPending, scanProblem, go]);
 
   /* ---- Picks ---- */
 
@@ -251,20 +329,21 @@ export default function Onboard() {
     setActivating(true);
     void (async () => {
       try {
-        await mutate(async (r) => {
-          await r.setChannels(channels);
-          await r.setBizType(bizType);
-          await r.setOnboarded(true);
-        });
+        const profile = desc.trim() ? planRegisterBusiness(snap, desc.trim()) : null;
+        await mutate((r) => r.completeOnboarding({
+          playbookKey: bizType,
+          channels,
+          name: profile?.bizName ?? importedProfile.name,
+          locality: profile?.bizLoc ?? importedProfile.locality,
+        }));
       } catch (error) {
         setActivating(false);
         toast(error instanceof Error ? error.message : 'Could not start your agent setup.');
         return;
       }
-      /* The 1200ms is presentation, not a write budget. The write is
-         awaited above; setOnboarded gates whether /app bounces back
-         to /onboard and durably queues this business's Hermes runtime,
-         so both must land before we leave. */
+      /* The 1200ms is presentation, not a write budget. The atomic
+         completion above sets the flow gate and durably queues this
+         business's Hermes runtime, so it must land before we leave. */
       setTimeout(() => navigate('/setup'), 1200);
     })();
   }
@@ -348,6 +427,15 @@ export default function Onboard() {
                   <span className="kv-cursor" aria-hidden="true" />
                 </div>
                 <p className="text-[12px] text-text-muted">{t('ob.scan.note')}</p>
+                {!signedIn ? (
+                  <p className="text-[12px] text-text-muted">{t('ob.scan.demo')}</p>
+                ) : null}
+                {scanProblem && !scanPending ? (
+                  <div className="flex flex-col items-start gap-3">
+                    <p role="alert" className="text-[12px] text-text-secondary">{scanProblem}</p>
+                    <Button onClick={() => go(2)}>{t('ob.nav.continue')}</Button>
+                  </div>
+                ) : null}
               </section>
             ) : null}
 
@@ -504,6 +592,12 @@ export default function Onboard() {
       </div>
     </Shell>
   );
+}
+
+function normalizeWebUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
 /* ============================================================

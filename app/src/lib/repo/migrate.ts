@@ -39,9 +39,10 @@ export async function migrateLocalToRemote(
 
   if (!hasLocalState(snap)) return 'created-empty';
 
-  /* Order matters only in that the flow gates go last: if the transfer
-     dies halfway, the owner lands mid-onboarding with partial data
-     rather than on a dashboard that claims to be set up and is not. */
+  /* Only answers move. Flow-completion flags belong to the authenticated
+     account lifecycle, not to an anonymous browser demo. Copying either
+     flag would let a completed demo skip real onboarding and could start
+     paid runtime provisioning before the signed-in owner activates it. */
   if (snap.channels?.length) await remote.setChannels(snap.channels);
   if (snap.conns?.length) await remote.setConnections(snap.conns);
   if (snap.theme !== 'dark') await remote.setTheme(snap.theme);
@@ -72,9 +73,6 @@ export async function migrateLocalToRemote(
       confidence: f.confidence,
     });
   }
-
-  if (snap.onboarded) await remote.setOnboarded(true);
-  if (snap.setupDone) await remote.setSetupDone(true);
 
   /* Clear the browser copy only once the server has it. Leaving it would
      mean a later sign-out silently reverts the owner to a stale snapshot

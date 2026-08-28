@@ -169,9 +169,10 @@ Queues, Sprites, or model calls:
 - `API_BURST`: 120 requests/minute, checked against both the unverified session-shaped
   identity and source address so rotating fake cookies cannot bypass the IP brake;
 - `RUNTIME_MUTATION_BURST`: 3 requests/minute, checked against both session-shaped identity
-  and source address before provision, reconcile, upgrade, cancel, or delete; and
-- `AGENT_RUN_BURST`: 10 Ask AISAR starts/minute, checked against both keys and failed
-  closed because each accepted start can buy compute and model tokens;
+  and source address before onboarding completion, provision, reconcile, upgrade, cancel,
+  or delete; and
+- `AGENT_RUN_BURST`: 10 Ask AISAR or website-import starts/minute, checked against both keys
+  and failed closed because each accepted start can buy compute and model tokens;
 - `RUN_STREAM_BURST`: 12 WebSocket handshakes/minute, checked against both keys and failed
   closed, followed by exact limits of eight sockets per run and two per authenticated
   user inside the Durable Object; and
@@ -270,8 +271,11 @@ npx wrangler deploy
 curl -fsS https://api.jentera.ai/api/health
 ```
 
-Onboarding completion is the customer provisioning producer: its business update and
-release-deduplicated task are one transaction, followed by a retry-safe Queue signal.
+Onboarding completion is the customer provisioning producer: its final profile/channels,
+flow gate, and release-deduplicated task are one transaction, followed by a retry-safe
+Queue signal. Signed-in setup re-signals that same task idempotently and polls the
+owner-safe runtime status, so a failed first Queue signal is recoverable without creating
+a second Sprite.
 Both runtime queues exist and the Worker consumes the primary and DLQ. Migration
 `014_runtime_task_execution.sql` was applied to AISAR production as `neondb_owner` and
 verified as `aisar_app` on 2026-08-27; it remains required when restoring or creating an

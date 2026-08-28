@@ -111,17 +111,42 @@ describe('who may call these at all', () => {
 });
 
 describe('finishing onboarding provisions one Hermes runtime', () => {
-  it('commits onboarding and one release-deduplicated provisioning task together', async () => {
+  it('is an owner-only transition', async () => {
+    const staffId = await asOwner(async (sql) => {
+      const [staff] = await sql<{ id: string }[]>`
+        insert into app_user (email, email_verified)
+        values ('staff-alpha@example.com', true) returning id`;
+      await sql`insert into membership (user_id, business_id, role)
+                values (${staff.id}, ${A}, 'staff')`;
+      return staff.id;
+    });
+    const staffCookie = await signIn(staffId);
+    env = automaticRuntimeEnv(vi.fn(async () => {}));
+    const response = await state('POST', '/api/state/onboarding/complete', {
+      cookie: staffCookie,
+      body: { playbookKey: 'restaurant', channels: ['Telegram'] },
+    });
+    expect(response.status).toBe(403);
+  });
+
+  it('atomically commits final answers and one release-deduplicated provisioning task', async () => {
     const send = vi.fn(async () => {});
     env = automaticRuntimeEnv(send);
 
-    const first = await state('POST', '/api/state/onboarded', {
+    const completion = {
+      playbookKey: 'bakery',
+      channels: ['Telegram', 'Email'],
+      name: 'Nora Bakes',
+      locality: 'Shah Alam',
+    };
+
+    const first = await state('POST', '/api/state/onboarding/complete', {
       cookie: cookieA,
-      body: { value: true },
+      body: completion,
     });
-    const second = await state('POST', '/api/state/onboarded', {
+    const second = await state('POST', '/api/state/onboarding/complete', {
       cookie: cookieA,
-      body: { value: true },
+      body: completion,
     });
 
     expect(first.status).toBe(204);
@@ -129,14 +154,21 @@ describe('finishing onboarding provisions one Hermes runtime', () => {
     expect(send).toHaveBeenCalledTimes(2);
     expect(send.mock.calls[0][0]).toMatchObject({ version: 1, businessId: A });
     const [row] = await asOwner((sql) => sql<{
-      onboarded: boolean; count: string; kind: string; payload: Record<string, unknown>;
+      onboarded: boolean; playbook_key: string; channels: string[]; name: string;
+      locality: string; count: string; kind: string; payload: Record<string, unknown>;
     }[]>`
-      select b.onboarded, count(t.id)::text as count, min(t.kind) as kind,
+      select b.onboarded, b.playbook_key, b.channels, b.name, b.locality,
+             count(t.id)::text as count, min(t.kind) as kind,
              min(t.payload::text)::jsonb as payload
         from business b left join runtime_task t on t.business_id = b.id
-       where b.id = ${A} group by b.onboarded`);
+       where b.id = ${A}
+       group by b.onboarded, b.playbook_key, b.channels, b.name, b.locality`);
     expect(row).toMatchObject({
       onboarded: true,
+      playbook_key: 'bakery',
+      channels: ['Telegram', 'Email'],
+      name: 'Nora Bakes',
+      locality: 'Shah Alam',
       count: '1',
       kind: 'provision',
       payload: { release: '2026.08.28-8', trigger: 'onboarding_completed' },
@@ -145,17 +177,17 @@ describe('finishing onboarding provisions one Hermes runtime', () => {
 
   it('keeps the durable task recoverable when Queue signaling fails', async () => {
     env = automaticRuntimeEnv(vi.fn(async () => { throw new Error('queue offline'); }));
-    const failed = await state('POST', '/api/state/onboarded', {
+    const failed = await state('POST', '/api/state/onboarding/complete', {
       cookie: cookieA,
-      body: { value: true },
+      body: { playbookKey: 'restaurant', channels: ['Telegram'] },
     });
     expect(failed.status).toBe(503);
 
     const retrySend = vi.fn(async () => {});
     env = automaticRuntimeEnv(retrySend);
-    const retried = await state('POST', '/api/state/onboarded', {
+    const retried = await state('POST', '/api/state/onboarding/complete', {
       cookie: cookieA,
-      body: { value: true },
+      body: { playbookKey: 'restaurant', channels: ['Telegram'] },
     });
     expect(retried.status).toBe(204);
     expect(retrySend).toHaveBeenCalledOnce();
@@ -168,15 +200,25 @@ describe('finishing onboarding provisions one Hermes runtime', () => {
     expect({ tasks, onboarded }).toEqual({ tasks: '1', onboarded: true });
   });
 
-  it('allows local or deliberately disabled environments to finish without paid compute', async () => {
+  it('does not let the legacy scalar setter bypass atomic completion', async () => {
     const response = await state('POST', '/api/state/onboarded', {
       cookie: cookieA,
       body: { value: true },
     });
-    expect(response.status).toBe(204);
-    const [{ count }] = await asOwner((sql) => sql<{ count: string }[]>`
-      select count(*)::text as count from runtime_task where business_id = ${A}`);
-    expect(count).toBe('0');
+    expect(response.status).toBe(409);
+    const [row] = await asOwner((sql) => sql<{ onboarded: boolean; count: string }[]>`
+      select b.onboarded, count(t.id)::text as count
+        from business b left join runtime_task t on t.business_id = b.id
+       where b.id = ${A} group by b.onboarded`);
+    expect(row).toEqual({ onboarded: false, count: '0' });
+  });
+
+  it('does not allow setup to complete before onboarding', async () => {
+    const response = await state('POST', '/api/state/setup-done', {
+      cookie: cookieA,
+      body: { value: true },
+    });
+    expect(response.status).toBe(409);
   });
 });
 

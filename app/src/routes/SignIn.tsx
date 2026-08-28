@@ -65,7 +65,9 @@ export default function SignIn() {
         // Full reload, not a client-side navigate: RepositoryGate reads
         // the session once at startup, so the app has to boot again to
         // pick up the cookie that was just set.
-        window.location.href = body.next === '/onboard' ? '/onboard' : '/app';
+        window.location.href = ['/onboard', '/setup', '/app'].includes(String(body.next))
+          ? String(body.next)
+          : '/app';
         return;
       }
       if (res.status === 429) {

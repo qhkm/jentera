@@ -81,6 +81,7 @@ describe('pre-route API request guard', () => {
   });
 
   it.each([
+    ['POST', '/api/state/onboarding/complete'],
     ['POST', '/api/runtime/reconcile'],
     ['POST', '/api/runtime/upgrade'],
     ['POST', '/api/runtime/tasks/11111111-1111-4111-8111-111111111111/cancel'],
@@ -147,6 +148,21 @@ describe('pre-route API request guard', () => {
     const req = request('/api/runs/ask', { method: 'POST' });
 
     expect((await guardApiRequest(req, env, new URL(req.url), cors))?.status).toBe(503);
+  });
+
+  it('puts onboarding website ingestion behind the paid-work brake', async () => {
+    let admissions = 0;
+    const env = testEnv({
+      AGENT_RUN_BURST: {
+        limit: async () => {
+          admissions += 1;
+          return { success: true };
+        },
+      },
+    });
+    const req = request('/api/runs/ingest', { method: 'POST' });
+    expect(await guardApiRequest(req, env, new URL(req.url), cors)).toBeNull();
+    expect(admissions).toBe(2);
   });
 
   it('admits authenticated connector work only when every opaque spend bucket allows it', async () => {

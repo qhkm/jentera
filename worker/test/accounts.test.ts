@@ -168,7 +168,7 @@ describe('account linking', () => {
 });
 
 describe('first authenticated destination', () => {
-  it('sends every new identity method to onboarding until membership exists', async () => {
+  it('resumes the first unfinished account stage', async () => {
     const [user] = await asOwner((sql) => sql<{ id: string }[]>`
       insert into app_user (email, email_verified)
       values ('new@example.com', true) returning id`);
@@ -181,6 +181,14 @@ describe('first authenticated destination', () => {
       await sql`insert into membership (user_id, business_id, role)
                 values (${user.id}, ${businessId}, 'owner')`;
     });
+    expect(await authLandingPath(testEnv(), user.id)).toBe('/onboard');
+
+    await asOwner((sql) => sql`
+      update business set onboarded = true where id = ${businessId}`);
+    expect(await authLandingPath(testEnv(), user.id)).toBe('/setup');
+
+    await asOwner((sql) => sql`
+      update business set setup_done = true where id = ${businessId}`);
     expect(await authLandingPath(testEnv(), user.id)).toBe('/app');
   });
 });

@@ -5,7 +5,7 @@ import { I18nProvider } from '@/i18n/I18nProvider';
 import { ToastProvider } from '@/components/Toast';
 import { DetailLevelProvider } from '@/hooks/useDetailLevel';
 import { ActivityProvider } from '@/hooks/useActivity';
-import { isOnboarded } from '@/lib/business';
+import { isOnboarded, isSetupDone } from '@/lib/business';
 import Landing from '@/routes/Landing';
 import Onboard from '@/routes/Onboard';
 import SignIn from '@/routes/SignIn';
@@ -21,6 +21,20 @@ import type { ReactElement } from 'react';
 function RequireOnboarded({ children }: { children: ReactElement }) {
   const snap = useSnapshot();
   return isOnboarded(snap) ? children : <Navigate to="/onboard" replace />;
+}
+
+/** Keep each lifecycle URL honest when it is opened directly or restored
+    from browser history. Authentication chooses the first destination, but
+    these guards remain necessary after state changes inside the SPA. */
+function OnboardingStage() {
+  const snap = useSnapshot();
+  if (!isOnboarded(snap)) return <Onboard />;
+  return <Navigate to={isSetupDone(snap) ? '/app' : '/setup'} replace />;
+}
+
+function SetupStage() {
+  const snap = useSnapshot();
+  return isOnboarded(snap) ? <Setup /> : <Navigate to="/onboard" replace />;
 }
 
 /**
@@ -80,8 +94,8 @@ export default function App() {
         <Route element={<AppShell />}>
           {/* The no-signup demo. Anonymous on purpose: migrate.ts carries
               whatever is built here onto the server at first sign-in. */}
-          <Route path="/onboard" element={<Onboard />} />
-          <Route path="/setup" element={<Setup />} />
+          <Route path="/onboard" element={<OnboardingStage />} />
+          <Route path="/setup" element={<SetupStage />} />
           <Route
             path="/app"
             element={

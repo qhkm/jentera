@@ -20,6 +20,8 @@ import type {
   Repository,
   TraceEvent,
   Theme,
+  OnboardingCompletion,
+  RuntimeOverview,
 } from './types';
 import { NeedsAccountError } from './types';
 
@@ -91,6 +93,13 @@ export class LocalRepository implements Repository {
   async setOnboarded(v: boolean): Promise<void> {
     if (v) store.set(KEYS.onboarded, '1');
     else store.remove(KEYS.onboarded);
+  }
+
+  async completeOnboarding(input: OnboardingCompletion): Promise<void> {
+    await this.setBizType(input.playbookKey);
+    await this.setChannels(input.channels);
+    await this.setBizProfile({ name: input.name, loc: input.locality });
+    await this.setOnboarded(true);
   }
 
   async setSetupDone(v: boolean): Promise<void> {
@@ -244,6 +253,14 @@ export class LocalRepository implements Repository {
       work: [],
       counters: { handled: 0, needsYou: 0, minutesSaved: 0, thisWeek: 0, connections: 0 },
     };
+  }
+
+  async runtimeStatus(): Promise<RuntimeOverview> {
+    return { runtime: null };
+  }
+
+  async provisionRuntime(): Promise<void> {
+    throw new NeedsAccountError('Creating a private AISAR runtime');
   }
 
   async ask(_question?: string, _options?: import('./types').AskOptions): Promise<AskAnswer> {

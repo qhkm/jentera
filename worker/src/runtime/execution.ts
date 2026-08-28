@@ -20,6 +20,7 @@ export function runtimeProvisioningProblem(env: Env): string | null {
   if (env.RUNTIME_PROVISIONING_ENABLED !== 'true') return 'runtime provisioning is disabled';
   if (env.MODEL_TRANSPORT_READY !== 'true') return 'secure model transport is not ready';
   if (env.RUNTIME_BOOTSTRAP_ENABLED !== 'true') return 'production runtime bootstrap is disabled';
+  if (env.RUNTIME_EXECUTION_ENABLED !== 'true') return 'runtime execution is disabled';
   if (!env.RUNTIME_QUEUE) return 'runtime queue is not configured';
   if (!env.SPRITES_TOKEN?.trim()) return 'Sprite provisioning is not configured';
   if (!env.AISAR_OPENROUTER_MANAGEMENT_KEY?.trim()) {
