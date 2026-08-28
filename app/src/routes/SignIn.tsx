@@ -161,7 +161,7 @@ export default function SignIn() {
           ) : null}
 
           <a
-            className="btn mt-6 flex w-full items-center justify-center gap-2"
+            className="btn btn-outline mt-6 flex w-full items-center justify-center gap-2"
             href={`${API}/api/auth/google`}
             onClick={() => trackActivation(mode === 'signup' ? 'signup_started' : 'signin_started')}
           >
