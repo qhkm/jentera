@@ -32,6 +32,10 @@ test('production runtime pins and proves its keyless search backend', async () =
   const source = await readFile(SCRIPT, 'utf8');
   assert.match(source, /AISAR_WEB_SEARCH_BACKEND=%q.*ddgs/);
   assert.match(source, /'ddgs==9\.16\.0'/);
+  assert.match(source, /hermes_uv=\/home\/sprite\/\.hermes\/bin\/uv/);
+  assert.match(source, /pip install.*\\\n\s+--python "\$install_dir\/venv\/bin\/python"/);
+  assert.match(source, /pip check --python "\$install_dir\/venv\/bin\/python"/);
+  assert.doesNotMatch(source, /venv\/bin\/python" -m pip/);
   assert.match(source, /web-search-smoke\.py/);
   assert.match(source, /web_search_ready/);
 });

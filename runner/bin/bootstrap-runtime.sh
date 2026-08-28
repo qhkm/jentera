@@ -203,9 +203,14 @@ trap 'rm -f "$incoming"' EXIT
 # provider, but does not install the optional package in its base environment.
 # Pin it as part of this immutable Jentera release, then prove both import and
 # a real search before the runtime can be checkpointed or marked ready.
-"$install_dir/venv/bin/python" -m pip install \
-  --disable-pip-version-check --no-input --upgrade 'ddgs==9.16.0'
-"$install_dir/venv/bin/python" -m pip check
+hermes_uv=/home/sprite/.hermes/bin/uv
+[[ -x "$hermes_uv" ]] || {
+  echo "Hermes managed uv is unavailable" >&2
+  exit 1
+}
+UV_NO_CONFIG=1 UV_NO_PROGRESS=1 "$hermes_uv" pip install \
+  --python "$install_dir/venv/bin/python" 'ddgs==9.16.0'
+UV_NO_CONFIG=1 "$hermes_uv" pip check --python "$install_dir/venv/bin/python"
 web_search_ready=false
 for _attempt in 1 2 3; do
   if timeout --foreground -k 5 45 \
