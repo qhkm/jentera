@@ -246,7 +246,7 @@ export class LocalRepository implements Repository {
     };
   }
 
-  async ask(): Promise<AskAnswer> {
+  async ask(_question?: string, _options?: import('./types').AskOptions): Promise<AskAnswer> {
     throw new NeedsAccountError('Asking AISAR about your business');
   }
 

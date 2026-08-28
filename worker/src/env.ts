@@ -23,6 +23,8 @@ export interface Env {
   /** Paid agent-run admission. Separate from lifecycle mutations so
       normal conversation does not share a three-per-minute bucket with provisioning. */
   AGENT_RUN_BURST: RateLimit;
+  /** New realtime connection admission. Fail closed before session/Neon/DO work. */
+  RUN_STREAM_BURST: RateLimit;
   /** Key for the IP HMAC in the rate-limit ledger. A Worker secret;
       without it the stored hashes are brute-forceable. */
   RATE_LIMIT_PEPPER?: string;
@@ -63,6 +65,8 @@ export interface Env {
   AISAR_MODEL_NAME?: string;
   /** Durable provisioning and Hermes task delivery. */
   RUNTIME_QUEUE?: Queue<import('./runtime/consumer').RuntimeQueueMessage>;
+  /** Hibernating per-run WebSocket fan-out. Postgres remains task truth. */
+  RUN_STREAMS?: DurableObjectNamespace;
   /** Override the sender, e.g. for a staging origin. Must be a domain
       verified in Resend, and should match APP_ORIGIN. */
   MAGIC_FROM?: string;

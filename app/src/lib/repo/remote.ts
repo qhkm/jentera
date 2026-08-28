@@ -15,6 +15,8 @@ import type {
   Fact,
   FactSource,
   AskAnswer,
+  AskOptions,
+  AskProgress,
   Connection,
   ConnectionHealth,
   IngestResult,
@@ -276,7 +278,7 @@ export class RemoteRepository implements Repository {
     };
   }
 
-  async ask(question: string): Promise<AskAnswer> {
+  async ask(question: string, options: AskOptions = {}): Promise<AskAnswer> {
     const requestId = crypto.randomUUID();
     const start = () => call<AskAnswer & {
       pending?: boolean;
@@ -284,7 +286,7 @@ export class RemoteRepository implements Repository {
       runId?: string;
     }>('/api/runs/ask', {
       method: 'POST',
-      body: JSON.stringify({ question, requestId }),
+      body: JSON.stringify({ question, requestId, mode: options.mode ?? 'ask' }),
     });
     let begun;
     try {
@@ -298,7 +300,9 @@ export class RemoteRepository implements Repository {
     }
     if (!begun.pending) return begun;
     if (!begun.runId) throw new Error('AISAR returned no run identifier.');
-    return pollAsk(begun.runId);
+    return options.onProgress
+      ? streamAsk(begun.runId, options.onProgress)
+      : pollAsk(begun.runId);
   }
 
   async connections(): Promise<Connection[]> {
@@ -368,6 +372,62 @@ async function pollAsk(runId: string): Promise<AskAnswer> {
     }
   }
   throw new Error('AISAR is taking longer than expected. Check Activity for the result.');
+}
+
+async function streamAsk(
+  runId: string,
+  onProgress: (progress: AskProgress) => void,
+): Promise<AskAnswer> {
+  if (typeof WebSocket === 'undefined') return pollAsk(runId);
+
+  return new Promise<AskAnswer>((resolve, reject) => {
+    let socket: WebSocket;
+    let handedOff = false;
+    const finishFromDurableState = () => {
+      if (handedOff) return;
+      handedOff = true;
+      globalThis.clearTimeout(timeout);
+      try {
+        socket.close(1000, 'switching to durable result');
+      } catch {
+        /* The handshake may have failed before a socket opened. */
+      }
+      void pollAsk(runId).then(resolve, reject);
+    };
+    const timeout = globalThis.setTimeout(finishFromDurableState, 16 * 60 * 1_000);
+
+    try {
+      socket = new WebSocket(websocketUrl(`/api/runs/${encodeURIComponent(runId)}/events`));
+    } catch {
+      finishFromDurableState();
+      return;
+    }
+
+    socket.onmessage = (message) => {
+      let event: { version?: unknown; type?: unknown };
+      try {
+        event = JSON.parse(String(message.data)) as { version?: unknown; type?: unknown };
+      } catch {
+        return;
+      }
+      if (event.version !== 1 || typeof event.type !== 'string') return;
+      if (isAskProgress(event.type)) onProgress(event.type);
+      if (['completed', 'failed', 'cancelled'].includes(event.type)) finishFromDurableState();
+    };
+    socket.onerror = finishFromDurableState;
+    socket.onclose = finishFromDurableState;
+  });
+}
+
+function websocketUrl(path: string): string {
+  const fallback = typeof location === 'undefined' ? 'http://localhost' : location.origin;
+  const url = new URL(`${BASE}${path}`, fallback);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return url.toString();
+}
+
+function isAskProgress(value: string): value is AskProgress {
+  return ['queued', 'waking', 'working', 'retrying'].includes(value);
 }
 
 const wait = (milliseconds: number) =>

@@ -31,6 +31,7 @@ import {
   runtimeTaskForRun,
   type RuntimeTask,
 } from '../runtime/tasks';
+import { publishRunProgressSafely } from '../runtime/progress';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -161,6 +162,7 @@ export async function handleRuns(
     const body = (await request.json().catch(() => ({}))) as {
       question?: string;
       requestId?: unknown;
+      mode?: unknown;
     };
     const question = typeof body.question === 'string' ? body.question.trim() : '';
     if (!question) return json({ ok: false, err: 'ask me something' }, { status: 400 }, cors);
@@ -171,8 +173,15 @@ export async function handleRuns(
         (typeof body.requestId !== 'string' || !uuid(body.requestId))) {
       return json({ ok: false, err: 'request id is invalid' }, { status: 400 }, cors);
     }
+    const mode = body.mode ?? 'ask';
+    if (mode !== 'ask' && mode !== 'work') {
+      return json({ ok: false, err: 'ask mode is invalid' }, { status: 400 }, cors);
+    }
 
-    if (durableAskEnabled(env, id.businessId)) {
+    if (mode === 'work') {
+      if (!durableAskEnabled(env, id.businessId)) {
+        return json({ ok: false, err: 'AISAR agent work is not available yet' }, { status: 403 }, cors);
+      }
       return startDurableAsk(
         env,
         id.businessId,
@@ -298,6 +307,40 @@ export async function handleRuns(
     }, {}, privateHeaders);
   }
 
+  const events = url.pathname.match(/^\/api\/runs\/([0-9a-f-]{36})\/events$/i);
+  if (events && request.method === 'GET') {
+    if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
+      return json({ ok: false, err: 'websocket required' }, { status: 426 }, cors);
+    }
+    const origin = request.headers.get('Origin');
+    if (!origin || cors['Access-Control-Allow-Origin'] !== origin) {
+      /* WebSocket handshakes are not protected by browser CORS enforcement. */
+      return json({ ok: false, err: 'origin not allowed' }, { status: 403 }, cors);
+    }
+    if (!env.RUN_STREAMS) {
+      return json({ ok: false, err: 'realtime updates unavailable' }, { status: 503 }, cors);
+    }
+    const run = await withTenant(env, id.businessId, (tx) => getRun(tx, id.businessId, events[1]));
+    if (!run || run.runtime !== 'hermes-sprite') {
+      return json({ ok: false, err: 'run not found' }, { status: 404 }, cors);
+    }
+    if (terminalRun(run.status)) {
+      const type = run.status === 'completed' ? 'completed'
+        : run.status === 'cancelled' ? 'cancelled' : 'failed';
+      await publishRunProgressSafely(env, id.businessId, run.id, type);
+    }
+    const streamId = env.RUN_STREAMS.idFromName(`${id.businessId}:${run.id}`);
+    return env.RUN_STREAMS.get(streamId).fetch('https://run-stream.internal/subscribe', {
+      method: 'GET',
+      headers: {
+        Upgrade: 'websocket',
+        'X-AISAR-Business': id.businessId,
+        'X-AISAR-Run': run.id,
+        'X-AISAR-User': id.userId,
+      },
+    });
+  }
+
   const trace = url.pathname.match(/^\/api\/runs\/([0-9a-f-]{36})\/trace$/i);
   if (trace && request.method === 'GET') {
     const events = await withTenant(env, id.businessId, (tx) => runTrace(tx, trace[1]));
@@ -387,6 +430,7 @@ async function startDurableAsk(
       err: 'AISAR could not queue that answer. Please try again.',
     }, { status: 503 }, cors);
   }
+  await publishRunProgressSafely(env, businessId, created.runId, 'queued');
   return json({
     ok: true,
     pending: true,

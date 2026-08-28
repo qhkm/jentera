@@ -6,6 +6,7 @@ import { cancelRuntimeTask } from '../runtime/tasks';
 import { finalizeRuntimeUsage, runtimeBudgetSnapshot } from '../runtime/usage';
 import { finishRun } from '../runs';
 import { hasBusiness, resolveTenant } from '../tenancy';
+import { publishRunProgressSafely } from '../runtime/progress';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -141,6 +142,14 @@ export async function handleRuntime(
         dedupeKey: `cancel:${cancelled.task.id}:${window}`,
         payload: { targetTaskId: cancelled.task.id },
       });
+    }
+    if (cancelled.task.kind === 'run' && cancelled.task.runId) {
+      await publishRunProgressSafely(
+        env,
+        identity.businessId,
+        cancelled.task.runId,
+        'cancelled',
+      );
     }
     return json({ ok: true, taskId: cancelled.task.id, status: 'cancelled' }, {}, cors);
   }

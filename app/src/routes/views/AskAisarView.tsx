@@ -17,6 +17,7 @@ import { useMentions } from '@/hooks/useMentions';
 import CustomerInbox from './CustomerInbox';
 import { useSignedIn } from '@/lib/repo/gate';
 import type { Business } from '@/lib/types';
+import type { AskMode } from '@/lib/repo';
 
 type Tab = 'assistant' | 'conversations';
 
@@ -78,10 +79,10 @@ export default function AskAisarView({
     });
   }
 
-  function submit(text?: string) {
+  function submit(text?: string, mode: AskMode = 'ask') {
     const body = (text ?? draft).trim();
     if (!body) return;
-    ask.send(body);
+    ask.send(body, mode);
     setDraft('');
     if (composer.current) composer.current.style.height = 'auto';
     if (compact) {
@@ -296,13 +297,23 @@ export default function AskAisarView({
               aria-label={t('ask.placeholder')}
               className="input max-h-[120px] w-full min-w-0 flex-1 resize-none"
             />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!draft.trim()}
+              className="shrink-0 px-3 sm:px-4"
+              onClick={() => submit(undefined, 'work')}
+            >
+              <span className="sm:hidden">{t('ask.work.short')}</span>
+              <span className="hidden sm:inline">{t('ask.work')}</span>
+            </Button>
             <Button type="submit" disabled={!draft.trim()} className="shrink-0 px-4 sm:px-6">
               <span className="sm:hidden">{t('chat.send')}</span>
               <span className="hidden sm:inline">{t('ask.send')}</span>
             </Button>
           </form>
           <p className="hidden px-4 pb-4 text-[11px] text-text-muted sm:px-5 lg:block">
-            {t('ask.hint')}
+            {t('ask.mode.hint')}
           </p>
         </Card>
       ) : (

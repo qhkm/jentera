@@ -46,12 +46,51 @@ describe('Ask AISAR runtime bridge', () => {
     });
   });
 
+  it('keeps ordinary Ask inline even for a business allowed to use durable work', async () => {
+    await readyRuntime(A);
+    const send = vi.fn(async () => {});
+    const response = await call('POST', '/api/runs/ask', durableEnv(send), cookieA, {
+      question: 'Give me the quick answer',
+      requestId: crypto.randomUUID(),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      text: 'A drafted reply.',
+      grounded: false,
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('rejects durable work outside the canary and unknown execution modes', async () => {
+    const forbidden = await call('POST', '/api/runs/ask', durableEnv(), cookieB, {
+      question: 'Do this in the background',
+      requestId: crypto.randomUUID(),
+      mode: 'work',
+    });
+    expect(forbidden.status).toBe(403);
+
+    const invalid = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
+      question: 'Try an invented mode',
+      requestId: crypto.randomUUID(),
+      mode: 'turbo',
+    });
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toEqual({ ok: false, err: 'ask mode is invalid' });
+
+    const [{ count }] = await asOwner((sql) => sql<{ count: string }[]>`
+      select count(*)::text as count from runtime_task`);
+    expect(count).toBe('0');
+  });
+
   it('publishes one tenant-derived durable run without trusting a body business id', async () => {
     await readyRuntime(A);
     const send = vi.fn(async () => {});
     const response = await call('POST', '/api/runs/ask', durableEnv(send), cookieA, {
       question: 'What should I improve?',
       requestId: crypto.randomUUID(),
+      mode: 'work',
       businessId: B,
     });
 
@@ -83,8 +122,8 @@ describe('Ask AISAR runtime bridge', () => {
     const env = durableEnv(send);
     const requestId = crypto.randomUUID();
     const [first, second] = await Promise.all([
-      call('POST', '/api/runs/ask', env, cookieA, { question: 'Status?', requestId }),
-      call('POST', '/api/runs/ask', env, cookieA, { question: 'Status?', requestId }),
+      call('POST', '/api/runs/ask', env, cookieA, { question: 'Status?', requestId, mode: 'work' }),
+      call('POST', '/api/runs/ask', env, cookieA, { question: 'Status?', requestId, mode: 'work' }),
     ]);
     const firstBody = await first.json() as { runId: string };
     const secondBody = await second.json() as { runId: string };
@@ -99,12 +138,12 @@ describe('Ask AISAR runtime bridge', () => {
 
   it('rejects invalid idempotency keys and a runtime that is not ready', async () => {
     const malformed = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
-      question: 'Hello', requestId: 'not-a-uuid',
+      question: 'Hello', requestId: 'not-a-uuid', mode: 'work',
     });
     expect(malformed.status).toBe(400);
 
     const unavailable = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
-      question: 'Hello', requestId: crypto.randomUUID(),
+      question: 'Hello', requestId: crypto.randomUUID(), mode: 'work',
     });
     expect(unavailable.status).toBe(503);
     expect(await unavailable.json()).toEqual({
@@ -116,7 +155,7 @@ describe('Ask AISAR runtime bridge', () => {
   it('returns the completed Hermes answer only to the owning tenant', async () => {
     await readyRuntime(A);
     const started = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
-      question: 'Give me an update', requestId: crypto.randomUUID(),
+      question: 'Give me an update', requestId: crypto.randomUUID(), mode: 'work',
     });
     const { runId } = await started.json() as { runId: string };
     await asOwner(async (sql) => {
@@ -142,7 +181,7 @@ describe('Ask AISAR runtime bridge', () => {
   it('does not expose provider errors from failed durable runs', async () => {
     await readyRuntime(A);
     const started = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
-      question: 'Give me an update', requestId: crypto.randomUUID(),
+      question: 'Give me an update', requestId: crypto.randomUUID(), mode: 'work',
     });
     const { runId } = await started.json() as { runId: string };
     await asOwner(async (sql) => {
@@ -159,6 +198,36 @@ describe('Ask AISAR runtime bridge', () => {
       pending: false,
       err: 'AISAR could not answer that just now. Please try again.',
     }));
+  });
+
+  it('proxies a WebSocket only after origin, session, and tenant checks', async () => {
+    await readyRuntime(A);
+    const started = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
+      question: 'Stream this', requestId: crypto.randomUUID(), mode: 'work',
+    });
+    const { runId } = await started.json() as { runId: string };
+    const streamFetch = vi.fn(async () => new Response(null, { status: 204 }));
+    const idFromName = vi.fn(() => ({ toString: () => 'stream-id' }));
+    const env = durableEnv();
+    env.RUN_STREAMS = {
+      idFromName,
+      get: () => ({ fetch: streamFetch }),
+    } as unknown as DurableObjectNamespace;
+
+    const allowed = await streamCall(runId, env, cookieA, 'https://jentera.ai');
+    expect(allowed.status).toBe(204);
+    expect(idFromName).toHaveBeenCalledWith(`${A}:${runId}`);
+    expect(streamFetch).toHaveBeenCalledOnce();
+    expect(streamFetch.mock.calls[0][1]?.headers).toMatchObject({
+      Upgrade: 'websocket',
+      'X-AISAR-Business': A,
+      'X-AISAR-Run': runId,
+    });
+
+    expect((await streamCall(runId, env, cookieA, 'https://evil.example')).status).toBe(403);
+    expect((await streamCall(runId, env, cookieB, 'https://jentera.ai')).status).toBe(404);
+    expect((await streamCall(runId, env, undefined, 'https://jentera.ai')).status).toBe(401);
+    expect(streamFetch).toHaveBeenCalledOnce();
   });
 });
 
@@ -193,5 +262,26 @@ async function call(
   const incoming = req(method, path, { cookie, body });
   const response = await handleRuns(incoming.request, env, incoming.url, {});
   if (!response) throw new Error('runs route did not match');
+  return response;
+}
+
+async function streamCall(
+  runId: string,
+  env: Env,
+  cookie: string | undefined,
+  origin: string,
+): Promise<Response> {
+  const url = new URL(`https://api.test/api/runs/${runId}/events`);
+  const request = new Request(url, {
+    headers: {
+      Origin: origin,
+      Upgrade: 'websocket',
+      ...(cookie ? { Cookie: cookie } : {}),
+    },
+  });
+  const response = await handleRuns(request, env, url, {
+    'Access-Control-Allow-Origin': 'https://jentera.ai',
+  });
+  if (!response) throw new Error('run stream route did not match');
   return response;
 }

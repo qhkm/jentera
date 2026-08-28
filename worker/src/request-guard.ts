@@ -85,6 +85,8 @@ export async function guardApiRequest(
   const identity = requestIdentity(request, url);
   const runtimeMutation = isRuntimeMutation(request.method, url.pathname);
   const agentRun = request.method === 'POST' && url.pathname === '/api/runs/ask';
+  const runStream = request.method === 'GET' &&
+    /^\/api\/runs\/[0-9a-f-]{36}\/events$/i.test(url.pathname);
   try {
     /* The cookie is not authenticated yet, so it cannot be the only key: a
        bot could rotate fake cookie values. The source-address brake remains
@@ -142,6 +144,25 @@ export async function guardApiRequest(
       /* Model/runtime admission is a spend boundary, so it has the same
          fail-closed posture as provider lifecycle mutations. */
       console.error(`[request-guard] agent limiter unavailable: ${String(error)}`);
+      return response(503, 'request protection unavailable', cors, { 'Retry-After': '60' });
+    }
+  }
+
+  if (runStream) {
+    try {
+      const [byIdentity, byIp] = await Promise.all([
+        opaqueKey(env, `run-stream:${identity}`).then((key) =>
+          env.RUN_STREAM_BURST.limit({ key })),
+        opaqueKey(env, `run-stream-ip:${clientIp(request)}`).then((key) =>
+          env.RUN_STREAM_BURST.limit({ key })),
+      ]);
+      if (!byIdentity.success || !byIp.success) {
+        console.warn(`[request-guard] run stream refused ray=${request.headers.get('CF-Ray') ?? 'none'}`);
+        return response(429, 'too many stream connections', cors, { 'Retry-After': '60' });
+      }
+    } catch {
+      /* A limiter outage cannot be allowed to create unbounded long-lived sockets. */
+      console.error('[request-guard] run stream limiter unavailable');
       return response(503, 'request protection unavailable', cors, { 'Retry-After': '60' });
     }
   }

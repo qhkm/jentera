@@ -5,7 +5,7 @@ import { useAsk } from '@/hooks/useAsk';
 import { LocalRepository } from '@/lib/repo/local';
 import { RepositoryProvider } from '@/lib/repo/context';
 import { SignedInProvider } from '@/lib/repo/gate';
-import type { AskAnswer, Repository } from '@/lib/repo';
+import type { AskAnswer, AskOptions, Repository } from '@/lib/repo';
 import type { Business } from '@/lib/types';
 
 const business = {
@@ -52,5 +52,38 @@ describe('useAsk durable answers', () => {
     expect(result.current!.messages.map((message) => message.text)).toEqual([
       'first', 'first answer', 'second', 'second answer',
     ]);
+  });
+
+  it('opts into durable work and projects WebSocket progress into its placeholder', async () => {
+    const repo: Repository = new LocalRepository();
+    let options: AskOptions | undefined;
+    let resolveAnswer: ((answer: AskAnswer) => void) | undefined;
+    repo.ask = (_question: string, next?: AskOptions): Promise<AskAnswer> => {
+      options = next;
+      return new Promise<AskAnswer>((resolve) => { resolveAnswer = resolve; });
+    };
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SignedInProvider value>
+        <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
+      </SignedInProvider>
+    );
+    const { result } = renderHook(
+      () => useAsk(business, { handled: 0, needs: 0 }, (key) => ({
+        'ask.working': 'Working',
+        'ask.waking': 'Waking',
+      }[key] ?? key)),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current).not.toBeNull());
+
+    act(() => result.current!.send('handle this', 'work'));
+    expect(options?.mode).toBe('work');
+    act(() => options?.onProgress?.('waking'));
+    expect(result.current!.messages[1].text).toBe('Waking');
+
+    await act(async () => {
+      resolveAnswer?.({ text: 'done', usedKeys: [], grounded: false });
+    });
+    expect(result.current!.messages[1].text).toBe('done');
   });
 });

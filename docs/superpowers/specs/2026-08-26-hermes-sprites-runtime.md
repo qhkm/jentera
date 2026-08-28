@@ -1,6 +1,6 @@
 # Hermes Runtime on Fly Sprites
 
-**Status:** durable execution built, proven in production, and switched off — Ask AISAR is inline for every business
+**Status:** ordinary Ask is inline; explicit durable Work is enabled for one production canary
 **Last verification:** 2026-08-28
 **Decision owner:** AISAR
 
@@ -28,9 +28,10 @@ Implemented in the repository:
   wake-ups without consuming the queue retry budget; successful polls do not increment
   attempts, remote identity is stored before the first poll, and terminal failure stops
   and meters an addressable Hermes run only after lease-owned exhaustion succeeds;
-- an allow-list-gated Ask AISAR producer and tenant-scoped status projection with atomic
-  HTTP idempotency, browser polling, shared grounding rules, safe failure responses, and a
-  separate fail-closed paid-run rate limit — built and proven, currently gated off;
+- an allow-list-gated durable Work producer and tenant-scoped status projection with
+  atomic HTTP idempotency, hibernating-WebSocket lifecycle progress, polling recovery,
+  shared grounding rules, safe failure responses, and separate fail-closed paid-run and
+  stream-admission rate limits;
 - contract, RLS, retry, duplicate-delivery, checkpoint, bootstrap, runner protocol,
   canary gate, and provider tests;
 - an AISAR-owned Node runner with authenticated readiness, one-task concurrency,
@@ -114,10 +115,11 @@ requests per 10 seconds per IP/colo before Worker invocation. Cloudflare Free ex
 and Verified Bot in rate-limit expressions but not Host or Method, so `/api` path scoping
 is the available zone-safe boundary and `OPTIONS` shares that outer ceiling.
 
-The separate execution allow-list is **empty**. `runtimeFor()` is the inline adapter for
-every business and for ingestion. A ready compute resource is still not authority to use
-connectors or tools: every grant has an empty operation set and the runner attests
-`toolMode: no-tools`.
+The separate execution allow-list contains only the I Run Cafe production canary. It is
+authority for the explicit Work action, not a global runtime switch: `runtimeFor()` remains
+the inline adapter for ordinary Ask and ingestion. A ready compute resource is still not
+authority to use connectors or tools: every grant has an empty operation set and the
+runner attests `toolMode: no-tools`.
 
 The allow-list held the I Run Cafe canary for part of 28 August, which is how the numbers
 below were obtained, and was emptied the same morning. Four durable Ask runs completed in
@@ -126,10 +128,10 @@ that time bought no capability the inline path lacks. The reversal cost one conf
 because execution was gated separately from provisioning, which is the property that
 separation exists to provide.
 
-A durable Ask is worth its latency only once Hermes can do something inline cannot: real
-tools, a browser, or work that genuinely outlives a request. Ask is also the wrong first
-consumer to re-enable — prefer work nobody is waiting on, and keep Telegram last, since a
-customer is waiting there and the inline path already serves it.
+The product now makes this latency boundary explicit. Ask stays fast; Work opts into the
+durable runtime and shows `queued`, `waking`, `working`, and `retrying` progress before a
+terminal state. This is lifecycle streaming, not incremental model-token output. Keep
+Telegram last, since a customer is waiting there and the inline path already serves it.
 
 Still gated and therefore intentionally unavailable to customers:
 
@@ -652,8 +654,9 @@ Completed:
   live connector path; and
 - separate capped OpenRouter key issuance, encrypted storage, response attestation,
   rotation, durable revocation retry, and deletion cleanup pass integration tests; and
-- the existing Ask AISAR UI creates and polls an idempotent, tenant-scoped durable run for
-  the canary while every tool grant remains empty.
+- the Ask AISAR UI keeps Ask inline and creates an idempotent, tenant-scoped durable run
+  only for explicit Work; a secured hibernating WebSocket carries content-free lifecycle
+  progress while every tool grant remains empty.
 
 Open:
 

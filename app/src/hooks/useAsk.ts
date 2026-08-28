@@ -18,6 +18,7 @@ import { stripEmoji } from '@/components/Icon';
 import type { Lang } from '@/lib/types';
 import { taggedAgent } from '@/hooks/useMentions';
 import type { Business } from '@/lib/types';
+import type { AskMode, AskProgress } from '@/lib/repo';
 
 export interface AskMessage {
   from: 'you' | 'ai';
@@ -83,7 +84,7 @@ export function useAsk(
   );
 
   const send = useCallback(
-    (raw: string) => {
+    (raw: string, mode: AskMode = 'ask') => {
       const question = raw.trim();
       if (!question) return;
 
@@ -99,7 +100,17 @@ export function useAsk(
           { from: 'ai', text: t('ask.working'), pendingId },
         ]);
         void repo
-          .ask(question)
+          .ask(question, {
+            mode,
+            onProgress: (progress: AskProgress) => {
+              const key = progress === 'queued' ? 'ask.queued'
+                : progress === 'waking' ? 'ask.waking'
+                  : progress === 'retrying' ? 'ask.retrying' : 'ask.working';
+              setMessages((prev) => prev.map((message) =>
+                message.pendingId === pendingId ? { ...message, text: t(key) } : message,
+              ));
+            },
+          })
           .then(
             (a) => a.text,
             (e: Error) => e.message,

@@ -180,9 +180,9 @@ This is also where the product becomes difficult to copy. Industry playbooks are
 - Extract facts into a review screen with source and confidence.
 - Persist business memory.
 - Make Ask AISAR answer from verified business context and live activity data.
-- Route the explicit production canary through a durable, tenant-scoped Hermes task while
-  preserving the same Ask AISAR UI and grounding contract; retain the inline path as the
-  immediate rollback and non-canary default.
+- Keep ordinary Ask AISAR inline and fast. Route the explicit production-canary
+  "Work on this" action through a durable, tenant-scoped Hermes task, with authenticated
+  hibernating-WebSocket lifecycle progress and bounded polling only as recovery.
 - Persist each request and proposed action as a structured work record, separate from chat text.
 
 ### Phase 2 — Prepare and Approve Work

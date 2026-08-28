@@ -48,20 +48,10 @@ SPRITES_API_ORIGIN = "https://api.sprites.dev"
 RUNTIME_PROVISIONING_ENABLED = "true"
 MODEL_TRANSPORT_READY = "true"
 RUNTIME_CANARY_BUSINESS_IDS = "d5fb6dbb-428a-4215-86c0-8713d12ed73b"
-# Which businesses route Ask AISAR into Hermes. Empty means everyone
-# falls back to InlineRuntime, which is deliberate right now.
-#
-# Hermes answers in about 90 seconds against InlineRuntime's two, and
-# today it brings nothing in exchange: the tool grant carries an empty
-# operations array and the runner refuses to boot outside no-tools, so
-# a durable Ask can do precisely what an inline Ask can, slower and for
-# money. Owner questions are answered from confirmed facts; they need
-# retrieval and one model call, not a woken Sprite.
-#
-# The path stays built, tested and provisioned. Put a business id back
-# here when Hermes can do something inline cannot - tools, a browser, or
-# work that genuinely outlives a request.
-RUNTIME_EXECUTION_BUSINESS_IDS = ""
+# Which businesses may explicitly choose "Work on this". Ordinary Ask AISAR
+# requests stay inline even for these businesses; this is authority for the
+# durable mode, not a global runtime switch.
+RUNTIME_EXECUTION_BUSINESS_IDS = "d5fb6dbb-428a-4215-86c0-8713d12ed73b"
 RUNTIME_BOOTSTRAP_ENABLED = "true"
 RUNTIME_BUNDLE_COMMIT = "c1af6c7f68719b18ff7f45dadbf19327ecd64b2f"
 AISAR_MODEL_PROVIDER = "openrouter"
@@ -115,6 +105,24 @@ namespace_id = "1004"
   [ratelimits.simple]
   limit = 10
   period = 60
+
+# WebSocket handshakes are long-lived resource admission, not ordinary reads.
+# Exact per-run and per-user concurrency caps also live inside the Durable Object.
+[[ratelimits]]
+name = "RUN_STREAM_BURST"
+namespace_id = "1005"
+
+  [ratelimits.simple]
+  limit = 12
+  period = 60
+
+[[durable_objects.bindings]]
+name = "RUN_STREAMS"
+class_name = "RunStream"
+
+[[migrations]]
+tag = "run-stream-v1"
+new_sqlite_classes = ["RunStream"]
 
 # Workers AI runs the extraction in src/ingest.ts. Chosen over an
 # external provider so the feature needs no third-party key; the model

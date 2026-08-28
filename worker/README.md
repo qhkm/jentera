@@ -23,31 +23,29 @@ must be running.
 - forced Postgres RLS and server-side repository storage;
 - versioned business facts with source, confidence, confirmation, and correction;
 - append-only run events and structured work records;
-- website ingestion plus grounded Ask AISAR through the inline runtime;
+- website ingestion and fast grounded Ask AISAR through the inline runtime, plus an
+  explicit durable "Work on this" path for the production canary;
 - encrypted connector credentials;
 - a verified Telegram webhook, real Telegram sends, permissions, approvals, and edited
   drafts; and
 - the provider-neutral runtime foundation, Fly Sprites REST provider, durable runtime
   tasks, leases, and Cloudflare Queue consumer.
 
-## What is not live yet
+## Ask versus durable work
 
-**Ask AISAR runs inline for every business.** The durable path is built, tested, and
-provisioned, and it is switched off: `RUNTIME_EXECUTION_BUSINESS_IDS` is empty.
+**Ordinary Ask AISAR remains inline for every business.** It answers a grounded question
+in about 1.5 seconds and never wakes a Sprite. The separate **Work on this** action is
+enabled only for businesses in `RUNTIME_EXECUTION_BUSINESS_IDS`, requires a ready runtime,
+and creates an idempotent durable Hermes task.
 
-It was live for the I Run Cafe canary on 28 August and measured against production before
-being turned off the same morning. Four runs completed in 106s, 100s, 93s and 91s, all
-correctly grounded. Inline answers the same questions in about 1.5s. The ninety seconds
-buys nothing today: the tool grant carries an empty `operations` array and the runner
-refuses to boot outside `no-tools`, so a durable Ask does exactly what an inline Ask
-does, slower and for money. Owner questions are answered from confirmed facts — retrieval
-and one model call — which needs no woken Sprite.
+The browser receives lifecycle progress over an authenticated, tenant-scoped hibernating
+WebSocket: `queued`, `waking`, `working`, `retrying`, then a terminal state. It makes one
+final tenant-scoped HTTP read for the result; bounded polling is recovery only when the
+WebSocket cannot be established or is interrupted. This is lifecycle streaming, not yet
+token streaming: Hermes still returns its text at completion.
 
-Turn it back on when Hermes can do something inline cannot: real tools, a browser, or
-work that genuinely outlives a request. Put a business id into
-`RUNTIME_EXECUTION_BUSINESS_IDS`; a ready runtime record is also required.
-Hermes is still read-only and boots in `no-tools` mode. Connector calls, browser actions,
-and other side effects remain unavailable until incremental event translation and
+Hermes remains read-only and boots in `no-tools` mode. Connector calls, browser actions,
+and other side effects remain unavailable until incremental Hermes event translation and
 Hermes-native approval resume are implemented and reviewed. Provisioning remains a
 separate four-gate canary decision: explicit enablement, secure model transport,
 immutable production bootstrap, and the provisioning business allow-list.
@@ -71,12 +69,13 @@ compare-and-set proves that worker still owns the lease.
 
 ## Customer interaction path
 
-Customers interact with AISAR, never with a Sprite or Hermes endpoint. When a business is
-execution-allow-listed — none is today — the Ask AISAR request derives the business from the
-authenticated session, creates an idempotent durable `run` and `runtime_task`, and sends
-only a business/task wake-up signal to the Queue. The browser polls the tenant-scoped run
-and replaces its working indicator with the projected Hermes result. Non-canary
-businesses keep the synchronous inline answer contract. Telegram and future channels
+Customers interact with AISAR, never with a Sprite or Hermes endpoint. When an
+execution-allow-listed owner explicitly chooses Work on this, the request derives the
+business from the authenticated session, creates an idempotent durable `run` and
+`runtime_task`, and sends only a business/task wake-up signal to the Queue. The browser
+subscribes to a tenant-scoped WebSocket for bounded state events and reads the projected
+Hermes result once terminal. Ordinary Ask and non-canary businesses keep the synchronous
+inline answer contract. Telegram and future channels
 will enter through the same central connector gateway and task path; they do not maintain
 a connection inside each Sprite.
 
@@ -150,7 +149,10 @@ Queues, Sprites, or model calls:
 - `RUNTIME_MUTATION_BURST`: 3 requests/minute, checked against both session-shaped identity
   and source address before provision, reconcile, upgrade, cancel, or delete; and
 - `AGENT_RUN_BURST`: 10 Ask AISAR starts/minute, checked against both keys and failed
-  closed because each accepted start can buy compute and model tokens; and
+  closed because each accepted start can buy compute and model tokens;
+- `RUN_STREAM_BURST`: 12 WebSocket handshakes/minute, checked against both keys and failed
+  closed, followed by exact limits of eight sockets per run and two per authenticated
+  user inside the Durable Object; and
 - 128 KiB declared-body and 8 KiB request-target ceilings, method restrictions, `429`
   responses with `Retry-After`, no-store error responses, and secret-free bounded logs.
 
@@ -158,6 +160,15 @@ Workers rate-limit bindings execute after a Worker invocation and are per-colo b
 brakes, not exact global quotas. Failure of the broad binding fails open so health and
 ordinary reads remain available; failure of either paid-operation binding fails closed
 before provider or model work.
+
+The run-stream Durable Object is reachable only through its Worker binding. The public
+upgrade route additionally requires the session, exact browser `Origin`, tenant ownership,
+and a Hermes run. Sockets are server-to-browser only, replay at most 64 content-free state
+events, reject client messages, and expire after 24 hours. The implementation uses
+Cloudflare's [WebSocket Hibernation API](https://developers.cloudflare.com/durable-objects/best-practices/websockets/)
+so idle connections do not keep object compute active. Rate-limit bindings are a
+[per-colo, eventually consistent brake](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/),
+so the exact per-object socket caps remain necessary.
 
 `pnpm waf:dry-run` renders the reviewed Free-plan rule. `pnpm waf:apply` installs or
 updates only its stable rule reference and refuses to overwrite another Free-plan rule.

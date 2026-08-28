@@ -24,6 +24,7 @@ import { finishRun, recordWork } from '../runs';
 import { dispatchRuntimeRun, measuredUsageOf, stopRuntimeTask } from './run-task';
 import { finalizeRuntimeUsage, RuntimeBudgetExceeded } from './usage';
 import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
+import { publishRunProgressSafely } from './progress';
 
 const MAX_TASK_ATTEMPTS = 5;
 
@@ -85,6 +86,15 @@ export async function handleRuntimeMessage(
     return { action: 'requeue', delaySeconds: 10, reason: 'business runtime is busy' };
   }
 
+  if (lease.task.kind === 'run' && lease.task.runId) {
+    await publishRunProgressSafely(
+      env,
+      message.businessId,
+      lease.task.runId,
+      lease.task.remoteRunId ? 'working' : 'waking',
+    );
+  }
+
   try {
     switch (lease.task.kind) {
       case 'provision':
@@ -132,6 +142,9 @@ export async function handleRuntimeMessage(
             await stopRuntimeTask(env, message.businessId, message.taskId, options.fetch)
               .catch(() => {});
             return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
+          }
+          if (lease.task.runId) {
+            await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'working');
           }
           return { action: 'requeue', delaySeconds: 5, reason: 'Hermes run is still active' };
         }
@@ -190,6 +203,12 @@ export async function handleRuntimeMessage(
             .catch(() => {});
           return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
         }
+        if (lease.task.runId) {
+          const progress = outcome.remoteStatus === 'cancelled' || outcome.remoteStatus === 'stopped'
+            ? 'cancelled'
+            : outcome.remoteStatus === 'completed' ? 'completed' : 'failed';
+          await publishRunProgressSafely(env, message.businessId, lease.task.runId, progress);
+        }
         return { action: 'ack', reason: 'completed' };
       }
       default:
@@ -244,11 +263,17 @@ export async function handleRuntimeMessage(
       if (!exhausted) {
         return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
       }
+      if (lease.task.kind === 'run' && lease.task.runId) {
+        await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'failed');
+      }
       return { action: 'ack', reason: 'failed' };
     }
     await withTenant(env, message.businessId, (tx) =>
       retryRuntimeTask(tx, message.businessId, message.taskId, leaseToken, reason),
     );
+    if (lease.task.kind === 'run' && lease.task.runId) {
+      await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'retrying');
+    }
     return { action: 'requeue', delaySeconds: 30, reason };
   }
 }

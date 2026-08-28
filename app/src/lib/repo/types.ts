@@ -65,6 +65,14 @@ export interface IngestResult {
   chars: number;
 }
 
+export type AskProgress = 'queued' | 'waking' | 'working' | 'retrying';
+export type AskMode = 'ask' | 'work';
+
+export interface AskOptions {
+  mode?: AskMode;
+  onProgress?: (progress: AskProgress) => void;
+}
+
 export interface WorkSummary {
   id: string;
   runId: string | null;
@@ -186,7 +194,7 @@ export interface Repository {
   runTrace(runId: string): Promise<TraceEvent[]>;
 
   /** Answer a question from confirmed facts and real work records. */
-  ask(question: string): Promise<AskAnswer>;
+  ask(question: string, options?: AskOptions): Promise<AskAnswer>;
 
   /** Accounts this business has connected. Never includes secrets. */
   connections(): Promise<Connection[]>;

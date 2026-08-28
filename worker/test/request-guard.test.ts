@@ -148,4 +148,32 @@ describe('pre-route API request guard', () => {
 
     expect((await guardApiRequest(req, env, new URL(req.url), cors))?.status).toBe(503);
   });
+
+  it('rate limits run WebSocket admission by identity and source address', async () => {
+    const keys: string[] = [];
+    const env = testEnv({
+      RUN_STREAM_BURST: {
+        limit: async ({ key }: { key: string }) => {
+          keys.push(key);
+          return { success: true };
+        },
+      },
+    });
+    const req = request('/api/runs/11111111-1111-4111-8111-111111111111/events', {
+      headers: { Cookie: `aisar_session=${'c'.repeat(64)}` },
+    });
+
+    expect(await guardApiRequest(req, env, new URL(req.url), cors)).toBeNull();
+    expect(keys).toHaveLength(2);
+    expect(keys.every((key) => /^[0-9a-f]{64}$/.test(key))).toBe(true);
+  });
+
+  it('fails closed when WebSocket admission protection is unavailable', async () => {
+    const env = testEnv({
+      RUN_STREAM_BURST: { limit: async () => { throw new Error('binding failed'); } },
+    });
+    const req = request('/api/runs/11111111-1111-4111-8111-111111111111/events');
+
+    expect((await guardApiRequest(req, env, new URL(req.url), cors))?.status).toBe(503);
+  });
 });

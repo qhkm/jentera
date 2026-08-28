@@ -20,6 +20,8 @@ import { guardApiRequest } from './request-guard';
 import { runtimeModelKeyNeedsRotation } from './runtime/openrouter-keys';
 import { publishRuntimeTask } from './runtime/consumer';
 
+export { RunStream } from './run-stream';
+
 function cors(env: Env, origin: string | null): Record<string, string> {
   const allowed = (env.ALLOWED_ORIGINS ?? '')
     .split(',')
