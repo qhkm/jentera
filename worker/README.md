@@ -23,8 +23,7 @@ must be running.
 - forced Postgres RLS and server-side repository storage;
 - versioned business facts with source, confidence, confirmation, and correction;
 - append-only run events and structured work records;
-- website ingestion plus grounded Ask AISAR through the inline runtime by default and
-  the durable Hermes runtime for the explicit production canary;
+- website ingestion plus grounded Ask AISAR through the inline runtime;
 - encrypted connector credentials;
 - a verified Telegram webhook, real Telegram sends, permissions, approvals, and edited
   drafts; and
@@ -33,9 +32,20 @@ must be running.
 
 ## What is not live yet
 
-The allow-listed I Run Cafe business can ask AISAR through its ready production Sprite.
-All other businesses remain on `InlineRuntime`; expanding durable execution requires an
-explicit `RUNTIME_EXECUTION_BUSINESS_IDS` rollout change and a ready runtime record.
+**Ask AISAR runs inline for every business.** The durable path is built, tested, and
+provisioned, and it is switched off: `RUNTIME_EXECUTION_BUSINESS_IDS` is empty.
+
+It was live for the I Run Cafe canary on 28 August and measured against production before
+being turned off the same morning. Four runs completed in 106s, 100s, 93s and 91s, all
+correctly grounded. Inline answers the same questions in about 1.5s. The ninety seconds
+buys nothing today: the tool grant carries an empty `operations` array and the runner
+refuses to boot outside `no-tools`, so a durable Ask does exactly what an inline Ask
+does, slower and for money. Owner questions are answered from confirmed facts — retrieval
+and one model call — which needs no woken Sprite.
+
+Turn it back on when Hermes can do something inline cannot: real tools, a browser, or
+work that genuinely outlives a request. Put a business id into
+`RUNTIME_EXECUTION_BUSINESS_IDS`; a ready runtime record is also required.
 Hermes is still read-only and boots in `no-tools` mode. Connector calls, browser actions,
 and other side effects remain unavailable until incremental event translation and
 Hermes-native approval resume are implemented and reviewed. Provisioning remains a
@@ -61,8 +71,8 @@ compare-and-set proves that worker still owns the lease.
 
 ## Customer interaction path
 
-Customers interact with AISAR, never with a Sprite or Hermes endpoint. For an execution-
-allow-listed business, the existing Ask AISAR request derives the business from the
+Customers interact with AISAR, never with a Sprite or Hermes endpoint. When a business is
+execution-allow-listed — none is today — the Ask AISAR request derives the business from the
 authenticated session, creates an idempotent durable `run` and `runtime_task`, and sends
 only a business/task wake-up signal to the Queue. The browser polls the tenant-scoped run
 and replaces its working indicator with the projected Hermes result. Non-canary

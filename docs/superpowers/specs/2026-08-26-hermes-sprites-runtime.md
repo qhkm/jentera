@@ -1,6 +1,6 @@
 # Hermes Runtime on Fly Sprites
 
-**Status:** one allow-listed production canary serves Ask AISAR through durable Hermes execution
+**Status:** durable execution built, proven in production, and switched off — Ask AISAR is inline for every business
 **Last verification:** 2026-08-28
 **Decision owner:** AISAR
 
@@ -28,9 +28,9 @@ Implemented in the repository:
   wake-ups without consuming the queue retry budget; successful polls do not increment
   attempts, remote identity is stored before the first poll, and terminal failure stops
   and meters an addressable Hermes run only after lease-owned exhaustion succeeds;
-- a canary-only Ask AISAR producer and tenant-scoped status projection with atomic HTTP
-  idempotency, browser polling, shared grounding rules, safe failure responses, and a
-  separate fail-closed paid-run rate limit;
+- an allow-list-gated Ask AISAR producer and tenant-scoped status projection with atomic
+  HTTP idempotency, browser polling, shared grounding rules, safe failure responses, and a
+  separate fail-closed paid-run rate limit — built and proven, currently gated off;
 - contract, RLS, retry, duplicate-delivery, checkpoint, bootstrap, runner protocol,
   canary gate, and provider tests;
 - an AISAR-owned Node runner with authenticated readiness, one-task concurrency,
@@ -97,8 +97,9 @@ Production migrations `014_runtime_task_execution.sql` and `015_runtime_safety.s
 applied transactionally and verified through both `neondb_owner` and the restricted
 `aisar_app` role. A rollback-only probe confirmed forced RLS returns zero unscoped rows and
 the exact tenant row when scoped. Worker version
-`1fd1d9fe-3054-441a-8856-c2430b4ddb8b` is live with provisioning and durable Ask execution
-limited to one business canary. Pages deployment `038b5de8` serves bundle
+`1fd1d9fe-3054-441a-8856-c2430b4ddb8b` carried provisioning plus durable Ask execution for
+one business canary; version `74ae271a` superseded it the same morning with the execution
+allow-list emptied, so Ask is inline again while provisioning stays live. Pages deployment `038b5de8` serves bundle
 `index-C-cDCbAN.js` at `jentera.ai`. Its Sprites credential is organization-scoped and
 dedicated. The canary now has a
 separate OpenRouter inference key with a $5 monthly hard limit and 90-day expiry. Its old
@@ -113,11 +114,22 @@ requests per 10 seconds per IP/colo before Worker invocation. Cloudflare Free ex
 and Verified Bot in rate-limit expressions but not Host or Method, so `/api` path scoping
 is the available zone-safe boundary and `OPTIONS` shares that outer ceiling.
 
-The separate execution allow-list now routes only the I Run Cafe canary's Ask AISAR work
-through durable Hermes tasks. `runtimeFor()` remains the inline adapter for ingestion and
-for every non-canary business. A ready compute resource is still not authority to use
+The separate execution allow-list is **empty**. `runtimeFor()` is the inline adapter for
+every business and for ingestion. A ready compute resource is still not authority to use
 connectors or tools: every grant has an empty operation set and the runner attests
 `toolMode: no-tools`.
+
+The allow-list held the I Run Cafe canary for part of 28 August, which is how the numbers
+below were obtained, and was emptied the same morning. Four durable Ask runs completed in
+106s, 100s, 93s and 91s against roughly 1.5s inline — and with an empty operation set,
+that time bought no capability the inline path lacks. The reversal cost one config line
+because execution was gated separately from provisioning, which is the property that
+separation exists to provide.
+
+A durable Ask is worth its latency only once Hermes can do something inline cannot: real
+tools, a browser, or work that genuinely outlives a request. Ask is also the wrong first
+consumer to re-enable — prefer work nobody is waiting on, and keep Telegram last, since a
+customer is waiting there and the inline path already serves it.
 
 Still gated and therefore intentionally unavailable to customers:
 
@@ -125,11 +137,13 @@ Still gated and therefore intentionally unavailable to customers:
   non-empty grant vocabulary is introduced;
 - non-empty tool grants or wider business rollout.
 
-Creating provider compute is not readiness. The canary's `business.runtime` changed from
-`aisar-native` to `hermes-sprite` only after runner installation, authenticated readiness,
-browser smoke, and a baseline checkpoint passed. Execution remains a separate code gate:
-removing the canary business from `RUNTIME_EXECUTION_BUSINESS_IDS` immediately returns its
-Ask AISAR traffic to the inline path without changing or deleting its Sprite.
+Creating provider compute is not readiness, and readiness is not use. The canary's
+`business.runtime` changed from `aisar-native` to `hermes-sprite` only after runner
+installation, authenticated readiness, browser smoke, and a baseline checkpoint passed —
+and its Ask traffic still runs inline. Execution is a separate code gate: emptying
+`RUNTIME_EXECUTION_BUSINESS_IDS` returned that traffic to the inline path immediately,
+without changing or deleting the Sprite. That was exercised on 28 August, not merely
+designed.
 
 ## Decision
 
