@@ -103,8 +103,8 @@ one business canary; version `74ae271a` superseded it the same morning with the 
 allow-list emptied, so Ask returned inline while provisioning stayed live. Worker version
 `b2edd791-00d8-44e6-a890-b1f943b12ace` introduced the split and the `RunStream` Durable
 Object migration; current version `8a20dca9-0069-46af-a578-f46230d33fe5` also collapses
-duplicate progress states before broadcast. Pages deployment `546472f6` serves bundle
-`index-DQuCW9sD.js` at `jentera.ai`.
+duplicate progress states before broadcast. Pages deployment `958d6182` serves bundle
+`index-De-GFrgZ.js` at `jentera.ai`.
 Its Sprites credential is organization-scoped and dedicated. The canary now has a
 separate OpenRouter inference key with a $5 monthly hard limit and 90-day expiry. Its old
 $10 weekly shared bridge key was revoked and the shared Worker secret and allow-list were
