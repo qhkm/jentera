@@ -22,6 +22,7 @@ import {
 } from '../connections';
 import {
   clearWebhook,
+  hermesDraftId,
   parseUpdate,
   sendTyping,
   sendMessageDraft,
@@ -474,17 +475,13 @@ async function handleDurableIncoming(
       await sendMessageDraft(
         token,
         incoming.chatId,
-        liveDraftId(incoming.messageId as number),
+        hermesDraftId(created.id),
         '',
       ).catch(() => sendTyping(token, incoming.chatId).catch(() => {}));
     } else {
       await sendTyping(token, incoming.chatId).catch(() => {});
     }
   }
-}
-
-function liveDraftId(messageId: number): number {
-  return messageId === 0 ? 1 : messageId;
 }
 
 function boundedRuntimeInput(input: string, question: string): string {

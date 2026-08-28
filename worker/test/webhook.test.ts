@@ -16,7 +16,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { asApp, asOwner, asTenant, truncateAll } from './harness';
 import { saveConnection, verifyWebhook, webhookSecret } from '../src/connections';
-import { parseUpdate, withTypingIndicator } from '../src/connectors/telegram';
+import {
+  hermesDraftId,
+  parseUpdate,
+  sendMessageDraft,
+  TelegramDraftStream,
+  withTypingIndicator,
+} from '../src/connectors/telegram';
 import type { Env } from '../src/env';
 
 const env = { CREDENTIAL_KEY: btoa(String.fromCharCode(...new Uint8Array(32).fill(3))) } as Env;
@@ -241,5 +247,53 @@ describe('automatic reply typing', () => {
       async () => 'answer',
       { refreshMs: 10, maxMs: 20 },
     )).resolves.toBe('answer');
+  });
+});
+
+describe('Hermes-style Telegram drafts', () => {
+  it('derives a fresh Telegram-safe 49-bit id from each durable task', () => {
+    const first = hermesDraftId('11111111-1111-4111-8111-111111111111');
+    const second = hermesDraftId('22222222-2222-4222-8222-222222222222');
+    expect(first).not.toBe(second);
+    expect(Number.isSafeInteger(first)).toBe(true);
+    expect(first).toBeGreaterThan(0);
+    expect(first).toBeLessThan(2 ** 49);
+  });
+
+  it('uses the native rich Thinking placeholder with a plain-draft fallback', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false }), { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, result: true })));
+    vi.stubGlobal('fetch', fetch);
+
+    await sendMessageDraft('123456789:AAtoken', 42, 7, '');
+
+    expect(String(fetch.mock.calls[0][0])).toContain('/sendRichMessageDraft');
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({
+      chat_id: 42,
+      draft_id: 7,
+      rich_message: { html: '<tg-thinking>Thinking...</tg-thinking>' },
+    });
+    expect(String(fetch.mock.calls[1][0])).toContain('/sendMessageDraft');
+  });
+
+  it('publishes immediately, then at Hermes\'s 24-character buffer threshold', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: true })));
+    vi.stubGlobal('fetch', fetch);
+    const stream = new TelegramDraftStream('123456789:AAtoken', 42, 9);
+
+    await stream.push('A');
+    await stream.push('short');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await stream.push('x'.repeat(19));
+    expect(fetch).toHaveBeenCalledTimes(2);
+
+    const second = JSON.parse(String(fetch.mock.calls[1][1]?.body)) as {
+      rich_message: { markdown: string };
+    };
+    expect(second.rich_message.markdown).toBe(`Ashort${'x'.repeat(19)}`);
   });
 });

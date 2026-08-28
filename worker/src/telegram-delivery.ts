@@ -1,7 +1,7 @@
 import type { Env } from './env';
 import { withTenant } from './db';
 import { useCredential } from './connections';
-import { sendMessage } from './connectors/telegram';
+import { sendHermesMessage } from './connectors/telegram';
 import { policyFor, type Policy } from './policy';
 import { append, finishRun, recordWork, updateWorkForRun } from './runs';
 
@@ -113,7 +113,7 @@ export async function sendAndRecord(
 ): Promise<void> {
   const token = existingToken ??
     await withTenant(env, businessId, (tx) => useCredential(env, tx, connectionId));
-  const sent = await sendMessage(token, incoming.chatId, text);
+  const sent = await sendHermesMessage(token, incoming.chatId, text);
 
   await withTenant(env, businessId, async (tx) => {
     await append(tx, businessId, runId, 'action.executed', {

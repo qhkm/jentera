@@ -194,10 +194,13 @@ This is also where the product becomes difficult to copy. Industry playbooks are
   durable Hermes task plane. Deduplicate on the Telegram connection/chat/message identity,
   re-check send policy at completion, and retain only structured state plus the final sent
   reply—not Hermes reasoning, token deltas, or raw transcripts.
-- For automatic private Telegram replies, relay allow-listed `message.delta` output as an
-  ephemeral live draft. The per-business runner is Hermes's sole SSE subscriber and drops
-  reasoning, tools, approvals, unknown events, and terminal transcripts before the control
-  plane; neither runner disk nor Postgres stores token chunks.
+- For automatic private Telegram replies, relay allow-listed `message.delta` output using
+  Hermes's native presentation contract: a rich Thinking placeholder, a fresh 49-bit
+  per-turn draft identity, cumulative rich Markdown updates at the 800 ms/24-character
+  threshold, and a persistent rich final message. The per-business runner is Hermes's sole
+  SSE subscriber and drops reasoning, tools, approvals, unknown events, terminal
+  transcripts, and inline think blocks before the control plane; neither runner disk nor
+  Postgres stores token chunks.
 - Persist each request and proposed action as a structured work record, separate from chat text.
 
 ### Phase 2 — Prepare and Approve Work

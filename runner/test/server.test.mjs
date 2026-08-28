@@ -40,6 +40,9 @@ beforeEach(async () => {
         { event: 'reasoning.available', text: 'private chain of thought' },
         { event: 'tool.started', preview: 'secret tool input' },
         { event: 'message.delta', delta: ' from Hermes' },
+        { event: 'message.delta', delta: '\n<thi' },
+        { event: 'message.delta', delta: 'nk>inline private reasoning' },
+        { event: 'message.delta', delta: '</think>\nSafe answer' },
         { event: 'run.completed', output: 'terminal transcript must not cross' },
       ]) res.write(`data: ${JSON.stringify(event)}\n\n`);
       return res.end();
@@ -168,11 +171,18 @@ test('streams only assistant deltas and never writes them to runner state', asyn
   const stream = await response.text();
   assert.match(stream, /"delta":"Hello"/);
   assert.match(stream, /"delta":" from Hermes"/);
-  assert.doesNotMatch(stream, /chain of thought|secret tool input|terminal transcript/);
+  assert.match(stream, /Safe answer/);
+  assert.doesNotMatch(
+    stream,
+    /chain of thought|secret tool input|terminal transcript|inline private reasoning|<think>/,
+  );
   assert.match(stream, /"type":"done"/);
 
   const state = await readFile(join(directory, 'state.json'), 'utf8');
-  assert.doesNotMatch(state, /Hello|Hermes|chain of thought|terminal transcript/);
+  assert.doesNotMatch(
+    state,
+    /Hello|Hermes|chain of thought|terminal transcript|inline private reasoning|Safe answer/,
+  );
 });
 
 const call = (path, init = {}) => fetch(`${runnerOrigin}${path}`, {

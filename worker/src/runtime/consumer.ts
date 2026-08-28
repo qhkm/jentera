@@ -29,7 +29,7 @@ import { publishRunProgressSafely } from './progress';
 import { deliverTelegramDraft } from '../telegram-delivery';
 import { policyFor } from '../policy';
 import { useCredential } from '../connections';
-import { sendTyping, TelegramDraftStream } from '../connectors/telegram';
+import { hermesDraftId, sendTyping, TelegramDraftStream } from '../connectors/telegram';
 
 const MAX_TASK_ATTEMPTS = 5;
 
@@ -158,7 +158,6 @@ export async function handleRuntimeMessage(
               }
             : undefined,
         });
-        await draftStream?.flush();
         if (outcome.state === 'pending') {
           const deferred = await withTenant(env, message.businessId, async (tx) => {
             return deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
@@ -361,7 +360,7 @@ async function telegramDraftStream(
     return useCredential(env, tx, telegram.connectionId);
   });
   return token
-    ? new TelegramDraftStream(token, telegram.chatId, liveDraftId(telegram.messageId))
+    ? new TelegramDraftStream(token, telegram.chatId, hermesDraftId(task.id))
     : null;
 }
 
@@ -387,20 +386,28 @@ function telegramHint(value: unknown): {
   };
 }
 
-function liveDraftId(messageId: number): number {
-  return messageId === 0 ? 1 : messageId;
-}
-
 function runtimeText(result: unknown): string {
-  if (typeof result === 'string' && result.trim()) return result.trim().slice(0, 4_000);
+  if (typeof result === 'string' && result.trim()) {
+    return stripHermesThinking(result).trim().slice(0, 4_000);
+  }
   if (result && typeof result === 'object') {
     const body = result as Record<string, unknown>;
     for (const key of ['text', 'output', 'response']) {
       const value = body[key];
-      if (typeof value === 'string' && value.trim()) return value.trim().slice(0, 4_000);
+      if (typeof value === 'string' && value.trim()) {
+        return stripHermesThinking(value).trim().slice(0, 4_000);
+      }
     }
   }
   throw new Error('Hermes returned no Telegram reply');
+}
+
+function stripHermesThinking(text: string): string {
+  const names = '(?:reasoning_scratchpad|think|reasoning|thinking|thought)';
+  return text
+    .replace(new RegExp(`<${names}>[\\s\\S]*?<\\/${names}>\\s*`, 'gi'), '')
+    .replace(new RegExp(`(?:^|\\n)[ \\t]*<${names}>[\\s\\S]*$`, 'gi'), '')
+    .replace(new RegExp(`<\\/${names}>\\s*`, 'gi'), '');
 }
 
 function uuid(value: string): boolean {

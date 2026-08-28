@@ -110,6 +110,34 @@ export async function sendMessage(
   return { messageId: body.result.message_id };
 }
 
+/** Hermes final replies use Telegram's native rich-message lane. Rich Markdown
+    accepts the model's GitHub-flavoured Markdown without the destructive
+    escaping required by MarkdownV2. A bot/API combination that cannot render
+    it gets the ordinary text message instead. */
+export async function sendHermesMessage(
+  token: string,
+  chatId: number | string,
+  text: string,
+): Promise<{ messageId: number }> {
+  const res = await fetch(`${API}/bot${token}/sendRichMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      rich_message: { markdown: text },
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const body = (await res.json().catch(() => null)) as {
+    ok?: boolean;
+    result?: { message_id?: number };
+    description?: string;
+  } | null;
+  if (body?.ok && body.result?.message_id) return { messageId: body.result.message_id };
+  if (res.status === 400 || res.status === 404) return sendMessage(token, chatId, text);
+  throw new Error(body?.description ?? 'Telegram would not deliver that message');
+}
+
 /** Tell Telegram that the bot is composing a reply. This is deliberately a
     separate best-effort signal: failure must never suppress the real answer. */
 export async function sendTyping(token: string, chatId: number | string): Promise<void> {
@@ -132,14 +160,40 @@ export async function sendMessageDraft(
   text: string,
 ): Promise<void> {
   if (!Number.isSafeInteger(draftId) || draftId === 0) throw new Error('draft id is invalid');
-  const res = await fetch(`${API}/bot${token}/sendMessageDraft`, {
+  const rich = text
+    ? { markdown: balanceStreamingMarkdown(text) }
+    : { html: '<tg-thinking>Thinking...</tg-thinking>' };
+  const richRes = await fetch(`${API}/bot${token}/sendRichMessageDraft`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, draft_id: draftId, rich_message: rich }),
+    signal: AbortSignal.timeout(5_000),
+  });
+  const richBody = (await richRes.json().catch(() => null)) as { ok?: boolean } | null;
+  if (richBody?.ok) return;
+  if (richRes.status !== 400 && richRes.status !== 404) {
+    throw new Error('Telegram refused the live draft');
+  }
+
+  const plainRes = await fetch(`${API}/bot${token}/sendMessageDraft`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: chatId, draft_id: draftId, text }),
     signal: AbortSignal.timeout(5_000),
   });
-  const body = (await res.json().catch(() => null)) as { ok?: boolean } | null;
-  if (!body?.ok) throw new Error('Telegram refused the live draft');
+  const plainBody = (await plainRes.json().catch(() => null)) as { ok?: boolean } | null;
+  if (!plainBody?.ok) throw new Error('Telegram refused the live draft');
+}
+
+/** A UUID-backed 49-bit identity mirrors Hermes's collision-resistant draft
+    ids while remaining exactly representable by JavaScript and Telegram. */
+export function hermesDraftId(taskId: string): number {
+  // The UUID tail contains only random bits; the front contains fixed version
+  // bits, which would reduce the collision resistance Hermes relies on.
+  const hex = taskId.replaceAll('-', '').slice(-13);
+  if (!/^[0-9a-f]{13}$/i.test(hex)) throw new Error('runtime task id is invalid');
+  const id = Number(BigInt(`0x${hex}`) & ((1n << 49n) - 1n));
+  return id || 1;
 }
 
 /** Coalesce model tokens into Telegram-safe cumulative drafts. It stores text
@@ -160,7 +214,10 @@ export class TelegramDraftStream {
   async push(delta: string): Promise<void> {
     if (!this.available || !delta) return;
     this.text = `${this.text}${delta}`.slice(0, 4_000);
-    if (this.text === this.sent || Date.now() - this.lastSentAt < 900) return;
+    if (this.text === this.sent) return;
+    const elapsed = Date.now() - this.lastSentAt;
+    const buffered = this.text.length - this.sent.length;
+    if (this.lastSentAt !== 0 && elapsed < 800 && buffered < 24) return;
     await this.publish();
   }
 
@@ -185,6 +242,20 @@ export class TelegramDraftStream {
       this.available = false;
     }
   }
+}
+
+/** Hermes balances incomplete code spans in Telegram previews so a partial
+    model chunk does not make the rest of the draft render as code. */
+function balanceStreamingMarkdown(text: string): string {
+  let balanced = text;
+  if ((balanced.match(/```/g)?.length ?? 0) % 2 === 1) {
+    balanced = `${balanced.replace(/\s+$/, '')}\n\`\`\``;
+  }
+  const withoutFences = balanced
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/```[^`]*$/g, '');
+  if ((withoutFences.match(/`/g)?.length ?? 0) % 2 === 1) balanced = `${balanced}\``;
+  return balanced;
 }
 
 /**

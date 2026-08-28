@@ -22,6 +22,7 @@ import type { Env } from '../src/env';
 import { markRuntimeReady } from '../src/agent-runtime';
 import { ensureProviderRuntime } from '../src/runtime/provision';
 import { handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
+import { hermesDraftId } from '../src/connectors/telegram';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
@@ -49,12 +50,32 @@ function telegramAccepts() {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init: RequestInit) => {
+      if (String(url).includes('sendRichMessageDraft')) {
+        const body = JSON.parse(String(init.body)) as {
+          chat_id: unknown;
+          draft_id: unknown;
+          rich_message?: { markdown?: unknown; html?: unknown };
+        };
+        drafts.push({
+          chatId: body.chat_id,
+          draftId: body.draft_id,
+          text: body.rich_message?.markdown ?? '',
+        });
+        return new Response(JSON.stringify({ ok: true, result: true }));
+      }
       if (String(url).includes('sendMessageDraft')) {
         const body = JSON.parse(String(init.body)) as {
           chat_id: unknown; draft_id: unknown; text: unknown;
         };
         drafts.push({ chatId: body.chat_id, draftId: body.draft_id, text: body.text });
         return new Response(JSON.stringify({ ok: true, result: true }));
+      }
+      if (String(url).includes('sendRichMessage')) {
+        const body = JSON.parse(String(init.body)) as {
+          chat_id: unknown; rich_message?: { markdown?: unknown };
+        };
+        sent.push({ chatId: body.chat_id, text: body.rich_message?.markdown });
+        return new Response(JSON.stringify({ ok: true, result: { message_id: 99 } }));
       }
       if (String(url).includes('sendMessage')) {
         const body = JSON.parse(String(init.body)) as { chat_id: unknown; text: unknown };
@@ -244,12 +265,16 @@ describe('durable Hermes Telegram replies', () => {
   it('deduplicates Telegram retries before they can buy a second Hermes run', async () => {
     await setPolicy('automatic');
     const provider = new LocalRuntimeProvider();
-    const queued: unknown[] = [];
+    const queued: { version: 1; businessId: string; taskId: string }[] = [];
     const durableEnv = testEnv({
       RUNTIME_RELEASE: '2026.08.28-4',
       RUNTIME_EXECUTION_BUSINESS_IDS: A,
       AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
-      RUNTIME_QUEUE: { send: async (message: unknown) => { queued.push(message); } },
+      RUNTIME_QUEUE: {
+        send: async (message: { version: 1; businessId: string; taskId: string }) => {
+          queued.push(message);
+        },
+      },
     });
     await ensureProviderRuntime(durableEnv, A, {
       provider,
@@ -277,7 +302,11 @@ describe('durable Hermes Telegram replies', () => {
     });
     expect(queued).toHaveLength(2);
     expect(sent).toHaveLength(0);
-    expect(drafts).toContainEqual({ chatId: 42, draftId: 501, text: '' });
+    expect(drafts).toContainEqual({
+      chatId: 42,
+      draftId: hermesDraftId(queued[0].taskId),
+      text: '',
+    });
   });
 
   it('delivers the final Hermes answer and does not retain it on the runtime task', async () => {
@@ -330,7 +359,7 @@ describe('durable Hermes Telegram replies', () => {
         return runnerResponse({
           ok: true,
           status: 'completed',
-          output: 'Yes, we are open on Sunday.',
+          output: '<think>private final reasoning</think>Yes, we are open on Sunday.',
           usage: { input_tokens: 120, output_tokens: 9 },
         });
       }
@@ -340,13 +369,15 @@ describe('durable Hermes Telegram replies', () => {
       .resolves.toEqual({ action: 'ack', reason: 'completed' });
 
     expect(sent).toContainEqual({ chatId: 42, text: 'Yes, we are open on Sunday.' });
-    expect(drafts).toContainEqual({ chatId: 42, draftId: 501, text: '' });
+    const draftId = hermesDraftId(queued[0].taskId);
+    expect(drafts).toContainEqual({ chatId: 42, draftId, text: '' });
     expect(drafts).toContainEqual({
       chatId: 42,
-      draftId: 501,
-      text: 'Yes, we are open on Sunday.',
+      draftId,
+      text: 'Yes, ',
     });
     expect(JSON.stringify(drafts)).not.toContain('never show this');
+    expect(JSON.stringify(sent)).not.toContain('private final reasoning');
     const [state] = await asOwner((sql) => sql<{
       task_result: unknown; task_payload: unknown; work_outcome: string; run_status: string;
     }[]>`

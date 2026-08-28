@@ -412,6 +412,7 @@ class SafeDeltaStreams {
       bytes: 0,
       history: [],
       subscribers: new Set(),
+      scrubber: new StreamingThinkScrubber(),
       done: false,
     };
     this.streams.set(taskId, stream);
@@ -484,8 +485,14 @@ class SafeDeltaStreams {
     if (event?.event !== 'message.delta' || typeof event.delta !== 'string' ||
         event.delta.length === 0 || stream.bytes >= STREAM_TEXT_LIMIT ||
         stream.history.length >= STREAM_EVENT_LIMIT) return;
-    const remaining = STREAM_TEXT_LIMIT - stream.bytes;
-    const delta = truncateUtf8(event.delta, remaining);
+    const bounded = truncateUtf8(event.delta, STREAM_TEXT_LIMIT - stream.bytes);
+    this.emitDelta(stream, stream.scrubber.push(bounded));
+  }
+
+  emitDelta(stream, value) {
+    if (!value || stream.bytes >= STREAM_TEXT_LIMIT ||
+        stream.history.length >= STREAM_EVENT_LIMIT) return;
+    const delta = truncateUtf8(value, STREAM_TEXT_LIMIT - stream.bytes);
     if (!delta) return;
     stream.bytes += Buffer.byteLength(delta);
     const safe = { type: 'delta', seq: stream.nextSeq++, delta };
@@ -495,6 +502,7 @@ class SafeDeltaStreams {
 
   finish(stream) {
     if (stream.done) return;
+    this.emitDelta(stream, stream.scrubber.finish());
     stream.done = true;
     for (const subscriber of stream.subscribers) {
       writeSse(subscriber, { type: 'done' });
@@ -504,6 +512,128 @@ class SafeDeltaStreams {
     const cleanup = setTimeout(() => this.streams.delete(stream.taskId), STREAM_TTL_MS);
     cleanup.unref?.();
   }
+}
+
+/** Streaming equivalent of Hermes's own think-block filter. It holds partial
+ * tags across model chunks and never lets inline reasoning cross the runner's
+ * trust boundary, even when Hermes labels it as a message delta. */
+class StreamingThinkScrubber {
+  static OPEN = [
+    '<reasoning_scratchpad>', '<think>', '<reasoning>',
+    '<thinking>', '<thought>',
+  ];
+
+  static CLOSE = [
+    '</reasoning_scratchpad>', '</think>', '</reasoning>',
+    '</thinking>', '</thought>',
+  ];
+
+  constructor() {
+    this.buffer = '';
+    this.inThinkBlock = false;
+    this.visible = '';
+  }
+
+  push(text) {
+    let input = this.buffer + text;
+    this.buffer = '';
+    let output = '';
+
+    while (input) {
+      const lower = input.toLowerCase();
+      if (this.inThinkBlock) {
+        const close = earliestTag(lower, StreamingThinkScrubber.CLOSE);
+        if (close) {
+          this.inThinkBlock = false;
+          input = input.slice(close.index + close.length);
+          continue;
+        }
+        const max = Math.max(...StreamingThinkScrubber.CLOSE.map((tag) => tag.length));
+        this.buffer = input.slice(-max);
+        return output;
+      }
+
+      const open = this.earliestOpening(input, lower);
+      if (open) {
+        output += this.append(input.slice(0, open.index));
+        this.inThinkBlock = true;
+        input = input.slice(open.index + open.length);
+        continue;
+      }
+
+      const held = longestTagPrefix(lower, StreamingThinkScrubber.OPEN);
+      const safe = held ? input.slice(0, -held) : input;
+      if (held) this.buffer = input.slice(-held);
+      output += this.append(stripOrphanCloseTags(safe));
+      return output;
+    }
+    return output;
+  }
+
+  finish() {
+    if (this.inThinkBlock) return '';
+    const output = this.append(stripOrphanCloseTags(this.buffer));
+    this.buffer = '';
+    return output;
+  }
+
+  append(text) {
+    this.visible += text;
+    return text;
+  }
+
+  earliestOpening(input, lower) {
+    let best = null;
+    for (const tag of StreamingThinkScrubber.OPEN) {
+      let from = 0;
+      while (from < lower.length) {
+        const index = lower.indexOf(tag, from);
+        if (index === -1) break;
+        const preceding = input.slice(0, index);
+        const lastNewline = preceding.lastIndexOf('\n');
+        const boundary = index === 0
+          ? this.visible.length === 0 || this.visible.endsWith('\n')
+          : lastNewline === -1
+            ? (this.visible.length === 0 || this.visible.endsWith('\n')) && preceding.trim() === ''
+            : preceding.slice(lastNewline + 1).trim() === '';
+        if (boundary && (!best || index < best.index)) {
+          best = { index, length: tag.length };
+          break;
+        }
+        from = index + 1;
+      }
+    }
+    return best;
+  }
+}
+
+function earliestTag(text, tags) {
+  let best = null;
+  for (const tag of tags) {
+    const index = text.indexOf(tag);
+    if (index !== -1 && (!best || index < best.index)) {
+      best = { index, length: tag.length };
+    }
+  }
+  return best;
+}
+
+function longestTagPrefix(text, tags) {
+  let held = 0;
+  for (const tag of tags) {
+    for (let length = 1; length < tag.length; length += 1) {
+      if (text.endsWith(tag.slice(0, length))) held = Math.max(held, length);
+    }
+  }
+  return held;
+}
+
+function stripOrphanCloseTags(text) {
+  if (!text.includes('</')) return text;
+  return text.replace(
+    /<\/(?:reasoning_scratchpad|think|reasoning|thinking|thought)>[ \t\r\n]*/gi,
+    '',
+  );
 }
 
 function writeSse(res, event) {

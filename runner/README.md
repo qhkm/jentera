@@ -31,8 +31,10 @@ Verify locally with `npm test`. No package installation is required.
 
 The runner is Hermes's sole run-event subscriber and exposes only bounded
 `message.delta` text from process memory. It discards reasoning, tool, approval, unknown,
-and terminal-transcript events before they cross the runtime boundary, and writes none of
-the stream to its state file. It does not yet proxy Hermes-native approvals. The bootstrap
+and terminal-transcript events before they cross the runtime boundary. A streaming
+think-tag scrubber also removes inline reasoning split across arbitrary model chunks,
+matching Hermes's native gateway filter. None of the stream is written to the state file.
+It does not yet proxy Hermes-native approvals. The bootstrap
 configures `platform_toolsets.api_server` to an explicit empty list,
 verifies the pinned Hermes resolver returns no tools, and makes `toolMode: no-tools` part
 of authenticated readiness. The control plane rejects a runtime that does not attest

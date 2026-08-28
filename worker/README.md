@@ -186,13 +186,20 @@ so the exact per-object socket caps remain necessary.
 
 Automatic Telegram replies show activity immediately. Inline replies use
 `sendChatAction(typing)` every four seconds with a 30-second cap; durable Hermes replies
-refresh typing on each queue poll for group chats. In private chats, automatic durable replies use Telegram's
-ephemeral `sendMessageDraft` with one stable draft id, coalesced to at most roughly one
-update per second, followed by one normal final message. Approval-gated replies never
-stream because no immediate customer reply has been authorized. Hermes deltas remain in
-bounded process memory only: after delivery the task payload is scrubbed and its result
-contains delivery metadata, while the final customer-visible reply is retained once in
-the structured work audit. Reasoning and raw tool chatter never cross the runner boundary.
+refresh typing on each queue poll for group chats. In private chats they mirror Hermes's
+native Telegram presentation: an empty rich `Thinking…` draft, then cumulative rich
+Markdown frames sent immediately and thereafter at its 800 ms or 24-new-character
+threshold. Each run derives a fresh random 49-bit draft id from its durable task id, and
+the completed response replaces the ephemeral preview with one persistent rich message.
+Explicit Bot API rejection falls back to the ordinary draft/text methods. Approval-gated
+replies never stream because no immediate customer reply has been authorized.
+
+Hermes deltas remain in bounded process memory only: after delivery the task payload is
+scrubbed and its result contains delivery metadata, while the final customer-visible
+reply is retained once in the structured work audit. The runner accepts only
+`message.delta` events and also applies Hermes's streaming think-tag scrubber across
+chunk boundaries; reasoning, raw tool chatter, and terminal transcripts therefore never
+cross the runtime boundary.
 
 Production verification on 2026-08-28 routed Telegram run
 `283e203c-f379-4e0c-8bc5-9c8d87557e78` through `hermes-sprite`. Telegram accepted one
