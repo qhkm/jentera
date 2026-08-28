@@ -66,6 +66,7 @@ beforeEach(async () => {
     hermesOrigin,
     release: '2026.08.27-1',
     toolMode: 'full-tools',
+    webSearchBackend: 'ddgs',
     stateFile: join(directory, 'state.json'),
   });
   runnerOrigin = await listen(runnerServer);
@@ -85,6 +86,7 @@ test('liveness reveals no credential and requires no runner key', async () => {
     service: 'aisar-agent-runner',
     release: '2026.08.27-1',
     toolMode: 'full-tools',
+    webSearchBackend: 'ddgs',
   });
 });
 
@@ -94,6 +96,7 @@ test('detailed readiness requires the per-runtime key', async () => {
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.hermes.status, 'ok');
+  assert.equal(body.webSearchBackend, 'ddgs');
   assert.equal(body.edgeAuthorizationForwarded, false);
   assert.equal(body.region, null);
 
@@ -119,7 +122,7 @@ test('starts one Hermes run for a valid leased Jentera task', async () => {
     session_id: 'business-thread',
     instructions: 'Propose actions; do not send them directly.',
     model_options: {
-      reasoning: { enabled: true, effort: 'low' },
+      reasoning: { enabled: true, effort: 'medium' },
     },
   });
 });

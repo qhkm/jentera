@@ -48,12 +48,21 @@ def main() -> None:
     )
     config["model"] = model
 
-    # OpenRouter otherwise optimizes primarily for price. Internal chat is
-    # latency-sensitive, so make time-to-first-token the explicit routing
-    # objective while retaining provider fallbacks.
+    # Keep DS4 Flash fixed while requiring an underlying OpenRouter endpoint
+    # that supports every parameter Hermes sends, especially tool calling.
+    # Latency-first routing made short text replies win over agent quality.
     provider_routing = dict(config.get("provider_routing") or {})
-    provider_routing["sort"] = "latency"
+    provider_routing.pop("sort", None)
+    provider_routing["require_parameters"] = True
     config["provider_routing"] = provider_routing
+
+    # Production research must have a deterministic backend. DDGS is the
+    # reviewed keyless search provider; bootstrap installs and exercises it
+    # before the runtime is allowed to attest readiness.
+    web = dict(config.get("web") or {})
+    web["backend"] = "ddgs"
+    web["search_backend"] = "ddgs"
+    config["web"] = web
 
     # The public Sprite URL reaches Jentera's runner, never Hermes. Hermes' own
     # API remains loopback-only but receives the complete tool bundle from the
@@ -69,7 +78,7 @@ def main() -> None:
 
     agent = dict(config.get("agent") or {})
     reasoning_overrides = dict(agent.get("reasoning_overrides") or {})
-    reasoning_overrides[model_name] = "low"
+    reasoning_overrides[model_name] = "medium"
     agent["reasoning_overrides"] = reasoning_overrides
     agent.update({"max_turns": 20, "run_budget_seconds": 900, "gateway_timeout": 900})
     config["agent"] = agent

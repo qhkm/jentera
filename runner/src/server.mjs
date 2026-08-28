@@ -33,6 +33,7 @@ export function createRunner(input) {
           service: 'aisar-agent-runner',
           release: config.release,
           toolMode: config.toolMode,
+          webSearchBackend: config.webSearchBackend,
         });
       }
 
@@ -48,6 +49,7 @@ export function createRunner(input) {
           ok: ready,
           release: config.release,
           toolMode: config.toolMode,
+          webSearchBackend: config.webSearchBackend,
           region: runtimeRegion(req),
           edgeAuthorizationForwarded: typeof req.headers.authorization === 'string',
           hermes: boundedReadiness(body),
@@ -91,7 +93,7 @@ export function createRunner(input) {
               session_id: body.sessionId,
               instructions: body.instructions,
               model_options: {
-                reasoning: { enabled: true, effort: 'low' },
+                reasoning: { enabled: true, effort: 'medium' },
               },
             }),
           });
@@ -174,6 +176,7 @@ export function configFromEnv(env = process.env) {
     hermesOrigin: env.HERMES_ORIGIN ?? 'http://127.0.0.1:8642',
     stateFile: env.AISAR_RUNNER_STATE ?? '/var/lib/aisar/runner-state.json',
     toolMode: env.AISAR_TOOL_MODE,
+    webSearchBackend: env.AISAR_WEB_SEARCH_BACKEND,
     port: Number(env.PORT ?? 8080),
   };
 }
@@ -191,6 +194,9 @@ function validated(config) {
   }
   if (config.toolMode !== 'full-tools') {
     throw new Error('AISAR_TOOL_MODE must be full-tools');
+  }
+  if (config.webSearchBackend !== 'ddgs') {
+    throw new Error('AISAR_WEB_SEARCH_BACKEND must be ddgs');
   }
   return {
     ...config,

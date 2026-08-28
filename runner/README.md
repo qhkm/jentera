@@ -16,6 +16,8 @@ Required environment:
 AISAR_BUSINESS_ID
 AISAR_RUNNER_KEY
 AISAR_RUNTIME_RELEASE
+AISAR_TOOL_MODE=full-tools
+AISAR_WEB_SEARCH_BACKEND=ddgs
 HERMES_API_KEY
 ```
 
@@ -38,8 +40,9 @@ matching Hermes's native gateway filter. None of the stream is written to the st
 It does not yet proxy Hermes-native approvals, so tools which pause for native approval
 cannot currently be resumed through Telegram. The bootstrap configures
 `platform_toolsets.api_server` to `hermes-api-server` plus its explicit Home Assistant
-opt-in, verifies that it covers the full pinned release, and makes `toolMode: full-tools` part of authenticated
-readiness. The control plane rejects a runtime that does not attest that mode. Every
+opt-in, verifies that it covers the full pinned release, and makes both `toolMode: full-tools`
+and the boot-tested DDGS search backend part of authenticated readiness. The control plane
+rejects a runtime that does not attest both capabilities. Every
 production runtime is isolated per business and receives grants bound to one task.
 
 `bin/hermes-service.sh` and `bin/runner-service.sh` are the Sprite service
@@ -85,7 +88,9 @@ invokes `bin/bootstrap-runtime.sh` inside the Sprite.
 The in-Sprite bootstrap pins Hermes to tag `v2026.8.19` and commit
 `fcbd1076a93841fa88855acce810e342a5b78101`, verifies the upstream installer's SHA-256,
 writes the runtime environment atomically, configures OpenRouter without inlining its
-key, enforces the full pinned API-server tool profile, applies the reviewed `nanoid` security override,
+key, pins DS4 Flash to medium reasoning without latency-first provider routing, installs and
+live-tests the pinned keyless DDGS search backend, enforces the full pinned API-server tool profile,
+applies the reviewed `nanoid` security override,
 requires a clean high-severity production dependency audit, recreates both services,
 proves authenticated readiness and Chromium, and creates a baseline checkpoint.
 Repeating it reconciles the same Sprite rather than creating a second one.

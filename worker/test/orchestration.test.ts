@@ -225,7 +225,7 @@ describe('the automatic default', () => {
 });
 
 describe('durable Hermes Telegram replies', () => {
-  it('answers through the inline fallback while automatically upgrading a stale runtime', async () => {
+  it('preserves the Hermes request and upgrades before dispatching a stale runtime', async () => {
     await setPolicy('automatic');
     const provider = new LocalRuntimeProvider();
     const oldEnv = testEnv({
@@ -253,12 +253,31 @@ describe('durable Hermes Telegram replies', () => {
     });
     await handleIncoming(currentEnv, A, connId, incoming);
 
-    expect(sent).toHaveLength(1);
+    expect(sent).toHaveLength(0);
     expect(queued).toHaveLength(1);
-    const [task] = await asTenant(A, (tx) => tx<{
+    expect(drafts).toContainEqual({
+      chatId: 42,
+      draftId: hermesDraftId(queued[0].taskId),
+      text: '',
+    });
+
+    await expect(handleRuntimeMessage(currentEnv, queued[0], { provider })).resolves.toEqual({
+      action: 'requeue',
+      delaySeconds: 30,
+      reason: 'runtime release upgrade',
+    });
+    expect(queued).toHaveLength(2);
+    const tasks = await asTenant(A, (tx) => tx<{
       kind: string; dedupe_key: string; payload: Record<string, unknown>;
-    }[]>`select kind, dedupe_key, payload from runtime_task`);
-    expect(task).toMatchObject({
+    }[]>`select kind, dedupe_key, payload from runtime_task order by created_at`);
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]).toMatchObject({
+      kind: 'run',
+      payload: {
+        telegram: { connectionId: connId, chatId: 42, messageId: 501 },
+      },
+    });
+    expect(tasks[1]).toMatchObject({
       kind: 'upgrade',
       dedupe_key: `upgrade:${A}:2026.08.28-4`,
       payload: { release: '2026.08.28-4', reason: 'release_drift' },
@@ -342,6 +361,7 @@ describe('durable Hermes Telegram replies', () => {
         return runnerResponse({
           ok: true,
           toolMode: 'full-tools',
+          webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
         });
       }

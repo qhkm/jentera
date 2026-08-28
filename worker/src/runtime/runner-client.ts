@@ -33,6 +33,7 @@ export interface RunnerTaskResponse {
   activeTaskId?: string;
   usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
   toolMode?: string;
+  webSearchBackend?: string;
   region?: string | null;
   edgeAuthorizationForwarded?: boolean;
 }
@@ -74,6 +75,9 @@ export class RunnerClient {
     const body = await this.request('/readyz');
     if (body.toolMode !== 'full-tools') {
       throw new Error('runner did not attest the required full-tools mode');
+    }
+    if (body.webSearchBackend !== 'ddgs') {
+      throw new Error('runner did not attest an operational web-search backend');
     }
     if (body.edgeAuthorizationForwarded !== false) {
       throw new Error('runner did not attest edge credential isolation');

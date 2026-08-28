@@ -383,30 +383,51 @@ export async function handleIncoming(
   incoming: TelegramIncoming,
   telegramToken?: string,
 ): Promise<void> {
-  let maintenance: Promise<unknown> | null = null;
   if (runtimeExecutionEnabled(env)) {
     const runtime = await withTenant(env, businessId, (tx) => getRuntime(tx, businessId));
     const release = env.RUNTIME_RELEASE?.trim();
     const current = runtime && release &&
       runtime.desiredRelease === release && runtime.observedRelease === release;
-    if (current && runtimeReady(runtime)) {
+
+    /* A ready pinned runtime remains a real agent while its replacement is
+       rolling out. The queue consumer upgrades before dispatch when it sees
+       release drift, so the owner's request waits for the proven replacement
+       instead of racing a lifecycle task or falling into the tiny responder. */
+    if (runtimeReady(runtime)) {
       await handleDurableIncoming(env, businessId, connectionId, incoming, telegramToken);
       return;
     }
 
-    /* Runtime releases are an automatic product update, not an owner setup
-       chore. Keep this message useful through the fast inline fallback while
-       one deduplicated upgrade runs in parallel; later messages return to the
-       full Hermes tool runtime as soon as it attests the new release. */
-    if (runtime && release && env.RUNTIME_QUEUE && !current) {
+    /* A paired owner chose the managed agent, not a hidden lightweight model.
+       If Hermes is not ready, say so truthfully and repair it; never substitute
+       a short answer that looks like the agent simply forgot how to work. */
+    let maintenance: Promise<unknown> | null = null;
+    if (release && env.RUNTIME_QUEUE) {
+      const repairWindow = Math.floor(Date.now() / (5 * 60 * 1_000));
+      const kind = !runtime ? 'provision' : current ? 'reconcile' : 'upgrade';
       maintenance = publishRuntimeTask(env, businessId, {
-        kind: 'upgrade',
-        dedupeKey: `upgrade:${businessId}:${release}`,
-        payload: { release, reason: 'release_drift' },
-      }).catch((error) => {
-        console.error(`[runtime] automatic upgrade enqueue failed: ${String(error)}`);
+        kind,
+        dedupeKey: `${kind}:${businessId}:${release}:${repairWindow}`,
+        payload: {
+          release,
+          reason: !runtime ? 'runtime_missing' : current ? 'runtime_not_ready' : 'release_drift',
+        },
+      }).catch(() => {
+        console.error('[runtime] automatic repair enqueue failed');
       });
     }
+
+    const token = telegramToken ?? await withTenant(env, businessId, (tx) =>
+      useCredential(env, tx, connectionId));
+    await sendMessage(
+      token,
+      incoming.chatId,
+      runtime
+        ? 'Jentera is updating its research tools. Please try again in a moment.'
+        : 'Jentera is still preparing your private agent. Please try again shortly.',
+    );
+    await maintenance;
+    return;
   }
 
   const runtime = runtimeFor(env, businessId);
@@ -459,7 +480,6 @@ export async function handleIncoming(
       await finishRun(tx, businessId, run.id, 'failed', { error: why });
     });
   }
-  await maintenance;
 }
 
 /** Persist one Telegram update as durable Hermes work and return before the

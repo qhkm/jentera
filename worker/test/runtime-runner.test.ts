@@ -61,6 +61,7 @@ describe('durable Hermes run delivery', () => {
         return response({
           ok: true,
           toolMode: 'full-tools',
+          webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
         });
       }
@@ -151,7 +152,12 @@ describe('durable Hermes run delivery', () => {
     const fetcher: typeof fetch = async (input) => {
       const url = String(input);
       if (url.endsWith('/readyz')) {
-        return response({ ok: true, toolMode: 'full-tools', edgeAuthorizationForwarded: false });
+        return response({
+          ok: true,
+          toolMode: 'full-tools',
+          webSearchBackend: 'ddgs',
+          edgeAuthorizationForwarded: false,
+        });
       }
       if (url.endsWith('/v1/tasks')) {
         return response({
@@ -206,6 +212,7 @@ describe('durable Hermes run delivery', () => {
       return response({
         ok: true,
         toolMode: 'full-tools',
+        webSearchBackend: 'ddgs',
         edgeAuthorizationForwarded: false,
       });
     };

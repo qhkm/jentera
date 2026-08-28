@@ -141,6 +141,7 @@ async function bootstrapRuntime(
   const assets = [
     'runner/src/server.mjs',
     'runner/bin/browser-smoke.mjs',
+    'runner/bin/web-search-smoke.py',
     'runner/bin/configure-model-provider.py',
     'runner/bin/patch-hermes-dependencies.mjs',
     'runner/bin/hermes-service.sh',
@@ -174,9 +175,9 @@ async function bootstrapRuntime(
     edgeToken: runtime.provider === 'fly-sprite' ? env.SPRITES_TOKEN : undefined,
     fetch: fetcher,
   });
-  /* Readiness is authenticated and attests both the pinned full-tools mode
-     and that Fly's edge did not forward its organization bearer token into
-     the tenant. */
+  /* Readiness is authenticated and attests the pinned full-tools mode, a
+     boot-tested web-search backend, and that Fly's edge did not forward its
+     organization bearer token into the tenant. */
   const readiness = await client.ready();
   const checkpoint = await provider.checkpoint(
     awakened,

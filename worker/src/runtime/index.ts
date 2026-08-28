@@ -31,10 +31,9 @@ export { dispatchRuntimeRun } from './run-task';
  * The runtime for this business.
  *
  * Takes the business id it does not yet use, deliberately: the first
- * real decision this function makes will be per-business — a
- * provisioned Sprite for one, the inline fallback for the rest — and a
- * signature that cannot express that would have to change at every
- * call site on the day it matters.
+ * Browser-only and test execution use this adapter. Managed Telegram and
+ * production agent work are admitted separately and never substitute this
+ * lightweight path for an unavailable Sprite.
  */
 export function runtimeFor(env: Env, _businessId: string): RuntimeAdapter {
   return new InlineRuntime(env);

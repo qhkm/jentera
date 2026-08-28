@@ -31,6 +31,7 @@ import { useCredential } from '../connections';
 import { hermesDraftId, sendTyping, TelegramDraftStream } from '../connectors/telegram';
 import { runtimeModelKeyNeedsRotation } from './openrouter-keys';
 import { RuntimeBusyError } from './runner-client';
+import { getRuntime } from '../agent-runtime';
 
 const MAX_TASK_ATTEMPTS = 5;
 const BUSY_RETRY_SECONDS = 2;
@@ -109,6 +110,30 @@ export async function handleRuntimeMessage(
 
   try {
     let lifecycleResult: { region: string | null } | undefined;
+    /* Work admitted against a healthy older release must wait for the current
+       immutable bundle. This preserves the user's request while ensuring it
+       cannot run on a Sprite that lacks the newly required search attestation. */
+    if (lease.task.kind === 'run') {
+      const runtime = await withTenant(env, message.businessId, (tx) =>
+        getRuntime(tx, message.businessId));
+      const release = env.RUNTIME_RELEASE?.trim();
+      if (runtime && release &&
+          (runtime.desiredRelease !== release || runtime.observedRelease !== release)) {
+        await publishRuntimeTask(env, message.businessId, {
+          kind: 'upgrade',
+          dedupeKey: `upgrade:${message.businessId}:${release}`,
+          payload: { release, reason: 'release_drift' },
+        });
+        const deferred = await withTenant(env, message.businessId, (tx) =>
+          deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
+            delaySeconds: 30,
+          }));
+        return deferred
+          ? { action: 'requeue', delaySeconds: 30, reason: 'runtime release upgrade' }
+          : { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
+      }
+    }
+
     /* Key maintenance is tenant-local and demand-driven. This avoids a fleet
        scan whose cost grows with every signup: the first run inside the
        seven-day rotation window yields to one deduplicated upgrade, then

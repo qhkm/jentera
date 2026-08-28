@@ -3,7 +3,7 @@ import { asOwner, asTenant, testEnv, truncateAll } from './harness';
 import { ensureProviderRuntime, handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
 import { enqueueRuntimeTask } from '../src/runtime/tasks';
 import type { DesiredRuntime, ObservedRuntime, RuntimeProvider } from '../src/runtime';
-import { storeRuntimeModelCredential } from '../src/agent-runtime';
+import { markRuntimeReady, storeRuntimeModelCredential } from '../src/agent-runtime';
 import { startRun } from '../src/runs';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -126,6 +126,7 @@ describe('the runtime queue consumer', () => {
       runnerKey: 'r'.repeat(64),
       hermesApiKey: 'h'.repeat(64),
     });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.27-1', 'v1'));
     await asTenant(A, (tx) => storeRuntimeModelCredential(env, tx, A, {
       key: `sk-or-${'k'.repeat(40)}`,
       hash: 'a'.repeat(64),

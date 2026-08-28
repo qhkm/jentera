@@ -184,6 +184,7 @@ describe('provider provisioning', () => {
       fetch: async () => new Response(JSON.stringify({
         ok: true,
         toolMode: 'full-tools',
+        webSearchBackend: 'ddgs',
         edgeAuthorizationForwarded: false,
       })),
     });
@@ -238,6 +239,7 @@ describe('provider provisioning', () => {
       fetch: async () => Response.json({
         ok: true,
         toolMode: 'full-tools',
+        webSearchBackend: 'ddgs',
         edgeAuthorizationForwarded: true,
       }),
     })).rejects.toThrow('edge credential isolation');

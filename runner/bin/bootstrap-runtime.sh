@@ -184,6 +184,7 @@ trap 'rm -f "$incoming" "$runtime_tmp"' EXIT
   printf 'AISAR_BUSINESS_ID=%q\n' "$business_id"
   printf 'AISAR_RUNTIME_RELEASE=%q\n' "$runtime_release"
   printf 'AISAR_TOOL_MODE=%q\n' 'full-tools'
+  printf 'AISAR_WEB_SEARCH_BACKEND=%q\n' 'ddgs'
   printf 'AISAR_RUNNER_KEY=%q\n' "$runner_key"
   printf 'HERMES_API_KEY=%q\n' "$hermes_key"
   printf 'API_SERVER_KEY=%q\n' "$hermes_key"
@@ -197,6 +198,27 @@ trap 'rm -f "$incoming"' EXIT
 
 "$install_dir/venv/bin/python" /home/sprite/aisar/runner/configure-model-provider.py \
   "$model_provider" "$model_base" "$model_name" OPENROUTER_API_KEY
+
+# The pinned Hermes release supports DDGS as its keyless production search
+# provider, but does not install the optional package in its base environment.
+# Pin it as part of this immutable Jentera release, then prove both import and
+# a real search before the runtime can be checkpointed or marked ready.
+"$install_dir/venv/bin/python" -m pip install \
+  --disable-pip-version-check --no-input --upgrade 'ddgs==9.16.0'
+"$install_dir/venv/bin/python" -m pip check
+web_search_ready=false
+for _attempt in 1 2 3; do
+  if timeout --foreground -k 5 45 \
+      "$install_dir/venv/bin/python" /home/sprite/aisar/runner/web-search-smoke.py; then
+    web_search_ready=true
+    break
+  fi
+  sleep 2
+done
+[[ "$web_search_ready" == "true" ]] || {
+  echo "Hermes web search did not pass its live smoke test" >&2
+  exit 1
+}
 
 for service in aisar-runner hermes; do
   if sprite-env services get "$service" >/dev/null 2>&1; then

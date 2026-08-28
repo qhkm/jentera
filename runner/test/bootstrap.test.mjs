@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
 
 const SCRIPT = new URL('../bin/bootstrap-runtime.sh', import.meta.url).pathname;
+const CONFIGURE = new URL('../bin/configure-model-provider.py', import.meta.url).pathname;
 const directories = [];
 
 afterEach(async () => {
@@ -25,6 +26,23 @@ test('bootstrap refuses an unreviewed model endpoint before installing anything'
   const result = run(transfer);
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /base URL is not pinned/);
+});
+
+test('production runtime pins and proves its keyless search backend', async () => {
+  const source = await readFile(SCRIPT, 'utf8');
+  assert.match(source, /AISAR_WEB_SEARCH_BACKEND=%q.*ddgs/);
+  assert.match(source, /'ddgs==9\.16\.0'/);
+  assert.match(source, /web-search-smoke\.py/);
+  assert.match(source, /web_search_ready/);
+});
+
+test('model configuration favors DS4 agent quality and tool compatibility', async () => {
+  const source = await readFile(CONFIGURE, 'utf8');
+  assert.match(source, /provider_routing\.pop\("sort", None\)/);
+  assert.match(source, /provider_routing\["require_parameters"\] = True/);
+  assert.match(source, /web\["search_backend"\] = "ddgs"/);
+  assert.match(source, /reasoning_overrides\[model_name\] = "medium"/);
+  assert.doesNotMatch(source, /provider_routing\["sort"\] = "latency"/);
 });
 
 function run(transfer) {
