@@ -87,7 +87,7 @@ describe('business profile overrides', () => {
       n: 'Business Assistant',
       audience: 'internal',
     });
-    expect(business.team[1].audience).not.toBe('internal');
+    expect(business.team[1].audience).toBe('customer');
   });
 });
 

@@ -36,7 +36,7 @@ export const HERO = {
   ctaSecondary: 'See the magic →',
   stats: [
     { value: '0', label: 'Technical skills' },
-    { value: '5', label: 'minute onboarding' },
+    { value: '5', label: 'minute first setup' },
     { value: '∞', label: 'Opportunities found' },
   ],
 };
@@ -85,7 +85,7 @@ export const HOW_IT_WORKS: Section = {
     {
       eyebrow: '03 — Put to work',
       title: 'It sets up and connects everything.',
-      body: 'WhatsApp, Telegram, calendar, menu, inventory — Jentera asks only for the access it needs, then handles the setup.',
+      body: 'Your private Jentera chat comes first. Customer channels and business systems are connected later, only when you choose them.',
     },
     {
       eyebrow: '04 — Improve',
@@ -103,10 +103,10 @@ export const WHAT_IT_RUNS: Section = {
   columns: 'lg:grid-cols-2',
   panels: [
     {
-      eyebrow: 'Customer Service',
-      title: 'Customer Assistant',
-      body: 'Answers FAQs, menu questions, opening hours and policies on WhatsApp, Telegram, and Instagram — 24/7, in your voice. Escalates complaints and big bookings to you.',
-      tags: ['WhatsApp', 'Telegram', 'Instagram', '~8 hrs/week saved'],
+      eyebrow: 'Private workspace',
+      title: 'Business Assistant',
+      body: 'Works with you on operations, research, planning, writing, and everyday business questions. Private to your business and not customer-facing by default.',
+      tags: ['Private Telegram', 'Internal use', 'Ready first'],
     },
     {
       eyebrow: 'Reservations',
@@ -172,21 +172,21 @@ export const ONBOARDING = {
   id: 'onboarding',
   eyebrow: 'See it in action',
   title: 'The entire onboarding',
-  lede: 'From “AI could help my business” to a working customer assistant—without learning a new technical tool.',
-  cardTitle: 'Customer Assistant',
-  cardHandles: 'Handles: FAQs · menu · reservations · hours · follow-ups',
-  cardNeeds: "You'll need: WhatsApp [Connect] · Calendar [Connect] · Menu [Found ✓]",
+  lede: 'From “AI could help my business” to a private assistant you can talk to—without learning a new technical tool.',
+  cardTitle: 'Business Assistant',
+  cardHandles: 'Helps with: operations · research · planning · writing',
+  cardNeeds: 'Private chat: Telegram [Connect] · Business profile [Found ✓]',
   activate: 'Put Jentera to work →',
   activating: 'Putting Jentera to work…',
   activated: '✓ Working',
   doneMessage:
-    "Customer Assistant is live. It's already answering WhatsApp. Want me to also take over reservations?",
+    "Your private Business Assistant is ready. Ask about operations, research, planning, or anything you need to get done.",
   asideEyebrow: 'What just happened',
   asideTitle: 'From zero to working AI in under 5 minutes.',
   asidePoints: [
     'Jentera scanned your website and learned your business',
     'It found the repetitive work with the highest impact',
-    'It connected only what was needed—and explained why',
+    'It prepared a private assistant and explained every connection',
     'No coding, technical team, or workflows to build',
   ],
   asideBody:

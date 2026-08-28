@@ -9,7 +9,7 @@
    understand what happened".
    ============================================================ */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRepository } from '@/lib/repo';
 import { useSignedIn } from '@/lib/repo/gate';
 import { TEAM_GENERAL, TEAM_REPLIES } from '@/lib/data/conversations';
@@ -27,6 +27,24 @@ export interface AskMessage {
   agent?: string;
   /** Correlates an in-flight answer without exposing runtime ids in the UI. */
   pendingId?: string;
+  /** The request that failed, retained so the UI can offer a real retry. */
+  failedQuestion?: string;
+  failedMode?: AskMode;
+}
+
+const ASK_HISTORY_KEY = 'jentera-ask-history-v1';
+
+function savedHistory(): AskMessage[] {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(ASK_HISTORY_KEY) ?? '[]') as unknown;
+    if (!Array.isArray(value)) return [];
+    return value.filter((message): message is AskMessage =>
+      Boolean(message) && typeof message === 'object' &&
+      ((message as AskMessage).from === 'you' || (message as AskMessage).from === 'ai') &&
+      typeof (message as AskMessage).text === 'string');
+  } catch {
+    return [];
+  }
 }
 
 /** Prompt chips offered above the composer. */
@@ -51,11 +69,25 @@ export function useAsk(
   t: (key: string, vars?: Record<string, string | number>) => string,
   lang: Lang = 'en',
 ) {
-  const [messages, setMessages] = useState<AskMessage[]>([]);
   const repo = useRepository();
   const grounded = useSignedIn();
+  const [messages, setMessages] = useState<AskMessage[]>(() => grounded ? savedHistory() : []);
   /* Deterministic rotation — Math.random would change on every render. */
   const turn = useRef(0);
+
+  /* Keep completed owner conversations through navigation and refresh in
+     this browser tab. In-flight pairs are excluded: restoring "working" after
+     a reload would create a spinner that can never finish. */
+  useEffect(() => {
+    if (!grounded) return;
+    const stable = messages.filter((message, index) =>
+      !message.pendingId && !(message.from === 'you' && messages[index + 1]?.pendingId));
+    try {
+      sessionStorage.setItem(ASK_HISTORY_KEY, JSON.stringify(stable.slice(-40)));
+    } catch {
+      /* Private mode / quota — conversation still works in memory. */
+    }
+  }, [grounded, messages]);
 
   const answer = useCallback(
     (question: string): string => {
@@ -111,15 +143,18 @@ export function useAsk(
               ));
             },
           })
-          .then(
-            (a) => a.text,
-            (e: Error) => e.message,
-          )
-          .then((text) => {
+          .then((a) => {
             // Replace the placeholder rather than appending, so the
             // thinking indicator does not stay in the transcript.
             setMessages((prev) => prev.map((message) =>
-              message.pendingId === pendingId ? { from: 'ai', text } : message,
+              message.pendingId === pendingId ? { from: 'ai', text: a.text } : message,
+            ));
+          }, (reason: unknown) => {
+            const text = reason instanceof Error ? reason.message : 'Jentera could not answer.';
+            setMessages((prev) => prev.map((message) =>
+              message.pendingId === pendingId
+                ? { from: 'ai', text, failedQuestion: question, failedMode: mode }
+                : message,
             ));
           });
         return;

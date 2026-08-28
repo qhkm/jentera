@@ -79,7 +79,7 @@ describe('what mode says while the answer is in flight', () => {
     await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('real'));
   });
 
-  it('stays out of demo when the request fails outright', async () => {
+  it('becomes a recoverable error when the request fails outright', async () => {
     /* A failed fetch is still not permission to show the illustration.
        It reads as real to the person looking at it either way. */
     const repo = new LocalRepository();
@@ -98,7 +98,7 @@ describe('what mode says while the answer is in flight', () => {
     );
 
     await new Promise((r) => setTimeout(r, 50));
-    expect(screen.getByTestId('mode')).toHaveTextContent('pending');
+    expect(screen.getByTestId('mode')).toHaveTextContent('error');
   });
 
   it('is demo when nobody is signed in', async () => {

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LocalRepository } from '@/lib/repo/local';
 import { migrateLocalToRemote } from '@/lib/repo/migrate';
 import { RemoteRepository } from '@/lib/repo/remote';
+import { KEYS } from '@/lib/storage';
 
 describe('first authenticated migration', () => {
   beforeEach(() => localStorage.clear());
@@ -31,5 +32,9 @@ describe('first authenticated migration', () => {
     expect(paths).toEqual(['/api/state/business']);
     expect(paths).not.toContain('/api/state/onboarded');
     expect(paths).not.toContain('/api/state/setup-done');
+    expect(JSON.parse(localStorage.getItem(KEYS.onboardingDraft) ?? '{}')).toMatchObject({
+      step: 5,
+      completedDemo: true,
+    });
   });
 });

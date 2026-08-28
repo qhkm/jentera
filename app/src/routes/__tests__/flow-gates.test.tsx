@@ -18,10 +18,13 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import Setup from '@/routes/Setup';
+import Onboard from '@/routes/Onboard';
 import { RepositoryProvider } from '@/lib/repo/context';
 import { LocalRepository } from '@/lib/repo/local';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { ToastProvider } from '@/components/Toast';
+import { SignedInProvider } from '@/lib/repo/gate';
+import { KEYS } from '@/lib/storage';
 
 /** Records the order of writes and navigations as one sequence. */
 function tracked() {
@@ -58,6 +61,7 @@ function mount(repo: LocalRepository, order: string[]) {
             <Routes>
               <Route path="/setup" element={<Setup />} />
               <Route path="/app" element={<Landed />} />
+              <Route path="/signin" element={<Landed />} />
             </Routes>
           </ToastProvider>
         </I18nProvider>
@@ -78,7 +82,7 @@ describe('finishing setup', () => {
     await waitFor(() => expect(localStorage.getItem('aisar-setup-done-v1')).toBe('1'));
   });
 
-  it('lands on the command centre', async () => {
+  it('takes the completed demo to account creation', async () => {
     const repo = new LocalRepository();
     const order: string[] = [];
     mount(repo, order);
@@ -90,7 +94,7 @@ describe('finishing setup', () => {
 
   it('waits for the write before navigating', async () => {
     /* The ordering that matters. setSetupDone decides which stage of
-       the command centre renders; arriving first shows the wrong one.
+       the next stage renders; arriving first shows the wrong one.
        The stubbed write is held open, so a navigation that did not
        await would be recorded before it. */
     const { repo, order, releaseWrite } = tracked();
@@ -126,6 +130,34 @@ describe('finishing setup', () => {
 });
 
 describe('what onboarding writes', () => {
+  it('resumes a completed demo at final review after sign-in', async () => {
+    const repo = new LocalRepository();
+    await repo.setBizType('restaurant');
+    await repo.setChannels(['Telegram']);
+    localStorage.setItem(KEYS.onboardingDraft, JSON.stringify({
+      step: 5,
+      completedDemo: true,
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/onboard']}>
+        <SignedInProvider value>
+          <RepositoryProvider repository={repo}>
+            <I18nProvider>
+              <ToastProvider>
+                <Onboard />
+              </ToastProvider>
+            </I18nProvider>
+          </RepositoryProvider>
+        </SignedInProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('I recommend starting here.')).toBeInTheDocument();
+    expect(screen.getByText('Business Assistant')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /put jentera to work/i })).toBeInTheDocument();
+  });
+
   /* Driven through the repository rather than the six-step UI: the
      ordering guarantee lives in activate(), and the flow's screens are
      covered by the characterization suite. What matters here is that

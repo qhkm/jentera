@@ -100,6 +100,12 @@ describe('a business that has genuinely done nothing', () => {
     expect(await screen.findByText(/0 handled automatically/i)).toBeInTheDocument();
     expect(screen.getByText(NO_ACTIVITY)).toBeInTheDocument();
   });
+
+  it('shows one clear next action instead of making the owner search settings', async () => {
+    await mount(true, NOTHING_YET);
+    expect(await screen.findByText('Give Jentera something real to work from')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add business knowledge/i })).toBeInTheDocument();
+  });
 });
 
 describe('while the figures are still loading', () => {

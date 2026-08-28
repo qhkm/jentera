@@ -25,10 +25,14 @@ export default function AskJenteraView({
   business,
   handled,
   needs,
+  firstRun = false,
+  onOpenActivity,
 }: {
   business: Business;
   handled: number;
   needs: number;
+  firstRun?: boolean;
+  onOpenActivity?: () => void;
 }) {
   const { t, lang } = useI18n();
   const [tab, setTab] = useState<Tab>('assistant');
@@ -157,7 +161,9 @@ export default function AskJenteraView({
               <div className="flex flex-col items-center gap-3 py-10 text-center">
                 <Icon name="sparkle" size={30} weight="duotone" className="text-brand" />
                 <h2 className="font-pixel text-lg tracking-tight">{t('ask.empty.title')}</h2>
-                <p className="max-w-[46ch] text-[13px] text-text-secondary">{t('ask.welcome')}</p>
+                <p className="max-w-[46ch] text-[13px] text-text-secondary">
+                  {t(firstRun ? 'ask.welcome.first' : 'ask.welcome')}
+                </p>
               </div>
             ) : (
               ask.messages.map((m, i) => (
@@ -178,7 +184,16 @@ export default function AskJenteraView({
                     )}
                   </span>
                   <div className={`bubble ${m.from === 'you' ? 'bubble-out' : 'bubble-in'}`}>
-                    {m.text}
+                    <span role={m.failedQuestion ? 'alert' : undefined}>{m.text}</span>
+                    {m.failedQuestion ? (
+                      <button
+                        type="button"
+                        className="mt-2 block text-[11px] font-semibold text-brand hover:underline"
+                        onClick={() => submit(m.failedQuestion, m.failedMode ?? 'ask')}
+                      >
+                        {t('ask.retry')}
+                      </button>
+                    ) : null}
                     <div className="bubble-meta">
                       {m.from === 'you' ? t('ask.you') : (m.agent ?? 'Jentera')} · {t('ask.now')}
                     </div>
@@ -326,7 +341,7 @@ export default function AskJenteraView({
               {t('ask.conversations.desc')}
             </p>
           </div>
-          <CustomerInbox business={business} />
+          <CustomerInbox business={business} onOpenActivity={onOpenActivity} />
         </div>
       )}
     </div>

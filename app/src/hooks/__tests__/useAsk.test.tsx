@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { useAsk } from '@/hooks/useAsk';
 import { LocalRepository } from '@/lib/repo/local';
 import { RepositoryProvider } from '@/lib/repo/context';
@@ -12,6 +12,8 @@ const business = {
   sug: { t: 'Follow up', d: 'Reply to customers' },
   team: [],
 } as unknown as Business;
+
+beforeEach(() => sessionStorage.clear());
 
 describe('useAsk durable answers', () => {
   it('replaces the matching placeholder when answers finish out of order', async () => {
@@ -85,5 +87,55 @@ describe('useAsk durable answers', () => {
       resolveAnswer?.({ text: 'done', usedKeys: [], grounded: false });
     });
     expect(result.current!.messages[1].text).toBe('done');
+  });
+
+  it('keeps a failed question retryable instead of presenting the error as an answer', async () => {
+    const repo: Repository = new LocalRepository();
+    repo.ask = async () => {
+      throw new Error('temporarily offline');
+    };
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SignedInProvider value>
+        <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
+      </SignedInProvider>
+    );
+    const { result } = renderHook(
+      () => useAsk(business, { handled: 0, needs: 0 }, (key) => key),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current).not.toBeNull());
+
+    act(() => result.current!.send('check the orders'));
+    await waitFor(() => expect(result.current!.messages[1].text).toBe('temporarily offline'));
+    expect(result.current!.messages[1].failedQuestion).toBe('check the orders');
+  });
+
+  it('restores completed conversation history in the same browser tab', async () => {
+    const repo: Repository = new LocalRepository();
+    repo.ask = async () => ({ text: 'Here is the answer', usedKeys: [], grounded: false });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SignedInProvider value>
+        <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
+      </SignedInProvider>
+    );
+    const first = renderHook(
+      () => useAsk(business, { handled: 0, needs: 0 }, (key) => key),
+      { wrapper },
+    );
+    await waitFor(() => expect(first.result.current).not.toBeNull());
+    act(() => first.result.current!.send('my question'));
+    await waitFor(() => expect(first.result.current!.messages[1].text).toBe('Here is the answer'));
+    await waitFor(() => expect(sessionStorage.getItem('jentera-ask-history-v1')).toContain('Here is the answer'));
+    first.unmount();
+
+    const second = renderHook(
+      () => useAsk(business, { handled: 0, needs: 0 }, (key) => key),
+      { wrapper },
+    );
+    await waitFor(() => expect(second.result.current).not.toBeNull());
+    expect(second.result.current!.messages.map((message) => message.text)).toEqual([
+      'my question',
+      'Here is the answer',
+    ]);
   });
 });

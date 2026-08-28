@@ -50,7 +50,7 @@ export function LandingHeader() {
           <Link to="/signin" className="nav-link hidden text-sm normal-case tracking-normal md:inline-flex">
             Sign in
           </Link>
-          <Link to="/onboard" className="btn btn-primary hidden px-5 py-2 text-sm md:inline-flex">
+          <Link to="/signin?mode=signup" className="btn btn-primary hidden px-5 py-2 text-sm md:inline-flex">
             Start now
           </Link>
           <button
@@ -89,7 +89,7 @@ export function LandingHeader() {
               Sign in
             </Link>
             <Link
-              to="/onboard"
+              to="/signin?mode=signup"
               onClick={() => setOpen(false)}
               className="btn btn-primary mt-3 w-full justify-center"
             >

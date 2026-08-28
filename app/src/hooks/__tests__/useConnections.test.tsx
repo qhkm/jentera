@@ -176,7 +176,7 @@ describe('what mode says before the answer arrives', () => {
     await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('demo'));
   });
 
-  it('stays out of demo when the request fails', async () => {
+  it('becomes a recoverable error when the request fails', async () => {
     /* A failed fetch is not permission to show the playbook's guesses
        as this business's connections. */
     const repo = new LocalRepository();
@@ -186,6 +186,6 @@ describe('what mode says before the answer arrives', () => {
     mountWith(repo);
 
     await new Promise((r) => setTimeout(r, 50));
-    expect(screen.getByTestId('mode')).toHaveTextContent('pending');
+    expect(screen.getByTestId('mode')).toHaveTextContent('error');
   });
 });

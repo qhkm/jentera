@@ -45,6 +45,7 @@ import { confirmFor, planRegisterBusiness, resolveBusiness } from '@/lib/busines
 import { useT } from '@/i18n/I18nProvider';
 import { useMutate, useRepository, useSnapshot } from '@/lib/repo';
 import { useSignedIn } from '@/lib/repo/gate';
+import * as store from '@/lib/storage';
 
 /* Writes are fire-and-forget by design; the provider surfaces failures
    centrally, so this only stops an unhandled rejection. */
@@ -120,6 +121,29 @@ const PAINS: { key: string; Glyph: PhosphorIcon }[] = [
 
 type Mode = 'auto' | 'manual' | null;
 
+interface OnboardingDraft {
+  step: number;
+  mode: Mode;
+  url: string;
+  social: string;
+  desc: string;
+  pain: string | null;
+  completedDemo?: boolean;
+}
+
+function readDraft(): OnboardingDraft {
+  const draft = store.getJSON<Partial<OnboardingDraft>>(store.KEYS.onboardingDraft, {});
+  return {
+    step: Number.isInteger(draft.step) ? Math.min(Math.max(Number(draft.step), 0), STEP_COUNT - 1) : 0,
+    mode: draft.mode === 'auto' || draft.mode === 'manual' ? draft.mode : null,
+    url: typeof draft.url === 'string' ? draft.url : '',
+    social: typeof draft.social === 'string' ? draft.social : '',
+    desc: typeof draft.desc === 'string' ? draft.desc : '',
+    pain: typeof draft.pain === 'string' ? draft.pain : null,
+    completedDemo: draft.completedDemo === true,
+  };
+}
+
 export default function Onboard() {
   const t = useT();
   const navigate = useNavigate();
@@ -128,12 +152,18 @@ export default function Onboard() {
   const mutate = useMutate();
   const repo = useRepository();
   const signedIn = useSignedIn();
+  const [initialDraft] = useState(readDraft);
 
-  const [step, setStep] = useState(0);
-  const [mode, setMode] = useState<Mode>(null);
-  const [url, setUrl] = useState('');
-  const [social, setSocial] = useState('');
-  const [desc, setDesc] = useState('');
+  const [step, setStep] = useState(() => {
+    if (signedIn && initialDraft.completedDemo) return STEP_COUNT - 1;
+    /* A scan cannot resume from its animated readout after a reload. The
+       inputs are retained, so return to the editable source step instead. */
+    return initialDraft.step === 1 ? 0 : initialDraft.step;
+  });
+  const [mode, setMode] = useState<Mode>(initialDraft.mode);
+  const [url, setUrl] = useState(initialDraft.url);
+  const [social, setSocial] = useState(initialDraft.social);
+  const [desc, setDesc] = useState(initialDraft.desc);
   const [typeOpen, setTypeOpen] = useState(false);
   /* Resume durable answers when an owner comes back to an unfinished
      onboarding. The screen index is presentation state, but the business
@@ -142,7 +172,7 @@ export default function Onboard() {
     PLAYBOOKS[snap.bizType] ? snap.bizType : DEFAULT_TYPE,
   );
   const [channels, setChannels] = useState<string[]>(snap.channels ?? []);
-  const [pain, setPain] = useState<string | null>(null);
+  const [pain, setPain] = useState<string | null>(initialDraft.pain);
   const [activating, setActivating] = useState(false);
 
   /* Scan readout */
@@ -151,16 +181,36 @@ export default function Onboard() {
   const [profileLearned, setProfileLearned] = useState(false);
   const [scanPending, setScanPending] = useState(false);
   const [scanProblem, setScanProblem] = useState<string | null>(null);
-  const [importedProfile, setImportedProfile] = useState<{ name?: string; locality?: string }>({});
+  const [importedProfile, setImportedProfile] = useState<{ name?: string; locality?: string }>({
+    name: snap.bizName || undefined,
+    locality: snap.bizLoc || undefined,
+  });
   const [importedFacts, setImportedFacts] = useState<
     { key: string; value: string; confidence: number }[]
-  >([]);
+  >(() => snap.facts.flatMap((fact) =>
+    !fact.confirmed && typeof fact.value === 'string'
+      ? [{ key: fact.key, value: fact.value, confidence: fact.confidence }]
+      : []));
   const [confirmingProfile, setConfirmingProfile] = useState(false);
 
   const topRef = useRef<HTMLDivElement | null>(null);
+  const completedRef = useRef(false);
 
   const business = useMemo(() => resolveBusiness(snap, bizType), [snap, bizType]);
   const playbook = PLAYBOOKS[bizType] ?? PLAYBOOKS[DEFAULT_TYPE];
+
+  useEffect(() => {
+    if (completedRef.current) return;
+    store.setJSON(store.KEYS.onboardingDraft, {
+      step,
+      mode,
+      url,
+      social,
+      desc,
+      pain,
+      completedDemo: false,
+    } satisfies OnboardingDraft);
+  }, [step, mode, url, social, desc, pain]);
 
   const go = useCallback((next: number) => {
     setStep((cur) => {
@@ -363,6 +413,8 @@ export default function Onboard() {
         toast(error instanceof Error ? error.message : 'Could not start your agent setup.');
         return;
       }
+      completedRef.current = true;
+      store.remove(store.KEYS.onboardingDraft);
       /* The 1200ms is presentation, not a write budget. The atomic
          completion above sets the flow gate and durably queues this
          business's Hermes runtime, so it must land before we leave. */

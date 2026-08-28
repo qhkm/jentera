@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Shell } from '@/components/Shell';
-import { Button, Card, Eyebrow, Progress, Tag } from '@/components/ui';
+import { Button, Card, Eyebrow, LoadingState, Progress, Tag } from '@/components/ui';
 import { useMutate, useRepository } from '@/lib/repo';
 import type { RuntimeSummary } from '@/lib/repo';
 import { useSignedIn } from '@/lib/repo/gate';
@@ -117,7 +117,7 @@ function LiveSetup() {
     setFinishError(null);
     try {
       await mutate((r) => r.setSetupDone(true));
-      navigate('/app');
+      navigate('/app?view=chat&first=1');
     } catch (error) {
       setFinishError(error instanceof Error ? error.message : t('su.live.finishFailed'));
       setFinishing(false);
@@ -184,7 +184,24 @@ function LiveSetup() {
           </div>
         ) : null}
 
-        <TelegramConnect rows={connections.rows} setRows={connections.setRows} />
+        {connections.mode === 'pending' ? (
+          <Card>
+            <LoadingState
+              title={t('loading.connections.title')}
+              detail={t('loading.connections.detail')}
+            />
+          </Card>
+        ) : connections.mode === 'error' ? (
+          <Card role="alert" className="gap-3">
+            <p className="text-sm">{t('loading.connections.error')}</p>
+            <p className="text-[13px] text-text-secondary">{connections.error?.message}</p>
+            <div>
+              <Button variant="outline" onClick={connections.retry}>{t('loading.retry')}</Button>
+            </div>
+          </Card>
+        ) : (
+          <TelegramConnect rows={connections.rows} setRows={connections.setRows} />
+        )}
 
         <div className="flex flex-col gap-3">
           <Button onClick={() => void finish()} disabled={finishing} className="py-4 md:py-3">
@@ -331,7 +348,7 @@ function DemoSetup() {
       /* The provider surfaces it; still navigate rather than trapping
          the user on a screen whose only action just failed. */
     }
-    navigate('/app');
+    navigate('/signin?mode=signup');
   }
 
   const waiting = Object.values(status).filter((s) => s === 'waiting').length;

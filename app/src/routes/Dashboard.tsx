@@ -12,6 +12,7 @@
    ============================================================ */
 
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { Shell } from '@/components/Shell';
 import { Avatar, Card, Eyebrow, Progress, Tag } from '@/components/ui';
 import { useBusiness } from '@/hooks/useBusiness';
@@ -25,9 +26,11 @@ import { useVisualViewport } from '@/hooks/useVisualViewport';
 import HomeView from './views/HomeView';
 import AskJenteraView from './views/AskJenteraView';
 import ActivityView from './views/ActivityView';
-import MyBusinessView from './views/MyBusinessView';
+import MyBusinessView, { type BizTab } from './views/MyBusinessView';
 
 export type View = 'home' | 'chat' | 'work' | 'business';
+
+const BUSINESS_TABS: BizTab[] = ['profile', 'knows', 'handles', 'connections', 'permissions'];
 
 interface NavItem {
   id: View;
@@ -44,7 +47,11 @@ const NAV: NavItem[] = [
 
 export default function Dashboard() {
   const t = useT();
-  const [view, setView] = useState<View>('home');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedView = searchParams.get('view');
+  const view: View = NAV.some((item) => item.id === requestedView)
+    ? requestedView as View
+    : 'home';
   const [drawerOpen, setDrawerOpen] = useState(false);
   const b = useBusiness();
   const { business } = b;
@@ -98,8 +105,11 @@ export default function Dashboard() {
     return () => window.removeEventListener('keydown', onKey);
   }, [drawerOpen]);
 
-  function go(next: View) {
-    setView(next);
+  function go(next: View, businessTab?: BizTab) {
+    setSearchParams({
+      view: next,
+      ...(next === 'business' && businessTab ? { tab: businessTab } : {}),
+    });
     setDrawerOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -222,11 +232,27 @@ export default function Dashboard() {
 
         <div className="min-w-0 flex-1">
           {view === 'home' && <HomeView b={b} onNavigate={go} />}
-          {view === 'chat' && (
-            <AskJenteraView business={business} handled={handled} needs={needsAttention} />
-          )}
+          {/* Keep the owner conversation mounted while they inspect another
+              section. Returning to Ask Jentera must not erase the exchange. */}
+          <div className={view === 'chat' ? '' : 'hidden'}>
+            <AskJenteraView
+              business={business}
+              handled={handled}
+              needs={needsAttention}
+              firstRun={searchParams.get('first') === '1'}
+              onOpenActivity={() => go('work')}
+            />
+          </div>
           {view === 'work' && <ActivityView b={b} />}
-          {view === 'business' && <MyBusinessView b={b} />}
+          {view === 'business' && (
+            <MyBusinessView
+              b={b}
+              initialTab={BUSINESS_TABS.includes(searchParams.get('tab') as BizTab)
+                ? searchParams.get('tab') as BizTab
+                : 'profile'}
+              onTabChange={(tab) => setSearchParams({ view: 'business', tab })}
+            />
+          )}
         </div>
       </div>
 

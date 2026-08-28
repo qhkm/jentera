@@ -28,6 +28,7 @@ export async function migrateLocalToRemote(
   remote: RemoteRepository,
 ): Promise<'migrated' | 'created-empty'> {
   const snap = await local.load();
+  const savedDraft = store.getJSON<Record<string, unknown> | null>(store.KEYS.onboardingDraft, null);
 
   await remote.createBusiness({
     name: snap.bizName || 'My business',
@@ -78,6 +79,17 @@ export async function migrateLocalToRemote(
      mean a later sign-out silently reverts the owner to a stale snapshot
      of their own business. */
   store.resetAll();
+
+  /* Preserve presentation progress across the sign-in reload. A completed
+     demo resumes at the final review so the owner still explicitly starts
+     the paid runtime, without answering the same six questions twice. */
+  if (savedDraft || snap.onboarded) {
+    store.setJSON(store.KEYS.onboardingDraft, {
+      ...(savedDraft ?? {}),
+      step: snap.onboarded ? 5 : Number(savedDraft?.step ?? 0),
+      completedDemo: snap.onboarded,
+    });
+  }
 
   return 'migrated';
 }

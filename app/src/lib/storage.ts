@@ -28,6 +28,8 @@ export const KEYS = {
   learn: 'aisar-learn:',
   /** Business facts in the anonymous demo, keyed by fact key. */
   facts: 'aisar-facts',
+  /** First-run presentation state. Business answers still live in the repository. */
+  onboardingDraft: 'aisar-onboarding-draft-v1',
 } as const;
 
 export function get(key: string, fallback = ''): string {

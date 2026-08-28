@@ -35,14 +35,16 @@ import { useSignedIn } from '@/lib/repo/gate';
  * - `real`    — these are this business's own figures.
  * - `pending` — signed in, but the answer has not arrived. Render the
  *   real layout empty; never the demo.
+ * - `error`   — the server answered with a failure; offer a retry.
  * - `demo`    — nobody is signed in, so the illustration is the point.
  */
-export type ActivityMode = 'real' | 'pending' | 'demo';
+export type ActivityMode = 'real' | 'pending' | 'error' | 'demo';
 
 export interface ActivityState {
-  /** Null while loading, or when this session has no server to ask. */
+  /** Null while loading, failed, or when this session has no server to ask. */
   data: Activity | null;
   loading: boolean;
+  error: Error | null;
   mode: ActivityMode;
   /** True when these are real figures for this business. */
   real: boolean;
@@ -54,6 +56,7 @@ function useActivityFetch(enabled: boolean): ActivityState {
   const signedIn = useSignedIn() && enabled;
   const [data, setData] = useState<Activity | null>(null);
   const [loading, setLoading] = useState(signedIn);
+  const [error, setError] = useState<Error | null>(null);
   const [nonce, setNonce] = useState(0);
   /* Guards the React 18 double-invoke in development, which would
      otherwise fire two identical requests on every mount. */
@@ -63,6 +66,7 @@ function useActivityFetch(enabled: boolean): ActivityState {
     if (!signedIn) {
       setData(null);
       setLoading(false);
+      setError(null);
       return;
     }
     if (inflight.current) return;
@@ -71,16 +75,15 @@ function useActivityFetch(enabled: boolean): ActivityState {
 
     void repo
       .activity()
-      .then(
-        (a) => a,
-        /* A failure here must not blank the dashboard. Falling back to
-           the illustrations is wrong — they would read as real — so the
-           screens treat null as "no figures" and say so. */
-        () => null,
-      )
       .then((a) => {
         if (cancelled) return;
         setData(a);
+        setError(null);
+        setLoading(false);
+        inflight.current = false;
+      }, (reason: unknown) => {
+        if (cancelled) return;
+        setError(reason instanceof Error ? reason : new Error('Could not load activity.'));
         setLoading(false);
         inflight.current = false;
       });
@@ -91,14 +94,26 @@ function useActivityFetch(enabled: boolean): ActivityState {
     };
   }, [repo, signedIn, nonce]);
 
-  const mode: ActivityMode = !signedIn ? 'demo' : data !== null ? 'real' : 'pending';
+  const mode: ActivityMode = !signedIn
+    ? 'demo'
+    : data !== null
+      ? 'real'
+      : error
+        ? 'error'
+        : 'pending';
 
   return {
     data,
     loading,
+    error,
     mode,
     real: mode === 'real',
-    reload: () => setNonce((n) => n + 1),
+    reload: () => {
+      setData(null);
+      setError(null);
+      setLoading(true);
+      setNonce((n) => n + 1);
+    },
   };
 }
 

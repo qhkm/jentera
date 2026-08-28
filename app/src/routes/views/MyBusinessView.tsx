@@ -7,7 +7,7 @@
    product in its own right — they are facts about this business.
    ============================================================ */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Avatar, Button, Card, Eyebrow, Input, LoadingState, Tag } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
 import { DataIcon } from '@/components/Icon';
@@ -44,10 +44,18 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-type BizTab = 'profile' | 'knows' | 'handles' | 'connections' | 'permissions';
+export type BizTab = 'profile' | 'knows' | 'handles' | 'connections' | 'permissions';
 
-export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness> }) {
-  const [tab, setTab] = useState<BizTab>('profile');
+export default function MyBusinessView({
+  b,
+  initialTab = 'profile',
+  onTabChange,
+}: {
+  b: ReturnType<typeof useBusiness>;
+  initialTab?: BizTab;
+  onTabChange?: (tab: BizTab) => void;
+}) {
+  const [tab, setTab] = useState<BizTab>(initialTab);
   const t = useT();
   const toast = useToast();
   const snap = useSnapshot();
@@ -57,6 +65,13 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
   const signedIn = useSignedIn();
   const [name, setName] = useState(business.name);
   const [loc, setLoc] = useState(business.loc);
+
+  useEffect(() => setTab(initialTab), [initialTab]);
+
+  function chooseTab(next: BizTab) {
+    setTab(next);
+    onTabChange?.(next);
+  }
 
   /* One fetch for the whole screen. The badge, the chips and the
      Telegram card all read it, so disconnecting a bot moves all three. */
@@ -119,7 +134,27 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
         <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.business.desc')}</p>
       </header>
 
-      <Tabs tabs={TABS} active={tab} onSelect={setTab} label={t('view.business')} />
+      <Tabs tabs={TABS} active={tab} onSelect={chooseTab} label={t('view.business')} />
+
+      {tab === 'profile' ? (
+        <section className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <Eyebrow>{t('biz.guide.eyebrow')}</Eyebrow>
+            <p className="text-[13px] text-text-secondary">{t('biz.guide.detail')}</p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Button variant="outline" className="justify-start" onClick={() => chooseTab('knows')}>
+              {t('biz.guide.knowledge')}
+            </Button>
+            <Button variant="outline" className="justify-start" onClick={() => chooseTab('connections')}>
+              {t('biz.guide.connect')}
+            </Button>
+            <Button variant="outline" className="justify-start" onClick={() => chooseTab('permissions')}>
+              {t('biz.guide.controls')}
+            </Button>
+          </div>
+        </section>
+      ) : null}
 
       {tab === 'knows' && <KnowledgePanel />}
 
@@ -197,6 +232,9 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
                     <div className="flex flex-col">
                       <span className="text-sm font-semibold">{m.n}</span>
                       <span className="text-[11px] text-text-muted">{m.ch}</span>
+                      <span className="mt-1 text-[10px] uppercase tracking-[0.1em] text-text-muted">
+                        {t(m.audience === 'internal' ? 'team.audience.internal' : 'team.audience.customer')}
+                      </span>
                     </div>
                   </div>
                   <Tag tone={ready ? 'green' : 'amber'}>
@@ -255,6 +293,14 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
               detail={t('loading.connections.detail')}
             />
           </Card>
+        ) : conns.mode === 'error' ? (
+          <Card role="alert" className="gap-3">
+            <p className="text-sm">{t('loading.connections.error')}</p>
+            <p className="text-[13px] text-text-secondary">{conns.error?.message}</p>
+            <div>
+              <Button variant="outline" onClick={conns.retry}>{t('loading.retry')}</Button>
+            </div>
+          </Card>
         ) : (
           <TelegramConnect rows={conns.rows} setRows={conns.setRows} />
         )}
@@ -273,10 +319,14 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
           ))}
         </div>
 
-        <div className="flex flex-col gap-3">
-          {business.conns.map((c) => {
-            const on = b.connections.includes(c.n);
-            const cx = findConnector(c.n);
+        <details className="rounded-card border border-border p-4">
+          <summary className="cursor-pointer text-[13px] font-semibold text-text">
+            {t('biz.connections.more')}
+          </summary>
+          <div className="mt-4 flex flex-col gap-3">
+            {business.conns.filter((c) => !(signedIn && isLive(c.n))).map((c) => {
+              const on = b.connections.includes(c.n);
+              const cx = findConnector(c.n);
             /* Signed in, this is a real business: a connector with no
                implementation behind it cannot be marked connected,
                because the toggle only ever wrote a name into a list.
@@ -284,8 +334,8 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
                about not being ready. The demo keeps the simulation —
                it is showing what the product will do. */
             const pretend = signedIn && !isLive(c.n);
-            return (
-              <Card key={c.n}>
+              return (
+                <Card key={c.n}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex items-start gap-3">
                     <Avatar emoji={c.e} />
@@ -325,10 +375,11 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
                     {pretend ? t('conn.soon.cta') : on ? t('conn.disconnect') : t('conn.connect')}
                   </Button>
                 </div>
-              </Card>
-            );
-          })}
-        </div>
+                </Card>
+              );
+            })}
+          </div>
+        </details>
       </section>
       )}
 

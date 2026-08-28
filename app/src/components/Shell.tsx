@@ -68,6 +68,11 @@ export function Shell({
   async function signOut() {
     setLeaving(true);
     try {
+      sessionStorage.removeItem('jentera-ask-history-v1');
+    } catch {
+      /* Storage can be unavailable in private browsing. */
+    }
+    try {
       /* Ask the server to destroy the session row before dropping the
          cookie. Clearing the cookie alone would leave a live session
          behind — usable by anyone who captured it, and still counted
@@ -243,7 +248,7 @@ export function Shell({
 export function PageActions() {
   const { t } = useI18n();
   return (
-    <Link to="/onboard">
+    <Link to="/signin?mode=signup">
       <Button className="px-5 py-2 text-sm">{t('nav.getstarted')}</Button>
     </Link>
   );

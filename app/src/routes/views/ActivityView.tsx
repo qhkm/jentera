@@ -130,6 +130,24 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
     );
   }
 
+  if (activity.mode === 'error') {
+    return (
+      <div className="flex flex-col gap-6">
+        <header className="flex flex-col gap-2">
+          <h1 className="font-pixel text-2xl tracking-tight">{t('view.work')}</h1>
+          <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.work.desc')}</p>
+        </header>
+        <Card role="alert" className="gap-3">
+          <p className="text-sm">{t('loading.activity.error')}</p>
+          <p className="text-[13px] text-text-secondary">{activity.error?.message}</p>
+          <div>
+            <Button variant="outline" onClick={activity.reload}>{t('loading.retry')}</Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   if (activity.real) {
     /* Approvals come first and are never skipped. An earlier version of
        this branch returned before the approvals block below, so a

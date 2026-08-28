@@ -55,19 +55,29 @@ export default function PermissionsPanel() {
         <p className="max-w-[66ch] text-[13px] text-text-secondary">{t('perm.desc')}</p>
       </div>
 
-      {/* What the three levels mean, before the controls that use them. */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        {LEVELS.map((lvl) => (
-          <Card key={lvl.id} className="gap-2">
-            <Tag tone={lvl.tone}>{t(`perm.${lvl.id}`)}</Tag>
-            <p className="text-[12px] leading-relaxed text-text-secondary">
-              {t(`perm.${lvl.id}.desc`)}
-            </p>
-          </Card>
-        ))}
+      <div className="flex flex-wrap items-center gap-2">
+        <Tag tone="green">{t('perm.recommended')}</Tag>
+        <span className="text-[12px] text-text-secondary">{t('perm.recommended.desc')}</span>
       </div>
 
-      <div className="flex flex-col gap-2">
+      <details className="rounded-card border border-border p-4" open={customised > 0 || undefined}>
+        <summary className="cursor-pointer text-[13px] font-semibold text-text">
+          {t('perm.customise')}
+        </summary>
+
+        {/* What the three levels mean, before the controls that use them. */}
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          {LEVELS.map((lvl) => (
+            <Card key={lvl.id} className="gap-2">
+              <Tag tone={lvl.tone}>{t(`perm.${lvl.id}`)}</Tag>
+              <p className="text-[12px] leading-relaxed text-text-secondary">
+                {t(`perm.${lvl.id}.desc`)}
+              </p>
+            </Card>
+          ))}
+        </div>
+
+        <div className="mt-4 flex flex-col gap-2">
         {OPERATIONS.map((op) => {
           const current = policies[op];
           return (
@@ -110,15 +120,17 @@ export default function PermissionsPanel() {
             </Card>
           );
         })}
-      </div>
-
-      {customised > 0 ? (
-        <div>
-          <Button variant="outline" className="px-4 py-1.5 text-xs" onClick={reset}>
-            {t('perm.reset')}
-          </Button>
         </div>
-      ) : null}
+
+        {customised > 0 ? (
+          <div className="mt-4">
+            <Button variant="outline" className="px-4 py-1.5 text-xs" onClick={reset}>
+              {t('perm.reset')}
+            </Button>
+          </div>
+        ) : null}
+      </details>
+
     </section>
   );
 }

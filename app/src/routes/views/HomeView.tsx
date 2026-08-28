@@ -10,7 +10,10 @@ import { DataIcon, stripEmoji } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
 import type { useBusiness } from '@/hooks/useBusiness';
 import { useActivity } from '@/hooks/useActivity';
+import { milestones } from '@/lib/business';
+import { useSnapshot } from '@/lib/repo';
 import type { View } from '../Dashboard';
+import type { BizTab } from './MyBusinessView';
 
 /** The three counters, in the order they are rendered when real. */
 const PENDING_STATS = ['handled', 'needs', 'saved'] as const;
@@ -20,10 +23,11 @@ export default function HomeView({
   onNavigate,
 }: {
   b: ReturnType<typeof useBusiness>;
-  onNavigate: (v: View) => void;
+  onNavigate: (v: View, businessTab?: BizTab) => void;
 }) {
   const t = useT();
   const activity = useActivity();
+  const snap = useSnapshot();
   /* The illustration belongs to the anonymous demo alone. While a
      signed-in owner's figures are still in flight the layout is the
      real one, empty — not someone else's dashboard that then has to
@@ -57,6 +61,13 @@ export default function HomeView({
     : null;
   const toast = useToast();
   const { business, stage } = b;
+  const nextMilestone = activity.real
+    ? milestones(
+        snap,
+        activity.data!.counters.handled,
+        activity.data!.counters.connections,
+      ).find((milestone) => !milestone.done)
+    : null;
 
   const pending = business.work
     .map((w, i) => ({ w, i }))
@@ -73,6 +84,8 @@ export default function HomeView({
     ? t('home.empty')
     : activity.mode === 'pending'
       ? t('loading.home.summary')
+      : activity.mode === 'error'
+        ? null
       : activity.data!.counters.handled === 0 && activity.data!.counters.needsYou === 0
         ? t('home.empty')
         : null;
@@ -85,6 +98,18 @@ export default function HomeView({
           {stage === 'setup' ? t('sub.step1') : stage === 'connect' ? t('sub.step2') : t('sub.step3')}
         </p>
       </header>
+
+      {activity.mode === 'error' ? (
+        <Card role="alert" className="gap-3">
+          <p className="text-sm">{t('loading.activity.error')}</p>
+          <p className="text-[13px] text-text-secondary">{activity.error?.message}</p>
+          <div>
+            <Button variant="outline" className="px-4 py-1.5 text-xs" onClick={activity.reload}>
+              {t('loading.retry')}
+            </Button>
+          </div>
+        </Card>
+      ) : null}
 
       {stage !== 'operating' ? (
         <Card className="gap-4">
@@ -106,7 +131,7 @@ export default function HomeView({
                 <Button className="px-5 py-2 text-sm">{t('cmd.step1.cta')}</Button>
               </Link>
             ) : (
-              <Button className="px-5 py-2 text-sm" onClick={() => onNavigate('business')}>
+              <Button className="px-5 py-2 text-sm" onClick={() => onNavigate('business', 'connections')}>
                 {t('cmd.step2.cta')}
               </Button>
             )}
@@ -176,6 +201,32 @@ export default function HomeView({
           ) : null}
         </Card>
       )}
+
+      {stage === 'operating' && nextMilestone ? (
+        <Card className="gap-4 border-brand-line bg-brand-soft">
+          <div className="flex flex-col gap-1">
+            <Eyebrow>{t('home.next.eyebrow')}</Eyebrow>
+            <h2 className="font-pixel text-lg tracking-tight">
+              {t(`home.next.${nextMilestone.key}.title`)}
+            </h2>
+            <p className="max-w-[62ch] text-[13px] text-text-secondary">
+              {t(`home.next.${nextMilestone.key}.detail`)}
+            </p>
+          </div>
+          <div>
+            <Button
+              className="px-5 py-2 text-sm"
+              onClick={() => {
+                if (nextMilestone.key === 'knows') onNavigate('business', 'knows');
+                else if (nextMilestone.key === 'connected') onNavigate('business', 'connections');
+                else onNavigate('chat');
+              }}
+            >
+              {t(`home.next.${nextMilestone.key}.cta`)}
+            </Button>
+          </div>
+        </Card>
+      ) : null}
 
       {/* Real figures when there is a server to ask; the playbook's
           illustrations otherwise. Never a mix — an owner cannot tell
@@ -261,6 +312,10 @@ export default function HomeView({
               </div>
             </div>
           ))
+        ) : activity.mode === 'error' ? (
+          <p className="text-[12px] leading-snug text-text-secondary">
+            {t('loading.activity.unavailable')}
+          </p>
         ) : (
           <LoadingState
             compact

@@ -53,7 +53,13 @@ export function resolveBusiness(snap: BusinessSnapshot, key: string): Business {
     /* Every industry playbook historically put a customer responder first.
        The default Jentera identity is now the owner's internal agent; the rest
        industry-specific team remains available as later automation. */
-    team: [internalBusinessAssistant(), ...p.team],
+    /* Audience is explicit in the resolved product model. The private owner
+       assistant is first, while playbook specialists remain available as
+       customer-facing agents that must be enabled deliberately later. */
+    team: [
+      internalBusinessAssistant(),
+      ...p.team.map((member) => ({ ...member, audience: 'customer' as const })),
+    ],
     work: p.work,
     conns: p.conns,
   };

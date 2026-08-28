@@ -33,7 +33,13 @@ function Bubble({ msg }: { msg: ChatMessage }) {
   );
 }
 
-export default function CustomerInbox({ business }: { business: Business }) {
+export default function CustomerInbox({
+  business,
+  onOpenActivity,
+}: {
+  business: Business;
+  onOpenActivity?: () => void;
+}) {
   const t = useT();
   const signedIn = useSignedIn();
   const chat = useChat(business);
@@ -63,6 +69,11 @@ export default function CustomerInbox({ business }: { business: Business }) {
       <Card className="items-center gap-1 py-10 text-center">
         <p className="text-sm">{t('inbox.none')}</p>
         <p className="max-w-[46ch] text-[13px] text-text-secondary">{t('inbox.none.desc')}</p>
+        {onOpenActivity ? (
+          <Button className="mt-3" onClick={onOpenActivity}>
+            {t('inbox.openActivity')}
+          </Button>
+        ) : null}
       </Card>
     );
   }

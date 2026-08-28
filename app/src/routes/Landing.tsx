@@ -150,8 +150,9 @@ function OnboardingDemo() {
                 {state === 'done' ? (
                   <div className="kv-chat-step" style={{ animationDelay: '.3s' }}>
                     <span className="text-text-muted">jentera&gt;</span>{' '}
-                    <span className="text-brand">Customer Assistant is live.</span> It&rsquo;s
-                    already answering WhatsApp. Want me to also take over reservations?
+                    <span className="text-brand">Your Business Assistant is ready.</span>{' '}
+                    It&rsquo;s private to your business. Ask it about operations, research, or
+                    anything you need to get done.
                   </div>
                 ) : null}
               </div>
@@ -241,7 +242,7 @@ export default function Landing() {
 
               <div className="flex w-full max-w-md flex-col justify-center gap-4 sm:max-w-none sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
                 <Link
-                  to="/onboard"
+                  to="/signin?mode=signup"
                   className="btn btn-primary w-full justify-center px-6 py-4 text-sm sm:w-auto sm:py-3"
                 >
                   {HERO.ctaPrimary}
@@ -285,7 +286,7 @@ export default function Landing() {
               </h2>
               <p className="max-w-xl text-sm leading-relaxed text-black/75">{CLOSING_CTA.body}</p>
               <Link
-                to="/onboard"
+                to="/signin?mode=signup"
                 className="btn w-full justify-center border-black bg-black px-6 py-3 text-sm text-white hover:opacity-90 sm:w-auto"
               >
                 {CLOSING_CTA.cta}

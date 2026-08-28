@@ -19,7 +19,7 @@ import { useSignedIn } from '@/lib/repo/gate';
 import { findConnector } from '@/lib/tools';
 
 /**
- * The same three answers `useActivity` gives, for the same reason.
+ * The same loading/real/error/demo answers `useActivity` gives, for the same reason.
  *
  * `real` alone had to say `false` while the request was in flight, and
  * the Connections tab read `false` as "use the playbook's list" — so
@@ -28,7 +28,7 @@ import { findConnector } from '@/lib/tools';
  * later and it all corrected itself. The fix for the value missed the
  * loading state; this is that half.
  */
-export type ConnectionsMode = 'real' | 'pending' | 'demo';
+export type ConnectionsMode = 'real' | 'pending' | 'error' | 'demo';
 
 export interface ConnectionsState {
   /** Null while loading. Empty array means "asked, and there are none". */
@@ -36,6 +36,8 @@ export interface ConnectionsState {
   mode: ConnectionsMode;
   /** True when `rows` describes this business rather than a demo. */
   real: boolean;
+  error: Error | null;
+  retry: () => void;
   /** Optimistic updates from the connect/disconnect controls. */
   setRows: React.Dispatch<React.SetStateAction<Connection[] | null>>;
 }
@@ -44,6 +46,8 @@ export function useConnections(): ConnectionsState {
   const repo = useRepository();
   const signedIn = useSignedIn();
   const [rows, setRows] = useState<Connection[] | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+  const [attempt, setAttempt] = useState(0);
   /* Guards React 18's double-invoke in development, which would
      otherwise fire two identical requests on every mount. */
   const inflight = useRef(false);
@@ -51,6 +55,7 @@ export function useConnections(): ConnectionsState {
   useEffect(() => {
     if (!signedIn) {
       setRows([]);
+      setError(null);
       return;
     }
     if (inflight.current) return;
@@ -59,14 +64,20 @@ export function useConnections(): ConnectionsState {
 
     void repo.connections().then(
       (c) => {
-        if (live) setRows(c);
+        if (live) {
+          setRows(c);
+          setError(null);
+        }
         inflight.current = false;
       },
       /* A failure must not claim there are none — that would put a
          disconnected-looking screen in front of a working bot. Null
          stays "unknown", and the callers fall back to saying nothing. */
-      () => {
-        if (live) setRows(null);
+      (reason: unknown) => {
+        if (live) {
+          setRows(null);
+          setError(reason instanceof Error ? reason : new Error('Could not load connections.'));
+        }
         inflight.current = false;
       },
     );
@@ -75,11 +86,28 @@ export function useConnections(): ConnectionsState {
       live = false;
       inflight.current = false;
     };
-  }, [repo, signedIn]);
+  }, [repo, signedIn, attempt]);
 
-  const mode: ConnectionsMode = !signedIn ? 'demo' : rows !== null ? 'real' : 'pending';
+  const mode: ConnectionsMode = !signedIn
+    ? 'demo'
+    : rows !== null
+      ? 'real'
+      : error
+        ? 'error'
+        : 'pending';
 
-  return { rows, mode, real: mode === 'real', setRows };
+  return {
+    rows,
+    mode,
+    real: mode === 'real',
+    error,
+    retry: () => {
+      setRows(null);
+      setError(null);
+      setAttempt((n) => n + 1);
+    },
+    setRows,
+  };
 }
 
 /**

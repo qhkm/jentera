@@ -10,7 +10,7 @@
    session cookie, so nothing downstream knows or cares which was.
    ============================================================ */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { LandingFooter, LandingHeader } from '@/components/landing/LandingChrome';
 
@@ -32,12 +32,26 @@ const ERRORS: Record<string, string> = {
 
 export default function SignIn() {
   const [params] = useSearchParams();
-  const [mode, setMode] = useState<Mode>('signin');
+  const [mode, setMode] = useState<Mode>(() => params.get('mode') === 'signup' ? 'signup' : 'signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState<BusyAction>(null);
   const [sent, setSent] = useState<'link' | 'verify' | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    /* Prevent a previous account's private owner conversation appearing if
+       this tab is used to sign into a different account. */
+    try {
+      sessionStorage.removeItem('jentera-ask-history-v1');
+    } catch {
+      /* Storage can be unavailable in private browsing. */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (params.get('mode') === 'signup') setMode('signup');
+  }, [params]);
 
   const urlError = ERRORS[params.get('error') ?? ''] ?? null;
 
@@ -197,16 +211,20 @@ export default function SignIn() {
             </button>
           </form>
 
-          {/* No password required to use either of these, which is the
-              point of keeping them one click away. */}
-          <button
-            type="button"
-            className="nav-link mt-4 w-full text-sm normal-case tracking-normal"
-            onClick={sendLink}
-            disabled={Boolean(busy) || !email}
-          >
-            {busy === 'link' ? 'Sending your secure link…' : 'Email me a link instead'}
-          </button>
+          {/* A login link can only be issued for an existing account. Showing
+              it during signup silently sent nothing for a new address, which
+              looked like broken email. Google remains the passwordless new-
+              account path; the link returns once the account exists. */}
+          {mode === 'signin' ? (
+            <button
+              type="button"
+              className="nav-link mt-4 w-full text-sm normal-case tracking-normal"
+              onClick={sendLink}
+              disabled={Boolean(busy) || !email}
+            >
+              {busy === 'link' ? 'Sending your secure link…' : 'Email me a link instead'}
+            </button>
+          ) : null}
 
           <p className="mt-6 text-center text-sm opacity-70">
             {mode === 'signup' ? 'Already have an account?' : 'No account yet?'}{' '}
