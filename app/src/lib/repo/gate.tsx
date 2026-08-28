@@ -129,7 +129,7 @@ export function RepositoryGate({ children }: { children: ReactNode }) {
         <div className="w-full max-w-md border border-border bg-bg-card p-6 sm:p-8">
           <div className="mb-5 font-pixel text-xl tracking-wide text-brand">Jentera</div>
           <LoadingState
-            title="Opening your business workspace…"
+            title="Opening your Jentera workspace…"
             detail="Checking your session and loading your latest business data. There is no need to refresh."
           />
         </div>
