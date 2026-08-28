@@ -51,7 +51,7 @@ export function resolveBusiness(snap: BusinessSnapshot, key: string): Business {
     stats: p.stats,
     sug: p.sug,
     /* Every industry playbook historically put a customer responder first.
-       The default AISAR identity is now the owner's internal agent; the rest
+       The default Jentera identity is now the owner's internal agent; the rest
        industry-specific team remains available as later automation. */
     team: [internalBusinessAssistant(), ...p.team],
     work: p.work,
@@ -77,7 +77,7 @@ function internalBusinessAssistant(): TeamMember {
  * 14 of the 20 confirm strings hardcode the playbook's default city
  * ("…a salon/beauty business in Shah Alam. Is that correct?"). Someone
  * in Ipoh was being asked to confirm Shah Alam — on the one screen whose
- * entire job is proving AISAR understood them. The location was already
+ * entire job is proving Jentera understood them. The location was already
  * extracted correctly; only this sentence ignored it.
  */
 export function confirmFor(snap: BusinessSnapshot, playbookKey: string, text: string): string {
@@ -219,7 +219,7 @@ export interface Milestone {
  * How far this business actually is, from things that are true.
  *
  * The sidebar used to show a percentage taken from the playbook —
- * "AISAR can handle 82%" — identical for every business of that type
+ * "Jentera can handle 82%" — identical for every business of that type
  * and unmoved by anything the owner did. It read as a measurement and
  * was a brochure figure, which is the worst combination: precise,
  * prominent, and untethered.

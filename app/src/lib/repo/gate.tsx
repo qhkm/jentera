@@ -112,7 +112,7 @@ export function RepositoryGate({ children }: { children: ReactNode }) {
   if (failed) {
     return (
       <div role="alert" className="card" style={{ margin: '2rem', padding: '1.5rem' }}>
-        <p>Could not start AISAR. {failed.message}</p>
+        <p>Could not start Jentera. {failed.message}</p>
       </div>
     );
   }

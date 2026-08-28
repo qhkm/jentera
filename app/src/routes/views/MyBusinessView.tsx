@@ -1,9 +1,9 @@
 /* ============================================================
-   My Business — everything AISAR knows, plus what it is allowed
+   My Business — everything Jentera knows, plus what it is allowed
    to do on your behalf.
 
    Absorbs two views that used to sit at the top level: the agent
-   roster (now "what AISAR handles") and connections. Neither is a
+   roster (now "what Jentera handles") and connections. Neither is a
    product in its own right — they are facts about this business.
    ============================================================ */
 
@@ -169,7 +169,7 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
       </div>
       )}
 
-      {/* ---- What AISAR handles (was the AI Team view) ---- */}
+      {/* ---- What Jentera handles (was the AI Team view) ---- */}
       {tab === 'handles' && (
       <section className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
@@ -246,7 +246,7 @@ export default function MyBusinessView({ b }: { b: ReturnType<typeof useBusiness
       {/* ---- Connections (was its own view) ---- */}
       {tab === 'connections' && (
       <section className="flex flex-col gap-4">
-        {/* Real connections first. The catalogue below is what AISAR
+        {/* Real connections first. The catalogue below is what Jentera
             could connect to; this is what it actually can. */}
         <TelegramConnect rows={conns.rows} setRows={conns.setRows} />
         <div className="flex flex-col gap-1">

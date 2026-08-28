@@ -1,5 +1,5 @@
 /* ============================================================
-   The run spine: what AISAR did, in order, and what came of it.
+   The run spine: what Jentera did, in order, and what came of it.
 
    Home and Activity are projections of these tables rather than
    independent state. That is the point — a dashboard that counts

@@ -105,7 +105,7 @@ test('detailed readiness requires the per-runtime key', async () => {
   assert.equal((await simulatedForward.json()).edgeAuthorizationForwarded, true);
 });
 
-test('starts one Hermes run for a valid leased AISAR task', async () => {
+test('starts one Hermes run for a valid leased Jentera task', async () => {
   const response = await start(TASK);
   assert.equal(response.status, 202);
   const result = await response.json();
@@ -155,7 +155,7 @@ test('allows only one active task, then releases after terminal status', async (
   assert.equal(starts.length, 2);
 });
 
-test('polls and stops by AISAR task id without exposing Hermes directly', async () => {
+test('polls and stops by Jentera task id without exposing Hermes directly', async () => {
   await start(TASK);
   const status = await call(`/v1/tasks/${TASK}`);
   assert.equal((await status.json()).status, 'running');

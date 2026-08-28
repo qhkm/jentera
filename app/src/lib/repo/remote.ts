@@ -63,7 +63,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     });
   } catch {
     // fetch rejects only on network failure, never on a 4xx/5xx.
-    throw new Error('Could not reach AISAR. Check your connection.');
+    throw new Error('Could not reach Jentera. Check your connection.');
   }
 
   if (res.status === 401) throw new NotSignedInError();
@@ -312,7 +312,7 @@ export class RemoteRepository implements Repository {
       begun = await start();
     }
     if (!begun.pending) return begun;
-    if (!begun.runId) throw new Error('AISAR returned no run identifier.');
+    if (!begun.runId) throw new Error('Jentera returned no run identifier.');
     return options.onProgress
       ? streamAsk(begun.runId, options.onProgress)
       : pollAsk(begun.runId);
@@ -389,10 +389,10 @@ async function pollAsk(runId: string): Promise<AskAnswer> {
     }>(`/api/runs/${encodeURIComponent(runId)}`);
     if (!state.pending && state.status === 'completed') return state;
     if (!state.pending && state.status) {
-      throw new Error(state.err ?? 'AISAR could not complete that answer.');
+      throw new Error(state.err ?? 'Jentera could not complete that answer.');
     }
   }
-  throw new Error('AISAR is taking longer than expected. Check Activity for the result.');
+  throw new Error('Jentera is taking longer than expected. Check Activity for the result.');
 }
 
 async function streamAsk(

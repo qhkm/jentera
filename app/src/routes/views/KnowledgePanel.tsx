@@ -1,5 +1,5 @@
 /* ============================================================
-   What AISAR knows about this business, and how it came to know it.
+   What Jentera knows about this business, and how it came to know it.
 
    The provenance is the screen's reason for existing. A price the
    owner typed and a price a run extracted from their website are the
@@ -27,9 +27,9 @@ const SHELL_CHARS = 400;
 /**
  * What to tell the owner about a read.
  *
- * Reporting "found 1 thing" for a page AISAR could not actually see
+ * Reporting "found 1 thing" for a page Jentera could not actually see
  * reads as "I read your site". jentera.ai returns a 727-byte shell
- * that strips to 43 characters of title, and AISAR duly reported a
+ * that strips to 43 characters of title, and Jentera duly reported a
  * successful read of a site whose text it never received. Saying which
  * happened costs one sentence and saves the owner trusting a fact base
  * built from a page title.
@@ -40,11 +40,11 @@ export function describeRead(r: { facts: number; chars: number }): string {
       r.facts === 0
         ? 'nothing to suggest'
         : `${r.facts} thing${r.facts === 1 ? '' : 's'} from the title alone`;
-    return `That page needs JavaScript to show its content, so AISAR only saw ${r.chars} characters of it — ${found}. Point it at a page that works with JavaScript off, or add what matters below.`;
+    return `That page needs JavaScript to show its content, so Jentera only saw ${r.chars} characters of it — ${found}. Point it at a page that works with JavaScript off, or add what matters below.`;
   }
   return r.facts === 0
-    ? 'AISAR read the page but found nothing clear enough to suggest. A page with your hours, prices or services works best.'
-    : `AISAR found ${r.facts} thing${r.facts === 1 ? '' : 's'}. They are listed above, waiting for you to confirm.`;
+    ? 'Jentera read the page but found nothing clear enough to suggest. A page with your hours, prices or services works best.'
+    : `Jentera found ${r.facts} thing${r.facts === 1 ? '' : 's'}. They are listed above, waiting for you to confirm.`;
 }
 
 const noop = () => {};
@@ -75,7 +75,7 @@ function sourceTone(f: Fact): Tone {
 function sourceLabel(f: Fact): string {
   if (f.source === 'owner') return 'You said so';
   const pct = Math.round(f.confidence * 100);
-  if (f.source === 'agent') return `AISAR found this · ${pct}% sure`;
+  if (f.source === 'agent') return `Jentera found this · ${pct}% sure`;
   if (f.source === 'import') return `Imported · ${pct}% sure`;
   return `From a connection · ${pct}% sure`;
 }
@@ -207,18 +207,18 @@ export default function KnowledgePanel() {
           <Eyebrow>Needs your eye</Eyebrow>
           <p className="mt-2 text-sm text-text-secondary">
             {unconfirmed === 1
-              ? 'One thing AISAR worked out for itself and has not had confirmed.'
-              : `${unconfirmed} things AISAR worked out for itself and has not had confirmed.`}{' '}
+              ? 'One thing Jentera worked out for itself and has not had confirmed.'
+              : `${unconfirmed} things Jentera worked out for itself and has not had confirmed.`}{' '}
             It will not rely on them with customers until you say they are right.
           </p>
         </Card>
       )}
 
       <Card>
-        <Eyebrow>What AISAR knows</Eyebrow>
+        <Eyebrow>What Jentera knows</Eyebrow>
         {facts.length === 0 ? (
           <p className="mt-2 text-sm text-text-secondary">
-            Nothing yet. Add something below, or point AISAR at your website and let it read.
+            Nothing yet. Add something below, or point Jentera at your website and let it read.
           </p>
         ) : (
           <div className="mt-2 flex flex-col">
@@ -230,9 +230,9 @@ export default function KnowledgePanel() {
       </Card>
 
       <Card>
-        <Eyebrow>Let AISAR read your website</Eyebrow>
+        <Eyebrow>Let Jentera read your website</Eyebrow>
         <p className="mt-2 text-sm text-text-secondary">
-          Paste the address and AISAR will read the page and suggest what it learned. Nothing is
+          Paste the address and Jentera will read the page and suggest what it learned. Nothing is
           sent to anyone and nothing goes live — you confirm each item first.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -256,7 +256,7 @@ export default function KnowledgePanel() {
       </Card>
 
       <Card>
-        <Eyebrow>Tell AISAR something</Eyebrow>
+        <Eyebrow>Tell Jentera something</Eyebrow>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Input
             className="min-w-[10rem] flex-1"

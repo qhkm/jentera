@@ -1,7 +1,7 @@
 /* ============================================================
    The runtime that is a Worker request.
 
-   Everything AISAR does today fits here: one fetch, one model call,
+   Everything Jentera does today fits here: one fetch, one model call,
    done before the response. It is the fallback in every sense — the
    thing that runs when nothing more capable is provisioned, and the
    thing a broken remote runtime falls back to.

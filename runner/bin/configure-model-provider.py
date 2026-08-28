@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Configure AISAR's pinned HTTPS model provider without persisting its key."""
+"""Configure Jentera's pinned HTTPS model provider without persisting its key."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def main() -> None:
     )
     config["model"] = model
 
-    # The public Sprite URL reaches AISAR's runner, never Hermes. Hermes' own
+    # The public Sprite URL reaches Jentera's runner, never Hermes. Hermes' own
     # API remains loopback-only but receives the complete tool bundle from the
     # pinned release. Resolve and compare it during every bootstrap so a bad
     # configuration cannot silently expose a different capability surface.

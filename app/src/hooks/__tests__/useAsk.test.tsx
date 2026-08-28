@@ -26,7 +26,7 @@ describe('useAsk durable answers', () => {
     );
     const { result } = renderHook(
       () => useAsk(business, { handled: 0, needs: 0 }, (key) =>
-        key === 'ask.working' ? 'AISAR is working on this…' : key),
+        key === 'ask.working' ? 'Jentera is working on this…' : key),
       { wrapper },
     );
     await waitFor(() => expect(result.current).not.toBeNull());
@@ -36,14 +36,14 @@ describe('useAsk durable answers', () => {
       result.current!.send('second');
     });
     expect(result.current!.messages.map((message) => message.text)).toEqual([
-      'first', 'AISAR is working on this…', 'second', 'AISAR is working on this…',
+      'first', 'Jentera is working on this…', 'second', 'Jentera is working on this…',
     ]);
 
     await act(async () => {
       pending.get('second')?.({ text: 'second answer', usedKeys: [], grounded: false });
     });
     expect(result.current!.messages.map((message) => message.text)).toEqual([
-      'first', 'AISAR is working on this…', 'second', 'second answer',
+      'first', 'Jentera is working on this…', 'second', 'second answer',
     ]);
 
     await act(async () => {

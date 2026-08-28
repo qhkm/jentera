@@ -20,7 +20,7 @@ import type { Env } from './env';
  * domain is verified in Resend the link is logged rather than sent, so
  * the flow stays testable without delivery.
  */
-const FROM = 'AISAR <hello@jentera.ai>';
+const FROM = 'Jentera <hello@jentera.ai>';
 
 /**
  * Which message to send with the link.
@@ -34,15 +34,15 @@ const FROM = 'AISAR <hello@jentera.ai>';
 export type LinkKind = 'signin' | 'verify' | 'exists';
 
 const COPY: Record<LinkKind, { subject: string; lead: string }> = {
-  signin: { subject: 'Your AISAR sign-in link', lead: 'Sign in to AISAR:' },
+  signin: { subject: 'Your Jentera sign-in link', lead: 'Sign in to Jentera:' },
   verify: {
-    subject: 'Confirm your AISAR account',
-    lead: 'Confirm this address to finish setting up your AISAR account:',
+    subject: 'Confirm your Jentera account',
+    lead: 'Confirm this address to finish setting up your Jentera account:',
   },
   exists: {
-    subject: 'Your AISAR sign-in link',
+    subject: 'Your Jentera sign-in link',
     lead:
-      'Someone tried to create an AISAR account with this address, and one ' +
+      'Someone tried to create a Jentera account with this address, and one ' +
       'already exists. Your password was not changed. Sign in here:',
   },
 };

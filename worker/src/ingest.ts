@@ -71,7 +71,7 @@ export async function fetchPage(url: string): Promise<{ text: string; title: str
     headers: {
       // Identify honestly. A site owner reading their logs should be
       // able to tell what this was.
-      'User-Agent': 'AISAR/1.0 (+https://jentera.ai; reads a business its own site)',
+      'User-Agent': 'Jentera/1.0 (+https://jentera.ai; reads a business its own site)',
       Accept: 'text/html,application/xhtml+xml',
     },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),

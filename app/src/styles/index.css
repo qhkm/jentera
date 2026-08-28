@@ -1,4 +1,4 @@
-/*! AISAR — app stylesheet. Bundle banner, kept because a bang comment
+/*! Jentera — app stylesheet. Bundle banner, kept because a bang comment
     survives minification and so participates in the content hash.
     Cloudflare cached an SPA-fallback HTML body under an /assets/*.css
     URL once (Cache-Control: immutable, so for a year); an identical

@@ -264,11 +264,11 @@ export class LocalRepository implements Repository {
   }
 
   async provisionRuntime(): Promise<void> {
-    throw new NeedsAccountError('Creating a private AISAR runtime');
+    throw new NeedsAccountError('Creating a private Jentera runtime');
   }
 
   async ask(_question?: string, _options?: import('./types').AskOptions): Promise<AskAnswer> {
-    throw new NeedsAccountError('Asking AISAR about your business');
+    throw new NeedsAccountError('Asking Jentera about your business');
   }
 
   async connections(): Promise<Connection[]> {

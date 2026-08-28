@@ -1,5 +1,5 @@
 /* ============================================================
-   AISAR API — the executor behind the client's tool contract.
+   Jentera API — the executor behind the client's tool contract.
 
    Same shape the client already speaks, so swapping the local mock
    for this Worker changes one environment variable and nothing else.

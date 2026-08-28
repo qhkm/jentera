@@ -10,7 +10,7 @@
 :root {
   /* ---- Semantic surface + ink ---- */
   /* Deliberate deviation from the extraction: upstream ran pure black
-     with near-black cards. AISAR runs a lifted charcoal — #1f1f1f
+     with near-black cards. Jentera runs a lifted charcoal — #1f1f1f
      ground, #262626 card — so a surface separates by its own value
      instead of depending on a 7% hairline being visible. */
   --bg:              #1f1f1f;

@@ -45,7 +45,7 @@ export class FlySpriteProvider implements BootstrapRuntimeProvider {
       body: JSON.stringify({
         name: desired.name,
         wait_for_capacity: true,
-        // Never make Hermes public. The AISAR Worker authenticates with
+        // Never make Hermes public. The Jentera Worker authenticates with
         // the organization token and the runner has its own task lease.
         url_settings: { auth: 'sprite' },
       }),
@@ -83,7 +83,7 @@ export class FlySpriteProvider implements BootstrapRuntimeProvider {
     return observed;
   }
 
-  async checkpoint(runtime: ObservedRuntime, comment = 'AISAR known-good'): Promise<string> {
+  async checkpoint(runtime: ObservedRuntime, comment = 'Jentera known-good'): Promise<string> {
     const created = await this.request(
       `/v1/sprites/${encodeURIComponent(runtime.name)}/checkpoint`,
       {

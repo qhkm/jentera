@@ -1,6 +1,6 @@
 # aisar-api
 
-The Cloudflare Worker control plane behind AISAR. It uses Neon Postgres through
+The Cloudflare Worker control plane behind Jentera. It uses Neon Postgres through
 Hyperdrive, derives the active business from an authenticated session, and forces RLS on
 tenant-owned tables.
 
@@ -23,7 +23,7 @@ must be running.
 - forced Postgres RLS and server-side repository storage;
 - versioned business facts with source, confidence, confirmation, and correction;
 - append-only run events and structured work records;
-- website ingestion and fast grounded Ask AISAR through the inline runtime, plus an
+- website ingestion and fast grounded Ask Jentera through the inline runtime, plus an
   explicit durable "Work on this" path through each business's Hermes runtime;
 - encrypted connector credentials;
 - a verified Telegram webhook, real Telegram sends, permissions, approvals, edited
@@ -33,7 +33,7 @@ must be running.
 
 ## Ask versus durable work
 
-**Ordinary Ask AISAR remains inline for every business.** It answers a grounded question
+**Ordinary Ask Jentera remains inline for every business.** It answers a grounded question
 in about 1.5 seconds and never wakes a Sprite. The separate **Work on this** action is
 guarded by the fleet emergency switch, requires that business's ready runtime, and creates
 an idempotent durable Hermes task.
@@ -67,12 +67,12 @@ and a fleet-wide execution emergency switch.
 ## Runtime boundaries
 
 `src/runtime/types.ts` is the task-level `RuntimeAdapter`: it reads and reasons but never
-writes AISAR state or calls a connector. `src/runtime/provider.ts` owns compute lifecycle.
+writes Jentera state or calls a connector. `src/runtime/provider.ts` owns compute lifecycle.
 `src/runtime/tasks.ts` owns durable leases. Queue messages are at-least-once wake-up
 signals; `runtime_task` in Postgres is authoritative.
 
 One business gets at most one leased runtime task. Owners and staff share the business
-runtime; AISAR does not create one Sprite per login.
+runtime; Jentera does not create one Sprite per login.
 
 Successful status polls do not consume an attempt. Only a real dispatch failure or an
 expired lease increments the five-attempt budget. The runner identity is persisted before
@@ -129,7 +129,7 @@ npx wrangler secret put SPRITES_TOKEN
 npx wrangler secret put AISAR_OPENROUTER_MANAGEMENT_KEY
 ```
 
-`SPRITES_TOKEN` is a dedicated Sprites API token for the AISAR organization and must never
+`SPRITES_TOKEN` is a dedicated Sprites API token for the Jentera organization and must never
 be placed in a customer runtime or frontend. It authenticates at Fly's edge; authenticated
 readiness must report `edgeAuthorizationForwarded: false`, proving the bearer header was
 removed before the request reached tenant code. Bootstrap fails before checkpointing,
@@ -140,7 +140,7 @@ Do not use the deprecated `fly auth token` command when creating or rotating Fly
 credentials. Create a short-lived, organization-scoped source token with the current CLI:
 
 ```bash
-flyctl tokens create org --org aisar --name "AISAR Sprites exchange" --expiry 1h
+flyctl tokens create org --org aisar --name "Jentera Sprites exchange" --expiry 1h
 ```
 
 Exchange that source token for a dedicated Sprites API token through Fly's Sprites token
@@ -174,7 +174,7 @@ Queues, Sprites, or model calls:
 - `RUNTIME_MUTATION_BURST`: 3 requests/minute, checked against both session-shaped identity
   and source address before onboarding completion, provision, reconcile, upgrade, cancel,
   or delete; and
-- `AGENT_RUN_BURST`: 10 Ask AISAR or website-import starts/minute, checked against both keys
+- `AGENT_RUN_BURST`: 10 Ask Jentera or website-import starts/minute, checked against both keys
   and failed closed because each accepted start can buy compute and model tokens;
 - `RUN_STREAM_BURST`: 12 WebSocket handshakes/minute, checked against both keys and failed
   closed, followed by exact limits of eight sockets per run and two per authenticated
@@ -237,7 +237,7 @@ npx wrangler queues create aisar-runtime
 npx wrangler queues create aisar-runtime-dlq
 ```
 
-Both queues were created in the AISAR Cloudflare account on 2026-08-27. The commands are
+Both queues were created in the Jentera Cloudflare account on 2026-08-27. The commands are
 kept here for a new account or disaster-recovery setup; an already-existing queue should
 be treated as success after verifying its exact name.
 
@@ -258,7 +258,7 @@ AISAR_NEON_OWNER_URL='postgresql://neondb_owner:...@.../neondb?sslmode=require' 
   pnpm db:migrate:runtime-safety
 ```
 
-The script refuses any host, database, or username other than AISAR's reviewed production
+The script refuses any host, database, or username other than Jentera's reviewed production
 owner target and prints no connection details. Migration 015 was applied transactionally
 to production on 2026-08-28. A rollback-only probe then verified the `aisar_app` role sees
 zero unscoped rows and exactly its tenant row under forced RLS.
@@ -280,6 +280,6 @@ Queue signal. Signed-in setup re-signals that same task idempotently and polls t
 owner-safe runtime status, so a failed first Queue signal is recoverable without creating
 a second Sprite.
 Both runtime queues exist and the Worker consumes the primary and DLQ. Migration
-`014_runtime_task_execution.sql` was applied to AISAR production as `neondb_owner` and
+`014_runtime_task_execution.sql` was applied to Jentera production as `neondb_owner` and
 verified as `aisar_app` on 2026-08-27; it remains required when restoring or creating an
 environment.

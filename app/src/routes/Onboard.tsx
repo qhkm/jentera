@@ -6,7 +6,7 @@
    product's argument: the choice between importing a business and
    describing it, and the live Business Profile panel that fills in as
    the user answers. Without them the flow reads as a signup form
-   rather than as AISAR learning the business.
+   rather than as Jentera learning the business.
 
    Steps, matching the original flow:
      1 setup path   — import from web/social, or describe manually
@@ -439,7 +439,7 @@ export default function Onboard() {
                 </h2>
                 <div className="rounded-item border border-border bg-well p-4 font-mono text-[11px] leading-relaxed text-text-secondary md:p-5">
                   <span className="text-text-muted">$ </span>
-                  aisar onboard --business{' '}
+                  jentera onboard --business{' '}
                   <span className="text-text">{url || social || desc || playbook.type}</span>
                   {scanLines.slice(0, scanShown).map((line) => (
                     <div key={line} className="mt-1">

@@ -4,7 +4,7 @@
    then hand it back to the AI.
 
    This used to be the top-level "Chat" view. It now lives as the
-   secondary tab inside Ask AISAR, so owner instructions and
+   secondary tab inside Ask Jentera, so owner instructions and
    customer messages stop competing as two chat products.
    ============================================================ */
 

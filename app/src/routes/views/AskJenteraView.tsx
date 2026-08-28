@@ -1,5 +1,5 @@
 /* ============================================================
-   Ask AISAR — two tabs, deliberately not two chat products.
+   Ask Jentera — two tabs, deliberately not two chat products.
 
    · Assistant  — the owner asks or instructs; answers come from
                   live state, not a transcript.
@@ -21,7 +21,7 @@ import type { AskMode } from '@/lib/repo';
 
 type Tab = 'assistant' | 'conversations';
 
-export default function AskAisarView({
+export default function AskJenteraView({
   business,
   handled,
   needs,
@@ -132,7 +132,7 @@ export default function AskAisarView({
               {t(item.labelKey)}
               {/* Status tag is a nice-to-have; at 390px it doubled the tab
                   width and forced both labels to wrap. */}
-              {/* "AISAR is replying" is a claim about right now, and it
+              {/* "Jentera is replying" is a claim about right now, and it
                   was unconditional — so it sat in green beside a tab
                   whose own contents read "no customer conversations
                   yet". It belongs to the demo, where something really
@@ -180,7 +180,7 @@ export default function AskAisarView({
                   <div className={`bubble ${m.from === 'you' ? 'bubble-out' : 'bubble-in'}`}>
                     {m.text}
                     <div className="bubble-meta">
-                      {m.from === 'you' ? t('ask.you') : (m.agent ?? 'AISAR')} · {t('ask.now')}
+                      {m.from === 'you' ? t('ask.you') : (m.agent ?? 'Jentera')} · {t('ask.now')}
                     </div>
                   </div>
                 </div>

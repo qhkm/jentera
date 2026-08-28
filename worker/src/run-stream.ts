@@ -126,10 +126,10 @@ export class RunStream extends DurableObject<Env> {
       return new Response('websocket required', { status: 426 });
     }
     const identity = streamIdentity({
-      businessId: request.headers.get('X-AISAR-Business'),
-      runId: request.headers.get('X-AISAR-Run'),
+      businessId: request.headers.get('X-Jentera-Business'),
+      runId: request.headers.get('X-Jentera-Run'),
     });
-    const userId = request.headers.get('X-AISAR-User') ?? '';
+    const userId = request.headers.get('X-Jentera-User') ?? '';
     if (!identity || !uuid(userId)) return new Response('invalid subscriber', { status: 400 });
 
     const stored = await this.ctx.storage.get<StreamIdentity>('identity');

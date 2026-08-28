@@ -5,7 +5,7 @@ export type Theme = 'dark' | 'light';
 export type FactSource = 'owner' | 'import' | 'agent' | 'connector';
 
 /**
- * Something AISAR believes about this business, and its provenance.
+ * Something Jentera believes about this business, and its provenance.
  *
  * `source` and `confidence` are not decoration. A price the owner typed
  * and a price extracted from their website at 0.62 confidence must be
@@ -176,7 +176,7 @@ export interface RuntimeOverview {
 /** Thrown when a feature needs the server and there is no session. */
 export class NeedsAccountError extends Error {
   constructor(what: string) {
-    super(`${what} needs an AISAR account — the demo runs entirely in this browser.`);
+    super(`${what} needs a Jentera account — the demo runs entirely in this browser.`);
     this.name = 'NeedsAccountError';
   }
 }
@@ -227,7 +227,7 @@ export interface Repository {
 
   /** Read a business's own website and propose facts from it. */
   ingest(url: string): Promise<IngestResult>;
-  /** What AISAR has actually done, and the counts Home shows. */
+  /** What Jentera has actually done, and the counts Home shows. */
   activity(): Promise<Activity>;
   /** How much technical detail this person wants. */
   detailLevel(): Promise<'beginner' | 'advanced'>;

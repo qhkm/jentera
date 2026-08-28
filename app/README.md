@@ -1,4 +1,4 @@
-# AISAR — Vite + React scaffold
+# Jentera — Vite + React scaffold
 
 React rebuild of the static site, wired to the design system extracted in `../design-system/`.
 

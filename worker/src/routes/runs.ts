@@ -1,7 +1,7 @@
 /* ============================================================
    Run endpoints.
 
-   Ingestion remains a short inline operation. Ask AISAR is also inline
+   Ingestion remains a short inline operation. Ask Jentera is also inline
    by default, but explicit business agent work persists a
    durable Hermes task and exposes only its tenant-scoped run status to
    the browser. Both paths share the same grounding instructions.
@@ -188,7 +188,7 @@ export async function handleRuns(
 
     if (mode === 'work') {
       if (!runtimeExecutionEnabled(env)) {
-        return json({ ok: false, err: 'AISAR agent work is not available yet' }, { status: 403 }, cors);
+        return json({ ok: false, err: 'Jentera agent work is not available yet' }, { status: 403 }, cors);
       }
       return startDurableAsk(
         env,
@@ -303,8 +303,8 @@ export async function handleRuns(
         status: state.run.status,
         pending: false,
         err: state.run.status === 'cancelled'
-          ? 'AISAR stopped that answer.'
-          : 'AISAR could not answer that just now. Please try again.',
+          ? 'Jentera stopped that answer.'
+          : 'Jentera could not answer that just now. Please try again.',
       }, {}, privateHeaders);
     }
     return json({
@@ -342,9 +342,9 @@ export async function handleRuns(
       method: 'GET',
       headers: {
         Upgrade: 'websocket',
-        'X-AISAR-Business': id.businessId,
-        'X-AISAR-Run': run.id,
-        'X-AISAR-User': id.userId,
+        'X-Jentera-Business': id.businessId,
+        'X-Jentera-Run': run.id,
+        'X-Jentera-User': id.userId,
       },
     });
   }
@@ -367,13 +367,13 @@ async function startDurableAsk(
   cors: Record<string, string>,
 ): Promise<Response> {
   if (!env.RUNTIME_QUEUE || !env.AISAR_MODEL_NAME?.trim()) {
-    return json({ ok: false, err: 'AISAR agent execution is unavailable' }, { status: 503 }, cors);
+    return json({ ok: false, err: 'Jentera agent execution is unavailable' }, { status: 503 }, cors);
   }
   const runtime = await withTenant(env, businessId, (tx) => getRuntime(tx, businessId));
   if (!runtimeReady(runtime)) {
     return json({
       ok: false,
-      err: 'AISAR is preparing your agent. Please try again shortly.',
+      err: 'Jentera is preparing your agent. Please try again shortly.',
     }, { status: 503 }, cors);
   }
 
@@ -434,7 +434,7 @@ async function startDurableAsk(
     console.error('[durable-ask] queue signal failed');
     return json({
       ok: false,
-      err: 'AISAR could not queue that answer. Please try again.',
+      err: 'Jentera could not queue that answer. Please try again.',
     }, { status: 503 }, cors);
   }
   await publishRunProgressSafely(env, businessId, created.runId, 'queued');
@@ -470,7 +470,7 @@ function answerText(result: unknown): string {
     const text = (result as Record<string, unknown>).text;
     if (typeof text === 'string' && text.trim()) return text.trim().slice(0, 20_000);
   }
-  return 'AISAR completed the work but returned no readable answer.';
+  return 'Jentera completed the work but returned no readable answer.';
 }
 
 function terminalRun(status: string): boolean {

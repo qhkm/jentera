@@ -6,7 +6,7 @@
    inside My Business, or work records inside Activity.
 
      Home        what happened, what needs you, what's next
-     Ask AISAR   ask or instruct (+ Customer inbox tab)
+     Ask Jentera   ask or instruct (+ Customer inbox tab)
      Activity    completed, active, and approval-blocked work
      My Business knowledge, responsibilities, connections
    ============================================================ */
@@ -23,7 +23,7 @@ import { Icon, type IconName } from '@/components/Icon';
 import { useIsCompact } from '@/hooks/useMediaQuery';
 import { useVisualViewport } from '@/hooks/useVisualViewport';
 import HomeView from './views/HomeView';
-import AskAisarView from './views/AskAisarView';
+import AskJenteraView from './views/AskJenteraView';
 import ActivityView from './views/ActivityView';
 import MyBusinessView from './views/MyBusinessView';
 
@@ -138,7 +138,7 @@ export default function Dashboard() {
         </div>
       </div>
       {/* Real progress for a real business; the playbook's projection
-          for the demo. "AISAR can handle 82%" was the same number for
+          for the demo. "Jentera can handle 82%" was the same number for
           every business of a type and moved for nobody — precise,
           prominent, and untethered to anything the owner had done. */}
       {activity.mode !== 'demo' ? (
@@ -223,7 +223,7 @@ export default function Dashboard() {
         <div className="min-w-0 flex-1">
           {view === 'home' && <HomeView b={b} onNavigate={go} />}
           {view === 'chat' && (
-            <AskAisarView business={business} handled={handled} needs={needsAttention} />
+            <AskJenteraView business={business} handled={handled} needs={needsAttention} />
           )}
           {view === 'work' && <ActivityView b={b} />}
           {view === 'business' && <MyBusinessView b={b} />}

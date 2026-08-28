@@ -28,10 +28,10 @@ export interface Section {
 
 export const HERO = {
   headline: ['Your business,', 'without the busywork.'],
-  promise: 'You explain the business. AISAR handles the technology.',
+  promise: 'You explain the business. Jentera handles the technology.',
   detail:
     'It finds, sets up, and puts the right AI help to work — without technical skills, expensive consultants, or workflows to configure.',
-  ticker: 'AISAR is learning how wagyu.my works',
+  ticker: 'Jentera is learning how wagyu.my works',
   ctaPrimary: 'Set up my business',
   ctaSecondary: 'See the magic →',
   stats: [
@@ -44,7 +44,7 @@ export const HERO = {
 export const BUILT_FOR: Section = {
   eyebrow: 'Built for business owners',
   title: "You shouldn't need a developer to put AI to work.",
-  lede: 'If you can explain how your business runs, you can use AISAR. No coding, prompt engineering, technical team, or expensive implementation project.',
+  lede: 'If you can explain how your business runs, you can use Jentera. No coding, prompt engineering, technical team, or expensive implementation project.',
   columns: 'md:grid-cols-3',
   panels: [
     {
@@ -53,14 +53,14 @@ export const BUILT_FOR: Section = {
       body: 'Share your website and socials, or describe the outcome you want in ordinary language.',
     },
     {
-      eyebrow: 'AISAR handles setup',
+      eyebrow: 'Jentera handles setup',
       title: 'The technical work stays behind the curtain.',
-      body: 'AISAR finds the opportunity, prepares the right AI help, and connects only what it needs.',
+      body: 'Jentera finds the opportunity, prepares the right AI help, and connects only what it needs.',
     },
     {
       eyebrow: 'You stay in control',
       title: 'Review it before it starts working.',
-      body: 'Approve access and sensitive actions, then see what AISAR completed and where it needs you.',
+      body: 'Approve access and sensitive actions, then see what Jentera completed and where it needs you.',
     },
   ],
 };
@@ -68,24 +68,24 @@ export const BUILT_FOR: Section = {
 export const HOW_IT_WORKS: Section = {
   id: 'how',
   eyebrow: 'How it works',
-  title: 'You know your business. AISAR learns it.',
-  lede: 'Most AI tools give you another system to learn. AISAR learns your business and handles the setup behind the scenes.',
+  title: 'You know your business. Jentera learns it.',
+  lede: 'Most AI tools give you another system to learn. Jentera learns your business and handles the setup behind the scenes.',
   columns: 'sm:grid-cols-2 lg:grid-cols-4',
   panels: [
     {
       eyebrow: '01 — Share',
       title: 'Start with what you already have.',
-      body: 'Share your website and socials, or describe the business yourself. AISAR turns it into a profile you can review.',
+      body: 'Share your website and socials, or describe the business yourself. Jentera turns it into a profile you can review.',
     },
     {
       eyebrow: '02 — Find',
-      title: 'AISAR spots the busywork.',
+      title: 'Jentera spots the busywork.',
       body: 'It finds where AI can help most, ranks each opportunity by impact, and shows you what is ready to put to work.',
     },
     {
       eyebrow: '03 — Put to work',
       title: 'It sets up and connects everything.',
-      body: 'WhatsApp, Telegram, calendar, menu, inventory — AISAR asks only for the access it needs, then handles the setup.',
+      body: 'WhatsApp, Telegram, calendar, menu, inventory — Jentera asks only for the access it needs, then handles the setup.',
     },
     {
       eyebrow: '04 — Improve',
@@ -99,7 +99,7 @@ export const WHAT_IT_RUNS: Section = {
   id: 'runs',
   eyebrow: 'What it runs',
   title: 'Your team, under the hood',
-  lede: 'AISAR organises everything around the work your business needs done. The technical plumbing stays out of your way.',
+  lede: 'Jentera organises everything around the work your business needs done. The technical plumbing stays out of your way.',
   columns: 'lg:grid-cols-2',
   panels: [
     {
@@ -132,19 +132,19 @@ export const WHAT_IT_RUNS: Section = {
 export const START_BUSINESS: Section = {
   id: 'start',
   eyebrow: 'Something new?',
-  title: 'AISAR can start a business too',
-  lede: "Tell AISAR what you're thinking about building — it researches the market, shapes the business model, picks your stack, and sets up your AI team before launch.",
+  title: 'Jentera can start a business too',
+  lede: "Tell Jentera what you're thinking about building — it researches the market, shapes the business model, picks your stack, and sets up your AI team before launch.",
   columns: 'sm:grid-cols-2 lg:grid-cols-3',
   panels: [
     {
       eyebrow: 'Idea → Research',
       title: '"I want to sell Malaysian coffee internationally."',
-      body: 'AISAR researches the market, defines the customer, and shapes a business model — single-origin subscription for premium coffee drinkers in SG/JP.',
+      body: 'Jentera researches the market, defines the customer, and shapes a business model — single-origin subscription for premium coffee drinkers in SG/JP.',
     },
     {
       eyebrow: 'Model → Systems',
       title: 'Offer, brand, channels, stack.',
-      body: 'AISAR picks your offer and brand direction, then sets up the operations — store, payments, email, support, accounting — connected and ready.',
+      body: 'Jentera picks your offer and brand direction, then sets up the operations — store, payments, email, support, accounting — connected and ready.',
     },
     {
       eyebrow: 'AI Team → Launch',
@@ -155,17 +155,17 @@ export const START_BUSINESS: Section = {
 };
 
 /** The scripted terminal exchange in the onboarding preview. */
-export const DEMO_STEPS: { who: 'aisar' | 'you'; text: string; delay: number; typing?: boolean }[] = [
-  { who: 'aisar', text: "What's your website?", delay: 0.2 },
+export const DEMO_STEPS: { who: 'jentera' | 'you'; text: string; delay: number; typing?: boolean }[] = [
+  { who: 'jentera', text: "What's your website?", delay: 0.2 },
   { who: 'you', text: 'wagyu.my', delay: 1 },
   {
-    who: 'aisar',
+    who: 'jentera',
     text: 'I found that you operate a premium Japanese restaurant in Kuala Lumpur. Is that correct?',
     delay: 2,
     typing: true,
   },
   { who: 'you', text: 'Yes', delay: 3.8 },
-  { who: 'aisar', text: "I'm ready to handle this for you:", delay: 4.8 },
+  { who: 'jentera', text: "I'm ready to handle this for you:", delay: 4.8 },
 ];
 
 export const ONBOARDING = {
@@ -176,26 +176,26 @@ export const ONBOARDING = {
   cardTitle: 'Customer Assistant',
   cardHandles: 'Handles: FAQs · menu · reservations · hours · follow-ups',
   cardNeeds: "You'll need: WhatsApp [Connect] · Calendar [Connect] · Menu [Found ✓]",
-  activate: 'Put AISAR to work →',
-  activating: 'Putting AISAR to work…',
+  activate: 'Put Jentera to work →',
+  activating: 'Putting Jentera to work…',
   activated: '✓ Working',
   doneMessage:
     "Customer Assistant is live. It's already answering WhatsApp. Want me to also take over reservations?",
   asideEyebrow: 'What just happened',
   asideTitle: 'From zero to working AI in under 5 minutes.',
   asidePoints: [
-    'AISAR scanned your website and learned your business',
+    'Jentera scanned your website and learned your business',
     'It found the repetitive work with the highest impact',
     'It connected only what was needed—and explained why',
     'No coding, technical team, or workflows to build',
   ],
   asideBody:
-    'Behind the scenes, AISAR handles the AI, knowledge, connections, testing, and monitoring. You only see what is ready, what needs approval, and what was completed.',
+    'Behind the scenes, Jentera handles the AI, knowledge, connections, testing, and monitoring. You only see what is ready, what needs approval, and what was completed.',
 };
 
 export const CLOSING_CTA = {
-  headline: ['You run the business.', 'AISAR runs the busywork.'],
-  body: 'You explain the business. AISAR handles the technology and puts the right AI help to work.',
+  headline: ['You run the business.', 'Jentera runs the busywork.'],
+  body: 'You explain the business. Jentera handles the technology and puts the right AI help to work.',
   cta: 'Set up my business',
 };
 

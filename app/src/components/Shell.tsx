@@ -17,8 +17,8 @@ const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
 export function Logo({ suffix }: { suffix?: string }) {
   return (
-    <Link to="/" aria-label="AISAR home" className="inline-flex items-center gap-2">
-      <span className="font-pixel text-xl tracking-wide text-brand md:text-2xl">aisar</span>
+    <Link to="/" aria-label="Jentera home" className="inline-flex items-center gap-2">
+      <span className="font-pixel text-xl tracking-wide text-brand md:text-2xl">jentera</span>
       {suffix ? (
         <span className="hidden font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted sm:inline">
           {suffix}

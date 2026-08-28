@@ -27,7 +27,7 @@ const payload = JSON.stringify({
   taskId,
   leaseToken: randomUUID(),
   sessionId: `vrs-smoke-${taskId}`,
-  input: 'Reply with exactly: AISAR VRS OK. Do not use tools.',
+  input: 'Reply with exactly: Jentera VRS OK. Do not use tools.',
   instructions: 'This is a model connectivity check. Do not call tools or perform actions.',
   toolGrant,
 });

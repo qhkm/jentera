@@ -147,7 +147,7 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
       ) : (
         <>
           <p className="mt-2 text-sm text-text-secondary">
-            Chat privately with AISAR about your own business. The bot works for you and your team,
+            Chat privately with Jentera about your own business. The bot works for you and your team,
             not as a public customer-support agent.
           </p>
           <ol className="mt-3 flex list-decimal flex-col gap-1 pl-5 text-[13px] text-text-secondary">

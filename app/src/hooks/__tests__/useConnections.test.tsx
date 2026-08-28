@@ -51,7 +51,7 @@ describe('which connectors count as connected', () => {
   });
 
   it('does not count a connection that is not working', () => {
-    /* A bot whose webhook is erroring is not a channel AISAR can
+    /* A bot whose webhook is erroring is not a channel Jentera can
        reach anyone on, and lighting its chip green says it is. */
     expect(connectedNames([row('telegram', 'error')])).toEqual(new Set());
     expect(connectedNames([row('telegram', 'revoked')])).toEqual(new Set());

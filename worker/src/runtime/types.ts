@@ -48,7 +48,7 @@ export interface PriorWork {
 /**
  * Agent work, wherever it runs.
  *
- * Every method here is free of side effects on AISAR's own data. The
+ * Every method here is free of side effects on Jentera's own data. The
  * adapter reads and reasons; the control plane decides what to persist
  * and what needs approval. That split is what keeps policy enforceable
  * — a runtime that could write facts or send messages directly would

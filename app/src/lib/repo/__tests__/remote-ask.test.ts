@@ -9,7 +9,7 @@ const ANSWER = {
   grounded: true,
 };
 
-describe('RemoteRepository durable Ask AISAR bridge', () => {
+describe('RemoteRepository durable Ask Jentera bridge', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
@@ -47,12 +47,12 @@ describe('RemoteRepository durable Ask AISAR bridge', () => {
         pending: false,
         status: 'failed',
         runId: ANSWER.runId,
-        err: 'AISAR could not answer that just now. Please try again.',
+        err: 'Jentera could not answer that just now. Please try again.',
       }));
     vi.stubGlobal('fetch', fetch);
 
     await expect(new RemoteRepository().ask('What happened?')).rejects.toThrow(
-      'AISAR could not answer that just now. Please try again.',
+      'Jentera could not answer that just now. Please try again.',
     );
     expect(fetch).toHaveBeenCalledTimes(2);
   });
@@ -61,7 +61,7 @@ describe('RemoteRepository durable Ask AISAR bridge', () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(response({
         ok: false,
-        err: 'AISAR could not queue that answer. Please try again.',
+        err: 'Jentera could not queue that answer. Please try again.',
       }, 503))
       .mockResolvedValueOnce(response({ ok: true, pending: true, status: 'queued', runId: ANSWER.runId }, 202))
       .mockResolvedValueOnce(response({ ...ANSWER, pending: false, status: 'completed' }));

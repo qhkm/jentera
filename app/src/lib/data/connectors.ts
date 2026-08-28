@@ -51,7 +51,7 @@ export const CONNECTORS: Record<string, Connector> = {
     "e": "✈️",
     "tier": "T2",
     "method": "bss",
-    "flow": "Guided private-agent pairing — AISAR handles the token, webhook, and owner-chat lock securely",
+    "flow": "Guided private-agent pairing — Jentera handles the token, webhook, and owner-chat lock securely",
     "scope": [
       "chat with your business agent",
       "research and planning",

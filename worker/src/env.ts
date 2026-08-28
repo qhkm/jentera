@@ -51,7 +51,7 @@ export interface Env {
   RUNTIME_BUNDLE_COMMIT?: string;
   /** Second half of provisioning; false leaves raw provider compute unselected. */
   RUNTIME_BOOTSTRAP_ENABLED?: string;
-  /** Dedicated AISAR model credential. Never use a personal/shared key. */
+  /** Dedicated Jentera model credential. Never use a personal/shared key. */
   AISAR_MODEL_PROVIDER?: string;
   AISAR_MODEL_BASE?: string;
   AISAR_MODEL_KEY?: string;

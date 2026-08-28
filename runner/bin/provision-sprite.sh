@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Trusted operator entrypoint. Until a dedicated provisioning worker exists,
-# this gives AISAR one reproducible and auditable canary deployment path.
+# this gives Jentera one reproducible and auditable canary deployment path.
 : "${AISAR_BUSINESS_ID:?AISAR_BUSINESS_ID is required}"
 : "${AISAR_RUNTIME_RELEASE:?AISAR_RUNTIME_RELEASE is required}"
 : "${AISAR_RUNNER_KEY:?AISAR_RUNNER_KEY is required}"

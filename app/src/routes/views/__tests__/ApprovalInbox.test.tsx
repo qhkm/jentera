@@ -118,7 +118,7 @@ describe('deciding', () => {
     const box = await screen.findByRole('textbox');
     await userEvent.type(box, ' Extra.');
     await waitFor(() => expect(screen.getByRole('button', { name: /send my version/i })).toBeTruthy());
-    expect(screen.getByText(/AISAR will learn from the change/i)).toBeTruthy();
+    expect(screen.getByText(/Jentera will learn from the change/i)).toBeTruthy();
   });
 
   it('does not treat whitespace as an edit', async () => {

@@ -10,7 +10,7 @@ create table if not exists approval (
   connector     text not null,
   op            text not null,
   args          jsonb not null,
-  -- what AISAR proposed, when the owner edited before approving. The
+  -- what Jentera proposed, when the owner edited before approving. The
   -- delta between this and args is the strongest correction signal the
   -- product gets, and the easiest to lose.
   args_original jsonb,

@@ -280,7 +280,7 @@ describe('fetching the page', () => {
     await fetchPage('https://example.com');
     const headers = (spy.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
     // A site owner reading their logs should be able to tell what this was.
-    expect(headers['User-Agent']).toMatch(/AISAR/);
+    expect(headers['User-Agent']).toMatch(/Jentera/);
     expect(headers['User-Agent']).toMatch(/jentera\.ai/);
   });
 });

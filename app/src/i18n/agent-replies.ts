@@ -11,7 +11,7 @@
    · business-neutral. The BM originals name wagyu and udon, but
      these replies are shown for all twenty playbooks — a salon
      owner should not be told about their noodle stock.
-   · no emoji, matching the rest of the product. This is AISAR
+   · no emoji, matching the rest of the product. This is Jentera
      speaking, not a customer typing.
    ============================================================ */
 

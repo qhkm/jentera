@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /*
- * Idempotently install AISAR's single Free-plan zone rate-limit rule.
+ * Idempotently install Jentera's single Free-plan zone rate-limit rule.
  * This deliberately edits one rule by stable `ref`; it never PUTs the whole
  * ruleset, because doing so could erase unrelated dashboard-managed rules.
  */
@@ -14,7 +14,7 @@ const token = process.env.CLOUDFLARE_API_TOKEN;
 
 const rule = {
   ref: REF,
-  description: 'AISAR: cap non-verified API traffic before Worker invocation',
+  description: 'Jentera: cap non-verified API traffic before Worker invocation',
   // Free rate-limit rules support Path and Verified Bot, but not Host or Method.
   // Restricting to /api keeps this zone-wide rule away from the main Pages site.
   expression: '(not cf.client.bot and (http.request.uri.path eq "/api" or starts_with(http.request.uri.path, "/api/")))',
@@ -53,7 +53,7 @@ if (!entrypoint) {
   result = await request(`/zones/${zoneId}/rulesets`, {
     method: 'POST',
     body: {
-      name: 'AISAR zone rate limiting',
+      name: 'Jentera zone rate limiting',
       description: 'Rate limits dynamic requests before Workers and origins',
       kind: 'zone',
       phase: 'http_ratelimit',

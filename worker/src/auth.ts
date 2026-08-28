@@ -71,7 +71,7 @@ export interface Session {
 /**
  * The first authenticated destination is derived from server state, never a
  * browser-supplied return URL. A user without membership is new and must land
- * in onboarding, where RepositoryGate creates the business and Activate AISAR
+ * in onboarding, where RepositoryGate creates the business and Activate Jentera
  * durably starts its Hermes runtime. Existing members resume the first
  * unfinished stage instead of relying on a later client-side bounce.
  */

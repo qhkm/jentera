@@ -64,7 +64,7 @@ export default function HomeView({
 
   /* The line under the counter. It was unconditional for anyone signed
      in, so a business with one completed reply read "No activity yet.
-     AISAR will show completed work here." directly beneath "1 handled
+     Jentera will show completed work here." directly beneath "1 handled
      automatically" — the card contradicting itself in two adjacent
      lines, because the counter comes from the run counters and this
      line came from the playbook's work list. Say it only when it is

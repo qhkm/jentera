@@ -5,6 +5,8 @@
    instead of throwing (same contract as the old KV_STORE).
    ============================================================ */
 
+/* These pre-rebrand keys deliberately remain stable so existing Jentera users
+   keep their onboarding, business profile, permissions, and connections. */
 export const KEYS = {
   onboarded: 'aisar-onboarded-v1',
   setupDone: 'aisar-setup-done-v1',
@@ -80,7 +82,7 @@ export function isUnset(key: string): boolean {
   }
 }
 
-/** Clear every AISAR key. Useful for re-testing the first-run flow. */
+/** Clear every Jentera key. Useful for re-testing the first-run flow. */
 export function resetAll(): void {
   try {
     const doomed = Object.keys(localStorage).filter((k) => k.startsWith('aisar-'));

@@ -2,8 +2,8 @@
    Telling the owner what was actually read.
 
    jentera.ai returns a 727-byte SPA shell. Strip the scripts and 43
-   characters remain — the <title>. AISAR extracted the one fact that
-   text contains, correctly invented nothing else, and reported "AISAR
+   characters remain — the <title>. Jentera extracted the one fact that
+   text contains, correctly invented nothing else, and reported "Jentera
    found 1 thing", which reads as "I read your site".
 
    It had not. It read a title tag. The extraction was never the
@@ -19,7 +19,7 @@ describe('a page that needs JavaScript', () => {
     const note = describeRead({ facts: 1, chars: 43 });
     expect(note).toMatch(/needs JavaScript/i);
     expect(note).toContain('43 characters');
-    expect(note).not.toMatch(/AISAR found 1 thing\./);
+    expect(note).not.toMatch(/Jentera found 1 thing\./);
   });
 
   it('does not credit the title with being the site', () => {
@@ -31,7 +31,7 @@ describe('a page that needs JavaScript', () => {
   });
 });
 
-describe('a page AISAR could actually read', () => {
+describe('a page Jentera could actually read', () => {
   it('reports what it found', () => {
     const note = describeRead({ facts: 3, chars: 5000 });
     expect(note).toMatch(/found 3 things/i);

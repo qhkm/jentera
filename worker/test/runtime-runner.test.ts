@@ -16,7 +16,7 @@ beforeEach(async () => {
 });
 
 describe('durable Hermes run delivery', () => {
-  it('starts once, defers polling, then completes the AISAR history atomically', async () => {
+  it('starts once, defers polling, then completes the Jentera history atomically', async () => {
     const env = testEnv({
       RUNTIME_RELEASE: '2026.08.27-1',
       AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',

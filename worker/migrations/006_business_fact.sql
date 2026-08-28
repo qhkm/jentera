@@ -1,5 +1,5 @@
 /* ============================================================
-   What AISAR knows about a business, and how it came to know it.
+   What Jentera knows about a business, and how it came to know it.
 
    Every fact carries where it came from and how sure we are, because
    later slices reason off these rows and a wrong answer has to be

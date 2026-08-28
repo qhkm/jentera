@@ -1,5 +1,5 @@
 /* ============================================================
-   AISAR's narrow, per-business boundary in front of Hermes.
+   Jentera's narrow, per-business boundary in front of Hermes.
 
    Hermes stays on loopback. The Sprite URL routes only to this
    process, whose task endpoint requires both the private Sprite URL

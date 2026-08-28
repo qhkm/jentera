@@ -12,7 +12,7 @@ behind the tokens — and holds no CSS of its own.
 | `app/src/styles/tokens.css` | 225 | Semantic custom properties, both themes |
 | `app/src/styles/theme.css` | 450 | Component classes: `.btn`, `.card`, `.input`, `.tag`, `.chip`, control sizing |
 | `app/src/styles/fonts.css` | 60 | `@font-face` for Geist and JetBrains Mono |
-| `app/src/styles/landing.css` | 191 | AISAR marketing page only — not part of the system |
+| `app/src/styles/landing.css` | 191 | Jentera marketing page only — not part of the system |
 
 This folder previously carried its own `tokens.css` and `theme.css`. They were a snapshot
 taken at extraction and drifted badly: 49 changed lines in the tokens and 200 in the theme,
@@ -140,16 +140,16 @@ The recognisable texture is **mono + uppercase + wide tracking (`.12em`) at tiny
 
 Accent is `#00d294` (exactly `emerald-400` from their palette) with its own alpha ladder: `.12` fill, `.3`–`.6` borders, `.75`–`.8` text. It's used for state (active, live, connected), never for large fills.
 
-## Upstream vs. AISAR-added
+## Upstream vs. Jentera-added
 
 Worth knowing which half is which before you rebuild:
 
 | | Where | What |
 |---|---|---|
 | **Upstream** | `_next/static/chunks/` | All tokens, both themes, border system, type scale, fonts, `.btn*`, `.link`, `.nav-link`, `.section-eyebrow`, `.cli-chip` |
-| **AISAR-added** | inline `<style>` in the static site's HTML pages (~17 KB in the former `app.html` alone; the static site is gone, see `theme.css` for where this lives now) | Every `.as-*` and `.kv-*` class — cards, tags, chips, sidebar, chat UI, drawer, toast, toggle, avatar, steps |
+| **Jentera-added** | inline `<style>` in the static site's HTML pages (~17 KB in the former `app.html` alone; the static site is gone, see `theme.css` for where this lives now) | Every `.as-*` and `.kv-*` class — cards, tags, chips, sidebar, chat UI, drawer, toast, toggle, avatar, steps |
 
-The AISAR layer is more systematic than it looks; it just wasn't tokenized. `theme.css` promotes it into proper components (`.card`, `.tag`, `.chip`, `.avatar`, `.input`, `.progress`).
+The Jentera layer is more systematic than it looks; it just wasn't tokenized. `theme.css` promotes it into proper components (`.card`, `.tag`, `.chip`, `.avatar`, `.input`, `.progress`).
 
 ## The light-first / dark-first trap
 
@@ -185,11 +185,11 @@ app/src/styles/theme.css      →  the component classes
 app/src/styles/fonts.css      →  the faces
 ```
 
-Skip `landing.css` — it is AISAR's marketing page, not part of the system.
+Skip `landing.css` — it is Jentera's marketing page, not part of the system.
 
 For React, `app/src/components/ui/index.tsx` (140 lines) is a thin set of wrappers over
 those classes: `Button`, `Card`, `Tag`, `Chip`, `Eyebrow`, `Avatar`, `Input`, `Progress`,
-`Section`. `Tabs.tsx` and `Toast.tsx` are generic too. Do **not** take `Shell.tsx` (AISAR's
+`Section`. `Tabs.tsx` and `Toast.tsx` are generic too. Do **not** take `Shell.tsx` (Jentera's
 navigation) or `Icon.tsx` (a domain-specific emoji map).
 
 Install the fonts from source rather than copying `.woff2` files — see *Sourcing the fonts*

@@ -102,12 +102,12 @@ async function bootstrapRuntime(
   const modelBase = env.AISAR_MODEL_BASE?.trim() ?? '';
   const modelName = env.AISAR_MODEL_NAME?.trim() ?? '';
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('RUNTIME_BUNDLE_COMMIT is invalid');
-  if (modelProvider !== 'openrouter') throw new Error('AISAR model provider is not allowed');
+  if (modelProvider !== 'openrouter') throw new Error('Jentera model provider is not allowed');
   if (modelBase !== 'https://openrouter.ai/api/v1') {
-    throw new Error('AISAR OpenRouter endpoint is not pinned');
+    throw new Error('Jentera OpenRouter endpoint is not pinned');
   }
   if (!/^[A-Za-z0-9._~-]+\/[A-Za-z0-9._:~-]+$/.test(modelName)) {
-    throw new Error('AISAR model name is invalid');
+    throw new Error('Jentera model name is invalid');
   }
   if (!runtime.providerId || !runtime.providerUrl) throw new Error('provider runtime is incomplete');
 
@@ -180,7 +180,7 @@ async function bootstrapRuntime(
   await client.ready();
   const checkpoint = await provider.checkpoint(
     awakened,
-    `AISAR runtime ${runtime.desiredRelease}`,
+    `Jentera runtime ${runtime.desiredRelease}`,
   );
   /* Only revoke the prior inference key after the Sprite has attested and a
      known-good checkpoint containing the replacement exists. */

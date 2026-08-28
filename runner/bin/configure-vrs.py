@@ -39,7 +39,7 @@ def main() -> None:
     providers = config.get("custom_providers")
     providers = list(providers) if isinstance(providers, list) else []
     entry = {
-        "name": "AISAR VRS",
+        "name": "Jentera VRS",
         "base_url": base_url.rstrip("/"),
         "key_env": key_env,
         "model": model_name,

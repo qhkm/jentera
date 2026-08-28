@@ -1,4 +1,4 @@
-# AISAR agent runner
+# Jentera agent runner
 
 The narrow per-business HTTP service placed in front of Hermes. The Sprite URL routes to
 the runner on port 8080; Hermes listens only on `127.0.0.1:8642`.
@@ -6,7 +6,7 @@ the runner on port 8080; Hermes listens only on `127.0.0.1:8642`.
 The runner provides liveness, authenticated detailed readiness, idempotent task start,
 status, cancellation, and a filtered Hermes presentation stream. Every start additionally requires a five-minute HMAC grant
 bound to that business and task. The grant permits the pinned Hermes tool bundle. Its
-small state file survives a process restart and contains only AISAR task ids, Hermes run
+small state file survives a process restart and contains only Jentera task ids, Hermes run
 ids, statuses, and hashes of task leases and grant nonces—never plaintext values or an
 API key.
 
@@ -53,7 +53,7 @@ Sprite image; it is diagnostic, not part of the runner service.
 
 ## Development VRS model setup
 
-The `jentera` development Sprite currently uses AISAR VRS through Hermes's custom
+The `jentera` development Sprite currently uses Jentera VRS through Hermes's custom
 OpenAI-compatible provider with `ds4-flash`. `bin/configure-vrs.py` writes only the
 provider configuration and an environment-variable reference; it never writes the model
 credential into Hermes's config file.
@@ -62,7 +62,7 @@ credential into Hermes's config file.
 into the Sprite's mode-0600 runtime environment. Its input file is base64-encoded only to
 make shell transfer unambiguous—base64 is **not encryption**. Keep the transfer file mode
 0600, remove it immediately after installation, and never commit it. Production bootstrap
-must obtain a dedicated AISAR VRS credential from the control plane's encrypted secret
+must obtain a dedicated Jentera VRS credential from the control plane's encrypted secret
 store instead of copying a credential from another project.
 
 After restarting Hermes and the runner, `bin/task-smoke-sprite.sh` submits a real,

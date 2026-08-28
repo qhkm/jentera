@@ -1,7 +1,7 @@
 /* ============================================================
    Tab strip.
 
-   Extracted from Ask AISAR so My Business gets the same control
+   Extracted from Ask Jentera so My Business gets the same control
    rather than a second, subtly different one. Labels never wrap
    and the row scrolls horizontally when it runs out of room —
    both learned from fixing this at 390px the first time.

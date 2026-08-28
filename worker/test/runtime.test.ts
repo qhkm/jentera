@@ -54,7 +54,7 @@ describe.each(ADAPTERS)('%s satisfies the runtime contract', (_name, make) => {
     expect(model === null || typeof model === 'string').toBe(true);
   });
 
-  it('answers a question without touching AISAR data', async () => {
+  it('answers a question without touching Jentera data', async () => {
     /* The adapter reads and reasons; the control plane decides what to
        persist. A runtime that could write facts or send messages
        directly would be a runtime that could bypass the approval

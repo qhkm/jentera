@@ -24,9 +24,9 @@ export function LandingHeader() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-rail bg-bg/80 backdrop-blur-lg">
       <div className="mx-auto flex h-16 w-full max-w-[1250px] items-center justify-between px-6">
-        <Link to="/" aria-label="AISAR home">
+        <Link to="/" aria-label="Jentera home">
           <span className="font-pixel font-pixel-logo text-xl tracking-wide text-brand md:text-2xl">
-            aisar
+            jentera
           </span>
         </Link>
 
@@ -107,7 +107,7 @@ export function LandingFooter() {
     <footer className="w-full border-t border-rail">
       <div className="mx-auto flex w-full max-w-[1250px] flex-col gap-6 px-6 py-10 md:flex-row md:items-center md:justify-between md:px-12">
         <div className="flex flex-col gap-2">
-          <span className="font-pixel text-lg tracking-wide text-brand">aisar</span>
+          <span className="font-pixel text-lg tracking-wide text-brand">jentera</span>
           <p className="text-xs text-text-muted">{FOOTER.tagline}</p>
         </div>
         <div className="flex flex-col gap-3 text-xs text-text-muted md:items-end">

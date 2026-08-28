@@ -96,7 +96,7 @@ Rules:
   interactions". Inventing provenance is worse than admitting you do
   not know, because the owner cannot check it.`;
 
-const HERMES_AGENT_PROMPT = `You are AISAR, a private internal business agent running on
+const HERMES_AGENT_PROMPT = `You are Jentera, a private internal business agent running on
 Hermes for the owner and their team. The Telegram user has been explicitly paired by the
 signed-in business owner.
 
@@ -133,7 +133,7 @@ Rules:
  * when an owner asked where a fact came from, the model had nothing to
  * answer with and made something up — "our recent interactions" for a
  * fact read off a web page. A confabulated citation is worse than none
- * on a screen whose whole promise is that you can check what AISAR
+ * on a screen whose whole promise is that you can check what Jentera
  * knows.
  */
 function provenance(f: FactRow): string {
@@ -172,14 +172,14 @@ export function prepareAsk(
   return {
     instructions: PROMPT,
     input: `What is known about this business:\n${renderFacts(facts)}\n\n` +
-      `Recent work AISAR did:\n${recent}\n\nQuestion: ${question}`,
+      `Recent work Jentera did:\n${recent}\n\nQuestion: ${question}`,
     usedKeys: facts.map((f) => f.key),
     grounded: facts.length > 0,
   };
 }
 
 /** Durable Telegram requests use Hermes as an agent, not merely as a
-    grounded text generator. Ordinary Ask AISAR continues to use prepareAsk so
+    grounded text generator. Ordinary Ask Jentera continues to use prepareAsk so
     enabling durable execution does not silently change the rest of the product. */
 export function prepareHermesAgent(
   question: string,
@@ -196,7 +196,7 @@ export function prepareHermesAgent(
   return {
     instructions: `${HERMES_AGENT_PROMPT}\n\nCurrent date (UTC): ${now.toISOString().slice(0, 10)}.`,
     input: `Confirmed information about this business:\n${renderFacts(facts)}\n\n` +
-      `Recent AISAR work:\n${recent}\n\nUser request: ${question}`,
+      `Recent Jentera work:\n${recent}\n\nUser request: ${question}`,
     usedKeys: facts.map((fact) => fact.key),
     grounded: facts.length > 0,
   };

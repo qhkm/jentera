@@ -54,7 +54,7 @@ const guessed = (key: string, value: unknown, confidence = 0.6) =>
 
 describe('what reaches the model', () => {
   it('never includes an unconfirmed guess', async () => {
-    /* The property the review step depends on. If this breaks, AISAR
+    /* The property the review step depends on. If this breaks, Jentera
        tells customers things nobody approved, and the "needs your eye"
        queue becomes theatre. */
     await guessed('service.consult.price', 'RM150');
@@ -236,7 +236,7 @@ describe('the durable Hermes agent request', () => {
    a web page.
 
    A confabulated citation is worse than no citation on a screen whose
-   promise is that you can check what AISAR knows and where it came
+   promise is that you can check what Jentera knows and where it came
    from. Found on production, not by a test.
    ============================================================ */
 
@@ -255,22 +255,22 @@ const readFromWeb = (key: string, value: unknown, url: string) =>
 
 describe('where a fact came from', () => {
   it('survives retrieval instead of being dropped', async () => {
-    await readFromWeb('business.name', 'AISAR', 'https://jentera.ai');
+    await readFromWeb('business.name', 'Jentera', 'https://jentera.ai');
     const [fact] = await asTenant(A, (tx) => retrieve(tx, 'what is my business called'));
     expect(fact.sourceRef).toBe('https://jentera.ai');
   });
 
   it('reaches the model with the fact it belongs to', async () => {
-    /* The bug. The model was shown "business.name: AISAR" and nothing
+    /* The bug. The model was shown "business.name: Jentera" and nothing
        else, then asked where that came from. */
-    await readFromWeb('business.name', 'AISAR', 'https://jentera.ai');
+    await readFromWeb('business.name', 'Jentera', 'https://jentera.ai');
     const { env, seen } = spyModel();
     const facts = await asTenant(A, (tx) => retrieve(tx, 'where did you learn my name'));
 
     await answer(env, 'where did you learn my name', facts, []);
 
     expect(seen[0]).toContain('https://jentera.ai');
-    expect(seen[0]).toMatch(/business\.name: AISAR \[read from https:\/\/jentera\.ai\]/);
+    expect(seen[0]).toMatch(/business\.name: Jentera \[read from https:\/\/jentera\.ai\]/);
   });
 
   it('says the owner told it, when the owner did', async () => {
@@ -307,7 +307,7 @@ describe('where a fact came from', () => {
     /* The prompt is half the fix. Without a source the model still had
        to say something, and the standing instruction to never sound
        like a machine pushed it toward inventing a plausible history. */
-    await readFromWeb('business.name', 'AISAR', 'https://jentera.ai');
+    await readFromWeb('business.name', 'Jentera', 'https://jentera.ai');
     const { env, seen } = spyModel();
     const facts = await asTenant(A, (tx) => retrieve(tx, 'name'));
 
@@ -323,7 +323,7 @@ describe('the bracket is a note to the model, not to the reader', () => {
        ordinary answers where nobody had asked about provenance. The
        same function drafts replies to real customers, so a customer
        would have received the bracket too. */
-    await readFromWeb('business.name', 'AISAR', 'https://jentera.ai');
+    await readFromWeb('business.name', 'Jentera', 'https://jentera.ai');
     const { env, seen } = spyModel();
     const facts = await asTenant(A, (tx) => retrieve(tx, 'how are you'));
 
@@ -336,7 +336,7 @@ describe('the bracket is a note to the model, not to the reader', () => {
   });
 
   it('still carries the source for when it is asked', async () => {
-    await readFromWeb('business.name', 'AISAR', 'https://jentera.ai');
+    await readFromWeb('business.name', 'Jentera', 'https://jentera.ai');
     const { env, seen } = spyModel();
     const facts = await asTenant(A, (tx) => retrieve(tx, 'where'));
 

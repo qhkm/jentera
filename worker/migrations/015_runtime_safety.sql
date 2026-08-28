@@ -2,7 +2,7 @@
    Hard per-business ceilings and terminal task failure.
 
    Provider invoices and model-key limits are outer circuit breakers.
-   These rows are AISAR's tenant-scoped source of truth, checked before
+   These rows are Jentera's tenant-scoped source of truth, checked before
    compute is woken and reconciled with measured usage at completion.
    ============================================================ */
 

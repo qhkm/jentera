@@ -98,7 +98,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate your Friday export",
-      "d": "You manually export reservations to Sheets every Friday. AISAR can do this automatically.",
+      "d": "You manually export reservations to Sheets every Friday. Jentera can do this automatically.",
       "tag": "est. 1 hr/month",
       "cta": "Automation queued — I'll take care of the Friday export."
     },
@@ -164,7 +164,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "WhatsApp · 5h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Customer complained about wrong order delivery — AISAR apologised and offered 10% off. Review before sending?",
+        "d": "Customer complained about wrong order delivery — Jentera apologised and offered 10% off. Review before sending?",
         "cta": "Approved — 10% discount voucher sent."
       }
     ],
@@ -296,7 +296,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate abandoned cart recovery",
-      "d": "Shoppers leave carts every day. AISAR follows up automatically with a personalised message + offer.",
+      "d": "Shoppers leave carts every day. Jentera follows up automatically with a personalised message + offer.",
       "tag": "est. 3 hrs/month",
       "cta": "Automation queued — I'll take care of cart recovery."
     },
@@ -362,7 +362,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "WhatsApp · 5h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Customer complained about late delivery — AISAR apologised and offered free shipping. Review before sending?",
+        "d": "Customer complained about late delivery — Jentera apologised and offered free shipping. Review before sending?",
         "cta": "Approved — free shipping voucher sent."
       }
     ],
@@ -507,7 +507,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate WhatsApp order intake",
-      "d": "Customers order via WhatsApp all day — even when your shop is closed. AISAR captures orders, confirms sizes and prices, and sends receipts automatically.",
+      "d": "Customers order via WhatsApp all day — even when your shop is closed. Jentera captures orders, confirms sizes and prices, and sends receipts automatically.",
       "tag": "est. 6 hrs/month",
       "cta": "Automation queued — I'll take your orders on WhatsApp."
     },
@@ -573,7 +573,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "WhatsApp · 5h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Customer asked about a bulk order (50 pcs) — AISAR checked with you before promising a price. Review?",
+        "d": "Customer asked about a bulk order (50 pcs) — Jentera checked with you before promising a price. Review?",
         "cta": "Approved — offer sent with 8% bulk discount."
       }
     ],
@@ -689,7 +689,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate event quote requests",
-      "d": "Clients ask for buffet quotes at all hours. AISAR collects event details (date, pax, menu) and sends a quote — no back-and-forth.",
+      "d": "Clients ask for buffet quotes at all hours. Jentera collects event details (date, pax, menu) and sends a quote — no back-and-forth.",
       "tag": "est. 5 hrs/month",
       "cta": "Automation queued — I'll handle quote requests."
     },
@@ -755,7 +755,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "WhatsApp · 5h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Client asked for halal certification documents — AISAR needs your copy to send. Review?",
+        "d": "Client asked for halal certification documents — Jentera needs your copy to send. Review?",
         "cta": "Approved — cert sent."
       }
     ],
@@ -875,7 +875,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate booking & reminder flow",
-      "d": "Clients ask \"ada slot weekend ni?\" every day. AISAR checks your calendar, books slots and sends reminders — no double-booking.",
+      "d": "Clients ask \"ada slot weekend ni?\" every day. Jentera checks your calendar, books slots and sends reminders — no double-booking.",
       "tag": "est. 4 hrs/month",
       "cta": "Automation queued — I'll handle bookings."
     },
@@ -941,7 +941,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "WhatsApp · 5h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Client wants a rush quote for corporate event coverage (3 days notice). AISAR asked if you can accept. Review?",
+        "d": "Client wants a rush quote for corporate event coverage (3 days notice). Jentera asked if you can accept. Review?",
         "cta": "Approved — rush fee quoted."
       }
     ],
@@ -1062,7 +1062,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate custom cake orders",
-      "d": "Customers describe cakes on WhatsApp at midnight. AISAR captures flavour, size and pickup date — then reminds them to confirm.",
+      "d": "Customers describe cakes on WhatsApp at midnight. Jentera captures flavour, size and pickup date — then reminds them to confirm.",
       "tag": "est. 6 hrs/month",
       "cta": "Automation queued — I'll take cake orders."
     },
@@ -1249,7 +1249,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate wedding lead follow-up",
-      "d": "Couples enquire with 3 planners at once — the fastest reply wins. AISAR answers instantly and books site visits for the best-fit dates.",
+      "d": "Couples enquire with 3 planners at once — the fastest reply wins. Jentera answers instantly and books site visits for the best-fit dates.",
       "tag": "est. 5 hrs/month",
       "cta": "Automation queued — I'll chase wedding leads."
     },
@@ -1315,7 +1315,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "WhatsApp · 5h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Couple wants custom theme + outside vendor — AISAR flagged before promising. Review?",
+        "d": "Couple wants custom theme + outside vendor — Jentera flagged before promising. Review?",
         "cta": "Approved — custom quote sent."
       }
     ],
@@ -1437,7 +1437,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate proposal follow-up",
-      "d": "You draft quotes and chase replies manually. AISAR follows up on sent quotes automatically.",
+      "d": "You draft quotes and chase replies manually. Jentera follows up on sent quotes automatically.",
       "tag": "est. 4 hrs/month",
       "cta": "Automation queued — I'll chase those quotes."
     },
@@ -1503,7 +1503,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "4h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Prospect asked for a discount on retainers — AISAR offered a 3-month option. Review before sending?",
+        "d": "Prospect asked for a discount on retainers — Jentera offered a 3-month option. Review before sending?",
         "cta": "Approved — 3-month retainer offer sent."
       }
     ],
@@ -1630,7 +1630,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate appointment reminders",
-      "d": "No-shows cost you hours every month. AISAR sends reminders + reschedule links automatically.",
+      "d": "No-shows cost you hours every month. Jentera sends reminders + reschedule links automatically.",
       "tag": "est. 6 hrs/month",
       "cta": "Automation queued — I'll set up reminders."
     },
@@ -1696,7 +1696,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "6h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Patient asked about pricing for a procedure — AISAR offered a call-back. Review before sending?",
+        "d": "Patient asked about pricing for a procedure — Jentera offered a call-back. Review before sending?",
         "cta": "Approved — call-back scheduled."
       }
     ],
@@ -1822,7 +1822,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate booking reminders",
-      "d": "No-shows and last-minute cancellations eat your schedule. AISAR sends reminders + fill-from-waitlist automatically.",
+      "d": "No-shows and last-minute cancellations eat your schedule. Jentera sends reminders + fill-from-waitlist automatically.",
       "tag": "est. 3 hrs/month",
       "cta": "Automation queued — I'll handle reminders + waitlist."
     },
@@ -1888,7 +1888,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "5h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Client asked about bridal package pricing — AISAR offered a consultation call. Review before sending?",
+        "d": "Client asked about bridal package pricing — Jentera offered a consultation call. Review before sending?",
         "cta": "Approved — consultation call scheduled."
       }
     ],
@@ -2015,7 +2015,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate class schedule answers",
-      "d": "Members ask \"is there a slot tonight?\" every day. AISAR answers with live availability + waitlist signup.",
+      "d": "Members ask \"is there a slot tonight?\" every day. Jentera answers with live availability + waitlist signup.",
       "tag": "est. 5 hrs/month",
       "cta": "Automation queued — I'll handle class schedule answers."
     },
@@ -2081,7 +2081,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "4h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Prospect asked about corporate memberships — AISAR offered a call-back. Review before sending?",
+        "d": "Prospect asked about corporate memberships — Jentera offered a call-back. Review before sending?",
         "cta": "Approved — call-back scheduled."
       }
     ],
@@ -2211,7 +2211,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate fee reminders",
-      "d": "You chase fees every month. AISAR sends polite reminders + receipts automatically.",
+      "d": "You chase fees every month. Jentera sends polite reminders + receipts automatically.",
       "tag": "est. 3 hrs/month",
       "cta": "Automation queued — I'll handle fee reminders."
     },
@@ -2277,7 +2277,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "5h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Parent asked about discount for 2 siblings — AISAR offered 10%. Review before sending?",
+        "d": "Parent asked about discount for 2 siblings — Jentera offered 10%. Review before sending?",
         "cta": "Approved — 10% sibling discount offered."
       }
     ],
@@ -2398,7 +2398,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate order status updates",
-      "d": "Customers ask \"dah siap?\" every day. AISAR sends status updates + pickup reminders automatically.",
+      "d": "Customers ask \"dah siap?\" every day. Jentera sends status updates + pickup reminders automatically.",
       "tag": "est. 2 hrs/month",
       "cta": "Automation queued — I'll set up status updates."
     },
@@ -2464,7 +2464,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "4h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Customer complained about a missing item — AISAR apologised and offered 20% off next order.",
+        "d": "Customer complained about a missing item — Jentera apologised and offered 20% off next order.",
         "cta": "Approved — 20% voucher sent."
       }
     ],
@@ -2587,7 +2587,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate service reminders",
-      "d": "Customers forget servicing. AISAR reminds them when their car is due + books the slot automatically.",
+      "d": "Customers forget servicing. Jentera reminds them when their car is due + books the slot automatically.",
       "tag": "est. 4 hrs/month",
       "cta": "Automation queued — I'll set up service reminders."
     },
@@ -2653,7 +2653,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "5h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Customer asked about brake pad replacement pricing — AISAR offered a call-back quote.",
+        "d": "Customer asked about brake pad replacement pricing — Jentera offered a call-back quote.",
         "cta": "Approved — quote call-back scheduled."
       }
     ],
@@ -2778,7 +2778,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate grooming reminders",
-      "d": "Owners forget appointments — and no-shows cost you. AISAR sends reminders + rebooking nudges automatically.",
+      "d": "Owners forget appointments — and no-shows cost you. Jentera sends reminders + rebooking nudges automatically.",
       "tag": "est. 3 hrs/month",
       "cta": "Automation queued — I'll handle grooming reminders."
     },
@@ -2844,7 +2844,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "5h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Owner asked about boarding during Raya — AISAR offered a hold-slot.",
+        "d": "Owner asked about boarding during Raya — Jentera offered a hold-slot.",
         "cta": "Approved — boarding slot held."
       }
     ],
@@ -2963,7 +2963,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate delivery updates",
-      "d": "Customers always ask \"sampai dah?\". AISAR sends delivery confirmations + photos automatically.",
+      "d": "Customers always ask \"sampai dah?\". Jentera sends delivery confirmations + photos automatically.",
       "tag": "est. 2 hrs/month",
       "cta": "Automation queued — I'll set up delivery updates."
     },
@@ -3029,7 +3029,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "4h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Customer needs urgent same-day delivery — driver unavailable. AISAR suggested express option.",
+        "d": "Customer needs urgent same-day delivery — driver unavailable. Jentera suggested express option.",
         "cta": "Approved — express delivery arranged."
       }
     ],
@@ -3151,7 +3151,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate first-reply speed",
-      "d": "The first agent to reply wins the deal. AISAR answers enquiries instantly + books viewings.",
+      "d": "The first agent to reply wins the deal. Jentera answers enquiries instantly + books viewings.",
       "tag": "est. 5 hrs/month",
       "cta": "Automation queued — I'll handle lead response."
     },
@@ -3217,7 +3217,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "4h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Buyer asked about negotiation on asking price — AISAR drafted a polite response.",
+        "d": "Buyer asked about negotiation on asking price — Jentera drafted a polite response.",
         "cta": "Approved — response sent."
       }
     ],
@@ -3337,7 +3337,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate quote requests",
-      "d": "AISAR collects details (type, size, frequency) and sends pricing quotes instantly — no back-and-forth.",
+      "d": "Jentera collects details (type, size, frequency) and sends pricing quotes instantly — no back-and-forth.",
       "tag": "est. 3 hrs/month",
       "cta": "Automation queued — I'll set up instant quotes."
     },
@@ -3403,7 +3403,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "5h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Client asked about monthly discount packages — AISAR offered a 3-month plan.",
+        "d": "Client asked about monthly discount packages — Jentera offered a 3-month plan.",
         "cta": "Approved — 3-month plan offered."
       }
     ],
@@ -3523,7 +3523,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate your common questions",
-      "d": "Your customers ask the same things every day. AISAR answers them instantly — in your voice.",
+      "d": "Your customers ask the same things every day. Jentera answers them instantly — in your voice.",
       "tag": "est. 2 hrs/month",
       "cta": "Automation queued — I'll set up the Customer Assistant."
     },
@@ -3589,7 +3589,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "5h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Customer asked about special pricing — AISAR drafted a reply.",
+        "d": "Customer asked about special pricing — Jentera drafted a reply.",
         "cta": "Approved — reply sent."
       }
     ],
@@ -3697,7 +3697,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
     ],
     "sug": {
       "t": "Automate your common questions",
-      "d": "Your customers ask the same things every day. AISAR answers them instantly — in your voice.",
+      "d": "Your customers ask the same things every day. Jentera answers them instantly — in your voice.",
       "tag": "est. 2 hrs/month",
       "cta": "Automation queued — I'll set up the Customer Assistant."
     },
@@ -3763,7 +3763,7 @@ export const PLAYBOOKS: Record<string, Playbook> = {
         "t": "5h ago · escalated",
         "tag": "needs you",
         "tc": "red",
-        "d": "Customer asked about special pricing — AISAR drafted a reply. Review before sending?",
+        "d": "Customer asked about special pricing — Jentera drafted a reply. Review before sending?",
         "cta": "Approved — reply sent."
       }
     ],

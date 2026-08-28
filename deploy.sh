@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-#  Deploy AISAR (app/) → Cloudflare Pages → jentera.ai
+#  Deploy Jentera (app/) → Cloudflare Pages → jentera.ai
 #
 #  The React app under app/ is the only implementation. The old
 #  static site (index.html, biz-engine.js and the other root HTML)
@@ -24,7 +24,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 PROJECT="${AISAR_PAGES_PROJECT:-aisar-jentera}"
-MSG="${1:-Deploy AISAR React app}"
+MSG="${1:-Deploy Jentera React app}"
 
 echo "── 1/4 Install ──"
 cd app

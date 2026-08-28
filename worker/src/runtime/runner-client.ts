@@ -45,7 +45,7 @@ export class RuntimeBusyError extends Error {
   }
 }
 
-/** Authenticated client for AISAR's narrow per-business runner API. */
+/** Authenticated client for Jentera's narrow per-business runner API. */
 export class RunnerClient {
   private readonly origin: string;
   private readonly runnerKey: string;

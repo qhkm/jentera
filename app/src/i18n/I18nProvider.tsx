@@ -32,8 +32,8 @@ const MESSAGES: Record<Lang, Record<string, string>> = {
 };
 
 const TITLES: Record<Lang, string> = {
-  en: 'AISAR — Your business, without the busywork',
-  bm: 'AISAR — Perniagaan anda, tanpa kerja remeh',
+  en: 'Jentera — Your business, without the busywork',
+  bm: 'Jentera — Perniagaan anda, tanpa kerja remeh',
 };
 
 export const DEFAULT_LANG: Lang = 'en';

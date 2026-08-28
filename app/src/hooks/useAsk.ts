@@ -1,8 +1,8 @@
 /* ============================================================
-   Ask AISAR — the owner's instruction channel.
+   Ask Jentera — the owner's instruction channel.
 
    Distinct from the Customer inbox: this is where the owner asks
-   what happened or tells AISAR to handle something. Answers are
+   what happened or tells Jentera to handle something. Answers are
    generated from live state (work handled, approvals pending, the
    next suggested opportunity), never from a canned transcript —
    "chat is where the owner asks, Activity is where they
@@ -126,7 +126,7 @@ export function useAsk(
       }
 
       /* Tagging an agent routes the reply to that agent rather than to
-         AISAR's general answer. */
+         Jentera's general answer. */
       const agent = taggedAgent(question, business.team);
       let reply: string;
       if (agent) {

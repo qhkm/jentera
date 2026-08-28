@@ -149,7 +149,7 @@ function OnboardingDemo() {
 
                 {state === 'done' ? (
                   <div className="kv-chat-step" style={{ animationDelay: '.3s' }}>
-                    <span className="text-text-muted">aisar&gt;</span>{' '}
+                    <span className="text-text-muted">jentera&gt;</span>{' '}
                     <span className="text-brand">Customer Assistant is live.</span> It&rsquo;s
                     already answering WhatsApp. Want me to also take over reservations?
                   </div>

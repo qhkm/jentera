@@ -2,7 +2,7 @@
    The glance card contradicting itself.
 
    "1 handled automatically" sat directly above "No activity yet.
-   AISAR will show completed work here." Two adjacent lines, one of
+   Jentera will show completed work here." Two adjacent lines, one of
    them wrong, because the counter reads the run counters and the line
    beneath it read the playbook's work list — which is empty for every
    real business, so the line was unconditional for anyone signed in.

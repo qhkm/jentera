@@ -77,7 +77,7 @@ export default function SignIn() {
       const body = (await res.json().catch(() => ({}))) as { err?: string };
       setError(body.err ?? 'Email or password is incorrect.');
     } catch {
-      setError('Could not reach AISAR. Check your connection.');
+      setError('Could not reach Jentera. Check your connection.');
     } finally {
       setBusy(false);
     }
@@ -118,7 +118,7 @@ export default function SignIn() {
                 </>
               ) : (
                 <>
-                  If <strong>{email}</strong> has an AISAR account, a sign-in link is on its way. It
+                  If <strong>{email}</strong> has a Jentera account, a sign-in link is on its way. It
                   works once and expires in 15 minutes.
                 </>
               )}
@@ -135,7 +135,7 @@ export default function SignIn() {
       <LandingHeader />
       <main className="mx-auto max-w-md px-6 py-24">
         <div className="card p-8">
-          <h1 className="text-xl">{mode === 'signup' ? 'Create your AISAR account' : 'Sign in to AISAR'}</h1>
+          <h1 className="text-xl">{mode === 'signup' ? 'Create your Jentera account' : 'Sign in to Jentera'}</h1>
 
           {urlError ? (
             <p role="alert" className="mt-3 text-sm opacity-80">

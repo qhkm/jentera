@@ -109,7 +109,7 @@ describe('FlySpriteProvider', () => {
     expect(await provider.checkpoint(observed('ready'))).toBe('v2');
   });
 
-  it('writes bootstrap data only below the AISAR runtime directory', async () => {
+  it('writes bootstrap data only below the Jentera runtime directory', async () => {
     const seen: { url: string; init: RequestInit }[] = [];
     const provider = fly(async (url, init) => {
       seen.push({ url: String(url), init: init ?? {} });

@@ -31,7 +31,7 @@ beforeEach(async () => {
   cookieB = await signIn(userB);
 });
 
-describe('Ask AISAR runtime bridge', () => {
+describe('Ask Jentera runtime bridge', () => {
   it('keeps ordinary Ask on the inline answer path while work uses Hermes', async () => {
     const response = await call('POST', '/api/runs/ask', durableEnv(), cookieB, {
       question: 'What happened today?',
@@ -72,7 +72,7 @@ describe('Ask AISAR runtime bridge', () => {
     expect(preparing.status).toBe(503);
     expect(await preparing.json()).toEqual({
       ok: false,
-      err: 'AISAR is preparing your agent. Please try again shortly.',
+      err: 'Jentera is preparing your agent. Please try again shortly.',
     });
 
     const invalid = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
@@ -152,7 +152,7 @@ describe('Ask AISAR runtime bridge', () => {
     expect(unavailable.status).toBe(503);
     expect(await unavailable.json()).toEqual({
       ok: false,
-      err: 'AISAR is preparing your agent. Please try again shortly.',
+      err: 'Jentera is preparing your agent. Please try again shortly.',
     });
   });
 
@@ -200,7 +200,7 @@ describe('Ask AISAR runtime bridge', () => {
       runId,
       status: 'failed',
       pending: false,
-      err: 'AISAR could not answer that just now. Please try again.',
+      err: 'Jentera could not answer that just now. Please try again.',
     }));
   });
 
@@ -224,8 +224,8 @@ describe('Ask AISAR runtime bridge', () => {
     expect(streamFetch).toHaveBeenCalledOnce();
     expect(streamFetch.mock.calls[0][1]?.headers).toMatchObject({
       Upgrade: 'websocket',
-      'X-AISAR-Business': A,
-      'X-AISAR-Run': runId,
+      'X-Jentera-Business': A,
+      'X-Jentera-Run': runId,
     });
 
     expect((await streamCall(runId, env, cookieA, 'https://evil.example')).status).toBe(403);

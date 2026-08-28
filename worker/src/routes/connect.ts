@@ -304,7 +304,7 @@ async function telegramWebhook(
       await sendMessage(
         token,
         incoming.chatId,
-        'AISAR is connected to your business. Ask me about your operations, research, planning, or anything you need to get done.',
+        'Jentera is connected to your business. Ask me about your operations, research, planning, or anything you need to get done.',
       ).catch(() => {});
       return ok;
     }

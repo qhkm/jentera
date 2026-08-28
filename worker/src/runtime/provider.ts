@@ -3,7 +3,7 @@
 
    RuntimeProvider creates and recovers the isolated box. The existing
    RuntimeAdapter decides how a run is performed inside that box. The
-   split is what lets AISAR replace Fly without changing task history,
+   split is what lets Jentera replace Fly without changing task history,
    approvals, connectors, or the frontend.
    ============================================================ */
 

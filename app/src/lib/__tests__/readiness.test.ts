@@ -1,7 +1,7 @@
 /* ============================================================
    Setup progress, which replaced a number that meant nothing.
 
-   The sidebar used to read "AISAR can handle 82%" — taken from the
+   The sidebar used to read "Jentera can handle 82%" — taken from the
    playbook, identical for every business of that type, and unmoved by
    anything the owner did. Precise, prominent and untethered, which is
    the worst combination, because it reads as a measurement.
@@ -45,7 +45,7 @@ describe('a business that has done nothing', () => {
     expect(readiness(snap(), 0, 0)).toBe(0);
   });
 
-  it('is asked to tell AISAR about itself first', () => {
+  it('is asked to tell Jentera about itself first', () => {
     expect(next([], 0, 0)).toBe('knows');
   });
 });
@@ -53,7 +53,7 @@ describe('a business that has done nothing', () => {
 describe('each milestone counts only when it is true', () => {
   it('an unconfirmed guess is not knowing something', () => {
     /* The same rule as retrieval: a guess nobody vouched for does not
-       count as the business having told AISAR anything. */
+       count as the business having told Jentera anything. */
     expect(readiness(snap([fact(false)]), 0, 0)).toBe(0);
     expect(readiness(snap([fact(true)]), 0, 0)).toBe(33);
   });

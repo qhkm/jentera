@@ -1,5 +1,5 @@
 /* ============================================================
-   What AISAR wants to do, waiting on a person.
+   What Jentera wants to do, waiting on a person.
 
    This is the screen the whole approval gate exists for. A reply to a
    customer goes out in the business's name, so the draft is editable
@@ -47,7 +47,7 @@ export default function ApprovalInbox({
       <div className="flex flex-col gap-1">
         <Eyebrow>Waiting for you</Eyebrow>
         <p className="max-w-[66ch] text-[13px] text-text-secondary">
-          Nothing here has been sent. AISAR drafted it and stopped.
+          Nothing here has been sent. Jentera drafted it and stopped.
         </p>
       </div>
       {approvals.map((a) => (
@@ -108,18 +108,18 @@ function Row({ approval, onDecided }: { approval: Approval; onDecided: () => voi
       {isReply(approval) ? (
         <div className="flex flex-col gap-2">
           <span className="text-[11px] uppercase tracking-wide text-text-muted">
-            AISAR would send
+            Jentera would send
           </span>
           <textarea
             className="input min-h-[5.5rem] w-full resize-y py-2 leading-snug"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            aria-label="The reply AISAR will send"
+            aria-label="The reply Jentera will send"
             disabled={busy}
           />
           {edited && (
             <span className="text-[11px] text-text-muted">
-              Edited — your wording will be sent, and AISAR will learn from the change.
+              Edited — your wording will be sent, and Jentera will learn from the change.
             </span>
           )}
         </div>

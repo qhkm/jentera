@@ -234,7 +234,7 @@ done
 /.sprite/bin/node /home/sprite/aisar/runner/browser-smoke.mjs >/dev/null
 checkpoint_created=false
 if [[ "${AISAR_BOOTSTRAP_CONTROL_PLANE:-0}" != "1" ]]; then
-  sprite-env checkpoints create --comment "AISAR runtime $runtime_release ready" >/dev/null
+  sprite-env checkpoints create --comment "Jentera runtime $runtime_release ready" >/dev/null
   checkpoint_created=true
 fi
 rm -f "$incoming"
