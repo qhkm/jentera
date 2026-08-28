@@ -16,21 +16,23 @@ import {
 } from 'react';
 
 interface ToastValue {
-  toast: (message: string) => void;
+  toast: (message: string, tone?: ToastTone) => void;
 }
+
+type ToastTone = 'success' | 'error' | 'neutral';
 
 const ToastContext = createContext<ToastValue | null>(null);
 
 const DURATION = 3200;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [message, setMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ message: string; tone: ToastTone } | null>(null);
   const timer = useRef<number | null>(null);
 
-  const toast = useCallback((next: string) => {
-    setMessage(next);
+  const toast = useCallback((message: string, tone: ToastTone = 'success') => {
+    setNotice({ message, tone });
     if (timer.current !== null) clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setMessage(null), DURATION);
+    timer.current = window.setTimeout(() => setNotice(null), DURATION);
   }, []);
 
   useEffect(
@@ -47,17 +49,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div
         className={`pointer-events-none fixed bottom-6 left-1/2 z-[999] -translate-x-1/2 transition-all duration-300 ease-signature ${
-          message ? 'translate-y-0 opacity-100' : 'translate-y-5 opacity-0'
+          notice ? 'translate-y-0 opacity-100' : 'translate-y-5 opacity-0'
         }`}
-        role="status"
-        aria-live="polite"
+        role={notice?.tone === 'error' ? 'alert' : 'status'}
+        aria-live={notice?.tone === 'error' ? 'assertive' : 'polite'}
       >
-        {message ? (
+        {notice ? (
           <div className="card flex-row items-center gap-2 px-5 py-3 shadow-lg">
-            <span className="text-brand" aria-hidden="true">
-              ✓
+            <span
+              className={notice.tone === 'error'
+                ? 'text-[var(--color-red-400)]'
+                : notice.tone === 'neutral' ? 'text-text-muted' : 'text-brand'}
+              aria-hidden="true"
+            >
+              {notice.tone === 'error' ? '!' : notice.tone === 'neutral' ? '•' : '✓'}
             </span>
-            <span className="text-[13px]">{message}</span>
+            <span className="text-[13px]">{notice.message}</span>
           </div>
         ) : null}
       </div>
@@ -65,7 +72,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useToast(): (message: string) => void {
+export function useToast(): (message: string, tone?: ToastTone) => void {
   const ctx = useContext(ToastContext);
   if (!ctx) throw new Error('useToast must be used inside <ToastProvider>');
   return ctx.toast;

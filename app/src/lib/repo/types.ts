@@ -147,6 +147,8 @@ export interface OnboardingCompletion {
   channels: string[];
   name?: string;
   locality?: string;
+  /** Skip the optional connection tour and open the first chat immediately. */
+  setupDone?: boolean;
 }
 
 export type RuntimeState =

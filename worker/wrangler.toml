@@ -128,6 +128,10 @@ new_sqlite_classes = ["RunStream"]
 [ai]
 binding = "AI"
 
+[[analytics_engine_datasets]]
+binding = "PRODUCT_ANALYTICS"
+dataset = "jentera_product"
+
 # Durable wake-up signals. runtime_task in Postgres owns status and
 # leases; Queue delivery is intentionally treated as at-least-once.
 [[queues.producers]]

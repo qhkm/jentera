@@ -18,7 +18,8 @@ import { stripEmoji } from '@/components/Icon';
 import type { Lang } from '@/lib/types';
 import { taggedAgent } from '@/hooks/useMentions';
 import type { Business } from '@/lib/types';
-import type { AskMode, AskProgress } from '@/lib/repo';
+import type { AskAnswer, AskMode, AskProgress } from '@/lib/repo';
+import { trackActivation } from '@/lib/analytics';
 
 export interface AskMessage {
   from: 'you' | 'ai';
@@ -74,6 +75,7 @@ export function useAsk(
   counts: AskCounts,
   t: (key: string, vars?: Record<string, string | number>) => string,
   lang: Lang = 'en',
+  onCompleted?: (mode: AskMode, answer: AskAnswer) => void,
 ) {
   const repo = useRepository();
   const grounded = useSignedIn();
@@ -131,6 +133,7 @@ export function useAsk(
          replies below stay for the anonymous demo, which has no
          backend to ask and no facts to ground an answer in. */
       if (grounded) {
+        trackActivation(mode === 'work' ? 'work_sent' : 'ask_sent');
         const pendingId = crypto.randomUUID();
         setMessages((prev) => [
           ...prev,
@@ -164,6 +167,8 @@ export function useAsk(
                   }
                 : message,
             ));
+            onCompleted?.(mode, a);
+            trackActivation(mode === 'work' ? 'work_completed' : 'ask_completed');
           }, (reason: unknown) => {
             const text = reason instanceof Error ? reason.message : 'Jentera could not answer.';
             setMessages((prev) => prev.map((message) =>
@@ -204,7 +209,7 @@ export function useAsk(
         { from: 'ai', text: reply, agent: agent?.n },
       ]);
     },
-    [answer, business.team, lang, grounded, repo],
+    [answer, business.team, lang, grounded, repo, onCompleted, t],
   );
 
   return { messages, send, hasHistory: messages.length > 0 };

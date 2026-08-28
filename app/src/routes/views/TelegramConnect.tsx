@@ -15,6 +15,7 @@ import { Button, Card, Eyebrow, Input, LoadingState, Tag } from '@/components/ui
 import { useRepository } from '@/lib/repo';
 import type { Connection } from '@/lib/repo';
 import type { ConnectionsState } from '@/hooks/useConnections';
+import { trackActivation } from '@/lib/analytics';
 
 const STEPS = [
   'Open Telegram and message @BotFather',
@@ -35,6 +36,8 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState<string | null>(null);
+  const [confirmingDrop, setConfirmingDrop] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [health, setHealth] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
 
@@ -52,12 +55,14 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
   async function connect() {
     setBusy(true);
     setError(null);
+    trackActivation('telegram_connect_started');
     try {
       const c = await repo.connectTelegram(token.trim());
       setRows((prev) => [c, ...(prev ?? []).filter((r) => r.id !== c.id)]);
       // Cleared immediately on success: there is no reason for a live
       // bot token to sit in a form field afterwards.
       setToken('');
+      trackActivation('telegram_connected');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not connect that bot.');
     } finally {
@@ -94,8 +99,17 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
   }
 
   async function drop(id: string) {
-    setRows((prev) => (prev ?? []).filter((r) => r.id !== id));
-    await repo.disconnect(id).catch(() => setRows(null));
+    setDisconnecting(id);
+    setError(null);
+    try {
+      await repo.disconnect(id);
+      setRows((prev) => (prev ?? []).filter((r) => r.id !== id));
+      setConfirmingDrop(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not disconnect that bot.');
+    } finally {
+      setDisconnecting(null);
+    }
   }
 
   const telegram = (rows ?? []).filter((r) => r.connector === 'telegram');
@@ -125,7 +139,7 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
                   </span>
                 ) : null}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <Tag tone={statusTone(c)}>
                   {c.status === 'connected' && !c.paired ? 'pair owner' : c.status}
                 </Tag>
@@ -139,12 +153,36 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
                     Open in Telegram
                   </a>
                 ) : null}
-                <Button variant="ghost" onClick={() => void check(c.id)}>
-                  {checking === c.id ? 'Checking…' : 'Test'}
-                </Button>
-                <Button variant="ghost" onClick={() => void drop(c.id)}>
-                  Disconnect
-                </Button>
+                {confirmingDrop === c.id ? (
+                  <>
+                    <span className="w-full text-right text-[11px] text-text-muted">
+                      You will need the bot token to reconnect.
+                    </span>
+                    <Button
+                      variant="ghost"
+                      disabled={disconnecting === c.id}
+                      onClick={() => setConfirmingDrop(null)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="outline"
+                      disabled={disconnecting === c.id}
+                      onClick={() => void drop(c.id)}
+                    >
+                      {disconnecting === c.id ? 'Disconnecting…' : 'Confirm disconnect'}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="ghost" onClick={() => void check(c.id)}>
+                      {checking === c.id ? 'Checking…' : 'Test'}
+                    </Button>
+                    <Button variant="ghost" onClick={() => setConfirmingDrop(c.id)}>
+                      Disconnect
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           ))}
@@ -186,17 +224,17 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
               detail="Verifying the token and securing its private webhook. The token is cleared after it is saved."
             />
           ) : null}
-          {error && (
-            <p role="alert" className="mt-3 text-sm text-text-secondary">
-              {error}
-            </p>
-          )}
           <p className="mt-3 text-[12px] text-text-muted">
             After connecting, open the secure pairing link once from your Telegram account. Only
             that private chat can access your business agent.
           </p>
         </>
       )}
+      {error ? (
+        <p role="alert" className="mt-3 text-sm text-text-secondary">
+          {error}
+        </p>
+      ) : null}
     </Card>
   );
 }

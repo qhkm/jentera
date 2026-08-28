@@ -22,6 +22,7 @@ import {
 import { useMentions } from '@/hooks/useMentions';
 import CustomerInbox from './CustomerInbox';
 import { useSignedIn } from '@/lib/repo/gate';
+import { useActivity } from '@/hooks/useActivity';
 import type { Business } from '@/lib/types';
 import type { AskMode } from '@/lib/repo';
 
@@ -33,12 +34,14 @@ export default function AskJenteraView({
   needs,
   firstRun = false,
   onOpenActivity,
+  onOpenConnections,
 }: {
   business: Business;
   handled: number;
   needs: number;
   firstRun?: boolean;
   onOpenActivity?: () => void;
+  onOpenConnections?: () => void;
 }) {
   const { t, lang } = useI18n();
   const [tab, setTab] = useState<Tab>('assistant');
@@ -46,7 +49,9 @@ export default function AskJenteraView({
      mid-word in the narrower mobile composer. */
   const compact = useIsCompact();
   const [draft, setDraft] = useState('');
-  const ask = useAsk(business, { handled, needs }, t, lang);
+  const activity = useActivity();
+  const onAskCompleted = useCallback(() => activity.reload(), [activity.reload]);
+  const ask = useAsk(business, { handled, needs }, t, lang, onAskCompleted);
   const thread = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const mentions = useMentions(business.team);
@@ -213,6 +218,22 @@ export default function AskJenteraView({
                 <p className="max-w-[46ch] text-[13px] text-text-secondary">
                   {t(firstRun ? 'ask.welcome.first' : 'ask.welcome')}
                 </p>
+                {signedIn && activity.real && activity.data!.counters.connections === 0 ? (
+                  <div className="mt-2 flex max-w-[34rem] flex-col items-center gap-2 border-t border-rail pt-4">
+                    <p className="text-[12px] leading-relaxed text-text-muted">
+                      {t('ask.connection.optional')}
+                    </p>
+                    {onOpenConnections ? (
+                      <button
+                        type="button"
+                        className="text-[11px] font-semibold text-brand hover:underline"
+                        onClick={onOpenConnections}
+                      >
+                        {t('ask.connection.open')}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ) : (
               ask.messages.map((m, i) => (

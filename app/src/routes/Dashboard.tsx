@@ -11,7 +11,7 @@
      My Business knowledge, responsibilities, connections
    ============================================================ */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { Shell } from '@/components/Shell';
 import { Avatar, Card, Eyebrow, Progress, Tag } from '@/components/ui';
@@ -27,6 +27,7 @@ import HomeView from './views/HomeView';
 import AskJenteraView from './views/AskJenteraView';
 import ActivityView from './views/ActivityView';
 import MyBusinessView, { type BizTab } from './views/MyBusinessView';
+import { trackActivation } from '@/lib/analytics';
 
 export type View = 'home' | 'chat' | 'work' | 'business';
 
@@ -53,6 +54,7 @@ export default function Dashboard() {
     ? requestedView as View
     : 'home';
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const trackedOpen = useRef(false);
   const b = useBusiness();
   const { business } = b;
 
@@ -88,6 +90,12 @@ export default function Dashboard() {
   const linked = activity.real ? activity.data!.counters.connections : 0;
   const ready = readiness(snap, done, linked);
   const nextStep = milestones(snap, done, linked).find((m) => !m.done);
+
+  useEffect(() => {
+    if (trackedOpen.current) return;
+    trackedOpen.current = true;
+    trackActivation('dashboard_opened');
+  }, []);
 
   useEffect(() => {
     document.body.style.overflow = drawerOpen ? 'hidden' : '';
@@ -241,6 +249,7 @@ export default function Dashboard() {
               needs={needsAttention}
               firstRun={searchParams.get('first') === '1'}
               onOpenActivity={() => go('work')}
+              onOpenConnections={() => go('business', 'connections')}
             />
           </div>
           {view === 'work' && <ActivityView b={b} />}

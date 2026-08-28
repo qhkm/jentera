@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { LandingFooter, LandingHeader } from '@/components/landing/LandingChrome';
+import { trackActivation } from '@/lib/analytics';
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
@@ -57,6 +58,7 @@ export default function SignIn() {
 
   async function submitPassword(e: React.FormEvent) {
     e.preventDefault();
+    trackActivation(mode === 'signup' ? 'signup_started' : 'signin_started');
     setBusy('password');
     setError(null);
     try {
@@ -158,7 +160,11 @@ export default function SignIn() {
             </p>
           ) : null}
 
-          <a className="btn mt-6 flex w-full items-center justify-center gap-2" href={`${API}/api/auth/google`}>
+          <a
+            className="btn mt-6 flex w-full items-center justify-center gap-2"
+            href={`${API}/api/auth/google`}
+            onClick={() => trackActivation(mode === 'signup' ? 'signup_started' : 'signin_started')}
+          >
             {/* Inline rather than a remote asset: the page must not
                 depend on Google being reachable to render its own
                 sign-in button. */}

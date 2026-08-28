@@ -25,7 +25,7 @@
    showing the demo.
    ============================================================ */
 
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useRepository } from '@/lib/repo';
 import type { Activity } from '@/lib/repo';
@@ -102,18 +102,20 @@ function useActivityFetch(enabled: boolean): ActivityState {
         ? 'error'
         : 'pending';
 
+  const reload = useCallback(() => {
+    setData(null);
+    setError(null);
+    setLoading(true);
+    setNonce((n) => n + 1);
+  }, []);
+
   return {
     data,
     loading,
     error,
     mode,
     real: mode === 'real',
-    reload: () => {
-      setData(null);
-      setError(null);
-      setLoading(true);
-      setNonce((n) => n + 1);
-    },
+    reload,
   };
 }
 

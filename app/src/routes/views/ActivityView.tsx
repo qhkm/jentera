@@ -105,9 +105,9 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
        report success. */
     try {
       await mutate((r) => r.decideApproval(approval.id, ok));
-      toast(ok ? t('appr.approved') : t('appr.rejected'));
+      toast(ok ? t('appr.approved') : t('appr.rejected'), ok ? 'success' : 'neutral');
     } catch (err) {
-      toast((err as Error).message);
+      toast((err as Error).message, 'error');
       return;
     }
   }
@@ -362,7 +362,7 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
                     <Button
                       variant="outline"
                       className="px-4 py-1.5 text-xs"
-                      onClick={() => toast(t('uc.preparing'))}
+                      onClick={() => toast(t('uc.preparing'), 'neutral')}
                     >
                       {t('work.edit')}
                     </Button>

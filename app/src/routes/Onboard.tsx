@@ -46,6 +46,7 @@ import { useT } from '@/i18n/I18nProvider';
 import { useMutate, useRepository, useSnapshot } from '@/lib/repo';
 import { useSignedIn } from '@/lib/repo/gate';
 import * as store from '@/lib/storage';
+import { trackActivation } from '@/lib/analytics';
 
 /* Writes are fire-and-forget by design; the provider surfaces failures
    centrally, so this only stops an unhandled rejection. */
@@ -195,6 +196,13 @@ export default function Onboard() {
 
   const topRef = useRef<HTMLDivElement | null>(null);
   const completedRef = useRef(false);
+  const trackedStartRef = useRef(false);
+
+  useEffect(() => {
+    if (trackedStartRef.current) return;
+    trackedStartRef.current = true;
+    trackActivation('onboarding_started');
+  }, []);
 
   const business = useMemo(() => resolveBusiness(snap, bizType), [snap, bizType]);
   const playbook = PLAYBOOKS[bizType] ?? PLAYBOOKS[DEFAULT_TYPE];
@@ -227,7 +235,7 @@ export default function Onboard() {
 
     if (chosen === 'auto') {
       if (!url.trim() && !social.trim()) {
-        toast(t('ob.m.need'));
+        toast(t('ob.m.need'), 'neutral');
         return;
       }
       /* The static flow never reads the URL — it keeps the default
@@ -276,6 +284,7 @@ export default function Onboard() {
     }
 
     setMode(chosen);
+    trackActivation('business_import_started');
     setScanLines(lines);
     setScanShown(0);
     setProfileLearned(false);
@@ -381,45 +390,51 @@ export default function Onboard() {
   }
 
   async function confirmProfile() {
-    if (importedFacts.length === 0) {
-      go(3);
-      return;
-    }
     setConfirmingProfile(true);
     try {
-      await mutate((r) => r.confirmFacts(importedFacts.map((fact) => fact.key)));
-      go(3);
+      if (importedFacts.length > 0) {
+        await mutate((r) => r.confirmFacts(importedFacts.map((fact) => fact.key)));
+      }
+      trackActivation('business_profile_confirmed');
+      if (signedIn) {
+        setActivating(true);
+        await finishActivation();
+      } else {
+        go(3);
+        setConfirmingProfile(false);
+      }
     } catch (error) {
-      toast(error instanceof Error ? error.message : t('ob.confirm.failed'));
+      toast(error instanceof Error ? error.message : t('ob.confirm.failed'), 'error');
       setConfirmingProfile(false);
+      setActivating(false);
     }
   }
 
   /* ---- Activate ---- */
 
+  async function finishActivation() {
+    const profile = desc.trim() ? planRegisterBusiness(snap, desc.trim()) : null;
+    await mutate((r) => r.completeOnboarding({
+      playbookKey: bizType,
+      channels,
+      name: profile?.bizName ?? importedProfile.name,
+      locality: profile?.bizLoc ?? importedProfile.locality,
+      /* Telegram and the full runtime tour are optional. Quick Ask works
+         immediately while the private runtime provisions in the background. */
+      setupDone: signedIn,
+    }));
+    trackActivation('onboarding_completed');
+    completedRef.current = true;
+    store.remove(store.KEYS.onboardingDraft);
+    navigate(signedIn ? '/app?view=chat&first=1' : '/setup');
+  }
+
   function activate() {
     setActivating(true);
-    void (async () => {
-      try {
-        const profile = desc.trim() ? planRegisterBusiness(snap, desc.trim()) : null;
-        await mutate((r) => r.completeOnboarding({
-          playbookKey: bizType,
-          channels,
-          name: profile?.bizName ?? importedProfile.name,
-          locality: profile?.bizLoc ?? importedProfile.locality,
-        }));
-      } catch (error) {
-        setActivating(false);
-        toast(error instanceof Error ? error.message : 'Could not start your agent setup.');
-        return;
-      }
-      completedRef.current = true;
-      store.remove(store.KEYS.onboardingDraft);
-      /* The 1200ms is presentation, not a write budget. The atomic
-         completion above sets the flow gate and durably queues this
-         business's Hermes runtime, so it must land before we leave. */
-      setTimeout(() => navigate('/setup'), 1200);
-    })();
+    void finishActivation().catch((error: unknown) => {
+      setActivating(false);
+      toast(error instanceof Error ? error.message : 'Could not start your agent setup.', 'error');
+    });
   }
 
   function next() {
@@ -445,8 +460,10 @@ export default function Onboard() {
      footer on the first two for that reason, and step 6 gained an inline
      Activate/Back pair here, so showing the footer there too rendered a
      second Back directly under the first. */
-  const navVisible = step > 1 && step < STEP_COUNT - 1;
+  const navVisible = !signedIn && step > 1 && step < STEP_COUNT - 1;
   const nextLabel = step === 4 ? t('ob.nav.plan') : t('ob.nav.continue');
+  const visibleStep = signedIn ? Math.min(step + 1, 3) : step + 1;
+  const visibleStepCount = signedIn ? 3 : STEP_COUNT;
 
   return (
     <Shell suffix="/setup">
@@ -454,12 +471,15 @@ export default function Onboard() {
         {/* Progress */}
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <Tag>{t('ob.step', { n: step + 1 })}</Tag>
+            <Tag>{t('ob.step', { n: visibleStep })}</Tag>
             <span className="text-[11px] text-text-muted">
-              {step + 1} / {STEP_COUNT}
+              {visibleStep} / {visibleStepCount}
             </span>
           </div>
-          <Progress value={((step + 1) / STEP_COUNT) * 100} label={t('ob.step', { n: step + 1 })} />
+          <Progress
+            value={(visibleStep / visibleStepCount) * 100}
+            label={t('ob.step', { n: visibleStep })}
+          />
         </div>
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">

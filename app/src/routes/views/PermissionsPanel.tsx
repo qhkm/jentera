@@ -6,6 +6,7 @@
    the agent is actually allowed to do.
    ============================================================ */
 
+import { useState } from 'react';
 import { Button, Card, Eyebrow, Tag } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
 import { useToast } from '@/components/Toast';
@@ -19,10 +20,6 @@ import {
 } from '@/lib/permissions';
 import type { Tone } from '@/lib/types';
 
-/* Writes are fire-and-forget by design; the provider surfaces failures
-   centrally, so this only stops an unhandled rejection. */
-const noop = () => {};
-
 const LEVELS: { id: Policy; tone: Tone }[] = [
   { id: 'automatic', tone: 'green' },
   { id: 'approval', tone: 'amber' },
@@ -35,15 +32,30 @@ export default function PermissionsPanel() {
   const snap = useSnapshot();
   const mutate = useMutate();
   const policies = getPolicies(snap);
+  const [saving, setSaving] = useState<Operation | 'reset' | null>(null);
 
-  function change(op: Operation, next: Policy) {
-    void mutate((r) => r.setPolicy(op, next)).catch(noop);
-    toast(t('perm.saved'));
+  async function change(op: Operation, next: Policy) {
+    setSaving(op);
+    try {
+      await mutate((r) => r.setPolicy(op, next));
+      toast(t('perm.saved'));
+    } catch (error) {
+      toast(error instanceof Error ? error.message : t('perm.failed'), 'error');
+    } finally {
+      setSaving(null);
+    }
   }
 
-  function reset() {
-    void mutate((r) => r.resetPolicies()).catch(noop);
-    toast(t('perm.reset'));
+  async function reset() {
+    setSaving('reset');
+    try {
+      await mutate((r) => r.resetPolicies());
+      toast(t('perm.reset'));
+    } catch (error) {
+      toast(error instanceof Error ? error.message : t('perm.failed'), 'error');
+    } finally {
+      setSaving(null);
+    }
   }
 
   const customised = OPERATIONS.filter((op) => isCustomised(snap, op)).length;
@@ -105,7 +117,8 @@ export default function PermissionsPanel() {
                       type="button"
                       role="radio"
                       aria-checked={on}
-                      onClick={() => change(op, lvl.id)}
+                      disabled={saving !== null}
+                      onClick={() => void change(op, lvl.id)}
                       className={`shrink-0 whitespace-nowrap rounded-item border px-3 py-1.5 text-[11px] transition-colors ${
                         on
                           ? 'border-brand-line bg-brand-soft text-brand'
@@ -124,8 +137,13 @@ export default function PermissionsPanel() {
 
         {customised > 0 ? (
           <div className="mt-4">
-            <Button variant="outline" className="px-4 py-1.5 text-xs" onClick={reset}>
-              {t('perm.reset')}
+            <Button
+              variant="outline"
+              className="px-4 py-1.5 text-xs"
+              onClick={() => void reset()}
+              disabled={saving !== null}
+            >
+              {saving === 'reset' ? t('perm.saving') : t('perm.reset')}
             </Button>
           </div>
         ) : null}

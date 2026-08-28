@@ -64,6 +64,8 @@ export interface Env {
   RUNTIME_QUEUE?: Queue<import('./runtime/consumer').RuntimeQueueMessage>;
   /** Hibernating per-run WebSocket fan-out. Postgres remains task truth. */
   RUN_STREAMS?: DurableObjectNamespace;
+  /** First-party, pseudonymous activation funnel. No business content or PII. */
+  PRODUCT_ANALYTICS?: AnalyticsEngineDataset;
   /** Override the sender, e.g. for a staging origin. Must be a domain
       verified in Resend, and should match APP_ORIGIN. */
   MAGIC_FROM?: string;

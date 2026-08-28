@@ -25,10 +25,6 @@ import { useMutate, useSnapshot } from '@/lib/repo';
 import type { PlaybookFunc, Tone } from '@/lib/types';
 import type { useBusiness } from '@/hooks/useBusiness';
 
-/* Writes are fire-and-forget by design; the provider surfaces failures
-   centrally, so this only stops an unhandled rejection. */
-const noop = () => {};
-
 const CHANNELS = ['WhatsApp', 'Telegram', 'Instagram', 'Email', 'Phone'];
 
 function funcTone(colour: string): Tone {
@@ -65,6 +61,7 @@ export default function MyBusinessView({
   const signedIn = useSignedIn();
   const [name, setName] = useState(business.name);
   const [loc, setLoc] = useState(business.loc);
+  const [savingProfile, setSavingProfile] = useState(false);
 
   useEffect(() => setTab(initialTab), [initialTab]);
 
@@ -90,9 +87,16 @@ export default function MyBusinessView({
     conns.mode === 'demo' ? (business.ch.length ? business.ch : b.connections) : [...linked];
   const dirty = name.trim() !== business.name || loc.trim() !== business.loc;
 
-  function save() {
-    void mutate((r) => r.setBizProfile({ name: name.trim(), loc: loc.trim() })).catch(noop);
-    toast('Business profile updated ✓');
+  async function save() {
+    setSavingProfile(true);
+    try {
+      await mutate((r) => r.setBizProfile({ name: name.trim(), loc: loc.trim() }));
+      toast(t('biz.profile.saved'));
+    } catch (error) {
+      toast(error instanceof Error ? error.message : t('biz.profile.failed'), 'error');
+    } finally {
+      setSavingProfile(false);
+    }
   }
 
   const TABS: TabDef<BizTab>[] = useMemo(
@@ -181,8 +185,12 @@ export default function MyBusinessView({
               />
             </label>
             <div className="flex items-center gap-2">
-              <Button className="px-4 py-1.5 text-xs" onClick={save} disabled={!dirty}>
-                Save changes
+              <Button
+                className="px-4 py-1.5 text-xs"
+                onClick={() => void save()}
+                disabled={!dirty || savingProfile}
+              >
+                {savingProfile ? t('biz.profile.saving') : t('biz.profile.save')}
               </Button>
               <span className="inline-flex items-center gap-1.5 text-[11px] text-text-muted">
                 <DataIcon emoji={business.icon} size={13} />

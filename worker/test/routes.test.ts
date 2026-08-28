@@ -225,6 +225,22 @@ describe('finishing onboarding provisions one Hermes runtime', () => {
     });
   });
 
+  it('opens internal chat without forcing an unconnected external channel', async () => {
+    const send = vi.fn(async () => {});
+    env = automaticRuntimeEnv(send);
+    const response = await state('POST', '/api/state/onboarding/complete', {
+      cookie: cookieA,
+      body: { playbookKey: 'restaurant', channels: [], setupDone: true },
+    });
+
+    expect(response.status).toBe(204);
+    const [row] = await asOwner((sql) => sql<{
+      onboarded: boolean; setup_done: boolean; channels: string[];
+    }[]>`select onboarded, setup_done, channels from business where id = ${A}`);
+    expect(row).toEqual({ onboarded: true, setup_done: true, channels: [] });
+    expect(send).toHaveBeenCalledOnce();
+  });
+
   it('keeps the durable task recoverable when Queue signaling fails', async () => {
     env = automaticRuntimeEnv(vi.fn(async () => { throw new Error('queue offline'); }));
     const failed = await state('POST', '/api/state/onboarding/complete', {
