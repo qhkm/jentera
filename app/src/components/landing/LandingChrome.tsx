@@ -26,7 +26,7 @@ export function LandingHeader() {
       <div className="mx-auto flex h-16 w-full max-w-[1250px] items-center justify-between px-6">
         <Link to="/" aria-label="Jentera home">
           <span className="font-pixel font-pixel-logo text-xl tracking-wide text-brand md:text-2xl">
-            jentera
+            Jentera
           </span>
         </Link>
 
@@ -47,10 +47,10 @@ export function LandingHeader() {
               only way in was to type the URL. A text link rather than a
               second .btn: two adjacent buttons would compete with the
               primary CTA, and .btn carries the shared control height. */}
-          <Link to="/signin" className="nav-link hidden text-sm normal-case tracking-normal sm:inline-flex">
+          <Link to="/signin" className="nav-link hidden text-sm normal-case tracking-normal md:inline-flex">
             Sign in
           </Link>
-          <Link to="/onboard" className="btn btn-primary hidden px-5 py-2 text-sm sm:inline-flex">
+          <Link to="/onboard" className="btn btn-primary hidden px-5 py-2 text-sm md:inline-flex">
             Start now
           </Link>
           <button
@@ -107,7 +107,7 @@ export function LandingFooter() {
     <footer className="w-full border-t border-rail">
       <div className="mx-auto flex w-full max-w-[1250px] flex-col gap-6 px-6 py-10 md:flex-row md:items-center md:justify-between md:px-12">
         <div className="flex flex-col gap-2">
-          <span className="font-pixel text-lg tracking-wide text-brand">jentera</span>
+          <span className="font-pixel text-lg tracking-wide text-brand">Jentera</span>
           <p className="text-xs text-text-muted">{FOOTER.tagline}</p>
         </div>
         <div className="flex flex-col gap-3 text-xs text-text-muted md:items-end">

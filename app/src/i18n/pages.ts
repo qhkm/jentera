@@ -212,6 +212,9 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'db.theme.toDark': 'Switch to dark theme',
     'db.light': 'Light',
     'db.dark': 'Dark',
+    'nav.language': 'Language',
+    'nav.detail': 'Detail level',
+    'nav.more': 'More options',
   },
 
   bm: {
@@ -413,5 +416,8 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'db.theme.toDark': 'Tukar ke tema gelap',
     'db.light': 'Cerah',
     'db.dark': 'Gelap',
+    'nav.language': 'Bahasa',
+    'nav.detail': 'Tahap perincian',
+    'nav.more': 'Pilihan lain',
   },
 };

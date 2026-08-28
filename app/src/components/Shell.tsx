@@ -4,7 +4,7 @@
    component, which is most of why the React port shrinks.
    ============================================================ */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -18,9 +18,9 @@ const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 export function Logo({ suffix }: { suffix?: string }) {
   return (
     <Link to="/" aria-label="Jentera home" className="inline-flex items-center gap-2">
-      <span className="font-pixel text-xl tracking-wide text-brand md:text-2xl">jentera</span>
+      <span className="font-pixel text-xl tracking-wide text-brand md:text-2xl">Jentera</span>
       {suffix ? (
-        <span className="hidden font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted sm:inline">
+        <span className="hidden font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted md:inline">
           {suffix}
         </span>
       ) : null}
@@ -54,6 +54,16 @@ export function Shell({
   const signedIn = useSignedIn();
   const detail = useDetailLevel();
   const [leaving, setLeaving] = useState(false);
+  const [utilityOpen, setUtilityOpen] = useState(false);
+
+  useEffect(() => {
+    if (!utilityOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setUtilityOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [utilityOpen]);
 
   async function signOut() {
     setLeaving(true);
@@ -76,13 +86,16 @@ export function Shell({
 
   return (
     <div className="min-h-dvh bg-bg text-text">
-      <header className="sticky top-0 z-30 border-b border-rail bg-bg/80 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-[1250px] items-center justify-between gap-4 px-6">
+      <header className="relative sticky top-0 z-30 border-b border-rail bg-bg/80 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-[1250px] items-center justify-between gap-3 px-4 sm:px-6">
           <div className="flex items-center gap-3">
             {onMenu ? (
               <button
                 type="button"
-                onClick={onMenu}
+                onClick={() => {
+                  setUtilityOpen(false);
+                  onMenu();
+                }}
                 className="relative -ml-1 flex size-8 flex-col items-center justify-center gap-[5px] lg:hidden"
                 aria-label={t('drawer.menu')}
               >
@@ -97,7 +110,7 @@ export function Shell({
             <Logo suffix={suffix} />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="hidden items-center gap-2 md:flex">
             <button
               type="button"
               onClick={toggleTheme}
@@ -110,7 +123,7 @@ export function Shell({
               type="button"
               onClick={toggleLang}
               className="nav-link px-2 py-1"
-              aria-label="Toggle language"
+              aria-label={t('nav.language')}
             >
               {lang === 'en' ? 'BM' : 'EN'}
             </button>
@@ -146,7 +159,73 @@ export function Shell({
             ) : null}
             {actions}
           </div>
+
+          <button
+            type="button"
+            onClick={() => setUtilityOpen((open) => !open)}
+            className="flex size-10 items-center justify-center rounded-item border border-rail text-lg leading-none md:hidden"
+            aria-label={t('nav.more')}
+            aria-expanded={utilityOpen}
+            aria-controls="mobile-utility-menu"
+          >
+            <span aria-hidden="true" className="-mt-1 tracking-[0.12em]">•••</span>
+          </button>
         </div>
+
+        {utilityOpen ? (
+          <div
+            id="mobile-utility-menu"
+            className="absolute right-4 top-[calc(100%+0.5rem)] z-40 flex w-[min(18rem,calc(100vw-2rem))] flex-col gap-1 rounded-card border border-border bg-bg p-2 shadow-xl md:hidden"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                toggleTheme();
+                setUtilityOpen(false);
+              }}
+              className="nav-link flex w-full items-center justify-between rounded-item px-3 py-2.5 text-left"
+            >
+              <span>{t(theme === 'dark' ? 'db.theme.toLight' : 'db.theme.toDark')}</span>
+              <span className="text-text-muted">{t(theme === 'dark' ? 'db.light' : 'db.dark')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                toggleLang();
+                setUtilityOpen(false);
+              }}
+              className="nav-link flex w-full items-center justify-between rounded-item px-3 py-2.5 text-left"
+            >
+              <span>{t('nav.language')}</span>
+              <span className="text-text-muted">{lang === 'en' ? 'BM' : 'EN'}</span>
+            </button>
+            {detail.canChange ? (
+              <button
+                type="button"
+                onClick={() => {
+                  detail.set(detail.advanced ? 'beginner' : 'advanced');
+                  setUtilityOpen(false);
+                }}
+                className="nav-link flex w-full items-center justify-between rounded-item px-3 py-2.5 text-left"
+                aria-pressed={detail.advanced}
+              >
+                <span>{t('nav.detail')}</span>
+                <span className="text-text-muted">{detail.advanced ? 'SIMPLE' : 'DETAIL'}</span>
+              </button>
+            ) : null}
+            {signedIn ? (
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                className="nav-link w-full rounded-item px-3 py-2.5 text-left"
+                disabled={leaving}
+              >
+                {t('nav.logout')}
+              </button>
+            ) : null}
+            {actions ? <div className="p-1">{actions}</div> : null}
+          </div>
+        ) : null}
       </header>
       <main
         className={
