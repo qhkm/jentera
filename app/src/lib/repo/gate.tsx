@@ -11,7 +11,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { LocalRepository } from './local';
-import { NoBusinessError, RemoteRepository } from './remote';
+import { NoBusinessError, NotSignedInError, RemoteRepository } from './remote';
 import type { MeResponse } from './remote';
 import { RepositoryProvider } from './context';
 import { migrateLocalToRemote } from './migrate';
@@ -92,6 +92,12 @@ async function choose(): Promise<Chosen> {
        state, not here. */
     if (e instanceof NoBusinessError) {
       await migrateLocalToRemote(new LocalRepository(), remote);
+    } else if (e instanceof NotSignedInError) {
+      /* Logout, expiry, and account deletion can land between /api/me and
+         /api/state. That is an ordinary signed-out transition, not a broken
+         workspace. Falling back keeps public onboarding usable and lets the
+         /app auth guard send protected routes to sign-in. */
+      return { repo: new LocalRepository(), mode: 'local' };
     } else {
       throw e;
     }
