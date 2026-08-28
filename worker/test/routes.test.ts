@@ -110,6 +110,26 @@ describe('who may call these at all', () => {
   });
 });
 
+describe('creating the first business', () => {
+  it('serializes concurrent first-login tabs to one business', async () => {
+    const create = () => state('POST', '/api/state/business', {
+      cookie: cookieOrphan,
+      body: { name: 'One owner', playbookKey: 'generic' },
+    });
+    const responses = await Promise.all([create(), create()]);
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+
+    const [{ businesses, memberships }] = await asOwner((sql) => sql<{
+      businesses: string; memberships: string;
+    }[]>`
+      select count(distinct b.id)::text as businesses,
+             count(m.business_id)::text as memberships
+        from membership m join business b on b.id = m.business_id
+       where m.user_id = ${orphan}`);
+    expect({ businesses, memberships }).toEqual({ businesses: '1', memberships: '1' });
+  });
+});
+
 describe('finishing onboarding provisions one Hermes runtime', () => {
   it('is an owner-only transition', async () => {
     const staffId = await asOwner(async (sql) => {

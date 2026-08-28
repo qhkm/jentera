@@ -187,7 +187,15 @@ export async function handleRepo(
     if (!country) return badRequest(cors, 'invalid country');
     if (!lang) return badRequest(cors, 'invalid lang');
 
-    await withTenant(env, businessId, async (tx) => {
+    const created = await withTenant(env, businessId, async (tx) => {
+      /* Two first-login tabs can both carry a session minted before either
+         membership existed. Serialise on the user row, then re-check inside
+         this transaction; the second tab observes the first membership and
+         cannot create a second business for the same account. */
+      await tx`select id from app_user where id = ${identity.userId} for update`;
+      const [existing] = await tx<{ found: number }[]>`
+        select 1 as found from membership where user_id = ${identity.userId} limit 1`;
+      if (existing) return false;
       await tx`
         insert into business (id, name, playbook_key, country, lang, locality)
         values (${businessId}, ${name}, ${playbookKey}, ${country}, ${lang},
@@ -197,7 +205,12 @@ export async function handleRepo(
          purely so a failure leaves neither row. */
       await tx`insert into membership (user_id, business_id, role)
                values (${identity.userId}, ${businessId}, 'owner')`;
+      return true;
     });
+
+    if (!created) {
+      return json({ ok: false, err: 'already has a business' }, { status: 409 }, cors);
+    }
 
     return json({ ok: true, businessId }, {}, cors);
   }
