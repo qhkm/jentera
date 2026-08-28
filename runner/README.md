@@ -89,7 +89,8 @@ The in-Sprite bootstrap pins Hermes to tag `v2026.8.19` and commit
 `fcbd1076a93841fa88855acce810e342a5b78101`, downloads the installer from that same
 immutable commit and verifies its SHA-256,
 writes the runtime environment atomically, configures OpenRouter without inlining its
-key, pins DS4 Flash to medium reasoning without latency-first provider routing, installs and
+key, pins DS4 Flash to high reasoning and prefers a BF16 provider without latency-first routing,
+installs and
 live-tests the pinned keyless DDGS search backend, enforces the full pinned API-server tool profile,
 applies the reviewed `nanoid` security override,
 requires a clean high-severity production dependency audit, recreates both services,

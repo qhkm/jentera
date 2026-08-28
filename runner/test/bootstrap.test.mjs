@@ -53,9 +53,11 @@ test('Hermes installer bytes come from the reviewed Hermes commit', async () => 
 test('model configuration favors DS4 agent quality and tool compatibility', async () => {
   const source = await readFile(CONFIGURE, 'utf8');
   assert.match(source, /provider_routing\.pop\("sort", None\)/);
+  assert.match(source, /provider_routing\["order"\] = \["morph"\]/);
+  assert.match(source, /provider_routing\["allow_fallbacks"\] = True/);
   assert.match(source, /provider_routing\["require_parameters"\] = True/);
   assert.match(source, /web\["search_backend"\] = "ddgs"/);
-  assert.match(source, /reasoning_overrides\[model_name\] = "medium"/);
+  assert.match(source, /reasoning_overrides\[model_name\] = "high"/);
   assert.doesNotMatch(source, /provider_routing\["sort"\] = "latency"/);
 });
 

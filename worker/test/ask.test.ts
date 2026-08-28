@@ -200,6 +200,8 @@ describe('the durable Hermes agent request', () => {
     expect(prepared.instructions).toMatch(/briefly narrate what you are checking/i);
     expect(prepared.instructions).toMatch(/primary or authoritative sources/i);
     expect(prepared.instructions).toMatch(/not hidden chain-of-thought/i);
+    expect(prepared.instructions).toMatch(/discovery snippets, not sufficient evidence/i);
+    expect(prepared.instructions).toMatch(/fall back to browser navigation or curl/i);
     expect(prepared.instructions).toMatch(/Markdown links/i);
     expect(prepared.instructions).toMatch(/execute code|inspect files|use the browser/i);
     expect(prepared.input).toContain("User request: what's latest today in tech?");

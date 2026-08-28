@@ -122,7 +122,7 @@ test('starts one Hermes run for a valid leased Jentera task', async () => {
     session_id: 'business-thread',
     instructions: 'Propose actions; do not send them directly.',
     model_options: {
-      reasoning: { enabled: true, effort: 'medium' },
+      reasoning: { enabled: true, effort: 'high' },
     },
   });
 });

@@ -53,6 +53,8 @@ def main() -> None:
     # Latency-first routing made short text replies win over agent quality.
     provider_routing = dict(config.get("provider_routing") or {})
     provider_routing.pop("sort", None)
+    provider_routing["order"] = ["morph"]
+    provider_routing["allow_fallbacks"] = True
     provider_routing["require_parameters"] = True
     config["provider_routing"] = provider_routing
 
@@ -78,7 +80,7 @@ def main() -> None:
 
     agent = dict(config.get("agent") or {})
     reasoning_overrides = dict(agent.get("reasoning_overrides") or {})
-    reasoning_overrides[model_name] = "medium"
+    reasoning_overrides[model_name] = "high"
     agent["reasoning_overrides"] = reasoning_overrides
     agent.update({"max_turns": 20, "run_budget_seconds": 900, "gateway_timeout": 900})
     config["agent"] = agent
