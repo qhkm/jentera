@@ -78,6 +78,7 @@ export async function handleRuntimeMessage(
   message: RuntimeQueueMessage,
   options: { provider?: RuntimeProvider; fetch?: typeof globalThis.fetch } = {},
 ): Promise<RuntimeMessageResult> {
+  const messageStartedAt = Date.now();
   if (message.version !== 1 || !uuid(message.businessId) || !uuid(message.taskId)) {
     return { action: 'ack', reason: 'missing' };
   }
@@ -162,14 +163,30 @@ export async function handleRuntimeMessage(
         break;
       }
       case 'run': {
+        const latency = (stage: string, dispatchElapsedMs?: number) => {
+          console.info('[runtime-latency]', JSON.stringify({
+            stage,
+            queueElapsedMs: Date.now() - messageStartedAt,
+            ...(dispatchElapsedMs === undefined ? {} : { dispatchElapsedMs }),
+            channel: telegramHint(lease.task.payload) ? 'telegram' : 'app',
+          }));
+        };
+        latency('leased');
         const draftStream = await telegramDraftStream(env, lease.task);
         const showToolEvents = !lease.task.remoteRunId;
         await draftStream?.pulseTyping(true);
         let lastLeaseRenewal = Date.now();
+        let firstVisibleDelta = false;
         const outcome = await dispatchRuntimeRun(env, lease.task, leaseToken, {
           ...options,
           onDelta: draftStream
-            ? (delta) => draftStream.push(delta)
+            ? async (delta) => {
+                if (!firstVisibleDelta && delta.trim()) {
+                  firstVisibleDelta = true;
+                  latency('first_visible_delta');
+                }
+                await draftStream.push(delta);
+              }
             : undefined,
           onToolEvent: draftStream && showToolEvents
             ? (event) => event.type === 'tool.started'
@@ -191,7 +208,9 @@ export async function handleRuntimeMessage(
                 lastLeaseRenewal = Date.now();
               }
             : undefined,
+          onStage: (stage, elapsedMs) => latency(stage, elapsedMs),
         });
+        latency(outcome.state === 'terminal' ? 'terminal' : 'pending');
         if (outcome.state === 'pending') {
           const deferred = await withTenant(env, message.businessId, async (tx) => {
             return deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {

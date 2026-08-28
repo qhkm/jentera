@@ -10,6 +10,13 @@ compatibility_flags = ["nodejs_compat"]
 # the API offline for the frontend that was still pointing at it.
 workers_dev = true
 
+# Telegram reaches Cloudflare globally, while the authoritative Neon database
+# is in AWS Singapore. Most webhook work is database-bound, so run fetch
+# handlers beside the database instead of paying intercontinental latency for
+# every tenant-scoped query.
+[placement]
+region = "aws:ap-southeast-1"
+
 # Postgres on Neon (ap-southeast-1) via Hyperdrive.
 # The connection string embedded in this config uses the non-owner role
 # `aisar_app`, not neondb_owner — Postgres silently bypasses row-level
@@ -143,7 +150,7 @@ queue = "aisar-runtime"
 # A streamed Hermes task holds one invocation while it relays ephemeral deltas.
 # Keep batches at one so a long response cannot head-of-line block four tenants.
 max_batch_size = 1
-max_batch_timeout = 2
+max_batch_timeout = 0
 max_retries = 8
 retry_delay = 60
 dead_letter_queue = "aisar-runtime-dlq"

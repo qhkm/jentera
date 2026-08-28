@@ -13,6 +13,8 @@ if (!root?.startsWith('/home/sprite/.hermes/hermes-agent') && !testTarget) {
 
 const packagePath = join(root, 'package.json');
 const lockPath = join(root, 'package-lock.json');
+const apiServerPath = join(root, 'gateway/platforms/api_server.py');
+const routingMarker = '# Jentera: apply reviewed OpenRouter routing to API-server agents.';
 const manifest = JSON.parse(await readFile(packagePath, 'utf8'));
 const current = manifest?.overrides?.['nanoid@^3'];
 if (!['3.3.17', '3.3.18'].includes(current)) {
@@ -32,7 +34,8 @@ if (!verify) {
     pkg.integrity = 'sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==';
   }
   await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`, { mode: 0o644 });
-  process.stdout.write('pinned Hermes nanoid override to 3.3.18\n');
+  await patchApiServerRouting();
+  process.stdout.write('pinned Hermes dependency and API routing patches\n');
   process.exit(0);
 }
 
@@ -43,4 +46,50 @@ const vulnerable = Object.entries(lock.packages ?? {})
 if (vulnerable.length > 0) {
   throw new Error(`vulnerable nanoid remains at ${vulnerable.map(([path]) => path).join(', ')}`);
 }
-process.stdout.write('Hermes production dependency override verified\n');
+const apiServer = await readFile(apiServerPath, 'utf8');
+if (!apiServer.includes(routingMarker) ||
+    !apiServer.includes('"provider_sort": provider_routing.get("sort"),')) {
+  throw new Error('Hermes API server is missing Jentera provider routing');
+}
+process.stdout.write('Hermes production dependency and API routing patches verified\n');
+
+async function patchApiServerRouting() {
+  let source = await readFile(apiServerPath, 'utf8');
+  if (source.includes(routingMarker)) return;
+
+  const configAnchor = '        agent_kwargs = {\n';
+  const configPatch = [
+    `        ${routingMarker}`,
+    '        provider_routing = user_config.get("provider_routing") or {}',
+    '        if not isinstance(provider_routing, dict):',
+    '            provider_routing = {}',
+    '',
+    configAnchor.trimEnd(),
+  ].join('\n') + '\n';
+  source = replaceReviewedAnchor(source, configAnchor, configPatch);
+
+  const kwargsAnchor = [
+    '            "reasoning_config": reasoning_config,',
+    '            "gateway_session_key": gateway_session_key,',
+  ].join('\n');
+  const kwargsPatch = [
+    '            "reasoning_config": reasoning_config,',
+    '            "providers_allowed": provider_routing.get("only"),',
+    '            "providers_ignored": provider_routing.get("ignore"),',
+    '            "providers_order": provider_routing.get("order"),',
+    '            "provider_sort": provider_routing.get("sort"),',
+    '            "provider_require_parameters": provider_routing.get("require_parameters", False),',
+    '            "provider_data_collection": provider_routing.get("data_collection"),',
+    '            "gateway_session_key": gateway_session_key,',
+  ].join('\n');
+  source = replaceReviewedAnchor(source, kwargsAnchor, kwargsPatch);
+  await writeFile(apiServerPath, source, { mode: 0o644 });
+}
+
+function replaceReviewedAnchor(source, anchor, replacement) {
+  const first = source.indexOf(anchor);
+  if (first < 0 || source.indexOf(anchor, first + anchor.length) >= 0) {
+    throw new Error(`reviewed Hermes API anchor drifted: ${JSON.stringify(anchor)}`);
+  }
+  return `${source.slice(0, first)}${replacement}${source.slice(first + anchor.length)}`;
+}

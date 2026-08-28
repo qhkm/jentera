@@ -48,6 +48,13 @@ def main() -> None:
     )
     config["model"] = model
 
+    # OpenRouter otherwise optimizes primarily for price. Internal chat is
+    # latency-sensitive, so make time-to-first-token the explicit routing
+    # objective while retaining provider fallbacks.
+    provider_routing = dict(config.get("provider_routing") or {})
+    provider_routing["sort"] = "latency"
+    config["provider_routing"] = provider_routing
+
     # The public Sprite URL reaches Jentera's runner, never Hermes. Hermes' own
     # API remains loopback-only but receives the complete tool bundle from the
     # pinned release. Resolve and compare it during every bootstrap so a bad
@@ -61,6 +68,9 @@ def main() -> None:
     config["platform_toolsets"] = platform_toolsets
 
     agent = dict(config.get("agent") or {})
+    reasoning_overrides = dict(agent.get("reasoning_overrides") or {})
+    reasoning_overrides[model_name] = "low"
+    agent["reasoning_overrides"] = reasoning_overrides
     agent.update({"max_turns": 20, "run_budget_seconds": 900, "gateway_timeout": 900})
     config["agent"] = agent
 

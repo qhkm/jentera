@@ -225,6 +225,46 @@ describe('the automatic default', () => {
 });
 
 describe('durable Hermes Telegram replies', () => {
+  it('answers through the inline fallback while automatically upgrading a stale runtime', async () => {
+    await setPolicy('automatic');
+    const provider = new LocalRuntimeProvider();
+    const oldEnv = testEnv({
+      RUNTIME_RELEASE: '2026.08.28-3',
+      RUNTIME_EXECUTION_ENABLED: 'true',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+    });
+    await ensureProviderRuntime(oldEnv, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.28-3', 'v1'));
+
+    const queued: { version: 1; businessId: string; taskId: string }[] = [];
+    const currentEnv = testEnv({
+      RUNTIME_RELEASE: '2026.08.28-4',
+      RUNTIME_EXECUTION_ENABLED: 'true',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+      RUNTIME_QUEUE: {
+        send: async (message: { version: 1; businessId: string; taskId: string }) => {
+          queued.push(message);
+        },
+      },
+    });
+    await handleIncoming(currentEnv, A, connId, incoming);
+
+    expect(sent).toHaveLength(1);
+    expect(queued).toHaveLength(1);
+    const [task] = await asTenant(A, (tx) => tx<{
+      kind: string; dedupe_key: string; payload: Record<string, unknown>;
+    }[]>`select kind, dedupe_key, payload from runtime_task`);
+    expect(task).toMatchObject({
+      kind: 'upgrade',
+      dedupe_key: `upgrade:${A}:2026.08.28-4`,
+      payload: { release: '2026.08.28-4', reason: 'release_drift' },
+    });
+  });
+
   it('deduplicates Telegram retries before they can buy a second Hermes run', async () => {
     await setPolicy('automatic');
     const provider = new LocalRuntimeProvider();

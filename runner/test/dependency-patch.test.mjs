@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
@@ -17,6 +17,8 @@ test('narrowly updates the reviewed vulnerable override and verifies its lock', 
   assert.equal(run(root).status, 0);
   const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
   assert.equal(manifest.overrides['nanoid@^3'], '3.3.18');
+  const apiServer = await readFile(join(root, 'gateway/platforms/api_server.py'), 'utf8');
+  assert.match(apiServer, /provider_sort.*provider_routing\.get\("sort"\)/);
   assert.equal(run(root, '--verify').status, 0);
 });
 
@@ -36,6 +38,15 @@ async function fixture(override, locked) {
   await writeFile(join(root, 'package-lock.json'), JSON.stringify({
     packages: { 'node_modules/example/node_modules/nanoid': { name: 'nanoid', version: locked } },
   }));
+  await mkdir(join(root, 'gateway/platforms'), { recursive: true });
+  await writeFile(join(root, 'gateway/platforms/api_server.py'), [
+    '        user_config = _load_gateway_config()',
+    '        agent_kwargs = {',
+    '            "reasoning_config": reasoning_config,',
+    '            "gateway_session_key": gateway_session_key,',
+    '        }',
+    '',
+  ].join('\n'));
   return root;
 }
 

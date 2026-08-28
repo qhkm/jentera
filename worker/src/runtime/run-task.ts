@@ -53,8 +53,11 @@ export async function dispatchRuntimeRun(
     onDelta?: (delta: string) => Promise<void>;
     onToolEvent?: (event: RunnerToolEvent) => Promise<void>;
     onHeartbeat?: () => Promise<void>;
+    onStage?: (stage: string, elapsedMs: number) => void;
   } = {},
 ): Promise<RuntimeRunOutcome> {
+  const dispatchStartedAt = Date.now();
+  const stage = (name: string) => options.onStage?.(name, Date.now() - dispatchStartedAt);
   const payload = runPayload(task.payload);
   const { runtime, secrets, reservation } = await withTenant(
     env,
@@ -71,6 +74,7 @@ export async function dispatchRuntimeRun(
       return { runtime, secrets, reservation };
     },
   );
+  stage('database_ready');
   if (!runtime?.providerId || !runtime.providerUrl) throw new Error('runtime is not provisioned');
   if (!['ready', 'cold', 'idle', 'busy'].includes(runtime.status)) {
     throw new Error(`runtime is not dispatchable (${runtime.status})`);
@@ -87,6 +91,7 @@ export async function dispatchRuntimeRun(
     url: runtime.providerUrl,
     state: runtime.status,
   });
+  stage('provider_awake');
   const client = new RunnerClient({
     origin: observed.url,
     runnerKey: secrets.runnerKey,
@@ -94,6 +99,7 @@ export async function dispatchRuntimeRun(
     fetch: options.fetch,
   });
   await client.ready();
+  stage('runner_ready');
   if (Date.now() - reservation.startedAt.getTime() > reservation.maxRunSeconds * 1_000) {
     if (task.remoteRunId) await client.stop(task.id).catch(() => {});
     return {
@@ -120,6 +126,7 @@ export async function dispatchRuntimeRun(
     instructions: payload.instructions,
     toolGrant,
   });
+  stage('hermes_started');
   const remoteRunId = started.hermesRunId;
   if (!remoteRunId) throw new Error('runner returned no Hermes run id');
   const recorded = await withTenant(env, task.businessId, async (tx) => {
@@ -143,6 +150,7 @@ export async function dispatchRuntimeRun(
     await client.stop(task.id).catch(() => {});
     throw new Error('runtime task lease was lost after Hermes start');
   }
+  stage('run_recorded');
   task.remoteRunId = remoteRunId;
 
   const cancelled = await withTenant(env, task.businessId, (tx) =>
@@ -166,9 +174,11 @@ export async function dispatchRuntimeRun(
       onToolEvent: options.onToolEvent,
       onHeartbeat: options.onHeartbeat,
     });
+    stage('stream_finished');
   }
 
   const current = await client.status(task.id);
+  stage('status_loaded');
   const remoteStatus = boundedStatus(current.status);
   if (!TERMINAL.has(remoteStatus)) {
     return { state: 'pending', remoteRunId, remoteStatus };

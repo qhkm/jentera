@@ -89,6 +89,9 @@ export function createRunner(input) {
               input: body.input,
               session_id: body.sessionId,
               instructions: body.instructions,
+              model_options: {
+                reasoning: { enabled: true, effort: 'low' },
+              },
             }),
           });
           const result = await responseJson(started);

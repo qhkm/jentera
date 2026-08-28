@@ -36,7 +36,7 @@ import {
 } from '../connectors/telegram';
 import { finishRun, recentWork, recordWork, startRun } from '../runs';
 import { prepareHermesAgent, retrieve } from '../ask';
-import { runtimeFor, signalRuntimeTask } from '../runtime';
+import { publishRuntimeTask, runtimeFor, signalRuntimeTask } from '../runtime';
 import { getRuntime } from '../agent-runtime';
 import { enqueueRuntimeTask, runtimeTaskByDedupeKey } from '../runtime/tasks';
 import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
@@ -311,15 +311,19 @@ async function telegramWebhook(
     return drop(`pairing refused: ${bound}`);
   }
 
-  const internalChat = await withTenant(env, businessId, (tx) =>
-    telegramInternalChat(tx, connectionId));
+  /* Load the authorization boundary and the already-authenticated bot token
+     together. This removes a separate cross-region credential transaction
+     from every accepted message while keeping the secret inside this one
+     request. */
+  const { internalChat, token } = await withTenant(env, businessId, async (tx) => ({
+    internalChat: await telegramInternalChat(tx, connectionId),
+    token: await useCredential(env, tx, connectionId),
+  }));
   if (internalChat !== incoming.chatId || !incoming.privateChat) {
     /* Silence made a secure pairing boundary look like a broken or very slow
        agent. A private, unpaired sender may receive setup guidance, but never
        business identity, memory, tools, or a paid model run. */
     if (incoming.privateChat) {
-      const token = await withTenant(env, businessId, (tx) =>
-        useCredential(env, tx, connectionId));
       await sendMessage(
         token,
         incoming.chatId,
@@ -341,10 +345,15 @@ async function telegramWebhook(
     return drop('agent admission limit exceeded');
   }
 
+  /* Give immediate, truthful feedback before runtime lookup, retrieval, and
+     durable enqueueing. Telegram's typing state is temporary and contains no
+     business data, but removes several seconds of apparent silence. */
+  await sendTyping(token, incoming.chatId).catch(() => {});
+
   /* Past the secret check, so the business in the URL is confirmed:
      only its own connection could have produced that value. */
   try {
-    await handleIncoming(env, businessId, connectionId, incoming);
+    await handleIncoming(env, businessId, connectionId, incoming, token);
   } catch (e) {
     /* handleIncoming records its own failures, so reaching here means
        something outside that — the database, the tenant scope. */
@@ -372,12 +381,31 @@ export async function handleIncoming(
   businessId: string,
   connectionId: string,
   incoming: TelegramIncoming,
+  telegramToken?: string,
 ): Promise<void> {
+  let maintenance: Promise<unknown> | null = null;
   if (runtimeExecutionEnabled(env)) {
     const runtime = await withTenant(env, businessId, (tx) => getRuntime(tx, businessId));
-    if (runtimeReady(runtime)) {
-      await handleDurableIncoming(env, businessId, connectionId, incoming);
+    const release = env.RUNTIME_RELEASE?.trim();
+    const current = runtime && release &&
+      runtime.desiredRelease === release && runtime.observedRelease === release;
+    if (current && runtimeReady(runtime)) {
+      await handleDurableIncoming(env, businessId, connectionId, incoming, telegramToken);
       return;
+    }
+
+    /* Runtime releases are an automatic product update, not an owner setup
+       chore. Keep this message useful through the fast inline fallback while
+       one deduplicated upgrade runs in parallel; later messages return to the
+       full Hermes tool runtime as soon as it attests the new release. */
+    if (runtime && release && env.RUNTIME_QUEUE && !current) {
+      maintenance = publishRuntimeTask(env, businessId, {
+        kind: 'upgrade',
+        dedupeKey: `upgrade:${businessId}:${release}`,
+        payload: { release, reason: 'release_drift' },
+      }).catch((error) => {
+        console.error(`[runtime] automatic upgrade enqueue failed: ${String(error)}`);
+      });
     }
   }
 
@@ -397,7 +425,7 @@ export async function handleIncoming(
       facts: await retrieve(tx, incoming.text),
     }));
 
-    const automaticToken = await withTenant(env, businessId, (tx) =>
+    const automaticToken = telegramToken ?? await withTenant(env, businessId, (tx) =>
       useCredential(env, tx, connectionId));
     const draft = await withTypingIndicator(
       automaticToken,
@@ -431,6 +459,7 @@ export async function handleIncoming(
       await finishRun(tx, businessId, run.id, 'failed', { error: why });
     });
   }
+  await maintenance;
 }
 
 /** Persist one Telegram update as durable Hermes work and return before the
@@ -441,6 +470,7 @@ async function handleDurableIncoming(
   businessId: string,
   connectionId: string,
   incoming: TelegramIncoming,
+  telegramToken?: string,
 ): Promise<void> {
   if (!env.RUNTIME_QUEUE || !env.AISAR_MODEL_NAME?.trim()) {
     throw new Error('durable Telegram execution is unavailable');
@@ -504,7 +534,7 @@ async function handleDurableIncoming(
 
   if (['completed', 'cancelled', 'exhausted'].includes(created.status)) return;
   await signalRuntimeTask(env, businessId, created.id);
-  const token = await withTenant(env, businessId, (tx) =>
+  const token = telegramToken ?? await withTenant(env, businessId, (tx) =>
     useCredential(env, tx, connectionId));
   if (incoming.privateChat) {
     await sendMessageDraft(
