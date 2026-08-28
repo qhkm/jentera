@@ -57,8 +57,8 @@ export class RunnerClient {
 
   async ready(): Promise<void> {
     const body = await this.request('/readyz');
-    if (body.toolMode !== 'no-tools') {
-      throw new Error('runner did not attest the required no-tools mode');
+    if (body.toolMode !== 'full-tools') {
+      throw new Error('runner did not attest the required full-tools mode');
     }
     if (body.edgeAuthorizationForwarded !== false) {
       throw new Error('runner did not attest edge credential isolation');
@@ -83,12 +83,13 @@ export class RunnerClient {
     });
   }
 
-  /** Consume the runner's already-filtered assistant stream. Unknown event
-      shapes are ignored; only bounded text deltas and heartbeats cross. */
+  /** Consume the runner's already-filtered presentation stream. Unknown event
+      shapes are ignored; only bounded text, tool lifecycle, and heartbeats cross. */
   async stream(
     taskId: string,
     handlers: {
       onDelta: (delta: string) => Promise<void>;
+      onToolEvent?: (event: RunnerToolEvent) => Promise<void>;
       onHeartbeat?: () => Promise<void>;
     },
   ): Promise<void> {
@@ -129,6 +130,12 @@ export class RunnerClient {
           }
           if (event.type === 'heartbeat') {
             await handlers.onHeartbeat?.();
+            continue;
+          }
+          if (event.type === 'tool.started' || event.type === 'tool.completed') {
+            received += event.tool.length + ('preview' in event ? event.preview?.length ?? 0 : 0);
+            if (received > STREAM_LIMIT) throw new Error('runner stream exceeded limit');
+            await handlers.onToolEvent?.(event);
             continue;
           }
           received += event.delta.length;
@@ -174,8 +181,13 @@ export class RunnerClient {
 
 type SafeStreamEvent =
   | { type: 'delta'; delta: string }
+  | RunnerToolEvent
   | { type: 'heartbeat' }
   | { type: 'done' };
+
+export type RunnerToolEvent =
+  | { type: 'tool.started'; tool: string; preview?: string }
+  | { type: 'tool.completed'; tool: string; duration: number; error: boolean };
 
 function safeStreamEvent(frame: string): SafeStreamEvent | null {
   const data = frame.split(/\r?\n/)
@@ -193,9 +205,32 @@ function safeStreamEvent(frame: string): SafeStreamEvent | null {
   const event = value as Record<string, unknown>;
   if (event.type === 'heartbeat') return { type: 'heartbeat' };
   if (event.type === 'done') return { type: 'done' };
+  if (event.type === 'tool.started' && safeToolName(event.tool)) {
+    return {
+      type: 'tool.started',
+      tool: event.tool as string,
+      ...(typeof event.preview === 'string' && event.preview.length <= 1_000
+        ? { preview: event.preview }
+        : {}),
+    };
+  }
+  if (event.type === 'tool.completed' && safeToolName(event.tool) &&
+      typeof event.duration === 'number' && Number.isFinite(event.duration) &&
+      typeof event.error === 'boolean') {
+    return {
+      type: 'tool.completed',
+      tool: event.tool as string,
+      duration: Math.max(0, Math.min(900, event.duration)),
+      error: event.error,
+    };
+  }
   if (event.type === 'delta' && typeof event.delta === 'string' &&
       event.delta.length > 0 && event.delta.length <= 8 * 1024) {
     return { type: 'delta', delta: event.delta };
   }
   return null;
+}
+
+function safeToolName(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-zA-Z0-9_.:-]{1,96}$/.test(value);
 }

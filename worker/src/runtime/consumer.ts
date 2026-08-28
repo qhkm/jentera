@@ -136,12 +136,18 @@ export async function handleRuntimeMessage(
       }
       case 'run': {
         const draftStream = await telegramDraftStream(env, lease.task);
+        const showToolEvents = !lease.task.remoteRunId;
         await draftStream?.pulseTyping(true);
         let lastLeaseRenewal = Date.now();
         const outcome = await dispatchRuntimeRun(env, lease.task, leaseToken, {
           ...options,
           onDelta: draftStream
             ? (delta) => draftStream.push(delta)
+            : undefined,
+          onToolEvent: draftStream && showToolEvents
+            ? (event) => event.type === 'tool.started'
+              ? draftStream.showTool(event.tool, event.preview)
+              : Promise.resolve()
             : undefined,
           onHeartbeat: draftStream
             ? async () => {

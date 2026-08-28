@@ -228,6 +228,18 @@ export class TelegramDraftStream {
     await this.publish();
   }
 
+  /** Native Hermes shows a persistent progress bubble when a tool starts.
+      The API-server stream carries only its name and bounded preview—never
+      full arguments or tool output—so this mirrors that visible event lane. */
+  async showTool(tool: string, preview?: string): Promise<void> {
+    try {
+      await sendMessage(this.token, this.chatId, hermesToolLine(tool, preview));
+      await this.pulseTyping(true);
+    } catch {
+      /* Progress chrome is cosmetic. The model run and final reply continue. */
+    }
+  }
+
   async heartbeat(): Promise<void> {
     await this.pulseTyping();
     if (!this.available || Date.now() - this.lastSentAt < 15_000) return;
@@ -259,6 +271,21 @@ export class TelegramDraftStream {
       this.available = false;
     }
   }
+}
+
+function hermesToolLine(tool: string, preview?: string): string {
+  const emoji = tool === 'execute_code' ? '🐍'
+    : tool === 'terminal' || tool === 'process' ? '💻'
+      : tool === 'web_search' ? '🔍'
+        : tool === 'web_extract' || tool.startsWith('browser_') ? '🌐'
+          : tool === 'image_generate' || tool.startsWith('bfl_') ? '🎨'
+            : tool === 'delegate_task' ? '👥'
+              : tool === 'cronjob' ? '⏰'
+                : tool === 'memory' ? '🧠'
+                  : /^(?:read_file|write_file|patch|search_files)$/.test(tool) ? '📁'
+                    : '⚙️';
+  const bounded = preview?.trim().slice(0, 1_000);
+  return bounded ? `${emoji} ${tool}: "${bounded}"` : `${emoji} ${tool}...`;
 }
 
 /** Hermes balances incomplete code spans in Telegram previews so a partial

@@ -146,7 +146,7 @@ This is one codebase, one backend, and one information architecture with a prefe
 
 Draft editing is listed here as a disclosure control, but it is not a convenience. The delta between what AISAR proposed and what the owner approved is the strongest correction signal the product will ever receive, and Procedure Derivation Requirements below depends on it being captured as a first-class event rather than an overwritten field.
 
-What advanced mode does **not** unlock in the first release: model selection, custom instructions, custom tools, terminal or browser access, and agent-runtime choice. Those are separate decisions with their own costs, addressed under Non-Goals and in the delivery plan.
+What advanced mode does **not** unlock for ordinary customers in the first release: model selection, custom instructions, custom tools, terminal or browser access, and agent-runtime choice. The isolated production canary may exercise the pinned Hermes tool bundle for validation; that is an operator rollout decision, not an owner-facing preference. Those are separate decisions with their own costs, addressed under Non-Goals and in the delivery plan.
 
 ### Procedure Derivation Requirements
 
@@ -198,8 +198,9 @@ This is also where the product becomes difficult to copy. Industry playbooks are
   Hermes's native presentation contract: a rich Thinking placeholder, a fresh 49-bit
   per-turn draft identity, cumulative rich Markdown updates at the 800 ms/24-character
   threshold, and a persistent rich final message. The per-business runner is Hermes's sole
-  SSE subscriber and drops reasoning, tools, approvals, unknown events, terminal
-  transcripts, and inline think blocks before the control plane; neither runner disk nor
+  SSE subscriber and forwards only answer deltas plus bounded native-style tool lifecycle
+  previews. It drops reasoning, approvals, full tool arguments/results, unknown events,
+  terminal transcripts, and inline think blocks before the control plane; neither runner disk nor
   Postgres stores token chunks.
 - Persist each request and proposed action as a structured work record, separate from chat text.
 

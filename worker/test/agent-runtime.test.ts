@@ -183,7 +183,7 @@ describe('provider provisioning', () => {
       hermesApiKey: 'hermes-key-for-alpha',
       fetch: async () => new Response(JSON.stringify({
         ok: true,
-        toolMode: 'no-tools',
+        toolMode: 'full-tools',
         edgeAuthorizationForwarded: false,
       })),
     });
@@ -237,7 +237,7 @@ describe('provider provisioning', () => {
       hermesApiKey: 'hermes-key-for-alpha',
       fetch: async () => Response.json({
         ok: true,
-        toolMode: 'no-tools',
+        toolMode: 'full-tools',
         edgeAuthorizationForwarded: true,
       }),
     })).rejects.toThrow('edge credential isolation');

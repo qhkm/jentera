@@ -52,11 +52,16 @@ allow-lists only bounded `message.delta` text into process memory. It discards
 before the Worker can see them. Chat is an interface; `run`, `run_event`, and
 `work_record` remain the queryable source of truth.
 
-Hermes remains read-only and boots in `no-tools` mode. Connector calls, browser actions,
-and other side effects remain unavailable until incremental Hermes event translation and
-Hermes-native approval resume are implemented and reviewed. Provisioning remains a
-separate four-gate canary decision: explicit enablement, secure model transport,
-immutable production bootstrap, and the provisioning business allow-list.
+The I Run Cafe canary boots in `full-tools` mode with the complete tool bundle resolved
+from the pinned Hermes release. This includes live web research, code execution, terminal,
+files, browser, memory, skills, delegation, and any other API-server tools in that pin.
+The runner exposes assistant text and bounded native-style tool lifecycle previews; raw
+reasoning, full tool arguments/results, and terminal transcripts do not cross the runtime
+boundary. Hermes-native approval requests
+are not yet forwarded, so an operation that pauses for approval cannot be resumed through
+Telegram. Provisioning remains a separate four-gate canary decision: explicit enablement,
+secure model transport, immutable production bootstrap, and the provisioning business
+allow-list. Full tools must not be expanded beyond this high-trust canary implicitly.
 
 ## Runtime boundaries
 
@@ -82,14 +87,15 @@ execution-allow-listed owner explicitly chooses Work on this, or when that busin
 verified Telegram webhook receives a text message, the control plane creates an
 idempotent durable `run` and `runtime_task` and sends only a business/task wake-up signal
 to the Queue. Telegram uses connection, chat, and message ids for admission and dedupe;
-webhook retries cannot create a second paid Hermes run. The policy is checked again when
-Hermes finishes, before the control plane sends, blocks, or creates an approval. Ordinary
+webhook retries cannot create a second paid Hermes run. The send policy is checked again
+when Hermes finishes, before the control plane sends, blocks, or creates an approval. Ordinary
 Ask and non-canary Telegram businesses keep the synchronous inline answer contract.
 
 The control plane never accepts a business id from the browser for this decision. Queue
 messages are wake-up hints only: task kind, payload, run id, and tenant all come from the
-leased Postgres row. Incremental Hermes event translation and approval resume remain
-gated before any non-empty tool grant is allowed.
+leased Postgres row. The canary receives a signed five-minute wildcard tool grant bound
+to its business and task. Incremental approval translation remains required before this
+authority can be offered outside the explicit canary.
 
 Production verification on 2026-08-28 submitted run
 `7b3eef5e-95cf-49f5-ad85-532d9641a334` through the same authenticated HTTP path used by
@@ -198,9 +204,10 @@ replies never stream because no immediate customer reply has been authorized.
 Hermes deltas remain in bounded process memory only: after delivery the task payload is
 scrubbed and its result contains delivery metadata, while the final customer-visible
 reply is retained once in the structured work audit. The runner accepts only
-`message.delta` events and also applies Hermes's streaming think-tag scrubber across
-chunk boundaries; reasoning, raw tool chatter, and terminal transcripts therefore never
-cross the runtime boundary.
+`message.delta` plus bounded tool lifecycle presentation events and also applies Hermes's
+streaming think-tag scrubber across chunk boundaries. Telegram receives native-style tool
+start bubbles, while reasoning, full tool arguments/results, and terminal transcripts
+never cross the runtime boundary.
 
 Production verification on 2026-08-28 routed Telegram run
 `283e203c-f379-4e0c-8bc5-9c8d87557e78` through `hermes-sprite`. Telegram accepted one

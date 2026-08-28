@@ -38,7 +38,8 @@ beforeEach(async () => {
       for (const event of [
         { event: 'message.delta', delta: 'Hello' },
         { event: 'reasoning.available', text: 'private chain of thought' },
-        { event: 'tool.started', preview: 'secret tool input' },
+        { event: 'tool.started', tool: 'execute_code', preview: 'import urllib.request' },
+        { event: 'tool.completed', tool: 'execute_code', duration: 1.25, error: false },
         { event: 'message.delta', delta: ' from Hermes' },
         { event: 'message.delta', delta: '\n<thi' },
         { event: 'message.delta', delta: 'nk>inline private reasoning' },
@@ -64,7 +65,7 @@ beforeEach(async () => {
     hermesKey: HERMES_KEY,
     hermesOrigin,
     release: '2026.08.27-1',
-    toolMode: 'no-tools',
+    toolMode: 'full-tools',
     stateFile: join(directory, 'state.json'),
   });
   runnerOrigin = await listen(runnerServer);
@@ -83,7 +84,7 @@ test('liveness reveals no credential and requires no runner key', async () => {
     ok: true,
     service: 'aisar-agent-runner',
     release: '2026.08.27-1',
-    toolMode: 'no-tools',
+    toolMode: 'full-tools',
   });
 });
 
@@ -116,10 +117,11 @@ test('starts one Hermes run for a valid leased AISAR task', async () => {
   });
 });
 
-test('rejects missing, expired, non-empty, and cross-task grants', async () => {
+test('rejects missing, expired, incomplete, unexpected, and cross-task grants', async () => {
   for (const toolGrant of [
     undefined,
     grant(TASK, { issuedAt: 1, expiresAt: 2 }),
+    grant(TASK, { operations: [] }),
     grant(TASK, { operations: ['telegram:send_message'] }),
     grant(TASK_2),
   ]) {
@@ -162,7 +164,7 @@ test('polls and stops by AISAR task id without exposing Hermes directly', async 
   assert.equal((await stopped.json()).status, 'stopping');
 });
 
-test('streams only assistant deltas and never writes them to runner state', async () => {
+test('streams Hermes-visible assistant and tool events without private internals', async () => {
   await start(TASK);
   const response = await call(`/v1/tasks/${TASK}/events`, {
     headers: { Accept: 'text/event-stream' },
@@ -171,17 +173,21 @@ test('streams only assistant deltas and never writes them to runner state', asyn
   const stream = await response.text();
   assert.match(stream, /"delta":"Hello"/);
   assert.match(stream, /"delta":" from Hermes"/);
+  assert.match(stream, /"type":"tool.started"/);
+  assert.match(stream, /"tool":"execute_code"/);
+  assert.match(stream, /import urllib\.request/);
+  assert.match(stream, /"type":"tool.completed"/);
   assert.match(stream, /Safe answer/);
   assert.doesNotMatch(
     stream,
-    /chain of thought|secret tool input|terminal transcript|inline private reasoning|<think>/,
+    /chain of thought|terminal transcript|inline private reasoning|<think>/,
   );
   assert.match(stream, /"type":"done"/);
 
   const state = await readFile(join(directory, 'state.json'), 'utf8');
   assert.doesNotMatch(
     state,
-    /Hello|Hermes|chain of thought|terminal transcript|inline private reasoning|Safe answer/,
+    /Hello|Hermes|execute_code|urllib|chain of thought|terminal transcript|inline private reasoning|Safe answer/,
   );
 });
 
@@ -211,7 +217,7 @@ function grant(taskId, overrides = {}) {
     version: 1,
     businessId: BUSINESS,
     taskId,
-    operations: [],
+    operations: ['*'],
     issuedAt: now,
     expiresAt: now + 300,
     nonce: randomUUID(),

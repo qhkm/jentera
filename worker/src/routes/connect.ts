@@ -32,7 +32,7 @@ import {
   withTypingIndicator,
 } from '../connectors/telegram';
 import { finishRun, recentWork, recordWork, startRun } from '../runs';
-import { prepareAsk, retrieve } from '../ask';
+import { prepareHermesAgent, retrieve } from '../ask';
 import { policyFor } from '../policy';
 import { runtimeFor, signalRuntimeTask } from '../runtime';
 import { getRuntime } from '../agent-runtime';
@@ -422,7 +422,7 @@ async function handleDurableIncoming(
     return;
   }
 
-  const prepared = prepareAsk(incoming.text, facts, work);
+  const prepared = prepareHermesAgent(incoming.text, facts, work);
   const dedupeKey = `telegram:${connectionId}:${incoming.chatId}:${incoming.messageId}`;
   const created = await withTenant(env, businessId, async (tx) => {
     await tx`select pg_advisory_xact_lock(hashtextextended(${dedupeKey}, 0))`;

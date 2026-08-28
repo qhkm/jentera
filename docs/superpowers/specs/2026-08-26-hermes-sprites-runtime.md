@@ -49,8 +49,8 @@ Implemented in the repository:
   the Sprite Ubuntu 26.04 image using the reviewed Ubuntu 24.04 platform build; and
 - pre-route API, authentication, and runtime-mutation burst limits that refuse before
   Neon or provider work, plus bounded request shape and body-size guards;
-- signed five-minute business/task-scoped grants whose current capability set is
-  deliberately empty, plus authenticated `toolMode: no-tools` and Fly edge-credential
+- signed five-minute business/task-scoped grants whose current canary capability set is
+  the pinned Hermes API-server tool bundle, plus authenticated `toolMode: full-tools` and Fly edge-credential
   isolation attestations;
 - an RLS-protected per-business budget and measured usage ledger, pre-compute reservations,
   a 15-minute per-run ceiling, and terminal exhaustion after five attempts;
@@ -65,8 +65,9 @@ Implemented in the repository:
 The I Run Cafe canary Sprite `aisar-b-3602f62e8aec2e6174b3` is ready at release
 `2026.08.28-6`, pinned for future reconciliation to bundle commit
 `b8b3c25a6e306353769ec201bba6f64d40fcea0f`. Its authenticated readiness reports runner,
-Hermes, `toolMode: no-tools`, and `edgeAuthorizationForwarded: false` healthy. The latter
-settles the external security question: Fly stripped the organization bearer header
+Hermes, `toolMode: no-tools`, and `edgeAuthorizationForwarded: false` healthy. This is the
+pre-full-tools baseline; release `2026.08.28-7` replaces it. It also settled the external
+security question: Fly stripped the organization bearer header
 before the request reached tenant code. A signed-grant OpenRouter run completed with
 `AISAR VRS OK.` and duplicate delivery returned the same Hermes run. Checkpoint `v2` was
 created, a marker was written afterward, `v2` was restored, the marker disappeared, and
@@ -128,8 +129,10 @@ is the available zone-safe boundary and `OPTIONS` shares that outer ceiling.
 The separate execution allow-list contains only the I Run Cafe production canary. It is
 authority for the explicit Work action, not a global runtime switch: `runtimeFor()` remains
 the inline adapter for ordinary Ask and ingestion. A ready compute resource is still not
-authority to use connectors or tools: every grant has an empty operation set and the
-runner attests `toolMode: no-tools`.
+authority on its own. The execution allow-list, signed five-minute task grant, and
+authenticated runner readiness jointly enable the canary's pinned tool bundle; the runner
+attests `toolMode: full-tools`. Raw tool and reasoning events remain hidden from Telegram,
+and this authority is not global.
 
 The allow-list first held the I Run Cafe canary for part of 28 August, was emptied after
 four durable Ask runs measured 106s, 100s, 93s and 91s against roughly 1.5s inline, then
@@ -149,22 +152,22 @@ durable runtime and shows `queued`, `waking`, `working`, and `retrying` progress
 terminal state. The browser remains lifecycle-only. Automatic private Telegram replies
 use Telegram's native rich draft lane with Hermes's timing and identity rules while
 retaining the same durable finalization and audit path. Bot credentials remain in the
-control plane; only filtered answer deltas leave the Sprite.
+control plane; only filtered answer deltas and bounded Hermes-style tool lifecycle
+presentation events leave the Sprite.
 
 The pinned canary's authenticated `/v1/capabilities` response confirms
 `run_events_sse`, `tool_progress_events`, `approval_events`, and real message streaming.
 Its source emits `message.delta`, tool lifecycle, approval, reasoning, and terminal events.
-AISAR must never persist or expose `reasoning.available`, token deltas, raw tool previews,
-or the terminal transcript bundle. Deltas are ephemeral transport only; allow-listed
-task/tool/todo/artifact lifecycle events may be translated into bounded structured AISAR
+AISAR must never persist or expose `reasoning.available`, full tool arguments/results,
+or the terminal transcript bundle. Answer deltas and bounded tool previews are ephemeral
+presentation transport only; allow-listed task/tool/todo/artifact lifecycle events may be translated into bounded structured AISAR
 events. The durable context is the objective, status, approvals, checkpoints, artifacts,
 usage and outcome—not the Hermes chat transcript.
 
-Still gated and therefore intentionally unavailable to customers:
+Still gated and therefore intentionally unavailable outside the high-trust canary:
 
-- structured tool/todo/artifact event translation and Hermes-native approval resume before
-  any non-empty grant vocabulary is introduced;
-- non-empty tool grants or wider business rollout.
+- Hermes-native approval resume and durable structured tool/todo/artifact translation;
+- full tool grants or wider business rollout.
 
 Creating provider compute is not readiness, and readiness is not use. The canary's
 `business.runtime` changed from `aisar-native` to `hermes-sprite` only after runner
@@ -672,7 +675,7 @@ open item is complete.
 Completed:
 
 - development and production-canary Sprites pass pinned Hermes installation and a real
-  no-tools model run;
+  model run;
 - runtime table, idempotent provisioner, run/event spine, `RuntimeAdapter`, encrypted
   runtime keys, authenticated runner readiness, browser smoke, and baseline checkpoint
   are deployed; and
@@ -682,11 +685,12 @@ Completed:
   rotation, durable revocation retry, and deletion cleanup pass integration tests; and
 - the Ask AISAR UI keeps Ask inline and creates an idempotent, tenant-scoped durable run
   only for explicit Work; a secured hibernating WebSocket carries content-free lifecycle
-  progress while every tool grant remains empty.
+  progress while the high-trust canary grant is business-bound, task-bound, and expires
+  after five minutes.
 
 Open:
 
-- add incremental event translation and Hermes-native approval resume before allowing
-  non-empty tool grants; and
+- add Hermes-native approval resume before expanding full tools beyond the explicit
+  high-trust canary; and
 - run the canary long enough to measure cold-start latency, active runtime time, token use,
   and failure rate before widening `RUNTIME_EXECUTION_BUSINESS_IDS`.

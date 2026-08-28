@@ -183,7 +183,7 @@ trap 'rm -f "$incoming" "$runtime_tmp"' EXIT
 {
   printf 'AISAR_BUSINESS_ID=%q\n' "$business_id"
   printf 'AISAR_RUNTIME_RELEASE=%q\n' "$runtime_release"
-  printf 'AISAR_TOOL_MODE=%q\n' 'no-tools'
+  printf 'AISAR_TOOL_MODE=%q\n' 'full-tools'
   printf 'AISAR_RUNNER_KEY=%q\n' "$runner_key"
   printf 'HERMES_API_KEY=%q\n' "$hermes_key"
   printf 'API_SERVER_KEY=%q\n' "$hermes_key"

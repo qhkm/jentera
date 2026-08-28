@@ -60,7 +60,7 @@ describe('durable Hermes run delivery', () => {
       if (url.endsWith('/readyz')) {
         return response({
           ok: true,
-          toolMode: 'no-tools',
+          toolMode: 'full-tools',
           edgeAuthorizationForwarded: false,
         });
       }
@@ -158,7 +158,7 @@ describe('durable Hermes run delivery', () => {
       fetches += 1;
       return response({
         ok: true,
-        toolMode: 'no-tools',
+        toolMode: 'full-tools',
         edgeAuthorizationForwarded: false,
       });
     };

@@ -4,8 +4,8 @@ The narrow per-business HTTP service placed in front of Hermes. The Sprite URL r
 the runner on port 8080; Hermes listens only on `127.0.0.1:8642`.
 
 The runner provides liveness, authenticated detailed readiness, idempotent task start,
-status, cancellation, and a filtered assistant-delta stream. Every start additionally requires a five-minute HMAC grant
-bound to that business and task. The current grant vocabulary permits zero tools. Its
+status, cancellation, and a filtered Hermes presentation stream. Every start additionally requires a five-minute HMAC grant
+bound to that business and task. The canary grant permits the pinned Hermes tool bundle. Its
 small state file survives a process restart and contains only AISAR task ids, Hermes run
 ids, statuses, and hashes of task leases and grant nonces—never plaintext values or an
 API key.
@@ -29,17 +29,19 @@ AISAR_RUNNER_STATE=/var/lib/aisar/runner-state.json
 
 Verify locally with `npm test`. No package installation is required.
 
-The runner is Hermes's sole run-event subscriber and exposes only bounded
-`message.delta` text from process memory. It discards reasoning, tool, approval, unknown,
-and terminal-transcript events before they cross the runtime boundary. A streaming
+The runner is Hermes's sole run-event subscriber and exposes bounded `message.delta`
+text plus native-style tool-start/tool-completion presentation events from process memory.
+It discards reasoning, approvals, full tool arguments/results, unknown events, and
+terminal transcripts before they cross the runtime boundary. A streaming
 think-tag scrubber also removes inline reasoning split across arbitrary model chunks,
 matching Hermes's native gateway filter. None of the stream is written to the state file.
-It does not yet proxy Hermes-native approvals. The bootstrap
-configures `platform_toolsets.api_server` to an explicit empty list,
-verifies the pinned Hermes resolver returns no tools, and makes `toolMode: no-tools` part
-of authenticated readiness. The control plane rejects a runtime that does not attest
-that mode. External actions therefore remain solely in AISAR's existing policy and
-approval flow; widening the grant vocabulary requires a separately reviewed gateway.
+It does not yet proxy Hermes-native approvals, so tools which pause for native approval
+cannot currently be resumed through Telegram. The bootstrap configures
+`platform_toolsets.api_server` to `hermes-api-server` plus its explicit Home Assistant
+opt-in, verifies that it covers the full pinned release, and makes `toolMode: full-tools` part of authenticated
+readiness. The control plane rejects a runtime that does not attest that mode. This is a
+high-trust canary capability and must not be widened to other businesses without a new
+rollout decision.
 
 `bin/hermes-service.sh` and `bin/runner-service.sh` are the Sprite service
 entrypoints. Both read a mode-0600 environment file instead of embedding credentials
@@ -65,7 +67,7 @@ must obtain a dedicated AISAR VRS credential from the control plane's encrypted 
 store instead of copying a credential from another project.
 
 After restarting Hermes and the runner, `bin/task-smoke-sprite.sh` submits a real,
-tool-free connectivity task, waits for completion, and replays the request to verify the
+connectivity task, waits for completion, and replays the request to verify the
 runner's idempotency behavior.
 
 The currently configured VRS endpoint is plain HTTP on a public IP. It is suitable only
@@ -84,7 +86,7 @@ invokes `bin/bootstrap-runtime.sh` inside the Sprite.
 The in-Sprite bootstrap pins Hermes to tag `v2026.8.19` and commit
 `fcbd1076a93841fa88855acce810e342a5b78101`, verifies the upstream installer's SHA-256,
 writes the runtime environment atomically, configures OpenRouter without inlining its
-key, enforces the no-tools profile, applies the reviewed `nanoid` security override,
+key, enforces the full pinned API-server tool profile, applies the reviewed `nanoid` security override,
 requires a clean high-severity production dependency audit, recreates both services,
 proves authenticated readiness and Chromium, and creates a baseline checkpoint.
 Repeating it reconciles the same Sprite rather than creating a second one.

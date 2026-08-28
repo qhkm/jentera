@@ -11,7 +11,7 @@ const grantPayload = Buffer.from(JSON.stringify({
   version: 1,
   businessId: process.env.AISAR_BUSINESS_ID,
   taskId,
-  operations: [],
+  operations: ['*'],
   issuedAt: now,
   expiresAt: now + 300,
   nonce: randomUUID(),

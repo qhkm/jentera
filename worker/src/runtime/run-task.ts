@@ -3,9 +3,9 @@ import { getRuntime, getRuntimeSecrets } from '../agent-runtime';
 import { withTenant } from '../db';
 import type { RuntimeProvider } from './provider';
 import { runtimeProviderFor } from './provision';
-import { RunnerClient, type RunnerTaskResponse } from './runner-client';
+import { RunnerClient, type RunnerTaskResponse, type RunnerToolEvent } from './runner-client';
 import { recordRuntimeTaskRemoteRun, type RuntimeTask } from './tasks';
-import { issueNoToolsGrant } from './tool-grant';
+import { issueFullToolsGrant } from './tool-grant';
 import { reserveRuntimeUsage } from './usage';
 import { runtimeTaskIsCancelled } from './tasks';
 import { append } from '../runs';
@@ -51,6 +51,7 @@ export async function dispatchRuntimeRun(
     provider?: RuntimeProvider;
     fetch?: typeof globalThis.fetch;
     onDelta?: (delta: string) => Promise<void>;
+    onToolEvent?: (event: RunnerToolEvent) => Promise<void>;
     onHeartbeat?: () => Promise<void>;
   } = {},
 ): Promise<RuntimeRunOutcome> {
@@ -105,7 +106,7 @@ export async function dispatchRuntimeRun(
       usage: { inputTokens: 0, outputTokens: 0 },
     };
   }
-  const toolGrant = await issueNoToolsGrant(
+  const toolGrant = await issueFullToolsGrant(
     secrets.runnerKey,
     task.businessId,
     task.id,
@@ -162,6 +163,7 @@ export async function dispatchRuntimeRun(
   if (options.onDelta) {
     await client.stream(task.id, {
       onDelta: options.onDelta,
+      onToolEvent: options.onToolEvent,
       onHeartbeat: options.onHeartbeat,
     });
   }

@@ -11,11 +11,11 @@ export interface RuntimeToolGrantClaims {
 }
 
 /**
- * Mint a run-scoped capability token using the per-runtime secret. V1 grants
- * deliberately carry an empty operation set: Hermes may reason, but every
- * external action remains exclusively behind AISAR's policy gateway.
+ * Mint a run-scoped capability token using the per-runtime secret. The canary
+ * runtime explicitly enables the complete tool bundle from its pinned Hermes
+ * release. The grant remains task-bound, short-lived, and non-replayable.
  */
-export async function issueNoToolsGrant(
+export async function issueFullToolsGrant(
   runnerKey: string,
   businessId: string,
   taskId: string,
@@ -25,7 +25,7 @@ export async function issueNoToolsGrant(
     version: 1,
     businessId,
     taskId,
-    operations: [],
+    operations: ['*'],
     issuedAt: now,
     expiresAt: now + GRANT_TTL_SECONDS,
     nonce: crypto.randomUUID(),

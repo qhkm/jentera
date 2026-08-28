@@ -338,7 +338,7 @@ describe('durable Hermes Telegram replies', () => {
       if (url.endsWith('/readyz')) {
         return runnerResponse({
           ok: true,
-          toolMode: 'no-tools',
+          toolMode: 'full-tools',
           edgeAuthorizationForwarded: false,
         });
       }
@@ -347,11 +347,15 @@ describe('durable Hermes Telegram replies', () => {
       }
       if (url.endsWith('/events')) {
         return new Response([
-          'data: {"type":"delta","seq":1,"delta":"Yes, "}',
+          'data: {"type":"tool.started","seq":1,"tool":"execute_code","preview":"import urllib.request"}',
+          '',
+          'data: {"type":"tool.completed","seq":2,"tool":"execute_code","duration":1.2,"error":false}',
+          '',
+          'data: {"type":"delta","seq":3,"delta":"Yes, "}',
           '',
           'data: {"type":"reasoning.available","text":"never show this"}',
           '',
-          'data: {"type":"delta","seq":2,"delta":"we are open on Sunday."}',
+          'data: {"type":"delta","seq":4,"delta":"we are open on Sunday."}',
           '',
           'data: {"type":"done"}',
           '',
@@ -370,6 +374,10 @@ describe('durable Hermes Telegram replies', () => {
     await expect(handleRuntimeMessage(durableEnv, queued[0], { provider, fetch: fetcher }))
       .resolves.toEqual({ action: 'ack', reason: 'completed' });
 
+    expect(sent).toContainEqual({
+      chatId: 42,
+      text: '🐍 execute_code: "import urllib.request"',
+    });
     expect(sent).toContainEqual({ chatId: 42, text: 'Yes, we are open on Sunday.' });
     const draftId = hermesDraftId(queued[0].taskId);
     expect(drafts).toContainEqual({ chatId: 42, draftId, text: '' });

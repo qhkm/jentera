@@ -13,7 +13,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { asOwner, asTenant, truncateAll } from './harness';
-import { answer, retrieve } from '../src/ask';
+import { answer, prepareHermesAgent, retrieve } from '../src/ask';
 import { recordFact } from '../src/facts';
 import type { Env } from '../src/env';
 
@@ -169,6 +169,45 @@ describe('the answer', () => {
       expect(typeof out.text).toBe('string');
       expect(out.text.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('the durable Hermes agent request', () => {
+  it('requires live research for current questions and keeps source links in the answer', () => {
+    const prepared = prepareHermesAgent(
+      "what's latest today in tech?",
+      [],
+      [],
+      new Date('2026-08-28T05:00:00.000Z'),
+    );
+
+    expect(prepared.instructions).toContain('Current date (UTC): 2026-08-28');
+    expect(prepared.instructions).toMatch(/research it now/i);
+    expect(prepared.instructions).toMatch(/Markdown links/i);
+    expect(prepared.instructions).toMatch(/execute code|inspect files|use the browser/i);
+    expect(prepared.input).toContain("User request: what's latest today in tech?");
+  });
+
+  it('carries confirmed business context without restricting the agent to it', () => {
+    const prepared = prepareHermesAgent(
+      'compare our opening hours with the event schedule online',
+      [{
+        key: 'hours.monday',
+        value: '9am to 6pm',
+        source: 'owner',
+        sourceRef: null,
+        confidence: 1,
+        confirmed: true,
+      }],
+      [{ objective: 'Published the new menu', outcome: 'done' }],
+      new Date('2026-08-28T05:00:00.000Z'),
+    );
+
+    expect(prepared.input).toContain('hours.monday: 9am to 6pm');
+    expect(prepared.input).toContain('Published the new menu — done');
+    expect(prepared.usedKeys).toEqual(['hours.monday']);
+    expect(prepared.grounded).toBe(true);
+    expect(prepared.instructions).toMatch(/External\s+research supplements it/i);
   });
 });
 

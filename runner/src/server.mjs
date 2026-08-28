@@ -185,8 +185,8 @@ function validated(config) {
   if (typeof config.release !== 'string' || !config.release.trim()) {
     throw new Error('AISAR_RUNTIME_RELEASE is required');
   }
-  if (config.toolMode !== 'no-tools') {
-    throw new Error('AISAR_TOOL_MODE must be no-tools');
+  if (config.toolMode !== 'full-tools') {
+    throw new Error('AISAR_TOOL_MODE must be full-tools');
   }
   return {
     ...config,
@@ -251,7 +251,8 @@ function validateGrant(token, config, taskId, now = Math.floor(Date.now() / 1000
   }
   if (claims.version !== 1 || claims.businessId !== config.businessId ||
       claims.taskId !== taskId || !uuid(claims.taskId) ||
-      !Array.isArray(claims.operations) || claims.operations.length !== 0 ||
+      !Array.isArray(claims.operations) || claims.operations.length !== 1 ||
+      claims.operations[0] !== '*' ||
       !Number.isInteger(claims.issuedAt) || !Number.isInteger(claims.expiresAt) ||
       claims.issuedAt > now + 30 || claims.expiresAt <= now ||
       claims.expiresAt - claims.issuedAt > 300 ||
@@ -391,10 +392,10 @@ class StateStore {
 /**
  * The sole subscriber to Hermes's destructive run-event queue.
  *
- * Only assistant text deltas are copied into bounded process memory. Reasoning,
- * tools, approvals, terminal transcripts, and every unknown event are dropped
- * here and can never reach the control plane. Nothing in this class touches the
- * state file.
+ * Assistant text deltas and Hermes's bounded tool lifecycle presentation events
+ * are copied into process memory. Reasoning, approvals, tool results, full
+ * arguments, terminal transcripts, and every unknown event are dropped here.
+ * Nothing in this class touches the state file.
  */
 class SafeDeltaStreams {
   constructor(config) {
@@ -482,11 +483,37 @@ class SafeDeltaStreams {
     } catch {
       return;
     }
-    if (event?.event !== 'message.delta' || typeof event.delta !== 'string' ||
-        event.delta.length === 0 || stream.bytes >= STREAM_TEXT_LIMIT ||
-        stream.history.length >= STREAM_EVENT_LIMIT) return;
-    const bounded = truncateUtf8(event.delta, STREAM_TEXT_LIMIT - stream.bytes);
-    this.emitDelta(stream, stream.scrubber.push(bounded));
+    if (event?.event === 'message.delta' && typeof event.delta === 'string' &&
+        event.delta.length > 0) {
+      const bounded = truncateUtf8(event.delta, STREAM_TEXT_LIMIT - stream.bytes);
+      this.emitDelta(stream, stream.scrubber.push(bounded));
+      return;
+    }
+    if (event?.event === 'tool.started') {
+      const tool = safeToolName(event.tool);
+      if (!tool) return;
+      const preview = safeToolPreview(event.preview);
+      this.emitEvent(stream, {
+        type: 'tool.started',
+        seq: stream.nextSeq++,
+        tool,
+        ...(preview ? { preview } : {}),
+      });
+      return;
+    }
+    if (event?.event === 'tool.completed') {
+      const tool = safeToolName(event.tool);
+      if (!tool) return;
+      this.emitEvent(stream, {
+        type: 'tool.completed',
+        seq: stream.nextSeq++,
+        tool,
+        duration: Number.isFinite(event.duration)
+          ? Math.max(0, Math.min(900, Number(event.duration)))
+          : 0,
+        error: event.error === true,
+      });
+    }
   }
 
   emitDelta(stream, value) {
@@ -494,8 +521,14 @@ class SafeDeltaStreams {
         stream.history.length >= STREAM_EVENT_LIMIT) return;
     const delta = truncateUtf8(value, STREAM_TEXT_LIMIT - stream.bytes);
     if (!delta) return;
-    stream.bytes += Buffer.byteLength(delta);
-    const safe = { type: 'delta', seq: stream.nextSeq++, delta };
+    this.emitEvent(stream, { type: 'delta', seq: stream.nextSeq++, delta });
+  }
+
+  emitEvent(stream, safe) {
+    if (stream.history.length >= STREAM_EVENT_LIMIT) return;
+    const size = Buffer.byteLength(JSON.stringify(safe));
+    if (stream.bytes + size > STREAM_TEXT_LIMIT) return;
+    stream.bytes += size;
     stream.history.push(safe);
     for (const subscriber of stream.subscribers) writeSse(subscriber, safe);
   }
@@ -645,6 +678,19 @@ function truncateUtf8(value, maxBytes) {
   const encoded = Buffer.from(value);
   if (encoded.length <= maxBytes) return value;
   return encoded.subarray(0, maxBytes).toString('utf8').replace(/\uFFFD$/, '');
+}
+
+function safeToolName(value) {
+  if (typeof value !== 'string' || !/^[a-zA-Z0-9_.:-]{1,96}$/.test(value)) return '';
+  return value;
+}
+
+function safeToolPreview(value) {
+  if (typeof value !== 'string') return '';
+  return truncateUtf8(value
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    .replace(/\b(Bearer\s+)[A-Za-z0-9._~+\/-]{12,}/gi, '$1[redacted]')
+    .replace(/\b(api[_-]?key|token|secret|password)\s*[:=]\s*[^\s,;]+/gi, '$1=[redacted]'), 1_000);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

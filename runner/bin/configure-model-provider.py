@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 from hermes_cli.config import load_config, save_config
 from hermes_cli.tools_config import _get_platform_tools
+from toolsets import resolve_toolset
 
 
 def main() -> None:
@@ -48,11 +49,15 @@ def main() -> None:
     config["model"] = model
 
     # The public Sprite URL reaches AISAR's runner, never Hermes. Hermes' own
-    # API also remains loopback-only and receives an explicit empty toolset.
-    # Re-evaluate the pinned resolver during every bootstrap so an upstream
-    # default/plugin change fails the release instead of silently adding tools.
+    # API remains loopback-only but receives the complete tool bundle from the
+    # pinned release. Resolve and compare it during every bootstrap so a bad
+    # configuration cannot silently expose a different capability surface.
     platform_toolsets = dict(config.get("platform_toolsets") or {})
-    platform_toolsets["api_server"] = []
+    # The composite carries the complete API-server surface. Home Assistant is
+    # normally default-off even though it belongs to that composite, so list it
+    # explicitly as the pinned resolver's opt-in signal (its own credential
+    # check still controls whether schemas register at runtime).
+    platform_toolsets["api_server"] = ["hermes-api-server", "homeassistant"]
     config["platform_toolsets"] = platform_toolsets
 
     agent = dict(config.get("agent") or {})
@@ -65,8 +70,15 @@ def main() -> None:
     gateway["api_server"] = api_server
     config["gateway"] = gateway
 
-    if _get_platform_tools(config, "api_server"):
-        raise SystemExit("Hermes API server resolved tools in AISAR no-tools mode")
+    expected_tools = set(resolve_toolset("hermes-api-server"))
+    resolved_toolsets = set(_get_platform_tools(config, "api_server"))
+    resolved_tools = {
+        tool
+        for toolset in resolved_toolsets
+        for tool in resolve_toolset(toolset)
+    }
+    if not expected_tools or not expected_tools.issubset(resolved_tools):
+        raise SystemExit("Hermes API server did not resolve the pinned full toolset")
     save_config(config)
 
 
