@@ -50,6 +50,30 @@ describe('runtime provisioning route', () => {
     });
   });
 
+  it('shows the latest attested Sprite region and a non-blocking placement warning', async () => {
+    await asOwner(async (sql) => {
+      await sql`
+        insert into agent_runtime
+          (business_id, provider, provider_name, status, desired_release, observed_release)
+        values (${A}, 'local', 'runtime-alpha', 'ready', '2026.08.28-9', '2026.08.28-9')`;
+      await sql`
+        insert into runtime_task
+          (business_id, kind, status, dedupe_key, result, completed_at)
+        values
+          (${A}, 'upgrade', 'completed', 'upgrade:region-test',
+           ${sql.json({ region: 'fra' })}, now())`;
+    });
+    const response = await call('GET', '/api/runtime', testEnv({
+      RUNTIME_EXPECTED_REGION: 'sin',
+    }), ownerCookie);
+    expect(response.status).toBe(200);
+    expect((await response.json()).runtime).toMatchObject({
+      observedRegion: 'fra',
+      expectedRegion: 'sin',
+      regionStatus: 'different',
+    });
+  });
+
   it('requires authentication and an owner', async () => {
     expect((await call('POST', '/api/runtime/provision', testEnv())).status).toBe(401);
     expect((await call('POST', '/api/runtime/provision', enabled(), staffCookie)).status).toBe(403);

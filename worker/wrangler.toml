@@ -49,6 +49,7 @@ API_ORIGIN = "https://api.jentera.ai"
 # provisioned runtimes. Changing this asks reconciliation to upgrade;
 # it must never silently track "latest".
 RUNTIME_RELEASE = "2026.08.28-8"
+RUNTIME_EXPECTED_REGION = "sin"
 SPRITES_API_ORIGIN = "https://api.sprites.dev"
 # Fail closed. Completing onboarding provisions one isolated runtime for the
 # new business only when the complete secure bootstrap chain is configured.

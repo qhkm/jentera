@@ -44,6 +44,20 @@ class ProvisioningRepository extends ReadyRepository {
   }
 }
 
+class RegionRepository extends ReadyRepository {
+  override async runtimeStatus(): Promise<RuntimeOverview> {
+    const current = await super.runtimeStatus();
+    return {
+      runtime: current.runtime ? {
+        ...current.runtime,
+        observedRegion: 'fra',
+        expectedRegion: 'sin',
+        regionStatus: 'different',
+      } : null,
+    };
+  }
+}
+
 function mount(repo: LocalRepository) {
   return render(
     <MemoryRouter initialEntries={['/setup']}>
@@ -86,6 +100,17 @@ describe('signed-in setup', () => {
     expect(await screen.findByText('installed and verified')).toBeInTheDocument();
     expect(repo.provisionCalls).toBe(1);
     expect(screen.getByText('connect Telegram below')).toBeInTheDocument();
+  });
+
+  it('shows the observed region without treating a placement difference as broken', async () => {
+    const repo = new RegionRepository();
+    await repo.setOnboarded(true);
+    mount(repo);
+
+    expect(await screen.findByText(
+      'installed and verified in Frankfurt (FRA); Singapore (SIN) is preferred',
+    )).toBeInTheDocument();
+    expect(screen.getByText('ready')).toBeInTheDocument();
   });
 
   it('persists setup completion before opening the dashboard', async () => {

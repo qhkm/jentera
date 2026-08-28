@@ -48,6 +48,7 @@ export function createRunner(input) {
           ok: ready,
           release: config.release,
           toolMode: config.toolMode,
+          region: runtimeRegion(req),
           edgeAuthorizationForwarded: typeof req.headers.authorization === 'string',
           hermes: boundedReadiness(body),
         });
@@ -311,6 +312,14 @@ function sameSecret(value, expected) {
   const a = Buffer.from(value);
   const b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function runtimeRegion(req) {
+  const raw = process.env.FLY_REGION ?? req.headers['fly-region'];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return typeof value === 'string' && /^[a-z0-9]{3}$/i.test(value.trim())
+    ? value.trim().toLowerCase()
+    : null;
 }
 
 function hash(value) {

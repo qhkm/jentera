@@ -6,6 +6,7 @@ import {
   markRuntimeState,
   recordProviderRuntime,
   removeRuntimeRecord,
+  type AgentRuntimeRecord,
 } from '../agent-runtime';
 import { withTenant } from '../db';
 import type { ObservedRuntime, RuntimeProvider } from './provider';
@@ -18,9 +19,9 @@ export async function upgradeRuntime(
   businessId: string,
   provider?: RuntimeProvider,
   fetcher?: typeof globalThis.fetch,
-): Promise<void> {
+): Promise<AgentRuntimeRecord> {
   await withTenant(env, businessId, (tx) => markRuntimeState(tx, businessId, 'upgrading'));
-  await ensureProviderRuntime(env, businessId, { provider, fetch: fetcher });
+  return ensureProviderRuntime(env, businessId, { provider, fetch: fetcher });
 }
 
 export async function reconcileRuntime(
@@ -28,19 +29,16 @@ export async function reconcileRuntime(
   businessId: string,
   providerInput?: RuntimeProvider,
   fetcher?: typeof globalThis.fetch,
-): Promise<void> {
+): Promise<AgentRuntimeRecord> {
   const current = await withTenant(env, businessId, (tx) => getRuntime(tx, businessId));
   if (!current?.providerId || !current.providerUrl) {
-    await ensureProviderRuntime(env, businessId, { provider: providerInput, fetch: fetcher });
-    return;
+    return ensureProviderRuntime(env, businessId, { provider: providerInput, fetch: fetcher });
   }
   if (current.observedRelease !== current.desiredRelease) {
-    await upgradeRuntime(env, businessId, providerInput, fetcher);
-    return;
+    return upgradeRuntime(env, businessId, providerInput, fetcher);
   }
   if (await runtimeModelKeyNeedsRotation(env, businessId)) {
-    await upgradeRuntime(env, businessId, providerInput, fetcher);
-    return;
+    return upgradeRuntime(env, businessId, providerInput, fetcher);
   }
 
   const provider = providerInput ?? runtimeProviderFor(env);
@@ -63,7 +61,7 @@ export async function reconcileRuntime(
     edgeToken: current.provider === 'fly-sprite' ? env.SPRITES_TOKEN : undefined,
     fetch: fetcher,
   });
-  await client.ready();
+  const readiness = await client.ready();
   await withTenant(env, businessId, async (tx) => {
     await recordProviderRuntime(tx, businessId, status);
     await markRuntimeReady(
@@ -73,6 +71,9 @@ export async function reconcileRuntime(
       current.latestCheckpointId!,
     );
   });
+  const ready = await withTenant(env, businessId, (tx) => getRuntime(tx, businessId));
+  if (!ready) throw new Error('runtime disappeared after reconciliation');
+  return { ...ready, observedRegion: readiness.region };
 }
 
 export async function deleteRuntime(

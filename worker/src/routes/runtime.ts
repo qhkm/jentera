@@ -1,5 +1,5 @@
 import type { Env } from '../env';
-import { getRuntime } from '../agent-runtime';
+import { getRuntime, getRuntimeRegion } from '../agent-runtime';
 import { withTenant } from '../db';
 import { publishRuntimeTask } from '../runtime';
 import { cancelRuntimeTask } from '../runtime/tasks';
@@ -31,10 +31,16 @@ export async function handleRuntime(
   }
 
   if (url.pathname === '/api/runtime' && request.method === 'GET') {
-    const { runtime, budget } = await withTenant(env, identity.businessId, async (tx) => ({
-      runtime: await getRuntime(tx, identity.businessId),
-      budget: await runtimeBudgetSnapshot(tx, identity.businessId),
-    }));
+    const { runtime, budget, observedRegion } = await withTenant(
+      env,
+      identity.businessId,
+      async (tx) => ({
+        runtime: await getRuntime(tx, identity.businessId),
+        budget: await runtimeBudgetSnapshot(tx, identity.businessId),
+        observedRegion: await getRuntimeRegion(tx, identity.businessId),
+      }),
+    );
+    const expectedRegion = validRegion(env.RUNTIME_EXPECTED_REGION);
     return json({
       ok: true,
       runtime: runtime ? {
@@ -43,6 +49,11 @@ export async function handleRuntime(
         observedRelease: runtime.observedRelease,
         lastReadyAt: runtime.lastReadyAt,
         lastError: runtime.lastError,
+        observedRegion,
+        expectedRegion,
+        regionStatus: !observedRegion || !expectedRegion
+          ? 'unknown'
+          : observedRegion === expectedRegion ? 'optimal' : 'different',
       } : null,
       budget,
     }, {}, cors);
@@ -161,6 +172,11 @@ export async function handleRuntime(
   }
 
   return json({ ok: false, err: 'not found' }, { status: 404 }, cors);
+}
+
+function validRegion(value: string | undefined): string | null {
+  const region = value?.trim().toLowerCase() ?? '';
+  return /^[a-z0-9]{3}$/.test(region) ? region : null;
 }
 
 function mutationProblem(

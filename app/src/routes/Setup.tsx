@@ -132,6 +132,17 @@ function LiveSetup() {
         ? t('su.live.attention')
         : runtime ? t('su.state.linking') : t('su.state.queued');
   const runtimeStage = t(runtimeStageKey(runtimeLoaded, runtime));
+  const regionDifferent = runtime?.regionStatus === 'different';
+  const runtimeDetail = runtimeError ?? (runtimeReady
+    ? regionDifferent
+      ? t('su.live.regionDifferent', {
+          region: runtimeRegionLabel(runtime.observedRegion),
+          expected: runtimeRegionLabel(runtime.expectedRegion),
+        })
+      : runtime?.observedRegion
+        ? t('su.live.verifiedRegion', { region: runtimeRegionLabel(runtime.observedRegion) })
+        : t('su.live.verified')
+    : t('su.live.provisioning'));
 
   return (
     <Shell suffix="/setup">
@@ -162,9 +173,9 @@ function LiveSetup() {
           />
           <SetupStatusRow
             label={t('su.live.agent')}
-            detail={runtimeError ?? (runtimeReady ? t('su.live.verified') : t('su.live.provisioning'))}
+            detail={runtimeDetail}
             state={runtimeLabel}
-            tone={runtimeReady ? 'green' : runtimeError ? 'red' : 'amber'}
+            tone={runtimeReady ? regionDifferent ? 'amber' : 'green' : runtimeError ? 'red' : 'amber'}
           />
           <SetupStatusRow
             label={t('su.live.channel')}
@@ -229,6 +240,21 @@ function runtimeStageKey(loaded: boolean, runtime: RuntimeSummary | null): strin
   if (runtime.status === 'waking') return 'su.live.stage.starting';
   if (runtime.observedRelease !== runtime.desiredRelease) return 'su.live.stage.verifying';
   return 'su.live.stage.installing';
+}
+
+function runtimeRegionLabel(region: string | null | undefined): string {
+  if (!region) return 'unknown';
+  const code = region.toLowerCase();
+  const names: Record<string, string> = {
+    sin: 'Singapore',
+    hkg: 'Hong Kong',
+    nrt: 'Tokyo',
+    syd: 'Sydney',
+    fra: 'Frankfurt',
+    ams: 'Amsterdam',
+    lhr: 'London',
+  };
+  return names[code] ? `${names[code]} (${code.toUpperCase()})` : code.toUpperCase();
 }
 
 function RuntimePreparing({ stage }: { stage: string }) {

@@ -95,6 +95,7 @@ test('detailed readiness requires the per-runtime key', async () => {
   const body = await response.json();
   assert.equal(body.hermes.status, 'ok');
   assert.equal(body.edgeAuthorizationForwarded, false);
+  assert.equal(body.region, null);
 
   const simulatedForward = await fetch(`${runnerOrigin}/readyz`, {
     headers: {
@@ -103,6 +104,9 @@ test('detailed readiness requires the per-runtime key', async () => {
     },
   });
   assert.equal((await simulatedForward.json()).edgeAuthorizationForwarded, true);
+
+  const placed = await call('/readyz', { headers: { 'Fly-Region': 'SIN' } });
+  assert.equal((await placed.json()).region, 'sin');
 });
 
 test('starts one Hermes run for a valid leased Jentera task', async () => {

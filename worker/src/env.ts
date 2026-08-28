@@ -41,6 +41,8 @@ export interface Env {
   SPRITES_API_ORIGIN?: string;
   /** Immutable runner + Hermes + browser release identifier. */
   RUNTIME_RELEASE?: string;
+  /** Preferred Fly region for diagnostics. Sprites cannot currently be pinned. */
+  RUNTIME_EXPECTED_REGION?: string;
   /** Customer provisioning requires explicit enablement, verified secure
       model transport, production bootstrap, and all provider credentials. */
   RUNTIME_PROVISIONING_ENABLED?: string;

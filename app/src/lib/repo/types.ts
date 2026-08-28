@@ -169,6 +169,9 @@ export interface RuntimeSummary {
   observedRelease: string | null;
   lastReadyAt: string | null;
   lastError: string | null;
+  observedRegion?: string | null;
+  expectedRegion?: string | null;
+  regionStatus?: 'optimal' | 'different' | 'unknown';
 }
 
 export interface RuntimeOverview {

@@ -108,6 +108,7 @@ export async function handleRuntimeMessage(
   }
 
   try {
+    let lifecycleResult: { region: string | null } | undefined;
     /* Key maintenance is tenant-local and demand-driven. This avoids a fleet
        scan whose cost grows with every signup: the first run inside the
        seven-day rotation window yields to one deduplicated upgrade, then
@@ -131,16 +132,20 @@ export async function handleRuntimeMessage(
 
     switch (lease.task.kind) {
       case 'provision':
-        await ensureProviderRuntime(env, message.businessId, {
+        lifecycleResult = runtimeDiagnostic(await ensureProviderRuntime(env, message.businessId, {
           provider: options.provider,
           fetch: options.fetch,
-        });
+        }));
         break;
       case 'reconcile':
-        await reconcileRuntime(env, message.businessId, options.provider, options.fetch);
+        lifecycleResult = runtimeDiagnostic(await reconcileRuntime(
+          env, message.businessId, options.provider, options.fetch,
+        ));
         break;
       case 'upgrade':
-        await upgradeRuntime(env, message.businessId, options.provider, options.fetch);
+        lifecycleResult = runtimeDiagnostic(await upgradeRuntime(
+          env, message.businessId, options.provider, options.fetch,
+        ));
         break;
       case 'delete':
         await deleteRuntime(env, message.businessId, options.provider);
@@ -330,7 +335,13 @@ export async function handleRuntimeMessage(
     }
 
     const completed = await withTenant(env, message.businessId, (tx) =>
-      completeRuntimeTask(tx, message.businessId, message.taskId, leaseToken),
+      completeRuntimeTask(
+        tx,
+        message.businessId,
+        message.taskId,
+        leaseToken,
+        lifecycleResult ? { result: lifecycleResult } : {},
+      ),
     );
     if (!completed) {
       return { action: 'retry', delaySeconds: 10, reason: 'runtime task lease was lost' };
@@ -405,6 +416,10 @@ export async function handleRuntimeMessage(
     }
     return { action: 'requeue', delaySeconds: 30, reason };
   }
+}
+
+function runtimeDiagnostic(runtime: { observedRegion: string | null }) {
+  return { region: runtime.observedRegion };
 }
 
 async function pulseTelegramTyping(env: Env, task: RuntimeTask): Promise<void> {

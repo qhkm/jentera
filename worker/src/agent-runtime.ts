@@ -19,6 +19,8 @@ export interface AgentRuntimeRecord {
   modelKeyHash: string | null;
   modelKeyExpiresAt: Date | null;
   modelKeyPendingRevocationHash: string | null;
+  /** Authenticated runner attestation, persisted with its lifecycle task. */
+  observedRegion: string | null;
 }
 
 export interface RuntimeSecrets {
@@ -75,7 +77,27 @@ const toRecord = (row: RuntimeRow): AgentRuntimeRecord => ({
   modelKeyHash: row.model_key_hash,
   modelKeyExpiresAt: row.model_key_expires_at,
   modelKeyPendingRevocationHash: row.model_key_pending_revocation_hash,
+  observedRegion: null,
 });
+
+/** Latest authenticated region attested by a successful lifecycle task. */
+export async function getRuntimeRegion(
+  tx: postgres.TransactionSql,
+  businessId: string,
+): Promise<string | null> {
+  const [row] = await tx<{ region: string | null }[]>`
+    select result->>'region' as region
+      from runtime_task
+     where business_id = ${businessId}
+       and kind in ('provision', 'upgrade', 'reconcile')
+       and status = 'completed'
+       and jsonb_typeof(result) = 'object'
+       and result ? 'region'
+     order by completed_at desc nulls last
+     limit 1`;
+  const region = row?.region?.trim().toLowerCase() ?? '';
+  return /^[a-z0-9]{3}$/.test(region) ? region : null;
+}
 
 /** Stable, opaque, and free of customer-identifying text. */
 export async function runtimeName(businessId: string): Promise<string> {

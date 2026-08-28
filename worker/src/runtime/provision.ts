@@ -177,7 +177,7 @@ async function bootstrapRuntime(
   /* Readiness is authenticated and attests both the pinned full-tools mode
      and that Fly's edge did not forward its organization bearer token into
      the tenant. */
-  await client.ready();
+  const readiness = await client.ready();
   const checkpoint = await provider.checkpoint(
     awakened,
     `Jentera runtime ${runtime.desiredRelease}`,
@@ -190,7 +190,7 @@ async function bootstrapRuntime(
   );
   const ready = await withTenant(env, businessId, (tx) => getRuntime(tx, businessId));
   if (!ready) throw new Error('runtime disappeared after bootstrap');
-  return ready;
+  return { ...ready, observedRegion: readiness.region };
 }
 
 function field(name: string, value: string): string {

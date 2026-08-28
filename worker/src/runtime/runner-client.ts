@@ -33,7 +33,12 @@ export interface RunnerTaskResponse {
   activeTaskId?: string;
   usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
   toolMode?: string;
+  region?: string | null;
   edgeAuthorizationForwarded?: boolean;
+}
+
+export interface RunnerReadiness {
+  region: string | null;
 }
 
 /** The isolated runtime is still finishing an earlier task. This is normal
@@ -65,7 +70,7 @@ export class RunnerClient {
     if (this.runnerKey.length < 32) throw new Error('runner key is invalid');
   }
 
-  async ready(): Promise<void> {
+  async ready(): Promise<RunnerReadiness> {
     const body = await this.request('/readyz');
     if (body.toolMode !== 'full-tools') {
       throw new Error('runner did not attest the required full-tools mode');
@@ -73,6 +78,10 @@ export class RunnerClient {
     if (body.edgeAuthorizationForwarded !== false) {
       throw new Error('runner did not attest edge credential isolation');
     }
+    const region = typeof body.region === 'string' && /^[a-z0-9]{3}$/i.test(body.region.trim())
+      ? body.region.trim().toLowerCase()
+      : null;
+    return { region };
   }
 
   async start(task: RunnerTaskRequest): Promise<RunnerTaskResponse> {
