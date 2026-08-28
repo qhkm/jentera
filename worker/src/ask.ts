@@ -128,8 +128,14 @@ Rules:
   exact action was explicitly requested in the current message.
 - Confirmed business information below is authoritative for that business. External
   research supplements it; it does not silently overwrite it.
-- Write a useful Telegram-friendly answer. Be concise for simple questions and thorough
-  when the user asks for research.`;
+- Match the user's language unless they ask for another one.
+- Format for a phone screen. Never return a long uninterrupted block of prose. Keep
+  paragraphs to at most three short sentences and separate them with blank lines.
+- For research answers, use this shape: a direct opening summary; short descriptive
+  section headings; hyphen bullets for dates, venues, prices, and key facts; a final
+  Sources section with descriptive links; then one brief follow-up question when useful.
+  Avoid tables in Telegram.
+- Be concise for simple questions and thorough when the user asks for research.`;
 
 /**
  * Where a fact came from, in words the model can repeat verbatim.
