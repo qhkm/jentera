@@ -102,8 +102,10 @@ the exact tenant row when scoped. Worker version
 one business canary; version `74ae271a` superseded it the same morning with the execution
 allow-list emptied, so Ask returned inline while provisioning stayed live. Worker version
 `b2edd791-00d8-44e6-a890-b1f943b12ace` introduced the split and the `RunStream` Durable
-Object migration; current version `8a20dca9-0069-46af-a578-f46230d33fe5` also collapses
-duplicate progress states before broadcast. Pages deployment `958d6182` serves bundle
+Object migration; version `8a20dca9-0069-46af-a578-f46230d33fe5` also collapsed
+duplicate progress states before broadcast. Current Worker version
+`c5ea93a5-6f21-43e5-999b-233932f43081` adds bounded Telegram typing for automatic
+replies. Pages deployment `958d6182` serves bundle
 `index-De-GFrgZ.js` at `jentera.ai`.
 Its Sprites credential is organization-scoped and dedicated. The canary now has a
 separate OpenRouter inference key with a $5 monthly hard limit and 90-day expiry. Its old
