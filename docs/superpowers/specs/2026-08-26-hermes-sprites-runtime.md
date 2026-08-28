@@ -63,16 +63,23 @@ Implemented in the repository:
   rotation, durable old-key revocation retry, and deletion-time revocation.
 
 The I Run Cafe canary Sprite `aisar-b-3602f62e8aec2e6174b3` is ready at release
-`2026.08.28-6`, pinned for future reconciliation to bundle commit
-`b8b3c25a6e306353769ec201bba6f64d40fcea0f`. Its authenticated readiness reports runner,
-Hermes, `toolMode: no-tools`, and `edgeAuthorizationForwarded: false` healthy. This is the
-pre-full-tools baseline; release `2026.08.28-7` replaces it. It also settled the external
-security question: Fly stripped the organization bearer header
+`2026.08.28-7`, pinned for future reconciliation to bundle commit
+`485c3138a227df7dfb13587a98bf8c25e09fb6fe`. Its authenticated readiness reports runner,
+Hermes, `toolMode: full-tools`, and `edgeAuthorizationForwarded: false` healthy. The
+preceding `2026.08.28-6` no-tools baseline also settled the external security question:
+Fly stripped the organization bearer header
 before the request reached tenant code. A signed-grant OpenRouter run completed with
 `AISAR VRS OK.` and duplicate delivery returned the same Hermes run. Checkpoint `v2` was
 created, a marker was written afterward, `v2` was restored, the marker disappeared, and
 authenticated readiness still passed. This proves the canary's wake/restore path rather
 than merely proving checkpoint creation.
+
+The `2026.08.28-7` production upgrade was submitted through the authenticated owner
+control-plane route while execution was paused. It resolved the complete pinned Hermes
+API-server tool surface, including live web, code, terminal, files, browser, memory,
+skills, delegation, cron, media, and credential-gated Home Assistant. Readiness reached
+`ready` with matching desired and observed release before execution was restored. Worker
+version `8b35529d-cf3e-4935-a107-ae187a38e650` then re-enabled only the existing canary.
 
 After the shared key was revoked, a production Queue smoke used the same signed no-tools
 path intended for the UI and completed with `AISAR PER-RUNTIME KEY OK.`. Healthy polls
