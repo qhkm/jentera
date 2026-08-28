@@ -39,7 +39,7 @@ export const TEAM_REPLIES_EN: Record<string, string[]> = {
 };
 
 export const TEAM_GENERAL_EN: string[] = [
-  "Heard. Everything is running. Tag the agent it concerns and I'll put the question to them directly.",
-  'Noted, all systems normal. Tag @Customer Assistant for enquiries, or @Ops Assistant for reports.',
-  "Sure. For a specific area, tag that agent and I'll pass it along.",
+  "Heard. I'm ready to help inside your private workspace.",
+  'Noted. I can help you research, plan, write, and organise the work here.',
+  "Sure. Tell me the outcome you need and I'll help you move it forward.",
 ];

@@ -9,8 +9,7 @@
    ============================================================ */
 
 import { PLAYBOOKS } from './data/playbooks';
-import { REC_MAP } from './data/recommendations';
-import type { AgentRecommendation, Business, TeamMember } from './types';
+import type { Business, TeamMember } from './types';
 import { getCountry, localizeDetect, localizeSite } from './country';
 import { FALLBACK_KEY, extractLocation, extractName, inferPlaybook } from './infer';
 import type { BusinessSnapshot } from '@/lib/repo/types';
@@ -50,16 +49,12 @@ export function resolveBusiness(snap: BusinessSnapshot, key: string): Business {
     funcs: p.funcs,
     stats: p.stats,
     sug: p.sug,
-    /* Every industry playbook historically put a customer responder first.
-       The default Jentera identity is now the owner's internal agent; the rest
-       industry-specific team remains available as later automation. */
-    /* Audience is explicit in the resolved product model. The private owner
-       assistant is first, while playbook specialists remain available as
-       customer-facing agents that must be enabled deliberately later. */
-    team: [
-      internalBusinessAssistant(),
-      ...p.team.map((member) => ({ ...member, audience: 'customer' as const })),
-    ],
+    /* The deployed product has one internal agent. Playbook files retain the
+       future specialist catalogue, but those roles must not enter the active
+       business model until a customer-facing runtime exists AND the owner has
+       connected a supported customer channel such as WhatsApp or email. A
+       private Telegram owner chat is not evidence of either condition. */
+    team: [internalBusinessAssistant()],
     work: p.work,
     conns: p.conns,
   };
@@ -188,15 +183,6 @@ export function isAgentReady(snap: BusinessSnapshot, t: { setup?: boolean; ch?: 
  */
 export function isWorkDone(snap: BusinessSnapshot, key: string, i: number): boolean {
   return (snap.workDone[key] ?? []).some((v) => String(v) === String(i));
-}
-
-/* ---- Recommendations: opportunity functions become suggested agents ---- */
-
-export function recommendations(b: Business): AgentRecommendation[] {
-  return b.funcs
-    .filter(([, , state]) => state === 'opportunity')
-    .map(([label]) => REC_MAP[label])
-    .filter((r): r is AgentRecommendation => Boolean(r));
 }
 
 /* ---- Self-improving (local demo) ---- */

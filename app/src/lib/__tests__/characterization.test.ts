@@ -87,7 +87,8 @@ describe('business profile overrides', () => {
       n: 'Business Assistant',
       audience: 'internal',
     });
-    expect(business.team[1].audience).toBe('customer');
+    expect(business.team).toHaveLength(1);
+    expect(business.team.some((member) => member.audience === 'customer')).toBe(false);
   });
 });
 

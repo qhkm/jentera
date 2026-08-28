@@ -1,14 +1,12 @@
 /* ============================================================
-   Ask Jentera — two tabs, deliberately not two chat products.
+   Ask Jentera — the owner's private Business Assistant.
 
-   · Assistant  — the owner asks or instructs; answers come from
-                  live state, not a transcript.
-   · Customer inbox — the per-agent customer conversations, which
-                  used to be a competing top-level "Chat" view.
+   Customer conversations do not appear until Jentera has a real
+   customer-facing runtime and the business connects a supported channel.
    ============================================================ */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Card, Eyebrow, Tag } from '@/components/ui';
+import { Button, Card } from '@/components/ui';
 import { useI18n } from '@/i18n/I18nProvider';
 import { ASK_PROMPTS, useAsk } from '@/hooks/useAsk';
 import { useIsCompact } from '@/hooks/useMediaQuery';
@@ -20,13 +18,10 @@ import {
   type WorkSignalState,
 } from '@/components/WorkSignal';
 import { useMentions } from '@/hooks/useMentions';
-import CustomerInbox from './CustomerInbox';
 import { useSignedIn } from '@/lib/repo/gate';
 import { useActivity } from '@/hooks/useActivity';
 import type { Business } from '@/lib/types';
 import type { AskMode } from '@/lib/repo';
-
-type Tab = 'assistant' | 'conversations';
 
 export default function AskJenteraView({
   business,
@@ -44,7 +39,6 @@ export default function AskJenteraView({
   onOpenConnections?: () => void;
 }) {
   const { t, lang } = useI18n();
-  const [tab, setTab] = useState<Tab>('assistant');
   /* CSS cannot shorten placeholder text, and the full string clips
      mid-word in the narrower mobile composer. */
   const compact = useIsCompact();
@@ -107,7 +101,7 @@ export default function AskJenteraView({
 
   useEffect(() => {
     stickToBottom();
-  }, [ask.messages.length, tab, stickToBottom]);
+  }, [ask.messages.length, stickToBottom]);
 
   /* The keyboard opening changes the thread's height without adding a
      message, so the effect above would not fire. */
@@ -145,11 +139,6 @@ export default function AskJenteraView({
     stickToBottom();
   }
 
-  const TABS: { id: Tab; labelKey: string }[] = [
-    { id: 'assistant', labelKey: 'ask.tab' },
-    { id: 'conversations', labelKey: 'ask.tab.conversations' },
-  ];
-
   return (
     /* 100dvh minus the sticky header (64px) and the bottom nav (64px).
        dvh rather than vh so mobile browser chrome does not clip it. */
@@ -159,47 +148,7 @@ export default function AskJenteraView({
         <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.chat.desc')}</p>
       </header>
 
-      {/* Tabs */}
-      <div
-        className="flex shrink-0 gap-1 border-b border-rail px-4 lg:px-0"
-        role="tablist"
-        aria-label={t('view.chat')}
-      >
-        {TABS.map((item) => {
-          const active = tab === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => setTab(item.id)}
-              className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] transition-colors sm:px-4 ${
-                active
-                  ? 'border-brand text-brand'
-                  : 'border-transparent text-text-secondary hover:text-text'
-              }`}
-            >
-              {t(item.labelKey)}
-              {/* Status tag is a nice-to-have; at 390px it doubled the tab
-                  width and forced both labels to wrap. */}
-              {/* "Jentera is replying" is a claim about right now, and it
-                  was unconditional — so it sat in green beside a tab
-                  whose own contents read "no customer conversations
-                  yet". It belongs to the demo, where something really
-                  is replying. */}
-              {item.id === 'conversations' && !signedIn ? (
-                <Tag tone="green" className="ml-2 hidden sm:inline-flex">
-                  {t('ask.inbox.live')}
-                </Tag>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
-
-      {tab === 'assistant' ? (
-        <Card className="min-h-0 flex-1 gap-0 rounded-none border-x-0 border-b-0 p-0 lg:min-h-[440px] lg:flex-none lg:rounded-card lg:border">
+      <Card className="min-h-0 flex-1 gap-0 rounded-none border-x-0 border-b-0 p-0 lg:min-h-[440px] lg:flex-none lg:rounded-card lg:border">
           {signedIn ? (
             <WorkStatusBar
               state={pulseState}
@@ -436,18 +385,7 @@ export default function AskJenteraView({
           <p className="hidden px-4 pb-4 text-[11px] text-text-muted sm:px-5 lg:block">
             {t(signedIn ? 'ask.mode.hint' : 'ask.hint')}
           </p>
-        </Card>
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:overflow-visible lg:p-0">
-          <div className="hidden flex-col gap-1 lg:flex">
-            <Eyebrow>{t('ask.conversations')}</Eyebrow>
-            <p className="max-w-[66ch] text-[13px] text-text-secondary">
-              {t('ask.conversations.desc')}
-            </p>
-          </div>
-          <CustomerInbox business={business} onOpenActivity={onOpenActivity} />
-        </div>
-      )}
+      </Card>
     </div>
   );
 }

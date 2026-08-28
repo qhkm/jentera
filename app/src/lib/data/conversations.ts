@@ -79,7 +79,7 @@ export const TEAM_REPLIES: Record<string, string[]> = {
 };
 
 export const TEAM_GENERAL: string[] = [
-  "Aku dengar! Semua agent sihat dan bekerja. Nak semak apa-apa, terus tag agent yang berkaitan. 😊",
-  "Noted! Semua sistem berjalan normal. Contoh: tag @Customer Assistant untuk enquiry, @Ops Assistant untuk report. 👍",
-  "Ok! Kalau nak status bahagian tertentu, tag agent dia — aku tolong sampaikan jugak. ✅"
+  "Baik. Saya sedia membantu dalam ruang kerja peribadi anda.",
+  "Noted. Saya boleh bantu membuat kajian, perancangan, penulisan, dan menyusun kerja di sini.",
+  "Boleh. Beritahu hasil yang anda perlukan dan saya akan bantu gerakkannya."
 ];

@@ -130,6 +130,78 @@ describe('finishing setup', () => {
 });
 
 describe('what onboarding writes', () => {
+  it('lets the owner correct imported business information before confirming it', async () => {
+    const repo = new LocalRepository();
+    await repo.setBizType('restaurant');
+    await repo.setBizProfile({ name: 'Wrong Name', loc: 'Wrong Place' });
+    localStorage.setItem(KEYS.facts, JSON.stringify([{
+      key: 'business.phone',
+      value: '03-0000 0000',
+      source: 'import',
+      sourceRef: 'https://wrong.example',
+      confidence: 0.8,
+      confirmed: false,
+      confirmedAt: null,
+      version: 1,
+      createdAt: new Date().toISOString(),
+      live: true,
+    }]));
+    localStorage.setItem(KEYS.onboardingDraft, JSON.stringify({
+      step: 2,
+      mode: 'auto',
+      url: 'wrong.example',
+      social: 'instagram.com/wrong',
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/onboard']}>
+        <SignedInProvider value>
+          <RepositoryProvider repository={repo}>
+            <I18nProvider>
+              <ToastProvider>
+                <Onboard />
+              </ToastProvider>
+            </I18nProvider>
+          </RepositoryProvider>
+        </SignedInProvider>
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(await screen.findByRole('button', {
+      name: 'Edit business information',
+    }));
+    await userEvent.clear(screen.getByLabelText('Name'));
+    await userEvent.type(screen.getByLabelText('Name'), 'Correct Business');
+    await userEvent.clear(screen.getByLabelText('Location'));
+    await userEvent.type(screen.getByLabelText('Location'), 'Kuala Lumpur');
+    await userEvent.selectOptions(screen.getByLabelText('Type'), 'salon');
+    await userEvent.clear(screen.getByLabelText('Website'));
+    await userEvent.type(screen.getByLabelText('Website'), 'correct.example');
+    await userEvent.clear(screen.getByLabelText('Social'));
+    await userEvent.type(screen.getByLabelText('Social'), 'instagram.com/correct');
+    await userEvent.clear(screen.getByLabelText('Business Phone'));
+    await userEvent.type(screen.getByLabelText('Business Phone'), '03-1111 2222');
+    await userEvent.click(screen.getByRole('button', { name: 'Save corrections' }));
+
+    await waitFor(async () => {
+      const snapshot = await repo.load();
+      expect(snapshot.bizName).toBe('Correct Business');
+      expect(snapshot.bizLoc).toBe('Kuala Lumpur');
+      expect(snapshot.bizType).toBe('salon');
+      expect(snapshot.facts.find((fact) => fact.key === 'business.phone')).toMatchObject({
+        value: '03-1111 2222',
+        source: 'owner',
+        confirmed: true,
+      });
+    });
+    await waitFor(() => expect(JSON.parse(
+      localStorage.getItem(KEYS.onboardingDraft) ?? '{}',
+    )).toMatchObject({
+      url: 'correct.example',
+      social: 'instagram.com/correct',
+    }));
+  });
+
   it('resumes a completed demo at final review after sign-in', async () => {
     const repo = new LocalRepository();
     await repo.setBizType('restaurant');
@@ -154,7 +226,7 @@ describe('what onboarding writes', () => {
     );
 
     expect(await screen.findByText('I recommend starting here.')).toBeInTheDocument();
-    expect(screen.getByText('Business Assistant')).toBeInTheDocument();
+    expect(screen.getAllByText('Business Assistant').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /put jentera to work/i })).toBeInTheDocument();
   });
 

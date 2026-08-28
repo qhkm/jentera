@@ -15,7 +15,6 @@ import {
   isWorkDone,
   planSeedConnections,
   planToggleConnection,
-  recommendations,
   resolveBusiness,
 } from '@/lib/business';
 import { pendingApprovals } from '@/lib/tools';
@@ -39,7 +38,6 @@ export interface BusinessState {
   stage: Stage;
   approvals: Approval[];
   needsYouCount: number;
-  recommended: ReturnType<typeof recommendations>;
   switchBusiness: (key: string) => void;
   toggleConn: (name: string) => void;
   completeWork: (index: number) => void;
@@ -74,7 +72,6 @@ export function useBusiness(): BusinessState {
      longer trusts a caller-supplied business. */
   const approvals = useMemo(() => pendingApprovals(snap), [snap]);
   const setupDone = isSetupDone(snap);
-  const recommended = useMemo(() => recommendations(business), [business]);
 
   const needsYouCount = useMemo(
     () =>
@@ -129,7 +126,6 @@ export function useBusiness(): BusinessState {
     stage,
     approvals,
     needsYouCount,
-    recommended,
     switchBusiness,
     toggleConn,
     completeWork,

@@ -132,6 +132,15 @@ interface OnboardingDraft {
   completedDemo?: boolean;
 }
 
+interface ProfileEditDraft {
+  name: string;
+  locality: string;
+  website: string;
+  social: string;
+  bizType: string;
+  facts: { key: string; value: string; confidence: number }[];
+}
+
 function readDraft(): OnboardingDraft {
   const draft = store.getJSON<Partial<OnboardingDraft>>(store.KEYS.onboardingDraft, {});
   return {
@@ -193,6 +202,8 @@ export default function Onboard() {
       ? [{ key: fact.key, value: fact.value, confidence: fact.confidence }]
       : []));
   const [confirmingProfile, setConfirmingProfile] = useState(false);
+  const [profileEdit, setProfileEdit] = useState<ProfileEditDraft | null>(null);
+  const [savingProfileEdit, setSavingProfileEdit] = useState(false);
 
   const topRef = useRef<HTMLDivElement | null>(null);
   const completedRef = useRef(false);
@@ -290,6 +301,7 @@ export default function Onboard() {
     setProfileLearned(false);
     setScanProblem(null);
     setImportedFacts([]);
+    setProfileEdit(null);
     go(1);
 
     /* A signed-in import now uses the real, SSRF-guarded ingestion route.
@@ -387,6 +399,78 @@ export default function Onboard() {
   function pickType(key: string) {
     setType(key);
     void mutate((r) => r.setBizType(key)).catch(noop);
+  }
+
+  function beginProfileEdit() {
+    setProfileEdit({
+      name: importedProfile.name ?? snap.bizName ?? business.name,
+      locality: importedProfile.locality ?? snap.bizLoc ?? business.loc,
+      website: url,
+      social,
+      bizType,
+      facts: importedFacts.map((fact) => ({ ...fact })),
+    });
+  }
+
+  function updateProfileEdit(
+    field: 'name' | 'locality' | 'website' | 'social' | 'bizType',
+    value: string,
+  ) {
+    setProfileEdit((current) => {
+      if (!current) return current;
+      const factKey = field === 'name'
+        ? 'business.name'
+        : field === 'locality' ? 'business.address' : null;
+      return {
+        ...current,
+        [field]: value,
+        facts: factKey
+          ? current.facts.map((fact) => fact.key === factKey ? { ...fact, value } : fact)
+          : current.facts,
+      };
+    });
+  }
+
+  async function saveProfileEdit() {
+    if (!profileEdit) return;
+    const name = profileEdit.name.trim();
+    if (!name) {
+      toast(t('ob.confirm.nameRequired'), 'neutral');
+      return;
+    }
+
+    const locality = profileEdit.locality.trim();
+    const nextFacts = profileEdit.facts
+      .map((fact) => ({ ...fact, value: fact.value.trim() }))
+      .filter((fact) => fact.value.length > 0);
+    const previous = new Map(importedFacts.map((fact) => [fact.key, fact]));
+    const nextKeys = new Set(nextFacts.map((fact) => fact.key));
+
+    setSavingProfileEdit(true);
+    try {
+      await mutate(async (r) => {
+        await r.setBizType(profileEdit.bizType);
+        await r.setBizProfile({ name, loc: locality });
+        for (const fact of importedFacts) {
+          if (!nextKeys.has(fact.key)) await r.forgetFact(fact.key);
+        }
+        for (const fact of nextFacts) {
+          if (previous.get(fact.key)?.value === fact.value) continue;
+          await r.setFact({ key: fact.key, value: fact.value, source: 'owner', confidence: 1 });
+        }
+      });
+      setType(profileEdit.bizType);
+      setImportedProfile({ name, locality });
+      setImportedFacts(nextFacts);
+      setUrl(profileEdit.website.trim());
+      setSocial(profileEdit.social.trim());
+      setProfileEdit(null);
+      toast(t('ob.confirm.editsSaved'));
+    } catch (error) {
+      toast(error instanceof Error ? error.message : t('biz.profile.failed'), 'error');
+    } finally {
+      setSavingProfileEdit(false);
+    }
   }
 
   async function confirmProfile() {
@@ -540,7 +624,111 @@ export default function Onboard() {
                 <p className="text-[13px] text-text-secondary md:text-sm">
                   {t('ob.confirm.body')}
                 </p>
-                {importedFacts.length > 0 ? (
+                {profileEdit ? (
+                  <Card className="gap-4">
+                    <div>
+                      <Eyebrow>{t('ob.confirm.editHead')}</Eyebrow>
+                      <p className="mt-1 text-[12px] text-text-muted">
+                        {t('ob.confirm.editBody')}
+                      </p>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="flex flex-col gap-1.5">
+                        <span className="text-[11px] text-text-secondary">{t('ob.p.name')}</span>
+                        <Input
+                          value={profileEdit.name}
+                          onChange={(event) => updateProfileEdit('name', event.target.value)}
+                          disabled={savingProfileEdit}
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1.5">
+                        <span className="text-[11px] text-text-secondary">{t('ob.p.type')}</span>
+                        <select
+                          className="input w-full"
+                          value={profileEdit.bizType}
+                          onChange={(event) => updateProfileEdit('bizType', event.target.value)}
+                          disabled={savingProfileEdit}
+                        >
+                          {businessTypes().map((type) => (
+                            <option key={type.key} value={type.key}>{type.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="flex flex-col gap-1.5">
+                        <span className="text-[11px] text-text-secondary">{t('ob.p.loc')}</span>
+                        <Input
+                          value={profileEdit.locality}
+                          onChange={(event) => updateProfileEdit('locality', event.target.value)}
+                          disabled={savingProfileEdit}
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1.5">
+                        <span className="text-[11px] text-text-secondary">{t('ob.p.url')}</span>
+                        <Input
+                          value={profileEdit.website}
+                          onChange={(event) => updateProfileEdit('website', event.target.value)}
+                          disabled={savingProfileEdit}
+                          className="font-mono"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1.5 sm:col-span-2">
+                        <span className="text-[11px] text-text-secondary">{t('ob.p.social')}</span>
+                        <Input
+                          value={profileEdit.social}
+                          onChange={(event) => updateProfileEdit('social', event.target.value)}
+                          disabled={savingProfileEdit}
+                          className="font-mono"
+                        />
+                      </label>
+                    </div>
+
+                    {profileEdit.facts.some((fact) =>
+                      fact.key !== 'business.name' && fact.key !== 'business.address') ? (
+                      <div className="flex flex-col gap-2 border-t border-rail pt-3">
+                        <Eyebrow>{t('ob.confirm.otherFacts')}</Eyebrow>
+                        {profileEdit.facts.map((fact) => {
+                          if (fact.key === 'business.name' || fact.key === 'business.address') return null;
+                          const label = factLabel(fact.key);
+                          return (
+                            <label key={fact.key} className="flex flex-col gap-1.5">
+                              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
+                                {label}
+                              </span>
+                              <span className="flex items-center gap-2">
+                                <Input
+                                  value={fact.value}
+                                  aria-label={label}
+                                  onChange={(event) => setProfileEdit((current) => current ? {
+                                    ...current,
+                                    facts: current.facts.map((item) => item.key === fact.key
+                                      ? { ...item, value: event.target.value }
+                                      : item),
+                                  } : current)}
+                                  disabled={savingProfileEdit}
+                                  className="min-w-0 flex-1"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  className="shrink-0 px-3"
+                                  aria-label={t('ob.confirm.removeFact', { name: label })}
+                                  onClick={() => setProfileEdit((current) => current ? {
+                                    ...current,
+                                    facts: current.facts.filter((item) => item.key !== fact.key),
+                                  } : current)}
+                                  disabled={savingProfileEdit}
+                                >
+                                  ×
+                                </Button>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </Card>
+                ) : importedFacts.length > 0 ? (
                   <Card className="gap-3">
                     <div className="flex items-center justify-between gap-3">
                       <Eyebrow>{t('ob.confirm.imported')}</Eyebrow>
@@ -553,7 +741,7 @@ export default function Onboard() {
                           className="grid gap-1 border-b border-rail py-3 last:border-b-0 sm:grid-cols-[9rem_1fr]"
                         >
                           <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
-                            {fact.key.replace(/[._-]+/g, ' ')}
+                            {factLabel(fact.key)}
                           </span>
                           <span className="text-[13px] text-text-secondary">{fact.value}</span>
                         </div>
@@ -562,14 +750,32 @@ export default function Onboard() {
                     <p className="text-[11px] text-text-muted">{t('ob.confirm.factNote')}</p>
                   </Card>
                 ) : null}
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button onClick={() => void confirmProfile()} disabled={confirmingProfile}>
-                    {confirmingProfile ? t('ob.confirm.saving') : t('ob.confirm.yes')}
-                  </Button>
-                  <Button variant="outline" onClick={() => go(0)} disabled={confirmingProfile}>
-                    {t('ob.confirm.no')}
-                  </Button>
-                </div>
+                {profileEdit ? (
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Button onClick={() => void saveProfileEdit()} disabled={savingProfileEdit}>
+                      {savingProfileEdit ? t('ob.confirm.savingEdits') : t('ob.confirm.saveEdits')}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setProfileEdit(null)}
+                      disabled={savingProfileEdit}
+                    >
+                      {t('ob.confirm.cancelEdits')}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                    <Button onClick={() => void confirmProfile()} disabled={confirmingProfile}>
+                      {confirmingProfile ? t('ob.confirm.saving') : t('ob.confirm.yes')}
+                    </Button>
+                    <Button variant="outline" onClick={beginProfileEdit} disabled={confirmingProfile}>
+                      {t('ob.confirm.edit')}
+                    </Button>
+                    <Button variant="ghost" onClick={() => go(0)} disabled={confirmingProfile}>
+                      {t('ob.confirm.no')}
+                    </Button>
+                  </div>
+                )}
               </section>
             ) : null}
 
@@ -627,15 +833,6 @@ export default function Onboard() {
                     <Tag tone="green">{t('ob.reco.tag')}</Tag>
                   </div>
                   <p className="text-[13px] text-text-secondary">{t('ob.reco.handles')}</p>
-                  <div className="mt-1 flex flex-col gap-1 border-t border-rail pt-3 text-[12px] text-text-muted">
-                    {business.conns.slice(0, 3).map((c) => (
-                      <span key={c.n} className="flex items-center gap-2">
-                        <DataIcon emoji={c.e} size={14} />
-                        <span className="text-text-secondary">{c.n}</span>
-                        <span>{c.s}</span>
-                      </span>
-                    ))}
-                  </div>
                 </Card>
 
                 <p className="text-[12px] text-text-muted">{recoExtra}</p>
@@ -716,6 +913,12 @@ function normalizeWebUrl(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return '';
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+function factLabel(key: string): string {
+  return key
+    .replace(/[._-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 /* ============================================================

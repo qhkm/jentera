@@ -6,7 +6,7 @@
    inside My Business, or work records inside Activity.
 
      Home        what happened, what needs you, what's next
-     Ask Jentera   ask or instruct (+ Customer inbox tab)
+     Ask Jentera   ask or instruct the private Business Assistant
      Activity    completed, active, and approval-blocked work
      My Business knowledge, responsibilities, connections
    ============================================================ */

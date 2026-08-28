@@ -1,13 +1,11 @@
 /* ============================================================
-   The fabricated inbox, and who is allowed to see it.
+   The dormant customer inbox.
 
    `useChat` seeds each agent thread with hand-written conversations:
    named customers, invented messages, timestamps. For the anonymous
    demo that is the entire point — it is showing what the product does.
-   For a signed-in owner it was the sharpest-edged version of the lie
-   this app kept telling: not a wrong number, but a person. Farid
-   booking a table for two on Saturday does not exist, and the screen
-   offered a reply box pointed at him.
+   A role must not enter the active business model until customer-facing
+   execution exists and the owner connects a supported customer channel.
 
    Real customer messages arrive through a connected channel and are
    recorded as runs, which is why the signed-in state points at
@@ -16,7 +14,6 @@
 
 import { describe, expect, it, beforeAll, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import CustomerInbox from '@/routes/views/CustomerInbox';
 import { RepositoryProvider } from '@/lib/repo/context';
 import { LocalRepository } from '@/lib/repo/local';
@@ -80,21 +77,9 @@ describe('a signed-in owner', () => {
 });
 
 describe('the anonymous demo', () => {
-  it('keeps its conversations', async () => {
-    /* The demo's job is to show what the product looks like working,
-       and gutting it would cost the thing the fix was protecting. */
+  it('does not claim customer-facing capability that the product lacks', async () => {
     await mount(false);
-    expect(await screen.findByPlaceholderText(/search conversations/i)).toBeInTheDocument();
-    expect(screen.queryByText(/no customer conversations yet/i)).toBeNull();
-  });
-
-  it('still reaches a thread with its invented customers in it', async () => {
-    await mount(false);
-    const thread = await screen.findByRole('button', { name: /Customer Assistant/i });
-    await userEvent.click(thread);
-    /* She appears on both her messages; one is enough to prove the
-       demo still has its threads. */
-    expect((await screen.findAllByText(/Aisyah/)).length).toBeGreaterThan(0);
-    expect(screen.getByPlaceholderText(/type a reply|take over/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no conversations match/i)).toBeInTheDocument();
+    for (const name of INVENTED) expect(screen.queryByText(name)).toBeNull();
   });
 });
