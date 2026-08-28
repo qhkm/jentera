@@ -297,23 +297,25 @@ export default function AskAisarView({
               aria-label={t('ask.placeholder')}
               className="input max-h-[120px] w-full min-w-0 flex-1 resize-none"
             />
-            <Button
-              type="button"
-              variant="outline"
-              disabled={!draft.trim()}
-              className="shrink-0 px-3 sm:px-4"
-              onClick={() => submit(undefined, 'work')}
-            >
-              <span className="sm:hidden">{t('ask.work.short')}</span>
-              <span className="hidden sm:inline">{t('ask.work')}</span>
-            </Button>
+            {signedIn ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!draft.trim()}
+                className="shrink-0 px-3 sm:px-4"
+                onClick={() => submit(undefined, 'work')}
+              >
+                <span className="sm:hidden">{t('ask.work.short')}</span>
+                <span className="hidden sm:inline">{t('ask.work')}</span>
+              </Button>
+            ) : null}
             <Button type="submit" disabled={!draft.trim()} className="shrink-0 px-4 sm:px-6">
               <span className="sm:hidden">{t('chat.send')}</span>
               <span className="hidden sm:inline">{t('ask.send')}</span>
             </Button>
           </form>
           <p className="hidden px-4 pb-4 text-[11px] text-text-muted sm:px-5 lg:block">
-            {t('ask.mode.hint')}
+            {t(signedIn ? 'ask.mode.hint' : 'ask.hint')}
           </p>
         </Card>
       ) : (
