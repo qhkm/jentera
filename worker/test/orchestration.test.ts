@@ -331,6 +331,8 @@ describe('durable Hermes Telegram replies', () => {
     await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.28-4', 'v1'));
     await handleIncoming(durableEnv, A, connId, incoming);
 
+    expect(typing).toContainEqual({ chatId: 42, action: 'typing' });
+
     const fetcher: typeof fetch = async (input, init) => {
       const url = String(input);
       if (url.endsWith('/readyz')) {

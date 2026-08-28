@@ -203,7 +203,9 @@ export class TelegramDraftStream {
   private text = '';
   private sent = '';
   private lastSentAt = 0;
+  private lastTypingAt = 0;
   private available = true;
+  private typingAvailable = true;
 
   constructor(
     private readonly token: string,
@@ -227,8 +229,22 @@ export class TelegramDraftStream {
   }
 
   async heartbeat(): Promise<void> {
+    await this.pulseTyping();
     if (!this.available || Date.now() - this.lastSentAt < 15_000) return;
     await this.publish();
+  }
+
+  /** Keep Telegram's separate chat-level typing affordance visible while the
+      ephemeral Hermes draft is active. Draft support and typing support fail
+      independently so a cosmetic rejection cannot disable the other lane. */
+  async pulseTyping(force = false): Promise<void> {
+    if (!this.typingAvailable || (!force && Date.now() - this.lastTypingAt < 4_000)) return;
+    this.lastTypingAt = Date.now();
+    try {
+      await sendTyping(this.token, this.chatId);
+    } catch {
+      this.typingAvailable = false;
+    }
   }
 
   private async publish(): Promise<void> {
@@ -236,6 +252,7 @@ export class TelegramDraftStream {
       await sendMessageDraft(this.token, this.chatId, this.draftId, this.text);
       this.sent = this.text;
       this.lastSentAt = Date.now();
+      await this.pulseTyping();
     } catch {
       /* Preview support is cosmetic and private-chat-only. A failure disables
          this stream but never suppresses the durable final reply. */

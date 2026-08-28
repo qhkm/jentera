@@ -136,6 +136,7 @@ export async function handleRuntimeMessage(
       }
       case 'run': {
         const draftStream = await telegramDraftStream(env, lease.task);
+        await draftStream?.pulseTyping(true);
         let lastLeaseRenewal = Date.now();
         const outcome = await dispatchRuntimeRun(env, lease.task, leaseToken, {
           ...options,

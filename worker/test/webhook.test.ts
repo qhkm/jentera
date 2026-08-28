@@ -287,13 +287,50 @@ describe('Hermes-style Telegram drafts', () => {
 
     await stream.push('A');
     await stream.push('short');
-    expect(fetch).toHaveBeenCalledTimes(1);
+    const draftCalls = () => fetch.mock.calls.filter(([url]) =>
+      String(url).includes('/sendRichMessageDraft'));
+    expect(draftCalls()).toHaveLength(1);
     await stream.push('x'.repeat(19));
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(draftCalls()).toHaveLength(2);
 
-    const second = JSON.parse(String(fetch.mock.calls[1][1]?.body)) as {
+    const second = JSON.parse(String(draftCalls()[1][1]?.body)) as {
       rich_message: { markdown: string };
     };
     expect(second.rich_message.markdown).toBe(`Ashort${'x'.repeat(19)}`);
+  });
+
+  it('refreshes Telegram typing alongside the live draft heartbeat', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: true })));
+    vi.stubGlobal('fetch', fetch);
+    const stream = new TelegramDraftStream('123456789:AAtoken', 42, 9);
+
+    await stream.pulseTyping(true);
+    await stream.push('A');
+    fetch.mockClear();
+    await vi.advanceTimersByTimeAsync(3_999);
+    await stream.heartbeat();
+    expect(fetch).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    await stream.heartbeat();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls.every(([url]) => String(url).includes('/sendChatAction'))).toBe(true);
+  });
+
+  it('keeps drafts available when Telegram refuses the typing action', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false }), { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, result: true })));
+    vi.stubGlobal('fetch', fetch);
+    const stream = new TelegramDraftStream('123456789:AAtoken', 42, 9);
+
+    await stream.pulseTyping(true);
+    await stream.push('Visible answer');
+
+    expect(String(fetch.mock.calls[0][0])).toContain('/sendChatAction');
+    expect(String(fetch.mock.calls[1][0])).toContain('/sendRichMessageDraft');
   });
 });

@@ -477,7 +477,8 @@ async function handleDurableIncoming(
         incoming.chatId,
         hermesDraftId(created.id),
         '',
-      ).catch(() => sendTyping(token, incoming.chatId).catch(() => {}));
+      ).catch(() => {});
+      await sendTyping(token, incoming.chatId).catch(() => {});
     } else {
       await sendTyping(token, incoming.chatId).catch(() => {});
     }
