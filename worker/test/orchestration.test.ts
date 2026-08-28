@@ -268,7 +268,7 @@ describe('durable Hermes Telegram replies', () => {
     const queued: { version: 1; businessId: string; taskId: string }[] = [];
     const durableEnv = testEnv({
       RUNTIME_RELEASE: '2026.08.28-4',
-      RUNTIME_EXECUTION_BUSINESS_IDS: A,
+      RUNTIME_EXECUTION_ENABLED: 'true',
       AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
       RUNTIME_QUEUE: {
         send: async (message: { version: 1; businessId: string; taskId: string }) => {
@@ -315,7 +315,7 @@ describe('durable Hermes Telegram replies', () => {
     const queued: { version: 1; businessId: string; taskId: string }[] = [];
     const durableEnv = testEnv({
       RUNTIME_RELEASE: '2026.08.28-4',
-      RUNTIME_EXECUTION_BUSINESS_IDS: A,
+      RUNTIME_EXECUTION_ENABLED: 'true',
       AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
       RUNTIME_QUEUE: {
         send: async (message: { version: 1; businessId: string; taskId: string }) => {

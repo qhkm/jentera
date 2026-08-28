@@ -37,7 +37,7 @@ import { policyFor } from '../policy';
 import { runtimeFor, signalRuntimeTask } from '../runtime';
 import { getRuntime } from '../agent-runtime';
 import { enqueueRuntimeTask, runtimeTaskByDedupeKey } from '../runtime/tasks';
-import { runtimeExecutionEnabled } from '../runtime/execution';
+import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
 import { deliverTelegramDraft, type TelegramIncoming } from '../telegram-delivery';
 import { admitPaidAgentRun } from '../request-guard';
 
@@ -304,9 +304,12 @@ export async function handleIncoming(
   connectionId: string,
   incoming: TelegramIncoming,
 ): Promise<void> {
-  if (runtimeExecutionEnabled(env, businessId)) {
-    await handleDurableIncoming(env, businessId, connectionId, incoming);
-    return;
+  if (runtimeExecutionEnabled(env)) {
+    const runtime = await withTenant(env, businessId, (tx) => getRuntime(tx, businessId));
+    if (runtimeReady(runtime)) {
+      await handleDurableIncoming(env, businessId, connectionId, incoming);
+      return;
+    }
   }
 
   const runtime = runtimeFor(env, businessId);
@@ -386,20 +389,15 @@ async function handleDurableIncoming(
     throw new Error('Telegram message id is missing');
   }
 
-  const { runtime, facts, work, policy } = await withTenant(
+  const { facts, work, policy } = await withTenant(
     env,
     businessId,
     async (tx) => ({
-      runtime: await getRuntime(tx, businessId),
       facts: await retrieve(tx, incoming.text),
       work: await recentWork(tx, 8),
       policy: await policyFor(tx, 'telegram', 'send_message'),
     }),
   );
-  if (!runtime || runtime.observedRelease !== runtime.desiredRelease ||
-      !['ready', 'cold', 'idle', 'busy'].includes(runtime.status)) {
-    throw new Error('Telegram agent runtime is not ready');
-  }
 
   /* A blocked action should not wake paid compute merely to produce text
      that policy guarantees cannot leave the control plane. */

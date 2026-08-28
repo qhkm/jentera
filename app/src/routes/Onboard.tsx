@@ -249,15 +249,22 @@ export default function Onboard() {
 
   function activate() {
     setActivating(true);
-    void (async () => { try { await mutate(async (r) => {
-      await r.setChannels(channels);
-      await r.setBizType(bizType);
-      await r.setOnboarded(true);
-    });
-    } catch { /* surfaced by the provider */ }
+    void (async () => {
+      try {
+        await mutate(async (r) => {
+          await r.setChannels(channels);
+          await r.setBizType(bizType);
+          await r.setOnboarded(true);
+        });
+      } catch (error) {
+        setActivating(false);
+        toast(error instanceof Error ? error.message : 'Could not start your agent setup.');
+        return;
+      }
       /* The 1200ms is presentation, not a write budget. The write is
          awaited above; setOnboarded gates whether /app bounces back
-         to /onboard, so it must land before we leave. */
+         to /onboard and durably queues this business's Hermes runtime,
+         so both must land before we leave. */
       setTimeout(() => navigate('/setup'), 1200);
     })();
   }

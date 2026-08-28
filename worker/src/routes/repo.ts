@@ -22,6 +22,9 @@ import {
   recordFact,
   type FactSource,
 } from '../facts';
+import { signalRuntimeTask } from '../runtime';
+import { runtimeProvisioningProblem } from '../runtime/execution';
+import { enqueueRuntimeTask, type RuntimeTask } from '../runtime/tasks';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -211,10 +214,47 @@ export async function handleRepo(
   if (request.method !== 'POST') return null;
   const body = (await request.json().catch(() => ({}))) as Body;
 
+  /* Completing onboarding is also the durable handoff that creates this
+     business's isolated Hermes runtime. The business flag and provisioning
+     task are committed together, so a crash cannot leave an onboarded tenant
+     with no recoverable setup record. Repeating the request reuses the task's
+     per-business release key and only sends another harmless Queue wake-up. */
+  if (url.pathname === '/api/state/onboarded') {
+    const onboarded = Boolean(body.value);
+    const provision = onboarded && env.RUNTIME_PROVISIONING_ENABLED === 'true';
+    if (provision) {
+      const problem = runtimeProvisioningProblem(env);
+      if (problem) return json({ ok: false, err: problem }, { status: 503 }, cors);
+    }
+
+    const task: RuntimeTask | null = await withTenant(env, id.businessId, async (tx) => {
+      await tx`update business set onboarded = ${onboarded} where id = ${id.businessId}`;
+      if (!provision) return null;
+      const release = env.RUNTIME_RELEASE!.trim();
+      return enqueueRuntimeTask(tx, id.businessId, {
+        kind: 'provision',
+        dedupeKey: `provision:${id.businessId}:${release}`,
+        payload: { release, trigger: 'onboarding_completed' },
+      });
+    });
+
+    if (task) {
+      try {
+        await signalRuntimeTask(env, id.businessId, task.id);
+      } catch {
+        console.error('[onboarding] runtime queue signal failed');
+        return json({
+          ok: false,
+          err: 'Your agent setup could not be started. Please try again.',
+        }, { status: 503 }, cors);
+      }
+    }
+    return noContent(cors);
+  }
+
   /* Scalars that live on the business row. Each is one guarded UPDATE. */
   const scalar: Record<string, { col: string; value: () => unknown | null }> = {
     '/api/state/biz-type': { col: 'playbook_key', value: () => String(body.key ?? '') },
-    '/api/state/onboarded': { col: 'onboarded', value: () => Boolean(body.value) },
     '/api/state/setup-done': { col: 'setup_done', value: () => Boolean(body.value) },
     '/api/state/country': { col: 'country', value: () => oneOf(body.code ?? 'MY', COUNTRIES) },
     '/api/state/lang': { col: 'lang', value: () => (body.lang === 'bm' ? 'bm' : 'en') },

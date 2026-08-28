@@ -199,12 +199,13 @@ export async function deferRuntimeTask(
   businessId: string,
   taskId: string,
   leaseToken: string,
-  detail: { remoteRunId: string; remoteStatus: string; delaySeconds?: number },
+  detail: { remoteRunId?: string; remoteStatus?: string; delaySeconds?: number },
 ): Promise<boolean> {
   const rows = await tx`
     update runtime_task
        set status = 'queued', lease_token = null, lease_expires_at = null,
-           remote_run_id = ${detail.remoteRunId}, remote_status = ${detail.remoteStatus},
+           remote_run_id = coalesce(${detail.remoteRunId ?? null}, remote_run_id),
+           remote_status = coalesce(${detail.remoteStatus ?? null}, remote_status),
            started_at = coalesce(started_at, now()),
            available_at = now() + (${detail.delaySeconds ?? 5} * interval '1 second'),
            updated_at = now()

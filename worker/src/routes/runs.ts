@@ -2,7 +2,7 @@
    Run endpoints.
 
    Ingestion remains a short inline operation. Ask AISAR is also inline
-   by default, but an explicit business execution canary persists a
+   by default, but explicit business agent work persists a
    durable Hermes task and exposes only its tenant-scoped run status to
    the browser. Both paths share the same grounding instructions.
    ============================================================ */
@@ -32,7 +32,7 @@ import {
   type RuntimeTask,
 } from '../runtime/tasks';
 import { publishRunProgressSafely } from '../runtime/progress';
-import { runtimeExecutionEnabled } from '../runtime/execution';
+import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -180,7 +180,7 @@ export async function handleRuns(
     }
 
     if (mode === 'work') {
-      if (!runtimeExecutionEnabled(env, id.businessId)) {
+      if (!runtimeExecutionEnabled(env)) {
         return json({ ok: false, err: 'AISAR agent work is not available yet' }, { status: 403 }, cors);
       }
       return startDurableAsk(
@@ -363,8 +363,7 @@ async function startDurableAsk(
     return json({ ok: false, err: 'AISAR agent execution is unavailable' }, { status: 503 }, cors);
   }
   const runtime = await withTenant(env, businessId, (tx) => getRuntime(tx, businessId));
-  if (!runtime || runtime.observedRelease !== runtime.desiredRelease ||
-      !['ready', 'cold', 'idle', 'busy'].includes(runtime.status)) {
+  if (!runtimeReady(runtime)) {
     return json({
       ok: false,
       err: 'AISAR is preparing your agent. Please try again shortly.',

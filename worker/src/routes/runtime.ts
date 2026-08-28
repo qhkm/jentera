@@ -7,6 +7,7 @@ import { finalizeRuntimeUsage, runtimeBudgetSnapshot } from '../runtime/usage';
 import { finishRun } from '../runs';
 import { hasBusiness, resolveTenant } from '../tenancy';
 import { publishRunProgressSafely } from '../runtime/progress';
+import { runtimeProvisioningProblem } from '../runtime/execution';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -15,7 +16,7 @@ function json(body: unknown, init: ResponseInit = {}, headers: Record<string, st
   });
 }
 
-/** Owner-visible status and a doubly-locked internal canary trigger. */
+/** Owner-visible status and fail-closed runtime lifecycle controls. */
 export async function handleRuntime(
   request: Request,
   env: Env,
@@ -51,26 +52,9 @@ export async function handleRuntime(
     if (identity.role !== 'owner') {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
-    if (env.RUNTIME_PROVISIONING_ENABLED !== 'true') {
-      return json({ ok: false, err: 'runtime provisioning is disabled' }, { status: 503 }, cors);
-    }
-    if (env.MODEL_TRANSPORT_READY !== 'true') {
-      return json({ ok: false, err: 'secure model transport is not ready' }, { status: 503 }, cors);
-    }
-    if (env.RUNTIME_BOOTSTRAP_ENABLED !== 'true') {
-      return json({ ok: false, err: 'production runtime bootstrap is disabled' }, { status: 503 }, cors);
-    }
-    const canaries = new Set((env.RUNTIME_CANARY_BUSINESS_IDS ?? '')
-      .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean));
-    if (!canaries.has(identity.businessId)) {
-      return json({ ok: false, err: 'business is not in the runtime canary' }, { status: 403 }, cors);
-    }
-    const release = env.RUNTIME_RELEASE?.trim();
-    if (!release) {
-      return json({ ok: false, err: 'runtime release is not configured' }, { status: 503 }, cors);
-    }
+    const problem = runtimeProvisioningProblem(env);
+    if (problem) return json({ ok: false, err: problem }, { status: 503 }, cors);
+    const release = env.RUNTIME_RELEASE!.trim();
     const task = await publishRuntimeTask(env, identity.businessId, {
       kind: 'provision',
       dedupeKey: `provision:${identity.businessId}:${release}`,
@@ -80,7 +64,7 @@ export async function handleRuntime(
   }
 
   if (url.pathname === '/api/runtime/reconcile' && request.method === 'POST') {
-    const blocked = mutationProblem(identity.role, identity.businessId, env);
+    const blocked = mutationProblem(identity.role, env);
     if (blocked) return json({ ok: false, err: blocked.message }, { status: blocked.status }, cors);
     const window = Math.floor(Date.now() / (5 * 60 * 1_000));
     const task = await publishRuntimeTask(env, identity.businessId, {
@@ -91,7 +75,7 @@ export async function handleRuntime(
   }
 
   if (url.pathname === '/api/runtime/upgrade' && request.method === 'POST') {
-    const blocked = mutationProblem(identity.role, identity.businessId, env);
+    const blocked = mutationProblem(identity.role, env);
     if (blocked) return json({ ok: false, err: blocked.message }, { status: blocked.status }, cors);
     const release = env.RUNTIME_RELEASE?.trim();
     if (!release) {
@@ -173,17 +157,10 @@ export async function handleRuntime(
 
 function mutationProblem(
   role: string | null,
-  businessId: string,
   env: Env,
 ): { status: number; message: string } | null {
   if (role !== 'owner') return { status: 403, message: 'owner access required' };
-  if (env.RUNTIME_PROVISIONING_ENABLED !== 'true' ||
-      env.MODEL_TRANSPORT_READY !== 'true' ||
-      env.RUNTIME_BOOTSTRAP_ENABLED !== 'true') {
-    return { status: 503, message: 'runtime mutations are disabled' };
-  }
-  const canaries = new Set((env.RUNTIME_CANARY_BUSINESS_IDS ?? '')
-    .split(',').map((value) => value.trim()).filter(Boolean));
-  if (!canaries.has(businessId)) return { status: 403, message: 'business is not in the runtime canary' };
+  const problem = runtimeProvisioningProblem(env);
+  if (problem) return { status: 503, message: problem };
   return null;
 }

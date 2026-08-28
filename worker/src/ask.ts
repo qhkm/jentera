@@ -172,9 +172,9 @@ export function prepareAsk(
   };
 }
 
-/** Durable Telegram canary requests use Hermes as an agent, not merely as a
+/** Durable Telegram requests use Hermes as an agent, not merely as a
     grounded text generator. Ordinary Ask AISAR continues to use prepareAsk so
-    enabling the canary does not silently change the rest of the product. */
+    enabling durable execution does not silently change the rest of the product. */
 export function prepareHermesAgent(
   question: string,
   facts: FactRow[],

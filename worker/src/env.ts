@@ -41,15 +41,12 @@ export interface Env {
   SPRITES_API_ORIGIN?: string;
   /** Immutable runner + Hermes + browser release identifier. */
   RUNTIME_RELEASE?: string;
-  /** Customer provisioning requires four gates: explicit enable,
-      verified secure model transport, production bootstrap, and membership
-      in the canary set. */
+  /** Customer provisioning requires explicit enablement, verified secure
+      model transport, production bootstrap, and all provider credentials. */
   RUNTIME_PROVISIONING_ENABLED?: string;
   MODEL_TRANSPORT_READY?: string;
-  RUNTIME_CANARY_BUSINESS_IDS?: string;
-  /** Independent execution gate. Provisioned compute is not authority
-      to route customer questions into it. */
-  RUNTIME_EXECUTION_BUSINESS_IDS?: string;
+  /** Fleet-wide emergency brake. A ready tenant runtime remains required. */
+  RUNTIME_EXECUTION_ENABLED?: string;
   /** Immutable public Git commit containing runner release assets. */
   RUNTIME_BUNDLE_COMMIT?: string;
   /** Second half of provisioning; false leaves raw provider compute unselected. */

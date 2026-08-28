@@ -110,6 +110,76 @@ describe('who may call these at all', () => {
   });
 });
 
+describe('finishing onboarding provisions one Hermes runtime', () => {
+  it('commits onboarding and one release-deduplicated provisioning task together', async () => {
+    const send = vi.fn(async () => {});
+    env = automaticRuntimeEnv(send);
+
+    const first = await state('POST', '/api/state/onboarded', {
+      cookie: cookieA,
+      body: { value: true },
+    });
+    const second = await state('POST', '/api/state/onboarded', {
+      cookie: cookieA,
+      body: { value: true },
+    });
+
+    expect(first.status).toBe(204);
+    expect(second.status).toBe(204);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[0][0]).toMatchObject({ version: 1, businessId: A });
+    const [row] = await asOwner((sql) => sql<{
+      onboarded: boolean; count: string; kind: string; payload: Record<string, unknown>;
+    }[]>`
+      select b.onboarded, count(t.id)::text as count, min(t.kind) as kind,
+             min(t.payload::text)::jsonb as payload
+        from business b left join runtime_task t on t.business_id = b.id
+       where b.id = ${A} group by b.onboarded`);
+    expect(row).toMatchObject({
+      onboarded: true,
+      count: '1',
+      kind: 'provision',
+      payload: { release: '2026.08.28-8', trigger: 'onboarding_completed' },
+    });
+  });
+
+  it('keeps the durable task recoverable when Queue signaling fails', async () => {
+    env = automaticRuntimeEnv(vi.fn(async () => { throw new Error('queue offline'); }));
+    const failed = await state('POST', '/api/state/onboarded', {
+      cookie: cookieA,
+      body: { value: true },
+    });
+    expect(failed.status).toBe(503);
+
+    const retrySend = vi.fn(async () => {});
+    env = automaticRuntimeEnv(retrySend);
+    const retried = await state('POST', '/api/state/onboarded', {
+      cookie: cookieA,
+      body: { value: true },
+    });
+    expect(retried.status).toBe(204);
+    expect(retrySend).toHaveBeenCalledOnce();
+    const [{ tasks, onboarded }] = await asOwner((sql) => sql<{
+      tasks: string; onboarded: boolean;
+    }[]>`
+      select count(t.id)::text as tasks, bool_and(b.onboarded) as onboarded
+        from business b left join runtime_task t on t.business_id = b.id
+       where b.id = ${A}`);
+    expect({ tasks, onboarded }).toEqual({ tasks: '1', onboarded: true });
+  });
+
+  it('allows local or deliberately disabled environments to finish without paid compute', async () => {
+    const response = await state('POST', '/api/state/onboarded', {
+      cookie: cookieA,
+      body: { value: true },
+    });
+    expect(response.status).toBe(204);
+    const [{ count }] = await asOwner((sql) => sql<{ count: string }[]>`
+      select count(*)::text as count from runtime_task where business_id = ${A}`);
+    expect(count).toBe('0');
+  });
+});
+
 describe('recording a fact', () => {
   it('stores it and answers with what was stored', async () => {
     const r = await state('POST', '/api/state/facts', {
@@ -327,3 +397,20 @@ describe('connections', () => {
     expect(mine.body?.connections).toHaveLength(1);
   });
 });
+
+function automaticRuntimeEnv(send: (message: unknown) => Promise<void>): Env {
+  return testEnv({
+    RUNTIME_RELEASE: '2026.08.28-8',
+    RUNTIME_BUNDLE_COMMIT: 'a'.repeat(40),
+    RUNTIME_PROVISIONING_ENABLED: 'true',
+    MODEL_TRANSPORT_READY: 'true',
+    RUNTIME_BOOTSTRAP_ENABLED: 'true',
+    RUNTIME_EXECUTION_ENABLED: 'true',
+    SPRITES_TOKEN: 'sprite-test-token',
+    AISAR_OPENROUTER_MANAGEMENT_KEY: 'm'.repeat(32),
+    AISAR_MODEL_PROVIDER: 'openrouter',
+    AISAR_MODEL_BASE: 'https://openrouter.ai/api/v1',
+    AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+    RUNTIME_QUEUE: { send },
+  });
+}

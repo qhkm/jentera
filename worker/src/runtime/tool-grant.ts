@@ -11,7 +11,7 @@ export interface RuntimeToolGrantClaims {
 }
 
 /**
- * Mint a run-scoped capability token using the per-runtime secret. The canary
+ * Mint a run-scoped capability token using the per-runtime secret. Each
  * runtime explicitly enables the complete tool bundle from its pinned Hermes
  * release. The grant remains task-bound, short-lived, and non-replayable.
  */

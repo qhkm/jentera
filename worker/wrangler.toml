@@ -43,15 +43,13 @@ API_ORIGIN = "https://api.jentera.ai"
 # it must never silently track "latest".
 RUNTIME_RELEASE = "2026.08.28-7"
 SPRITES_API_ORIGIN = "https://api.sprites.dev"
-# Fail closed. Production provisioning additionally requires secure model
-# transport and an explicit comma-separated business canary allowlist.
+# Fail closed. Completing onboarding provisions one isolated runtime for the
+# new business only when the complete secure bootstrap chain is configured.
 RUNTIME_PROVISIONING_ENABLED = "true"
 MODEL_TRANSPORT_READY = "true"
-RUNTIME_CANARY_BUSINESS_IDS = "d5fb6dbb-428a-4215-86c0-8713d12ed73b"
-# Which businesses may explicitly choose "Work on this". Ordinary Ask AISAR
-# requests stay inline even for these businesses; this is authority for the
-# durable mode, not a global runtime switch.
-RUNTIME_EXECUTION_BUSINESS_IDS = "d5fb6dbb-428a-4215-86c0-8713d12ed73b"
+# Global emergency brake. Runtime routing additionally requires the requesting
+# business to own a fully bootstrapped, release-matched runtime row.
+RUNTIME_EXECUTION_ENABLED = "true"
 RUNTIME_BOOTSTRAP_ENABLED = "true"
 RUNTIME_BUNDLE_COMMIT = "485c3138a227df7dfb13587a98bf8c25e09fb6fe"
 AISAR_MODEL_PROVIDER = "openrouter"
@@ -129,9 +127,6 @@ new_sqlite_classes = ["RunStream"]
 # id is a constant in that file and the call is one function.
 [ai]
 binding = "AI"
-
-[triggers]
-crons = ["17 17 * * *"]
 
 # Durable wake-up signals. runtime_task in Postgres owns status and
 # leases; Queue delivery is intentionally treated as at-least-once.

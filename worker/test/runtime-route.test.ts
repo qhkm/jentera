@@ -29,7 +29,7 @@ beforeEach(async () => {
   staffCookie = await signIn(staffId);
 });
 
-describe('runtime canary route', () => {
+describe('runtime provisioning route', () => {
   it('shows no runtime without exposing provider identity', async () => {
     const response = await call('GET', '/api/runtime', testEnv(), ownerCookie);
     expect(response.status).toBe(200);
@@ -70,17 +70,7 @@ describe('runtime canary route', () => {
     expect((await noBootstrap.json()).err).toMatch(/bootstrap is disabled/);
   });
 
-  it('requires the session-derived business to be in the canary', async () => {
-    const response = await call('POST', '/api/runtime/provision', testEnv({
-      RUNTIME_PROVISIONING_ENABLED: 'true',
-      MODEL_TRANSPORT_READY: 'true',
-      RUNTIME_BOOTSTRAP_ENABLED: 'true',
-      RUNTIME_CANARY_BUSINESS_IDS: '22222222-2222-4222-8222-222222222222',
-    }), ownerCookie);
-    expect(response.status).toBe(403);
-  });
-
-  it('publishes one deduplicated provisioning task for an allowed owner', async () => {
+  it('publishes one deduplicated provisioning task for any owner', async () => {
     const send = vi.fn(async () => {});
     const env = enabled(send);
     const first = await call('POST', '/api/runtime/provision', env, ownerCookie);
@@ -140,10 +130,15 @@ describe('runtime canary route', () => {
 function enabled(send = vi.fn(async () => {})): Env {
   return testEnv({
     RUNTIME_RELEASE: '2026.08.27-1',
+    RUNTIME_BUNDLE_COMMIT: 'a'.repeat(40),
     RUNTIME_PROVISIONING_ENABLED: 'true',
     MODEL_TRANSPORT_READY: 'true',
     RUNTIME_BOOTSTRAP_ENABLED: 'true',
-    RUNTIME_CANARY_BUSINESS_IDS: A,
+    SPRITES_TOKEN: 'sprite-test-token',
+    AISAR_OPENROUTER_MANAGEMENT_KEY: 'm'.repeat(32),
+    AISAR_MODEL_PROVIDER: 'openrouter',
+    AISAR_MODEL_BASE: 'https://openrouter.ai/api/v1',
+    AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
     RUNTIME_QUEUE: { send },
   });
 }

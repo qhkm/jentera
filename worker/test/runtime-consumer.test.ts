@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { asOwner, asTenant, testEnv, truncateAll } from './harness';
-import { handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
+import { ensureProviderRuntime, handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
 import { enqueueRuntimeTask } from '../src/runtime/tasks';
 import type { DesiredRuntime, ObservedRuntime, RuntimeProvider } from '../src/runtime';
+import { storeRuntimeModelCredential } from '../src/agent-runtime';
+import { startRun } from '../src/runs';
 
 const A = '11111111-1111-4111-8111-111111111111';
 
@@ -110,6 +112,44 @@ describe('the runtime queue consumer', () => {
     const [{ count }] = await asOwner((sql) => sql<{ count: string }[]>`
       select count(*)::text as count from agent_runtime where business_id = ${A}`);
     expect(count).toBe('0');
+  });
+
+  it('defers active work behind one on-demand model-key rotation', async () => {
+    const sent: unknown[] = [];
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.08.27-1',
+      AISAR_OPENROUTER_MANAGEMENT_KEY: 'm'.repeat(32),
+      RUNTIME_QUEUE: { send: async (message: unknown) => { sent.push(message); } },
+    });
+    await ensureProviderRuntime(env, A, {
+      provider: new LocalRuntimeProvider(),
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => storeRuntimeModelCredential(env, tx, A, {
+      key: `sk-or-${'k'.repeat(40)}`,
+      hash: 'a'.repeat(64),
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1_000),
+    }));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'test-model',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `run:${run.id}`, payload: { input: 'hello' },
+    }));
+
+    await expect(handleRuntimeMessage(env, {
+      version: 1, businessId: A, taskId: task.id,
+    })).resolves.toEqual({
+      action: 'requeue', delaySeconds: 30, reason: 'runtime credential maintenance',
+    });
+    const rows = await asOwner((sql) => sql<{ kind: string; status: string }[]>`
+      select kind, status from runtime_task where business_id = ${A} order by kind`);
+    expect(rows).toEqual([
+      { kind: 'run', status: 'queued' },
+      { kind: 'upgrade', status: 'queued' },
+    ]);
+    expect(sent).toHaveLength(1);
   });
 });
 

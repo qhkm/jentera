@@ -30,6 +30,7 @@ import { deliverTelegramDraft } from '../telegram-delivery';
 import { policyFor } from '../policy';
 import { useCredential } from '../connections';
 import { hermesDraftId, sendTyping, TelegramDraftStream } from '../connectors/telegram';
+import { runtimeModelKeyNeedsRotation } from './openrouter-keys';
 
 const MAX_TASK_ATTEMPTS = 5;
 
@@ -101,6 +102,27 @@ export async function handleRuntimeMessage(
   }
 
   try {
+    /* Key maintenance is tenant-local and demand-driven. This avoids a fleet
+       scan whose cost grows with every signup: the first run inside the
+       seven-day rotation window yields to one deduplicated upgrade, then
+       resumes automatically with the proven replacement credential. */
+    if (lease.task.kind === 'run' &&
+        await runtimeModelKeyNeedsRotation(env, message.businessId)) {
+      const day = Math.floor(Date.now() / (24 * 60 * 60 * 1_000));
+      await publishRuntimeTask(env, message.businessId, {
+        kind: 'upgrade',
+        dedupeKey: `model-key-rotation:${message.businessId}:${day}`,
+        payload: { reason: 'model_key_rotation' },
+      });
+      const deferred = await withTenant(env, message.businessId, (tx) =>
+        deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
+          delaySeconds: 30,
+        }));
+      return deferred
+        ? { action: 'requeue', delaySeconds: 30, reason: 'runtime credential maintenance' }
+        : { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
+    }
+
     switch (lease.task.kind) {
       case 'provision':
         await ensureProviderRuntime(env, message.businessId, {

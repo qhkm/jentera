@@ -5,7 +5,7 @@ the runner on port 8080; Hermes listens only on `127.0.0.1:8642`.
 
 The runner provides liveness, authenticated detailed readiness, idempotent task start,
 status, cancellation, and a filtered Hermes presentation stream. Every start additionally requires a five-minute HMAC grant
-bound to that business and task. The canary grant permits the pinned Hermes tool bundle. Its
+bound to that business and task. The grant permits the pinned Hermes tool bundle. Its
 small state file survives a process restart and contains only AISAR task ids, Hermes run
 ids, statuses, and hashes of task leases and grant nonces—never plaintext values or an
 API key.
@@ -39,9 +39,8 @@ It does not yet proxy Hermes-native approvals, so tools which pause for native a
 cannot currently be resumed through Telegram. The bootstrap configures
 `platform_toolsets.api_server` to `hermes-api-server` plus its explicit Home Assistant
 opt-in, verifies that it covers the full pinned release, and makes `toolMode: full-tools` part of authenticated
-readiness. The control plane rejects a runtime that does not attest that mode. This is a
-high-trust canary capability and must not be widened to other businesses without a new
-rollout decision.
+readiness. The control plane rejects a runtime that does not attest that mode. Every
+production runtime is isolated per business and receives grants bound to one task.
 
 `bin/hermes-service.sh` and `bin/runner-service.sh` are the Sprite service
 entrypoints. Both read a mode-0600 environment file instead of embedding credentials
@@ -93,8 +92,8 @@ Repeating it reconciles the same Sprite rather than creating a second one.
 
 Both scripts refuse an HTTP VRS endpoint by default. `AISAR_ALLOW_INSECURE_VRS=1` exists
 only to reproduce the current non-customer `jentera` smoke and must never be set by a
-production provisioner. The Worker now implements the same bootstrap protocol for an
-allow-listed canary, using an immutable public bundle commit. It remains fail-closed
-behind the production-bootstrap, secure-VRS, provisioning, and business allow-list gates.
-This operator path remains useful for a non-customer smoke and does not itself enable
-customer provisioning.
+production provisioner. The Worker implements the same bootstrap protocol for each
+business after onboarding, using an immutable public bundle commit. It remains fail-closed
+behind production-bootstrap, secure transport, provisioning, provider-credential, and
+global execution gates. This operator path remains useful for a non-customer smoke;
+normal customer provisioning is created durably by onboarding completion.

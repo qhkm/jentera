@@ -146,7 +146,7 @@ This is one codebase, one backend, and one information architecture with a prefe
 
 Draft editing is listed here as a disclosure control, but it is not a convenience. The delta between what AISAR proposed and what the owner approved is the strongest correction signal the product will ever receive, and Procedure Derivation Requirements below depends on it being captured as a first-class event rather than an overwritten field.
 
-What advanced mode does **not** unlock for ordinary customers in the first release: model selection, custom instructions, custom tools, terminal or browser access, and agent-runtime choice. The isolated production canary may exercise the pinned Hermes tool bundle for validation; that is an operator rollout decision, not an owner-facing preference. Those are separate decisions with their own costs, addressed under Non-Goals and in the delivery plan.
+What advanced mode does **not** unlock for ordinary customers in the first release: model selection, custom instructions, custom tools, or agent-runtime choice. Each business runtime uses the operator-pinned Hermes tool bundle; owners do not alter that bundle or receive direct terminal/browser access. Those are separate decisions with their own costs, addressed under Non-Goals and in the delivery plan.
 
 ### Procedure Derivation Requirements
 
@@ -187,10 +187,10 @@ This is also where the product becomes difficult to copy. Industry playbooks are
 - Extract facts into a review screen with source and confidence.
 - Persist business memory.
 - Make Ask AISAR answer from verified business context and live activity data.
-- Keep ordinary Ask AISAR inline and fast. Route the explicit production-canary
-  "Work on this" action through a durable, tenant-scoped Hermes task, with authenticated
+- Keep ordinary Ask AISAR inline and fast. Route the explicit
+  "Work on this" action through the business's durable, tenant-scoped Hermes task, with authenticated
   hibernating-WebSocket lifecycle progress and bounded polling only as recovery.
-- Route verified Telegram messages for execution-canary businesses through the same
+- Route verified Telegram messages for businesses with ready runtimes through the same
   durable Hermes task plane. Deduplicate on the Telegram connection/chat/message identity,
   re-check send policy at completion, and retain only structured state plus the final sent
   reply—not Hermes reasoning, token deltas, or raw transcripts.

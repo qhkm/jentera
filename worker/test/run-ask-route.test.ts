@@ -32,7 +32,7 @@ beforeEach(async () => {
 });
 
 describe('Ask AISAR runtime bridge', () => {
-  it('keeps businesses outside the execution canary on the inline answer path', async () => {
+  it('keeps ordinary Ask on the inline answer path while work uses Hermes', async () => {
     const response = await call('POST', '/api/runs/ask', durableEnv(), cookieB, {
       question: 'What happened today?',
       requestId: crypto.randomUUID(),
@@ -63,13 +63,17 @@ describe('Ask AISAR runtime bridge', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it('rejects durable work outside the canary and unknown execution modes', async () => {
-    const forbidden = await call('POST', '/api/runs/ask', durableEnv(), cookieB, {
+  it('waits for an unready tenant runtime and rejects unknown execution modes', async () => {
+    const preparing = await call('POST', '/api/runs/ask', durableEnv(), cookieB, {
       question: 'Do this in the background',
       requestId: crypto.randomUUID(),
       mode: 'work',
     });
-    expect(forbidden.status).toBe(403);
+    expect(preparing.status).toBe(503);
+    expect(await preparing.json()).toEqual({
+      ok: false,
+      err: 'AISAR is preparing your agent. Please try again shortly.',
+    });
 
     const invalid = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
       question: 'Try an invented mode',
@@ -246,7 +250,7 @@ async function readyRuntime(businessId: string): Promise<void> {
 function durableEnv(send = vi.fn(async () => {})): Env {
   return testEnv({
     RUNTIME_RELEASE: RELEASE,
-    RUNTIME_EXECUTION_BUSINESS_IDS: A,
+    RUNTIME_EXECUTION_ENABLED: 'true',
     AISAR_MODEL_NAME: MODEL,
     RUNTIME_QUEUE: { send },
   });

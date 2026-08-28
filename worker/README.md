@@ -24,10 +24,10 @@ must be running.
 - versioned business facts with source, confidence, confirmation, and correction;
 - append-only run events and structured work records;
 - website ingestion and fast grounded Ask AISAR through the inline runtime, plus an
-  explicit durable "Work on this" path for the production canary;
+  explicit durable "Work on this" path through each business's Hermes runtime;
 - encrypted connector credentials;
 - a verified Telegram webhook, real Telegram sends, permissions, approvals, edited
-  drafts, and durable Hermes replies for execution-canary businesses; and
+  drafts, and durable Hermes replies for businesses with ready runtimes; and
 - the provider-neutral runtime foundation, Fly Sprites REST provider, durable runtime
   tasks, leases, and Cloudflare Queue consumer.
 
@@ -35,8 +35,8 @@ must be running.
 
 **Ordinary Ask AISAR remains inline for every business.** It answers a grounded question
 in about 1.5 seconds and never wakes a Sprite. The separate **Work on this** action is
-enabled only for businesses in `RUNTIME_EXECUTION_BUSINESS_IDS`, requires a ready runtime,
-and creates an idempotent durable Hermes task.
+guarded by the fleet emergency switch, requires that business's ready runtime, and creates
+an idempotent durable Hermes task.
 
 The browser receives lifecycle progress over an authenticated, tenant-scoped hibernating
 WebSocket: `queued`, `waking`, `working`, `retrying`, then a terminal state. It makes one
@@ -45,23 +45,24 @@ WebSocket cannot be established or is interrupted. The browser Work path current
 streams lifecycle rather than tokens; automatic private Telegram replies use ephemeral
 Telegram live drafts for incremental Hermes output.
 
-The pinned Hermes canary advertises `run_events_sse`, `tool_progress_events`, and real
+The pinned Hermes runtime advertises `run_events_sse`, `tool_progress_events`, and real
 message deltas. The runner is the sole subscriber to Hermes's destructive event queue and
 allow-lists only bounded `message.delta` text into process memory. It discards
 `reasoning.available`, tool/approval events, unknown events, and the terminal transcript
 before the Worker can see them. Chat is an interface; `run`, `run_event`, and
 `work_record` remain the queryable source of truth.
 
-The I Run Cafe canary boots in `full-tools` mode with the complete tool bundle resolved
+Every production business runtime boots in `full-tools` mode with the complete tool bundle resolved
 from the pinned Hermes release. This includes live web research, code execution, terminal,
 files, browser, memory, skills, delegation, and any other API-server tools in that pin.
 The runner exposes assistant text and bounded native-style tool lifecycle previews; raw
 reasoning, full tool arguments/results, and terminal transcripts do not cross the runtime
 boundary. Hermes-native approval requests
 are not yet forwarded, so an operation that pauses for approval cannot be resumed through
-Telegram. Provisioning remains a separate four-gate canary decision: explicit enablement,
-secure model transport, immutable production bootstrap, and the provisioning business
-allow-list. Full tools must not be expanded beyond this high-trust canary implicitly.
+Telegram. Completing onboarding atomically records the business as onboarded and enqueues
+one release-deduplicated provisioning task. Provisioning remains fail-closed behind explicit
+enablement, secure model transport, immutable production bootstrap, provider credentials,
+and a fleet-wide execution emergency switch.
 
 ## Runtime boundaries
 
@@ -83,19 +84,20 @@ compare-and-set proves that worker still owns the lease.
 ## Customer interaction path
 
 Customers interact with AISAR, never with a Sprite or Hermes endpoint. When an
-execution-allow-listed owner explicitly chooses Work on this, or when that business's
+owner with a ready runtime explicitly chooses Work on this, or when that business's
 verified Telegram webhook receives a text message, the control plane creates an
 idempotent durable `run` and `runtime_task` and sends only a business/task wake-up signal
 to the Queue. Telegram uses connection, chat, and message ids for admission and dedupe;
 webhook retries cannot create a second paid Hermes run. The send policy is checked again
 when Hermes finishes, before the control plane sends, blocks, or creates an approval. Ordinary
-Ask and non-canary Telegram businesses keep the synchronous inline answer contract.
+Ask stays inline; Telegram falls back inline only while its runtime is not ready or execution
+is globally paused.
 
 The control plane never accepts a business id from the browser for this decision. Queue
 messages are wake-up hints only: task kind, payload, run id, and tenant all come from the
-leased Postgres row. The canary receives a signed five-minute wildcard tool grant bound
-to its business and task. Incremental approval translation remains required before this
-authority can be offered outside the explicit canary.
+leased Postgres row. Each runtime receives a signed five-minute wildcard tool grant bound
+to its business and task. Incremental approval translation remains required before tools
+that pause for Hermes-native approval can be resumed through Telegram.
 
 Production verification on 2026-08-28 submitted run
 `7b3eef5e-95cf-49f5-ad85-532d9641a334` through the same authenticated HTTP path used by
@@ -148,7 +150,7 @@ exchange token revoked, as of 2026-08-27. See Fly's current
 Customer provisioning requires `AISAR_OPENROUTER_MANAGEMENT_KEY`. The control plane uses
 it only against OpenRouter's HTTPS management API to issue one inference key per runtime:
 $5 monthly hard limit, 90-day UTC expiry, encrypted-at-rest storage, seven-day rotation,
-daily canary rotation checks, post-readiness prior-key revocation with durable retry, and
+on-demand rotation before the next active run, post-readiness prior-key revocation with durable retry, and
 deletion-time revocation. Plaintext inference
 keys are transferred through the authenticated Sprites filesystem API into a mode-0600
 runtime file; they never enter the repository, browser, queue payload, or logs. See
@@ -268,8 +270,9 @@ npx wrangler deploy
 curl -fsS https://api.jentera.ai/api/health
 ```
 
-Do not publish a customer provisioning producer until the Hermes rollout gates are
-complete. Both runtime queues exist and the Worker consumes the primary and DLQ. Migration
+Onboarding completion is the customer provisioning producer: its business update and
+release-deduplicated task are one transaction, followed by a retry-safe Queue signal.
+Both runtime queues exist and the Worker consumes the primary and DLQ. Migration
 `014_runtime_task_execution.sql` was applied to AISAR production as `neondb_owner` and
 verified as `aisar_app` on 2026-08-27; it remains required when restoring or creating an
 environment.
