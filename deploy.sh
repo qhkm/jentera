@@ -28,7 +28,10 @@ MSG="${1:-Deploy Jentera React app}"
 
 echo "── 1/4 Install ──"
 cd app
-pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+# The lockfile is the source of truth for what runs in production.
+# Falling back to a floating install on mismatch would ship a dependency
+# set that was never reviewed or tested — fail instead.
+pnpm install --frozen-lockfile
 
 echo
 echo "── 2/4 Typecheck + build ──"

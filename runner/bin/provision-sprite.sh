@@ -39,6 +39,9 @@ encode() { printf '%s' "$1" | base64 | tr -d '\n'; }
   printf 'RUNTIME_RELEASE_B64=%s\n' "$(encode "$AISAR_RUNTIME_RELEASE")"
   printf 'RUNNER_KEY_B64=%s\n' "$(encode "$AISAR_RUNNER_KEY")"
   printf 'HERMES_KEY_B64=%s\n' "$(encode "$HERMES_API_KEY")"
+  if [[ -n "${AISAR_EDGE_TOKEN:-}" ]]; then
+    printf 'EDGE_TOKEN_B64=%s\n' "$(encode "$AISAR_EDGE_TOKEN")"
+  fi
   printf 'MODEL_PROVIDER_B64=%s\n' "$(encode "$AISAR_MODEL_PROVIDER")"
   printf 'MODEL_BASE_B64=%s\n' "$(encode "$AISAR_MODEL_BASE")"
   printf 'MODEL_KEY_B64=%s\n' "$(encode "$AISAR_MODEL_KEY")"

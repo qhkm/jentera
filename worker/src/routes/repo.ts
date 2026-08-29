@@ -446,6 +446,12 @@ export async function handleRepo(
 
   const decide = url.pathname.match(/^\/api\/state\/approvals\/([^/]+)\/decide$/);
   if (decide) {
+    if (id.role !== 'owner') {
+      /* Deciding an approval ships a message (or refuses one) on behalf
+         of the business — a staff member must not be able to authorise
+         customer-facing sends. */
+      return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+    }
     const approved = Boolean(body.approved);
     /* The same shape as the D1 guarantee this replaces: one conditional
        UPDATE carrying both single-execution and tenant scoping. RLS makes

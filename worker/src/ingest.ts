@@ -20,6 +20,9 @@ export const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
 const MAX_BYTES = 512 * 1024;
 const FETCH_TIMEOUT_MS = 15_000;
+/** Redirects are followed only one validated hop at a time, and this is
+    the cap on how many. Most sites need zero or one (http→https). */
+const REDIRECT_MAX_HOPS = 5;
 /** Enough of a page to characterise a small business, short enough to
     stay inside a single model context without truncation games. */
 const MAX_CHARS = 12_000;
@@ -65,29 +68,50 @@ export function urlProblem(raw: unknown): string | null {
   return null;
 }
 
-/** Fetch a page as text, bounded in both time and size. */
+/** Fetch a page as text, bounded in both time and size.
+
+    `redirect: 'follow'` would let a 3xx hop land on an internal address
+    after the initial `urlProblem` check — the SSRF guard would have
+    already been bypassed by the time the body arrived. So redirects are
+    followed manually, each hop re-validated with the same rejection the
+    original URL got. */
 export async function fetchPage(url: string): Promise<{ text: string; title: string }> {
-  const res = await fetch(url, {
-    headers: {
-      // Identify honestly. A site owner reading their logs should be
-      // able to tell what this was.
-      'User-Agent': 'Jentera/1.0 (+https://jentera.ai; reads a business its own site)',
-      Accept: 'text/html,application/xhtml+xml',
-    },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    redirect: 'follow',
-  });
+  let current = url;
+  for (let hop = 0; hop <= REDIRECT_MAX_HOPS; hop++) {
+    const res = await fetch(current, {
+      headers: {
+        // Identify honestly. A site owner reading their logs should be
+        // able to tell what this was.
+        'User-Agent': 'Jentera/1.0 (+https://jentera.ai; reads a business its own site)',
+        Accept: 'text/html,application/xhtml+xml',
+      },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      redirect: 'manual',
+    });
 
-  if (!res.ok) throw new Error(`the site answered ${res.status}`);
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get('Location');
+      res.body?.cancel().catch(() => {});
+      if (!location) throw new Error(`the site answered ${res.status}`);
+      const next = new URL(location, current);
+      const problem = urlProblem(next.toString());
+      if (problem) throw new Error(problem);
+      current = next.toString();
+      continue;
+    }
 
-  const type = res.headers.get('Content-Type') ?? '';
-  if (!type.includes('html') && !type.includes('text/plain')) {
-    throw new Error('that address is not a web page');
+    if (!res.ok) throw new Error(`the site answered ${res.status}`);
+
+    const type = res.headers.get('Content-Type') ?? '';
+    if (!type.includes('html') && !type.includes('text/plain')) {
+      throw new Error('that address is not a web page');
+    }
+
+    const raw = await res.text();
+    const html = raw.length > MAX_BYTES ? raw.slice(0, MAX_BYTES) : raw;
+    return { text: htmlToText(html), title: titleOf(html) };
   }
-
-  const raw = await res.text();
-  const html = raw.length > MAX_BYTES ? raw.slice(0, MAX_BYTES) : raw;
-  return { text: htmlToText(html), title: titleOf(html) };
+  throw new Error('too many redirects');
 }
 
 function titleOf(html: string): string {

@@ -97,12 +97,25 @@ export async function handleConnect(
       const connections = await listConnections(tx);
       return Promise.all(connections.map((row) => connectionView(env, tx, row)));
     });
+    /* Staff may inspect connection status, but the pairing deep link is
+       the boundary that binds an arbitrary Telegram chat as the internal
+       owner chat — only the owner may hold it. */
+    if (id.role !== 'owner') {
+      for (const c of rows) {
+        if (c && typeof c === 'object' && 'pairingUrl' in c) {
+          (c as { pairingUrl: string | null }).pairingUrl = null;
+        }
+      }
+    }
     return json({ ok: true, connections: rows }, {}, cors);
   }
 
   /* ---- connect a Telegram bot ----------------------------------------- */
 
   if (url.pathname === '/api/connections/telegram' && request.method === 'POST') {
+    if (id.role !== 'owner') {
+      return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+    }
     const body = (await request.json().catch(() => ({}))) as { token?: string };
     const token = typeof body.token === 'string' ? body.token.trim() : '';
     /* Shape check before spending a network call, and before the value
@@ -228,6 +241,9 @@ export async function handleConnect(
 
   const drop = url.pathname.match(/^\/api\/connections\/([0-9a-f-]{36})$/i);
   if (drop && request.method === 'DELETE') {
+    if (id.role !== 'owner') {
+      return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+    }
     await withTenant(env, id.businessId, async (tx) => {
       /* Best effort: stop Telegram sending before the row goes. If the
          token is already revoked this fails, and the disconnection

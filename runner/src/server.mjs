@@ -17,6 +17,10 @@ const BODY_LIMIT = 64 * 1024;
 const STREAM_TEXT_LIMIT = 64 * 1024;
 const STREAM_EVENT_LIMIT = 8 * 1024;
 const STREAM_TTL_MS = 5 * 60 * 1000;
+/** Cap on concurrent SSE consumers of one task stream. Each subscriber
+    holds a socket and a 1s heartbeat interval, so an unbounded set is a
+    slow resource leak a hostile network peer could trigger for free. */
+const MAX_STREAM_SUBSCRIBERS = 16;
 
 /* ============================================================
    Always-on hold (paid plans). The worker includes an ISO
@@ -212,6 +216,20 @@ export function createRunner(input) {
         return json(res, 401, { ok: false, error: 'unauthorized' });
       }
 
+      /* Defense in depth: the Fly edge token in the Sprite URL is also
+         forwarded as `Authorization: Bearer` by the worker. When the
+         runtime was provisioned with AISAR_EDGE_TOKEN, both factors are
+         required — a leaked runner key alone must not admit anyone onto
+         the private network. Runtimes provisioned before this existed
+         carry no token and keep the single-factor check until they are
+         re-provisioned. */
+      if (
+        config.edgeToken &&
+        !sameSecret(authorizationBearer(req.headers.authorization), config.edgeToken)
+      ) {
+        return json(res, 401, { ok: false, error: 'unauthorized' });
+      }
+
       if (req.method === 'GET' && url.pathname === '/readyz') {
         const detail = await hermes(config, '/health/detailed');
         const body = await responseJson(detail);
@@ -223,6 +241,7 @@ export function createRunner(input) {
           webSearchBackend: config.webSearchBackend,
           region: runtimeRegion(req),
           edgeAuthorizationForwarded: typeof req.headers.authorization === 'string',
+          edgeTokenEnforced: Boolean(config.edgeToken),
           hermes: boundedReadiness(body),
           keepalive: keepalive.status(),
         });
@@ -314,7 +333,7 @@ export function createRunner(input) {
         if (typeof result?.status === 'string') {
           await state.put(saved.taskId, { ...saved, status: result.status });
         }
-        return json(res, 200, { ok: true, taskId: saved.taskId, ...result });
+        return json(res, 200, { ok: true, taskId: saved.taskId, ...boundedTaskStatus(result) });
       }
 
       const stopPath = url.pathname.match(/^\/v1\/tasks\/([0-9a-f-]{36})\/stop$/i);
@@ -345,6 +364,7 @@ export function configFromEnv(env = process.env) {
   return {
     businessId: env.AISAR_BUSINESS_ID,
     runnerKey: env.AISAR_RUNNER_KEY,
+    edgeToken: env.AISAR_EDGE_TOKEN,
     release: env.AISAR_RUNTIME_RELEASE,
     hermesKey: env.HERMES_API_KEY,
     hermesOrigin: env.HERMES_ORIGIN ?? 'http://127.0.0.1:8642',
@@ -500,6 +520,13 @@ function sameSecret(value, expected) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+/** Pull the `Bearer …` token out of an Authorization header, or ''. */
+function authorizationBearer(value) {
+  if (Array.isArray(value) || typeof value !== 'string') return '';
+  const match = value.match(/^Bearer\s+([A-Za-z0-9._~+/=-]+)$/i);
+  return match ? match[1] : '';
+}
+
 function runtimeRegion(req) {
   const raw = process.env.FLY_REGION ?? req.headers['fly-region'];
   const value = Array.isArray(raw) ? raw[0] : raw;
@@ -535,6 +562,24 @@ async function readJson(req) {
 
 async function responseJson(response) {
   return response.json().catch(() => null);
+}
+
+/** Hermes run status carries tool outputs the dashboard never renders.
+    Surface only the fields the worker's status transition actually uses;
+    never a raw `...result` spread. */
+const TASK_STATUS_FIELDS = new Set(['status', 'error', 'usage']);
+function boundedTaskStatus(result) {
+  if (!result || typeof result !== 'object') return { status: 'unknown' };
+  const out = {};
+  for (const key of TASK_STATUS_FIELDS) {
+    if (key in result) out[key] = result[key];
+  }
+  for (const key of Object.keys(result)) {
+    if (/^(created|started|finished|completed|updated)(_at)?$/i.test(key)) {
+      out[key] = result[key];
+    }
+  }
+  return out;
 }
 
 function json(res, status, body) {
@@ -622,6 +667,9 @@ class SafeDeltaStreams {
   pipe(taskId, req, res) {
     const stream = this.streams.get(taskId);
     if (!stream) return json(res, 404, { ok: false, error: 'stream not found' });
+    if (stream.subscribers.size >= MAX_STREAM_SUBSCRIBERS) {
+      return json(res, 429, { ok: false, error: 'too many stream subscribers' });
+    }
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-store',

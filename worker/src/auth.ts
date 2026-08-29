@@ -337,6 +337,8 @@ export async function verifySession(env: Env, token: string): Promise<Identity |
        where s.id = ${id}
          and s.revoked_at is null
          and s.expires_at > now()
+       order by case m.role when 'owner' then 0 when 'staff' then 1 else 2 end,
+                m.business_id
        limit 1
     `;
     if (rows.length === 0) return null;
