@@ -64,7 +64,7 @@ MODEL_TRANSPORT_READY = "true"
 # business to own a fully bootstrapped, release-matched runtime row.
 RUNTIME_EXECUTION_ENABLED = "true"
 RUNTIME_BOOTSTRAP_ENABLED = "true"
-RUNTIME_BUNDLE_COMMIT = "9280a073e23388df725c843a6410033a192fd936"
+RUNTIME_BUNDLE_COMMIT = "7941374d459a51ce0ae94d2d9eb0e5e2cfa0d065"
 AISAR_MODEL_PROVIDER = "openrouter"
 AISAR_MODEL_BASE = "https://openrouter.ai/api/v1"
 AISAR_MODEL_NAME = "deepseek/deepseek-v4-flash-0731"
