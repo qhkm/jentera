@@ -104,3 +104,25 @@ business after onboarding, using an immutable public bundle commit. It remains f
 behind production-bootstrap, secure transport, provisioning, provider-credential, and
 global execution gates. This operator path remains useful for a non-customer smoke;
 normal customer provisioning is created durably by onboarding completion.
+
+## Key co-residency and runtime boundary
+
+The Sprite's mode-0600 environment file holds `AISAR_RUNNER_KEY`, `HERMES_API_KEY`,
+`AISAR_EDGE_TOKEN` (when provisioned), and the VRS/OpenRouter model credential in the
+same process. A compromised runner machine therefore yields every credential that
+protects other layers of the same business runtime — there is no per-layer isolation
+between the Hermes API key, the runner's task key, and the edge token the Worker uses.
+
+Mitigations in place:
+- The state file never stores plaintext secrets; it keeps only task ids, statuses, and
+  hashes of leases/nonces.
+- The runner verifies the Fly edge token (`AISAR_EDGE_TOKEN`) in addition to the runner
+  key when the token is provisioned, so a single leaked key is insufficient.
+- The Worker never forwards runtime credentials to the dashboard; provider errors are
+  scrubbed before they reach run traces.
+
+Residual risk (accepted): key rotation requires re-provisioning the Sprite (`AISAR_RUNTIME_RELEASE`
+bump or `provision-sprite.sh` rerun), and floor access to the Sprite is equivalent to
+floor access to its Hermes identity. This is by design for a per-business isolated
+runtime; do not co-locate multiple businesses on one Sprite.
+

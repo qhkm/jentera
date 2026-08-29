@@ -16,6 +16,7 @@ BUSINESS_ID_B64=
 RUNTIME_RELEASE_B64=
 RUNNER_KEY_B64=
 HERMES_KEY_B64=
+EDGE_TOKEN_B64=
 MODEL_PROVIDER_B64=
 MODEL_BASE_B64=
 MODEL_KEY_B64=
@@ -33,6 +34,7 @@ while IFS='=' read -r name value; do
     RUNTIME_RELEASE_B64) RUNTIME_RELEASE_B64="$value" ;;
     RUNNER_KEY_B64) RUNNER_KEY_B64="$value" ;;
     HERMES_KEY_B64) HERMES_KEY_B64="$value" ;;
+    EDGE_TOKEN_B64) EDGE_TOKEN_B64="$value" ;;
     MODEL_PROVIDER_B64) MODEL_PROVIDER_B64="$value" ;;
     MODEL_BASE_B64) MODEL_BASE_B64="$value" ;;
     MODEL_KEY_B64) MODEL_KEY_B64="$value" ;;
@@ -71,6 +73,7 @@ model_key="$(decode "$MODEL_KEY_B64")"
 model_name="$(decode "$MODEL_NAME_B64")"
 hermes_tag="$(decode "$HERMES_TAG_B64")"
 hermes_commit="$(decode "$HERMES_COMMIT_B64")"
+edge_token="$(decode "$EDGE_TOKEN_B64")"
 
 [[ "$business_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] || {
   echo "business id must be a UUID" >&2
@@ -186,6 +189,9 @@ trap 'rm -f "$incoming" "$runtime_tmp"' EXIT
   printf 'AISAR_TOOL_MODE=%q\n' 'full-tools'
   printf 'AISAR_WEB_SEARCH_BACKEND=%q\n' 'ddgs'
   printf 'AISAR_RUNNER_KEY=%q\n' "$runner_key"
+  if [[ -n "$edge_token" ]]; then
+    printf 'AISAR_EDGE_TOKEN=%q\n' "$edge_token"
+  fi
   printf 'HERMES_API_KEY=%q\n' "$hermes_key"
   printf 'API_SERVER_KEY=%q\n' "$hermes_key"
   printf 'HERMES_ORIGIN=%q\n' 'http://127.0.0.1:8642'

@@ -95,6 +95,31 @@ export async function guardApiRequest(
     if (!Number.isFinite(length) || length < 0 || length > MAX_API_BODY_BYTES) {
       return response(413, 'request body too large', cors);
     }
+  } else if (request.body !== null) {
+    /* No Content-Length (e.g. Transfer-Encoding: chunked) bypassed the
+       check above. Measure the real body through a clone — reading the
+       clone leaves the original intact for the route — and refuse
+       anything over the cap. A bounded read also prevents a slow trickle
+       from pinning the isolate forever; the stream only makes progress
+       while we pull. */
+    const probe = request.clone();
+    try {
+      const reader = probe.body.getReader();
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > MAX_API_BODY_BYTES) break;
+      }
+      await reader.cancel().catch(() => {});
+      if (total > MAX_API_BODY_BYTES) {
+        return response(413, 'request body too large', cors);
+      }
+    } catch {
+      /* Unreadable body — hand it to the route, whose JSON parse will
+         fail loudly rather than accept garbage. */
+    }
   }
 
   const identity = requestIdentity(request, url);

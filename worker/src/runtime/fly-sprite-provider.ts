@@ -232,8 +232,22 @@ function spriteState(status: string): RuntimeState {
 }
 
 async function apiError(action: string, res: Response): Promise<Error> {
-  const detail = (await res.text().catch(() => '')).slice(0, 500);
+  const detail = redactSecrets((await res.text().catch(() => '')).slice(0, 500));
   return new Error(`${action} failed (${res.status})${detail ? `: ${detail}` : ''}`);
+}
+
+/* Upstream providers occasionally echo the offending request — including
+   an Authorization header or a URL containing a key — in their error
+   bodies. Sprites errors land in run traces and owner-visible messages,
+   so scrub the shapes that matter before they leave this file. */
+function redactSecrets(text: string): string {
+  const bearer =
+    /\b(Bearer\s+)[A-Za-z0-9._~+\/-]{12,}/gi;
+  const keyValue =
+    /\b(api[_-]?key|access[_-]?key|authorization|token|secret|password)\s*[:=]\s*[^\s,;"']+/gi;
+  return text
+    .replace(bearer, '$1[redacted]')
+    .replace(keyValue, '$1=[redacted]');
 }
 
 async function assertStreamSucceeded(res: Response): Promise<void> {
@@ -251,7 +265,7 @@ async function assertStreamSucceeded(res: Response): Promise<void> {
       .map((line) => JSON.parse(line) as typeof events[number]);
   }
   const failed = events.find((event) => event.type === 'error');
-  if (failed) throw new Error(failed.error ?? failed.data ?? 'Sprite operation failed');
+  if (failed) throw new Error(redactSecrets(failed.error ?? failed.data ?? 'Sprite operation failed'));
 }
 
 async function readHttpExec(response: Response): Promise<RuntimeExecResult> {
@@ -279,7 +293,7 @@ async function readHttpExec(response: Response): Promise<RuntimeExecResult> {
     stderr: stream === 2 ? detail : '',
   };
   if (exitCode !== 0) {
-    throw new Error(`Sprite bootstrap exited ${exitCode}: ${detail.slice(-500)}`);
+    throw new Error(`Sprite bootstrap exited ${exitCode}: ${redactSecrets(detail.slice(-500))}`);
   }
   return result;
 }
