@@ -130,14 +130,13 @@ export async function leaseRuntimeTask(
   leaseToken: string,
   leaseSeconds = 300,
 ): Promise<LeaseResult> {
-  /* Serialize the lease decision on the tenant itself. Merely checking for an
-     existing leased row is not enough under MVCC: two Queue deliveries can
-     both see "none", update different tasks, and make the partial unique index
-     throw. The business row gives every contender the same short-lived lock,
-     so the loser observes the winner and returns busy normally. */
-  const [business] = await tx<{ id: string }[]>`
-    select id from business where id = ${businessId} for update`;
-  if (!business) return { outcome: 'missing' };
+  /* Serialize the lease decision on a tenant-scoped advisory key instead of
+     the business row. Same mutual exclusion — two concurrent Queue deliveries
+     for different tasks of one business can otherwise both pass the pre-checks
+     and trip the partial unique index — but advisory locks live in shared
+     memory, don't lock the parent row, and skip a business-table round trip.
+     Existence is derived from the task row below. */
+  await tx`select pg_advisory_xact_lock(hashtextextended(${businessId}::text, 0))`;
 
   /* Expired work is recoverable. Clear it before the unique active-
      lease index decides whether this business may start something. */
@@ -159,20 +158,11 @@ export async function leaseRuntimeTask(
   }
   if (current.status === 'leased') return { outcome: 'busy' };
 
-  const [other] = await tx<{ id: string }[]>`
-    select id from runtime_task
-     where business_id = ${businessId} and status = 'leased' and id <> ${taskId}
-     limit 1`;
-  if (other) return { outcome: 'busy' };
-
-  const [leased] = await tx<TaskRow[]>`
-    update runtime_task
-       set status = 'leased', lease_token = ${leaseToken},
-           lease_expires_at = now() + (${leaseSeconds} * interval '1 second'),
-           last_error = null, updated_at = now()
-     where id = ${taskId} and business_id = ${businessId}
-       and status in ('queued','failed') and available_at <= now()
-    returning ${tx.unsafe(cols)}`;
+  /* CAS lease. The NOT EXISTS guard stands in for the old separate
+     "other leased row" check: under the advisory lock no contender can be
+     mid-lease, so any sibling 'leased' row is a committed, still-active task
+     and must win. Same row-lock behavior as before, one round trip less. */
+  const [leased] = await tx<TaskRow[]>`\n    update runtime_task\n       set status = 'leased', lease_token = ${leaseToken},\n           lease_expires_at = now() + (${leaseSeconds} * interval '1 second'),\n           last_error = null, updated_at = now()\n     where id = ${taskId} and business_id = ${businessId}\n       and status in ('queued','failed') and available_at <= now()\n       and not exists (\n         select 1 from runtime_task sibling\n          where sibling.business_id = ${businessId}\n            and sibling.status = 'leased'\n            and sibling.id <> ${taskId}\n       )\n    returning ${tx.unsafe(cols)}`;
   return leased ? { outcome: 'leased', task: task(leased) } : { outcome: 'busy' };
 }
 

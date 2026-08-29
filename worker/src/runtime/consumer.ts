@@ -98,9 +98,11 @@ export async function handleRuntimeMessage(
   }
 
   const leaseToken = crypto.randomUUID();
+  const leaseStartedAt = Date.now();
   const lease = await withTenant(env, message.businessId, (tx) =>
     leaseRuntimeTask(tx, message.businessId, message.taskId, leaseToken),
   );
+  const leaseMs = Date.now() - leaseStartedAt;
 
   if (lease.outcome === 'missing') return { action: 'ack', reason: 'missing' };
   if (lease.outcome === 'done') return { action: 'ack', reason: 'already_done' };
@@ -215,15 +217,16 @@ export async function handleRuntimeMessage(
         break;
       }
       case 'run': {
-        const latency = (stage: string, dispatchElapsedMs?: number) => {
+        const latency = (stage: string, dispatchElapsedMs?: number, extra: Record<string, unknown> = {}) => {
           console.info('[runtime-latency]', JSON.stringify({
             stage,
             queueElapsedMs: Date.now() - messageStartedAt,
             ...(dispatchElapsedMs === undefined ? {} : { dispatchElapsedMs }),
+            ...extra,
             channel: telegramHint(lease.task.payload) ? 'telegram' : 'app',
           }));
         };
-        latency('leased');
+        latency('leased', undefined, { leaseMs });
         const draftStream = await telegramDraftStream(env, lease.task);
         const toolShown = new Set<string>();
         await draftStream?.pulseTyping(true);
