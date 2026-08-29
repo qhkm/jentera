@@ -184,8 +184,10 @@ export function hermesDraftId(taskId: string): number {
     per second, inside Telegram's documented per-peer limits. */
 export class TelegramDraftStream {
   private text = '';
+  private status = '';
   private sent = '';
   private lastSentAt = 0;
+  private lastStatusAt = 0;
   private lastTypingAt = 0;
   private available = true;
   private typingAvailable = true;
@@ -198,11 +200,31 @@ export class TelegramDraftStream {
 
   async push(delta: string): Promise<void> {
     if (!this.available || !delta) return;
+    if (!this.text.trim() && delta.trim()) {
+      // Answer lane begins: drop the status and restart coalescing so the
+      // first answer delta publishes immediately instead of being measured
+      // against the status text that replaced the placeholder.
+      this.status = '';
+      this.sent = '';
+      this.lastSentAt = 0;
+    }
     this.text = `${this.text}${delta}`.slice(0, 4_000);
     if (this.text === this.sent) return;
     const elapsed = Date.now() - this.lastSentAt;
     const buffered = this.text.length - this.sent.length;
     if (this.lastSentAt !== 0 && elapsed < 800 && buffered < 24) return;
+    await this.publish();
+  }
+
+  /** Replace the "Thinking…" placeholder with a visible working state while
+      the model has produced no answer text yet. Throttled so stage churn and
+      the elapsed ticker cannot spam Telegram; ignored once text streams. */
+  async setStatus(text: string): Promise<void> {
+    if (!this.available || !text || this.text.trim()) return;
+    const now = Date.now();
+    if (now - this.lastStatusAt < 1_500) return;
+    this.lastStatusAt = now;
+    this.status = text.slice(0, 120);
     await this.publish();
   }
 
@@ -243,9 +265,10 @@ export class TelegramDraftStream {
   }
 
   private async publish(): Promise<void> {
+    const visible = this.text.trim() ? this.text : this.status;
     try {
-      await sendMessageDraft(this.token, this.chatId, this.draftId, this.text);
-      this.sent = this.text;
+      await sendMessageDraft(this.token, this.chatId, this.draftId, visible);
+      this.sent = visible;
       this.lastSentAt = Date.now();
       await this.pulseTyping();
     } catch {

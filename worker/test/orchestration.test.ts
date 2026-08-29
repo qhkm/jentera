@@ -407,6 +407,11 @@ describe('durable Hermes Telegram replies', () => {
     expect(drafts).toContainEqual({
       chatId: 42,
       draftId,
+      text: '⏳ On it — waking the AI…',
+    });
+    expect(drafts).toContainEqual({
+      chatId: 42,
+      draftId,
       text: 'Yes, ',
     });
     expect(JSON.stringify(drafts)).not.toContain('never show this');

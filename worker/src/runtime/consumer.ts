@@ -37,6 +37,18 @@ import { runtimeReady } from './execution';
 const MAX_TASK_ATTEMPTS = 5;
 const BUSY_RETRY_SECONDS = 2;
 
+/** Friendly one-line statuses for the ephemeral Telegram draft, keyed by the
+    run-task provisioning stages. Shown only while the model has produced no
+    answer text yet — they make the cold-start window feel alive without ever
+    surfacing reasoning content (the anti-CoT scrubber stays untouched). */
+const STAGE_STATUS: Record<string, string> = {
+  database_ready: '✅ System ready — waking AI…',
+  provider_awake: '✅ AI engine online — starting agent…',
+  runner_ready: '✅ Agent runtime ready — connecting…',
+  hermes_started: '✅ Agent started — thinking…',
+  run_recorded: '⏳ Researching…',
+};
+
 export interface RuntimeQueueMessage {
   version: 1;
   businessId: string;
@@ -213,10 +225,20 @@ export async function handleRuntimeMessage(
         };
         latency('leased');
         const draftStream = await telegramDraftStream(env, lease.task);
-        const showToolEvents = !lease.task.remoteRunId;
+        const toolShown = new Set<string>();
         await draftStream?.pulseTyping(true);
         let lastLeaseRenewal = Date.now();
         let firstVisibleDelta = false;
+        let statusTimer: ReturnType<typeof setInterval> | undefined;
+        if (draftStream) {
+          const workingSince = Date.now();
+          void draftStream.setStatus('⏳ On it — waking the AI…');
+          statusTimer = setInterval(() => {
+            if (firstVisibleDelta) return;
+            const elapsed = Math.round((Date.now() - workingSince) / 1_000);
+            void draftStream.setStatus(`⏳ Working… (${elapsed}s)`);
+          }, 5_000);
+        }
         const outcome = await dispatchRuntimeRun(env, lease.task, leaseToken, {
           ...options,
           onDelta: draftStream
@@ -228,10 +250,13 @@ export async function handleRuntimeMessage(
                 await draftStream.push(delta);
               }
             : undefined,
-          onToolEvent: draftStream && showToolEvents
-            ? (event) => event.type === 'tool.started'
-              ? draftStream.showTool(event.tool, event.preview)
-              : Promise.resolve()
+          onToolEvent: draftStream
+            ? (event) => {
+                if (event.type !== 'tool.started') return Promise.resolve();
+                if (toolShown.has(event.tool)) return Promise.resolve();
+                toolShown.add(event.tool);
+                return draftStream.showTool(event.tool, event.preview);
+              }
             : undefined,
           onHeartbeat: draftStream
             ? async () => {
@@ -248,8 +273,16 @@ export async function handleRuntimeMessage(
                 lastLeaseRenewal = Date.now();
               }
             : undefined,
-          onStage: (stage, elapsedMs) => latency(stage, elapsedMs),
+          onStage: (stage, elapsedMs) => {
+            latency(stage, elapsedMs);
+            const status = STAGE_STATUS[stage];
+            if (status) void draftStream?.setStatus(status);
+          },
         });
+        if (statusTimer) {
+          clearInterval(statusTimer);
+          statusTimer = undefined;
+        }
         latency(outcome.state === 'terminal' ? 'terminal' : 'pending');
         if (outcome.state === 'pending') {
           const deferred = await withTenant(env, message.businessId, async (tx) => {

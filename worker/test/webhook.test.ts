@@ -350,4 +350,87 @@ describe('Hermes-style Telegram drafts', () => {
     expect(String(fetch.mock.calls[0][0])).toContain('/sendChatAction');
     expect(String(fetch.mock.calls[1][0])).toContain('/sendRichMessageDraft');
   });
+
+  it('replaces the Thinking placeholder with a visible working status', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: true })));
+    vi.stubGlobal('fetch', fetch);
+    const stream = new TelegramDraftStream('123456789:AAtoken', 42, 9);
+
+    await stream.setStatus('✅ System ready — waking AI…');
+
+    const draftCalls = () => fetch.mock.calls.filter(([url]) =>
+      String(url).includes('/sendRichMessageDraft'));
+    expect(draftCalls()).toHaveLength(1);
+    const body = JSON.parse(String(draftCalls()[0][1]?.body)) as {
+      rich_message: { markdown: string };
+    };
+    expect(body.rich_message.markdown).toContain('System ready');
+    expect(body.rich_message.markdown).not.toContain('tg-thinking');
+  });
+
+  it('status clears the moment answer text starts streaming', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: true })));
+    vi.stubGlobal('fetch', fetch);
+    const stream = new TelegramDraftStream('123456789:AAtoken', 42, 9);
+
+    await stream.setStatus('⏳ Working… (12s)');
+    fetch.mockClear();
+    await stream.push('Here is the answer');
+
+    const draftCalls = () => fetch.mock.calls.filter(([url]) =>
+      String(url).includes('/sendRichMessageDraft'));
+    expect(draftCalls()).toHaveLength(1);
+    const body = JSON.parse(String(draftCalls()[0][1]?.body)) as {
+      rich_message: { markdown: string };
+    };
+    expect(body.rich_message.markdown).toContain('Here is the answer');
+    expect(body.rich_message.markdown).not.toContain('Working');
+  });
+
+  it('ignores status updates once answer text has started', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: true })));
+    vi.stubGlobal('fetch', fetch);
+    const stream = new TelegramDraftStream('123456789:AAtoken', 42, 9);
+
+    await stream.push('Started');
+    fetch.mockClear();
+    await stream.setStatus('⏳ Working… (99s)');
+
+    expect(fetch.mock.calls.some(([url]) => String(url).includes('/sendRichMessageDraft')))
+      .toBe(false);
+  });
+
+  it('throttles status updates so stage churn cannot spam Telegram', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: true })));
+    vi.stubGlobal('fetch', fetch);
+    const stream = new TelegramDraftStream('123456789:AAtoken', 42, 9);
+
+    await stream.setStatus('✅ System ready — waking AI…');
+    fetch.mockClear();
+    await stream.setStatus('✅ AI engine online — starting agent…');
+
+    expect(fetch).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1_500);
+    await stream.setStatus('✅ Agent started — thinking…');
+    const draftCalls = () => fetch.mock.calls.filter(([url]) =>
+      String(url).includes('/sendRichMessageDraft'));
+    expect(draftCalls()).toHaveLength(1);
+    const body = JSON.parse(String(draftCalls()[0][1]?.body)) as {
+      rich_message: { markdown: string };
+    };
+    expect(body.rich_message.markdown).toContain('Agent started');
+  });
 });
