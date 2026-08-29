@@ -1,5 +1,5 @@
 import type { Env } from '../env';
-import { getRuntime, getRuntimeSecrets } from '../agent-runtime';
+import { getBusinessPlan, getRuntime, getRuntimeSecrets } from '../agent-runtime';
 import { withTenant } from '../db';
 import type { RuntimeProvider } from './provider';
 import { runtimeProviderFor } from './provision';
@@ -11,6 +11,17 @@ import { runtimeTaskIsCancelled } from './tasks';
 import { append } from '../runs';
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped']);
+
+/** Paid plans hold the Sprite active this long past any dispatch.
+    Every dispatch for a paid business refreshes the window, so a
+    messaging business stays always-on and a silent or downgraded one
+    releases itself (stops billing) after the grace window. */
+const KEEPALIVE_GRACE_HOURS_DEFAULT = 24;
+
+function keepaliveGraceHours(env: Env): number {
+  const value = Number(env.AISAR_KEEPALIVE_GRACE_HOURS);
+  return Number.isFinite(value) && value > 0 ? value : KEEPALIVE_GRACE_HOURS_DEFAULT;
+}
 
 export interface RunPayload {
   input: string;
@@ -59,7 +70,7 @@ export async function dispatchRuntimeRun(
   const dispatchStartedAt = Date.now();
   const stage = (name: string) => options.onStage?.(name, Date.now() - dispatchStartedAt);
   const payload = runPayload(task.payload);
-  const { runtime, secrets, reservation } = await withTenant(
+  const { runtime, secrets, reservation, keepaliveUntil } = await withTenant(
     env,
     task.businessId,
     async (tx) => {
@@ -71,7 +82,12 @@ export async function dispatchRuntimeRun(
         task.id,
         env.AISAR_MODEL_NAME?.trim() ?? '',
       );
-      return { runtime, secrets, reservation };
+      const plan = await getBusinessPlan(tx, task.businessId);
+      const keepaliveUntil =
+        plan === 'pro'
+          ? new Date(Date.now() + keepaliveGraceHours(env) * 3_600_000).toISOString()
+          : undefined;
+      return { runtime, secrets, reservation, keepaliveUntil };
     },
   );
   stage('database_ready');
@@ -125,6 +141,7 @@ export async function dispatchRuntimeRun(
     sessionId: payload.sessionId,
     instructions: payload.instructions,
     toolGrant,
+    ...(keepaliveUntil ? { keepaliveUntil } : {}),
   });
   stage('hermes_started');
   const remoteRunId = started.hermesRunId;

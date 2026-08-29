@@ -17,6 +17,9 @@ export interface RunnerTaskRequest {
   instructions?: string;
   /** HMAC-signed, task-bound, five-minute capability grant. */
   toolGrant: string;
+  /** ISO instant until which the runner should keep the Sprite active
+      via the Tasks API (paid plans only). Omit for wake-on-request. */
+  keepaliveUntil?: string;
 }
 
 export interface RunnerTaskResponse {

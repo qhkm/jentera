@@ -71,4 +71,8 @@ export interface Env {
   /** Override the sender, e.g. for a staging origin. Must be a domain
       verified in Resend, and should match APP_ORIGIN. */
   MAGIC_FROM?: string;
+  /** How long a `pro` dispatch keeps the Sprite held active past the
+      dispatch (hours). Refreshed on every dispatch; a downgraded or
+      silent business releases itself after this window. Default 24h. */
+  AISAR_KEEPALIVE_GRACE_HOURS?: string;
 }

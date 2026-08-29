@@ -2,7 +2,12 @@ name = "aisar-api"
 main = "src/index.ts"
 compatibility_date = "2026-08-16"
 # postgres.js needs Node built-ins (net, crypto) on Workers.
-compatibility_flags = ["nodejs_compat"]
+# no_handle_cross_request_promise_resolution: db.ts memoizes one postgres.js
+# client per isolate (commit d87a2ac). A socket created in one request context
+# gets reused by later requests on the same isolate; without this flag the
+# runtime cancels those continuations ("Cannot perform I/O on behalf of a
+# different request") and webhook DB lookups fail intermittently.
+compatibility_flags = ["nodejs_compat", "no_handle_cross_request_promise_resolution"]
 
 # Keep the workers.dev hostname alive alongside the custom domain.
 # Passing --domain once silently DISABLED it, because wrangler defaults
@@ -48,7 +53,7 @@ API_ORIGIN = "https://api.jentera.ai"
 # The immutable runner/Hermes/browser bundle requested for newly
 # provisioned runtimes. Changing this asks reconciliation to upgrade;
 # it must never silently track "latest".
-RUNTIME_RELEASE = "2026.08.28-13"
+RUNTIME_RELEASE = "2026.08.28-14"
 RUNTIME_EXPECTED_REGION = "sin"
 SPRITES_API_ORIGIN = "https://api.sprites.dev"
 # Fail closed. Completing onboarding provisions one isolated runtime for the

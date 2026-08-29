@@ -7,8 +7,8 @@
    ============================================================ */
 
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:http';
+import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { createServer, request as httpRequest } from 'node:http';
 import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -18,10 +18,180 @@ const STREAM_TEXT_LIMIT = 64 * 1024;
 const STREAM_EVENT_LIMIT = 8 * 1024;
 const STREAM_TTL_MS = 5 * 60 * 1000;
 
+/* ============================================================
+   Always-on hold (paid plans). The worker includes an ISO
+   `keepaliveUntil` on dispatches for `pro` businesses. While the
+   clock is before that instant we hold the Sprite active through the
+   Tasks API on the management socket, so the next message skips the
+   cold-wake penalty. When the instant passes we delete the task and
+   the Sprite is free to pause (stops billing).
+
+   https://docs.sprites.dev/concepts/tasks
+   ============================================================ */
+
+const KEEPALIVE_TASK = 'jentera-always-on';
+const KEEPALIVE_EXPIRE = '1h';
+const KEEPALIVE_REFRESH_MS = 10 * 60 * 1000;
+const SPRITE_API_SOCK_DEFAULT = '/.sprite/api.sock';
+
+export function createSpriteKeepalive(sockPath = SPRITE_API_SOCK_DEFAULT) {
+  return new SpriteKeepalive(sockPath);
+}
+
+export class SpriteKeepalive {
+  constructor(sockPath) {
+    this.sockPath = sockPath;
+    this.holdUntilMs = 0;
+    this.held = false;
+    this.timer = null;
+    this.socket = null; // null = unknown, true = present, false = absent
+    this.lastError = null;
+  }
+
+  /** Extend the hold. ISO instant or undefined (ignored). Only ever
+      moves the deadline forward; earlier arm calls are retained.
+      Instants already in the past are ignored (the worker only sends
+      future windows; a released Sprite stays released).
+      Returns the tick promise (internally caught; safe to ignore). */
+  arm(untilIso) {
+    const ms = typeof untilIso === 'string' ? Date.parse(untilIso) : Number.NaN;
+    if (Number.isNaN(ms) || ms <= Date.now()) return Promise.resolve();
+    this.holdUntilMs = Math.max(this.holdUntilMs, ms);
+    this.ensureLoop();
+    return this.tick(); // hold starts immediately, not after the interval
+  }
+
+  status() {
+    return {
+      held: this.held,
+      task: KEEPALIVE_TASK,
+      until: this.held && this.holdUntilMs > Date.now()
+        ? new Date(this.holdUntilMs).toISOString()
+        : null,
+      lastError: this.lastError,
+    };
+  }
+
+  ensureLoop() {
+    if (this.timer) return;
+    this.timer = setInterval(() => void this.tick(), KEEPALIVE_REFRESH_MS);
+    this.timer.unref?.();
+  }
+
+  stopLoop() {
+    if (!this.timer) return;
+    clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  async tick() {
+    try {
+      if (this.socket === null) {
+        try {
+          await access(this.sockPath);
+          this.socket = true;
+        } catch {
+          this.socket = false;
+          console.warn(
+            `[keepalive] no Sprite management socket (${this.sockPath}); always-on unavailable`,
+          );
+        }
+      }
+      if (!this.socket) {
+        this.stopLoop();
+        return;
+      }
+
+      if (Date.now() >= this.holdUntilMs) {
+        if (this.held) {
+          const res = await spriteTasksApi(this.sockPath, 'DELETE', KEEPALIVE_TASK);
+          if (res.ok || res.status === 404) {
+            this.held = false;
+            console.info('[keepalive] released; sprite free to pause');
+          } else {
+            this.lastError = `delete ${res.status}`;
+            console.warn(`[keepalive] delete failed (${res.status})`);
+          }
+        } else {
+          this.stopLoop();
+        }
+        return;
+      }
+
+      const created = await spriteTasksApi(this.sockPath, 'POST', undefined, {
+        name: KEEPALIVE_TASK,
+        expire: KEEPALIVE_EXPIRE,
+      });
+      if (created.ok) {
+        if (!this.held) {
+          this.held = true;
+          console.info(`[keepalive] holding sprite active until ${new Date(this.holdUntilMs).toISOString()}`);
+        }
+        return;
+      }
+      if (created.status === 409) { // already held: refresh the expiry
+        const refreshed = await spriteTasksApi(this.sockPath, 'PUT', KEEPALIVE_TASK, {
+          expire: KEEPALIVE_EXPIRE,
+        });
+        if (refreshed.ok) {
+          if (!this.held) {
+            this.held = true;
+            console.info(`[keepalive] holding sprite active until ${new Date(this.holdUntilMs).toISOString()}`);
+          }
+          return;
+        }
+        this.lastError = `refresh ${refreshed.status}`;
+        console.warn(`[keepalive] refresh failed (${refreshed.status})`);
+        return;
+      }
+      this.lastError = `create ${created.status}`;
+      console.warn(`[keepalive] create failed (${created.status})`);
+    } catch (error) {
+      this.lastError = String(error);
+      console.warn('[keepalive] tick failed', error);
+    }
+  }
+}
+
+/** One Tasks API call over the Sprite management socket. */
+function spriteTasksApi(sockPath, method, name, body) {
+  return new Promise((resolve, reject) => {
+    const payload = body === undefined ? null : JSON.stringify(body);
+    const req = httpRequest(
+      {
+        socketPath: sockPath,
+        host: 'sprite',
+        path: name ? `/v1/tasks/${encodeURIComponent(name)}` : '/v1/tasks',
+        method,
+        headers: payload === null ? {} : {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+        },
+      },
+      (res) => {
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () =>
+          resolve({
+            ok: res.statusCode >= 200 && res.statusCode < 300,
+            status: res.statusCode,
+            body: data,
+          }),
+        );
+      },
+    );
+    req.on('error', reject);
+    if (payload !== null) req.write(payload);
+    req.end();
+  });
+}
+
 export function createRunner(input) {
   const config = validated(input);
   const state = new StateStore(config.stateFile);
   const streams = new SafeDeltaStreams(config);
+  const keepalive = createSpriteKeepalive(process.env.SPRITE_API_SOCK);
   let admitting = false;
 
   return createServer(async (req, res) => {
@@ -34,6 +204,7 @@ export function createRunner(input) {
           release: config.release,
           toolMode: config.toolMode,
           webSearchBackend: config.webSearchBackend,
+          keepalive: keepalive.status(),
         });
       }
 
@@ -53,6 +224,7 @@ export function createRunner(input) {
           region: runtimeRegion(req),
           edgeAuthorizationForwarded: typeof req.headers.authorization === 'string',
           hermes: boundedReadiness(body),
+          keepalive: keepalive.status(),
         });
       }
 
@@ -60,6 +232,8 @@ export function createRunner(input) {
         const body = await readJson(req);
         const problem = taskProblem(body, config);
         if (problem) return json(res, 400, { ok: false, error: problem });
+
+        keepalive.arm(body.keepaliveUntil); // paid-plan always-on hold
 
         const previous = await state.get(body.taskId);
         if (previous) {
@@ -236,6 +410,12 @@ function taskProblem(body, config) {
   }
   if (body.instructions !== undefined && typeof body.instructions !== 'string') {
     return 'instructions must be a string';
+  }
+  if (body.keepaliveUntil !== undefined) {
+    if (typeof body.keepaliveUntil !== 'string' ||
+        !Number.isFinite(Date.parse(body.keepaliveUntil))) {
+      return 'keepaliveUntil must be a valid ISO instant';
+    }
   }
   const grant = validateGrant(body.toolGrant, config, body.taskId);
   if (grant) return grant;

@@ -151,6 +151,17 @@ export async function getRuntime(
   return row ? toRecord(row) : null;
 }
 
+/** Paid-plan gate for runtime entitlements. Absent or unknown plans
+    are treated as 'free' (wake-on-request, no always-on hold). */
+export async function getBusinessPlan(
+  tx: postgres.TransactionSql,
+  businessId: string,
+): Promise<'free' | 'pro'> {
+  const [row] = await tx<{ plan: string | null }[]>`
+    select plan from business where id = ${businessId}`;
+  return row?.plan === 'pro' ? 'pro' : 'free';
+}
+
 /** Decrypt runtime credentials only inside a tenant-scoped transaction. */
 export async function getRuntimeSecrets(
   env: Env,

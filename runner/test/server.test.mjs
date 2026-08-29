@@ -87,6 +87,12 @@ test('liveness reveals no credential and requires no runner key', async () => {
     release: '2026.08.27-1',
     toolMode: 'full-tools',
     webSearchBackend: 'ddgs',
+    keepalive: {
+      held: false,
+      task: 'jentera-always-on',
+      until: null,
+      lastError: null,
+    },
   });
 });
 
