@@ -1,7 +1,7 @@
 import type { Env } from './env';
 import { withTenant } from './db';
 import { useCredential } from './connections';
-import { sendHermesMessage } from './connectors/telegram';
+import { hermesDraftId, sendHermesMessage, TelegramDraftStream } from './connectors/telegram';
 import { policyFor, type Policy } from './policy';
 import { append, finishRun, recordWork, updateWorkForRun } from './runs';
 
@@ -143,4 +143,60 @@ export async function sendAndRecord(
     await tx`update connection set last_ok_at = now() where id = ${connectionId}`;
     await finishRun(tx, businessId, runId, 'completed', { messageId: sent.messageId });
   });
+}
+
+/** The live Telegram draft id is derived from the owning runtime task. */
+function telegramPayloadHint(value: unknown): {
+  connectionId: string;
+  chatId: number;
+  privateChat: boolean;
+} | null {
+  if (!value || typeof value !== 'object') return null;
+  const telegram = (value as Record<string, unknown>).telegram;
+  if (!telegram || typeof telegram !== 'object') return null;
+  const t = telegram as Record<string, unknown>;
+  if (typeof t.connectionId !== 'string' || typeof t.chatId !== 'number') return null;
+  return {
+    connectionId: t.connectionId,
+    chatId: t.chatId,
+    privateChat: t.privateChat === true,
+  };
+}
+
+/**
+ * An owner cancel freezes the ephemeral Telegram draft mid-thought — the chat
+ * sits on "⏳ Working…" (or "⏳ In line…") forever because the run is terminal
+ * and nothing will ever replace it. Settle it with a short visible note.
+ *
+ * When `payload` is supplied (the cancel caller already has the row) no extra
+ * query is made; otherwise the target task's payload is read from the durable
+ * row, which is not scrubbed because cancellation flips it terminal directly.
+ *
+ * Cosmetic only: every failure is caught so a draft hiccup can never fail the
+ * cancel task or the cancel request itself.
+ */
+export async function settleCancelledDraft(
+  env: Env,
+  businessId: string,
+  taskId: string,
+  payload?: unknown,
+): Promise<void> {
+  try {
+    let telegram = telegramPayloadHint(payload);
+    if (!telegram && payload === undefined) {
+      const [row] = await withTenant(env, businessId, (tx) =>
+        tx<{ payload: unknown }[]>`select payload from runtime_task where id = ${taskId} limit 1`);
+      telegram = telegramPayloadHint(row?.payload);
+    }
+    if (!telegram?.privateChat) return;
+    const token = await withTenant(env, businessId, (tx) =>
+      useCredential(env, tx, telegram.connectionId));
+    const stream = new TelegramDraftStream(token, telegram.chatId, hermesDraftId(taskId));
+    await stream.push('⚠️ Cancelled — this request was stopped.');
+  } catch (error) {
+    console.warn(
+      '[runtime] cancelled draft note failed:',
+      error instanceof Error ? error.message : String(error),
+    );
+  }
 }

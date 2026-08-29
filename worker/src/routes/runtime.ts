@@ -8,6 +8,7 @@ import { finishRun } from '../runs';
 import { hasBusiness, resolveTenant } from '../tenancy';
 import { publishRunProgressSafely } from '../runtime/progress';
 import { runtimeProvisioningProblem } from '../runtime/execution';
+import { settleCancelledDraft } from '../telegram-delivery';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -137,6 +138,9 @@ export async function handleRuntime(
     }
     if (!cancelled.changed && !['cancelled', 'exhausted'].includes(cancelled.task.status)) {
       return json({ ok: false, err: 'runtime task is already terminal' }, { status: 409 }, cors);
+    }
+    if (cancelled.changed && cancelled.task.kind === 'run' && !cancelled.task.remoteRunId) {
+      await settleCancelledDraft(env, identity.businessId, cancelled.task.id, cancelled.task.payload);
     }
     if (cancelled.task.kind === 'run' && cancelled.task.remoteRunId) {
       const window = Math.floor(Date.now() / 60_000);

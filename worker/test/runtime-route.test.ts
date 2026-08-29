@@ -1,19 +1,21 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { handleRuntime } from '../src/routes/runtime';
 import type { Env } from '../src/env';
 import { startRun } from '../src/runs';
 import { enqueueRuntimeTask } from '../src/runtime/tasks';
 import { reserveRuntimeUsage } from '../src/runtime/usage';
+import { saveConnection } from '../src/connections';
+import { hermesDraftId } from '../src/connectors/telegram';
 import { asOwner, asTenant, req, signIn, testEnv, truncateAll } from './harness';
 
 const A = '11111111-1111-4111-8111-111111111111';
 let ownerCookie: string;
 let staffCookie: string;
+let ownerId = '';
+let staffId = '';
 
 beforeEach(async () => {
   await truncateAll();
-  let ownerId = '';
-  let staffId = '';
   await asOwner(async (sql) => {
     await sql`insert into business (id, name, playbook_key, onboarded)
               values (${A}, 'Alpha', 'restaurant', true)`;
@@ -29,6 +31,8 @@ beforeEach(async () => {
   ownerCookie = await signIn(ownerId);
   staffCookie = await signIn(staffId);
 });
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe('runtime provisioning route', () => {
   it('shows no runtime without exposing provider identity', async () => {
@@ -155,6 +159,58 @@ describe('runtime provisioning route', () => {
     const [{ count }] = await asOwner((sql) => sql<{ count: string }[]>`
       select count(*)::text as count from runtime_task where kind = 'cancel'`);
     expect(count).toBe('1');
+  });
+
+  it('settles the frozen draft with a visible cancelled note for a queued Telegram run', async () => {
+    const send = vi.fn(async () => {});
+    const telegram = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }), {
+        headers: { 'Content-Type': 'application/json' },
+      }));
+    vi.stubGlobal('fetch', telegram);
+    const env = enabled(send);
+
+    const conn = await asTenant(A, (tx) => saveConnection(env, tx, A, {
+      connector: 'telegram',
+      method: 'bot_token',
+      externalId: '128',
+      displayName: '@alpha_bot',
+      secret: '123456789:AAtoken',
+      connectedBy: ownerId,
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run',
+      dedupeKey: 'run:cancel-queued-telegram',
+      payload: {
+        input: 'hello',
+        telegram: {
+          connectionId: conn.id, chatId: 42, from: 'owner',
+          text: 'hello', privateChat: true,
+        },
+        objective: 'Reply to the owner',
+        function: 'assistant',
+        channel: 'telegram',
+      },
+    }));
+
+    const response = await call(
+      'POST', `/api/runtime/tasks/${task.id}/cancel`, env, ownerCookie,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, taskId: task.id, status: 'cancelled' });
+
+    /* The frozen "⏳ In line…" draft is replaced in place with the
+       cancelled note, on the task-derived draft id. */
+    const draftCalls = telegram.mock.calls.filter(([input]) => {
+      const url = String(input);
+      return url.includes('/sendRichMessageDraft') || url.includes('/sendMessageDraft');
+    });
+    expect(draftCalls.length).toBe(1);
+    const body = JSON.parse((draftCalls[0][1] as RequestInit).body as string);
+    expect(body.chat_id).toBe(42);
+    expect(body.draft_id).toBe(hermesDraftId(task.id));
+    expect(body.rich_message.markdown).toContain('⚠️ Cancelled');
+    expect(body.rich_message.markdown).toContain('stopped');
   });
 });
 

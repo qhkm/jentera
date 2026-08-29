@@ -27,7 +27,7 @@ import { dispatchRuntimeRun, measuredUsageOf, stopRuntimeTask } from './run-task
 import { finalizeRuntimeUsage, RuntimeBudgetExceeded } from './usage';
 import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
 import { publishRunProgressSafely } from './progress';
-import { deliverTelegramDraft } from '../telegram-delivery';
+import { deliverTelegramDraft, settleCancelledDraft } from '../telegram-delivery';
 import { useCredential } from '../connections';
 import { hermesDraftId, sendTyping, TelegramDraftStream } from '../connectors/telegram';
 import { runtimeModelKeyNeedsRotation } from './openrouter-keys';
@@ -236,6 +236,7 @@ export async function handleRuntimeMessage(
           'cancelled',
           stopped ? measuredUsageOf(stopped) ?? undefined : undefined,
         ));
+        await settleCancelledDraft(env, message.businessId, payload.targetTaskId as string);
         break;
       }
       case 'run': {
