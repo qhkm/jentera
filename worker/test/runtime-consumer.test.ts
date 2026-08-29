@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { asOwner, asTenant, testEnv, truncateAll } from './harness';
 import { ensureProviderRuntime, handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
-import { enqueueRuntimeTask } from '../src/runtime/tasks';
+import { enqueueRuntimeTask, leaseRuntimeTask, nextWaitingRuntimeTaskId, runtimeQueuePosition } from '../src/runtime/tasks';
+import { wakeNextRuntimeTask } from '../src/runtime/consumer';
 import type { DesiredRuntime, ObservedRuntime, RuntimeProvider } from '../src/runtime';
 import { markRuntimeReady, storeRuntimeModelCredential } from '../src/agent-runtime';
 import { startRun } from '../src/runs';
@@ -184,6 +185,87 @@ describe('the runtime queue consumer', () => {
       { kind: 'upgrade', status: 'queued' },
     ]);
     expect(sent).toHaveLength(1);
+  });
+
+  it('parks a queued task behind an active run and schedules a lease-aligned watchdog', async () => {
+    const env = testEnv({ RUNTIME_RELEASE: '2026.08.27-1' });
+    const provider = new LocalRuntimeProvider();
+    const active = await provisionTask();
+    await handleRuntimeMessage(env, { version: 1, businessId: A, taskId: active.id }, { provider });
+
+    // Simulate an in-flight run: lease a fresh task by hand with a 300s horizon.
+    const running = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'provision', dedupeKey: 'watchdog:running',
+    }));
+    expect((await asTenant(A, (tx) =>
+      leaseRuntimeTask(tx, A, running.id, 'lease-token', 300))).outcome).toBe('leased');
+
+    const waiting = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'provision', dedupeKey: 'watchdog:waiting',
+    }));
+    const result = await handleRuntimeMessage(env, { version: 1, businessId: A, taskId: waiting.id }, { provider });
+    expect(result.action).toBe('requeue');
+    expect(result.reason).toContain('busy');
+    // Fresh 300s sibling lease → watchdog aligned to its horizon, capped at 120s.
+    expect(result.delaySeconds).toBe(120);
+    // The task stays parked in the durable queue, untouched.
+    expect((await taskStatus(waiting.id)).status).toBe('queued');
+  });
+
+  it('wakes the oldest waiting task when a task completes (Hermes-style FIFO)', async () => {
+    const sent: { businessId: string; taskId: string }[] = [];
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.08.27-1',
+      RUNTIME_QUEUE: { send: async (m: { businessId: string; taskId: string }) => { sent.push(m); } },
+    });
+    const provider = new LocalRuntimeProvider();
+    const enqueue = (key: string) => asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'provision', dedupeKey: key,
+    }));
+    const first = await enqueue('fifo:first');
+    await new Promise((r) => setTimeout(r, 10));
+    const second = await enqueue('fifo:second');
+    await new Promise((r) => setTimeout(r, 10));
+    const third = await enqueue('fifo:third');
+
+    // No one is running yet: a wake picks the oldest (first).
+    await wakeNextRuntimeTask(env, A);
+    expect(sent.map((m) => m.taskId)).toEqual([first.id]);
+
+    // Completing the first must wake the next oldest (second), and so on.
+    sent.length = 0;
+    await handleRuntimeMessage(env, { version: 1, businessId: A, taskId: first.id }, { provider });
+    expect((await taskStatus(first.id)).status).toBe('completed');
+    expect(sent.map((m) => m.taskId)).toEqual([second.id]);
+
+    sent.length = 0;
+    await handleRuntimeMessage(env, { version: 1, businessId: A, taskId: second.id }, { provider });
+    expect(sent.map((m) => m.taskId)).toEqual([third.id]);
+
+    // Third completes: nothing left to wake.
+    sent.length = 0;
+    await handleRuntimeMessage(env, { version: 1, businessId: A, taskId: third.id }, { provider });
+    expect(sent).toEqual([]);
+  });
+
+  it('reports how many tasks are ahead for queue acknowledgements', async () => {
+    const active = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'provision', dedupeKey: 'pos:active',
+    }));
+    expect((await asTenant(A, (tx) =>
+      leaseRuntimeTask(tx, A, active.id, 'lease-token', 300))).outcome).toBe('leased');
+    await new Promise((r) => setTimeout(r, 10));
+    const b = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, { kind: 'provision', dedupeKey: 'pos:b' }));
+    await new Promise((r) => setTimeout(r, 10));
+    const c = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, { kind: 'provision', dedupeKey: 'pos:c' }));
+
+    const ahead = (id: string) => asTenant(A, (tx) => runtimeQueuePosition(tx, A, id));
+    expect(await ahead(active.id)).toBe(0);
+    expect(await ahead(b.id)).toBe(1);
+    expect(await ahead(c.id)).toBe(2);
+
+    // FIFO next-in-line is b (oldest waiting), not the most recent arrival.
+    expect(await asTenant(A, (tx) => nextWaitingRuntimeTaskId(tx, A))).toBe(b.id);
   });
 });
 

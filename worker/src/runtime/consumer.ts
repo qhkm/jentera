@@ -16,6 +16,7 @@ import {
   enqueueRuntimeTask,
   exhaustRuntimeTask,
   leaseRuntimeTask,
+  nextWaitingRuntimeTaskId,
   renewRuntimeTaskLease,
   retryRuntimeTask,
   type RuntimeTask,
@@ -87,6 +88,19 @@ export async function signalRuntimeTask(
   await env.RUNTIME_QUEUE.send({ version: 1, businessId, taskId });
 }
 
+/** Signal the oldest waiting task now that a slot just freed — the FIFO
+    wake that makes new messages behave like a Hermes session queue instead
+    of a racy poll. Safe to fire from any terminal path: the lease CAS and
+    the NOT EXISTS sibling guard let exactly one waiting task win. */
+export async function wakeNextRuntimeTask(
+  env: Env,
+  businessId: string,
+): Promise<void> {
+  const nextId = await withTenant(env, businessId, (tx) =>
+    nextWaitingRuntimeTaskId(tx, businessId));
+  if (nextId) await signalRuntimeTask(env, businessId, nextId).catch(() => {});
+}
+
 export async function handleRuntimeMessage(
   env: Env,
   message: RuntimeQueueMessage,
@@ -107,10 +121,18 @@ export async function handleRuntimeMessage(
   if (lease.outcome === 'missing') return { action: 'ack', reason: 'missing' };
   if (lease.outcome === 'done') return { action: 'ack', reason: 'already_done' };
   if (lease.outcome === 'busy') {
+    /* The task is already parked in runtime_task (durable truth) while a
+       sibling holds the slot. Wake-on-release will signal it the moment the
+       slot frees, so this requeue is only a watchdog — schedule it against
+       the sibling's lease horizon instead of hammering the queue every 2s. */
+    const remainingMs = lease.siblingLeaseExpiresAt
+      ? Math.max(0, new Date(lease.siblingLeaseExpiresAt).getTime() - Date.now())
+      : 0;
+    const delaySeconds = Math.min(Math.max(Math.ceil(remainingMs / 1_000) + 5, 15), 120);
     return {
       action: 'requeue',
-      delaySeconds: BUSY_RETRY_SECONDS,
-      reason: 'business runtime is busy',
+      delaySeconds,
+      reason: 'business runtime is busy — queued behind an active run',
     };
   }
 
@@ -399,6 +421,7 @@ export async function handleRuntimeMessage(
             : outcome.remoteStatus === 'completed' ? 'completed' : 'failed';
           await publishRunProgressSafely(env, message.businessId, lease.task.runId, progress);
         }
+        await wakeNextRuntimeTask(env, message.businessId);
         return { action: 'ack', reason: 'completed' };
       }
       default:
@@ -417,6 +440,7 @@ export async function handleRuntimeMessage(
     if (!completed) {
       return { action: 'retry', delaySeconds: 10, reason: 'runtime task lease was lost' };
     }
+    await wakeNextRuntimeTask(env, message.businessId);
     return { action: 'ack', reason: 'completed' };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
@@ -477,6 +501,7 @@ export async function handleRuntimeMessage(
       if (lease.task.kind === 'run' && lease.task.runId) {
         await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'failed');
       }
+      await wakeNextRuntimeTask(env, message.businessId);
       return { action: 'ack', reason: 'failed' };
     }
     await withTenant(env, message.businessId, (tx) =>

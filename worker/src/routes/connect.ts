@@ -38,7 +38,7 @@ import { finishRun, recentWork, recordWork, startRun } from '../runs';
 import { prepareHermesAgent, retrieve } from '../ask';
 import { publishRuntimeTask, runtimeFor, signalRuntimeTask } from '../runtime';
 import { getRuntime } from '../agent-runtime';
-import { enqueueRuntimeTask, runtimeTaskByDedupeKey } from '../runtime/tasks';
+import { enqueueRuntimeTask, runtimeQueuePosition, runtimeTaskByDedupeKey } from '../runtime/tasks';
 import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
 import { deliverTelegramDraft, type TelegramIncoming } from '../telegram-delivery';
 import { admitPaidAgentRun } from '../request-guard';
@@ -510,10 +510,12 @@ async function handleDurableIncoming(
 
   const prepared = prepareHermesAgent(incoming.text, facts, work);
   const dedupeKey = `telegram:${connectionId}:${incoming.chatId}:${incoming.messageId}`;
+  let inserted = false;
   const created = await withTenant(env, businessId, async (tx) => {
     await tx`select pg_advisory_xact_lock(hashtextextended(${dedupeKey}, 0))`;
     const existing = await runtimeTaskByDedupeKey(tx, businessId, dedupeKey);
     if (existing) return existing;
+    inserted = true;
 
     const run = await startRun(tx, businessId, {
       kind: 'ask',
@@ -556,12 +558,26 @@ async function handleDurableIncoming(
   await signalRuntimeTask(env, businessId, created.id);
   const token = telegramToken ?? await withTenant(env, businessId, (tx) =>
     useCredential(env, tx, connectionId));
+
+  /* While a run is active, acknowledge the session immediately so the
+     owner knows their message is queued (Hermes-style) rather than staring
+     at a blank draft with no signal. The consumer overwrites this draft
+     the moment the run actually starts. */
+  let draftText = '';
+  if (inserted && created.status === 'queued') {
+    const ahead = await withTenant(env, businessId, (tx) =>
+      runtimeQueuePosition(tx, businessId, created.id));
+    if (ahead > 0) {
+      draftText = `⏳ In line (position #${ahead + 1}) — I'll answer right after the current request.`;
+    }
+  }
+
   if (incoming.privateChat) {
     await sendMessageDraft(
       token,
       incoming.chatId,
       hermesDraftId(created.id),
-      '',
+      draftText,
     ).catch(() => {});
     await sendTyping(token, incoming.chatId).catch(() => {});
   } else {

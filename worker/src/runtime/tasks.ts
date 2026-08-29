@@ -119,7 +119,7 @@ export async function runtimeTaskForRun(
 
 export type LeaseResult =
   | { outcome: 'leased'; task: RuntimeTask }
-  | { outcome: 'busy' }
+  | { outcome: 'busy'; siblingLeaseExpiresAt: Date | null }
   | { outcome: 'done' }
   | { outcome: 'missing' };
 
@@ -156,14 +156,66 @@ export async function leaseRuntimeTask(
       current.status === 'exhausted') {
     return { outcome: 'done' };
   }
-  if (current.status === 'leased') return { outcome: 'busy' };
+  if (current.status === 'leased') {
+    /* This very task is already being processed by another delivery; use
+       its own lease horizon to schedule the watchdog. */
+    return { outcome: 'busy', siblingLeaseExpiresAt: current.lease_expires_at };
+  }
 
   /* CAS lease. The NOT EXISTS guard stands in for the old separate
      "other leased row" check: under the advisory lock no contender can be
      mid-lease, so any sibling 'leased' row is a committed, still-active task
      and must win. Same row-lock behavior as before, one round trip less. */
   const [leased] = await tx<TaskRow[]>`\n    update runtime_task\n       set status = 'leased', lease_token = ${leaseToken},\n           lease_expires_at = now() + (${leaseSeconds} * interval '1 second'),\n           last_error = null, updated_at = now()\n     where id = ${taskId} and business_id = ${businessId}\n       and status in ('queued','failed') and available_at <= now()\n       and not exists (\n         select 1 from runtime_task sibling\n          where sibling.business_id = ${businessId}\n            and sibling.status = 'leased'\n            and sibling.id <> ${taskId}\n       )\n    returning ${tx.unsafe(cols)}`;
-  return leased ? { outcome: 'leased', task: task(leased) } : { outcome: 'busy' };
+  if (leased) return { outcome: 'leased', task: task(leased) };
+
+  /* A sibling holds the slot. Hand back its lease horizon so the consumer
+     can schedule a precise watchdog instead of polling every couple of
+     seconds while the waiting task is parked safely in this table. */
+  const [sibling] = await tx<{ lease_expires_at: Date | null }[]>`
+    select lease_expires_at
+      from runtime_task
+     where business_id = ${businessId} and status = 'leased'
+     limit 1`;
+  return { outcome: 'busy', siblingLeaseExpiresAt: sibling?.lease_expires_at ?? null };
+}
+
+/** Oldest task still waiting for a free slot — the FIFO next-in-line.
+    Hermes-style: a new message queues behind whatever is already ahead. */
+export async function nextWaitingRuntimeTaskId(
+  tx: postgres.TransactionSql,
+  businessId: string,
+): Promise<string | null> {
+  const [row] = await tx<{ id: string }[]>`
+    select id
+      from runtime_task
+     where business_id = ${businessId}
+       and status in ('queued', 'failed')
+       and available_at <= now()
+     order by created_at asc, id asc
+     limit 1`;
+  return row?.id ?? null;
+}
+
+/** Number of active-or-waiting tasks strictly older than taskId.
+    >0 means the task that just arrived is behind at least the running
+    one (#ahead + 1 = position in line). */
+export async function runtimeQueuePosition(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+): Promise<number> {
+  const [row] = await tx<{ ahead: number }[]>`
+    select count(*)::int as ahead
+      from runtime_task
+     where business_id = ${businessId}
+       and status in ('queued', 'failed', 'leased')
+       and (created_at, id) < (
+         select created_at, id
+           from runtime_task
+          where business_id = ${businessId} and id = ${taskId}
+       )`;
+  return row?.ahead ?? 0;
 }
 
 export async function completeRuntimeTask(
