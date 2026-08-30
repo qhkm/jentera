@@ -1,8 +1,8 @@
 /* ============================================================
-   The one Repository implementation, over localStorage.
+   The browser-backed Repository implementation.
 
-   Anonymous visitors keep this forever — it is the no-signup demo.
-   Slice 1 adds RemoteRepository beside it; no consumer changes.
+   It is durable localStorage in development and tab-scoped sessionStorage in
+   production. RemoteRepository remains the source of truth after sign-in.
    ============================================================ */
 
 import * as store from '@/lib/storage';
@@ -29,7 +29,7 @@ import { NeedsAccountError } from './types';
 function collectPrefixed<T>(prefix: string, fallback: T): Record<string, T> {
   const out: Record<string, T> = {};
   try {
-    for (const k of Object.keys(localStorage)) {
+    for (const k of store.keys()) {
       if (!k.startsWith(prefix)) continue;
       out[k.slice(prefix.length)] = store.getJSON<T>(k, fallback);
     }

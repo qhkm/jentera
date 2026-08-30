@@ -54,6 +54,61 @@ function response(
   });
 }
 
+export interface BoundedRequest {
+  request: Request;
+  rejection: Response | null;
+}
+
+/**
+ * Enforce the body cap without destroying the body needed by the route.
+ *
+ * A cloned stream can deadlock under tee backpressure while its original
+ * branch remains unread. Consume the incoming stream once, stop after the
+ * first over-limit chunk, and rebuild only accepted requests from the bounded
+ * bytes. This also covers requests whose transfer encoding supplies no
+ * Content-Length header.
+ */
+export async function boundRequestBody(
+  request: Request,
+  cors: Record<string, string>,
+): Promise<BoundedRequest> {
+  const declaredLength = request.headers.get('Content-Length');
+  if (declaredLength !== null) {
+    const length = Number(declaredLength);
+    if (!Number.isFinite(length) || length < 0 || length > MAX_API_BODY_BYTES) {
+      return { request, rejection: response(413, 'request body too large', cors) };
+    }
+    return { request, rejection: null };
+  }
+  if (request.body === null) return { request, rejection: null };
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_API_BODY_BYTES) {
+        await reader.cancel().catch(() => {});
+        return { request, rejection: response(413, 'request body too large', cors) };
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return { request, rejection: response(400, 'request body unreadable', cors) };
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { request: new Request(request, { body: bytes }), rejection: null };
+}
+
 function requestIdentity(request: Request, url: URL): string {
   const hook = url.pathname.match(
     /^\/api\/webhooks\/telegram\/([0-9a-f-]{36})\/([0-9a-f-]{36})$/i,
@@ -87,39 +142,6 @@ export async function guardApiRequest(
 
   if (url.pathname.length + url.search.length > 8_192) {
     return response(414, 'request target too long', cors);
-  }
-
-  const declaredLength = request.headers.get('Content-Length');
-  if (declaredLength !== null) {
-    const length = Number(declaredLength);
-    if (!Number.isFinite(length) || length < 0 || length > MAX_API_BODY_BYTES) {
-      return response(413, 'request body too large', cors);
-    }
-  } else if (request.body !== null) {
-    /* No Content-Length (e.g. Transfer-Encoding: chunked) bypassed the
-       check above. Measure the real body through a clone — reading the
-       clone leaves the original intact for the route — and refuse
-       anything over the cap. A bounded read also prevents a slow trickle
-       from pinning the isolate forever; the stream only makes progress
-       while we pull. */
-    const probe = request.clone();
-    try {
-      const reader = probe.body.getReader();
-      let total = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        total += value.byteLength;
-        if (total > MAX_API_BODY_BYTES) break;
-      }
-      await reader.cancel().catch(() => {});
-      if (total > MAX_API_BODY_BYTES) {
-        return response(413, 'request body too large', cors);
-      }
-    } catch {
-      /* Unreadable body — hand it to the route, whose JSON parse will
-         fail loudly rather than accept garbage. */
-    }
   }
 
   const identity = requestIdentity(request, url);

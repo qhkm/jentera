@@ -2,7 +2,7 @@
    Chooses which Repository the app runs on.
 
    Signed in  → RemoteRepository, the server is the source of truth.
-   Otherwise  → LocalRepository, the no-signup demo, unchanged.
+   Otherwise  → LocalRepository, the tab-scoped no-signup preview.
 
    The choice has to be made before RepositoryProvider binds its ref,
    which is why it lives here rather than inside the provider.
@@ -23,7 +23,7 @@ type Chosen = { repo: LocalRepository | RemoteRepository; mode: 'local' | 'remot
 
 /* `mode` was computed and then thrown away, so nothing downstream could
    tell an authenticated session from the anonymous demo — which is why
-   /app was reachable by setting a localStorage flag in devtools. */
+   /app was reachable by setting a browser-storage flag in devtools. */
 const SignedInContext = createContext(false);
 
 /**

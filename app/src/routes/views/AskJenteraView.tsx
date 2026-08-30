@@ -262,7 +262,7 @@ export default function AskJenteraView({
               <button
                 key={key}
                 type="button"
-                className="chip shrink-0 hover:border-brand-line"
+                className="chip shrink-0 border-0"
                 onClick={() => submit(t(`ask.prompt.${key}`))}
               >
                 {t(`ask.prompt.${key}`)}
@@ -363,21 +363,21 @@ export default function AskJenteraView({
               aria-autocomplete="list"
               placeholder={compact ? t('ask.placeholder.short') : t('ask.placeholder')}
               aria-label={t('ask.placeholder')}
-              className="input max-h-[120px] w-full min-w-0 flex-1 resize-none"
+              className="input max-h-[120px] w-full min-w-0 flex-1 resize-none border-0"
             />
             {signedIn ? (
               <Button
                 type="button"
                 variant="outline"
                 disabled={!draft.trim()}
-                className="shrink-0 px-3 sm:px-4"
+                className="shrink-0 border-0 px-3 sm:px-4"
                 onClick={() => submit(undefined, 'work')}
               >
                 <span className="sm:hidden">{t('ask.work.short')}</span>
                 <span className="hidden sm:inline">{t('ask.work')}</span>
               </Button>
             ) : null}
-            <Button type="submit" disabled={!draft.trim()} className="shrink-0 px-4 sm:px-6">
+            <Button type="submit" disabled={!draft.trim()} className="shrink-0 border-0 px-4 sm:px-6">
               <span className="sm:hidden">{t('chat.send')}</span>
               <span className="hidden sm:inline">{t('ask.send')}</span>
             </Button>

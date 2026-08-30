@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { admitPaidAgentRun, guardApiRequest, MAX_API_BODY_BYTES } from '../src/request-guard';
+import {
+  admitPaidAgentRun,
+  boundRequestBody,
+  guardApiRequest,
+  MAX_API_BODY_BYTES,
+} from '../src/request-guard';
 import { testEnv } from './harness';
 
 const cors = { 'Access-Control-Allow-Origin': 'https://jentera.ai' };
@@ -49,7 +54,37 @@ describe('pre-route API request guard', () => {
       method: 'POST',
       headers: { 'Content-Length': String(MAX_API_BODY_BYTES + 1) },
     });
-    const response = await guardApiRequest(req, env, new URL(req.url), cors);
+    const { rejection: response } = await boundRequestBody(req, cors);
+
+    expect(response?.status).toBe(413);
+    expect(calls).toBe(0);
+  });
+
+  it('preserves an accepted body for the route after measuring it', async () => {
+    const req = request('/api/runs/ingest', {
+      method: 'POST',
+      body: JSON.stringify({ url: 'https://example.com' }),
+    });
+    expect(req.headers.has('Content-Length')).toBe(false);
+
+    const bounded = await boundRequestBody(req, cors);
+
+    expect(bounded.rejection).toBeNull();
+    await expect(bounded.request.json()).resolves.toEqual({ url: 'https://example.com' });
+  });
+
+  it('rejects oversized bodies when Content-Length is absent', async () => {
+    let calls = 0;
+    const env = testEnv({
+      API_BURST: { limit: async () => { calls += 1; return { success: true }; } },
+    });
+    const req = request('/api/runs/ingest', {
+      method: 'POST',
+      body: new Uint8Array(MAX_API_BODY_BYTES + 1),
+    });
+    expect(req.headers.has('Content-Length')).toBe(false);
+
+    const { rejection: response } = await boundRequestBody(req, cors);
 
     expect(response?.status).toBe(413);
     expect(calls).toBe(0);
