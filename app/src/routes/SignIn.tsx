@@ -12,13 +12,27 @@
 
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { LandingFooter, LandingHeader } from '@/components/landing/LandingChrome';
 import { trackActivation } from '@/lib/analytics';
+import * as store from '@/lib/storage';
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
 type Mode = 'signin' | 'signup';
 type BusyAction = 'password' | 'link' | null;
+
+function AuthChrome({ light, onToggle }: { light: boolean; onToggle: () => void }) {
+  return (
+    <header className="auth-chrome absolute inset-x-0 top-0 z-20 flex items-center justify-between px-5 py-5 sm:px-8 sm:py-7">
+      <Link to="/" aria-label="Jentera home" className="font-pixel font-pixel-logo text-xl tracking-wide text-brand">
+        Jentera
+      </Link>
+      <button type="button" className="auth-theme-toggle" onClick={onToggle}>
+        <span className="size-1.5 rounded-full bg-brand" aria-hidden="true" />
+        {light ? 'Dark mode' : 'Light mode'}
+      </button>
+    </header>
+  );
+}
 
 /* Errors the server can put in the query string when it bounces the
    browser back here. Mapped rather than printed, so a crafted ?error=
@@ -39,6 +53,14 @@ export default function SignIn() {
   const [busy, setBusy] = useState<BusyAction>(null);
   const [sent, setSent] = useState<'link' | 'verify' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [light, setLight] = useState(() =>
+    document.documentElement.classList.contains('theme-light') ||
+    store.get(store.KEYS.theme, 'dark') === 'light');
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('theme-light', light);
+    store.set(store.KEYS.theme, light ? 'light' : 'dark');
+  }, [light]);
 
   useEffect(() => {
     /* Prevent a previous account's private owner conversation appearing if
@@ -122,9 +144,9 @@ export default function SignIn() {
 
   if (sent) {
     return (
-      <>
-        <LandingHeader />
-        <main className="auth-shell mx-auto w-full max-w-[32rem] px-5 py-16 sm:px-6 sm:py-24">
+      <div className="auth-page relative min-h-dvh">
+        <AuthChrome light={light} onToggle={() => setLight((value) => !value)} />
+        <main className="auth-shell mx-auto w-full max-w-[32rem] px-5 pb-16 pt-28 sm:px-6 sm:py-24">
           <div className="auth-card card gap-0 p-6 sm:p-9">
             <span className="eyebrow text-brand">Secure access</span>
             <h1 className="mt-3 font-pixel text-2xl tracking-tight">Check your inbox</h1>
@@ -143,15 +165,14 @@ export default function SignIn() {
             </p>
           </div>
         </main>
-        <LandingFooter />
-      </>
+      </div>
     );
   }
 
   return (
-    <>
-      <LandingHeader />
-      <main className="auth-shell mx-auto w-full max-w-[32rem] px-5 py-16 sm:px-6 sm:py-24">
+    <div className="auth-page relative min-h-dvh">
+      <AuthChrome light={light} onToggle={() => setLight((value) => !value)} />
+      <main className="auth-shell mx-auto w-full max-w-[32rem] px-5 pb-16 pt-28 sm:px-6 sm:py-24">
         <div className="auth-card card gap-0 p-6 sm:p-9">
           <span className="eyebrow text-brand">Your private business workspace</span>
           <h1 className="mt-3 font-pixel text-2xl tracking-tight">
@@ -270,7 +291,6 @@ export default function SignIn() {
           </p>
         </div>
       </main>
-      <LandingFooter />
-    </>
+    </div>
   );
 }

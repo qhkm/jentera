@@ -340,6 +340,36 @@
      A borderless page still needs hierarchy. The auth surface separates by
      value and shadow; fields use a recessed fill; the primary action uses the
      normal filled button treatment instead of appearing as another text link. */
+  .auth-page {
+    background:
+      radial-gradient(circle at 50% 10%, rgb(var(--accent-green-rgb) / .08), transparent 34rem),
+      var(--bg);
+  }
+  .auth-shell {
+    display: flex;
+    min-height: 100dvh;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .auth-chrome { pointer-events: none; }
+  .auth-chrome > * { pointer-events: auto; }
+  .auth-theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    min-height: 2.5rem;
+    padding-inline: .75rem;
+    font-family: var(--font-nav);
+    font-size: 11px;
+    letter-spacing: .04em;
+    color: var(--text-secondary);
+    transition: color var(--dur-fast) var(--ease-signature),
+                background-color var(--dur-fast) var(--ease-signature);
+  }
+  .auth-theme-toggle:hover {
+    background: rgb(var(--border-ink) / .05);
+    color: var(--text);
+  }
   .auth-card {
     background: var(--ov-surface);
     box-shadow: 0 24px 70px rgb(0 0 0 / .2);
@@ -375,6 +405,12 @@
   .site-theme-light .auth-card {
     background: var(--lp-warm);
     box-shadow: 0 24px 70px rgb(0 0 0 / .08);
+  }
+  .theme-light .auth-page,
+  .site-theme-light .auth-page {
+    background:
+      radial-gradient(circle at 50% 10%, rgb(var(--accent-green-rgb) / .07), transparent 34rem),
+      var(--bg);
   }
   .theme-light .auth-google,
   .site-theme-light .auth-google { background: rgb(0 0 0 / .025); }
