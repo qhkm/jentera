@@ -84,3 +84,21 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Borderless visual direction. Kept behind one root class so the experiment
+   is reversible without touching every component call site. Transparent
+   borders preserve the established layout metrics while removing every
+   visible frame and separator. The loader still needs its contrasting edge
+   to communicate progress. */
+html.ui-borderless :where(*):not(.loading-ring),
+html.ui-borderless :where(*):not(.loading-ring)::before,
+html.ui-borderless :where(*):not(.loading-ring)::after {
+  border-color: transparent;
+}
+
+/* Inputs normally communicate focus by changing their border. Restore a real
+   keyboard outline now that the borderless theme intentionally hides it. */
+html.ui-borderless :where(input, textarea, select):focus-visible {
+  outline: 2px solid var(--accent-green);
+  outline-offset: 2px;
+}
