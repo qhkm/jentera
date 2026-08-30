@@ -148,7 +148,7 @@ export default function AskJenteraView({
         <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.chat.desc')}</p>
       </header>
 
-      <Card className="min-h-0 flex-1 gap-0 rounded-none border-x-0 border-b-0 p-0 lg:min-h-[440px] lg:flex-none lg:rounded-card lg:border">
+      <Card className="min-h-0 flex-1 gap-0 rounded-none border-0 p-0 lg:min-h-[440px] lg:flex-none lg:rounded-card">
           {signedIn ? (
             <WorkStatusBar
               state={pulseState}
@@ -257,7 +257,7 @@ export default function AskJenteraView({
           </div>
 
           {/* Prompt chips */}
-          <div className="flex shrink-0 gap-2 overflow-x-auto border-t border-rail px-4 pt-3 [scrollbar-width:none] sm:px-5 lg:flex-wrap lg:overflow-visible">
+          <div className="flex shrink-0 gap-2 overflow-x-auto px-4 pt-3 [scrollbar-width:none] sm:px-5 lg:flex-wrap lg:overflow-visible">
             {ASK_PROMPTS.map((key) => (
               <button
                 key={key}

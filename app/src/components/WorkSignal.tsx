@@ -43,7 +43,7 @@ export function WorkStatusBar({
 }) {
   return (
     <div
-      className="flex shrink-0 items-center gap-3 border-b border-rail px-4 py-3 sm:px-5"
+      className="flex shrink-0 items-center gap-3 px-4 py-3 sm:px-5"
       role="status"
       aria-live="polite"
       aria-atomic="true"
