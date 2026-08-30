@@ -96,6 +96,18 @@ html.ui-borderless :where(*):not(.loading-ring)::after {
   border-color: transparent;
 }
 
+/* Secondary actions otherwise collapse into plain labels. Restore only the
+   outline variant at a quiet 15% ink; primary buttons already have a fill,
+   ghost buttons are deliberately low-emphasis, and any explicit `border-0`
+   (such as the Ask composer actions) still has zero border width. */
+html.ui-borderless .btn-outline {
+  border-color: var(--ov-line-3);
+}
+
+html.ui-borderless .btn-outline:hover:not(:where(:disabled, [aria-disabled="true"])) {
+  border-color: rgb(var(--border-ink) / .3);
+}
+
 /* Inputs normally communicate focus by changing their border. Restore a real
    keyboard outline now that the borderless theme intentionally hides it. */
 html.ui-borderless :where(input, textarea, select):focus-visible {
