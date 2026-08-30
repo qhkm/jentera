@@ -100,11 +100,17 @@ that staging status is not counted as enforcement.
 
 ## Deploy
 
-The Worker and frontend must be deployed from the reconciled branch. A later
-database hotfix temporarily superseded the original security Worker, so the old
-version ID is historical evidence, not proof of the current release. After deploy,
-verify `/api/health`, authenticated `/api/state`, the live response headers, and the
-frontend bundle hash.
+- Worker `aisar-api` version `53a334d7-057b-4e74-835c-619cf9220a40` deployed
+  from the reconciled release. `/api/health` returns 200 on both hostnames;
+  three consecutive database-backed session checks completed without the prior
+  cross-request I/O exception; an oversized body without `Content-Length`
+  returned 413.
+- Frontend Pages deployment `cd712608` is live. `jentera.ai` serves bundle
+  `/assets/index-DlS9S_in.js`; `/`, `/onboard`, `/setup`, and `/app` return 200.
+- Live `/app` headers verified: `X-Frame-Options: DENY`,
+  `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and the
+  documented `Content-Security-Policy-Report-Only`. CSP enforcement and HSTS
+  remain explicit follow-ups rather than completed controls.
 
 ## Accepted / follow-ups
 
