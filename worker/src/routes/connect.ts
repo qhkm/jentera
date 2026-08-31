@@ -368,7 +368,7 @@ async function telegramWebhook(
       if (!active) return null;
       const outcome = await cancelRuntimeTask(tx, businessId, active.id);
       if (!outcome) return null;
-      if (outcome.changed && !outcome.task.remoteRunId) {
+      if (outcome.changed) {
         await finalizeRuntimeUsage(tx, businessId, outcome.task.id, 'cancelled', {
           inputTokens: 0,
           outputTokens: 0,

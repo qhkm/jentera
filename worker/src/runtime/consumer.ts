@@ -230,15 +230,26 @@ export async function handleRuntimeMessage(
         if (typeof payload?.targetTaskId !== 'string' || !uuid(payload.targetTaskId)) {
           throw new Error('runtime cancel target is invalid');
         }
-        const stopped = await stopRuntimeTask(
-          env, message.businessId, payload.targetTaskId, options.fetch,
-        );
+        let stopped: Awaited<ReturnType<typeof stopRuntimeTask>> = null;
+        try {
+          stopped = await stopRuntimeTask(
+            env, message.businessId, payload.targetTaskId, options.fetch,
+          );
+        } catch (error) {
+          /* A cold/unreachable sprite stop must not skip finalization — the
+             reservation would otherwise strand forever against the monthly
+             budget (see the 97002811 leak). Finalize with measured usage when
+             the runner answered, else zero; the runner-side stop is retried
+             by re-delivery of this control task. */
+          console.warn('[runtime] cancel stop failed; finalizing usage anyway', error);
+        }
         await withTenant(env, message.businessId, (tx) => finalizeRuntimeUsage(
           tx,
           message.businessId,
           payload.targetTaskId as string,
           'cancelled',
-          stopped ? measuredUsageOf(stopped) ?? undefined : undefined,
+          stopped ? measuredUsageOf(stopped) ?? { inputTokens: 0, outputTokens: 0 }
+            : { inputTokens: 0, outputTokens: 0 },
         ));
         await settleCancelledDraft(env, message.businessId, payload.targetTaskId as string);
         break;

@@ -18,7 +18,9 @@ import { asOwner, asTenant, req, signIn, testEnv, truncateAll } from './harness'
 import { handleRepo } from '../src/routes/repo';
 import { handleConnect } from '../src/routes/connect';
 import { saveConnection, telegramInternalChat, webhookSecret } from '../src/connections';
+import { startRun } from '../src/runs';
 import { enqueueRuntimeTask } from '../src/runtime/tasks';
+import { reserveRuntimeUsage } from '../src/runtime/usage';
 import type { Env } from '../src/env';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -586,6 +588,64 @@ describe('connections', () => {
       select id, status from runtime_task where id in (${task.id}, ${otherChatTask.id})`);
     expect(rows.find(({ id }) => id === task.id)?.status).toBe('cancelled');
     expect(rows.find(({ id }) => id === otherChatTask.id)?.status).toBe('queued');
+    const replies = fetch.mock.calls
+      .filter(([url]) => String(url).includes('/sendMessage'))
+      .map(([, init]) => JSON.parse(String(init?.body)) as { text: string });
+    expect(replies.some(({ text }) => text.includes('Stopped'))).toBe(true);
+  });
+
+  it('/stop finalizes usage for an in-flight run (remoteRunId) so the reservation cannot strand', async () => {
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
+    vi.stubGlobal('fetch', fetch);
+    const send = vi.fn(async () => {});
+    env = testEnv({ RUNTIME_QUEUE: { send } });
+    const paired = await pairTelegramChat(42);
+    fetch.mockClear();
+
+    /* The 97002811 leak shape: task already reached the runner (remote_run_id
+       set) and has a 100k reserved usage row. /stop must finalize it regardless
+       of remoteRunId — previously the reservation sat 'reserved' forever and
+       killed the monthly budget. */
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite',
+      model: 'deepseek/deepseek-v4-flash-0731',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: 'telegram:stop-remote-test',
+      payload: {
+        telegram: {
+          connectionId: paired.connectionId,
+          chatId: 42,
+          privateChat: true,
+          liveMessageId: 55,
+        },
+      },
+    }));
+    await asTenant(A, (tx) => reserveRuntimeUsage(
+      tx, A, task.id, 'deepseek/deepseek-v4-flash-0731'));
+    await asOwner((sql) => sql`
+      update runtime_task set remote_run_id = 'run-hermes-stop-1', remote_status = 'running'
+       where id = ${task.id}`);
+
+    const response = await telegramHook(paired.connectionId, paired.secret, 42, '/stop', 23);
+    expect(response.status).toBe(200);
+
+    const [state] = await asTenant(A, (tx) => tx<{
+      task_status: string; usage_status: string; usage_input: string;
+    }[]>`
+      select t.status as task_status, u.status as usage_status, u.input_tokens::text as usage_input
+        from runtime_task t
+        join runtime_usage u on u.runtime_task_id = t.id
+       where t.id = ${task.id}`);
+    expect(state).toEqual({
+      task_status: 'cancelled', usage_status: 'cancelled', usage_input: '0',
+    });
+
+    /* The control-plane cancel task is still published so the consumer stops
+       the remote run; finalize already happened in the webhook, so the
+       consumer's second finalize is a no-op (reservation is not stranded). */
+    expect(send).toHaveBeenCalled();
     const replies = fetch.mock.calls
       .filter(([url]) => String(url).includes('/sendMessage'))
       .map(([, init]) => JSON.parse(String(init?.body)) as { text: string });

@@ -147,13 +147,16 @@ describe('runtime provisioning route', () => {
 
     const [state] = await asOwner((sql) => sql<{
       task_status: string; run_status: string; usage_status: string;
+      usage_input: string; usage_output: string;
     }[]>`
-      select t.status as task_status, r.status as run_status, u.status as usage_status
+      select t.status as task_status, r.status as run_status, u.status as usage_status,
+             u.input_tokens::text as usage_input, u.output_tokens::text as usage_output
         from runtime_task t join run r on r.id = t.run_id
         join runtime_usage u on u.runtime_task_id = t.id
        where t.id = ${task.id}`);
     expect(state).toEqual({
-      task_status: 'cancelled', run_status: 'cancelled', usage_status: 'reserved',
+      task_status: 'cancelled', run_status: 'cancelled', usage_status: 'cancelled',
+      usage_input: '0', usage_output: '0',
     });
     const [{ count }] = await asOwner((sql) => sql<{ count: string }[]>`
       select count(*)::text as count from runtime_task where kind = 'cancel'`);

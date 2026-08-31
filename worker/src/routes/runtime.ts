@@ -118,12 +118,10 @@ export async function handleRuntime(
       const outcome = await cancelRuntimeTask(tx, identity.businessId, cancel[1]);
       if (!outcome) return null;
       if (outcome.changed && outcome.task.kind === 'run') {
-        if (!outcome.task.remoteRunId) {
-          await finalizeRuntimeUsage(tx, identity.businessId, outcome.task.id, 'cancelled', {
-            inputTokens: 0,
-            outputTokens: 0,
-          });
-        }
+        await finalizeRuntimeUsage(tx, identity.businessId, outcome.task.id, 'cancelled', {
+          inputTokens: 0,
+          outputTokens: 0,
+        });
         if (outcome.task.runId) {
           await finishRun(tx, identity.businessId, outcome.task.runId, 'cancelled', {
             runtimeTaskId: outcome.task.id,
