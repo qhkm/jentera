@@ -103,10 +103,10 @@ async function bootstrapRuntime(
   const modelName = env.AISAR_MODEL_NAME?.trim() ?? '';
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('RUNTIME_BUNDLE_COMMIT is invalid');
   if (modelProvider !== 'openrouter') throw new Error('Jentera model provider is not allowed');
-  if (modelBase !== 'https://openrouter.ai/api/v1') {
-    throw new Error('Jentera OpenRouter endpoint is not pinned');
+  if (!['https://openrouter.ai/api/v1', 'https://router.fmcv.my'].includes(modelBase)) {
+    throw new Error('Jentera model endpoint is not pinned');
   }
-  if (!/^[A-Za-z0-9._~-]+\/[A-Za-z0-9._:~-]+$/.test(modelName)) {
+  if (!/^[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._:~-]+)?$/.test(modelName)) {
     throw new Error('Jentera model name is invalid');
   }
   if (!runtime.providerId || !runtime.providerUrl) throw new Error('provider runtime is incomplete');

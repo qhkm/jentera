@@ -21,16 +21,16 @@ def main() -> None:
         raise SystemExit("only the reviewed OpenRouter provider is allowed")
     if (
         parsed.scheme != "https"
-        or parsed.hostname != "openrouter.ai"
         or parsed.username
         or parsed.password
-        or parsed.path.rstrip("/") != "/api/v1"
         or parsed.query
         or parsed.fragment
     ):
-        raise SystemExit("OpenRouter base URL must be exactly https://openrouter.ai/api/v1")
-    if not re.fullmatch(r"[A-Za-z0-9._~-]+/[A-Za-z0-9._:~-]+", model_name):
-        raise SystemExit("OpenRouter model id is invalid")
+        raise SystemExit("model base URL must be https without credentials or query")
+    if base_url.rstrip("/") not in ("https://openrouter.ai/api/v1", "https://router.fmcv.my"):
+        raise SystemExit("model base URL is not pinned")
+    if not re.fullmatch(r"[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._:~-]+)?", model_name):
+        raise SystemExit("model id is invalid")
     if key_env != "OPENROUTER_API_KEY":
         raise SystemExit("OpenRouter key must use OPENROUTER_API_KEY")
 

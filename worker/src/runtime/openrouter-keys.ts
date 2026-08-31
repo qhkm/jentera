@@ -95,6 +95,12 @@ export async function runtimeModelKey(
   runtimeName: string,
   options: { manager?: OpenRouterKeyManager } = {},
 ): Promise<string> {
+  const legacy = env.AISAR_MODEL_KEY?.trim() ?? '';
+  const legacyCanaries = new Set((env.RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS ?? '')
+    .split(',').map((value) => value.trim()).filter(Boolean));
+  /* The shared static inference key is the pin for listed businesses: it wins
+     over any stored OpenRouter credential and disables managed rotation. */
+  if (legacyCanaries.has(businessId) && legacy.length >= 20) return legacy;
   const current = await withTenant(env, businessId, (tx) =>
     getRuntimeModelCredential(env, tx, businessId));
   const rotateAt = Date.now() + ROTATE_BEFORE_DAYS * 24 * 60 * 60 * 1_000;
@@ -107,10 +113,6 @@ export async function runtimeModelKey(
   if (current && current.expiresAt.getTime() > rotateAt) return current.key;
 
   if (!manager) {
-    const legacyCanaries = new Set((env.RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS ?? '')
-      .split(',').map((value) => value.trim()).filter(Boolean));
-    const legacy = env.AISAR_MODEL_KEY?.trim() ?? '';
-    if (legacyCanaries.has(businessId) && legacy.length >= 20) return legacy;
     throw new Error('per-runtime OpenRouter key issuance is unavailable');
   }
 
@@ -129,6 +131,10 @@ export async function runtimeModelKeyNeedsRotation(
   env: Env,
   businessId: string,
 ): Promise<boolean> {
+  const legacy = env.AISAR_MODEL_KEY?.trim() ?? '';
+  const legacyCanaries = new Set((env.RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS ?? '')
+    .split(',').map((value) => value.trim()).filter(Boolean));
+  if (legacyCanaries.has(businessId) && legacy.length >= 20) return false;
   if (!env.AISAR_OPENROUTER_MANAGEMENT_KEY?.trim()) return false;
   const { runtime, current } = await withTenant(env, businessId, async (tx) => ({
     runtime: await getRuntime(tx, businessId),

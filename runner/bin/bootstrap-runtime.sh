@@ -94,12 +94,15 @@ hermes_installer_url="https://raw.githubusercontent.com/NousResearch/hermes-agen
   echo "only the reviewed OpenRouter provider is allowed" >&2
   exit 1
 }
-[[ "$model_base" == "https://openrouter.ai/api/v1" ]] || {
-  echo "OpenRouter base URL is not pinned" >&2
-  exit 1
-}
-[[ "$model_name" =~ ^[A-Za-z0-9._~-]+/[A-Za-z0-9._:~-]+$ ]] || {
-  echo "OpenRouter model id is invalid" >&2
+case "$model_base" in
+  "https://openrouter.ai/api/v1"|"https://router.fmcv.my") ;;
+  *)
+    echo "base URL is not pinned" >&2
+    exit 1
+    ;;
+esac
+[[ "$model_name" =~ ^[A-Za-z0-9._~-]+(/[A-Za-z0-9._:~-]+)?$ ]] || {
+  echo "model id is invalid" >&2
   exit 1
 }
 

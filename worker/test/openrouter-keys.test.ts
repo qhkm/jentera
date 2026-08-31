@@ -9,6 +9,7 @@ import {
   finalizeRuntimeModelKeyRotation,
   OpenRouterKeyManager,
   runtimeModelKey,
+  runtimeModelKeyNeedsRotation,
 } from '../src/runtime/openrouter-keys';
 import { asOwner, asTenant, testEnv, truncateAll } from './harness';
 
@@ -116,6 +117,21 @@ describe('per-runtime OpenRouter keys', () => {
     await expect(runtimeModelKey(
       testEnv({ AISAR_MODEL_KEY: 'legacy-canary-inference-key' }), A, name,
     )).rejects.toThrow(/issuance is unavailable/);
+  });
+
+  it('prefers the shared static key even when managed rotation is configured', async () => {
+    const name = await runtimeName(A);
+    const env = testEnv({
+      AISAR_MODEL_KEY: 'legacy-canary-inference-key',
+      RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS: A,
+      AISAR_OPENROUTER_MANAGEMENT_KEY: MANAGEMENT_KEY,
+    });
+    await asTenant(A, (tx) => claimRuntime(env, tx, A, {
+      provider: 'fly-sprite', providerName: name, release: '2026.08.28-3',
+      runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    }));
+    await expect(runtimeModelKey(env, A, name)).resolves.toBe('legacy-canary-inference-key');
+    await expect(runtimeModelKeyNeedsRotation(env, A)).resolves.toBe(false);
   });
 
   it('durably retries revocation if rotation cleanup initially fails', async () => {

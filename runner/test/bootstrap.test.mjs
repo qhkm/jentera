@@ -28,6 +28,14 @@ test('bootstrap refuses an unreviewed model endpoint before installing anything'
   assert.match(result.stderr, /base URL is not pinned/);
 });
 
+test('bootstrap and model config pin the reviewed plus customer-router endpoints', async () => {
+  const source = await readFile(SCRIPT, 'utf8');
+  assert.match(source, /https:\/\/openrouter\.ai\/api\/v1/);
+  assert.match(source, /https:\/\/router\.fmcv\.my/);
+  const configure = await readFile(CONFIGURE, 'utf8');
+  assert.match(configure, /https:\/\/router\.fmcv\.my/);
+});
+
 test('production runtime pins and proves its keyless search backend', async () => {
   const source = await readFile(SCRIPT, 'utf8');
   assert.match(source, /AISAR_WEB_SEARCH_BACKEND=%q.*ddgs/);
