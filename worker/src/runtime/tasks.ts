@@ -117,6 +117,23 @@ export async function runtimeTaskForRun(
   return row ? task(row) : null;
 }
 
+/** Latest cancellable run belonging to one Telegram chat. */
+export async function activeRuntimeRunTask(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  chatId: number,
+): Promise<RuntimeTask | null> {
+  const [row] = await tx<TaskRow[]>`
+    select ${tx.unsafe(cols)} from runtime_task
+     where business_id = ${businessId}
+       and kind = 'run'
+       and status in ('queued', 'leased', 'failed')
+       and payload #>> '{telegram,chatId}' = ${String(chatId)}
+     order by created_at desc
+     limit 1`;
+  return row ? task(row) : null;
+}
+
 export type LeaseResult =
   | { outcome: 'leased'; task: RuntimeTask }
   | { outcome: 'busy'; siblingLeaseExpiresAt: Date | null }

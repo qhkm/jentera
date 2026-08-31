@@ -36,9 +36,22 @@ import { finishRun, recentWork, recordWork, startRun } from '../runs';
 import { prepareHermesAgent, retrieve } from '../ask';
 import { publishRuntimeTask, runtimeFor, signalRuntimeTask } from '../runtime';
 import { getRuntime } from '../agent-runtime';
-import { enqueueRuntimeTask, runtimeQueuePosition, runtimeTaskByDedupeKey } from '../runtime/tasks';
+import {
+  activeRuntimeRunTask,
+  cancelRuntimeTask,
+  enqueueRuntimeTask,
+  runtimeQueuePosition,
+  runtimeTaskByDedupeKey,
+} from '../runtime/tasks';
 import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
-import { deliverTelegramDraft, persistLiveMessageId, type TelegramIncoming } from '../telegram-delivery';
+import { finalizeRuntimeUsage } from '../runtime/usage';
+import { publishRunProgressSafely } from '../runtime/progress';
+import {
+  deliverTelegramDraft,
+  persistLiveMessageId,
+  settleCancelledDraft,
+  type TelegramIncoming,
+} from '../telegram-delivery';
 import { admitPaidAgentRun } from '../request-guard';
 import {
   telegramPairingUrl,
@@ -347,6 +360,48 @@ async function telegramWebhook(
       ).catch(() => {});
     }
     return drop(internalChat === null ? 'internal owner chat is not paired' : 'sender is not paired owner');
+  }
+
+  if (/^\/(stop|cancel)(?:@[A-Za-z0-9_]+)?$/.test(incoming.text.trim())) {
+    const cancelled = await withTenant(env, businessId, async (tx) => {
+      const active = await activeRuntimeRunTask(tx, businessId, incoming.chatId);
+      if (!active) return null;
+      const outcome = await cancelRuntimeTask(tx, businessId, active.id);
+      if (!outcome) return null;
+      if (outcome.changed && !outcome.task.remoteRunId) {
+        await finalizeRuntimeUsage(tx, businessId, outcome.task.id, 'cancelled', {
+          inputTokens: 0,
+          outputTokens: 0,
+        });
+      }
+      if (outcome.changed && outcome.task.runId) {
+        await finishRun(tx, businessId, outcome.task.runId, 'cancelled', {
+          runtimeTaskId: outcome.task.id,
+          reason: 'owner_cancelled',
+        });
+      }
+      return outcome;
+    });
+
+    if (!cancelled) {
+      await sendMessage(token, incoming.chatId, 'Nothing is running right now.').catch(() => {});
+      return ok;
+    }
+    if (cancelled.changed && !cancelled.task.remoteRunId) {
+      await settleCancelledDraft(env, businessId, cancelled.task.id, cancelled.task.payload);
+    }
+    if (cancelled.task.remoteRunId) {
+      await publishRuntimeTask(env, businessId, {
+        kind: 'cancel',
+        dedupeKey: `cancel:${cancelled.task.id}:${Math.floor(Date.now() / 60_000)}`,
+        payload: { targetTaskId: cancelled.task.id },
+      });
+    }
+    if (cancelled.task.runId) {
+      await publishRunProgressSafely(env, businessId, cancelled.task.runId, 'cancelled');
+    }
+    await sendMessage(token, incoming.chatId, '⏹️ Stopped').catch(() => {});
+    return ok;
   }
 
   /* This is after Telegram's secret has authenticated the connection, so an

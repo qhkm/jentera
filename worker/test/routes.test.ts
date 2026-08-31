@@ -18,6 +18,7 @@ import { asOwner, asTenant, req, signIn, testEnv, truncateAll } from './harness'
 import { handleRepo } from '../src/routes/repo';
 import { handleConnect } from '../src/routes/connect';
 import { saveConnection, telegramInternalChat, webhookSecret } from '../src/connections';
+import { enqueueRuntimeTask } from '../src/runtime/tasks';
 import type { Env } from '../src/env';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -550,6 +551,95 @@ describe('connections', () => {
     expect(paired).toMatchObject({ paired: true, pairingUrl: null });
   });
 
+  it('/stop cancels the active queued run for the paired chat before paid admission', async () => {
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
+    vi.stubGlobal('fetch', fetch);
+    const paired = await pairTelegramChat(42);
+    fetch.mockClear();
+
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run',
+      dedupeKey: 'telegram:stop-test',
+      payload: {
+        telegram: {
+          connectionId: paired.connectionId,
+          chatId: 42,
+          privateChat: true,
+          liveMessageId: 55,
+        },
+      },
+    }));
+    const otherChatTask = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run',
+      dedupeKey: 'telegram:other-chat-stop-test',
+      payload: { telegram: { connectionId: paired.connectionId, chatId: 7 } },
+    }));
+    const admission = vi.fn(async () => ({ success: false }));
+    env = testEnv({ AGENT_RUN_BURST: { limit: admission } });
+
+    const response = await telegramHook(paired.connectionId, paired.secret, 42, '/stop', 20);
+
+    expect(response.status).toBe(200);
+    expect(admission).not.toHaveBeenCalled();
+    const rows = await asTenant(A, (tx) => tx<{ id: string; status: string }[]>`
+      select id, status from runtime_task where id in (${task.id}, ${otherChatTask.id})`);
+    expect(rows.find(({ id }) => id === task.id)?.status).toBe('cancelled');
+    expect(rows.find(({ id }) => id === otherChatTask.id)?.status).toBe('queued');
+    const replies = fetch.mock.calls
+      .filter(([url]) => String(url).includes('/sendMessage'))
+      .map(([, init]) => JSON.parse(String(init?.body)) as { text: string });
+    expect(replies.some(({ text }) => text.includes('Stopped'))).toBe(true);
+  });
+
+  it('/stop is a polite no-op when the paired chat has no active run', async () => {
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
+    vi.stubGlobal('fetch', fetch);
+    const paired = await pairTelegramChat(42);
+    fetch.mockClear();
+
+    const response = await telegramHook(paired.connectionId, paired.secret, 42, '/stop', 21);
+
+    expect(response.status).toBe(200);
+    const replies = fetch.mock.calls
+      .filter(([url]) => String(url).includes('/sendMessage'))
+      .map(([, init]) => JSON.parse(String(init?.body)) as { text: string });
+    expect(replies.some(({ text }) => text === 'Nothing is running right now.')).toBe(true);
+  });
+
+  it('/stop from an unpaired chat cannot cancel the paired owner\'s run', async () => {
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
+    vi.stubGlobal('fetch', fetch);
+    const paired = await pairTelegramChat(42);
+    fetch.mockClear();
+
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run',
+      dedupeKey: 'telegram:unpaired-stop-test',
+      payload: {
+        telegram: {
+          connectionId: paired.connectionId,
+          chatId: 42,
+          privateChat: true,
+        },
+      },
+    }));
+
+    const response = await telegramHook(paired.connectionId, paired.secret, 999, '/stop', 22);
+
+    expect(response.status).toBe(200);
+    const [row] = await asTenant(A, (tx) => tx<{ status: string }[]>`
+      select status from runtime_task where id = ${task.id}`);
+    expect(row.status).toBe('queued');
+    const replies = fetch.mock.calls
+      .filter(([url]) => String(url).includes('/sendMessage'))
+      .map(([, init]) => JSON.parse(String(init?.body)) as { text: string });
+    expect(replies.some(({ text }) => text.includes('Stopped'))).toBe(false);
+    expect(replies.some(({ text }) => /not authorised/i.test(text))).toBe(true);
+  });
+
   it('shows one business nothing of another’s', async () => {
     await asTenant(A, (tx) =>
       saveConnection(env, tx, A, {
@@ -600,4 +690,27 @@ function automaticRuntimeEnv(send: (message: unknown) => Promise<void>): Env {
     AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
     RUNTIME_QUEUE: { send },
   });
+}
+
+async function pairTelegramChat(chatId: number): Promise<{
+  connectionId: string;
+  secret: string;
+}> {
+  const connection = await asTenant(A, (tx) =>
+    saveConnection(env, tx, A, {
+      connector: 'telegram',
+      method: 'bot_token',
+      externalId: String(chatId),
+      displayName: '@alpha_bot',
+      secret: '123456789:SUPERSECRETTOKEN',
+      connectedBy: alice,
+    }));
+  const secret = await asTenant(A, (tx) => webhookSecret(tx, connection.id));
+  const listed = await conn('GET', '/api/connections', { cookie: cookieA });
+  const view = (listed.body?.connections as { pairingUrl: string }[])
+    .find((candidate) => candidate.pairingUrl);
+  const code = view && new URL(view.pairingUrl).searchParams.get('start');
+  if (!code) throw new Error('Telegram pairing code was not available');
+  await telegramHook(connection.id, secret, chatId, `/start ${code}`, 10);
+  return { connectionId: connection.id, secret };
 }
