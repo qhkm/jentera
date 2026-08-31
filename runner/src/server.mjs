@@ -286,7 +286,7 @@ export function createRunner(input) {
               session_id: body.sessionId,
               instructions: body.instructions,
               model_options: {
-                reasoning: { enabled: true, effort: 'medium' },
+                reasoning: { enabled: true, effort: 'high' },
               },
             }),
           });
