@@ -2,7 +2,7 @@
    The live bubble lane must survive Telegram's "message is not
    modified" 400.
 
-   Regression for the frozen "⏳ On it — waking the AI…" bubble: the
+   Regression for the frozen "⏳ Thinking…" bubble: the
    webhook sends that exact text and persists its message id; the
    queue consumer reattaches to the SAME bubble and its first
    setStatus is the SAME string. Telegram rejects an identical edit
@@ -66,11 +66,11 @@ describe('TelegramLiveStream reattach to the webhook bubble', () => {
   it('does not die when the first status equals the bubble text (message is not modified)', async () => {
     notModifiedFirst = true;
     /* Reattach: the stream is constructed with the webhook bubble's id,
-       whose text is already "⏳ On it — waking the AI…". */
+       whose text is already "⏳ Thinking…". */
     const stream = new TelegramLiveStream(TOKEN, CHAT, { messageId: 77 });
 
     /* Identical status — Telegram 400s it. Must be a no-op, not fatal. */
-    await stream.setStatus('⏳ On it — waking the AI…');
+    await stream.setStatus('⏳ Thinking…');
 
     /* The next, different status is inside the 500ms coalescing window, so
        it flushes on the timer; both edits must land on the same bubble and
@@ -86,7 +86,7 @@ describe('TelegramLiveStream reattach to the webhook bubble', () => {
     notModifiedFirst = true;
     const stream = new TelegramLiveStream(TOKEN, CHAT, { messageId: 77 });
 
-    await stream.setStatus('⏳ On it — waking the AI…');
+    await stream.setStatus('⏳ Thinking…');
 
     /* Deltas publish immediately on the answer lane; it must stay alive. */
     await stream.push('Here is the full answer to your question. ');

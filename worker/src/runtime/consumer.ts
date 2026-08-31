@@ -296,7 +296,7 @@ export async function handleRuntimeMessage(
         let currentStepIsTool = false;
         const workingSince = Date.now();
         if (liveStream) {
-          void liveStream.setStatus('⏳ On it — waking the AI…');
+          void liveStream.setStatus('⏳ Thinking…');
           statusTimer = setInterval(() => {
             if (firstVisibleDelta) return;
             const elapsed = Math.round((Date.now() - workingSince) / 1_000);

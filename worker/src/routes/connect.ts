@@ -640,7 +640,7 @@ async function handleDurableIncoming(
       : 0;
     const placeholder = ahead > 0
       ? `⏳ In line (position #${ahead + 1}) — I'll answer right after the current request.`
-      : '⏳ On it — waking the AI…';
+      : '⏳ Thinking…';
     const live = await sendMessage(token, incoming.chatId, placeholder).catch(() => null);
     if (live?.messageId) {
       await persistLiveMessageId(env, businessId, created.id, live.messageId)
@@ -651,7 +651,7 @@ async function handleDurableIncoming(
   /* Signal AFTER the live bubble exists and its id is persisted: the queue
      consumer reattaches to payload.telegram.liveMessageId, and a fast lease
      that beat the sendMessage/persist above would create a second bubble and
-     orphan the webhook's "On it — waking the AI…" message forever. */
+     orphan the webhook's "⏳ Thinking…" message forever. */
   await signalRuntimeTask(env, businessId, created.id);
   await sendTyping(token, incoming.chatId).catch(() => {});
 }

@@ -146,7 +146,7 @@ export async function sendTyping(token: string, chatId: number | string): Promis
     Telegram rejects an edit whose text is byte-identical to the current
     message ("message is not modified"). That is NOT a failure: the bubble
     already shows exactly the text we wanted (e.g. the consumer reattaches to
-    the webhook's "⏳ On it — waking the AI…" bubble and the first status is
+    the webhook's "⏳ Thinking…" bubble and the first status is
     the same string). Throwing on it would kill the whole live lane, so it is
     treated as a successful no-op instead. */
 export async function editMessageText(

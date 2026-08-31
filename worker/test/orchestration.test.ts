@@ -251,7 +251,7 @@ describe('durable Hermes Telegram replies', () => {
     /* The admission path acknowledges with a real bot-owned bubble (never an
        input-field draft), persisted on the task so the consumer streams into
        the same message. */
-    expect(sent).toEqual([{ chatId: 42, text: '⏳ On it — waking the AI…' }]);
+    expect(sent).toEqual([{ chatId: 42, text: '⏳ Thinking…' }]);
     expect(edits).toHaveLength(0);
     expect(deletions).toHaveLength(0);
     expect(queued).toHaveLength(1);
@@ -320,7 +320,7 @@ describe('durable Hermes Telegram replies', () => {
     expect(queued).toHaveLength(2);
     /* One acknowledgment bubble despite two deliveries — the second is
        deduplicated before the placeholder fires (inserted=false). */
-    expect(sent).toEqual([{ chatId: 42, text: '⏳ On it — waking the AI…' }]);
+    expect(sent).toEqual([{ chatId: 42, text: '⏳ Thinking…' }]);
     expect(edits).toHaveLength(0);
   });
 
