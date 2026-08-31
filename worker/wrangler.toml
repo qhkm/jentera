@@ -53,7 +53,7 @@ API_ORIGIN = "https://api.jentera.ai"
 # The immutable runner/Hermes/browser bundle requested for newly
 # provisioned runtimes. Changing this asks reconciliation to upgrade;
 # it must never silently track "latest".
-RUNTIME_RELEASE = "2026.08.31-22"
+RUNTIME_RELEASE = "2026.09.01-1"
 RUNTIME_EXPECTED_REGION = "sin"
 SPRITES_API_ORIGIN = "https://api.sprites.dev"
 # Fail closed. Completing onboarding provisions one isolated runtime for the
@@ -64,7 +64,7 @@ MODEL_TRANSPORT_READY = "true"
 # business to own a fully bootstrapped, release-matched runtime row.
 RUNTIME_EXECUTION_ENABLED = "true"
 RUNTIME_BOOTSTRAP_ENABLED = "true"
-RUNTIME_BUNDLE_COMMIT = "1e518f3df404c909dd2b499d4f0a3ea42541e2df"
+RUNTIME_BUNDLE_COMMIT = "bb2db42b378915ba84579828e18d21e266faee2d"
 AISAR_MODEL_PROVIDER = "openrouter"
 AISAR_MODEL_BASE = "https://router.fmcv.my"
 AISAR_MODEL_NAME = "MiniMax-M3"
