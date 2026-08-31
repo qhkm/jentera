@@ -270,6 +270,20 @@ export async function handleRuntimeMessage(
         latency('leased', undefined, { leaseMs });
         const liveStream = await telegramLiveStream(env, lease.task);
         liveBubbleId = liveStream?.id;
+        /* Diagnostics for the "frozen bubble" bug class: whether the live
+           lane was reattached at lease time (stream open) or silently absent
+           (null hint / credential failure), plus which bubble id it was
+           supposed to animate. The durable answer is unaffected either way. */
+        {
+          const hint = telegramHint(lease.task.payload);
+          latency('live_reattach', undefined, {
+            liveStream: liveStream ? 'open' : 'null',
+            liveMessageId: hint?.liveMessageId ?? null,
+            chatId: hint?.chatId ?? null,
+            privateChat: hint?.privateChat ?? null,
+            bubbleId: liveStream?.id ?? null,
+          });
+        }
         const toolShown = new Set<string>();
         await liveStream?.pulseTyping(true);
         let lastLeaseRenewal = Date.now();

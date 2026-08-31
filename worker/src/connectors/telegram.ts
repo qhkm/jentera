@@ -371,9 +371,19 @@ export class TelegramLiveStream {
         this.lastSentAt = Date.now();
       }
       await this.pulseTyping();
-    } catch {
+    } catch (error) {
       /* The live lane is cosmetic and private-chat-only. A failure disables
-         this stream but never suppresses the durable final reply. */
+         this stream but never suppresses the durable final reply. Log the
+         cause so the first death is visible in wrangler tail (identical-text
+         edits are already a no-op inside editMessageText, so reaching here
+         means a REAL telegram error — chat gone, 429, message deleted,…). */
+      console.warn('[telegram] live bubble lane died', {
+        chatId: this.chatId,
+        messageId: this.messageId,
+        hadMessageId: Boolean(this.messageId),
+        lastText: visible.slice(0, 120),
+        error: error instanceof Error ? error.message : String(error),
+      });
       this.available = false;
     }
   }
