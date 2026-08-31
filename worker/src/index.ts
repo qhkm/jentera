@@ -16,7 +16,7 @@ import { handleRuntime } from './routes/runtime';
 import { handleEvents } from './routes/events';
 import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
-import { handleRuntimeMessage, type RuntimeQueueMessage } from './runtime/consumer';
+import { handleRuntimeQueueMessage, type RuntimeQueueMessage } from './runtime/consumer';
 import { guardApiRequest } from './request-guard';
 
 export { RunStream } from './run-stream';
@@ -115,22 +115,33 @@ export default {
   async queue(batch: MessageBatch<RuntimeQueueMessage>, env: Env): Promise<void> {
     for (const message of batch.messages) {
       try {
-        const result = await handleRuntimeMessage(env, message.body);
+        const result = await handleRuntimeQueueMessage(env, message.body);
+        const queueId = runtimeQueueMessageId(message.body);
         if (result.action === 'ack') message.ack();
         else if (result.action === 'requeue') {
           console.warn(
-            `[runtime-queue] task=${message.body.taskId} action=requeue ` +
+            `[runtime-queue] task=${queueId} action=requeue ` +
             `reason=${logValue(result.reason)}`,
           );
           if (!env.RUNTIME_QUEUE) throw new Error('RUNTIME_QUEUE is not configured');
-          await env.RUNTIME_QUEUE.send(message.body, { delaySeconds: result.delaySeconds });
+          await env.RUNTIME_QUEUE.send(result.nextMessage ?? message.body, {
+            delaySeconds: result.delaySeconds,
+          });
           message.ack();
         } else {
           console.warn(
-            `[runtime-queue] task=${message.body.taskId} action=retry ` +
+            `[runtime-queue] task=${queueId} action=retry ` +
             `reason=${logValue(result.reason)}`,
           );
-          message.retry({ delaySeconds: result.delaySeconds });
+          if (result.nextMessage) {
+            if (!env.RUNTIME_QUEUE) throw new Error('RUNTIME_QUEUE is not configured');
+            await env.RUNTIME_QUEUE.send(result.nextMessage, {
+              delaySeconds: result.delaySeconds,
+            });
+            message.ack();
+          } else {
+            message.retry({ delaySeconds: result.delaySeconds });
+          }
         }
       } catch (error) {
         console.error(`[runtime-queue] ${String(error)}`);
@@ -143,4 +154,10 @@ export default {
 
 function logValue(value: string): string {
   return value.replace(/[\r\n\t\u0000-\u001f]/g, ' ').slice(0, 500);
+}
+
+function runtimeQueueMessageId(message: RuntimeQueueMessage): string {
+  return message.version === 1
+    ? message.taskId
+    : `telegram:${message.connectionId}:${message.incoming.messageId}`;
 }

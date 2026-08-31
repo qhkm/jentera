@@ -59,6 +59,7 @@ export async function reconcileRuntime(
     origin: status.url,
     runnerKey: secrets.runnerKey,
     edgeToken: current.provider === 'fly-sprite' ? env.SPRITES_TOKEN : undefined,
+    expectedRelease: current.desiredRelease,
     fetch: fetcher,
   });
   const readiness = await client.ready();

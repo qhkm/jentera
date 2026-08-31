@@ -11,6 +11,15 @@ export function runtimeReady(runtime: AgentRuntimeRecord | null): runtime is Age
     ['ready', 'cold', 'idle', 'busy'].includes(runtime.status));
 }
 
+const ALLOWED_MODEL_BASES = new Set([
+  'https://openrouter.ai/api/v1',
+  'https://router.fmcv.my',
+]);
+
+export function runtimeModelBaseAllowed(value: string | undefined): boolean {
+  return ALLOWED_MODEL_BASES.has(value?.trim() ?? '');
+}
+
 /**
  * Validate every prerequisite before onboarding promises an agent. Keeping
  * this synchronous means the business write and task enqueue can remain one
@@ -30,8 +39,8 @@ export function runtimeProvisioningProblem(env: Env): string | null {
   if (!/^[0-9a-f]{40}$/.test(env.RUNTIME_BUNDLE_COMMIT?.trim() ?? '')) {
     return 'runtime bundle is not configured';
   }
-  if (env.AISAR_MODEL_PROVIDER !== 'openrouter' ||
-      env.AISAR_MODEL_BASE !== 'https://openrouter.ai/api/v1' ||
+  if (env.AISAR_MODEL_PROVIDER?.trim() !== 'openrouter' ||
+      !runtimeModelBaseAllowed(env.AISAR_MODEL_BASE) ||
       !env.AISAR_MODEL_NAME?.trim()) {
     return 'runtime model is not configured';
   }

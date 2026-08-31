@@ -17,8 +17,8 @@ import {
   markBroken,
   removeConnection,
   saveConnection,
+  telegramWebhookAccess,
   telegramInternalChat,
-  verifyWebhook,
   useCredential,
   webhookSecret,
 } from '../connections';
@@ -32,23 +32,18 @@ import {
   webhookHealth,
   withTypingIndicator,
 } from '../connectors/telegram';
-import { finishRun, recentWork, recordWork, startRun } from '../runs';
-import { prepareHermesAgent, retrieve } from '../ask';
-import { publishRuntimeTask, runtimeFor, signalRuntimeTask } from '../runtime';
-import { getRuntime } from '../agent-runtime';
+import { finishRun, recordWork, startRun } from '../runs';
+import { retrieve } from '../ask';
+import { publishRuntimeTask, runtimeFor, signalTelegramIntake } from '../runtime';
 import {
   activeRuntimeRunTask,
   cancelRuntimeTask,
-  enqueueRuntimeTask,
-  runtimeQueuePosition,
-  runtimeTaskByDedupeKey,
 } from '../runtime/tasks';
-import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
+import { runtimeExecutionEnabled } from '../runtime/execution';
 import { finalizeRuntimeUsage } from '../runtime/usage';
 import { publishRunProgressSafely } from '../runtime/progress';
 import {
   deliverTelegramDraft,
-  persistLiveMessageId,
   settleCancelledDraft,
   type TelegramIncoming,
 } from '../telegram-delivery';
@@ -278,9 +273,9 @@ export async function handleConnect(
 /**
  * Handle one Telegram update.
  *
- * Always answers 200, even on failure. Telegram retries a non-2xx, and
- * a message we cannot process is not improved by receiving it again
- * every few seconds for a day.
+ * Answers 200 for terminal validation/auth failures. A failed durable Queue
+ * write is the exception: 503 asks Telegram to redeliver instead of losing an
+ * authenticated owner's message.
  */
 async function telegramWebhook(
   request: Request,
@@ -289,10 +284,8 @@ async function telegramWebhook(
   connectionId: string,
 ): Promise<Response> {
   const ok = new Response(null, { status: 200 });
-  /* Every path here answers 200, which is right for Telegram and awful
-     for diagnosis: a dropped update and a handled one look identical
-     from outside. So each drop says why, once, in the log. Without
-     this the only symptom of a broken webhook is silence. */
+  /* Terminal drops answer 200, which is right for malformed or unauthorised
+     updates and awful for diagnosis. So each drop says why once in the log. */
   const drop = (why: string) => {
     console.warn(`[telegram] dropped update on ${connectionId}: ${why}`);
     return ok;
@@ -303,11 +296,11 @@ async function telegramWebhook(
   /* Scoped to the business named in the URL, which is the only way
      this row is visible at all. Nothing is trusted yet — the secret
      decides. */
-  const verdict = await withTenant(env, businessId, (tx) =>
-    verifyWebhook(tx, connectionId, presented),
+  const access = await withTenant(env, businessId, (tx) =>
+    telegramWebhookAccess(env, tx, connectionId, presented),
   ).catch((e: unknown) => ({ ok: false as const, why: `lookup failed: ${String(e)}` }));
 
-  if (!verdict.ok) return drop(verdict.why);
+  if (!access.ok) return drop(access.why);
 
   const raw = await request.json().catch(() => null);
   const incoming = parseUpdate(raw);
@@ -326,10 +319,8 @@ async function telegramWebhook(
     const bound = await withTenant(env, businessId, (tx) =>
       bindTelegramInternalChat(tx, connectionId, incoming.chatId));
     if (bound === 'paired' || bound === 'already_paired') {
-      const token = await withTenant(env, businessId, (tx) =>
-        useCredential(env, tx, connectionId));
       await sendMessage(
-        token,
+        access.token,
         incoming.chatId,
         'Jentera is connected to your business. Ask me about your operations, research, planning, or anything you need to get done.',
       ).catch(() => {});
@@ -342,10 +333,7 @@ async function telegramWebhook(
      together. This removes a separate cross-region credential transaction
      from every accepted message while keeping the secret inside this one
      request. */
-  const { internalChat, token } = await withTenant(env, businessId, async (tx) => ({
-    internalChat: await telegramInternalChat(tx, connectionId),
-    token: await useCredential(env, tx, connectionId),
-  }));
+  const { internalChat, token } = access;
   if (internalChat !== incoming.chatId || !incoming.privateChat) {
     /* Silence made a secure pairing boundary look like a broken or very slow
        agent. A private, unpaired sender may receive setup guidance, but never
@@ -414,20 +402,21 @@ async function telegramWebhook(
     return drop('agent admission limit exceeded');
   }
 
-  /* Give immediate, truthful feedback before runtime lookup, retrieval, and
-     durable enqueueing. Telegram's typing state is temporary and contains no
-     business data, but removes several seconds of apparent silence. */
-  await sendTyping(token, incoming.chatId).catch(() => {});
-
-  /* Past the secret check, so the business in the URL is confirmed:
-     only its own connection could have produced that value. */
+  /* Queue first: once this resolves, the request survives this webhook
+     invocation. Context retrieval and Postgres run/task admission happen in
+     the consumer, not on Telegram's response path. */
   try {
     await handleIncoming(env, businessId, connectionId, incoming, token);
   } catch (e) {
-    /* handleIncoming records its own failures, so reaching here means
-       something outside that — the database, the tenant scope. */
+    /* A 5xx deliberately asks Telegram to redeliver. Returning the usual 200
+       after a failed Queue write would acknowledge and permanently lose the
+       owner's message. Dedupe in the consumer makes that retry harmless. */
     console.error(`[telegram] handling failed on ${connectionId}: ${String(e)}`);
+    return new Response(null, { status: 503, headers: { 'Retry-After': '2' } });
   }
+  /* Temporary, content-free feedback while the Queue consumer performs the
+     durable admission transaction and creates the editable working bubble. */
+  await sendTyping(token, incoming.chatId).catch(() => {});
   return ok;
 }
 
@@ -452,50 +441,27 @@ export async function handleIncoming(
   incoming: TelegramIncoming,
   telegramToken?: string,
 ): Promise<void> {
+  const requestedAtMs = Date.now();
   if (runtimeExecutionEnabled(env)) {
-    const runtime = await withTenant(env, businessId, (tx) => getRuntime(tx, businessId));
-    const release = env.RUNTIME_RELEASE?.trim();
-    const current = runtime && release &&
-      runtime.desiredRelease === release && runtime.observedRelease === release;
-
-    /* A ready pinned runtime remains a real agent while its replacement is
-       rolling out. The queue consumer upgrades before dispatch when it sees
-       release drift, so the owner's request waits for the proven replacement
-       instead of racing a lifecycle task or falling into the tiny responder. */
-    if (runtimeReady(runtime)) {
-      await handleDurableIncoming(env, businessId, connectionId, incoming, telegramToken);
-      return;
+    if (!env.RUNTIME_QUEUE || !env.AISAR_MODEL_NAME?.trim()) {
+      throw new Error('durable Telegram execution is unavailable');
     }
-
-    /* A paired owner chose the managed agent, not a hidden lightweight model.
-       If Hermes is not ready, say so truthfully and repair it; never substitute
-       a short answer that looks like the agent simply forgot how to work. */
-    let maintenance: Promise<unknown> | null = null;
-    if (release && env.RUNTIME_QUEUE) {
-      const repairWindow = Math.floor(Date.now() / (5 * 60 * 1_000));
-      const kind = !runtime ? 'provision' : current ? 'reconcile' : 'upgrade';
-      maintenance = publishRuntimeTask(env, businessId, {
-        kind,
-        dedupeKey: `${kind}:${businessId}:${release}:${repairWindow}`,
-        payload: {
-          release,
-          reason: !runtime ? 'runtime_missing' : current ? 'runtime_not_ready' : 'release_drift',
-        },
-      }).catch(() => {
-        console.error('[runtime] automatic repair enqueue failed');
-      });
+    if (!Number.isSafeInteger(incoming.messageId)) {
+      throw new Error('Telegram message id is missing');
     }
-
-    const token = telegramToken ?? await withTenant(env, businessId, (tx) =>
-      useCredential(env, tx, connectionId));
-    await sendMessage(
-      token,
-      incoming.chatId,
-      runtime
-        ? 'Jentera is updating its research tools. Please try again in a moment.'
-        : 'Jentera is still preparing your private agent. Please try again shortly.',
+    await signalTelegramIntake(
+      env,
+      businessId,
+      connectionId,
+      {
+        chatId: incoming.chatId,
+        messageId: incoming.messageId as number,
+        from: incoming.from,
+        text: incoming.text,
+        privateChat: true,
+      },
+      requestedAtMs,
     );
-    await maintenance;
     return;
   }
 
@@ -549,116 +515,4 @@ export async function handleIncoming(
       await finishRun(tx, businessId, run.id, 'failed', { error: why });
     });
   }
-}
-
-/** Persist one Telegram update as durable Hermes work and return before the
-    model runs. Telegram retries use the same message id and cannot create a
-    second paid task. */
-async function handleDurableIncoming(
-  env: Env,
-  businessId: string,
-  connectionId: string,
-  incoming: TelegramIncoming,
-  telegramToken?: string,
-): Promise<void> {
-  if (!env.RUNTIME_QUEUE || !env.AISAR_MODEL_NAME?.trim()) {
-    throw new Error('durable Telegram execution is unavailable');
-  }
-  if (!Number.isSafeInteger(incoming.messageId)) {
-    throw new Error('Telegram message id is missing');
-  }
-
-  const { facts, work } = await withTenant(
-    env,
-    businessId,
-    async (tx) => ({
-      facts: await retrieve(tx, incoming.text),
-      work: await recentWork(tx, 8),
-    }),
-  );
-
-  const prepared = prepareHermesAgent(incoming.text, facts, work);
-  const dedupeKey = `telegram:${connectionId}:${incoming.chatId}:${incoming.messageId}`;
-  let inserted = false;
-  const created = await withTenant(env, businessId, async (tx) => {
-    await tx`select pg_advisory_xact_lock(hashtextextended(${dedupeKey}, 0))`;
-    const existing = await runtimeTaskByDedupeKey(tx, businessId, dedupeKey);
-    if (existing) return existing;
-    inserted = true;
-
-    const run = await startRun(tx, businessId, {
-      kind: 'ask',
-      triggerShape: 'owner.message.telegram',
-      triggerRef: {
-        chatId: incoming.chatId,
-        messageId: incoming.messageId,
-        from: incoming.from,
-        question: incoming.text,
-      },
-      runtime: 'hermes-sprite',
-      model: env.AISAR_MODEL_NAME!.trim(),
-    });
-    return enqueueRuntimeTask(tx, businessId, {
-      kind: 'run',
-      runId: run.id,
-      dedupeKey,
-      payload: {
-        input: boundedRuntimeInput(prepared.input, incoming.text),
-        instructions: prepared.instructions,
-        sessionId: run.id,
-        objective: `Help ${incoming.from} on Telegram`,
-        function: 'assistant',
-        channel: 'telegram',
-        factKeys: prepared.usedKeys,
-        grounded: prepared.grounded,
-        telegram: {
-          connectionId,
-          chatId: incoming.chatId,
-          messageId: incoming.messageId,
-          from: incoming.from,
-          question: incoming.text,
-          privateChat: incoming.privateChat === true,
-        },
-      },
-    });
-  });
-
-  if (['completed', 'cancelled', 'exhausted'].includes(created.status)) return;
-  const token = telegramToken ?? await withTenant(env, businessId, (tx) =>
-    useCredential(env, tx, connectionId));
-
-  /* While a run is active, acknowledge the session immediately so the
-     owner knows their message is queued (Hermes-style) rather than staring
-     at silence. The live working bubble is a normal bot message — NOT a
-     Telegram input-field draft, which would lock the owner's composer and
-     send button until the run ends. The consumer edits the same bubble the
-     moment the run actually starts. */
-  if (incoming.privateChat && inserted) {
-    const ahead = created.status === 'queued'
-      ? await withTenant(env, businessId, (tx) =>
-          runtimeQueuePosition(tx, businessId, created.id))
-      : 0;
-    const placeholder = ahead > 0
-      ? `⏳ In line (position #${ahead + 1}) — I'll answer right after the current request.`
-      : '⏳ Thinking…';
-    const live = await sendMessage(token, incoming.chatId, placeholder).catch(() => null);
-    if (live?.messageId) {
-      await persistLiveMessageId(env, businessId, created.id, live.messageId)
-        .catch(() => {});
-    }
-  }
-
-  /* Signal AFTER the live bubble exists and its id is persisted: the queue
-     consumer reattaches to payload.telegram.liveMessageId, and a fast lease
-     that beat the sendMessage/persist above would create a second bubble and
-     orphan the webhook's "⏳ Thinking…" message forever. */
-  await signalRuntimeTask(env, businessId, created.id);
-  await sendTyping(token, incoming.chatId).catch(() => {});
-}
-
-function boundedRuntimeInput(input: string, question: string): string {
-  const max = 19_500;
-  if (input.length <= max) return input;
-  const suffix = `\n\nQuestion: ${question}`;
-  return `${input.slice(0, Math.max(0, max - suffix.length))}${suffix}`;
 }

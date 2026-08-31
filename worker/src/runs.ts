@@ -299,7 +299,19 @@ export async function homeCounters(
       -- is a playbook-seeded list of what a business of this type
       -- typically uses: it named WhatsApp and Instagram for a business
       -- that had connected neither.
-      (select count(*)::text from connection where status = 'connected')       as connections,
+      -- A saved Telegram token is not yet a usable owner channel. Telegram
+      -- only becomes connected for readiness after the owner opens the deep
+      -- link and presses Start, which writes the internal-chat scope.
+      (select count(*)::text
+         from connection c
+        where c.status = 'connected'
+          and (
+            c.connector <> 'telegram'
+            or exists (
+              select 1 from unnest(coalesce(c.scopes, '{}'::text[])) as scope
+               where scope like 'telegram-internal-chat:%'
+            )
+          ))                                                                    as connections,
       coalesce(sum(minutes_saved), 0)::text                                    as minutes_saved,
       count(*) filter (where occurred_at > now() - interval '7 days')::text    as this_week
     from work_record`;

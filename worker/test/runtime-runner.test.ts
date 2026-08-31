@@ -64,6 +64,9 @@ describe('durable Hermes run delivery', () => {
       if (url.endsWith('/readyz')) {
         return response({
           ok: true,
+          release: '2026.08.27-1',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-01' },
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
@@ -163,6 +166,9 @@ describe('durable Hermes run delivery', () => {
       if (url.endsWith('/readyz')) {
         return response({
           ok: true,
+          release: '2026.08.27-1',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-01' },
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
@@ -223,6 +229,9 @@ describe('durable Hermes run delivery', () => {
       if (url.endsWith('/readyz')) {
         return response({
           ok: true,
+          release: '2026.08.27-1',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-01' },
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
@@ -291,6 +300,9 @@ describe('durable Hermes run delivery', () => {
       if (url.endsWith('/readyz')) {
         return response({
           ok: true,
+          release: '2026.08.27-1',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-01' },
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,

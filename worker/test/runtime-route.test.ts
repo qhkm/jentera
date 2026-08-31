@@ -119,6 +119,18 @@ describe('runtime provisioning route', () => {
     expect(count).toBe('1');
   });
 
+  it('accepts the pinned production model gateway for a new account', async () => {
+    const send = vi.fn(async () => {});
+    const response = await call('POST', '/api/runtime/provision', enabled(send, {
+      AISAR_MODEL_BASE: 'https://router.fmcv.my',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+    }), ownerCookie);
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({ ok: true, status: 'queued' });
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
   it('cancels a durable run once and safely repeats its deduplicated stop signal', async () => {
     const send = vi.fn(async () => {});
     const run = await asTenant(A, (tx) => startRun(tx, A, {
@@ -217,7 +229,10 @@ describe('runtime provisioning route', () => {
   });
 });
 
-function enabled(send = vi.fn(async () => {})): Env {
+function enabled(
+  send = vi.fn(async () => {}),
+  overrides: Partial<Env> = {},
+): Env {
   return testEnv({
     RUNTIME_RELEASE: '2026.08.27-1',
     RUNTIME_BUNDLE_COMMIT: 'a'.repeat(40),
@@ -231,6 +246,7 @@ function enabled(send = vi.fn(async () => {})): Env {
     AISAR_MODEL_BASE: 'https://openrouter.ai/api/v1',
     AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
     RUNTIME_QUEUE: { send },
+    ...overrides,
   });
 }
 

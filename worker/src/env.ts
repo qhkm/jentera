@@ -62,6 +62,8 @@ export interface Env {
   AISAR_OPENROUTER_MANAGEMENT_KEY?: string;
   RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS?: string;
   AISAR_MODEL_NAME?: string;
+  /** Optional heavier model used only for explicit deep/research work. */
+  AISAR_DEEP_MODEL_NAME?: string;
   /** Durable provisioning and Hermes task delivery. */
   RUNTIME_QUEUE?: Queue<import('./runtime/consumer').RuntimeQueueMessage>;
   /** Hibernating per-run WebSocket fan-out. Postgres remains task truth. */

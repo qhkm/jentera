@@ -264,6 +264,55 @@ export async function verifyWebhook(
   const [row] = await tx<{ webhook_secret: string | null; status: string }[]>`
     select webhook_secret, status from connection where id = ${connectionId}`;
 
+  return webhookVerdict(row, presented);
+}
+
+export type TelegramWebhookAccess =
+  | { ok: false; why: string }
+  | { ok: true; internalChat: number | null; token: string };
+
+/** Authenticate Telegram and load the owner boundary plus bot credential in
+ * one cross-region transaction. These values are all needed before Queue can
+ * safely accept an update; no run, context, or task data is touched here. */
+export async function telegramWebhookAccess(
+  env: Env,
+  tx: postgres.TransactionSql,
+  connectionId: string,
+  presented: string,
+): Promise<TelegramWebhookAccess> {
+  const [row] = await tx<{
+    webhook_secret: string | null;
+    status: string;
+    internal_scope: string | null;
+    ciphertext: Uint8Array | null;
+    key_version: number | null;
+  }[]>`
+    select c.webhook_secret, c.status,
+           (
+             select scope from unnest(coalesce(c.scopes, '{}'::text[])) as scope
+              where scope like ${`${INTERNAL_CHAT_SCOPE}%`} limit 1
+           ) as internal_scope,
+           cr.ciphertext, cr.key_version
+      from connection c
+      left join credential cr on cr.connection_id = c.id
+     where c.id = ${connectionId}`;
+  const verdict = webhookVerdict(row, presented);
+  if (!verdict.ok) return verdict;
+  if (!row.ciphertext || row.key_version === null) {
+    return { ok: false, why: 'that connection has no credential' };
+  }
+  return {
+    ok: true,
+    internalChat: internalChatFromScope(row.internal_scope),
+    token: await open(env, row.ciphertext, row.key_version),
+  };
+}
+
+function webhookVerdict(
+  row: { webhook_secret: string | null; status: string } | undefined,
+  presented: string,
+): WebhookVerdict {
+
   if (!row) return { ok: false, why: 'no such connection for that business' };
   if (row.status !== 'connected') return { ok: false, why: `connection is ${row.status}` };
 
@@ -279,4 +328,10 @@ export async function verifyWebhook(
   let diff = 0;
   for (let i = 0; i < expected.length; i++) diff |= presented.charCodeAt(i) ^ expected.charCodeAt(i);
   return diff === 0 ? { ok: true } : { ok: false, why: 'secret mismatch' };
+}
+
+function internalChatFromScope(scope: string | null): number | null {
+  if (!scope) return null;
+  const chatId = Number(scope.slice(INTERNAL_CHAT_SCOPE.length));
+  return Number.isSafeInteger(chatId) && chatId > 0 ? chatId : null;
 }

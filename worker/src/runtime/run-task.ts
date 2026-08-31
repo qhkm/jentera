@@ -9,6 +9,8 @@ import { issueFullToolsGrant } from './tool-grant';
 import { markRuntimeUsageStarted, reserveRuntimeUsage } from './usage';
 import { runtimeTaskIsCancelled } from './tasks';
 import { append } from '../runs';
+import type { ResponseMode } from './response-mode';
+import { modelForResponseMode } from './response-mode';
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped']);
 
@@ -32,6 +34,9 @@ export interface RunPayload {
   channel?: string;
   factKeys?: string[];
   grounded?: boolean;
+  responseMode?: ResponseMode;
+  model?: string;
+  requestedAtMs?: number;
   telegram?: {
     connectionId: string;
     chatId: number;
@@ -77,6 +82,7 @@ export async function dispatchRuntimeRun(
   const dispatchStartedAt = Date.now();
   const stage = (name: string) => options.onStage?.(name, Date.now() - dispatchStartedAt);
   const payload = runPayload(task.payload);
+  const model = payload.model ?? modelForResponseMode(env, payload.responseMode ?? 'deep');
   const { runtime, secrets, reservation, keepaliveUntil } = await withTenant(
     env,
     task.businessId,
@@ -87,7 +93,7 @@ export async function dispatchRuntimeRun(
         tx,
         task.businessId,
         task.id,
-        env.AISAR_MODEL_NAME?.trim() ?? '',
+        model,
       );
       const keepaliveUntil = new Date(
         Date.now() + keepaliveGraceHours(env) * 3_600_000,
@@ -117,6 +123,7 @@ export async function dispatchRuntimeRun(
     origin: observed.url,
     runnerKey: secrets.runnerKey,
     edgeToken: runtime.provider === 'fly-sprite' ? env.SPRITES_TOKEN : undefined,
+    expectedRelease: runtime.desiredRelease,
     fetch: options.fetch,
   });
   await client.ready();
@@ -148,6 +155,8 @@ export async function dispatchRuntimeRun(
     input: payload.input,
     sessionId: payload.sessionId,
     instructions: payload.instructions,
+    responseMode: payload.responseMode,
+    model,
     toolGrant,
     ...(keepaliveUntil ? { keepaliveUntil } : {}),
   });
@@ -282,6 +291,14 @@ function runPayload(value: unknown): RunPayload {
     channel: optional('channel', 100),
     factKeys: stringArray(body.factKeys, 24, 200),
     grounded: typeof body.grounded === 'boolean' ? body.grounded : undefined,
+    responseMode: body.responseMode === 'quick' || body.responseMode === 'deep'
+      ? body.responseMode
+      : undefined,
+    model: optional('model', 200),
+    requestedAtMs: typeof body.requestedAtMs === 'number' &&
+        Number.isFinite(body.requestedAtMs)
+      ? body.requestedAtMs
+      : undefined,
     telegram: telegramDelivery(body.telegram),
   };
 }

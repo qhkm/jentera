@@ -183,6 +183,9 @@ describe('provider provisioning', () => {
       hermesApiKey: 'hermes-key-for-alpha',
       fetch: async () => new Response(JSON.stringify({
         ok: true,
+        release: '2026.08.27-1',
+        runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+        hermes: { jenteraPatch: 'jentera-runtime-2026-09-01' },
         toolMode: 'full-tools',
         webSearchBackend: 'ddgs',
         edgeAuthorizationForwarded: false,
@@ -238,6 +241,9 @@ describe('provider provisioning', () => {
       hermesApiKey: 'hermes-key-for-alpha',
       fetch: async () => Response.json({
         ok: true,
+        release: '2026.08.27-1',
+        runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+        hermes: { jenteraPatch: 'jentera-runtime-2026-09-01' },
         toolMode: 'full-tools',
         webSearchBackend: 'ddgs',
         edgeAuthorizationForwarded: true,

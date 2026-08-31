@@ -11,8 +11,40 @@ set -a
 source "$runtime_env"
 set +a
 
+export HERMES_HOME="/home/sprite/.hermes"
 export API_SERVER_HOST="127.0.0.1"
 export API_SERVER_PORT="${HERMES_PORT:-8642}"
 unset API_SERVER_CORS_ORIGINS
 
-exec /home/sprite/.hermes/hermes-agent/venv/bin/hermes gateway run
+# A supervisor restart can leave the old gateway alive after its wrapper was
+# reaped. The replacement then crash-loops on the occupied port while the old
+# process keeps answering health checks. Only terminate the PID Hermes itself
+# recorded, and only when /proc proves it is this Sprite's reviewed gateway.
+gateway_pid_file="$HERMES_HOME/gateway.pid"
+if [[ -s "$gateway_pid_file" ]]; then
+  IFS= read -r existing_pid < "$gateway_pid_file" || true
+  if [[ "$existing_pid" =~ ^[0-9]+$ ]] && kill -0 "$existing_pid" 2>/dev/null; then
+    existing_cmd="$(tr '\0' ' ' < "/proc/$existing_pid/cmdline" 2>/dev/null || true)"
+    case "$existing_cmd" in
+      *"/home/sprite/.hermes/hermes-agent/venv/bin/"*"gateway"*"run"*)
+        kill -TERM "$existing_pid"
+        for _attempt in $(seq 1 50); do
+          kill -0 "$existing_pid" 2>/dev/null || break
+          sleep 0.1
+        done
+        if kill -0 "$existing_pid" 2>/dev/null; then
+          kill -KILL "$existing_pid"
+        fi
+        ;;
+      *)
+        echo "refusing to terminate unrecognised gateway pid $existing_pid" >&2
+        exit 1
+        ;;
+    esac
+  fi
+  rm -f "$gateway_pid_file"
+fi
+
+# `--replace` closes the narrow race between the PID preflight and exec. Each
+# Sprite has exactly one Hermes profile, so replacement cannot cross tenants.
+exec /home/sprite/.hermes/hermes-agent/venv/bin/hermes gateway run --replace

@@ -1,12 +1,18 @@
 import { createStepProgressExtractor } from './step-progress';
+import { StreamingThinkScrubber } from './think-scrubber';
+import type { ResponseMode } from './response-mode';
 
 const RESPONSE_LIMIT = 256 * 1024;
 const STREAM_LIMIT = 64 * 1024;
+const HERMES_PATCH_ID = 'jentera-runtime-2026-09-01';
 
 export interface RunnerClientOptions {
   origin: string;
   runnerKey: string;
   edgeToken?: string;
+  /** Desired immutable runtime release. Readiness must report this exact
+      process-bound release before a task can be admitted. */
+  expectedRelease?: string;
   fetch?: typeof globalThis.fetch;
 }
 
@@ -17,6 +23,8 @@ export interface RunnerTaskRequest {
   input: string;
   sessionId?: string;
   instructions?: string;
+  responseMode?: ResponseMode;
+  model?: string;
   /** HMAC-signed, task-bound, five-minute capability grant. */
   toolGrant: string;
   /** ISO instant until which the runner should keep the Sprite active
@@ -44,6 +52,16 @@ export interface RunnerTaskResponse {
   webSearchBackend?: string;
   region?: string | null;
   edgeAuthorizationForwarded?: boolean;
+  release?: string;
+  runner?: {
+    sourceSha256?: unknown;
+    sourceAttested?: unknown;
+    pid?: unknown;
+    startedAt?: unknown;
+  };
+  hermes?: {
+    jenteraPatch?: unknown;
+  };
 }
 
 export interface RunnerReadiness {
@@ -64,12 +82,14 @@ export class RunnerClient {
   private readonly origin: string;
   private readonly runnerKey: string;
   private readonly edgeToken?: string;
+  private readonly expectedRelease?: string;
   private readonly fetcher: typeof globalThis.fetch;
 
   constructor(options: RunnerClientOptions) {
     this.origin = options.origin.replace(/\/$/, '');
     this.runnerKey = options.runnerKey;
     this.edgeToken = options.edgeToken;
+    this.expectedRelease = options.expectedRelease;
     this.fetcher = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
     if (!this.origin.startsWith('https://') &&
         !this.origin.startsWith('http://127.0.0.1') &&
@@ -81,6 +101,17 @@ export class RunnerClient {
 
   async ready(): Promise<RunnerReadiness> {
     const body = await this.request('/readyz');
+    if (this.expectedRelease && body.release !== this.expectedRelease) {
+      throw new Error('runner did not attest the desired runtime release');
+    }
+    if (body.runner?.sourceAttested !== true ||
+        typeof body.runner.sourceSha256 !== 'string' ||
+        !/^[0-9a-f]{64}$/.test(body.runner.sourceSha256)) {
+      throw new Error('runner did not attest the source loaded by this process');
+    }
+    if (body.hermes?.jenteraPatch !== HERMES_PATCH_ID) {
+      throw new Error('runner did not attest the required Hermes runtime patch');
+    }
     if (body.toolMode !== 'full-tools') {
       throw new Error('runner did not attest the required full-tools mode');
     }
@@ -153,6 +184,7 @@ export class RunnerClient {
     let received = 0;
     let done = false;
     const steps = createStepProgressExtractor();
+    const thinking = new StreamingThinkScrubber();
     try {
       while (!done) {
         const chunk = await reader.read();
@@ -185,13 +217,21 @@ export class RunnerClient {
           }
           /* Deltas may contain `@step:` narration lines; split them off so
              the answer lane never shows the agent's running commentary. */
-          const progress = steps.push(event.delta);
           received += event.delta.length;
           if (received > STREAM_LIMIT) throw new Error('runner stream exceeded limit');
+          const progress = steps.push(thinking.push(event.delta));
           for (const label of progress.steps) await handlers.onProgress?.(label);
           if (progress.rest) await handlers.onDelta(progress.rest);
         }
         if (chunk.done) break;
+      }
+      /* Flush any safe partial tag tail before the step extractor. An open
+         reasoning block deliberately produces no tail. */
+      const visibleTail = thinking.finish();
+      if (visibleTail) {
+        const progress = steps.push(visibleTail);
+        for (const label of progress.steps) await handlers.onProgress?.(label);
+        if (progress.rest) await handlers.onDelta(progress.rest);
       }
       /* The stream ended on an unterminated step line: flush it. */
       const tail = steps.flush();

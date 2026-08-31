@@ -7,6 +7,7 @@
    ============================================================ */
 
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { createServer, request as httpRequest } from 'node:http';
 import { dirname } from 'node:path';
@@ -18,6 +19,13 @@ const STREAM_TEXT_LIMIT = 64 * 1024;
 const STREAM_EVENT_LIMIT = 8 * 1024;
 const STREAM_THINK_LIMIT = 8 * 1024;
 const STREAM_TTL_MS = 5 * 60 * 1000;
+const HERMES_PATCH_ID = 'jentera-runtime-2026-09-01';
+const RUNNER_STARTED_AT = new Date().toISOString();
+/* Computed while this module is being loaded, so an old process cannot begin
+   reporting a new on-disk bundle after provisioning overwrites server.mjs. */
+const RUNNER_SOURCE_SHA256 = createHash('sha256')
+  .update(readFileSync(new URL(import.meta.url)))
+  .digest('hex');
 /** Cap on concurrent SSE consumers of one task stream. Each subscriber
     holds a socket and a 1s heartbeat interval, so an unbounded set is a
     slow resource leak a hostile network peer could trigger for free. */
@@ -234,7 +242,7 @@ export function createRunner(input) {
       if (req.method === 'GET' && url.pathname === '/readyz') {
         const detail = await hermes(config, '/health/detailed');
         const body = await responseJson(detail);
-        const ready = detail.ok && readiness(body);
+        const ready = detail.ok && readiness(body) && config.runnerSourceAttested;
         return json(res, ready ? 200 : 503, {
           ok: ready,
           release: config.release,
@@ -243,6 +251,12 @@ export function createRunner(input) {
           region: runtimeRegion(req),
           edgeAuthorizationForwarded: typeof req.headers.authorization === 'string',
           edgeTokenEnforced: Boolean(config.edgeToken),
+          runner: {
+            sourceSha256: RUNNER_SOURCE_SHA256,
+            sourceAttested: config.runnerSourceAttested,
+            pid: process.pid,
+            startedAt: RUNNER_STARTED_AT,
+          },
           hermes: boundedReadiness(body),
           keepalive: keepalive.status(),
         });
@@ -286,8 +300,14 @@ export function createRunner(input) {
               input: body.input,
               session_id: body.sessionId,
               instructions: body.instructions,
+              model: body.model ?? (body.responseMode === 'quick'
+                ? config.modelName
+                : config.deepModelName),
               model_options: {
-                reasoning: { enabled: true, effort: 'high' },
+                reasoning: {
+                  enabled: true,
+                  effort: body.responseMode === 'quick' ? 'low' : 'high',
+                },
               },
             }),
           });
@@ -372,6 +392,9 @@ export function configFromEnv(env = process.env) {
     stateFile: env.AISAR_RUNNER_STATE ?? '/var/lib/aisar/runner-state.json',
     toolMode: env.AISAR_TOOL_MODE,
     webSearchBackend: env.AISAR_WEB_SEARCH_BACKEND,
+    modelName: env.AISAR_MODEL_NAME,
+    deepModelName: env.AISAR_DEEP_MODEL_NAME,
+    runnerSourceSha256: env.AISAR_RUNNER_SOURCE_SHA256,
     port: Number(env.PORT ?? 8080),
   };
 }
@@ -393,8 +416,19 @@ function validated(config) {
   if (config.webSearchBackend !== 'ddgs') {
     throw new Error('AISAR_WEB_SEARCH_BACKEND must be ddgs');
   }
+  if (!modelId(config.modelName) || !modelId(config.deepModelName)) {
+    throw new Error('AISAR model routing is not configured');
+  }
+  const expectedSource = config.runnerSourceSha256 ?? RUNNER_SOURCE_SHA256;
+  if (!/^[0-9a-f]{64}$/.test(expectedSource)) {
+    throw new Error('AISAR_RUNNER_SOURCE_SHA256 must be a SHA-256 digest');
+  }
+  if (expectedSource !== RUNNER_SOURCE_SHA256) {
+    throw new Error('running runner source does not match the provisioned bundle');
+  }
   return {
     ...config,
+    runnerSourceAttested: true,
     hermesOrigin: String(config.hermesOrigin).replace(/\/$/, ''),
     stateFile: String(config.stateFile),
   };
@@ -431,6 +465,14 @@ function taskProblem(body, config) {
   }
   if (body.instructions !== undefined && typeof body.instructions !== 'string') {
     return 'instructions must be a string';
+  }
+  if (body.responseMode !== undefined &&
+      body.responseMode !== 'quick' && body.responseMode !== 'deep') {
+    return 'responseMode must be quick or deep';
+  }
+  if (body.model !== undefined &&
+      body.model !== config.modelName && body.model !== config.deepModelName) {
+    return 'model is not in the configured runtime routes';
   }
   if (body.keepaliveUntil !== undefined) {
     if (typeof body.keepaliveUntil !== 'string' ||
@@ -501,13 +543,19 @@ async function hermesEvents(config, runId) {
 function readiness(body) {
   const top = String(body?.status ?? '').toLowerCase();
   const nested = String(body?.readiness?.status ?? '').toLowerCase();
-  return ['ok', 'ready', 'healthy'].includes(top) || ['ok', 'ready', 'healthy'].includes(nested);
+  const healthy = ['ok', 'ready', 'healthy'].includes(top) ||
+    ['ok', 'ready', 'healthy'].includes(nested);
+  return healthy && body?.jentera_patch === HERMES_PATCH_ID;
 }
 
 function boundedReadiness(body) {
   if (!body || typeof body !== 'object') return { status: 'unknown' };
   return {
     status: String(body.status ?? 'unknown').slice(0, 50),
+    jenteraPatch: typeof body.jentera_patch === 'string'
+      ? body.jentera_patch.slice(0, 100)
+      : undefined,
+    pid: Number.isSafeInteger(body.pid) && body.pid > 0 ? body.pid : undefined,
     readiness: body.readiness && typeof body.readiness === 'object'
       ? { status: String(body.readiness.status ?? 'unknown').slice(0, 50) }
       : undefined,
@@ -544,6 +592,11 @@ function uuid(value) {
   return typeof value === 'string' &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
       .test(value);
+}
+
+function modelId(value) {
+  return typeof value === 'string' &&
+    /^[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._:~-]+)?$/.test(value);
 }
 
 async function readJson(req) {
@@ -857,13 +910,13 @@ export class StreamingThinkScrubber {
      … ` response` markers cover Hermes's own scratchpad lines; the XML tags
      cover classic CoT probes. */
   static OPEN = [
-    '<reasoning_scratchpad>', '<think>', '| thinking|', ' thinking', '<reasoning>',
-    '<thinking>', '<thought>',
+    '<reasoning_scratchpad>', '<think>', '<mm:think>', '| thinking|', ' thinking',
+    '<reasoning>', '<thinking>', '<thought>',
   ];
 
   static CLOSE = [
-    '</reasoning_scratchpad>', '</think>', '|/thinking|', '|/thinking ', ' response',
-    '</reasoning>', '</thinking>', '</thought>',
+    '</reasoning_scratchpad>', '</think>', '</mm:think>', '|/thinking|', '|/thinking ',
+    ' response', '</reasoning>', '</thinking>', '</thought>',
   ];
 
   constructor() {
@@ -904,7 +957,13 @@ export class StreamingThinkScrubber {
         continue;
       }
 
-      const held = longestTagPrefix(lower, StreamingThinkScrubber.OPEN);
+      /* Hold partial orphan closing tags too. Model providers may remove an
+         opening reasoning tag upstream while leaving a namespaced close such
+         as `</mm:think>` in message.delta, split across arbitrary chunks. */
+      const held = longestTagPrefix(
+        lower,
+        [...StreamingThinkScrubber.OPEN, ...StreamingThinkScrubber.CLOSE],
+      );
       const safe = held ? input.slice(0, -held) : input;
       if (held) this.buffer = input.slice(-held);
       output += this.append(stripOrphanCloseTags(safe));
@@ -989,7 +1048,7 @@ function longestTagPrefix(text, tags) {
 function stripOrphanCloseTags(text) {
   if (!text.includes('</')) return text;
   return text.replace(
-    /<\/(?:reasoning_scratchpad|think|reasoning|thinking|thought)>[ \t\r\n]*/gi,
+    /<\/(?:[a-z][\w.-]*:)?(?:reasoning_scratchpad|think|reasoning|thinking|thought)>[ \t\r\n]*/gi,
     '',
   );
 }
@@ -1039,6 +1098,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       event: 'runner.ready',
       port: config.port,
       release: config.release,
+      sourceSha256: RUNNER_SOURCE_SHA256,
     }));
   });
 }

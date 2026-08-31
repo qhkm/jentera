@@ -242,11 +242,6 @@ export async function handleRepo(
           .map((v) => v.trim()))]
       : [];
     if (!playbookKey) return badRequest(cors, 'business type is required');
-    /* Internal work and quick answers need business knowledge, not an
-       external channel. Requiring one here delayed first value and caused
-       owners to select a channel they had not actually connected. */
-    const setupDone = body.setupDone === true;
-
     const problem = runtimeProvisioningProblem(env);
     if (problem) return json({ ok: false, err: problem }, { status: 503 }, cors);
     const release = env.RUNTIME_RELEASE!.trim();
@@ -258,7 +253,7 @@ export async function handleRepo(
         update business
            set playbook_key = ${playbookKey}, channels = ${tx.json(channels)},
                name = coalesce(${name}, name), locality = coalesce(${locality}, locality),
-               onboarded = true, setup_done = ${setupDone}
+               onboarded = true, setup_done = false
          where id = ${id.businessId}`;
       return enqueueRuntimeTask(tx, id.businessId, {
         kind: 'provision',

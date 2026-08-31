@@ -33,6 +33,7 @@ import {
 } from '../runtime/tasks';
 import { publishRunProgressSafely } from '../runtime/progress';
 import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
+import { modelForResponseMode } from '../runtime/response-mode';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -382,6 +383,7 @@ async function startDurableAsk(
     work: await recentWork(tx, 8),
   }));
   const prepared = prepareAsk(question, facts, work);
+  const model = modelForResponseMode(env, 'deep');
   const dedupeKey = `ask:${requestId}`;
   const created = await withTenant(env, businessId, async (tx) => {
     /* The advisory lock makes the HTTP idempotency key atomic with run
@@ -400,7 +402,7 @@ async function startDurableAsk(
       triggerRef: { question, requestId },
       requestedBy: userId,
       runtime: 'hermes-sprite',
-      model: env.AISAR_MODEL_NAME!.trim(),
+      model,
     });
     await append(tx, businessId, run.id, 'fact.retrieved', {
       keys: prepared.usedKeys,
@@ -418,6 +420,9 @@ async function startDurableAsk(
         channel: 'app',
         factKeys: prepared.usedKeys,
         grounded: prepared.grounded,
+        responseMode: 'deep',
+        model,
+        requestedAtMs: Date.now(),
       },
     });
     return { runId: run.id, task };

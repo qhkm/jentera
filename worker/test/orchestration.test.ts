@@ -20,7 +20,8 @@ import { recordFact } from '../src/facts';
 import type { Env } from '../src/env';
 import { markRuntimeReady } from '../src/agent-runtime';
 import { ensureProviderRuntime } from '../src/runtime/provision';
-import { handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
+import { handleRuntimeQueueMessage, LocalRuntimeProvider } from '../src/runtime';
+import type { RuntimeQueueMessage } from '../src/runtime';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
@@ -235,32 +236,41 @@ describe('durable Hermes Telegram replies', () => {
     });
     await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.28-3', 'v1'));
 
-    const queued: { version: 1; businessId: string; taskId: string }[] = [];
+    const queued: RuntimeQueueMessage[] = [];
     const currentEnv = testEnv({
       RUNTIME_RELEASE: '2026.08.28-4',
       RUNTIME_EXECUTION_ENABLED: 'true',
       AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
       RUNTIME_QUEUE: {
-        send: async (message: { version: 1; businessId: string; taskId: string }) => {
+        send: async (message: RuntimeQueueMessage) => {
           queued.push(message);
         },
       },
     });
     await handleIncoming(currentEnv, A, connId, incoming);
 
-    /* The admission path acknowledges with a real bot-owned bubble (never an
-       input-field draft), persisted on the task so the consumer streams into
-       the same message. */
-    expect(sent).toEqual([{ chatId: 42, text: '⏳ Thinking…' }]);
-    expect(edits).toHaveLength(0);
-    expect(deletions).toHaveLength(0);
+    /* The webhook-facing path only performs the durable Queue handoff. No
+       run/task transaction or Telegram bubble waits in front of dispatch. */
+    expect(sent).toHaveLength(0);
     expect(queued).toHaveLength(1);
+    expect(queued[0]).toMatchObject({
+      version: 2,
+      kind: 'telegram_intake',
+      businessId: A,
+      connectionId: connId,
+      incoming: { chatId: 42, messageId: 501 },
+    });
 
-    await expect(handleRuntimeMessage(currentEnv, queued[0], { provider })).resolves.toEqual({
+    const result = await handleRuntimeQueueMessage(currentEnv, queued[0], { provider });
+    expect(result).toMatchObject({
       action: 'requeue',
       delaySeconds: 30,
       reason: 'runtime release upgrade',
     });
+    expect(result.nextMessage).toMatchObject({ version: 1, businessId: A });
+    expect(sent).toEqual([{ chatId: 42, text: '⚡ Preparing a quick reply…' }]);
+    expect(edits).toHaveLength(0);
+    expect(deletions).toHaveLength(0);
     expect(queued).toHaveLength(2);
     const tasks = await asTenant(A, (tx) => tx<{
       kind: string; dedupe_key: string; payload: Record<string, unknown>;
@@ -269,12 +279,12 @@ describe('durable Hermes Telegram replies', () => {
     expect(tasks[0]).toMatchObject({
       kind: 'run',
       payload: {
+        responseMode: 'quick',
         telegram: { connectionId: connId, chatId: 42, messageId: 501, liveMessageId: 99 },
       },
     });
     expect(tasks[1]).toMatchObject({
       kind: 'upgrade',
-      dedupe_key: `upgrade:${A}:2026.08.28-4`,
       payload: { release: '2026.08.28-4', reason: 'release_drift' },
     });
   });
@@ -282,13 +292,13 @@ describe('durable Hermes Telegram replies', () => {
   it('deduplicates Telegram retries before they can buy a second Hermes run', async () => {
     await setPolicy('automatic');
     const provider = new LocalRuntimeProvider();
-    const queued: { version: 1; businessId: string; taskId: string }[] = [];
+    const queued: RuntimeQueueMessage[] = [];
     const durableEnv = testEnv({
       RUNTIME_RELEASE: '2026.08.28-4',
       RUNTIME_EXECUTION_ENABLED: 'true',
       AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
       RUNTIME_QUEUE: {
-        send: async (message: { version: 1; businessId: string; taskId: string }) => {
+        send: async (message: RuntimeQueueMessage) => {
           queued.push(message);
         },
       },
@@ -302,6 +312,19 @@ describe('durable Hermes Telegram replies', () => {
 
     await handleIncoming(durableEnv, A, connId, incoming);
     await handleIncoming(durableEnv, A, connId, incoming);
+
+    /* Duplicate webhooks become duplicate intake events. The first consumer
+       delivery creates and completes one task; the second observes that
+       terminal dedupe row and creates neither compute nor another bubble. */
+    expect(queued).toHaveLength(2);
+    await expect(handleRuntimeQueueMessage(durableEnv, queued[0], {
+      provider,
+      fetch: successfulRunner('Yes, we are open on Sunday.'),
+    })).resolves.toEqual({ action: 'ack', reason: 'completed' });
+    await expect(handleRuntimeQueueMessage(durableEnv, queued[1], {
+      provider,
+      fetch: successfulRunner('This must never run.'),
+    })).resolves.toEqual({ action: 'ack', reason: 'already_done' });
 
     const tasks = await asOwner((sql) => sql<{
       runtime: string; kind: string; payload: Record<string, unknown>;
@@ -312,28 +335,20 @@ describe('durable Hermes Telegram replies', () => {
     expect(tasks).toHaveLength(1);
     expect(tasks[0].runtime).toBe('hermes-sprite');
     expect(tasks[0].kind).toBe('run');
-    expect(tasks[0].payload.telegram).toMatchObject({
-      connectionId: connId,
-      chatId: 42,
-      messageId: 501,
-    });
-    expect(queued).toHaveLength(2);
-    /* One acknowledgment bubble despite two deliveries — the second is
-       deduplicated before the placeholder fires (inserted=false). */
-    expect(sent).toEqual([{ chatId: 42, text: '⏳ Thinking…' }]);
-    expect(edits).toHaveLength(0);
+    expect(sent.filter((entry) => entry.text === '⚡ Preparing a quick reply…'))
+      .toHaveLength(1);
   });
 
   it('delivers the final Hermes answer and does not retain it on the runtime task', async () => {
     await setPolicy('automatic');
     const provider = new LocalRuntimeProvider();
-    const queued: { version: 1; businessId: string; taskId: string }[] = [];
+    const queued: RuntimeQueueMessage[] = [];
     const durableEnv = testEnv({
       RUNTIME_RELEASE: '2026.08.28-4',
       RUNTIME_EXECUTION_ENABLED: 'true',
       AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
       RUNTIME_QUEUE: {
-        send: async (message: { version: 1; businessId: string; taskId: string }) => {
+        send: async (message: RuntimeQueueMessage) => {
           queued.push(message);
         },
       },
@@ -346,13 +361,14 @@ describe('durable Hermes Telegram replies', () => {
     await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.28-4', 'v1'));
     await handleIncoming(durableEnv, A, connId, incoming);
 
-    expect(typing).toContainEqual({ chatId: 42, action: 'typing' });
-
     const fetcher: typeof fetch = async (input, init) => {
       const url = String(input);
       if (url.endsWith('/readyz')) {
         return runnerResponse({
           ok: true,
+          release: '2026.08.28-4',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-01' },
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
@@ -391,9 +407,10 @@ describe('durable Hermes Telegram replies', () => {
       }
       return runnerResponse({ error: 'not found' }, 404);
     };
-    await expect(handleRuntimeMessage(durableEnv, queued[0], { provider, fetch: fetcher }))
+    await expect(handleRuntimeQueueMessage(durableEnv, queued[0], { provider, fetch: fetcher }))
       .resolves.toEqual({ action: 'ack', reason: 'completed' });
 
+    expect(typing).toContainEqual({ chatId: 42, action: 'typing' });
     expect(sent).toContainEqual({
       chatId: 42,
       text: '🐍 execute_code: "import urllib.request"',
@@ -416,7 +433,9 @@ describe('durable Hermes Telegram replies', () => {
         from runtime_task t
         join run r on r.id = t.run_id
         join work_record w on w.run_id = r.id
-       where t.id = ${queued[0].taskId}`);
+       where t.business_id = ${A}
+       order by t.created_at desc
+       limit 1`);
     expect(state).toEqual({
       task_result: { delivery: 'sent' },
       task_payload: {},
@@ -428,13 +447,13 @@ describe('durable Hermes Telegram replies', () => {
   it('streams @step narration as live bubble status and keeps it out of the answer', async () => {
     await setPolicy('automatic');
     const provider = new LocalRuntimeProvider();
-    const queued: { version: 1; businessId: string; taskId: string }[] = [];
+    const queued: RuntimeQueueMessage[] = [];
     const durableEnv = testEnv({
       RUNTIME_RELEASE: '2026.08.28-4',
       RUNTIME_EXECUTION_ENABLED: 'true',
       AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
       RUNTIME_QUEUE: {
-        send: async (message: { version: 1; businessId: string; taskId: string }) => {
+        send: async (message: RuntimeQueueMessage) => {
           queued.push(message);
         },
       },
@@ -453,6 +472,9 @@ describe('durable Hermes Telegram replies', () => {
       if (url.endsWith('/readyz')) {
         return runnerResponse({
           ok: true,
+          release: '2026.08.28-4',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-01' },
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
@@ -491,7 +513,7 @@ describe('durable Hermes Telegram replies', () => {
       }
       return runnerResponse({ error: 'not found' }, 404);
     };
-    await expect(handleRuntimeMessage(durableEnv, queued[0], { provider, fetch: fetcher }))
+    await expect(handleRuntimeQueueMessage(durableEnv, queued[0], { provider, fetch: fetcher }))
       .resolves.toEqual({ action: 'ack', reason: 'completed' });
 
     /* The step label appears in the working bubble's status lane. */
@@ -510,13 +532,13 @@ describe('durable Hermes Telegram replies', () => {
   it('streams live reasoning as bubble status and keeps it out of the answer', async () => {
     await setPolicy('automatic');
     const provider = new LocalRuntimeProvider();
-    const queued: { version: 1; businessId: string; taskId: string }[] = [];
+    const queued: RuntimeQueueMessage[] = [];
     const durableEnv = testEnv({
       RUNTIME_RELEASE: '2026.08.28-4',
       RUNTIME_EXECUTION_ENABLED: 'true',
       AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
       RUNTIME_QUEUE: {
-        send: async (message: { version: 1; businessId: string; taskId: string }) => {
+        send: async (message: RuntimeQueueMessage) => {
           queued.push(message);
         },
       },
@@ -535,6 +557,9 @@ describe('durable Hermes Telegram replies', () => {
       if (url.endsWith('/readyz')) {
         return runnerResponse({
           ok: true,
+          release: '2026.08.28-4',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-01' },
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
@@ -572,7 +597,7 @@ describe('durable Hermes Telegram replies', () => {
       }
       return runnerResponse({ error: 'not found' }, 404);
     };
-    await expect(handleRuntimeMessage(durableEnv, queued[0], { provider, fetch: fetcher }))
+    await expect(handleRuntimeQueueMessage(durableEnv, queued[0], { provider, fetch: fetcher }))
       .resolves.toEqual({ action: 'ack', reason: 'completed' });
 
     /* The thought appears in the working bubble's status lane while working. */
@@ -678,4 +703,38 @@ function runnerResponse(body: unknown, status = 200): Response {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+function successfulRunner(answer: string): typeof fetch {
+  return async (input, init) => {
+    const url = String(input);
+    if (url.endsWith('/readyz')) {
+      return runnerResponse({
+        ok: true,
+        release: '2026.08.28-4',
+        runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+        hermes: { jenteraPatch: 'jentera-runtime-2026-09-01' },
+        toolMode: 'full-tools',
+        webSearchBackend: 'ddgs',
+        edgeAuthorizationForwarded: false,
+      });
+    }
+    if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+      return runnerResponse({ ok: true, hermesRunId: 'dedupe-hermes-1', status: 'started' }, 202);
+    }
+    if (url.endsWith('/events')) {
+      return new Response('data: {"type":"done"}\n\n', {
+        headers: { 'Content-Type': 'text/event-stream' },
+      });
+    }
+    if (url.includes('/v1/tasks/')) {
+      return runnerResponse({
+        ok: true,
+        status: 'completed',
+        output: answer,
+        usage: { input_tokens: 20, output_tokens: 8 },
+      });
+    }
+    return runnerResponse({ error: 'not found' }, 404);
+  };
 }

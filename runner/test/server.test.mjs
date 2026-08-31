@@ -20,16 +20,20 @@ let hermesOrigin;
 let runnerOrigin;
 let hermesStatus;
 let hermesReasoning;
+let hermesPatch;
 let starts;
 
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'aisar-runner-'));
   hermesStatus = 'running';
   hermesReasoning = 'The user asks a biographical question.\nKeep the answer focused and factual.';
+  hermesPatch = 'jentera-runtime-2026-09-01';
   starts = [];
   hermesServer = createServer(async (req, res) => {
     assert.equal(req.headers.authorization, `Bearer ${HERMES_KEY}`);
-    if (req.url === '/health/detailed') return reply(res, 200, { status: 'ok' });
+    if (req.url === '/health/detailed') {
+      return reply(res, 200, { status: 'ok', jentera_patch: hermesPatch, pid: 321 });
+    }
     if (req.method === 'POST' && req.url === '/v1/runs') {
       const body = await bodyOf(req);
       starts.push(body);
@@ -76,6 +80,8 @@ beforeEach(async () => {
     release: '2026.08.27-1',
     toolMode: 'full-tools',
     webSearchBackend: 'ddgs',
+    modelName: 'MiniMax-M3',
+    deepModelName: 'deepseek-v4-flash',
     stateFile: join(directory, 'state.json'),
   });
   runnerOrigin = await listen(runnerServer);
@@ -111,6 +117,12 @@ test('detailed readiness requires the per-runtime key', async () => {
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.hermes.status, 'ok');
+  assert.equal(body.hermes.jenteraPatch, 'jentera-runtime-2026-09-01');
+  assert.equal(body.hermes.pid, 321);
+  assert.match(body.runner.sourceSha256, /^[0-9a-f]{64}$/);
+  assert.equal(body.runner.sourceAttested, true);
+  assert.equal(typeof body.runner.pid, 'number');
+  assert.match(body.runner.startedAt, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal(body.webSearchBackend, 'ddgs');
   assert.equal(body.edgeAuthorizationForwarded, false);
   assert.equal(body.region, null);
@@ -127,6 +139,15 @@ test('detailed readiness requires the per-runtime key', async () => {
   assert.equal((await placed.json()).region, 'sin');
 });
 
+test('readiness rejects a healthy orphan that did not load the Jentera Hermes patch', async () => {
+  hermesPatch = undefined;
+  const response = await call('/readyz');
+  assert.equal(response.status, 503);
+  const body = await response.json();
+  assert.equal(body.ok, false);
+  assert.equal(body.hermes.jenteraPatch, undefined);
+});
+
 test('starts one Hermes run for a valid leased Jentera task', async () => {
   const response = await start(TASK);
   assert.equal(response.status, 202);
@@ -136,10 +157,34 @@ test('starts one Hermes run for a valid leased Jentera task', async () => {
     input: 'Help the owner',
     session_id: 'business-thread',
     instructions: 'Propose actions; do not send them directly.',
+    model: 'deepseek-v4-flash',
     model_options: {
       reasoning: { enabled: true, effort: 'high' },
     },
   });
+});
+
+test('uses low reasoning for quick business conversation', async () => {
+  const response = await start(TASK, { responseMode: 'quick' });
+  assert.equal(response.status, 202);
+  assert.deepEqual(starts[0].model_options, {
+    reasoning: { enabled: true, effort: 'low' },
+  });
+  assert.equal(starts[0].model, 'MiniMax-M3');
+});
+
+test('refuses an unknown response mode', async () => {
+  const response = await start(TASK, { responseMode: 'turbo' });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /responseMode/);
+  assert.equal(starts.length, 0);
+});
+
+test('refuses a model outside the configured quick and deep routes', async () => {
+  const response = await start(TASK, { model: 'unreviewed-model' });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /model/);
+  assert.equal(starts.length, 0);
 });
 
 test('rejects missing, expired, incomplete, unexpected, and cross-task grants', async () => {

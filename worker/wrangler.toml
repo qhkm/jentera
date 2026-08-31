@@ -68,6 +68,7 @@ RUNTIME_BUNDLE_COMMIT = "1e518f3df404c909dd2b499d4f0a3ea42541e2df"
 AISAR_MODEL_PROVIDER = "openrouter"
 AISAR_MODEL_BASE = "https://router.fmcv.my"
 AISAR_MODEL_NAME = "MiniMax-M3"
+AISAR_DEEP_MODEL_NAME = "deepseek-v4-flash"
 # Businesses whose model key is the static AISAR_MODEL_KEY (customer-pinned
 # router, no rotation) instead of managed OpenRouter rotation.
 RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS = "4e8c2593-2af2-494f-b157-fec0295a50b5"

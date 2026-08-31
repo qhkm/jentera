@@ -165,36 +165,44 @@ export async function leaseRuntimeTask(
      where business_id = ${businessId} and status = 'leased'
        and lease_expires_at <= now()`;
 
-  const [current] = await tx<TaskRow[]>`
-    select ${tx.unsafe(cols)} from runtime_task
-     where id = ${taskId} and business_id = ${businessId} for update`;
-  if (!current) return { outcome: 'missing' };
-  if (current.status === 'completed' || current.status === 'cancelled' ||
-      current.status === 'exhausted') {
-    return { outcome: 'done' };
-  }
-  if (current.status === 'leased') {
-    /* This very task is already being processed by another delivery; use
-       its own lease horizon to schedule the watchdog. */
-    return { outcome: 'busy', siblingLeaseExpiresAt: current.lease_expires_at };
-  }
-
-  /* CAS lease. The NOT EXISTS guard stands in for the old separate
-     "other leased row" check: under the advisory lock no contender can be
-     mid-lease, so any sibling 'leased' row is a committed, still-active task
-     and must win. Same row-lock behavior as before, one round trip less. */
+  /* Try the common success path directly. UPDATE provides the row lock; the
+     business advisory lock already serialises competing lease decisions, so
+     a preceding SELECT ... FOR UPDATE was one full Neon round trip with no
+     additional safety. */
   const [leased] = await tx<TaskRow[]>`\n    update runtime_task\n       set status = 'leased', lease_token = ${leaseToken},\n           lease_expires_at = now() + (${leaseSeconds} * interval '1 second'),\n           last_error = null, updated_at = now()\n     where id = ${taskId} and business_id = ${businessId}\n       and status in ('queued','failed') and available_at <= now()\n       and not exists (\n         select 1 from runtime_task sibling\n          where sibling.business_id = ${businessId}\n            and sibling.status = 'leased'\n            and sibling.id <> ${taskId}\n       )\n    returning ${tx.unsafe(cols)}`;
   if (leased) return { outcome: 'leased', task: task(leased) };
 
-  /* A sibling holds the slot. Hand back its lease horizon so the consumer
-     can schedule a precise watchdog instead of polling every couple of
-     seconds while the waiting task is parked safely in this table. */
-  const [sibling] = await tx<{ lease_expires_at: Date | null }[]>`
-    select lease_expires_at
-      from runtime_task
-     where business_id = ${businessId} and status = 'leased'
-     limit 1`;
-  return { outcome: 'busy', siblingLeaseExpiresAt: sibling?.lease_expires_at ?? null };
+  /* The uncommon fallback distinguishes a terminal/missing duplicate from a
+     task parked behind the active lease, in one query. */
+  const [state] = await tx<{
+    status: RuntimeTaskStatus | null;
+    current_lease_expires_at: Date | null;
+    sibling_lease_expires_at: Date | null;
+  }[]>`
+    select current.status,
+           current.lease_expires_at as current_lease_expires_at,
+           sibling.lease_expires_at as sibling_lease_expires_at
+      from (select 1) gate
+      left join runtime_task current
+        on current.id = ${taskId} and current.business_id = ${businessId}
+      left join lateral (
+        select lease_expires_at
+          from runtime_task
+         where business_id = ${businessId} and status = 'leased'
+         order by updated_at desc
+         limit 1
+      ) sibling on true`;
+  if (!state?.status) return { outcome: 'missing' };
+  if (state.status === 'completed' || state.status === 'cancelled' ||
+      state.status === 'exhausted') {
+    return { outcome: 'done' };
+  }
+  return {
+    outcome: 'busy',
+    siblingLeaseExpiresAt: state.status === 'leased'
+      ? state.current_lease_expires_at
+      : state.sibling_lease_expires_at,
+  };
 }
 
 /** Oldest task still waiting for a free slot — the FIFO next-in-line.

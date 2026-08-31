@@ -11,6 +11,7 @@ set -euo pipefail
 : "${AISAR_MODEL_PROVIDER:=openrouter}"
 : "${AISAR_MODEL_BASE:=https://openrouter.ai/api/v1}"
 : "${AISAR_MODEL_NAME:=deepseek/deepseek-v4-flash-0731}"
+: "${AISAR_DEEP_MODEL_NAME:=$AISAR_MODEL_NAME}"
 
 sprite_org="${AISAR_SPRITE_ORG:-aisar}"
 hermes_tag="${AISAR_HERMES_TAG:-v2026.8.19}"
@@ -49,6 +50,7 @@ encode() { printf '%s' "$1" | base64 | tr -d '\n'; }
   printf 'MODEL_BASE_B64=%s\n' "$(encode "$AISAR_MODEL_BASE")"
   printf 'MODEL_KEY_B64=%s\n' "$(encode "$AISAR_MODEL_KEY")"
   printf 'MODEL_NAME_B64=%s\n' "$(encode "$AISAR_MODEL_NAME")"
+  printf 'DEEP_MODEL_NAME_B64=%s\n' "$(encode "$AISAR_DEEP_MODEL_NAME")"
   printf 'HERMES_TAG_B64=%s\n' "$(encode "$hermes_tag")"
   printf 'HERMES_COMMIT_B64=%s\n' "$(encode "$hermes_commit")"
 } > "$transfer"

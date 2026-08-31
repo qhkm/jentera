@@ -31,6 +31,13 @@ describe('stripHermesThinking (durable answer backstop)', () => {
       .toBe('Final.\nDone.');
   });
 
+  it('strips MiniMax namespaced CoT blocks and orphan close tags', () => {
+    expect(stripHermesThinking('<mm:think>secret</mm:think>Honest answer.'))
+      .toBe('Honest answer.');
+    expect(stripHermesThinking('</mm:think>Honest answer.'))
+      .toBe('Honest answer.');
+  });
+
   it('still strips @step: narration chrome', () => {
     expect(stripHermesThinking('@step: Researching now\nFinal answer.')).toBe('\nFinal answer.');
   });
@@ -65,12 +72,19 @@ describe('finalDurableText (durable 💭 Reasoning block)', () => {
       .toBe('💭 **Reasoning:**\n```\nPlan.\n```\n\nFinal.\nDone.');
   });
 
-  it('keeps the block and truncates the answer inside the Telegram 4k cap', () => {
+  it('drops the block before truncating the answer inside the Telegram 4k cap', () => {
     const reasoning = 'r'.repeat(1_000);
     const answer = 'a'.repeat(4_000);
     const text = finalDurableText(answer, reasoning);
     expect(text.length).toBe(4_000);
+    expect(text).toBe(answer);
+  });
+
+  it('shrinks reasoning while preserving a long answer byte-for-byte', () => {
+    const answer = 'a'.repeat(3_800);
+    const text = finalDurableText(answer, 'r'.repeat(1_000));
+    expect(text.length).toBeLessThanOrEqual(4_000);
     expect(text.startsWith('💭 **Reasoning:**\n```\n')).toBe(true);
-    expect(text.includes('a'.repeat(500))).toBe(true);
+    expect(text.endsWith(answer)).toBe(true);
   });
 });

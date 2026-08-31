@@ -19,6 +19,11 @@ test('narrowly updates the reviewed vulnerable override and verifies its lock', 
   assert.equal(manifest.overrides['nanoid@^3'], '3.3.18');
   const apiServer = await readFile(join(root, 'gateway/platforms/api_server.py'), 'utf8');
   assert.match(apiServer, /provider_sort.*provider_routing\.get\("sort"\)/);
+  assert.match(apiServer, /jentera_patch.*jentera-runtime-2026-09-01/);
+  assert.match(apiServer, /result\.get\("last_reasoning"\)/);
+  assert.match(apiServer, /completed_event\["reasoning"\] = reasoning/);
+  assert.match(apiServer, /\*\*\(\{"reasoning": reasoning\} if reasoning else \{\}\)/);
+  assert.equal(run(root).status, 0, 'the complete patch is idempotent');
   assert.equal(run(root, '--verify').status, 0);
 });
 
@@ -45,6 +50,25 @@ async function fixture(override, locked) {
     '            "reasoning_config": reasoning_config,',
     '            "gateway_session_key": gateway_session_key,',
     '        }',
+    '        return web.json_response({',
+    '            "version": _hermes_version(),',
+    '            "gateway_state": gw_state,',
+    '        })',
+    '                    final_response = result.get("final_response", "") if isinstance(result, dict) else ""',
+    '                    pending_steer = result.get("pending_steer") if isinstance(result, dict) else None',
+    '                    completed_event = {',
+    '                        "event": "run.completed",',
+    '                        "usage": usage,',
+    '                    }',
+    '                    if pending_steer:',
+    '                        completed_event["pending_steer"] = pending_steer',
+    '                    self._set_run_status(',
+    '                        run_id,',
+    '                        "completed",',
+    '                        output=final_response,',
+    '                        usage=usage,',
+    '                        last_event="run.completed",',
+    '                    )',
     '',
   ].join('\n'));
   return root;

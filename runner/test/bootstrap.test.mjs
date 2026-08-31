@@ -7,6 +7,7 @@ import { afterEach, test } from 'node:test';
 
 const SCRIPT = new URL('../bin/bootstrap-runtime.sh', import.meta.url).pathname;
 const CONFIGURE = new URL('../bin/configure-model-provider.py', import.meta.url).pathname;
+const HERMES_SERVICE = new URL('../bin/hermes-service.sh', import.meta.url).pathname;
 const directories = [];
 
 afterEach(async () => {
@@ -32,6 +33,9 @@ test('bootstrap and model config pin the reviewed plus customer-router endpoints
   const source = await readFile(SCRIPT, 'utf8');
   assert.match(source, /https:\/\/openrouter\.ai\/api\/v1/);
   assert.match(source, /https:\/\/router\.fmcv\.my/);
+  assert.match(source, /OPENROUTER_BASE_URL=%q.*\$model_base/);
+  assert.match(source, /AISAR_MODEL_NAME=%q.*\$model_name/);
+  assert.match(source, /AISAR_DEEP_MODEL_NAME=%q.*\$deep_model_name/);
   const configure = await readFile(CONFIGURE, 'utf8');
   assert.match(configure, /https:\/\/router\.fmcv\.my/);
 });
@@ -46,6 +50,20 @@ test('production runtime pins and proves its keyless search backend', async () =
   assert.doesNotMatch(source, /venv\/bin\/python" -m pip/);
   assert.match(source, /web-search-smoke\.py/);
   assert.match(source, /web_search_ready/);
+});
+
+test('runtime readiness binds the release to the runner bytes loaded by the process', async () => {
+  const source = await readFile(SCRIPT, 'utf8');
+  assert.match(source, /sha256sum \/home\/sprite\/aisar\/runner\/server\.mjs/);
+  assert.match(source, /AISAR_RUNNER_SOURCE_SHA256=%q/);
+});
+
+test('Hermes service replaces only a verified stale gateway process', async () => {
+  const source = await readFile(HERMES_SERVICE, 'utf8');
+  assert.match(source, /gateway_pid_file=.*gateway\.pid/);
+  assert.match(source, /\/proc\/\$existing_pid\/cmdline/);
+  assert.match(source, /refusing to terminate unrecognised gateway pid/);
+  assert.match(source, /gateway run --replace/);
 });
 
 test('Hermes installer bytes come from the reviewed Hermes commit', async () => {

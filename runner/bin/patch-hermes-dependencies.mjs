@@ -15,6 +15,8 @@ const packagePath = join(root, 'package.json');
 const lockPath = join(root, 'package-lock.json');
 const apiServerPath = join(root, 'gateway/platforms/api_server.py');
 const routingMarker = '# Jentera: apply reviewed OpenRouter routing to API-server agents.';
+const runtimeMarker = '# Jentera: expose bounded final reasoning and attest this runtime patch.';
+const runtimePatchId = 'jentera-runtime-2026-09-01';
 const manifest = JSON.parse(await readFile(packagePath, 'utf8'));
 const current = manifest?.overrides?.['nanoid@^3'];
 if (!['3.3.17', '3.3.18'].includes(current)) {
@@ -34,8 +36,8 @@ if (!verify) {
     pkg.integrity = 'sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==';
   }
   await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`, { mode: 0o644 });
-  await patchApiServerRouting();
-  process.stdout.write('pinned Hermes dependency and API routing patches\n');
+  await patchApiServer();
+  process.stdout.write('pinned Hermes dependency and Jentera API-server patches\n');
   process.exit(0);
 }
 
@@ -48,41 +50,99 @@ if (vulnerable.length > 0) {
 }
 const apiServer = await readFile(apiServerPath, 'utf8');
 if (!apiServer.includes(routingMarker) ||
-    !apiServer.includes('"provider_sort": provider_routing.get("sort"),')) {
-  throw new Error('Hermes API server is missing Jentera provider routing');
+    !apiServer.includes('"provider_sort": provider_routing.get("sort"),') ||
+    !apiServer.includes(runtimeMarker) ||
+    !apiServer.includes(`"jentera_patch": "${runtimePatchId}",`) ||
+    !apiServer.includes('result.get("last_reasoning")') ||
+    !apiServer.includes('**({"reasoning": reasoning} if reasoning else {}),')) {
+  throw new Error('Hermes API server is missing a reviewed Jentera patch');
 }
-process.stdout.write('Hermes production dependency and API routing patches verified\n');
+process.stdout.write('Hermes production dependency and Jentera API-server patches verified\n');
 
-async function patchApiServerRouting() {
+async function patchApiServer() {
   let source = await readFile(apiServerPath, 'utf8');
-  if (source.includes(routingMarker)) return;
+  if (!source.includes(routingMarker)) {
+    const configAnchor = '        agent_kwargs = {\n';
+    const configPatch = [
+      `        ${routingMarker}`,
+      '        provider_routing = user_config.get("provider_routing") or {}',
+      '        if not isinstance(provider_routing, dict):',
+      '            provider_routing = {}',
+      '',
+      configAnchor.trimEnd(),
+    ].join('\n') + '\n';
+    source = replaceReviewedAnchor(source, configAnchor, configPatch);
 
-  const configAnchor = '        agent_kwargs = {\n';
-  const configPatch = [
-    `        ${routingMarker}`,
-    '        provider_routing = user_config.get("provider_routing") or {}',
-    '        if not isinstance(provider_routing, dict):',
-    '            provider_routing = {}',
-    '',
-    configAnchor.trimEnd(),
-  ].join('\n') + '\n';
-  source = replaceReviewedAnchor(source, configAnchor, configPatch);
+    const kwargsAnchor = [
+      '            "reasoning_config": reasoning_config,',
+      '            "gateway_session_key": gateway_session_key,',
+    ].join('\n');
+    const kwargsPatch = [
+      '            "reasoning_config": reasoning_config,',
+      '            "providers_allowed": provider_routing.get("only"),',
+      '            "providers_ignored": provider_routing.get("ignore"),',
+      '            "providers_order": provider_routing.get("order"),',
+      '            "provider_sort": provider_routing.get("sort"),',
+      '            "provider_require_parameters": provider_routing.get("require_parameters", False),',
+      '            "provider_data_collection": provider_routing.get("data_collection"),',
+      '            "gateway_session_key": gateway_session_key,',
+    ].join('\n');
+    source = replaceReviewedAnchor(source, kwargsAnchor, kwargsPatch);
+  }
 
-  const kwargsAnchor = [
-    '            "reasoning_config": reasoning_config,',
-    '            "gateway_session_key": gateway_session_key,',
-  ].join('\n');
-  const kwargsPatch = [
-    '            "reasoning_config": reasoning_config,',
-    '            "providers_allowed": provider_routing.get("only"),',
-    '            "providers_ignored": provider_routing.get("ignore"),',
-    '            "providers_order": provider_routing.get("order"),',
-    '            "provider_sort": provider_routing.get("sort"),',
-    '            "provider_require_parameters": provider_routing.get("require_parameters", False),',
-    '            "provider_data_collection": provider_routing.get("data_collection"),',
-    '            "gateway_session_key": gateway_session_key,',
-  ].join('\n');
-  source = replaceReviewedAnchor(source, kwargsAnchor, kwargsPatch);
+  if (!source.includes(runtimeMarker)) {
+    const healthAnchor = [
+      '            "version": _hermes_version(),',
+      '            "gateway_state": gw_state,',
+    ].join('\n');
+    const healthPatch = [
+      `            ${runtimeMarker}`,
+      '            "version": _hermes_version(),',
+      `            "jentera_patch": "${runtimePatchId}",`,
+      '            "gateway_state": gw_state,',
+    ].join('\n');
+    source = replaceReviewedAnchor(source, healthAnchor, healthPatch);
+
+    const resultAnchor =
+      '                    final_response = result.get("final_response", "") if isinstance(result, dict) else ""\n';
+    const resultPatch = [
+      resultAnchor.trimEnd(),
+      '                    reasoning = (',
+      '                        result.get("last_reasoning")',
+      '                        if isinstance(result, dict)',
+      '                        and isinstance(result.get("last_reasoning"), str)',
+      '                        else None',
+      '                    )',
+    ].join('\n') + '\n';
+    source = replaceReviewedAnchor(source, resultAnchor, resultPatch);
+
+    const eventAnchor = [
+      '                        "usage": usage,',
+      '                    }',
+      '                    if pending_steer:',
+    ].join('\n');
+    const eventPatch = [
+      '                        "usage": usage,',
+      '                    }',
+      '                    if reasoning:',
+      '                        completed_event["reasoning"] = reasoning',
+      '                    if pending_steer:',
+    ].join('\n');
+    source = replaceReviewedAnchor(source, eventAnchor, eventPatch);
+
+    const statusAnchor = [
+      '                        output=final_response,',
+      '                        usage=usage,',
+      '                        last_event="run.completed",',
+    ].join('\n');
+    const statusPatch = [
+      '                        output=final_response,',
+      '                        usage=usage,',
+      '                        **({"reasoning": reasoning} if reasoning else {}),',
+      '                        last_event="run.completed",',
+    ].join('\n');
+    source = replaceReviewedAnchor(source, statusAnchor, statusPatch);
+  }
   await writeFile(apiServerPath, source, { mode: 0o644 });
 }
 

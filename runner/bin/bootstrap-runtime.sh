@@ -21,6 +21,7 @@ MODEL_PROVIDER_B64=
 MODEL_BASE_B64=
 MODEL_KEY_B64=
 MODEL_NAME_B64=
+DEEP_MODEL_NAME_B64=
 HERMES_TAG_B64=
 HERMES_COMMIT_B64=
 while IFS='=' read -r name value; do
@@ -39,6 +40,7 @@ while IFS='=' read -r name value; do
     MODEL_BASE_B64) MODEL_BASE_B64="$value" ;;
     MODEL_KEY_B64) MODEL_KEY_B64="$value" ;;
     MODEL_NAME_B64) MODEL_NAME_B64="$value" ;;
+    DEEP_MODEL_NAME_B64) DEEP_MODEL_NAME_B64="$value" ;;
     HERMES_TAG_B64) HERMES_TAG_B64="$value" ;;
     HERMES_COMMIT_B64) HERMES_COMMIT_B64="$value" ;;
     *)
@@ -71,6 +73,7 @@ model_provider="$(decode "$MODEL_PROVIDER_B64")"
 model_base="$(decode "$MODEL_BASE_B64")"
 model_key="$(decode "$MODEL_KEY_B64")"
 model_name="$(decode "$MODEL_NAME_B64")"
+deep_model_name="$(decode "${DEEP_MODEL_NAME_B64:-$MODEL_NAME_B64}")"
 hermes_tag="$(decode "$HERMES_TAG_B64")"
 hermes_commit="$(decode "$HERMES_COMMIT_B64")"
 edge_token="$(decode "$EDGE_TOKEN_B64")"
@@ -103,6 +106,10 @@ case "$model_base" in
 esac
 [[ "$model_name" =~ ^[A-Za-z0-9._~-]+(/[A-Za-z0-9._:~-]+)?$ ]] || {
   echo "model id is invalid" >&2
+  exit 1
+}
+[[ "$deep_model_name" =~ ^[A-Za-z0-9._~-]+(/[A-Za-z0-9._:~-]+)?$ ]] || {
+  echo "deep model id is invalid" >&2
   exit 1
 }
 
@@ -186,11 +193,20 @@ fi
 runtime_env=/home/sprite/aisar/runtime.env
 runtime_tmp="$(mktemp /home/sprite/aisar/runtime.env.XXXXXX)"
 trap 'rm -f "$incoming" "$runtime_tmp"' EXIT
+runner_source_sha256="$(sha256sum /home/sprite/aisar/runner/server.mjs)"
+runner_source_sha256="${runner_source_sha256%% *}"
+[[ "$runner_source_sha256" =~ ^[0-9a-f]{64}$ ]] || {
+  echo "runner source digest is unavailable" >&2
+  exit 1
+}
 {
   printf 'AISAR_BUSINESS_ID=%q\n' "$business_id"
   printf 'AISAR_RUNTIME_RELEASE=%q\n' "$runtime_release"
   printf 'AISAR_TOOL_MODE=%q\n' 'full-tools'
   printf 'AISAR_WEB_SEARCH_BACKEND=%q\n' 'ddgs'
+  printf 'AISAR_MODEL_NAME=%q\n' "$model_name"
+  printf 'AISAR_DEEP_MODEL_NAME=%q\n' "$deep_model_name"
+  printf 'AISAR_RUNNER_SOURCE_SHA256=%q\n' "$runner_source_sha256"
   printf 'AISAR_RUNNER_KEY=%q\n' "$runner_key"
   if [[ -n "$edge_token" ]]; then
     printf 'AISAR_EDGE_TOKEN=%q\n' "$edge_token"
@@ -200,6 +216,15 @@ trap 'rm -f "$incoming" "$runtime_tmp"' EXIT
   printf 'HERMES_ORIGIN=%q\n' 'http://127.0.0.1:8642'
   printf 'PORT=%q\n' '8080'
   printf 'OPENROUTER_API_KEY=%q\n' "$model_key"
+  # Hermes discards config.yaml's `model.base_url` whenever the provider is
+  # `openrouter`: hermes_cli/runtime_provider.py sets use_config_base_url only
+  # for `auto` and `custom`, so resolution falls through to the hardcoded
+  # https://openrouter.ai/api/v1 and the router key gets a 401. The env var is
+  # the one override that path honours, and it still selects
+  # OPENROUTER_API_KEY. configure-model-provider.py below writes the same URL
+  # into config.yaml, which stays useful as the declared value the operator
+  # reads — but it is this line that decides where traffic goes.
+  printf 'OPENROUTER_BASE_URL=%q\n' "$model_base"
 } > "$runtime_tmp"
 chmod 600 "$runtime_tmp"
 mv "$runtime_tmp" "$runtime_env"

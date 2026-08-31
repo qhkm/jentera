@@ -22,8 +22,18 @@ export type {
 export { LocalRuntimeProvider } from './local-provider';
 export { FlySpriteProvider } from './fly-sprite-provider';
 export { ensureProviderRuntime, runtimeProviderFor } from './provision';
-export { handleRuntimeMessage, publishRuntimeTask, signalRuntimeTask } from './consumer';
-export type { RuntimeQueueMessage, RuntimeMessageResult } from './consumer';
+export {
+  handleRuntimeMessage,
+  handleRuntimeQueueMessage,
+  publishRuntimeTask,
+  signalRuntimeTask,
+  signalTelegramIntake,
+} from './consumer';
+export type {
+  RuntimeQueueMessage,
+  RuntimeMessageResult,
+  RuntimeQueueMessageResult,
+} from './consumer';
 export { RunnerClient } from './runner-client';
 export { dispatchRuntimeRun } from './run-task';
 

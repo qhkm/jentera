@@ -17,8 +17,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { asOwner, asTenant, req, signIn, testEnv, truncateAll } from './harness';
 import { handleRepo } from '../src/routes/repo';
 import { handleConnect } from '../src/routes/connect';
-import { saveConnection, telegramInternalChat, webhookSecret } from '../src/connections';
-import { startRun } from '../src/runs';
+import {
+  bindTelegramInternalChat,
+  saveConnection,
+  telegramInternalChat,
+  webhookSecret,
+} from '../src/connections';
+import { homeCounters, startRun } from '../src/runs';
 import { enqueueRuntimeTask } from '../src/runtime/tasks';
 import { reserveRuntimeUsage } from '../src/runtime/usage';
 import type { Env } from '../src/env';
@@ -228,7 +233,7 @@ describe('finishing onboarding provisions one Hermes runtime', () => {
     });
   });
 
-  it('opens internal chat without forcing an unconnected external channel', async () => {
+  it('does not let onboarding completion skip required Telegram setup', async () => {
     const send = vi.fn(async () => {});
     env = automaticRuntimeEnv(send);
     const response = await state('POST', '/api/state/onboarding/complete', {
@@ -240,7 +245,7 @@ describe('finishing onboarding provisions one Hermes runtime', () => {
     const [row] = await asOwner((sql) => sql<{
       onboarded: boolean; setup_done: boolean; channels: string[];
     }[]>`select onboarded, setup_done, channels from business where id = ${A}`);
-    expect(row).toEqual({ onboarded: true, setup_done: true, channels: [] });
+    expect(row).toEqual({ onboarded: true, setup_done: false, channels: [] });
     expect(send).toHaveBeenCalledOnce();
   });
 
@@ -288,6 +293,23 @@ describe('finishing onboarding provisions one Hermes runtime', () => {
       body: { value: true },
     });
     expect(response.status).toBe(409);
+  });
+
+  it('allows setup to complete after onboarding without forcing an external channel', async () => {
+    env = automaticRuntimeEnv(vi.fn(async () => {}));
+    expect((await state('POST', '/api/state/onboarding/complete', {
+      cookie: cookieA,
+      body: { playbookKey: 'restaurant', channels: ['Telegram'] },
+    })).status).toBe(204);
+
+    const completed = await state('POST', '/api/state/setup-done', {
+      cookie: cookieA,
+      body: { value: true },
+    });
+    expect(completed.status).toBe(204);
+    const [business] = await asOwner((sql) => sql<{ setup_done: boolean }[]>`
+      select setup_done from business where id = ${A}`);
+    expect(business.setup_done).toBe(true);
   });
 });
 
@@ -454,6 +476,22 @@ describe('one business cannot reach another', () => {
 });
 
 describe('connections', () => {
+  it('does not count a saved Telegram bot as ready until the owner presses Start', async () => {
+    const c = await asTenant(A, (tx) =>
+      saveConnection(env, tx, A, {
+        connector: 'telegram',
+        method: 'bot_token',
+        externalId: '1',
+        displayName: '@alpha_bot',
+        secret: '123456789:SUPERSECRETTOKEN',
+        connectedBy: alice,
+      }));
+
+    expect((await asTenant(A, (tx) => homeCounters(tx))).connections).toBe(0);
+    expect(await asTenant(A, (tx) => bindTelegramInternalChat(tx, c.id, 42))).toBe('paired');
+    expect((await asTenant(A, (tx) => homeCounters(tx))).connections).toBe(1);
+  });
+
   it('rejects a token that is not shaped like one, before any network call', async () => {
     /* Checked before the value reaches anything that might log it, and
        before a request goes out carrying it. */
@@ -551,6 +589,70 @@ describe('connections', () => {
     const refreshed = await conn('GET', '/api/connections', { cookie: cookieA });
     const [paired] = refreshed.body?.connections as { paired: boolean; pairingUrl: null }[];
     expect(paired).toMatchObject({ paired: true, pairingUrl: null });
+  });
+
+  it('hands an authorised runtime message to Queue before creating any run or task', async () => {
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
+    vi.stubGlobal('fetch', fetch);
+    const paired = await pairTelegramChat(42);
+    fetch.mockClear();
+
+    const send = vi.fn(async () => {});
+    env = automaticRuntimeEnv(send);
+    const response = await telegramHook(
+      paired.connectionId,
+      paired.secret,
+      42,
+      'Please check our Sunday hours',
+      30,
+    );
+
+    expect(response.status).toBe(200);
+    expect(send).toHaveBeenCalledOnce();
+    expect(send.mock.calls[0][0]).toMatchObject({
+      version: 2,
+      kind: 'telegram_intake',
+      businessId: A,
+      connectionId: paired.connectionId,
+      incoming: {
+        chatId: 42,
+        messageId: 30,
+        text: 'Please check our Sunday hours',
+        privateChat: true,
+      },
+    });
+    const [{ runs, tasks }] = await asOwner((sql) => sql<{ runs: string; tasks: string }[]>`
+      select (select count(*)::text from run where business_id = ${A}) as runs,
+             (select count(*)::text from runtime_task where business_id = ${A}) as tasks`);
+    expect({ runs, tasks }).toEqual({ runs: '0', tasks: '0' });
+    expect(fetch.mock.calls.map(([url]) => String(url)))
+      .toEqual([expect.stringContaining('/sendChatAction')]);
+  });
+
+  it('returns 503 when Queue is unavailable so Telegram redelivers the message', async () => {
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
+    vi.stubGlobal('fetch', fetch);
+    const paired = await pairTelegramChat(42);
+    fetch.mockClear();
+
+    env = automaticRuntimeEnv(async () => { throw new Error('queue offline'); });
+    const response = await telegramHook(
+      paired.connectionId,
+      paired.secret,
+      42,
+      'Do not lose this message',
+      31,
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('Retry-After')).toBe('2');
+    expect(fetch).not.toHaveBeenCalled();
+    const [{ runs, tasks }] = await asOwner((sql) => sql<{ runs: string; tasks: string }[]>`
+      select (select count(*)::text from run where business_id = ${A}) as runs,
+             (select count(*)::text from runtime_task where business_id = ${A}) as tasks`);
+    expect({ runs, tasks }).toEqual({ runs: '0', tasks: '0' });
   });
 
   it('/stop cancels the active queued run for the paired chat before paid admission', async () => {

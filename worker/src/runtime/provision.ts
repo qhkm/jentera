@@ -20,6 +20,7 @@ import {
   type AgentRuntimeRecord,
 } from '../agent-runtime';
 import { FlySpriteProvider } from './fly-sprite-provider';
+import { runtimeModelBaseAllowed } from './execution';
 import { canBootstrap, type BootstrapRuntimeProvider, type RuntimeProvider } from './provider';
 import { finalizeRuntimeModelKeyRotation, runtimeModelKey } from './openrouter-keys';
 import { RunnerClient } from './runner-client';
@@ -101,13 +102,17 @@ async function bootstrapRuntime(
   const modelProvider = env.AISAR_MODEL_PROVIDER?.trim() ?? '';
   const modelBase = env.AISAR_MODEL_BASE?.trim() ?? '';
   const modelName = env.AISAR_MODEL_NAME?.trim() ?? '';
+  const deepModelName = env.AISAR_DEEP_MODEL_NAME?.trim() || modelName;
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('RUNTIME_BUNDLE_COMMIT is invalid');
   if (modelProvider !== 'openrouter') throw new Error('Jentera model provider is not allowed');
-  if (!['https://openrouter.ai/api/v1', 'https://router.fmcv.my'].includes(modelBase)) {
+  if (!runtimeModelBaseAllowed(modelBase)) {
     throw new Error('Jentera model endpoint is not pinned');
   }
   if (!/^[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._:~-]+)?$/.test(modelName)) {
     throw new Error('Jentera model name is invalid');
+  }
+  if (!/^[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._:~-]+)?$/.test(deepModelName)) {
+    throw new Error('Jentera deep model name is invalid');
   }
   if (!runtime.providerId || !runtime.providerUrl) throw new Error('provider runtime is incomplete');
 
@@ -125,6 +130,7 @@ async function bootstrapRuntime(
     field('MODEL_BASE_B64', modelBase),
     field('MODEL_KEY_B64', modelKey),
     field('MODEL_NAME_B64', modelName),
+    field('DEEP_MODEL_NAME_B64', deepModelName),
     field('HERMES_TAG_B64', 'v2026.8.19'),
     field('HERMES_COMMIT_B64', 'fcbd1076a93841fa88855acce810e342a5b78101'),
   ].join('\n') + '\n';
@@ -173,6 +179,7 @@ async function bootstrapRuntime(
     origin: awakened.url,
     runnerKey: secrets.runnerKey,
     edgeToken: runtime.provider === 'fly-sprite' ? env.SPRITES_TOKEN : undefined,
+    expectedRelease: runtime.desiredRelease,
     fetch: fetcher,
   });
   /* Readiness is authenticated and attests the pinned full-tools mode, a

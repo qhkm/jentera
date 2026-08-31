@@ -62,6 +62,23 @@ test('classic XML CoT tags still captured (legacy)', () => {
   assert.match(thinking, /xml reasoning/);
 });
 
+test('MiniMax namespaced XML CoT tags are captured', () => {
+  const { visible, thinking } = run(
+    '<mm:think>\nprivate MiniMax reasoning\n</mm:think>Honest answer.',
+  );
+  assert.equal(visible, 'Honest answer.');
+  assert.match(thinking, /private MiniMax reasoning/);
+});
+
+test('a split orphan MiniMax close tag never leaks into the answer lane', () => {
+  const scrubber = new StreamingThinkScrubber();
+  const chunks = ['</mm:', 'thi', 'nk>Honest answer — ', 'complete.'];
+  let visible = '';
+  for (const chunk of chunks) visible += scrubber.push(chunk);
+  visible += scrubber.finish();
+  assert.equal(visible, 'Honest answer — complete.');
+});
+
 test('plain text passes through untouched with no thinking', () => {
   const { visible, thinking } = run('Just a plain answer, no reasoning.');
   assert.equal(visible, 'Just a plain answer, no reasoning.');
