@@ -740,6 +740,10 @@ class SafeDeltaStreams {
     if (event?.event === 'message.delta' && typeof event.delta === 'string' &&
         event.delta.length > 0) {
       const bounded = truncateUtf8(event.delta, STREAM_TEXT_LIMIT - stream.bytes);
+      /* Inline think blocks are scrubbed and discarded — only Hermes's native
+         reasoning.available lane crosses as `thinking` (bounded, sanitised).
+         Draining here keeps the capture buffer from growing across blocks. */
+      stream.scrubber.drainThinking();
       this.emitDelta(stream, stream.scrubber.push(bounded));
       return;
     }
@@ -811,7 +815,12 @@ class SafeDeltaStreams {
 
   finish(stream) {
     if (stream.done) return;
-    this.emitDelta(stream, stream.scrubber.finish());
+    /* Order matters: finish() flushes a stream-ending open block's tail into
+       the scrubber's captured thinking (discarded, per the inline-never-cross
+       contract), then the answer tail itself. */
+    const tail = stream.scrubber.finish();
+    stream.scrubber.drainThinking();
+    this.emitDelta(stream, tail);
     stream.done = true;
     for (const subscriber of stream.subscribers) {
       writeSse(subscriber, { type: 'done' });
@@ -825,26 +834,36 @@ class SafeDeltaStreams {
 
 /** Streaming equivalent of Hermes's own think-block filter. It holds partial
  * tags across model chunks and never lets inline reasoning cross the runner's
- * trust boundary, even when Hermes labels it as a message delta. */
-class StreamingThinkScrubber {
+ * trust boundary, even when Hermes labels it as a message delta. Inline
+ * think-block content is captured (not silently dropped) and drained on the
+ * next message delta / stream finish — the stream path discards it (only
+ * Hermes's native reasoning.available lane crosses as SSE `thinking`),
+ * which keeps the answer lane clean and inline CoT private. Capture is
+ * retained so scrub behaviour is observable/testable. */
+export class StreamingThinkScrubber {
+  /* Pipe-framed markers are the convention inline models are prompted with
+     (│ thinking│ … │/thinking│, ASCII-pipe variant accepted); bare ` thinking`
+     … ` response` markers cover Hermes's own scratchpad lines; the XML tags
+     cover classic CoT probes. */
   static OPEN = [
-    '<reasoning_scratchpad>', '<think>', '<reasoning>',
+    '<reasoning_scratchpad>', '<think>', '| thinking|', ' thinking', '<reasoning>',
     '<thinking>', '<thought>',
   ];
 
   static CLOSE = [
-    '</reasoning_scratchpad>', '</think>', '</reasoning>',
-    '</thinking>', '</thought>',
+    '</reasoning_scratchpad>', '</think>', '|/thinking|', '|/thinking ', ' response',
+    '</reasoning>', '</thinking>', '</thought>',
   ];
 
   constructor() {
     this.buffer = '';
     this.inThinkBlock = false;
     this.visible = '';
+    this.thinking = '';
   }
 
   push(text) {
-    let input = this.buffer + text;
+    let input = normalizeSoftPipes(`${this.buffer}${text}`);
     this.buffer = '';
     let output = '';
 
@@ -853,12 +872,16 @@ class StreamingThinkScrubber {
       if (this.inThinkBlock) {
         const close = earliestTag(lower, StreamingThinkScrubber.CLOSE);
         if (close) {
+          this.thinking += input.slice(0, close.index);
+          this.buffer = '';
           this.inThinkBlock = false;
           input = input.slice(close.index + close.length);
           continue;
         }
         const max = Math.max(...StreamingThinkScrubber.CLOSE.map((tag) => tag.length));
-        this.buffer = input.slice(-max);
+        const tail = Math.min(max, input.length);
+        if (input.length > tail) this.thinking += input.slice(0, input.length - tail);
+        this.buffer = input.slice(-tail);
         return output;
       }
 
@@ -879,8 +902,23 @@ class StreamingThinkScrubber {
     return output;
   }
 
+  /** Returns captured inline think-block content since the last drain. Bytes
+   * already counted in the scrubber's private state; the caller forwards it
+   * through the bounded thinking lane. */
+  drainThinking() {
+    const value = this.thinking;
+    this.thinking = '';
+    return value;
+  }
+
   finish() {
-    if (this.inThinkBlock) return '';
+    if (this.inThinkBlock) {
+      /* Stream ended inside a block: flush the held tail so the last working
+         isn't lost, then return nothing for the answer lane. */
+      this.thinking += this.buffer;
+      this.buffer = '';
+      return '';
+    }
     const output = this.append(stripOrphanCloseTags(this.buffer));
     this.buffer = '';
     return output;
@@ -903,8 +941,8 @@ class StreamingThinkScrubber {
         const boundary = index === 0
           ? this.visible.length === 0 || this.visible.endsWith('\n')
           : lastNewline === -1
-            ? (this.visible.length === 0 || this.visible.endsWith('\n')) && preceding.trim() === ''
-            : preceding.slice(lastNewline + 1).trim() === '';
+            ? (this.visible.length === 0 || this.visible.endsWith('\n')) && prefixBlank(preceding)
+            : prefixBlank(preceding.slice(lastNewline + 1));
         if (boundary && (!best || index < best.index)) {
           best = { index, length: tag.length };
           break;
@@ -943,6 +981,19 @@ function stripOrphanCloseTags(text) {
     /<\/(?:reasoning_scratchpad|think|reasoning|thinking|thought)>[ \t\r\n]*/gi,
     '',
   );
+}
+
+/** True when a line contains only soft-frame characters (│ or ASCII |) and
+ * whitespace — lets pipe-framed markers be recognised even when a stray pipe
+ * rides the same line. */
+function prefixBlank(line) {
+  return line.replace(/[│|]/g, '').trim() === '';
+}
+
+/** Maps soft box-drawing pipes to ASCII so one marker vocabulary matches
+ * regardless of which the model emits. */
+function normalizeSoftPipes(value) {
+  return value.replace(/[│┃┆┊]/g, '|');
 }
 
 function writeSse(res, event) {

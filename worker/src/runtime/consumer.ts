@@ -707,9 +707,22 @@ function runtimeText(result: unknown): string {
   throw new Error('Hermes returned no Telegram reply');
 }
 
-function stripHermesThinking(text: string): string {
+export function stripHermesThinking(text: string): string {
   const names = '(?:reasoning_scratchpad|think|reasoning|thinking|thought)';
-  return text
+  /* Soft box-drawing pipes first, so one marker vocabulary (ASCII pipe)
+     covers both the prompt convention and whatever the model actually
+     emitted. Framed blocks │ thinking│ … │/thinking│ are removed whole;
+     an unclosed block runs to the end of the answer; stray close-frames
+     and Hermes's bare  thinking …  response scratchpad lines are dropped
+     the same way the streaming scrubber handles them. This is the durable
+     backstop — the runner already keeps these lanes apart live. */
+  let out = text.replace(/[│┃┆┊]/g, '|');
+  out = out
+    .replace(/\s*\|[ \t]*thinking\|[^]*?\|[ \t]*\/thinking\|?[ \t]*/gi, '')
+    .replace(/\s*\|[ \t]*thinking\|[^]*$/gi, '')
+    .replace(/\|[ \t]*\/thinking\|?[ \t]*/gi, '')
+    .replace(/(?:^|\n)[ \t]* thinking[ \t]*\n[^]*?(?=\n[ \t]* response[ \t]*(?:\n|$)|$)/gi, '\n')
+    .replace(/\n[ \t]* response[ \t]*(?:\n|$)/gi, '\n')
     .replace(new RegExp(`<${names}>[\\s\\S]*?<\\/${names}>\\s*`, 'gi'), '')
     .replace(new RegExp(`(?:^|\\n)[ \\t]*<${names}>[\\s\\S]*$`, 'gi'), '')
     .replace(new RegExp(`<\\/${names}>\\s*`, 'gi'), '')
@@ -718,6 +731,7 @@ function stripHermesThinking(text: string): string {
     .replace(STEP_STRIP_RE, '')
     /* …plus any marker remnant that slipped past line detection. */
     .replace(/@step:[^\n]*/gi, '');
+  return out;
 }
 
 function uuid(value: string): boolean {
