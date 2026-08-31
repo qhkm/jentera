@@ -214,8 +214,11 @@ function budget(row: BudgetRow): RuntimeBudget {
 
 /** Prices are micro-USD per 100 tokens for the pinned DeepSeek V4 Flash route. */
 function modelCostMicrousd(model: string, inputTokens: number, outputTokens: number): number {
-  if (!['deepseek/deepseek-v4-flash-0731', 'deepseek/deepseek-v4-flash-20260731']
-    .includes(model)) {
+  if (![
+    'deepseek/deepseek-v4-flash-0731',
+    'deepseek/deepseek-v4-flash-20260731',
+    'deepseek-v4-flash',
+  ].includes(model)) {
     throw new Error('runtime model pricing is not configured');
   }
   return Math.ceil((inputTokens * 6 + outputTokens * 12) / 100);
