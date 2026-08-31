@@ -8,6 +8,63 @@ Hermes can be an initial agent runtime, but it must sit behind a Jentera runtime
 
 The current repository is a static product prototype. The services below are the backend required to make its experience real.
 
+## Platform Product Boundaries
+
+The managed product is the first use of a broader Jentera infrastructure platform. The platform should preserve separable product boundaries rather than require every customer to adopt the entire stack.
+
+```mermaid
+flowchart TB
+    CONTROL[Jentera Control<br/>identity · policy · secrets · approvals · audit]
+    COMPUTE[Jentera Compute<br/>persistent isolated agent computers]
+    CONNECT[Jentera Connect<br/>normalized business capabilities]
+    SOLUTIONS[Jentera Solutions<br/>ready-to-use AI workers and procedures]
+    MARKET[Jentera Marketplace<br/>later distribution layer]
+    EXTERNAL[Externally hosted agents]
+    SYSTEMS[SEA and global business software]
+
+    CONTROL --- COMPUTE
+    CONTROL --- CONNECT
+    CONTROL --- SOLUTIONS
+    COMPUTE --> SOLUTIONS
+    CONNECT --> SOLUTIONS
+    EXTERNAL --> CONNECT
+    CONNECT --> SYSTEMS
+    MARKET -. distributes .-> COMPUTE
+    MARKET -. distributes .-> CONNECT
+    MARKET -. distributes .-> SOLUTIONS
+```
+
+### Jentera Compute
+
+Compute provides persistent, tenant-isolated execution environments for AI agents. It owns workspace lifecycle, runtime adapters, files, browser and terminal access, task leasing, metering, and recovery. The current managed product is the first Compute consumer, but Compute must remain portable across agent runtimes.
+
+### Jentera Connect
+
+Connect gives any authorized agent a stable interface to business software, regardless of where that agent runs. It is independently usable by agents on Jentera Compute, third-party agent platforms, or customer-operated infrastructure.
+
+Connect exposes the same capability contracts through appropriate interfaces such as MCP, SDK, API, and CLI. Those are access methods, not separate product boundaries. Connect owns authentication, provider selection, schema transformation, webhook normalization, rate limits, retries, idempotency, and normalized results.
+
+Connect should distinguish two layers:
+
+- **Domain primitives:** stable, testable operations such as `customer.find`, `invoice.createDraft`, `einvoice.submit`, `einvoice.getStatus`, `payment.match`, and `message.send`.
+- **Business procedures:** higher-level, policy-governed sequences such as issuing an accepted quotation, collecting overdue invoices, or onboarding an employee. Procedures compose primitives and preserve approvals, recovery state, and an audit trail.
+
+Provider-specific behavior stays behind adapters. For example, the same invoice primitive may route to SQL Account, AutoCount, or Bukku according to the tenant connection. High-risk procedures such as payroll or payments must not become opaque one-call operations; their material steps remain inspectable and approval-controlled.
+
+Connect's initial scope should be narrow: one geography, one valuable end-to-end job, a small set of providers, and approximately five to eight primitives. A second provider should validate a canonical contract before that contract is treated as general. Building a broad integration catalogue is not an early milestone.
+
+### Jentera Control
+
+Control is the horizontal trust layer used by Compute, Connect, and Solutions. It owns workload and tenant identity, permissions, credential grants, approval policy, budgets, observability, and immutable audit evidence. A customer using Connect without Compute still passes through Control.
+
+The existing control plane, policy engine, structured work records, and connector gateway are the first implementation of this layer. They should be designed so their contracts can later serve standalone products without forcing the current managed application to expose developer-facing complexity.
+
+### Jentera Solutions and Marketplace
+
+Solutions package Compute, Connect, Control, and business procedures into outcomes for non-technical customers. A customer may buy an accounts or operations worker without selecting infrastructure components.
+
+Marketplace is intentionally deferred. It is a distribution mechanism for proven connectors, skills, procedures, and agent packages, not a prerequisite for the platform. No marketplace work should precede one reliable workflow, stable extension contracts, and demonstrated external demand.
+
 ## First Complete Product Loop
 
 ```text

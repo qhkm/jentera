@@ -38,6 +38,45 @@ Jentera should provide the capability of a powerful autonomous agent—persisten
 
 The underlying agent runtime is replaceable. Jentera owns the durable business layer around it: verified business knowledge, permissions, integrations, approvals, audit history, reliability, and the non-technical customer experience. Internally there may be many specialist workers; externally the customer works with one Jentera.
 
+## Company Thesis and Product Portfolio
+
+Jentera is an infrastructure company for AI agents. The managed business operator described in this document is one product experience built on that infrastructure; it does not require every future capability to become part of one monolithic application.
+
+The long-term portfolio has distinct, composable products:
+
+- **Jentera Compute:** persistent, isolated computers on which AI agents can run with files, memory, browser, terminal, and durable execution.
+- **Jentera Connect:** one secure interface through which any compatible AI agent can use the software Southeast Asian businesses run on. An agent does not need to run on Jentera Compute to use Connect.
+- **Jentera Control:** the shared trust and operations layer for identity, permissions, credentials, approvals, budgets, observability, and audit history across Jentera products.
+- **Jentera Solutions:** ready-to-use workers and business procedures assembled from Compute, Connect, and Control for customers who want an outcome rather than infrastructure.
+- **Jentera Marketplace:** a later distribution layer for connectors, skills, procedures, and agent packages. It becomes a product only after there is sufficient customer demand and third-party supply.
+
+The products reinforce one another but remain independently useful. A developer may use only Connect with an agent hosted elsewhere. A platform team may combine Compute, Connect, and Control. A non-technical business may buy a finished Solution without seeing any of the underlying infrastructure.
+
+Control is a horizontal foundation, not merely another dashboard. API, MCP, SDK, and CLI are delivery interfaces into Compute and Connect; they should not be presented as a separate “Developer Platform” product unless they later acquire a distinct commercial boundary.
+
+The company-level message is:
+
+> **Jentera provides the infrastructure AI agents need to do real work—computers, business tools, and operational control.**
+
+The initial Connect message is:
+
+> **Connect any AI agent to the software Southeast Asian businesses run on.**
+
+The long-term category ambition is:
+
+> **The agent interface for Southeast Asian businesses.**
+
+These statements do not replace the outcome-first language used for the managed SMB experience. Product pages should speak to their actual audience: infrastructure and interoperability for developers, completed business work for owners.
+
+### Portfolio sequence
+
+1. Prove Compute and the shared Control foundation through the current managed-agent product.
+2. Develop Connect around a small number of excellent Southeast Asian integrations and make its contracts independent of the hosted runtime.
+3. Package repeatable outcomes as Jentera Solutions for non-technical businesses.
+4. Add Marketplace only when external supply and demand justify a distribution product.
+
+Connect is therefore a credible adjacent product direction, not a requirement for the first managed-product release. Its development must not delay the first complete useful-work loop.
+
 ## Product Experience
 
 Jentera follows a continuous loop:
