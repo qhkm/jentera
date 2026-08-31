@@ -40,7 +40,7 @@ function SetupStage() {
 /**
  * Session gate for the dashboard.
  *
- * Distinct from RequireOnboarded, which only reads a browser-preview flag —
+ * Distinct from RequireOnboarded, which only reads a localStorage flag —
  * that made /app reachable by setting `aisar-onboarded-v1` in devtools.
  * This asks whether the repository is actually server-backed.
  *

@@ -12,27 +12,13 @@
 
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
+import { LandingFooter, LandingHeader } from '@/components/landing/LandingChrome';
 import { trackActivation } from '@/lib/analytics';
-import * as store from '@/lib/storage';
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
 type Mode = 'signin' | 'signup';
 type BusyAction = 'password' | 'link' | null;
-
-function AuthChrome({ light, onToggle }: { light: boolean; onToggle: () => void }) {
-  return (
-    <header className="auth-chrome absolute inset-x-0 top-0 z-20 flex items-center justify-between px-5 py-5 sm:px-8 sm:py-7">
-      <Link to="/" aria-label="Jentera home" className="font-pixel font-pixel-logo text-xl tracking-wide text-brand">
-        Jentera
-      </Link>
-      <button type="button" className="auth-theme-toggle" onClick={onToggle}>
-        <span className="size-1.5 rounded-full bg-brand" aria-hidden="true" />
-        {light ? 'Dark mode' : 'Light mode'}
-      </button>
-    </header>
-  );
-}
 
 /* Errors the server can put in the query string when it bounces the
    browser back here. Mapped rather than printed, so a crafted ?error=
@@ -53,14 +39,6 @@ export default function SignIn() {
   const [busy, setBusy] = useState<BusyAction>(null);
   const [sent, setSent] = useState<'link' | 'verify' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [light, setLight] = useState(() =>
-    document.documentElement.classList.contains('theme-light') ||
-    store.get(store.KEYS.theme, 'dark') === 'light');
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('theme-light', light);
-    store.set(store.KEYS.theme, light ? 'light' : 'dark');
-  }, [light]);
 
   useEffect(() => {
     /* Prevent a previous account's private owner conversation appearing if
@@ -144,13 +122,12 @@ export default function SignIn() {
 
   if (sent) {
     return (
-      <div className="auth-page relative min-h-dvh">
-        <AuthChrome light={light} onToggle={() => setLight((value) => !value)} />
-        <main className="auth-shell mx-auto w-full max-w-[32rem] px-5 pb-16 pt-28 sm:px-6 sm:py-24">
-          <div className="auth-card card gap-0 p-6 sm:p-9">
-            <span className="eyebrow text-brand">Secure access</span>
-            <h1 className="mt-3 font-pixel text-2xl tracking-tight">Check your inbox</h1>
-            <p className="mt-4 text-sm leading-relaxed text-text-secondary">
+      <>
+        <LandingHeader />
+        <main className="mx-auto max-w-md px-6 py-24">
+          <div className="card p-8">
+            <h1 className="text-xl">Check your inbox</h1>
+            <p className="mt-3 text-sm opacity-80">
               {sent === 'verify' ? (
                 <>
                   If <strong>{email}</strong> is not already registered, a link to confirm it is on
@@ -165,33 +142,26 @@ export default function SignIn() {
             </p>
           </div>
         </main>
-      </div>
+        <LandingFooter />
+      </>
     );
   }
 
   return (
-    <div className="auth-page relative min-h-dvh">
-      <AuthChrome light={light} onToggle={() => setLight((value) => !value)} />
-      <main className="auth-shell mx-auto w-full max-w-[32rem] px-5 pb-16 pt-28 sm:px-6 sm:py-24">
-        <div className="auth-card card gap-0 p-6 sm:p-9">
-          <span className="eyebrow text-brand">Your private business workspace</span>
-          <h1 className="mt-3 font-pixel text-2xl tracking-tight">
-            {mode === 'signup' ? 'Create your Jentera account' : 'Sign in to Jentera'}
-          </h1>
-          <p className="mt-3 text-sm leading-relaxed text-text-secondary">
-            {mode === 'signup'
-              ? 'Create one secure account for your business and private Jentera agent.'
-              : 'Continue to your business, private agent, and latest work.'}
-          </p>
+    <>
+      <LandingHeader />
+      <main className="mx-auto max-w-md px-6 py-24">
+        <div className="card p-8">
+          <h1 className="text-xl">{mode === 'signup' ? 'Create your Jentera account' : 'Sign in to Jentera'}</h1>
 
           {urlError ? (
-            <p role="alert" className="auth-alert mt-4 p-3 text-sm leading-relaxed">
+            <p role="alert" className="mt-3 text-sm opacity-80">
               {urlError}
             </p>
           ) : null}
 
           <a
-            className="auth-google btn btn-outline mt-7 flex min-h-12 w-full items-center justify-center gap-2"
+            className="btn btn-outline mt-6 flex w-full items-center justify-center gap-2"
             href={`${API}/api/auth/google`}
             onClick={() => trackActivation(mode === 'signup' ? 'signup_started' : 'signin_started')}
           >
@@ -207,50 +177,40 @@ export default function SignIn() {
             Continue with Google
           </a>
 
-          <div className="mt-7 flex items-center gap-3 text-xs text-text-muted">
+          <div className="mt-6 flex items-center gap-3 text-xs opacity-60">
             <span className="h-px flex-1 bg-rail" />
             or
             <span className="h-px flex-1 bg-rail" />
           </div>
 
-          <form className="mt-7 flex flex-col gap-4" onSubmit={submitPassword}>
-            <label className="flex flex-col gap-2">
-              <span className="auth-label">Business email</span>
-              <input
-                className="auth-input input w-full"
-                type="email"
-                required
-                autoComplete="email"
-                placeholder="you@yourbusiness.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </label>
-            <label className="flex flex-col gap-2">
-              <span className="auth-label">Password</span>
-              <input
-                className="auth-input input w-full"
-                type="password"
-                required
-                minLength={10}
-                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                placeholder={mode === 'signup' ? 'At least 10 characters' : 'Your password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </label>
+          <form onSubmit={submitPassword}>
+            <input
+              className="input mt-6 w-full"
+              type="email"
+              required
+              autoComplete="email"
+              placeholder="you@yourbusiness.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+            <input
+              className="input mt-3 w-full"
+              type="password"
+              required
+              minLength={10}
+              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+              placeholder={mode === 'signup' ? 'At least 10 characters' : 'Your password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
 
             {error ? (
-              <p role="alert" className="auth-alert p-3 text-sm leading-relaxed">
+              <p role="alert" className="mt-3 text-sm opacity-80">
                 {error}
               </p>
             ) : null}
 
-            <button
-              className="btn btn-primary mt-1 min-h-12 w-full"
-              type="submit"
-              disabled={Boolean(busy) || !email || !password}
-            >
+            <button className="btn mt-4 w-full" type="submit" disabled={Boolean(busy) || !email || !password}>
               {busy === 'password'
                 ? mode === 'signup' ? 'Creating your account…' : 'Signing you in…'
                 : mode === 'signup' ? 'Create account' : 'Sign in'}
@@ -264,7 +224,7 @@ export default function SignIn() {
           {mode === 'signin' ? (
             <button
               type="button"
-              className="auth-link mt-4 w-full justify-center"
+              className="nav-link mt-4 w-full text-sm normal-case tracking-normal"
               onClick={sendLink}
               disabled={Boolean(busy) || !email}
             >
@@ -272,11 +232,11 @@ export default function SignIn() {
             </button>
           ) : null}
 
-          <p className="mt-8 text-center text-sm text-text-secondary">
+          <p className="mt-6 text-center text-sm opacity-70">
             {mode === 'signup' ? 'Already have an account?' : 'No account yet?'}{' '}
             <button
               type="button"
-              className="auth-link ml-1 text-brand"
+              className="nav-link normal-case tracking-normal"
               onClick={() => {
                 setMode(mode === 'signup' ? 'signin' : 'signup');
                 setError(null);
@@ -286,11 +246,12 @@ export default function SignIn() {
             </button>
           </p>
 
-          <p className="mt-8 text-center text-xs text-text-muted">
-            Or <Link to="/onboard" className="auth-link ml-1">try it without an account</Link>
+          <p className="mt-6 text-center text-xs opacity-60">
+            Or <Link to="/onboard" className="nav-link normal-case tracking-normal">try it without an account</Link>
           </p>
         </div>
       </main>
-    </div>
+      <LandingFooter />
+    </>
   );
 }

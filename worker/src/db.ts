@@ -9,16 +9,27 @@
 import postgres from 'postgres';
 import type { Env } from './env';
 
+/* One postgres.js client per isolate, keyed by connection string. Creating
+   a client per call costs a TCP+TLS handshake to Hyperdrive on every tenant
+   query (webhook insert, lease, credential, renewals…); reuse keeps the
+   pooled socket warm across requests and the consumer stream's renewals.
+   Hyperdrive pools origin connections server-side, so the JS-side pool is
+   small; isolate eviction cleans the client up. */
+const clients = new Map<string, postgres.Sql<{}>>();
+
 export function connect(env: Env): postgres.Sql<{}> {
-  /* A postgres.js client owns live I/O objects. Cloudflare may reuse this
-     isolate for another request, but it forbids that later request from
-     touching streams created by the first one. Hyperdrive already pools the
-     origin connections, so keep the JS client request-local and close it in
-     the same request context instead of caching it at module scope. */
-  return postgres(env.HYPERDRIVE.connectionString, {
-    max: 1,
-    fetch_types: false,
-  });
+  const url = env.HYPERDRIVE.connectionString;
+  let sql = clients.get(url);
+  if (!sql) {
+    sql = postgres(url, {
+      max: 5,
+      // Hyperdrive pools connections; per-connection type introspection is
+      // wasted work and an extra round trip on every cold start.
+      fetch_types: false,
+    });
+    clients.set(url, sql);
+  }
+  return sql;
 }
 
 /**
@@ -36,15 +47,13 @@ export async function withTenant<T>(
   fn: (tx: postgres.TransactionSql) => Promise<T>,
 ): Promise<T> {
   const sql = connect(env);
-  try {
-    const out = await sql.begin(async (tx) => {
-      await tx`select set_config('app.business_id', ${businessId}, true)`;
-      return fn(tx);
-    });
-    return out as T;
-  } finally {
-    await sql.end({ timeout: 1 });
-  }
+  // The client is memoized per isolate; no sql.end() — tearing it down would
+  // defeat the reuse. Isolate eviction handles cleanup.
+  const out = await sql.begin(async (tx) => {
+    await tx`select set_config('app.business_id', ${businessId}, true)`;
+    return fn(tx);
+  });
+  return out as T;
 }
 
 /** For queries that precede tenant resolution: login, session lookup. */
@@ -53,9 +62,5 @@ export async function withUser<T>(
   fn: (sql: postgres.Sql) => Promise<T>,
 ): Promise<T> {
   const sql = connect(env);
-  try {
-    return await fn(sql);
-  } finally {
-    await sql.end({ timeout: 1 });
-  }
+  return fn(sql);
 }

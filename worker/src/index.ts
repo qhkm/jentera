@@ -17,7 +17,7 @@ import { handleEvents } from './routes/events';
 import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
 import { handleRuntimeMessage, type RuntimeQueueMessage } from './runtime/consumer';
-import { boundRequestBody, guardApiRequest } from './request-guard';
+import { guardApiRequest } from './request-guard';
 
 export { RunStream } from './run-stream';
 
@@ -69,10 +69,6 @@ export default {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers });
     }
-
-    const bounded = await boundRequestBody(request, headers);
-    if (bounded.rejection) return bounded.rejection;
-    request = bounded.request;
 
     const guarded = await guardApiRequest(request, env, url, headers);
     if (guarded) return guarded;

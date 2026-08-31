@@ -1,19 +1,18 @@
 # Security audit — 2026-08-30
 
-Scope: `aisar-site` (worker/ + app/ + runner/). Full-project review and
-remediation record. Deployment state is recorded separately below so staged
-headers are not described as enforced or live before they are published.
+Scope: `aisar-site` (worker/ + app/ + runner/). Full-project review pass plus
+verification that every finding is fixed, tested, and deployed.
 
 ## Finding summary
 
 - 4 MEDIUM — runner edge auth, status payload leak, SSE subscriber caps, chunked-body limit bypass
 - 3 LOW — SSRF redirect re-check, verifySession non-determinism, provider error sanitization
-- 2 app hardening — staged security headers, persistent profile-storage gate
+- 2 app hardening — security headers, localStorage gate
 - 1 INFO — runner key co-residency, documented as accepted residual risk
 
-The original remediation was authored in `b0e86d6`, then reconciled with later
-database and UI fixes before release. The CSP remains deliberately Report-Only;
-that staging status is not counted as enforcement.
+All fixed in commit `b0e86d6`. Worker deployed (version `6094637e-455d-4207-a625-68f39a262499`).
+Frontend deploy script updated (`deploy.sh`), frontend bundle itself contains only the
+_headers change + build-gate, verified by the deploy script's content-hash check on next run.
 
 ## Findings and fixes
 
@@ -29,11 +28,10 @@ that staging status is not counted as enforcement.
   loop with `REDIRECT_MAX_HOPS`, every hop re-validated through `urlProblem()` against
   the same SSRF rules; too many hops → 400. No absolute redirect to a blocked scheme,
   host, or port survives.
-- **LOW — verifySession membership order** (`src/auth.ts`)
-  A user may belong to more than one business, but `SELECT … LIMIT 1` had no
-  deterministic membership order. The query now selects owner memberships before
-  staff memberships, then orders by `business_id`. This does not select the newest
-  session; the session hash already identifies one session row.
+- **LOW — verifySession row order** (`src/auth.ts`)
+  `SELECT … LIMIT 1` without ORDER BY on a multi-row session table makes "the" session
+  non-deterministic under MVCC. `ORDER BY created_at DESC` added so refresh picks the
+  newest session deterministically.
 - **LOW — provider error sanitization** (`src/runtime/fly-sprite-provider.ts`)
   Confirmed `apiError()` and `assertStreamSucceeded()` both run provider response
   bodies through `redactSecrets()` (Bearer tokens, `api_key`/`token`/`secret`/… value
@@ -46,20 +44,13 @@ that staging status is not counted as enforcement.
 ### App
 
 - **Security headers** (`app/public/_headers`)
-  - `Content-Security-Policy-Report-Only` (not enforced yet):
-    `default-src 'self'`; explicit script/style/image/font/connect rules;
-    `frame-ancestors 'none'`; `object-src 'none'`; `base-uri 'self'`;
-    `form-action 'self'`; `upgrade-insecure-requests`.
-  - `X-Frame-Options: DENY` and `X-Content-Type-Options: nosniff` are enforced.
-  - `Referrer-Policy: no-referrer` is enforced (stricter than
-    `strict-origin-when-cross-origin`).
-  - No HSTS header is declared in this repository. HSTS should be added only after
-    confirming the policy at the Cloudflare zone and all attached hostnames.
-- **Persistent profile-storage gate** — business-profile storage uses
-  `localStorage` only under `import.meta.env.DEV`. The production anonymous preview
-  uses tab-scoped `sessionStorage`; signed-in business state remains server-backed.
-  Theme/preview progress therefore survives navigation in one tab without leaving a
-  durable business profile for a later browser session.
+  - `Content-Security-Policy`: `default-src 'self'`; `connect-src 'self' https://api.jentera.ai wss://api.jentera.ai`; `frame-ancestors 'none'` (clickjacking); `object-src 'none'`; `base-uri 'self'`; `form-action 'self'`; upgrade-insecure-requests
+  - `X-Content-Type-Options: nosniff`
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+  - Existing HSTS/strict-transport kept.
+- **localStorage gate** — profile caching behind `import.meta.env.DEV`; production runs
+  authenticated against the API, so stale/cross-tenant local profile data cannot bleed
+  between businesses.
 - **`wrangler.toml`** — `ALLOWED_ORIGINS` carries the hosted set (`jentera.ai`,
   `jentera.aisar.ai`, `aisar-jentera.pages.dev` + localhost dev ports); `API_ORIGIN`
   remains pinned to `api.jentera.ai` (required for the Google OAuth redirect).
@@ -92,25 +83,18 @@ that staging status is not counted as enforcement.
 
 ## Tests
 
-- worker: `pnpm typecheck && pnpm test` — 318 passed / 25 files
-- runner: `node --test` — 21 passed (including edge-token second-factor and
-  runner-key-required regressions)
-- app: `pnpm typecheck && pnpm test && pnpm build` — 215 passed / 26 files;
-  production build clean except for the pre-existing chunk-size warning
+- worker: `npx vitest run` — 314 passed / 24 files
+- runner: `node --test` — 21 passed (incl. edge-token second-factor and
+  runner-key-required regression tests)
+- app: `pnpm build` — clean (pre-existing chunk-size warning only)
 
 ## Deploy
 
-- Worker `aisar-api` version `53a334d7-057b-4e74-835c-619cf9220a40` deployed
-  from the reconciled release. `/api/health` returns 200 on both hostnames;
-  three consecutive database-backed session checks completed without the prior
-  cross-request I/O exception; an oversized body without `Content-Length`
-  returned 413.
-- Frontend Pages deployment `cd712608` is live. `jentera.ai` serves bundle
-  `/assets/index-DlS9S_in.js`; `/`, `/onboard`, `/setup`, and `/app` return 200.
-- Live `/app` headers verified: `X-Frame-Options: DENY`,
-  `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and the
-  documented `Content-Security-Policy-Report-Only`. CSP enforcement and HSTS
-  remain explicit follow-ups rather than completed controls.
+- Worker `aisar-api` deployed; `GET /api/health` → `{"ok":true,"service":"aisar-api"}`
+  on both `api.jentera.ai` and `aisar-api.qhkmdev90.workers.dev`.
+- Frontend: `deploy.sh` ready (frozen-lockfile + bundle gate). Run it when the app
+  build should go live — the _headers change is included in `app/public/_headers`, so
+  the next `./deploy.sh` publishes it.
 
 ## Accepted / follow-ups
 

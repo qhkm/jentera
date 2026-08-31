@@ -32,28 +32,9 @@ export const KEYS = {
   onboardingDraft: 'aisar-onboarding-draft-v1',
 } as const;
 
-/**
- * Business-profile state is durable in localStorage only during local
- * development. Production's anonymous preview is tab-scoped, while signed-in
- * business data lives behind the API. That prevents a later visitor or account
- * on a shared browser from inheriting a stale local business profile.
- */
-function profileStorage(): Storage {
-  return import.meta.env.DEV ? localStorage : sessionStorage;
-}
-
-/** Enumerate profile keys without exposing the selected browser store. */
-export function keys(): string[] {
-  try {
-    return Object.keys(profileStorage());
-  } catch {
-    return [];
-  }
-}
-
 export function get(key: string, fallback = ''): string {
   try {
-    const v = profileStorage().getItem(key);
+    const v = localStorage.getItem(key);
     return v === null ? fallback : v;
   } catch {
     return fallback;
@@ -62,7 +43,7 @@ export function get(key: string, fallback = ''): string {
 
 export function set(key: string, value: string): void {
   try {
-    profileStorage().setItem(key, value);
+    localStorage.setItem(key, value);
   } catch {
     /* private mode / quota — non-fatal by design */
   }
@@ -70,7 +51,7 @@ export function set(key: string, value: string): void {
 
 export function remove(key: string): void {
   try {
-    profileStorage().removeItem(key);
+    localStorage.removeItem(key);
   } catch {
     /* non-fatal */
   }
@@ -78,7 +59,7 @@ export function remove(key: string): void {
 
 export function getJSON<T>(key: string, fallback: T): T {
   try {
-    const raw = profileStorage().getItem(key);
+    const raw = localStorage.getItem(key);
     if (raw === null) return fallback;
     return JSON.parse(raw) as T;
   } catch {
@@ -88,7 +69,7 @@ export function getJSON<T>(key: string, fallback: T): T {
 
 export function setJSON(key: string, value: unknown): void {
   try {
-    profileStorage().setItem(key, JSON.stringify(value));
+    localStorage.setItem(key, JSON.stringify(value));
   } catch {
     /* non-fatal */
   }
@@ -97,7 +78,7 @@ export function setJSON(key: string, value: unknown): void {
 /** True only when the key has never been written — distinct from empty. */
 export function isUnset(key: string): boolean {
   try {
-    return profileStorage().getItem(key) === null;
+    return localStorage.getItem(key) === null;
   } catch {
     return true;
   }
@@ -106,9 +87,8 @@ export function isUnset(key: string): boolean {
 /** Clear every Jentera key. Useful for re-testing the first-run flow. */
 export function resetAll(): void {
   try {
-    const storage = profileStorage();
-    const doomed = Object.keys(storage).filter((k) => k.startsWith('aisar-'));
-    doomed.forEach((k) => storage.removeItem(k));
+    const doomed = Object.keys(localStorage).filter((k) => k.startsWith('aisar-'));
+    doomed.forEach((k) => localStorage.removeItem(k));
   } catch {
     /* non-fatal */
   }

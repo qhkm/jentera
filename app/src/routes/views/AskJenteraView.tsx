@@ -148,7 +148,7 @@ export default function AskJenteraView({
         <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.chat.desc')}</p>
       </header>
 
-      <Card className="min-h-0 flex-1 gap-0 rounded-none border-0 p-0 lg:min-h-[440px] lg:flex-none lg:rounded-card">
+      <Card className="min-h-0 flex-1 gap-0 rounded-none border-x-0 border-b-0 p-0 lg:min-h-[440px] lg:flex-none lg:rounded-card lg:border">
           {signedIn ? (
             <WorkStatusBar
               state={pulseState}
@@ -257,12 +257,12 @@ export default function AskJenteraView({
           </div>
 
           {/* Prompt chips */}
-          <div className="flex shrink-0 gap-2 overflow-x-auto px-4 pt-3 [scrollbar-width:none] sm:px-5 lg:flex-wrap lg:overflow-visible">
+          <div className="flex shrink-0 gap-2 overflow-x-auto border-t border-rail px-4 pt-3 [scrollbar-width:none] sm:px-5 lg:flex-wrap lg:overflow-visible">
             {ASK_PROMPTS.map((key) => (
               <button
                 key={key}
                 type="button"
-                className="chip shrink-0 border-0"
+                className="chip shrink-0 hover:border-brand-line"
                 onClick={() => submit(t(`ask.prompt.${key}`))}
               >
                 {t(`ask.prompt.${key}`)}
@@ -363,21 +363,21 @@ export default function AskJenteraView({
               aria-autocomplete="list"
               placeholder={compact ? t('ask.placeholder.short') : t('ask.placeholder')}
               aria-label={t('ask.placeholder')}
-              className="input max-h-[120px] w-full min-w-0 flex-1 resize-none border-0"
+              className="input max-h-[120px] w-full min-w-0 flex-1 resize-none"
             />
             {signedIn ? (
               <Button
                 type="button"
                 variant="outline"
                 disabled={!draft.trim()}
-                className="shrink-0 border-0 px-3 sm:px-4"
+                className="shrink-0 px-3 sm:px-4"
                 onClick={() => submit(undefined, 'work')}
               >
                 <span className="sm:hidden">{t('ask.work.short')}</span>
                 <span className="hidden sm:inline">{t('ask.work')}</span>
               </Button>
             ) : null}
-            <Button type="submit" disabled={!draft.trim()} className="shrink-0 border-0 px-4 sm:px-6">
+            <Button type="submit" disabled={!draft.trim()} className="shrink-0 px-4 sm:px-6">
               <span className="sm:hidden">{t('chat.send')}</span>
               <span className="hidden sm:inline">{t('ask.send')}</span>
             </Button>
