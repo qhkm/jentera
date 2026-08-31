@@ -566,13 +566,19 @@ async function responseJson(response) {
 
 /** Hermes run status carries tool outputs the dashboard never renders.
     Surface only the fields the worker's status transition actually uses;
-    never a raw `...result` spread. */
+    never a raw `...result` spread. The final answer travels in `output`,
+    which the worker's runtimeText() needs for Telegram/app delivery. */
 const TASK_STATUS_FIELDS = new Set(['status', 'error', 'usage']);
 function boundedTaskStatus(result) {
   if (!result || typeof result !== 'object') return { status: 'unknown' };
   const out = {};
   for (const key of TASK_STATUS_FIELDS) {
     if (key in result) out[key] = result[key];
+  }
+  /* Final answer text: pass it through bounded (the worker slices to 4k).
+     Hermes exposes it only once the run is terminal. */
+  if (typeof result.output === 'string' && result.output) {
+    out.output = result.output.slice(0, 64_000);
   }
   for (const key of Object.keys(result)) {
     if (/^(created|started|finished|completed|updated)(_at)?$/i.test(key)) {
