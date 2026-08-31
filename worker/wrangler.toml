@@ -66,8 +66,11 @@ RUNTIME_EXECUTION_ENABLED = "true"
 RUNTIME_BOOTSTRAP_ENABLED = "true"
 RUNTIME_BUNDLE_COMMIT = "46b68edd91c49da3ce94223b9caa4f0f5eec308c"
 AISAR_MODEL_PROVIDER = "openrouter"
-AISAR_MODEL_BASE = "https://openrouter.ai/api/v1"
-AISAR_MODEL_NAME = "deepseek/deepseek-v4-flash-0731"
+AISAR_MODEL_BASE = "https://router.fmcv.my"
+AISAR_MODEL_NAME = "deepseek-v4-flash"
+# Businesses whose model key is the static AISAR_MODEL_KEY (customer-pinned
+# router, no rotation) instead of managed OpenRouter rotation.
+RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS = "4e8c2593-2af2-494f-b157-fec0295a50b5"
 # Connector credentials are secrets, never vars:
 #   npx wrangler secret put META_APP_SECRET
 #   npx wrangler secret put GOOGLE_CLIENT_SECRET
