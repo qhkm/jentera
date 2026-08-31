@@ -63,7 +63,7 @@ function installFakeWorker(): FakeState {
       if (body.name !== undefined) state.bizName = String(body.name);
       if (body.locality !== undefined) state.bizLoc = String(body.locality);
       state.onboarded = true;
-      state.setupDone = body.setupDone === true;
+      state.setupDone = false;
       return done();
     }
     if (path === '/api/state/setup-done') { state.setupDone = Boolean(body.value); return done(); }
@@ -172,15 +172,14 @@ describe.each(IMPLS)('%s satisfies the Repository contract', (_name, make) => {
     });
   });
 
-  it('can open the first chat without requiring an external channel', async () => {
+  it('does not let onboarding completion skip required setup', async () => {
     await repo.completeOnboarding({
       playbookKey: 'bakery',
       channels: [],
-      setupDone: true,
     });
     const s = await repo.load();
     expect(s.onboarded).toBe(true);
-    expect(s.setupDone).toBe(true);
+    expect(s.setupDone).toBe(false);
     expect(s.channels).toBeNull();
   });
 

@@ -10,7 +10,7 @@
    in the order Telegram actually presents them.
    ============================================================ */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Button, Card, Eyebrow, Input, LoadingState, Tag } from '@/components/ui';
 import { useRepository } from '@/lib/repo';
 import type { Connection } from '@/lib/repo';
@@ -22,6 +22,7 @@ const STEPS = [
   'Send /newbot, then pick a name and a username for it',
   'BotFather replies with a token that looks like 123456789:AA…',
   'Paste that token below',
+  'When Jentera confirms the bot, open Telegram from the button and press Start',
 ];
 
 function statusTone(c: Connection) {
@@ -40,17 +41,6 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [health, setHealth] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
-
-  /* Pairing happens in Telegram, outside this tab. Poll only while a row is
-     waiting so returning to the browser turns the card green without asking
-     the owner to reload or understand two separate states. */
-  useEffect(() => {
-    if (!(rows ?? []).some((row) => row.connector === 'telegram' && !row.paired)) return;
-    const timer = window.setInterval(() => {
-      void repo.connections().then(setRows).catch(() => {});
-    }, 3000);
-    return () => window.clearInterval(timer);
-  }, [repo, rows, setRows]);
 
   async function connect() {
     setBusy(true);
@@ -123,41 +113,53 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
           {telegram.map((c) => (
             <div
               key={c.id}
-              className="flex flex-wrap items-center justify-between gap-2 border-b border-rail py-3 last:border-b-0"
+              className="flex flex-col gap-3 border-b border-rail py-4 first:pt-2 last:border-b-0 last:pb-1"
             >
-              <div className="flex flex-col gap-0.5">
-                <span className="text-sm">{c.displayName ?? 'Telegram bot'}</span>
-                {c.lastError && (
-                  <span className="text-[12px] text-text-secondary">{c.lastError}</span>
-                )}
-                {health[c.id] && (
-                  <span className="text-[12px] text-text-secondary">{health[c.id]}</span>
-                )}
-                {!c.paired && c.pairingUrl ? (
-                  <span className="max-w-[32rem] text-[12px] leading-relaxed text-text-secondary">
-                    One step left: open Telegram and press Start to authorise your private chat.
-                  </span>
-                ) : null}
-                {checking === c.id ? (
-                  <span role="status" className="text-[12px] text-text-secondary">
-                    Checking the webhook and recent delivery status…
-                  </span>
-                ) : null}
-              </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm">{c.displayName ?? 'Telegram bot'}</span>
+                  {c.lastError && (
+                    <span className="text-[12px] text-text-secondary">{c.lastError}</span>
+                  )}
+                  {health[c.id] && (
+                    <span className="text-[12px] text-text-secondary">{health[c.id]}</span>
+                  )}
+                  {checking === c.id ? (
+                    <span role="status" className="text-[12px] text-text-secondary">
+                      Checking the webhook and recent delivery status…
+                    </span>
+                  ) : null}
+                </div>
                 <Tag tone={statusTone(c)}>
-                  {c.status === 'connected' && !c.paired ? 'pair owner' : c.status}
+                  {c.status === 'connected' && !c.paired ? 'one step left' : c.status}
                 </Tag>
-                {!c.paired && c.pairingUrl ? (
-                  <a
-                    className="btn btn-primary"
-                    href={c.pairingUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Open in Telegram
-                  </a>
-                ) : null}
+              </div>
+
+              {!c.paired && c.pairingUrl ? (
+                <div role="status" className="border border-brand-line bg-brand-soft p-4">
+                  <Eyebrow>Action required</Eyebrow>
+                  <h3 className="mt-2 font-pixel text-lg tracking-tight">Finish connecting Telegram</h3>
+                  <p className="mt-2 max-w-[38rem] text-[13px] leading-relaxed text-text-secondary">
+                    Your bot is saved, but Telegram will not deliver your messages yet. Open the
+                    private chat below, then press <strong className="text-text">Start</strong> in Telegram.
+                  </p>
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <a
+                      className="btn btn-primary"
+                      href={c.pairingUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open Telegram and press Start →
+                    </a>
+                    <span className="text-[11px] text-text-muted">
+                      Jentera checks automatically after you press Start.
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 {confirmingDrop === c.id ? (
                   <>
                     <span className="w-full text-right text-[11px] text-text-muted">
@@ -230,8 +232,9 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
             />
           ) : null}
           <p className="mt-3 text-[12px] text-text-muted">
-            After connecting, open the secure pairing link once from your Telegram account. Only
-            that private chat can access your business agent.
+            Saving the bot does not start the chat automatically. Telegram requires you to open
+            the secure pairing link and press Start once. Only that private chat can access your
+            business agent.
           </p>
         </>
       )}

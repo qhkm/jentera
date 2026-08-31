@@ -1,0 +1,62 @@
+/* Jentera Connect product page. The graph paper and signal lines make the
+   integration model visible without introducing a second visual system. */
+
+@layer components {
+  .connect-grid {
+    background-image:
+      linear-gradient(rgb(var(--border-ink) / .045) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(var(--border-ink) / .045) 1px, transparent 1px);
+    background-size: 36px 36px;
+  }
+
+  .connect-glow {
+    background:
+      radial-gradient(circle at 68% 34%, rgb(var(--accent-green-rgb) / .16), transparent 28rem),
+      radial-gradient(circle at 12% 84%, rgb(0 182 252 / .09), transparent 24rem);
+  }
+
+  .connect-terminal {
+    box-shadow:
+      0 28px 80px -46px rgb(var(--accent-green-rgb) / .72),
+      inset 0 1px rgb(var(--border-ink) / .035);
+  }
+
+  .connect-signal {
+    position: relative;
+  }
+
+  .connect-signal::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: -1px;
+    width: 5px;
+    height: 5px;
+    border-radius: 999px;
+    background: var(--accent-green);
+    box-shadow: 0 0 0 5px rgb(var(--accent-green-rgb) / .1);
+    transform: translate(50%, -50%);
+  }
+
+  .connect-flow-step {
+    counter-increment: connect-step;
+  }
+
+  .connect-flow-step::before {
+    content: "0" counter(connect-step);
+    display: block;
+    margin-bottom: .85rem;
+    font-family: var(--font-mono);
+    font-size: .625rem;
+    letter-spacing: .18em;
+    color: var(--accent-green);
+  }
+
+  .connect-code-key { color: #90c5ff; }
+  .connect-code-value { color: #a4f4cf; }
+  .connect-code-muted { color: var(--text-muted); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connect-signal::after { box-shadow: none; }
+}

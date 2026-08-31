@@ -10,6 +10,7 @@ import { DataIcon, stripEmoji } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
 import type { useBusiness } from '@/hooks/useBusiness';
 import { useActivity } from '@/hooks/useActivity';
+import type { ConnectionsState } from '@/hooks/useConnections';
 import { milestones } from '@/lib/business';
 import { useSnapshot } from '@/lib/repo';
 import type { View } from '../Dashboard';
@@ -20,9 +21,11 @@ const PENDING_STATS = ['handled', 'needs', 'saved'] as const;
 
 export default function HomeView({
   b,
+  connections,
   onNavigate,
 }: {
   b: ReturnType<typeof useBusiness>;
+  connections: ConnectionsState;
   onNavigate: (v: View, businessTab?: BizTab) => void;
 }) {
   const t = useT();
@@ -61,6 +64,22 @@ export default function HomeView({
     : null;
   const toast = useToast();
   const { business, stage } = b;
+  const telegramReady = connections.real && (connections.rows ?? []).some(
+    (row) => row.connector === 'telegram' && row.status === 'connected' && row.paired === true,
+  );
+  const telegramPairing = connections.real
+    ? (connections.rows ?? []).find(
+        (row) =>
+          row.connector === 'telegram' &&
+          row.status === 'connected' &&
+          row.paired !== true &&
+          Boolean(row.pairingUrl),
+      )
+    : undefined;
+  const telegramNeedsAttention = connections.real && (connections.rows ?? []).some(
+    (row) => row.connector === 'telegram' && row.status !== 'connected',
+  );
+  const showTelegramNotice = connections.real && !telegramReady;
   const nextMilestone = activity.real
     ? milestones(
         snap,
@@ -98,6 +117,80 @@ export default function HomeView({
           {stage === 'setup' ? t('sub.step1') : stage === 'connect' ? t('sub.step2') : t('sub.step3')}
         </p>
       </header>
+
+      {showTelegramNotice ? (
+        <Card role="status" className="gap-4 border-brand-line bg-brand-soft">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex max-w-[62ch] flex-col gap-1">
+              <Eyebrow>{t('home.telegram.eyebrow')}</Eyebrow>
+              <h2 className="font-pixel text-lg tracking-tight">
+                {t(
+                  telegramPairing
+                    ? 'home.telegram.pending.title'
+                    : telegramNeedsAttention
+                      ? 'home.telegram.attention.title'
+                      : 'home.telegram.missing.title',
+                )}
+              </h2>
+              <p className="text-[13px] leading-relaxed text-text-secondary">
+                {t(
+                  telegramPairing
+                    ? 'home.telegram.pending.detail'
+                    : telegramNeedsAttention
+                      ? 'home.telegram.attention.detail'
+                      : 'home.telegram.missing.detail',
+                )}
+              </p>
+            </div>
+            <Tag tone={telegramPairing ? 'amber' : telegramNeedsAttention ? 'red' : 'amber'}>
+              {t(
+                telegramPairing
+                  ? 'home.telegram.pending.tag'
+                  : telegramNeedsAttention
+                    ? 'home.telegram.attention.tag'
+                    : 'home.telegram.missing.tag',
+              )}
+            </Tag>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            {telegramPairing?.pairingUrl ? (
+              <a
+                className="btn btn-primary"
+                href={telegramPairing.pairingUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t('home.telegram.pending.cta')}
+              </a>
+            ) : (
+              <Button
+                className="px-5 py-2 text-sm"
+                onClick={() => onNavigate('business', 'connections')}
+              >
+                {t(
+                  telegramNeedsAttention
+                    ? 'home.telegram.attention.cta'
+                    : 'home.telegram.missing.cta',
+                )}
+              </Button>
+            )}
+            {telegramPairing ? (
+              <Button
+                variant="ghost"
+                className="px-4 py-2 text-xs"
+                onClick={() => onNavigate('business', 'connections')}
+              >
+                {t('home.telegram.details')}
+              </Button>
+            ) : null}
+          </div>
+
+          {telegramPairing ? (
+            <p className="text-[11px] text-text-muted">{t('home.telegram.pending.note')}</p>
+          ) : null}
+        </Card>
+      ) : null}
 
       {activity.mode === 'error' ? (
         <Card role="alert" className="gap-3">
@@ -202,7 +295,9 @@ export default function HomeView({
         </Card>
       )}
 
-      {stage === 'operating' && nextMilestone ? (
+      {stage === 'operating' &&
+      nextMilestone &&
+      !(showTelegramNotice && nextMilestone.key === 'connected') ? (
         <Card className="gap-4 border-brand-line bg-brand-soft">
           <div className="flex flex-col gap-1">
             <Eyebrow>{t('home.next.eyebrow')}</Eyebrow>

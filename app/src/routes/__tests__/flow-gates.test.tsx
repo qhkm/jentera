@@ -130,6 +130,44 @@ describe('finishing setup', () => {
 });
 
 describe('what onboarding writes', () => {
+  it('sends a signed-in owner to required Telegram setup before the dashboard', async () => {
+    const repo = new LocalRepository();
+    localStorage.setItem(KEYS.onboardingDraft, JSON.stringify({
+      step: 2,
+      mode: 'manual',
+      desc: 'I run a restaurant in Kuala Lumpur',
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/onboard']}>
+        <SignedInProvider value>
+          <RepositoryProvider repository={repo}>
+            <I18nProvider>
+              <ToastProvider>
+                <Routes>
+                  <Route path="/onboard" element={<Onboard />} />
+                  <Route path="/setup" element={<div data-testid="telegram-setup">setup</div>} />
+                  <Route path="/app" element={<div data-testid="dashboard">dashboard</div>} />
+                </Routes>
+              </ToastProvider>
+            </I18nProvider>
+          </RepositoryProvider>
+        </SignedInProvider>
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(await screen.findByRole('button', {
+      name: "Yes — that's my business →",
+    }));
+    await screen.findByTestId('telegram-setup');
+    expect(screen.queryByTestId('dashboard')).toBeNull();
+    await waitFor(async () => {
+      const snapshot = await repo.load();
+      expect(snapshot.onboarded).toBe(true);
+      expect(snapshot.setupDone).toBe(false);
+    });
+  });
+
   it('lets the owner correct imported business information before confirming it', async () => {
     const repo = new LocalRepository();
     await repo.setBizType('restaurant');
@@ -228,6 +266,41 @@ describe('what onboarding writes', () => {
     expect(await screen.findByText('I recommend starting here.')).toBeInTheDocument();
     expect(screen.getAllByText('Business Assistant').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /put jentera to work/i })).toBeInTheDocument();
+  });
+
+  it('lets a signed-in owner navigate back from the condensed third step', async () => {
+    const repo = new LocalRepository();
+    await repo.setBizType('restaurant');
+    await repo.setChannels(['Telegram']);
+    localStorage.setItem(KEYS.onboardingDraft, JSON.stringify({
+      step: 5,
+      mode: 'manual',
+      desc: 'I run a restaurant in Kuala Lumpur',
+      pain: 'Reservations',
+      completedDemo: true,
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/onboard']}>
+        <SignedInProvider value>
+          <RepositoryProvider repository={repo}>
+            <I18nProvider>
+              <ToastProvider>
+                <Onboard />
+              </ToastProvider>
+            </I18nProvider>
+          </RepositoryProvider>
+        </SignedInProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('I recommend starting here.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(await screen.findByText('Step 3 · Did we get it right?')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(await screen.findByText('How should Jentera learn your business?')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('I run a restaurant in Kuala Lumpur')).toBeInTheDocument();
   });
 
   /* Driven through the repository rather than the six-step UI: the

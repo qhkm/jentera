@@ -53,6 +53,21 @@ Provider-specific behavior stays behind adapters. For example, the same invoice 
 
 Connect's initial scope should be narrow: one geography, one valuable end-to-end job, a small set of providers, and approximately five to eight primitives. A second provider should validate a canonical contract before that contract is treated as general. Building a broad integration catalogue is not an early milestone.
 
+#### Connect capability path
+
+[Merge Unified](https://www.merge.dev/unified-api) is a useful architectural precedent for the data-integration portion of Connect: build once against common models while the platform maintains customer authorization, provider adapters, synchronization, and operational health. Jentera should implement the same durable responsibilities for Southeast Asian business systems without treating Merge's catalogue breadth as the initial target.
+
+Each initial vertical slice should contain the smallest useful version of this path:
+
+1. **Link:** provide an embedded, tenant-bound connection flow for OAuth, API keys, or provider-specific credentials. Store master credentials outside agent runtimes and issue scoped grants.
+2. **Normalize:** map provider objects into versioned canonical models for one domain, preserving provider IDs, raw references, currency, locale, tax treatment, and extension fields needed to avoid lossy transformations.
+3. **Read and write:** expose consistent queries and mutations across supported providers, with validation, idempotency keys, pagination, and normalized errors.
+4. **Sync:** ingest provider webhooks where available and use bounded polling or reconciliation where they are not. Track cursors, freshness, deletions, conflicts, and replay state explicitly.
+5. **Act:** publish primitives through API, SDK, and MCP so agents can discover and invoke them. Compose primitives into approval-aware business procedures rather than presenting hundreds of provider endpoints directly to an agent.
+6. **Sustain:** monitor connection health, credential expiry, schema drift, webhook delivery, rate limits, and adapter conformance. Provider maintenance is part of the product, not work passed back to customers.
+
+The unified models and the agent tools are complementary interfaces over the same connector core. SaaS products may primarily consume normalized data, while agents may primarily consume actions; neither should require a separate provider integration. Jentera's regional differentiation begins above and within this core: local providers, multilingual fields, country-specific compliance, business-document lifecycles, approval policy, and procedures that reflect how Southeast Asian businesses actually operate.
+
 ### Jentera Control
 
 Control is the horizontal trust layer used by Compute, Connect, and Solutions. It owns workload and tenant identity, permissions, credential grants, approval policy, budgets, observability, and immutable audit evidence. A customer using Connect without Compute still passes through Control.

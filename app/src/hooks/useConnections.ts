@@ -88,6 +88,30 @@ export function useConnections(): ConnectionsState {
     };
   }, [repo, signedIn, attempt]);
 
+  /* Saving a Telegram bot and pairing the owner's private chat are two
+     separate steps. Pairing finishes in Telegram, outside this page, so
+     keep the shared connection state fresh until the owner presses Start.
+     Owning the poll here lets Setup, Home, and My Business all clear their
+     action notice automatically instead of each screen inventing its own
+     version of the same check. */
+  useEffect(() => {
+    const awaitingTelegram = (rows ?? []).some(
+      (row) => row.connector === 'telegram' && row.status === 'connected' && row.paired !== true,
+    );
+    if (!signedIn || !awaitingTelegram) return;
+
+    let live = true;
+    const timer = window.setInterval(() => {
+      void repo.connections().then((next) => {
+        if (live) setRows(next);
+      }).catch(() => {});
+    }, 3000);
+    return () => {
+      live = false;
+      window.clearInterval(timer);
+    };
+  }, [repo, rows, signedIn]);
+
   const mode: ConnectionsMode = !signedIn
     ? 'demo'
     : rows !== null

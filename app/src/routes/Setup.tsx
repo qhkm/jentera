@@ -108,9 +108,11 @@ function LiveSetup() {
     runtime && ['ready', 'cold', 'idle', 'busy'].includes(runtime.status) &&
       runtime.observedRelease === runtime.desiredRelease,
   );
-  const connected = (connections.rows ?? []).filter((row) =>
-    row.status === 'connected' && (row.connector !== 'telegram' || row.paired === true)).length;
-  const completed = 1 + Number(runtimeReady) + Number(connected > 0);
+  const telegramReady = (connections.rows ?? []).some((row) =>
+    row.connector === 'telegram' && row.status === 'connected' && row.paired === true);
+  const telegramWaitingForStart = (connections.rows ?? []).some((row) =>
+    row.connector === 'telegram' && row.status === 'connected' && row.paired !== true);
+  const completed = 1 + Number(runtimeReady) + Number(telegramReady);
 
   async function finish() {
     setFinishing(true);
@@ -179,9 +181,17 @@ function LiveSetup() {
           />
           <SetupStatusRow
             label={t('su.live.channel')}
-            detail={connected > 0 ? t('su.live.connected', { n: connected }) : t('su.live.connectTelegram')}
-            state={connected > 0 ? t('su.state.done') : t('su.state.waiting')}
-            tone={connected > 0 ? 'green' : 'neutral'}
+            detail={telegramReady
+              ? t('su.live.connected', { n: 1 })
+              : telegramWaitingForStart
+                ? t('su.live.startTelegram')
+                : t('su.live.connectTelegram')}
+            state={telegramReady
+              ? t('su.state.done')
+              : telegramWaitingForStart
+                ? t('su.live.actionRequired')
+                : t('su.state.waiting')}
+            tone={telegramReady ? 'green' : telegramWaitingForStart ? 'amber' : 'neutral'}
             last
           />
         </Card>
@@ -214,8 +224,20 @@ function LiveSetup() {
           <TelegramConnect rows={connections.rows} setRows={connections.setRows} />
         )}
 
+        <Card className="gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <Eyebrow>{t('su.live.jenteraApp')}</Eyebrow>
+            <Tag>{t('su.live.comingSoon')}</Tag>
+          </div>
+          <p className="text-sm text-text-secondary">{t('su.live.jenteraAppBody')}</p>
+        </Card>
+
         <div className="flex flex-col gap-3">
-          <Button onClick={() => void finish()} disabled={finishing} className="py-4 md:py-3">
+          <Button
+            onClick={() => void finish()}
+            disabled={finishing}
+            className="py-4 md:py-3"
+          >
             {finishing ? t('su.live.finishing') : runtimeReady ? t('su.open') : t('su.live.continue')}
           </Button>
           {finishError ? <p role="alert" className="text-sm text-text-secondary">{finishError}</p> : null}

@@ -16,7 +16,7 @@ import PermissionsPanel from './PermissionsPanel';
 import KnowledgePanel from './KnowledgePanel';
 import TelegramConnect from './TelegramConnect';
 import { isLive, withoutLinkClaim } from '@/lib/live-connectors';
-import { connectedNames, useConnections } from '@/hooks/useConnections';
+import { connectedNames, type ConnectionsState } from '@/hooks/useConnections';
 import { useSignedIn } from '@/lib/repo/gate';
 import { useToast } from '@/components/Toast';
 import { findConnector } from '@/lib/tools';
@@ -38,10 +38,12 @@ export type BizTab = 'profile' | 'knows' | 'handles' | 'connections' | 'permissi
 
 export default function MyBusinessView({
   b,
+  connections,
   initialTab = 'profile',
   onTabChange,
 }: {
   b: ReturnType<typeof useBusiness>;
+  connections: ConnectionsState;
   initialTab?: BizTab;
   onTabChange?: (tab: BizTab) => void;
 }) {
@@ -64,9 +66,9 @@ export default function MyBusinessView({
     onTabChange?.(next);
   }
 
-  /* One fetch for the whole screen. The badge, the chips and the
-     Telegram card all read it, so disconnecting a bot moves all three. */
-  const conns = useConnections();
+  /* One shared fetch for the whole dashboard. The Home notice, this badge,
+     the chips, and the Telegram card all move from the same answer. */
+  const conns = connections;
   const linked = useMemo(() => connectedNames(conns.rows), [conns.rows]);
 
   /* Signed in, "active" means connected — not what onboarding said the

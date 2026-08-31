@@ -7,6 +7,7 @@ import { DetailLevelProvider } from '@/hooks/useDetailLevel';
 import { ActivityProvider } from '@/hooks/useActivity';
 import { isOnboarded, isSetupDone } from '@/lib/business';
 import Landing from '@/routes/Landing';
+import Connect from '@/routes/Connect';
 import Onboard from '@/routes/Onboard';
 import SignIn from '@/routes/SignIn';
 import Setup from '@/routes/Setup';
@@ -20,7 +21,8 @@ import type { ReactElement } from 'react';
    ============================================================ */
 function RequireOnboarded({ children }: { children: ReactElement }) {
   const snap = useSnapshot();
-  return isOnboarded(snap) ? children : <Navigate to="/onboard" replace />;
+  if (!isOnboarded(snap)) return <Navigate to="/onboard" replace />;
+  return isSetupDone(snap) ? children : <Navigate to="/setup" replace />;
 }
 
 /** Keep each lifecycle URL honest when it is opened directly or restored
@@ -40,7 +42,7 @@ function SetupStage() {
 /**
  * Session gate for the dashboard.
  *
- * Distinct from RequireOnboarded, which only reads a localStorage flag —
+ * Distinct from RequireOnboarded, which reads the loaded business state —
  * that made /app reachable by setting `aisar-onboarded-v1` in devtools.
  * This asks whether the repository is actually server-backed.
  *
@@ -89,6 +91,7 @@ export default function App() {
       <Routes>
         {/* Public, and free of any provider dependency. */}
         <Route path="/" element={<Landing />} />
+        <Route path="/connect" element={<Connect />} />
         <Route path="/signin" element={<SignIn />} />
 
         <Route element={<AppShell />}>

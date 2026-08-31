@@ -93,10 +93,10 @@ describe('useBusiness connection seeding after a corrected onboarding guess', ()
        It must stay under this test's own timeout, raised alongside it
        below: a waitFor that outlives the test hangs it instead of
        failing it, which starves the rest of the suite. */
-    await waitFor(() => screen.getByText('Not quite, let me rephrase'), { timeout: 8_000 });
+    await waitFor(() => screen.getByRole('button', { name: 'Back' }), { timeout: 8_000 });
 
     // Reject the guess, then explicitly pick a different playbook.
-    fireEvent.click(screen.getByText('Not quite, let me rephrase'));
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     fireEvent.click(await screen.findByText('Choose a business type instead'));
     fireEvent.click(screen.getByText('Salon / Beauty'));
 

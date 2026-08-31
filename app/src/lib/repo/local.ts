@@ -100,7 +100,6 @@ export class LocalRepository implements Repository {
     await this.setChannels(input.channels);
     await this.setBizProfile({ name: input.name, loc: input.locality });
     await this.setOnboarded(true);
-    if (input.setupDone) await this.setSetupDone(true);
   }
 
   async setSetupDone(v: boolean): Promise<void> {

@@ -200,9 +200,10 @@ export const CLOSING_CTA = {
 };
 
 export const NAV_LINKS = [
-  { href: '#how', label: 'How it works' },
-  { href: '#runs', label: 'What it runs' },
-  { href: '#onboarding', label: 'See it in action' },
+  { href: '/connect', label: 'Connect' },
+  { href: '/#how', label: 'How it works' },
+  { href: '/#runs', label: 'What it runs' },
+  { href: '/#onboarding', label: 'See it in action' },
 ];
 
 export const FOOTER = {

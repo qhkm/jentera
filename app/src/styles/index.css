@@ -10,6 +10,7 @@
 @import "./tokens.css";
 @import "./theme.css";
 @import "./landing.css";
+@import "./connect.css";
 
 /* ============================================================
    Base. Everything resolves through tokens — no literal colors

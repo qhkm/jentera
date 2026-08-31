@@ -133,6 +133,21 @@ meaningfully, so they arrive with the first adapter that needs them
 rather than as stubs nothing verifies. `mode` is how a caller will tell
 the two apart.
 
+### Looking at production
+
+```bash
+./worker/scripts/stats.sh            # signups, businesses, runs, connections
+./worker/scripts/stats.sh users      # per-account: playbook, plan, runs, conns
+./worker/scripts/stats.sh runs 20 | runtimes | usage
+./worker/scripts/stats.sh sql "select ..."
+```
+
+Credentials come from `neonctl` (already logged in) or `AISAR_NEON_OWNER_URL`.
+It connects as `neondb_owner` on purpose — RLS scopes every tenant table to
+`app.business_id`, so `aisar_app` outside `withTenant` counts nothing. The
+session sets `default_transaction_read_only`, so the owner connection cannot
+write; that's a server-side guard, not a regex over the query.
+
 ### Testing the worker
 
 ```bash

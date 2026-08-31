@@ -503,14 +503,13 @@ export default function Onboard() {
       channels,
       name: profile?.bizName ?? importedProfile.name,
       locality: profile?.bizLoc ?? importedProfile.locality,
-      /* Telegram and the full runtime tour are optional. Quick Ask works
-         immediately while the private runtime provisions in the background. */
-      setupDone: signedIn,
     }));
     trackActivation('onboarding_completed');
     completedRef.current = true;
     store.remove(store.KEYS.onboardingDraft);
-    navigate(signedIn ? '/app?view=chat&first=1' : '/setup');
+    /* Telegram is the required private owner channel. Runtime provisioning
+       continues in the background while the owner connects and pairs it. */
+    navigate('/setup');
   }
 
   function activate() {
@@ -529,6 +528,24 @@ export default function Onboard() {
     go(step + 1);
   }
 
+  function back() {
+    /* Signed-in owners see a condensed three-step flow. A completed demo
+       resumes on the recommendation (internal step 6), so its previous
+       visible screen is confirmation (internal step 3), not the hidden
+       six-step demo screen directly before it. */
+    if (signedIn && step === STEP_COUNT - 1) {
+      go(2);
+      return;
+    }
+    /* The animated scan cannot be replayed backwards. Return to the retained
+       source inputs so the owner can change them without losing the draft. */
+    if (step === 2) {
+      go(0);
+      return;
+    }
+    go(step - 1);
+  }
+
   const confirmText = confirmFor(snap, bizType, desc);
 
   const recoExtra =
@@ -544,7 +561,7 @@ export default function Onboard() {
      footer on the first two for that reason, and step 6 gained an inline
      Activate/Back pair here, so showing the footer there too rendered a
      second Back directly under the first. */
-  const navVisible = !signedIn && step > 1 && step < STEP_COUNT - 1;
+  const navVisible = step > 2 && step < STEP_COUNT - 1;
   const nextLabel = step === 4 ? t('ob.nav.plan') : t('ob.nav.continue');
   const visibleStep = signedIn ? Math.min(step + 1, 3) : step + 1;
   const visibleStepCount = signedIn ? 3 : STEP_COUNT;
@@ -771,8 +788,8 @@ export default function Onboard() {
                     <Button variant="outline" onClick={beginProfileEdit} disabled={confirmingProfile}>
                       {t('ob.confirm.edit')}
                     </Button>
-                    <Button variant="ghost" onClick={() => go(0)} disabled={confirmingProfile}>
-                      {t('ob.confirm.no')}
+                    <Button variant="ghost" onClick={back} disabled={confirmingProfile}>
+                      {t('ob.nav.back')}
                     </Button>
                   </div>
                 )}
@@ -841,7 +858,7 @@ export default function Onboard() {
                   <Button onClick={activate} disabled={activating}>
                     {activating ? t('ob.reco.activating') : t('ob.nav.activate')}
                   </Button>
-                  <Button variant="outline" onClick={() => go(4)} disabled={activating}>
+                  <Button variant="outline" onClick={back} disabled={activating}>
                     {t('ob.nav.back')}
                   </Button>
                 </div>
@@ -852,13 +869,12 @@ export default function Onboard() {
             {navVisible ? (
               <div className="flex items-center justify-between border-t border-rail pt-4">
                 <span className="text-[11px] text-text-muted">
-                  {step + 1} / {STEP_COUNT}
+                  {visibleStep} / {visibleStepCount}
                 </span>
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
-                    onClick={() => go(step - 1)}
-                    className={step <= 2 ? 'invisible' : undefined}
+                    onClick={back}
                   >
                     {t('ob.nav.back')}
                   </Button>

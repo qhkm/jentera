@@ -9,7 +9,40 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { FOOTER, NAV_LINKS } from '@/lib/landing-content';
 
-export function LandingHeader() {
+interface MarketingLink {
+  href: string;
+  label: string;
+}
+
+function ActionLink({ href, className, children, onClick }: MarketingLink & {
+  className: string;
+  children?: React.ReactNode;
+  onClick?: () => void;
+}) {
+  if (href.startsWith('/') && !href.includes('#')) {
+    return (
+      <Link to={href} className={className} onClick={onClick}>
+        {children ?? href}
+      </Link>
+    );
+  }
+
+  return (
+    <a href={href} className={className} onClick={onClick}>
+      {children ?? href}
+    </a>
+  );
+}
+
+export function LandingHeader({
+  navLinks = NAV_LINKS,
+  primaryAction = { href: '/signin?mode=signup', label: 'Start now' },
+  showSignIn = true,
+}: {
+  navLinks?: readonly MarketingLink[];
+  primaryAction?: MarketingLink;
+  showSignIn?: boolean;
+} = {}) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -31,14 +64,15 @@ export function LandingHeader() {
         </Link>
 
         <nav className="hidden flex-row items-center justify-center gap-6 md:flex">
-          {NAV_LINKS.map((l) => (
-            <a
+          {navLinks.map((l) => (
+            <ActionLink
               key={l.href}
               href={l.href}
+              label={l.label}
               className="nav-link text-sm normal-case tracking-normal"
             >
               {l.label}
-            </a>
+            </ActionLink>
           ))}
         </nav>
 
@@ -47,12 +81,18 @@ export function LandingHeader() {
               only way in was to type the URL. A text link rather than a
               second .btn: two adjacent buttons would compete with the
               primary CTA, and .btn carries the shared control height. */}
-          <Link to="/signin" className="nav-link hidden text-sm normal-case tracking-normal md:inline-flex">
-            Sign in
-          </Link>
-          <Link to="/signin?mode=signup" className="btn btn-primary hidden px-5 py-2 text-sm md:inline-flex">
-            Start now
-          </Link>
+          {showSignIn ? (
+            <Link to="/signin" className="nav-link hidden text-sm normal-case tracking-normal md:inline-flex">
+              Sign in
+            </Link>
+          ) : null}
+          <ActionLink
+            href={primaryAction.href}
+            label={primaryAction.label}
+            className="btn btn-primary hidden px-5 py-2 text-sm md:inline-flex"
+          >
+            {primaryAction.label}
+          </ActionLink>
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
@@ -71,30 +111,34 @@ export function LandingHeader() {
       {open ? (
         <div id="landing-mobile-menu" className="border-b border-rail bg-bg md:hidden">
           <nav className="mx-auto flex w-full max-w-[1250px] flex-col px-6 py-4">
-            {NAV_LINKS.map((l) => (
-              <a
+            {navLinks.map((l) => (
+              <ActionLink
                 key={l.href}
                 href={l.href}
+                label={l.label}
                 onClick={() => setOpen(false)}
                 className="nav-link py-3 text-sm normal-case tracking-normal"
               >
                 {l.label}
-              </a>
+              </ActionLink>
             ))}
-            <Link
-              to="/signin"
-              onClick={() => setOpen(false)}
-              className="nav-link py-3 text-sm normal-case tracking-normal"
-            >
-              Sign in
-            </Link>
-            <Link
-              to="/signin?mode=signup"
+            {showSignIn ? (
+              <Link
+                to="/signin"
+                onClick={() => setOpen(false)}
+                className="nav-link py-3 text-sm normal-case tracking-normal"
+              >
+                Sign in
+              </Link>
+            ) : null}
+            <ActionLink
+              href={primaryAction.href}
+              label={primaryAction.label}
               onClick={() => setOpen(false)}
               className="btn btn-primary mt-3 w-full justify-center"
             >
-              Start now
-            </Link>
+              {primaryAction.label}
+            </ActionLink>
           </nav>
         </div>
       ) : null}
@@ -102,13 +146,13 @@ export function LandingHeader() {
   );
 }
 
-export function LandingFooter() {
+export function LandingFooter({ tagline = FOOTER.tagline }: { tagline?: string } = {}) {
   return (
     <footer className="w-full border-t border-rail">
       <div className="mx-auto flex w-full max-w-[1250px] flex-col gap-6 px-6 py-10 md:flex-row md:items-center md:justify-between md:px-12">
         <div className="flex flex-col gap-2">
           <span className="font-pixel text-lg tracking-wide text-brand">Jentera</span>
-          <p className="text-xs text-text-muted">{FOOTER.tagline}</p>
+          <p className="text-xs text-text-muted">{tagline}</p>
         </div>
         <div className="flex flex-col gap-3 text-xs text-text-muted md:items-end">
           <a className="transition-colors hover:text-text" href={`mailto:${FOOTER.email}`}>

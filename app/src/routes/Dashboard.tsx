@@ -17,6 +17,7 @@ import { Shell } from '@/components/Shell';
 import { Avatar, Card, Eyebrow, Progress, Tag } from '@/components/ui';
 import { useBusiness } from '@/hooks/useBusiness';
 import { useActivity } from '@/hooks/useActivity';
+import { useConnections } from '@/hooks/useConnections';
 import { useSnapshot } from '@/lib/repo';
 import { milestones, readiness } from '@/lib/business';
 import { useT } from '@/i18n/I18nProvider';
@@ -65,6 +66,10 @@ export default function Dashboard() {
      `pending` as "otherwise" put that same "1" there for the length of
      the fetch, on every load. */
   const activity = useActivity();
+  /* Home's Telegram notice and My Business's connection controls must
+     describe the same server answer. Keeping the request here also lets a
+     pending Telegram pairing clear while the owner moves between views. */
+  const connections = useConnections();
   const snap = useSnapshot();
   const demo = activity.mode === 'demo';
   const needsAttention = activity.real
@@ -239,7 +244,7 @@ export default function Dashboard() {
         ) : null}
 
         <div className="min-w-0 flex-1">
-          {view === 'home' && <HomeView b={b} onNavigate={go} />}
+          {view === 'home' && <HomeView b={b} connections={connections} onNavigate={go} />}
           {/* Keep the owner conversation mounted while they inspect another
               section. Returning to Ask Jentera must not erase the exchange. */}
           <div className={view === 'chat' ? '' : 'hidden'}>
@@ -256,6 +261,7 @@ export default function Dashboard() {
           {view === 'business' && (
             <MyBusinessView
               b={b}
+              connections={connections}
               initialTab={BUSINESS_TABS.includes(searchParams.get('tab') as BizTab)
                 ? searchParams.get('tab') as BizTab
                 : 'profile'}

@@ -72,10 +72,14 @@ These statements do not replace the outcome-first language used for the managed 
 
 1. Prove Compute and the shared Control foundation through the current managed-agent product.
 2. Develop Connect around a small number of excellent Southeast Asian integrations and make its contracts independent of the hosted runtime.
-3. Package repeatable outcomes as Jentera Solutions for non-technical businesses.
-4. Add Marketplace only when external supply and demand justify a distribution product.
+3. Add a unified data layer to Connect: embedded account linking, canonical models, normalized reads and writes, webhooks, synchronization, and connection health across providers in the same business-software category.
+4. Expose those capabilities as agent-native tools and higher-level regional business procedures through API, SDK, MCP, and eventually CLI.
+5. Package repeatable outcomes as Jentera Solutions for non-technical businesses.
+6. Add Marketplace only when external supply and demand justify a distribution product.
 
 Connect is therefore a credible adjacent product direction, not a requirement for the first managed-product release. Its development must not delay the first complete useful-work loop.
+
+The strategic reference for Connect's unified data layer is [Merge Unified](https://www.merge.dev/unified-api): customers link an account once, provider data is mapped into common models, applications read and write through one contract, and the platform maintains synchronization and provider changes. Jentera applies that model to the software Southeast Asian businesses use, then extends it with agent-native actions, Control policies, approvals, and regional business procedures. The goal is not a smaller copy of Merge's global catalogue; it is a deeper interface for regional business operations.
 
 ## Product Experience
 
