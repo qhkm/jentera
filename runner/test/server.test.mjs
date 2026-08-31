@@ -180,7 +180,7 @@ test('polls and stops by Jentera task id without exposing Hermes directly', asyn
   assert.equal((await stopped.json()).status, 'stopping');
 });
 
-test('streams Hermes-visible assistant and tool events without private internals', async () => {
+test('streams Hermes-visible assistant, tool, and bounded thinking events without private internals', async () => {
   await start(TASK);
   const response = await call(`/v1/tasks/${TASK}/events`, {
     headers: { Accept: 'text/event-stream' },
@@ -194,9 +194,15 @@ test('streams Hermes-visible assistant and tool events without private internals
   assert.match(stream, /import urllib\.request/);
   assert.match(stream, /"type":"tool.completed"/);
   assert.match(stream, /Safe answer/);
+  /* The bounded reasoning lane crosses on purpose: Hermes caps each slice at
+     500 chars and the runner sanitises/redacts it, so the model's live CoT can
+     render in the ephemeral bubble. Inline think blocks in message deltas,
+     terminal transcripts, and run outputs still never cross. */
+  assert.match(stream, /"type":"thinking"/);
+  assert.match(stream, /"text":"private chain of thought"/);
   assert.doesNotMatch(
     stream,
-    /chain of thought|terminal transcript|inline private reasoning|<think>/,
+    /terminal transcript|inline private reasoning| thinking/,
   );
   assert.match(stream, /"type":"done"/);
 

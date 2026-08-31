@@ -114,7 +114,8 @@ export class RunnerClient {
   }
 
   /** Consume the runner's already-filtered presentation stream. Unknown event
-      shapes are ignored; only bounded text, tool lifecycle, and heartbeats cross. */
+      shapes are ignored; only bounded text, tool lifecycle, the bounded
+      reasoning lane, and heartbeats cross. */
   async stream(
     taskId: string,
     handlers: {
@@ -123,6 +124,8 @@ export class RunnerClient {
       onHeartbeat?: () => Promise<void>;
       /** A complete `@step:` progress label the model emitted. */
       onProgress?: (label: string) => Promise<void>;
+      /** A bounded slice of the model's live reasoning (runner-redacted). */
+      onThinking?: (text: string) => Promise<void>;
     },
   ): Promise<void> {
     const response = await this.fetcher(
@@ -169,6 +172,12 @@ export class RunnerClient {
             received += event.tool.length + ('preview' in event ? event.preview?.length ?? 0 : 0);
             if (received > STREAM_LIMIT) throw new Error('runner stream exceeded limit');
             await handlers.onToolEvent?.(event);
+            continue;
+          }
+          if (event.type === 'thinking') {
+            received += event.text.length;
+            if (received > STREAM_LIMIT) throw new Error('runner stream exceeded limit');
+            await handlers.onThinking?.(event.text);
             continue;
           }
           /* Deltas may contain `@step:` narration lines; split them off so
@@ -223,6 +232,7 @@ export class RunnerClient {
 type SafeStreamEvent =
   | { type: 'delta'; delta: string }
   | RunnerToolEvent
+  | { type: 'thinking'; text: string }
   | { type: 'heartbeat' }
   | { type: 'done' };
 
@@ -268,6 +278,10 @@ function safeStreamEvent(frame: string): SafeStreamEvent | null {
   if (event.type === 'delta' && typeof event.delta === 'string' &&
       event.delta.length > 0 && event.delta.length <= 8 * 1024) {
     return { type: 'delta', delta: event.delta };
+  }
+  if (event.type === 'thinking' && typeof event.text === 'string' &&
+      event.text.length > 0 && event.text.length <= 8 * 1024) {
+    return { type: 'thinking', text: event.text };
   }
   return null;
 }

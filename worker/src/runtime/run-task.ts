@@ -66,6 +66,8 @@ export async function dispatchRuntimeRun(
     onHeartbeat?: () => Promise<void>;
     /** A complete `@step:` progress label the model emitted. */
     onProgress?: (label: string) => Promise<void>;
+    /** A bounded slice of the model's live reasoning (runner-redacted). */
+    onThinking?: (text: string) => Promise<void>;
     onStage?: (stage: string, elapsedMs: number) => void;
   } = {},
 ): Promise<RuntimeRunOutcome> {
@@ -200,6 +202,7 @@ export async function dispatchRuntimeRun(
       onToolEvent: options.onToolEvent,
       onHeartbeat: options.onHeartbeat,
       onProgress: options.onProgress,
+      onThinking: options.onThinking,
     });
     stage('stream_finished');
   }

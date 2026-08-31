@@ -41,7 +41,10 @@ const BUSY_RETRY_SECONDS = 2;
 /** Friendly one-line statuses for the ephemeral Telegram draft, keyed by the
     run-task provisioning stages. Shown only while the model has produced no
     answer text yet — they make the cold-start window feel alive without ever
-    surfacing reasoning content (the anti-CoT scrubber stays untouched). */
+    surfacing reasoning content (the anti-CoT scrubber stays untouched).
+    The only deliberate exception is the live `thinking` lane: bounded slices of
+    real CoT render in the ephemeral bubble status and are cleared/never saved
+    once the answer starts — the durable answer and the app output stay CoT-free. */
 const STAGE_STATUS: Record<string, string> = {
   database_ready: '✅ System ready — waking AI…',
   provider_awake: '✅ AI engine online — starting agent…',
@@ -345,6 +348,22 @@ export async function handleRuntimeMessage(
                   const elapsed = Math.round((Date.now() - workingSince) / 1_000);
                   await liveStream.setStatus(`${label} · ${elapsed}s`);
                 }
+              }
+            : undefined,
+          onThinking: liveStream
+            ? async (text) => {
+                /* Live reasoning: the runner forwards the model's actual CoT as
+                   a bounded `thinking` lane. Render it in the ephemeral bubble
+                   status exactly like `@step:` narration — it is cleared the
+                   moment the first answer delta lands and never enters the
+                   durable answer lane (the runner keeps it out of `output`). */
+                if (firstVisibleDelta) return;
+                const thinking = sanitiseThinking(text);
+                if (!thinking) return;
+                currentStep = thinking;
+                currentStepIsTool = false;
+                const elapsed = Math.round((Date.now() - workingSince) / 1_000);
+                await liveStream.setStatus(`${thinking} · ${elapsed}s`);
               }
             : undefined,
           onStage: (stage, elapsedMs) => {
@@ -668,4 +687,15 @@ function stripHermesThinking(text: string): string {
 function uuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     .test(value);
+}
+
+/** Collapses a raw CoT slice into a single readable status line, capped so the
+    ephemeral bubble stays tidy. Pure display formatting — the durable answer
+    lane never sees this text (the runner keeps it out of `output`). */
+function sanitiseThinking(text: string, max = 400): string {
+  const flattened = text.replace(/[\r\n\t\f\v]+/g, ' ')
+    .replace(/[ ]{2,}/g, ' ')
+    .trim();
+  if (!flattened) return '';
+  return flattened.length <= max ? flattened : `${flattened.slice(0, max - 1)}…`;
 }

@@ -16,6 +16,7 @@ const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped']);
 const BODY_LIMIT = 64 * 1024;
 const STREAM_TEXT_LIMIT = 64 * 1024;
 const STREAM_EVENT_LIMIT = 8 * 1024;
+const STREAM_THINK_LIMIT = 8 * 1024;
 const STREAM_TTL_MS = 5 * 60 * 1000;
 /** Cap on concurrent SSE consumers of one task stream. Each subscriber
     holds a socket and a 1s heartbeat interval, so an unbounded set is a
@@ -641,10 +642,10 @@ class StateStore {
 /**
  * The sole subscriber to Hermes's destructive run-event queue.
  *
- * Assistant text deltas and Hermes's bounded tool lifecycle presentation events
- * are copied into process memory. Reasoning, approvals, tool results, full
- * arguments, terminal transcripts, and every unknown event are dropped here.
- * Nothing in this class touches the state file.
+ * Assistant text deltas, Hermes's bounded tool lifecycle presentation events,
+ * and the bounded reasoning lane are copied into process memory. Approvals,
+ * tool results, full arguments, terminal transcripts, and every unknown event
+ * are dropped here. Nothing in this class touches the state file.
  */
 class SafeDeltaStreams {
   constructor(config) {
@@ -660,6 +661,7 @@ class SafeDeltaStreams {
       runId,
       nextSeq: 1,
       bytes: 0,
+      thinkBytes: 0,
       history: [],
       subscribers: new Set(),
       scrubber: new StreamingThinkScrubber(),
@@ -741,6 +743,10 @@ class SafeDeltaStreams {
       this.emitDelta(stream, stream.scrubber.push(bounded));
       return;
     }
+    if (event?.event === 'reasoning.available' && typeof event.text === 'string') {
+      this.emitThinking(stream, event.text);
+      return;
+    }
     if (event?.event === 'tool.started') {
       const tool = safeToolName(event.tool);
       if (!tool) return;
@@ -774,6 +780,24 @@ class SafeDeltaStreams {
     const delta = truncateUtf8(value, STREAM_TEXT_LIMIT - stream.bytes);
     if (!delta) return;
     this.emitEvent(stream, { type: 'delta', seq: stream.nextSeq++, delta });
+  }
+
+  /** Forwards Hermes's bounded reasoning lane as a separate `thinking` event
+   *  with its own byte budget, so model CoT never spends the answer lane's
+   *  budget. Reasoning text is sanitised and credential-redacted like tool
+   *  previews. The worker renders it live in the bubble; it never crosses
+   *  into the durable task status or output. */
+  emitThinking(stream, value) {
+    if (!value || stream.thinkBytes >= STREAM_THINK_LIMIT ||
+        stream.history.length >= STREAM_EVENT_LIMIT) return;
+    const text = safeToolPreview(value);
+    if (!text) return;
+    const safe = { type: 'thinking', seq: stream.nextSeq++, text };
+    const size = Buffer.byteLength(JSON.stringify(safe));
+    if (stream.thinkBytes + size > STREAM_THINK_LIMIT) return;
+    stream.thinkBytes += size;
+    stream.history.push(safe);
+    for (const subscriber of stream.subscribers) writeSse(subscriber, safe);
   }
 
   emitEvent(stream, safe) {

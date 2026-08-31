@@ -362,6 +362,10 @@ describe('durable Hermes Telegram replies', () => {
         return runnerResponse({ ok: true, hermesRunId: 'telegram-hermes-1', status: 'started' }, 202);
       }
       if (url.endsWith('/events')) {
+        /* A `thinking` probe arrives AFTER the answer has started. The
+           consumer deliberately ignores reasoning once the first answer
+           delta has landed (`firstVisibleDelta`), so even though the runner
+           now forwards the reasoning lane, it can never surface here. */
         return new Response([
           'data: {"type":"tool.started","seq":1,"tool":"execute_code","preview":"import urllib.request"}',
           '',
@@ -369,7 +373,7 @@ describe('durable Hermes Telegram replies', () => {
           '',
           'data: {"type":"delta","seq":3,"delta":"Yes, "}',
           '',
-          'data: {"type":"reasoning.available","text":"never show this"}',
+          'data: {"type":"thinking","seq":3,"text":"never show this"}',
           '',
           'data: {"type":"delta","seq":4,"delta":"we are open on Sunday."}',
           '',
@@ -500,6 +504,84 @@ describe('durable Hermes Telegram replies', () => {
     expect(JSON.stringify(sent)).not.toContain(stepLabel);
     /* The durable answer is still just the clean reply. */
     expect(sent).toContainEqual({ chatId: 42, text: 'Yes, we are open on Sunday.' });
+    expect(deletions).toContainEqual({ chatId: 42, messageId: 99 });
+  });
+
+  it('streams live reasoning as bubble status and keeps it out of the answer', async () => {
+    await setPolicy('automatic');
+    const provider = new LocalRuntimeProvider();
+    const queued: { version: 1; businessId: string; taskId: string }[] = [];
+    const durableEnv = testEnv({
+      RUNTIME_RELEASE: '2026.08.28-4',
+      RUNTIME_EXECUTION_ENABLED: 'true',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+      RUNTIME_QUEUE: {
+        send: async (message: { version: 1; businessId: string; taskId: string }) => {
+          queued.push(message);
+        },
+      },
+    });
+    await ensureProviderRuntime(durableEnv, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.28-4', 'v1'));
+    await handleIncoming(durableEnv, A, connId, incoming);
+    const thought = 'private chain of thought about Sunday hours';
+
+    const fetcher: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return runnerResponse({
+          ok: true,
+          toolMode: 'full-tools',
+          webSearchBackend: 'ddgs',
+          edgeAuthorizationForwarded: false,
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        return runnerResponse({ ok: true, hermesRunId: 'think-hermes-1', status: 'started' }, 202);
+      }
+      if (url.endsWith('/events')) {
+        /* The runner forwards the model's bounded CoT as a `thinking` event
+           while the answer is still forming; the answer deltas start after a
+           real gap wider than the status cooldown, so the thought is flushed
+           to the bubble before the answer replaces it. */
+        const e = (line: string) => `${line}\n\n`;
+        const body = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            const enc = new TextEncoder();
+            controller.enqueue(enc.encode(e(`data: ${JSON.stringify({ type: 'thinking', seq: 1, text: thought })}`)));
+            await new Promise((resolve) => setTimeout(resolve, 650));
+            controller.enqueue(enc.encode(e('data: {"type":"delta","seq":2,"delta":"Yes, "}')));
+            controller.enqueue(enc.encode(e('data: {"type":"delta","seq":3,"delta":"we are open on Sunday."}')));
+            controller.enqueue(enc.encode(e('data: {"type":"done"}')));
+            controller.close();
+          },
+        });
+        return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      if (url.includes('/v1/tasks/')) {
+        return runnerResponse({
+          ok: true,
+          status: 'completed',
+          output: 'Yes, we are open on Sunday.',
+          usage: { input_tokens: 120, output_tokens: 9 },
+        });
+      }
+      return runnerResponse({ error: 'not found' }, 404);
+    };
+    await expect(handleRuntimeMessage(durableEnv, queued[0], { provider, fetch: fetcher }))
+      .resolves.toEqual({ action: 'ack', reason: 'completed' });
+
+    /* The thought appears in the working bubble's status lane while working. */
+    expect(edits.some((edit) =>
+      typeof edit.text === 'string' && edit.text.includes(thought))).toBe(true);
+    /* Reasoning never leaks into any sent message or the durable answer. */
+    expect(JSON.stringify(sent)).not.toContain(thought);
+    expect(sent).toContainEqual({ chatId: 42, text: 'Yes, we are open on Sunday.' });
+    /* The ephemeral bubble is deleted once the durable answer lands. */
     expect(deletions).toContainEqual({ chatId: 42, messageId: 99 });
   });
 });
