@@ -545,6 +545,24 @@ export async function handleRuntimeMessage(
         reason: deferred ? 'business runtime is busy' : 'runtime task lease was lost',
       };
     }
+    /* Telegram throttles chat traffic with a flood-wait ("Too Many Requests:
+       retry after N"). Honor its backoff instead of the flat 30s retry:
+       re-hammering inside the window makes Telegram escalate the ban on
+       every attempt (49s → 247s → …) and the task exhausts without ever
+       delivering its answer. A flood-wait is never terminal — it always
+       clears — so requeue with that delay and keep the attempt budget
+       intact (deferRuntimeTask, not retryRuntimeTask). */
+    const floodSeconds = /retry after (\d+)/i.exec(reason)?.[1];
+    if (floodSeconds) {
+      const delaySeconds = Math.max(Number(floodSeconds) + 5, 30);
+      await withTenant(env, message.businessId, (tx) =>
+        deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, { delaySeconds }),
+      );
+      if (lease.task.kind === 'run' && lease.task.runId) {
+        await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'retrying');
+      }
+      return { action: 'requeue', delaySeconds, reason: `telegram flood-wait ${floodSeconds}s` };
+    }
     const terminal = error instanceof RuntimeBudgetExceeded ||
       lease.task.attempt + 1 >= MAX_TASK_ATTEMPTS;
     if (terminal) {
