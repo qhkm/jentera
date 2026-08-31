@@ -61,6 +61,7 @@ process.stdout.write('Hermes production dependency and Jentera API-server patche
 
 async function patchApiServer() {
   let source = await readFile(apiServerPath, 'utf8');
+  source = normalizeLegacyReasoningPatch(source);
   if (!source.includes(routingMarker)) {
     const configAnchor = '        agent_kwargs = {\n';
     const configPatch = [
@@ -144,6 +145,25 @@ async function patchApiServer() {
     source = replaceReviewedAnchor(source, statusAnchor, statusPatch);
   }
   await writeFile(apiServerPath, source, { mode: 0o644 });
+}
+
+/** The first canary carried a hand-applied version of the reasoning patch.
+ * Normalize that one reviewed shape back to the pinned upstream anchors, then
+ * apply the durable patch below. Anything else still fails closed as drift. */
+function normalizeLegacyReasoningPatch(source) {
+  if (source.includes(runtimeMarker)) return source;
+  const legacy = [
+    '                    reasoning = result.get("last_reasoning") if isinstance(result, dict) else None\n',
+    '                        "reasoning": reasoning,\n',
+    '                        reasoning=reasoning,\n',
+  ];
+  const present = legacy.map((line) => source.includes(line));
+  if (!present.some(Boolean)) return source;
+  if (!present.every(Boolean)) {
+    throw new Error('partial legacy Jentera reasoning patch requires review');
+  }
+  for (const line of legacy) source = replaceReviewedAnchor(source, line, '');
+  return source;
 }
 
 function replaceReviewedAnchor(source, anchor, replacement) {

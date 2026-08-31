@@ -34,7 +34,16 @@ test('refuses an upstream override drift and a vulnerable lock', async () => {
   assert.notEqual(run(vulnerable, '--verify').status, 0);
 });
 
-async function fixture(override, locked) {
+test('normalizes the reviewed one-off canary reasoning patch before applying the release patch', async () => {
+  const root = await fixture('3.3.17', '3.3.17', true);
+  assert.equal(run(root).status, 0);
+  assert.equal(run(root, '--verify').status, 0);
+  const apiServer = await readFile(join(root, 'gateway/platforms/api_server.py'), 'utf8');
+  assert.doesNotMatch(apiServer, /^\s+reasoning=reasoning,$/m);
+  assert.match(apiServer, /\*\*\(\{"reasoning": reasoning\} if reasoning else \{\}\)/);
+});
+
+async function fixture(override, locked, legacyReasoning = false) {
   const root = await mkdtemp(join(tmpdir(), 'aisar-hermes-test-'));
   directories.push(root);
   await writeFile(join(root, 'package.json'), JSON.stringify({
@@ -56,9 +65,13 @@ async function fixture(override, locked) {
     '        })',
     '                    final_response = result.get("final_response", "") if isinstance(result, dict) else ""',
     '                    pending_steer = result.get("pending_steer") if isinstance(result, dict) else None',
+    ...(legacyReasoning
+      ? ['                    reasoning = result.get("last_reasoning") if isinstance(result, dict) else None']
+      : []),
     '                    completed_event = {',
     '                        "event": "run.completed",',
     '                        "usage": usage,',
+    ...(legacyReasoning ? ['                        "reasoning": reasoning,'] : []),
     '                    }',
     '                    if pending_steer:',
     '                        completed_event["pending_steer"] = pending_steer',
@@ -67,6 +80,7 @@ async function fixture(override, locked) {
     '                        "completed",',
     '                        output=final_response,',
     '                        usage=usage,',
+    ...(legacyReasoning ? ['                        reasoning=reasoning,'] : []),
     '                        last_event="run.completed",',
     '                    )',
     '',
