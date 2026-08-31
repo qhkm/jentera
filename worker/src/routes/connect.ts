@@ -24,11 +24,9 @@ import {
 } from '../connections';
 import {
   clearWebhook,
-  hermesDraftId,
   parseUpdate,
   sendMessage,
   sendTyping,
-  sendMessageDraft,
   setWebhook,
   verifyToken,
   webhookHealth,
@@ -40,7 +38,7 @@ import { publishRuntimeTask, runtimeFor, signalRuntimeTask } from '../runtime';
 import { getRuntime } from '../agent-runtime';
 import { enqueueRuntimeTask, runtimeQueuePosition, runtimeTaskByDedupeKey } from '../runtime/tasks';
 import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
-import { deliverTelegramDraft, type TelegramIncoming } from '../telegram-delivery';
+import { deliverTelegramDraft, persistLiveMessageId, type TelegramIncoming } from '../telegram-delivery';
 import { admitPaidAgentRun } from '../request-guard';
 import {
   telegramPairingUrl,
@@ -577,28 +575,25 @@ async function handleDurableIncoming(
 
   /* While a run is active, acknowledge the session immediately so the
      owner knows their message is queued (Hermes-style) rather than staring
-     at a blank draft with no signal. The consumer overwrites this draft
-     the moment the run actually starts. */
-  let draftText = '';
-  if (inserted && created.status === 'queued') {
-    const ahead = await withTenant(env, businessId, (tx) =>
-      runtimeQueuePosition(tx, businessId, created.id));
-    if (ahead > 0) {
-      draftText = `⏳ In line (position #${ahead + 1}) — I'll answer right after the current request.`;
+     at silence. The live working bubble is a normal bot message — NOT a
+     Telegram input-field draft, which would lock the owner's composer and
+     send button until the run ends. The consumer edits the same bubble the
+     moment the run actually starts. */
+  if (incoming.privateChat && inserted) {
+    const ahead = created.status === 'queued'
+      ? await withTenant(env, businessId, (tx) =>
+          runtimeQueuePosition(tx, businessId, created.id))
+      : 0;
+    const placeholder = ahead > 0
+      ? `⏳ In line (position #${ahead + 1}) — I'll answer right after the current request.`
+      : '⏳ On it — waking the AI…';
+    const live = await sendMessage(token, incoming.chatId, placeholder).catch(() => null);
+    if (live?.messageId) {
+      await persistLiveMessageId(env, businessId, created.id, live.messageId)
+        .catch(() => {});
     }
   }
-
-  if (incoming.privateChat) {
-    await sendMessageDraft(
-      token,
-      incoming.chatId,
-      hermesDraftId(created.id),
-      draftText,
-    ).catch(() => {});
-    await sendTyping(token, incoming.chatId).catch(() => {});
-  } else {
-    await sendTyping(token, incoming.chatId).catch(() => {});
-  }
+  await sendTyping(token, incoming.chatId).catch(() => {});
 }
 
 function boundedRuntimeInput(input: string, question: string): string {

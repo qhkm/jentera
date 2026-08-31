@@ -134,55 +134,68 @@ export async function sendTyping(token: string, chatId: number | string): Promis
   if (!body?.ok) throw new Error('Telegram refused the typing indicator');
 }
 
-/** Telegram's ephemeral private-chat streaming preview. The same non-zero
-    draft id replaces the prior preview; sendMessage persists the final text. */
-export async function sendMessageDraft(
+/** Replace the text of a bot-owned message. Used to stream the live working
+    bubble without ever touching the user's composer — unlike Telegram's
+    input-field draft preview, a normal message leaves the user free to type. */
+export async function editMessageText(
   token: string,
   chatId: number | string,
-  draftId: number,
+  messageId: number,
   text: string,
 ): Promise<void> {
-  if (!Number.isSafeInteger(draftId) || draftId === 0) throw new Error('draft id is invalid');
-  const rich = text
-    ? { markdown: balanceStreamingMarkdown(text) }
-    : { html: '<tg-thinking>Thinking...</tg-thinking>' };
-  const richRes = await fetch(`${API}/bot${token}/sendRichMessageDraft`, {
+  const res = await fetch(`${API}/bot${token}/editMessageText`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, draft_id: draftId, rich_message: rich }),
-    signal: AbortSignal.timeout(5_000),
+    body: JSON.stringify({
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      disable_web_page_preview: true,
+    }),
+    signal: AbortSignal.timeout(15_000),
   });
-  const richBody = (await richRes.json().catch(() => null)) as { ok?: boolean } | null;
-  if (richBody?.ok) return;
-  if (richRes.status !== 400 && richRes.status !== 404) {
-    throw new Error('Telegram refused the live draft');
-  }
+  const body = (await res.json().catch(() => null)) as {
+    ok?: boolean;
+    description?: string;
+  } | null;
+  if (!body?.ok) throw new Error(body?.description ?? 'Telegram refused that edit');
+}
 
-  const plainRes = await fetch(`${API}/bot${token}/sendMessageDraft`, {
+/** Remove a bot-owned message. Used to tidy the live working bubble once the
+    durable answer lands (or a run dies), mirroring the old draft expiry. */
+export async function deleteMessage(
+  token: string,
+  chatId: number | string,
+  messageId: number,
+): Promise<void> {
+  const res = await fetch(`${API}/bot${token}/deleteMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, draft_id: draftId, text }),
-    signal: AbortSignal.timeout(5_000),
+    body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
+    signal: AbortSignal.timeout(10_000),
   });
-  const plainBody = (await plainRes.json().catch(() => null)) as { ok?: boolean } | null;
-  if (!plainBody?.ok) throw new Error('Telegram refused the live draft');
+  const body = (await res.json().catch(() => null)) as { ok?: boolean } | null;
+  if (!body?.ok) throw new Error('Telegram refused the deletion');
 }
 
-/** A UUID-backed 49-bit identity mirrors Hermes's collision-resistant draft
-    ids while remaining exactly representable by JavaScript and Telegram. */
-export function hermesDraftId(taskId: string): number {
-  // The UUID tail contains only random bits; the front contains fixed version
-  // bits, which would reduce the collision resistance Hermes relies on.
-  const hex = taskId.replaceAll('-', '').slice(-13);
-  if (!/^[0-9a-f]{13}$/i.test(hex)) throw new Error('runtime task id is invalid');
-  const id = Number(BigInt(`0x${hex}`) & ((1n << 49n) - 1n));
-  return id || 1;
+export interface TelegramLiveStreamOptions {
+  /** Reattach to a live bubble created earlier (e.g. by the webhook's
+      admission path or a previous queue slice). Without it the stream
+      creates its own bubble on first publish. */
+  messageId?: number;
+  /** Called once when the stream creates the bubble, so the caller can
+      persist the message id for later slices to reattach to. */
+  onMessageId?: (messageId: number) => Promise<void>;
 }
 
-/** Coalesce model tokens into Telegram-safe cumulative drafts. It stores text
+/** Coalesce model tokens into a single bot-owned live message. The bubble is
+    a normal message that sendMessage creates and editMessageText replaces —
+    deliberately NOT Telegram's input-field draft: drafts render inside the
+    user's composer and lock typing until the run finishes. A normal message
+    leaves the user free to type and queue the next request. It stores text
     only in this Worker invocation and never emits more than about one update
     per second, inside Telegram's documented per-peer limits. */
-export class TelegramDraftStream {
+export class TelegramLiveStream {
   private text = '';
   private status = '';
   private sent = '';
@@ -191,12 +204,23 @@ export class TelegramDraftStream {
   private lastTypingAt = 0;
   private available = true;
   private typingAvailable = true;
+  private messageId: number | undefined;
 
   constructor(
     private readonly token: string,
     private readonly chatId: number | string,
-    private readonly draftId: number,
-  ) {}
+    options: TelegramLiveStreamOptions = {},
+  ) {
+    this.messageId = options.messageId || undefined;
+    this.onMessageId = options.onMessageId;
+  }
+
+  private readonly onMessageId: ((messageId: number) => Promise<void>) | undefined;
+
+  /** The live bubble's Telegram message id once it exists. */
+  get id(): number | undefined {
+    return this.messageId;
+  }
 
   async push(delta: string): Promise<void> {
     if (!this.available || !delta) return;
@@ -216,9 +240,9 @@ export class TelegramDraftStream {
     await this.publish();
   }
 
-  /** Replace the "Thinking…" placeholder with a visible working state while
-      the model has produced no answer text yet. Throttled so stage churn and
-      the elapsed ticker cannot spam Telegram; ignored once text streams. */
+  /** Replace the working bubble text while the model has produced no answer
+      text yet. Throttled so stage churn and the elapsed ticker cannot spam
+      Telegram; ignored once text streams. */
   async setStatus(text: string): Promise<void> {
     if (!this.available || !text || this.text.trim()) return;
     const now = Date.now();
@@ -252,8 +276,8 @@ export class TelegramDraftStream {
   }
 
   /** Keep Telegram's separate chat-level typing affordance visible while the
-      ephemeral Hermes draft is active. Draft support and typing support fail
-      independently so a cosmetic rejection cannot disable the other lane. */
+      live bubble is active. Bubble edits and typing support fail independently
+      so a cosmetic rejection cannot disable the other lane. */
   async pulseTyping(force = false): Promise<void> {
     if (!this.typingAvailable || (!force && Date.now() - this.lastTypingAt < 4_000)) return;
     this.lastTypingAt = Date.now();
@@ -264,15 +288,34 @@ export class TelegramDraftStream {
     }
   }
 
-  private async publish(): Promise<void> {
-    const visible = this.text.trim() ? this.text : this.status;
+  /** Remove the live bubble once the durable answer has landed (or the run
+      died), so no stale "⏳ Working…" message lingers in the chat. */
+  async cleanup(): Promise<void> {
+    if (!this.messageId) return;
     try {
-      await sendMessageDraft(this.token, this.chatId, this.draftId, visible);
-      this.sent = visible;
-      this.lastSentAt = Date.now();
+      await deleteMessage(this.token, this.chatId, this.messageId);
+    } catch {
+      /* Cosmetic. The durable answer is already in the chat. */
+    }
+  }
+
+  private async publish(): Promise<void> {
+    const visible = this.text.trim() ? this.text : (this.status || '⏳ Working…');
+    try {
+      if (!this.messageId) {
+        const { messageId } = await sendMessage(this.token, this.chatId, visible);
+        this.messageId = messageId;
+        this.sent = visible;
+        this.lastSentAt = Date.now();
+        await this.onMessageId?.(messageId).catch(() => {});
+      } else {
+        await editMessageText(this.token, this.chatId, this.messageId, visible);
+        this.sent = visible;
+        this.lastSentAt = Date.now();
+      }
       await this.pulseTyping();
     } catch {
-      /* Preview support is cosmetic and private-chat-only. A failure disables
+      /* The live lane is cosmetic and private-chat-only. A failure disables
          this stream but never suppresses the durable final reply. */
       this.available = false;
     }
@@ -292,20 +335,6 @@ function hermesToolLine(tool: string, preview?: string): string {
                     : '⚙️';
   const bounded = preview?.trim().slice(0, 1_000);
   return bounded ? `${emoji} ${tool}: "${bounded}"` : `${emoji} ${tool}...`;
-}
-
-/** Hermes balances incomplete code spans in Telegram previews so a partial
-    model chunk does not make the rest of the draft render as code. */
-function balanceStreamingMarkdown(text: string): string {
-  let balanced = text;
-  if ((balanced.match(/```/g)?.length ?? 0) % 2 === 1) {
-    balanced = `${balanced.replace(/\s+$/, '')}\n\`\`\``;
-  }
-  const withoutFences = balanced
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/```[^`]*$/g, '');
-  if ((withoutFences.match(/`/g)?.length ?? 0) % 2 === 1) balanced = `${balanced}\``;
-  return balanced;
 }
 
 /**

@@ -1,7 +1,7 @@
 import type { Env } from './env';
 import { withTenant } from './db';
 import { useCredential } from './connections';
-import { hermesDraftId, sendHermesMessage, TelegramDraftStream } from './connectors/telegram';
+import { deleteMessage, sendHermesMessage, TelegramLiveStream } from './connectors/telegram';
 import { policyFor, type Policy } from './policy';
 import { append, finishRun, recordWork, updateWorkForRun } from './runs';
 
@@ -145,11 +145,52 @@ export async function sendAndRecord(
   });
 }
 
-/** The live Telegram draft id is derived from the owning runtime task. */
+/** The live Telegram bubble id is persisted on the owning runtime task's
+    payload so later queue slices (and the final cleanup) reattach to the same
+    bot-owned message instead of creating a second bubble. */
+export async function persistLiveMessageId(
+  env: Env,
+  businessId: string,
+  taskId: string,
+  messageId: number,
+): Promise<void> {
+  await withTenant(env, businessId, (tx) =>
+    tx`update runtime_task
+       set payload = payload || jsonb_build_object('telegram',
+         coalesce(payload->'telegram', '{}'::jsonb) ||
+         jsonb_build_object('liveMessageId', ${messageId}::int))
+       where id = ${taskId}`);
+}
+
+/** Best-effort removal of the live working bubble. Used after a terminal
+    failure (or any path where the stream object is out of scope): the task's
+    payload still carries the telegram hint, and `liveBubbleId` covers the
+    slice that created the bubble but never got to persist it. */
+export async function deleteTelegramLiveBubble(
+  env: Env,
+  businessId: string,
+  task: { payload: unknown },
+  liveBubbleId?: number,
+): Promise<void> {
+  const telegram = telegramPayloadHint(task.payload);
+  if (!telegram) return;
+  const messageId = liveBubbleId ?? telegram.liveMessageId;
+  if (!messageId) return;
+  try {
+    const token = await withTenant(env, businessId, (tx) =>
+      useCredential(env, tx, telegram.connectionId));
+    await deleteMessage(token, telegram.chatId, messageId);
+  } catch {
+    /* Cosmetic: the run is already terminal. */
+  }
+}
+
+/** The live Telegram bubble hint carried on the runtime task payload. */
 function telegramPayloadHint(value: unknown): {
   connectionId: string;
   chatId: number;
   privateChat: boolean;
+  liveMessageId?: number;
 } | null {
   if (!value || typeof value !== 'object') return null;
   const telegram = (value as Record<string, unknown>).telegram;
@@ -160,19 +201,23 @@ function telegramPayloadHint(value: unknown): {
     connectionId: t.connectionId,
     chatId: t.chatId,
     privateChat: t.privateChat === true,
+    liveMessageId: typeof t.liveMessageId === 'number' && Number.isSafeInteger(t.liveMessageId)
+      ? t.liveMessageId
+      : undefined,
   };
 }
 
 /**
- * An owner cancel freezes the ephemeral Telegram draft mid-thought — the chat
+ * An owner cancel freezes the live Telegram bubble mid-thought — the chat
  * sits on "⏳ Working…" (or "⏳ In line…") forever because the run is terminal
- * and nothing will ever replace it. Settle it with a short visible note.
+ * and nothing will ever replace it. Settle it with a short visible note,
+ * edited into the existing bubble when one exists, otherwise a new message.
  *
  * When `payload` is supplied (the cancel caller already has the row) no extra
  * query is made; otherwise the target task's payload is read from the durable
  * row, which is not scrubbed because cancellation flips it terminal directly.
  *
- * Cosmetic only: every failure is caught so a draft hiccup can never fail the
+ * Cosmetic only: every failure is caught so a bubble hiccup can never fail the
  * cancel task or the cancel request itself.
  */
 export async function settleCancelledDraft(
@@ -191,11 +236,13 @@ export async function settleCancelledDraft(
     if (!telegram?.privateChat) return;
     const token = await withTenant(env, businessId, (tx) =>
       useCredential(env, tx, telegram.connectionId));
-    const stream = new TelegramDraftStream(token, telegram.chatId, hermesDraftId(taskId));
+    const stream = new TelegramLiveStream(token, telegram.chatId, {
+      messageId: telegram.liveMessageId,
+    });
     await stream.push('⚠️ Cancelled — this request was stopped.');
   } catch (error) {
     console.warn(
-      '[runtime] cancelled draft note failed:',
+      '[runtime] cancelled bubble note failed:',
       error instanceof Error ? error.message : String(error),
     );
   }

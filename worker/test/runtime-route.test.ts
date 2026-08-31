@@ -5,7 +5,6 @@ import { startRun } from '../src/runs';
 import { enqueueRuntimeTask } from '../src/runtime/tasks';
 import { reserveRuntimeUsage } from '../src/runtime/usage';
 import { saveConnection } from '../src/connections';
-import { hermesDraftId } from '../src/connectors/telegram';
 import { asOwner, asTenant, req, signIn, testEnv, truncateAll } from './harness';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -161,7 +160,7 @@ describe('runtime provisioning route', () => {
     expect(count).toBe('1');
   });
 
-  it('settles the frozen draft with a visible cancelled note for a queued Telegram run', async () => {
+  it('settles the admitted live bubble with a visible cancelled note for a queued Telegram run', async () => {
     const send = vi.fn(async () => {});
     const telegram = vi.fn(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }), {
@@ -185,7 +184,7 @@ describe('runtime provisioning route', () => {
         input: 'hello',
         telegram: {
           connectionId: conn.id, chatId: 42, from: 'owner',
-          text: 'hello', privateChat: true,
+          text: 'hello', privateChat: true, liveMessageId: 55,
         },
         objective: 'Reply to the owner',
         function: 'assistant',
@@ -199,18 +198,19 @@ describe('runtime provisioning route', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true, taskId: task.id, status: 'cancelled' });
 
-    /* The frozen "⏳ In line…" draft is replaced in place with the
-       cancelled note, on the task-derived draft id. */
-    const draftCalls = telegram.mock.calls.filter(([input]) => {
+    /* The admission bubble (message 55) is edited in place with the
+       cancelled note — never the input-field draft API. */
+    const editCalls = telegram.mock.calls.filter(([input]) => {
       const url = String(input);
-      return url.includes('/sendRichMessageDraft') || url.includes('/sendMessageDraft');
+      return url.includes('/editMessageText');
     });
-    expect(draftCalls.length).toBe(1);
-    const body = JSON.parse((draftCalls[0][1] as RequestInit).body as string);
+    expect(editCalls.length).toBe(1);
+    const body = JSON.parse((editCalls[0][1] as RequestInit).body as string);
     expect(body.chat_id).toBe(42);
-    expect(body.draft_id).toBe(hermesDraftId(task.id));
-    expect(body.rich_message.markdown).toContain('⚠️ Cancelled');
-    expect(body.rich_message.markdown).toContain('stopped');
+    expect(body.message_id).toBe(55);
+    expect(body.text).toContain('⚠️ Cancelled');
+    expect(body.text).toContain('stopped');
+    expect(telegram.mock.calls.some(([input]) => String(input).includes('Draft'))).toBe(false);
   });
 });
 

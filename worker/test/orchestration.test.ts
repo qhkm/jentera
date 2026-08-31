@@ -21,7 +21,6 @@ import type { Env } from '../src/env';
 import { markRuntimeReady } from '../src/agent-runtime';
 import { ensureProviderRuntime } from '../src/runtime/provision';
 import { handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
-import { hermesDraftId } from '../src/connectors/telegram';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
@@ -30,7 +29,8 @@ let connId: string;
 let userId: string;
 let sent: { chatId: unknown; text: unknown }[];
 let typing: { chatId: unknown; action: unknown }[];
-let drafts: { chatId: unknown; draftId: unknown; text: unknown }[];
+let edits: { chatId: unknown; messageId: unknown; text: unknown }[];
+let deletions: { chatId: unknown; messageId: unknown }[];
 
 const incoming = {
   chatId: 42,
@@ -45,28 +45,23 @@ const incoming = {
 function telegramAccepts() {
   sent = [];
   typing = [];
-  drafts = [];
+  edits = [];
+  deletions = [];
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init: RequestInit) => {
-      if (String(url).includes('sendRichMessageDraft')) {
+      if (String(url).includes('editMessageText')) {
         const body = JSON.parse(String(init.body)) as {
-          chat_id: unknown;
-          draft_id: unknown;
-          rich_message?: { markdown?: unknown; html?: unknown };
+          chat_id: unknown; message_id: unknown; text: unknown;
         };
-        drafts.push({
-          chatId: body.chat_id,
-          draftId: body.draft_id,
-          text: body.rich_message?.markdown ?? '',
-        });
+        edits.push({ chatId: body.chat_id, messageId: body.message_id, text: body.text });
         return new Response(JSON.stringify({ ok: true, result: true }));
       }
-      if (String(url).includes('sendMessageDraft')) {
+      if (String(url).includes('deleteMessage')) {
         const body = JSON.parse(String(init.body)) as {
-          chat_id: unknown; draft_id: unknown; text: unknown;
+          chat_id: unknown; message_id: unknown;
         };
-        drafts.push({ chatId: body.chat_id, draftId: body.draft_id, text: body.text });
+        deletions.push({ chatId: body.chat_id, messageId: body.message_id });
         return new Response(JSON.stringify({ ok: true, result: true }));
       }
       if (String(url).includes('sendRichMessage')) {
@@ -253,13 +248,13 @@ describe('durable Hermes Telegram replies', () => {
     });
     await handleIncoming(currentEnv, A, connId, incoming);
 
-    expect(sent).toHaveLength(0);
+    /* The admission path acknowledges with a real bot-owned bubble (never an
+       input-field draft), persisted on the task so the consumer streams into
+       the same message. */
+    expect(sent).toEqual([{ chatId: 42, text: '⏳ On it — waking the AI…' }]);
+    expect(edits).toHaveLength(0);
+    expect(deletions).toHaveLength(0);
     expect(queued).toHaveLength(1);
-    expect(drafts).toContainEqual({
-      chatId: 42,
-      draftId: hermesDraftId(queued[0].taskId),
-      text: '',
-    });
 
     await expect(handleRuntimeMessage(currentEnv, queued[0], { provider })).resolves.toEqual({
       action: 'requeue',
@@ -274,7 +269,7 @@ describe('durable Hermes Telegram replies', () => {
     expect(tasks[0]).toMatchObject({
       kind: 'run',
       payload: {
-        telegram: { connectionId: connId, chatId: 42, messageId: 501 },
+        telegram: { connectionId: connId, chatId: 42, messageId: 501, liveMessageId: 99 },
       },
     });
     expect(tasks[1]).toMatchObject({
@@ -323,12 +318,10 @@ describe('durable Hermes Telegram replies', () => {
       messageId: 501,
     });
     expect(queued).toHaveLength(2);
-    expect(sent).toHaveLength(0);
-    expect(drafts).toContainEqual({
-      chatId: 42,
-      draftId: hermesDraftId(queued[0].taskId),
-      text: '',
-    });
+    /* One acknowledgment bubble despite two deliveries — the second is
+       deduplicated before the placeholder fires (inserted=false). */
+    expect(sent).toEqual([{ chatId: 42, text: '⏳ On it — waking the AI…' }]);
+    expect(edits).toHaveLength(0);
   });
 
   it('delivers the final Hermes answer and does not retain it on the runtime task', async () => {
@@ -402,20 +395,15 @@ describe('durable Hermes Telegram replies', () => {
       text: '🐍 execute_code: "import urllib.request"',
     });
     expect(sent).toContainEqual({ chatId: 42, text: 'Yes, we are open on Sunday.' });
-    const draftId = hermesDraftId(queued[0].taskId);
-    expect(drafts).toContainEqual({ chatId: 42, draftId, text: '' });
-    expect(drafts).toContainEqual({
-      chatId: 42,
-      draftId,
-      text: '⏳ On it — waking the AI…',
-    });
-    expect(drafts).toContainEqual({
-      chatId: 42,
-      draftId,
-      text: 'Yes, ',
-    });
-    expect(JSON.stringify(drafts)).not.toContain('never show this');
+    /* The consumer reattaches to the admission bubble (message 99) and
+       streams deltas into it by editing; the final combined text may stay
+       coalesced inside the 24-char buffer when the run finishes fast, so
+       the full sentence is asserted on the durable answer message instead.
+       The bubble is deleted once the durable answer lands. */
+    expect(edits).toContainEqual({ chatId: 42, messageId: 99, text: 'Yes, ' });
+    expect(JSON.stringify(edits)).not.toContain('never show this');
     expect(JSON.stringify(sent)).not.toContain('private final reasoning');
+    expect(deletions).toContainEqual({ chatId: 42, messageId: 99 });
     const [state] = await asOwner((sql) => sql<{
       task_result: unknown; task_payload: unknown; work_outcome: string; run_status: string;
     }[]>`
