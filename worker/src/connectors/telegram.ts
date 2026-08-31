@@ -141,7 +141,14 @@ export async function sendTyping(token: string, chatId: number | string): Promis
 
 /** Replace the text of a bot-owned message. Used to stream the live working
     bubble without ever touching the user's composer — unlike Telegram's
-    input-field draft preview, a normal message leaves the user free to type. */
+    input-field draft preview, a normal message leaves the user free to type.
+
+    Telegram rejects an edit whose text is byte-identical to the current
+    message ("message is not modified"). That is NOT a failure: the bubble
+    already shows exactly the text we wanted (e.g. the consumer reattaches to
+    the webhook's "⏳ On it — waking the AI…" bubble and the first status is
+    the same string). Throwing on it would kill the whole live lane, so it is
+    treated as a successful no-op instead. */
 export async function editMessageText(
   token: string,
   chatId: number | string,
@@ -163,7 +170,10 @@ export async function editMessageText(
     ok?: boolean;
     description?: string;
   } | null;
-  if (!body?.ok) throw new Error(body?.description ?? 'Telegram refused that edit');
+  if (!body?.ok) {
+    if (body?.description?.toLowerCase().includes('message is not modified')) return;
+    throw new Error(body?.description ?? 'Telegram refused that edit');
+  }
 }
 
 /** Remove a bot-owned message. Used to tidy the live working bubble once the

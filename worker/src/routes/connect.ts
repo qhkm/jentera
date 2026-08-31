@@ -624,7 +624,6 @@ async function handleDurableIncoming(
   });
 
   if (['completed', 'cancelled', 'exhausted'].includes(created.status)) return;
-  await signalRuntimeTask(env, businessId, created.id);
   const token = telegramToken ?? await withTenant(env, businessId, (tx) =>
     useCredential(env, tx, connectionId));
 
@@ -648,6 +647,12 @@ async function handleDurableIncoming(
         .catch(() => {});
     }
   }
+
+  /* Signal AFTER the live bubble exists and its id is persisted: the queue
+     consumer reattaches to payload.telegram.liveMessageId, and a fast lease
+     that beat the sendMessage/persist above would create a second bubble and
+     orphan the webhook's "On it — waking the AI…" message forever. */
+  await signalRuntimeTask(env, businessId, created.id);
   await sendTyping(token, incoming.chatId).catch(() => {});
 }
 
