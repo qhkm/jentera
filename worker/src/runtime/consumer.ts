@@ -27,9 +27,9 @@ import { dispatchRuntimeRun, measuredUsageOf, stopRuntimeTask } from './run-task
 import { finalizeRuntimeUsage, RuntimeBudgetExceeded } from './usage';
 import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
 import { publishRunProgressSafely } from './progress';
-import { deliverTelegramDraft, settleCancelledDraft } from '../telegram-delivery';
+import { deliverTelegramDraft, deleteTelegramLiveBubble, persistLiveMessageId, settleCancelledDraft } from '../telegram-delivery';
 import { useCredential } from '../connections';
-import { hermesDraftId, sendTyping, TelegramDraftStream } from '../connectors/telegram';
+import { sendTyping, TelegramLiveStream } from '../connectors/telegram';
 import { runtimeModelKeyNeedsRotation } from './openrouter-keys';
 import { RuntimeBusyError } from './runner-client';
 import { getRuntime } from '../agent-runtime';
@@ -107,6 +107,10 @@ export async function handleRuntimeMessage(
   options: { provider?: RuntimeProvider; fetch?: typeof globalThis.fetch } = {},
 ): Promise<RuntimeMessageResult> {
   const messageStartedAt = Date.now();
+  /* The live Telegram bubble from this delivery slice, hoisted so the
+     terminal-failure path can tidy it even if the persisted payload was
+     scrubbed by exhaustion. */
+  let liveBubbleId: number | undefined;
   if (message.version !== 1 || !uuid(message.businessId) || !uuid(message.taskId)) {
     return { action: 'ack', reason: 'missing' };
   }
@@ -250,43 +254,44 @@ export async function handleRuntimeMessage(
           }));
         };
         latency('leased', undefined, { leaseMs });
-        const draftStream = await telegramDraftStream(env, lease.task);
+        const liveStream = await telegramLiveStream(env, lease.task);
+        liveBubbleId = liveStream?.id;
         const toolShown = new Set<string>();
-        await draftStream?.pulseTyping(true);
+        await liveStream?.pulseTyping(true);
         let lastLeaseRenewal = Date.now();
         let firstVisibleDelta = false;
         let statusTimer: ReturnType<typeof setInterval> | undefined;
-        if (draftStream) {
+        if (liveStream) {
           const workingSince = Date.now();
-          void draftStream.setStatus('⏳ On it — waking the AI…');
+          void liveStream.setStatus('⏳ On it — waking the AI…');
           statusTimer = setInterval(() => {
             if (firstVisibleDelta) return;
             const elapsed = Math.round((Date.now() - workingSince) / 1_000);
-            void draftStream.setStatus(`⏳ Working… (${elapsed}s)`);
+            void liveStream.setStatus(`⏳ Working… (${elapsed}s)`);
           }, 5_000);
         }
         const outcome = await dispatchRuntimeRun(env, lease.task, leaseToken, {
           ...options,
-          onDelta: draftStream
+          onDelta: liveStream
             ? async (delta) => {
                 if (!firstVisibleDelta && delta.trim()) {
                   firstVisibleDelta = true;
                   latency('first_visible_delta');
                 }
-                await draftStream.push(delta);
+                await liveStream.push(delta);
               }
             : undefined,
-          onToolEvent: draftStream
+          onToolEvent: liveStream
             ? (event) => {
                 if (event.type !== 'tool.started') return Promise.resolve();
                 if (toolShown.has(event.tool)) return Promise.resolve();
                 toolShown.add(event.tool);
-                return draftStream.showTool(event.tool, event.preview);
+                return liveStream.showTool(event.tool, event.preview);
               }
             : undefined,
-          onHeartbeat: draftStream
+          onHeartbeat: liveStream
             ? async () => {
-                await draftStream.heartbeat();
+                await liveStream.heartbeat();
                 if (Date.now() - lastLeaseRenewal < 60_000) return;
                 const renewed = await withTenant(env, message.businessId, (tx) =>
                   renewRuntimeTaskLease(
@@ -302,7 +307,7 @@ export async function handleRuntimeMessage(
           onStage: (stage, elapsedMs) => {
             latency(stage, elapsedMs);
             const status = STAGE_STATUS[stage];
-            if (status) void draftStream?.setStatus(status);
+            if (status) void liveStream?.setStatus(status);
           },
         });
         if (statusTimer) {
@@ -355,6 +360,10 @@ export async function handleRuntimeMessage(
               'automatic',
             );
           }
+          /* The working bubble's job is done: the durable answer is now in
+             the chat (or awaits approval / never landed). Delete it so the
+             chat does not sit on "⏳ Working…" forever. */
+          await liveStream?.cleanup();
         }
 
         const completed = await withTenant(env, message.businessId, async (tx) => {
@@ -499,6 +508,10 @@ export async function handleRuntimeMessage(
       if (!exhausted) {
         return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
       }
+      /* Terminal — tidy the working bubble so the chat never sits on a
+         frozen "⏳ Working…" (the old draft lane at least expired). */
+      await deleteTelegramLiveBubble(env, message.businessId, lease.task, liveBubbleId)
+        .catch(() => {});
       if (lease.task.kind === 'run' && lease.task.runId) {
         await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'failed');
       }
@@ -543,15 +556,18 @@ async function pulseTelegramTyping(env: Env, task: RuntimeTask): Promise<void> {
   await sendTyping(token, telegram.chatId);
 }
 
-async function telegramDraftStream(
+async function telegramLiveStream(
   env: Env,
   task: RuntimeTask,
-): Promise<TelegramDraftStream | null> {
+): Promise<TelegramLiveStream | null> {
   const telegram = telegramHint(task.payload);
   if (!telegram?.privateChat) return null;
   const token = await withTenant(env, task.businessId, (tx) =>
     useCredential(env, tx, telegram.connectionId));
-  return new TelegramDraftStream(token, telegram.chatId, hermesDraftId(task.id));
+  return new TelegramLiveStream(token, telegram.chatId, {
+    messageId: telegram.liveMessageId,
+    onMessageId: (messageId) => persistLiveMessageId(env, task.businessId, task.id, messageId),
+  });
 }
 
 function telegramHint(value: unknown): {
@@ -559,6 +575,7 @@ function telegramHint(value: unknown): {
   chatId: number;
   messageId: number;
   privateChat: boolean;
+  liveMessageId?: number;
 } | null {
   if (!value || typeof value !== 'object') return null;
   const telegram = (value as Record<string, unknown>).telegram;
@@ -573,6 +590,9 @@ function telegramHint(value: unknown): {
     chatId: body.chatId,
     messageId: body.messageId,
     privateChat: body.privateChat,
+    liveMessageId: typeof body.liveMessageId === 'number' && Number.isSafeInteger(body.liveMessageId)
+      ? body.liveMessageId
+      : undefined,
   };
 }
 

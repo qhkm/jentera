@@ -104,7 +104,9 @@ export async function guardApiRequest(
        while we pull. */
     const probe = request.clone();
     try {
-      const reader = probe.body.getReader();
+      // The enclosing else-if already proved request.body !== null, so the
+      // clone's stream exists.
+      const reader = probe.body!.getReader();
       let total = 0;
       for (;;) {
         const { done, value } = await reader.read();

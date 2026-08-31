@@ -17,11 +17,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { asApp, asOwner, asTenant, truncateAll } from './harness';
 import { saveConnection, verifyWebhook, webhookSecret } from '../src/connections';
 import {
-  hermesDraftId,
   parseUpdate,
   sendHermesMessage,
-  sendMessageDraft,
-  TelegramDraftStream,
+  TelegramLiveStream,
   withTypingIndicator,
 } from '../src/connectors/telegram';
 import type { Env } from '../src/env';
@@ -251,78 +249,92 @@ describe('automatic reply typing', () => {
   });
 });
 
-describe('Hermes-style Telegram drafts', () => {
+describe('Hermes-style Telegram live bubbles', () => {
   it('persists the final answer as a copyable ordinary message', async () => {
     const fetch = vi.fn(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
     vi.stubGlobal('fetch', fetch);
 
-    await expect(sendHermesMessage('123456789:AAtoken', 42, 'Copy this answer'))
-      .resolves.toEqual({ messageId: 91 });
+    await sendHermesMessage('123456789:AAtoken', 42, 'Copy this answer');
 
     expect(String(fetch.mock.calls[0][0])).toContain('/sendMessage');
-    expect(String(fetch.mock.calls[0][0])).not.toContain('/sendRichMessage');
     expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({
       chat_id: 42,
       text: 'Copy this answer',
     });
   });
 
-  it('derives a fresh Telegram-safe 49-bit id from each durable task', () => {
-    const first = hermesDraftId('11111111-1111-4111-8111-111111111111');
-    const second = hermesDraftId('22222222-2222-4222-8222-222222222222');
-    expect(first).not.toBe(second);
-    expect(Number.isSafeInteger(first)).toBe(true);
-    expect(first).toBeGreaterThan(0);
-    expect(first).toBeLessThan(2 ** 49);
-  });
-
-  it('uses the native rich Thinking placeholder with a plain-draft fallback', async () => {
-    const fetch = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false }), { status: 400 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, result: true })));
+  it('creates a bot-owned bubble with sendMessage and never touches the composer', async () => {
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
     vi.stubGlobal('fetch', fetch);
+    const stream = new TelegramLiveStream('123456789:AAtoken', 42);
 
-    await sendMessageDraft('123456789:AAtoken', 42, 7, '');
+    await stream.push('A');
 
-    expect(String(fetch.mock.calls[0][0])).toContain('/sendRichMessageDraft');
-    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({
+    const sendCalls = () => fetch.mock.calls.filter(([url]) =>
+      String(url).includes('/sendMessage'));
+    expect(sendCalls()).toHaveLength(1);
+    expect(JSON.parse(String(sendCalls()[0][1]?.body))).toMatchObject({
       chat_id: 42,
-      draft_id: 7,
-      rich_message: { html: '<tg-thinking>Thinking...</tg-thinking>' },
+      text: 'A',
     });
-    expect(String(fetch.mock.calls[1][0])).toContain('/sendMessageDraft');
+    expect(stream.id).toBe(91);
+    expect(fetch.mock.calls.some(([url]) => String(url).includes('Draft'))).toBe(false);
   });
 
-  it('publishes immediately, then at Hermes\'s 24-character buffer threshold', async () => {
+  it('reattaches to the admission bubble and edits it in place', async () => {
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
+    vi.stubGlobal('fetch', fetch);
+    const stream = new TelegramLiveStream('123456789:AAtoken', 42, { messageId: 91 });
+
+    await stream.setStatus('✅ System ready — waking AI…');
+
+    const editCalls = () => fetch.mock.calls.filter(([url]) =>
+      String(url).includes('/editMessageText'));
+    expect(editCalls()).toHaveLength(1);
+    expect(JSON.parse(String(editCalls()[0][1]?.body))).toMatchObject({
+      chat_id: 42,
+      message_id: 91,
+      text: '✅ System ready — waking AI…',
+    });
+    expect(fetch.mock.calls.some(([url]) => String(url).includes('/sendMessage'))).toBe(false);
+  });
+
+  it('publishes immediately, then at the 24-character buffer threshold', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
     const fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ ok: true, result: true })));
+      new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
     vi.stubGlobal('fetch', fetch);
-    const stream = new TelegramDraftStream('123456789:AAtoken', 42, 9);
+    const stream = new TelegramLiveStream('123456789:AAtoken', 42);
 
     await stream.push('A');
     await stream.push('short');
-    const draftCalls = () => fetch.mock.calls.filter(([url]) =>
-      String(url).includes('/sendRichMessageDraft'));
-    expect(draftCalls()).toHaveLength(1);
+    const sendCalls = () => fetch.mock.calls.filter(([url]) =>
+      String(url).includes('/sendMessage'));
+    expect(sendCalls()).toHaveLength(1);
     await stream.push('x'.repeat(19));
-    expect(draftCalls()).toHaveLength(2);
 
-    const second = JSON.parse(String(draftCalls()[1][1]?.body)) as {
-      rich_message: { markdown: string };
+    const editCalls = () => fetch.mock.calls.filter(([url]) =>
+      String(url).includes('/editMessageText'));
+    expect(editCalls()).toHaveLength(1);
+    const second = JSON.parse(String(editCalls()[0][1]?.body)) as {
+      message_id: number;
+      text: string;
     };
-    expect(second.rich_message.markdown).toBe(`Ashort${'x'.repeat(19)}`);
+    expect(second.message_id).toBe(91);
+    expect(second.text).toBe(`Ashort${'x'.repeat(19)}`);
   });
 
-  it('refreshes Telegram typing alongside the live draft heartbeat', async () => {
+  it('refreshes Telegram typing alongside the live bubble heartbeat', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
     const fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ ok: true, result: true })));
+      new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
     vi.stubGlobal('fetch', fetch);
-    const stream = new TelegramDraftStream('123456789:AAtoken', 42, 9);
+    const stream = new TelegramLiveStream('123456789:AAtoken', 42);
 
     await stream.pulseTyping(true);
     await stream.push('A');
@@ -337,75 +349,74 @@ describe('Hermes-style Telegram drafts', () => {
     expect(fetch.mock.calls.every(([url]) => String(url).includes('/sendChatAction'))).toBe(true);
   });
 
-  it('keeps drafts available when Telegram refuses the typing action', async () => {
+  it('keeps the live bubble when Telegram refuses the typing action', async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false }), { status: 400 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, result: true })));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
     vi.stubGlobal('fetch', fetch);
-    const stream = new TelegramDraftStream('123456789:AAtoken', 42, 9);
+    const stream = new TelegramLiveStream('123456789:AAtoken', 42);
 
     await stream.pulseTyping(true);
     await stream.push('Visible answer');
 
     expect(String(fetch.mock.calls[0][0])).toContain('/sendChatAction');
-    expect(String(fetch.mock.calls[1][0])).toContain('/sendRichMessageDraft');
+    expect(String(fetch.mock.calls[1][0])).toContain('/sendMessage');
+    expect(JSON.parse(String(fetch.mock.calls[1][1]?.body))).toMatchObject({
+      chat_id: 42,
+      text: 'Visible answer',
+    });
   });
 
-  it('replaces the Thinking placeholder with a visible working status', async () => {
+  it('publishes a working status as a fresh bubble when no bubble exists yet', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
     const fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ ok: true, result: true })));
+      new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
     vi.stubGlobal('fetch', fetch);
-    const stream = new TelegramDraftStream('123456789:AAtoken', 42, 9);
+    const stream = new TelegramLiveStream('123456789:AAtoken', 42);
 
     await stream.setStatus('✅ System ready — waking AI…');
 
-    const draftCalls = () => fetch.mock.calls.filter(([url]) =>
-      String(url).includes('/sendRichMessageDraft'));
-    expect(draftCalls()).toHaveLength(1);
-    const body = JSON.parse(String(draftCalls()[0][1]?.body)) as {
-      rich_message: { markdown: string };
-    };
-    expect(body.rich_message.markdown).toContain('System ready');
-    expect(body.rich_message.markdown).not.toContain('tg-thinking');
+    const sendCalls = () => fetch.mock.calls.filter(([url]) =>
+      String(url).includes('/sendMessage'));
+    expect(sendCalls()).toHaveLength(1);
+    const body = JSON.parse(String(sendCalls()[0][1]?.body)) as { text: string };
+    expect(body.text).toContain('System ready');
   });
 
   it('status clears the moment answer text starts streaming', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
     const fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ ok: true, result: true })));
+      new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
     vi.stubGlobal('fetch', fetch);
-    const stream = new TelegramDraftStream('123456789:AAtoken', 42, 9);
+    const stream = new TelegramLiveStream('123456789:AAtoken', 42);
 
     await stream.setStatus('⏳ Working… (12s)');
     fetch.mockClear();
     await stream.push('Here is the answer');
 
-    const draftCalls = () => fetch.mock.calls.filter(([url]) =>
-      String(url).includes('/sendRichMessageDraft'));
-    expect(draftCalls()).toHaveLength(1);
-    const body = JSON.parse(String(draftCalls()[0][1]?.body)) as {
-      rich_message: { markdown: string };
-    };
-    expect(body.rich_message.markdown).toContain('Here is the answer');
-    expect(body.rich_message.markdown).not.toContain('Working');
+    const editCalls = () => fetch.mock.calls.filter(([url]) =>
+      String(url).includes('/editMessageText'));
+    expect(editCalls()).toHaveLength(1);
+    const body = JSON.parse(String(editCalls()[0][1]?.body)) as { text: string };
+    expect(body.text).toContain('Here is the answer');
+    expect(body.text).not.toContain('Working');
   });
 
   it('ignores status updates once answer text has started', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
     const fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ ok: true, result: true })));
+      new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
     vi.stubGlobal('fetch', fetch);
-    const stream = new TelegramDraftStream('123456789:AAtoken', 42, 9);
+    const stream = new TelegramLiveStream('123456789:AAtoken', 42);
 
     await stream.push('Started');
     fetch.mockClear();
     await stream.setStatus('⏳ Working… (99s)');
 
-    expect(fetch.mock.calls.some(([url]) => String(url).includes('/sendRichMessageDraft')))
+    expect(fetch.mock.calls.some(([url]) => String(url).includes('/editMessageText')))
       .toBe(false);
   });
 
@@ -413,9 +424,9 @@ describe('Hermes-style Telegram drafts', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
     const fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ ok: true, result: true })));
+      new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
     vi.stubGlobal('fetch', fetch);
-    const stream = new TelegramDraftStream('123456789:AAtoken', 42, 9);
+    const stream = new TelegramLiveStream('123456789:AAtoken', 42);
 
     await stream.setStatus('✅ System ready — waking AI…');
     fetch.mockClear();
@@ -425,12 +436,10 @@ describe('Hermes-style Telegram drafts', () => {
 
     await vi.advanceTimersByTimeAsync(1_500);
     await stream.setStatus('✅ Agent started — thinking…');
-    const draftCalls = () => fetch.mock.calls.filter(([url]) =>
-      String(url).includes('/sendRichMessageDraft'));
-    expect(draftCalls()).toHaveLength(1);
-    const body = JSON.parse(String(draftCalls()[0][1]?.body)) as {
-      rich_message: { markdown: string };
-    };
-    expect(body.rich_message.markdown).toContain('Agent started');
+    const editCalls = () => fetch.mock.calls.filter(([url]) =>
+      String(url).includes('/editMessageText'));
+    expect(editCalls()).toHaveLength(1);
+    const body = JSON.parse(String(editCalls()[0][1]?.body)) as { text: string };
+    expect(body.text).toContain('Agent started');
   });
 });
