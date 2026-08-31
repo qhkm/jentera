@@ -212,16 +212,20 @@ function budget(row: BudgetRow): RuntimeBudget {
   };
 }
 
-/** Prices are micro-USD per 100 tokens for the pinned DeepSeek V4 Flash route. */
+/** Prices are micro-USD per 100 tokens for the pinned model routes. */
+const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  // DeepSeek V4 Flash: $0.06/M in, $0.12/M out
+  'deepseek/deepseek-v4-flash-0731': { input: 6, output: 12 },
+  'deepseek/deepseek-v4-flash-20260731': { input: 6, output: 12 },
+  'deepseek-v4-flash': { input: 6, output: 12 },
+  // MiniMax M3 on the customer-pinned router: $0.30/M in, $1.20/M out
+  'MiniMax-M3': { input: 30, output: 120 },
+};
+
 function modelCostMicrousd(model: string, inputTokens: number, outputTokens: number): number {
-  if (![
-    'deepseek/deepseek-v4-flash-0731',
-    'deepseek/deepseek-v4-flash-20260731',
-    'deepseek-v4-flash',
-  ].includes(model)) {
-    throw new Error('runtime model pricing is not configured');
-  }
-  return Math.ceil((inputTokens * 6 + outputTokens * 12) / 100);
+  const pricing = MODEL_PRICING[model];
+  if (!pricing) throw new Error('runtime model pricing is not configured');
+  return Math.ceil((inputTokens * pricing.input + outputTokens * pricing.output) / 100);
 }
 
 function tokenCount(value: number): number {

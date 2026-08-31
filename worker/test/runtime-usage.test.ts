@@ -68,6 +68,18 @@ describe('runtime usage safety ledger', () => {
     expect(snapshot.usage.costMicrousd).toBe(9_000);
   });
 
+  it('prices MiniMax-M3 runs on the customer-pinned route', async () => {
+    const task = await runTask(A);
+    await asTenant(A, (tx) => reserveRuntimeUsage(tx, A, task.id, 'MiniMax-M3'));
+    await asTenant(A, (tx) => finalizeRuntimeUsage(tx, A, task.id, 'completed', {
+      inputTokens: 18_000,
+      outputTokens: 20,
+    }));
+    const snapshot = await asTenant(A, (tx) => runtimeBudgetSnapshot(tx, A));
+    // (18000*30 + 20*120) / 100 = 5424 micro-USD
+    expect(snapshot.usage.costMicrousd).toBe(5_424);
+  });
+
   it('does not expose one business usage to another tenant', async () => {
     const task = await runTask(A);
     await asTenant(A, (tx) => reserveRuntimeUsage(tx, A, task.id, MODEL));

@@ -53,7 +53,7 @@ API_ORIGIN = "https://api.jentera.ai"
 # The immutable runner/Hermes/browser bundle requested for newly
 # provisioned runtimes. Changing this asks reconciliation to upgrade;
 # it must never silently track "latest".
-RUNTIME_RELEASE = "2026.08.31-19"
+RUNTIME_RELEASE = "2026.08.31-20"
 RUNTIME_EXPECTED_REGION = "sin"
 SPRITES_API_ORIGIN = "https://api.sprites.dev"
 # Fail closed. Completing onboarding provisions one isolated runtime for the
@@ -67,7 +67,7 @@ RUNTIME_BOOTSTRAP_ENABLED = "true"
 RUNTIME_BUNDLE_COMMIT = "46b68edd91c49da3ce94223b9caa4f0f5eec308c"
 AISAR_MODEL_PROVIDER = "openrouter"
 AISAR_MODEL_BASE = "https://router.fmcv.my"
-AISAR_MODEL_NAME = "deepseek-v4-flash"
+AISAR_MODEL_NAME = "MiniMax-M3"
 # Businesses whose model key is the static AISAR_MODEL_KEY (customer-pinned
 # router, no rotation) instead of managed OpenRouter rotation.
 RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS = "4e8c2593-2af2-494f-b157-fec0295a50b5"
