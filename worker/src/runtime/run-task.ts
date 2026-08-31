@@ -1,5 +1,5 @@
 import type { Env } from '../env';
-import { getBusinessPlan, getRuntime, getRuntimeSecrets } from '../agent-runtime';
+import { getRuntime, getRuntimeSecrets } from '../agent-runtime';
 import { withTenant } from '../db';
 import type { RuntimeProvider } from './provider';
 import { runtimeProviderFor } from './provision';
@@ -12,10 +12,10 @@ import { append } from '../runs';
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped']);
 
-/** Paid plans hold the Sprite active this long past any dispatch.
-    Every dispatch for a paid business refreshes the window, so a
-    messaging business stays always-on and a silent or downgraded one
-    releases itself (stops billing) after the grace window. */
+/** Every dispatch holds the Sprite active this long past the dispatch
+    (all plans — launch posture). Each dispatch refreshes the window, so a
+    messaging business stays always-on and a silent one releases itself
+    (stops billing) after the grace window. */
 const KEEPALIVE_GRACE_HOURS_DEFAULT = 24;
 
 function keepaliveGraceHours(env: Env): number {
@@ -86,11 +86,9 @@ export async function dispatchRuntimeRun(
         task.id,
         env.AISAR_MODEL_NAME?.trim() ?? '',
       );
-      const plan = await getBusinessPlan(tx, task.businessId);
-      const keepaliveUntil =
-        plan === 'pro'
-          ? new Date(Date.now() + keepaliveGraceHours(env) * 3_600_000).toISOString()
-          : undefined;
+      const keepaliveUntil = new Date(
+        Date.now() + keepaliveGraceHours(env) * 3_600_000,
+      ).toISOString();
       return { runtime, secrets, reservation, keepaliveUntil };
     },
   );
