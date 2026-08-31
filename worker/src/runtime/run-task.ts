@@ -6,7 +6,7 @@ import { runtimeProviderFor } from './provision';
 import { RunnerClient, type RunnerTaskResponse, type RunnerToolEvent } from './runner-client';
 import { recordRuntimeTaskRemoteRun, type RuntimeTask } from './tasks';
 import { issueFullToolsGrant } from './tool-grant';
-import { reserveRuntimeUsage } from './usage';
+import { markRuntimeUsageStarted, reserveRuntimeUsage } from './usage';
 import { runtimeTaskIsCancelled } from './tasks';
 import { append } from '../runs';
 
@@ -119,10 +119,13 @@ export async function dispatchRuntimeRun(
   await client.ready();
   stage('runner_ready');
   if (Date.now() - reservation.startedAt.getTime() > reservation.maxRunSeconds * 1_000) {
-    if (task.remoteRunId) await client.stop(task.id).catch(() => {});
+    if (!task.remoteRunId) {
+      throw new Error('runtime task exceeded its time limit before Hermes started');
+    }
+    await client.stop(task.id).catch(() => {});
     return {
       state: 'terminal',
-      remoteRunId: task.remoteRunId ?? 'not-started',
+      remoteRunId: task.remoteRunId,
       remoteStatus: 'cancelled',
       result: { error: 'runtime task exceeded its time limit' },
       summary: 'Runtime task exceeded its time limit.',
@@ -148,6 +151,7 @@ export async function dispatchRuntimeRun(
   stage('hermes_started');
   const remoteRunId = started.hermesRunId;
   if (!remoteRunId) throw new Error('runner returned no Hermes run id');
+  const firstStart = !task.remoteRunId;
   const recorded = await withTenant(env, task.businessId, async (tx) => {
     const saved = await recordRuntimeTaskRemoteRun(
       tx,
@@ -157,6 +161,9 @@ export async function dispatchRuntimeRun(
       remoteRunId,
       boundedStatus(started.status),
     );
+    if (saved && firstStart) {
+      await markRuntimeUsageStarted(tx, task.businessId, task.id);
+    }
     if (saved && !task.startedAt && task.runId) {
       await append(tx, task.businessId, task.runId, 'work.started', {
         runtimeTaskId: task.id,

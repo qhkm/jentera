@@ -109,6 +109,19 @@ export async function reserveRuntimeUsage(
   return { startedAt: created.started_at, maxRunSeconds: budgetRow.max_run_seconds };
 }
 
+/** Start the billed run window only after Hermes has accepted the task. */
+export async function markRuntimeUsageStarted(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+): Promise<void> {
+  await tx`
+    update runtime_usage
+       set started_at = now(), updated_at = now()
+     where business_id = ${businessId} and runtime_task_id = ${taskId}
+       and status = 'reserved'`;
+}
+
 export async function finalizeRuntimeUsage(
   tx: postgres.TransactionSql,
   businessId: string,
