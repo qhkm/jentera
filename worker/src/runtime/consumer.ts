@@ -27,6 +27,7 @@ import { dispatchRuntimeRun, measuredUsageOf, stopRuntimeTask } from './run-task
 import { finalizeRuntimeUsage, RuntimeBudgetExceeded } from './usage';
 import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
 import { publishRunProgressSafely } from './progress';
+import { STEP_STRIP_RE } from './step-progress';
 import { deliverTelegramDraft, deleteTelegramLiveBubble, persistLiveMessageId, settleCancelledDraft } from '../telegram-delivery';
 import { useCredential } from '../connections';
 import { hermesToolLine, sendTyping, TelegramLiveStream } from '../connectors/telegram';
@@ -300,7 +301,7 @@ export async function handleRuntimeMessage(
             if (firstVisibleDelta) return;
             const elapsed = Math.round((Date.now() - workingSince) / 1_000);
             void liveStream.setStatus(currentStep
-              ? `${currentStep} · ${elapsed}s`
+              ? `${statusLine(currentStep)} · ${elapsed}s`
               : `⏳ Working… (${elapsed}s)`);
           }, 5_000);
         }
@@ -356,11 +357,11 @@ export async function handleRuntimeMessage(
             : undefined,
           onProgress: liveStream
             ? async (label) => {
-                currentStep = label;
+                currentStep = statusLine(label);
                 currentStepIsTool = false;
                 if (!firstVisibleDelta) {
                   const elapsed = Math.round((Date.now() - workingSince) / 1_000);
-                  await liveStream.setStatus(`${label} · ${elapsed}s`);
+                  await liveStream.setStatus(`${currentStep} · ${elapsed}s`);
                 }
               }
             : undefined,
@@ -694,8 +695,11 @@ function stripHermesThinking(text: string): string {
     .replace(new RegExp(`<${names}>[\\s\\S]*?<\\/${names}>\\s*`, 'gi'), '')
     .replace(new RegExp(`(?:^|\\n)[ \\t]*<${names}>[\\s\\S]*$`, 'gi'), '')
     .replace(new RegExp(`<\\/${names}>\\s*`, 'gi'), '')
-    /* Live `@step:` narration is progress chrome, never part of the answer. */
-    .replace(/^\s*@step:[^\n]*\n?/gm, '');
+    /* Live `@step:` narration is progress chrome, never part of the answer.
+       Tolerant whole-line strip (markdown/bullet variants)… */
+    .replace(STEP_STRIP_RE, '')
+    /* …plus any marker remnant that slipped past line detection. */
+    .replace(/@step:[^\n]*/gi, '');
 }
 
 function uuid(value: string): boolean {
@@ -712,4 +716,17 @@ function sanitiseThinking(text: string, max = 400): string {
     .trim();
   if (!flattened) return '';
   return flattened.length <= max ? flattened : `${flattened.slice(0, max - 1)}…`;
+}
+
+/** Renders one working-bubble status line from a progress label: whitespace
+    collapsed, stray markdown noise removed, never multi-line. The bubble edit
+    is plain text — every status update replaces the previous line, so stacked
+    paragraphs can only come from label garbage sneaking in here. */
+function statusLine(text: string): string {
+  return text
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/[*_`~]+/g, '')
+    .trim()
+    .slice(0, 120);
 }

@@ -8,20 +8,43 @@
    as ordinary message deltas, so this module pulls them out of
    the answer stream before they reach the reply bubble.
 
-   Rules:
-   - A step line is a line whose first non-space character is
-     `@step:`. It is consumed entire and NEVER forwarded as answer
-     text (the final durable answer comes from the runner's status
-     output, so losing the narration in the preview lane is safe).
-   - Labels split across model token deltas are buffered until the
-     line's newline arrives.
-   - Total step bytes are capped so a faulty model cannot spend the
-     stream budget on narration; excess step lines are dropped.
-   - Sanitising keeps the label to plain, short, safe text (the
-     bubble edit is plain-text; control characters are removed).
-   ============================================================ */
+  Rules:
+  - A step line is a line whose first non-space characters are
+    `@step:` — optionally wrapped in the markdown the model tends
+    to add (`**@step:**`, `*@step:*`) or prefixed with a bullet
+    (`- @step:`, `• @step:`, `> @step:`). It is consumed entire
+    and NEVER forwarded as answer text (the final durable answer
+    comes from the runner's status output, so losing the narration
+    in the preview lane is safe).
+  - Labels split across model token deltas are buffered until the
+    line's newline arrives.
+  - Total step bytes are capped so a faulty model cannot spend the
+    stream budget on narration; excess step lines are dropped.
+  - Sanitising keeps the label to plain, short, safe text (the
+    bubble edit is plain-text; control characters are removed).
+  ============================================================ */
 
-export const STEP_LINE = /^\s*@step:\s*/;
+/* Tolerant step-marker matcher. Accepts the bare `@step:` form plus
+   the common ways models decorate it: leading markdown emphasis
+   (`*@step:*`, `**@step:**`), bullet/quote prefixes (`-`, `•`, `>`),
+   and trailing emphasis after the colon (`@step:**Label**`).
+   Anything a line-start `@step:` variant can look like in the wild
+   should be consumed here so raw narration can never reach the
+   answer bubble. */
+/* Tolerant step-marker matcher. Accepts the bare `@step:` form plus
+   the common ways models decorate it: leading markdown emphasis
+   (`*@step:*`, `**@step:**`), bullet/quote prefixes (`-`, `•`, `>`),
+   the two combined (`- **@step:**`), and trailing emphasis after the
+   colon (`@step:**Label**`). Anything a line-start `@step:` variant can
+   look like in the wild should be consumed here so raw narration can
+   never reach the answer bubble. */
+export const STEP_LINE =
+  /^\s*(?:[-*•>]\s*)?(?:\*\*|\*)?\s*@step:[*_]{0,2}\s*/;
+
+/* Whole-line matchers for defensive stripping (blank line + mixed
+   `@step:` fragments should not survive either). */
+export const STEP_STRIP_RE =
+  /(?:^|\n)\s*(?:[-*•>]\s*)?(?:\*\*|\*)?\s*@step:[*_]{0,2}[^\n]*/g;
 
 const STEP_LABEL_LIMIT = 90;
 const STEP_BUDGET_DEFAULT = 8 * 1024;
@@ -43,6 +66,10 @@ function sanitiseStep(label: string): string {
   return label
     .replace(/[\u0000-\u001f\u007f]/g, ' ')
     .replace(/\s+/g, ' ')
+    /* Stray markdown emphasis a tolerant matcher may have left around the
+       label (`**@step: X**` → `X`): the bubble edit is plain text, so the
+       asterisks are noise, not formatting. */
+    .replace(/[*_`~]+/g, '')
     .trim()
     .slice(0, STEP_LABEL_LIMIT);
 }

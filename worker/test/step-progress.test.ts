@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createStepProgressExtractor } from '../src/runtime/step-progress';
+import { createStepProgressExtractor, STEP_STRIP_RE } from '../src/runtime/step-progress';
 
 describe('step progress extractor', () => {
   it('splits a complete @step line out of the answer stream', () => {
@@ -75,5 +75,49 @@ describe('step progress extractor', () => {
     const out = extractor.push('Read the docs at @step: is not a marker here.\n');
     expect(out.steps).toEqual([]);
     expect(out.rest).toBe('Read the docs at @step: is not a marker here.\n');
+  });
+
+  it('consumes bold-decorated step lines and strips the markdown', () => {
+    const extractor = createStepProgressExtractor();
+    const out = extractor.push('**@step: Checking the booking docs**\nAnswer.');
+    expect(out.steps).toEqual(['Checking the booking docs']);
+    expect(out.rest).toBe('Answer.');
+  });
+
+  it('consumes a bold marker with a plain label', () => {
+    const extractor = createStepProgressExtractor();
+    const out = extractor.push('**@step:** Scanning invoices\n');
+    expect(out.steps).toEqual(['Scanning invoices']);
+    expect(out.rest).toBe('');
+  });
+
+  it('consumes bullet and quote-prefixed step lines', () => {
+    const extractor = createStepProgressExtractor();
+    const out = extractor.push('- @step: First pass\n• @step: Second pass\n> @step: Third pass\nafter');
+    expect(out.steps).toEqual(['First pass', 'Second pass', 'Third pass']);
+    expect(out.rest).toBe('after');
+  });
+
+  it('strips trailing emphasis from the label', () => {
+    const extractor = createStepProgressExtractor();
+    const out = extractor.push('@step: Check the SQL**\n');
+    expect(out.steps).toEqual(['Check the SQL']);
+  });
+
+  it('strips inline markdown noise from labels', () => {
+    const extractor = createStepProgressExtractor();
+    const out = extractor.push('@step: **Install** `deps` now\n');
+    expect(out.steps).toEqual(['Install deps now']);
+  });
+
+  it('STEP_STRIP_RE: defensive whole-line strip handles decorated variants', () => {
+    const answer = 'First line\n- **@step: Sneaky narration**\n• @step: Another one\nReal answer.';
+    const stripped = answer.replace(STEP_STRIP_RE, '');
+    expect(stripped).toBe('First line\nReal answer.');
+  });
+
+  it('STEP_STRIP_RE: leaves a mid-line occurrence alone (extractor owns that case)', () => {
+    const answer = 'Read the docs at @step: is not a marker here.';
+    expect(answer.replace(STEP_STRIP_RE, '')).toBe(answer);
   });
 });
