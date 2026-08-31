@@ -1,3 +1,5 @@
+import { createStepProgressExtractor } from './step-progress';
+
 const RESPONSE_LIMIT = 256 * 1024;
 const STREAM_LIMIT = 64 * 1024;
 
@@ -119,6 +121,8 @@ export class RunnerClient {
       onDelta: (delta: string) => Promise<void>;
       onToolEvent?: (event: RunnerToolEvent) => Promise<void>;
       onHeartbeat?: () => Promise<void>;
+      /** A complete `@step:` progress label the model emitted. */
+      onProgress?: (label: string) => Promise<void>;
     },
   ): Promise<void> {
     const response = await this.fetcher(
@@ -142,6 +146,7 @@ export class RunnerClient {
     let pending = '';
     let received = 0;
     let done = false;
+    const steps = createStepProgressExtractor();
     try {
       while (!done) {
         const chunk = await reader.read();
@@ -166,12 +171,20 @@ export class RunnerClient {
             await handlers.onToolEvent?.(event);
             continue;
           }
+          /* Deltas may contain `@step:` narration lines; split them off so
+             the answer lane never shows the agent's running commentary. */
+          const progress = steps.push(event.delta);
           received += event.delta.length;
           if (received > STREAM_LIMIT) throw new Error('runner stream exceeded limit');
-          await handlers.onDelta(event.delta);
+          for (const label of progress.steps) await handlers.onProgress?.(label);
+          if (progress.rest) await handlers.onDelta(progress.rest);
         }
         if (chunk.done) break;
       }
+      /* The stream ended on an unterminated step line: flush it. */
+      const tail = steps.flush();
+      for (const label of tail.steps) await handlers.onProgress?.(label);
+      if (tail.rest) await handlers.onDelta(tail.rest);
     } finally {
       await reader.cancel().catch(() => {});
     }

@@ -420,7 +420,7 @@ describe('Hermes-style Telegram live bubbles', () => {
       .toBe(false);
   });
 
-  it('throttles status updates so stage churn cannot spam Telegram', async () => {
+  it('coalesces rapid status churn but still surfaces the newest step', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
     const fetch = vi.fn(async () =>
@@ -430,16 +430,30 @@ describe('Hermes-style Telegram live bubbles', () => {
 
     await stream.setStatus('✅ System ready — waking AI…');
     fetch.mockClear();
-    await stream.setStatus('✅ AI engine online — starting agent…');
 
+    // A burst of distinct statuses inside one cooldown window…
+    await stream.setStatus('✅ AI engine online — starting agent…');
+    await stream.setStatus('✅ Agent engine warm — planning…');
+    // …never hits Telegram immediately…
     expect(fetch).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(1_500);
-    await stream.setStatus('✅ Agent started — thinking…');
+    // …and the boundary flushes only the newest of the burst.
+    await vi.advanceTimersByTimeAsync(500);
     const editCalls = () => fetch.mock.calls.filter(([url]) =>
       String(url).includes('/editMessageText'));
     expect(editCalls()).toHaveLength(1);
-    const body = JSON.parse(String(editCalls()[0][1]?.body)) as { text: string };
+    let body = JSON.parse(String(editCalls()[0][1]?.body)) as { text: string };
+    expect(body.text).toContain('Agent engine warm');
+
+    // An identical repeat is skipped entirely.
+    await stream.setStatus('✅ Agent engine warm — planning…');
+    expect(editCalls()).toHaveLength(1);
+
+    // A status outside the cooldown window publishes immediately.
+    await vi.advanceTimersByTimeAsync(1_000);
+    await stream.setStatus('✅ Agent started — thinking…');
+    expect(editCalls()).toHaveLength(2);
+    body = JSON.parse(String(editCalls()[1][1]?.body)) as { text: string };
     expect(body.text).toContain('Agent started');
   });
 });

@@ -112,9 +112,12 @@ Rules:
 - For requests about "latest", "today", current events, prices, schedules, laws, product
   information, or anything else that may have changed, research it now. Compare credible
   sources and include descriptive Markdown links in the final answer.
-- For multi-step research, briefly narrate what you are checking between tool calls. If a
-  source is poor or a method fails, say so plainly, switch approaches, and continue toward
-  primary or authoritative sources. Show useful progress, not hidden chain-of-thought.
+- For multi-step research, keep the user posted in real time: between tool calls emit a
+  short progress line that starts exactly with @step: (for example:
+  @step: Checking the booking-system docs). One line per step, under ~80 characters,
+  plain text describing what you are doing right now — never chain-of-thought, never private
+  data, and never inside your final answer. If a source is poor or a method fails, say so
+  plainly in a step, switch approaches, and continue toward primary or authoritative sources.
 - Treat DDGS results as discovery snippets, not sufficient evidence. Open the relevant primary
   pages with browser tools or terminal/curl before answering. If web_extract reports that the
   configured backend is search-only, immediately fall back to browser navigation or curl.

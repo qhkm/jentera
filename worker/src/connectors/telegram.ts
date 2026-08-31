@@ -13,6 +13,11 @@
 
 const API = 'https://api.telegram.org';
 
+/** Minimum gap between live-bubble edits. Distinct status updates outside the
+    window publish at once — live steps must surface — while bursts inside the
+    window coalesce to the newest status, so churn cannot hammer Telegram. */
+const STATUS_COOLDOWN_MS = 500;
+
 export interface BotIdentity {
   id: number;
   username: string;
@@ -194,17 +199,19 @@ export interface TelegramLiveStreamOptions {
     user's composer and lock typing until the run finishes. A normal message
     leaves the user free to type and queue the next request. It stores text
     only in this Worker invocation and never emits more than about one update
-    per second, inside Telegram's documented per-peer limits. */
+    per second — status churn is additionally coalesced to a bounded rate —
+    inside Telegram's documented per-peer limits. */
 export class TelegramLiveStream {
   private text = '';
   private status = '';
   private sent = '';
   private lastSentAt = 0;
-  private lastStatusAt = 0;
   private lastTypingAt = 0;
   private available = true;
   private typingAvailable = true;
   private messageId: number | undefined;
+  private statusTimer: ReturnType<typeof setTimeout> | undefined;
+  private pendingStatus: string | undefined;
 
   constructor(
     private readonly token: string,
@@ -227,10 +234,14 @@ export class TelegramLiveStream {
     if (!this.text.trim() && delta.trim()) {
       // Answer lane begins: drop the status and restart coalescing so the
       // first answer delta publishes immediately instead of being measured
-      // against the status text that replaced the placeholder.
+      // against the status text that replaced the placeholder. Any held
+      // status belongs to the phase the answer is replacing.
       this.status = '';
       this.sent = '';
       this.lastSentAt = 0;
+      if (this.statusTimer) clearTimeout(this.statusTimer);
+      this.statusTimer = undefined;
+      this.pendingStatus = undefined;
     }
     this.text = `${this.text}${delta}`.slice(0, 4_000);
     if (this.text === this.sent) return;
@@ -241,18 +252,49 @@ export class TelegramLiveStream {
   }
 
   /** Replace the working bubble text while the model has produced no answer
-      text yet. Throttled so stage churn and the elapsed ticker cannot spam
-      Telegram; ignored once text streams. */
+      text yet. Distinct updates publish at once — live steps must surface —
+      but only after a short cooldown from the last published edit, and any
+      burst inside the window coalesces onto the newest status, so churn
+      cannot spam Telegram. Identical repeats are skipped. Ignored once text
+      streams. */
   async setStatus(text: string): Promise<void> {
     if (!this.available || !text || this.text.trim()) return;
-    const now = Date.now();
-    if (now - this.lastStatusAt < 1_500) return;
-    this.lastStatusAt = now;
-    this.status = text.slice(0, 120);
+    const next = text.slice(0, 120);
+    this.status = next;
+    if (next === this.sent) return;
+    const elapsed = Date.now() - this.lastSentAt;
+    if (this.lastSentAt !== 0 && elapsed < STATUS_COOLDOWN_MS) {
+      this.pendingStatus = next;
+      this.scheduleStatusFlush();
+      return;
+    }
     await this.publish();
   }
 
+  /** Schedule a single trailing edit for the newest status held during a
+      churn burst. Latest-wins: every new held status overwrites the previous
+      one and one timer fires at the cooldown boundary. */
+  private scheduleStatusFlush(): void {
+    if (this.statusTimer) return;
+    const wait = Math.max(0, STATUS_COOLDOWN_MS - (Date.now() - this.lastSentAt));
+    this.statusTimer = setTimeout(() => {
+      this.statusTimer = undefined;
+      if (!this.available || this.text.trim()) {
+        this.pendingStatus = undefined;
+        return;
+      }
+      const next = this.pendingStatus;
+      this.pendingStatus = undefined;
+      if (next && next !== this.sent) void this.publish();
+    }, wait);
+  }
+
   async flush(): Promise<void> {
+    if (this.statusTimer) {
+      clearTimeout(this.statusTimer);
+      this.statusTimer = undefined;
+      this.pendingStatus = undefined;
+    }
     if (!this.available || this.text === this.sent) return;
     await this.publish();
   }
@@ -291,6 +333,11 @@ export class TelegramLiveStream {
   /** Remove the live bubble once the durable answer has landed (or the run
       died), so no stale "⏳ Working…" message lingers in the chat. */
   async cleanup(): Promise<void> {
+    if (this.statusTimer) {
+      clearTimeout(this.statusTimer);
+      this.statusTimer = undefined;
+      this.pendingStatus = undefined;
+    }
     if (!this.messageId) return;
     try {
       await deleteMessage(this.token, this.chatId, this.messageId);
@@ -322,7 +369,7 @@ export class TelegramLiveStream {
   }
 }
 
-function hermesToolLine(tool: string, preview?: string): string {
+export function hermesToolLine(tool: string, preview?: string): string {
   const emoji = tool === 'execute_code' ? '🐍'
     : tool === 'terminal' || tool === 'process' ? '💻'
       : tool === 'web_search' ? '🔍'

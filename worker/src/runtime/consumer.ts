@@ -29,7 +29,7 @@ import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
 import { publishRunProgressSafely } from './progress';
 import { deliverTelegramDraft, deleteTelegramLiveBubble, persistLiveMessageId, settleCancelledDraft } from '../telegram-delivery';
 import { useCredential } from '../connections';
-import { sendTyping, TelegramLiveStream } from '../connectors/telegram';
+import { hermesToolLine, sendTyping, TelegramLiveStream } from '../connectors/telegram';
 import { runtimeModelKeyNeedsRotation } from './openrouter-keys';
 import { RuntimeBusyError } from './runner-client';
 import { getRuntime } from '../agent-runtime';
@@ -261,13 +261,19 @@ export async function handleRuntimeMessage(
         let lastLeaseRenewal = Date.now();
         let firstVisibleDelta = false;
         let statusTimer: ReturnType<typeof setInterval> | undefined;
+        /* Last live `@step:` narration (or tool line) shown in the working
+           bubble. Rendered with the elapsed ticker until the answer starts. */
+        let currentStep = '';
+        let currentStepIsTool = false;
+        const workingSince = Date.now();
         if (liveStream) {
-          const workingSince = Date.now();
           void liveStream.setStatus('⏳ On it — waking the AI…');
           statusTimer = setInterval(() => {
             if (firstVisibleDelta) return;
             const elapsed = Math.round((Date.now() - workingSince) / 1_000);
-            void liveStream.setStatus(`⏳ Working… (${elapsed}s)`);
+            void liveStream.setStatus(currentStep
+              ? `${currentStep} · ${elapsed}s`
+              : `⏳ Working… (${elapsed}s)`);
           }, 5_000);
         }
         const outcome = await dispatchRuntimeRun(env, lease.task, leaseToken, {
@@ -282,11 +288,27 @@ export async function handleRuntimeMessage(
               }
             : undefined,
           onToolEvent: liveStream
-            ? (event) => {
-                if (event.type !== 'tool.started') return Promise.resolve();
-                if (toolShown.has(event.tool)) return Promise.resolve();
-                toolShown.add(event.tool);
-                return liveStream.showTool(event.tool, event.preview);
+            ? async (event) => {
+                if (event.type !== 'tool.started' && event.type !== 'tool.completed') {
+                  return;
+                }
+                if (event.type === 'tool.started') {
+                  if (!toolShown.has(event.tool)) {
+                    toolShown.add(event.tool);
+                    await liveStream.showTool(event.tool, event.preview);
+                  }
+                  /* Mirror the tool into the working bubble while no answer
+                     text exists yet, so the bubble itself stays alive. */
+                  if (!currentStep && !firstVisibleDelta) {
+                    currentStep = hermesToolLine(event.tool, event.preview);
+                    currentStepIsTool = true;
+                    const elapsed = Math.round((Date.now() - workingSince) / 1_000);
+                    await liveStream.setStatus(`${currentStep} · ${elapsed}s`);
+                  }
+                } else if (currentStepIsTool) {
+                  currentStep = '';
+                  currentStepIsTool = false;
+                }
               }
             : undefined,
           onHeartbeat: liveStream
@@ -302,6 +324,16 @@ export async function handleRuntimeMessage(
                   ));
                 if (!renewed) throw new Error('runtime task lease was lost while streaming');
                 lastLeaseRenewal = Date.now();
+              }
+            : undefined,
+          onProgress: liveStream
+            ? async (label) => {
+                currentStep = label;
+                currentStepIsTool = false;
+                if (!firstVisibleDelta) {
+                  const elapsed = Math.round((Date.now() - workingSince) / 1_000);
+                  await liveStream.setStatus(`${label} · ${elapsed}s`);
+                }
               }
             : undefined,
           onStage: (stage, elapsedMs) => {
@@ -617,7 +649,9 @@ function stripHermesThinking(text: string): string {
   return text
     .replace(new RegExp(`<${names}>[\\s\\S]*?<\\/${names}>\\s*`, 'gi'), '')
     .replace(new RegExp(`(?:^|\\n)[ \\t]*<${names}>[\\s\\S]*$`, 'gi'), '')
-    .replace(new RegExp(`<\\/${names}>\\s*`, 'gi'), '');
+    .replace(new RegExp(`<\\/${names}>\\s*`, 'gi'), '')
+    /* Live `@step:` narration is progress chrome, never part of the answer. */
+    .replace(/^\s*@step:[^\n]*\n?/gm, '');
 }
 
 function uuid(value: string): boolean {

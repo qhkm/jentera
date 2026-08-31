@@ -197,9 +197,10 @@ describe('the durable Hermes agent request', () => {
 
     expect(prepared.instructions).toContain('Current date (UTC): 2026-08-28');
     expect(prepared.instructions).toMatch(/research it now/i);
-    expect(prepared.instructions).toMatch(/briefly narrate what you are checking/i);
+    expect(prepared.instructions).toMatch(/@step:/);
+    expect(prepared.instructions).toMatch(/one line per step/i);
     expect(prepared.instructions).toMatch(/primary or authoritative sources/i);
-    expect(prepared.instructions).toMatch(/not hidden chain-of-thought/i);
+    expect(prepared.instructions).toMatch(/never chain-of-thought/i);
     expect(prepared.instructions).toMatch(/discovery snippets, not sufficient evidence/i);
     expect(prepared.instructions).toMatch(/fall back to browser navigation or curl/i);
     expect(prepared.instructions).toMatch(/Never return a long uninterrupted block/i);

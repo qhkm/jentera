@@ -64,6 +64,8 @@ export async function dispatchRuntimeRun(
     onDelta?: (delta: string) => Promise<void>;
     onToolEvent?: (event: RunnerToolEvent) => Promise<void>;
     onHeartbeat?: () => Promise<void>;
+    /** A complete `@step:` progress label the model emitted. */
+    onProgress?: (label: string) => Promise<void>;
     onStage?: (stage: string, elapsedMs: number) => void;
   } = {},
 ): Promise<RuntimeRunOutcome> {
@@ -190,6 +192,7 @@ export async function dispatchRuntimeRun(
       onDelta: options.onDelta,
       onToolEvent: options.onToolEvent,
       onHeartbeat: options.onHeartbeat,
+      onProgress: options.onProgress,
     });
     stage('stream_finished');
   }
