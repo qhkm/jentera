@@ -566,9 +566,11 @@ async function responseJson(response) {
 }
 
 /** Hermes run status carries tool outputs the dashboard never renders.
-    Surface only the fields the worker's status transition actually uses;
-    never a raw `...result` spread. The final answer travels in `output`,
-    which the worker's runtimeText() needs for Telegram/app delivery. */
+    Surface only the fields the worker's status transition actually uses:
+    `status`, `error`, `usage`, timestamp keys, the final answer `output`
+    (bounded), and — for the durable reasoning block — Hermes's
+    `last_reasoning` as a bounded `reasoning` string (the worker collapses
+    it to 15 lines). Never a raw `...result` spread. */
 const TASK_STATUS_FIELDS = new Set(['status', 'error', 'usage']);
 function boundedTaskStatus(result) {
   if (!result || typeof result !== 'object') return { status: 'unknown' };
@@ -580,6 +582,15 @@ function boundedTaskStatus(result) {
      Hermes exposes it only once the run is terminal. */
   if (typeof result.output === 'string' && result.output) {
     out.output = result.output.slice(0, 64_000);
+  }
+  /* Final-message reasoning: Hermes computes `last_reasoning` at
+     turn_finalizer.py:696 and the api_server ships it on the completed
+     non-stream run status as `reasoning`. Bounded like output; the worker
+     renders the `💭 **Reasoning:**` block for the durable answer. This is a
+     deliberate terminal-status surface — the live SSE thinking lane stays
+     the separate bounded slice. */
+  if (typeof result.reasoning === 'string' && result.reasoning) {
+    out.reasoning = result.reasoning.slice(0, 48_000);
   }
   for (const key of Object.keys(result)) {
     if (/^(created|started|finished|completed|updated)(_at)?$/i.test(key)) {

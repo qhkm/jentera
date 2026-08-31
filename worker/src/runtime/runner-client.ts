@@ -32,6 +32,9 @@ export interface RunnerTaskResponse {
   run_id?: string;
   status?: string;
   output?: unknown;
+  /** Hermes's `last_reasoning` on terminal runs (48k-bounded by the runner).
+      The consumer renders it as the durable `💭 **Reasoning:**` block. */
+  reasoning?: unknown;
   result?: unknown;
   response?: unknown;
   error?: unknown;

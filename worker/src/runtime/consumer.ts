@@ -41,15 +41,17 @@ const BUSY_RETRY_SECONDS = 2;
 
 /** Friendly one-line statuses for the ephemeral Telegram draft, keyed by the
     run-task provisioning stages. Shown only while the model has produced no
-    answer text yet — they make the cold-start window feel alive without ever
-    surfacing reasoning content (the anti-CoT scrubber stays untouched).
+    answer text yet — they keep the brief startup window (DB lease, runner
+    handshake) honest without claiming a machine "wake": keepalive holds the
+    Sprite already-active, so these are just neutral progress labels. They
+    never surface reasoning content (the anti-CoT scrubber stays untouched).
     The only deliberate exception is the live `thinking` lane: bounded slices of
     real CoT render in the ephemeral bubble status and are cleared/never saved
     once the answer starts — the durable answer and the app output stay CoT-free. */
 const STAGE_STATUS: Record<string, string> = {
-  database_ready: '✅ System ready — waking AI…',
-  provider_awake: '✅ AI engine online — starting agent…',
-  runner_ready: '✅ Agent runtime ready — connecting…',
+  database_ready: '✅ System ready — starting…',
+  provider_awake: '✅ Runner online — starting agent…',
+  runner_ready: '✅ Agent session ready — thinking…',
   hermes_started: '✅ Agent started — thinking…',
   run_recorded: '⏳ Researching…',
 };
@@ -432,7 +434,7 @@ export async function handleRuntimeMessage(
                 from: telegram.from,
                 text: telegram.question,
               },
-              runtimeText(outcome.result),
+              finalDurableText(outcome.result, outcome.reasoning),
               outcome.payload.factKeys ?? [],
               'automatic',
             );
@@ -705,6 +707,27 @@ function runtimeText(result: unknown): string {
     }
   }
   throw new Error('Hermes returned no Telegram reply');
+}
+
+/** Durable final message: Hermes's `💭 **Reasoning:**` block (mirrored from
+    gateway/run.py:13506 — collapsed to 15 lines with a `_... (N more lines)_`
+    suffix) followed by the answer. Total stays inside the Telegram 4k slice;
+    the block gets priority, exactly like Hermes' own final-message render. */
+export function finalDurableText(result: unknown, reasoning: unknown): string {
+  const block = reasoningBlock(reasoning);
+  return `${block}${runtimeText(result)}`.slice(0, 4_000);
+}
+
+function reasoningBlock(reasoning: unknown): string {
+  if (typeof reasoning !== 'string' || !reasoning.trim()) return '';
+  return `💭 **Reasoning:**\n\`\`\`\n${collapseReasoning(reasoning.trim(), 15)}\n\`\`\`\n\n`;
+}
+
+function collapseReasoning(text: string, maxLines: number): string {
+  const lines = text.split(/\r?\n/);
+  if (lines.length <= maxLines) return text;
+  const dropped = lines.length - maxLines;
+  return `${lines.slice(0, maxLines).join('\n')}\n_... (${dropped} more lines)_`;
 }
 
 export function stripHermesThinking(text: string): string {

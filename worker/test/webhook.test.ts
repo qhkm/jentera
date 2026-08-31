@@ -289,7 +289,7 @@ describe('Hermes-style Telegram live bubbles', () => {
     vi.stubGlobal('fetch', fetch);
     const stream = new TelegramLiveStream('123456789:AAtoken', 42, { messageId: 91 });
 
-    await stream.setStatus('✅ System ready — waking AI…');
+    await stream.setStatus('✅ System ready — starting…');
 
     const editCalls = () => fetch.mock.calls.filter(([url]) =>
       String(url).includes('/editMessageText'));
@@ -297,7 +297,7 @@ describe('Hermes-style Telegram live bubbles', () => {
     expect(JSON.parse(String(editCalls()[0][1]?.body))).toMatchObject({
       chat_id: 42,
       message_id: 91,
-      text: '✅ System ready — waking AI…',
+      text: '✅ System ready — starting…',
     });
     expect(fetch.mock.calls.some(([url]) => String(url).includes('/sendMessage'))).toBe(false);
   });
@@ -375,7 +375,7 @@ describe('Hermes-style Telegram live bubbles', () => {
     vi.stubGlobal('fetch', fetch);
     const stream = new TelegramLiveStream('123456789:AAtoken', 42);
 
-    await stream.setStatus('✅ System ready — waking AI…');
+    await stream.setStatus('✅ System ready — starting…');
 
     const sendCalls = () => fetch.mock.calls.filter(([url]) =>
       String(url).includes('/sendMessage'));
@@ -428,11 +428,11 @@ describe('Hermes-style Telegram live bubbles', () => {
     vi.stubGlobal('fetch', fetch);
     const stream = new TelegramLiveStream('123456789:AAtoken', 42);
 
-    await stream.setStatus('✅ System ready — waking AI…');
+    await stream.setStatus('✅ System ready — starting…');
     fetch.mockClear();
 
     // A burst of distinct statuses inside one cooldown window…
-    await stream.setStatus('✅ AI engine online — starting agent…');
+    await stream.setStatus('✅ Runner online — starting agent…');
     await stream.setStatus('✅ Agent engine warm — planning…');
     // …never hits Telegram immediately…
     expect(fetch).not.toHaveBeenCalled();

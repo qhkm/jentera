@@ -18,7 +18,7 @@ describe('real work signals', () => {
       <LiveWorkCard
         state="waking"
         title="Starting securely"
-        detail="Waking your private agent"
+        detail="Starting your private agent"
         audience="Private"
         steps={[
           { label: 'Request received', state: 'done' },

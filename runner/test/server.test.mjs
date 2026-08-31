@@ -19,11 +19,13 @@ let runnerServer;
 let hermesOrigin;
 let runnerOrigin;
 let hermesStatus;
+let hermesReasoning;
 let starts;
 
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'aisar-runner-'));
   hermesStatus = 'running';
+  hermesReasoning = 'The user asks a biographical question.\nKeep the answer focused and factual.';
   starts = [];
   hermesServer = createServer(async (req, res) => {
     assert.equal(req.headers.authorization, `Bearer ${HERMES_KEY}`);
@@ -53,7 +55,14 @@ beforeEach(async () => {
       return reply(res, 200, { status: 'stopping' });
     }
     if (req.url?.startsWith('/v1/runs/')) {
-      return reply(res, 200, { run_id: req.url.split('/').at(-1), status: hermesStatus });
+      return reply(res, 200, {
+        run_id: req.url.split('/').at(-1),
+        status: hermesStatus,
+        output: 'Who is Nikola Tesla? Answer in two sentences.',
+        reasoning: hermesReasoning,
+        usage: { input_tokens: 42, output_tokens: 12, total_tokens: 54 },
+        tool_outputs: ['must never cross'],
+      });
     }
     return reply(res, 404, {});
   });
@@ -178,6 +187,31 @@ test('polls and stops by Jentera task id without exposing Hermes directly', asyn
   const stopped = await call(`/v1/tasks/${TASK}/stop`, { method: 'POST' });
   assert.equal(stopped.status, 200);
   assert.equal((await stopped.json()).status, 'stopping');
+});
+
+test('terminal status carries bounded output, usage, and reasoning — nothing else', async () => {
+  await start(TASK);
+  hermesStatus = 'completed';
+  const status = await call(`/v1/tasks/${TASK}`);
+  assert.equal(status.status, 200);
+  const body = await status.json();
+  assert.equal(body.status, 'completed');
+  assert.equal(body.output, 'Who is Nikola Tesla? Answer in two sentences.');
+  assert.deepEqual(body.usage, { input_tokens: 42, output_tokens: 12, total_tokens: 54 });
+  assert.equal(
+    body.reasoning,
+    'The user asks a biographical question.\nKeep the answer focused and factual.',
+  );
+  /* Tool outputs and any other Hermes internals never cross the allowlist. */
+  assert.equal('tool_outputs' in body, false);
+});
+
+test('bounds reasoning like output', async () => {
+  await start(TASK);
+  hermesStatus = 'completed';
+  hermesReasoning = 'step '.repeat(20_000);
+  const body = await (await call(`/v1/tasks/${TASK}`)).json();
+  assert.equal(body.reasoning.length, 48_000);
 });
 
 test('streams Hermes-visible assistant, tool, and bounded thinking events without private internals', async () => {

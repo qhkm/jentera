@@ -49,6 +49,9 @@ export type RuntimeRunOutcome =
       remoteRunId: string;
       remoteStatus: string;
       result: unknown;
+      /** Hermes's `last_reasoning` on the terminal run status (bounded by the
+          runner; consumed by the durable `💭 **Reasoning:**` block). */
+      reasoning?: unknown;
       summary: string;
       payload: RunPayload;
       usage?: { inputTokens: number; outputTokens: number };
@@ -216,6 +219,9 @@ export async function dispatchRuntimeRun(
     remoteRunId,
     remoteStatus,
     result: boundedResult(current),
+    reasoning: typeof current.reasoning === 'string' && current.reasoning
+      ? current.reasoning
+      : undefined,
     summary: summaryOf(current),
     payload,
     usage: measuredUsageOf(current) ?? undefined,
