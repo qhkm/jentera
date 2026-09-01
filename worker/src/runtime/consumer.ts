@@ -30,7 +30,12 @@ import {
   type RuntimeTaskKind,
 } from './tasks';
 import { append, finishRun, recordWork, startRun } from '../runs';
-import { dispatchRuntimeRun, measuredUsageOf, stopRuntimeTask } from './run-task';
+import {
+  dispatchRuntimeRun,
+  measuredUsageOf,
+  stopRuntimeTask,
+  type RunPayload,
+} from './run-task';
 import { finalizeRuntimeUsage, RuntimeBudgetExceeded } from './usage';
 import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
 import { publishRunProgressSafely } from './progress';
@@ -862,7 +867,8 @@ export async function handleRuntimeMessage(
           return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
         }
 
-        let telegramDelivery: 'sent' | 'needs_approval' | 'blocked' | 'already_handled' | undefined;
+        let telegramDelivery: 'sent' | 'needs_approval' | 'blocked' | 'failed' |
+          'already_handled' | undefined;
         let finalizedLiveBubble = false;
         if (successful && outcome.payload.telegram && lease.task.runId) {
           const telegram = outcome.payload.telegram;
@@ -898,6 +904,18 @@ export async function handleRuntimeMessage(
              bubble could be reused (or another delivery already won), tidy
              up any remaining working message so it cannot freeze in chat. */
           if (!finalizedLiveBubble) await liveStream?.cleanup();
+        }
+        if (!successful && outcome.payload.telegram) {
+          finalizedLiveBubble = await settleFailedTelegramBubble(
+            env,
+            message.businessId,
+            outcome.payload.telegram,
+            outcome.result,
+            liveStream,
+            liveBubbleId,
+            options.telegramToken,
+          );
+          telegramDelivery = finalizedLiveBubble ? 'failed' : undefined;
         }
 
         const completed = await withTenant(env, message.businessId, async (tx) => {
@@ -1254,6 +1272,39 @@ function telegramLatency(
     ...extra,
     channel: 'telegram',
   }));
+}
+
+/** A remotely terminal model failure is not an exception, so it never reaches
+ * the exhausted-task cleanup below. Replace the working bubble before task
+ * payload scrubbing removes its message id; otherwise Telegram remains stuck
+ * forever on "Preparing…" even though the durable task is already finished. */
+async function settleFailedTelegramBubble(
+  env: Env,
+  businessId: string,
+  telegram: NonNullable<RunPayload['telegram']>,
+  result: unknown,
+  liveStream: TelegramLiveStream | null,
+  liveBubbleId?: number,
+  existingToken?: string,
+): Promise<boolean> {
+  const messageId = liveStream?.handoffMessageId() ?? liveBubbleId;
+  if (!messageId) return false;
+  const detail = typeof result === 'string' ? result : JSON.stringify(result ?? '');
+  const temporary = /(?:http\s*50[234]|service unavailable|temporar(?:y|ily)|unreachable)/i
+    .test(detail);
+  const text = temporary
+    ? '⚠️ The AI service is temporarily unavailable. Please try again in a moment.'
+    : '⚠️ I couldn\'t complete that reply. Please try again.';
+  try {
+    const token = existingToken ?? await withTenant(env, businessId, (tx) =>
+      useCredential(env, tx, telegram.connectionId));
+    await editMessageText(token, telegram.chatId, messageId, text);
+    return true;
+  } catch {
+    /* A failed explanatory edit must still not leave stale progress behind. */
+    await liveStream?.cleanup();
+    return false;
+  }
 }
 
 function validTelegramIntake(

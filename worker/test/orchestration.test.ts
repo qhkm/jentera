@@ -538,6 +538,78 @@ describe('durable Hermes Telegram replies', () => {
     });
   });
 
+  it('replaces the working bubble when the model service fails terminally', async () => {
+    await setPolicy('automatic');
+    const provider = new LocalRuntimeProvider();
+    const queued: RuntimeQueueMessage[] = [];
+    const durableEnv = testEnv({
+      RUNTIME_RELEASE: '2026.08.28-4',
+      RUNTIME_EXECUTION_ENABLED: 'true',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+      RUNTIME_QUEUE: {
+        send: async (message: RuntimeQueueMessage) => { queued.push(message); },
+      },
+    });
+    await ensureProviderRuntime(durableEnv, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.28-4', 'v1'));
+    await handleIncoming(durableEnv, A, connId, incoming);
+
+    const fetcher: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return runnerResponse({
+          ok: true,
+          release: '2026.08.28-4',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-01' },
+          toolMode: 'full-tools',
+          webSearchBackend: 'ddgs',
+          edgeAuthorizationForwarded: false,
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        return runnerResponse({ ok: true, hermesRunId: 'failed-hermes-1', status: 'started' }, 202);
+      }
+      if (url.endsWith('/events')) {
+        return new Response('data: {"type":"done"}\n\n', {
+          headers: { 'Content-Type': 'text/event-stream' },
+        });
+      }
+      if (url.includes('/v1/tasks/')) {
+        return runnerResponse({
+          ok: true,
+          status: 'failed',
+          error: 'HTTP 503: Service Unavailable, authentication database temporarily unreachable.',
+        });
+      }
+      return runnerResponse({ error: 'not found' }, 404);
+    };
+
+    await expect(handleRuntimeQueueMessage(durableEnv, queued[0], { provider, fetch: fetcher }))
+      .resolves.toEqual({ action: 'ack', reason: 'completed' });
+
+    expect(edits).toContainEqual({
+      chatId: 42,
+      messageId: 99,
+      text: '⚠️ The AI service is temporarily unavailable. Please try again in a moment.',
+    });
+    const [state] = await asOwner((sql) => sql<{
+      task_result: unknown; task_payload: unknown; run_status: string;
+    }[]>`
+      select t.result as task_result, t.payload as task_payload, r.status as run_status
+        from runtime_task t join run r on r.id = t.run_id
+       where t.business_id = ${A}`);
+    expect(state).toMatchObject({
+      task_result: { delivery: 'failed' },
+      task_payload: {},
+      run_status: 'failed',
+    });
+  });
+
   it('streams @step narration as live bubble status and keeps it out of the answer', async () => {
     await setPolicy('automatic');
     const provider = new LocalRuntimeProvider();
