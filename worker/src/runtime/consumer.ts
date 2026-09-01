@@ -56,16 +56,14 @@ const BUSY_RETRY_SECONDS = 2;
 const TELEGRAM_FLOOD_DELAY_CAP_SECONDS = 60 * 60;
 const TELEGRAM_FLOOD_OWNER_NOTICE =
   '⏳ Telegram is rate-limiting this chat — your answer will appear as soon as it lifts.';
+const QUICK_REPLY_STATUS = '⚡ Preparing a quick reply…';
+const DEEP_WORK_STATUS = '🧠 Deep work started…';
 
 /** Friendly one-line statuses for the ephemeral Telegram draft, keyed by the
-    run-task provisioning stages. Shown only while the model has produced no
-    answer text yet — they keep the brief startup window (DB lease, runner
-    handshake) honest without claiming a machine "wake": keepalive holds the
-    Sprite already-active, so these are just neutral progress labels. They
-    never surface reasoning content (the anti-CoT scrubber stays untouched).
-    The only deliberate exception is the live `thinking` lane: bounded slices of
-    real CoT render in the ephemeral bubble status and are cleared/never saved
-    once the answer starts — the durable answer and the app output stay CoT-free. */
+    run-task provisioning stages. Deep work may show them while the model has
+    produced no answer text yet. Quick replies deliberately keep one stable
+    status instead, except while a real tool is running. The statuses never
+    enter the durable answer lane. */
 const STAGE_STATUS: Record<string, string> = {
   database_ready: '✅ System ready — starting…',
   provider_awake: '✅ Runner online — starting agent…',
@@ -249,8 +247,8 @@ export async function handleRuntimeQueueMessage(
     const placeholder = admitted.ahead > 0
       ? `⏳ In line (position #${admitted.ahead + 1}) — I'll answer right after the current request.`
       : mode === 'deep'
-        ? '🧠 Deep work started…'
-        : '⚡ Preparing a quick reply…';
+        ? DEEP_WORK_STATUS
+        : QUICK_REPLY_STATUS;
     const live = await sendMessage(
       admitted.token,
       message.incoming.chatId,
@@ -538,12 +536,15 @@ export async function handleRuntimeMessage(
         let currentStep = '';
         let currentStepIsTool = false;
         const workingSince = Date.now();
+        const responseMode = runtimeResponseMode(lease.task.payload);
+        const quickReply = responseMode === 'quick';
         if (liveStream) {
-          void liveStream.setStatus(runtimeResponseMode(lease.task.payload) === 'quick'
-            ? '⚡ Preparing a quick reply…'
-            : '🧠 Deep work started…');
+          void liveStream.setStatus(quickReply ? QUICK_REPLY_STATUS : DEEP_WORK_STATUS);
           statusTimer = setInterval(() => {
             if (firstVisibleDelta) return;
+            /* A quick reply should feel like one short wait, not a miniature
+               deep-research workflow. Only a real tool may replace its label. */
+            if (quickReply && !currentStepIsTool) return;
             const elapsed = Math.round((Date.now() - workingSince) / 1_000);
             void liveStream.setStatus(currentStep
               ? `${statusLine(currentStep)} · ${elapsed}s`
@@ -582,6 +583,9 @@ export async function handleRuntimeMessage(
                 } else if (currentStepIsTool) {
                   currentStep = '';
                   currentStepIsTool = false;
+                  if (quickReply && !firstVisibleDelta) {
+                    await liveStream.setStatus(QUICK_REPLY_STATUS);
+                  }
                 }
               }
             : undefined,
@@ -602,6 +606,7 @@ export async function handleRuntimeMessage(
             : undefined,
           onProgress: liveStream
             ? async (label) => {
+                if (quickReply) return;
                 currentStep = statusLine(label);
                 currentStepIsTool = false;
                 if (!firstVisibleDelta) {
@@ -617,7 +622,7 @@ export async function handleRuntimeMessage(
                    status exactly like `@step:` narration — it is cleared the
                    moment the first answer delta lands and never enters the
                    durable answer lane (the runner keeps it out of `output`). */
-                if (firstVisibleDelta) return;
+                if (quickReply || firstVisibleDelta) return;
                 const thinking = sanitiseThinking(text);
                 if (!thinking) return;
                 currentStep = thinking;
@@ -628,6 +633,7 @@ export async function handleRuntimeMessage(
             : undefined,
           onStage: (stage, elapsedMs) => {
             latency(stage, elapsedMs);
+            if (quickReply) return;
             const status = STAGE_STATUS[stage];
             if (status) void liveStream?.setStatus(status);
           },

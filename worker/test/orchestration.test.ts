@@ -25,6 +25,7 @@ import type { RuntimeQueueMessage } from '../src/runtime';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
+const QUICK_REPLY_STATUS_FOR_TEST = '⚡ Preparing a quick reply…';
 
 let connId: string;
 let userId: string;
@@ -378,24 +379,27 @@ describe('durable Hermes Telegram replies', () => {
         return runnerResponse({ ok: true, hermesRunId: 'telegram-hermes-1', status: 'started' }, 202);
       }
       if (url.endsWith('/events')) {
-        /* A `thinking` probe arrives AFTER the answer has started. The
-           consumer deliberately ignores reasoning once the first answer
-           delta has landed (`firstVisibleDelta`), so even though the runner
-           now forwards the reasoning lane, it can never surface here. */
-        return new Response([
-          'data: {"type":"tool.started","seq":1,"tool":"execute_code","preview":"import urllib.request"}',
-          '',
-          'data: {"type":"tool.completed","seq":2,"tool":"execute_code","duration":1.2,"error":false}',
-          '',
-          'data: {"type":"delta","seq":3,"delta":"Yes, "}',
-          '',
-          'data: {"type":"thinking","seq":3,"text":"never show this"}',
-          '',
-          'data: {"type":"delta","seq":4,"delta":"we are open on Sunday."}',
-          '',
-          'data: {"type":"done"}',
-          '',
-        ].join('\n'), { headers: { 'Content-Type': 'text/event-stream' } });
+        /* Quick-mode reasoning and model-authored step narration are ignored.
+           A real tool may temporarily replace the stable quick label; when it
+           finishes, the quick label returns until answer text starts. */
+        const e = (line: string) => `${line}\n\n`;
+        const body = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            const enc = new TextEncoder();
+            controller.enqueue(enc.encode(e('data: {"type":"thinking","seq":1,"text":"never show this"}')));
+            controller.enqueue(enc.encode(e('data: {"type":"delta","seq":2,"delta":"@step: Do not show quick research\\n"}')));
+            await new Promise((resolve) => setTimeout(resolve, 650));
+            controller.enqueue(enc.encode(e('data: {"type":"tool.started","seq":3,"tool":"execute_code","preview":"import urllib.request"}')));
+            await new Promise((resolve) => setTimeout(resolve, 650));
+            controller.enqueue(enc.encode(e('data: {"type":"tool.completed","seq":4,"tool":"execute_code","duration":1.2,"error":false}')));
+            await new Promise((resolve) => setTimeout(resolve, 650));
+            controller.enqueue(enc.encode(e('data: {"type":"delta","seq":5,"delta":"Yes, "}')));
+            controller.enqueue(enc.encode(e('data: {"type":"delta","seq":6,"delta":"we are open on Sunday."}')));
+            controller.enqueue(enc.encode(e('data: {"type":"done"}')));
+            controller.close();
+          },
+        });
+        return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
       }
       if (url.includes('/v1/tasks/')) {
         return runnerResponse({
@@ -422,7 +426,13 @@ describe('durable Hermes Telegram replies', () => {
        the full sentence is asserted on the durable answer message instead.
        The bubble is deleted once the durable answer lands. */
     expect(edits).toContainEqual({ chatId: 42, messageId: 99, text: 'Yes, ' });
-    expect(JSON.stringify(edits)).not.toContain('never show this');
+    const visibleProgress = JSON.stringify([...sent, ...edits]);
+    expect(visibleProgress).toContain('🐍 execute_code');
+    expect(visibleProgress).not.toMatch(
+      /never show this|Do not show quick research|Agent session ready|Agent started|Researching|Working/,
+    );
+    expect(edits.filter((edit) => edit.text === QUICK_REPLY_STATUS_FOR_TEST).length)
+      .toBeGreaterThanOrEqual(1);
     expect(JSON.stringify(sent)).not.toContain('private final reasoning');
     expect(deletions).toContainEqual({ chatId: 42, messageId: 99 });
     const [state] = await asOwner((sql) => sql<{
@@ -464,7 +474,10 @@ describe('durable Hermes Telegram replies', () => {
       hermesApiKey: 'h'.repeat(64),
     });
     await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.28-4', 'v1'));
-    await handleIncoming(durableEnv, A, connId, incoming);
+    await handleIncoming(durableEnv, A, connId, {
+      ...incoming,
+      text: '/deep Are you open on Sunday?',
+    });
     const stepLabel = 'Checking the MySQL docs…';
 
     const fetcher: typeof fetch = async (input, init) => {
@@ -549,7 +562,10 @@ describe('durable Hermes Telegram replies', () => {
       hermesApiKey: 'h'.repeat(64),
     });
     await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.28-4', 'v1'));
-    await handleIncoming(durableEnv, A, connId, incoming);
+    await handleIncoming(durableEnv, A, connId, {
+      ...incoming,
+      text: '/deep Are you open on Sunday?',
+    });
     const thought = 'private chain of thought about Sunday hours';
 
     const fetcher: typeof fetch = async (input, init) => {
