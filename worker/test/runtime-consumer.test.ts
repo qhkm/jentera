@@ -377,7 +377,7 @@ describe('the runtime queue consumer', () => {
       const body = typeof init?.body === 'string' ? JSON.parse(init.body) as {
         text?: string;
       } : {};
-      if (url.endsWith('/sendMessage') && body.text?.includes('Final customer answer.')) {
+      if (url.endsWith('/editMessageText') && body.text?.includes('Final customer answer.')) {
         const wait = reportedWaits[answerAttempts++];
         return jsonResponse({
           ok: false,

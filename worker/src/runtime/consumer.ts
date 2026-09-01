@@ -683,6 +683,7 @@ export async function handleRuntimeMessage(
 
         const successful = outcome.remoteStatus === 'completed';
         let telegramDelivery: 'sent' | 'needs_approval' | 'blocked' | undefined;
+        let finalizedLiveBubble = false;
         if (successful && outcome.payload.telegram && lease.task.runId) {
           const alreadyHandled = await withTenant(env, message.businessId, async (tx) => {
             const [row] = await tx<{ status: string }[]>`
@@ -691,6 +692,9 @@ export async function handleRuntimeMessage(
           });
           if (!alreadyHandled) {
             const telegram = outcome.payload.telegram;
+            const reusableMessageId = telegram.privateChat
+              ? liveStream?.handoffMessageId() ?? liveBubbleId
+              : undefined;
             telegramDelivery = await deliverTelegramDraft(
               env,
               message.businessId,
@@ -709,12 +713,14 @@ export async function handleRuntimeMessage(
               outcome.payload.factKeys ?? [],
               'automatic',
               options.telegramToken,
+              reusableMessageId,
             );
+            finalizedLiveBubble = telegramDelivery === 'sent' && Boolean(reusableMessageId);
           }
-          /* The working bubble's job is done: the durable answer is now in
-             the chat (or awaits approval / never landed). Delete it so the
-             chat does not sit on "⏳ Working…" forever. */
-          await liveStream?.cleanup();
+          /* A reused bubble is now the durable answer and must stay. When no
+             bubble could be reused (or another delivery already won), tidy
+             up any remaining working message so it cannot freeze in chat. */
+          if (!finalizedLiveBubble) await liveStream?.cleanup();
         }
 
         const completed = await withTenant(env, message.businessId, async (tx) => {

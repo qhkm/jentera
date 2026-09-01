@@ -12,7 +12,7 @@
    ============================================================ */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TelegramLiveStream } from '../src/connectors/telegram';
+import { editMessageText, TelegramLiveStream } from '../src/connectors/telegram';
 
 const TOKEN = '123456789:AAtoken';
 const CHAT = 42;
@@ -120,5 +120,19 @@ describe('TelegramLiveStream reattach to the webhook bubble', () => {
     await stream.setStatus('⏳ Working… (1s)');
     await stream.setStatus('⏳ Working… (6s)');
     expect(edited).toHaveLength(1);
+  });
+
+  it('hands the bubble to final delivery without a pending status overwriting the answer', async () => {
+    const stream = new TelegramLiveStream(TOKEN, CHAT, { messageId: 77 });
+    await stream.setStatus('🧠 Deep work started…');
+    await stream.setStatus('⏳ Researching…');
+
+    const messageId = stream.handoffMessageId();
+    expect(messageId).toBe(77);
+    await editMessageText(TOKEN, CHAT, messageId!, 'Here is the final answer.');
+    await flushCooldown();
+
+    expect(edited.at(-1)).toEqual({ messageId: 77, text: 'Here is the final answer.' });
+    expect(edited.some((entry) => entry.text === '⏳ Researching…')).toBe(false);
   });
 });

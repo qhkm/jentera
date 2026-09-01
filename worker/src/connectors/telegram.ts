@@ -340,6 +340,19 @@ export class TelegramLiveStream {
     }
   }
 
+  /** Stop every cosmetic update and transfer ownership of this ordinary
+      Telegram message to the durable delivery path. Without this handoff, a
+      coalesced status timer could fire after the final edit and overwrite the
+      answer with stale progress text. */
+  handoffMessageId(): number | undefined {
+    if (this.statusTimer) clearTimeout(this.statusTimer);
+    this.statusTimer = undefined;
+    this.pendingStatus = undefined;
+    this.available = false;
+    this.typingAvailable = false;
+    return this.messageId;
+  }
+
   /** Remove the live bubble once the durable answer has landed (or the run
       died), so no stale "⏳ Working…" message lingers in the chat. */
   async cleanup(): Promise<void> {

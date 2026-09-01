@@ -1,7 +1,12 @@
 import type { Env } from './env';
 import { withTenant } from './db';
 import { useCredential } from './connections';
-import { deleteMessage, sendHermesMessage, TelegramLiveStream } from './connectors/telegram';
+import {
+  deleteMessage,
+  editMessageText,
+  sendHermesMessage,
+  TelegramLiveStream,
+} from './connectors/telegram';
 import { policyFor, type Policy } from './policy';
 import { append, finishRun, recordWork, updateWorkForRun } from './runs';
 
@@ -26,6 +31,7 @@ export async function deliverTelegramDraft(
   usedKeys: string[],
   knownPolicy?: Policy,
   existingToken?: string,
+  existingMessageId?: number,
 ): Promise<'sent' | 'needs_approval' | 'blocked'> {
   const policy = knownPolicy ?? await withTenant(
     env,
@@ -97,11 +103,15 @@ export async function deliverTelegramDraft(
     text,
     usedKeys,
     existingToken,
+    existingMessageId,
   );
   return 'sent';
 }
 
-/** Send, then preserve only the user-visible result and structured audit. */
+/** Finalize an existing live bubble when possible, otherwise send a new
+    message, then preserve only the user-visible result and structured audit.
+    The live bubble is an ordinary bot message, so editing it in place keeps
+    normal copy/select behavior without briefly showing two answers. */
 export async function sendAndRecord(
   env: Env,
   businessId: string,
@@ -111,10 +121,17 @@ export async function sendAndRecord(
   text: string,
   usedKeys: string[],
   existingToken?: string,
+  existingMessageId?: number,
 ): Promise<void> {
   const token = existingToken ??
     await withTenant(env, businessId, (tx) => useCredential(env, tx, connectionId));
-  const sent = await sendHermesMessage(token, incoming.chatId, text);
+  let sent: { messageId: number };
+  if (existingMessageId) {
+    await editMessageText(token, incoming.chatId, existingMessageId, text);
+    sent = { messageId: existingMessageId };
+  } else {
+    sent = await sendHermesMessage(token, incoming.chatId, text);
+  }
 
   await withTenant(env, businessId, async (tx) => {
     await append(tx, businessId, runId, 'action.executed', {

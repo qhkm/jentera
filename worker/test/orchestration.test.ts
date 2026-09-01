@@ -419,13 +419,15 @@ describe('durable Hermes Telegram replies', () => {
       chatId: 42,
       text: '🐍 execute_code: "import urllib.request"',
     });
-    expect(sent).toContainEqual({ chatId: 42, text: 'Yes, we are open on Sunday.' });
-    /* The consumer reattaches to the admission bubble (message 99) and
-       streams deltas into it by editing; the final combined text may stay
-       coalesced inside the 24-char buffer when the run finishes fast, so
-       the full sentence is asserted on the durable answer message instead.
-       The bubble is deleted once the durable answer lands. */
+    expect(sent).not.toContainEqual({ chatId: 42, text: 'Yes, we are open on Sunday.' });
+    /* The admission bubble (message 99) carries streaming deltas and is then
+       finalized in place. No second answer bubble is sent or deleted. */
     expect(edits).toContainEqual({ chatId: 42, messageId: 99, text: 'Yes, ' });
+    expect(edits).toContainEqual({
+      chatId: 42,
+      messageId: 99,
+      text: 'Yes, we are open on Sunday.',
+    });
     const visibleProgress = JSON.stringify([...sent, ...edits]);
     expect(visibleProgress).toContain('🐍 execute_code');
     expect(visibleProgress).not.toMatch(
@@ -434,7 +436,7 @@ describe('durable Hermes Telegram replies', () => {
     expect(edits.filter((edit) => edit.text === QUICK_REPLY_STATUS_FOR_TEST).length)
       .toBeGreaterThanOrEqual(1);
     expect(JSON.stringify(sent)).not.toContain('private final reasoning');
-    expect(deletions).toContainEqual({ chatId: 42, messageId: 99 });
+    expect(deletions).not.toContainEqual({ chatId: 42, messageId: 99 });
     const [state] = await asOwner((sql) => sql<{
       task_result: unknown; task_payload: unknown; work_outcome: string; run_status: string;
     }[]>`
@@ -537,9 +539,15 @@ describe('durable Hermes Telegram replies', () => {
     expect(JSON.stringify(edits)).not.toContain('@step:');
     expect(JSON.stringify(sent)).not.toContain('@step:');
     expect(JSON.stringify(sent)).not.toContain(stepLabel);
-    /* The durable answer is still just the clean reply. */
-    expect(sent).toContainEqual({ chatId: 42, text: 'Yes, we are open on Sunday.' });
-    expect(deletions).toContainEqual({ chatId: 42, messageId: 99 });
+    /* The durable answer replaces the working bubble instead of creating a
+       second, briefly duplicated Telegram message. */
+    expect(sent).not.toContainEqual({ chatId: 42, text: 'Yes, we are open on Sunday.' });
+    expect(edits).toContainEqual({
+      chatId: 42,
+      messageId: 99,
+      text: 'Yes, we are open on Sunday.',
+    });
+    expect(deletions).not.toContainEqual({ chatId: 42, messageId: 99 });
   });
 
   it('streams live reasoning as bubble status and keeps it out of the answer', async () => {
@@ -621,9 +629,14 @@ describe('durable Hermes Telegram replies', () => {
       typeof edit.text === 'string' && edit.text.includes(thought))).toBe(true);
     /* Reasoning never leaks into any sent message or the durable answer. */
     expect(JSON.stringify(sent)).not.toContain(thought);
-    expect(sent).toContainEqual({ chatId: 42, text: 'Yes, we are open on Sunday.' });
-    /* The ephemeral bubble is deleted once the durable answer lands. */
-    expect(deletions).toContainEqual({ chatId: 42, messageId: 99 });
+    expect(sent).not.toContainEqual({ chatId: 42, text: 'Yes, we are open on Sunday.' });
+    expect(edits).toContainEqual({
+      chatId: 42,
+      messageId: 99,
+      text: 'Yes, we are open on Sunday.',
+    });
+    /* The live bubble itself is now the durable answer. */
+    expect(deletions).not.toContainEqual({ chatId: 42, messageId: 99 });
   });
 });
 
