@@ -48,6 +48,7 @@ import {
   Package,
   PawPrint,
   Phone,
+  Plus,
   Receipt,
   Robot,
   Scissors,
@@ -61,6 +62,7 @@ import {
   UserCircle,
   Warning,
   Wrench,
+  X,
   type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
 
@@ -79,6 +81,8 @@ const CHROME = {
   check: CheckCircle,
   warning: Warning,
   hint: Sparkle,
+  plus: Plus,
+  close: X,
 } satisfies Record<string, PhosphorIcon>;
 
 export type IconName = keyof typeof CHROME;

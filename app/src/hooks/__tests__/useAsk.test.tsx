@@ -13,7 +13,10 @@ const business = {
   team: [],
 } as unknown as Business;
 
-beforeEach(() => sessionStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  sessionStorage.clear();
+});
 
 describe('useAsk durable answers', () => {
   it('replaces the matching placeholder when answers finish out of order', async () => {
@@ -116,7 +119,7 @@ describe('useAsk durable answers', () => {
     expect(result.current!.messages[1]).toMatchObject({
       failedQuestion: 'check the orders',
       state: 'failed',
-      mode: 'ask',
+      mode: 'work',
     });
   });
 
@@ -135,7 +138,8 @@ describe('useAsk durable answers', () => {
     await waitFor(() => expect(first.result.current).not.toBeNull());
     act(() => first.result.current!.send('my question'));
     await waitFor(() => expect(first.result.current!.messages[1].text).toBe('Here is the answer'));
-    await waitFor(() => expect(sessionStorage.getItem('jentera-ask-history-v1')).toContain('Here is the answer'));
+    await waitFor(() =>
+      expect(localStorage.getItem('jentera-ask-sessions-v1')).toContain('Here is the answer'));
     first.unmount();
 
     const second = renderHook(
@@ -143,6 +147,9 @@ describe('useAsk durable answers', () => {
       { wrapper },
     );
     await waitFor(() => expect(second.result.current).not.toBeNull());
+    expect(second.result.current!.sessions[0]).toMatchObject({
+      title: 'my question',
+    });
     expect(second.result.current!.messages.map((message) => message.text)).toEqual([
       'my question',
       'Here is the answer',

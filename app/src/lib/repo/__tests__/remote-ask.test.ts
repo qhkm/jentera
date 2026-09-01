@@ -19,11 +19,12 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
     const fetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response(ANSWER));
     vi.stubGlobal('fetch', fetch);
 
-    await expect(new RemoteRepository().ask('What happened?')).resolves.toEqual(ANSWER);
+    await expect(new RemoteRepository().ask('What happened?', { sessionId: 'chat-1' })).resolves.toEqual(ANSWER);
     expect(fetch).toHaveBeenCalledOnce();
     const sent = JSON.parse(String(fetch.mock.calls[0][1]?.body));
     expect(sent.question).toBe('What happened?');
-    expect(sent.mode).toBe('ask');
+    expect(sent.mode).toBe('work');
+    expect(sent.sessionId).toBe('chat-1');
     expect(sent.requestId).toMatch(/^[0-9a-f-]{36}$/);
     expect(sent).not.toHaveProperty('businessId');
   });

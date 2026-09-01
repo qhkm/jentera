@@ -299,7 +299,12 @@ export class RemoteRepository implements Repository {
       runId?: string;
     }>('/api/runs/ask', {
       method: 'POST',
-      body: JSON.stringify({ question, requestId, mode: options.mode ?? 'ask' }),
+      body: JSON.stringify({
+        question,
+        requestId,
+        mode: options.mode ?? 'work',
+        ...(options.sessionId ? { sessionId: options.sessionId } : {}),
+      }),
     });
     let begun;
     try {

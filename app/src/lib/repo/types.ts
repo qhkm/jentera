@@ -73,6 +73,8 @@ export type AskMode = 'ask' | 'work';
 
 export interface AskOptions {
   mode?: AskMode;
+  /** Stable conversation id so Hermes can keep context per chat, like Telegram. */
+  sessionId?: string;
   onProgress?: (progress: AskProgress) => void;
 }
 

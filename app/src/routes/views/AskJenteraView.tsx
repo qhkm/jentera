@@ -44,10 +44,14 @@ export default function AskJenteraView({
     [activity.reload],
   );
   const ask = useAsk(business, { handled, needs }, t, lang, onAskCompleted);
+  const signedIn = useSignedIn();
+  /* Telegram-style: the chat bar earns its place once the owner can
+     hold more than one conversation — either signed in (persists) or
+     after starting a second chat. */
+  const showSessions = signedIn || ask.sessions.length > 1;
   const thread = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const mentions = useMentions(business.team);
-  const signedIn = useSignedIn();
 
   const stickToBottom = useCallback(() => {
     const el = thread.current;
@@ -95,7 +99,7 @@ export default function AskJenteraView({
     });
   }
 
-  function submit(text?: string, mode: AskMode = "ask") {
+  function submit(text?: string, mode: AskMode = "work") {
     const body = (text ?? draft).trim();
     if (!body) return;
     ask.send(body, mode);
@@ -122,6 +126,51 @@ export default function AskJenteraView({
       </header>
 
       <Card className="min-h-0 flex-1 gap-0 rounded-none border-x-0 border-b-0 p-0 lg:min-h-[440px] lg:flex-none lg:rounded-card lg:border">
+        {showSessions ? (
+          <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-rail px-4 py-2.5 [scrollbar-width:none] sm:px-5">
+            <button
+              type="button"
+              className="chip shrink-0 gap-1.5 border-dashed hover:border-brand-line"
+              onClick={ask.newSession}
+            >
+              <Icon name="plus" size={12} className="text-brand" />
+              <span className="max-sm:hidden">{t("ask.newChat")}</span>
+            </button>
+            {ask.sessions.map((session) => {
+              const active = session.id === ask.activeId;
+              return (
+                <div
+                  key={session.id}
+                  className={`flex shrink-0 items-center gap-1 rounded-pill border py-1 pl-3 pr-1.5 transition-colors ${
+                    active
+                      ? "border-brand bg-brand-soft"
+                      : "border-rail bg-bg-card hover:border-border-light"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    aria-pressed={active}
+                    title={session.title || t("ask.chat.untitled")}
+                    className="max-w-[10rem] truncate text-[12px] font-medium text-text-secondary hover:text-text"
+                    onClick={() => ask.openSession(session.id)}
+                  >
+                    {session.title || t("ask.chat.untitled")}
+                  </button>
+                  {ask.sessions.length > 1 ? (
+                    <button
+                      type="button"
+                      aria-label={t("ask.deleteChat")}
+                      className="rounded-full p-1 text-text-muted transition-colors hover:bg-border-light hover:text-text"
+                      onClick={() => ask.deleteSession(session.id)}
+                    >
+                      <Icon name="close" size={10} />
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
         <div
           ref={thread}
           className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-5"
@@ -240,7 +289,7 @@ export default function AskJenteraView({
                             type="button"
                             className="mt-2 block text-[11px] font-semibold text-brand hover:underline"
                             onClick={() =>
-                              submit(m.failedQuestion, m.failedMode ?? "ask")
+                              submit(m.failedQuestion, m.failedMode ?? "work")
                             }
                           >
                             {t("ask.retry")}

@@ -32,10 +32,11 @@ beforeEach(async () => {
 });
 
 describe('Ask Jentera runtime bridge', () => {
-  it('keeps ordinary Ask on the inline answer path while work uses Hermes', async () => {
+  it('keeps ordinary Ask on the inline answer path when mode is ask', async () => {
     const response = await call('POST', '/api/runs/ask', durableEnv(), cookieB, {
       question: 'What happened today?',
       requestId: crypto.randomUUID(),
+      mode: 'ask',
     });
 
     expect(response.status).toBe(200);
@@ -46,7 +47,7 @@ describe('Ask Jentera runtime bridge', () => {
     });
   });
 
-  it('keeps ordinary Ask inline even for a business allowed to use durable work', async () => {
+  it('routes a mode-less Ask to durable Hermes work by default', async () => {
     await readyRuntime(A);
     const send = vi.fn(async () => {});
     const response = await call('POST', '/api/runs/ask', durableEnv(send), cookieA, {
@@ -54,27 +55,25 @@ describe('Ask Jentera runtime bridge', () => {
       requestId: crypto.randomUUID(),
     });
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
-      ok: true,
-      text: 'A drafted reply.',
-      grounded: false,
-    });
-    expect(send).not.toHaveBeenCalled();
+    expect(response.status).toBe(202);
+    const body = await response.json() as { runId: string; pending: boolean };
+    expect(body.pending).toBe(true);
+    expect(send).toHaveBeenCalledOnce();
   });
 
-  it('waits for an unready tenant runtime and rejects unknown execution modes', async () => {
+  it('waits with 503 when a default work Ask has no ready runtime yet', async () => {
     const preparing = await call('POST', '/api/runs/ask', durableEnv(), cookieB, {
       question: 'Do this in the background',
       requestId: crypto.randomUUID(),
-      mode: 'work',
     });
     expect(preparing.status).toBe(503);
     expect(await preparing.json()).toEqual({
       ok: false,
       err: 'Jentera is preparing your agent. Please try again shortly.',
     });
+  });
 
+  it('rejects unknown execution modes', async () => {
     const invalid = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
       question: 'Try an invented mode',
       requestId: crypto.randomUUID(),
@@ -83,7 +82,7 @@ describe('Ask Jentera runtime bridge', () => {
     expect(invalid.status).toBe(400);
     expect(await invalid.json()).toEqual({ ok: false, err: 'ask mode is invalid' });
 
-    const [{ count }] = await asOwner((sql) => sql<{ count: string }[]>`
+    const [{ count }] = await asOwner((sql) => sql<{ count: string }[]>` 
       select count(*)::text as count from runtime_task`);
     expect(count).toBe('0');
   });
@@ -96,6 +95,7 @@ describe('Ask Jentera runtime bridge', () => {
       requestId: crypto.randomUUID(),
       mode: 'work',
       businessId: B,
+      sessionId: 'chat-abc',
     });
 
     expect(response.status).toBe(202);
@@ -111,7 +111,7 @@ describe('Ask Jentera runtime bridge', () => {
         from run r join runtime_task t on t.run_id = r.id where r.id = ${body.runId}`);
     expect(row).toMatchObject({ business_id: A, runtime: 'hermes-sprite', model: MODEL, kind: 'run' });
     expect(row.payload).toMatchObject({
-      sessionId: body.runId,
+      sessionId: 'chat-abc',
       objective: 'What should I improve?',
       function: 'ask',
       channel: 'app',

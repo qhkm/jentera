@@ -172,6 +172,7 @@ export async function handleRuns(
       question?: string;
       requestId?: unknown;
       mode?: unknown;
+      sessionId?: unknown;
     };
     const question = typeof body.question === 'string' ? body.question.trim() : '';
     if (!question) return json({ ok: false, err: 'ask me something' }, { status: 400 }, cors);
@@ -182,7 +183,14 @@ export async function handleRuns(
         (typeof body.requestId !== 'string' || !uuid(body.requestId))) {
       return json({ ok: false, err: 'request id is invalid' }, { status: 400 }, cors);
     }
-    const mode = body.mode ?? 'ask';
+    const sessionId = body.sessionId === undefined ? undefined
+      : typeof body.sessionId === 'string' && /^[A-Za-z0-9._:-]{1,200}$/.test(body.sessionId)
+        ? body.sessionId
+        : null;
+    if (sessionId === null) {
+      return json({ ok: false, err: 'session id is invalid' }, { status: 400 }, cors);
+    }
+    const mode = body.mode ?? 'work';
     if (mode !== 'ask' && mode !== 'work') {
       return json({ ok: false, err: 'ask mode is invalid' }, { status: 400 }, cors);
     }
@@ -198,6 +206,7 @@ export async function handleRuns(
         question,
         typeof body.requestId === 'string' ? body.requestId : crypto.randomUUID(),
         cors,
+        sessionId,
       );
     }
 
@@ -366,6 +375,7 @@ async function startDurableAsk(
   question: string,
   requestId: string,
   cors: Record<string, string>,
+  sessionId?: string,
 ): Promise<Response> {
   if (!env.RUNTIME_QUEUE || !env.AISAR_MODEL_NAME?.trim()) {
     return json({ ok: false, err: 'Jentera agent execution is unavailable' }, { status: 503 }, cors);
@@ -399,7 +409,7 @@ async function startDurableAsk(
     const run = await startRun(tx, businessId, {
       kind: 'ask',
       triggerShape: 'owner.ask',
-      triggerRef: { question, requestId },
+      triggerRef: { question, requestId, sessionId },
       requestedBy: userId,
       runtime: 'hermes-sprite',
       model,
@@ -414,7 +424,7 @@ async function startDurableAsk(
       payload: {
         input: boundedAskInput(prepared.input, question),
         instructions: prepared.instructions,
-        sessionId: run.id,
+        sessionId: sessionId ?? run.id,
         objective: question,
         function: 'ask',
         channel: 'app',
