@@ -172,10 +172,9 @@ describe('provider provisioning', () => {
       RUNTIME_BOOTSTRAP_ENABLED: 'true',
       RUNTIME_BUNDLE_COMMIT: 'a'.repeat(40),
       AISAR_MODEL_PROVIDER: 'openrouter',
-      AISAR_MODEL_BASE: 'https://openrouter.ai/api/v1',
-      AISAR_MODEL_KEY: 'dedicated-aisar-openrouter-key',
-      RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS: A,
-      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+      AISAR_MODEL_BASE: 'https://router.fmcv.my',
+      AISAR_MODEL_KEY: 'fmcv-runtime-inference-key',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
     });
     const row = await ensureProviderRuntime(runtimeEnv, A, {
       provider,
@@ -198,7 +197,7 @@ describe('provider provisioning', () => {
       path: '/home/sprite/aisar/bootstrap.env.in',
       mode: 0o600,
     });
-    expect(provider.writes[0].data).not.toContain('dedicated-aisar-openrouter-key');
+    expect(provider.writes[0].data).not.toContain('fmcv-runtime-inference-key');
     expect(provider.commands.map((entry) => entry.command)).toEqual([
       '/bin/bash', '/home/sprite/aisar/runner/bootstrap-runtime.sh',
     ]);
@@ -228,10 +227,9 @@ describe('provider provisioning', () => {
       RUNTIME_BOOTSTRAP_ENABLED: 'true',
       RUNTIME_BUNDLE_COMMIT: 'a'.repeat(40),
       AISAR_MODEL_PROVIDER: 'openrouter',
-      AISAR_MODEL_BASE: 'https://openrouter.ai/api/v1',
-      AISAR_MODEL_KEY: 'dedicated-aisar-openrouter-key',
-      RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS: A,
-      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+      AISAR_MODEL_BASE: 'https://router.fmcv.my',
+      AISAR_MODEL_KEY: 'fmcv-runtime-inference-key',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
       SPRITES_TOKEN: 'organization-sprite-token',
     });
 

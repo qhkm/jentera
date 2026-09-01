@@ -52,6 +52,14 @@ test('production runtime pins and proves its keyless search backend', async () =
   assert.match(source, /web_search_ready/);
 });
 
+test('runtime readiness requires live inference from every configured model', async () => {
+  const source = await readFile(SCRIPT, 'utf8');
+  assert.match(source, /model-smoke\.py/);
+  assert.match(source, /smoke_models=\("\$model_name"\)/);
+  assert.match(source, /smoke_models\+\=\("\$deep_model_name"\)/);
+  assert.match(source, /model inference did not pass its live smoke test/);
+});
+
 test('runtime readiness binds the release to the runner bytes loaded by the process', async () => {
   const source = await readFile(SCRIPT, 'utf8');
   assert.match(source, /sha256sum \/home\/sprite\/aisar\/runner\/server\.mjs/);

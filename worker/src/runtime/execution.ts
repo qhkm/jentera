@@ -32,9 +32,6 @@ export function runtimeProvisioningProblem(env: Env): string | null {
   if (env.RUNTIME_EXECUTION_ENABLED !== 'true') return 'runtime execution is disabled';
   if (!env.RUNTIME_QUEUE) return 'runtime queue is not configured';
   if (!env.SPRITES_TOKEN?.trim()) return 'Sprite provisioning is not configured';
-  if (!env.AISAR_OPENROUTER_MANAGEMENT_KEY?.trim()) {
-    return 'per-agent model credentials are not configured';
-  }
   if (!env.RUNTIME_RELEASE?.trim()) return 'runtime release is not configured';
   if (!/^[0-9a-f]{40}$/.test(env.RUNTIME_BUNDLE_COMMIT?.trim() ?? '')) {
     return 'runtime bundle is not configured';
@@ -43,6 +40,13 @@ export function runtimeProvisioningProblem(env: Env): string | null {
       !runtimeModelBaseAllowed(env.AISAR_MODEL_BASE) ||
       !env.AISAR_MODEL_NAME?.trim()) {
     return 'runtime model is not configured';
+  }
+  if (env.AISAR_MODEL_BASE?.trim() === 'https://router.fmcv.my') {
+    if ((env.AISAR_MODEL_KEY?.trim() ?? '').length < 20) {
+      return 'FMCV model credentials are not configured';
+    }
+  } else if (!env.AISAR_OPENROUTER_MANAGEMENT_KEY?.trim()) {
+    return 'per-agent model credentials are not configured';
   }
   return null;
 }

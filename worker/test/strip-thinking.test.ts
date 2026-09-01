@@ -87,4 +87,15 @@ describe('finalDurableText (durable 💭 Reasoning block)', () => {
     expect(text.startsWith('💭 **Reasoning:**\n```\n')).toBe(true);
     expect(text.endsWith(answer)).toBe(true);
   });
+
+  it('rewrites internal runtime paths in both reasoning and the final answer', () => {
+    expect(finalDurableText(
+      'Saved it at `/home/sprite/aisar/reports/today.md`.',
+      'I inspected /home/sprite/.hermes/config.yaml with the Hermes runtime.',
+    )).toBe(
+      '💭 **Reasoning:**\n```\n' +
+      'I inspected /workspace/.agent/config.yaml with the Jentera runtime.\n```\n\n' +
+      'Saved it at `/workspace/reports/today.md`.',
+    );
+  });
 });

@@ -230,8 +230,34 @@ chmod 600 "$runtime_tmp"
 mv "$runtime_tmp" "$runtime_env"
 trap 'rm -f "$incoming"' EXIT
 
-"$install_dir/venv/bin/python" /home/sprite/aisar/runner/configure-model-provider.py \
+hermes_python="$install_dir/venv/bin/python"
+"$hermes_python" /home/sprite/aisar/runner/configure-model-provider.py \
   "$model_provider" "$model_base" "$model_name" OPENROUTER_API_KEY
+
+# Readiness without one real inference only proves that processes started. It
+# previously allowed an official OpenRouter key to be installed against FMCV,
+# leaving the runtime green until the owner's first message failed. Prove the
+# endpoint, credential, and both configured model aliases before checkpointing.
+smoke_models=("$model_name")
+if [[ "$deep_model_name" != "$model_name" ]]; then
+  smoke_models+=("$deep_model_name")
+fi
+for smoke_model in "${smoke_models[@]}"; do
+  model_ready=false
+  for _attempt in 1 2 3; do
+    if OPENROUTER_BASE_URL="$model_base" OPENROUTER_API_KEY="$model_key" \
+        AISAR_MODEL_NAME="$smoke_model" \
+        "$hermes_python" /home/sprite/aisar/runner/model-smoke.py; then
+      model_ready=true
+      break
+    fi
+    sleep 2
+  done
+  [[ "$model_ready" == "true" ]] || {
+    echo "model inference did not pass its live smoke test" >&2
+    exit 1
+  }
+done
 
 # The pinned Hermes release supports DDGS as its keyless production search
 # provider, but does not install the optional package in its base environment.

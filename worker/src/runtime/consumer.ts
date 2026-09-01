@@ -52,6 +52,7 @@ import { getRuntime, type AgentRuntimeRecord } from '../agent-runtime';
 import { runtimeReady } from './execution';
 import { prepareHermesAgent, retrieveHermesContext } from '../ask';
 import { modelForResponseMode, responseModeFor } from './response-mode';
+import { sanitizePublicRuntimeText } from './public-output';
 
 const MAX_TASK_ATTEMPTS = 5;
 const BUSY_RETRY_SECONDS = 2;
@@ -1223,7 +1224,7 @@ function boundedTelegramInput(input: string, question: string): string {
 export function finalDurableText(result: unknown, reasoning: unknown): string {
   const answer = runtimeText(result);
   const block = reasoningBlock(reasoning, 4_000 - answer.length);
-  return `${block}${answer}`;
+  return sanitizePublicRuntimeText(`${block}${answer}`);
 }
 
 function reasoningBlock(reasoning: unknown, maxLength = 4_000): string {

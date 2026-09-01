@@ -9,6 +9,7 @@ import {
 import { withTenant } from '../db';
 
 const API = 'https://openrouter.ai/api/v1';
+const FMCV_API = 'https://router.fmcv.my';
 const LIMIT_USD = 5;
 const LIFETIME_DAYS = 90;
 const ROTATE_BEFORE_DAYS = 7;
@@ -95,12 +96,19 @@ export async function runtimeModelKey(
   runtimeName: string,
   options: { manager?: OpenRouterKeyManager } = {},
 ): Promise<string> {
-  const legacy = env.AISAR_MODEL_KEY?.trim() ?? '';
-  const legacyCanaries = new Set((env.RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS ?? '')
-    .split(',').map((value) => value.trim()).filter(Boolean));
-  /* The shared static inference key is the pin for listed businesses: it wins
-     over any stored OpenRouter credential and disables managed rotation. */
-  if (legacyCanaries.has(businessId) && legacy.length >= 20) return legacy;
+  const modelBase = env.AISAR_MODEL_BASE?.trim() ?? '';
+  const fmcvKey = env.AISAR_MODEL_KEY?.trim() ?? '';
+  /* FMCV is a separate LiteLLM gateway. Official OpenRouter virtual keys are
+     not valid there—the mismatch that left newly provisioned runtimes green
+     but unable to answer. Until the FMCV admin credential is connected to the
+     control plane, every FMCV runtime deliberately receives the known-working
+     gateway key. The model names remain fleet-wide vars, so accounts cannot
+     silently drift onto a different model. */
+  if (modelBase === FMCV_API) {
+    if (fmcvKey.length < 20) throw new Error('FMCV model credential is unavailable');
+    return fmcvKey;
+  }
+  if (modelBase !== API) throw new Error('model endpoint is not supported for key issuance');
   const current = await withTenant(env, businessId, (tx) =>
     getRuntimeModelCredential(env, tx, businessId));
   const rotateAt = Date.now() + ROTATE_BEFORE_DAYS * 24 * 60 * 60 * 1_000;
@@ -131,10 +139,7 @@ export async function runtimeModelKeyNeedsRotation(
   env: Env,
   businessId: string,
 ): Promise<boolean> {
-  const legacy = env.AISAR_MODEL_KEY?.trim() ?? '';
-  const legacyCanaries = new Set((env.RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS ?? '')
-    .split(',').map((value) => value.trim()).filter(Boolean));
-  if (legacyCanaries.has(businessId) && legacy.length >= 20) return false;
+  if (env.AISAR_MODEL_BASE?.trim() === FMCV_API) return false;
   if (!env.AISAR_OPENROUTER_MANAGEMENT_KEY?.trim()) return false;
   const { runtime, current } = await withTenant(env, businessId, async (tx) => ({
     runtime: await getRuntime(tx, businessId),

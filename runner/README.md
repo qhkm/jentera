@@ -89,7 +89,8 @@ The in-Sprite bootstrap pins Hermes to tag `v2026.8.19` and commit
 `fcbd1076a93841fa88855acce810e342a5b78101`, downloads the installer from that same
 immutable commit and verifies its SHA-256,
 writes the runtime environment atomically, configures OpenRouter without inlining its
-key, pins DS4 Flash to high reasoning and prefers a BF16 provider without latency-first routing,
+key, proves the endpoint, credential, and both configured model aliases with real inference,
+pins DS4 Flash to high reasoning and prefers a BF16 provider without latency-first routing,
 installs and
 live-tests the pinned keyless DDGS search backend, enforces the full pinned API-server tool profile,
 applies the reviewed `nanoid` security override,
@@ -125,4 +126,3 @@ Residual risk (accepted): key rotation requires re-provisioning the Sprite (`AIS
 bump or `provision-sprite.sh` rerun), and floor access to the Sprite is equivalent to
 floor access to its Hermes identity. This is by design for a per-business isolated
 runtime; do not co-locate multiple businesses on one Sprite.
-

@@ -147,6 +147,7 @@ async function bootstrapRuntime(
   const assets = [
     'runner/src/server.mjs',
     'runner/bin/browser-smoke.mjs',
+    'runner/bin/model-smoke.py',
     'runner/bin/web-search-smoke.py',
     'runner/bin/configure-model-provider.py',
     'runner/bin/patch-hermes-dependencies.mjs',
@@ -163,6 +164,7 @@ async function bootstrapRuntime(
         `'${raw}/${asset}' --output '/home/sprite/aisar/runner/${target}'`;
     }),
     'chmod 755 /home/sprite/aisar/runner/configure-model-provider.py ' +
+      '/home/sprite/aisar/runner/model-smoke.py ' +
       '/home/sprite/aisar/runner/hermes-service.sh ' +
       '/home/sprite/aisar/runner/runner-service.sh ' +
       '/home/sprite/aisar/runner/bootstrap-runtime.sh',

@@ -63,6 +63,7 @@ sprite exec -o "$sprite_org" -s "$sprite_name" -- mkdir -p /home/sprite/aisar/ru
 sprite file push -o "$sprite_org" -s "$sprite_name" -p \
   runner/src/server.mjs \
   runner/bin/browser-smoke.mjs \
+  runner/bin/model-smoke.py \
   runner/bin/configure-model-provider.py \
   runner/bin/patch-hermes-dependencies.mjs \
   runner/bin/hermes-service.sh \
@@ -74,6 +75,7 @@ sprite file push -o "$sprite_org" -s "$sprite_name" -p \
 sprite exec -o "$sprite_org" -s "$sprite_name" -- \
   chmod 755 \
     /home/sprite/aisar/runner/configure-model-provider.py \
+    /home/sprite/aisar/runner/model-smoke.py \
     /home/sprite/aisar/runner/hermes-service.sh \
     /home/sprite/aisar/runner/runner-service.sh \
     /home/sprite/aisar/runner/bootstrap-runtime.sh

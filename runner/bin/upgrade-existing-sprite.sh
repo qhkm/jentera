@@ -17,6 +17,17 @@ set +a
 : "${HERMES_API_KEY:?missing Hermes key}"
 : "${OPENROUTER_API_KEY:?missing OpenRouter key}"
 
+# Operator recovery for a runtime that was provisioned with the wrong gateway
+# credential. Stdin keeps the replacement out of argv, logs, and local files.
+if [[ "${AISAR_MODEL_KEY_STDIN:-0}" == "1" ]]; then
+  IFS= read -r replacement_model_key
+  [[ ${#replacement_model_key} -ge 20 ]] || {
+    echo "replacement model key is invalid" >&2
+    exit 1
+  }
+  OPENROUTER_API_KEY="$replacement_model_key"
+fi
+
 hermes_python=/home/sprite/.hermes/hermes-agent/venv/bin/python
 model_base="${AISAR_MODEL_BASE:-${OPENROUTER_BASE_URL:-}}"
 model_name="${AISAR_MODEL_NAME:-}"

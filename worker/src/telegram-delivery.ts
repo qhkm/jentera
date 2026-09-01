@@ -9,6 +9,7 @@ import {
 } from './connectors/telegram';
 import { policyFor, type Policy } from './policy';
 import { append, finishRun, recordWork, updateWorkForRun } from './runs';
+import { sanitizePublicRuntimeText } from './runtime/public-output';
 
 export interface TelegramIncoming {
   chatId: number;
@@ -33,6 +34,7 @@ export async function deliverTelegramDraft(
   existingToken?: string,
   existingMessageId?: number,
 ): Promise<'sent' | 'needs_approval' | 'blocked'> {
+  const visibleText = sanitizePublicRuntimeText(text);
   const policy = knownPolicy ?? await withTenant(
     env,
     businessId,
@@ -74,7 +76,7 @@ export async function deliverTelegramDraft(
                   connectionId,
                   from: incoming.from,
                   question: incoming.text,
-                  draft: text,
+                  draft: visibleText,
                 } as never)}, 'medium')
         returning id`;
       await recordWork(tx, businessId, {
@@ -100,7 +102,7 @@ export async function deliverTelegramDraft(
     connectionId,
     runId,
     incoming,
-    text,
+    visibleText,
     usedKeys,
     existingToken,
     existingMessageId,
@@ -123,14 +125,15 @@ export async function sendAndRecord(
   existingToken?: string,
   existingMessageId?: number,
 ): Promise<void> {
+  const visibleText = sanitizePublicRuntimeText(text);
   const token = existingToken ??
     await withTenant(env, businessId, (tx) => useCredential(env, tx, connectionId));
   let sent: { messageId: number };
   if (existingMessageId) {
-    await editMessageText(token, incoming.chatId, existingMessageId, text);
+    await editMessageText(token, incoming.chatId, existingMessageId, visibleText);
     sent = { messageId: existingMessageId };
   } else {
-    sent = await sendHermesMessage(token, incoming.chatId, text);
+    sent = await sendHermesMessage(token, incoming.chatId, visibleText);
   }
 
   await withTenant(env, businessId, async (tx) => {
@@ -140,14 +143,14 @@ export async function sendAndRecord(
     });
     const amended = await updateWorkForRun(tx, businessId, runId, {
       status: 'completed',
-      outcome: text,
+      outcome: visibleText,
       minutesSaved: 3,
     });
     if (!amended) {
       await recordWork(tx, businessId, {
         runId,
         objective: `Help ${incoming.from} on Telegram`,
-        outcome: text.slice(0, 500),
+        outcome: visibleText.slice(0, 500),
         status: 'completed',
         function: 'assistant',
         channel: 'telegram',

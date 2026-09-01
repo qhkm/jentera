@@ -11,6 +11,8 @@
    owner after it is saved.
    ============================================================ */
 
+import { sanitizePublicRuntimeText } from '../runtime/public-output';
+
 const API = 'https://api.telegram.org';
 
 /** Minimum gap between live-bubble edits. Distinct status updates outside the
@@ -97,10 +99,11 @@ export async function sendMessage(
   chatId: number | string,
   text: string,
 ): Promise<{ messageId: number }> {
+  const visibleText = sanitizePublicRuntimeText(text);
   const res = await fetch(`${API}/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
+    body: JSON.stringify({ chat_id: chatId, text: visibleText, disable_web_page_preview: true }),
     signal: AbortSignal.timeout(15_000),
   });
   const body = (await res.json().catch(() => null)) as {
@@ -155,13 +158,14 @@ export async function editMessageText(
   messageId: number,
   text: string,
 ): Promise<void> {
+  const visibleText = sanitizePublicRuntimeText(text);
   const res = await fetch(`${API}/bot${token}/editMessageText`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       chat_id: chatId,
       message_id: messageId,
-      text,
+      text: visibleText,
       disable_web_page_preview: true,
     }),
     signal: AbortSignal.timeout(15_000),

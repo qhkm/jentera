@@ -53,14 +53,14 @@ export interface Env {
   RUNTIME_BUNDLE_COMMIT?: string;
   /** Second half of provisioning; false leaves raw provider compute unselected. */
   RUNTIME_BOOTSTRAP_ENABLED?: string;
-  /** Dedicated Jentera model credential. Never use a personal/shared key. */
+  /** FMCV inference credential. Kept in the control plane and installed only
+      into isolated Jentera runtimes while FMCV tenant-key issuance is pending. */
   AISAR_MODEL_PROVIDER?: string;
   AISAR_MODEL_BASE?: string;
   AISAR_MODEL_KEY?: string;
-  /** Management credential stays control-plane-only and issues separate
-      capped/expiring inference keys. The shared key is a one-canary bridge. */
+  /** Official OpenRouter management credential stays control-plane-only and
+      issues separate capped/expiring inference keys when that endpoint is used. */
   AISAR_OPENROUTER_MANAGEMENT_KEY?: string;
-  RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS?: string;
   AISAR_MODEL_NAME?: string;
   /** Optional heavier model used only for explicit deep/research work. */
   AISAR_DEEP_MODEL_NAME?: string;

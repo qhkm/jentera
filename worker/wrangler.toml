@@ -69,9 +69,8 @@ AISAR_MODEL_PROVIDER = "openrouter"
 AISAR_MODEL_BASE = "https://router.fmcv.my"
 AISAR_MODEL_NAME = "MiniMax-M3"
 AISAR_DEEP_MODEL_NAME = "deepseek-v4-flash"
-# Businesses whose model key is the static AISAR_MODEL_KEY (customer-pinned
-# router, no rotation) instead of managed OpenRouter rotation.
-RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS = "4e8c2593-2af2-494f-b157-fec0295a50b5"
+# router.fmcv.my is a separate LiteLLM gateway and therefore uses the FMCV
+# AISAR_MODEL_KEY secret. Official OpenRouter keys are never sent to it.
 # Connector credentials are secrets, never vars:
 #   npx wrangler secret put META_APP_SECRET
 #   npx wrangler secret put GOOGLE_CLIENT_SECRET

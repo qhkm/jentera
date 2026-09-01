@@ -114,6 +114,17 @@ describe('TelegramLiveStream reattach to the webhook bubble', () => {
     expect(String(edited[edited.length - 1].text)).toContain('Here is the full answer');
   });
 
+  it('never publishes internal runtime paths from a live answer', async () => {
+    const stream = new TelegramLiveStream(TOKEN, CHAT, { messageId: 77 });
+
+    await stream.push('I saved it in `/home/sprite/.hermes/work/report.md`.');
+
+    expect(edited.at(-1)).toEqual({
+      messageId: 77,
+      text: 'I saved it in `/workspace/.agent/work/report.md`.',
+    });
+  });
+
   it('a genuine edit failure still disables only the live lane', async () => {
     /* Non-not-modified failure (e.g. chat not found) keeps the old
        semantics: cosmetic lane dies, durable reply unaffected. */

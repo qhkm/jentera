@@ -78,7 +78,10 @@ describe('per-runtime OpenRouter keys', () => {
   });
 
   it('encrypts a newly issued key and reuses it without another API call', async () => {
-    const env = testEnv({ AISAR_OPENROUTER_MANAGEMENT_KEY: MANAGEMENT_KEY });
+    const env = testEnv({
+      AISAR_MODEL_BASE: 'https://openrouter.ai/api/v1',
+      AISAR_OPENROUTER_MANAGEMENT_KEY: MANAGEMENT_KEY,
+    });
     const name = await runtimeName(A);
     await asTenant(A, (tx) => claimRuntime(env, tx, A, {
       provider: 'fly-sprite', providerName: name, release: '2026.08.28-3',
@@ -103,39 +106,66 @@ describe('per-runtime OpenRouter keys', () => {
     expect(new TextDecoder().decode(raw.model_key_ciphertext)).not.toContain(INFERENCE_KEY);
   });
 
-  it('allows the shared bridge only for an explicitly named canary', async () => {
+  it('uses the FMCV inference credential for every FMCV runtime', async () => {
     const name = await runtimeName(A);
     const env = testEnv({
-      AISAR_MODEL_KEY: 'legacy-canary-inference-key',
-      RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS: A,
+      AISAR_MODEL_BASE: 'https://router.fmcv.my',
+      AISAR_MODEL_KEY: 'fmcv-runtime-inference-key',
     });
     await asTenant(A, (tx) => claimRuntime(env, tx, A, {
       provider: 'fly-sprite', providerName: name, release: '2026.08.28-3',
       runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
     }));
-    await expect(runtimeModelKey(env, A, name)).resolves.toBe('legacy-canary-inference-key');
+    await expect(runtimeModelKey(env, A, name)).resolves.toBe('fmcv-runtime-inference-key');
     await expect(runtimeModelKey(
-      testEnv({ AISAR_MODEL_KEY: 'legacy-canary-inference-key' }), A, name,
-    )).rejects.toThrow(/issuance is unavailable/);
+      testEnv({ AISAR_MODEL_BASE: 'https://router.fmcv.my' }), A, name,
+    )).rejects.toThrow(/FMCV model credential is unavailable/);
   });
 
-  it('prefers the shared static key even when managed rotation is configured', async () => {
+  it('does not rotate FMCV credentials through the OpenRouter manager', async () => {
     const name = await runtimeName(A);
     const env = testEnv({
-      AISAR_MODEL_KEY: 'legacy-canary-inference-key',
-      RUNTIME_SHARED_MODEL_KEY_BUSINESS_IDS: A,
+      AISAR_MODEL_BASE: 'https://router.fmcv.my',
+      AISAR_MODEL_KEY: 'fmcv-runtime-inference-key',
       AISAR_OPENROUTER_MANAGEMENT_KEY: MANAGEMENT_KEY,
     });
     await asTenant(A, (tx) => claimRuntime(env, tx, A, {
       provider: 'fly-sprite', providerName: name, release: '2026.08.28-3',
       runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
     }));
-    await expect(runtimeModelKey(env, A, name)).resolves.toBe('legacy-canary-inference-key');
+    await expect(runtimeModelKey(env, A, name)).resolves.toBe('fmcv-runtime-inference-key');
     await expect(runtimeModelKeyNeedsRotation(env, A)).resolves.toBe(false);
   });
 
+  it('never sends an FMCV credential to the official OpenRouter endpoint', async () => {
+    const name = await runtimeName(A);
+    const env = testEnv({
+      AISAR_MODEL_BASE: 'https://openrouter.ai/api/v1',
+      AISAR_MODEL_KEY: 'fmcv-runtime-inference-key',
+      AISAR_OPENROUTER_MANAGEMENT_KEY: MANAGEMENT_KEY,
+    });
+    await asTenant(A, (tx) => claimRuntime(env, tx, A, {
+      provider: 'fly-sprite', providerName: name, release: '2026.08.28-3',
+      runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    }));
+    const manager = {
+      create: vi.fn(async () => ({
+        key: INFERENCE_KEY,
+        hash: HASH,
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1_000),
+      })),
+      revoke: vi.fn(async () => {}),
+    } as unknown as OpenRouterKeyManager;
+
+    await expect(runtimeModelKey(env, A, name, { manager })).resolves.toBe(INFERENCE_KEY);
+    expect(manager.create).toHaveBeenCalledTimes(1);
+  });
+
   it('durably retries revocation if rotation cleanup initially fails', async () => {
-    const env = testEnv({ AISAR_OPENROUTER_MANAGEMENT_KEY: MANAGEMENT_KEY });
+    const env = testEnv({
+      AISAR_MODEL_BASE: 'https://openrouter.ai/api/v1',
+      AISAR_OPENROUTER_MANAGEMENT_KEY: MANAGEMENT_KEY,
+    });
     const name = await runtimeName(A);
     await asTenant(A, async (tx) => {
       await claimRuntime(env, tx, A, {

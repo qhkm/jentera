@@ -123,12 +123,24 @@ describe('runtime provisioning route', () => {
     const send = vi.fn(async () => {});
     const response = await call('POST', '/api/runtime/provision', enabled(send, {
       AISAR_MODEL_BASE: 'https://router.fmcv.my',
+      AISAR_MODEL_KEY: 'fmcv-runtime-inference-key',
       AISAR_MODEL_NAME: 'MiniMax-M3',
     }), ownerCookie);
 
     expect(response.status).toBe(202);
     expect(await response.json()).toMatchObject({ ok: true, status: 'queued' });
     expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses FMCV provisioning without the FMCV inference credential', async () => {
+    const response = await call('POST', '/api/runtime/provision', enabled(vi.fn(async () => {}), {
+      AISAR_MODEL_BASE: 'https://router.fmcv.my',
+      AISAR_MODEL_KEY: undefined,
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+    }), ownerCookie);
+
+    expect(response.status).toBe(503);
+    expect((await response.json()).err).toMatch(/FMCV model credentials/);
   });
 
   it('cancels a durable run once and safely repeats its deduplicated stop signal', async () => {
