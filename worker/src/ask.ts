@@ -35,6 +35,11 @@ export interface FactRow {
   confirmed: boolean;
 }
 
+export interface HermesContext {
+  facts: FactRow[];
+  work: { objective: string; outcome: string | null }[];
+}
+
 /**
  * Pull the facts worth putting in front of the model.
  *
@@ -55,6 +60,54 @@ export async function retrieve(
      where live and confirmed_by is not null
      order by key`;
 
+  return rankFacts(rows, question, limit);
+}
+
+/** Load the two bounded context lanes needed by a Hermes Telegram turn in one
+ * Postgres round trip. They share the same tenant transaction and neither
+ * depends on the other, so separate SELECTs only add cross-region latency. */
+export async function retrieveHermesContext(
+  tx: postgres.TransactionSql,
+  question: string,
+  factLimit = 24,
+  workLimit = 8,
+): Promise<HermesContext> {
+  const [context] = await tx<{
+    facts: FactRow[];
+    work: { objective: string; outcome: string | null }[];
+  }[]>`
+    select
+      coalesce((
+        select jsonb_agg(jsonb_build_object(
+          'key', f.key,
+          'value', f.value,
+          'source', f.source,
+          'sourceRef', f.source_ref,
+          'confidence', f.confidence,
+          'confirmed', true
+        ) order by f.key)
+          from business_fact f
+         where f.live and f.confirmed_by is not null
+      ), '[]'::jsonb) as facts,
+      coalesce((
+        select jsonb_agg(jsonb_build_object(
+          'objective', w.objective,
+          'outcome', w.outcome
+        ) order by w.occurred_at desc)
+          from (
+            select objective, outcome, occurred_at
+              from work_record
+             order by occurred_at desc
+             limit ${workLimit}
+          ) w
+      ), '[]'::jsonb) as work`;
+  return {
+    facts: rankFacts(context?.facts ?? [], question, factLimit),
+    work: context?.work ?? [],
+  };
+}
+
+function rankFacts(rows: FactRow[], question: string, limit: number): FactRow[] {
   const terms = question
     .toLowerCase()
     .split(/[^a-z0-9]+/)

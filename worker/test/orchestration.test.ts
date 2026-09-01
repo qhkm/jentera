@@ -33,6 +33,7 @@ let sent: { chatId: unknown; text: unknown }[];
 let typing: { chatId: unknown; action: unknown }[];
 let edits: { chatId: unknown; messageId: unknown; text: unknown }[];
 let deletions: { chatId: unknown; messageId: unknown }[];
+let telegramSendGate: Promise<void> | undefined;
 
 const incoming = {
   chatId: 42,
@@ -49,6 +50,7 @@ function telegramAccepts() {
   typing = [];
   edits = [];
   deletions = [];
+  telegramSendGate = undefined;
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init: RequestInit) => {
@@ -74,6 +76,7 @@ function telegramAccepts() {
         return new Response(JSON.stringify({ ok: true, result: { message_id: 99 } }));
       }
       if (String(url).includes('sendMessage')) {
+        await telegramSendGate;
         const body = JSON.parse(String(init.body)) as { chat_id: unknown; text: unknown };
         sent.push({ chatId: body.chat_id, text: body.text });
         return new Response(JSON.stringify({ ok: true, result: { message_id: 99 } }));
@@ -222,6 +225,48 @@ describe('the automatic default', () => {
 });
 
 describe('durable Hermes Telegram replies', () => {
+  it('admits durable work while Telegram is still creating the placeholder', async () => {
+    await setPolicy('automatic');
+    const provider = new LocalRuntimeProvider();
+    const queued: RuntimeQueueMessage[] = [];
+    const durableEnv = testEnv({
+      RUNTIME_RELEASE: '2026.08.28-4',
+      RUNTIME_EXECUTION_ENABLED: 'true',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+      RUNTIME_QUEUE: {
+        send: async (message: RuntimeQueueMessage) => {
+          queued.push(message);
+        },
+      },
+    });
+    await ensureProviderRuntime(durableEnv, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.28-4', 'v1'));
+    await handleIncoming(durableEnv, A, connId, incoming);
+
+    let releaseTelegram!: () => void;
+    telegramSendGate = new Promise<void>((resolve) => { releaseTelegram = resolve; });
+    const consuming = handleRuntimeQueueMessage(durableEnv, queued[0], {
+      provider,
+      fetch: successfulRunner('Yes, we are open on Sunday.'),
+    });
+
+    await vi.waitFor(async () => {
+      const [{ tasks }] = await asOwner((sql) => sql<{ tasks: string }[]>`
+        select count(*)::text as tasks from runtime_task where business_id = ${A}`);
+      expect(tasks).toBe('1');
+    });
+    /* The transaction committed even though Telegram's network request is
+       deliberately unresolved: admission and placeholder I/O overlap. */
+    expect(sent).toHaveLength(0);
+
+    releaseTelegram();
+    await expect(consuming).resolves.toEqual({ action: 'ack', reason: 'completed' });
+  });
+
   it('preserves the Hermes request and upgrades before dispatching a stale runtime', async () => {
     await setPolicy('automatic');
     const provider = new LocalRuntimeProvider();

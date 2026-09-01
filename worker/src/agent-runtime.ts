@@ -151,6 +151,39 @@ export async function getRuntime(
   return row ? toRecord(row) : null;
 }
 
+/** Load runtime routing metadata and its two internal credentials together.
+ * Dispatch needs all three before it can contact the runner; querying the same
+ * tenant row twice only adds a Hyperdrive/Neon round trip. */
+export async function getRuntimeAccess(
+  env: Env,
+  tx: postgres.TransactionSql,
+  businessId: string,
+): Promise<{ runtime: AgentRuntimeRecord; secrets: RuntimeSecrets }> {
+  const [row] = await tx<(RuntimeRow & {
+    runner_key_ciphertext: Uint8Array | null;
+    runner_key_version: number | null;
+    hermes_key_ciphertext: Uint8Array | null;
+    hermes_key_version: number | null;
+  })[]>`
+    select ${tx.unsafe(columns)},
+           runner_key_ciphertext, runner_key_version,
+           hermes_key_ciphertext, hermes_key_version
+      from agent_runtime
+     where business_id = ${businessId}`;
+  if (!row?.runner_key_ciphertext || row.runner_key_version === null ||
+      !row.hermes_key_ciphertext || row.hermes_key_version === null) {
+    throw new Error('runtime credentials are unavailable');
+  }
+  const [runnerKey, hermesApiKey] = await Promise.all([
+    open(env, row.runner_key_ciphertext, row.runner_key_version),
+    open(env, row.hermes_key_ciphertext, row.hermes_key_version),
+  ]);
+  return {
+    runtime: toRecord(row),
+    secrets: { runnerKey, hermesApiKey },
+  };
+}
+
 /** Paid-plan gate for runtime entitlements. Absent or unknown plans
     are treated as 'free' (wake-on-request, no always-on hold). */
 export async function getBusinessPlan(

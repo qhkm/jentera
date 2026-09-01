@@ -630,6 +630,31 @@ describe('connections', () => {
       .toEqual([expect.stringContaining('/sendChatAction')]);
   });
 
+  it('timestamps latency from webhook receipt rather than after paid admission', async () => {
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
+    vi.stubGlobal('fetch', fetch);
+    const paired = await pairTelegramChat(42);
+    fetch.mockClear();
+
+    const queued: unknown[] = [];
+    let limiterFinishedAt = 0;
+    env = {
+      ...automaticRuntimeEnv(async (message) => { queued.push(message); }),
+      AGENT_RUN_BURST: {
+        limit: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 30));
+          limiterFinishedAt = Date.now();
+          return { success: true };
+        },
+      },
+    };
+    await telegramHook(paired.connectionId, paired.secret, 42, 'Measure the whole wait', 32);
+
+    const intake = queued[0] as { requestedAtMs: number };
+    expect(intake.requestedAtMs).toBeLessThan(limiterFinishedAt);
+  });
+
   it('returns 503 when Queue is unavailable so Telegram redelivers the message', async () => {
     const fetch = vi.fn(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));

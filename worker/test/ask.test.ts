@@ -13,8 +13,9 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { asOwner, asTenant, truncateAll } from './harness';
-import { answer, prepareHermesAgent, retrieve } from '../src/ask';
+import { answer, prepareHermesAgent, retrieve, retrieveHermesContext } from '../src/ask';
 import { recordFact } from '../src/facts';
+import { recordWork, startRun } from '../src/runs';
 import type { Env } from '../src/env';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -119,6 +120,29 @@ describe('choosing which facts to show', () => {
   it('is bounded', async () => {
     for (let i = 0; i < 40; i++) await stated(`k${i}.v`, `value ${i}`);
     expect((await asTenant(A, (tx) => retrieve(tx, 'anything'))).length).toBeLessThanOrEqual(24);
+  });
+
+  it('loads ranked facts and recent Hermes work through one context contract', async () => {
+    await stated('hours.monday', '9am to 6pm');
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask',
+      triggerShape: 'owner.message.telegram',
+      runtime: 'hermes-sprite',
+    }));
+    await asTenant(A, (tx) => recordWork(tx, A, {
+      runId: run.id,
+      objective: 'Prepared the weekly rota',
+      outcome: 'Ready for review',
+      status: 'completed',
+    }));
+
+    const context = await asTenant(A, (tx) =>
+      retrieveHermesContext(tx, 'what are our monday hours?'));
+    expect(context.facts.map((fact) => fact.key)).toEqual(['hours.monday']);
+    expect(context.work).toContainEqual({
+      objective: 'Prepared the weekly rota',
+      outcome: 'Ready for review',
+    });
   });
 });
 

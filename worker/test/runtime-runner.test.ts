@@ -1,10 +1,11 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { markRuntimeReady } from '../src/agent-runtime';
 import { startRun } from '../src/runs';
 import { handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
 import { enqueueRuntimeTask } from '../src/runtime/tasks';
 import { ensureProviderRuntime } from '../src/runtime/provision';
 import { reserveRuntimeUsage } from '../src/runtime/usage';
+import type { RuntimeProvider } from '../src/runtime/provider';
 import { asOwner, asTenant, testEnv, truncateAll } from './harness';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -16,6 +17,66 @@ beforeEach(async () => {
 });
 
 describe('durable Hermes run delivery', () => {
+  it('uses attested readiness as the single Sprite wake probe', async () => {
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.09.01-3',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+      SPRITES_TOKEN: 'sprite-edge-token',
+    });
+    const local = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider: local,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    await asOwner((sql) => sql`
+      update agent_runtime
+         set provider = 'fly-sprite', provider_id = 'sprite-1',
+             provider_url = 'https://sprite.test'
+       where business_id = ${A}`);
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `run:${run.id}`, payload: { input: 'hello' },
+    }));
+    const wake = vi.fn(async () => { throw new Error('redundant wake probe'); });
+    const provider = { id: 'fly-sprite', wake } as unknown as RuntimeProvider;
+    const urls: string[] = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.endsWith('/readyz')) {
+        return response({
+          ok: true,
+          release: '2026.09.01-3',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-01' },
+          toolMode: 'full-tools',
+          webSearchBackend: 'ddgs',
+          edgeAuthorizationForwarded: false,
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        return response({ ok: true, hermesRunId: 'run-hermes-fast', status: 'started' }, 202);
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}`)) {
+        return response({ ok: true, status: 'completed', output: 'Done.' });
+      }
+      return response({ error: 'not found' }, 404);
+    };
+
+    await expect(handleRuntimeMessage(
+      env,
+      { version: 1, businessId: A, taskId: task.id },
+      { provider, fetch: fetcher },
+    )).resolves.toEqual({ action: 'ack', reason: 'completed' });
+    expect(wake).not.toHaveBeenCalled();
+    expect(urls.filter((url) => url.endsWith('/readyz'))).toHaveLength(1);
+    expect(urls.some((url) => url.endsWith('/healthz'))).toBe(false);
+  });
+
   it('starts once, defers polling, then completes the Jentera history atomically', async () => {
     const env = testEnv({
       RUNTIME_RELEASE: '2026.08.27-1',

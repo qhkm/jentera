@@ -1,5 +1,5 @@
 import type { Env } from '../env';
-import { getRuntime, getRuntimeSecrets } from '../agent-runtime';
+import { getRuntime, getRuntimeAccess, getRuntimeSecrets } from '../agent-runtime';
 import { withTenant } from '../db';
 import type { RuntimeProvider } from './provider';
 import { runtimeProviderFor } from './provision';
@@ -87,8 +87,7 @@ export async function dispatchRuntimeRun(
     env,
     task.businessId,
     async (tx) => {
-      const runtime = await getRuntime(tx, task.businessId);
-      const secrets = await getRuntimeSecrets(env, tx, task.businessId);
+      const { runtime, secrets } = await getRuntimeAccess(env, tx, task.businessId);
       const reservation = await reserveRuntimeUsage(
         tx,
         task.businessId,
@@ -111,14 +110,21 @@ export async function dispatchRuntimeRun(
   if (runtime.provider !== provider.id) {
     throw new Error(`runtime provider mismatch (${runtime.provider})`);
   }
-  const observed = await provider.wake({
+  const target = {
     provider: runtime.provider,
     id: runtime.providerId,
     name: runtime.providerName,
     url: runtime.providerUrl,
     state: runtime.status,
-  });
-  stage('provider_awake');
+  };
+  /* The authenticated /readyz request itself wakes a Sprite and also attests
+     Hermes, the release, and the loaded source. A preceding /healthz call was
+     a second serial edge round trip with no additional decision value. Keep
+     provider.wake for non-Sprite adapters whose lifecycle may require it. */
+  const observed = runtime.provider === 'fly-sprite'
+    ? target
+    : await provider.wake(target);
+  if (runtime.provider !== 'fly-sprite') stage('provider_awake');
   const client = new RunnerClient({
     origin: observed.url,
     runnerKey: secrets.runnerKey,
@@ -191,10 +197,24 @@ export async function dispatchRuntimeRun(
   stage('run_recorded');
   task.remoteRunId = remoteRunId;
 
+  /* Open the presentation stream while the rare cancellation race is checked.
+     The check remains authoritative, but its cross-region transaction no
+     longer sits in front of the first visible model token. Capture rejection
+     immediately so an early stream failure cannot become unhandled. */
+  const streamResult = options.onDelta
+    ? client.stream(task.id, {
+        onDelta: options.onDelta,
+        onToolEvent: options.onToolEvent,
+        onHeartbeat: options.onHeartbeat,
+        onProgress: options.onProgress,
+        onThinking: options.onThinking,
+      }).then(() => ({ ok: true as const }), (error: unknown) => ({ ok: false as const, error }))
+    : null;
   const cancelled = await withTenant(env, task.businessId, (tx) =>
     runtimeTaskIsCancelled(tx, task.businessId, task.id));
   if (cancelled) {
     await client.stop(task.id).catch(() => {});
+    await streamResult;
     return {
       state: 'terminal',
       remoteRunId,
@@ -206,14 +226,9 @@ export async function dispatchRuntimeRun(
     };
   }
 
-  if (options.onDelta) {
-    await client.stream(task.id, {
-      onDelta: options.onDelta,
-      onToolEvent: options.onToolEvent,
-      onHeartbeat: options.onHeartbeat,
-      onProgress: options.onProgress,
-      onThinking: options.onThinking,
-    });
+  if (streamResult) {
+    const streamed = await streamResult;
+    if (!streamed.ok) throw streamed.error;
     stage('stream_finished');
   }
 

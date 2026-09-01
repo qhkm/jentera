@@ -71,14 +71,15 @@ export async function reserveRuntimeUsage(
       from runtime_budget
      where business_id = ${businessId}
      for update`;
-  const [existing] = await tx<UsageRow[]>`
-    select started_at from runtime_usage
-     where business_id = ${businessId} and runtime_task_id = ${taskId}`;
-  if (existing) {
-    return { startedAt: existing.started_at, maxRunSeconds: budgetRow.max_run_seconds };
+  /* The idempotency lookup and monthly totals share one fresh snapshot after
+     the budget-row lock. Keeping that lock as its own statement preserves
+     cross-request serialization while removing one database round trip. */
+  const state = await monthlyState(tx, businessId, budgetRow.max_run_seconds, taskId);
+  if (state.existingStartedAt) {
+    return { startedAt: state.existingStartedAt, maxRunSeconds: budgetRow.max_run_seconds };
   }
 
-  const totals = await monthlyTotals(tx, businessId, budgetRow.max_run_seconds);
+  const totals = state.usage;
   const reservedCost = modelCostMicrousd(
     model,
     RESERVED_INPUT_TOKENS,
@@ -180,7 +181,16 @@ async function monthlyTotals(
   businessId: string,
   maxRunSeconds: number,
 ): Promise<RuntimeUsageTotals> {
-  const [row] = await tx<TotalsRow[]>`
+  return (await monthlyState(tx, businessId, maxRunSeconds)).usage;
+}
+
+async function monthlyState(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  maxRunSeconds: number,
+  taskId?: string,
+): Promise<{ usage: RuntimeUsageTotals; existingStartedAt: Date | null }> {
+  const [row] = await tx<(TotalsRow & { existing_started_at: Date | null })[]>`
     select
       coalesce(sum(case when status = 'reserved' then reserved_input_tokens else input_tokens end), 0)::text
         as input_tokens,
@@ -190,15 +200,22 @@ async function monthlyTotals(
         as runtime_ms,
       coalesce(sum(case when status = 'reserved'
         then ceil((reserved_input_tokens * 6 + reserved_output_tokens * 12)::numeric / 100)
-        else cost_microusd end), 0)::text as cost_microusd
+        else cost_microusd end), 0)::text as cost_microusd,
+      (select started_at
+         from runtime_usage
+        where business_id = ${businessId}
+          and runtime_task_id = ${taskId ?? null}::uuid) as existing_started_at
     from runtime_usage
     where business_id = ${businessId}
       and started_at >= date_trunc('month', now())`;
   return {
-    inputTokens: number(row.input_tokens),
-    outputTokens: number(row.output_tokens),
-    runtimeMs: number(row.runtime_ms),
-    costMicrousd: number(row.cost_microusd),
+    usage: {
+      inputTokens: number(row.input_tokens),
+      outputTokens: number(row.output_tokens),
+      runtimeMs: number(row.runtime_ms),
+      costMicrousd: number(row.cost_microusd),
+    },
+    existingStartedAt: row.existing_started_at,
   };
 }
 

@@ -28,7 +28,7 @@ import {
   type RuntimeTask,
   type RuntimeTaskKind,
 } from './tasks';
-import { finishRun, recentWork, recordWork, startRun } from '../runs';
+import { finishRun, recordWork, startRun } from '../runs';
 import { dispatchRuntimeRun, measuredUsageOf, stopRuntimeTask } from './run-task';
 import { finalizeRuntimeUsage, RuntimeBudgetExceeded } from './usage';
 import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
@@ -38,6 +38,7 @@ import { deliverTelegramDraft, deleteTelegramLiveBubble, persistLiveMessageId, s
 import { telegramInternalChat, useCredential } from '../connections';
 import {
   deleteMessage,
+  editMessageText,
   hermesToolLine,
   sendHermesMessage,
   sendMessage,
@@ -48,7 +49,7 @@ import { runtimeModelKeyNeedsRotation } from './openrouter-keys';
 import { RuntimeBusyError } from './runner-client';
 import { getRuntime, type AgentRuntimeRecord } from '../agent-runtime';
 import { runtimeReady } from './execution';
-import { prepareHermesAgent, retrieve } from '../ask';
+import { prepareHermesAgent, retrieveHermesContext } from '../ask';
 import { modelForResponseMode, responseModeFor } from './response-mode';
 
 const MAX_TASK_ATTEMPTS = 5;
@@ -165,64 +166,95 @@ export async function handleRuntimeQueueMessage(
 
   const dedupeKey = `telegram:${message.connectionId}:${message.incoming.chatId}:` +
     `${message.incoming.messageId}`;
-  const admitted = await withTenant(env, message.businessId, async (tx) => {
-    await tx`select pg_advisory_xact_lock(hashtextextended(${dedupeKey}, 0))`;
-    const existing = await runtimeTaskByDedupeKey(tx, message.businessId, dedupeKey);
-    const runtime = await getRuntime(tx, message.businessId);
-    const token = await useCredential(env, tx, message.connectionId);
-    if (existing) {
-      const ahead = existing.status === 'queued' || existing.status === 'failed'
-        ? await runtimeQueuePosition(tx, message.businessId, existing.id)
-        : 0;
-      return { task: existing, token, ahead, runtime };
-    }
+  let speculativeBubble: Promise<{ messageId: number } | null> | undefined;
+  let speculativeStatus: string | undefined;
+  let speculativeToken: string | undefined;
+  let admitted: {
+    task: RuntimeTask;
+    token: string;
+    ahead: number;
+    runtime: AgentRuntimeRecord | null;
+  };
+  try {
+    admitted = await withTenant(env, message.businessId, async (tx) => {
+      await tx`select pg_advisory_xact_lock(hashtextextended(${dedupeKey}, 0))`;
+      const existing = await runtimeTaskByDedupeKey(tx, message.businessId, dedupeKey);
+      const runtime = await getRuntime(tx, message.businessId);
+      const token = await useCredential(env, tx, message.connectionId);
+      if (existing) {
+        const ahead = existing.status === 'queued' || existing.status === 'failed'
+          ? await runtimeQueuePosition(tx, message.businessId, existing.id)
+          : 0;
+        return { task: existing, token, ahead, runtime };
+      }
 
-    const facts = await retrieve(tx, message.incoming.text);
-    const work = await recentWork(tx, 8);
-    const prepared = prepareHermesAgent(message.incoming.text, facts, work);
-    const responseMode = responseModeFor(message.incoming.text);
-    const model = modelForResponseMode(env, responseMode);
-    const run = await startRun(tx, message.businessId, {
-      kind: 'ask',
-      triggerShape: 'owner.message.telegram',
-      triggerRef: {
-        chatId: message.incoming.chatId,
-        messageId: message.incoming.messageId,
-        from: message.incoming.from,
-        question: message.incoming.text,
-      },
-      runtime: 'hermes-sprite',
-      model,
-    });
-    const task = await enqueueRuntimeTask(tx, message.businessId, {
-      kind: 'run',
-      runId: run.id,
-      dedupeKey,
-      payload: {
-        input: boundedTelegramInput(prepared.input, message.incoming.text),
-        instructions: prepared.instructions,
-        sessionId: run.id,
-        objective: `Help ${message.incoming.from} on Telegram`,
-        function: 'assistant',
-        channel: 'telegram',
-        factKeys: prepared.usedKeys,
-        grounded: prepared.grounded,
-        responseMode,
-        model,
-        requestedAtMs: message.requestedAtMs,
-        telegram: {
-          connectionId: message.connectionId,
+      const responseMode = responseModeFor(message.incoming.text);
+      const model = modelForResponseMode(env, responseMode);
+      /* Start Telegram's placeholder request while the remaining context/run
+         queries execute. The transaction never awaits this network call; on
+         any admission failure the best-effort cleanup below removes it. */
+      speculativeStatus = responseMode === 'deep' ? DEEP_WORK_STATUS : QUICK_REPLY_STATUS;
+      speculativeToken = token;
+      speculativeBubble = sendMessage(
+        token,
+        message.incoming.chatId,
+        speculativeStatus,
+      ).catch(() => null);
+      const { facts, work } = await retrieveHermesContext(tx, message.incoming.text);
+      const prepared = prepareHermesAgent(message.incoming.text, facts, work);
+      const run = await startRun(tx, message.businessId, {
+        kind: 'ask',
+        triggerShape: 'owner.message.telegram',
+        triggerRef: {
           chatId: message.incoming.chatId,
           messageId: message.incoming.messageId,
           from: message.incoming.from,
           question: message.incoming.text,
-          privateChat: true,
         },
-      },
+        runtime: 'hermes-sprite',
+        model,
+      });
+      const task = await enqueueRuntimeTask(tx, message.businessId, {
+        kind: 'run',
+        runId: run.id,
+        dedupeKey,
+        payload: {
+          input: boundedTelegramInput(prepared.input, message.incoming.text),
+          instructions: prepared.instructions,
+          sessionId: run.id,
+          objective: `Help ${message.incoming.from} on Telegram`,
+          function: 'assistant',
+          channel: 'telegram',
+          factKeys: prepared.usedKeys,
+          grounded: prepared.grounded,
+          responseMode,
+          model,
+          requestedAtMs: message.requestedAtMs,
+          telegram: {
+            connectionId: message.connectionId,
+            chatId: message.incoming.chatId,
+            messageId: message.incoming.messageId,
+            from: message.incoming.from,
+            question: message.incoming.text,
+            privateChat: true,
+          },
+        },
+      });
+      const ahead = await runtimeQueuePosition(tx, message.businessId, task.id);
+      return { task, token, ahead, runtime };
     });
-    const ahead = await runtimeQueuePosition(tx, message.businessId, task.id);
-    return { task, token, ahead, runtime };
-  });
+  } catch (error) {
+    const speculative = await speculativeBubble;
+    if (speculative) {
+      /* The task transaction did not commit, so this message has no durable
+         owner and must not linger as a frozen reply. */
+      if (speculativeToken) {
+        await deleteMessage(speculativeToken, message.incoming.chatId, speculative.messageId)
+          .catch(() => {});
+      }
+    }
+    throw error;
+  }
 
   const nextMessage: RuntimeTaskQueueMessage = {
     version: 1,
@@ -249,13 +281,23 @@ export async function handleRuntimeQueueMessage(
       : mode === 'deep'
         ? DEEP_WORK_STATUS
         : QUICK_REPLY_STATUS;
-    const live = await sendMessage(
-      admitted.token,
-      message.incoming.chatId,
-      placeholder,
-    ).catch(() => null);
+    const live = speculativeBubble
+      ? await speculativeBubble
+      : await sendMessage(
+          admitted.token,
+          message.incoming.chatId,
+          placeholder,
+        ).catch(() => null);
     liveMessageId = live?.messageId;
     createdBubbleId = live?.messageId;
+    if (live && speculativeStatus && placeholder !== speculativeStatus) {
+      await editMessageText(
+        admitted.token,
+        message.incoming.chatId,
+        live.messageId,
+        placeholder,
+      ).catch(() => {});
+    }
   }
 
   const leaseToken = crypto.randomUUID();
@@ -357,7 +399,7 @@ export async function handleRuntimeMessage(
   }
 
   if (lease.task.kind === 'run' && lease.task.runId) {
-    await publishRunProgressSafely(
+    void publishRunProgressSafely(
       env,
       message.businessId,
       lease.task.runId,
@@ -527,7 +569,10 @@ export async function handleRuntimeMessage(
           });
         }
         const toolShown = new Set<string>();
-        await liveStream?.pulseTyping(true);
+        /* Typing is cosmetic and the webhook already emitted an immediate
+           pulse. Refresh it in parallel so Telegram cannot hold model start
+           behind another network round trip. */
+        void liveStream?.pulseTyping(true);
         let lastLeaseRenewal = Date.now();
         let firstVisibleDelta = false;
         let statusTimer: ReturnType<typeof setInterval> | undefined;

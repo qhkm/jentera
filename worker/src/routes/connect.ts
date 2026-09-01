@@ -283,6 +283,7 @@ async function telegramWebhook(
   businessId: string,
   connectionId: string,
 ): Promise<Response> {
+  const requestedAtMs = Date.now();
   const ok = new Response(null, { status: 200 });
   /* Terminal drops answer 200, which is right for malformed or unauthorised
      updates and awful for diagnosis. So each drop says why once in the log. */
@@ -406,7 +407,7 @@ async function telegramWebhook(
      invocation. Context retrieval and Postgres run/task admission happen in
      the consumer, not on Telegram's response path. */
   try {
-    await handleIncoming(env, businessId, connectionId, incoming, token);
+    await handleIncoming(env, businessId, connectionId, incoming, token, requestedAtMs);
   } catch (e) {
     /* A 5xx deliberately asks Telegram to redeliver. Returning the usual 200
        after a failed Queue write would acknowledge and permanently lose the
@@ -440,8 +441,8 @@ export async function handleIncoming(
   connectionId: string,
   incoming: TelegramIncoming,
   telegramToken?: string,
+  requestedAtMs = Date.now(),
 ): Promise<void> {
-  const requestedAtMs = Date.now();
   if (runtimeExecutionEnabled(env)) {
     if (!env.RUNTIME_QUEUE || !env.AISAR_MODEL_NAME?.trim()) {
       throw new Error('durable Telegram execution is unavailable');
