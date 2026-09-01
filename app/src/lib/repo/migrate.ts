@@ -40,13 +40,16 @@ export async function migrateLocalToRemote(
 
   if (!hasLocalState(snap)) return 'created-empty';
 
-  /* Only answers move. Flow-completion flags belong to the authenticated
-     account lifecycle, not to an anonymous browser demo. Copying either
-     flag would let a completed demo skip real onboarding and could start
-     paid runtime provisioning before the signed-in owner activates it. */
+  /* Only answers move. Flow-completion flags and presentation choices
+     (theme) belong to the authenticated account lifecycle, not to an
+     anonymous browser demo. Copying any of them would let a completed
+     demo skip real onboarding, could start paid runtime provisioning
+     before the signed-in owner activates it, and could pin a visitor's
+     demo theme (e.g. a stale `aisar-theme: light` from the pre-rebrand
+     site) onto a real business. The owner can pick a theme in-app; it
+     persists to the server the moment they do. */
   if (snap.channels?.length) await remote.setChannels(snap.channels);
   if (snap.conns?.length) await remote.setConnections(snap.conns);
-  if (snap.theme !== 'dark') await remote.setTheme(snap.theme);
 
   for (const [op, policy] of Object.entries(snap.permissions)) {
     await remote.setPolicy(op, policy);

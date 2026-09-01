@@ -26,10 +26,16 @@ describe('first authenticated migration', () => {
     await local.setBizType('restaurant');
     await local.setOnboarded(true);
     await local.setSetupDone(true);
+    /* A light demo theme must not pin a real business to light — that is
+       exactly the bug that left early sign-ups (Kitakod Ventures, ...)
+       permanently light after a stale aisar-theme localStorage leaked
+       through the migration. */
+    await local.setTheme('light');
 
     await migrateLocalToRemote(local, new RemoteRepository());
 
     expect(paths).toEqual(['/api/state/business']);
+    expect(paths).not.toContain('/api/state/theme');
     expect(paths).not.toContain('/api/state/onboarded');
     expect(paths).not.toContain('/api/state/setup-done');
     expect(JSON.parse(localStorage.getItem(KEYS.onboardingDraft) ?? '{}')).toMatchObject({
