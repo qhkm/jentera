@@ -29,7 +29,7 @@ import {
   type RuntimeTask,
   type RuntimeTaskKind,
 } from './tasks';
-import { finishRun, recordWork, startRun } from '../runs';
+import { append, finishRun, recordWork, startRun } from '../runs';
 import { dispatchRuntimeRun, measuredUsageOf, stopRuntimeTask } from './run-task';
 import { finalizeRuntimeUsage, RuntimeBudgetExceeded } from './usage';
 import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
@@ -48,7 +48,11 @@ import {
 } from '../connectors/telegram';
 import { runtimeModelKeyNeedsRotation } from './openrouter-keys';
 import { RuntimeBusyError } from './runner-client';
-import { getRuntime, type AgentRuntimeRecord } from '../agent-runtime';
+import {
+  getRuntime,
+  getRuntimeTelegramAccess,
+  type AgentRuntimeRecord,
+} from '../agent-runtime';
 import { runtimeReady } from './execution';
 import { prepareHermesAgent, retrieveHermesContext } from '../ask';
 import { modelForResponseMode, responseModeFor } from './response-mode';
@@ -184,8 +188,12 @@ export async function handleRuntimeQueueMessage(
       await tx`select pg_advisory_xact_lock(hashtextextended(${dedupeKey}, 0))`;
       telegramLatency('admission_dedupe_lock_ready', message.requestedAtMs);
       const existing = await runtimeTaskByDedupeKey(tx, message.businessId, dedupeKey);
-      const runtime = await getRuntime(tx, message.businessId);
-      const token = await useCredential(env, tx, message.connectionId);
+      const { runtime, token } = await getRuntimeTelegramAccess(
+        env,
+        tx,
+        message.businessId,
+        message.connectionId,
+      );
       telegramLatency('admission_access_ready', message.requestedAtMs, {
         duplicate: Boolean(existing),
       });
@@ -358,6 +366,7 @@ export async function handleRuntimeQueueMessage(
   const leaseToken = admitted.preleased?.leaseToken ?? crypto.randomUUID();
   const leaseStartedAt = Date.now();
   let lease = admitted.preleased?.lease;
+  let bubblePersistence: Promise<boolean> | undefined;
   try {
     if (!lease) {
       lease = await withTenant(env, message.businessId, async (tx) => {
@@ -377,15 +386,28 @@ export async function handleRuntimeQueueMessage(
       });
     } else if (liveMessageId && !existingBubbleId) {
       /* Admission deliberately committed the lease without awaiting
-         Telegram. Persist the now-resolved bubble without leasing twice. */
-      await persistLiveMessageId(
+         Telegram. Begin the now-resolved bubble write without holding model
+         dispatch behind another inter-region round trip. The result is still
+         joined below before this Queue delivery can finish. */
+      bubblePersistence = persistLiveMessageId(
         env,
         message.businessId,
         admitted.task.id,
         liveMessageId,
-      );
+      ).then(() => {
+        telegramLatency('admission_bubble_persisted', message.requestedAtMs, {
+          persisted: true,
+        });
+        return true;
+      }, (error) => {
+        console.error(`[telegram] live bubble persist failed: ${String(error)}`);
+        telegramLatency('admission_bubble_persisted', message.requestedAtMs, {
+          persisted: false,
+        });
+        return false;
+      });
     }
-    telegramLatency('admission_bubble_ready', message.requestedAtMs, {
+    telegramLatency('dispatch_unblocked', message.requestedAtMs, {
       liveMessage: Boolean(liveMessageId),
     });
   } catch (error) {
@@ -421,6 +443,14 @@ export async function handleRuntimeQueueMessage(
     liveMessageId,
     runtimeSnapshot: { value: admitted.runtime },
   });
+  const bubblePersisted = await bubblePersistence;
+  if (bubblePersistence && !bubblePersisted && result.action !== 'ack' && createdBubbleId) {
+    /* A later Queue slice cannot reattach a bubble whose id was not durable.
+       Remove it now; the durable task still requeues and its final answer will
+       use a fresh message instead of leaving this one frozen in the chat. */
+    await deleteMessage(admitted.token, message.incoming.chatId, createdBubbleId)
+      .catch(() => {});
+  }
   return result.action === 'ack' ? result : { ...result, nextMessage };
 }
 
@@ -792,8 +822,9 @@ export async function handleRuntimeMessage(
           return { action: 'requeue', delaySeconds: 5, reason: 'Hermes run is still active' };
         }
 
-        const terminalSaved = await withTenant(env, message.businessId, (tx) =>
-          recordRuntimeTaskTerminalOutcome(
+        const successful = outcome.remoteStatus === 'completed';
+        const terminal = await withTenant(env, message.businessId, async (tx) => {
+          const saved = await recordRuntimeTaskTerminalOutcome(
             tx,
             message.businessId,
             message.taskId,
@@ -806,12 +837,31 @@ export async function handleRuntimeMessage(
               summary: outcome.summary,
               usage: outcome.usage,
             },
-          ));
-        if (!terminalSaved) {
+          );
+          if (!saved) return { saved: false, deliveryClaimed: false };
+          if (!successful || !outcome.payload.telegram || !lease.task.runId) {
+            return { saved: true, deliveryClaimed: false };
+          }
+          /* The flood-replay snapshot must commit before Telegram delivery.
+             Reuse that same transaction for the run-state guard and proposal
+             audit instead of adding a separate cross-region transaction in
+             front of the user-visible final edit. */
+          const [run] = await tx<{ status: string }[]>`
+            select status from run where id = ${lease.task.runId}`;
+          if (!run || run.status !== 'working') {
+            return { saved: true, deliveryClaimed: false };
+          }
+          await append(tx, message.businessId, lease.task.runId, 'action.proposed', {
+            connector: 'telegram',
+            op: 'send_message',
+            chatId: outcome.payload.telegram.chatId,
+          });
+          return { saved: true, deliveryClaimed: true };
+        });
+        if (!terminal.saved) {
           return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
         }
 
-        const successful = outcome.remoteStatus === 'completed';
         let telegramDelivery: 'sent' | 'needs_approval' | 'blocked' | 'already_handled' | undefined;
         let finalizedLiveBubble = false;
         if (successful && outcome.payload.telegram && lease.task.runId) {
@@ -819,29 +869,31 @@ export async function handleRuntimeMessage(
           const reusableMessageId = telegram.privateChat
             ? liveStream?.handoffMessageId() ?? liveBubbleId
             : undefined;
-          telegramDelivery = await deliverTelegramDraft(
-            env,
-            message.businessId,
-            telegram.connectionId,
-            lease.task.runId,
-            {
-              chatId: telegram.chatId,
-              messageId: telegram.messageId,
-              from: telegram.from,
-              text: telegram.question,
-            },
-            finalDurableText(
-              outcome.result,
-              outcome.payload.responseMode === 'quick' ? undefined : outcome.reasoning,
-            ),
-            outcome.payload.factKeys ?? [],
-            'automatic',
-            options.telegramToken,
-            reusableMessageId,
-            { onlyIfRunWorking: true },
-          );
-          if (telegramDelivery === 'sent') latency('telegram_final_accepted');
-          finalizedLiveBubble = telegramDelivery === 'sent' && Boolean(reusableMessageId);
+          if (terminal.deliveryClaimed) {
+            telegramDelivery = await deliverTelegramDraft(
+              env,
+              message.businessId,
+              telegram.connectionId,
+              lease.task.runId,
+              {
+                chatId: telegram.chatId,
+                messageId: telegram.messageId,
+                from: telegram.from,
+                text: telegram.question,
+              },
+              finalDurableText(
+                outcome.result,
+                outcome.payload.responseMode === 'quick' ? undefined : outcome.reasoning,
+              ),
+              outcome.payload.factKeys ?? [],
+              'automatic',
+              options.telegramToken,
+              reusableMessageId,
+              { proposalRecorded: true },
+            );
+            if (telegramDelivery === 'sent') latency('telegram_final_accepted');
+            finalizedLiveBubble = telegramDelivery === 'sent' && Boolean(reusableMessageId);
+          }
           /* A reused bubble is now the durable answer and must stay. When no
              bubble could be reused (or another delivery already won), tidy
              up any remaining working message so it cannot freeze in chat. */

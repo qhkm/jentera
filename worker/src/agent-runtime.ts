@@ -151,6 +151,38 @@ export async function getRuntime(
   return row ? toRecord(row) : null;
 }
 
+/** Load the runtime routing snapshot and one Telegram credential in a single
+ * admission query. Both rows are already protected by the active tenant RLS
+ * transaction; combining them removes one inter-region round trip without
+ * placing the bot token on the durable Queue message. */
+export async function getRuntimeTelegramAccess(
+  env: Env,
+  tx: postgres.TransactionSql,
+  businessId: string,
+  connectionId: string,
+): Promise<{ runtime: AgentRuntimeRecord | null; token: string }> {
+  const runtimeColumns = columns
+    .split(',')
+    .map((column) => `ar.${column.trim()}`)
+    .join(', ');
+  const [row] = await tx<(RuntimeRow & {
+    ciphertext: Uint8Array;
+    key_version: number;
+  })[]>`
+    select ${tx.unsafe(runtimeColumns)}, cr.ciphertext, cr.key_version
+      from credential cr
+      left join agent_runtime ar
+        on ar.business_id = ${businessId} and ar.deleted_at is null
+     where cr.connection_id = ${connectionId}`;
+  if (!row?.ciphertext || row.key_version === null) {
+    throw new Error('that connection has no credential');
+  }
+  return {
+    runtime: row.id ? toRecord(row) : null,
+    token: await open(env, row.ciphertext, row.key_version),
+  };
+}
+
 /** Load runtime routing metadata and its two internal credentials together.
  * Dispatch needs all three before it can contact the runner; querying the same
  * tenant row twice only adds a Hyperdrive/Neon round trip. */
