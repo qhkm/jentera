@@ -36,6 +36,19 @@ export interface RuntimeTask {
   startedAt: Date | null;
 }
 
+export interface RuntimeTaskTerminalOutcome {
+  remoteStatus: string;
+  result: unknown;
+  reasoning?: unknown;
+  summary: string;
+  usage?: { inputTokens: number; outputTokens: number };
+}
+
+export interface FloodDeferResult {
+  deferred: boolean;
+  shouldNotifyOwner: boolean;
+}
+
 interface TaskRow {
   id: string;
   business_id: string;
@@ -275,18 +288,105 @@ export async function deferRuntimeTask(
   businessId: string,
   taskId: string,
   leaseToken: string,
-  detail: { remoteRunId?: string; remoteStatus?: string; delaySeconds?: number },
+  detail: {
+    remoteRunId?: string;
+    remoteStatus?: string;
+    delaySeconds?: number;
+    result?: unknown;
+  },
 ): Promise<boolean> {
   const rows = await tx`
     update runtime_task
        set status = 'queued', lease_token = null, lease_expires_at = null,
            remote_run_id = coalesce(${detail.remoteRunId ?? null}, remote_run_id),
            remote_status = coalesce(${detail.remoteStatus ?? null}, remote_status),
+           result = ${detail.result === undefined ? tx`result` : tx.json(detail.result as never)},
            started_at = coalesce(started_at, now()),
            available_at = now() + (${detail.delaySeconds ?? 5} * interval '1 second'),
            updated_at = now()
      where id = ${taskId} and business_id = ${businessId}
        and status = 'leased' and lease_token = ${leaseToken}
+    returning id`;
+  return rows.length === 1;
+}
+
+/** Save the bounded terminal answer before any external delivery. Telegram
+    may reject that delivery for minutes; a later Queue slice must not depend
+    on Hermes retaining its already-completed run record. */
+export async function recordRuntimeTaskTerminalOutcome(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+  leaseToken: string,
+  remoteRunId: string,
+  outcome: RuntimeTaskTerminalOutcome,
+): Promise<boolean> {
+  const current = resultObject((await tx<{ result: unknown }[]>`
+    select result from runtime_task
+     where id = ${taskId} and business_id = ${businessId}
+       and status = 'leased' and lease_token = ${leaseToken}
+     for update`)[0]?.result);
+  const rows = await tx`
+    update runtime_task
+       set remote_run_id = ${remoteRunId}, remote_status = ${outcome.remoteStatus},
+           result = ${tx.json({ ...current, terminal_outcome: outcome } as never)},
+           updated_at = now()
+     where id = ${taskId} and business_id = ${businessId}
+       and status = 'leased' and lease_token = ${leaseToken}
+    returning id`;
+  return rows.length === 1;
+}
+
+/** A flood-wait is scheduling state, not a failed attempt. Store Telegram's
+    reported wait beside the terminal snapshot while releasing the lease.
+    Notification is claimed only after a prior wait doubles or the reported
+    wait reaches five minutes. */
+export async function deferRuntimeTaskForFlood(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+  leaseToken: string,
+  detail: { floodWaitSeconds: number; delaySeconds: number },
+): Promise<FloodDeferResult> {
+  const [row] = await tx<{ result: unknown }[]>`
+    select result from runtime_task
+     where id = ${taskId} and business_id = ${businessId}
+       and status = 'leased' and lease_token = ${leaseToken}
+     for update`;
+  if (!row) return { deferred: false, shouldNotifyOwner: false };
+  const current = resultObject(row.result);
+  const previous = positiveInteger(current.flood_wait_seconds);
+  const alreadyNotified = current.flood_owner_notified === true;
+  const shouldNotifyOwner = !alreadyNotified && (
+    detail.floodWaitSeconds >= 300 ||
+    (previous !== null && detail.floodWaitSeconds >= previous * 2)
+  );
+  const deferred = await deferRuntimeTask(tx, businessId, taskId, leaseToken, {
+    delaySeconds: detail.delaySeconds,
+    result: {
+      ...current,
+      flood_wait_seconds: detail.floodWaitSeconds,
+      flood_owner_notified: alreadyNotified,
+    },
+  });
+  return { deferred, shouldNotifyOwner: deferred && shouldNotifyOwner };
+}
+
+/** Mark only after Telegram accepts the notice. If the notice is itself rate
+    limited, a later escalated retry may try again instead of recording a lie. */
+export async function markRuntimeTaskFloodOwnerNotified(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+): Promise<boolean> {
+  const rows = await tx`
+    update runtime_task
+       set result = (case when jsonb_typeof(result) = 'object'
+                          then result else '{}'::jsonb end) ||
+                    jsonb_build_object('flood_owner_notified', true),
+           updated_at = now()
+     where id = ${taskId} and business_id = ${businessId}
+       and status in ('queued', 'failed', 'leased')
     returning id`;
   return rows.length === 1;
 }
@@ -364,6 +464,7 @@ export async function exhaustRuntimeTask(
        set status = 'exhausted', lease_token = null, lease_expires_at = null,
            attempt = attempt + 1,
            payload = ${scrubPayload ? tx.json({} as never) : tx`payload`},
+           result = ${scrubPayload ? tx.json({} as never) : tx`result`},
            last_error = ${error.slice(0, 1000)}, completed_at = now(), updated_at = now()
      where id = ${taskId} and business_id = ${businessId}
        and status = 'leased' and lease_token = ${leaseToken}
@@ -401,4 +502,16 @@ export async function runtimeTaskIsCancelled(
     select status = 'cancelled' as cancelled from runtime_task
      where id = ${taskId} and business_id = ${businessId}`;
   return row?.cancelled ?? false;
+}
+
+function resultObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function positiveInteger(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+    ? value
+    : null;
 }

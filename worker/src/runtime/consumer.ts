@@ -13,10 +13,13 @@ import type { RuntimeProvider } from './provider';
 import {
   completeRuntimeTask,
   deferRuntimeTask,
+  deferRuntimeTaskForFlood,
   enqueueRuntimeTask,
   exhaustRuntimeTask,
   leaseRuntimeTask,
+  markRuntimeTaskFloodOwnerNotified,
   nextWaitingRuntimeTaskId,
+  recordRuntimeTaskTerminalOutcome,
   renewRuntimeTaskLease,
   retryRuntimeTask,
   runtimeQueuePosition,
@@ -32,8 +35,15 @@ import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
 import { publishRunProgressSafely } from './progress';
 import { STEP_STRIP_RE } from './step-progress';
 import { deliverTelegramDraft, deleteTelegramLiveBubble, persistLiveMessageId, settleCancelledDraft } from '../telegram-delivery';
-import { useCredential } from '../connections';
-import { deleteMessage, hermesToolLine, sendMessage, sendTyping, TelegramLiveStream } from '../connectors/telegram';
+import { telegramInternalChat, useCredential } from '../connections';
+import {
+  deleteMessage,
+  hermesToolLine,
+  sendHermesMessage,
+  sendMessage,
+  sendTyping,
+  TelegramLiveStream,
+} from '../connectors/telegram';
 import { runtimeModelKeyNeedsRotation } from './openrouter-keys';
 import { RuntimeBusyError } from './runner-client';
 import { getRuntime, type AgentRuntimeRecord } from '../agent-runtime';
@@ -43,6 +53,9 @@ import { modelForResponseMode, responseModeFor } from './response-mode';
 
 const MAX_TASK_ATTEMPTS = 5;
 const BUSY_RETRY_SECONDS = 2;
+const TELEGRAM_FLOOD_DELAY_CAP_SECONDS = 60 * 60;
+const TELEGRAM_FLOOD_OWNER_NOTICE =
+  '⏳ Telegram is rate-limiting this chat — your answer will appear as soon as it lifts.';
 
 /** Friendly one-line statuses for the ephemeral Telegram draft, keyed by the
     run-task provisioning stages. Shown only while the model has produced no
@@ -643,6 +656,25 @@ export async function handleRuntimeMessage(
           return { action: 'requeue', delaySeconds: 5, reason: 'Hermes run is still active' };
         }
 
+        const terminalSaved = await withTenant(env, message.businessId, (tx) =>
+          recordRuntimeTaskTerminalOutcome(
+            tx,
+            message.businessId,
+            message.taskId,
+            leaseToken,
+            outcome.remoteRunId,
+            {
+              remoteStatus: outcome.remoteStatus,
+              result: outcome.result,
+              reasoning: outcome.reasoning,
+              summary: outcome.summary,
+              usage: outcome.usage,
+            },
+          ));
+        if (!terminalSaved) {
+          return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
+        }
+
         const successful = outcome.remoteStatus === 'completed';
         let telegramDelivery: 'sent' | 'needs_approval' | 'blocked' | undefined;
         if (successful && outcome.payload.telegram && lease.task.runId) {
@@ -782,20 +814,32 @@ export async function handleRuntimeMessage(
       };
     }
     /* Telegram throttles chat traffic with a flood-wait ("Too Many Requests:
-       retry after N"). Honor its backoff instead of the flat 30s retry:
-       re-hammering inside the window makes Telegram escalate the ban on
-       every attempt (49s → 247s → …) and the task exhausts without ever
-       delivering its answer. A flood-wait is never terminal — it always
-       clears — so requeue with that delay and keep the attempt budget
-       intact (deferRuntimeTask, not retryRuntimeTask). */
+       retry after N"). Re-hammering near the edge of that window can escalate
+       the next wait, so use a wider bounded margin. This is delivery
+       backpressure, not a failed model run: requeue without consuming the
+       attempt budget (deferRuntimeTaskForFlood, not retryRuntimeTask). */
     const floodSeconds = /retry after (\d+)/i.exec(reason)?.[1];
     if (floodSeconds) {
-      const delaySeconds = Math.max(Number(floodSeconds) + 5, 30);
-      await withTenant(env, message.businessId, (tx) =>
-        deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, { delaySeconds }),
-      );
+      const reportedWaitSeconds = Number(floodSeconds);
+      const delaySeconds = telegramFloodDelaySeconds(reportedWaitSeconds);
+      const deferred = await withTenant(env, message.businessId, (tx) =>
+        deferRuntimeTaskForFlood(tx, message.businessId, message.taskId, leaseToken, {
+          floodWaitSeconds: reportedWaitSeconds,
+          delaySeconds,
+        }));
+      if (!deferred.deferred) {
+        return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
+      }
       if (lease.task.kind === 'run' && lease.task.runId) {
         await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'retrying');
+      }
+      if (deferred.shouldNotifyOwner) {
+        await notifyTelegramFloodOwner(
+          env,
+          message.businessId,
+          lease.task,
+          options.telegramToken,
+        );
       }
       return { action: 'requeue', delaySeconds, reason: `telegram flood-wait ${floodSeconds}s` };
     }
@@ -856,6 +900,51 @@ export async function handleRuntimeMessage(
       await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'retrying');
     }
     return { action: 'requeue', delaySeconds: 30, reason };
+  }
+}
+
+/** Telegram's first retry-after is often optimistic. Use the agreed wider
+    margin, bounded to one hour (well inside Queue's 24-hour message-delay
+    limit); Postgres available_at remains the authoritative lease gate. */
+export function telegramFloodDelaySeconds(reportedWaitSeconds: number): number {
+  const wait = Number.isSafeInteger(reportedWaitSeconds) && reportedWaitSeconds > 0
+    ? reportedWaitSeconds
+    : 1;
+  return Math.min(
+    TELEGRAM_FLOOD_DELAY_CAP_SECONDS,
+    Math.max(60, wait * 2, wait + 60),
+  );
+}
+
+async function notifyTelegramFloodOwner(
+  env: Env,
+  businessId: string,
+  task: RuntimeTask,
+  existingToken?: string,
+): Promise<void> {
+  const telegram = telegramHint(task.payload);
+  if (!telegram) return;
+  try {
+    const destination = await withTenant(env, businessId, async (tx) => ({
+      chatId: await telegramInternalChat(tx, telegram.connectionId),
+      token: existingToken ?? await useCredential(env, tx, telegram.connectionId),
+    }));
+    if (!destination.chatId) return;
+    await sendHermesMessage(
+      destination.token,
+      destination.chatId,
+      TELEGRAM_FLOOD_OWNER_NOTICE,
+    );
+    await withTenant(env, businessId, (tx) =>
+      markRuntimeTaskFloodOwnerNotified(tx, businessId, task.id));
+  } catch (error) {
+    /* The notice can be rate-limited by the same Telegram flood. Keep the
+       notified flag false so a later escalation may try once more. */
+    console.warn('[runtime] Telegram flood notice was not delivered', {
+      businessId,
+      taskId: task.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 

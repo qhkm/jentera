@@ -350,11 +350,14 @@ export function createRunner(input) {
         if (!saved) return json(res, 404, { ok: false, error: 'task not found' });
         const status = await hermes(config, `/v1/runs/${encodeURIComponent(saved.hermesRunId)}`);
         const result = await responseJson(status);
-        if (!status.ok) return json(res, 502, { ok: false, error: 'Hermes status failed' });
-        if (typeof result?.status === 'string') {
-          await state.put(saved.taskId, { ...saved, status: result.status });
+        if (!status.ok) {
+          const terminal = savedTerminalStatus(saved);
+          return terminal
+            ? json(res, 200, { ok: true, taskId: saved.taskId, ...terminal })
+            : json(res, 502, { ok: false, error: 'Hermes status failed' });
         }
-        return json(res, 200, { ok: true, taskId: saved.taskId, ...boundedTaskStatus(result) });
+        const observed = await persistObservedStatus(state, saved, result);
+        return json(res, 200, { ok: true, taskId: saved.taskId, ...observed });
       }
 
       const stopPath = url.pathname.match(/^\/v1\/tasks\/([0-9a-f-]{36})\/stop$/i);
@@ -368,8 +371,8 @@ export function createRunner(input) {
         );
         const result = await responseJson(stopped);
         if (!stopped.ok) return json(res, 502, { ok: false, error: 'Hermes stop failed' });
-        await state.put(saved.taskId, { ...saved, status: result?.status ?? 'stopping' });
-        return json(res, 200, { ok: true, taskId: saved.taskId, ...result });
+        const observed = await persistObservedStatus(state, saved, result ?? { status: 'stopping' });
+        return json(res, 200, { ok: true, taskId: saved.taskId, ...observed });
       }
 
       return json(res, 404, { ok: false, error: 'not found' });
@@ -441,8 +444,8 @@ async function activeTask(config, state) {
     if (!response.ok) return saved;
     const current = await responseJson(response);
     if (typeof current?.status === 'string') {
-      await state.put(saved.taskId, { ...saved, status: current.status });
-      if (!TERMINAL.has(current.status)) return { ...saved, status: current.status };
+      const observed = await persistObservedStatus(state, saved, current);
+      if (!TERMINAL.has(observed.status)) return { ...saved, status: observed.status };
     } else {
       return saved;
     }
@@ -624,12 +627,22 @@ async function responseJson(response) {
     (bounded), and — for the durable reasoning block — Hermes's
     `last_reasoning` as a bounded `reasoning` string (the worker collapses
     it to 15 lines). Never a raw `...result` spread. */
-const TASK_STATUS_FIELDS = new Set(['status', 'error', 'usage']);
 function boundedTaskStatus(result) {
   if (!result || typeof result !== 'object') return { status: 'unknown' };
   const out = {};
-  for (const key of TASK_STATUS_FIELDS) {
-    if (key in result) out[key] = result[key];
+  if (typeof result.status === 'string' && result.status) {
+    out.status = result.status.slice(0, 50).toLowerCase();
+  }
+  if (typeof result.error === 'string' && result.error) {
+    out.error = result.error.slice(0, 2_000);
+  }
+  if (result.usage && typeof result.usage === 'object') {
+    const usage = {};
+    for (const key of ['input_tokens', 'output_tokens', 'total_tokens']) {
+      const value = result.usage[key];
+      if (Number.isSafeInteger(value) && value >= 0) usage[key] = value;
+    }
+    if (Object.keys(usage).length) out.usage = usage;
   }
   /* Final answer text: pass it through bounded (the worker slices to 4k).
      Hermes exposes it only once the run is terminal. */
@@ -647,10 +660,35 @@ function boundedTaskStatus(result) {
   }
   for (const key of Object.keys(result)) {
     if (/^(created|started|finished|completed|updated)(_at)?$/i.test(key)) {
-      out[key] = result[key];
+      const value = result[key];
+      if (typeof value === 'string') out[key] = value.slice(0, 100);
+      else if (typeof value === 'number' && Number.isFinite(value)) out[key] = value;
     }
   }
   return out;
+}
+
+/** Persist only the bounded terminal presentation. Hermes reaps completed run
+    records independently of Jentera Queue redelivery; the task row is the
+    durable bridge that keeps a finished answer recoverable after that 404. */
+async function persistObservedStatus(state, saved, result) {
+  const observed = boundedTaskStatus(result);
+  const status = typeof observed.status === 'string' ? observed.status : 'unknown';
+  await state.put(saved.taskId, {
+    ...saved,
+    status,
+    ...(TERMINAL.has(status) ? { terminal: observed } : {}),
+  });
+  return observed;
+}
+
+/** State is private and mode 0600, but still re-validate and re-bound it before
+    putting persisted bytes back on the network. */
+function savedTerminalStatus(saved) {
+  const terminal = boundedTaskStatus(saved?.terminal);
+  return typeof terminal.status === 'string' && TERMINAL.has(terminal.status)
+    ? terminal
+    : null;
 }
 
 function json(res, status, body) {

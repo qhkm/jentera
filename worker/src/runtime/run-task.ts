@@ -217,7 +217,18 @@ export async function dispatchRuntimeRun(
     stage('stream_finished');
   }
 
-  const current = await client.status(task.id);
+  let current: RunnerTaskResponse;
+  try {
+    current = await client.status(task.id);
+  } catch (error) {
+    /* A previous Queue slice may have observed and persisted completion, then
+       lost the Telegram delivery race. If the runner later restarts or Hermes
+       reaps that run record, the database snapshot is the terminal truth. */
+    const restored = persistedTerminalOutcome(task, payload);
+    if (!restored) throw error;
+    stage('status_restored');
+    return restored;
+  }
   stage('status_loaded');
   const remoteStatus = boundedStatus(current.status);
   if (!TERMINAL.has(remoteStatus)) {
@@ -348,6 +359,53 @@ function boundedResult(response: RunnerTaskResponse): unknown {
 function summaryOf(response: RunnerTaskResponse): string {
   const result = response.output ?? response.result ?? response.response ?? response.error ?? '';
   return (typeof result === 'string' ? result : JSON.stringify(result)).slice(0, 500);
+}
+
+function persistedTerminalOutcome(
+  task: RuntimeTask,
+  payload: RunPayload,
+): RuntimeRunOutcome | null {
+  const remoteStatus = boundedStatus(task.remoteStatus);
+  if (!task.remoteRunId || !TERMINAL.has(remoteStatus) ||
+      !task.result || typeof task.result !== 'object' || Array.isArray(task.result)) {
+    return null;
+  }
+  const raw = (task.result as Record<string, unknown>).terminal_outcome;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const snapshot = raw as Record<string, unknown>;
+  if (boundedStatus(snapshot.remoteStatus) !== remoteStatus || !('result' in snapshot)) return null;
+  const result = boundedStoredResult(snapshot.result);
+  const reasoning = typeof snapshot.reasoning === 'string' && snapshot.reasoning
+    ? snapshot.reasoning.slice(0, 48_000)
+    : undefined;
+  const usage = persistedUsage(snapshot.usage);
+  const summary = typeof snapshot.summary === 'string' && snapshot.summary
+    ? snapshot.summary.slice(0, 500)
+    : (typeof result === 'string' ? result : JSON.stringify(result)).slice(0, 500);
+  return {
+    state: 'terminal',
+    remoteRunId: task.remoteRunId,
+    remoteStatus,
+    result,
+    ...(reasoning ? { reasoning } : {}),
+    summary,
+    payload,
+    ...(usage ? { usage } : {}),
+  };
+}
+
+function boundedStoredResult(value: unknown): unknown {
+  const encoded = JSON.stringify(value);
+  if (encoded === undefined) return null;
+  return encoded.length > 64 * 1024 ? encoded.slice(0, 64 * 1024) : value;
+}
+
+function persistedUsage(value: unknown): { inputTokens: number; outputTokens: number } | null {
+  if (!value || typeof value !== 'object') return null;
+  const usage = value as Record<string, unknown>;
+  return validToken(usage.inputTokens) && validToken(usage.outputTokens)
+    ? { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens }
+    : null;
 }
 
 function validToken(value: unknown): value is number {

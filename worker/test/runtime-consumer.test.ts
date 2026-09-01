@@ -1,11 +1,12 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { asOwner, asTenant, testEnv, truncateAll } from './harness';
 import { ensureProviderRuntime, handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
 import { enqueueRuntimeTask, leaseRuntimeTask, nextWaitingRuntimeTaskId, runtimeQueuePosition } from '../src/runtime/tasks';
-import { wakeNextRuntimeTask } from '../src/runtime/consumer';
+import { telegramFloodDelaySeconds, wakeNextRuntimeTask } from '../src/runtime/consumer';
 import type { DesiredRuntime, ObservedRuntime, RuntimeProvider } from '../src/runtime';
 import { markRuntimeReady, storeRuntimeModelCredential } from '../src/agent-runtime';
 import { startRun } from '../src/runs';
+import { bindTelegramInternalChat, saveConnection } from '../src/connections';
 
 const A = '11111111-1111-4111-8111-111111111111';
 
@@ -13,6 +14,10 @@ beforeEach(async () => {
   await truncateAll();
   await asOwner((sql) => sql`
     insert into business (id, name, playbook_key) values (${A}, 'Alpha', 'restaurant')`);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('the runtime queue consumer', () => {
@@ -267,6 +272,167 @@ describe('the runtime queue consumer', () => {
     // FIFO next-in-line is b (oldest waiting), not the most recent arrival.
     expect(await asTenant(A, (tx) => nextWaitingRuntimeTaskId(tx, A))).toBe(b.id);
   });
+
+  it('backs off escalating Telegram floods, restores the terminal DB snapshot, and notifies once', async () => {
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.09.01-3',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+      AISAR_DEEP_MODEL_NAME: 'deepseek-v4-flash',
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const [owner] = await asOwner((sql) => sql<{ id: string }[]>`
+      insert into app_user (email, email_verified)
+      values ('flood-owner@example.com', true) returning id`);
+    const connection = await asTenant(A, (tx) => saveConnection(env, tx, A, {
+      connector: 'telegram',
+      method: 'bot_token',
+      externalId: '123456789',
+      displayName: '@alpha_bot',
+      secret: '123456789:AAtoken',
+      connectedBy: owner.id,
+    }));
+    await asTenant(A, (tx) => bindTelegramInternalChat(tx, connection.id, 42));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask',
+      triggerShape: 'owner.message.telegram',
+      runtime: 'hermes-sprite',
+      model: 'deepseek-v4-flash',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run',
+      runId: run.id,
+      dedupeKey: `telegram:flood:${run.id}`,
+      payload: {
+        input: 'Prepare the final answer.',
+        objective: 'Answer the owner',
+        function: 'assistant',
+        channel: 'telegram',
+        responseMode: 'deep',
+        model: 'deepseek-v4-flash',
+        telegram: {
+          connectionId: connection.id,
+          chatId: 42,
+          messageId: 7,
+          from: 'Owner',
+          question: 'What changed?',
+          privateChat: true,
+          liveMessageId: 77,
+        },
+      },
+    }));
+
+    let statusPolls = 0;
+    const runnerFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return jsonResponse({
+          ok: true,
+          release: '2026.09.01-3',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-01' },
+          toolMode: 'full-tools',
+          webSearchBackend: 'ddgs',
+          edgeAuthorizationForwarded: false,
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        return jsonResponse({
+          ok: true,
+          hermesRunId: 'run-hermes-flood',
+          status: statusPolls === 0 ? 'started' : 'completed',
+        }, statusPolls === 0 ? 202 : 200);
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}/events`)) {
+        return new Response('data: {"type":"done"}\n\n', {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        });
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}`)) {
+        statusPolls += 1;
+        return statusPolls === 1
+          ? jsonResponse({
+              ok: true,
+              status: 'completed',
+              output: 'Final customer answer.',
+              reasoning: 'Bounded reasoning.',
+              usage: { input_tokens: 100, output_tokens: 20 },
+            })
+          : jsonResponse({ ok: false, error: 'Hermes status failed' }, 502);
+      }
+      return jsonResponse({ error: 'not found' }, 404);
+    };
+
+    const reportedWaits = [49, 129, 600];
+    let answerAttempts = 0;
+    let notices = 0;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) as {
+        text?: string;
+      } : {};
+      if (url.endsWith('/sendMessage') && body.text?.includes('Final customer answer.')) {
+        const wait = reportedWaits[answerAttempts++];
+        return jsonResponse({
+          ok: false,
+          description: `Too Many Requests: retry after ${wait}`,
+        }, 429);
+      }
+      if (url.endsWith('/sendMessage') && body.text?.includes('Telegram is rate-limiting')) {
+        notices += 1;
+        return jsonResponse({ ok: true, result: { message_id: 88 } });
+      }
+      return jsonResponse({ ok: true, result: { message_id: 77 } });
+    }));
+
+    const message = { version: 1 as const, businessId: A, taskId: task.id };
+    const expectedDelays = [109, 258, 1_200];
+    for (let index = 0; index < expectedDelays.length; index += 1) {
+      await expect(handleRuntimeMessage(env, message, { provider, fetch: runnerFetch }))
+        .resolves.toEqual({
+          action: 'requeue',
+          delaySeconds: expectedDelays[index],
+          reason: `telegram flood-wait ${reportedWaits[index]}s`,
+        });
+      const [state] = await asOwner((sql) => sql<{
+        status: string;
+        attempt: number;
+        available_at: Date;
+        remote_status: string;
+        result: Record<string, unknown>;
+      }[]>`
+        select status, attempt, available_at, remote_status, result
+          from runtime_task where id = ${task.id}`);
+      expect(state.status).toBe('queued');
+      expect(state.attempt).toBe(0);
+      expect(state.available_at.getTime() - Date.now())
+        .toBeGreaterThan((expectedDelays[index] - 5) * 1_000);
+      expect(state.remote_status).toBe('completed');
+      expect(state.result).toMatchObject({
+        flood_wait_seconds: reportedWaits[index],
+        flood_owner_notified: index >= 1,
+        terminal_outcome: {
+          remoteStatus: 'completed',
+          result: 'Final customer answer.',
+          reasoning: 'Bounded reasoning.',
+        },
+      });
+      if (index < expectedDelays.length - 1) {
+        await asOwner((sql) => sql`
+          update runtime_task set available_at = now() where id = ${task.id}`);
+      }
+    }
+    expect(statusPolls).toBe(3);
+    expect(answerAttempts).toBe(3);
+    expect(notices).toBe(1);
+    expect(telegramFloodDelaySeconds(5_000)).toBe(3_600);
+  });
 });
 
 const provisionTask = () => asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
@@ -279,3 +445,10 @@ const taskStatus = (id: string) => asOwner(async (sql) => {
     select status, lease_token from runtime_task where id = ${id}`;
   return row;
 });
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}

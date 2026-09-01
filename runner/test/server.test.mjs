@@ -21,6 +21,7 @@ let runnerOrigin;
 let hermesStatus;
 let hermesReasoning;
 let hermesPatch;
+let hermesRunMissing;
 let starts;
 
 beforeEach(async () => {
@@ -28,6 +29,7 @@ beforeEach(async () => {
   hermesStatus = 'running';
   hermesReasoning = 'The user asks a biographical question.\nKeep the answer focused and factual.';
   hermesPatch = 'jentera-runtime-2026-09-01';
+  hermesRunMissing = false;
   starts = [];
   hermesServer = createServer(async (req, res) => {
     assert.equal(req.headers.authorization, `Bearer ${HERMES_KEY}`);
@@ -59,6 +61,7 @@ beforeEach(async () => {
       return reply(res, 200, { status: 'stopping' });
     }
     if (req.url?.startsWith('/v1/runs/')) {
+      if (hermesRunMissing) return reply(res, 404, { error: 'run not found' });
       return reply(res, 200, {
         run_id: req.url.split('/').at(-1),
         status: hermesStatus,
@@ -249,6 +252,26 @@ test('terminal status carries bounded output, usage, and reasoning — nothing e
   );
   /* Tool outputs and any other Hermes internals never cross the allowlist. */
   assert.equal('tool_outputs' in body, false);
+});
+
+test('serves the bounded terminal snapshot after Hermes reaps the run record', async () => {
+  await start(TASK);
+  hermesStatus = 'completed';
+  const observed = await (await call(`/v1/tasks/${TASK}`)).json();
+  assert.equal(observed.status, 'completed');
+
+  hermesRunMissing = true;
+  const recoveredResponse = await call(`/v1/tasks/${TASK}`);
+  assert.equal(recoveredResponse.status, 200);
+  const recovered = await recoveredResponse.json();
+  assert.deepEqual(recovered, observed);
+  assert.equal('tool_outputs' in recovered, false);
+
+  const state = JSON.parse(await readFile(join(directory, 'state.json'), 'utf8'));
+  assert.equal(state.tasks[TASK].status, 'completed');
+  assert.equal(state.tasks[TASK].terminal.output, observed.output);
+  assert.equal(state.tasks[TASK].terminal.reasoning, observed.reasoning);
+  assert.equal('tool_outputs' in state.tasks[TASK].terminal, false);
 });
 
 test('bounds reasoning like output', async () => {
