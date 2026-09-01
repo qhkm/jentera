@@ -121,7 +121,7 @@ if [[ -z "$CS" ]]; then
 else
   export PGOPTIONS='-c default_transaction_read_only=on'
   export PGCONNECT_TIMEOUT=10
-  if psql "$CS" -X -q -tAc "select 1" 2>/dev/null | grep -qx 1; then
+  if with_timeout 20 psql "$CS" -X -q -tAc "select 1" 2>/dev/null | grep -qx 1; then
     pass "SELECT 1 → ok (read-only session)"
   else
     fail "db: SELECT 1 failed (connection or auth)"
@@ -133,7 +133,7 @@ fi
 # ------------------------------------------------------------
 say "── 4/5 Task backlog ──"
 if [[ -n "${CS:-}" ]]; then
-  STUCK=$(psql "$CS" -X -q -tAc "
+  STUCK=$(with_timeout 20 psql "$CS" -X -q -tAc "
     select count(*)
       from runtime_task
      where status in ('queued','leased')
@@ -160,7 +160,7 @@ say "── 5/5 Runtime fleet (sprites + agent_runtime) ──"
 # field is the IMAGE version (e.g. 0.0.1-rc48), not the Jentera release
 # (RUNTIME_RELEASE). Release conformance is read from agent_runtime below.
 if command -v sprite >/dev/null 2>&1; then
-  LIST=$(sprite api /v1/sprites 2>/dev/null)
+  LIST=$(with_timeout 25 sprite api /v1/sprites 2>/dev/null)
   if echo "$LIST" | jq -e '.sprites' >/dev/null 2>&1; then
     TOTAL=$(echo "$LIST" | jq '.sprites | length')
     WARM=$(echo "$LIST" | jq '[.sprites[] | select(.status=="warm" or .status=="running")] | length')
@@ -184,7 +184,7 @@ fi
 # Release conformance: every non-deleted agent_runtime must have
 # observed_release == desired_release == RUNTIME_RELEASE in wrangler.toml.
 if [[ -n "${CS:-}" ]]; then
-  RELEASE_ROWS=$(psql "$CS" -X -q -tAc "
+  RELEASE_ROWS=$(with_timeout 20 psql "$CS" -X -q -tAc "
     select
       count(*) filter (where observed_release = desired_release) as matched,
       count(*) filter (where observed_release is distinct from desired_release) as mismatched,
