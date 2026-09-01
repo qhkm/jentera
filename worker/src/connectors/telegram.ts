@@ -201,6 +201,10 @@ export interface TelegramLiveStreamOptions {
   /** Called once when the stream creates the bubble, so the caller can
       persist the message id for later slices to reattach to. */
   onMessageId?: (messageId: number) => Promise<void>;
+  /** Called after Telegram accepts the first answer-text send/edit. This is
+      deliberately distinct from receiving a model delta: it measures what
+      the customer can actually see. */
+  onFirstTextPublished?: () => void;
 }
 
 /** Coalesce model tokens into a single bot-owned live message. The bubble is
@@ -222,6 +226,7 @@ export class TelegramLiveStream {
   private messageId: number | undefined;
   private statusTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingStatus: string | undefined;
+  private firstTextPublished = false;
 
   constructor(
     private readonly token: string,
@@ -230,9 +235,11 @@ export class TelegramLiveStream {
   ) {
     this.messageId = options.messageId || undefined;
     this.onMessageId = options.onMessageId;
+    this.onFirstTextPublished = options.onFirstTextPublished;
   }
 
   private readonly onMessageId: ((messageId: number) => Promise<void>) | undefined;
+  private readonly onFirstTextPublished: (() => void) | undefined;
 
   /** The live bubble's Telegram message id once it exists. */
   get id(): number | undefined {
@@ -382,6 +389,14 @@ export class TelegramLiveStream {
         await editMessageText(this.token, this.chatId, this.messageId, visible);
         this.sent = visible;
         this.lastSentAt = Date.now();
+      }
+      if (this.text.trim() && !this.firstTextPublished) {
+        this.firstTextPublished = true;
+        try {
+          this.onFirstTextPublished?.();
+        } catch {
+          /* Telemetry is observational and must never disable delivery. */
+        }
       }
       await this.pulseTyping();
     } catch (error) {

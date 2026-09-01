@@ -304,10 +304,9 @@ export function createRunner(input) {
                 ? config.modelName
                 : config.deepModelName),
               model_options: {
-                reasoning: {
-                  enabled: true,
-                  effort: body.responseMode === 'quick' ? 'low' : 'high',
-                },
+                reasoning: body.responseMode === 'quick'
+                  ? { enabled: false }
+                  : { enabled: true, effort: 'high' },
               },
             }),
           });

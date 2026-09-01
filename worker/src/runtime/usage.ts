@@ -61,16 +61,17 @@ export async function reserveRuntimeUsage(
   taskId: string,
   model: string,
 ): Promise<RuntimeUsageReservation> {
-  await tx`
-    insert into runtime_budget (business_id) values (${businessId})
-    on conflict (business_id) do nothing`;
+  /* The conflict update is deliberately a no-op on values, but it takes the
+     same row lock the following SELECT FOR UPDATE used to take. RETURNING
+     therefore ensures the budget row and serializes admission in one round
+     trip. A fresh statement still computes usage below after any lock wait. */
   const [budgetRow] = await tx<BudgetRow[]>`
-    select monthly_input_tokens::text, monthly_output_tokens::text,
-           monthly_runtime_seconds::text, monthly_cost_microusd::text,
-           max_run_seconds
-      from runtime_budget
-     where business_id = ${businessId}
-     for update`;
+    insert into runtime_budget (business_id) values (${businessId})
+    on conflict (business_id) do update
+      set business_id = excluded.business_id
+    returning monthly_input_tokens::text, monthly_output_tokens::text,
+              monthly_runtime_seconds::text, monthly_cost_microusd::text,
+              max_run_seconds`;
   /* The idempotency lookup and monthly totals share one fresh snapshot after
      the budget-row lock. Keeping that lock as its own statement preserves
      cross-request serialization while removing one database round trip. */

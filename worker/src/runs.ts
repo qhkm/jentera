@@ -94,19 +94,26 @@ export async function startRun(
     model?: string | null;
   },
 ): Promise<Run> {
-  const [row] = await tx<RunRow[]>`
-    insert into run (business_id, kind, status, trigger_shape, trigger_ref,
-                     requested_by, runtime, model, started_at)
-    values (${businessId}, ${input.kind}, 'working', ${input.triggerShape},
-            ${input.triggerRef === undefined ? null : tx.json(input.triggerRef as never)},
-            ${input.requestedBy ?? null}, ${input.runtime}, ${input.model ?? null}, now())
-    returning id, kind, status, trigger_shape, runtime, model,
-              started_at, ended_at, created_at`;
-
-  await append(tx, businessId, row.id, 'work.requested', {
+  const requested = {
     kind: input.kind,
     triggerShape: input.triggerShape,
-  });
+  };
+  const [row] = await tx<RunRow[]>`
+    with started as (
+      insert into run (business_id, kind, status, trigger_shape, trigger_ref,
+                       requested_by, runtime, model, started_at)
+      values (${businessId}, ${input.kind}, 'working', ${input.triggerShape},
+              ${input.triggerRef === undefined ? null : tx.json(input.triggerRef as never)},
+              ${input.requestedBy ?? null}, ${input.runtime}, ${input.model ?? null}, now())
+      returning id, kind, status, trigger_shape, runtime, model,
+                started_at, ended_at, created_at
+    ), requested as (
+      insert into run_event (run_id, business_id, seq, type, payload)
+      select id, ${businessId}, 1, 'work.requested', ${tx.json(requested as never)}
+        from started
+      returning run_id
+    )
+    select started.* from started join requested on requested.run_id = started.id`;
   return toRun(row);
 }
 

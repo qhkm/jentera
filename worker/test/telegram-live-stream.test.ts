@@ -63,6 +63,23 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('TelegramLiveStream reattach to the webhook bubble', () => {
+  it('reports the first Telegram-accepted answer edit exactly once', async () => {
+    const published = vi.fn();
+    const stream = new TelegramLiveStream(TOKEN, CHAT, {
+      messageId: 77,
+      onFirstTextPublished: published,
+    });
+
+    await stream.setStatus('⚡ Preparing a quick reply…');
+    expect(published).not.toHaveBeenCalled();
+
+    await stream.push('Here is the answer.');
+    await stream.push(' More detail follows.');
+    await stream.flush();
+
+    expect(published).toHaveBeenCalledTimes(1);
+  });
+
   it('does not die when the first status equals the bubble text (message is not modified)', async () => {
     notModifiedFirst = true;
     /* Reattach: the stream is constructed with the webhook bubble's id,

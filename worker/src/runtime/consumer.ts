@@ -17,6 +17,7 @@ import {
   enqueueRuntimeTask,
   exhaustRuntimeTask,
   leaseRuntimeTask,
+  leaseRuntimeTaskWithBusinessLock,
   markRuntimeTaskFloodOwnerNotified,
   nextWaitingRuntimeTaskId,
   recordRuntimeTaskTerminalOutcome,
@@ -174,6 +175,7 @@ export async function handleRuntimeQueueMessage(
     token: string;
     ahead: number;
     runtime: AgentRuntimeRecord | null;
+    preleased?: { lease: LeaseResult; leaseToken: string; leaseMs: number };
   };
   try {
     admitted = await withTenant(env, message.businessId, async (tx) => {
@@ -199,7 +201,12 @@ export async function handleRuntimeQueueMessage(
         token,
         message.incoming.chatId,
         speculativeStatus,
-      ).catch(() => null);
+      ).then((live) => {
+        telegramLatency('placeholder_accepted', message.requestedAtMs, {
+          liveMessageId: live.messageId,
+        });
+        return live;
+      }).catch(() => null);
       const { facts, work } = await retrieveHermesContext(tx, message.incoming.text);
       const prepared = prepareHermesAgent(message.incoming.text, facts, work);
       const run = await startRun(tx, message.businessId, {
@@ -214,6 +221,10 @@ export async function handleRuntimeQueueMessage(
         runtime: 'hermes-sprite',
         model,
       });
+      /* From this point through lease, serialize with every ordinary Queue
+         lease for the business. Do not await Telegram inside the transaction:
+         durable admission must still commit if that network request stalls. */
+      await tx`select pg_advisory_xact_lock(hashtextextended(${message.businessId}::text, 0))`;
       const task = await enqueueRuntimeTask(tx, message.businessId, {
         kind: 'run',
         runId: run.id,
@@ -240,8 +251,26 @@ export async function handleRuntimeQueueMessage(
           },
         },
       });
-      const ahead = await runtimeQueuePosition(tx, message.businessId, task.id);
-      return { task, token, ahead, runtime };
+      const leaseToken = crypto.randomUUID();
+      const leaseStartedAt = Date.now();
+      const lease = await leaseRuntimeTaskWithBusinessLock(
+        tx,
+        message.businessId,
+        task.id,
+        leaseToken,
+      );
+      /* Queue position is presentation-only and almost always zero. Pay for
+         its count query only when the authoritative lease says work is busy. */
+      const ahead = lease.outcome === 'busy'
+        ? await runtimeQueuePosition(tx, message.businessId, task.id)
+        : 0;
+      return {
+        task,
+        token,
+        ahead,
+        runtime,
+        preleased: { lease, leaseToken, leaseMs: Date.now() - leaseStartedAt },
+      };
     });
   } catch (error) {
     const speculative = await speculativeBubble;
@@ -273,6 +302,7 @@ export async function handleRuntimeQueueMessage(
 
   const existingBubbleId = telegramHint(admitted.task.payload)?.liveMessageId;
   let liveMessageId = existingBubbleId;
+  let speculativeBubbleId: number | undefined;
   let createdBubbleId: number | undefined;
   if (!liveMessageId) {
     const mode = runtimeResponseMode(admitted.task.payload);
@@ -290,6 +320,7 @@ export async function handleRuntimeQueueMessage(
         ).catch(() => null);
     liveMessageId = live?.messageId;
     createdBubbleId = live?.messageId;
+    speculativeBubbleId = speculativeBubble ? live?.messageId : undefined;
     if (live && speculativeStatus && placeholder !== speculativeStatus) {
       await editMessageText(
         admitted.token,
@@ -299,27 +330,61 @@ export async function handleRuntimeQueueMessage(
       ).catch(() => {});
     }
   }
+  if (admitted.ahead > 0 && speculativeBubbleId && speculativeStatus) {
+    const queued = `⏳ In line (position #${admitted.ahead + 1}) — I'll answer right after the current request.`;
+    if (queued !== speculativeStatus) {
+      await editMessageText(
+        admitted.token,
+        message.incoming.chatId,
+        speculativeBubbleId,
+        queued,
+      ).catch(() => {});
+    }
+  }
 
-  const leaseToken = crypto.randomUUID();
+  const leaseToken = admitted.preleased?.leaseToken ?? crypto.randomUUID();
   const leaseStartedAt = Date.now();
-  let lease: LeaseResult;
+  let lease = admitted.preleased?.lease;
   try {
-    lease = await withTenant(env, message.businessId, async (tx) => {
-      if (liveMessageId && !existingBubbleId) {
-        await tx`update runtime_task
-           set payload = payload || jsonb_build_object('telegram',
-             coalesce(payload->'telegram', '{}'::jsonb) ||
-             jsonb_build_object('liveMessageId', ${liveMessageId}::int))
-         where id = ${admitted.task.id}`;
-      }
-      return leaseRuntimeTask(
+    if (!lease) {
+      lease = await withTenant(env, message.businessId, async (tx) => {
+        if (liveMessageId && !existingBubbleId) {
+          await tx`update runtime_task
+             set payload = payload || jsonb_build_object('telegram',
+               coalesce(payload->'telegram', '{}'::jsonb) ||
+               jsonb_build_object('liveMessageId', ${liveMessageId}::int))
+           where id = ${admitted.task.id}`;
+        }
+        return leaseRuntimeTask(
+          tx,
+          message.businessId,
+          admitted.task.id,
+          leaseToken,
+        );
+      });
+    } else if (liveMessageId && !existingBubbleId) {
+      /* Admission deliberately committed the lease without awaiting
+         Telegram. Persist the now-resolved bubble without leasing twice. */
+      await persistLiveMessageId(
+        env,
+        message.businessId,
+        admitted.task.id,
+        liveMessageId,
+      );
+    }
+  } catch (error) {
+    if (admitted.preleased) {
+      /* Admission already committed the lease. If the rare follow-up bubble
+         persist fails, release it before Queue retries; otherwise the intake
+         retry would see an ownerless leased task and acknowledge it forever. */
+      await withTenant(env, message.businessId, (tx) => deferRuntimeTask(
         tx,
         message.businessId,
         admitted.task.id,
         leaseToken,
-      );
-    });
-  } catch (error) {
+        { delaySeconds: 0 },
+      )).catch(() => {});
+    }
     /* A bubble sent just before a failed persist would otherwise become an
        orphan while Telegram retries the durable Queue event. */
     if (createdBubbleId) {
@@ -331,7 +396,11 @@ export async function handleRuntimeQueueMessage(
 
   const result = await handleRuntimeMessage(env, nextMessage, {
     ...options,
-    preleased: { lease, leaseToken, leaseMs: Date.now() - leaseStartedAt },
+    preleased: {
+      lease,
+      leaseToken,
+      leaseMs: admitted.preleased?.leaseMs ?? Date.now() - leaseStartedAt,
+    },
     telegramToken: admitted.token,
     liveMessageId,
     runtimeSnapshot: { value: admitted.runtime },
@@ -760,6 +829,7 @@ export async function handleRuntimeMessage(
               options.telegramToken,
               reusableMessageId,
             );
+            if (telegramDelivery === 'sent') latency('telegram_final_accepted');
             finalizedLiveBubble = telegramDelivery === 'sent' && Boolean(reusableMessageId);
           }
           /* A reused bubble is now the durable answer and must stay. When no
@@ -1046,6 +1116,11 @@ async function telegramLiveStream(
   return new TelegramLiveStream(token, telegram.chatId, {
     messageId: initialMessageId ?? telegram.liveMessageId,
     onMessageId: (messageId) => persistLiveMessageId(env, task.businessId, task.id, messageId),
+    onFirstTextPublished: () => telegramLatency(
+      'first_telegram_edit_accepted',
+      runtimeRequestedAt(task.payload),
+      { liveMessageId: initialMessageId ?? telegram.liveMessageId ?? null },
+    ),
   });
 }
 
@@ -1104,6 +1179,19 @@ function runtimeRequestedAt(payload: unknown): number | undefined {
   return value <= now + 60_000 && value >= now - 24 * 60 * 60 * 1_000
     ? value
     : undefined;
+}
+
+function telegramLatency(
+  stage: string,
+  requestedAtMs: number | undefined,
+  extra: Record<string, unknown> = {},
+): void {
+  console.info('[runtime-latency]', JSON.stringify({
+    stage,
+    ...(requestedAtMs === undefined ? {} : { requestElapsedMs: Date.now() - requestedAtMs }),
+    ...extra,
+    channel: 'telegram',
+  }));
 }
 
 function validTelegramIntake(

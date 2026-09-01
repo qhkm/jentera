@@ -167,11 +167,11 @@ test('starts one Hermes run for a valid leased Jentera task', async () => {
   });
 });
 
-test('uses low reasoning for quick business conversation', async () => {
+test('disables reasoning for quick business conversation', async () => {
   const response = await start(TASK, { responseMode: 'quick' });
   assert.equal(response.status, 202);
   assert.deepEqual(starts[0].model_options, {
-    reasoning: { enabled: true, effort: 'low' },
+    reasoning: { enabled: false },
   });
   assert.equal(starts[0].model, 'MiniMax-M3');
 });

@@ -255,12 +255,19 @@ describe('durable Hermes Telegram replies', () => {
     });
 
     await vi.waitFor(async () => {
-      const [{ tasks }] = await asOwner((sql) => sql<{ tasks: string }[]>`
-        select count(*)::text as tasks from runtime_task where business_id = ${A}`);
+      const [{ tasks, leased }] = await asOwner((sql) => sql<{
+        tasks: string;
+        leased: string;
+      }[]>`
+        select count(*)::text as tasks,
+               count(*) filter (where status = 'leased')::text as leased
+          from runtime_task where business_id = ${A}`);
       expect(tasks).toBe('1');
+      expect(leased).toBe('1');
     });
-    /* The transaction committed even though Telegram's network request is
-       deliberately unresolved: admission and placeholder I/O overlap. */
+    /* Creation and lease committed atomically even though Telegram's network
+       request is deliberately unresolved: no second lease transaction sits
+       between the bubble and model dispatch. */
     expect(sent).toHaveLength(0);
 
     releaseTelegram();

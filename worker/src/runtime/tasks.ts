@@ -166,10 +166,33 @@ export async function leaseRuntimeTask(
      and trip the partial unique index — but advisory locks live in shared
      memory, don't lock the parent row, and skip a business-table round trip.
      Existence is derived from the task row below. */
+  /* Keep lock acquisition as its own statement. If it waits for another
+     transaction, the next statement must get a fresh READ COMMITTED snapshot
+     and see the lease that just won; acquiring inside the UPDATE would retain
+     the pre-wait snapshot and could hit the one-lease unique index. */
   await tx`select pg_advisory_xact_lock(hashtextextended(${businessId}::text, 0))`;
 
-  /* Expired work is recoverable. Clear it before the unique active-
-     lease index decides whether this business may start something. */
+  return leaseRuntimeTaskWithBusinessLock(
+    tx,
+    businessId,
+    taskId,
+    leaseToken,
+    leaseSeconds,
+  );
+}
+
+/** Lease a task when the caller already holds this business's transaction-
+    scoped advisory lock. Queue-first Telegram admission uses this to create
+    and lease a fresh task in the same transaction instead of paying for a
+    second tenant transaction. Never call this without first acquiring the
+    exact hashtextextended(businessId::text, 0) lock. */
+export async function leaseRuntimeTaskWithBusinessLock(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+  leaseToken: string,
+  leaseSeconds = 300,
+): Promise<LeaseResult> {
   await tx`
     update runtime_task
        set status = 'failed', lease_token = null, lease_expires_at = null,
