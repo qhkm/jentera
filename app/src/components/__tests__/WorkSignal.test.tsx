@@ -1,38 +1,20 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-import { LiveWorkCard, OutcomeReceipt, WorkStatusBar } from '@/components/WorkSignal';
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { OutcomeReceipt, TypingBubble } from "@/components/WorkSignal";
 
-describe('real work signals', () => {
-  it('announces the current phase and keeps the audience visible', () => {
+describe("ask loading signals", () => {
+  it("announces live work as a typing bubble with three dots", () => {
     const { container } = render(
-      <WorkStatusBar state="working" title="Jentera is working" audience="Private" />,
+      <TypingBubble label="Jentera is working on this…" />,
     );
 
-    expect(screen.getByRole('status')).toHaveTextContent('Jentera is working');
-    expect(screen.getByText('Private')).toBeInTheDocument();
-    expect(container.querySelector('.work-pulse-working')).not.toBeNull();
-  });
-
-  it('shows progress as real named phases', () => {
-    render(
-      <LiveWorkCard
-        state="waking"
-        title="Starting securely"
-        detail="Starting your private agent"
-        audience="Private"
-        steps={[
-          { label: 'Request received', state: 'done' },
-          { label: 'Private agent ready', state: 'active' },
-          { label: 'Handling the task', state: 'next' },
-        ]}
-      />,
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Jentera is working on this…",
     );
-
-    expect(screen.getByRole('article', { name: 'Starting securely' })).toBeInTheDocument();
-    expect(screen.getByText('Private agent ready')).toBeInTheDocument();
+    expect(container.querySelectorAll(".typing i")).toHaveLength(3);
   });
 
-  it('turns completed work into an actionable evidence receipt', () => {
+  it("turns completed work into an actionable evidence receipt", () => {
     const openActivity = vi.fn();
     render(
       <OutcomeReceipt
@@ -46,8 +28,10 @@ describe('real work signals', () => {
       />,
     );
 
-    expect(screen.getByText('Used 3 confirmed business facts')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'View in Activity' }));
+    expect(
+      screen.getByText("Used 3 confirmed business facts"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View in Activity" }));
     expect(openActivity).toHaveBeenCalledOnce();
   });
 });
