@@ -345,6 +345,9 @@
      is up so the composer sits directly above it. */
   .chat-shell {
     height: calc(var(--vvh, 100dvh) - 128px);
+    /* Home-indicator devices: the fixed bottom nav grows by the safe-area
+       inset, so the chat area must give up the same amount. */
+    height: calc(var(--vvh, 100dvh) - 128px - env(safe-area-inset-bottom));
   }
   .kb-open .chat-shell {
     height: calc(var(--vvh, 100dvh) - 64px);
