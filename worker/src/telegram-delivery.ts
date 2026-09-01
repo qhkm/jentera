@@ -33,7 +33,8 @@ export async function deliverTelegramDraft(
   knownPolicy?: Policy,
   existingToken?: string,
   existingMessageId?: number,
-): Promise<'sent' | 'needs_approval' | 'blocked'> {
+  options: { onlyIfRunWorking?: boolean } = {},
+): Promise<'sent' | 'needs_approval' | 'blocked' | 'already_handled'> {
   const visibleText = sanitizePublicRuntimeText(text);
   const policy = knownPolicy ?? await withTenant(
     env,
@@ -41,13 +42,20 @@ export async function deliverTelegramDraft(
     (tx) => policyFor(tx, 'telegram', 'send_message'),
   );
 
-  await withTenant(env, businessId, (tx) =>
-    append(tx, businessId, runId, 'action.proposed', {
+  const deliveryClaimed = await withTenant(env, businessId, async (tx) => {
+    if (options.onlyIfRunWorking) {
+      const [row] = await tx<{ status: string }[]>`
+        select status from run where id = ${runId}`;
+      if (!row || row.status !== 'working') return false;
+    }
+    await append(tx, businessId, runId, 'action.proposed', {
       connector: 'telegram',
       op: 'send_message',
       chatId: incoming.chatId,
-    }),
-  );
+    });
+    return true;
+  });
+  if (!deliveryClaimed) return 'already_handled';
 
   if (policy === 'blocked') {
     await withTenant(env, businessId, async (tx) => {

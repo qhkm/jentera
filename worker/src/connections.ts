@@ -269,7 +269,13 @@ export async function verifyWebhook(
 
 export type TelegramWebhookAccess =
   | { ok: false; why: string }
-  | { ok: true; internalChat: number | null; token: string };
+  | {
+      ok: true;
+      internalChat: number | null;
+      token: string;
+      runtimeProvider: 'local' | 'fly-sprite' | null;
+      runtimeUrl: string | null;
+    };
 
 /** Authenticate Telegram and load the owner boundary plus bot credential in
  * one cross-region transaction. These values are all needed before Queue can
@@ -286,15 +292,21 @@ export async function telegramWebhookAccess(
     internal_scope: string | null;
     ciphertext: Uint8Array | null;
     key_version: number | null;
+    runtime_provider: 'local' | 'fly-sprite' | null;
+    runtime_url: string | null;
   }[]>`
     select c.webhook_secret, c.status,
            (
              select scope from unnest(coalesce(c.scopes, '{}'::text[])) as scope
               where scope like ${`${INTERNAL_CHAT_SCOPE}%`} limit 1
            ) as internal_scope,
-           cr.ciphertext, cr.key_version
+           cr.ciphertext, cr.key_version,
+           ar.provider as runtime_provider,
+           ar.provider_url as runtime_url
       from connection c
       left join credential cr on cr.connection_id = c.id
+      left join agent_runtime ar
+        on ar.business_id = c.business_id and ar.deleted_at is null
      where c.id = ${connectionId}`;
   const verdict = webhookVerdict(row, presented);
   if (!verdict.ok) return verdict;
@@ -305,6 +317,8 @@ export async function telegramWebhookAccess(
     ok: true,
     internalChat: internalChatFromScope(row.internal_scope),
     token: await open(env, row.ciphertext, row.key_version),
+    runtimeProvider: row.runtime_provider,
+    runtimeUrl: row.runtime_url,
   };
 }
 

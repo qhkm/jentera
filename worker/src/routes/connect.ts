@@ -66,6 +66,7 @@ export async function handleConnect(
   env: Env,
   url: URL,
   cors: Record<string, string>,
+  ctx?: Pick<ExecutionContext, 'waitUntil'>,
 ): Promise<Response | null> {
   /* ---- the webhook, before any auth ----------------------------------- */
 
@@ -86,7 +87,7 @@ export async function handleConnect(
     /^\/api\/webhooks\/telegram\/([0-9a-f-]{36})\/([0-9a-f-]{36})$/i,
   );
   if (hook && request.method === 'POST') {
-    return telegramWebhook(request, env, hook[1], hook[2]);
+    return telegramWebhook(request, env, hook[1], hook[2], ctx);
   }
 
   if (!url.pathname.startsWith('/api/connections')) return null;
@@ -282,6 +283,7 @@ async function telegramWebhook(
   env: Env,
   businessId: string,
   connectionId: string,
+  ctx?: Pick<ExecutionContext, 'waitUntil'>,
 ): Promise<Response> {
   const requestedAtMs = Date.now();
   const ok = new Response(null, { status: 200 });
@@ -403,11 +405,24 @@ async function telegramWebhook(
     return drop('agent admission limit exceeded');
   }
 
+  /* Hide a cold Sprite wake underneath the durable Queue handoff. The URL is
+     control-plane state loaded by the webhook's existing authenticated query,
+     so this adds no Neon round trip and never puts credentials on the Queue. */
+  if (ctx && access.runtimeProvider === 'fly-sprite' && access.runtimeUrl &&
+      env.SPRITES_TOKEN?.trim()) {
+    ctx.waitUntil(prewarmSprite(
+      access.runtimeUrl,
+      env.SPRITES_TOKEN,
+      requestedAtMs,
+    ));
+  }
+
   /* Queue first: once this resolves, the request survives this webhook
      invocation. Context retrieval and Postgres run/task admission happen in
      the consumer, not on Telegram's response path. */
   try {
     await handleIncoming(env, businessId, connectionId, incoming, token, requestedAtMs);
+    telegramWebhookLatency('intake_queued', requestedAtMs);
   } catch (e) {
     /* A 5xx deliberately asks Telegram to redeliver. Returning the usual 200
        after a failed Queue write would acknowledge and permanently lose the
@@ -419,6 +434,50 @@ async function telegramWebhook(
      durable admission transaction and creates the editable working bubble. */
   await sendTyping(token, incoming.chatId).catch(() => {});
   return ok;
+}
+
+async function prewarmSprite(
+  runtimeUrl: string,
+  token: string,
+  requestedAtMs: number,
+): Promise<void> {
+  let url: URL;
+  try {
+    url = new URL('/healthz', runtimeUrl);
+  } catch {
+    return;
+  }
+  /* Never forward the organization Sprite token to an arbitrary stored URL. */
+  if (url.protocol !== 'https:' ||
+      (url.hostname !== 'sprites.app' && !url.hostname.endsWith('.sprites.app'))) {
+    return;
+  }
+  try {
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(8_000),
+    });
+    telegramWebhookLatency(response.ok ? 'prewarm_ready' : 'prewarm_rejected', requestedAtMs, {
+      status: response.status,
+    });
+  } catch (error) {
+    telegramWebhookLatency('prewarm_failed', requestedAtMs, {
+      error: error instanceof Error ? error.name : 'unknown',
+    });
+  }
+}
+
+function telegramWebhookLatency(
+  stage: string,
+  requestedAtMs: number,
+  extra: Record<string, unknown> = {},
+): void {
+  console.info('[runtime-latency]', JSON.stringify({
+    stage,
+    requestElapsedMs: Date.now() - requestedAtMs,
+    ...extra,
+    channel: 'telegram',
+  }));
 }
 
 async function connectionView(

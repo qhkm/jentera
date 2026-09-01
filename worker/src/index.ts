@@ -61,7 +61,7 @@ interface ToolRequest {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const origin = request.headers.get('Origin');
     const headers = cors(env, origin);
     const url = new URL(request.url);
@@ -91,7 +91,7 @@ export default {
 
     /* Connections, and the Telegram webhook — the one route here that
        is called by someone other than our own frontend. */
-    const conn = await handleConnect(request, env, url, headers);
+    const conn = await handleConnect(request, env, url, headers, ctx);
     if (conn) return conn;
 
     const runtime = await handleRuntime(request, env, url, headers);

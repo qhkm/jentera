@@ -165,6 +165,7 @@ export async function handleRuntimeQueueMessage(
 ): Promise<RuntimeQueueMessageResult> {
   if (message.version === 1) return handleRuntimeMessage(env, message, options);
   if (!validTelegramIntake(message)) return { action: 'ack', reason: 'missing' };
+  telegramLatency('queue_received', message.requestedAtMs);
 
   const dedupeKey = `telegram:${message.connectionId}:${message.incoming.chatId}:` +
     `${message.incoming.messageId}`;
@@ -181,9 +182,13 @@ export async function handleRuntimeQueueMessage(
   try {
     admitted = await withTenant(env, message.businessId, async (tx) => {
       await tx`select pg_advisory_xact_lock(hashtextextended(${dedupeKey}, 0))`;
+      telegramLatency('admission_dedupe_lock_ready', message.requestedAtMs);
       const existing = await runtimeTaskByDedupeKey(tx, message.businessId, dedupeKey);
       const runtime = await getRuntime(tx, message.businessId);
       const token = await useCredential(env, tx, message.connectionId);
+      telegramLatency('admission_access_ready', message.requestedAtMs, {
+        duplicate: Boolean(existing),
+      });
       if (existing) {
         const ahead = existing.status === 'queued' || existing.status === 'failed'
           ? await runtimeQueuePosition(tx, message.businessId, existing.id)
@@ -210,6 +215,7 @@ export async function handleRuntimeQueueMessage(
       }).catch(() => null);
       const { facts, work } = await retrieveHermesContext(tx, message.incoming.text);
       const prepared = prepareHermesAgent(message.incoming.text, facts, work);
+      telegramLatency('admission_context_ready', message.requestedAtMs);
       const run = await startRun(tx, message.businessId, {
         kind: 'ask',
         triggerShape: 'owner.message.telegram',
@@ -222,6 +228,7 @@ export async function handleRuntimeQueueMessage(
         runtime: 'hermes-sprite',
         model,
       });
+      telegramLatency('admission_run_ready', message.requestedAtMs);
       /* From this point through lease, serialize with every ordinary Queue
          lease for the business. Do not await Telegram inside the transaction:
          durable admission must still commit if that network request stalls. */
@@ -252,6 +259,7 @@ export async function handleRuntimeQueueMessage(
           },
         },
       });
+      telegramLatency('admission_task_ready', message.requestedAtMs);
       const leaseToken = crypto.randomUUID();
       const leaseStartedAt = Date.now();
       const lease = await leaseRuntimeTaskWithBusinessLock(
@@ -265,6 +273,9 @@ export async function handleRuntimeQueueMessage(
       const ahead = lease.outcome === 'busy'
         ? await runtimeQueuePosition(tx, message.businessId, task.id)
         : 0;
+      telegramLatency('admission_lease_ready', message.requestedAtMs, {
+        leaseOutcome: lease.outcome,
+      });
       return {
         task,
         token,
@@ -273,6 +284,7 @@ export async function handleRuntimeQueueMessage(
         preleased: { lease, leaseToken, leaseMs: Date.now() - leaseStartedAt },
       };
     });
+    telegramLatency('admission_committed', message.requestedAtMs);
   } catch (error) {
     const speculative = await speculativeBubble;
     if (speculative) {
@@ -373,6 +385,9 @@ export async function handleRuntimeQueueMessage(
         liveMessageId,
       );
     }
+    telegramLatency('admission_bubble_ready', message.requestedAtMs, {
+      liveMessage: Boolean(liveMessageId),
+    });
   } catch (error) {
     if (admitted.preleased) {
       /* Admission already committed the lease. If the rare follow-up bubble
@@ -797,42 +812,36 @@ export async function handleRuntimeMessage(
         }
 
         const successful = outcome.remoteStatus === 'completed';
-        let telegramDelivery: 'sent' | 'needs_approval' | 'blocked' | undefined;
+        let telegramDelivery: 'sent' | 'needs_approval' | 'blocked' | 'already_handled' | undefined;
         let finalizedLiveBubble = false;
         if (successful && outcome.payload.telegram && lease.task.runId) {
-          const alreadyHandled = await withTenant(env, message.businessId, async (tx) => {
-            const [row] = await tx<{ status: string }[]>`
-              select status from run where id = ${lease.task.runId}`;
-            return row && row.status !== 'working';
-          });
-          if (!alreadyHandled) {
-            const telegram = outcome.payload.telegram;
-            const reusableMessageId = telegram.privateChat
-              ? liveStream?.handoffMessageId() ?? liveBubbleId
-              : undefined;
-            telegramDelivery = await deliverTelegramDraft(
-              env,
-              message.businessId,
-              telegram.connectionId,
-              lease.task.runId,
-              {
-                chatId: telegram.chatId,
-                messageId: telegram.messageId,
-                from: telegram.from,
-                text: telegram.question,
-              },
-              finalDurableText(
-                outcome.result,
-                outcome.payload.responseMode === 'quick' ? undefined : outcome.reasoning,
-              ),
-              outcome.payload.factKeys ?? [],
-              'automatic',
-              options.telegramToken,
-              reusableMessageId,
-            );
-            if (telegramDelivery === 'sent') latency('telegram_final_accepted');
-            finalizedLiveBubble = telegramDelivery === 'sent' && Boolean(reusableMessageId);
-          }
+          const telegram = outcome.payload.telegram;
+          const reusableMessageId = telegram.privateChat
+            ? liveStream?.handoffMessageId() ?? liveBubbleId
+            : undefined;
+          telegramDelivery = await deliverTelegramDraft(
+            env,
+            message.businessId,
+            telegram.connectionId,
+            lease.task.runId,
+            {
+              chatId: telegram.chatId,
+              messageId: telegram.messageId,
+              from: telegram.from,
+              text: telegram.question,
+            },
+            finalDurableText(
+              outcome.result,
+              outcome.payload.responseMode === 'quick' ? undefined : outcome.reasoning,
+            ),
+            outcome.payload.factKeys ?? [],
+            'automatic',
+            options.telegramToken,
+            reusableMessageId,
+            { onlyIfRunWorking: true },
+          );
+          if (telegramDelivery === 'sent') latency('telegram_final_accepted');
+          finalizedLiveBubble = telegramDelivery === 'sent' && Boolean(reusableMessageId);
           /* A reused bubble is now the durable answer and must stay. When no
              bubble could be reused (or another delivery already won), tidy
              up any remaining working message so it cannot freeze in chat. */

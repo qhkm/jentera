@@ -64,6 +64,7 @@ async function telegramHook(
   chatId: number,
   text: string,
   messageId = 1,
+  ctx?: Pick<ExecutionContext, 'waitUntil'>,
 ) {
   const url = new URL(`https://api.test/api/webhooks/telegram/${A}/${connectionId}`);
   const request = new Request(url, {
@@ -83,7 +84,7 @@ async function telegramHook(
       },
     }),
   });
-  const response = await handleConnect(request, env, url, cors);
+  const response = await handleConnect(request, env, url, cors, ctx);
   if (!response) throw new Error('Telegram webhook did not match');
   return response;
 }
@@ -653,6 +654,51 @@ describe('connections', () => {
 
     const intake = queued[0] as { requestedAtMs: number };
     expect(intake.requestedAtMs).toBeLessThan(limiterFinishedAt);
+  });
+
+  it('prewarms an existing Sprite without delaying the durable Queue handoff', async () => {
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      return new Response(url.endsWith('/healthz')
+        ? 'ok'
+        : JSON.stringify({ ok: true, result: { message_id: 99 } }));
+    });
+    vi.stubGlobal('fetch', fetch);
+    const paired = await pairTelegramChat(42);
+    fetch.mockClear();
+
+    await asTenant(A, (tx) => tx`
+      insert into agent_runtime
+        (business_id, provider, provider_name, provider_url, status, desired_release)
+      values
+        (${A}, 'fly-sprite', 'alpha-runtime', 'https://alpha.sprites.app',
+         'ready', '2026.09.01-5')`);
+    const queued: unknown[] = [];
+    env = automaticRuntimeEnv(async (message) => { queued.push(message); });
+    const background: Promise<unknown>[] = [];
+    const ctx = {
+      waitUntil(promise: Promise<unknown>) {
+        background.push(promise);
+      },
+    };
+
+    const response = await telegramHook(
+      paired.connectionId,
+      paired.secret,
+      42,
+      'Wake up while this queues',
+      33,
+      ctx,
+    );
+    expect(response.status).toBe(200);
+    expect(queued).toHaveLength(1);
+    expect(background).toHaveLength(1);
+    await Promise.all(background);
+
+    const prewarm = fetch.mock.calls.find(([input]) => String(input).endsWith('/healthz'));
+    expect(prewarm).toBeDefined();
+    expect(new Headers(prewarm?.[1]?.headers).get('Authorization'))
+      .toBe('Bearer sprite-test-token');
   });
 
   it('returns 503 when Queue is unavailable so Telegram redelivers the message', async () => {

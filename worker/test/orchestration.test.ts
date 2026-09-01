@@ -16,12 +16,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { asOwner, asTenant, testEnv, truncateAll } from './harness';
 import { handleIncoming } from '../src/routes/connect';
 import { saveConnection } from '../src/connections';
+import { deliverTelegramDraft } from '../src/telegram-delivery';
 import { recordFact } from '../src/facts';
 import type { Env } from '../src/env';
 import { markRuntimeReady } from '../src/agent-runtime';
 import { ensureProviderRuntime } from '../src/runtime/provision';
 import { handleRuntimeQueueMessage, LocalRuntimeProvider } from '../src/runtime';
 import type { RuntimeQueueMessage } from '../src/runtime';
+import { finishRun, startRun } from '../src/runs';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
@@ -188,6 +190,34 @@ describe('the private owner chat', () => {
       'action.executed',
       'work.completed',
     ]);
+  });
+
+  it('does not propose or send a terminal run during durable redelivery', async () => {
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask',
+      triggerShape: 'owner.message.telegram',
+      runtime: 'hermes-sprite',
+      model: 'MiniMax-M3',
+    }));
+    await asTenant(A, (tx) => finishRun(tx, A, run.id, 'completed'));
+
+    const result = await deliverTelegramDraft(
+      env,
+      A,
+      connId,
+      run.id,
+      incoming,
+      'This duplicate must not be sent.',
+      [],
+      'automatic',
+      undefined,
+      undefined,
+      { onlyIfRunWorking: true },
+    );
+
+    expect(result).toBe('already_handled');
+    expect(sent).toHaveLength(0);
+    expect(await trace()).not.toContain('action.proposed');
   });
 });
 
