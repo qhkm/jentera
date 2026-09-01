@@ -50,6 +50,29 @@ warn() { printf '⚠️  %s\n' "$*" >&2; note "$*"; }
 
 ts() { curl -s -m 15 -o /dev/null -w "%{http_code}" "$@" 2>/dev/null || true; }
 
+# macOS bash 3.2 has no `timeout` — run a command with a watchdog.
+# Usage: with_timeout <seconds> <cmd...>  → stdout is the command's stdout.
+# If the command outlives the budget it is killed; rc=124 → timeout.
+with_timeout() {
+  local secs=$1; shift
+  local tmp; tmp=$(mktemp)
+  "$@" >"$tmp" 2>/dev/null &
+  local pid=$!
+  local i=0
+  while kill -0 "$pid" 2>/dev/null && [[ $i -lt $((secs * 2)) ]]; do
+    sleep 0.5; i=$((i + 1))
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+    rm -f "$tmp"
+    return 124
+  fi
+  wait "$pid"
+  local rc=$?
+  cat "$tmp"; rm -f "$tmp"
+  return $rc
+}
+
 # ------------------------------------------------------------
 # 1. Frontend
 # ------------------------------------------------------------
@@ -90,13 +113,14 @@ CS=""
 if [[ -n "${AISAR_NEON_OWNER_URL:-}" ]]; then
   CS="$AISAR_NEON_OWNER_URL"
 elif command -v neonctl >/dev/null 2>&1; then
-  CS=$(neonctl connection-string --project-id "${AISAR_NEON_PROJECT_ID:-red-haze-10375483}" \
-       --role-name neondb_owner 2>/dev/null) || CS=""
+  CS=$(with_timeout 20 neonctl connection-string --project-id "${AISAR_NEON_PROJECT_ID:-red-haze-10375483}" \
+       --role-name neondb_owner) || CS=""
 fi
 if [[ -z "$CS" ]]; then
   fail "db: could not obtain Neon connection string (neonctl login or AISAR_NEON_OWNER_URL)"
 else
   export PGOPTIONS='-c default_transaction_read_only=on'
+  export PGCONNECT_TIMEOUT=10
   if psql "$CS" -X -q -tAc "select 1" 2>/dev/null | grep -qx 1; then
     pass "SELECT 1 → ok (read-only session)"
   else

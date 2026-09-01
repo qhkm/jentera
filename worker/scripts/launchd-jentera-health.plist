@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.kitakod.jentera-health</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/dr.noranizaahmad/ios/aisar-site/worker/scripts/health-alert.sh</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>900</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/dr.noranizaahmad/.hermes/logs/jentera-health-launchd.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/dr.noranizaahmad/.hermes/logs/jentera-health-launchd.err</string>
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>
