@@ -63,7 +63,12 @@ export default function AskJenteraView({
 
   useEffect(() => {
     stickToBottom();
-  }, [ask.messages.length, stickToBottom]);
+  }, [
+    ask.messages.length,
+    ask.messages.at(-1)?.state,
+    ask.messages.at(-1)?.text,
+    stickToBottom,
+  ]);
 
   /* The keyboard opening changes the thread's height without adding a
      message, so the effect above would not fire. */
