@@ -64,6 +64,7 @@ sprite file push -o "$sprite_org" -s "$sprite_name" -p \
   runner/src/server.mjs \
   runner/bin/browser-smoke.mjs \
   runner/bin/model-smoke.py \
+  runner/bin/web-search-smoke.py \
   runner/bin/configure-model-provider.py \
   runner/bin/patch-hermes-dependencies.mjs \
   runner/bin/hermes-service.sh \
