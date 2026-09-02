@@ -305,8 +305,9 @@ done
 #      runtime.env only after this — fail-closed: a broken display or driver
 #      can never be attested as ready.
 if [[ "$cua_enabled" == "1" ]]; then
-  DEBIAN_FRONTEND=noninteractive apt-get update -qq
-  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+  # The sprite user is non-root; apt-get needs sudo (passwordless on sprites).
+  DEBIAN_FRONTEND=noninteractive sudo apt-get update -qq
+  DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends \
     xvfb openbox dbus at-spi2-core x11-utils xdotool \
     >/dev/null
 
