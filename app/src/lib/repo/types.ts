@@ -78,6 +78,8 @@ export interface AskOptions {
   onProgress?: (progress: AskProgress) => void;
 }
 
+export type WorkQuality = 'good' | 'poor';
+
 export interface WorkSummary {
   id: string;
   runId: string | null;
@@ -88,6 +90,9 @@ export interface WorkSummary {
   channel: string | null;
   subject: string | null;
   minutesSaved: number | null;
+  /** Owner's verdict, null until they rate it. Sent with activity. */
+  outcomeQuality: WorkQuality | null;
+  qualityAt: string | null;
   occurredAt: string;
 }
 
@@ -234,6 +239,8 @@ export interface Repository {
   ingest(url: string): Promise<IngestResult>;
   /** What Jentera has actually done, and the counts Home shows. */
   activity(): Promise<Activity>;
+  /** Record the owner's verdict on a piece of work. */
+  rateWork(workId: string, quality: WorkQuality): Promise<void>;
   /** How much technical detail this person wants. */
   detailLevel(): Promise<'beginner' | 'advanced'>;
   setDetailLevel(level: 'beginner' | 'advanced'): Promise<void>;

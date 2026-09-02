@@ -44,6 +44,8 @@ const ONE_HANDLED: Activity = {
       channel: 'telegram',
       subject: 'qhkm',
       minutesSaved: 6,
+      outcomeQuality: null,
+      qualityAt: null,
       occurredAt: '2026-08-27T04:20:20.000Z',
     },
   ],

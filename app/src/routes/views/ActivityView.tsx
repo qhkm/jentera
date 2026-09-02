@@ -17,7 +17,7 @@ import { useT } from '@/i18n/I18nProvider';
 import { Icon, stripEmoji } from '@/components/Icon';
 import { OutcomeReceipt, type WorkSignalState } from '@/components/WorkSignal';
 import { useToast } from '@/components/Toast';
-import { useMutate, useRefresh, useSnapshot } from '@/lib/repo';
+import { useMutate, useRefresh, useSnapshot, type WorkQuality } from '@/lib/repo';
 import type { Approval, Business, Tone, WorkItem } from '@/lib/types';
 import type { useBusiness } from '@/hooks/useBusiness';
 
@@ -109,6 +109,16 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
     } catch (err) {
       toast((err as Error).message, 'error');
       return;
+    }
+  }
+
+  async function rateWork(workId: string, quality: WorkQuality) {
+    try {
+      await mutate((r) => r.rateWork(workId, quality));
+      toast(t('work.rate.thanks'), 'success');
+      void refresh();
+    } catch (err) {
+      toast((err as Error).message, 'error');
     }
   }
 
@@ -220,6 +230,48 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
                       <RunTrace runId={w.runId} />
                     </div>
                   </details>
+                )}
+
+                {/* Owner verdict — completed work only. The rating is
+                    the signal that tells Jentera whether this kind of
+                    task actually helped, so it shows on every finished
+                    receipt and can be changed later. */}
+                {w.status === 'completed' && (
+                  <div
+                    className="mt-2 flex items-center gap-2 border-t border-border/60 pt-2"
+                    role="group"
+                    aria-label={t('work.rate.prompt')}
+                  >
+                    <span className="text-[11px] text-text-muted">
+                      {t('work.rate.prompt')}
+                    </span>
+                    <button
+                      type="button"
+                      aria-pressed={w.outcomeQuality === 'good'}
+                      title={t('work.rate.good')}
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition-colors ${
+                        w.outcomeQuality === 'good'
+                          ? 'border-brand bg-brand/15 text-brand'
+                          : 'border-border text-text-muted hover:border-brand/60 hover:text-brand'
+                      }`}
+                      onClick={() => void rateWork(w.id, 'good')}
+                    >
+                      <Icon name="thumbsUp" size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={w.outcomeQuality === 'poor'}
+                      title={t('work.rate.poor')}
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition-colors ${
+                        w.outcomeQuality === 'poor'
+                          ? 'border-red-500 bg-red-500/15 text-red-500'
+                          : 'border-border text-text-muted hover:border-red-500/60 hover:text-red-500'
+                      }`}
+                      onClick={() => void rateWork(w.id, 'poor')}
+                    >
+                      <Icon name="thumbsDown" size={14} />
+                    </button>
+                  </div>
                 )}
               </OutcomeReceipt>
             ))}

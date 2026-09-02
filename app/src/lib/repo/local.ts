@@ -259,6 +259,11 @@ export class LocalRepository implements Repository {
     };
   }
 
+  async rateWork(): Promise<void> {
+    // The demo has no real work records, so there is nothing to rate.
+    throw new NeedsAccountError('Rating Jentera\'s work');
+  }
+
   async runtimeStatus(): Promise<RuntimeOverview> {
     return { runtime: null };
   }

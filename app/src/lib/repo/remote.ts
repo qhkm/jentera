@@ -25,6 +25,7 @@ import type {
   Theme,
   OnboardingCompletion,
   RuntimeOverview,
+  WorkQuality,
 } from './types';
 
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
@@ -373,6 +374,9 @@ export class RemoteRepository implements Repository {
   async activity(): Promise<Activity> {
     return call<Activity>('/api/runs/activity');
   }
+
+  rateWork = (workId: string, quality: WorkQuality) =>
+    post('/api/runs/quality', { workId, quality });
 
   reset = () => post('/api/state/reset');
 }

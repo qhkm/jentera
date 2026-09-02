@@ -59,6 +59,8 @@ import {
   Stethoscope,
   Storefront,
   Tent,
+  ThumbsDown,
+  ThumbsUp,
   UserCircle,
   Warning,
   Wrench,
@@ -83,6 +85,8 @@ const CHROME = {
   hint: Sparkle,
   plus: Plus,
   close: X,
+  thumbsUp: ThumbsUp,
+  thumbsDown: ThumbsDown,
 } satisfies Record<string, PhosphorIcon>;
 
 export type IconName = keyof typeof CHROME;
