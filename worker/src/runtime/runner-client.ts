@@ -52,6 +52,10 @@ export interface RunnerTaskResponse {
   response?: unknown;
   error?: unknown;
   activeTaskId?: string;
+  /** Runner-side admission stamp of the active task (epoch ms). Lets the
+      worker tell \"momentarily busy\" from a wedged slot that outlived its
+      age bound. */
+  activeTaskStartedAt?: number | null;
   usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
   toolMode?: string;
   webSearchBackend?: string;
@@ -80,7 +84,10 @@ export interface RunnerReadiness {
 /** The isolated runtime is still finishing an earlier task. This is normal
     backpressure, not a failed model attempt, and callers should poll shortly. */
 export class RuntimeBusyError extends Error {
-  constructor(readonly activeTaskId?: string) {
+  constructor(
+    readonly activeTaskId?: string,
+    readonly activeTaskStartedAt?: number | null,
+  ) {
     super('business runtime is busy');
     this.name = 'RuntimeBusyError';
   }
@@ -154,7 +161,12 @@ export class RunnerClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(task),
     }, [200, 202, 409]);
-    if (body.error === 'runtime_busy') throw new RuntimeBusyError(body.activeTaskId);
+    if (body.error === 'runtime_busy') {
+      throw new RuntimeBusyError(
+        body.activeTaskId,
+        typeof body.activeTaskStartedAt === 'number' ? body.activeTaskStartedAt : null,
+      );
+    }
     return body;
   }
 

@@ -17,6 +17,12 @@ const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped']);
 const BODY_LIMIT = 64 * 1024;
 const STREAM_TEXT_LIMIT = 64 * 1024;
 const STREAM_EVENT_LIMIT = 8 * 1024;
+/* L2: a task may hold the runner only for a bounded interval. Mixed with
+   Hermes's opaque run lifecycle, these caps turn any wedge (lost run, stuck
+   session, gateway restart) into a quarantined failure instead of a busy
+   lock that outlives the message that caused it. */
+const TASK_AGE_LIMIT_MS = Object.freeze({ quick: 15 * 60 * 1000, deep: 90 * 60 * 1000 });
+const WATCHDOG_INTERVAL_MS = 60 * 1000;
 const STREAM_THINK_LIMIT = 8 * 1024;
 const STREAM_TTL_MS = 5 * 60 * 1000;
 const HERMES_PATCH_ID = 'jentera-runtime-2026-09-01';
@@ -206,6 +212,24 @@ export function createRunner(input) {
   const streams = new SafeDeltaStreams(config);
   const keepalive = createSpriteKeepalive(process.env.SPRITE_API_SOCK);
   let admitting = false;
+  const watchdogMs = Number.isFinite(config.watchdogMs) ? config.watchdogMs : WATCHDOG_INTERVAL_MS;
+  if (watchdogMs > 0) {
+    /* L2: while warm, re-run slot reconciliation every minute so a dead or
+       expired task is quarantined even between requests. unref keeps test
+       processes and idle runtimes free to exit. */
+    const watchdog = setInterval(() => {
+      void activeTask(config, state)
+        .then((active) => {
+          if (active) {
+            console.warn(`[watchdog] slot held by ${active.taskId} (started ${active.startedAt ?? 'unknown'})`);
+          }
+        })
+        .catch((error) => {
+          console.error(JSON.stringify({ event: 'runner.watchdog.error', message: String(error?.message ?? error) }));
+        });
+    }, watchdogMs);
+    watchdog.unref?.();
+  }
 
   return createServer(async (req, res) => {
     try {
@@ -244,6 +268,10 @@ export function createRunner(input) {
         const detail = await hermes(config, '/health/detailed');
         const body = await responseJson(detail);
         const ready = detail.ok && readiness(body) && config.runnerSourceAttested;
+        /* Reconcile the slot on probe: a dead/expired task is quarantined
+           even when no new task arrives to trigger it (health checks hit
+           this endpoint periodically). */
+        const active = await activeTask(config, state);
         return json(res, ready ? 200 : 503, {
           ok: ready,
           release: config.release,
@@ -259,6 +287,18 @@ export function createRunner(input) {
             pid: process.pid,
             startedAt: RUNNER_STARTED_AT,
           },
+          activeTask: active
+            ? {
+                taskId: active.taskId,
+                status: active.status,
+                hermesRunId: active.hermesRunId,
+                startedAt: active.startedAt ?? null,
+                ageSeconds: typeof active.startedAt === 'number'
+                  ? Math.round((Date.now() - active.startedAt) / 1000)
+                  : null,
+                mode: active.responseMode === 'deep' ? 'deep' : 'quick',
+              }
+            : null,
           hermes: boundedReadiness(body),
           keepalive: keepalive.status(),
         });
@@ -291,6 +331,7 @@ export function createRunner(input) {
             ok: false,
             error: 'runtime_busy',
             activeTaskId: active?.taskId,
+            activeTaskStartedAt: typeof active?.startedAt === 'number' ? active.startedAt : null,
           });
         }
         admitting = true;
@@ -322,6 +363,8 @@ export function createRunner(input) {
             businessId: body.businessId,
             hermesRunId: result.run_id,
             status: typeof result.status === 'string' ? result.status : 'started',
+            responseMode: body.responseMode === 'deep' ? 'deep' : 'quick',
+            startedAt: Date.now(),
             leaseHash: hash(body.leaseToken),
             grantNonceHash: hash(grantClaims(body.toolGrant).nonce),
           });
@@ -349,13 +392,19 @@ export function createRunner(input) {
       if (taskPath && req.method === 'GET') {
         const saved = await state.get(taskPath[1]);
         if (!saved) return json(res, 404, { ok: false, error: 'task not found' });
+        const terminal = savedTerminalStatus(saved);
+        if (terminal) return json(res, 200, { ok: true, taskId: saved.taskId, ...terminal });
         const status = await hermes(config, `/v1/runs/${encodeURIComponent(saved.hermesRunId)}`);
         const result = await responseJson(status);
         if (!status.ok) {
-          const terminal = savedTerminalStatus(saved);
-          return terminal
-            ? json(res, 200, { ok: true, taskId: saved.taskId, ...terminal })
-            : json(res, 502, { ok: false, error: 'Hermes status failed' });
+          /* L1: an in-flight task whose run vanished can never finish through
+             Hermes. Quarantine it so the slot frees instead of returning 502
+             forever (the worker would otherwise retry until attempts exhaust). */
+          if (status.status === 404 || status.status === 410) {
+            const quarantined = await quarantine(state, saved, 'run vanished (Hermes returned not_found)');
+            return json(res, 200, { ok: true, taskId: saved.taskId, ...savedTerminalStatus(quarantined) });
+          }
+          return json(res, 502, { ok: false, error: 'Hermes status failed' });
         }
         const observed = await persistObservedStatus(state, saved, result);
         return json(res, 200, { ok: true, taskId: saved.taskId, ...observed });
@@ -365,13 +414,26 @@ export function createRunner(input) {
       if (stopPath && req.method === 'POST') {
         const saved = await state.get(stopPath[1]);
         if (!saved) return json(res, 404, { ok: false, error: 'task not found' });
+        /* Stopping a terminal record is a no-op success; never ask Hermes
+           about a run whose slot was already judged dead. */
+        const frozen = savedTerminalStatus(saved);
+        if (frozen) return json(res, 200, { ok: true, taskId: saved.taskId, ...frozen });
         const stopped = await hermes(
           config,
           `/v1/runs/${encodeURIComponent(saved.hermesRunId)}/stop`,
           { method: 'POST' },
         );
         const result = await responseJson(stopped);
-        if (!stopped.ok) return json(res, 502, { ok: false, error: 'Hermes stop failed' });
+        if (!stopped.ok) {
+          /* L1: a run Hermes no longer knows can never be stopped through
+             Hermes. Quarantine it so the slot frees and the caller sees a
+             terminal snapshot instead of a forever-502. */
+          if (stopped.status === 404 || stopped.status === 410) {
+            const quarantined = await quarantine(state, saved, 'run vanished (Hermes returned not_found)');
+            return json(res, 200, { ok: true, taskId: saved.taskId, ...savedTerminalStatus(quarantined) });
+          }
+          return json(res, 502, { ok: false, error: 'Hermes stop failed' });
+        }
         const observed = await persistObservedStatus(state, saved, result ?? { status: 'stopping' });
         return json(res, 200, { ok: true, taskId: saved.taskId, ...observed });
       }
@@ -415,6 +477,7 @@ export function configFromEnv(env = process.env) {
     deepModelName: env.AISAR_DEEP_MODEL_NAME,
     runnerSourceSha256: env.AISAR_RUNNER_SOURCE_SHA256,
     port: Number(env.PORT ?? 8080),
+    watchdogMs: Number(env.AISAR_RUNNER_WATCHDOG_MS ?? WATCHDOG_INTERVAL_MS),
   };
 }
 
@@ -459,15 +522,53 @@ function validated(config) {
   };
 }
 
-async function activeTask(config, state) {
+/** Persist a terminal failure that ends a task's hold on the runner slot.
+    Used for dead runs Hermes no longer knows and tasks that exhausted their
+    age bound; without this, a vanished run pins the runner busy forever. */
+async function quarantine(state, saved, reason) {
+  console.warn(`[quarantine] ${saved.taskId}: ${reason}`);
+  const terminal = { status: 'failed', error: reason };
+  await state.put(saved.taskId, {
+    ...saved,
+    status: 'failed',
+    terminal,
+    updated_at: Math.floor(Date.now() / 1000),
+  });
+  return { ...saved, status: 'failed', terminal };
+}
+
+async function activeTask(config, state, now = Date.now()) {
   for (const saved of await state.all()) {
-    if (TERMINAL.has(saved.status)) continue;
+    if (TERMINAL.has(saved.status) || savedTerminalStatus(saved)) continue;
+    /* L2: a task may hold the runner only for a bounded interval. Hermes
+       restarts, wedged sessions, and lost runs used to pin the runner busy
+       forever; the age bound punts any such state to quarantine on the next
+       check so a new task can always be admitted. */
+    const mode = saved.responseMode === 'deep' ? 'deep' : 'quick';
+    const ageLimit = TASK_AGE_LIMIT_MS[mode];
+    if (typeof saved.startedAt === 'number' && now - saved.startedAt > ageLimit) {
+      await quarantine(state, saved, `run exceeded the ${mode} age limit (${Math.round(ageLimit / 60000)}m)`);
+      continue;
+    }
     const response = await hermes(config, `/v1/runs/${encodeURIComponent(saved.hermesRunId)}`);
-    if (!response.ok) return saved;
+    if (!response.ok) {
+      /* L1: Hermes no longer knows the run (e.g. the gateway restarted and
+         lost it). A dead run must not pin the runner busy — quarantine gives
+         the same terminal grade a normal failure would, and frees the slot. */
+      if (response.status === 404 || response.status === 410) {
+        await quarantine(state, saved, 'run vanished (Hermes returned not_found)');
+        continue;
+      }
+      /* Transient Hermes failure: keep the slot held so a second run cannot
+         overlap, but the age bound above still bounds how long this lasts. */
+      return saved;
+    }
     const current = await responseJson(response);
     if (typeof current?.status === 'string') {
       const observed = await persistObservedStatus(state, saved, current);
-      if (!TERMINAL.has(observed.status)) return { ...saved, status: observed.status };
+      if (!TERMINAL.has(observed.status)) {
+        return { ...saved, status: observed.status, startedAt: saved.startedAt ?? null };
+      }
     } else {
       return saved;
     }
@@ -694,6 +795,12 @@ function boundedTaskStatus(result) {
     records independently of Jentera Queue redelivery; the task row is the
     durable bridge that keeps a finished answer recoverable after that 404. */
 async function persistObservedStatus(state, saved, result) {
+  /* A terminal record is frozen: once a run is completed, failed, or
+     quarantined, a later Hermes 200 must never resurrect it as running
+     (Hermes can keep answering for a run whose slot was already judged
+     dead). Serve the frozen snapshot. */
+  const already = savedTerminalStatus(saved);
+  if (already) return already;
   const observed = boundedTaskStatus(result);
   const status = typeof observed.status === 'string' ? observed.status : 'unknown';
   await state.put(saved.taskId, {

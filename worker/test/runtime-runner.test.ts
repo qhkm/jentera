@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { markRuntimeReady } from '../src/agent-runtime';
 import { startRun } from '../src/runs';
 import { handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
-import { RunnerClient } from '../src/runtime/runner-client';
+import { RunnerClient, RuntimeBusyError } from '../src/runtime/runner-client';
 import { enqueueRuntimeTask } from '../src/runtime/tasks';
 import { ensureProviderRuntime } from '../src/runtime/provision';
 import { reserveRuntimeUsage } from '../src/runtime/usage';
@@ -664,6 +664,46 @@ describe('RunnerClient capability attestation', () => {
   it('treats an empty expectation list as no requirement', async () => {
     const c = client([], baseReadyz);
     await expect(c.ready()).resolves.toEqual({ region: null, capabilities: [] });
+  });
+});
+
+describe('RunnerClient runtime_busy surfaces the admission stamp', () => {
+  function busyClient(body: unknown) {
+    return new RunnerClient({
+      origin: 'https://sprite.test',
+      runnerKey: 'r'.repeat(64),
+      fetch: async () => response(body, 409),
+    });
+  }
+
+  it('throws RuntimeBusyError carrying activeTaskId and activeTaskStartedAt', async () => {
+    const c = busyClient({
+      ok: false,
+      error: 'runtime_busy',
+      activeTaskId: 'a-busy-task',
+      activeTaskStartedAt: 1_760_000_000_000,
+    });
+    try {
+      await c.start({ businessId: A, taskId: '2'.repeat(36), leaseToken: 'lease', input: 'hi' } as never);
+      expect.unreachable('expected runtime_busy');
+    } catch (error) {
+      expect(error).toBeInstanceOf(RuntimeBusyError);
+      const busy = error as RuntimeBusyError;
+      expect(busy.activeTaskId).toBe('a-busy-task');
+      expect(busy.activeTaskStartedAt).toBe(1_760_000_000_000);
+    }
+  });
+
+  it('tolerates a legacy runner that omits the admission stamp', async () => {
+    const c = busyClient({ ok: false, error: 'runtime_busy', activeTaskId: 'a-busy-task' });
+    try {
+      await c.start({ businessId: A, taskId: '2'.repeat(36), leaseToken: 'lease', input: 'hi' } as never);
+      expect.unreachable('expected runtime_busy');
+    } catch (error) {
+      const busy = error as RuntimeBusyError;
+      expect(busy.activeTaskId).toBe('a-busy-task');
+      expect(busy.activeTaskStartedAt).toBeNull();
+    }
   });
 });
 

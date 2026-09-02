@@ -65,6 +65,12 @@ import { sanitizePublicRuntimeText } from './public-output';
 
 const MAX_TASK_ATTEMPTS = 5;
 const BUSY_RETRY_SECONDS = 2;
+/** L3: a runner slot held past this interval is wedged, not busy. The
+    runner-side watchdog quarantines dead/expired runs within its own age
+    bound (15m quick / 90m deep); if a slot is still held this long the
+    runner cannot see its own problem (Hermes hang, dead composer), so the
+    worker escalates: one stop call to free the slot, then terminal. */
+const MAX_BUSY_BLOCKED_MS = 30 * 60 * 1000;
 const TELEGRAM_FLOOD_DELAY_CAP_SECONDS = 60 * 60;
 const TELEGRAM_FLOOD_OWNER_NOTICE =
   '⏳ Telegram is rate-limiting this chat — your answer will appear as soon as it lifts.';
@@ -1006,19 +1012,50 @@ export async function handleRuntimeMessage(
     return { action: 'ack', reason: 'completed' };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
+    let busyExhausted = false;
     /* A runner can remain busy for a moment after the durable lease in the
        control plane is released. Poll it promptly without charging this as a
        failed attempt or imposing the generic 30-second retry penalty. */
     if (error instanceof RuntimeBusyError) {
-      const deferred = await withTenant(env, message.businessId, (tx) =>
-        deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
+      /* L4: stop escalation when the slot is wedged. Prefer the runner's own
+         admission stamp (it only moves when the slot rotates); fall back to
+         the task row's start for older runners without the field. */
+      const activeSince = typeof error.activeTaskStartedAt === 'number'
+        ? error.activeTaskStartedAt
+        : typeof lease.task.startedAt === 'number' ? lease.task.startedAt : null;
+      const wedged = activeSince !== null && Date.now() - activeSince >= MAX_BUSY_BLOCKED_MS;
+      if (wedged && error.activeTaskId) {
+        const stopped = await stopRuntimeTask(
+          env, message.businessId, error.activeTaskId, options.fetch,
+        ).catch(() => null);
+        if (stopped !== null) {
+          /* Escalation accepted: the runner quarantines/frees the old slot on
+             its next reconciliation. Requeue briefly so this task can take it. */
+          const deferred = await withTenant(env, message.businessId, (tx) =>
+            deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
+              delaySeconds: BUSY_RETRY_SECONDS,
+            }));
+          return {
+            action: 'requeue',
+            delaySeconds: BUSY_RETRY_SECONDS,
+            reason: deferred ? 'stopped wedged active runtime task' : 'runtime task lease was lost',
+          };
+        }
+        /* The runner accepted a task but cannot free its slot: grade this
+           terminal so the durable queue never stacks behind a dead runner. */
+        busyExhausted = true;
+      }
+      if (!busyExhausted) {
+        const deferred = await withTenant(env, message.businessId, (tx) =>
+          deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
+            delaySeconds: BUSY_RETRY_SECONDS,
+          }));
+        return {
+          action: 'requeue',
           delaySeconds: BUSY_RETRY_SECONDS,
-        }));
-      return {
-        action: 'requeue',
-        delaySeconds: BUSY_RETRY_SECONDS,
-        reason: deferred ? 'business runtime is busy' : 'runtime task lease was lost',
-      };
+          reason: deferred ? 'business runtime is busy' : 'runtime task lease was lost',
+        };
+      }
     }
     /* Telegram throttles chat traffic with a flood-wait ("Too Many Requests:
        retry after N"). Re-hammering near the edge of that window can escalate
@@ -1051,9 +1088,11 @@ export async function handleRuntimeMessage(
       return { action: 'requeue', delaySeconds, reason: `telegram flood-wait ${floodSeconds}s` };
     }
     const terminal = error instanceof RuntimeBudgetExceeded ||
-      lease.task.attempt + 1 >= MAX_TASK_ATTEMPTS;
+      lease.task.attempt + 1 >= MAX_TASK_ATTEMPTS ||
+      busyExhausted;
     if (terminal) {
       let measured: { inputTokens: number; outputTokens: number } | undefined;
+      const failureReason = busyExhausted ? 'runtime slot stayed busy too long' : reason;
       if (lease.task.kind === 'run' && lease.task.remoteRunId) {
         const stopped = await stopRuntimeTask(
           env, message.businessId, message.taskId, options.fetch,
@@ -1066,7 +1105,7 @@ export async function handleRuntimeMessage(
           message.businessId,
           message.taskId,
           leaseToken,
-          reason,
+          failureReason,
           Boolean(telegramHint(lease.task.payload)),
         );
         if (!changed) return false;
@@ -1091,9 +1130,27 @@ export async function handleRuntimeMessage(
         return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
       }
       /* Terminal — tidy the working bubble so the chat never sits on a
-         frozen "⏳ Working…" (the old draft lane at least expired). */
-      await deleteTelegramLiveBubble(env, message.businessId, lease.task, liveBubbleId)
-        .catch(() => {});
+         frozen "⏳ Working…" (the old draft lane at least expired). When the
+         runner slot wedged behind a busy task, say the service is
+         momentarily unavailable instead of silently deleting the bubble. */
+      let settled = false;
+      const payload = lease.task.payload as RunPayload | null | undefined;
+      const busyTelegram = busyExhausted ? payload?.telegram ?? null : null;
+      if (busyTelegram) {
+        settled = await settleFailedTelegramBubble(
+          env,
+          message.businessId,
+          busyTelegram,
+          'runtime temporarily busy',
+          null,
+          liveBubbleId,
+          options.telegramToken,
+        ).catch(() => false);
+      }
+      if (!settled) {
+        await deleteTelegramLiveBubble(env, message.businessId, lease.task, liveBubbleId)
+          .catch(() => {});
+      }
       if (lease.task.kind === 'run' && lease.task.runId) {
         await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'failed');
       }

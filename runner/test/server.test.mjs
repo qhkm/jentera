@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHmac, randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -57,6 +57,7 @@ beforeEach(async () => {
       return res.end();
     }
     if (req.method === 'POST' && req.url?.endsWith('/stop')) {
+      if (hermesRunMissing) return reply(res, 404, { error: 'run not found' });
       hermesStatus = 'stopping';
       return reply(res, 200, { status: 'stopping' });
     }
@@ -344,6 +345,83 @@ test('streams Hermes-visible assistant, tool, and bounded thinking events withou
     state,
     /Hello|Hermes|execute_code|urllib|chain of thought|terminal transcript|inline private reasoning|Safe answer/,
   );
+});
+
+test('quarantines a run Hermes no longer knows so a new task can start', async () => {
+  await start(TASK);
+  assert.equal((await start(TASK_2)).status, 409);
+
+  /* Hermes restarts and loses the in-flight run — exactly the production
+     wedge. The next admission check must quarantine it instead of staying
+     busy forever. */
+  hermesRunMissing = true;
+  assert.equal((await start(TASK_2)).status, 202);
+  assert.equal(starts.length, 2);
+
+  const status = await (await call(`/v1/tasks/${TASK}`)).json();
+  assert.equal(status.status, 'failed');
+  assert.match(status.error, /vanished/);
+
+  const state = JSON.parse(await readFile(join(directory, 'state.json'), 'utf8'));
+  assert.equal(state.tasks[TASK].status, 'failed');
+  assert.equal(state.tasks[TASK].terminal.error, 'run vanished (Hermes returned not_found)');
+});
+
+test('a 409 surfaces the active task startedAt and an aged task is quarantined', async () => {
+  await start(TASK);
+  const busy = await start(TASK_2);
+  assert.equal(busy.status, 409);
+  const busyBody = await busy.json();
+  assert.equal(busyBody.error, 'runtime_busy');
+  assert.equal(busyBody.activeTaskId, TASK);
+  assert.equal(typeof busyBody.activeTaskStartedAt, 'number');
+  assert.ok(busyBody.activeTaskStartedAt <= Date.now());
+
+  /* L2: a slot held beyond its age bound is quarantined even though Hermes
+     still reports the run running. */
+  const stateFile = join(directory, 'state.json');
+  const state = JSON.parse(await readFile(stateFile, 'utf8'));
+  state.tasks[TASK].startedAt = Date.now() - 20 * 60 * 1000; /* quick bound: 15m */
+  await writeFile(stateFile, JSON.stringify(state));
+
+  assert.equal((await start(TASK_2)).status, 202);
+  const status = await (await call(`/v1/tasks/${TASK}`)).json();
+  assert.equal(status.status, 'failed');
+  assert.match(status.error, /age limit/);
+});
+
+test('readyz reconciles the slot and reports the active task', async () => {
+  await start(TASK);
+  const ready = await (await call('/readyz')).json();
+  /* No runner source attestation in the test config, so readiness is 503 —
+     but the runner still reconciles and reports the slot. */
+  assert.equal(ready.activeTask.taskId, TASK);
+  assert.equal(ready.activeTask.status, 'running');
+  assert.equal(typeof ready.activeTask.startedAt, 'number');
+  assert.equal(typeof ready.activeTask.ageSeconds, 'number');
+  assert.equal(ready.activeTask.mode, 'quick');
+
+  hermesRunMissing = true;
+  const after = await (await call('/readyz')).json();
+  assert.equal(after.activeTask, null);
+});
+
+test('stop on an orphaned run quarantines instead of failing forever', async () => {
+  await start(TASK);
+  hermesRunMissing = true;
+
+  const stopped = await call(`/v1/tasks/${TASK}/stop`, { method: 'POST' });
+  assert.equal(stopped.status, 200);
+  const body = await stopped.json();
+  assert.equal(body.status, 'failed');
+  assert.match(body.error, /vanished/);
+
+  /* The slot is free again — a fresh task is admitted right away. */
+  assert.equal((await start(TASK_2)).status, 202);
+
+  const state = JSON.parse(await readFile(join(directory, 'state.json'), 'utf8'));
+  assert.equal(state.tasks[TASK].status, 'failed');
+  assert.equal(state.tasks[TASK].terminal.error, 'run vanished (Hermes returned not_found)');
 });
 
 const call = (path, init = {}) => fetch(`${runnerOrigin}${path}`, {
