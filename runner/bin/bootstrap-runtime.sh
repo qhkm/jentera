@@ -154,17 +154,38 @@ fi
 # GHSA-2v37-7h3g-55p8. Apply the narrow patched release without allowing a
 # broad audit fix to rewrite unrelated dependencies, then make future high
 # severity production advisories a release-blocking event.
-/.sprite/bin/node /home/sprite/aisar/runner/patch-hermes-dependencies.mjs "$install_dir"
-(
-  cd "$install_dir"
-  npm install --ignore-scripts --no-audit --no-fund
-)
-/.sprite/bin/node /home/sprite/aisar/runner/patch-hermes-dependencies.mjs \
-  "$install_dir" --verify
-(
-  cd "$install_dir"
-  npm audit --omit=dev --audit-level=high
-)
+# A recycled runtime (same pinned commit with an intact dependency tree) can
+# skip the reinstall only when every patched artifact is provably in place:
+# `--verify` reads files the patch itself rewrites, so it cannot prove npm
+# reconciled node_modules — the installed nanoid manifest must carry 3.3.18
+# too. Any drift falls through to the full apply + install + audit path
+# (fail closed). The audit gate is skipped only for trees that already passed
+# audit at a reviewed release pin; a newly published advisory is handled by
+# bumping HERMES_COMMIT, which forces this full path.
+patch_only=false
+if [[ "$installed_commit" == "$hermes_commit" && -d "$install_dir/node_modules" ]]; then
+  nanoid_manifest="$install_dir/node_modules/nanoid/package.json"
+  if [[ -r "$nanoid_manifest" ]] && grep -q '"version": "3.3.18"' "$nanoid_manifest" &&
+      /.sprite/bin/node /home/sprite/aisar/runner/patch-hermes-dependencies.mjs \
+        "$install_dir" --verify >/dev/null 2>&1; then
+    patch_only=true
+  fi
+fi
+if [[ "$patch_only" == "true" ]]; then
+  echo "reusing existing Hermes dependency tree (commit matched, nanoid 3.3.18 verified)"
+else
+  /.sprite/bin/node /home/sprite/aisar/runner/patch-hermes-dependencies.mjs "$install_dir"
+  (
+    cd "$install_dir"
+    npm install --ignore-scripts --no-audit --no-fund
+  )
+  /.sprite/bin/node /home/sprite/aisar/runner/patch-hermes-dependencies.mjs \
+    "$install_dir" --verify
+  (
+    cd "$install_dir"
+    npm audit --omit=dev --audit-level=high
+  )
+fi
 
 # A terminated installer can leave the pinned Git commit and node_modules in
 # place before Playwright downloads Chromium. The commit alone is therefore
@@ -249,27 +270,12 @@ smoke_models=("$model_name")
 if [[ "$deep_model_name" != "$model_name" ]]; then
   smoke_models+=("$deep_model_name")
 fi
-for smoke_model in "${smoke_models[@]}"; do
-  model_ready=false
-  for _attempt in 1 2 3; do
-    if OPENROUTER_BASE_URL="$model_base" OPENROUTER_API_KEY="$model_key" \
-        AISAR_MODEL_NAME="$smoke_model" \
-        "$hermes_python" /home/sprite/aisar/runner/model-smoke.py; then
-      model_ready=true
-      break
-    fi
-    sleep 2
-  done
-  [[ "$model_ready" == "true" ]] || {
-    echo "model inference did not pass its live smoke test" >&2
-    exit 1
-  }
-done
 
 # The pinned Hermes release supports DDGS as its keyless production search
 # provider, but does not install the optional package in its base environment.
 # Pin it as part of this immutable Jentera release, then prove both import and
-# a real search before the runtime can be checkpointed or marked ready.
+# a real search before the runtime can be checkpointed or marked ready. The
+# install must finish before the web-search smoke, so it stays serial.
 hermes_uv=/home/sprite/.hermes/bin/uv
 [[ -x "$hermes_uv" ]] || {
   echo "Hermes managed uv is unavailable" >&2
@@ -278,19 +284,57 @@ hermes_uv=/home/sprite/.hermes/bin/uv
 UV_NO_CONFIG=1 UV_NO_PROGRESS=1 "$hermes_uv" pip install \
   --python "$install_dir/venv/bin/python" 'ddgs==9.16.0'
 UV_NO_CONFIG=1 "$hermes_uv" pip check --python "$install_dir/venv/bin/python"
-web_search_ready=false
-for _attempt in 1 2 3; do
-  if timeout --foreground -k 5 45 \
-      "$install_dir/venv/bin/python" /home/sprite/aisar/runner/web-search-smoke.py; then
-    web_search_ready=true
-    break
-  fi
-  sleep 2
+
+# The remaining live smokes are independent (separate endpoint contracts) and
+# form the slowest serial tail of a cold provision (~1–2 min). Run them
+# concurrently: one job per configured model, one for web search, one for the
+# browser, and — when enabled — one for the computer-use doctor. Each job
+# writes its own log under /tmp so failures stay attributable.
+smoke_log_dir="$(mktemp -d /tmp/aisar-smoke.XXXXXX)"
+smoke_pids=()
+smoke_labels=()
+
+for smoke_model in "${smoke_models[@]}"; do
+  (
+    model_ready=false
+    for _attempt in 1 2 3; do
+      if OPENROUTER_BASE_URL="$model_base" OPENROUTER_API_KEY="$model_key" \
+          AISAR_MODEL_NAME="$smoke_model" \
+          "$hermes_python" /home/sprite/aisar/runner/model-smoke.py \
+          >"$smoke_log_dir/model-${smoke_model//\//_}.log" 2>&1; then
+        model_ready=true
+        break
+      fi
+      sleep 2
+    done
+    [[ "$model_ready" == "true" ]]
+  ) &
+  smoke_pids+=("$!")
+  smoke_labels+=("model: $smoke_model")
 done
-[[ "$web_search_ready" == "true" ]] || {
-  echo "Hermes web search did not pass its live smoke test" >&2
-  exit 1
-}
+
+(
+  web_search_ready=false
+  for _attempt in 1 2 3; do
+    if timeout --foreground -k 5 45 \
+        "$install_dir/venv/bin/python" /home/sprite/aisar/runner/web-search-smoke.py \
+        >"$smoke_log_dir/web-search.log" 2>&1; then
+      web_search_ready=true
+      break
+    fi
+    sleep 2
+  done
+  [[ "$web_search_ready" == "true" ]]
+) &
+smoke_pids+=("$!")
+smoke_labels+=("web-search")
+
+(
+  /.sprite/bin/node /home/sprite/aisar/runner/browser-smoke.mjs \
+    >"$smoke_log_dir/browser.log" 2>&1
+) &
+smoke_pids+=("$!")
+smoke_labels+=("browser")
 
 # Optional capability: computer use. Gated by CUA_ENABLED_B64=1 in the
 # operator handoff — the toolset is added to config.yaml only when requested
@@ -343,24 +387,46 @@ if [[ "$cua_enabled" == "1" ]]; then
   rm -f "$cua_tarball"
   trap 'rm -f "$incoming"' EXIT
 
-  cua_doctor_ready=false
-  for _attempt in 1 2 3; do
-    if timeout --foreground -k 5 120 \
-        dbus-run-session -- xvfb-run -a \
-        "$install_dir/venv/bin/hermes" computer-use doctor >/dev/null 2>&1; then
-      cua_doctor_ready=true
-      break
-    fi
-    sleep 2
-  done
-  [[ "$cua_doctor_ready" == "true" ]] || {
-    echo "Hermes computer-use doctor did not pass its live smoke test" >&2
-    exit 1
-  }
-  # Attest the capability only now that the display stack and driver have
-  # been proven on this exact bootstrap run.
-  printf 'AISAR_CUA_ENABLED=%q\n' '1' >> "$runtime_env"
+  (
+    cua_doctor_ready=false
+    for _attempt in 1 2 3; do
+      if timeout --foreground -k 5 120 \
+          dbus-run-session -- xvfb-run -a \
+          "$install_dir/venv/bin/hermes" computer-use doctor \
+          >"$smoke_log_dir/cua-doctor.log" 2>&1; then
+        cua_doctor_ready=true
+        break
+      fi
+      sleep 2
+    done
+    [[ "$cua_doctor_ready" == "true" ]] || exit 1
+    # Attest the capability only now that the display stack and driver have
+    # been proven on this exact bootstrap run.
+    printf 'AISAR_CUA_ENABLED=%q\n' '1' >> "$runtime_env"
+  ) &
+  smoke_pids+=("$!")
+  smoke_labels+=("cua")
 fi
+
+failed_smokes=()
+for index in "${!smoke_pids[@]}"; do
+  if ! wait "${smoke_pids[$index]}"; then
+    failed_smokes+=("${smoke_labels[$index]}")
+  fi
+done
+if [[ "${#failed_smokes[@]}" -gt 0 ]]; then
+  for label in "${failed_smokes[@]}"; do
+    case "$label" in
+      model:*) echo "model inference did not pass its live smoke test: ${label#model: }" >&2 ;;
+      web-search) echo "Hermes web search did not pass its live smoke test" >&2 ;;
+      browser) echo "Chromium browser smoke did not pass" >&2 ;;
+      cua) echo "Hermes computer-use doctor did not pass its live smoke test" >&2 ;;
+    esac
+  done
+  echo "smoke logs: $smoke_log_dir" >&2
+  exit 1
+fi
+rm -rf "$smoke_log_dir"
 
 services=(aisar-runner hermes)
 if [[ "$cua_enabled" == "1" ]]; then
@@ -410,7 +476,6 @@ done
   exit 1
 }
 
-/.sprite/bin/node /home/sprite/aisar/runner/browser-smoke.mjs >/dev/null
 checkpoint_created=false
 if [[ "${AISAR_BOOTSTRAP_CONTROL_PLANE:-0}" != "1" ]]; then
   sprite-env checkpoints create --comment "Jentera runtime $runtime_release ready" >/dev/null
