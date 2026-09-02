@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { markRuntimeReady } from '../src/agent-runtime';
 import { startRun } from '../src/runs';
 import { handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
+import { RunnerClient } from '../src/runtime/runner-client';
 import { enqueueRuntimeTask } from '../src/runtime/tasks';
 import { ensureProviderRuntime } from '../src/runtime/provision';
 import { reserveRuntimeUsage } from '../src/runtime/usage';
@@ -582,6 +583,87 @@ describe('durable Hermes run delivery', () => {
       lease_token: 'concurrent-worker',
       usage_status: 'reserved',
     });
+  });
+});
+
+describe('RunnerClient capability attestation', () => {
+  const baseReadyz = {
+    ok: true,
+    release: '2026.09.01-3',
+    runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+    hermes: { jenteraPatch: 'jentera-runtime-2026-09-01' },
+    toolMode: 'full-tools',
+    webSearchBackend: 'ddgs',
+    edgeAuthorizationForwarded: false,
+  };
+
+  function client(expectedCapabilities: string[] | undefined, body: unknown) {
+    return new RunnerClient({
+      origin: 'https://sprite.test',
+      runnerKey: 'r'.repeat(64),
+      expectedCapabilities,
+      fetch: async () => response(body),
+    });
+  }
+
+  it('returns the capabilities attested on /readyz', async () => {
+    const c = client(undefined, {
+      ...baseReadyz,
+      region: 'sin',
+      capabilities: ['computer_use'],
+    });
+    await expect(c.ready()).resolves.toEqual({
+      region: 'sin',
+      capabilities: ['computer_use'],
+    });
+  });
+
+  it('accepts a runtime that attests every expected capability', async () => {
+    const c = client(['computer_use'], {
+      ...baseReadyz,
+      capabilities: ['computer_use', 'web_search'],
+    });
+    await expect(c.ready()).resolves.toEqual({
+      region: null,
+      capabilities: ['computer_use', 'web_search'],
+    });
+  });
+
+  it('fails closed when a required capability is missing from the attested list', async () => {
+    const c = client(['computer_use'], { ...baseReadyz, capabilities: [] });
+    await expect(c.ready())
+      .rejects.toThrow('runner did not attest the computer_use capability');
+  });
+
+  it('fails closed when readyz carries no capabilities field at all', async () => {
+    const c = client(['computer_use'], baseReadyz);
+    await expect(c.ready())
+      .rejects.toThrow('runner did not attest the computer_use capability');
+  });
+
+  it('names the first expected capability that was not attested', async () => {
+    const c = client(['computer_use', 'web_search'], {
+      ...baseReadyz,
+      capabilities: ['computer_use'],
+    });
+    await expect(c.ready())
+      .rejects.toThrow('runner did not attest the web_search capability');
+  });
+
+  it('filters non-string capability entries before attestation', async () => {
+    const c = client(['computer_use'], {
+      ...baseReadyz,
+      capabilities: ['computer_use', 42, null, { id: 'web_search' }],
+    });
+    await expect(c.ready()).resolves.toEqual({
+      region: null,
+      capabilities: ['computer_use'],
+    });
+  });
+
+  it('treats an empty expectation list as no requirement', async () => {
+    const c = client([], baseReadyz);
+    await expect(c.ready()).resolves.toEqual({ region: null, capabilities: [] });
   });
 });
 

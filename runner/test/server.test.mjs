@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
-import { createRunner } from '../src/server.mjs';
+import { createRunner, configFromEnv } from '../src/server.mjs';
 
 const BUSINESS = '11111111-1111-4111-8111-111111111111';
 const TASK = '22222222-2222-4222-8222-222222222222';
@@ -83,6 +83,7 @@ beforeEach(async () => {
     release: '2026.08.27-1',
     toolMode: 'full-tools',
     webSearchBackend: 'ddgs',
+    capabilities: ['computer_use'],
     modelName: 'MiniMax-M3',
     deepModelName: 'deepseek-v4-flash',
     stateFile: join(directory, 'state.json'),
@@ -105,6 +106,7 @@ test('liveness reveals no credential and requires no runner key', async () => {
     release: '2026.08.27-1',
     toolMode: 'full-tools',
     webSearchBackend: 'ddgs',
+    capabilities: ['computer_use'],
     keepalive: {
       held: false,
       task: 'jentera-always-on',
@@ -127,6 +129,7 @@ test('detailed readiness requires the per-runtime key', async () => {
   assert.equal(typeof body.runner.pid, 'number');
   assert.match(body.runner.startedAt, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal(body.webSearchBackend, 'ddgs');
+  assert.deepEqual(body.capabilities, ['computer_use']);
   assert.equal(body.edgeAuthorizationForwarded, false);
   assert.equal(body.region, null);
 
@@ -149,6 +152,34 @@ test('readiness rejects a healthy orphan that did not load the Jentera Hermes pa
   const body = await response.json();
   assert.equal(body.ok, false);
   assert.equal(body.hermes.jenteraPatch, undefined);
+});
+
+test('refuses to attest an unapproved capability', () => {
+  assert.throws(
+    () =>
+      createRunner({
+        businessId: BUSINESS,
+        runnerKey: RUNNER_KEY,
+        hermesKey: HERMES_KEY,
+        hermesOrigin: 'http://127.0.0.1:8642',
+        release: '2026.08.27-1',
+        toolMode: 'full-tools',
+        webSearchBackend: 'ddgs',
+        capabilities: ['teleport'],
+        modelName: 'MiniMax-M3',
+        deepModelName: 'deepseek-v4-flash',
+        stateFile: join(directory, 'state.json'),
+      }),
+    /unknown runtime capability/,
+  );
+});
+
+test('capabilities derive from the bootstrap-owned env contract', () => {
+  const base = { AISAR_BUSINESS_ID: BUSINESS, AISAR_RUNNER_KEY: RUNNER_KEY, AISAR_TOOL_MODE: 'full-tools' };
+  assert.deepEqual(configFromEnv({ ...base }).capabilities, []);
+  assert.deepEqual(configFromEnv({ ...base, AISAR_CUA_ENABLED: '1' }).capabilities, ['computer_use']);
+  // Any value other than exactly "1" fails closed.
+  assert.deepEqual(configFromEnv({ ...base, AISAR_CUA_ENABLED: 'true' }).capabilities, []);
 });
 
 test('starts one Hermes run for a valid leased Jentera task', async () => {

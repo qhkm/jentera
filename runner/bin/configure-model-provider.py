@@ -13,9 +13,14 @@ from toolsets import resolve_toolset
 
 
 def main() -> None:
-    if len(sys.argv) != 5:
-        raise SystemExit("usage: configure-model-provider.py PROVIDER BASE_URL MODEL KEY_ENV")
-    provider, base_url, model_name, key_env = (value.strip() for value in sys.argv[1:])
+    if len(sys.argv) not in (5, 6):
+        raise SystemExit(
+            "usage: configure-model-provider.py PROVIDER BASE_URL MODEL KEY_ENV [CUA_ENABLED]"
+        )
+    provider, base_url, model_name, key_env = (value.strip() for value in sys.argv[1:5])
+    cua_enabled = sys.argv[5].strip() if len(sys.argv) == 6 else ""
+    if cua_enabled not in ("", "0", "1"):
+        raise SystemExit("CUA_ENABLED must be 0 or 1")
     parsed = urlparse(base_url)
     if provider != "openrouter":
         raise SystemExit("only the reviewed OpenRouter provider is allowed")
@@ -76,6 +81,18 @@ def main() -> None:
     # explicitly as the pinned resolver's opt-in signal (its own credential
     # check still controls whether schemas register at runtime).
     platform_toolsets["api_server"] = ["hermes-api-server", "homeassistant"]
+    # Computer use is an operator-granted capability (CUA_ENABLED=1 in the
+    # bootstrap handoff). It is not part of the API-server composite, so it is
+    # added explicitly when granted. Production always pins `bounded`
+    # permissions — the POC's `unrestricted` value is dev-only — and disables
+    # cua-driver telemetry. Destructive key combinations are hard-blocked by
+    # the pinned Hermes release regardless of this value.
+    if cua_enabled == "1":
+        platform_toolsets["api_server"].append("computer_use")
+        config["computer_use"] = {
+            "cua_telemetry": False,
+            "permissions": "bounded",
+        }
     config["platform_toolsets"] = platform_toolsets
 
     agent = dict(config.get("agent") or {})
@@ -92,6 +109,8 @@ def main() -> None:
     config["gateway"] = gateway
 
     expected_tools = set(resolve_toolset("hermes-api-server"))
+    if cua_enabled == "1":
+        expected_tools |= set(resolve_toolset("computer_use"))
     resolved_toolsets = set(_get_platform_tools(config, "api_server"))
     resolved_tools = {
         tool

@@ -8,6 +8,8 @@ import { afterEach, test } from 'node:test';
 const SCRIPT = new URL('../bin/bootstrap-runtime.sh', import.meta.url).pathname;
 const CONFIGURE = new URL('../bin/configure-model-provider.py', import.meta.url).pathname;
 const HERMES_SERVICE = new URL('../bin/hermes-service.sh', import.meta.url).pathname;
+const PROVISION = new URL('../bin/provision-sprite.sh', import.meta.url).pathname;
+const DISPLAY_SERVICE = new URL('../bin/display-service.sh', import.meta.url).pathname;
 const directories = [];
 
 afterEach(async () => {
@@ -95,6 +97,50 @@ test('model configuration favors DS4 agent quality and tool compatibility', asyn
   assert.doesNotMatch(source, /provider_routing\["sort"\] = "latency"/);
 });
 
+test('computer use is gated, pinned, and proven before the runtime attests it', async () => {
+  const source = await readFile(SCRIPT, 'utf8');
+  // The transfer field is optional and defaults to disabled; only `1` enables
+  // the capability on this sprite.
+  assert.match(source, /CUA_ENABLED_B64\) CUA_ENABLED_B64="\$value" ;;/
+  );
+  assert.match(source, /\$\{CUA_ENABLED_B64:-\}/);
+  assert.match(source, /\[\[ "\$cua_enabled" =~ \^\(0\|1\)\?\$ \]\]/);
+
+  // Stack + driver are pinned and verified, never fetched from a script.
+  assert.match(source, /cua-driver-rs-v0\.23\.2/);
+  assert.match(source, /01bf8339ec129cc00f4b4b2c6056ef1a7c5b52df39ff83ad17c9b16818aec500/);
+  assert.match(source, /be22768a207796a4bc1de50c52f32f9ef680b5e86e58c059e02eec2caba2e7bb/);
+  assert.match(source, /cua-driver checksum changed; release review required/);
+  assert.match(source, /xvfb openbox dbus at-spi2-core/);
+  assert.match(source, /hermes" computer-use doctor/);
+  assert.match(source, /cua_doctor_ready/);
+
+  // The capability is attested only after the doctor passes on the same run,
+  // and the display service is created only when enabled.
+  assert.match(source, /AISAR_CUA_ENABLED=%q\\n' '1' >> "\$runtime_env"/);
+  assert.match(source, /services create x11-display/);
+  assert.match(source, /hermes_needs=\(--needs x11-display\)/);
+
+  // The operator handoff exposes the gate.
+  const provision = await readFile(PROVISION, 'utf8');
+  assert.match(provision, /AISAR_CUA_ENABLED:=0/);
+  assert.match(provision, /CUA_ENABLED_B64=%s/);
+
+  // The display supervisor that keeps Xvfb/openbox/dbus alive for the gateway
+  // is shipped with the runtime and refuses to publish an empty contract.
+  const display = await readFile(DISPLAY_SERVICE, 'utf8');
+  assert.match(display, /Xvfb/);
+  assert.match(display, /openbox/);
+  assert.match(display, /DBUS_SESSION_BUS_ADDRESS/);
+});
+
+test('bootstrap refuses an invalid computer-use gate before touching the runtime', async () => {
+  const transfer = await tempTransfer(fields({ cuaEnabled: '2' }));
+  const result = run(transfer);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /CUA_ENABLED_B64/);
+});
+
 function run(transfer) {
   return spawnSync('bash', [SCRIPT, transfer], {
     encoding: 'utf8',
@@ -124,7 +170,7 @@ function fields(overrides = {}) {
     hermesCommit: 'fcbd1076a93841fa88855acce810e342a5b78101',
     ...overrides,
   };
-  return [
+  const body = [
     ['BUSINESS_ID_B64', input.businessId],
     ['RUNTIME_RELEASE_B64', input.runtimeRelease],
     ['RUNNER_KEY_B64', input.runnerKey],
@@ -136,4 +182,8 @@ function fields(overrides = {}) {
     ['HERMES_TAG_B64', input.hermesTag],
     ['HERMES_COMMIT_B64', input.hermesCommit],
   ].map(([key, value]) => `${key}=${Buffer.from(value).toString('base64')}`).join('\n') + '\n';
+  if (input.cuaEnabled) {
+    return body + `CUA_ENABLED_B64=${Buffer.from(String(input.cuaEnabled)).toString('base64')}\n`;
+  }
+  return body;
 }

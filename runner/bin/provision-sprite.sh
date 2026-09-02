@@ -12,6 +12,11 @@ set -euo pipefail
 : "${AISAR_MODEL_BASE:=https://openrouter.ai/api/v1}"
 : "${AISAR_MODEL_NAME:=deepseek/deepseek-v4-flash-0731}"
 : "${AISAR_DEEP_MODEL_NAME:=$AISAR_MODEL_NAME}"
+: "${AISAR_CUA_ENABLED:=0}"
+[[ "$AISAR_CUA_ENABLED" =~ ^(0|1)$ ]] || {
+  echo "AISAR_CUA_ENABLED must be 0 or 1" >&2
+  exit 1
+}
 
 sprite_org="${AISAR_SPRITE_ORG:-aisar}"
 hermes_tag="${AISAR_HERMES_TAG:-v2026.8.19}"
@@ -53,6 +58,9 @@ encode() { printf '%s' "$1" | base64 | tr -d '\n'; }
   printf 'DEEP_MODEL_NAME_B64=%s\n' "$(encode "$AISAR_DEEP_MODEL_NAME")"
   printf 'HERMES_TAG_B64=%s\n' "$(encode "$hermes_tag")"
   printf 'HERMES_COMMIT_B64=%s\n' "$(encode "$hermes_commit")"
+  if [[ "$AISAR_CUA_ENABLED" == "1" ]]; then
+    printf 'CUA_ENABLED_B64=%s\n' "$(encode 1)"
+  fi
 } > "$transfer"
 
 if ! sprite list -o "$sprite_org" | grep -Fxq "$sprite_name"; then
@@ -68,6 +76,7 @@ sprite file push -o "$sprite_org" -s "$sprite_name" -p \
   runner/bin/configure-model-provider.py \
   runner/bin/patch-hermes-dependencies.mjs \
   runner/bin/hermes-service.sh \
+  runner/bin/display-service.sh \
   runner/bin/runner-service.sh \
   runner/bin/bootstrap-runtime.sh \
   /home/sprite/aisar/runner/
@@ -78,6 +87,7 @@ sprite exec -o "$sprite_org" -s "$sprite_name" -- \
     /home/sprite/aisar/runner/configure-model-provider.py \
     /home/sprite/aisar/runner/model-smoke.py \
     /home/sprite/aisar/runner/hermes-service.sh \
+    /home/sprite/aisar/runner/display-service.sh \
     /home/sprite/aisar/runner/runner-service.sh \
     /home/sprite/aisar/runner/bootstrap-runtime.sh
 sprite exec -o "$sprite_org" -s "$sprite_name" -- \

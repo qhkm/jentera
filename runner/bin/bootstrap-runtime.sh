@@ -24,6 +24,7 @@ MODEL_NAME_B64=
 DEEP_MODEL_NAME_B64=
 HERMES_TAG_B64=
 HERMES_COMMIT_B64=
+CUA_ENABLED_B64=
 while IFS='=' read -r name value; do
   [[ -z "$name" ]] && continue
   [[ "$value" =~ ^[A-Za-z0-9+/]*={0,2}$ ]] || {
@@ -43,6 +44,7 @@ while IFS='=' read -r name value; do
     DEEP_MODEL_NAME_B64) DEEP_MODEL_NAME_B64="$value" ;;
     HERMES_TAG_B64) HERMES_TAG_B64="$value" ;;
     HERMES_COMMIT_B64) HERMES_COMMIT_B64="$value" ;;
+    CUA_ENABLED_B64) CUA_ENABLED_B64="$value" ;;
     *)
       echo "runtime bootstrap transfer contains an unknown field" >&2
       exit 1
@@ -77,6 +79,11 @@ deep_model_name="$(decode "${DEEP_MODEL_NAME_B64:-$MODEL_NAME_B64}")"
 hermes_tag="$(decode "$HERMES_TAG_B64")"
 hermes_commit="$(decode "$HERMES_COMMIT_B64")"
 edge_token="$(decode "$EDGE_TOKEN_B64")"
+cua_enabled="$(decode "${CUA_ENABLED_B64:-}")"
+[[ "$cua_enabled" =~ ^(0|1)?$ ]] || {
+  echo "CUA_ENABLED_B64 must decode to 0 or 1 (absent means disabled)" >&2
+  exit 1
+}
 
 [[ "$business_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] || {
   echo "business id must be a UUID" >&2
@@ -232,7 +239,7 @@ trap 'rm -f "$incoming"' EXIT
 
 hermes_python="$install_dir/venv/bin/python"
 "$hermes_python" /home/sprite/aisar/runner/configure-model-provider.py \
-  "$model_provider" "$model_base" "$model_name" OPENROUTER_API_KEY
+  "$model_provider" "$model_base" "$model_name" OPENROUTER_API_KEY "$cua_enabled"
 
 # Readiness without one real inference only proves that processes started. It
 # previously allowed an official OpenRouter key to be installed against FMCV,
@@ -285,16 +292,100 @@ done
   exit 1
 }
 
-for service in aisar-runner hermes; do
+# Optional capability: computer use. Gated by CUA_ENABLED_B64=1 in the
+# operator handoff — the toolset is added to config.yaml only when requested
+# and the runtime attests the capability only after every check below passes:
+#
+#   1. The X11 accessibility stack resolves (Xvfb, openbox, dbus, AT-SPI).
+#   2. cua-driver is installed from the pinned release asset and its SHA-256
+#      matches the digest recorded when this release was reviewed. A live
+#      installer script is never fetched.
+#   3. `hermes computer-use doctor` passes against the same display stack the
+#      x11-display service will run. AISAR_CUA_ENABLED is written to
+#      runtime.env only after this — fail-closed: a broken display or driver
+#      can never be attested as ready.
+if [[ "$cua_enabled" == "1" ]]; then
+  DEBIAN_FRONTEND=noninteractive apt-get update -qq
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    xvfb openbox dbus at-spi2-core x11-utils xdotool \
+    >/dev/null
+
+  case "$(uname -m)" in
+    x86_64|amd64)
+      cua_arch=x86_64
+      cua_driver_sha256="01bf8339ec129cc00f4b4b2c6056ef1a7c5b52df39ff83ad17c9b16818aec500"
+      ;;
+    aarch64|arm64)
+      cua_arch=arm64
+      cua_driver_sha256="be22768a207796a4bc1de50c52f32f9ef680b5e86e58c059e02eec2caba2e7bb"
+      ;;
+    *)
+      echo "cua-driver has no reviewed Linux build for this architecture" >&2
+      exit 1
+      ;;
+  esac
+  cua_tarball="$(mktemp /tmp/aisar-cua-driver.XXXXXX.tar.gz)"
+  trap 'rm -f "$incoming" "$cua_tarball"' EXIT
+  curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+    "https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.23.2/cua-driver-rs-0.23.2-linux-${cua_arch}-binary.tar.gz" \
+    --output "$cua_tarball"
+  actual_sha="$(sha256sum "$cua_tarball")"
+  actual_sha="${actual_sha%% *}"
+  if [[ "$actual_sha" != "$cua_driver_sha256" ]]; then
+    echo "cua-driver checksum changed; release review required" >&2
+    exit 1
+  fi
+  install -d -m 755 /home/sprite/.local/bin
+  tar -xzf "$cua_tarball" -C /home/sprite/.local/bin
+  chmod 755 /home/sprite/.local/bin/cua-driver
+  /home/sprite/.local/bin/cua-driver --version >/dev/null
+  rm -f "$cua_tarball"
+  trap 'rm -f "$incoming"' EXIT
+
+  cua_doctor_ready=false
+  for _attempt in 1 2 3; do
+    if timeout --foreground -k 5 120 \
+        dbus-run-session -- xvfb-run -a \
+        "$install_dir/venv/bin/hermes" computer-use doctor >/dev/null 2>&1; then
+      cua_doctor_ready=true
+      break
+    fi
+    sleep 2
+  done
+  [[ "$cua_doctor_ready" == "true" ]] || {
+    echo "Hermes computer-use doctor did not pass its live smoke test" >&2
+    exit 1
+  }
+  # Attest the capability only now that the display stack and driver have
+  # been proven on this exact bootstrap run.
+  printf 'AISAR_CUA_ENABLED=%q\n' '1' >> "$runtime_env"
+fi
+
+services=(aisar-runner hermes)
+if [[ "$cua_enabled" == "1" ]]; then
+  services+=(x11-display)
+fi
+for service in "${services[@]}"; do
   if sprite-env services get "$service" >/dev/null 2>&1; then
     sprite-env services stop "$service" >/dev/null 2>&1 || true
     sprite-env services delete "$service" >/dev/null
   fi
 done
+if [[ "$cua_enabled" == "1" ]]; then
+  sprite-env services create x11-display \
+    --cmd /home/sprite/aisar/runner/display-service.sh \
+    --env AISAR_DISPLAY_ENV_FILE=/home/sprite/aisar/display.env \
+    --no-stream
+fi
+hermes_needs=()
+if [[ "$cua_enabled" == "1" ]]; then
+  hermes_needs=(--needs x11-display)
+fi
 sprite-env services create hermes \
   --cmd /home/sprite/aisar/runner/hermes-service.sh \
   --env AISAR_RUNTIME_ENV_FILE=/home/sprite/aisar/runtime.env \
   --dir "$install_dir" \
+  "${hermes_needs[@]}" \
   --no-stream
 sprite-env services create aisar-runner \
   --cmd /home/sprite/aisar/runner/runner-service.sh \

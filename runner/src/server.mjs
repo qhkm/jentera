@@ -217,6 +217,7 @@ export function createRunner(input) {
           release: config.release,
           toolMode: config.toolMode,
           webSearchBackend: config.webSearchBackend,
+          capabilities: config.capabilities,
           keepalive: keepalive.status(),
         });
       }
@@ -248,6 +249,7 @@ export function createRunner(input) {
           release: config.release,
           toolMode: config.toolMode,
           webSearchBackend: config.webSearchBackend,
+          capabilities: config.capabilities,
           region: runtimeRegion(req),
           edgeAuthorizationForwarded: typeof req.headers.authorization === 'string',
           edgeTokenEnforced: Boolean(config.edgeToken),
@@ -383,6 +385,20 @@ export function createRunner(input) {
   });
 }
 
+/** Capabilities this runner may attest. Only the reviewed set is accepted;
+    a typo or unapproved id fails closed instead of being claimed. */
+export const KNOWN_CAPABILITIES = ['computer_use'];
+
+export function capabilitiesFromEnv(env = process.env) {
+  // The bootstrap writes AISAR_CUA_ENABLED=1 into runtime.env only after the
+  // X11 stack and `hermes computer-use doctor` succeeded on that same run, so
+  // the attestation is a real claim about this process, not an intent signal.
+  // Any value other than exactly "1" leaves the capability off.
+  const capabilities = [];
+  if (env.AISAR_CUA_ENABLED === '1') capabilities.push('computer_use');
+  return capabilities;
+}
+
 export function configFromEnv(env = process.env) {
   return {
     businessId: env.AISAR_BUSINESS_ID,
@@ -394,6 +410,7 @@ export function configFromEnv(env = process.env) {
     stateFile: env.AISAR_RUNNER_STATE ?? '/var/lib/aisar/runner-state.json',
     toolMode: env.AISAR_TOOL_MODE,
     webSearchBackend: env.AISAR_WEB_SEARCH_BACKEND,
+    capabilities: capabilitiesFromEnv(env),
     modelName: env.AISAR_MODEL_NAME,
     deepModelName: env.AISAR_DEEP_MODEL_NAME,
     runnerSourceSha256: env.AISAR_RUNNER_SOURCE_SHA256,
@@ -417,6 +434,12 @@ function validated(config) {
   }
   if (config.webSearchBackend !== 'ddgs') {
     throw new Error('AISAR_WEB_SEARCH_BACKEND must be ddgs');
+  }
+  if (
+    !Array.isArray(config.capabilities) ||
+    config.capabilities.some((id) => !KNOWN_CAPABILITIES.includes(id))
+  ) {
+    throw new Error('runner claims an unknown runtime capability');
   }
   if (!modelId(config.modelName) || !modelId(config.deepModelName)) {
     throw new Error('AISAR model routing is not configured');

@@ -13,6 +13,11 @@ export interface RunnerClientOptions {
   /** Desired immutable runtime release. Readiness must report this exact
       process-bound release before a task can be admitted. */
   expectedRelease?: string;
+  /** Capabilities the runtime must attest on /readyz (e.g. ['computer_use']).
+      Absent/empty accepts any runtime. Readiness failing to report one fails
+      closed — a provisioned capability that is not actually running is never
+      treated as ready. */
+  expectedCapabilities?: string[];
   fetch?: typeof globalThis.fetch;
 }
 
@@ -50,6 +55,8 @@ export interface RunnerTaskResponse {
   usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
   toolMode?: string;
   webSearchBackend?: string;
+  /** Capabilities the runner attests (e.g. ['computer_use']). */
+  capabilities?: string[];
   region?: string | null;
   edgeAuthorizationForwarded?: boolean;
   release?: string;
@@ -66,6 +73,8 @@ export interface RunnerTaskResponse {
 
 export interface RunnerReadiness {
   region: string | null;
+  /** Capabilities the runner attested on /readyz (e.g. ['computer_use']). */
+  capabilities: string[];
 }
 
 /** The isolated runtime is still finishing an earlier task. This is normal
@@ -83,6 +92,7 @@ export class RunnerClient {
   private readonly runnerKey: string;
   private readonly edgeToken?: string;
   private readonly expectedRelease?: string;
+  private readonly expectedCapabilities?: string[];
   private readonly fetcher: typeof globalThis.fetch;
 
   constructor(options: RunnerClientOptions) {
@@ -90,6 +100,7 @@ export class RunnerClient {
     this.runnerKey = options.runnerKey;
     this.edgeToken = options.edgeToken;
     this.expectedRelease = options.expectedRelease;
+    this.expectedCapabilities = options.expectedCapabilities;
     this.fetcher = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
     if (!this.origin.startsWith('https://') &&
         !this.origin.startsWith('http://127.0.0.1') &&
@@ -121,10 +132,20 @@ export class RunnerClient {
     if (body.edgeAuthorizationForwarded !== false) {
       throw new Error('runner did not attest edge credential isolation');
     }
+    const attestedCapabilities = Array.isArray(body.capabilities)
+      ? body.capabilities.filter((id) => typeof id === 'string')
+      : [];
+    if (this.expectedCapabilities) {
+      for (const id of this.expectedCapabilities) {
+        if (!attestedCapabilities.includes(id)) {
+          throw new Error(`runner did not attest the ${id} capability`);
+        }
+      }
+    }
     const region = typeof body.region === 'string' && /^[a-z0-9]{3}$/i.test(body.region.trim())
       ? body.region.trim().toLowerCase()
       : null;
-    return { region };
+    return { region, capabilities: attestedCapabilities };
   }
 
   async start(task: RunnerTaskRequest): Promise<RunnerTaskResponse> {

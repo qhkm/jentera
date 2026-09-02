@@ -11,6 +11,25 @@ set -a
 source "$runtime_env"
 set +a
 
+# Computer-use capability: the x11-display service publishes the virtual
+# display and session bus handles. When the runtime attests AISAR_CUA_ENABLED,
+# a missing display contract means the capability cannot actually run — fail
+# fast instead of letting the gateway start without a screen.
+display_env="${AISAR_DISPLAY_ENV_FILE:-/home/sprite/aisar/display.env}"
+if [[ "${AISAR_CUA_ENABLED:-0}" == "1" ]]; then
+  [[ -r "$display_env" ]] || {
+    echo "computer-use runtime is missing its display environment" >&2
+    exit 1
+  }
+  set -a
+  source "$display_env"
+  set +a
+elif [[ -r "$display_env" ]]; then
+  set -a
+  source "$display_env"
+  set +a
+fi
+
 export HERMES_HOME="/home/sprite/.hermes"
 export API_SERVER_HOST="127.0.0.1"
 export API_SERVER_PORT="${HERMES_PORT:-8642}"

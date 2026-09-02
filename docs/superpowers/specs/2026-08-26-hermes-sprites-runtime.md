@@ -674,6 +674,40 @@ Plan names and prices require measured usage and customer research. The architec
 records the usage needed to price them without committing to `$29`, `$79`, or `$199`
 before those measurements exist.
 
+## Runtime capabilities
+
+`/healthz` and `/readyz` now attest a `capabilities` array describing what the
+sprite's runtime is actually able to do (e.g. `["computer_use"]`, or empty for a
+plain text/API runtime). Capabilities are derived solely from `AISAR_CUA_ENABLED`
+in `runtime.env`, and the bootstrap writes that variable **only after** the
+capability's live smoke passed during that same run. The runner rejects any
+capability id that is not on the reviewed allowlist, so a never-reviewed feature
+can never be claimed by editing the transfer.
+
+### Computer use (canary-gated)
+
+An optional, per-sprite capability that gives the Hermes gateway a real virtual
+display to drive:
+
+- gated on provisioning by `AISAR_CUA_ENABLED=1` (default off; the transfer
+  field `CUA_ENABLED_B64` is absent for existing sprites, which keeps them
+  unchanged);
+- installs a pinned `xvfb`/`openbox`/`dbus`/`at-spi2-core` X11 stack and the
+  `cua-driver` binary from the pinned `cua-driver-rs-v0.23.2` release, verified
+  against hardcoded sha256 digests for both `x86_64` and `arm64`;
+- configures Hermes with the `computer_use` toolset and `permissions: bounded`
+  (no unrestricted profile is ever written);
+- runs `hermes computer-use doctor` live under the virtual display before the
+  capability is attested; a failing doctor fails the bootstrap;
+- an `x11-display` sprite-env service keeps Xvfb/openbox/dbus alive across
+  gateway restarts and publishes `DISPLAY`/`DBUS_SESSION_BUS_ADDRESS` to
+  `display.env`; `hermes-service.sh` sources it when present and refuses to
+  start the gateway if the capability is claimed but no display contract exists.
+
+The runner surface is purely attestational: consumers that require the
+capability (future per-business provisioning) opt in via `expectedCapabilities`
+on the runner client and fail closed if the sprite stops attesting it.
+
 ## Rollout gates
 
 Do not expand provisioning or durable execution beyond the explicit canary until every
