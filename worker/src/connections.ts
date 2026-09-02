@@ -130,6 +130,19 @@ export async function findConnection(
   return row ? toRow(row) : null;
 }
 
+/** One connection by id, inside a tenant-scoped transaction. RLS keeps a
+    caller honest: outside the right business this returns nothing. */
+export async function findConnectionById(
+  tx: postgres.TransactionSql,
+  connectionId: string,
+): Promise<ConnectionRow | null> {
+  const [row] = await tx<Raw[]>`
+    select id, connector, method, status, display_name, external_id,
+           connected_at, last_ok_at, last_error
+      from connection where id = ${connectionId}`;
+  return row ? toRow(row) : null;
+}
+
 const INTERNAL_CHAT_SCOPE = 'telegram-internal-chat:';
 
 /** The private Telegram chat paired by the signed-in business owner. A bot

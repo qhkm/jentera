@@ -61,6 +61,9 @@ export interface Env {
   /** Official OpenRouter management credential stays control-plane-only and
       issues separate capped/expiring inference keys when that endpoint is used. */
   AISAR_OPENROUTER_MANAGEMENT_KEY?: string;
+  /** Key for the staff support endpoints (telegram-pairing minting).
+      Falls back to AISAR_OPENROUTER_MANAGEMENT_KEY when unset. */
+  AISAR_SUPPORT_KEY?: string;
   AISAR_MODEL_NAME?: string;
   /** Optional heavier model used only for explicit deep/research work. */
   AISAR_DEEP_MODEL_NAME?: string;

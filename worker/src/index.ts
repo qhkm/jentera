@@ -14,6 +14,7 @@ import { handleRuns } from './routes/runs';
 import { handleConnect } from './routes/connect';
 import { handleRuntime } from './routes/runtime';
 import { handleEvents } from './routes/events';
+import { handleSupport } from './routes/support';
 import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
 import { handleRuntimeQueueMessage, type RuntimeQueueMessage } from './runtime/consumer';
@@ -80,6 +81,10 @@ export default {
 
     const events = await handleEvents(request, env, url, headers);
     if (events) return events;
+
+    /* Staff support endpoints: key-authenticated, not session-based. */
+    const support = await handleSupport(request, env, url, headers);
+    if (support) return support;
 
     /* The Repository interface's 17 methods. */
     const repo = await handleRepo(request, env, url, headers);
