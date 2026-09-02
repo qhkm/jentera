@@ -227,6 +227,8 @@ export async function recordWork(
   return row.id;
 }
 
+export type WorkQuality = 'good' | 'poor';
+
 export interface WorkSummary {
   id: string;
   runId: string | null;
@@ -237,6 +239,9 @@ export interface WorkSummary {
   channel: string | null;
   subject: string | null;
   minutesSaved: number | null;
+  /** Owner's verdict on this work, null until they rate it. */
+  outcomeQuality: WorkQuality | null;
+  qualityAt: Date | null;
   occurredAt: Date;
 }
 
@@ -255,10 +260,12 @@ export async function recentWork(
       channel: string | null;
       subject: string | null;
       minutes_saved: number | null;
+      outcome_quality: WorkQuality | 'unknown' | null;
+      quality_at: Date | null;
       occurred_at: Date;
     }[]
   >`select id, run_id, objective, outcome, status, function, channel,
-           subject, minutes_saved, occurred_at
+           subject, minutes_saved, outcome_quality, quality_at, occurred_at
       from work_record order by occurred_at desc limit ${limit}`;
   return rows.map((r) => ({
     id: r.id,
@@ -270,8 +277,37 @@ export async function recentWork(
     channel: r.channel,
     subject: r.subject,
     minutesSaved: r.minutes_saved,
+    /* The column's check constraint also admits 'unknown' (the default
+       position before an owner rates). The app type is good|poor|null,
+       so collapse 'unknown' to null rather than leaking a third string
+       into WorkSummary. */
+    outcomeQuality: r.outcome_quality === 'unknown' ? null : r.outcome_quality,
+    qualityAt: r.quality_at,
     occurredAt: r.occurred_at,
   }));
+}
+
+/**
+ * Record the owner's verdict on a piece of work.
+ *
+ * Scoped to the tenant so one business can never rate another's record.
+ * Returns true when the work_record existed and was updated — the caller
+ * turns a miss into a 404 rather than a silent success.
+ */
+export async function rateWork(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  workId: string,
+  quality: WorkQuality,
+): Promise<boolean> {
+  const result = await tx`
+    update work_record
+       set outcome_quality = ${quality},
+           quality_at = now(),
+           updated_at = now()
+     where id = ${workId}
+       and business_id = ${businessId}`;
+  return result.count > 0;
 }
 
 /**

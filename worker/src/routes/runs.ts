@@ -15,6 +15,7 @@ import {
   finishRun,
   getRun,
   homeCounters,
+  rateWork,
   recentWork,
   recordWork,
   runTrace,
@@ -273,6 +274,27 @@ export async function handleRuns(
       await homeCounters(tx),
     ]);
     return json({ ok: true, work, counters }, {}, cors);
+  }
+
+  /* ---- owner feedback on completed work -------------------------------- */
+
+  if (url.pathname === '/api/runs/quality' && request.method === 'POST') {
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const workId = typeof body.workId === 'string' ? body.workId.trim() : '';
+    const quality = body.quality;
+    if (!workId) {
+      return json({ ok: false, err: 'workId is required' }, { status: 400 }, cors);
+    }
+    if (quality !== 'good' && quality !== 'poor') {
+      return json({ ok: false, err: 'quality must be good or poor' }, { status: 400 }, cors);
+    }
+    const rated = await withTenant(env, id.businessId, (tx) =>
+      rateWork(tx, id.businessId, workId, quality),
+    );
+    if (!rated) {
+      return json({ ok: false, err: 'work record not found' }, { status: 404 }, cors);
+    }
+    return json({ ok: true }, {}, cors);
   }
 
   const status = url.pathname.match(/^\/api\/runs\/([0-9a-f-]{36})$/i);
