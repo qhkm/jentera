@@ -1,14 +1,55 @@
 # Jentera Product Vision
 
-## Purpose
+## Elevator pitch
 
-Jentera exists to reduce the technical friction of adopting AI to effectively zero. A business owner should not need to become an AI expert, hire a technical team, or fund a large consulting project before AI can produce useful work.
+Jentera deploys AI workers for Southeast Asian businesses.
+
+Instead of asking a business owner to set up servers, install agent frameworks, manage API keys, connect tools, or build automations themselves, Jentera gives them a ready-to-use AI worker that can actually operate inside their business.
+
+Each business gets a persistent cloud computer where its AI agents can run continuously. The agents can use a browser, terminal, files, scheduled tasks, memory, and business software — similar to the new generation of computer-using agents. But the computer is not the differentiation.
+
+> **Grok gives AI a computer. Jentera gives AI access to your business.**
+
+Jentera builds the integration layer between AI agents and the software Southeast Asian businesses actually use: accounting systems, invoicing, e-commerce, POS, banking workflows, messaging platforms, government systems, and local SaaS products.
+
+The customer should not have to understand Hermes, MCP, APIs, VPSs, tokens, or infrastructure. They simply tell Jentera what needs to be done.
 
 ## The Problem
 
 Most AI and automation products still sell a toolbox. Customers must understand agents, prompts, models, APIs, integrations, triggers, testing, and maintenance. No-code products remove programming but often leave the implementation decisions with the customer.
 
-Jentera absorbs that implementation burden. The customer explains the business, shares the information they already have, and approves important decisions. Jentera handles the technology behind the scenes.
+Powerful general-purpose agent frameworks already exist. The missing layer is access to the systems Southeast Asian businesses actually use. Many regional SaaS products still:
+
+- have limited APIs;
+- don't expose MCP servers or agent-friendly CLIs;
+- require manual browser workflows;
+- have fragmented, highly localized documentation;
+- are built country-by-country.
+
+At the same time, millions of SMEs are not going to deploy Hermes, configure servers, write MCP servers, or orchestrate agents themselves. Jentera bridges those two gaps: it takes powerful general-purpose AI agents and turns them into workers that can operate inside a real Southeast Asian business.
+
+## How it works
+
+A business gets one workspace (its Business Computer, persistently running) and deploys the AI workers it needs:
+
+| Layer | What it is |
+|---|---|
+| Business | The company that owns the workspace |
+| Jentera Workspace / Business Computer | Persistent cloud computer, always on |
+| AI Workers | Accounts, Sales, Customer Support, Operations agents |
+| Jentera Business Tool Layer | Bukku, AutoCount, SQL Account, MyInvois, WhatsApp, StoreHub, Shopee, Lazada, TikTok Shop, local banks, local SaaS — eventually hundreds of SEA business tools |
+
+For example, a Malaysian SME could deploy a Jentera Accounts Agent that can:
+
+- check transactions in Bukku;
+- reconcile payments against the bank;
+- create or verify invoices;
+- interact with MyInvois;
+- prepare reports;
+- chase missing payments;
+- notify the owner through WhatsApp or Telegram.
+
+Other agents handle sales, customer support, and operations — all running from the same business workspace. Underneath, Jentera manages the agent runtime, cloud computer, models, credentials, integrations, permissions, memory, and execution environment.
 
 ## Ideal Customer Profile
 
@@ -22,64 +63,60 @@ The primary customer is a non-technical small-business owner or operator who:
 
 Jentera is built for business owners, not developers.
 
-## Positioning
-
-**Headline:** Your business, without the busywork.
-
-**Core promise:** You explain the business. Jentera handles the technology.
-
-**Positioning statement:** Jentera learns how a business runs, identifies where AI can create the most value, and puts the right AI help to work—without technical skills, expensive consultants, or workflows to configure.
-
-Internally, Jentera is an autonomous AI implementation platform. Externally, it should feel like an on-demand implementation team that sets itself up.
-
 ## Managed Autonomy
 
-Jentera should provide the capability of a powerful autonomous agent—persistent memory, tools, reusable skills, scheduled work, delegation, and multi-channel messaging—as a managed service. Owners should never have to install an agent, select a model, manage API keys, configure tools, or maintain infrastructure.
+Jentera provides the capability of a powerful autonomous agent — persistent memory, tools, reusable skills, scheduled work, delegation, multi-channel messaging — as a managed service. Owners never have to install an agent, select a model, manage API keys, configure tools, or maintain infrastructure.
 
-The underlying agent runtime is replaceable. Jentera owns the durable business layer around it: verified business knowledge, permissions, integrations, approvals, audit history, reliability, and the non-technical customer experience. Internally there may be many specialist workers; externally the customer works with one Jentera.
+The underlying agent runtime is replaceable. Jentera owns the durable business layer around it: verified business knowledge, permissions, integrations, approvals, audit history, reliability, and the non-technical customer experience.
 
-## Company Thesis and Product Portfolio
+## Product Portfolio: Workers + Connect
 
-Jentera is an infrastructure company for AI agents. The managed business operator described in this document is one product experience built on that infrastructure; it does not require every future capability to become part of one monolithic application.
+Jentera has two products that reinforce each other.
 
-The long-term portfolio has distinct, composable products:
+### 1. Jentera Workers
 
-- **Jentera Compute:** persistent, isolated computers on which AI agents can run with files, memory, browser, terminal, and durable execution.
-- **Jentera Connect:** one secure interface through which any compatible AI agent can use the software Southeast Asian businesses run on. An agent does not need to run on Jentera Compute to use Connect.
-- **Jentera Control:** the shared trust and operations layer for identity, permissions, credentials, approvals, budgets, observability, and audit history across Jentera products.
-- **Jentera Solutions:** ready-to-use workers and business procedures assembled from Compute, Connect, and Control for customers who want an outcome rather than infrastructure.
-- **Jentera Marketplace:** a later distribution layer for connectors, skills, procedures, and agent packages. It becomes a product only after there is sufficient customer demand and third-party supply.
+AI workers that small businesses can deploy without technical setup.
 
-The products reinforce one another but remain independently useful. A developer may use only Connect with an agent hosted elsewhere. A platform team may combine Compute, Connect, and Control. A non-technical business may buy a finished Solution without seeing any of the underlying infrastructure.
+> “Hire an AI worker for your business.”
 
-Control is a horizontal foundation, not merely another dashboard. API, MCP, SDK, and CLI are delivery interfaces into Compute and Connect; they should not be presented as a separate “Developer Platform” product unless they later acquire a distinct commercial boundary.
+The managed SMB experience outlined above. Internally it runs on the Business Computer with the shared trust and operations layer (identity, permissions, credentials, approvals, budgets, observability, audit history). Externally the customer works with one or more named workers, not a platform.
 
-The company-level message is:
+### 2. Jentera Connect
 
-> **Jentera provides the infrastructure AI agents need to do real work—computers, business tools, and operational control.**
+A unified, agent-native interface for Southeast Asian business software. The tool layer as a standalone infrastructure product.
 
-The initial Connect message is:
+> “One interface for AI agents to operate business software across Southeast Asia.”
 
-> **Connect any AI agent to the software Southeast Asian businesses run on.**
+Other AI agent frameworks, developers, and automation companies could use Jentera's APIs, MCP servers, or CLI to interact with Southeast Asian software without building every integration themselves.
 
-The long-term category ambition is:
-
-> **The agent interface for Southeast Asian businesses.**
-
-These statements do not replace the outcome-first language used for the managed SMB experience. Product pages should speak to their actual audience: infrastructure and interoperability for developers, completed business work for owners.
+**Workers is the distribution engine for Connect; Connect is the infrastructure moat underneath Workers.**
 
 ### Portfolio sequence
 
-1. Prove Compute and the shared Control foundation through the current managed-agent product.
-2. Develop Connect around a small number of excellent Southeast Asian integrations and make its contracts independent of the hosted runtime.
-3. Add a unified data layer to Connect: embedded account linking, canonical models, normalized reads and writes, webhooks, synchronization, and connection health across providers in the same business-software category.
-4. Expose those capabilities as agent-native tools and higher-level regional business procedures through API, SDK, MCP, and eventually CLI.
-5. Package repeatable outcomes as Jentera Solutions for non-technical businesses.
-6. Add Marketplace only when external supply and demand justify a distribution product.
+1. Prove the Business Computer and the shared trust/operations layer through the current managed-work product.
+2. Develop Connect around a small number of excellent Southeast Asian integrations; make its contracts independent of the hosted runtime.
+3. Add a unified data layer to Connect: account linking, canonical models, normalized reads/writes, webhooks, synchronization, connection health — the [Merge Unified](https://www.merge.dev/unified-api) model applied to regional business software, extended with agent-native actions, policies, approvals, and regional business procedures.
+4. Expose those capabilities agent-natively (API, SDK, MCP, eventually CLI) with higher-level regional business procedures.
+5. Package repeatable outcomes as ready-to-use workers for non-technical businesses.
+6. Add a marketplace layer only when external supply and demand justify a distribution product.
 
-Connect is therefore a credible adjacent product direction, not a requirement for the first managed-product release. Its development must not delay the first complete useful-work loop.
+Connect must not delay the first complete useful-work loop.
 
-The strategic reference for Connect's unified data layer is [Merge Unified](https://www.merge.dev/unified-api): customers link an account once, provider data is mapped into common models, applications read and write through one contract, and the platform maintains synchronization and provider changes. Jentera applies that model to the software Southeast Asian businesses use, then extends it with agent-native actions, Control policies, approvals, and regional business procedures. The goal is not a smaller copy of Merge's global catalogue; it is a deeper interface for regional business operations.
+## Business Model
+
+Jentera does not sell unlimited AI.
+
+**Base model:** monthly platform subscription + included usage + additional usage when needed.
+
+| Tier | Price | What's included |
+|---|---|---|
+| BYOK | RM79/month | Customer brings their own OpenAI, Anthropic, Gemini, or OpenRouter account; Jentera provides the cloud computer, agent runtime, integrations, deployment, management |
+| Starter | RM99/month | Managed AI with a limited amount of included compute and AI usage |
+| Business | RM199+/month | More usage, automations, integrations, agents, permissions, business workflows |
+
+Heavy usage is billed separately through Jentera Credits. This protects Jentera from unpredictable token and compute costs while keeping entry pricing comparable to products such as Grok Bot.
+
+Internally, Jentera tracks the true cost of every business — sprite compute + AI tokens + messaging/API costs + third-party tools — with a target gross margin of roughly 70–80%.
 
 ## Product Experience
 
@@ -93,11 +130,11 @@ Jentera follows a continuous loop:
 
 The interface begins with outcomes such as “answer customer enquiries” or “manage bookings,” never a blank agent or workflow builder.
 
-## Operational Visibility
+### Operational visibility
 
 **Chat is where the owner asks. Activity is where the owner understands what happened.** A conversation transcript must never be the primary system of record.
 
-Every instruction, proactive job, and external action automatically becomes a structured business record. At a glance, the owner should see the outcome, status, channel, time, exception or approval required, and estimated time saved. Repeated work is grouped into useful summaries—for example, “18 Telegram enquiries handled, 2 bookings created, 1 escalated”—instead of displayed as dozens of messages or tool calls.
+Every instruction, proactive job, and external action automatically becomes a structured business record. At a glance, the owner should see the outcome, status, channel, time, exception or approval required, and estimated time saved. Repeated work is grouped into useful summaries — for example, “18 Telegram enquiries handled, 2 bookings created, 1 escalated” — instead of displayed as dozens of messages or tool calls.
 
 Each product surface has one job:
 
@@ -107,7 +144,7 @@ Each product surface has one job:
 - **Customer inbox:** read or take over actual customer conversations.
 - **My Business:** review knowledge, permissions, connections, and automation policies.
 
-Owner-facing summaries should lead with business outcomes. Raw messages, retrieved sources, model details, tool calls, and execution logs remain available under an expandable technical trace for support, debugging, and accountability.
+Owner-facing summaries lead with business outcomes. Raw messages, retrieved sources, model details, tool calls, and execution logs remain available under an expandable technical trace for support, debugging, and accountability.
 
 ## Language Principles
 
@@ -117,10 +154,25 @@ Owner-facing summaries should lead with business outcomes. Raw messages, retriev
 - Show what Jentera is ready to do, what approval it needs, and what it completed.
 - Summarize repeated actions into business outcomes instead of exposing a stream of agent messages.
 - Keep models, prompts, APIs, orchestration, and implementation details behind the curtain.
+- Marketing may use **“Hire an AI worker for your business”** for the Workers product; **“One interface for AI agents to operate business software across Southeast Asia”** for Connect.
 
 ## Trust and Control
 
 Zero technical setup does not mean zero control. Jentera may automate low-risk internal work, but customer-facing or sensitive actions require appropriate approval and guardrails. The customer should always be able to review the business profile, permissions, activity, and outcomes.
+
+## Long-Term Vision
+
+Today:
+
+> Deploy an AI worker for your business.
+
+Later:
+
+> The execution layer connecting AI agents to Southeast Asian businesses.
+
+Eventually, any AI agent — built with Hermes, OpenAI, Claude, Grok, or another framework — could use Jentera to access regional business infrastructure.
+
+The long-term value of Jentera is not the model and not the virtual machine. It is the execution and integration layer between AI and the real-world business systems of Southeast Asia.
 
 ## Primary Success Metric
 
