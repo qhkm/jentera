@@ -79,7 +79,7 @@ const MAX_BUSY_BLOCKED_MS = 30 * 60 * 1000;
 const TELEGRAM_FLOOD_DELAY_CAP_SECONDS = 60 * 60;
 const TELEGRAM_FLOOD_OWNER_NOTICE =
   '⏳ Telegram is rate-limiting this chat — your answer will appear as soon as it lifts.';
-const QUICK_REPLY_STATUS = '⚡ Preparing a quick reply…';
+const QUICK_REPLY_STATUS = '💭 Thinking…';
 const DEEP_WORK_STATUS = '🧠 Deep work started…';
 
 /** Friendly one-line statuses for the ephemeral Telegram draft, keyed by the
@@ -1407,7 +1407,7 @@ function telegramLatency(
 /** A remotely terminal model failure is not an exception, so it never reaches
  * the exhausted-task cleanup below. Replace the working bubble before task
  * payload scrubbing removes its message id; otherwise Telegram remains stuck
- * forever on "Preparing…" even though the durable task is already finished. */
+ * forever on "Thinking…" even though the durable task is already finished. */
 async function settleFailedTelegramBubble(
   env: Env,
   businessId: string,

@@ -27,7 +27,7 @@ import { finishRun, startRun } from '../src/runs';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
-const QUICK_REPLY_STATUS_FOR_TEST = '⚡ Preparing a quick reply…';
+const QUICK_REPLY_STATUS_FOR_TEST = '💭 Thinking…';
 
 let connId: string;
 let userId: string;
@@ -351,7 +351,7 @@ describe('durable Hermes Telegram replies', () => {
       reason: 'runtime release upgrade',
     });
     expect(result.nextMessage).toMatchObject({ version: 1, businessId: A });
-    expect(sent).toEqual([{ chatId: 42, text: '⚡ Preparing a quick reply…' }]);
+    expect(sent).toEqual([{ chatId: 42, text: '💭 Thinking…' }]);
     expect(edits).toHaveLength(0);
     expect(deletions).toHaveLength(0);
     expect(queued).toHaveLength(2);
@@ -418,7 +418,7 @@ describe('durable Hermes Telegram replies', () => {
     expect(tasks).toHaveLength(1);
     expect(tasks[0].runtime).toBe('hermes-sprite');
     expect(tasks[0].kind).toBe('run');
-    expect(sent.filter((entry) => entry.text === '⚡ Preparing a quick reply…'))
+    expect(sent.filter((entry) => entry.text === '💭 Thinking…'))
       .toHaveLength(1);
   });
 

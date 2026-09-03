@@ -70,7 +70,7 @@ describe('TelegramLiveStream reattach to the webhook bubble', () => {
       onFirstTextPublished: published,
     });
 
-    await stream.setStatus('⚡ Preparing a quick reply…');
+    await stream.setStatus('💭 Thinking…');
     expect(published).not.toHaveBeenCalled();
 
     await stream.push('Here is the answer.');
