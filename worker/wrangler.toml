@@ -31,6 +31,12 @@ region = "aws:ap-southeast-1"
 binding = "HYPERDRIVE"
 id = "f77c72f8d6614bb0b6955170caadad07"
 
+# Workers Logs. Without this, invocation-level telemetry (status codes,
+# subrequests, exceptions) is not retained and post-incident diagnosis of
+# runtime stalls (e.g. 2026-09-03 12:10 clientDisconnected) is guesswork.
+[observability]
+enabled = true
+
 [vars]
 # Comma-separated origins allowed to call this API. Credentialed requests
 # need an exact origin match — a wildcard is rejected by the browser when
