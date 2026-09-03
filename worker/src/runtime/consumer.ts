@@ -264,7 +264,7 @@ export async function handleRuntimeQueueMessage(
         payload: {
           input: boundedTelegramInput(prepared.input, message.incoming.text),
           instructions: prepared.instructions,
-          sessionId: run.id,
+          sessionId: `telegram:${message.businessId}:${message.incoming.chatId}`,
           objective: `Help ${message.incoming.from} on Telegram`,
           function: 'assistant',
           channel: 'telegram',

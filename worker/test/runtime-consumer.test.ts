@@ -410,6 +410,66 @@ describe('the runtime queue consumer', () => {
     expect(await taskStatus(task.id)).toEqual({ status: 'leased', lease_token: 'duplicate-owner' });
   });
 
+  it('uses one stable Telegram session per business chat', async () => {
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.08.27-1',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+      AISAR_DEEP_MODEL_NAME: 'deepseek-v4-flash',
+    });
+    const provider = new LocalRuntimeProvider();
+    const [owner] = await asOwner((sql) => sql<{ id: string }[]>`
+      insert into app_user (email, email_verified)
+      values ('session-owner@example.com', true) returning id`);
+    const connection = await asTenant(A, (tx) => saveConnection(env, tx, A, {
+      connector: 'telegram',
+      method: 'bot_token',
+      externalId: '123456789',
+      displayName: '@session_bot',
+      secret: '123456789:AAtoken',
+      connectedBy: owner.id,
+    }));
+    const active = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'provision', dedupeKey: 'telegram-session:active',
+    }));
+    expect((await asTenant(A, (tx) =>
+      leaseRuntimeTask(tx, A, active.id, 'active-owner', 300))).outcome).toBe('leased');
+    let liveMessageId = 70;
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      jsonResponse({ ok: true, result: { message_id: liveMessageId++ } })));
+    const intake = (chatId: number, messageId: number, text: string) => ({
+      version: 2 as const,
+      kind: 'telegram_intake' as const,
+      businessId: A,
+      connectionId: connection.id,
+      requestedAtMs: Date.now(),
+      incoming: {
+        chatId,
+        messageId,
+        from: 'Owner',
+        text,
+        privateChat: true as const,
+      },
+    });
+
+    await handleRuntimeQueueMessage(env, intake(42, 901, 'First message'), { provider });
+    await handleRuntimeQueueMessage(env, intake(42, 902, 'yes'), { provider });
+    await handleRuntimeQueueMessage(env, intake(43, 903, 'Other chat'), { provider });
+
+    const tasks = await asTenant(A, (tx) => tx<{
+      payload: { sessionId: string; telegram: { messageId: number } };
+    }[]>`
+      select payload from runtime_task
+       where business_id = ${A} and kind = 'run'
+       order by (payload->'telegram'->>'messageId')::int`);
+    const sessionIds = tasks.map((task) => task.payload.sessionId);
+    expect(sessionIds.slice(0, 2)).toEqual([
+      `telegram:${A}:42`,
+      `telegram:${A}:42`,
+    ]);
+    expect(sessionIds[2]).toBe(`telegram:${A}:43`);
+    expect(sessionIds[2]).not.toBe(sessionIds[0]);
+  });
+
   it('wakes the oldest waiting task when a task completes (Hermes-style FIFO)', async () => {
     const sent: { businessId: string; taskId: string }[] = [];
     const env = testEnv({
