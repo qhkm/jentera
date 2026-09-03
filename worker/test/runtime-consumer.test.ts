@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { asOwner, asTenant, testEnv, truncateAll } from './harness';
-import { ensureProviderRuntime, handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
+import {
+  ensureProviderRuntime,
+  handleRuntimeMessage,
+  handleRuntimeQueueMessage,
+  LocalRuntimeProvider,
+} from '../src/runtime';
 import { enqueueRuntimeTask, leaseRuntimeTask, nextWaitingRuntimeTaskId, runtimeQueuePosition } from '../src/runtime/tasks';
 import { telegramFloodDelaySeconds, wakeNextRuntimeTask } from '../src/runtime/consumer';
 import type { DesiredRuntime, ObservedRuntime, RuntimeProvider } from '../src/runtime';
@@ -215,6 +220,194 @@ describe('the runtime queue consumer', () => {
     expect(result.delaySeconds).toBe(120);
     // The task stays parked in the durable queue, untouched.
     expect((await taskStatus(waiting.id)).status).toBe('queued');
+  });
+
+  it('reclaims a stale sibling after the runner proves it terminal and wakes FIFO', async () => {
+    const sent: { businessId: string; taskId: string }[] = [];
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.08.27-1',
+      RUNTIME_QUEUE: {
+        send: async (message: { businessId: string; taskId: string }) => { sent.push(message); },
+      },
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    const running = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', dedupeKey: 'orphan:terminal', payload: { input: 'old run' },
+    }));
+    expect((await asTenant(A, (tx) =>
+      leaseRuntimeTask(tx, A, running.id, 'orphan-lease'))).outcome).toBe('leased');
+    await asOwner((sql) => sql`
+      update runtime_task
+         set lease_expires_at = now() + interval '30 seconds',
+             remote_run_id = 'hermes-orphan', remote_status = 'running'
+       where id = ${running.id}`);
+    const waiting = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'provision', dedupeKey: 'orphan:waiting',
+    }));
+    let probes = 0;
+    const probeFetch: typeof fetch = async (input) => {
+      expect(String(input)).toContain(`/v1/tasks/${running.id}`);
+      probes += 1;
+      return jsonResponse({ ok: true, status: 'completed' });
+    };
+
+    await expect(handleRuntimeMessage(
+      env,
+      { version: 1, businessId: A, taskId: waiting.id },
+      { provider, fetch: probeFetch },
+    )).resolves.toEqual({
+      action: 'requeue',
+      delaySeconds: 65,
+      reason: 'orphan_reclaimed — freed a dead lease',
+    });
+    expect(probes).toBe(1);
+    const [orphan] = await asOwner((sql) => sql<{
+      status: string;
+      attempt: number;
+      lease_token: string | null;
+      lease_expires_at: Date | null;
+      last_error: string | null;
+    }[]>`
+      select status, attempt, lease_token, lease_expires_at, last_error
+        from runtime_task where id = ${running.id}`);
+    expect(orphan).toEqual({
+      status: 'failed',
+      attempt: 1,
+      lease_token: null,
+      lease_expires_at: null,
+      last_error: 'orphan_reclaimed',
+    });
+    expect(sent.map((message) => message.taskId)).toEqual([running.id]);
+    expect((await taskStatus(waiting.id)).status).toBe('queued');
+  });
+
+  it('keeps a stale sibling lease when the runner reports it non-terminal', async () => {
+    const sent: { businessId: string; taskId: string }[] = [];
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.08.27-1',
+      RUNTIME_QUEUE: {
+        send: async (message: { businessId: string; taskId: string }) => { sent.push(message); },
+      },
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    const running = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', dedupeKey: 'orphan:active', payload: { input: 'live run' },
+    }));
+    expect((await asTenant(A, (tx) =>
+      leaseRuntimeTask(tx, A, running.id, 'live-lease'))).outcome).toBe('leased');
+    await asOwner((sql) => sql`
+      update runtime_task set lease_expires_at = now() + interval '30 seconds'
+       where id = ${running.id}`);
+    const waiting = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'provision', dedupeKey: 'orphan:still-waiting',
+    }));
+    let probes = 0;
+    const probeFetch: typeof fetch = async () => {
+      probes += 1;
+      return jsonResponse({ ok: true, status: 'running' });
+    };
+
+    await expect(handleRuntimeMessage(
+      env,
+      { version: 1, businessId: A, taskId: waiting.id },
+      { provider, fetch: probeFetch },
+    )).resolves.toEqual({
+      action: 'requeue',
+      delaySeconds: 65,
+      reason: 'business runtime is busy — waiting to recheck a stale lease',
+    });
+    expect(probes).toBe(1);
+    const [active] = await asOwner((sql) => sql<{
+      status: string; attempt: number; lease_token: string | null;
+    }[]>`
+      select status, attempt, lease_token from runtime_task where id = ${running.id}`);
+    expect(active).toEqual({ status: 'leased', attempt: 0, lease_token: 'live-lease' });
+    expect(sent).toEqual([]);
+    expect((await taskStatus(waiting.id)).status).toBe('queued');
+  });
+
+  it('acks a fresh duplicate intake self-lease but rechecks it once stale', async () => {
+    const env = testEnv({ RUNTIME_RELEASE: '2026.08.27-1' });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    const [owner] = await asOwner((sql) => sql<{ id: string }[]>`
+      insert into app_user (email, email_verified)
+      values ('duplicate-lease@example.com', true) returning id`);
+    const connection = await asTenant(A, (tx) => saveConnection(env, tx, A, {
+      connector: 'telegram',
+      method: 'bot_token',
+      externalId: '123456789',
+      displayName: '@duplicate_bot',
+      secret: '123456789:AAtoken',
+      connectedBy: owner.id,
+    }));
+    const message = {
+      version: 2 as const,
+      kind: 'telegram_intake' as const,
+      businessId: A,
+      connectionId: connection.id,
+      requestedAtMs: Date.now(),
+      incoming: {
+        chatId: 42,
+        messageId: 901,
+        from: 'Owner',
+        text: 'Duplicate delivery',
+        privateChat: true as const,
+      },
+    };
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run',
+      dedupeKey: `telegram:${connection.id}:42:901`,
+      payload: {
+        input: 'Duplicate delivery',
+        telegram: {
+          connectionId: connection.id,
+          chatId: 42,
+          messageId: 901,
+          from: 'Owner',
+          question: 'Duplicate delivery',
+          privateChat: true,
+          liveMessageId: 77,
+        },
+      },
+    }));
+    expect((await asTenant(A, (tx) =>
+      leaseRuntimeTask(tx, A, task.id, 'duplicate-owner'))).outcome).toBe('leased');
+
+    await expect(handleRuntimeQueueMessage(env, message, { provider }))
+      .resolves.toEqual({ action: 'ack', reason: 'already_done' });
+
+    await asOwner((sql) => sql`
+      update runtime_task set lease_expires_at = now() + interval '30 seconds'
+       where id = ${task.id}`);
+    let probes = 0;
+    const probeFetch: typeof fetch = async () => {
+      probes += 1;
+      return jsonResponse({ ok: true, status: 'running' });
+    };
+    const stale = await handleRuntimeQueueMessage(env, message, { provider, fetch: probeFetch });
+    expect(stale).toMatchObject({
+      action: 'requeue',
+      delaySeconds: 65,
+      reason: 'business runtime is busy — waiting to recheck a stale lease',
+      nextMessage: { version: 1, businessId: A, taskId: task.id },
+    });
+    expect(probes).toBe(1);
+    expect(await taskStatus(task.id)).toEqual({ status: 'leased', lease_token: 'duplicate-owner' });
   });
 
   it('wakes the oldest waiting task when a task completes (Hermes-style FIFO)', async () => {

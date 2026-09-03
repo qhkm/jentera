@@ -10,6 +10,9 @@ export const RUNTIME_TASK_KINDS = [
   'cancel',
 ] as const;
 
+export const RUNTIME_LEASE_SECONDS = 300;
+const RUNTIME_LEASE_STALE_SECONDS = 60;
+
 export type RuntimeTaskKind = (typeof RUNTIME_TASK_KINDS)[number];
 export type RuntimeTaskStatus =
   | 'queued'
@@ -149,7 +152,15 @@ export async function activeRuntimeRunTask(
 
 export type LeaseResult =
   | { outcome: 'leased'; task: RuntimeTask }
-  | { outcome: 'busy'; siblingLeaseExpiresAt: Date | null }
+  | {
+      outcome: 'busy';
+      leasedId: string | null;
+      selfLeased: boolean;
+      leasedLeaseExpiresAt: Date | null;
+      leasedRemoteRunId: string | null;
+      leasedRemoteStatus: string | null;
+      siblingLeaseExpiresAt: Date | null;
+    }
   | { outcome: 'done' }
   | { outcome: 'missing' };
 
@@ -158,7 +169,7 @@ export async function leaseRuntimeTask(
   businessId: string,
   taskId: string,
   leaseToken: string,
-  leaseSeconds = 300,
+  leaseSeconds = RUNTIME_LEASE_SECONDS,
 ): Promise<LeaseResult> {
   /* Serialize the lease decision on a tenant-scoped advisory key instead of
      the business row. Same mutual exclusion — two concurrent Queue deliveries
@@ -191,38 +202,55 @@ export async function leaseRuntimeTaskWithBusinessLock(
   businessId: string,
   taskId: string,
   leaseToken: string,
-  leaseSeconds = 300,
+  leaseSeconds = RUNTIME_LEASE_SECONDS,
 ): Promise<LeaseResult> {
-  await tx`
-    update runtime_task
-       set status = 'failed', lease_token = null, lease_expires_at = null,
-           attempt = attempt + 1, available_at = now(),
-           last_error = 'lease expired', updated_at = now()
-     where business_id = ${businessId} and status = 'leased'
-       and lease_expires_at <= now()`;
-
   /* Try the common success path directly. UPDATE provides the row lock; the
      business advisory lock already serialises competing lease decisions, so
      a preceding SELECT ... FOR UPDATE was one full Neon round trip with no
      additional safety. */
-  const [leased] = await tx<TaskRow[]>`\n    update runtime_task\n       set status = 'leased', lease_token = ${leaseToken},\n           lease_expires_at = now() + (${leaseSeconds} * interval '1 second'),\n           last_error = null, updated_at = now()\n     where id = ${taskId} and business_id = ${businessId}\n       and status in ('queued','failed') and available_at <= now()\n       and not exists (\n         select 1 from runtime_task sibling\n          where sibling.business_id = ${businessId}\n            and sibling.status = 'leased'\n            and sibling.id <> ${taskId}\n       )\n    returning ${tx.unsafe(cols)}`;
+  const [leased] = await tx<TaskRow[]>`
+    update runtime_task
+       set status = 'leased', lease_token = ${leaseToken},
+           lease_expires_at = now() + (${leaseSeconds} * interval '1 second'),
+           last_error = null, updated_at = now()
+     where id = ${taskId} and business_id = ${businessId}
+       and status in ('queued','failed') and available_at <= now()
+       and not exists (
+         select 1 from runtime_task sibling
+          where sibling.business_id = ${businessId}
+            and sibling.status = 'leased'
+            and sibling.id <> ${taskId}
+       )
+    returning ${tx.unsafe(cols)}`;
   if (leased) return { outcome: 'leased', task: task(leased) };
 
   /* The uncommon fallback distinguishes a terminal/missing duplicate from a
      task parked behind the active lease, in one query. */
   const [state] = await tx<{
     status: RuntimeTaskStatus | null;
+    current_id: string | null;
     current_lease_expires_at: Date | null;
+    current_remote_run_id: string | null;
+    current_remote_status: string | null;
+    sibling_id: string | null;
     sibling_lease_expires_at: Date | null;
+    sibling_remote_run_id: string | null;
+    sibling_remote_status: string | null;
   }[]>`
     select current.status,
+           current.id as current_id,
            current.lease_expires_at as current_lease_expires_at,
-           sibling.lease_expires_at as sibling_lease_expires_at
+           current.remote_run_id as current_remote_run_id,
+           current.remote_status as current_remote_status,
+           sibling.id as sibling_id,
+           sibling.lease_expires_at as sibling_lease_expires_at,
+           sibling.remote_run_id as sibling_remote_run_id,
+           sibling.remote_status as sibling_remote_status
       from (select 1) gate
       left join runtime_task current
         on current.id = ${taskId} and current.business_id = ${businessId}
       left join lateral (
-        select lease_expires_at
+        select id, lease_expires_at, remote_run_id, remote_status
           from runtime_task
          where business_id = ${businessId} and status = 'leased'
          order by updated_at desc
@@ -233,12 +261,46 @@ export async function leaseRuntimeTaskWithBusinessLock(
       state.status === 'exhausted') {
     return { outcome: 'done' };
   }
+  const selfLeased = state.status === 'leased';
+  const leasedLeaseExpiresAt = selfLeased
+    ? state.current_lease_expires_at
+    : state.sibling_lease_expires_at;
   return {
     outcome: 'busy',
-    siblingLeaseExpiresAt: state.status === 'leased'
-      ? state.current_lease_expires_at
-      : state.sibling_lease_expires_at,
+    leasedId: selfLeased ? state.current_id : state.sibling_id,
+    selfLeased,
+    leasedLeaseExpiresAt,
+    leasedRemoteRunId: selfLeased
+      ? state.current_remote_run_id
+      : state.sibling_remote_run_id,
+    leasedRemoteStatus: selfLeased
+      ? state.current_remote_status
+      : state.sibling_remote_status,
+    siblingLeaseExpiresAt: leasedLeaseExpiresAt,
   };
+}
+
+/** Release a lease only after its runner has proved the task terminal. The
+    remaining-time predicate is the CAS boundary against a concurrent healthy
+    renewal; callers may observe a stale lease, probe it, then lose this update
+    if ownership was refreshed in the meantime. */
+export async function reclaimRuntimeTaskLease(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+  reason: string,
+  staleRemainingSeconds = RUNTIME_LEASE_STALE_SECONDS,
+): Promise<boolean> {
+  const rows = await tx`
+    update runtime_task
+       set status = 'failed', lease_token = null, lease_expires_at = null,
+           attempt = attempt + 1, available_at = now(),
+           last_error = ${reason.slice(0, 1000)}, updated_at = now()
+     where id = ${taskId} and business_id = ${businessId}
+       and status = 'leased'
+       and lease_expires_at <= now() + (${staleRemainingSeconds} * interval '1 second')
+    returning id`;
+  return rows.length === 1;
 }
 
 /** Oldest task still waiting for a free slot — the FIFO next-in-line.
@@ -415,13 +477,14 @@ export async function markRuntimeTaskFloodOwnerNotified(
 }
 
 /** Keep ownership while one Worker invocation consumes an ephemeral runtime
-    stream. A dead invocation stops renewing and becomes recoverable normally. */
+    stream. Once the lease enters its stale window it can only be recovered by
+    a terminal runner probe followed by reclaimRuntimeTaskLease. */
 export async function renewRuntimeTaskLease(
   tx: postgres.TransactionSql,
   businessId: string,
   taskId: string,
   leaseToken: string,
-  leaseSeconds = 300,
+  leaseSeconds = RUNTIME_LEASE_SECONDS,
 ): Promise<boolean> {
   const rows = await tx`
     update runtime_task
@@ -429,6 +492,7 @@ export async function renewRuntimeTaskLease(
            updated_at = now()
      where id = ${taskId} and business_id = ${businessId}
        and status = 'leased' and lease_token = ${leaseToken}
+       and lease_expires_at > now() + (${RUNTIME_LEASE_STALE_SECONDS} * interval '1 second')
     returning id`;
   return rows.length === 1;
 }

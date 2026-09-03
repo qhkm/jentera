@@ -5,6 +5,8 @@ import type { ResponseMode } from './response-mode';
 const RESPONSE_LIMIT = 256 * 1024;
 const STREAM_LIMIT = 64 * 1024;
 const HERMES_PATCH_ID = 'jentera-runtime-2026-09-01';
+const PROBE_TIMEOUT_MS = 3_000;
+const TERMINAL_TASK_STATUSES = new Set(['completed', 'failed', 'cancelled', 'stopped']);
 
 export interface RunnerClientOptions {
   origin: string;
@@ -174,6 +176,23 @@ export class RunnerClient {
     return this.request(`/v1/tasks/${encodeURIComponent(taskId)}`);
   }
 
+  /** A lease may be reclaimed only when the runner positively reports that
+      its task is terminal. Every ambiguous outcome fails closed so a network
+      fault, timeout, or missing runner record can never steal a live run. */
+  async probeRun(taskId: string): Promise<boolean> {
+    try {
+      const body = await this.request(
+        `/v1/tasks/${encodeURIComponent(taskId)}`,
+        {},
+        [200],
+        PROBE_TIMEOUT_MS,
+      );
+      return typeof body.status === 'string' && TERMINAL_TASK_STATUSES.has(body.status);
+    } catch {
+      return false;
+    }
+  }
+
   async stop(taskId: string): Promise<RunnerTaskResponse> {
     return this.request(`/v1/tasks/${encodeURIComponent(taskId)}/stop`, {
       method: 'POST',
@@ -279,6 +298,7 @@ export class RunnerClient {
     path: string,
     init: RequestInit = {},
     accepted: number[] = [200],
+    timeoutMs = 30_000,
   ): Promise<RunnerTaskResponse> {
     const response = await this.fetcher(`${this.origin}${path}`, {
       ...init,
@@ -287,7 +307,7 @@ export class RunnerClient {
         'X-Aisar-Runner-Key': this.runnerKey,
         ...(init.headers ?? {}),
       },
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const text = await response.text();
     if (text.length > RESPONSE_LIMIT) throw new Error('runner response exceeded limit');

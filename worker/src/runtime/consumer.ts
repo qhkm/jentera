@@ -20,6 +20,7 @@ import {
   leaseRuntimeTaskWithBusinessLock,
   markRuntimeTaskFloodOwnerNotified,
   nextWaitingRuntimeTaskId,
+  reclaimRuntimeTaskLease,
   recordRuntimeTaskTerminalOutcome,
   renewRuntimeTaskLease,
   retryRuntimeTask,
@@ -52,9 +53,10 @@ import {
   TelegramLiveStream,
 } from '../connectors/telegram';
 import { runtimeModelKeyNeedsRotation } from './openrouter-keys';
-import { RuntimeBusyError } from './runner-client';
+import { RunnerClient, RuntimeBusyError } from './runner-client';
 import {
   getRuntime,
+  getRuntimeAccess,
   getRuntimeTelegramAccess,
   type AgentRuntimeRecord,
 } from '../agent-runtime';
@@ -65,6 +67,9 @@ import { sanitizePublicRuntimeText } from './public-output';
 
 const MAX_TASK_ATTEMPTS = 5;
 const BUSY_RETRY_SECONDS = 2;
+const RUNTIME_LEASE_STALE_MS = 60_000;
+const RUNTIME_LEASE_RENEWAL_MS = 20_000;
+const ORPHAN_RETRY_SECONDS = 65;
 /** L3: a runner slot held past this interval is wedged, not busy. The
     runner-side watchdog quarantines dead/expired runs within its own age
     bound (15m quick / 90m deep); if a slot is still held this long the
@@ -328,7 +333,7 @@ export async function handleRuntimeQueueMessage(
   }
   /* Another delivery already owns this exact task. Its Queue message remains
      authoritative; acknowledging this duplicate prevents a second bubble. */
-  if (admitted.task.status === 'leased') {
+  if (admitted.task.status === 'leased' && runtimeLeaseIsFresh(admitted.task.leaseExpiresAt)) {
     return { action: 'ack', reason: 'already_done' };
   }
 
@@ -472,10 +477,42 @@ export async function handleRuntimeQueueMessage(
 export async function wakeNextRuntimeTask(
   env: Env,
   businessId: string,
+  _options: { reason?: string } = {},
 ): Promise<void> {
   const nextId = await withTenant(env, businessId, (tx) =>
     nextWaitingRuntimeTaskId(tx, businessId));
   if (nextId) await signalRuntimeTask(env, businessId, nextId).catch(() => {});
+}
+
+/** Probe only through tenant-scoped runtime access. A failure anywhere from
+    credential loading through HTTP response parsing is ambiguous and must not
+    authorize reclamation. */
+async function probeOrphanedRun(
+  env: Env,
+  businessId: string,
+  taskId: string,
+  fetcher?: typeof globalThis.fetch,
+): Promise<boolean> {
+  try {
+    const { runtime, secrets } = await withTenant(env, businessId, (tx) =>
+      getRuntimeAccess(env, tx, businessId));
+    if (!runtime.providerUrl) return false;
+    const client = new RunnerClient({
+      origin: runtime.providerUrl,
+      runnerKey: secrets.runnerKey,
+      edgeToken: runtime.provider === 'fly-sprite' ? env.SPRITES_TOKEN : undefined,
+      fetch: fetcher,
+    });
+    return await client.probeRun(taskId);
+  } catch {
+    return false;
+  }
+}
+
+function runtimeLeaseIsFresh(leaseExpiresAt: Date | null): boolean {
+  return Boolean(
+    leaseExpiresAt && new Date(leaseExpiresAt).getTime() > Date.now() + RUNTIME_LEASE_STALE_MS,
+  );
 }
 
 export async function handleRuntimeMessage(
@@ -509,13 +546,49 @@ export async function handleRuntimeMessage(
   if (lease.outcome === 'missing') return { action: 'ack', reason: 'missing' };
   if (lease.outcome === 'done') return { action: 'ack', reason: 'already_done' };
   if (lease.outcome === 'busy') {
-    /* The task is already parked in runtime_task (durable truth) while a
-       sibling holds the slot. Wake-on-release will signal it the moment the
-       slot frees, so this requeue is only a watchdog — schedule it against
-       the sibling's lease horizon instead of hammering the queue every 2s. */
-    const remainingMs = lease.siblingLeaseExpiresAt
-      ? Math.max(0, new Date(lease.siblingLeaseExpiresAt).getTime() - Date.now())
+    /* The task is already parked in runtime_task (durable truth), either as a
+       duplicate of the lease holder or behind a sibling. Wake-on-release will
+       signal waiting work when the slot frees, so this requeue is only a
+       watchdog — schedule it against the blocking lease's horizon. */
+    const blockingLeaseExpiresAt = lease.leasedLeaseExpiresAt ?? lease.siblingLeaseExpiresAt;
+    const remainingMs = blockingLeaseExpiresAt
+      ? Math.max(0, new Date(blockingLeaseExpiresAt).getTime() - Date.now())
       : 0;
+    const fresh = Boolean(blockingLeaseExpiresAt && remainingMs > RUNTIME_LEASE_STALE_MS);
+    const stale = Boolean(lease.leasedId && blockingLeaseExpiresAt && !fresh);
+    if (lease.selfLeased && fresh) {
+      return { action: 'ack', reason: 'already_done' };
+    }
+    if (stale && lease.leasedId) {
+      const terminal = await probeOrphanedRun(
+        env,
+        message.businessId,
+        lease.leasedId,
+        options.fetch,
+      );
+      if (terminal) {
+        const reclaimed = await withTenant(env, message.businessId, (tx) =>
+          reclaimRuntimeTaskLease(
+            tx,
+            message.businessId,
+            lease.leasedId as string,
+            'orphan_reclaimed',
+          ));
+        if (reclaimed) {
+          await wakeNextRuntimeTask(env, message.businessId, { reason: 'orphan_reclaimed' });
+          return {
+            action: 'requeue',
+            delaySeconds: ORPHAN_RETRY_SECONDS,
+            reason: 'orphan_reclaimed — freed a dead lease',
+          };
+        }
+      }
+      return {
+        action: 'requeue',
+        delaySeconds: ORPHAN_RETRY_SECONDS,
+        reason: 'business runtime is busy — waiting to recheck a stale lease',
+      };
+    }
     const delaySeconds = Math.min(Math.max(Math.ceil(remainingMs / 1_000) + 5, 15), 120);
     return {
       action: 'requeue',
@@ -763,7 +836,7 @@ export async function handleRuntimeMessage(
           onHeartbeat: liveStream
             ? async () => {
                 await liveStream.heartbeat();
-                if (Date.now() - lastLeaseRenewal < 60_000) return;
+                if (Date.now() - lastLeaseRenewal < RUNTIME_LEASE_RENEWAL_MS) return;
                 const renewed = await withTenant(env, message.businessId, (tx) =>
                   renewRuntimeTaskLease(
                     tx,
