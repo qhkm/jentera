@@ -75,6 +75,7 @@ sprite file push -o "$sprite_org" -s "$sprite_name" -p \
   runner/bin/web-search-smoke.py \
   runner/bin/configure-model-provider.py \
   runner/bin/patch-hermes-dependencies.mjs \
+  runner/bin/wire_reorder.py \
   runner/bin/hermes-service.sh \
   runner/bin/display-service.sh \
   runner/bin/runner-service.sh \

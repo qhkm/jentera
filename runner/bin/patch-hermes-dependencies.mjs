@@ -17,6 +17,11 @@ const apiServerPath = join(root, 'gateway/platforms/api_server.py');
 const routingMarker = '# Jentera: apply reviewed OpenRouter routing to API-server agents.';
 const runtimeMarker = '# Jentera: expose bounded final reasoning and attest this runtime patch.';
 const runtimePatchId = 'jentera-runtime-2026-09-01';
+const bootstrapPath = join(root, 'agent/process_bootstrap.py');
+const runAgentPath = join(root, 'run_agent.py');
+const wireReorderPath = join(root, 'agent/wire_reorder.py');
+const wireOrderMarker = '# Jentera: reorder chat.completions wire bodies (tools first, messages last).';
+const wireOrderPatchId = 'jentera-wire-order-2026-09-03';
 const manifest = JSON.parse(await readFile(packagePath, 'utf8'));
 const current = manifest?.overrides?.['nanoid@^3'];
 if (!['3.3.17', '3.3.18'].includes(current)) {
@@ -37,7 +42,8 @@ if (!verify) {
   }
   await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`, { mode: 0o644 });
   await patchApiServer();
-  process.stdout.write('pinned Hermes dependency and Jentera API-server patches\n');
+  await patchWireOrder();
+  process.stdout.write('pinned Hermes dependency, Jentera API-server and wire-order patches\n');
   process.exit(0);
 }
 
@@ -57,7 +63,20 @@ if (!apiServer.includes(routingMarker) ||
     !apiServer.includes('**({"reasoning": reasoning} if reasoning else {}),')) {
   throw new Error('Hermes API server is missing a reviewed Jentera patch');
 }
-process.stdout.write('Hermes production dependency and Jentera API-server patches verified\n');
+const bootstrap = await readFile(bootstrapPath, 'utf8');
+const runAgent = await readFile(runAgentPath, 'utf8');
+let wireReorder = '';
+try {
+  wireReorder = await readFile(wireReorderPath, 'utf8');
+} catch {
+  /* written by the apply path; missing fails closed below */
+}
+if (!bootstrap.includes(wireOrderMarker) ||
+    !runAgent.includes(wireOrderMarker) ||
+    !wireReorder.includes(`PATCH_ID = "${wireOrderPatchId}"`)) {
+  throw new Error('Hermes wire-order patch is missing or drifted');
+}
+process.stdout.write('Hermes production dependency, Jentera API-server and wire-order patches verified\n');
 
 async function patchApiServer() {
   let source = await readFile(apiServerPath, 'utf8');
@@ -145,6 +164,91 @@ async function patchApiServer() {
     source = replaceReviewedAnchor(source, statusAnchor, statusPatch);
   }
   await writeFile(apiServerPath, source, { mode: 0o644 });
+}
+
+/** Stage 3: stabilize chat.completions wire bodies for byte-prefix-keyed
+ * routers (router.fmcv.my MiniMax-M3). Reorders each outgoing body so the
+ * stable fields (tools, model, …) come first and `messages` (whose tail
+ * changes every turn) comes last. The module is copied into the tree and both
+ * keepalive-client builders (main + auxiliary, sync + async) are wrapped. */
+async function patchWireOrder() {
+  const wireSrc = await readFile(new URL('./wire_reorder.py', import.meta.url), 'utf8');
+  if (!wireSrc.includes(`PATCH_ID = "${wireOrderPatchId}"`)) {
+    throw new Error('runner wire_reorder.py is missing its reviewed PATCH_ID');
+  }
+  let existing = '';
+  try {
+    existing = await readFile(wireReorderPath, 'utf8');
+  } catch {
+    /* not present yet — write below */
+  }
+  if (existing !== wireSrc) {
+    await writeFile(wireReorderPath, wireSrc, { mode: 0o644 });
+  }
+
+  let bootstrap = await readFile(bootstrapPath, 'utf8');
+  if (!bootstrap.includes(wireOrderMarker)) {
+    const anchor = [
+      '        return client_cls(',
+      '            limits=limits,',
+      '            timeout=timeout,',
+      '            proxy=proxy,',
+      '            mounts=mounts or None,',
+      '            verify=verify,',
+      '        )',
+    ].join('\n');
+    const replacement = [
+      '        client = client_cls(',
+      '            limits=limits,',
+      '            timeout=timeout,',
+      '            proxy=proxy,',
+      '            mounts=mounts or None,',
+      '            verify=verify,',
+      '        )',
+      `        ${wireOrderMarker}`,
+      '        try:',
+      '            from agent.wire_reorder import wrap_http_client',
+      '',
+      '            client = wrap_http_client(client, async_mode=async_mode)',
+      '        except Exception:',
+      '            pass',
+      '        return client',
+    ].join('\n');
+    bootstrap = replaceReviewedAnchor(bootstrap, anchor, replacement);
+    await writeFile(bootstrapPath, bootstrap, { mode: 0o644 });
+  }
+
+  let runAgent = await readFile(runAgentPath, 'utf8');
+  if (!runAgent.includes(wireOrderMarker)) {
+    const anchor = [
+      '            return _httpx.Client(',
+      '                limits=_limits,',
+      '                timeout=_timeout,',
+      '                proxy=_proxy,',
+      '                mounts=_mounts or None,',
+      '                verify=verify,',
+      '            )',
+    ].join('\n');
+    const replacement = [
+      '            _client = _httpx.Client(',
+      '                limits=_limits,',
+      '                timeout=_timeout,',
+      '                proxy=_proxy,',
+      '                mounts=_mounts or None,',
+      '                verify=verify,',
+      '            )',
+      `            ${wireOrderMarker}`,
+      '            try:',
+      '                from agent.wire_reorder import wrap_http_client',
+      '',
+      '                _client = wrap_http_client(_client)',
+      '            except Exception:',
+      '                pass',
+      '            return _client',
+    ].join('\n');
+    runAgent = replaceReviewedAnchor(runAgent, anchor, replacement);
+    await writeFile(runAgentPath, runAgent, { mode: 0o644 });
+  }
 }
 
 /** The first canary carried a hand-applied version of the reasoning patch.
