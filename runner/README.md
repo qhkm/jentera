@@ -32,13 +32,14 @@ AISAR_RUNNER_STATE=/var/lib/aisar/runner-state.json
 Verify locally with `npm test`. No package installation is required.
 
 The runner is Hermes's sole run-event subscriber and exposes bounded `message.delta`
-text plus native-style tool-start/tool-completion presentation events from process memory.
-It discards reasoning, approvals, full tool arguments/results, unknown events, and
-terminal transcripts before they cross the runtime boundary. A streaming
+text plus native-style tool, reasoning, and approval presentation events from process
+memory. It discards approval commands/patterns, full tool arguments/results, unknown
+events, and terminal transcripts before they cross the runtime boundary. A streaming
 think-tag scrubber also removes inline reasoning split across arbitrary model chunks,
 matching Hermes's native gateway filter. None of the stream is written to the state file.
-It does not yet proxy Hermes-native approvals, so tools which pause for native approval
-cannot currently be resumed through Telegram. The bootstrap configures
+Approval decisions use the task-scoped runner route; the runner validates the request id
+against the FIFO head it observed before forwarding `once` or `deny` to Hermes. The
+bootstrap configures
 `platform_toolsets.api_server` to `hermes-api-server` plus its explicit Home Assistant
 opt-in, verifies that it covers the full pinned release, and makes both `toolMode: full-tools`
 and the boot-tested DDGS search backend part of authenticated readiness. The control plane

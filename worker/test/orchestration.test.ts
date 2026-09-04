@@ -538,6 +538,121 @@ describe('durable Hermes Telegram replies', () => {
     });
   });
 
+  it('surfaces a native approval, releases the lease, then times out to deny and resume', async () => {
+    await setPolicy('automatic');
+    const provider = new LocalRuntimeProvider();
+    const queued: RuntimeQueueMessage[] = [];
+    const durableEnv = testEnv({
+      RUNTIME_RELEASE: '2026.08.28-4',
+      RUNTIME_EXECUTION_ENABLED: 'true',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+      RUNTIME_QUEUE: {
+        send: async (message: RuntimeQueueMessage) => { queued.push(message); },
+      },
+    });
+    await ensureProviderRuntime(durableEnv, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.28-4', 'v1'));
+    await handleIncoming(durableEnv, A, connId, incoming);
+
+    let resumed = false;
+    const approvalBodies: unknown[] = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return runnerResponse({
+          ok: true,
+          release: '2026.08.28-4',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-01' },
+          toolMode: 'full-tools',
+          webSearchBackend: 'ddgs',
+          edgeAuthorizationForwarded: false,
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        return runnerResponse({ ok: true, duplicate: resumed, hermesRunId: 'approval-run-1', status: 'running' }, resumed ? 200 : 202);
+      }
+      if (url.endsWith('/approval')) {
+        approvalBodies.push(JSON.parse(String(init?.body)));
+        resumed = true;
+        return runnerResponse({ ok: true, status: 'running' });
+      }
+      if (url.endsWith('/events')) {
+        const body = resumed
+          ? 'data: {"type":"delta","seq":2,"delta":"Safe fallback answer."}\n\ndata: {"type":"done"}\n\n'
+          : `data: ${JSON.stringify({
+              type: 'approval',
+              seq: 1,
+              requestId: 'a'.repeat(32),
+              tool: 'execute_code',
+              message: 'Allow execute_code to fetch the requested public source?',
+            })}\n\ndata: {"type":"done"}\n\n`;
+        return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      if (url.includes('/v1/tasks/')) {
+        return runnerResponse({
+          ok: true,
+          status: 'completed',
+          output: 'Safe fallback answer.',
+          usage: { input_tokens: 80, output_tokens: 6 },
+        });
+      }
+      return runnerResponse({ error: 'not found' }, 404);
+    };
+
+    const first = await handleRuntimeQueueMessage(durableEnv, queued[0], { provider, fetch: fetcher });
+    expect(first).toMatchObject({
+      action: 'requeue',
+      delaySeconds: 60,
+      reason: 'Hermes is waiting for owner approval',
+    });
+    const [waiting] = await asOwner((sql) => sql<{
+      id: string; kind: string; status: string; lease_token: string | null;
+      result: { approval: { id: string; status: string; messageId: number } };
+    }[]>`select id, kind, status, lease_token, result from runtime_task where business_id = ${A}`);
+    expect(waiting).toMatchObject({
+      kind: 'resume', status: 'queued', lease_token: null,
+      result: { approval: { status: 'pending', messageId: 99 } },
+    });
+    const telegramFetch = vi.mocked(globalThis.fetch);
+    const approvalEdit = telegramFetch.mock.calls
+      .map(([, init]) => JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>)
+      .find((body) => (body.text as string | undefined)?.includes('Approval needed'));
+    expect(approvalEdit).toMatchObject({
+      chat_id: 42,
+      message_id: 99,
+      reply_markup: {
+        inline_keyboard: [[
+          { text: 'Approve', callback_data: `har:a:${waiting.result.approval.id}` },
+          { text: 'Deny', callback_data: `har:d:${waiting.result.approval.id}` },
+        ]],
+      },
+    });
+
+    await asOwner((sql) => sql`
+      update runtime_task set available_at = now() where id = ${waiting.id}`);
+    const resumeMessage = (first as { nextMessage: RuntimeQueueMessage }).nextMessage;
+    await expect(handleRuntimeQueueMessage(durableEnv, resumeMessage, { provider, fetch: fetcher }))
+      .resolves.toEqual({ action: 'ack', reason: 'completed' });
+    expect(approvalBodies).toEqual([{
+      requestId: 'a'.repeat(32),
+      decision: 'deny',
+    }]);
+    expect(edits).toContainEqual({ chatId: 42, messageId: 99, text: 'Safe fallback answer.' });
+    expect(deletions).not.toContainEqual({ chatId: 42, messageId: 99 });
+    const timeoutEdit = telegramFetch.mock.calls
+      .map(([, init]) => JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>)
+      .find((body) => (body.text as string | undefined)?.includes('Approval timed out'));
+    expect(timeoutEdit).toMatchObject({ reply_markup: { inline_keyboard: [] } });
+    expect(await runRow()).toMatchObject({ status: 'completed' });
+    expect(await trace()).toContain('approval.requested');
+    expect(await trace()).toContain('approval.rejected');
+  });
+
   it('replaces the working bubble when the model service fails terminally', async () => {
     await setPolicy('automatic');
     const provider = new LocalRuntimeProvider();

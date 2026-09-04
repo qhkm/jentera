@@ -388,6 +388,40 @@ export function createRunner(input) {
         return streams.pipe(saved.taskId, req, res);
       }
 
+      const approvalPath = url.pathname.match(/^\/v1\/tasks\/([0-9a-f-]{36})\/approval$/i);
+      if (approvalPath && req.method === 'POST') {
+        const saved = await state.get(approvalPath[1]);
+        if (!saved) return json(res, 404, { ok: false, error: 'task not found' });
+        if (savedTerminalStatus(saved)) {
+          return json(res, 409, { ok: false, error: 'task is terminal' });
+        }
+        const body = await readJson(req);
+        const requestId = safeApprovalRequestId(body?.requestId);
+        const decision = body?.decision === 'approve' || body?.decision === 'deny'
+          ? body.decision
+          : '';
+        if (!requestId || !decision) {
+          return json(res, 400, { ok: false, error: 'requestId and decision are required' });
+        }
+        const resolution = await streams.resolveApproval(
+          saved.taskId,
+          saved.hermesRunId,
+          requestId,
+          decision,
+        );
+        if (resolution.error) {
+          return json(res, resolution.status, { ok: false, error: resolution.error });
+        }
+        return json(res, 200, {
+          ok: true,
+          taskId: saved.taskId,
+          requestId,
+          decision,
+          status: 'running',
+          ...(resolution.duplicate ? { duplicate: true } : {}),
+        });
+      }
+
       const taskPath = url.pathname.match(/^\/v1\/tasks\/([0-9a-f-]{36})$/i);
       if (taskPath && req.method === 'GET') {
         const saved = await state.get(taskPath[1]);
@@ -874,9 +908,10 @@ class StateStore {
  * The sole subscriber to Hermes's destructive run-event queue.
  *
  * Assistant text deltas, Hermes's bounded tool lifecycle presentation events,
- * and the bounded reasoning lane are copied into process memory. Approvals,
- * tool results, full arguments, terminal transcripts, and every unknown event
- * are dropped here. Nothing in this class touches the state file.
+ * the bounded reasoning lane, and a narrow approval prompt are copied into
+ * process memory. Approval commands/patterns, tool results, full arguments,
+ * terminal transcripts, and every unknown event are dropped here. Nothing in
+ * this class touches the state file.
  */
 class SafeDeltaStreams {
   constructor(config) {
@@ -896,6 +931,9 @@ class SafeDeltaStreams {
       history: [],
       subscribers: new Set(),
       scrubber: new StreamingThinkScrubber(),
+      pendingApprovals: [],
+      resolvedApprovals: new Map(),
+      approvalResolution: null,
       done: false,
     };
     this.streams.set(taskId, stream);
@@ -982,6 +1020,23 @@ class SafeDeltaStreams {
       this.emitThinking(stream, event.text);
       return;
     }
+    if (event?.event === 'approval.request') {
+      const requestId = safeApprovalRequestId(event.request_id);
+      const message = safeToolPreview(event.description);
+      if (!requestId || !message || stream.pendingApprovals.some(
+        (approval) => approval.requestId === requestId,
+      ) || stream.resolvedApprovals.has(requestId)) return;
+      const approval = {
+        type: 'approval',
+        seq: stream.nextSeq++,
+        requestId,
+        tool: approvalToolName(event),
+        message,
+      };
+      stream.pendingApprovals.push(approval);
+      this.emitEvent(stream, approval);
+      return;
+    }
     if (event?.event === 'tool.started') {
       const tool = safeToolName(event.tool);
       if (!tool) return;
@@ -1042,6 +1097,63 @@ class SafeDeltaStreams {
     stream.bytes += size;
     stream.history.push(safe);
     for (const subscriber of stream.subscribers) writeSse(subscriber, safe);
+  }
+
+  /** Hermes's HTTP approval endpoint resolves its FIFO head and accepts no
+   * request id. The public runner route therefore binds the worker's id to the
+   * first safe event observed here before forwarding a one-shot choice. */
+  async resolveApproval(taskId, runId, requestId, decision) {
+    const stream = this.start(taskId, runId);
+    const resolved = stream.resolvedApprovals.get(requestId);
+    if (resolved) {
+      return resolved === decision
+        ? { duplicate: true }
+        : { status: 409, error: 'approval already resolved differently' };
+    }
+    const pending = stream.pendingApprovals[0];
+    if (!pending || pending.requestId !== requestId) {
+      return { status: 409, error: 'approval is not the pending request' };
+    }
+    if (stream.approvalResolution) {
+      if (stream.approvalResolution.requestId !== requestId ||
+          stream.approvalResolution.decision !== decision) {
+        return { status: 409, error: 'another approval decision is in progress' };
+      }
+      const result = await stream.approvalResolution.promise;
+      return result.error ? result : { ...result, duplicate: true };
+    }
+    const operation = (async () => {
+      const response = await hermes(
+        this.config,
+        `/v1/runs/${encodeURIComponent(runId)}/approval`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ choice: decision === 'approve' ? 'once' : 'deny' }),
+        },
+      );
+      if (!response.ok) {
+        return {
+          status: response.status === 404 ? 409 : 502,
+          error: `Hermes approval failed (${response.status})`,
+        };
+      }
+      stream.pendingApprovals.shift();
+      stream.history = stream.history.filter(
+        (event) => event.type !== 'approval' || event.requestId !== requestId,
+      );
+      stream.resolvedApprovals.set(requestId, decision);
+      while (stream.resolvedApprovals.size > 32) {
+        stream.resolvedApprovals.delete(stream.resolvedApprovals.keys().next().value);
+      }
+      return { duplicate: false };
+    })();
+    stream.approvalResolution = { requestId, decision, promise: operation };
+    try {
+      return await operation;
+    } finally {
+      stream.approvalResolution = null;
+    }
   }
 
   finish(stream) {
@@ -1255,6 +1367,23 @@ function safeToolPreview(value) {
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
     .replace(/\b(Bearer\s+)[A-Za-z0-9._~+\/-]{12,}/gi, '$1[redacted]')
     .replace(/\b(api[_-]?key|token|secret|password)\s*[:=]\s*[^\s,;]+/gi, '$1=[redacted]'), 1_000);
+}
+
+function safeApprovalRequestId(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{16,128}$/.test(value) ? value : '';
+}
+
+/** Hermes's native approval event deliberately has no tool field. Its
+ * execute-code gate is identified by pattern metadata; plugin rules include
+ * their tool name after `plugin_rule:`. Only the name crosses this boundary. */
+function approvalToolName(event) {
+  const direct = safeToolName(event.tool);
+  if (direct) return direct;
+  const pattern = typeof event.pattern_key === 'string' ? event.pattern_key : '';
+  const plugin = /^plugin_rule:([a-zA-Z0-9_.:-]{1,96})(?::|$)/.exec(pattern)?.[1];
+  if (plugin) return plugin;
+  if (pattern || typeof event.command === 'string') return 'execute_code';
+  return 'tool';
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

@@ -176,6 +176,32 @@ export async function finishRun(
   await append(tx, businessId, runId, type, detail);
 }
 
+/** Resume a Hermes-native approval wait without manufacturing a second run.
+    The decision event and status transition share the caller's transaction. */
+export async function resumeRunAfterApproval(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  runId: string,
+  decision: 'approve' | 'deny',
+  detail: unknown = {},
+): Promise<boolean> {
+  const rows = await tx`
+    update run
+       set status = 'working', ended_at = null
+     where id = ${runId} and business_id = ${businessId}
+       and status = 'needs_approval'
+    returning id`;
+  if (rows.length !== 1) return false;
+  await append(
+    tx,
+    businessId,
+    runId,
+    decision === 'approve' ? 'approval.granted' : 'approval.rejected',
+    detail,
+  );
+  return true;
+}
+
 export async function runTrace(
   tx: postgres.TransactionSql,
   runId: string,

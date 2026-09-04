@@ -23,6 +23,8 @@ let hermesReasoning;
 let hermesPatch;
 let hermesRunMissing;
 let starts;
+let hermesEventsList;
+let approvalRequests;
 
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'aisar-runner-'));
@@ -31,6 +33,18 @@ beforeEach(async () => {
   hermesPatch = 'jentera-runtime-2026-09-01';
   hermesRunMissing = false;
   starts = [];
+  approvalRequests = [];
+  hermesEventsList = [
+    { event: 'message.delta', delta: 'Hello' },
+    { event: 'reasoning.available', text: 'private chain of thought' },
+    { event: 'tool.started', tool: 'execute_code', preview: 'import urllib.request' },
+    { event: 'tool.completed', tool: 'execute_code', duration: 1.25, error: false },
+    { event: 'message.delta', delta: ' from Hermes' },
+    { event: 'message.delta', delta: '\n<thi' },
+    { event: 'message.delta', delta: 'nk>inline private reasoning' },
+    { event: 'message.delta', delta: '</think>\nSafe answer' },
+    { event: 'run.completed', output: 'terminal transcript must not cross' },
+  ];
   hermesServer = createServer(async (req, res) => {
     assert.equal(req.headers.authorization, `Bearer ${HERMES_KEY}`);
     if (req.url === '/health/detailed') {
@@ -43,18 +57,18 @@ beforeEach(async () => {
     }
     if (req.url?.endsWith('/events')) {
       res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-      for (const event of [
-        { event: 'message.delta', delta: 'Hello' },
-        { event: 'reasoning.available', text: 'private chain of thought' },
-        { event: 'tool.started', tool: 'execute_code', preview: 'import urllib.request' },
-        { event: 'tool.completed', tool: 'execute_code', duration: 1.25, error: false },
-        { event: 'message.delta', delta: ' from Hermes' },
-        { event: 'message.delta', delta: '\n<thi' },
-        { event: 'message.delta', delta: 'nk>inline private reasoning' },
-        { event: 'message.delta', delta: '</think>\nSafe answer' },
-        { event: 'run.completed', output: 'terminal transcript must not cross' },
-      ]) res.write(`data: ${JSON.stringify(event)}\n\n`);
+      for (const event of hermesEventsList) res.write(`data: ${JSON.stringify(event)}\n\n`);
       return res.end();
+    }
+    if (req.method === 'POST' && req.url?.endsWith('/approval')) {
+      approvalRequests.push(await bodyOf(req));
+      hermesStatus = 'running';
+      return reply(res, 200, {
+        object: 'hermes.run.approval_response',
+        run_id: req.url.split('/').at(-2),
+        choice: approvalRequests.at(-1).choice,
+        resolved: 1,
+      });
     }
     if (req.method === 'POST' && req.url?.endsWith('/stop')) {
       if (hermesRunMissing) return reply(res, 404, { error: 'run not found' });
@@ -345,6 +359,78 @@ test('streams Hermes-visible assistant, tool, and bounded thinking events withou
     state,
     /Hello|Hermes|execute_code|urllib|chain of thought|terminal transcript|inline private reasoning|Safe answer/,
   );
+});
+
+test('relays only the bounded approval prompt and forwards an approved FIFO head', async () => {
+  const requestId = 'a'.repeat(32);
+  hermesEventsList = [{
+    event: 'approval.request',
+    run_id: 'run-1',
+    timestamp: 1_788_000_000,
+    request_id: requestId,
+    command: 'curl -H "Authorization: Bearer secret-token" https://private.example',
+    pattern_key: 'shell_network',
+    pattern_keys: ['shell_network'],
+    description: 'Allow execute_code to fetch the requested public source?',
+    allow_permanent: true,
+    allow_session: true,
+    choices: ['once', 'session', 'always', 'deny'],
+  }];
+  await start(TASK);
+  const stream = await (await call(`/v1/tasks/${TASK}/events`, {
+    headers: { Accept: 'text/event-stream' },
+  })).text();
+  assert.match(stream, new RegExp(`"requestId":"${requestId}"`));
+  assert.match(stream, /"type":"approval"/);
+  assert.match(stream, /"tool":"execute_code"/);
+  assert.match(stream, /fetch the requested public source/);
+  assert.doesNotMatch(stream, /curl|shell_network|secret-token|pattern_keys|choices/);
+
+  const approved = await call(`/v1/tasks/${TASK}/approval`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId, decision: 'approve' }),
+  });
+  assert.equal(approved.status, 200);
+  assert.deepEqual(approvalRequests, [{ choice: 'once' }]);
+  assert.equal((await approved.json()).status, 'running');
+
+  const duplicate = await call(`/v1/tasks/${TASK}/approval`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId, decision: 'approve' }),
+  });
+  assert.equal(duplicate.status, 200);
+  assert.equal((await duplicate.json()).duplicate, true);
+  assert.deepEqual(approvalRequests, [{ choice: 'once' }]);
+});
+
+test('rejects a forged approval id and maps deny to Hermes deny', async () => {
+  const requestId = 'b'.repeat(32);
+  hermesEventsList = [{
+    event: 'approval.request',
+    request_id: requestId,
+    description: 'Allow the requested tool?',
+    tool: 'browser_open',
+  }];
+  await start(TASK);
+  await (await call(`/v1/tasks/${TASK}/events`)).text();
+
+  const forged = await call(`/v1/tasks/${TASK}/approval`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId: 'c'.repeat(32), decision: 'approve' }),
+  });
+  assert.equal(forged.status, 409);
+  assert.deepEqual(approvalRequests, []);
+
+  const denied = await call(`/v1/tasks/${TASK}/approval`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId, decision: 'deny' }),
+  });
+  assert.equal(denied.status, 200);
+  assert.deepEqual(approvalRequests, [{ choice: 'deny' }]);
 });
 
 test('quarantines a run Hermes no longer knows so a new task can start', async () => {

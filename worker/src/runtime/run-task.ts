@@ -3,7 +3,12 @@ import { getRuntime, getRuntimeAccess, getRuntimeSecrets } from '../agent-runtim
 import { withTenant } from '../db';
 import type { RuntimeProvider } from './provider';
 import { runtimeProviderFor } from './provision';
-import { RunnerClient, type RunnerTaskResponse, type RunnerToolEvent } from './runner-client';
+import {
+  RunnerClient,
+  type RunnerApprovalRequest,
+  type RunnerTaskResponse,
+  type RunnerToolEvent,
+} from './runner-client';
 import { recordRuntimeTaskRemoteRun, type RuntimeTask } from './tasks';
 import { issueFullToolsGrant } from './tool-grant';
 import { markRuntimeUsageStarted, reserveRuntimeUsage } from './usage';
@@ -44,11 +49,19 @@ export interface RunPayload {
     from: string;
     question: string;
     privateChat: boolean;
+    liveMessageId?: number;
   };
 }
 
 export type RuntimeRunOutcome =
   | { state: 'pending'; remoteRunId: string; remoteStatus: string }
+  | {
+      state: 'approval';
+      remoteRunId: string;
+      remoteStatus: 'waiting_for_approval';
+      approval: RunnerApprovalRequest;
+      payload: RunPayload;
+    }
   | {
       state: 'terminal';
       remoteRunId: string;
@@ -208,7 +221,10 @@ export async function dispatchRuntimeRun(
         onHeartbeat: options.onHeartbeat,
         onProgress: options.onProgress,
         onThinking: options.onThinking,
-      }).then(() => ({ ok: true as const }), (error: unknown) => ({ ok: false as const, error }))
+      }).then(
+        (approval) => ({ ok: true as const, approval }),
+        (error: unknown) => ({ ok: false as const, error }),
+      )
     : null;
   const cancelled = await withTenant(env, task.businessId, (tx) =>
     runtimeTaskIsCancelled(tx, task.businessId, task.id));
@@ -230,6 +246,15 @@ export async function dispatchRuntimeRun(
     const streamed = await streamResult;
     if (!streamed.ok) throw streamed.error;
     stage('stream_finished');
+    if (streamed.approval) {
+      return {
+        state: 'approval',
+        remoteRunId,
+        remoteStatus: 'waiting_for_approval',
+        approval: streamed.approval,
+        payload,
+      };
+    }
   }
 
   let current: RunnerTaskResponse;
@@ -285,6 +310,31 @@ export async function stopRuntimeTask(
     fetch: fetcher,
   });
   return client.stop(taskId);
+}
+
+export async function decideRuntimeTaskApproval(
+  env: Env,
+  businessId: string,
+  taskId: string,
+  requestId: string,
+  decision: 'approve' | 'deny',
+  fetcher?: typeof globalThis.fetch,
+): Promise<RunnerTaskResponse | null> {
+  const { runtime, secrets } = await withTenant(env, businessId, async (tx) => {
+    const runtime = await getRuntime(tx, businessId);
+    return {
+      runtime,
+      secrets: runtime ? await getRuntimeSecrets(env, tx, businessId) : null,
+    };
+  });
+  if (!runtime?.providerUrl || !secrets) return null;
+  const client = new RunnerClient({
+    origin: runtime.providerUrl,
+    runnerKey: secrets.runnerKey,
+    edgeToken: runtime.provider === 'fly-sprite' ? env.SPRITES_TOKEN : undefined,
+    fetch: fetcher,
+  });
+  return client.decideApproval(taskId, requestId, decision);
 }
 
 export function measuredUsageOf(
@@ -348,6 +398,9 @@ function telegramDelivery(value: unknown): RunPayload['telegram'] {
     from: body.from,
     question: body.question,
     privateChat: body.privateChat,
+    liveMessageId: typeof body.liveMessageId === 'number' && Number.isSafeInteger(body.liveMessageId)
+      ? body.liveMessageId
+      : undefined,
   };
 }
 

@@ -28,6 +28,7 @@ export {
   publishRuntimeTask,
   signalRuntimeTask,
   signalTelegramIntake,
+  handleRuntimeApprovalCallback,
 } from './consumer';
 export type {
   RuntimeQueueMessage,

@@ -47,6 +47,27 @@ export interface RuntimeTaskTerminalOutcome {
   usage?: { inputTokens: number; outputTokens: number };
 }
 
+export type RuntimeApprovalStatus =
+  | 'pending'
+  | 'deciding'
+  | 'approved'
+  | 'denied'
+  | 'expired';
+
+export interface RuntimeApproval {
+  id: string;
+  requestId: string;
+  tool: string;
+  message: string;
+  connectionId: string;
+  chatId: number;
+  messageId: number;
+  status: RuntimeApprovalStatus;
+  decision?: 'approve' | 'deny';
+  expiresAt: string;
+  decidedAt?: string;
+}
+
 export interface FloodDeferResult {
   deferred: boolean;
   shouldNotifyOwner: boolean;
@@ -142,7 +163,7 @@ export async function activeRuntimeRunTask(
   const [row] = await tx<TaskRow[]>`
     select ${tx.unsafe(cols)} from runtime_task
      where business_id = ${businessId}
-       and kind = 'run'
+       and kind in ('run', 'resume')
        and status in ('queued', 'leased', 'failed')
        and payload #>> '{telegram,chatId}' = ${String(chatId)}
      order by created_at desc
@@ -220,6 +241,14 @@ export async function leaseRuntimeTaskWithBusinessLock(
           where sibling.business_id = ${businessId}
             and sibling.status = 'leased'
             and sibling.id <> ${taskId}
+       )
+       and not exists (
+         select 1 from runtime_task approval_wait
+          where approval_wait.business_id = ${businessId}
+            and approval_wait.id <> ${taskId}
+            and approval_wait.kind = 'resume'
+            and approval_wait.status in ('queued', 'failed', 'leased')
+            and approval_wait.result #>> '{approval,id}' is not null
        )
     returning ${tx.unsafe(cols)}`;
   if (leased) return { outcome: 'leased', task: task(leased) };
@@ -315,6 +344,14 @@ export async function nextWaitingRuntimeTaskId(
      where business_id = ${businessId}
        and status in ('queued', 'failed')
        and available_at <= now()
+       and not exists (
+         select 1 from runtime_task approval_wait
+          where approval_wait.business_id = ${businessId}
+            and approval_wait.id <> runtime_task.id
+            and approval_wait.kind = 'resume'
+            and approval_wait.status in ('queued', 'failed', 'leased')
+            and approval_wait.result #>> '{approval,id}' is not null
+       )
      order by created_at asc, id asc
      limit 1`;
   return row?.id ?? null;
@@ -393,6 +430,214 @@ export async function deferRuntimeTask(
        and status = 'leased' and lease_token = ${leaseToken}
     returning id`;
   return rows.length === 1;
+}
+
+/** Turn the currently leased run row into its own durable resume step. The
+    approval lives in the task's bounded result metadata, so callback data is
+    only an opaque random id and every ownership field is checked server-side. */
+export async function pauseRuntimeTaskForApproval(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+  leaseToken: string,
+  input: {
+    requestId: string;
+    tool: string;
+    message: string;
+    connectionId: string;
+    chatId: number;
+    messageId: number;
+    remoteRunId: string;
+    delaySeconds: number;
+  },
+): Promise<RuntimeApproval | null> {
+  const [row] = await tx<{ result: unknown }[]>`
+    select result from runtime_task
+     where id = ${taskId} and business_id = ${businessId}
+       and status = 'leased' and lease_token = ${leaseToken}
+     for update`;
+  if (!row) return null;
+  const approval: RuntimeApproval = {
+    id: crypto.randomUUID(),
+    requestId: input.requestId,
+    tool: input.tool.slice(0, 96),
+    message: input.message.slice(0, 1_000),
+    connectionId: input.connectionId,
+    chatId: input.chatId,
+    messageId: input.messageId,
+    status: 'pending',
+    expiresAt: new Date(Date.now() + input.delaySeconds * 1_000).toISOString(),
+  };
+  const current = resultObject(row.result);
+  const rows = await tx`
+    update runtime_task
+       set kind = 'resume', status = 'queued', lease_token = null,
+           lease_expires_at = null, remote_run_id = ${input.remoteRunId},
+           remote_status = 'waiting_for_approval',
+           result = ${tx.json({ ...current, approval } as never)},
+           started_at = coalesce(started_at, now()),
+           available_at = now() + (${input.delaySeconds} * interval '1 second'),
+           updated_at = now()
+     where id = ${taskId} and business_id = ${businessId}
+       and status = 'leased' and lease_token = ${leaseToken}
+    returning id`;
+  return rows.length === 1 ? approval : null;
+}
+
+export type RuntimeApprovalClaim =
+  | { outcome: 'claimed'; task: RuntimeTask; approval: RuntimeApproval }
+  | { outcome: 'duplicate'; task: RuntimeTask; approval: RuntimeApproval }
+  | { outcome: 'invalid' };
+
+/** Claim one Telegram decision under the same business lock used by leases.
+    A callback must match tenant, connection, paired chat, bot message, opaque
+    approval id, pending state, and expiry before it can reach the runner. */
+export async function claimRuntimeApprovalDecision(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  input: {
+    approvalId: string;
+    connectionId: string;
+    chatId: number;
+    messageId: number;
+    decision: 'approve' | 'deny';
+  },
+): Promise<RuntimeApprovalClaim> {
+  await tx`select pg_advisory_xact_lock(hashtextextended(${businessId}::text, 0))`;
+  const [row] = await tx<TaskRow[]>`
+    select ${tx.unsafe(cols)} from runtime_task
+     where business_id = ${businessId}
+       and result #>> '{approval,id}' = ${input.approvalId}
+     for update`;
+  if (!row) return { outcome: 'invalid' };
+  const currentTask = task(row);
+  const approval = runtimeApprovalFromTask(currentTask);
+  if (!approval || currentTask.kind !== 'resume' ||
+      !['queued', 'failed'].includes(currentTask.status) ||
+      approval.connectionId !== input.connectionId || approval.chatId !== input.chatId ||
+      approval.messageId !== input.messageId) return { outcome: 'invalid' };
+  if ((approval.status === 'approved' || approval.status === 'denied') &&
+      approval.decision === input.decision) {
+    return { outcome: 'duplicate', task: currentTask, approval };
+  }
+  /* The edge may have died after claiming (or even after the runner accepted)
+     but before committing the final state. Re-entering with the same choice is
+     safe because the runner decision route is idempotent by request id. */
+  if (approval.status === 'deciding' && approval.decision === input.decision) {
+    return { outcome: 'claimed', task: currentTask, approval };
+  }
+  if (approval.status !== 'pending' || Date.parse(approval.expiresAt) <= Date.now()) {
+    return { outcome: 'invalid' };
+  }
+  const claimed: RuntimeApproval = {
+    ...approval,
+    status: 'deciding',
+    decision: input.decision,
+  };
+  const result = { ...resultObject(row.result), approval: claimed };
+  const rows = await tx`
+    update runtime_task
+       set result = ${tx.json(result as never)}, updated_at = now()
+     where id = ${row.id} and business_id = ${businessId}
+       and result #>> '{approval,status}' = 'pending'
+    returning id`;
+  return rows.length === 1
+    ? { outcome: 'claimed', task: { ...currentTask, result }, approval: claimed }
+    : { outcome: 'invalid' };
+}
+
+export async function completeRuntimeApprovalDecision(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+  approvalId: string,
+  decision: 'approve' | 'deny',
+): Promise<RuntimeApproval | null> {
+  const [row] = await tx<{ result: unknown }[]>`
+    select result from runtime_task
+     where id = ${taskId} and business_id = ${businessId}
+       and kind = 'resume' and status in ('queued', 'failed', 'leased')
+     for update`;
+  if (!row) return null;
+  const current = runtimeApprovalFromResult(row.result);
+  if (!current || current.id !== approvalId || current.status !== 'deciding' ||
+      current.decision !== decision) return null;
+  const approval: RuntimeApproval = {
+    ...current,
+    status: decision === 'approve' ? 'approved' : 'denied',
+    decidedAt: new Date().toISOString(),
+  };
+  const rows = await tx`
+    update runtime_task
+       set result = ${tx.json({ ...resultObject(row.result), approval } as never)},
+           available_at = now(), remote_status = 'running', updated_at = now()
+     where id = ${taskId} and business_id = ${businessId}
+       and result #>> '{approval,id}' = ${approvalId}
+       and result #>> '{approval,status}' = 'deciding'
+    returning id`;
+  return rows.length === 1 ? approval : null;
+}
+
+export async function releaseRuntimeApprovalDecision(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+  approvalId: string,
+): Promise<boolean> {
+  const [row] = await tx<{ result: unknown }[]>`
+    select result from runtime_task
+     where id = ${taskId} and business_id = ${businessId}
+       and kind = 'resume' and status in ('queued', 'failed')
+     for update`;
+  const current = runtimeApprovalFromResult(row?.result);
+  if (!row || !current || current.id !== approvalId || current.status !== 'deciding') return false;
+  const approval: RuntimeApproval = { ...current, status: 'pending' };
+  delete approval.decision;
+  const rows = await tx`
+    update runtime_task
+       set result = ${tx.json({ ...resultObject(row.result), approval } as never)},
+           updated_at = now()
+     where id = ${taskId} and business_id = ${businessId}
+       and result #>> '{approval,id}' = ${approvalId}
+       and result #>> '{approval,status}' = 'deciding'
+    returning id`;
+  return rows.length === 1;
+}
+
+export async function expireRuntimeApproval(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+  leaseToken: string,
+  approvalId: string,
+): Promise<RuntimeApproval | null> {
+  const [row] = await tx<{ result: unknown }[]>`
+    select result from runtime_task
+     where id = ${taskId} and business_id = ${businessId}
+       and kind = 'resume' and status = 'leased' and lease_token = ${leaseToken}
+     for update`;
+  const current = runtimeApprovalFromResult(row?.result);
+  if (!row || !current || current.id !== approvalId ||
+      !['pending', 'deciding'].includes(current.status)) return null;
+  const approval: RuntimeApproval = {
+    ...current,
+    status: 'expired',
+    decision: 'deny',
+    decidedAt: new Date().toISOString(),
+  };
+  const rows = await tx`
+    update runtime_task
+       set result = ${tx.json({ ...resultObject(row.result), approval } as never)},
+           remote_status = 'running', updated_at = now()
+     where id = ${taskId} and business_id = ${businessId}
+       and status = 'leased' and lease_token = ${leaseToken}
+       and result #>> '{approval,id}' = ${approvalId}
+    returning id`;
+  return rows.length === 1 ? approval : null;
+}
+
+export function runtimeApprovalFromTask(task: RuntimeTask): RuntimeApproval | null {
+  return runtimeApprovalFromResult(task.result);
 }
 
 /** Save the bounded terminal answer before any external delivery. Telegram
@@ -597,8 +842,40 @@ function resultObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function runtimeApprovalFromResult(value: unknown): RuntimeApproval | null {
+  const raw = resultObject(value).approval;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const approval = raw as Record<string, unknown>;
+  const statuses: RuntimeApprovalStatus[] = [
+    'pending', 'deciding', 'approved', 'denied', 'expired',
+  ];
+  if (typeof approval.id !== 'string' || !uuid(approval.id) ||
+      typeof approval.requestId !== 'string' ||
+      !/^[A-Za-z0-9_-]{16,128}$/.test(approval.requestId) ||
+      typeof approval.tool !== 'string' || !/^[a-zA-Z0-9_.:-]{1,96}$/.test(approval.tool) ||
+      typeof approval.message !== 'string' || !approval.message || approval.message.length > 1_000 ||
+      typeof approval.connectionId !== 'string' || !uuid(approval.connectionId) ||
+      typeof approval.chatId !== 'number' || !Number.isSafeInteger(approval.chatId) ||
+      typeof approval.messageId !== 'number' || !Number.isSafeInteger(approval.messageId) ||
+      typeof approval.status !== 'string' ||
+      !statuses.includes(approval.status as RuntimeApprovalStatus) ||
+      typeof approval.expiresAt !== 'string' || !Number.isFinite(Date.parse(approval.expiresAt)) ||
+      (approval.decision !== undefined &&
+        approval.decision !== 'approve' && approval.decision !== 'deny') ||
+      (approval.decidedAt !== undefined &&
+        (typeof approval.decidedAt !== 'string' || !Number.isFinite(Date.parse(approval.decidedAt))))) {
+    return null;
+  }
+  return approval as unknown as RuntimeApproval;
+}
+
 function positiveInteger(value: unknown): number | null {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
     ? value
     : null;
+}
+
+function uuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    .test(value);
 }

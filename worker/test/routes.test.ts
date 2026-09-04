@@ -23,10 +23,15 @@ import {
   telegramInternalChat,
   webhookSecret,
 } from '../src/connections';
-import { homeCounters, startRun } from '../src/runs';
-import { enqueueRuntimeTask } from '../src/runtime/tasks';
+import { finishRun, homeCounters, startRun } from '../src/runs';
+import {
+  enqueueRuntimeTask,
+  leaseRuntimeTask,
+  pauseRuntimeTaskForApproval,
+} from '../src/runtime/tasks';
 import { reserveRuntimeUsage } from '../src/runtime/usage';
 import type { Env } from '../src/env';
+import { ensureProviderRuntime, LocalRuntimeProvider } from '../src/runtime';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
@@ -85,6 +90,40 @@ async function telegramHook(
     }),
   });
   const response = await handleConnect(request, env, url, cors, ctx);
+  if (!response) throw new Error('Telegram webhook did not match');
+  return response;
+}
+
+async function telegramApprovalCallback(
+  connectionId: string,
+  secret: string,
+  chatId: number,
+  messageId: number,
+  callbackId: string,
+  data: string,
+) {
+  const url = new URL(`https://api.test/api/webhooks/telegram/${A}/${connectionId}`);
+  const request = new Request(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Telegram-Bot-Api-Secret-Token': secret,
+    },
+    body: JSON.stringify({
+      update_id: 999,
+      callback_query: {
+        id: callbackId,
+        from: { id: chatId, first_name: 'Owner' },
+        data,
+        message: {
+          message_id: messageId,
+          date: 1,
+          chat: { id: chatId, type: 'private' },
+        },
+      },
+    }),
+  });
+  const response = await handleConnect(request, env, url, cors);
   if (!response) throw new Error('Telegram webhook did not match');
   return response;
 }
@@ -629,6 +668,119 @@ describe('connections', () => {
     expect({ runs, tasks }).toEqual({ runs: '0', tasks: '0' });
     expect(fetch.mock.calls.map(([url]) => String(url)))
       .toEqual([expect.stringContaining('/sendChatAction')]);
+  });
+
+  it('authenticates an approval callback to its paired chat and resumes the same task', async () => {
+    const queued: unknown[] = [];
+    env = automaticRuntimeEnv(async (message) => { queued.push(message); });
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/v1/tasks/') && url.endsWith('/approval')) {
+        return new Response(JSON.stringify({ ok: true, status: 'running' }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 99 } }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetch);
+    const paired = await pairTelegramChat(42);
+    await ensureProviderRuntime({ ...env, RUNTIME_BOOTSTRAP_ENABLED: 'false' }, A, {
+      provider: new LocalRuntimeProvider(),
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.message.telegram', runtime: 'hermes-sprite',
+      model: env.AISAR_MODEL_NAME,
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run',
+      runId: run.id,
+      dedupeKey: 'telegram:approval-callback',
+      payload: {
+        input: 'Research this source',
+        telegram: {
+          connectionId: paired.connectionId,
+          chatId: 42,
+          messageId: 30,
+          from: 'Owner',
+          question: 'Research this source',
+          privateChat: true,
+          liveMessageId: 55,
+        },
+      },
+    }));
+    const leaseToken = 'approval-owner';
+    expect((await asTenant(A, (tx) =>
+      leaseRuntimeTask(tx, A, task.id, leaseToken))).outcome).toBe('leased');
+    const approval = await asTenant(A, async (tx) => {
+      const paused = await pauseRuntimeTaskForApproval(tx, A, task.id, leaseToken, {
+        requestId: 'a'.repeat(32),
+        tool: 'execute_code',
+        message: 'Allow execute_code to fetch the requested source?',
+        connectionId: paired.connectionId,
+        chatId: 42,
+        messageId: 55,
+        remoteRunId: 'hermes-run-approval',
+        delaySeconds: 60,
+      });
+      await finishRun(tx, A, run.id, 'needs_approval', {
+        runtimeTaskId: task.id,
+        requestId: 'a'.repeat(32),
+        tool: 'execute_code',
+      });
+      return paused;
+    });
+    expect(approval).not.toBeNull();
+    fetch.mockClear();
+
+    const forged = await telegramApprovalCallback(
+      paired.connectionId,
+      paired.secret,
+      999,
+      55,
+      'callback-forged',
+      `har:a:${approval!.id}`,
+    );
+    expect(forged.status).toBe(200);
+    expect(fetch).not.toHaveBeenCalled();
+
+    const accepted = await telegramApprovalCallback(
+      paired.connectionId,
+      paired.secret,
+      42,
+      55,
+      'callback-valid',
+      `har:a:${approval!.id}`,
+    );
+    expect(accepted.status).toBe(200);
+    const runnerCall = fetch.mock.calls.find(([input]) => String(input).endsWith('/approval'));
+    expect(runnerCall).toBeDefined();
+    expect(JSON.parse(String(runnerCall?.[1]?.body))).toEqual({
+      requestId: 'a'.repeat(32),
+      decision: 'approve',
+    });
+    expect(fetch.mock.calls.some(([input]) => String(input).includes('/answerCallbackQuery')))
+      .toBe(true);
+    const edit = fetch.mock.calls.find(([input]) => String(input).includes('/editMessageText'));
+    expect(JSON.parse(String(edit?.[1]?.body))).toMatchObject({
+      chat_id: 42,
+      message_id: 55,
+      reply_markup: { inline_keyboard: [] },
+    });
+    expect(queued.at(-1)).toEqual({ version: 1, businessId: A, taskId: task.id });
+    const [state] = await asOwner((sql) => sql<{ status: string; result: {
+      approval: { status: string; decision: string };
+    } }[]>`select status, result from runtime_task where id = ${task.id}`);
+    expect(state.status).toBe('queued');
+    expect(state.result.approval).toMatchObject({ status: 'approved', decision: 'approve' });
+    const events = await asOwner((sql) => sql<{ type: string }[]>`
+      select type from run_event where run_id = ${run.id} order by seq`);
+    expect(events.map(({ type }) => type)).toEqual([
+      'work.requested', 'approval.requested', 'approval.granted',
+    ]);
   });
 
   it('timestamps latency from webhook receipt rather than after paid admission', async () => {

@@ -72,7 +72,7 @@ export async function setWebhook(
       secret_token: secret,
       // Only what we act on. Fewer update types is less to validate and
       // less that arrives unhandled.
-      allowed_updates: ['message'],
+      allowed_updates: ['message', 'callback_query'],
       // A connection being re-made should not replay a backlog the
       // owner never saw.
       drop_pending_updates: true,
@@ -98,12 +98,18 @@ export async function sendMessage(
   token: string,
   chatId: number | string,
   text: string,
+  replyMarkup?: TelegramInlineKeyboardMarkup,
 ): Promise<{ messageId: number }> {
   const visibleText = sanitizePublicRuntimeText(text);
   const res = await fetch(`${API}/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: visibleText, disable_web_page_preview: true }),
+    body: JSON.stringify({
+      chat_id: chatId,
+      text: visibleText,
+      disable_web_page_preview: true,
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+    }),
     signal: AbortSignal.timeout(15_000),
   });
   const body = (await res.json().catch(() => null)) as {
@@ -157,6 +163,7 @@ export async function editMessageText(
   chatId: number | string,
   messageId: number,
   text: string,
+  replyMarkup?: TelegramInlineKeyboardMarkup,
 ): Promise<void> {
   const visibleText = sanitizePublicRuntimeText(text);
   const res = await fetch(`${API}/bot${token}/editMessageText`, {
@@ -167,6 +174,7 @@ export async function editMessageText(
       message_id: messageId,
       text: visibleText,
       disable_web_page_preview: true,
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
     }),
     signal: AbortSignal.timeout(15_000),
   });
@@ -178,6 +186,57 @@ export async function editMessageText(
     if (body?.description?.toLowerCase().includes('message is not modified')) return;
     throw new Error(body?.description ?? 'Telegram refused that edit');
   }
+}
+
+export interface TelegramInlineKeyboardMarkup {
+  inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
+}
+
+/** Remove or replace controls without mutating the live bubble's text. */
+export async function editMessageReplyMarkup(
+  token: string,
+  chatId: number | string,
+  messageId: number,
+  replyMarkup: TelegramInlineKeyboardMarkup = { inline_keyboard: [] },
+): Promise<void> {
+  const res = await fetch(`${API}/bot${token}/editMessageReplyMarkup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: replyMarkup,
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  const body = (await res.json().catch(() => null)) as {
+    ok?: boolean;
+    description?: string;
+  } | null;
+  if (!body?.ok && !body?.description?.toLowerCase().includes('message is not modified')) {
+    throw new Error(body?.description ?? 'Telegram refused that keyboard edit');
+  }
+}
+
+/** Stop Telegram's button spinner. Text is deliberately generic: detailed
+    authorization failures stay in logs, not in an attacker-controlled chat. */
+export async function answerCallbackQuery(
+  token: string,
+  callbackQueryId: string,
+  text?: string,
+): Promise<void> {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(callbackQueryId)) return;
+  const res = await fetch(`${API}/bot${token}/answerCallbackQuery`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      callback_query_id: callbackQueryId,
+      ...(text ? { text: text.slice(0, 200) } : {}),
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  const body = (await res.json().catch(() => null)) as { ok?: boolean } | null;
+  if (!body?.ok) throw new Error('Telegram refused the callback acknowledgement');
 }
 
 /** Remove a bot-owned message. Used to tidy the live working bubble once the
@@ -488,6 +547,42 @@ export interface IncomingMessage {
   from: string;
   text: string;
   privateChat: boolean;
+}
+
+export interface IncomingCallbackQuery {
+  id: string;
+  approvalId: string;
+  decision: 'approve' | 'deny';
+  chatId: number;
+  messageId: number;
+  privateChat: boolean;
+  senderId: number;
+}
+
+export function parseCallbackQuery(body: unknown): IncomingCallbackQuery | null {
+  if (!body || typeof body !== 'object') return null;
+  const query = (body as { callback_query?: Record<string, unknown> }).callback_query;
+  if (!query || typeof query.id !== 'string' ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(query.id)) return null;
+  const data = typeof query.data === 'string'
+    ? /^har:(a|d):([0-9a-f-]{36})$/i.exec(query.data)
+    : null;
+  const message = query.message as Record<string, unknown> | undefined;
+  const chat = message?.chat as { id?: unknown; type?: unknown } | undefined;
+  const from = query.from as { id?: unknown } | undefined;
+  if (!data || typeof message?.message_id !== 'number' ||
+      !Number.isSafeInteger(message.message_id) || typeof chat?.id !== 'number' ||
+      !Number.isSafeInteger(chat.id) || typeof from?.id !== 'number' ||
+      !Number.isSafeInteger(from.id)) return null;
+  return {
+    id: query.id,
+    approvalId: data[2],
+    decision: data[1].toLowerCase() === 'a' ? 'approve' : 'deny',
+    chatId: chat.id,
+    messageId: message.message_id,
+    privateChat: chat.type === 'private',
+    senderId: from.id,
+  };
 }
 
 /**

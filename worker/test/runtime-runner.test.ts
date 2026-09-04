@@ -707,6 +707,60 @@ describe('RunnerClient runtime_busy surfaces the admission stamp', () => {
   });
 });
 
+describe('RunnerClient approval boundary', () => {
+  it('returns a bounded approval event immediately and ignores forged shapes', async () => {
+    const requestId = 'a'.repeat(32);
+    const stream = [
+      `data: ${JSON.stringify({
+        type: 'approval', requestId: 'short', tool: 'execute_code', message: 'forged',
+      })}`,
+      `data: ${JSON.stringify({
+        type: 'approval', requestId, tool: 'execute_code', message: 'Allow this code?',
+      })}`,
+      `data: ${JSON.stringify({ type: 'delta', delta: 'must not be consumed yet' })}`,
+      '',
+    ].join('\n\n');
+    const client = new RunnerClient({
+      origin: 'https://sprite.test',
+      runnerKey: 'r'.repeat(64),
+      fetch: async () => new Response(stream, {
+        headers: { 'Content-Type': 'text/event-stream' },
+      }),
+    });
+    const deltas: string[] = [];
+    await expect(client.stream('task-1', {
+      onDelta: async (delta) => { deltas.push(delta); },
+    })).resolves.toEqual({
+      type: 'approval',
+      requestId,
+      tool: 'execute_code',
+      message: 'Allow this code?',
+    });
+    expect(deltas).toEqual([]);
+  });
+
+  it('posts only the task-scoped request id and approve/deny decision', async () => {
+    const seen: { url: string; body: unknown }[] = [];
+    const client = new RunnerClient({
+      origin: 'https://sprite.test',
+      runnerKey: 'r'.repeat(64),
+      fetch: async (input, init) => {
+        seen.push({ url: String(input), body: JSON.parse(String(init?.body)) });
+        return response({ ok: true, status: 'running' });
+      },
+    });
+    await client.decideApproval(
+      '22222222-2222-4222-8222-222222222222',
+      'b'.repeat(32),
+      'deny',
+    );
+    expect(seen).toEqual([{
+      url: 'https://sprite.test/v1/tasks/22222222-2222-4222-8222-222222222222/approval',
+      body: { requestId: 'b'.repeat(32), decision: 'deny' },
+    }]);
+  });
+});
+
 function response(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,

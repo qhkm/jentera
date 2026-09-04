@@ -12,9 +12,12 @@ import { ensureProviderRuntime } from './provision';
 import type { RuntimeProvider } from './provider';
 import {
   completeRuntimeTask,
+  claimRuntimeApprovalDecision,
+  completeRuntimeApprovalDecision,
   deferRuntimeTask,
   deferRuntimeTaskForFlood,
   enqueueRuntimeTask,
+  expireRuntimeApproval,
   exhaustRuntimeTask,
   leaseRuntimeTask,
   leaseRuntimeTaskWithBusinessLock,
@@ -22,17 +25,21 @@ import {
   nextWaitingRuntimeTaskId,
   reclaimRuntimeTaskLease,
   recordRuntimeTaskTerminalOutcome,
+  pauseRuntimeTaskForApproval,
+  releaseRuntimeApprovalDecision,
   renewRuntimeTaskLease,
   retryRuntimeTask,
   runtimeQueuePosition,
   runtimeTaskByDedupeKey,
+  runtimeApprovalFromTask,
   type LeaseResult,
   type RuntimeTask,
   type RuntimeTaskKind,
 } from './tasks';
-import { append, finishRun, recordWork, startRun } from '../runs';
+import { append, finishRun, recordWork, resumeRunAfterApproval, startRun } from '../runs';
 import {
   dispatchRuntimeRun,
+  decideRuntimeTaskApproval,
   measuredUsageOf,
   stopRuntimeTask,
   type RunPayload,
@@ -45,6 +52,8 @@ import { deliverTelegramDraft, deleteTelegramLiveBubble, persistLiveMessageId, s
 import { telegramInternalChat, useCredential } from '../connections';
 import {
   deleteMessage,
+  answerCallbackQuery,
+  editMessageReplyMarkup,
   editMessageText,
   hermesToolLine,
   sendHermesMessage,
@@ -81,6 +90,7 @@ const TELEGRAM_FLOOD_OWNER_NOTICE =
   '⏳ Telegram is rate-limiting this chat — your answer will appear as soon as it lifts.';
 const QUICK_REPLY_STATUS = '💭 Thinking…';
 const DEEP_WORK_STATUS = '🧠 Deep work started…';
+export const HERMES_APPROVAL_WAIT_SECONDS = 60;
 
 /** Friendly one-line statuses for the ephemeral Telegram draft, keyed by the
     run-task provisioning stages. Deep work may show them while the model has
@@ -171,6 +181,109 @@ export async function signalRuntimeTask(
 ): Promise<void> {
   if (!env.RUNTIME_QUEUE) throw new Error('RUNTIME_QUEUE is not configured');
   await env.RUNTIME_QUEUE.send({ version: 1, businessId, taskId });
+}
+
+/** Apply an authenticated Telegram button decision to one durable approval.
+    The route has already verified Telegram's webhook secret and paired chat;
+    this layer additionally binds the opaque callback id to the exact tenant,
+    connection, chat, bot-owned bubble, task, and pending state. */
+export async function handleRuntimeApprovalCallback(
+  env: Env,
+  businessId: string,
+  connectionId: string,
+  callback: {
+    id: string;
+    approvalId: string;
+    decision: 'approve' | 'deny';
+    chatId: number;
+    messageId: number;
+  },
+  telegramToken: string,
+  fetcher?: typeof globalThis.fetch,
+): Promise<'accepted' | 'duplicate' | 'invalid' | 'unavailable'> {
+  const claim = await withTenant(env, businessId, (tx) =>
+    claimRuntimeApprovalDecision(tx, businessId, {
+      approvalId: callback.approvalId,
+      connectionId,
+      chatId: callback.chatId,
+      messageId: callback.messageId,
+      decision: callback.decision,
+    }));
+  if (claim.outcome === 'invalid') {
+    await answerCallbackQuery(
+      telegramToken,
+      callback.id,
+      'This approval is no longer active.',
+    ).catch(() => {});
+    return 'invalid';
+  }
+  if (claim.outcome === 'duplicate') {
+    await answerCallbackQuery(telegramToken, callback.id, 'Already applied.').catch(() => {});
+    await editMessageReplyMarkup(
+      telegramToken,
+      callback.chatId,
+      callback.messageId,
+    ).catch(() => {});
+    await signalRuntimeTask(env, businessId, claim.task.id);
+    return 'duplicate';
+  }
+
+  await answerCallbackQuery(telegramToken, callback.id, 'Applying…').catch(() => {});
+  try {
+    const decided = await decideRuntimeTaskApproval(
+      env,
+      businessId,
+      claim.task.id,
+      claim.approval.requestId,
+      callback.decision,
+      fetcher,
+    );
+    if (!decided?.ok) throw new Error('runner approval decision was not accepted');
+  } catch (error) {
+    await withTenant(env, businessId, (tx) =>
+      releaseRuntimeApprovalDecision(
+        tx,
+        businessId,
+        claim.task.id,
+        claim.approval.id,
+      ));
+    console.warn('[runtime] approval decision could not reach runner', {
+      businessId,
+      taskId: claim.task.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return 'unavailable';
+  }
+
+  const finalized = await withTenant(env, businessId, async (tx) => {
+    const approval = await completeRuntimeApprovalDecision(
+      tx,
+      businessId,
+      claim.task.id,
+      claim.approval.id,
+      callback.decision,
+    );
+    if (!approval) return false;
+    if (claim.task.runId) {
+      await resumeRunAfterApproval(tx, businessId, claim.task.runId, callback.decision, {
+        runtimeTaskId: claim.task.id,
+        requestId: approval.requestId,
+        tool: approval.tool,
+      });
+    }
+    return true;
+  });
+  if (!finalized) return 'unavailable';
+
+  await editMessageText(
+    telegramToken,
+    callback.chatId,
+    callback.messageId,
+    callback.decision === 'approve' ? '✅ Approved — resuming…' : '⛔ Denied — finishing safely…',
+    { inline_keyboard: [] },
+  ).catch(() => {});
+  await signalRuntimeTask(env, businessId, claim.task.id);
+  return 'accepted';
 }
 
 /** Queue-first Telegram admission. The Queue event is already durable, so
@@ -597,7 +710,8 @@ export async function handleRuntimeMessage(
     };
   }
 
-  if (lease.task.kind === 'run' && lease.task.runId) {
+  const executionTask = lease.task.kind === 'run' || lease.task.kind === 'resume';
+  if (executionTask && lease.task.runId) {
     void publishRunProgressSafely(
       env,
       message.businessId,
@@ -731,7 +845,8 @@ export async function handleRuntimeMessage(
         await settleCancelledDraft(env, message.businessId, payload.targetTaskId as string);
         break;
       }
-      case 'run': {
+      case 'run':
+      case 'resume': {
         const latency = (stage: string, dispatchElapsedMs?: number, extra: Record<string, unknown> = {}) => {
           const requestedAtMs = runtimeRequestedAt(lease.task.payload);
           console.info('[runtime-latency]', JSON.stringify({
@@ -746,6 +861,104 @@ export async function handleRuntimeMessage(
           }));
         };
         latency('leased', undefined, { leaseMs });
+        const waitingApproval = lease.task.kind === 'resume'
+          ? runtimeApprovalFromTask(lease.task)
+          : null;
+        if (lease.task.kind === 'resume' && !waitingApproval) {
+          throw new Error('runtime resume approval state is invalid');
+        }
+        /* A callback normally resolves the decision before this resume step is
+           leased. If the bounded window elapsed (or the callback Worker died
+           after claiming), resolve the stored choice now. The runner route is
+           idempotent, so replay after an edge crash is safe. */
+        if (waitingApproval && waitingApproval.status === 'pending') {
+          /* Expiry is durable before the network call. Even if the runner is
+             momentarily unreachable, the buttons disappear at the promised
+             bound and a later retry can safely repeat the idempotent deny. */
+          const expired = await withTenant(env, message.businessId, async (tx) => {
+            const approval = await expireRuntimeApproval(
+              tx,
+              message.businessId,
+              lease.task.id,
+              leaseToken,
+              waitingApproval.id,
+            );
+            if (!approval) return false;
+            if (lease.task.runId) {
+              await resumeRunAfterApproval(
+                tx,
+                message.businessId,
+                lease.task.runId,
+                'deny',
+                {
+                  runtimeTaskId: lease.task.id,
+                  requestId: approval.requestId,
+                  tool: approval.tool,
+                  reason: 'approval_timeout',
+                },
+              );
+            }
+            return true;
+          });
+          if (!expired) throw new Error('runtime approval state changed before expiry');
+          await settleApprovalBubble(
+            env,
+            lease.task,
+            waitingApproval.messageId,
+            'deny',
+            true,
+            options.telegramToken,
+          );
+        }
+        if (waitingApproval && ['pending', 'deciding', 'expired'].includes(waitingApproval.status)) {
+          const decision = waitingApproval.status === 'deciding'
+            ? waitingApproval.decision ?? 'deny'
+            : 'deny';
+          const decided = await decideRuntimeTaskApproval(
+            env,
+            message.businessId,
+            lease.task.id,
+            waitingApproval.requestId,
+            decision,
+            options.fetch,
+          );
+          if (!decided?.ok) throw new Error('runner approval timeout decision was not accepted');
+          if (waitingApproval.status === 'deciding') {
+            const resolved = await withTenant(env, message.businessId, async (tx) => {
+              const approval = await completeRuntimeApprovalDecision(
+                  tx,
+                  message.businessId,
+                  lease.task.id,
+                  waitingApproval.id,
+                  decision,
+                );
+              if (!approval) return false;
+              if (lease.task.runId) {
+                await resumeRunAfterApproval(
+                  tx,
+                  message.businessId,
+                  lease.task.runId,
+                  decision,
+                  {
+                    runtimeTaskId: lease.task.id,
+                    requestId: approval.requestId,
+                    tool: approval.tool,
+                  },
+                );
+              }
+              return true;
+            });
+            if (!resolved) throw new Error('runtime approval state changed before resume');
+            await settleApprovalBubble(
+              env,
+              lease.task,
+              waitingApproval.messageId,
+              decision,
+              false,
+              options.telegramToken,
+            );
+          }
+        }
         const liveStream = await telegramLiveStream(
           env,
           lease.task,
@@ -783,7 +996,7 @@ export async function handleRuntimeMessage(
         const responseMode = runtimeResponseMode(lease.task.payload);
         const quickReply = responseMode === 'quick';
         if (liveStream) {
-          void liveStream.setStatus(quickReply ? QUICK_REPLY_STATUS : DEEP_WORK_STATUS);
+          await liveStream.setStatus(quickReply ? QUICK_REPLY_STATUS : DEEP_WORK_STATUS);
           statusTimer = setInterval(() => {
             if (firstVisibleDelta) return;
             /* A quick reply should feel like one short wait, not a miniature
@@ -886,7 +1099,81 @@ export async function handleRuntimeMessage(
           clearInterval(statusTimer);
           statusTimer = undefined;
         }
-        latency(outcome.state === 'terminal' ? 'terminal' : 'pending');
+        latency(outcome.state === 'terminal' ? 'terminal' : outcome.state);
+        if (outcome.state === 'approval') {
+          const telegram = outcome.payload.telegram;
+          if (!telegram?.privateChat) {
+            throw new Error('Hermes approval cannot be presented outside a private Telegram chat');
+          }
+          let approvalMessageId = liveStream?.handoffMessageId() ?? liveBubbleId ??
+            telegram.liveMessageId;
+          const token = options.telegramToken ?? await withTenant(
+            env,
+            message.businessId,
+            (tx) => useCredential(env, tx, telegram.connectionId),
+          );
+          if (!approvalMessageId) {
+            const sent = await sendMessage(
+              token,
+              telegram.chatId,
+              approvalPrompt(outcome.approval.tool, outcome.approval.message),
+            );
+            approvalMessageId = sent.messageId;
+            await persistLiveMessageId(
+              env,
+              message.businessId,
+              lease.task.id,
+              approvalMessageId,
+            );
+          }
+          const approval = await withTenant(env, message.businessId, async (tx) => {
+            const paused = await pauseRuntimeTaskForApproval(
+              tx,
+              message.businessId,
+              message.taskId,
+              leaseToken,
+              {
+                requestId: outcome.approval.requestId,
+                tool: outcome.approval.tool,
+                message: outcome.approval.message,
+                connectionId: telegram.connectionId,
+                chatId: telegram.chatId,
+                messageId: approvalMessageId,
+                remoteRunId: outcome.remoteRunId,
+                delaySeconds: HERMES_APPROVAL_WAIT_SECONDS,
+              },
+            );
+            if (paused && lease.task.runId) {
+              await finishRun(tx, message.businessId, lease.task.runId, 'needs_approval', {
+                runtimeTaskId: lease.task.id,
+                requestId: paused.requestId,
+                tool: paused.tool,
+              });
+            }
+            return paused;
+          });
+          if (!approval) {
+            return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
+          }
+          await editMessageText(
+            token,
+            telegram.chatId,
+            approvalMessageId,
+            approvalPrompt(approval.tool, approval.message),
+            approvalKeyboard(approval.id),
+          ).catch((error) => {
+            console.warn('[runtime] Telegram approval controls were not rendered', {
+              businessId: message.businessId,
+              taskId: lease.task.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+          return {
+            action: 'requeue',
+            delaySeconds: HERMES_APPROVAL_WAIT_SECONDS,
+            reason: 'Hermes is waiting for owner approval',
+          };
+        }
         if (outcome.state === 'pending') {
           const deferred = await withTenant(env, message.businessId, async (tx) => {
             return deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
@@ -1147,7 +1434,7 @@ export async function handleRuntimeMessage(
       if (!deferred.deferred) {
         return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
       }
-      if (lease.task.kind === 'run' && lease.task.runId) {
+      if (executionTask && lease.task.runId) {
         await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'retrying');
       }
       if (deferred.shouldNotifyOwner) {
@@ -1166,7 +1453,7 @@ export async function handleRuntimeMessage(
     if (terminal) {
       let measured: { inputTokens: number; outputTokens: number } | undefined;
       const failureReason = busyExhausted ? 'runtime slot stayed busy too long' : reason;
-      if (lease.task.kind === 'run' && lease.task.remoteRunId) {
+      if (executionTask && lease.task.remoteRunId) {
         const stopped = await stopRuntimeTask(
           env, message.businessId, message.taskId, options.fetch,
         ).catch(() => null);
@@ -1182,7 +1469,7 @@ export async function handleRuntimeMessage(
           Boolean(telegramHint(lease.task.payload)),
         );
         if (!changed) return false;
-        if (lease.task.kind === 'run') {
+        if (executionTask) {
           await finalizeRuntimeUsage(
             tx,
             message.businessId,
@@ -1224,7 +1511,7 @@ export async function handleRuntimeMessage(
         await deleteTelegramLiveBubble(env, message.businessId, lease.task, liveBubbleId)
           .catch(() => {});
       }
-      if (lease.task.kind === 'run' && lease.task.runId) {
+      if (executionTask && lease.task.runId) {
         await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'failed');
       }
       await wakeNextRuntimeTask(env, message.businessId);
@@ -1233,7 +1520,7 @@ export async function handleRuntimeMessage(
     await withTenant(env, message.businessId, (tx) =>
       retryRuntimeTask(tx, message.businessId, message.taskId, leaseToken, reason),
     );
-    if (lease.task.kind === 'run' && lease.task.runId) {
+    if (executionTask && lease.task.runId) {
       await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'retrying');
     }
     return { action: 'requeue', delaySeconds: 30, reason };
@@ -1332,6 +1619,52 @@ async function telegramLiveStream(
       { liveMessageId: initialMessageId ?? telegram.liveMessageId ?? null },
     ),
   });
+}
+
+function approvalPrompt(tool: string, message: string): string {
+  return [
+    '⚠️ Approval needed',
+    '',
+    `Allow ${tool}?`,
+    message.trim().slice(0, 1_000),
+    '',
+    `This request expires in ${HERMES_APPROVAL_WAIT_SECONDS} seconds.`,
+  ].join('\n').slice(0, 4_000);
+}
+
+function approvalKeyboard(approvalId: string) {
+  return {
+    inline_keyboard: [[
+      { text: 'Approve', callback_data: `har:a:${approvalId}` },
+      { text: 'Deny', callback_data: `har:d:${approvalId}` },
+    ]],
+  };
+}
+
+async function settleApprovalBubble(
+  env: Env,
+  task: RuntimeTask,
+  messageId: number,
+  decision: 'approve' | 'deny',
+  timedOut: boolean,
+  existingToken?: string,
+): Promise<void> {
+  const telegram = telegramHint(task.payload);
+  if (!telegram) return;
+  const token = existingToken ?? await withTenant(env, task.businessId, (tx) =>
+    useCredential(env, tx, telegram.connectionId));
+  const text = timedOut
+    ? '⌛ Approval timed out — continuing without the tool…'
+    : decision === 'approve'
+      ? '✅ Approved — resuming…'
+      : '⛔ Denied — finishing safely…';
+  await editMessageText(
+    token,
+    telegram.chatId,
+    messageId,
+    text,
+    { inline_keyboard: [] },
+  ).catch(() => {});
 }
 
 function telegramHint(value: unknown): {

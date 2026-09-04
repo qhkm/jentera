@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { asOwner, asTenant, truncateAll } from './harness';
 import {
+  claimRuntimeApprovalDecision,
+  completeRuntimeApprovalDecision,
   completeRuntimeTask,
   enqueueRuntimeTask,
   leaseRuntimeTask,
+  nextWaitingRuntimeTaskId,
+  pauseRuntimeTaskForApproval,
   reclaimRuntimeTaskLease,
   renewRuntimeTaskLease,
   retryRuntimeTask,
@@ -11,6 +15,7 @@ import {
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
+const CONNECTION = '33333333-3333-4333-8333-333333333333';
 
 beforeEach(async () => {
   await truncateAll();
@@ -170,6 +175,70 @@ describe('durable runtime tasks', () => {
   it('keeps another tenant from leasing a guessed task', async () => {
     const row = await queued(A, 'run:1');
     expect((await lease(B, row.id, 'stolen')).outcome).toBe('missing');
+  });
+
+  it('parks an approval as a lease-free resume step and keeps later FIFO work behind it', async () => {
+    const first = await queued(A, 'run:approval');
+    expect((await lease(A, first.id, 'approval-lease')).outcome).toBe('leased');
+    const approval = await asTenant(A, (tx) => pauseRuntimeTaskForApproval(
+      tx,
+      A,
+      first.id,
+      'approval-lease',
+      {
+        requestId: 'a'.repeat(32),
+        tool: 'execute_code',
+        message: 'Allow execute_code to fetch a public source?',
+        connectionId: CONNECTION,
+        chatId: 42,
+        messageId: 99,
+        remoteRunId: 'hermes-approval-1',
+        delaySeconds: 60,
+      },
+    ));
+    expect(approval).toMatchObject({ status: 'pending', requestId: 'a'.repeat(32) });
+    const second = await queued(A, 'run:after-approval');
+
+    const [parked] = await asOwner((sql) => sql<{
+      kind: string; status: string; lease_token: string | null; remote_status: string;
+    }[]>`select kind, status, lease_token, remote_status from runtime_task where id = ${first.id}`);
+    expect(parked).toEqual({
+      kind: 'resume',
+      status: 'queued',
+      lease_token: null,
+      remote_status: 'waiting_for_approval',
+    });
+    expect((await lease(A, second.id, 'overtake')).outcome).toBe('busy');
+    expect(await asTenant(A, (tx) => nextWaitingRuntimeTaskId(tx, A))).toBeNull();
+
+    expect((await asTenant(B, (tx) => claimRuntimeApprovalDecision(tx, B, {
+      approvalId: approval!.id,
+      connectionId: CONNECTION,
+      chatId: 42,
+      messageId: 99,
+      decision: 'approve',
+    }))).outcome).toBe('invalid');
+    expect((await asTenant(A, (tx) => claimRuntimeApprovalDecision(tx, A, {
+      approvalId: approval!.id,
+      connectionId: CONNECTION,
+      chatId: 7,
+      messageId: 99,
+      decision: 'approve',
+    }))).outcome).toBe('invalid');
+
+    const claim = await asTenant(A, (tx) => claimRuntimeApprovalDecision(tx, A, {
+      approvalId: approval!.id,
+      connectionId: CONNECTION,
+      chatId: 42,
+      messageId: 99,
+      decision: 'approve',
+    }));
+    expect(claim.outcome).toBe('claimed');
+    expect(await asTenant(A, (tx) => completeRuntimeApprovalDecision(
+      tx, A, first.id, approval!.id, 'approve',
+    ))).toMatchObject({ status: 'approved', decision: 'approve' });
+    expect((await lease(A, second.id, 'still-no-overtake')).outcome).toBe('busy');
+    expect((await lease(A, first.id, 'resume-owner')).outcome).toBe('leased');
   });
 });
 

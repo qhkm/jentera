@@ -58,6 +58,8 @@ export interface RunnerTaskResponse {
       worker tell \"momentarily busy\" from a wedged slot that outlived its
       age bound. */
   activeTaskStartedAt?: number | null;
+  requestId?: string;
+  decision?: 'approve' | 'deny';
   usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
   toolMode?: string;
   webSearchBackend?: string;
@@ -199,6 +201,19 @@ export class RunnerClient {
     });
   }
 
+  async decideApproval(
+    taskId: string,
+    requestId: string,
+    decision: 'approve' | 'deny',
+  ): Promise<RunnerTaskResponse> {
+    if (!safeApprovalRequestId(requestId)) throw new Error('runner approval request id is invalid');
+    return this.request(`/v1/tasks/${encodeURIComponent(taskId)}/approval`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId, decision }),
+    });
+  }
+
   /** Consume the runner's already-filtered presentation stream. Unknown event
       shapes are ignored; only bounded text, tool lifecycle, the bounded
       reasoning lane, and heartbeats cross. */
@@ -213,7 +228,7 @@ export class RunnerClient {
       /** A bounded slice of the model's live reasoning (runner-redacted). */
       onThinking?: (text: string) => Promise<void>;
     },
-  ): Promise<void> {
+  ): Promise<RunnerApprovalRequest | null> {
     const response = await this.fetcher(
       `${this.origin}/v1/tasks/${encodeURIComponent(taskId)}/events`,
       {
@@ -255,6 +270,11 @@ export class RunnerClient {
             await handlers.onHeartbeat?.();
             continue;
           }
+          if (event.type === 'approval') {
+            received += event.requestId.length + event.tool.length + event.message.length;
+            if (received > STREAM_LIMIT) throw new Error('runner stream exceeded limit');
+            return event;
+          }
           if (event.type === 'tool.started' || event.type === 'tool.completed') {
             received += event.tool.length + ('preview' in event ? event.preview?.length ?? 0 : 0);
             if (received > STREAM_LIMIT) throw new Error('runner stream exceeded limit');
@@ -289,6 +309,7 @@ export class RunnerClient {
       const tail = steps.flush();
       for (const label of tail.steps) await handlers.onProgress?.(label);
       if (tail.rest) await handlers.onDelta(tail.rest);
+      return null;
     } finally {
       await reader.cancel().catch(() => {});
     }
@@ -329,12 +350,20 @@ type SafeStreamEvent =
   | { type: 'delta'; delta: string }
   | RunnerToolEvent
   | { type: 'thinking'; text: string }
+  | RunnerApprovalRequest
   | { type: 'heartbeat' }
   | { type: 'done' };
 
 export type RunnerToolEvent =
   | { type: 'tool.started'; tool: string; preview?: string }
   | { type: 'tool.completed'; tool: string; duration: number; error: boolean };
+
+export interface RunnerApprovalRequest {
+  type: 'approval';
+  requestId: string;
+  tool: string;
+  message: string;
+}
 
 function safeStreamEvent(frame: string): SafeStreamEvent | null {
   const data = frame.split(/\r?\n/)
@@ -379,9 +408,23 @@ function safeStreamEvent(frame: string): SafeStreamEvent | null {
       event.text.length > 0 && event.text.length <= 8 * 1024) {
     return { type: 'thinking', text: event.text };
   }
+  if (event.type === 'approval' && safeApprovalRequestId(event.requestId) &&
+      safeToolName(event.tool) && typeof event.message === 'string' &&
+      event.message.length > 0 && event.message.length <= 1_000) {
+    return {
+      type: 'approval',
+      requestId: event.requestId,
+      tool: event.tool,
+      message: event.message,
+    };
+  }
   return null;
 }
 
 function safeToolName(value: unknown): value is string {
   return typeof value === 'string' && /^[a-zA-Z0-9_.:-]{1,96}$/.test(value);
+}
+
+function safeApprovalRequestId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{16,128}$/.test(value);
 }

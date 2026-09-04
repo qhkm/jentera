@@ -24,6 +24,7 @@ import {
 } from '../connections';
 import {
   clearWebhook,
+  parseCallbackQuery,
   parseUpdate,
   sendMessage,
   sendTyping,
@@ -34,7 +35,12 @@ import {
 } from '../connectors/telegram';
 import { finishRun, recordWork, startRun } from '../runs';
 import { retrieve } from '../ask';
-import { publishRuntimeTask, runtimeFor, signalTelegramIntake } from '../runtime';
+import {
+  handleRuntimeApprovalCallback,
+  publishRuntimeTask,
+  runtimeFor,
+  signalTelegramIntake,
+} from '../runtime';
 import {
   activeRuntimeRunTask,
   cancelRuntimeTask,
@@ -306,6 +312,29 @@ async function telegramWebhook(
   if (!access.ok) return drop(access.why);
 
   const raw = await request.json().catch(() => null);
+  const callback = parseCallbackQuery(raw);
+  if (callback) {
+    /* A Telegram webhook secret authenticates the bot update; the paired
+       private-chat boundary authenticates its owner. The runtime layer then
+       binds the opaque id to this connection/chat/bubble and pending task. */
+    if (access.internalChat !== callback.chatId || !callback.privateChat ||
+        callback.senderId !== callback.chatId) {
+      return drop('approval callback sender is not the paired owner');
+    }
+    try {
+      await handleRuntimeApprovalCallback(
+        env,
+        businessId,
+        connectionId,
+        callback,
+        access.token,
+      );
+    } catch (error) {
+      console.error(`[telegram] approval callback failed on ${connectionId}: ${String(error)}`);
+      return new Response(null, { status: 503, headers: { 'Retry-After': '2' } });
+    }
+    return ok;
+  }
   const incoming = parseUpdate(raw);
   if (!incoming) {
     return drop(`unhandled update shape: ${JSON.stringify(raw).slice(0, 200)}`);

@@ -17,9 +17,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { asApp, asOwner, asTenant, truncateAll } from './harness';
 import { saveConnection, verifyWebhook, webhookSecret } from '../src/connections';
 import {
+  parseCallbackQuery,
   parseUpdate,
   sendHermesMessage,
   TelegramLiveStream,
+  setWebhook,
   withTypingIndicator,
 } from '../src/connectors/telegram';
 import type { Env } from '../src/env';
@@ -211,6 +213,46 @@ describe('reading an update', () => {
   it('does not mistake a caption or a sticker for text', () => {
     expect(parseUpdate(message({ text: undefined, caption: 'a photo' }))).toBeNull();
     expect(parseUpdate(message({ text: undefined, sticker: { emoji: '👍' } }))).toBeNull();
+  });
+
+  it('reads only a private owner callback with a bounded approval token', () => {
+    const approvalId = '33333333-3333-4333-8333-333333333333';
+    const update = {
+      callback_query: {
+        id: 'callback-1',
+        from: { id: 42 },
+        data: `har:a:${approvalId}`,
+        message: { message_id: 99, chat: { id: 42, type: 'private' } },
+      },
+    };
+    expect(parseCallbackQuery(update)).toEqual({
+      id: 'callback-1',
+      approvalId,
+      decision: 'approve',
+      chatId: 42,
+      messageId: 99,
+      privateChat: true,
+      senderId: 42,
+    });
+    expect(parseCallbackQuery({
+      ...update,
+      callback_query: { ...update.callback_query, data: 'har:a:not-a-uuid' },
+    })).toBeNull();
+    expect(parseCallbackQuery({
+      ...update,
+      callback_query: { ...update.callback_query, data: `har:x:${approvalId}` },
+    })).toBeNull();
+  });
+});
+
+describe('webhook registration', () => {
+  it('subscribes to messages and inline-keyboard callback queries', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true })));
+    vi.stubGlobal('fetch', fetch);
+    await setWebhook('123456:token', 'https://api.test/hook', 'secret');
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({
+      allowed_updates: ['message', 'callback_query'],
+    });
   });
 });
 
