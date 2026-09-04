@@ -59,7 +59,7 @@ API_ORIGIN = "https://api.jentera.ai"
 # The immutable runner/Hermes/browser bundle requested for newly
 # provisioned runtimes. Changing this asks reconciliation to upgrade;
 # it must never silently track "latest".
-RUNTIME_RELEASE = "2026.09.04-2"
+RUNTIME_RELEASE = "2026.09.04-3"
 RUNTIME_EXPECTED_REGION = "sin"
 SPRITES_API_ORIGIN = "https://api.sprites.dev"
 # Fail closed. Completing onboarding provisions one isolated runtime for the
