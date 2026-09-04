@@ -53,6 +53,42 @@ def main() -> None:
     )
     config["model"] = model
 
+    # Hermes' auxiliary client (context compression, session titles, memory
+    # flush, session search, vision, web extract, approval gating, skills hub,
+    # MCP) resolves provider "openrouter" against the hardcoded OpenRouter
+    # endpoint (hermes_constants.OPENROUTER_BASE_URL) — NOT config.yaml
+    # model.base_url and NOT the OPENROUTER_BASE_URL env var the main chat
+    # path honours. With a customer router (FMCV) every aux call therefore
+    # 401s ("Invalid proxy server token") while the main model works, so
+    # transcripts never compress and sessions never get titles. Pin each aux
+    # task to the same reviewed router + key as the main model so the aux
+    # client resolves against the pinned endpoint too. api_key uses the same
+    # ${ENV_VAR} form as model.api_key above (expanded at config load,
+    # never persisted as a literal).
+    auxiliary = dict(config.get("auxiliary") or {})
+    for task in (
+        "compression",
+        "title_generation",
+        "session_search",
+        "vision",
+        "web_extract",
+        "approval",
+        "skills_hub",
+        "mcp",
+    ):
+        task_cfg = dict(auxiliary.get(task) or {})
+        task_cfg.update(
+            {
+                "provider": "custom",
+                "base_url": base_url.rstrip("/"),
+                "api_key": f"${{{key_env}}}",
+                "model": model_name,
+                "api_mode": "chat_completions",
+            }
+        )
+        auxiliary[task] = task_cfg
+    config["auxiliary"] = auxiliary
+
     # Keep DS4 Flash fixed while requiring an underlying OpenRouter endpoint
     # that supports every parameter Hermes sends, especially tool calling.
     # Latency-first routing made short text replies win over agent quality.
