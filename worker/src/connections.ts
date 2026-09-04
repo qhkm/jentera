@@ -286,6 +286,7 @@ export type TelegramWebhookAccess =
       ok: true;
       internalChat: number | null;
       token: string;
+      webhookUpdates: string | null;
       runtimeProvider: 'local' | 'fly-sprite' | null;
       runtimeUrl: string | null;
     };
@@ -303,12 +304,13 @@ export async function telegramWebhookAccess(
     webhook_secret: string | null;
     status: string;
     internal_scope: string | null;
+    webhook_updates: string | null;
     ciphertext: Uint8Array | null;
     key_version: number | null;
     runtime_provider: 'local' | 'fly-sprite' | null;
     runtime_url: string | null;
   }[]>`
-    select c.webhook_secret, c.status,
+    select c.webhook_secret, c.status, c.webhook_updates,
            (
              select scope from unnest(coalesce(c.scopes, '{}'::text[])) as scope
               where scope like ${`${INTERNAL_CHAT_SCOPE}%`} limit 1
@@ -330,9 +332,23 @@ export async function telegramWebhookAccess(
     ok: true,
     internalChat: internalChatFromScope(row.internal_scope),
     token: await open(env, row.ciphertext, row.key_version),
+    webhookUpdates: row.webhook_updates,
     runtimeProvider: row.runtime_provider,
     runtimeUrl: row.runtime_url,
   };
+}
+
+/** Remember which webhook options a connection last registered, so the
+    receive path can spot a pre-callback_query installation and heal it
+    once instead of re-registering on every update. */
+export async function markWebhookUpdates(
+  tx: postgres.TransactionSql,
+  connectionId: string,
+  updates: string,
+): Promise<void> {
+  await tx`
+    update connection set webhook_updates = ${updates}
+     where id = ${connectionId}`;
 }
 
 function webhookVerdict(

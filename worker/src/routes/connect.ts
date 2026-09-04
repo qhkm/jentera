@@ -15,6 +15,7 @@ import {
   findConnection,
   listConnections,
   markBroken,
+  markWebhookUpdates,
   removeConnection,
   saveConnection,
   telegramWebhookAccess,
@@ -23,6 +24,7 @@ import {
   webhookSecret,
 } from '../connections';
 import {
+  WEBHOOK_ALLOWED_UPDATES,
   clearWebhook,
   parseCallbackQuery,
   parseUpdate,
@@ -66,6 +68,10 @@ function json(body: unknown, init: ResponseInit = {}, headers: Record<string, st
     headers: { 'Content-Type': 'application/json', ...headers, ...(init.headers ?? {}) },
   });
 }
+
+/** Canonical marker of the update set we register for, stored on each
+    connection so a stale (pre-callback_query) webhook is detectable. */
+const REGISTERED_UPDATES = [...WEBHOOK_ALLOWED_UPDATES].join('|');
 
 export async function handleConnect(
   request: Request,
@@ -173,6 +179,11 @@ export async function handleConnect(
         webhookSecret(tx, saved.id),
       );
       await setWebhook(token, `${env.API_ORIGIN}/api/webhooks/telegram/${id.businessId}/${saved.id}`, secret);
+      /* Best-effort marker: the webhook is registered with the current
+         allowed_updates, so the receive path must not re-register. A
+         write failure here only means one redundant refresh later. */
+      await withTenant(env, id.businessId, (tx) =>
+        markWebhookUpdates(tx, saved.id, REGISTERED_UPDATES)).catch(() => {});
     } catch (e) {
       const why = e instanceof Error ? e.message : 'webhook setup failed';
       await withTenant(env, id.businessId, (tx) => markBroken(tx, saved.id, why));
@@ -224,6 +235,7 @@ export async function handleConnect(
         await withTenant(env, id.businessId, async (tx) => {
           const token = await useCredential(env, tx, health[1]);
           await setWebhook(token, expected, await webhookSecret(tx, health[1]));
+          await markWebhookUpdates(tx, health[1], REGISTERED_UPDATES);
         });
         repaired = true;
       }
@@ -316,6 +328,8 @@ async function telegramWebhook(
 
   if (!access.ok) return drop(access.why);
 
+  const webhookPath = `${env.API_ORIGIN}/api/webhooks/telegram/${businessId}/${connectionId}`;
+
   const raw = await request.json().catch(() => null);
   const callback = parseCallbackQuery(raw);
   if (callback) {
@@ -385,6 +399,41 @@ async function telegramWebhook(
       ).catch(() => {});
     }
     return drop(internalChat === null ? 'internal owner chat is not paired' : 'sender is not paired owner');
+  }
+
+  /* Self-heal a stale webhook — but only once we have the paired owner
+     in hand, so strangers messaging the bot cannot trigger a
+     re-registration. Telegram records allowed_updates at registration
+     time, so a connection made before callback_query shipped keeps
+     receiving messages but never approval taps: the Approve/Deny
+     buttons stay dead while everything looks healthy. Runs once per
+     connection — the marker makes it a no-op on every later owner
+     message. A failure must not drop the update itself; the next
+     owner message retries. */
+  let webhookRefreshed = false;
+  if (access.webhookUpdates !== REGISTERED_UPDATES) {
+    try {
+      const secret = await withTenant(env, businessId, (tx) =>
+        webhookSecret(tx, connectionId));
+      await setWebhook(access.token, webhookPath, secret);
+      await withTenant(env, businessId, (tx) =>
+        markWebhookUpdates(tx, connectionId, REGISTERED_UPDATES));
+      webhookRefreshed = true;
+      console.log(`[telegram] self-healed webhook on ${connectionId} (allowed_updates now include callback_query)`);
+    } catch (error) {
+      console.error(`[telegram] webhook self-heal failed on ${connectionId}: ${String(error)}`);
+    }
+  }
+
+  /* The update above may have self-healed a stale webhook. Tell the
+     paired owner once — the connection is now on the current
+     allowed_updates set and Approve/Deny buttons will arrive. */
+  if (webhookRefreshed) {
+    await sendMessage(
+      token,
+      incoming.chatId,
+      '✅ Bot connection renewed — Approve/Deny buttons restored.',
+    ).catch(() => {});
   }
 
   if (/^\/(stop|cancel)(?:@[A-Za-z0-9_]+)?$/.test(incoming.text.trim())) {

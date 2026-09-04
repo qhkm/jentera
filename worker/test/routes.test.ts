@@ -19,6 +19,7 @@ import { handleRepo } from '../src/routes/repo';
 import { handleConnect } from '../src/routes/connect';
 import {
   bindTelegramInternalChat,
+  markWebhookUpdates,
   saveConnection,
   telegramInternalChat,
   webhookSecret,
@@ -682,6 +683,56 @@ describe('connections', () => {
     expect(payload.allowed_updates).toEqual(['message', 'callback_query']);
   });
 
+  it('self-heals a pre-callback_query webhook on the first owner message', async () => {
+    const c = await asTenant(A, (tx) =>
+      saveConnection(env, tx, A, {
+        connector: 'telegram',
+        method: 'bot_token',
+        externalId: '1',
+        displayName: '@alpha_bot',
+        secret: '123456789:SUPERSECRETTOKEN',
+        connectedBy: alice,
+      }));
+    const secret = await asTenant(A, (tx) => webhookSecret(tx, c.id));
+    await asTenant(A, (tx) => bindTelegramInternalChat(tx, c.id, 42));
+
+    const calls: { url: string; body: unknown }[] = [];
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), body: init?.body ?? null });
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 99 } }));
+    });
+    vi.stubGlobal('fetch', fetch);
+
+    /* Marker is NULL — this connection predates callback_query support.
+       The first paired message re-registers once and tells the owner. */
+    await telegramHook(c.id, secret, 42, 'Help me plan tomorrow', 10);
+
+    const setWebhookCalls = calls.filter((call) => call.url.includes('/setWebhook'));
+    expect(setWebhookCalls).toHaveLength(1);
+    const payload = JSON.parse(String(setWebhookCalls[0].body)) as {
+      url: string; allowed_updates: string[]; secret_token: string;
+    };
+    expect(payload.url).toBe(`${env.API_ORIGIN}/api/webhooks/telegram/${A}/${c.id}`);
+    expect(payload.allowed_updates).toEqual(['message', 'callback_query']);
+    expect(payload.secret_token).toBe(secret);
+
+    const [marker] = await asTenant(A, (tx) =>
+      tx<{ webhook_updates: string | null }[]>`
+        select webhook_updates from connection where id = ${c.id}`);
+    expect(marker.webhook_updates).toBe('message|callback_query');
+
+    const confirm = calls
+      .filter((call) => call.url.includes('/sendMessage'))
+      .map((call) => JSON.parse(String(call.body)) as { chat_id: number; text: string })
+      .find((msg) => msg.chat_id === 42 && /renewed/i.test(msg.text));
+    expect(confirm).toBeDefined();
+
+    /* Marker is set now — later messages must not re-register. */
+    calls.length = 0;
+    await telegramHook(c.id, secret, 42, 'Anything else to plan', 11);
+    expect(calls.filter((call) => call.url.includes('/setWebhook'))).toHaveLength(0);
+  });
+
   it('hands an authorised runtime message to Queue before creating any run or task', async () => {
     const fetch = vi.fn(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
@@ -1148,5 +1199,9 @@ async function pairTelegramChat(chatId: number): Promise<{
   const code = view && new URL(view.pairingUrl).searchParams.get('start');
   if (!code) throw new Error('Telegram pairing code was not available');
   await telegramHook(connection.id, secret, chatId, `/start ${code}`, 10);
+  /* Mark the webhook as registered with the current allowed_updates,
+     mirroring a post-callback_query connection. The self-heal test
+     builds its own connection with the marker unset. */
+  await asTenant(A, (tx) => markWebhookUpdates(tx, connection.id, 'message|callback_query'));
   return { connectionId: connection.id, secret };
 }

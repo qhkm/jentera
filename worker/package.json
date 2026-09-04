@@ -12,6 +12,7 @@
     "db:remote": "wrangler d1 execute aisar --remote --file=./schema.sql",
     "db:migrate:runtime-safety": "node scripts/apply-runtime-safety.mjs",
     "db:migrate:business-plan": "node scripts/apply-business-plan.mjs",
+    "db:migrate:webhook-updates": "node scripts/apply-webhook-updates.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

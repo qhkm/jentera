@@ -26,6 +26,13 @@ export interface BotIdentity {
   name: string;
 }
 
+/** The update types we register for. Telegram records this set at
+    registration time, so a webhook registered before callback_query
+    shipped keeps receiving messages but never approval taps until it
+    is re-registered. Stored on the connection (`webhook_updates`) so
+    the receive path can spot and heal exactly that once. */
+export const WEBHOOK_ALLOWED_UPDATES = ['message', 'callback_query'] as const;
+
 /** A token is only real if Telegram says so. */
 export async function verifyToken(token: string): Promise<BotIdentity> {
   const res = await fetch(`${API}/bot${token}/getMe`, {
@@ -72,7 +79,7 @@ export async function setWebhook(
       secret_token: secret,
       // Only what we act on. Fewer update types is less to validate and
       // less that arrives unhandled.
-      allowed_updates: ['message', 'callback_query'],
+      allowed_updates: [...WEBHOOK_ALLOWED_UPDATES],
       // A connection being re-made should not replay a backlog the
       // owner never saw.
       drop_pending_updates: true,
