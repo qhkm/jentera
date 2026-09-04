@@ -108,6 +108,15 @@ def main() -> None:
     gateway["api_server"] = api_server
     config["gateway"] = gateway
 
+    # Approval surface (execute_code consent relayed over Telegram):
+    # the worker keeps the Approve/Deny bubble alive for
+    # HERMES_APPROVAL_WAIT_SECONDS (60 s), so the gate must outlive that
+    # window or Hermes auto-denies before the owner can tap. Override the
+    # stock default (20 s) on every provision.
+    approvals = dict(config.get("approvals") or {})
+    approvals["timeout"] = 90
+    config["approvals"] = approvals
+
     expected_tools = set(resolve_toolset("hermes-api-server"))
     if cua_enabled == "1":
         expected_tools |= set(resolve_toolset("computer_use"))
