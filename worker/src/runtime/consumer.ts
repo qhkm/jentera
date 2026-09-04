@@ -7,7 +7,7 @@
    ============================================================ */
 
 import type { Env } from '../env';
-import { withTenant } from '../db';
+import { connect, withTenant } from '../db';
 import { ensureProviderRuntime } from './provision';
 import type { RuntimeProvider } from './provider';
 import {
@@ -75,6 +75,15 @@ import { modelForResponseMode, responseModeFor } from './response-mode';
 import { sanitizePublicRuntimeText } from './public-output';
 
 const MAX_TASK_ATTEMPTS = 5;
+/** Background lifecycle tasks (upgrade/provision/reconcile) get a wider net
+    than interactive run tasks: a multi-minute infra blip (registry 503,
+    sprite VM network loss) must not wedge a fleet on a stale release. */
+const MAX_LIFECYCLE_TASK_ATTEMPTS = 8;
+const LIFECYCLE_TASK_KINDS = new Set<RuntimeTaskKind>([
+  'upgrade',
+  'provision',
+  'reconcile',
+]);
 const BUSY_RETRY_SECONDS = 2;
 const RUNTIME_LEASE_STALE_MS = 60_000;
 const RUNTIME_LEASE_RENEWAL_MS = 20_000;
@@ -181,6 +190,43 @@ export async function signalRuntimeTask(
 ): Promise<void> {
   if (!env.RUNTIME_QUEUE) throw new Error('RUNTIME_QUEUE is not configured');
   await env.RUNTIME_QUEUE.send({ version: 1, businessId, taskId });
+}
+
+/** Fleet-wide drift sweep (scheduled cron). Publishes one upgrade task per
+    runtime that is not on the pinned release (or is errored), so a release
+    bump converges by itself instead of waiting for each business's next
+    customer message. Dedupe on `upgrade:<business>:<release>` keeps the queue
+    clean; an exhausted task is re-armed by enqueueRuntimeTask. */
+export async function sweepRuntimeDrift(env: Env): Promise<number> {
+  const release = env.RUNTIME_RELEASE?.trim();
+  if (!release) return 0;
+  const sql = connect(env);
+  try {
+    const drifted = await sql<{ business_id: string }[]>`
+      select business_id from agent_runtime
+       where status in ('ready', 'error')
+         and (desired_release <> observed_release or status = 'error')
+       order by business_id
+       limit 25`;
+    let published = 0;
+    for (const row of drifted) {
+      try {
+        const task = await publishRuntimeTask(env, row.business_id, {
+          kind: 'upgrade',
+          dedupeKey: `upgrade:${row.business_id}:${release}`,
+          payload: { release, reason: 'drift-sweep' },
+        });
+        /* Count only rows that actually changed state (queued = newly armed or
+           re-armed from exhausted); an already-active task is a no-op. */
+        if (task.status === 'queued') published += 1;
+      } catch (err) {
+        console.error(`[drift-sweep] business=${row.business_id} ${String(err)}`);
+      }
+    }
+    return published;
+  } finally {
+    await sql.end();
+  }
 }
 
 /** Apply an authenticated Telegram button decision to one durable approval.
@@ -1447,8 +1493,11 @@ export async function handleRuntimeMessage(
       }
       return { action: 'requeue', delaySeconds, reason: `telegram flood-wait ${floodSeconds}s` };
     }
+    const maxAttempts = LIFECYCLE_TASK_KINDS.has(lease.task.kind)
+      ? MAX_LIFECYCLE_TASK_ATTEMPTS
+      : MAX_TASK_ATTEMPTS;
     const terminal = error instanceof RuntimeBudgetExceeded ||
-      lease.task.attempt + 1 >= MAX_TASK_ATTEMPTS ||
+      lease.task.attempt + 1 >= maxAttempts ||
       busyExhausted;
     if (terminal) {
       let measured: { inputTokens: number; outputTokens: number } | undefined;
@@ -1523,8 +1572,22 @@ export async function handleRuntimeMessage(
     if (executionTask && lease.task.runId) {
       await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'retrying');
     }
-    return { action: 'requeue', delaySeconds: 30, reason };
+    /* Lifecycle tasks back off exponentially (30s, 1m, 2m, 4m, 8m, … capped at
+       10m) so a flaky registry or sprite network does not burn the attempt
+       budget in a couple of minutes; interactive run tasks keep the snappy
+       fixed 30s the chat expects. */
+    const retryDelay = LIFECYCLE_TASK_KINDS.has(lease.task.kind)
+      ? lifecycleRetryDelaySeconds(lease.task.attempt)
+      : 30;
+    return { action: 'requeue', delaySeconds: retryDelay, reason };
   }
+}
+
+/** Exponential backoff for lifecycle task retries (seconds). 30s, 1m, 2m,
+    4m, 8m, then capped at 10m — a multi-minute infra blip must not run the
+    attempt budget dry in a couple of minutes. */
+export function lifecycleRetryDelaySeconds(attempt: number): number {
+  return Math.min(30 * 2 ** attempt, 600);
 }
 
 /** Telegram's first retry-after is often optimistic. Use the agreed wider

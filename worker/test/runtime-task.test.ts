@@ -12,6 +12,7 @@ import {
   renewRuntimeTaskLease,
   retryRuntimeTask,
 } from '../src/runtime/tasks';
+import { lifecycleRetryDelaySeconds } from '../src/runtime/consumer';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
@@ -239,6 +240,92 @@ describe('durable runtime tasks', () => {
     ))).toMatchObject({ status: 'approved', decision: 'approve' });
     expect((await lease(A, second.id, 'still-no-overtake')).outcome).toBe('busy');
     expect((await lease(A, first.id, 'resume-owner')).outcome).toBe('leased');
+  });
+});
+
+describe('lifecycle task self-heal (re-arm on republish)', () => {
+  /* Dedupe keys look like upgrade:<business>:<release> in production. */
+  const upgrade = (businessId: string, dedupeKey: string) =>
+    asTenant(businessId, (tx) => enqueueRuntimeTask(tx, businessId, {
+      kind: 'upgrade',
+      dedupeKey,
+      payload: { release: '2026.09.04-2' },
+    }));
+
+  it('re-arms an exhausted upgrade task whose failure was transient', async () => {
+    const first = await upgrade(A, 'upgrade:A:rel-9');
+    await asOwner((sql) => sql`
+      update runtime_task
+         set status = 'exhausted', attempt = 8,
+             last_error = 'upgrade runtime: npm registry 503 (fetch failed)'
+       where id = ${first.id}`);
+    const republished = await upgrade(A, 'upgrade:A:rel-9');
+    expect(republished.id).toBe(first.id);
+    const [row] = await asOwner((sql) => sql<{ status: string; attempt: number; lease_token: string | null }[]>`
+      select status, attempt, lease_token from runtime_task where id = ${first.id}`);
+    expect(row.status).toBe('queued');
+    expect(row.attempt).toBe(0);
+    expect(row.lease_token).toBeNull();
+  });
+
+  it('leaves exhausted tasks with deterministic errors exhausted', async () => {
+    const first = await upgrade(A, 'upgrade:A:rel-8');
+    await asOwner((sql) => sql`
+      update runtime_task
+         set status = 'exhausted', attempt = 8,
+             last_error = 'bootstrap failed: patch-hermes-dependencies.mjs exit 1'
+       where id = ${first.id}`);
+    const republished = await upgrade(A, 'upgrade:A:rel-8');
+    expect(republished.id).toBe(first.id);
+    const [row] = await asOwner((sql) => sql<{ status: string }[]>`
+      select status from runtime_task where id = ${first.id}`);
+    expect(row.status).toBe('exhausted');
+  });
+
+  it('keeps an active (leased) task untouched on republish', async () => {
+    const first = await upgrade(A, 'upgrade:A:rel-7');
+    await asOwner((sql) => sql`
+      update runtime_task
+         set status = 'leased', lease_token = 'live-lease',
+             lease_expires_at = now() + interval '1 minute'
+       where id = ${first.id}`);
+    const republished = await upgrade(A, 'upgrade:A:rel-7');
+    expect(republished.id).toBe(first.id);
+    const [row] = await asOwner((sql) => sql<{ status: string; lease_token: string }[]>`
+      select status, lease_token from runtime_task where id = ${first.id}`);
+    expect(row.status).toBe('leased');
+    expect(row.lease_token).toBe('live-lease');
+  });
+
+  it('re-arms provision tasks too, but never interactive run tasks', async () => {
+    const prov = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'provision', dedupeKey: 'provision:A:rel-6' }));
+    const run = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', dedupeKey: 'run:A:1' }));
+    await asOwner((sql) => sql`
+      update runtime_task set status = 'exhausted', attempt = 8,
+        lease_token = null, lease_expires_at = null,
+        last_error = 'network timeout contacting sprite'
+       where id in (${prov.id}, ${run.id})`);
+    await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'provision', dedupeKey: 'provision:A:rel-6' }));
+    await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', dedupeKey: 'run:A:1' }));
+    const rows = await asOwner((sql) => sql<{ id: string; status: string }[]>`
+      select id, status from runtime_task where id in (${prov.id}, ${run.id})`);
+    const byId = new Map(rows.map((r) => [r.id, r.status]));
+    expect(byId.get(prov.id)).toBe('queued');
+    expect(byId.get(run.id)).toBe('exhausted');
+  });
+
+  it('backs off exponentially for lifecycle retries, capped at 10m', () => {
+    expect(lifecycleRetryDelaySeconds(0)).toBe(30);
+    expect(lifecycleRetryDelaySeconds(1)).toBe(60);
+    expect(lifecycleRetryDelaySeconds(2)).toBe(120);
+    expect(lifecycleRetryDelaySeconds(3)).toBe(240);
+    expect(lifecycleRetryDelaySeconds(4)).toBe(480);
+    expect(lifecycleRetryDelaySeconds(5)).toBe(600);
+    expect(lifecycleRetryDelaySeconds(9)).toBe(600);
   });
 });
 

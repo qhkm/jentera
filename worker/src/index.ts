@@ -17,7 +17,7 @@ import { handleEvents } from './routes/events';
 import { handleSupport } from './routes/support';
 import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
-import { handleRuntimeQueueMessage, type RuntimeQueueMessage } from './runtime/consumer';
+import { handleRuntimeQueueMessage, sweepRuntimeDrift, type RuntimeQueueMessage } from './runtime/consumer';
 import { guardApiRequest } from './request-guard';
 
 export { RunStream } from './run-stream';
@@ -114,6 +114,19 @@ export default {
       return json({ ok: false, err: 'not found' }, { status: 404 }, headers);
     } catch (err) {
       return json({ ok: false, err: (err as Error).message }, { status: 500 }, headers);
+    }
+  },
+
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    /* Fleet drift sweep — keep every sprite on the pinned release without
+       waiting for each business's next customer message, and re-arm lifecycle
+       tasks whose exhaustion was infra noise rather than a product bug. */
+    const started = Date.now();
+    try {
+      const published = await sweepRuntimeDrift(env);
+      console.log(`[drift-sweep] published=${published} took=${Date.now() - started}ms`);
+    } catch (err) {
+      console.error(`[drift-sweep] ${String(err)}`);
     }
   },
 

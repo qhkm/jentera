@@ -111,6 +111,16 @@ const cols = `id, business_id, run_id, kind, status, payload, dedupe_key,
               attempt, lease_token, lease_expires_at, remote_run_id,
               remote_status, result, started_at`;
 
+/** Failure reasons that are infrastructure noise, not product bugs. An
+    exhausted lifecycle task (upgrade/provision) whose last error matches this
+    is re-armed on the next publish of its dedupe key — the fleet must be able
+    to outlast a long registry or sprite-VM outage without a human resetting
+    rows. Deliberately conservative: deterministic bootstrap bugs do not match
+    and stay exhausted for a human to look at. */
+export const TRANSIENT_TASK_ERROR_RE =
+  'network|connection lost|econn|etimedout|eai_again|ehost|unreachable|' +
+  'socket hang up|fetch failed|registry|5[0-9][0-9]|timeout|dns|refused|reset';
+
 export async function enqueueRuntimeTask(
   tx: postgres.TransactionSql,
   businessId: string,
@@ -126,9 +136,25 @@ export async function enqueueRuntimeTask(
     values (${businessId}, ${input.runId ?? null}, ${input.kind},
             ${tx.json((input.payload ?? {}) as never)}, ${input.dedupeKey})
     on conflict (business_id, dedupe_key) do update
-      set updated_at = runtime_task.updated_at
+      set status = 'queued',
+          attempt = 0,
+          lease_token = null,
+          lease_expires_at = null,
+          available_at = now() + interval '60 seconds',
+          updated_at = now()
+      where runtime_task.status = 'exhausted'
+        and runtime_task.kind in ('upgrade', 'provision')
+        and runtime_task.last_error ~* ${TRANSIENT_TASK_ERROR_RE}
     returning ${tx.unsafe(cols)}`;
-  return task(row);
+  /* A conflict whose re-arm condition is false (active task, or exhausted with
+     a deterministic error) matches no DO UPDATE row, so Postgres returns
+     nothing at all — fetch the existing row to keep dedupe semantics:
+     republishing always yields the current task. */
+  if (row) return task(row);
+  const [existing] = await tx<TaskRow[]>`
+    select ${tx.unsafe(cols)} from runtime_task
+     where business_id = ${businessId} and dedupe_key = ${input.dedupeKey}`;
+  return task(existing);
 }
 
 export async function runtimeTaskByDedupeKey(

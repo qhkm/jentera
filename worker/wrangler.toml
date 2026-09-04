@@ -180,3 +180,9 @@ max_batch_timeout = 2
 max_retries = 20
 retry_delay = 300
 max_concurrency = 5
+
+# Fleet drift sweep: every 15 minutes, publish upgrade tasks for sprites not
+# on the pinned release (or errored). A release bump then converges by
+# itself — no per-business message or operator trigger required.
+[triggers]
+crons = ["*/15 * * * *"]

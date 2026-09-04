@@ -163,7 +163,22 @@ fi
   "$install_dir" --verify
 (
   cd "$install_dir"
-  npm audit --omit=dev --audit-level=high
+  # npm audit is a security gate, not a build step — a registry outage
+  # (503/ECONNRESET/timeout) must never block a runtime upgrade that has
+  # already installed and verified its dependencies. Only a real high-severity
+  # finding fails the bootstrap; patch-hermes-dependencies.mjs --verify above
+  # remains the hard gate for the one advisory we ship around.
+  if audit_text="$(npm audit --omit=dev --audit-level=high 2>&1)"; then
+    :
+  else
+    audit_rc=$?
+    if printf '%s\n' "$audit_text" | grep -qiE 'vulnerabilit|found [0-9]+ (moderate|high|critical)|GHSA'; then
+      printf '%s\n' "$audit_text" >&2
+      echo "high-severity production advisory present — upgrade blocked, review required" >&2
+      exit 1
+    fi
+    echo "npm audit could not reach the registry (rc=$audit_rc) — non-fatal, continuing" >&2
+  fi
 )
 
 # A terminated installer can leave the pinned Git commit and node_modules in

@@ -113,7 +113,9 @@ describe('the runtime queue consumer', () => {
     )).toEqual({ action: 'ack', reason: 'missing' });
   });
 
-  it('stops retrying a permanently broken provider after five attempts', async () => {
+  it('stops retrying a permanently broken provider after the lifecycle attempt budget', async () => {
+    /* Provision tasks are background lifecycle work: MAX_LIFECYCLE_TASK_ATTEMPTS
+       (8) with exponential backoff, not the interactive 5-attempt / 30s budget. */
     const task = await provisionTask();
     const broken: RuntimeProvider = {
       id: 'local',
@@ -127,7 +129,7 @@ describe('the runtime queue consumer', () => {
     };
     const env = testEnv({ RUNTIME_RELEASE: '2026.08.27-1' });
     const message = { version: 1 as const, businessId: A, taskId: task.id };
-    for (let attempt = 1; attempt <= 4; attempt += 1) {
+    for (let attempt = 1; attempt <= 7; attempt += 1) {
       const result = await handleRuntimeMessage(env, message, { provider: broken });
       expect(result.action).toBe('requeue');
       await asOwner((sql) => sql`
