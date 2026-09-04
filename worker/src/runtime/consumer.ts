@@ -202,12 +202,12 @@ export async function sweepRuntimeDrift(env: Env): Promise<number> {
   if (!release) return 0;
   const sql = connect(env);
   try {
+    /* SECURITY DEFINER (migration 018): the cron path has no tenant, so a
+       plain SELECT from aisar_app is RLS-filtered to zero rows — the sweep
+       would publish nothing forever. The function runs as the migration
+       owner (BYPASSRLS) and returns exactly the drifted ids. */
     const drifted = await sql<{ business_id: string }[]>`
-      select business_id from agent_runtime
-       where status in ('ready', 'error')
-         and (desired_release <> observed_release or status = 'error')
-       order by business_id
-       limit 25`;
+      select business_id from runtime_drift_targets()`;
     let published = 0;
     for (const row of drifted) {
       try {

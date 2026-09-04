@@ -7,7 +7,7 @@ import {
   LocalRuntimeProvider,
 } from '../src/runtime';
 import { enqueueRuntimeTask, leaseRuntimeTask, nextWaitingRuntimeTaskId, runtimeQueuePosition } from '../src/runtime/tasks';
-import { telegramFloodDelaySeconds, wakeNextRuntimeTask } from '../src/runtime/consumer';
+import { telegramFloodDelaySeconds, wakeNextRuntimeTask, sweepRuntimeDrift } from '../src/runtime/consumer';
 import type { DesiredRuntime, ObservedRuntime, RuntimeProvider } from '../src/runtime';
 import { markRuntimeReady, storeRuntimeModelCredential } from '../src/agent-runtime';
 import { startRun } from '../src/runs';
@@ -687,6 +687,38 @@ describe('the runtime queue consumer', () => {
     expect(answerAttempts).toBe(3);
     expect(notices).toBe(1);
     expect(telegramFloodDelaySeconds(5_000)).toBe(3_600);
+  });
+
+  it('drift sweep sees error sprites across RLS (cron path, no tenant)', async () => {
+    const B = '22222222-2222-4222-8222-222222222222';
+    await asOwner((sql) => sql`
+      insert into business (id, name, playbook_key) values (${B}, 'Beta', 'restaurant')`);
+    /* A: errored AND drifted — must be swept. */
+    await asOwner((sql) => sql`
+      insert into agent_runtime (business_id, provider, provider_name, status, desired_release, observed_release)
+      values (${A}, 'local', 'sprite-a', 'error', '2026.09.04-2', '2026.09.02-1')`);
+    /* B: converged on the pinned release — must NOT be swept. */
+    await asOwner((sql) => sql`
+      insert into agent_runtime (business_id, provider, provider_name, status, desired_release, observed_release)
+      values (${B}, 'local', 'sprite-b', 'ready', '2026.09.04-3', '2026.09.04-3')`);
+    const send = vi.fn().mockResolvedValue(undefined);
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.09.04-3',
+      RUNTIME_QUEUE: { send },
+    });
+    const published = await sweepRuntimeDrift(env);
+    expect(published).toBe(1);
+    /* Published via the same dedupe key the sweep uses. */
+    const tasks = await asOwner((sql) => sql<{ status: string; payload: unknown }[]>`
+      select status, payload from runtime_task
+       where dedupe_key = ${`upgrade:${A}:2026.09.04-3`}`);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].status).toBe('queued');
+    expect(tasks[0].payload).toMatchObject({
+      release: '2026.09.04-3',
+      reason: 'drift-sweep',
+    });
+    expect(send).toHaveBeenCalledTimes(1);
   });
 });
 
