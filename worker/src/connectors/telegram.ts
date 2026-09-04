@@ -622,6 +622,8 @@ export interface WebhookHealth {
   lastErrorAt: string | null;
   /** Telegram will not deliver until this is cleared. */
   ip: string | null;
+  /** Update types Telegram is set to deliver (['message','callback_query'] expected). */
+  allowedUpdates: string[] | null;
 }
 
 /**
@@ -645,6 +647,7 @@ export async function webhookHealth(token: string): Promise<WebhookHealth> {
       last_error_message?: string;
       last_error_date?: number;
       ip_address?: string;
+      allowed_updates?: string[];
     };
     description?: string;
   } | null;
@@ -658,5 +661,6 @@ export async function webhookHealth(token: string): Promise<WebhookHealth> {
     lastError: r.last_error_message ?? null,
     lastErrorAt: r.last_error_date ? new Date(r.last_error_date * 1000).toISOString() : null,
     ip: r.ip_address ?? null,
+    allowedUpdates: r.allowed_updates ?? null,
   };
 }

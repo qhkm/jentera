@@ -631,6 +631,57 @@ describe('connections', () => {
     expect(paired).toMatchObject({ paired: true, pairingUrl: null });
   });
 
+  it('re-registers a webhook on ?refresh=1 even when it looks healthy', async () => {
+    const c = await asTenant(A, (tx) =>
+      saveConnection(env, tx, A, {
+        connector: 'telegram',
+        method: 'bot_token',
+        externalId: '1',
+        displayName: '@alpha_bot',
+        secret: '123456789:SUPERSECRETTOKEN',
+        connectedBy: alice,
+      }));
+    await asTenant(A, (tx) => webhookSecret(tx, c.id));
+
+    const expected = `${env.API_ORIGIN}/api/webhooks/telegram/${A}/${c.id}`;
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const call = String(input);
+      if (call.includes('/getWebhookInfo')) {
+        return new Response(JSON.stringify({
+          ok: true,
+          result: { url: expected, pending_update_count: 0 },
+        }));
+      }
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 99 } }));
+    });
+    vi.stubGlobal('fetch', fetch);
+
+    /* A healthy webhook is left alone without the flag… */
+    const plain = await conn('GET', `/api/connections/${c.id}/health`, { cookie: cookieA });
+    expect(plain.status).toBe(200);
+    expect(plain.body).toMatchObject({ ok: true, repaired: false, pointsHere: true });
+    expect(JSON.stringify(plain.body)).not.toContain('setWebhook');
+
+    /* …but ?refresh=1 forces re-registration (pushes allowed_updates
+       that Telegram recorded before callback_query support shipped). */
+    const refreshed = await conn(
+      'GET',
+      `/api/connections/${c.id}/health?refresh=1`,
+      { cookie: cookieA },
+    );
+    expect(refreshed.status).toBe(200);
+    expect(refreshed.body).toMatchObject({ ok: true, repaired: true });
+
+    const setWebhookCall = fetch.mock.calls.find(([input]) => String(input).includes('/setWebhook'));
+    expect(setWebhookCall).toBeDefined();
+    const payload = JSON.parse(String(setWebhookCall?.[1]?.body)) as {
+      url: string;
+      allowed_updates: string[];
+    };
+    expect(payload.url).toBe(expected);
+    expect(payload.allowed_updates).toEqual(['message', 'callback_query']);
+  });
+
   it('hands an authorised runtime message to Queue before creating any run or task', async () => {
     const fetch = vi.fn(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));

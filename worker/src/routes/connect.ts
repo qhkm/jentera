@@ -188,6 +188,7 @@ export async function handleConnect(
 
   const health = url.pathname.match(/^\/api\/connections\/([0-9a-f-]{36})\/health$/i);
   if (health && request.method === 'GET') {
+    const forceRefresh = url.searchParams.get('refresh') === '1';
     try {
       const info = await withTenant(env, id.businessId, async (tx) => {
         const token = await useCredential(env, tx, health[1]);
@@ -213,9 +214,13 @@ export async function handleConnect(
       /* A correct URL is not enough. A connection made before the
          secret was stored has the right address and no way to prove an
          update came from Telegram, so every one is refused — the URL
-         looks perfect and nothing works. Repair on either fault. */
+         looks perfect and nothing works. Repair on either fault.
+         `?refresh=1` additionally forces re-registration even when the
+         URL and secret look right — used to push a changed
+         `allowed_updates` set (e.g. callback_query) to an existing
+         webhook that Telegram recorded before the new code shipped. */
       let repaired = false;
-      if (!info.url || info.url !== expected || !secretStored) {
+      if (forceRefresh || !info.url || info.url !== expected || !secretStored) {
         await withTenant(env, id.businessId, async (tx) => {
           const token = await useCredential(env, tx, health[1]);
           await setWebhook(token, expected, await webhookSecret(tx, health[1]));
