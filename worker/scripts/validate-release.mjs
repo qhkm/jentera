@@ -4,8 +4,10 @@
  *
  * Catches the bug class that blocked release 2026.09.05-1: the sprite
  * bootstrap passed --force-commit, but the pinned hermes v2026.9.5 installer
- * dropped the flag and exits 1 on unknown options. Every release that changes
- * the hermes pin or the runner bundle MUST pass this gate before shipping.
+ * dropped the flag and exits 1 on unknown options. (v2026.9.6 restores the
+ * nanoid@^3 override so the install gate accepts the lineage.) Every release
+ * that changes the hermes pin or the runner bundle MUST pass this gate
+ * before shipping.
  *
  * Checks (all against the actual repo state on GitHub):
  *   1. bootstrap-runtime.sh exists at RUNTIME_BUNDLE_COMMIT (worker pin).
