@@ -4,7 +4,7 @@ import type { ResponseMode } from './response-mode';
 
 const RESPONSE_LIMIT = 256 * 1024;
 const STREAM_LIMIT = 64 * 1024;
-const HERMES_PATCH_ID = 'jentera-runtime-2026-09-01';
+const HERMES_PATCH_ID = 'jentera-runtime-2026-09-06';
 const PROBE_TIMEOUT_MS = 3_000;
 const TERMINAL_TASK_STATUSES = new Set(['completed', 'failed', 'cancelled', 'stopped']);
 
