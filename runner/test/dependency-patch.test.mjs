@@ -20,9 +20,21 @@ test('narrowly updates the reviewed vulnerable dependencies and verifies the loc
   assert.equal(manifest.overrides['undici@^6'], '6.28.0');
   assert.equal(manifest.overrides['undici@^7'], '7.29.0');
   assert.equal(manifest.overrides['undici@^8'], '8.9.0');
+  assert.equal(manifest.overrides['postcss@^8'], '8.5.23');
+  assert.equal(manifest.overrides['react-router@^7'], '7.18.2');
+  assert.equal(manifest.overrides['react-router-dom@^7'], '7.18.2');
+  assert.equal(manifest.overrides['sanitize-html@^2'], '2.17.7');
+  assert.equal(manifest.overrides['dompurify@^3'], '3.4.14');
+  assert.equal(manifest.overrides['mermaid@^11'], '11.16.1');
   const lock = JSON.parse(await readFile(join(root, 'package-lock.json'), 'utf8'));
   assert.equal(lock.packages['node_modules/undici'].version, '6.28.0');
   assert.equal(lock.packages['node_modules/jsdom/node_modules/undici'].version, '7.29.0');
+  assert.equal(lock.packages['node_modules/postcss'].version, '8.5.23');
+  assert.equal(lock.packages['node_modules/react-router'].version, '7.18.2');
+  assert.equal(lock.packages['node_modules/react-router-dom'].version, '7.18.2');
+  assert.equal(lock.packages['node_modules/sanitize-html'].version, '2.17.7');
+  assert.equal(lock.packages['node_modules/dompurify'].version, '3.4.14');
+  assert.equal(lock.packages['node_modules/mermaid'].version, '11.16.1');
   const apiServer = await readFile(join(root, 'gateway/platforms/api_server.py'), 'utf8');
   assert.ok(apiServer.includes('provider_sort=provider_routing.get("sort"),'));
   assert.ok(apiServer.includes('"jentera_patch": "jentera-runtime-2026-09-01",'));
@@ -72,6 +84,12 @@ async function fixture(override, locked, legacyReasoning = false) {
       'node_modules/example/node_modules/nanoid': { name: 'nanoid', version: locked },
       'node_modules/undici': { version: '6.27.0' },
       'node_modules/jsdom/node_modules/undici': { version: '7.28.0' },
+      'node_modules/postcss': { version: '8.5.15' },
+      'node_modules/react-router': { version: '7.18.0' },
+      'node_modules/react-router-dom': { version: '7.18.0' },
+      'node_modules/sanitize-html': { version: '2.17.5' },
+      'node_modules/dompurify': { version: '3.4.11' },
+      'node_modules/mermaid': { version: '11.16.0' },
     },
   }));
   await mkdir(join(root, 'gateway/platforms'), { recursive: true });

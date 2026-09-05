@@ -23,44 +23,83 @@ const wireReorderPath = join(root, 'agent/wire_reorder.py');
 const wireOrderMarker = '# Jentera: reorder chat.completions wire bodies (tools first, messages last).';
 const wireOrderPatchId = 'jentera-wire-order-2026-09-03';
 const manifest = JSON.parse(await readFile(packagePath, 'utf8'));
-// undici advisories (2026): GHSA-m8rv-5g2x-5cg5 (CRLF injection via
-// blob-like body 'type'), GHSA-v3r7-h72x-cjcm (cookie attribute
-// injection). Patched floors per major line — a locked version below its
-// floor fails the bootstrap audit gate on the sprite, so pin deterministically.
-const UNDICI_PINS = [
-  ['^6', '6.28.0'],
-  ['^7', '7.29.0'],
-  ['^8', '8.9.0'],
-];
-const UNDICI_INTEGRITY = {
-  '6.28.0': 'sha512-LIY910g9TI13YS95lrMFrs8Rm/u/irgHeTWoKCoteeJ04CUJ92eEfj0rVn+7VKMPBpUPiUoBKfhNyLI23EE/KA==',
-  '7.29.0': 'sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==',
-  '8.9.0': 'sha512-aWZpUj7XoGonMClx4gdDRfgBjqeA+F473aDmROQQbM9n6PRfK/u1q/a0X4wMTgcHfT8H6fpbt98PFuDUwFg2YA==',
+// Reviewed vulnerability floors (2026): a locked version below its floor
+// fails the bootstrap audit gate on the sprite (npm audit --omit=dev
+// --audit-level=high), so pin deterministically per major line.
+//   undici        — GHSA-m8rv-5g2x-5cg5 (CRLF injection via blob-like body
+//                    'type'), GHSA-v3r7-h72x-cjcm (cookie attribute injection)
+//   postcss       — GHSA-/GHSA-…: sourcemap path traversal + .map disclosure
+//                    (8.5.15 affected; fixed ≥8.5.23)
+//   react-router  — RSC-mode CSRF bypass (7.18.0 affected; fixed 7.18.2)
+//   sanitize-html — 2.17.5 affected; fixed 2.17.7
+//   dompurify     — 3.4.11 affected; fixed 3.4.14
+//   mermaid       — 11.16.0 affected; fixed 11.16.1
+const PACKAGE_PINS = {
+  undici: { '^6': '6.28.0', '^7': '7.29.0', '^8': '8.9.0' },
+  postcss: { '^8': '8.5.23' },
+  'react-router': { '^7': '7.18.2' },
+  'react-router-dom': { '^7': '7.18.2' },
+  'sanitize-html': { '^2': '2.17.7' },
+  dompurify: { '^3': '3.4.14' },
+  mermaid: { '^11': '11.16.1' },
 };
-const undiciPinFor = (version) => {
+const PACKAGE_INTEGRITY = {
+  undici: {
+    '6.28.0': 'sha512-LIY910g9TI13YS95lrMFrs8Rm/u/irgHeTWoKCoteeJ04CUJ92eEfj0rVn+7VKMPBpUPiUoBKfhNyLI23EE/KA==',
+    '7.29.0': 'sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==',
+    '8.9.0': 'sha512-aWZpUj7XoGonMClx4gdDRfgBjqeA+F473aDmROQQbM9n6PRfK/u1q/a0X4wMTgcHfT8H6fpbt98PFuDUwFg2YA==',
+  },
+  postcss: {
+    '8.5.23': 'sha512-g50586zr4bZmwFiTlflMu8E0bDTb5I5gertgwAKmsdUlTQIhZtunzUlD1WSzwcVWPoAVpsrA6vlfCD7oXvRwgg==',
+  },
+  'react-router': {
+    '7.18.2': 'sha512-aUVMjFm3GAPTTZL7oYr5E7ETiqfQCHRLH+B+5afnICvf0r7kkK4eR6SMuwbSTJw/7t+12khT/Kahij49fqOCIg==',
+  },
+  'react-router-dom': {
+    '7.18.2': 'sha512-AIKJ/jgGlFb3EbfCXk5Gzshiwt+l3mqbCrNjmEWMMjqQxNJ3svBa6bgzFyCC2Sw3RA0VWF1kg3uQf2OFhxb8hw==',
+  },
+  'sanitize-html': {
+    '2.17.7': 'sha512-PGtEkc9cbnedU3s9TmzDbpsZ8w086g/0Q8k8/oIO1NLNU3i5k9yn835CrjJSajp1KMmkisbO1qPXxNKO3welAg==',
+  },
+  dompurify: {
+    '3.4.14': 'sha512-dVoH9z+MY+C9IilgGCk3YfFqjLi3fChm2OiKJMzh6axrJ5qwxqWaZamgmHrpv22CN/KdbZJuGEGgfQoL00LTdg==',
+  },
+  mermaid: {
+    '11.16.1': 'sha512-TQsq6u22fAn3rek5VOubrhKPo1g5hwC3FXUN9hiyupTckcYiGuuKGkNQrKYwGJkXUxZdojwRG46gsSCFZMDp4g==',
+  },
+};
+const packageNameOf = (path, pkg) => {
+  const name = typeof pkg?.name === 'string' && pkg.name
+    ? pkg.name
+    : String(path ?? '').split('/').pop();
+  return Object.hasOwn(PACKAGE_PINS, name) ? name : null;
+};
+const pinFor = (name, version) => {
   const major = `^${String(version ?? '').split('.')[0]}`;
-  const pin = UNDICI_PINS.find(([range]) => range === major);
-  if (!pin) throw new Error(`unreviewed undici version: ${String(version)}`);
-  return pin[1];
+  const pin = PACKAGE_PINS[name]?.[major];
+  if (!pin) throw new Error(`unreviewed ${name} version: ${String(version)}`);
+  return pin;
 };
 const current = manifest?.overrides?.['nanoid@^3'];
 if (!['3.3.17', '3.3.18'].includes(current)) {
   throw new Error(`unreviewed Hermes nanoid override: ${String(current)}`);
 }
 manifest.overrides['nanoid@^3'] = '3.3.18';
-for (const [range, pinned] of UNDICI_PINS) {
-  const key = `undici@${range}`;
-  const existing = manifest?.overrides?.[key];
-  if (existing !== undefined && existing !== pinned) {
-    throw new Error(`unreviewed Hermes undici override ${key}: ${String(existing)}`);
+for (const [name, ranges] of Object.entries(PACKAGE_PINS)) {
+  for (const [range, pinned] of Object.entries(ranges)) {
+    const key = `${name}@${range}`;
+    const existing = manifest?.overrides?.[key];
+    if (existing !== undefined && existing !== pinned) {
+      throw new Error(`unreviewed Hermes ${name} override ${key}: ${String(existing)}`);
+    }
+    manifest.overrides[key] = pinned;
   }
-  manifest.overrides[key] = pinned;
 }
 if (!verify) {
   await writeFile(packagePath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o644 });
   const lock = JSON.parse(await readFile(lockPath, 'utf8'));
   for (const [path, pkg] of Object.entries(lock.packages ?? {})) {
-    if (path.endsWith('/nanoid') && String(pkg?.version).startsWith('3.3.')) {
+    if ((path.endsWith('/nanoid') || pkg?.name === 'nanoid') && String(pkg?.version).startsWith('3.3.')) {
       if (!['3.3.17', '3.3.18'].includes(pkg.version)) {
         throw new Error(`unreviewed locked nanoid version at ${path}: ${pkg.version}`);
       }
@@ -68,18 +107,21 @@ if (!verify) {
       pkg.resolved = 'https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz';
       pkg.integrity = 'sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==';
     }
-    if ((path.endsWith('/undici') || pkg?.name === 'undici') && pkg?.version) {
-      const pinned = undiciPinFor(pkg.version);
-      if (pkg.version === pinned) continue;
+    const pinnedName = packageNameOf(path, pkg);
+    if (pinnedName && pkg?.version) {
+      const pinned = pinFor(pinnedName, pkg.version);
+      // Write version/resolved/integrity unconditionally (idempotent):
+      // a version that already matches its pin may still carry a stale
+      // integrity on re-runs, so never skip on version equality alone.
       pkg.version = pinned;
-      pkg.resolved = `https://registry.npmjs.org/undici/-/undici-${pinned}.tgz`;
-      pkg.integrity = UNDICI_INTEGRITY[pinned];
+      pkg.resolved = `https://registry.npmjs.org/${pinnedName}/-/${pinnedName}-${pinned}.tgz`;
+      pkg.integrity = PACKAGE_INTEGRITY[pinnedName][pinned];
     }
   }
   await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`, { mode: 0o644 });
   await patchApiServer();
   await patchWireOrder();
-  process.stdout.write('pinned Hermes dependencies (nanoid, undici), Jentera API-server and wire-order patches\n');
+  process.stdout.write('pinned Hermes dependencies (nanoid, undici, postcss, react-router, react-router-dom, sanitize-html, dompurify, mermaid), Jentera API-server and wire-order patches\n');
   process.exit(0);
 }
 
@@ -90,11 +132,11 @@ const vulnerable = Object.entries(lock.packages ?? {})
 if (vulnerable.length > 0) {
   throw new Error(`vulnerable nanoid remains at ${vulnerable.map(([path]) => path).join(', ')}`);
 }
-const vulnerableUndici = Object.entries(lock.packages ?? {})
-  .filter(([path, pkg]) => (path.endsWith('/undici') || pkg?.name === 'undici') && pkg?.version)
-  .filter(([, pkg]) => pkg?.version !== undiciPinFor(pkg?.version));
-if (vulnerableUndici.length > 0) {
-  throw new Error(`vulnerable undici remains at ${vulnerableUndici.map(([path]) => path).join(', ')}`);
+const vulnerablePinned = Object.entries(lock.packages ?? {})
+  .map(([path, pkg]) => [path, pkg, packageNameOf(path, pkg)])
+  .filter(([, pkg, name]) => name && pkg?.version && pkg.version !== pinFor(name, pkg.version));
+if (vulnerablePinned.length > 0) {
+  throw new Error(`vulnerable pinned dependency remains at ${vulnerablePinned.map(([path]) => path).join(', ')}`);
 }
 const apiServer = await readFile(apiServerPath, 'utf8');
 if (!apiServer.includes(routingMarker) ||
