@@ -18,7 +18,7 @@ test('narrowly updates the reviewed vulnerable override and verifies its lock', 
   const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
   assert.equal(manifest.overrides['nanoid@^3'], '3.3.18');
   const apiServer = await readFile(join(root, 'gateway/platforms/api_server.py'), 'utf8');
-  assert.ok(apiServer.includes('"provider_sort": provider_routing.get("sort"),'));
+  assert.ok(apiServer.includes('provider_sort=provider_routing.get("sort"),'));
   assert.ok(apiServer.includes('"jentera_patch": "jentera-runtime-2026-09-01",'));
   assert.ok(apiServer.includes('result.get("last_reasoning")'));
   assert.ok(apiServer.includes('completed_event["reasoning"] = reasoning'));
@@ -51,6 +51,61 @@ test('normalizes the reviewed one-off canary reasoning patch before applying the
   assert.ok(apiServer.includes('**({"reasoning": reasoning} if reasoning else {}),'));
 });
 
+test('re-anchors the provider-routing patch on the verbatim pinned AIAgent() call shape', async () => {
+  const root = await pinnedFixture();
+  assert.equal(run(root).status, 0);
+  assert.equal(run(root, '--verify').status, 0);
+  const apiServer = await readFile(join(root, 'gateway/platforms/api_server.py'), 'utf8');
+  assert.ok(apiServer.includes('        provider_routing = user_config.get("provider_routing") or {}'));
+  assert.ok(apiServer.includes('providers_allowed=provider_routing.get("only"),'));
+  assert.ok(apiServer.includes('provider_sort=provider_routing.get("sort"),'));
+  assert.ok(!apiServer.includes('agent_kwargs = {'));
+});
+
+/** Stage-1 fabrication matching the pinned Hermes AIAgent() call shape:
+ * gateway/platforms/api_server.py @ 111949b9750f7dafc8adaf0829de9cc108aa4236. */
+const API_SERVER_STAGE1 = [
+  '        user_config = _load_gateway_config()',
+  '        agent = AIAgent(',
+  '            model=model,',
+  '            **runtime_kwargs,',
+  '            quiet_mode=True,',
+  '            reasoning_config=reasoning_config,',
+  '            gateway_session_key=gateway_session_key,',
+  '        )',
+];
+
+/** Scaffolding for the release-patch stages that touch the health handler and
+ * the run.completed reporting block (anchors reviewed against the pinned
+ * Hermes file; same shape the canary trees were hand-patched with). */
+const RUNTIME_SCAFFOLD = (legacyReasoning) => [
+  '        return web.json_response({',
+  '            "version": _hermes_version(),',
+  '            "gateway_state": gw_state,',
+  '        })',
+  '                    final_response = result.get("final_response", "") if isinstance(result, dict) else ""',
+  '                    pending_steer = result.get("pending_steer") if isinstance(result, dict) else None',
+  ...(legacyReasoning
+    ? ['                    reasoning = result.get("last_reasoning") if isinstance(result, dict) else None']
+    : []),
+  '                    completed_event = {',
+  '                        "event": "run.completed",',
+  '                        "usage": usage,',
+  ...(legacyReasoning ? ['                        "reasoning": reasoning,'] : []),
+  '                    }',
+  '                    if pending_steer:',
+  '                        completed_event["pending_steer"] = pending_steer',
+  '                    self._set_run_status(',
+  '                        run_id,',
+  '                        "completed",',
+  '                        output=final_response,',
+  '                        usage=usage,',
+  ...(legacyReasoning ? ['                        reasoning=reasoning,'] : []),
+  '                        last_event="run.completed",',
+  '                    )',
+  '',
+];
+
 async function fixture(override, locked, legacyReasoning = false) {
   const root = await mkdtemp(join(tmpdir(), 'aisar-hermes-test-'));
   directories.push(root);
@@ -61,38 +116,37 @@ async function fixture(override, locked, legacyReasoning = false) {
     packages: { 'node_modules/example/node_modules/nanoid': { name: 'nanoid', version: locked } },
   }));
   await mkdir(join(root, 'gateway/platforms'), { recursive: true });
-  await writeFile(join(root, 'gateway/platforms/api_server.py'), [
-    '        user_config = _load_gateway_config()',
-    '        agent_kwargs = {',
-    '            "reasoning_config": reasoning_config,',
-    '            "gateway_session_key": gateway_session_key,',
-    '        }',
-    '        return web.json_response({',
-    '            "version": _hermes_version(),',
-    '            "gateway_state": gw_state,',
-    '        })',
-    '                    final_response = result.get("final_response", "") if isinstance(result, dict) else ""',
-    '                    pending_steer = result.get("pending_steer") if isinstance(result, dict) else None',
-    ...(legacyReasoning
-      ? ['                    reasoning = result.get("last_reasoning") if isinstance(result, dict) else None']
-      : []),
-    '                    completed_event = {',
-    '                        "event": "run.completed",',
-    '                        "usage": usage,',
-    ...(legacyReasoning ? ['                        "reasoning": reasoning,'] : []),
-    '                    }',
-    '                    if pending_steer:',
-    '                        completed_event["pending_steer"] = pending_steer',
-    '                    self._set_run_status(',
-    '                        run_id,',
-    '                        "completed",',
-    '                        output=final_response,',
-    '                        usage=usage,',
-    ...(legacyReasoning ? ['                        reasoning=reasoning,'] : []),
-    '                        last_event="run.completed",',
-    '                    )',
-    '',
-  ].join('\n'));
+  await writeFile(join(root, 'gateway/platforms/api_server.py'),
+    [...API_SERVER_STAGE1, ...RUNTIME_SCAFFOLD(legacyReasoning)].join('\n'));
+  await writeKeepaliveSources(root);
+  return root;
+}
+
+/** Like fixture(), but the api_server.py Stage-1 region is the VERBATIM slice
+ * of the pinned Hermes file (fixtures/pinned-api-server-create-agent.py), so a
+ * future Hermes pin that changes the AIAgent() call shape fails this test
+ * loudly instead of the patch drifting silently. */
+async function pinnedFixture() {
+  const root = await mkdtemp(join(tmpdir(), 'aisar-hermes-test-'));
+  directories.push(root);
+  await writeFile(join(root, 'package.json'), JSON.stringify({
+    overrides: { 'nanoid@^3': '3.3.17', lodash: '4.18.1' },
+  }));
+  await writeFile(join(root, 'package-lock.json'), JSON.stringify({
+    packages: { 'node_modules/example/node_modules/nanoid': { name: 'nanoid', version: '3.3.17' } },
+  }));
+  await mkdir(join(root, 'gateway/platforms'), { recursive: true });
+  const pinned = await readFile(
+    new URL('./fixtures/pinned-api-server-create-agent.py', import.meta.url),
+    'utf8',
+  );
+  await writeFile(join(root, 'gateway/platforms/api_server.py'),
+    `${pinned.trimEnd()}\n${RUNTIME_SCAFFOLD(false).join('\n')}`);
+  await writeKeepaliveSources(root);
+  return root;
+}
+
+async function writeKeepaliveSources(root) {
   // Keepalive builders: the wire-order stage patches these exact anchors.
   await mkdir(join(root, 'agent'), { recursive: true });
   await writeFile(join(root, 'agent/process_bootstrap.py'), [
@@ -169,7 +223,6 @@ async function fixture(override, locked, legacyReasoning = false) {
     '            return None',
     '',
   ].join('\n'));
-  return root;
 }
 
 function run(root, ...args) {

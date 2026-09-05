@@ -56,7 +56,7 @@ if (vulnerable.length > 0) {
 }
 const apiServer = await readFile(apiServerPath, 'utf8');
 if (!apiServer.includes(routingMarker) ||
-    !apiServer.includes('"provider_sort": provider_routing.get("sort"),') ||
+    !apiServer.includes('provider_sort=provider_routing.get("sort"),') ||
     !apiServer.includes(runtimeMarker) ||
     !apiServer.includes(`"jentera_patch": "${runtimePatchId}",`) ||
     !apiServer.includes('result.get("last_reasoning")') ||
@@ -82,7 +82,7 @@ async function patchApiServer() {
   let source = await readFile(apiServerPath, 'utf8');
   source = normalizeLegacyReasoningPatch(source);
   if (!source.includes(routingMarker)) {
-    const configAnchor = '        agent_kwargs = {\n';
+    const configAnchor = '        agent = AIAgent(\n';
     const configPatch = [
       `        ${routingMarker}`,
       '        provider_routing = user_config.get("provider_routing") or {}',
@@ -94,18 +94,18 @@ async function patchApiServer() {
     source = replaceReviewedAnchor(source, configAnchor, configPatch);
 
     const kwargsAnchor = [
-      '            "reasoning_config": reasoning_config,',
-      '            "gateway_session_key": gateway_session_key,',
+      '            reasoning_config=reasoning_config,',
+      '            gateway_session_key=gateway_session_key,',
     ].join('\n');
     const kwargsPatch = [
-      '            "reasoning_config": reasoning_config,',
-      '            "providers_allowed": provider_routing.get("only"),',
-      '            "providers_ignored": provider_routing.get("ignore"),',
-      '            "providers_order": provider_routing.get("order"),',
-      '            "provider_sort": provider_routing.get("sort"),',
-      '            "provider_require_parameters": provider_routing.get("require_parameters", False),',
-      '            "provider_data_collection": provider_routing.get("data_collection"),',
-      '            "gateway_session_key": gateway_session_key,',
+      '            reasoning_config=reasoning_config,',
+      '            providers_allowed=provider_routing.get("only"),',
+      '            providers_ignored=provider_routing.get("ignore"),',
+      '            providers_order=provider_routing.get("order"),',
+      '            provider_sort=provider_routing.get("sort"),',
+      '            provider_require_parameters=provider_routing.get("require_parameters", False),',
+      '            provider_data_collection=provider_routing.get("data_collection"),',
+      '            gateway_session_key=gateway_session_key,',
     ].join('\n');
     source = replaceReviewedAnchor(source, kwargsAnchor, kwargsPatch);
   }
