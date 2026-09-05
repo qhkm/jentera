@@ -13,14 +13,16 @@ from toolsets import resolve_toolset
 
 
 def main() -> None:
-    if len(sys.argv) not in (5, 6):
+    if len(sys.argv) not in (5, 6, 7):
         raise SystemExit(
-            "usage: configure-model-provider.py PROVIDER BASE_URL MODEL KEY_ENV [CUA_ENABLED]"
+            "usage: configure-model-provider.py PROVIDER BASE_URL MODEL KEY_ENV "
+            "[CUA_ENABLED] [DEEP_MODEL]"
         )
     provider, base_url, model_name, key_env = (value.strip() for value in sys.argv[1:5])
-    cua_enabled = sys.argv[5].strip() if len(sys.argv) == 6 else ""
+    cua_enabled = sys.argv[5].strip() if len(sys.argv) >= 6 else ""
     if cua_enabled not in ("", "0", "1"):
         raise SystemExit("CUA_ENABLED must be 0 or 1")
+    deep_model_name = sys.argv[6].strip() if len(sys.argv) == 7 else ""
     parsed = urlparse(base_url)
     if provider != "openrouter":
         raise SystemExit("only the reviewed OpenRouter provider is allowed")
@@ -36,6 +38,10 @@ def main() -> None:
         raise SystemExit("model base URL is not pinned")
     if not re.fullmatch(r"[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._:~-]+)?", model_name):
         raise SystemExit("model id is invalid")
+    if deep_model_name and not re.fullmatch(
+        r"[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._:~-]+)?", deep_model_name
+    ):
+        raise SystemExit("deep model id is invalid")
     if key_env != "OPENROUTER_API_KEY":
         raise SystemExit("OpenRouter key must use OPENROUTER_API_KEY")
 
@@ -52,6 +58,28 @@ def main() -> None:
         }
     )
     config["model"] = model
+
+    # Pin per-model routes for the API server. The worker sends the raw model
+    # ids (not "quick"/"deep" aliases) in /v1/runs, so each route key IS the
+    # model id; an alias-keyed route would never match and the request would
+    # silently fall back to config.model (the quick model). Every route pins
+    # the full runtime contract: model, provider, allowlisted base_url and the
+    # key as an env placeholder — no literal key material touches the config.
+    routes = {
+        model_name: {
+            "model": model_name,
+            "provider": provider,
+            "base_url": base_url.rstrip("/"),
+            "api_key": f"${{{key_env}}}",
+        }
+    }
+    if deep_model_name and deep_model_name != model_name:
+        routes[deep_model_name] = {
+            "model": deep_model_name,
+            "provider": provider,
+            "base_url": base_url.rstrip("/"),
+            "api_key": f"${{{key_env}}}",
+        }
 
     # Keep DS4 Flash fixed while requiring an underlying OpenRouter endpoint
     # that supports every parameter Hermes sends, especially tool calling.
@@ -105,6 +133,13 @@ def main() -> None:
     gateway = dict(config.get("gateway") or {})
     api_server = dict(gateway.get("api_server") or {})
     api_server["max_concurrent_runs"] = 1
+    extra = dict(api_server.get("extra") or {})
+    model_routes = dict(extra.get("model_routes") or {})
+    # Merge, never clobber: operator-written routes survive provisioning, and
+    # re-provisioning the same models is idempotent.
+    model_routes.update(routes)
+    extra["model_routes"] = model_routes
+    api_server["extra"] = extra
     gateway["api_server"] = api_server
     config["gateway"] = gateway
 

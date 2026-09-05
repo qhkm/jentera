@@ -239,7 +239,8 @@ trap 'rm -f "$incoming"' EXIT
 
 hermes_python="$install_dir/venv/bin/python"
 "$hermes_python" /home/sprite/aisar/runner/configure-model-provider.py \
-  "$model_provider" "$model_base" "$model_name" OPENROUTER_API_KEY "$cua_enabled"
+  "$model_provider" "$model_base" "$model_name" OPENROUTER_API_KEY "$cua_enabled" \
+  "$deep_model_name"
 
 # Readiness without one real inference only proves that processes started. It
 # previously allowed an official OpenRouter key to be installed against FMCV,

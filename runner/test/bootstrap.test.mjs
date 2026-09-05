@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -97,6 +97,124 @@ test('model configuration favors DS4 agent quality and tool compatibility', asyn
   assert.doesNotMatch(source, /provider_routing\["sort"\] = "latency"/);
 });
 
+test('configured model routes pin provider, base_url and env key for quick and deep models', async () => {
+  const primary = 'deepseek/deepseek-v4-flash-0731';
+  const deep = 'deepseek/deepseek-v4-0401';
+  const { status, stderr, configPath } = await runConfigure([
+    'openrouter',
+    'https://openrouter.ai/api/v1/', // trailing slash must be stripped for routes too
+    primary,
+    'OPENROUTER_API_KEY',
+    '0',
+    deep,
+  ]);
+  assert.equal(status, 0, stderr);
+  const config = JSON.parse(await readFile(configPath, 'utf8'));
+  // The worker sends the raw model ids (not "quick"/"deep" aliases), so route
+  // keys are the model ids themselves and each route pins the full runtime
+  // contract: model, provider, allowlisted base_url (no trailing slash) and
+  // the key as an env placeholder.
+  assert.deepStrictEqual(config.gateway.api_server.extra.model_routes, {
+    [primary]: {
+      model: primary,
+      provider: 'openrouter',
+      base_url: 'https://openrouter.ai/api/v1',
+      api_key: '${OPENROUTER_API_KEY}',
+    },
+    [deep]: {
+      model: deep,
+      provider: 'openrouter',
+      base_url: 'https://openrouter.ai/api/v1',
+      api_key: '${OPENROUTER_API_KEY}',
+    },
+  });
+  // No literal key material may ever reach the written config file.
+  assert.doesNotMatch(JSON.stringify(config), /sk-[A-Za-z0-9]+/);
+});
+
+test('model routes collapse to the single primary route when the deep model is absent or identical', async () => {
+  const primary = 'deepseek/deepseek-v4-flash-0731';
+  const expected = {
+    [primary]: {
+      model: primary,
+      provider: 'openrouter',
+      base_url: 'https://router.fmcv.my',
+      api_key: '${OPENROUTER_API_KEY}',
+    },
+  };
+  for (const argv of [
+    ['openrouter', 'https://router.fmcv.my', primary, 'OPENROUTER_API_KEY', '0'],
+    ['openrouter', 'https://router.fmcv.my', primary, 'OPENROUTER_API_KEY', '0', primary],
+  ]) {
+    const { status, stderr, configPath } = await runConfigure(argv);
+    assert.equal(status, 0, stderr);
+    const config = JSON.parse(await readFile(configPath, 'utf8'));
+    assert.deepStrictEqual(config.gateway.api_server.extra.model_routes, expected);
+  }
+});
+
+test('model routes merge with, and never clobber, existing api_server settings', async () => {
+  const primary = 'deepseek/deepseek-v4-flash-0731';
+  const deep = 'deepseek/deepseek-v4-0401';
+  const existing = {
+    gateway: {
+      api_server: {
+        max_concurrent_runs: 4,
+        other: 'preserved',
+        extra: {
+          keep: 'me',
+          model_routes: {
+            'existing/route': {
+              model: 'existing/route',
+              provider: 'openrouter',
+              base_url: 'https://openrouter.ai/api/v1',
+              api_key: '${OPENROUTER_API_KEY}',
+            },
+          },
+        },
+      },
+    },
+    platform_toolsets: { api_server: ['hermes-api-server'] },
+  };
+  const { status, stderr, configPath } = await runConfigure(
+    ['openrouter', 'https://router.fmcv.my', primary, 'OPENROUTER_API_KEY', '1', deep],
+    existing,
+  );
+  assert.equal(status, 0, stderr);
+  const config = JSON.parse(await readFile(configPath, 'utf8'));
+  assert.deepStrictEqual(config.gateway.api_server.extra.model_routes, {
+    'existing/route': {
+      model: 'existing/route',
+      provider: 'openrouter',
+      base_url: 'https://openrouter.ai/api/v1',
+      api_key: '${OPENROUTER_API_KEY}',
+    },
+    [primary]: {
+      model: primary,
+      provider: 'openrouter',
+      base_url: 'https://router.fmcv.my',
+      api_key: '${OPENROUTER_API_KEY}',
+    },
+    [deep]: {
+      model: deep,
+      provider: 'openrouter',
+      base_url: 'https://router.fmcv.my',
+      api_key: '${OPENROUTER_API_KEY}',
+    },
+  });
+  assert.equal(config.gateway.api_server.max_concurrent_runs, 1);
+  assert.equal(config.gateway.api_server.other, 'preserved');
+  assert.equal(config.gateway.api_server.extra.keep, 'me');
+});
+
+test('bootstrap hands the deep model to the provider configure step', async () => {
+  const source = await readFile(SCRIPT, 'utf8');
+  assert.match(
+    source,
+    /configure-model-provider\.py \\\n\s+"\$model_provider" "\$model_base" "\$model_name" OPENROUTER_API_KEY "\$cua_enabled" \\\n\s+"\$deep_model_name"/,
+  );
+});
+
 test('computer use is gated, pinned, and proven before the runtime attests it', async () => {
   const source = await readFile(SCRIPT, 'utf8');
   // The transfer field is optional and defaults to disabled; only `1` enables
@@ -186,4 +304,55 @@ function fields(overrides = {}) {
     return body + `CUA_ENABLED_B64=${Buffer.from(String(input.cuaEnabled)).toString('base64')}\n`;
   }
   return body;
+}
+
+// Spawn configure-model-provider.py against a hermetic stand-in for the pinned
+// Hermes install: a fabricated config file plus minimal hermes_cli/toolsets
+// modules on PYTHONPATH. load_config/save_config read and write JSON so the
+// test can assert on the exact bytes the script provisions, including the
+// gateway.api_server.extra.model_routes block it must emit.
+async function runConfigure(argv, preexisting = {}) {
+  const directory = await mkdtemp(join(tmpdir(), 'aisar-configure-test-'));
+  directories.push(directory);
+  const fakePackage = join(directory, 'hermes_cli');
+  await mkdir(fakePackage);
+  await writeFile(join(fakePackage, '__init__.py'), '');
+  await writeFile(
+    join(fakePackage, 'config.py'),
+    [
+      'import json, os',
+      'from pathlib import Path',
+      '',
+      'def _cfg_path():',
+      '    return Path(os.environ["AISAR_TEST_CONFIG"])',
+      '',
+      'def load_config():',
+      '    path = _cfg_path()',
+      '    return json.loads(path.read_text()) if path.exists() else {}',
+      '',
+      'def save_config(config):',
+      '    _cfg_path().write_text(json.dumps(config, indent=2))',
+      '',
+    ].join('\n'),
+  );
+  await writeFile(
+    join(fakePackage, 'tools_config.py'),
+    [
+      'def _get_platform_tools(config, platform):',
+      '    names = (config.get("platform_toolsets") or {}).get(platform) or []',
+      '    return set(names)',
+      '',
+    ].join('\n'),
+  );
+  await writeFile(
+    join(directory, 'toolsets.py'),
+    'def resolve_toolset(name):\n    return {name, "fake-inference-tool"}\n',
+  );
+  const configPath = join(directory, 'config.json');
+  await writeFile(configPath, JSON.stringify(preexisting));
+  const result = spawnSync('python3', [CONFIGURE, ...argv], {
+    encoding: 'utf8',
+    env: { ...process.env, PYTHONPATH: directory, AISAR_TEST_CONFIG: configPath },
+  });
+  return { ...result, configPath };
 }
