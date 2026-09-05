@@ -21,7 +21,11 @@ test('narrowly updates the reviewed vulnerable override and verifies its lock', 
   assert.ok(apiServer.includes('provider_sort=provider_routing.get("sort"),'));
   assert.ok(apiServer.includes('"jentera_patch": "jentera-runtime-2026-09-01",'));
   assert.ok(apiServer.includes('result.get("last_reasoning")'));
-  assert.ok(apiServer.includes('completed_event["reasoning"] = reasoning'));
+  assert.ok(apiServer.includes([
+    '                        "usage": usage,',
+    '                        **({"reasoning": reasoning} if reasoning else {}),',
+    '                    })',
+  ].join('\n')));
   assert.ok(apiServer.includes('**({"reasoning": reasoning} if reasoning else {}),'));
   const wireReorder = await readFile(join(root, 'agent/wire_reorder.py'), 'utf8');
   assert.ok(wireReorder.includes('PATCH_ID = "jentera-wire-order-2026-09-03"'));
@@ -51,7 +55,7 @@ test('normalizes the reviewed one-off canary reasoning patch before applying the
   assert.ok(apiServer.includes('**({"reasoning": reasoning} if reasoning else {}),'));
 });
 
-test('re-anchors the provider-routing patch on the verbatim pinned AIAgent() call shape', async () => {
+test('re-anchors provider-routing and runtime patches on the verbatim pinned shapes', async () => {
   const root = await pinnedFixture();
   assert.equal(run(root).status, 0);
   assert.equal(run(root, '--verify').status, 0);
@@ -60,6 +64,18 @@ test('re-anchors the provider-routing patch on the verbatim pinned AIAgent() cal
   assert.ok(apiServer.includes('providers_allowed=provider_routing.get("only"),'));
   assert.ok(apiServer.includes('provider_sort=provider_routing.get("sort"),'));
   assert.ok(!apiServer.includes('agent_kwargs = {'));
+  // Stage 2: the run.completed event dict must carry the bounded reasoning
+  // spread (anchored on the pinned _put_event_if_active shape), and the
+  // canary-era dict machinery must be absent from the patched output.
+  assert.ok(apiServer.includes([
+    '                        "usage": usage,',
+    '                        **({"reasoning": reasoning} if reasoning else {}),',
+    '                    })',
+  ].join('\n')));
+  assert.ok(apiServer.includes('result.get("last_reasoning")'));
+  assert.ok(apiServer.includes('**({"reasoning": reasoning} if reasoning else {}),'));
+  assert.ok(!apiServer.includes('pending_steer'));
+  assert.ok(!apiServer.includes('completed_event'));
 });
 
 /** Stage-1 fabrication matching the pinned Hermes AIAgent() call shape:
@@ -76,25 +92,26 @@ const API_SERVER_STAGE1 = [
 ];
 
 /** Scaffolding for the release-patch stages that touch the health handler and
- * the run.completed reporting block (anchors reviewed against the pinned
- * Hermes file; same shape the canary trees were hand-patched with). */
+ * the run.completed reporting block — pinned Hermes shape (the completed
+ * event is a dict literal inside _put_event_if_active({...}) and the run
+ * status is set via _set_run_status keyword arguments). */
 const RUNTIME_SCAFFOLD = (legacyReasoning) => [
   '        return web.json_response({',
   '            "version": _hermes_version(),',
   '            "gateway_state": gw_state,',
   '        })',
   '                    final_response = result.get("final_response", "") if isinstance(result, dict) else ""',
-  '                    pending_steer = result.get("pending_steer") if isinstance(result, dict) else None',
   ...(legacyReasoning
     ? ['                    reasoning = result.get("last_reasoning") if isinstance(result, dict) else None']
     : []),
-  '                    completed_event = {',
+  '                    _put_event_if_active({',
   '                        "event": "run.completed",',
+  '                        "run_id": run_id,',
+  '                        "timestamp": time.time(),',
+  '                        "output": final_response,',
   '                        "usage": usage,',
   ...(legacyReasoning ? ['                        "reasoning": reasoning,'] : []),
-  '                    }',
-  '                    if pending_steer:',
-  '                        completed_event["pending_steer"] = pending_steer',
+  '                    })',
   '                    self._set_run_status(',
   '                        run_id,',
   '                        "completed",',
@@ -122,10 +139,11 @@ async function fixture(override, locked, legacyReasoning = false) {
   return root;
 }
 
-/** Like fixture(), but the api_server.py Stage-1 region is the VERBATIM slice
- * of the pinned Hermes file (fixtures/pinned-api-server-create-agent.py), so a
- * future Hermes pin that changes the AIAgent() call shape fails this test
- * loudly instead of the patch drifting silently. */
+/** Like fixture(), but the api_server.py is a VERBATIM assembly of pinned
+ * Hermes file slices (fixtures/pinned-api-server-create-agent.py): the
+ * AIAgent() call shape plus the health-handler dict and the run.completed
+ * reporting block, so a future Hermes pin that changes any reviewed anchor
+ * fails this test loudly instead of the patch drifting silently. */
 async function pinnedFixture() {
   const root = await mkdtemp(join(tmpdir(), 'aisar-hermes-test-'));
   directories.push(root);
@@ -140,8 +158,7 @@ async function pinnedFixture() {
     new URL('./fixtures/pinned-api-server-create-agent.py', import.meta.url),
     'utf8',
   );
-  await writeFile(join(root, 'gateway/platforms/api_server.py'),
-    `${pinned.trimEnd()}\n${RUNTIME_SCAFFOLD(false).join('\n')}`);
+  await writeFile(join(root, 'gateway/platforms/api_server.py'), pinned);
   await writeKeepaliveSources(root);
   return root;
 }

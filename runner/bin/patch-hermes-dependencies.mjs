@@ -138,15 +138,12 @@ async function patchApiServer() {
 
     const eventAnchor = [
       '                        "usage": usage,',
-      '                    }',
-      '                    if pending_steer:',
+      '                    })',
     ].join('\n');
     const eventPatch = [
       '                        "usage": usage,',
-      '                    }',
-      '                    if reasoning:',
-      '                        completed_event["reasoning"] = reasoning',
-      '                    if pending_steer:',
+      '                        **({"reasoning": reasoning} if reasoning else {}),',
+      '                    })',
     ].join('\n');
     source = replaceReviewedAnchor(source, eventAnchor, eventPatch);
 

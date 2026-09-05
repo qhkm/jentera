@@ -136,3 +136,64 @@
     # HTTP Handlers
     # ------------------------------------------------------------------
 
+
+# --------------------------------------------------------------------------
+# Verbatim slices of the pinned Hermes api_server.py @
+# 111949b9750f7dafc8adaf0829de9cc108aa4236 - health handler dict
+# (lines 2001-2006) and the run.completed reporting block (lines 5155-5200).
+# They keep the Stage-2 runtime anchors honest: if a future pin changes
+# either region the pinnedFixture test fails loudly instead of the patch
+# drifting silently.
+# --------------------------------------------------------------------------
+        return web.json_response({
+            "status": readiness["status"],
+            "readiness": readiness,
+            "platform": "hermes-agent",
+            "version": _hermes_version(),
+            "gateway_state": gw_state,
+                # Check for structured failure (non-retryable client errors like
+                # 401/400 return failed=True instead of raising, so the except
+                # block below never fires — issue #15561).
+                elif isinstance(result, dict) and result.get("failed"):
+                    error_msg = _redact_api_error_text(result.get("error") or "agent run failed")
+                    _put_event_if_active({
+                        "event": "run.failed",
+                        "run_id": run_id,
+                        "timestamp": time.time(),
+                        "error": error_msg,
+                    })
+                    self._set_run_status(
+                        run_id,
+                        "failed",
+                        error=error_msg,
+                        last_event="run.failed",
+                    )
+                else:
+                    final_response = result.get("final_response", "") if isinstance(result, dict) else ""
+                    _put_event_if_active({
+                        "event": "run.completed",
+                        "run_id": run_id,
+                        "timestamp": time.time(),
+                        "output": final_response,
+                        "usage": usage,
+                    })
+                    self._set_run_status(
+                        run_id,
+                        "completed",
+                        output=final_response,
+                        usage=usage,
+                        last_event="run.completed",
+                    )
+            except asyncio.CancelledError:
+                self._set_run_status(
+                    run_id,
+                    "cancelled",
+                    last_event="run.cancelled",
+                )
+                try:
+                    _put_event_if_active({
+                        "event": "run.cancelled",
+                        "run_id": run_id,
+                        "timestamp": time.time(),
+                    })
+                except Exception:
