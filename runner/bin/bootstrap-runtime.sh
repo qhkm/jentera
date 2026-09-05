@@ -138,14 +138,16 @@ if [[ "$installed_commit" != "$hermes_commit" ]]; then
     exit 1
   fi
   chmod 700 "$installer"
-  HERMES_HOME=/home/sprite/.hermes bash "$installer" \
-    --branch "$hermes_tag" \
-    --commit "$hermes_commit" \
-    --force-commit \
-    --skip-setup \
-    --non-interactive \
-    --dir "$install_dir" \
-    --hermes-home /home/sprite/.hermes
+  # Installers before v2026.9.5 guard rollback pins behind --force-commit;
+  # v2026.9.5 dropped both the guard and the flag, and rejects unknown
+  # options. Probe the pinned installer for the flag so rollback pins keep
+  # working and modern pins don't fail (release 2026.09.05-1 blocked on this).
+  install_cmd=(bash "$installer" --branch "$hermes_tag" --commit "$hermes_commit")
+  if grep -q -- '--force-commit' "$installer"; then
+    install_cmd+=(--force-commit)
+  fi
+  install_cmd+=(--skip-setup --non-interactive --dir "$install_dir" --hermes-home /home/sprite/.hermes)
+  HERMES_HOME=/home/sprite/.hermes "${install_cmd[@]}"
   rm -f "$installer"
   trap 'rm -f "$incoming"' EXIT
 fi
