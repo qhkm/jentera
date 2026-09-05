@@ -61,8 +61,8 @@ encode() { printf '%s' "$1" | base64 | tr -d '\n'; }
   printf 'MODEL_KEY_B64=%s\n' "$(encode "$OPENROUTER_API_KEY")"
   printf 'MODEL_NAME_B64=%s\n' "$(encode "$model_name")"
   printf 'DEEP_MODEL_NAME_B64=%s\n' "$(encode "$deep_model_name")"
-  printf 'HERMES_TAG_B64=%s\n' "$(encode 'v2026.8.19')"
-  printf 'HERMES_COMMIT_B64=%s\n' "$(encode 'fcbd1076a93841fa88855acce810e342a5b78101')"
+  printf 'HERMES_TAG_B64=%s\n' "$(encode 'v2026.9.5')"
+  printf 'HERMES_COMMIT_B64=%s\n' "$(encode 'd601d6b7da8325eb389da1a84027ad2ef3785eab')"
 } > "$transfer"
 
 AISAR_BOOTSTRAP_CONTROL_PLANE=1 \
