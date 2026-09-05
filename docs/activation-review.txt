@@ -1,0 +1,135 @@
+Activation review, 2026-09-05
+
+Scope: improve/activation, based on b5f405b. Findings come from source and
+local tests. The supplied 16-business telemetry establishes the activation
+problem; it does not establish which defect affected each business. No
+production database, API, model router, deployment or messaging was used.
+
+Funnel
+
+1. Landing sends owners to account creation at app/src/routes/Landing.tsx:245.
+   app/src/routes/SignIn.tsx:59 posts password signup/login. New password
+   accounts receive a verification magic link via
+   worker/src/routes/session.ts:126 and worker/src/email.ts:49. Ordinary
+   magic-link requests at worker/src/routes/session.ts:65 are for existing
+   accounts; Google is another signup path. A magic-link request alone does
+   not create a new account.
+
+2. worker/src/auth.ts:108 consumes a hashed, unexpired, single-use token,
+   verifies the email and creates a session. worker/src/routes/session.ts:102
+   sets the session cookie and redirects using worker/src/auth.ts:80:
+   no business/not onboarded -> /onboard; unfinished setup -> /setup;
+   otherwise -> /app. Password and Google login use the same landing logic.
+
+3. app/src/lib/repo/gate.tsx:59 chooses the repository from /api/me and loads
+   /api/state. app/src/lib/repo/migrate.ts:26 creates a first business and
+   transfers local answers only when the account has no business. Completed
+   demo flags do not complete a real account. app/src/App.tsx:22 enforces the
+   onboarding and setup gates on direct visits and browser navigation.
+
+4. app/src/routes/Onboard.tsx:144 restores presentation progress;
+   app/src/routes/Onboard.tsx:224 persists it. Inputs use the existing
+   aisar-onboarding-draft-v1 key (app/src/lib/storage.ts:32). Repository
+   snapshots retain business answers. Signed-in onboarding has three visible
+   screens, versus six in the demo (app/src/routes/Onboard.tsx:576).
+   Confirmation invokes completeOnboarding at app/src/routes/Onboard.tsx:506,
+   through app/src/lib/repo/remote.ts:202. The worker atomically saves the
+   final answers, onboarded=true, setup_done=false and a deduplicated
+   provisioning task (worker/src/routes/repo.ts:234), then signals its queue.
+
+5. app/src/routes/Setup.tsx:43 observes and re-signals provisioning; the
+   endpoint is worker/src/routes/runtime.ts:63. The owner finishes setup at
+   app/src/routes/Setup.tsx:117, awaiting setSetupDone before opening
+   /app?view=chat&first=1. worker/src/routes/repo.ts:300 requires an onboarded
+   owner but requires neither Telegram nor a ready runtime. setup_done is
+   a UI flow flag, not evidence of runtime readiness or successful work.
+
+6. app/src/hooks/useBusiness.ts:47 derives the dashboard business and the
+   original channel-based stage; app/src/lib/business.ts:23 resolves profile
+   overrides over a playbook. Signed-in Home now prioritises first work at
+   app/src/routes/views/HomeView.tsx:69. Chat starters are at
+   app/src/routes/views/AskJenteraView.tsx:197. app/src/hooks/useAsk.ts:273
+   sends the task; app/src/lib/repo/remote.ts:295 submits /api/runs/ask and
+   follows its stream/poll result. worker/src/routes/runs.ts:171 validates
+   the task; :393 checks runtime readiness and persists the run/queue task.
+   worker/src/runtime/consumer.ts:894 executes work and :1365 records its
+   outcome. /api/runs/activity (worker/src/routes/runs.ts:271) supplies the
+   dashboard. Failed questions already have a retained, actionable retry
+   in app/src/hooks/useAsk.ts:340 and AskJenteraView.tsx:300.
+
+Verified friction and fixes
+
+H1 partially held. Draft persistence and atomic onboarding already existed;
+there is no evidence of a general refresh-reset bug. However, the original
+description overrode corrected names/locations at
+b5f405b:app/src/routes/Onboard.tsx:499. Activation now prefers reviewed
+values, including after a reload. Null/malformed draft shapes no longer
+crash onboarding, early manual-save failures produce an error toast, and
+step navigation respects reduced motion. Existing storage keys are reused.
+
+H2 held as a guidance gap. Setup placed its continue action after Telegram
+and an unavailable mobile-app card. Home's milestones ordered knowledge,
+connections, then work; its stage also depended on selected/seeded channels
+(app/src/hooks/useBusiness.ts:87). Setup now starts with a first-task CTA;
+Telegram is an optional disclosure that opens for unfinished pairing. Home
+shows a durable first-task invitation before connection guidance. Chat
+offers three private draft tasks in EN/BM. Website imports do not dismiss
+the invitation (app/src/lib/business.ts:208); pending/failed activity loads
+do not falsely declare a new account. The inbox screen explains the next
+steps after signup. No scheduled completion reminder was added.
+
+H3 did not hold as a functional prerequisite. The existing finish handler
+already allowed web chat without Telegram, and the worker setup endpoint
+does not require a connector. The UI implied otherwise: its progress
+counted Telegram as one of three steps at
+b5f405b:app/src/routes/Setup.tsx:115. Progress now measures profile/runtime
+preparation only, so optional Telegram does not leave it at 67%.
+
+H4 held. b5f405b:app/src/routes/SignIn.tsx:103 claimed email delivery on HTTP
+failures and even network exceptions. It now reports network/server/IP
+rate-limit failures, retains the address, and offers resend/change-email.
+Expired-link copy no longer claims a replacement was sent. Neutral 204
+responses remain neutral to preserve account-existence protection.
+b5f405b:app/src/lib/repo/gate.tsx:70 silently selected demo mode after a
+failed session check. It now distinguishes confirmed 401 from service
+failure and offers retry, with a 15-second session-check timeout. Strict
+Mode reuses each startup attempt to avoid duplicate migration.
+
+An additional mismatch: worker/src/routes/runs.ts:406 rejects work while
+the runtime is preparing. The old setup copy promised an inline fallback.
+The copy now explains that the owner may need to retry in chat. Backend
+readiness and execution rules are unchanged.
+
+Verification
+
+app: pnpm typecheck passed.
+app: pnpm test passed, 28 files / 242 tests.
+worker: pnpm tsc --noEmit passed.
+app: pnpm build passed, with Vite's large-chunk advisory.
+No worker runtime logic changed, so the Docker/Postgres vitest suite was
+not required or run. Frontend tests use local repositories or mocked HTTP;
+they cover retries, saved corrections across reload, activation failure,
+connector-free setup, first-task submission/retry, BM copy and reduced motion.
+
+Actual browser/mobile/console inspection could not be completed: the local
+Vite server was denied listen permission (EPERM at 127.0.0.1:5173), and
+headless Chrome exited 134. No screenshots or visual verification are
+claimed. Complete those checks before release. The test runner emitted
+jsdom's existing unsupported scrollTo notices.
+
+Follow-ups
+
+Measure setup entry/completion, runtime-ready delay and first successful
+owner instruction separately from website imports. Add a deduplicated
+completion reminder with suitable delivery/opt-out controls; the current
+scheduled handler only sweeps runtime drift (worker/src/index.ts:120).
+Consider retaining/queuing the first task during initial provisioning.
+Review account scoping of browser drafts/chat sessions and refresh-failure
+propagation in RepositoryProvider. Email-provider refusals are deliberately
+logged behind neutral responses (worker/src/email.ts:84); monitor delivery
+and design retry handling without exposing whether an account exists.
+
+No changes to _headers, shared storage key names, worker runtime, migrations,
+runner files, release/provision pins, or exported _next/static assets. No
+push or deployment. The initially linked dependency folders were copied
+into this worktree before running tools, so caches stayed local.

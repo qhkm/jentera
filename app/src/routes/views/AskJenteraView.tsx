@@ -17,6 +17,9 @@ import { useSignedIn } from "@/lib/repo/gate";
 import { useActivity } from "@/hooks/useActivity";
 import type { Business } from "@/lib/types";
 import type { AskMode } from "@/lib/repo";
+import { hasOnlySetupActivity } from '@/lib/business';
+
+const FIRST_TASKS = ['reply', 'plan', 'promotion'] as const;
 
 export default function AskJenteraView({
   business,
@@ -45,6 +48,8 @@ export default function AskJenteraView({
   );
   const ask = useAsk(business, { handled, needs }, t, lang, onAskCompleted);
   const signedIn = useSignedIn();
+  const needsFirstTask = signedIn && !ask.hasHistory && activity.real &&
+    hasOnlySetupActivity(activity.data!);
   /* Telegram-style: the chat bar earns its place once the owner can
      hold more than one conversation — either signed in (persists) or
      after starting a second chat. */
@@ -187,8 +192,17 @@ export default function AskJenteraView({
                 {t("ask.empty.title")}
               </h2>
               <p className="max-w-[46ch] text-[13px] text-text-secondary">
-                {t(firstRun ? "ask.welcome.first" : "ask.welcome")}
+                {t(firstRun || needsFirstTask ? 'ask.welcome.first' : 'ask.welcome')}
               </p>
+              {needsFirstTask ? (
+                <div className="flex w-full max-w-md flex-col gap-2">
+                  {FIRST_TASKS.map((key) => (
+                    <Button key={key} variant="outline" onClick={() => submit(t(`ask.first.${key}.prompt`))}>
+                      {t(`ask.first.${key}.label`)}
+                    </Button>
+                  ))}
+                </div>
+              ) : null}
               {signedIn &&
               activity.real &&
               activity.data!.counters.connections === 0 ? (

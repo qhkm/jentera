@@ -11,7 +11,7 @@ import { useToast } from '@/components/Toast';
 import type { useBusiness } from '@/hooks/useBusiness';
 import { useActivity } from '@/hooks/useActivity';
 import type { ConnectionsState } from '@/hooks/useConnections';
-import { milestones } from '@/lib/business';
+import { hasOnlySetupActivity, milestones } from '@/lib/business';
 import { useSnapshot } from '@/lib/repo';
 import type { View } from '../Dashboard';
 import type { BizTab } from './MyBusinessView';
@@ -63,7 +63,11 @@ export default function HomeView({
       ]
     : null;
   const toast = useToast();
-  const { business, stage } = b;
+  const { business } = b;
+  /* The channel-based demo stage is not a prerequisite for owner web chat. */
+  const stage = demo ? b.stage : b.setupDone ? 'operating' : 'setup';
+  const needsFirstTask = b.setupDone && activity.real &&
+    hasOnlySetupActivity(activity.data!);
   const telegramReady = connections.real && (connections.rows ?? []).some(
     (row) => row.connector === 'telegram' && row.status === 'connected' && row.paired === true,
   );
@@ -79,7 +83,8 @@ export default function HomeView({
   const telegramNeedsAttention = connections.real && (connections.rows ?? []).some(
     (row) => row.connector === 'telegram' && row.status !== 'connected',
   );
-  const showTelegramNotice = connections.real && !telegramReady;
+  const showTelegramNotice = connections.real && !telegramReady &&
+    (!needsFirstTask || Boolean(telegramPairing) || telegramNeedsAttention);
   const nextMilestone = activity.real
     ? milestones(
         snap,
@@ -117,6 +122,21 @@ export default function HomeView({
           {stage === 'setup' ? t('sub.step1') : stage === 'connect' ? t('sub.step2') : t('sub.step3')}
         </p>
       </header>
+
+      {needsFirstTask ? (
+        <Card className="gap-4 border-brand-line bg-brand-soft">
+          <div className="flex flex-col gap-1">
+            <Eyebrow>{t('home.next.eyebrow')}</Eyebrow>
+            <h2 className="font-pixel text-lg tracking-tight">{t('home.next.working.title')}</h2>
+            <p className="max-w-[62ch] text-[13px] text-text-secondary">{t('home.firstTask.detail')}</p>
+          </div>
+          <div>
+            <Link className="btn btn-primary" to="/app?view=chat&first=1">
+              {t('home.next.working.cta')}
+            </Link>
+          </div>
+        </Card>
+      ) : null}
 
       {showTelegramNotice ? (
         <Card role="status" className="gap-4 border-brand-line bg-brand-soft">
@@ -296,6 +316,7 @@ export default function HomeView({
       )}
 
       {stage === 'operating' &&
+      !needsFirstTask &&
       nextMilestone &&
       !(showTelegramNotice && nextMilestone.key === 'connected') ? (
         <Card className="gap-4 border-brand-line bg-brand-soft">

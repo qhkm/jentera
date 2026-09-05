@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import Setup from '@/routes/Setup';
 import { LocalRepository } from '@/lib/repo/local';
 import { RepositoryProvider } from '@/lib/repo/context';
@@ -94,6 +94,13 @@ class WaitingForStartRepository extends ReadyRepository {
   }
 }
 
+function Destination() {
+  const location = useLocation();
+  return <div data-testid="dashboard">{location.pathname}{location.search}</div>;
+}
+
+beforeEach(() => localStorage.clear());
+
 function mount(repo: LocalRepository) {
   return render(
     <MemoryRouter initialEntries={['/setup']}>
@@ -103,7 +110,7 @@ function mount(repo: LocalRepository) {
             <ToastProvider>
               <Routes>
                 <Route path="/setup" element={<Setup />} />
-                <Route path="/app" element={<div data-testid="dashboard">dashboard</div>} />
+                <Route path="/app" element={<Destination />} />
               </Routes>
             </ToastProvider>
           </I18nProvider>
@@ -136,8 +143,8 @@ describe('signed-in setup', () => {
     expect(await screen.findByText('installed and verified')).toBeInTheDocument();
     expect(repo.provisionCalls).toBe(1);
     expect(screen.getByText(/optional — connect Telegram below/)).toBeInTheDocument();
-    expect(screen.getByText('Jentera app')).toBeInTheDocument();
-    expect(screen.getByText('coming soon')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+    expect(screen.getByText('Add Telegram for phone access (optional)').closest('details')).not.toHaveAttribute('open');
   });
 
   it('shows the observed region without treating a placement difference as broken', async () => {
@@ -156,9 +163,38 @@ describe('signed-in setup', () => {
     await repo.setOnboarded(true);
     mount(repo);
 
-    await userEvent.click(await screen.findByRole('button', { name: /open my dashboard/i }));
-    await screen.findByTestId('dashboard');
+    await userEvent.click(await screen.findByRole('button', { name: /start my first task/i }));
+    expect(await screen.findByTestId('dashboard')).toHaveTextContent('/app?view=chat&first=1');
     await waitFor(async () => expect((await repo.load()).setupDone).toBe(true));
+  });
+
+  it('opens web chat while provisioning even when optional connections fail to load', async () => {
+    const repo = new ProvisioningRepository();
+    repo.connections = async () => { throw new Error('Connections offline'); };
+    await repo.setOnboarded(true);
+    mount(repo);
+
+    await userEvent.click(await screen.findByRole('button', { name: /start my first task/i }));
+    expect(await screen.findByTestId('dashboard')).toHaveTextContent('/app?view=chat&first=1');
+    expect((await repo.load()).setupDone).toBe(true);
+  });
+
+  it('retains setup after a failed completion and lets the owner retry', async () => {
+    const repo = new ReadyRepository();
+    await repo.setOnboarded(true);
+    const save = repo.setSetupDone.bind(repo);
+    repo.setSetupDone = vi.fn()
+      .mockRejectedValueOnce(new Error('Could not save setup. Try again.'))
+      .mockImplementationOnce(save);
+    mount(repo);
+
+    await userEvent.click(await screen.findByRole('button', { name: /start my first task/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not save setup');
+    expect(screen.queryByTestId('dashboard')).toBeNull();
+    expect((await repo.load()).setupDone).toBe(false);
+    await userEvent.click(screen.getByRole('button', { name: /start my first task/i }));
+    expect(await screen.findByTestId('dashboard')).toHaveTextContent('/app?view=chat&first=1');
+    expect((await repo.load()).setupDone).toBe(true);
   });
 
   it('makes the required Telegram Start step unmistakable after the bot is saved', async () => {
@@ -181,8 +217,8 @@ describe('signed-in setup', () => {
     await repo.setOnboarded(true);
     mount(repo);
 
-    await userEvent.click(await screen.findByRole('button', { name: /open my dashboard/i }));
-    await screen.findByTestId('dashboard');
+    await userEvent.click(await screen.findByRole('button', { name: /start my first task/i }));
+    expect(await screen.findByTestId('dashboard')).toHaveTextContent('/app?view=chat&first=1');
     await waitFor(async () => expect((await repo.load()).setupDone).toBe(true));
   });
 });

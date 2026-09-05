@@ -112,7 +112,7 @@ function LiveSetup() {
     row.connector === 'telegram' && row.status === 'connected' && row.paired === true);
   const telegramWaitingForStart = (connections.rows ?? []).some((row) =>
     row.connector === 'telegram' && row.status === 'connected' && row.paired !== true);
-  const completed = 1 + Number(runtimeReady) + Number(telegramReady);
+  const completed = 1 + Number(runtimeReady);
 
   async function finish() {
     setFinishing(true);
@@ -160,8 +160,20 @@ function LiveSetup() {
           <p className="text-text-secondary">
             {t('su.live.body')}
           </p>
-          <Progress value={(completed / 3) * 100} label="Setup progress" />
+          <Progress value={(completed / 2) * 100} label={t('su.live.progress')} />
         </div>
+
+        <Card className="gap-3 border-brand-line bg-brand-soft">
+          <h2 className="font-pixel text-xl tracking-tight">{t('su.live.startTitle')}</h2>
+          <p className="text-sm text-text-secondary">{t('su.live.startBody')}</p>
+          <Button onClick={() => void finish()} disabled={finishing}>
+            {finishing ? t('su.live.finishing') : t('su.live.startChat')}
+          </Button>
+          {finishError ? <p role="alert" className="text-sm text-text-secondary">{finishError}</p> : null}
+          {!runtimeReady ? (
+            <p className="text-[12px] text-text-muted">{t('su.live.fallback')}</p>
+          ) : null}
+        </Card>
 
         {!runtimeReady && !runtimeError ? (
           <RuntimePreparing stage={runtimeStage} />
@@ -178,20 +190,6 @@ function LiveSetup() {
             detail={runtimeDetail}
             state={runtimeLabel}
             tone={runtimeReady ? regionDifferent ? 'amber' : 'green' : runtimeError ? 'red' : 'amber'}
-          />
-          <SetupStatusRow
-            label={t('su.live.channel')}
-            detail={telegramReady
-              ? t('su.live.connected', { n: 1 })
-              : telegramWaitingForStart
-                ? t('su.live.startTelegram')
-                : t('su.live.connectTelegram')}
-            state={telegramReady
-              ? t('su.state.done')
-              : telegramWaitingForStart
-                ? t('su.live.actionRequired')
-                : t('su.state.waiting')}
-            tone={telegramReady ? 'green' : telegramWaitingForStart ? 'amber' : 'neutral'}
             last
           />
         </Card>
@@ -205,48 +203,38 @@ function LiveSetup() {
           </div>
         ) : null}
 
-        {connections.mode === 'pending' ? (
-          <Card>
-            <LoadingState
-              title={t('loading.connections.title')}
-              detail={t('loading.connections.detail')}
-            />
-          </Card>
-        ) : connections.mode === 'error' ? (
-          <Card role="alert" className="gap-3">
-            <p className="text-sm">{t('loading.connections.error')}</p>
-            <p className="text-[13px] text-text-secondary">{connections.error?.message}</p>
-            <div>
-              <Button variant="outline" onClick={connections.retry}>{t('loading.retry')}</Button>
-            </div>
-          </Card>
-        ) : (
-          <TelegramConnect rows={connections.rows} setRows={connections.setRows} />
-        )}
-
-        <Card className="gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <Eyebrow>{t('su.live.jenteraApp')}</Eyebrow>
-            <Tag>{t('su.live.comingSoon')}</Tag>
-          </div>
-          <p className="text-sm text-text-secondary">{t('su.live.jenteraAppBody')}</p>
-        </Card>
-
-        <div className="flex flex-col gap-3">
-          <Button
-            onClick={() => void finish()}
-            disabled={finishing}
-            className="py-4 md:py-3"
-          >
-            {finishing ? t('su.live.finishing') : runtimeReady ? t('su.open') : t('su.live.continue')}
-          </Button>
-          {finishError ? <p role="alert" className="text-sm text-text-secondary">{finishError}</p> : null}
-          {!runtimeReady ? (
-            <p className="text-[12px] text-text-muted">
-              {t('su.live.fallback')}
+        <details open={telegramWaitingForStart || undefined}>
+          <summary className="cursor-pointer text-sm text-brand focus-visible:outline focus-visible:outline-2">
+            {t('su.live.telegramOptional')}
+          </summary>
+          <div className="mt-4 flex flex-col gap-4">
+            <p className="text-sm text-text-secondary">
+              {telegramReady
+                ? t('su.live.connected', { n: 1 })
+                : telegramWaitingForStart
+                  ? t('su.live.startTelegram')
+                  : t('su.live.connectTelegram')}
             </p>
-          ) : null}
-        </div>
+            {connections.mode === 'pending' ? (
+              <Card>
+                <LoadingState
+                  title={t('loading.connections.title')}
+                  detail={t('loading.connections.detail')}
+                />
+              </Card>
+            ) : connections.mode === 'error' ? (
+              <Card role="alert" className="gap-3">
+                <p className="text-sm">{t('loading.connections.error')}</p>
+                <p className="text-[13px] text-text-secondary">{connections.error?.message}</p>
+                <div>
+                  <Button variant="outline" onClick={connections.retry}>{t('loading.retry')}</Button>
+                </div>
+              </Card>
+            ) : (
+              <TelegramConnect rows={connections.rows} setRows={connections.setRows} />
+            )}
+          </div>
+        </details>
       </div>
     </Shell>
   );

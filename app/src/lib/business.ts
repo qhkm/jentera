@@ -12,7 +12,7 @@ import { PLAYBOOKS } from './data/playbooks';
 import type { Business, TeamMember } from './types';
 import { getCountry, localizeDetect, localizeSite } from './country';
 import { FALLBACK_KEY, extractLocation, extractName, inferPlaybook } from './infer';
-import type { BusinessSnapshot } from '@/lib/repo/types';
+import type { Activity, BusinessSnapshot } from '@/lib/repo/types';
 
 export function isPlaybookKey(key: string): boolean {
   return Object.prototype.hasOwnProperty.call(PLAYBOOKS, key);
@@ -201,6 +201,15 @@ export function popular(snap: BusinessSnapshot, key: string): { pick: string; n:
 }
 
 /* ---- Real readiness ---------------------------------------------- */
+
+/** Importing a website is setup work, not the owner's first instruction.
+    Compare the total with visible imports too: a completed task outside the
+    recent-activity window must not make an established business look new. */
+export function hasOnlySetupActivity(activity: Activity): boolean {
+  return activity.work.every((work) => work.function === 'ingest') &&
+    activity.counters.handled === activity.work.filter((work) => work.status === 'completed').length &&
+    activity.counters.needsYou === 0;
+}
 
 export interface Milestone {
   key: string;

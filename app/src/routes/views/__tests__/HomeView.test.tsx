@@ -103,6 +103,7 @@ describe('a business that has handled something', () => {
     await mount(true, ONE_HANDLED);
     expect(await screen.findByText(/1 handled automatically/i)).toBeInTheDocument();
     expect(screen.queryByText(NO_ACTIVITY)).toBeNull();
+    expect(screen.queryByRole('link', { name: /start my first chat/i })).toBeNull();
   });
 });
 
@@ -112,15 +113,29 @@ describe('a business that has genuinely done nothing', () => {
        only thing on the card that says what to expect. */
     await mount(true, NOTHING_YET);
     expect(await screen.findByText(/0 handled automatically/i)).toBeInTheDocument();
-    expect(screen.getByText(NO_ACTIVITY)).toBeInTheDocument();
-    expect(screen.getByText(/connect Telegram to chat with Jentera from your phone/i))
-      .toBeInTheDocument();
+    expect(await screen.findByText(NO_ACTIVITY)).toBeInTheDocument();
+    expect(screen.getByText(/No WhatsApp or Telegram connection is needed/i)).toBeInTheDocument();
   });
 
   it('shows one clear next action instead of making the owner search settings', async () => {
     await mount(true, NOTHING_YET);
-    expect(await screen.findByText('Give Jentera something real to work from')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /add business knowledge/i })).toBeInTheDocument();
+    expect(await screen.findByText('Give Jentera its first useful task')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /start my first chat/i })).toHaveAttribute('href', '/app?view=chat&first=1');
+    expect(screen.queryByRole('button', { name: /add business knowledge/i })).toBeNull();
+  });
+
+  it('still guides the first task when the only completed work was importing the website', async () => {
+    await mount(true, {
+      ...ONE_HANDLED,
+      work: [{ ...ONE_HANDLED.work[0], function: 'ingest', channel: 'web' }],
+    });
+    expect(await screen.findByRole('link', { name: /start my first chat/i })).toBeInTheDocument();
+  });
+
+  it('does not call an established business new when completed tasks are outside recent activity', async () => {
+    await mount(true, { ...ONE_HANDLED, work: [] });
+    await screen.findByText(/1 handled automatically/i);
+    expect(screen.queryByRole('link', { name: /start my first chat/i })).toBeNull();
   });
 });
 
@@ -154,6 +169,7 @@ describe('while the figures are still loading', () => {
 
     expect(await screen.findByText(/handled automatically/i)).toBeInTheDocument();
     expect(screen.queryByText(NO_ACTIVITY)).toBeNull();
+    expect(screen.queryByRole('link', { name: /start my first chat/i })).toBeNull();
   });
 });
 
