@@ -7,7 +7,9 @@
 #    2. API worker      api.jentera.ai/api/health            {"ok":true}
 #    3. Database        Neon SELECT 1 via neondb_owner       (read-only)
 #    4. Task backlog    runtime_task stuck queued/leased      must be 0
-#    5. Runtime fleet   sprite list: warm/cold counts,        none missing
+#    5. Runtime fleet   sprite list: warm/cold counts,        none missing;
+#                       all-cold = warn-only if backlog clear (idle sleep,
+#                       wakes on demand), FAIL if a backlog exists;
 #                       version matches RUNTIME_RELEASE       (warn-only)
 #
 #  Exit code: 0 = healthy, 1 = anything failed.
@@ -40,6 +42,7 @@ EXPECT_RELEASE=$(sed -n 's/^RUNTIME_RELEASE = "\([^"]*\)".*/\1/p' worker/wrangle
 EXPECT_RELEASE=${EXPECT_RELEASE:-unknown}
 
 FAILS=0
+BACKLOG_CLEAR=""   # 1 = clear, 0 = stuck, "" = unknown (no DB connection)
 declare -a NOTES=()
 
 say()  { [[ $QUIET -eq 0 ]] && printf '%s\n' "$*"; }
@@ -142,11 +145,14 @@ if [[ -n "${CS:-}" ]]; then
   if [[ "$STUCK" =~ ^[0-9]+$ ]]; then
     if [[ "$STUCK" -eq 0 ]]; then
       pass "no task queued/leased > 15 min (backlog clear)"
+      BACKLOG_CLEAR=1
     else
       fail "db: $STUCK runtime_task(s) stuck in queued/leased > 15 min"
+      BACKLOG_CLEAR=0
     fi
   else
     fail "db: task backlog query returned nothing (runtime_task missing?)"
+    BACKLOG_CLEAR=0
   fi
 else
   warn "skipping backlog check (no DB connection)"
@@ -170,7 +176,11 @@ if command -v sprite >/dev/null 2>&1; then
     if [[ "$TOTAL" -eq 0 ]]; then
       fail "fleet: no sprites returned by API — is the org token alive?"
     elif [[ "$COLD" -eq "$TOTAL" ]]; then
-      fail "fleet: all $TOTAL sprites cold (nothing warm to serve traffic)"
+      if [[ "$BACKLOG_CLEAR" == "1" ]]; then
+        warn "fleet: all $TOTAL sprites cold but backlog clear — idle sleep, wakes on demand"
+      else
+        fail "fleet: all $TOTAL sprites cold (nothing warm to serve traffic)"
+      fi
     else
       pass "fleet: $WARM warm (≥1 ready to serve), $COLD cold"
     fi
