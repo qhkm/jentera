@@ -49,9 +49,8 @@ export function SignedInProvider({
 /**
  * True when this session is server-backed.
  *
- * False in the anonymous demo, and false when the API is unreachable —
- * `choose` falls back to LocalRepository there, and a visitor who never
- * had an account should see the demo rather than a sign-in wall.
+ * False in the anonymous demo. An unreachable API cannot establish
+ * whether someone is signed out, so startup offers a retry instead.
  */
 export function useSignedIn(): boolean {
   return useContext(SignedInContext);
@@ -62,23 +61,22 @@ async function choose(): Promise<Chosen> {
      working exactly as it does today. */
   if (!API) return { repo: new LocalRepository(), mode: 'local' };
 
-  let signedIn = false;
   /* The body, not just the status. It carries the detail-level setting,
      which the hook below used to fetch from this same endpoint a moment
      later — the response was here all along and was being discarded. */
-  let me: MeResponse | null = null;
+  let res: Response;
   try {
-    const res = await fetch(`${API}/api/me`, { credentials: 'include' });
-    signedIn = res.ok;
-    if (res.ok) me = (await res.json().catch(() => null)) as MeResponse | null;
+    res = await fetch(`${API}/api/me`, {
+      credentials: 'include',
+      signal: AbortSignal.timeout(15_000),
+    });
   } catch {
-    /* Unreachable API is not the same as signed out, but the honest
-       fallback is the local demo rather than an error page for a visitor
-       who never had an account. */
-    return { repo: new LocalRepository(), mode: 'local' };
+    throw new Error('Could not check your session. Check your connection and try again.');
   }
 
-  if (!signedIn) return { repo: new LocalRepository(), mode: 'local' };
+  if (res.status === 401) return { repo: new LocalRepository(), mode: 'local' };
+  if (!res.ok) throw new Error('Could not check your session. Please try again.');
+  const me = (await res.json()) as MeResponse;
 
   const remote = new RemoteRepository();
   if (me) remote.prime({ me });
@@ -108,18 +106,35 @@ async function choose(): Promise<Chosen> {
 export function RepositoryGate({ children }: { children: ReactNode }) {
   const [chosen, setChosen] = useState<Chosen | null>(null);
   const [failed, setFailed] = useState<Error | null>(null);
-  const started = useRef(false);
+  const [attempt, setAttempt] = useState(0);
+  const pending = useRef<{ attempt: number; promise: Promise<Chosen> } | null>(null);
 
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    choose().then(setChosen, (e: Error) => setFailed(e));
-  }, []);
+    let live = true;
+    /* Strict Mode replays effects. Share this attempt so business creation
+       and migration only run once, while each effect owns its subscription. */
+    if (pending.current?.attempt !== attempt) {
+      pending.current = { attempt, promise: choose() };
+    }
+    pending.current.promise.then(
+      (value) => { if (live) setChosen(value); },
+      (error: unknown) => {
+        if (live) setFailed(error instanceof Error ? error : new Error(String(error)));
+      },
+    );
+    return () => { live = false; };
+  }, [attempt]);
 
   if (failed) {
     return (
       <div role="alert" className="card" style={{ margin: '2rem', padding: '1.5rem' }}>
         <p>Could not start Jentera. {failed.message}</p>
+        <button className="btn mt-4" type="button" onClick={() => {
+          setFailed(null);
+          setAttempt((value) => value + 1);
+        }}>
+          Try again
+        </button>
       </div>
     );
   }

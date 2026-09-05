@@ -24,7 +24,7 @@ type BusyAction = 'password' | 'link' | null;
    browser back here. Mapped rather than printed, so a crafted ?error=
    cannot render arbitrary text on a sign-in page. */
 const ERRORS: Record<string, string> = {
-  expired: 'That link had already been used or had expired. Here is a fresh one.',
+  expired: 'That link has already been used or has expired. Enter your email to request a new one.',
   'google-failed': 'Google sign-in did not complete. Please try again.',
   'google-unverified':
     'That Google account has an unverified email address, so we cannot use it to sign in.',
@@ -101,20 +101,28 @@ export default function SignIn() {
   }
 
   async function sendLink() {
+    if (busy) return;
     setBusy('link');
     setError(null);
     try {
-      /* Answers 204 whether or not the address has an account, so
-         there is nothing to branch on — and nothing to leak. */
-      await fetch(`${API}/api/auth/request`, {
+      /* 204 does not reveal whether an account exists. Network failures,
+         IP rate limits and server failures still need an honest retry. */
+      const res = await fetch(`${API}/api/auth/request`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
+        signal: AbortSignal.timeout(15_000),
       });
+      if (!res.ok) {
+        setError(res.status === 429
+          ? 'Too many attempts. Wait a minute and try again.'
+          : 'Could not send your link. Please try again.');
+        return;
+      }
       setSent('link');
     } catch {
-      setSent('link');
+      setError('Could not reach Jentera. Check your connection and try again.');
     } finally {
       setBusy(null);
     }
@@ -130,8 +138,8 @@ export default function SignIn() {
             <p className="mt-3 text-sm opacity-80">
               {sent === 'verify' ? (
                 <>
-                  If <strong>{email}</strong> is not already registered, a link to confirm it is on
-                  its way. Follow it to finish setting up your account.
+                  A link to confirm or sign in to <strong>{email}</strong> is on its way.
+                  Follow it to finish setting up your account. It expires in 15 minutes.
                 </>
               ) : (
                 <>
@@ -140,6 +148,19 @@ export default function SignIn() {
                 </>
               )}
             </p>
+            <p className="mt-3 text-sm opacity-80">
+              After signing in, review your business details and start your first task in web chat.
+              Telegram is optional.
+            </p>
+            <p className="mt-3 text-sm opacity-70">If it does not arrive, check your spam folder.</p>
+            {error ? <p role="alert" className="mt-3 text-sm">{error}</p> : null}
+            <button className="btn mt-4 w-full" type="button" onClick={sendLink} disabled={Boolean(busy)}>
+              {busy === 'link' ? 'Sending your secure link…' : 'Resend email link'}
+            </button>
+            <button className="nav-link mt-4 w-full text-sm normal-case tracking-normal" type="button"
+              disabled={Boolean(busy)} onClick={() => { setSent(null); setError(null); }}>
+              Use a different email
+            </button>
           </div>
         </main>
         <LandingFooter />
@@ -187,6 +208,7 @@ export default function SignIn() {
             <input
               className="input mt-6 w-full"
               type="email"
+              aria-label="Email address"
               required
               autoComplete="email"
               placeholder="you@yourbusiness.com"
@@ -196,6 +218,7 @@ export default function SignIn() {
             <input
               className="input mt-3 w-full"
               type="password"
+              aria-label="Password"
               required
               minLength={10}
               autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
