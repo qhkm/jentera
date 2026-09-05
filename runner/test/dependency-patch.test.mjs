@@ -12,17 +12,25 @@ afterEach(async () => {
   await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
-test('narrowly updates the reviewed vulnerable override and verifies its lock', async () => {
+test('narrowly updates the reviewed vulnerable dependencies and verifies the lock', async () => {
   const root = await fixture('3.3.17', '3.3.17');
   assert.equal(run(root).status, 0);
   const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
   assert.equal(manifest.overrides['nanoid@^3'], '3.3.18');
+  assert.equal(manifest.overrides['undici@^6'], '6.28.0');
+  assert.equal(manifest.overrides['undici@^7'], '7.29.0');
+  assert.equal(manifest.overrides['undici@^8'], '8.9.0');
+  const lock = JSON.parse(await readFile(join(root, 'package-lock.json'), 'utf8'));
+  assert.equal(lock.packages['node_modules/undici'].version, '6.28.0');
+  assert.equal(lock.packages['node_modules/jsdom/node_modules/undici'].version, '7.29.0');
   const apiServer = await readFile(join(root, 'gateway/platforms/api_server.py'), 'utf8');
-  assert.ok(apiServer.includes('"provider_sort": provider_routing.get("sort"),'));
+  assert.ok(apiServer.includes('provider_sort=provider_routing.get("sort"),'));
   assert.ok(apiServer.includes('"jentera_patch": "jentera-runtime-2026-09-01",'));
   assert.ok(apiServer.includes('result.get("last_reasoning")'));
-  assert.ok(apiServer.includes('completed_event["reasoning"] = reasoning'));
-  assert.ok(apiServer.includes('**({"reasoning": reasoning} if reasoning else {}),'));
+  assert.equal(
+    apiServer.match(/\*\*\(\{"reasoning": reasoning\} if reasoning else \{}\),/g)?.length,
+    2,
+  );
   const wireReorder = await readFile(join(root, 'agent/wire_reorder.py'), 'utf8');
   assert.ok(wireReorder.includes('PATCH_ID = "jentera-wire-order-2026-09-03"'));
   const bootstrap = await readFile(join(root, 'agent/process_bootstrap.py'), 'utf8');
@@ -40,6 +48,8 @@ test('refuses an upstream override drift and a vulnerable lock', async () => {
   assert.notEqual(run(drifted).status, 0);
   const vulnerable = await fixture('3.3.18', '3.3.17');
   assert.notEqual(run(vulnerable, '--verify').status, 0);
+  const vulnerableUndici = await fixture('3.3.18', '3.3.18');
+  assert.notEqual(run(vulnerableUndici, '--verify').status, 0);
 });
 
 test('normalizes the reviewed one-off canary reasoning patch before applying the release patch', async () => {
@@ -58,31 +68,37 @@ async function fixture(override, locked, legacyReasoning = false) {
     overrides: { 'nanoid@^3': override, lodash: '4.18.1' },
   }));
   await writeFile(join(root, 'package-lock.json'), JSON.stringify({
-    packages: { 'node_modules/example/node_modules/nanoid': { name: 'nanoid', version: locked } },
+    packages: {
+      'node_modules/example/node_modules/nanoid': { name: 'nanoid', version: locked },
+      'node_modules/undici': { version: '6.27.0' },
+      'node_modules/jsdom/node_modules/undici': { version: '7.28.0' },
+    },
   }));
   await mkdir(join(root, 'gateway/platforms'), { recursive: true });
   await writeFile(join(root, 'gateway/platforms/api_server.py'), [
     '        user_config = _load_gateway_config()',
-    '        agent_kwargs = {',
-    '            "reasoning_config": reasoning_config,',
-    '            "gateway_session_key": gateway_session_key,',
-    '        }',
+    '        agent = AIAgent(',
+    '            model=model,',
+    '            **runtime_kwargs,',
+    '            reasoning_config=reasoning_config,',
+    '            gateway_session_key=gateway_session_key,',
+    '        )',
     '        return web.json_response({',
     '            "version": _hermes_version(),',
     '            "gateway_state": gw_state,',
     '        })',
     '                    final_response = result.get("final_response", "") if isinstance(result, dict) else ""',
-    '                    pending_steer = result.get("pending_steer") if isinstance(result, dict) else None',
     ...(legacyReasoning
       ? ['                    reasoning = result.get("last_reasoning") if isinstance(result, dict) else None']
       : []),
-    '                    completed_event = {',
+    '                    _put_event_if_active({',
     '                        "event": "run.completed",',
+    '                        "run_id": run_id,',
+    '                        "timestamp": time.time(),',
+    '                        "output": final_response,',
     '                        "usage": usage,',
     ...(legacyReasoning ? ['                        "reasoning": reasoning,'] : []),
-    '                    }',
-    '                    if pending_steer:',
-    '                        completed_event["pending_steer"] = pending_steer',
+    '                    })',
     '                    self._set_run_status(',
     '                        run_id,',
     '                        "completed",',

@@ -23,27 +23,63 @@ const wireReorderPath = join(root, 'agent/wire_reorder.py');
 const wireOrderMarker = '# Jentera: reorder chat.completions wire bodies (tools first, messages last).';
 const wireOrderPatchId = 'jentera-wire-order-2026-09-03';
 const manifest = JSON.parse(await readFile(packagePath, 'utf8'));
+// undici advisories (2026): GHSA-m8rv-5g2x-5cg5 (CRLF injection via
+// blob-like body 'type'), GHSA-v3r7-h72x-cjcm (cookie attribute
+// injection). Patched floors per major line — a locked version below its
+// floor fails the bootstrap audit gate on the sprite, so pin deterministically.
+const UNDICI_PINS = [
+  ['^6', '6.28.0'],
+  ['^7', '7.29.0'],
+  ['^8', '8.9.0'],
+];
+const UNDICI_INTEGRITY = {
+  '6.28.0': 'sha512-LIY910g9TI13YS95lrMFrs8Rm/u/irgHeTWoKCoteeJ04CUJ92eEfj0rVn+7VKMPBpUPiUoBKfhNyLI23EE/KA==',
+  '7.29.0': 'sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==',
+  '8.9.0': 'sha512-aWZpUj7XoGonMClx4gdDRfgBjqeA+F473aDmROQQbM9n6PRfK/u1q/a0X4wMTgcHfT8H6fpbt98PFuDUwFg2YA==',
+};
+const undiciPinFor = (version) => {
+  const major = `^${String(version ?? '').split('.')[0]}`;
+  const pin = UNDICI_PINS.find(([range]) => range === major);
+  if (!pin) throw new Error(`unreviewed undici version: ${String(version)}`);
+  return pin[1];
+};
 const current = manifest?.overrides?.['nanoid@^3'];
 if (!['3.3.17', '3.3.18'].includes(current)) {
   throw new Error(`unreviewed Hermes nanoid override: ${String(current)}`);
 }
 manifest.overrides['nanoid@^3'] = '3.3.18';
+for (const [range, pinned] of UNDICI_PINS) {
+  const key = `undici@${range}`;
+  const existing = manifest?.overrides?.[key];
+  if (existing !== undefined && existing !== pinned) {
+    throw new Error(`unreviewed Hermes undici override ${key}: ${String(existing)}`);
+  }
+  manifest.overrides[key] = pinned;
+}
 if (!verify) {
   await writeFile(packagePath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o644 });
   const lock = JSON.parse(await readFile(lockPath, 'utf8'));
   for (const [path, pkg] of Object.entries(lock.packages ?? {})) {
-    if (!path.endsWith('/nanoid') || !String(pkg?.version).startsWith('3.3.')) continue;
-    if (!['3.3.17', '3.3.18'].includes(pkg.version)) {
-      throw new Error(`unreviewed locked nanoid version at ${path}: ${pkg.version}`);
+    if (path.endsWith('/nanoid') && String(pkg?.version).startsWith('3.3.')) {
+      if (!['3.3.17', '3.3.18'].includes(pkg.version)) {
+        throw new Error(`unreviewed locked nanoid version at ${path}: ${pkg.version}`);
+      }
+      pkg.version = '3.3.18';
+      pkg.resolved = 'https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz';
+      pkg.integrity = 'sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==';
     }
-    pkg.version = '3.3.18';
-    pkg.resolved = 'https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz';
-    pkg.integrity = 'sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==';
+    if ((path.endsWith('/undici') || pkg?.name === 'undici') && pkg?.version) {
+      const pinned = undiciPinFor(pkg.version);
+      if (pkg.version === pinned) continue;
+      pkg.version = pinned;
+      pkg.resolved = `https://registry.npmjs.org/undici/-/undici-${pinned}.tgz`;
+      pkg.integrity = UNDICI_INTEGRITY[pinned];
+    }
   }
   await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`, { mode: 0o644 });
   await patchApiServer();
   await patchWireOrder();
-  process.stdout.write('pinned Hermes dependency, Jentera API-server and wire-order patches\n');
+  process.stdout.write('pinned Hermes dependencies (nanoid, undici), Jentera API-server and wire-order patches\n');
   process.exit(0);
 }
 
@@ -53,6 +89,12 @@ const vulnerable = Object.entries(lock.packages ?? {})
   .filter(([, pkg]) => pkg?.version === '3.3.17');
 if (vulnerable.length > 0) {
   throw new Error(`vulnerable nanoid remains at ${vulnerable.map(([path]) => path).join(', ')}`);
+}
+const vulnerableUndici = Object.entries(lock.packages ?? {})
+  .filter(([path, pkg]) => (path.endsWith('/undici') || pkg?.name === 'undici') && pkg?.version)
+  .filter(([, pkg]) => pkg?.version !== undiciPinFor(pkg?.version));
+if (vulnerableUndici.length > 0) {
+  throw new Error(`vulnerable undici remains at ${vulnerableUndici.map(([path]) => path).join(', ')}`);
 }
 const apiServer = await readFile(apiServerPath, 'utf8');
 if (!apiServer.includes(routingMarker) ||

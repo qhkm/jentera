@@ -167,10 +167,11 @@ if [[ "$installed_commit" != "$hermes_commit" ]]; then
   trap 'rm -f "$incoming"' EXIT
 fi
 
-# Hermes' reviewed commit pins nanoid 3.3.17, which is affected by
-# GHSA-2v37-7h3g-55p8. Apply the narrow patched release without allowing a
-# broad audit fix to rewrite unrelated dependencies, then make future high
-# severity production advisories a release-blocking event.
+# Hermes' reviewed commit already pins patched nanoid 3.3.18, but carries
+# undici 6.27.0/7.28.0 (GHSA-m8rv-5g2x-5cg5 + GHSA-v3r7-h72x-cjcm, 2026).
+# Keep nanoid at its reviewed floor and apply narrow undici patched releases
+# without allowing a broad audit fix to rewrite unrelated dependencies, then
+# make future high severity production advisories a release-blocking event.
 /.sprite/bin/node /home/sprite/aisar/runner/patch-hermes-dependencies.mjs "$install_dir"
 (
   cd "$install_dir"
