@@ -18,8 +18,16 @@ const HERMES_REPO = process.env.HERMES_AGENT_REPO || join(homedir(), 'ios', 'her
 const ROUTING_MARKER = '# Jentera: apply reviewed OpenRouter routing to API-server agents.';
 const RUNTIME_MARKER = '# Jentera: expose bounded final reasoning and attest this runtime patch.';
 const WIRE_ORDER_MARKER = '# Jentera: reorder chat.completions wire bodies (tools first, messages last).';
-const RUNTIME_PATCH_ID = 'jentera-runtime-2026-09-01';
 const WIRE_ORDER_PATCH_ID = 'jentera-wire-order-2026-09-03';
+
+// The runtime patch id is defined by the script itself (the release id lives in
+// the same file that injects it) — read it dynamically so this contract test
+// survives every future release bump without edits.
+const scriptSource = readFileSync(SCRIPT, 'utf8');
+const runtimePatchId = scriptSource.match(/const runtimePatchId = '([^']+)'/)?.[1];
+const priorRuntimePatchId = scriptSource.match(/const priorRuntimePatchId = '([^']+)'/)?.[1];
+assert.ok(runtimePatchId, 'script must define runtimePatchId');
+assert.ok(priorRuntimePatchId, 'script must define priorRuntimePatchId');
 
 // Canary-era legacy shapes normalizeLegacyReasoningPatch() recognizes and
 // strips so the durable B1 patch can re-anchor (exact 20/24-space indents).
@@ -91,7 +99,7 @@ async function assertPatchedShapes(root) {
     ROUTING_MARKER,
     'provider_sort=provider_routing.get("sort"),',
     RUNTIME_MARKER,
-    `"jentera_patch": "${RUNTIME_PATCH_ID}",`,
+    `"jentera_patch": "${runtimePatchId}",`,
     'result.get("last_reasoning")',
     '**({\"reasoning\": reasoning} if reasoning else {}),',
   ]) {
@@ -250,6 +258,48 @@ test('partial legacy reasoning patch fails closed and demands review', async () 
   assert.notEqual(apply.status, 0, 'apply must fail on a partial legacy patch');
   assert.ok(apply.stderr.includes('partial legacy Jentera reasoning patch requires review'),
     `unexpected partial-legacy stderr: ${JSON.stringify(apply.stderr)}`);
+});
+
+/***************************************************************
+ * TEST 7 — patch-id migration on re-apply (the release-id bump path).
+ ***************************************************************/
+test('re-apply migrates a prior reviewed patch id; unreviewed ids fail closed', async () => {
+  assert.notEqual(runtimePatchId, priorRuntimePatchId,
+    'this release must bump the runtime patch id');
+  const root = await extractPinned('b1-idmig');
+  const apiServerPath = join(root, 'gateway/platforms/api_server.py');
+
+  const apply1 = run(root);
+  assert.equal(apply1.status, 0, `apply failed: ${apply1.stderr}`);
+  await assertPatchedShapes(root);
+
+  // Simulate a tree already patched with the PRIOR reviewed release id (the
+  // bootstrap retry path on a sprite that fetched this release twice).
+  let apiServer = await readFile(apiServerPath, 'utf8');
+  apiServer = replaceUnique(apiServer,
+    `"jentera_patch": "${runtimePatchId}",`,
+    `"jentera_patch": "${priorRuntimePatchId}",`);
+  await writeFile(apiServerPath, apiServer);
+
+  const apply2 = run(root);
+  assert.equal(apply2.status, 0, `re-apply with a prior reviewed id failed: ${apply2.stderr}`);
+  apiServer = await readFile(apiServerPath, 'utf8');
+  assert.ok(!apiServer.includes(`"jentera_patch": "${priorRuntimePatchId}",`),
+    'prior reviewed id must be migrated away');
+  assert.ok(apiServer.includes(`"jentera_patch": "${runtimePatchId}",`),
+    'current reviewed id must be restored');
+  const verify = run(root, ['--verify']);
+  assert.equal(verify.status, 0, `verify after id migration failed: ${verify.stderr}`);
+
+  // An unreviewed id must fail closed instead of being silently rewritten.
+  apiServer = replaceUnique(apiServer,
+    `"jentera_patch": "${runtimePatchId}",`,
+    '"jentera_patch": "unreviewed-hermes-2026-09-01",');
+  await writeFile(apiServerPath, apiServer);
+  const apply3 = run(root);
+  assert.notEqual(apply3.status, 0, 'apply must fail closed on an unreviewed patch id');
+  assert.ok(apply3.stderr.includes('unreviewed jentera_patch'),
+    `unexpected unreviewed-id stderr: ${JSON.stringify(apply3.stderr)}`);
 });
 
 /***************************************************************

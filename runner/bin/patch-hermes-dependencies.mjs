@@ -16,7 +16,8 @@ const lockPath = join(root, 'package-lock.json');
 const apiServerPath = join(root, 'gateway/platforms/api_server.py');
 const routingMarker = '# Jentera: apply reviewed OpenRouter routing to API-server agents.';
 const runtimeMarker = '# Jentera: expose bounded final reasoning and attest this runtime patch.';
-const runtimePatchId = 'jentera-runtime-2026-09-01';
+const runtimePatchId = 'jentera-runtime-2026-09-06';
+const priorRuntimePatchId = 'jentera-runtime-2026-09-01';
 const bootstrapPath = join(root, 'agent/process_bootstrap.py');
 const runAgentPath = join(root, 'run_agent.py');
 const wireReorderPath = join(root, 'agent/wire_reorder.py');
@@ -81,6 +82,7 @@ process.stdout.write('Hermes production dependency, Jentera API-server and wire-
 async function patchApiServer() {
   let source = await readFile(apiServerPath, 'utf8');
   source = normalizeLegacyReasoningPatch(source);
+  source = migrateRuntimePatchId(source);
   if (!source.includes(routingMarker)) {
     const configAnchor = '        agent = AIAgent(\n';
     const configPatch = [
@@ -265,6 +267,27 @@ function normalizeLegacyReasoningPatch(source) {
   }
   for (const line of legacy) source = replaceReviewedAnchor(source, line, '');
   return source;
+}
+
+/** Release-id migration: a tree patched by a prior reviewed release carries
+ * its old id in the health attestation, so the marker-present guard alone
+ * would silently keep the stale id. Rewrite a reviewed prior id to the
+ * current release id; anything else (hand-edited or unreviewed ids, or a
+ * marker without any attestation) fails closed instead of being touched. */
+function migrateRuntimePatchId(source) {
+  const attested = source.match(/"jentera_patch":\s*"([^"]+)"/);
+  if (!attested && source.includes(runtimeMarker)) {
+    throw new Error('unreviewed jentera_patch: runtime marker without attestation requires review');
+  }
+  if (!attested) return source;
+  const id = attested[1];
+  if (id === runtimePatchId) return source;
+  if (id === priorRuntimePatchId) {
+    return replaceReviewedAnchor(source,
+      `"jentera_patch": "${priorRuntimePatchId}",`,
+      `"jentera_patch": "${runtimePatchId}",`);
+  }
+  throw new Error(`unreviewed jentera_patch ${JSON.stringify(id)} requires review`);
 }
 
 function replaceReviewedAnchor(source, anchor, replacement) {
