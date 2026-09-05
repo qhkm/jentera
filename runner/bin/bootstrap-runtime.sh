@@ -214,27 +214,29 @@ if [[ -z "$playwright_dir" || "$playwright_dir" == "." ]]; then
   echo "Playwright package is unavailable in the installed tree" >&2
   exit 1
 fi
+case "$(uname -m)" in
+  x86_64|amd64) playwright_platform=ubuntu24.04-x64 ;;
+  aarch64|arm64) playwright_platform=ubuntu24.04-arm64 ;;
+  *)
+    echo "Playwright has no reviewed Linux build for this architecture" >&2
+    exit 1
+    ;;
+esac
+# Run the install unconditionally: `playwright install` is idempotent, a fast
+# no-op when the pinned revision is already cached (checked against the
+# registry), and repairs a stale cache from an older playwright whose
+# chrome-headless-shell a revision-blind find() would otherwise accept as
+# "installed" — leaving the pinned playwright unable to launch it
+# (2026-09-05: sprite 4e8c2593 stranded past the module fix on exactly that).
+(
+  cd "$install_dir"
+  PLAYWRIGHT_HOST_PLATFORM_OVERRIDE="$playwright_platform" \
+    timeout --foreground -k 10 600 node "$playwright_dir/cli.js" install --with-deps chromium
+)
 browser_binary="$(find "$browser_cache" -type f \
-  -path '*/chrome-headless-shell-linux64/chrome-headless-shell' \
+  \( -path '*/chrome-headless-shell-linux64/chrome-headless-shell' \
+     -o -path '*/chrome-linux/chrome' \) \
   -perm -111 -print -quit 2>/dev/null || true)"
-if [[ -z "$browser_binary" ]]; then
-  case "$(uname -m)" in
-    x86_64|amd64) playwright_platform=ubuntu24.04-x64 ;;
-    aarch64|arm64) playwright_platform=ubuntu24.04-arm64 ;;
-    *)
-      echo "Playwright has no reviewed Linux build for this architecture" >&2
-      exit 1
-      ;;
-  esac
-  (
-    cd "$install_dir"
-    PLAYWRIGHT_HOST_PLATFORM_OVERRIDE="$playwright_platform" \
-      timeout --foreground -k 10 600 node "$playwright_dir/cli.js" install --with-deps chromium
-  )
-  browser_binary="$(find "$browser_cache" -type f \
-    -path '*/chrome-headless-shell-linux64/chrome-headless-shell' \
-    -perm -111 -print -quit 2>/dev/null || true)"
-fi
 [[ -n "$browser_binary" ]] || {
   echo "Playwright Chromium is unavailable after installation" >&2
   exit 1
