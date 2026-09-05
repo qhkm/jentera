@@ -13,7 +13,7 @@
    navigates correctly while dropping the owner's answers is no better.
    ============================================================ */
 
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
@@ -130,7 +130,7 @@ describe('finishing setup', () => {
 });
 
 describe('what onboarding writes', () => {
-  it('sends a signed-in owner to required Telegram setup before the dashboard', async () => {
+  it('sends a signed-in owner to workspace setup before the dashboard', async () => {
     const repo = new LocalRepository();
     localStorage.setItem(KEYS.onboardingDraft, JSON.stringify({
       step: 2,
@@ -166,6 +166,109 @@ describe('what onboarding writes', () => {
       expect(snapshot.onboarded).toBe(true);
       expect(snapshot.setupDone).toBe(false);
     });
+  });
+
+  it.each([false, true])('keeps manual profile corrections through activation (reload: %s)', async (reload) => {
+    const repo = new LocalRepository();
+    await repo.setBizType('restaurant');
+    await repo.setBizProfile({ name: 'Inferred Name', loc: 'Shah Alam' });
+    localStorage.setItem(KEYS.onboardingDraft, JSON.stringify({
+      step: 2, mode: 'manual', desc: 'I run a restaurant in Shah Alam',
+    }));
+    function open() {
+      return render(
+        <MemoryRouter initialEntries={['/onboard']}>
+          <SignedInProvider value>
+            <RepositoryProvider repository={repo}>
+              <I18nProvider><ToastProvider>
+                <Routes>
+                  <Route path="/onboard" element={<Onboard />} />
+                  <Route path="/setup" element={<div>Saved setup</div>} />
+                </Routes>
+              </ToastProvider></I18nProvider>
+            </RepositoryProvider>
+          </SignedInProvider>
+        </MemoryRouter>,
+      );
+    }
+    const mounted = open();
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit business information' }));
+    await userEvent.clear(screen.getByLabelText('Name'));
+    await userEvent.type(screen.getByLabelText('Name'), 'Kedai Hana');
+    await userEvent.clear(screen.getByLabelText('Location'));
+    await userEvent.type(screen.getByLabelText('Location'), 'Ipoh');
+    await userEvent.click(screen.getByRole('button', { name: 'Save corrections' }));
+    await screen.findByRole('button', { name: "Yes — that's my business →" });
+    if (reload) { mounted.unmount(); open(); }
+    await userEvent.click(await screen.findByRole('button', { name: "Yes — that's my business →" }));
+    await screen.findByText('Saved setup');
+    expect(await repo.load()).toMatchObject({ bizName: 'Kedai Hana', bizLoc: 'Ipoh', onboarded: true });
+    expect(localStorage.getItem(KEYS.onboardingDraft)).toBeNull();
+  });
+
+  it('keeps the draft after a failed activation and retries the same answers', async () => {
+    const repo = new LocalRepository();
+    await repo.setBizType('salon');
+    await repo.setBizProfile({ name: 'Hana Salon', loc: 'Ipoh' });
+    localStorage.setItem(KEYS.onboardingDraft, JSON.stringify({ step: 2, mode: 'manual' }));
+    const complete = repo.completeOnboarding.bind(repo);
+    repo.completeOnboarding = vi.fn()
+      .mockRejectedValueOnce(new Error('Could not save your business. Please try again.'))
+      .mockImplementationOnce(complete);
+    render(
+      <MemoryRouter initialEntries={['/onboard']}>
+        <SignedInProvider value><RepositoryProvider repository={repo}>
+          <I18nProvider><ToastProvider>
+            <Routes>
+              <Route path="/onboard" element={<Onboard />} />
+              <Route path="/setup" element={<div>Saved setup</div>} />
+            </Routes>
+          </ToastProvider></I18nProvider>
+        </RepositoryProvider></SignedInProvider>
+      </MemoryRouter>,
+    );
+    await userEvent.click(await screen.findByRole('button', { name: "Yes — that's my business →" }));
+    expect(await screen.findByText('Could not save your business. Please try again.')).toBeInTheDocument();
+    expect(screen.queryByText('Saved setup')).toBeNull();
+    expect(localStorage.getItem(KEYS.onboardingDraft)).not.toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: "Yes — that's my business →" }));
+    await screen.findByText('Saved setup');
+    expect(await repo.load()).toMatchObject({ bizName: 'Hana Salon', bizLoc: 'Ipoh', onboarded: true });
+  });
+
+  it('opens a fresh onboarding when persisted draft JSON is null', async () => {
+    localStorage.setItem(KEYS.onboardingDraft, 'null');
+    render(
+      <MemoryRouter><RepositoryProvider repository={new LocalRepository()}>
+        <I18nProvider><ToastProvider><Onboard /></ToastProvider></I18nProvider>
+      </RepositoryProvider></MemoryRouter>,
+    );
+    expect(await screen.findByText('How should Jentera learn your business?')).toBeInTheDocument();
+  });
+
+  it('reports an early profile save failure, retains the source, and respects reduced motion', async () => {
+    const repo = new LocalRepository();
+    repo.setBizProfile = async () => { throw new Error('Profile not saved. Please try again.'); };
+    localStorage.setItem(KEYS.onboardingDraft, JSON.stringify({
+      step: 0, mode: 'manual', desc: 'I run a restaurant in Ipoh',
+    }));
+    const scroll = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
+    try {
+      render(
+        <MemoryRouter><RepositoryProvider repository={repo}>
+          <I18nProvider><ToastProvider><Onboard /></ToastProvider></I18nProvider>
+        </RepositoryProvider></MemoryRouter>,
+      );
+      await userEvent.click(await screen.findByRole('button', { name: 'Build my profile →' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('Profile not saved');
+      expect(JSON.parse(localStorage.getItem(KEYS.onboardingDraft) ?? '{}').desc)
+        .toBe('I run a restaurant in Ipoh');
+      expect(scroll).toHaveBeenCalledWith({ top: 0, behavior: 'auto' });
+    } finally {
+      scroll.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 
   it('lets the owner correct imported business information before confirming it', async () => {

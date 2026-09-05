@@ -142,7 +142,8 @@ interface ProfileEditDraft {
 }
 
 function readDraft(): OnboardingDraft {
-  const draft = store.getJSON<Partial<OnboardingDraft>>(store.KEYS.onboardingDraft, {});
+  const saved = store.getJSON<Partial<OnboardingDraft> | null>(store.KEYS.onboardingDraft, null);
+  const draft = saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
   return {
     step: Number.isInteger(draft.step) ? Math.min(Math.max(Number(draft.step), 0), STEP_COUNT - 1) : 0,
     mode: draft.mode === 'auto' || draft.mode === 'manual' ? draft.mode : null,
@@ -234,7 +235,10 @@ export default function Onboard() {
   const go = useCallback((next: number) => {
     setStep((cur) => {
       const clamped = Math.min(Math.max(next, 0), STEP_COUNT - 1);
-      if (clamped !== cur) window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (clamped !== cur) window.scrollTo({
+        top: 0,
+        behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      });
       return clamped;
     });
   }, []);
@@ -265,10 +269,13 @@ export default function Onboard() {
       if (desc.trim()) {
         const plan = planRegisterBusiness(snap, desc.trim());
         setType(plan.key);
+        setImportedProfile({ name: plan.bizName, locality: plan.bizLoc ?? undefined });
         void mutate(async (r) => {
           await r.setBizType(plan.key);
           await r.setBizProfile({ name: plan.bizName, loc: plan.bizLoc ?? undefined });
           await r.recordLearn(plan.key, plan.learnPick);
+        }).catch((error: unknown) => {
+          toast(error instanceof Error ? error.message : t('biz.profile.failed'), 'error');
         });
       } else {
         void mutate((r) => r.setBizType(bizType)).catch(noop);
@@ -501,14 +508,16 @@ export default function Onboard() {
     await mutate((r) => r.completeOnboarding({
       playbookKey: bizType,
       channels,
-      name: profile?.bizName ?? importedProfile.name,
-      locality: profile?.bizLoc ?? importedProfile.locality,
+      /* Review edits are authoritative, including after a reload. Reusing
+         the original description here used to undo the owner's corrections. */
+      name: importedProfile.name ?? (snap.bizName || profile?.bizName),
+      locality: importedProfile.locality ?? (snap.bizLoc || profile?.bizLoc || undefined),
     }));
     trackActivation('onboarding_completed');
     completedRef.current = true;
     store.remove(store.KEYS.onboardingDraft);
-    /* Telegram is the required private owner channel. Runtime provisioning
-       continues in the background while the owner connects and pairs it. */
+    /* Web chat is available without a connector. Setup offers that handoff
+       while runtime provisioning continues in the background. */
     navigate('/setup');
   }
 
