@@ -56,7 +56,7 @@ if (vulnerable.length > 0) {
 }
 const apiServer = await readFile(apiServerPath, 'utf8');
 if (!apiServer.includes(routingMarker) ||
-    !apiServer.includes('"provider_sort": provider_routing.get("sort"),') ||
+    !apiServer.includes('provider_sort=provider_routing.get("sort"),') ||
     !apiServer.includes(runtimeMarker) ||
     !apiServer.includes(`"jentera_patch": "${runtimePatchId}",`) ||
     !apiServer.includes('result.get("last_reasoning")') ||
@@ -82,30 +82,31 @@ async function patchApiServer() {
   let source = await readFile(apiServerPath, 'utf8');
   source = normalizeLegacyReasoningPatch(source);
   if (!source.includes(routingMarker)) {
-    const configAnchor = '        agent_kwargs = {\n';
+    const configAnchor = '        agent = AIAgent(\n            model=model,\n';
     const configPatch = [
       `        ${routingMarker}`,
       '        provider_routing = user_config.get("provider_routing") or {}',
       '        if not isinstance(provider_routing, dict):',
       '            provider_routing = {}',
       '',
-      configAnchor.trimEnd(),
+      '        agent = AIAgent(',
+      '            model=model,',
     ].join('\n') + '\n';
     source = replaceReviewedAnchor(source, configAnchor, configPatch);
 
     const kwargsAnchor = [
-      '            "reasoning_config": reasoning_config,',
-      '            "gateway_session_key": gateway_session_key,',
+      '            reasoning_config=reasoning_config,',
+      '            gateway_session_key=gateway_session_key,',
     ].join('\n');
     const kwargsPatch = [
-      '            "reasoning_config": reasoning_config,',
-      '            "providers_allowed": provider_routing.get("only"),',
-      '            "providers_ignored": provider_routing.get("ignore"),',
-      '            "providers_order": provider_routing.get("order"),',
-      '            "provider_sort": provider_routing.get("sort"),',
-      '            "provider_require_parameters": provider_routing.get("require_parameters", False),',
-      '            "provider_data_collection": provider_routing.get("data_collection"),',
-      '            "gateway_session_key": gateway_session_key,',
+      '            reasoning_config=reasoning_config,',
+      '            providers_allowed=provider_routing.get("only"),',
+      '            providers_ignored=provider_routing.get("ignore"),',
+      '            providers_order=provider_routing.get("order"),',
+      '            provider_sort=provider_routing.get("sort"),',
+      '            provider_require_parameters=provider_routing.get("require_parameters", False),',
+      '            provider_data_collection=provider_routing.get("data_collection"),',
+      '            gateway_session_key=gateway_session_key,',
     ].join('\n');
     source = replaceReviewedAnchor(source, kwargsAnchor, kwargsPatch);
   }
@@ -137,16 +138,19 @@ async function patchApiServer() {
     source = replaceReviewedAnchor(source, resultAnchor, resultPatch);
 
     const eventAnchor = [
+      '                        "event": "run.completed",',
+      '                        "run_id": run_id,',
+      '                        "timestamp": time.time(),',
+      '                        "output": final_response,',
       '                        "usage": usage,',
-      '                    }',
-      '                    if pending_steer:',
     ].join('\n');
     const eventPatch = [
+      '                        "event": "run.completed",',
+      '                        "run_id": run_id,',
+      '                        "timestamp": time.time(),',
+      '                        "output": final_response,',
       '                        "usage": usage,',
-      '                    }',
-      '                    if reasoning:',
-      '                        completed_event["reasoning"] = reasoning',
-      '                    if pending_steer:',
+      '                        **({"reasoning": reasoning} if reasoning else {}),',
     ].join('\n');
     source = replaceReviewedAnchor(source, eventAnchor, eventPatch);
 
