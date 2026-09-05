@@ -125,8 +125,23 @@ install_dir=/home/sprite/.hermes/hermes-agent
 installed_commit=
 if [[ -d "$install_dir/.git" ]]; then
   installed_commit="$(git -C "$install_dir" rev-parse HEAD 2>/dev/null || true)"
+  # Existing clones may predate the fork migration and still point `origin`
+  # at NousResearch/hermes-agent, which never carries the fork's release
+  # tags (e.g. v2026.9.5). install.sh's update path does `git fetch origin
+  # <tag>` and hard-fails with "couldn't find remote ref" against the
+  # upstream remote. Re-point origin at the reviewed fork on every run so
+  # all update paths stay inside the release lineage (release 2026.09.05-1
+  # fleet-wide bootstrap exit 128 blocked on this).
+  git -C "$install_dir" remote set-url origin "https://github.com/qhkm/hermes-agent.git"
 fi
 if [[ "$installed_commit" != "$hermes_commit" ]]; then
+  # install.sh's update path runs `git fetch origin <tag>` then
+  # `git checkout <tag>`; a bare tag-name fetch only fills FETCH_HEAD and
+  # never creates refs/tags/<tag>, so the checkout fails with "pathspec
+  # '<tag>' did not match any file(s) known to git" (fleet-wide bootstrap
+  # exit 1 blocked on this after the remote fix). Materialize the pinned
+  # tag locally so the update checkout can resolve it.
+  git -C "$install_dir" fetch origin "refs/tags/${hermes_tag}:refs/tags/${hermes_tag}" 2>/dev/null || true
   installer="$(mktemp /tmp/aisar-hermes-install.XXXXXX)"
   trap 'rm -f "$incoming" "$installer"' EXIT
   curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
