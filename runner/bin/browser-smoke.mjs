@@ -1,4 +1,14 @@
-import { chromium } from '/home/sprite/.hermes/hermes-agent/node_modules/playwright/index.mjs';
+// Playwright is a devDependency of the apps/desktop workspace and is NOT
+// hoisted to the install root (v2026.9.7+ tree), so the historical
+// root node_modules path no longer resolves. bootstrap-runtime.sh locates
+// the real package entry and passes it here.
+const pwEntry =
+  process.env.PLAYWRIGHT_ENTRY ||
+  '/home/sprite/.hermes/hermes-agent/apps/desktop/node_modules/playwright/index.mjs';
+if (!pwEntry) {
+  throw new Error('PLAYWRIGHT_ENTRY is not set; cannot locate playwright');
+}
+const { chromium } = await import(pwEntry);
 
 const browser = await chromium.launch({ headless: true });
 try {
