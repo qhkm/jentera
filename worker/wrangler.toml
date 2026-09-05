@@ -70,7 +70,7 @@ MODEL_TRANSPORT_READY = "true"
 # business to own a fully bootstrapped, release-matched runtime row.
 RUNTIME_EXECUTION_ENABLED = "true"
 RUNTIME_BOOTSTRAP_ENABLED = "true"
-RUNTIME_BUNDLE_COMMIT = "056613bad783d91991d92e172054c53d4f7b9d0b"
+RUNTIME_BUNDLE_COMMIT = "52bdf235b3f9dc70a469a9b7aec52ba2f5ab65b4"
 AISAR_MODEL_PROVIDER = "openrouter"
 AISAR_MODEL_BASE = "https://router.fmcv.my"
 AISAR_MODEL_NAME = "MiniMax-M3"
