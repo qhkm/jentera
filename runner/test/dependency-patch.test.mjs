@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
 
 const SCRIPT = new URL('../bin/patch-hermes-dependencies.mjs', import.meta.url).pathname;
+// The runtime patch id is defined by the script itself — read it dynamically
+// so this contract test survives every future release bump without edits.
+const runtimePatchId = readFileSync(SCRIPT, 'utf8').match(/const runtimePatchId = '([^']+)'/)?.[1];
+assert.ok(runtimePatchId, 'script must define runtimePatchId');
 const directories = [];
 
 afterEach(async () => {
@@ -19,7 +24,7 @@ test('narrowly updates the reviewed vulnerable override and verifies its lock', 
   assert.equal(manifest.overrides['nanoid@^3'], '3.3.18');
   const apiServer = await readFile(join(root, 'gateway/platforms/api_server.py'), 'utf8');
   assert.ok(apiServer.includes('provider_sort=provider_routing.get("sort"),'));
-  assert.ok(apiServer.includes('"jentera_patch": "jentera-runtime-2026-09-01",'));
+  assert.ok(apiServer.includes(`"jentera_patch": "${runtimePatchId}",`));
   assert.ok(apiServer.includes('result.get("last_reasoning")'));
   assert.ok(apiServer.includes([
     '                        "usage": usage,',
