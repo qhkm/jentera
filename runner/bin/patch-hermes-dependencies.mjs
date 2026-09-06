@@ -23,38 +23,105 @@ const runAgentPath = join(root, 'run_agent.py');
 const wireReorderPath = join(root, 'agent/wire_reorder.py');
 const wireOrderMarker = '# Jentera: reorder chat.completions wire bodies (tools first, messages last).';
 const wireOrderPatchId = 'jentera-wire-order-2026-09-03';
-const manifest = JSON.parse(await readFile(packagePath, 'utf8'));
-const current = manifest?.overrides?.['nanoid@^3'];
-if (!['3.3.17', '3.3.18'].includes(current)) {
-  throw new Error(`unreviewed Hermes nanoid override: ${String(current)}`);
+/** Reviewed dependency pins — the narrow set of fleet-shipped-around
+ * advisories, each with the exact lockfile version(s) review has seen and
+ * the reviewed replacement (version / resolved / integrity from the npm
+ * registry). Anything else npm audit flags at high severity fails the
+ * runtime bootstrap (release-blocking). The lockfile is path-identified
+ * (lockfileVersion 3, most entries carry no `name`), so matching is by path
+ * suffix, and only inside the reviewed major line (`scope`) — e.g. the tree
+ * also carries nanoid 5.1.16 at node_modules/nanoid, which the reviewed
+ * 3.3.x scope deliberately leaves to the audit gate. A lock entry inside
+ * scope but in any OTHER version is unreviewed drift and fails closed. */
+const REVIEWED_PINS = [
+  {
+    label: 'nanoid',
+    key: 'nanoid@^3',
+    allowed: ['3.3.17', '3.3.18'],
+    target: '3.3.18',
+    suffix: '/nanoid',
+    scope: (v) => v.startsWith('3.3.'),
+    vulnerable: (v) => v === '3.3.17',
+    resolved: 'https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz',
+    integrity: 'sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==',
+  },
+  {
+    label: 'postcss',
+    key: 'postcss@^8',
+    allowed: ['8.5.15', '8.5.16', '8.5.17', '8.5.18'],
+    target: '8.5.18',
+    suffix: '/postcss',
+    scope: (v) => v.startsWith('8.'),
+    vulnerable: (v) => v.startsWith('8.') && compareVersions(v, '8.5.18') < 0,
+    resolved: 'https://registry.npmjs.org/postcss/-/postcss-8.5.18.tgz',
+    integrity: 'sha512-xdB1oSLHbz1vRWgCDalrCqEFTWzFlhqFC5tIHLMOSUIjhm3XXQ1qrFy8S/ESr1JYRRXqM3c1QFiMZUJdUTqyMQ==',
+  },
+  {
+    label: 'react-router',
+    key: 'react-router@^7',
+    allowed: ['7.18.0', '7.18.1', '7.18.2'],
+    target: '7.18.2',
+    suffix: '/react-router',
+    scope: (v) => v.startsWith('7.'),
+    vulnerable: (v) => compareVersions(v, '7.12.0') >= 0 && compareVersions(v, '7.18.2') < 0,
+    resolved: 'https://registry.npmjs.org/react-router/-/react-router-7.18.2.tgz',
+    integrity: 'sha512-aUVMjFm3GAPTTZL7oYr5E7ETiqfQCHRLH+B+5afnICvf0r7kkK4eR6SMuwbSTJw/7t+12khT/Kahij49fqOCIg==',
+  },
+  {
+    label: 'react-router-dom',
+    key: 'react-router-dom@^7',
+    allowed: ['7.18.0', '7.18.1', '7.18.2'],
+    target: '7.18.2',
+    suffix: '/react-router-dom',
+    scope: (v) => v.startsWith('7.'),
+    vulnerable: (v) => compareVersions(v, '7.12.0') >= 0 && compareVersions(v, '7.18.2') < 0,
+    resolved: 'https://registry.npmjs.org/react-router-dom/-/react-router-dom-7.18.2.tgz',
+    integrity: 'sha512-AIKJ/jgGlFb3EbfCXk5Gzshiwt+l3mqbCrNjmEWMMjqQxNJ3svBa6bgzFyCC2Sw3RA0VWF1kg3uQf2OFhxb8hw==',
+  },
+];
+
+function compareVersions(a, b) {
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d) return d;
+  }
+  return 0;
 }
-manifest.overrides['nanoid@^3'] = '3.3.18';
+
+const manifest = JSON.parse(await readFile(packagePath, 'utf8'));
+for (const pin of REVIEWED_PINS) {
+  const current = manifest?.overrides?.[pin.key];
+  if (current !== undefined && !pin.allowed.includes(current)) {
+    throw new Error(`unreviewed Hermes ${pin.label} override: ${String(current)}`);
+  }
+  manifest.overrides[pin.key] = pin.target;
+}
 if (!verify) {
   await writeFile(packagePath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o644 });
   const lock = JSON.parse(await readFile(lockPath, 'utf8'));
-  for (const [path, pkg] of Object.entries(lock.packages ?? {})) {
-    if (!path.endsWith('/nanoid') || !String(pkg?.version).startsWith('3.3.')) continue;
-    if (!['3.3.17', '3.3.18'].includes(pkg.version)) {
-      throw new Error(`unreviewed locked nanoid version at ${path}: ${pkg.version}`);
+  for (const pin of REVIEWED_PINS) {
+    for (const [path, pkg] of Object.entries(lock.packages ?? {})) {
+      if (!path.endsWith(pin.suffix)) continue;
+      if (!pin.scope(String(pkg?.version ?? ''))) continue;
+      if (!pin.allowed.includes(pkg?.version)) {
+        throw new Error(`unreviewed locked ${pin.label} version at ${path}: ${pkg.version}`);
+      }
+      if (pkg.version !== pin.target) {
+        pkg.version = pin.target;
+        pkg.resolved = pin.resolved;
+        pkg.integrity = pin.integrity;
+      }
     }
-    pkg.version = '3.3.18';
-    pkg.resolved = 'https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz';
-    pkg.integrity = 'sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==';
   }
   await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`, { mode: 0o644 });
   await patchApiServer();
   await patchWireOrder();
-  process.stdout.write('pinned Hermes dependency, Jentera API-server and wire-order patches\n');
+  process.stdout.write('pinned Hermes dependencies, Jentera API-server and wire-order patches\n');
   process.exit(0);
 }
 
-const lock = JSON.parse(await readFile(lockPath, 'utf8'));
-const vulnerable = Object.entries(lock.packages ?? {})
-  .filter(([path, pkg]) => path.endsWith('/nanoid') || pkg?.name === 'nanoid')
-  .filter(([, pkg]) => pkg?.version === '3.3.17');
-if (vulnerable.length > 0) {
-  throw new Error(`vulnerable nanoid remains at ${vulnerable.map(([path]) => path).join(', ')}`);
-}
 const apiServer = await readFile(apiServerPath, 'utf8');
 if (!apiServer.includes(routingMarker) ||
     !apiServer.includes('provider_sort=provider_routing.get("sort"),') ||
@@ -77,7 +144,24 @@ if (!bootstrap.includes(wireOrderMarker) ||
     !wireReorder.includes(`PATCH_ID = "${wireOrderPatchId}"`)) {
   throw new Error('Hermes wire-order patch is missing or drifted');
 }
-process.stdout.write('Hermes production dependency, Jentera API-server and wire-order patches verified\n');
+const lock = JSON.parse(await readFile(lockPath, 'utf8'));
+const vulnerable = [];
+for (const pin of REVIEWED_PINS) {
+  for (const [path, pkg] of Object.entries(lock.packages ?? {})) {
+    if (!path.endsWith(pin.suffix)) continue;
+    const version = String(pkg?.version ?? '');
+    if (!pin.scope(version)) continue;
+    if (pin.vulnerable(version)) {
+      vulnerable.push(`${path}@${version} (${pin.label})`);
+    } else if (!pin.allowed.includes(version)) {
+      vulnerable.push(`${path}@${version} (${pin.label}: unreviewed drift)`);
+    }
+  }
+}
+if (vulnerable.length > 0) {
+  throw new Error(`vulnerable Hermes dependency remains at ${vulnerable.join(', ')}`);
+}
+process.stdout.write('Hermes production dependencies, Jentera API-server and wire-order patches verified\n');
 
 async function patchApiServer() {
   let source = await readFile(apiServerPath, 'utf8');

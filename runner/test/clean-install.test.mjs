@@ -114,22 +114,35 @@ async function assertPatchedShapes(root) {
   assert.ok(wireReorder.includes(`PATCH_ID = "${WIRE_ORDER_PATCH_ID}"`), 'wire_reorder.py PATCH_ID drifted');
 }
 
-/** Item 7 contract: nanoid pinned to reviewed 3.3.18 everywhere in the lock. */
-async function assertNanoidPin(root) {
+/** Item 7 contract: nanoid 3.3.18 / postcss 8.5.18 / react-router(dom) 7.18.2
+ * pinned everywhere in the lock, with reviewed resolved/integrity. */
+async function assertReviewedPins(root) {
   const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
   assert.equal(manifest.overrides['nanoid@^3'], '3.3.18');
+  assert.equal(manifest.overrides['postcss@^8'], '8.5.18');
+  assert.equal(manifest.overrides['react-router@^7'], '7.18.2');
+  assert.equal(manifest.overrides['react-router-dom@^7'], '7.18.2');
   const lock = JSON.parse(await readFile(join(root, 'package-lock.json'), 'utf8'));
-  const entries = Object.entries(lock.packages ?? {})
-    .filter(([path]) => path.endsWith('/nanoid'))
-    .filter(([, pkg]) => String(pkg?.version).startsWith('3.3.'));
-  assert.ok(entries.length > 0, 'expected at least one 3.3.x nanoid lock entry');
-  for (const [path, pkg] of entries) {
-    assert.equal(pkg.version, '3.3.18', `nanoid ${pkg.version} remains at ${path}`);
-    assert.equal(pkg.resolved, 'https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz',
-      `nanoid resolved URL drifted at ${path}`);
-    assert.equal(pkg.integrity, 'sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==',
-      `nanoid integrity drifted at ${path}`);
-    assert.notEqual(pkg.version, '3.3.17', `vulnerable nanoid 3.3.17 remains at ${path}`);
+  const reviewed = [
+    ['/nanoid', '3.3.18', 'https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz',
+      'sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w=='],
+    ['/postcss', '8.5.18', 'https://registry.npmjs.org/postcss/-/postcss-8.5.18.tgz',
+      'sha512-xdB1oSLHbz1vRWgCDalrCqEFTWzFlhqFC5tIHLMOSUIjhm3XXQ1qrFy8S/ESr1JYRRXqM3c1QFiMZUJdUTqyMQ=='],
+    ['/react-router', '7.18.2', 'https://registry.npmjs.org/react-router/-/react-router-7.18.2.tgz',
+      'sha512-aUVMjFm3GAPTTZL7oYr5E7ETiqfQCHRLH+B+5afnICvf0r7kkK4eR6SMuwbSTJw/7t+12khT/Kahij49fqOCIg=='],
+    ['/react-router-dom', '7.18.2', 'https://registry.npmjs.org/react-router-dom/-/react-router-dom-7.18.2.tgz',
+      'sha512-AIKJ/jgGlFb3EbfCXk5Gzshiwt+l3mqbCrNjmEWMMjqQxNJ3svBa6bgzFyCC2Sw3RA0VWF1kg3uQf2OFhxb8hw=='],
+  ];
+  for (const [suffix, version, resolved, integrity] of reviewed) {
+    const entries = Object.entries(lock.packages ?? {})
+      .filter(([path]) => path.endsWith(suffix))
+      .filter(([, pkg]) => String(pkg?.version).startsWith(version.slice(0, 3)));
+    assert.ok(entries.length > 0, `expected at least one ${suffix} lock entry`);
+    for (const [path, pkg] of entries) {
+      assert.equal(pkg.version, version, `${suffix} remains at ${path}@${pkg.version}`);
+      assert.equal(pkg.resolved, resolved, `${suffix} resolved URL drifted at ${path}`);
+      assert.equal(pkg.integrity, integrity, `${suffix} integrity drifted at ${path}`);
+    }
   }
 }
 
@@ -141,15 +154,15 @@ test('clean install of the pinned Hermes commit applies and verifies (B1 release
 
   const apply = run(root);
   assert.equal(apply.status, 0, `apply failed: ${apply.stderr}`);
-  assert.ok(apply.stdout.includes('pinned Hermes dependency, Jentera API-server and wire-order patches'),
+  assert.ok(apply.stdout.includes('pinned Hermes dependencies, Jentera API-server and wire-order patches'),
     `unexpected apply stdout: ${JSON.stringify(apply.stdout)}`);
 
   await assertPatchedShapes(root);
-  await assertNanoidPin(root);
+  await assertReviewedPins(root);
 
   const verify = run(root, ['--verify']);
   assert.equal(verify.status, 0, `verify failed: ${verify.stderr}`);
-  assert.ok(verify.stdout.includes('Hermes production dependency, Jentera API-server and wire-order patches verified'),
+  assert.ok(verify.stdout.includes('Hermes production dependencies, Jentera API-server and wire-order patches verified'),
     `unexpected verify stdout: ${JSON.stringify(verify.stdout)}`);
 });
 

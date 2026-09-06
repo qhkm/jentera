@@ -17,11 +17,18 @@ afterEach(async () => {
   await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
-test('narrowly updates the reviewed vulnerable override and verifies its lock', async () => {
+test('narrowly updates the reviewed vulnerable overrides and verifies their locks', async () => {
   const root = await fixture('3.3.17', '3.3.17');
   assert.equal(run(root).status, 0);
   const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
   assert.equal(manifest.overrides['nanoid@^3'], '3.3.18');
+  assert.equal(manifest.overrides['postcss@^8'], '8.5.18');
+  assert.equal(manifest.overrides['react-router@^7'], '7.18.2');
+  assert.equal(manifest.overrides['react-router-dom@^7'], '7.18.2');
+  const lock = JSON.parse(await readFile(join(root, 'package-lock.json'), 'utf8'));
+  assert.equal(lock.packages['node_modules/postcss'].version, '8.5.18');
+  assert.equal(lock.packages['node_modules/react-router'].version, '7.18.2');
+  assert.equal(lock.packages['node_modules/react-router-dom'].version, '7.18.2');
   const apiServer = await readFile(join(root, 'gateway/platforms/api_server.py'), 'utf8');
   assert.ok(apiServer.includes('provider_sort=provider_routing.get("sort"),'));
   assert.ok(apiServer.includes(`"jentera_patch": "${runtimePatchId}",`));
@@ -49,6 +56,46 @@ test('refuses an upstream override drift and a vulnerable lock', async () => {
   assert.notEqual(run(drifted).status, 0);
   const vulnerable = await fixture('3.3.18', '3.3.17');
   assert.notEqual(run(vulnerable, '--verify').status, 0);
+});
+
+test('refuses an unreviewed postcss or react-router override drift', async () => {
+  const postcssDrift = await fixture('3.3.17', '3.3.17', false, { postcssOverride: '8.5.14' });
+  const postcssRun = run(postcssDrift);
+  assert.notEqual(postcssRun.status, 0);
+  assert.ok(postcssRun.stderr.includes('unreviewed Hermes postcss override'),
+    `unexpected stderr: ${JSON.stringify(postcssRun.stderr)}`);
+  const routerDrift = await fixture('3.3.17', '3.3.17', false, { routerOverride: '7.17.12' });
+  const routerRun = run(routerDrift);
+  assert.notEqual(routerRun.status, 0);
+  assert.ok(routerRun.stderr.includes('unreviewed Hermes react-router override'),
+    `unexpected stderr: ${JSON.stringify(routerRun.stderr)}`);
+});
+
+test('verify fails while a vulnerable postcss or react-router lock entry remains', async () => {
+  // Apply first (rewrites the reviewed base to the targets), then simulate a
+  // lockfile regression between apply and verify — the exact upgrade-retry
+  // hazard the gate must catch.
+  const postcssVuln = await fixture('3.3.18', '3.3.18', false, { postcssLock: '8.5.17' });
+  assert.equal(run(postcssVuln).status, 0, 'apply must rewrite an allowed vulnerable postcss entry');
+  const postcssLockPath = join(postcssVuln, 'package-lock.json');
+  const postcssLock = JSON.parse(await readFile(postcssLockPath, 'utf8'));
+  postcssLock.packages['node_modules/postcss'].version = '8.5.17';
+  await writeFile(postcssLockPath, `${JSON.stringify(postcssLock, null, 2)}\n`);
+  const postcssVerify = run(postcssVuln, '--verify');
+  assert.notEqual(postcssVerify.status, 0, 'verify must fail on a regressed postcss lock entry');
+  assert.ok(postcssVerify.stderr.includes('node_modules/postcss'),
+    `unexpected stderr: ${JSON.stringify(postcssVerify.stderr)}`);
+
+  const routerVuln = await fixture('3.3.18', '3.3.18', false, { routerLock: '7.18.1' });
+  assert.equal(run(routerVuln).status, 0, 'apply must rewrite an allowed vulnerable react-router entry');
+  const routerLockPath = join(routerVuln, 'package-lock.json');
+  const routerLock = JSON.parse(await readFile(routerLockPath, 'utf8'));
+  routerLock.packages['node_modules/react-router'].version = '7.18.1';
+  await writeFile(routerLockPath, `${JSON.stringify(routerLock, null, 2)}\n`);
+  const routerVerify = run(routerVuln, '--verify');
+  assert.notEqual(routerVerify.status, 0, 'verify must fail on a regressed react-router lock entry');
+  assert.ok(routerVerify.stderr.includes('node_modules/react-router'),
+    `unexpected stderr: ${JSON.stringify(routerVerify.stderr)}`);
 });
 
 test('normalizes the reviewed one-off canary reasoning patch before applying the release patch', async () => {
@@ -128,14 +175,25 @@ const RUNTIME_SCAFFOLD = (legacyReasoning) => [
   '',
 ];
 
-async function fixture(override, locked, legacyReasoning = false) {
+async function fixture(override, locked, legacyReasoning = false, opts = {}) {
   const root = await mkdtemp(join(tmpdir(), 'aisar-hermes-test-'));
   directories.push(root);
   await writeFile(join(root, 'package.json'), JSON.stringify({
-    overrides: { 'nanoid@^3': override, lodash: '4.18.1' },
+    overrides: {
+      'nanoid@^3': override,
+      'postcss@^8': opts.postcssOverride ?? '8.5.15',
+      'react-router@^7': opts.routerOverride ?? '7.18.0',
+      'react-router-dom@^7': opts.domOverride ?? '7.18.0',
+      lodash: '4.18.1',
+    },
   }));
   await writeFile(join(root, 'package-lock.json'), JSON.stringify({
-    packages: { 'node_modules/example/node_modules/nanoid': { name: 'nanoid', version: locked } },
+    packages: {
+      'node_modules/example/node_modules/nanoid': { name: 'nanoid', version: locked },
+      'node_modules/postcss': { name: 'postcss', version: opts.postcssLock ?? '8.5.15' },
+      'node_modules/react-router': { name: 'react-router', version: opts.routerLock ?? '7.18.0' },
+      'node_modules/react-router-dom': { name: 'react-router-dom', version: opts.domLock ?? '7.18.0' },
+    },
   }));
   await mkdir(join(root, 'gateway/platforms'), { recursive: true });
   await writeFile(join(root, 'gateway/platforms/api_server.py'),
@@ -153,10 +211,21 @@ async function pinnedFixture() {
   const root = await mkdtemp(join(tmpdir(), 'aisar-hermes-test-'));
   directories.push(root);
   await writeFile(join(root, 'package.json'), JSON.stringify({
-    overrides: { 'nanoid@^3': '3.3.17', lodash: '4.18.1' },
+    overrides: {
+      'nanoid@^3': '3.3.17',
+      'postcss@^8': '8.5.15',
+      'react-router@^7': '7.18.0',
+      'react-router-dom@^7': '7.18.0',
+      lodash: '4.18.1',
+    },
   }));
   await writeFile(join(root, 'package-lock.json'), JSON.stringify({
-    packages: { 'node_modules/example/node_modules/nanoid': { name: 'nanoid', version: '3.3.17' } },
+    packages: {
+      'node_modules/example/node_modules/nanoid': { name: 'nanoid', version: '3.3.17' },
+      'node_modules/postcss': { name: 'postcss', version: '8.5.15' },
+      'node_modules/react-router': { name: 'react-router', version: '7.18.0' },
+      'node_modules/react-router-dom': { name: 'react-router-dom', version: '7.18.0' },
+    },
   }));
   await mkdir(join(root, 'gateway/platforms'), { recursive: true });
   const pinned = await readFile(

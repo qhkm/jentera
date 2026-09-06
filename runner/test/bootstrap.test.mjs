@@ -284,8 +284,8 @@ function fields(overrides = {}) {
     modelBase: 'https://openrouter.ai/api/v1',
     modelKey: 'o'.repeat(64),
     modelName: 'deepseek/deepseek-v4-flash-0731',
-    hermesTag: 'v2026.8.19',
-    hermesCommit: 'fcbd1076a93841fa88855acce810e342a5b78101',
+    hermesTag: 'v2026.9.7',
+    hermesCommit: '111949b9750f7dafc8adaf0829de9cc108aa4236',
     ...overrides,
   };
   const body = [

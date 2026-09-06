@@ -19,8 +19,8 @@ set -euo pipefail
 }
 
 sprite_org="${AISAR_SPRITE_ORG:-aisar}"
-hermes_tag="${AISAR_HERMES_TAG:-v2026.8.19}"
-hermes_commit="${AISAR_HERMES_COMMIT:-fcbd1076a93841fa88855acce810e342a5b78101}"
+hermes_tag="${AISAR_HERMES_TAG:-v2026.9.7}"
+hermes_commit="${AISAR_HERMES_COMMIT:-111949b9750f7dafc8adaf0829de9cc108aa4236}"
 [[ "$AISAR_MODEL_PROVIDER" == "openrouter" ]] || exit 1
 case "$AISAR_MODEL_BASE" in
   "https://openrouter.ai/api/v1"|"https://router.fmcv.my") ;;

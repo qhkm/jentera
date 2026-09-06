@@ -342,6 +342,28 @@ cd ~/ios/aisar-site && node --test runner/test/ && npm test --prefix worker 2>/d
 - `model_options.reasoning.enabled:false` still cannot suppress reasoning on the pinned API (no `model_options` handling upstream). Quick mode now correctly *routes* to the quick model (Task 2); suppressing its reasoning requires a Hermes fork change (accept `model_options` in `/v1/runs` → per-run `reasoning_config`) + re-pin → follow-up release. Do not attempt in this branch.
 - The `agent.reasoning_overrides[model_name] = "high"` line in `configure-model-provider.py` keys on the quick model id; Task 2 routes deep requests to the deep id, which has no override today — if deep needs `"high"` (or model-specific effort), add it in the same follow-up after confirming the quick/deep routing evidence.
 
+## Advisory review (2026-09-06 — executed facts)
+
+The clean-install gate surfaced the pinned tree's `npm audit --omit=dev --audit-level=high`
+outcome on the staging Sprite (aisar-poc-b1). Reviewed findings and resolved state:
+
+| Advisory | Range | Locked at pin | Reviewed pin |
+|---|---|---|---|
+| nanoid (GHSA-2v37-7h3g-55p8) | 3.3.17 | 3.3.18 (v2026.9.7 lock already carries the fix) | 3.3.18 |
+| postcss (path traversal) | ≤8.5.17 | 8.5.15 | 8.5.18 |
+| react-router (RSC CSRF) | 7.12.0–7.18.1 | 7.18.0 | 7.18.2 |
+| react-router-dom (same range, lockstep) | 7.12.0–7.18.1 | 7.18.0 | 7.18.2 |
+
+Severity classification at review: nanoid/postcss/react-router HIGH (release-blocking);
+moderates (undici, sanitize-html/DOMPurify, Mermaid) informational-only, non-blocking.
+
+Decision: rather than a broad `npm audit fix` (which would rewrite unrelated dependency
+lines and churn the reviewed tree), the runtime patch script owns the narrow restores —
+`REVIEWED_PINS` in `runner/bin/patch-hermes-dependencies.mjs` (version/resolved/integrity
+read from the npm registry for each target), enforced by the `--verify` hard gate in
+`bootstrap-runtime.sh` and the clean-install contract test. Everything else npm audit
+flags at high severity fails the bootstrap (release-blocking by design).
+
 ## Verification recap
 
 - `node --test runner/test/` — all green, including the new vendored-pinned-fixture regression.

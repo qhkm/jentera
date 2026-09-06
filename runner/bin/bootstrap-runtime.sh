@@ -167,10 +167,11 @@ if [[ "$installed_commit" != "$hermes_commit" ]]; then
   trap 'rm -f "$incoming"' EXIT
 fi
 
-# Hermes' reviewed commit pins nanoid 3.3.17, which is affected by
-# GHSA-2v37-7h3g-55p8. Apply the narrow patched release without allowing a
-# broad audit fix to rewrite unrelated dependencies, then make future high
-# severity production advisories a release-blocking event.
+# Hermes' reviewed commit ships three audited advisories: nanoid 3.3.17
+# (GHSA-2v37-7h3g-55p8), postcss <=8.5.17, and react-router 7.12.0-7.18.1.
+# Apply the narrow patched releases without allowing a broad audit fix to
+# rewrite unrelated dependencies, then make future high severity production
+# advisories a release-blocking event.
 /.sprite/bin/node /home/sprite/aisar/runner/patch-hermes-dependencies.mjs "$install_dir"
 (
   cd "$install_dir"
@@ -184,7 +185,8 @@ fi
   # (503/ECONNRESET/timeout) must never block a runtime upgrade that has
   # already installed and verified its dependencies. Only a real high-severity
   # finding fails the bootstrap; patch-hermes-dependencies.mjs --verify above
-  # remains the hard gate for the one advisory we ship around.
+  # remains the hard gate for the reviewed advisory set we ship around
+  # (nanoid, postcss, react-router — see the REVIEWED_PINS table).
   if audit_text="$(npm audit --omit=dev --audit-level=high 2>&1)"; then
     :
   else

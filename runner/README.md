@@ -86,15 +86,16 @@ and Hermes keys, and VRS settings in the environment. It deterministically names
 Sprite per business, uploads the narrow runtime bundle and a mode-0600 transfer, then
 invokes `bin/bootstrap-runtime.sh` inside the Sprite.
 
-The in-Sprite bootstrap pins Hermes to tag `v2026.8.19` and commit
-`fcbd1076a93841fa88855acce810e342a5b78101`, downloads the installer from that same
+The in-Sprite bootstrap pins Hermes to tag `v2026.9.7` and commit
+`111949b9750f7dafc8adaf0829de9cc108aa4236`, downloads the installer from that same
 immutable commit and verifies its SHA-256,
 writes the runtime environment atomically, configures OpenRouter without inlining its
 key, proves the endpoint, credential, and both configured model aliases with real inference,
 pins DS4 Flash to high reasoning and prefers a BF16 provider without latency-first routing,
 installs and
 live-tests the pinned keyless DDGS search backend, enforces the full pinned API-server tool profile,
-applies the reviewed `nanoid` security override,
+applies the reviewed security overrides (`nanoid` 3.3.18, `postcss` 8.5.18,
+`react-router(dom)` 7.18.2 — see `patch-hermes-dependencies.mjs` REVIEWED_PINS),
 requires a clean high-severity production dependency audit, recreates both services,
 proves authenticated readiness and Chromium, and creates a baseline checkpoint.
 Repeating it reconciles the same Sprite rather than creating a second one.
