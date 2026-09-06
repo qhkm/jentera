@@ -7,12 +7,15 @@
 #    2. API worker      api.jentera.ai/api/health            {"ok":true}
 #    3. Database        Neon SELECT 1 via neondb_owner       (read-only)
 #    4. Task backlog    runtime_task stuck queued/leased      must be 0
-#    5. Runtime fleet   sprite list: warm/cold counts,        none missing
+#    5. Runtime fleet   sprite list: warm/cold counts,        none missing;
+#                       all-cold = warn-only if backlog clear (idle sleep,
+#                       wakes on demand), FAIL if a backlog exists;
 #                       version matches RUNTIME_RELEASE       (warn-only)
 #
 #  Exit code: 0 = healthy, 1 = anything failed.
-#  May be run from anywhere; no secrets are read from disk
-#  (sprite CLI uses its own keyring, neonctl its own login).
+#  May be run from anywhere; Neon credential resolution order:
+#  AISAR_NEON_OWNER_URL env → ~/.config/neon/owner-url → neonctl login
+#  (sprite CLI uses its own keyring).
 #
 #   ./worker/scripts/health.sh            # all checks, human output
 #   ./worker/scripts/health.sh --quiet    # only failures printed
@@ -40,6 +43,7 @@ EXPECT_RELEASE=$(sed -n 's/^RUNTIME_RELEASE = "\([^"]*\)".*/\1/p' worker/wrangle
 EXPECT_RELEASE=${EXPECT_RELEASE:-unknown}
 
 FAILS=0
+BACKLOG_CLEAR=""   # 1 = clear, 0 = stuck, "" = unknown (no DB connection)
 declare -a NOTES=()
 
 say()  { [[ $QUIET -eq 0 ]] && printf '%s\n' "$*"; }
@@ -110,8 +114,11 @@ fi
 # ------------------------------------------------------------
 say "── 3/5 Database (Neon) ──"
 CS=""
+NEON_OWNER_FILE="${HOME:-$USER}/.config/neon/owner-url"
 if [[ -n "${AISAR_NEON_OWNER_URL:-}" ]]; then
   CS="$AISAR_NEON_OWNER_URL"
+elif [[ -r "$NEON_OWNER_FILE" ]]; then
+  CS=$(tr -d '\r\n' < "$NEON_OWNER_FILE")
 elif command -v neonctl >/dev/null 2>&1; then
   CS=$(with_timeout 20 neonctl connection-string --project-id "${AISAR_NEON_PROJECT_ID:-red-haze-10375483}" \
        --role-name neondb_owner) || CS=""
@@ -142,11 +149,14 @@ if [[ -n "${CS:-}" ]]; then
   if [[ "$STUCK" =~ ^[0-9]+$ ]]; then
     if [[ "$STUCK" -eq 0 ]]; then
       pass "no task queued/leased > 15 min (backlog clear)"
+      BACKLOG_CLEAR=1
     else
       fail "db: $STUCK runtime_task(s) stuck in queued/leased > 15 min"
+      BACKLOG_CLEAR=0
     fi
   else
     fail "db: task backlog query returned nothing (runtime_task missing?)"
+    BACKLOG_CLEAR=0
   fi
 else
   warn "skipping backlog check (no DB connection)"
@@ -170,7 +180,11 @@ if command -v sprite >/dev/null 2>&1; then
     if [[ "$TOTAL" -eq 0 ]]; then
       fail "fleet: no sprites returned by API — is the org token alive?"
     elif [[ "$COLD" -eq "$TOTAL" ]]; then
-      fail "fleet: all $TOTAL sprites cold (nothing warm to serve traffic)"
+      if [[ "$BACKLOG_CLEAR" == "1" ]]; then
+        warn "fleet: all $TOTAL sprites cold but backlog clear — idle sleep, wakes on demand"
+      else
+        fail "fleet: all $TOTAL sprites cold (nothing warm to serve traffic)"
+      fi
     else
       pass "fleet: $WARM warm (≥1 ready to serve), $COLD cold"
     fi

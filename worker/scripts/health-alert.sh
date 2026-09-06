@@ -39,15 +39,18 @@ TOKEN=$(grep -E '^TELEGRAM_BOT_TOKEN=' "$ENV_FILE" | head -1 | cut -d= -f2-)
 CHAT=$(grep -E '^TELEGRAM_HOME_CHANNEL=' "$ENV_FILE" | head -1 | cut -d= -f2-)
 [ -n "$CHAT" ] && [ -n "$TOKEN" ] || { echo "$STAMP ERROR env vars missing" >> "$LOG"; exit 9; }
 
-MSG="⚠️ *Jentera UNHEALTHY* ($(hostname -s))
+MSGBODY=$(printf '%s\n' "$OUTPUT" | head -30)
+MSG="⚠️ Jentera UNHEALTHY ($(hostname -s))
 $STAMP — exit $RC
 
-$(echo "$OUTPUT" | head -30)"
+$MSGBODY"
 
+# Plain text only — Markdown parsing breaks on underscores in
+# identifiers (AISAR_NEON_OWNER_URL, runtime_task) → 400, alert lost.
 SENT=$(curl -sS -m 20 -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
   -d chat_id="$CHAT" \
   -d text="$MSG" \
-  -d parse_mode=Markdown -o /dev/null -w '%{http_code}' 2>/dev/null || echo 000)
+  -o /dev/null -w '%{http_code}' 2>/dev/null || echo 000)
 echo "$STAMP UNHEALTHY rc=$RC telegram_http=$SENT" >> "$LOG"
 echo "$OUTPUT" >> "$LOG"
 
