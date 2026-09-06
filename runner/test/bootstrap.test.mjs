@@ -76,14 +76,14 @@ test('Hermes service replaces only a verified stale gateway process', async () =
   assert.match(source, /gateway run --replace/);
 });
 
-test('Hermes installer bytes come from the reviewed Hermes commit', async () => {
+test('Hermes installer bytes come from the reviewed Hermes commit (qhkm fork)', async () => {
   const source = await readFile(SCRIPT, 'utf8');
-  assert.match(
-    source,
-    /raw\.githubusercontent\.com\/NousResearch\/hermes-agent\/\$\{hermes_commit\}\/scripts\/install\.sh/,
+  assert.ok(
+    source.includes('raw.githubusercontent.com/qhkm/hermes-agent/${hermes_commit}/scripts/install.sh'),
+    'bootstrap fetches the installer from the qhkm fork at the pinned commit',
   );
-  assert.match(source, /682f302f4084febf323558cf1a87ab8d311cba01e1e6088e4898d579871d10bf/);
-  assert.doesNotMatch(source, /hermes-agent\.nousresearch\.com\/install\.sh/);
+  assert.ok(source.includes('682f302f4084febf323558cf1a87ab8d311cba01e1e6088e4898d579871d10bf'));
+  assert.ok(!source.includes('raw.githubusercontent.com/NousResearch/hermes-agent'));
 });
 
 test('model configuration favors DS4 agent quality and tool compatibility', async () => {

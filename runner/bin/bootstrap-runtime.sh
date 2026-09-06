@@ -99,7 +99,7 @@ cua_enabled="$(decode "${CUA_ENABLED_B64:-}")"
 }
 [[ "$hermes_tag" =~ ^v[0-9]{4}\.[0-9]+\.[0-9]+$ ]] || exit 1
 [[ "$hermes_commit" =~ ^[0-9a-f]{40}$ ]] || exit 1
-hermes_installer_url="https://raw.githubusercontent.com/NousResearch/hermes-agent/${hermes_commit}/scripts/install.sh"
+hermes_installer_url="https://raw.githubusercontent.com/qhkm/hermes-agent/${hermes_commit}/scripts/install.sh"
 [[ "$model_provider" == "openrouter" ]] || {
   echo "only the reviewed OpenRouter provider is allowed" >&2
   exit 1
@@ -125,8 +125,23 @@ install_dir=/home/sprite/.hermes/hermes-agent
 installed_commit=
 if [[ -d "$install_dir/.git" ]]; then
   installed_commit="$(git -C "$install_dir" rev-parse HEAD 2>/dev/null || true)"
+  # Existing clones may predate the fork migration and still point `origin`
+  # at NousResearch/hermes-agent, which never carries the fork's release
+  # tags (e.g. v2026.9.5). install.sh's update path does `git fetch origin
+  # <tag>` and hard-fails with "couldn't find remote ref" against the
+  # upstream remote. Re-point origin at the reviewed fork on every run so
+  # all update paths stay inside the release lineage (release 2026.09.05-1
+  # fleet-wide bootstrap exit 128 blocked on this).
+  git -C "$install_dir" remote set-url origin "https://github.com/qhkm/hermes-agent.git"
 fi
 if [[ "$installed_commit" != "$hermes_commit" ]]; then
+  # install.sh's update path runs `git fetch origin <tag>` then
+  # `git checkout <tag>`; a bare tag-name fetch only fills FETCH_HEAD and
+  # never creates refs/tags/<tag>, so the checkout fails with "pathspec
+  # '<tag>' did not match any file(s) known to git" (fleet-wide bootstrap
+  # exit 1 blocked on this after the remote fix). Materialize the pinned
+  # tag locally so the update checkout can resolve it.
+  git -C "$install_dir" fetch origin "refs/tags/${hermes_tag}:refs/tags/${hermes_tag}" 2>/dev/null || true
   installer="$(mktemp /tmp/aisar-hermes-install.XXXXXX)"
   trap 'rm -f "$incoming" "$installer"' EXIT
   curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
@@ -138,14 +153,16 @@ if [[ "$installed_commit" != "$hermes_commit" ]]; then
     exit 1
   fi
   chmod 700 "$installer"
-  HERMES_HOME=/home/sprite/.hermes bash "$installer" \
-    --branch "$hermes_tag" \
-    --commit "$hermes_commit" \
-    --force-commit \
-    --skip-setup \
-    --non-interactive \
-    --dir "$install_dir" \
-    --hermes-home /home/sprite/.hermes
+  # Installers before v2026.9.5 guard rollback pins behind --force-commit;
+  # v2026.9.5 dropped both the guard and the flag, and rejects unknown
+  # options. Probe the pinned installer for the flag so rollback pins keep
+  # working and modern pins don't fail (release 2026.09.05-1 blocked on this).
+  install_cmd=(bash "$installer" --branch "$hermes_tag" --commit "$hermes_commit")
+  if grep -q -- '--force-commit' "$installer"; then
+    install_cmd+=(--force-commit)
+  fi
+  install_cmd+=(--skip-setup --non-interactive --dir "$install_dir" --hermes-home /home/sprite/.hermes)
+  HERMES_HOME=/home/sprite/.hermes "${install_cmd[@]}"
   rm -f "$installer"
   trap 'rm -f "$incoming"' EXIT
 fi
@@ -163,7 +180,22 @@ fi
   "$install_dir" --verify
 (
   cd "$install_dir"
-  npm audit --omit=dev --audit-level=high
+  # npm audit is a security gate, not a build step — a registry outage
+  # (503/ECONNRESET/timeout) must never block a runtime upgrade that has
+  # already installed and verified its dependencies. Only a real high-severity
+  # finding fails the bootstrap; patch-hermes-dependencies.mjs --verify above
+  # remains the hard gate for the one advisory we ship around.
+  if audit_text="$(npm audit --omit=dev --audit-level=high 2>&1)"; then
+    :
+  else
+    audit_rc=$?
+    if printf '%s\n' "$audit_text" | grep -qiE 'vulnerabilit|found [0-9]+ (moderate|high|critical)|GHSA'; then
+      printf '%s\n' "$audit_text" >&2
+      echo "high-severity production advisory present — upgrade blocked, review required" >&2
+      exit 1
+    fi
+    echo "npm audit could not reach the registry (rc=$audit_rc) — non-fatal, continuing" >&2
+  fi
 )
 
 # A terminated installer can leave the pinned Git commit and node_modules in
