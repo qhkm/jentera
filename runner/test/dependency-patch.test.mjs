@@ -37,7 +37,7 @@ test('narrowly updates the reviewed vulnerable dependencies and verifies the loc
   assert.equal(lock.packages['node_modules/mermaid'].version, '11.16.1');
   const apiServer = await readFile(join(root, 'gateway/platforms/api_server.py'), 'utf8');
   assert.ok(apiServer.includes('provider_sort=provider_routing.get("sort"),'));
-  assert.ok(apiServer.includes('"jentera_patch": "jentera-runtime-2026-09-01",'));
+  assert.ok(apiServer.includes('"jentera_patch": "jentera-runtime-2026-09-06",'));
   assert.ok(apiServer.includes('result.get("last_reasoning")'));
   assert.equal(
     apiServer.match(/\*\*\(\{"reasoning": reasoning\} if reasoning else \{}\),/g)?.length,

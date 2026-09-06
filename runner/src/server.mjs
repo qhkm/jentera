@@ -25,7 +25,7 @@ const TASK_AGE_LIMIT_MS = Object.freeze({ quick: 15 * 60 * 1000, deep: 90 * 60 *
 const WATCHDOG_INTERVAL_MS = 60 * 1000;
 const STREAM_THINK_LIMIT = 8 * 1024;
 const STREAM_TTL_MS = 5 * 60 * 1000;
-const HERMES_PATCH_ID = 'jentera-runtime-2026-09-01';
+const HERMES_PATCH_ID = 'jentera-runtime-2026-09-06';
 const RUNNER_STARTED_AT = new Date().toISOString();
 /* Computed while this module is being loaded, so an old process cannot begin
    reporting a new on-disk bundle after provisioning overwrites server.mjs. */
