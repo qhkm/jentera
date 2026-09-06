@@ -167,10 +167,11 @@ if [[ "$installed_commit" != "$hermes_commit" ]]; then
   trap 'rm -f "$incoming"' EXIT
 fi
 
-# Hermes' reviewed commit pins nanoid 3.3.17, which is affected by
-# GHSA-2v37-7h3g-55p8. Apply the narrow patched release without allowing a
-# broad audit fix to rewrite unrelated dependencies, then make future high
-# severity production advisories a release-blocking event.
+# Hermes' reviewed commit already pins patched nanoid 3.3.18, but carries
+# undici 6.27.0/7.28.0 (GHSA-m8rv-5g2x-5cg5 + GHSA-v3r7-h72x-cjcm, 2026).
+# Keep nanoid at its reviewed floor and apply narrow undici patched releases
+# without allowing a broad audit fix to rewrite unrelated dependencies, then
+# make future high severity production advisories a release-blocking event.
 /.sprite/bin/node /home/sprite/aisar/runner/patch-hermes-dependencies.mjs "$install_dir"
 (
   cd "$install_dir"
@@ -203,27 +204,39 @@ fi
 # not proof of a complete runtime. Repair the browser layer independently and
 # assert the executable exists before any service can be marked ready.
 browser_cache=/home/sprite/.cache/ms-playwright
-browser_binary="$(find "$browser_cache" -type f \
-  -path '*/chrome-headless-shell-linux64/chrome-headless-shell' \
-  -perm -111 -print -quit 2>/dev/null || true)"
-if [[ -z "$browser_binary" ]]; then
-  case "$(uname -m)" in
-    x86_64|amd64) playwright_platform=ubuntu24.04-x64 ;;
-    aarch64|arm64) playwright_platform=ubuntu24.04-arm64 ;;
-    *)
-      echo "Playwright has no reviewed Linux build for this architecture" >&2
-      exit 1
-      ;;
-  esac
-  (
-    cd "$install_dir"
-    PLAYWRIGHT_HOST_PLATFORM_OVERRIDE="$playwright_platform" \
-      timeout --foreground -k 10 600 npx playwright install --with-deps chromium
-  )
-  browser_binary="$(find "$browser_cache" -type f \
-    -path '*/chrome-headless-shell-linux64/chrome-headless-shell' \
-    -perm -111 -print -quit 2>/dev/null || true)"
+# Playwright is a devDependency of the apps/desktop workspace in the pinned
+# hermes tree (v2026.9.7+) and is NOT hoisted to the install root, so the
+# historical root node_modules path no longer resolves. Locate the real
+# package entry once and use it for both the browser install and the smoke.
+playwright_dir="$(dirname "$(find "$install_dir" -type f \
+  -path '*/node_modules/playwright/index.mjs' -print -quit 2>/dev/null || true)")"
+if [[ -z "$playwright_dir" || "$playwright_dir" == "." ]]; then
+  echo "Playwright package is unavailable in the installed tree" >&2
+  exit 1
 fi
+case "$(uname -m)" in
+  x86_64|amd64) playwright_platform=ubuntu24.04-x64 ;;
+  aarch64|arm64) playwright_platform=ubuntu24.04-arm64 ;;
+  *)
+    echo "Playwright has no reviewed Linux build for this architecture" >&2
+    exit 1
+    ;;
+esac
+# Run the install unconditionally: `playwright install` is idempotent, a fast
+# no-op when the pinned revision is already cached (checked against the
+# registry), and repairs a stale cache from an older playwright whose
+# chrome-headless-shell a revision-blind find() would otherwise accept as
+# "installed" — leaving the pinned playwright unable to launch it
+# (2026-09-05: sprite 4e8c2593 stranded past the module fix on exactly that).
+(
+  cd "$install_dir"
+  PLAYWRIGHT_HOST_PLATFORM_OVERRIDE="$playwright_platform" \
+    timeout --foreground -k 10 600 node "$playwright_dir/cli.js" install --with-deps chromium
+)
+browser_binary="$(find "$browser_cache" -type f \
+  \( -path '*/chrome-headless-shell-linux64/chrome-headless-shell' \
+     -o -path '*/chrome-linux/chrome' \) \
+  -perm -111 -print -quit 2>/dev/null || true)"
 [[ -n "$browser_binary" ]] || {
   echo "Playwright Chromium is unavailable after installation" >&2
   exit 1
@@ -442,7 +455,8 @@ done
   exit 1
 }
 
-/.sprite/bin/node /home/sprite/aisar/runner/browser-smoke.mjs >/dev/null
+PLAYWRIGHT_ENTRY="$playwright_dir/index.mjs" \
+  /.sprite/bin/node /home/sprite/aisar/runner/browser-smoke.mjs >/dev/null
 checkpoint_created=false
 if [[ "${AISAR_BOOTSTRAP_CONTROL_PLANE:-0}" != "1" ]]; then
   sprite-env checkpoints create --comment "Jentera runtime $runtime_release ready" >/dev/null
