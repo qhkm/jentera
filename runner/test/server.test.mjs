@@ -30,7 +30,7 @@ beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'aisar-runner-'));
   hermesStatus = 'running';
   hermesReasoning = 'The user asks a biographical question.\nKeep the answer focused and factual.';
-  hermesPatch = 'jentera-runtime-2026-09-01';
+  hermesPatch = 'jentera-runtime-2026-09-06';
   hermesRunMissing = false;
   starts = [];
   approvalRequests = [];
@@ -137,7 +137,7 @@ test('detailed readiness requires the per-runtime key', async () => {
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.hermes.status, 'ok');
-  assert.equal(body.hermes.jenteraPatch, 'jentera-runtime-2026-09-01');
+  assert.equal(body.hermes.jenteraPatch, 'jentera-runtime-2026-09-06');
   assert.equal(body.hermes.pid, 321);
   assert.match(body.runner.sourceSha256, /^[0-9a-f]{64}$/);
   assert.equal(body.runner.sourceAttested, true);
