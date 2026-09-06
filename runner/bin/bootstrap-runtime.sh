@@ -4,7 +4,7 @@ set -euo pipefail
 # Idempotent bootstrap executed inside one newly-created Sprite. The transfer
 # file contains base64 data, never shell code, and is removed on every exit.
 incoming="${1:-/home/sprite/aisar/bootstrap.env.in}"
-hermes_installer_sha256="0582d9b1562efcb6e0ac62f4451021667830b830a72ce7d91eaea9fee8b6c09b"
+hermes_installer_sha256="682f302f4084febf323558cf1a87ab8d311cba01e1e6088e4898d579871d10bf"
 
 if [[ ! -r "$incoming" ]]; then
   echo "runtime bootstrap transfer is unavailable" >&2

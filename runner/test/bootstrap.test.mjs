@@ -82,7 +82,7 @@ test('Hermes installer bytes come from the reviewed Hermes commit', async () => 
     source,
     /raw\.githubusercontent\.com\/NousResearch\/hermes-agent\/\$\{hermes_commit\}\/scripts\/install\.sh/,
   );
-  assert.match(source, /0582d9b1562efcb6e0ac62f4451021667830b830a72ce7d91eaea9fee8b6c09b/);
+  assert.match(source, /682f302f4084febf323558cf1a87ab8d311cba01e1e6088e4898d579871d10bf/);
   assert.doesNotMatch(source, /hermes-agent\.nousresearch\.com\/install\.sh/);
 });
 
