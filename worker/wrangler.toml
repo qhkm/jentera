@@ -59,7 +59,7 @@ API_ORIGIN = "https://api.jentera.ai"
 # The immutable runner/Hermes/browser bundle requested for newly
 # provisioned runtimes. Changing this asks reconciliation to upgrade;
 # it must never silently track "latest".
-RUNTIME_RELEASE = "2026.09.07-3"
+RUNTIME_RELEASE = "2026.09.07-4"
 RUNTIME_EXPECTED_REGION = "sin"
 SPRITES_API_ORIGIN = "https://api.sprites.dev"
 # Fail closed. Completing onboarding provisions one isolated runtime for the
@@ -70,7 +70,7 @@ MODEL_TRANSPORT_READY = "true"
 # business to own a fully bootstrapped, release-matched runtime row.
 RUNTIME_EXECUTION_ENABLED = "true"
 RUNTIME_BOOTSTRAP_ENABLED = "true"
-RUNTIME_BUNDLE_COMMIT = "f927aa070c46eb2353a9f3ba959887bf4714b32c"
+RUNTIME_BUNDLE_COMMIT = "b31055a14d1461e627b7c54b8c67fef71a974f8d"
 AISAR_MODEL_PROVIDER = "openrouter"
 # The UPSTREAM model gateway the proxy forwards to (allowlisted, see
 # worker/src/runtime/execution.ts). The credential presented to it is the
