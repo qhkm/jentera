@@ -36,11 +36,15 @@ test('bootstrap and model config pin the reviewed plus customer-router endpoints
   const source = await readFile(SCRIPT, 'utf8');
   assert.match(source, /https:\/\/openrouter\.ai\/api\/v1/);
   assert.match(source, /https:\/\/router\.fmcv\.my/);
+  // The Worker model proxy (B3): runtimes face api.jentera.ai/v1/model with
+  // a minted jentera-runtime-key token, never the upstream directly.
+  assert.match(source, /https:\/\/api\.jentera\.ai\/v1\/model/);
   assert.match(source, /OPENROUTER_BASE_URL=%q.*\$model_base/);
   assert.match(source, /AISAR_MODEL_NAME=%q.*\$model_name/);
   assert.match(source, /AISAR_DEEP_MODEL_NAME=%q.*\$deep_model_name/);
   const configure = await readFile(CONFIGURE, 'utf8');
   assert.match(configure, /https:\/\/router\.fmcv\.my/);
+  assert.match(configure, /https:\/\/api\.jentera\.ai\/v1\/model/);
 });
 
 test('production runtime pins and proves its keyless search backend', async () => {

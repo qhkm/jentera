@@ -105,7 +105,7 @@ hermes_installer_url="https://raw.githubusercontent.com/qhkm/hermes-agent/${herm
   exit 1
 }
 case "$model_base" in
-  "https://openrouter.ai/api/v1"|"https://router.fmcv.my") ;;
+  "https://openrouter.ai/api/v1"|"https://router.fmcv.my"|"https://api.jentera.ai/v1/model") ;;
   *)
     echo "base URL is not pinned" >&2
     exit 1
