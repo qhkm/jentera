@@ -7,14 +7,14 @@ import {
   type RuntimeModelCredential,
 } from '../agent-runtime';
 import { withTenant } from '../db';
+import { RUNTIME_KEY_CONTEXT, RUNTIME_PROXY_PATH } from '../fmcv-verifier';
+import { runtimeFacingModelBase } from './execution';
 
 const API = 'https://openrouter.ai/api/v1';
-const FMCV_API = 'https://router.fmcv.my';
 const LIMIT_USD = 5;
 const LIFETIME_DAYS = 90;
 const ROTATE_BEFORE_DAYS = 7;
-const FMCV_DERIVATION_CONTEXT = 'jentera-fmcv-runtime-key:v1';
-const FMCV_DERIVED_EXPIRY = new Date('2100-01-01T00:00:00.000Z');
+const RUNTIME_DERIVED_EXPIRY = new Date('2100-01-01T00:00:00.000Z');
 
 interface CreateResponse {
   key?: unknown;
@@ -92,21 +92,25 @@ export class OpenRouterKeyManager {
   }
 }
 
+/** Which runtime-facing bases mint which credential family:
+    - this Worker's model proxy → a signed, pseudonymous jentera token
+      derived from the control secret (verified by routes/model.ts);
+    - the official OpenRouter endpoint → a per-runtime capped virtual key
+      issued via the management credential.
+    Anything else — including the legacy direct-FMCV mode of the prototype
+    host-side verifier — is refused: the runtime-facing base is pinned by
+    runtimeFacingModelBaseAllowed at provisioning time, and this selector
+    is the second half of that pin. */
 export async function runtimeModelKey(
   env: Env,
   businessId: string,
   runtimeName: string,
   options: { manager?: OpenRouterKeyManager } = {},
 ): Promise<string> {
-  const modelBase = env.AISAR_MODEL_BASE?.trim() ?? '';
-  /* FMCV is a LiteLLM gateway without a self-serve virtual-key API. Give each
-     runtime a signed, pseudonymous virtual credential derived from the
-     control-plane secret. The gateway verifier (gateway/fmcv-verifier/) can
-     enforce the embedded $5 monthly tenant ceiling without the master/control
-     secret ever entering a runtime. Rotating AISAR_MODEL_KEY deterministically
-     rotates every derived credential on the next reconciliation. */
-  if (modelBase === FMCV_API) {
-    const derived = await deriveFmcvRuntimeCredential(
+  const runtimeBase = runtimeFacingModelBase(env);
+  const proxyBase = `${(env.API_ORIGIN ?? '').replace(/\/+$/, '')}${RUNTIME_PROXY_PATH}`;
+  if (runtimeBase === proxyBase) {
+    const derived = await deriveJenteraRuntimeCredential(
       env.AISAR_MODEL_KEY?.trim() ?? '', runtimeName,
     );
     const current = await withTenant(env, businessId, (tx) =>
@@ -121,7 +125,7 @@ export async function runtimeModelKey(
     });
     return derived.key;
   }
-  if (modelBase !== API) throw new Error('model endpoint is not supported for key issuance');
+  if (runtimeBase !== API) throw new Error('model endpoint is not supported for key issuance');
   const current = await withTenant(env, businessId, (tx) =>
     getRuntimeModelCredential(env, tx, businessId));
   const rotateAt = Date.now() + ROTATE_BEFORE_DAYS * 24 * 60 * 60 * 1_000;
@@ -152,17 +156,26 @@ export async function runtimeModelKeyNeedsRotation(
   env: Env,
   businessId: string,
 ): Promise<boolean> {
-  if (env.AISAR_MODEL_BASE?.trim() === FMCV_API) {
+  const runtimeBase = runtimeFacingModelBase(env);
+  const proxyBase = `${(env.API_ORIGIN ?? '').replace(/\/+$/, '')}${RUNTIME_PROXY_PATH}`;
+  if (runtimeBase === proxyBase) {
     const secret = env.AISAR_MODEL_KEY?.trim() ?? '';
+    /* No valid control secret means no derivable credential; drift-checking
+       would loop forever. Misconfiguration surfaces at the provisioning gate
+       instead (runtimeProvisioningProblem), which is the fail-closed path. */
     if (secret.length < 32) return false;
     const { runtime, current } = await withTenant(env, businessId, async (tx) => ({
       runtime: await getRuntime(tx, businessId),
       current: await getRuntimeModelCredential(env, tx, businessId),
     }));
     if (!runtime) return false;
-    const expected = await deriveFmcvRuntimeCredential(secret, runtime.providerName);
+    const expected = await deriveJenteraRuntimeCredential(secret, runtime.providerName);
     return current?.hash !== expected.hash || current.key !== expected.key;
   }
+  /* Legacy direct mode: an unset base defaults to the official endpoint
+     (B2 semantics), so the rotation gate still fires for expiring
+     management-key credentials. */
+  if (runtimeBase !== API && runtimeBase !== '') return false;
   if (!env.AISAR_OPENROUTER_MANAGEMENT_KEY?.trim()) return false;
   const { runtime, current } = await withTenant(env, businessId, async (tx) => ({
     runtime: await getRuntime(tx, businessId),
@@ -174,20 +187,22 @@ export async function runtimeModelKeyNeedsRotation(
     Date.now() + ROTATE_BEFORE_DAYS * 24 * 60 * 60 * 1_000;
 }
 
-/** Isomorphic FMCV virtual-key format. The payload contains only the already
-    pseudonymous runtime name and enforceable limit claims; the runtime name is
-    also bound into the HMAC input (payload is signed as a whole), so the
-    gateway verifier validates statelessly with just the shared control secret:
-    it recomputes HMAC(secret, "jentera-fmcv-runtime-key:v1:{payload}") and
-    compares. No tenant/business identifier is disclosed in the credential and
-    no gateway-side database lookup is required. */
-export async function deriveFmcvRuntimeCredential(
+/** Isomorphic jentera runtime-credential format. The payload contains only
+    the already-pseudonymous runtime name and enforceable limit claims; the
+    runtime name is also bound into the HMAC input (payload is signed as a
+    whole), so routes/model.ts validates statelessly with just the control
+    secret: it recomputes HMAC(secret, "jentera-runtime-key:v1:{payload}")
+    and compares. No tenant/business identifier is disclosed in the
+    credential and no database lookup is required for verification. Rotating
+    the control secret deterministically rotates every derived credential on
+    the next reconciliation. */
+export async function deriveJenteraRuntimeCredential(
   controlSecret: string,
   runtimeName: string,
 ): Promise<RuntimeModelCredential> {
-  if (controlSecret.length < 32) throw new Error('FMCV model credential is unavailable');
+  if (controlSecret.length < 32) throw new Error('Jentera model credential is unavailable');
   if (!/^aisar-b-[0-9a-f]{20}$/.test(runtimeName)) {
-    throw new Error('runtime identity is invalid for FMCV key derivation');
+    throw new Error('runtime identity is invalid for model key derivation');
   }
   const payload = base64Url(new TextEncoder().encode(JSON.stringify({
     v: 1,
@@ -205,7 +220,7 @@ export async function deriveFmcvRuntimeCredential(
   const signature = new Uint8Array(await crypto.subtle.sign(
     'HMAC',
     signingKey,
-    new TextEncoder().encode(`${FMCV_DERIVATION_CONTEXT}:${payload}`),
+    new TextEncoder().encode(`${RUNTIME_KEY_CONTEXT}:${payload}`),
   ));
   const key = `sk-jentera-v1.${payload}.${base64Url(signature)}`;
   const digest = new Uint8Array(await crypto.subtle.digest(
@@ -214,7 +229,7 @@ export async function deriveFmcvRuntimeCredential(
   return {
     key,
     hash: [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join(''),
-    expiresAt: FMCV_DERIVED_EXPIRY,
+    expiresAt: RUNTIME_DERIVED_EXPIRY,
   };
 }
 

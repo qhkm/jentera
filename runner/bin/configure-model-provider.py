@@ -33,7 +33,11 @@ def main() -> None:
         or parsed.fragment
     ):
         raise SystemExit("model base URL must be https without credentials or query")
-    if base_url.rstrip("/") not in ("https://openrouter.ai/api/v1", "https://router.fmcv.my"):
+    if base_url.rstrip("/") not in (
+        "https://openrouter.ai/api/v1",
+        "https://router.fmcv.my",
+        "https://api.jentera.ai/v1/model",
+    ):
         raise SystemExit("model base URL is not pinned")
     if not re.fullmatch(r"[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._:~-]+)?", model_name):
         raise SystemExit("model id is invalid")

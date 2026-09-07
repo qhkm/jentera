@@ -15,7 +15,11 @@ def main() -> None:
     base_url = os.environ.get("OPENROUTER_BASE_URL", "").strip().rstrip("/")
     api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
     model = os.environ.get("AISAR_MODEL_NAME", "").strip()
-    if base_url not in ("https://openrouter.ai/api/v1", "https://router.fmcv.my"):
+    if base_url not in (
+        "https://openrouter.ai/api/v1",
+        "https://router.fmcv.my",
+        "https://api.jentera.ai/v1/model",
+    ):
         raise SystemExit("model smoke endpoint is not pinned")
     if len(api_key) < 20 or not model:
         raise SystemExit("model smoke configuration is incomplete")

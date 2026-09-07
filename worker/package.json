@@ -15,6 +15,7 @@
     "db:migrate:webhook-updates": "node scripts/apply-webhook-updates.mjs",
     "db:migrate:drift-sweep": "node scripts/apply-drift-sweep.mjs",
     "db:migrate:runtime-task-recovery": "node scripts/apply-runtime-task-recovery.mjs",
+    "db:migrate:fmcv-rider-spend": "node scripts/apply-fmcv-rider-spend.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

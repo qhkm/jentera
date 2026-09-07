@@ -17,7 +17,10 @@ const A = '99999999-9999-4999-8999-999999999999';
 const HASH = 'a'.repeat(64);
 const INFERENCE_KEY = `sk-or-v1-${'b'.repeat(64)}`;
 const MANAGEMENT_KEY = `sk-or-mgmt-${'c'.repeat(64)}`;
-const FMCV_CONTROL_SECRET = 'fmcv-control-secret-'.padEnd(48, 's');
+const CONTROL_SECRET = 'fmcv-control-secret-'.padEnd(48, 's');
+/** This Worker's own model proxy as the runtime-facing base (testEnv
+    API_ORIGIN=localhost:8787). Mirrors prod AISAR_RUNTIME_MODEL_BASE. */
+const PROXY_BASE = 'http://localhost:8787/v1/model';
 
 beforeEach(async () => {
   await truncateAll();
@@ -107,12 +110,13 @@ describe('per-runtime OpenRouter keys', () => {
     expect(new TextDecoder().decode(raw.model_key_ciphertext)).not.toContain(INFERENCE_KEY);
   });
 
-  it('derives and encrypts an isolated FMCV credential instead of returning the control secret', async () => {
+  it('derives and encrypts an isolated proxy credential instead of returning the control secret', async () => {
     const B = '88888888-8888-4888-8888-888888888888';
     const name = await runtimeName(A);
     const env = testEnv({
       AISAR_MODEL_BASE: 'https://router.fmcv.my',
-      AISAR_MODEL_KEY: FMCV_CONTROL_SECRET,
+      AISAR_RUNTIME_MODEL_BASE: PROXY_BASE,
+      AISAR_MODEL_KEY: CONTROL_SECRET,
     });
     await asTenant(A, (tx) => claimRuntime(env, tx, A, {
       provider: 'fly-sprite', providerName: name, release: '2026.08.28-3',
@@ -120,7 +124,7 @@ describe('per-runtime OpenRouter keys', () => {
     }));
     const key = await runtimeModelKey(env, A, name);
     expect(key).toMatch(/^sk-jentera-v1\./);
-    expect(key).not.toBe(FMCV_CONTROL_SECRET);
+    expect(key).not.toBe(CONTROL_SECRET);
     const stored = await asTenant(A, (tx) => getRuntimeModelCredential(env, tx, A));
     expect(stored?.key).toBe(key);
     await asOwner((sql) => sql`
@@ -132,17 +136,18 @@ describe('per-runtime OpenRouter keys', () => {
     }));
     const otherKey = await runtimeModelKey(env, B, otherName);
     expect(otherKey).not.toBe(key);
-    expect(otherKey).not.toBe(FMCV_CONTROL_SECRET);
+    expect(otherKey).not.toBe(CONTROL_SECRET);
     await expect(runtimeModelKey(
-      testEnv({ AISAR_MODEL_BASE: 'https://router.fmcv.my' }), A, name,
-    )).rejects.toThrow(/FMCV model credential is unavailable/);
+      testEnv({ AISAR_RUNTIME_MODEL_BASE: PROXY_BASE }), A, name,
+    )).rejects.toThrow(/Jentera model credential is unavailable/);
   });
 
-  it('detects FMCV control-secret rotation without using the OpenRouter manager', async () => {
+  it('detects control-secret rotation without using the OpenRouter manager', async () => {
     const name = await runtimeName(A);
     const env = testEnv({
       AISAR_MODEL_BASE: 'https://router.fmcv.my',
-      AISAR_MODEL_KEY: FMCV_CONTROL_SECRET,
+      AISAR_RUNTIME_MODEL_BASE: PROXY_BASE,
+      AISAR_MODEL_KEY: CONTROL_SECRET,
       AISAR_OPENROUTER_MANAGEMENT_KEY: MANAGEMENT_KEY,
     });
     await asTenant(A, (tx) => claimRuntime(env, tx, A, {
@@ -153,18 +158,19 @@ describe('per-runtime OpenRouter keys', () => {
     await expect(runtimeModelKeyNeedsRotation(env, A)).resolves.toBe(false);
     const rotated = testEnv({
       AISAR_MODEL_BASE: 'https://router.fmcv.my',
-      AISAR_MODEL_KEY: `${FMCV_CONTROL_SECRET}-rotated`,
+      AISAR_RUNTIME_MODEL_BASE: PROXY_BASE,
+      AISAR_MODEL_KEY: `${CONTROL_SECRET}-rotated`,
     });
     await expect(runtimeModelKeyNeedsRotation(rotated, A)).resolves.toBe(true);
     const second = await runtimeModelKey(rotated, A, name);
     expect(second).not.toBe(first);
   });
 
-  it('never sends an FMCV credential to the official OpenRouter endpoint', async () => {
+  it('never sends a derived credential to the official OpenRouter endpoint', async () => {
     const name = await runtimeName(A);
     const env = testEnv({
       AISAR_MODEL_BASE: 'https://openrouter.ai/api/v1',
-      AISAR_MODEL_KEY: FMCV_CONTROL_SECRET,
+      AISAR_MODEL_KEY: CONTROL_SECRET,
       AISAR_OPENROUTER_MANAGEMENT_KEY: MANAGEMENT_KEY,
     });
     await asTenant(A, (tx) => claimRuntime(env, tx, A, {
