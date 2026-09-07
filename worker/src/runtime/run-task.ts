@@ -177,6 +177,11 @@ export async function dispatchRuntimeRun(
     responseMode: payload.responseMode,
     model,
     toolGrant,
+    /* Absolute deadline derived from the persisted reservation start, so a
+       retry reuses the same value instead of refreshing it (runner contract:
+       FIX:FINDINGS B5). The pre-start guard above guarantees it is still in
+       the future at this point. */
+    deadlineAt: reservation.startedAt.getTime() + reservation.maxRunSeconds * 1_000,
     ...(keepaliveUntil ? { keepaliveUntil } : {}),
   });
   stage('hermes_started');
