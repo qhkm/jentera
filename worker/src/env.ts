@@ -68,8 +68,9 @@ export interface Env {
   /** Model base handed to runtimes. When set to this Worker's own model
       proxy (<API_ORIGIN>/v1/model), runtime credentials are derived tokens
       verified here, and the upstream + its credential are configured purely
-      by AISAR_MODEL_BASE + FMCV_UPSTREAM_KEY. Absent: runtimes talk
-      directly to AISAR_MODEL_BASE. */
+      by AISAR_MODEL_BASE + FMCV_UPSTREAM_KEY. Absent: the official
+      OpenRouter endpoint is faced directly, and every other allowlisted
+      upstream automatically routes through this Worker's model proxy. */
   AISAR_RUNTIME_MODEL_BASE?: string;
   /** Credential the model proxy presents to the upstream gateway
       (AISAR_MODEL_BASE) for every proxied call, and the only key the
