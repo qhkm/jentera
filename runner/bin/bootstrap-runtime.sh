@@ -243,8 +243,12 @@ browser_binary="$(find "$browser_cache" -type f \
 }
 
 runtime_env=/home/sprite/aisar/runtime.env
+runner_env=/home/sprite/aisar/runner.env
+hermes_env=/home/sprite/aisar/hermes.env
 runtime_tmp="$(mktemp /home/sprite/aisar/runtime.env.XXXXXX)"
-trap 'rm -f "$incoming" "$runtime_tmp"' EXIT
+runner_tmp="$(mktemp /home/sprite/aisar/runner.env.XXXXXX)"
+hermes_tmp="$(mktemp /home/sprite/aisar/hermes.env.XXXXXX)"
+trap 'rm -f "$incoming" "$runtime_tmp" "$runner_tmp" "$hermes_tmp"' EXIT
 runner_source_sha256="$(sha256sum /home/sprite/aisar/runner/server.mjs)"
 runner_source_sha256="${runner_source_sha256%% *}"
 [[ "$runner_source_sha256" =~ ^[0-9a-f]{64}$ ]] || {
@@ -259,14 +263,19 @@ runner_source_sha256="${runner_source_sha256%% *}"
   printf 'AISAR_MODEL_NAME=%q\n' "$model_name"
   printf 'AISAR_DEEP_MODEL_NAME=%q\n' "$deep_model_name"
   printf 'AISAR_RUNNER_SOURCE_SHA256=%q\n' "$runner_source_sha256"
+  printf 'HERMES_ORIGIN=%q\n' 'http://127.0.0.1:8642'
+  printf 'PORT=%q\n' '8080'
+} > "$runtime_tmp"
+{
   printf 'AISAR_RUNNER_KEY=%q\n' "$runner_key"
   if [[ -n "$edge_token" ]]; then
     printf 'AISAR_EDGE_TOKEN=%q\n' "$edge_token"
   fi
   printf 'HERMES_API_KEY=%q\n' "$hermes_key"
+} > "$runner_tmp"
+{
+  printf 'HERMES_API_KEY=%q\n' "$hermes_key"
   printf 'API_SERVER_KEY=%q\n' "$hermes_key"
-  printf 'HERMES_ORIGIN=%q\n' 'http://127.0.0.1:8642'
-  printf 'PORT=%q\n' '8080'
   printf 'OPENROUTER_API_KEY=%q\n' "$model_key"
   # Hermes discards config.yaml's `model.base_url` whenever the provider is
   # `openrouter`: hermes_cli/runtime_provider.py sets use_config_base_url only
@@ -277,9 +286,11 @@ runner_source_sha256="${runner_source_sha256%% *}"
   # into config.yaml, which stays useful as the declared value the operator
   # reads — but it is this line that decides where traffic goes.
   printf 'OPENROUTER_BASE_URL=%q\n' "$model_base"
-} > "$runtime_tmp"
-chmod 600 "$runtime_tmp"
+} > "$hermes_tmp"
+chmod 600 "$runtime_tmp" "$runner_tmp" "$hermes_tmp"
 mv "$runtime_tmp" "$runtime_env"
+mv "$runner_tmp" "$runner_env"
+mv "$hermes_tmp" "$hermes_env"
 trap 'rm -f "$incoming"' EXIT
 
 hermes_python="$install_dir/venv/bin/python"
@@ -431,12 +442,14 @@ fi
 sprite-env services create hermes \
   --cmd /home/sprite/aisar/runner/hermes-service.sh \
   --env AISAR_RUNTIME_ENV_FILE=/home/sprite/aisar/runtime.env \
+  --env AISAR_HERMES_ENV_FILE=/home/sprite/aisar/hermes.env \
   --dir "$install_dir" \
   "${hermes_needs[@]}" \
   --no-stream
 sprite-env services create aisar-runner \
   --cmd /home/sprite/aisar/runner/runner-service.sh \
   --env AISAR_RUNTIME_ENV_FILE=/home/sprite/aisar/runtime.env \
+  --env AISAR_RUNNER_ENV_FILE=/home/sprite/aisar/runner.env \
   --needs hermes \
   --http-port 8080 \
   --no-stream

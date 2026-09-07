@@ -2,13 +2,15 @@
 set -euo pipefail
 
 runtime_env="${AISAR_RUNTIME_ENV_FILE:-/home/sprite/aisar/runtime.env}"
-if [[ ! -r "$runtime_env" ]]; then
+hermes_env="${AISAR_HERMES_ENV_FILE:-/home/sprite/aisar/hermes.env}"
+if [[ ! -r "$runtime_env" || ! -r "$hermes_env" ]]; then
   echo "runtime environment is unavailable" >&2
   exit 1
 fi
 
 set -a
 source "$runtime_env"
+source "$hermes_env"
 set +a
 
 # Computer-use capability: the x11-display service publishes the virtual

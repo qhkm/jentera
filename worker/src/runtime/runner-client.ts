@@ -6,7 +6,7 @@ const RESPONSE_LIMIT = 256 * 1024;
 const STREAM_LIMIT = 64 * 1024;
 const HERMES_PATCH_ID = 'jentera-runtime-2026-09-06';
 const PROBE_TIMEOUT_MS = 3_000;
-const TERMINAL_TASK_STATUSES = new Set(['completed', 'failed', 'cancelled', 'stopped']);
+const TERMINAL_TASK_STATUSES = new Set(['completed', 'failed', 'cancelled', 'stopped', 'expired']);
 
 export interface RunnerClientOptions {
   origin: string;
@@ -37,6 +37,10 @@ export interface RunnerTaskRequest {
   /** ISO instant until which the runner should keep the Sprite active
       via the Tasks API (paid plans only). Omit for wake-on-request. */
   keepaliveUntil?: string;
+  /** Absolute epoch-millisecond deadline for this run. The runner persists it
+      before admission and keeps stopping Hermes until termination is
+      confirmed; callers must not refresh it on retry. */
+  deadlineAt?: number;
 }
 
 export interface RunnerTaskResponse {
@@ -205,12 +209,20 @@ export class RunnerClient {
     taskId: string,
     requestId: string,
     decision: 'approve' | 'deny',
+    reason?: string,
   ): Promise<RunnerTaskResponse> {
     if (!safeApprovalRequestId(requestId)) throw new Error('runner approval request id is invalid');
+    if (reason !== undefined && (decision !== 'deny' || !safeApprovalReason(reason))) {
+      throw new Error('runner approval reason is invalid');
+    }
     return this.request(`/v1/tasks/${encodeURIComponent(taskId)}/approval`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestId, decision }),
+      body: JSON.stringify({
+        requestId,
+        decision,
+        ...(decision === 'deny' && reason ? { reason: reason.trim() } : {}),
+      }),
     });
   }
 
@@ -426,5 +438,11 @@ function safeToolName(value: unknown): value is string {
 }
 
 function safeApprovalRequestId(value: unknown): value is string {
-  return typeof value === 'string' && /^[A-Za-z0-9_-]{16,128}$/.test(value);
+  return typeof value === 'string' && /^[0-9a-f]{32}$/i.test(value);
+}
+
+function safeApprovalReason(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 &&
+    new TextEncoder().encode(value.trim()).byteLength <= 1_000 &&
+    !/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(value);
 }

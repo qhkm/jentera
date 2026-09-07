@@ -13,7 +13,7 @@ import { createServer, request as httpRequest } from 'node:http';
 import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped']);
+const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped', 'expired']);
 const BODY_LIMIT = 64 * 1024;
 const STREAM_TEXT_LIMIT = 64 * 1024;
 const STREAM_EVENT_LIMIT = 8 * 1024;
@@ -22,7 +22,9 @@ const STREAM_EVENT_LIMIT = 8 * 1024;
    session, gateway restart) into a quarantined failure instead of a busy
    lock that outlives the message that caused it. */
 const TASK_AGE_LIMIT_MS = Object.freeze({ quick: 15 * 60 * 1000, deep: 90 * 60 * 1000 });
+const MAX_RUN_DEADLINE_MS = 60 * 60 * 1000;
 const WATCHDOG_INTERVAL_MS = 60 * 1000;
+const TERMINATION_RETRY_MS = 1_000;
 const STREAM_THINK_LIMIT = 8 * 1024;
 const STREAM_TTL_MS = 5 * 60 * 1000;
 const HERMES_PATCH_ID = 'jentera-runtime-2026-09-06';
@@ -212,13 +214,22 @@ export function createRunner(input) {
   const streams = new SafeDeltaStreams(config);
   const keepalive = createSpriteKeepalive(process.env.SPRITE_API_SOCK);
   let admitting = false;
+  let admittingTaskId = null;
+  const terminations = new RunTerminations(
+    config,
+    state,
+    streams,
+    (taskId) => admittingTaskId === taskId,
+  );
+  let watchdog = null;
+  void terminations.restore();
   const watchdogMs = Number.isFinite(config.watchdogMs) ? config.watchdogMs : WATCHDOG_INTERVAL_MS;
   if (watchdogMs > 0) {
     /* L2: while warm, re-run slot reconciliation every minute so a dead or
        expired task is quarantined even between requests. unref keeps test
        processes and idle runtimes free to exit. */
-    const watchdog = setInterval(() => {
-      void activeTask(config, state)
+    watchdog = setInterval(() => {
+      void activeTask(config, state, terminations)
         .then((active) => {
           if (active) {
             console.warn(`[watchdog] slot held by ${active.taskId} (started ${active.startedAt ?? 'unknown'})`);
@@ -231,7 +242,7 @@ export function createRunner(input) {
     watchdog.unref?.();
   }
 
-  return createServer(async (req, res) => {
+  const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? '/', 'http://runner');
       if (req.method === 'GET' && url.pathname === '/healthz') {
@@ -271,7 +282,7 @@ export function createRunner(input) {
         /* Reconcile the slot on probe: a dead/expired task is quarantined
            even when no new task arrives to trigger it (health checks hit
            this endpoint periodically). */
-        const active = await activeTask(config, state);
+        const active = await activeTask(config, state, terminations);
         return json(res, ready ? 200 : 503, {
           ok: ready,
           release: config.release,
@@ -313,7 +324,8 @@ export function createRunner(input) {
 
         const previous = await state.get(body.taskId);
         if (previous) {
-          if (!TERMINAL.has(previous.status)) {
+          terminations.arm(previous);
+          if (!TERMINAL.has(previous.status) && typeof previous.hermesRunId === 'string') {
             streams.start(previous.taskId, previous.hermesRunId);
           }
           return json(res, 200, {
@@ -325,7 +337,7 @@ export function createRunner(input) {
           });
         }
 
-        const active = await activeTask(config, state);
+        const active = await activeTask(config, state, terminations);
         if (active || admitting) {
           return json(res, 409, {
             ok: false,
@@ -335,48 +347,93 @@ export function createRunner(input) {
           });
         }
         admitting = true;
+        admittingTaskId = body.taskId;
         try {
-          const started = await hermes(config, '/v1/runs', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              input: body.input,
-              session_id: body.sessionId,
-              instructions: body.instructions,
-              model: body.model ?? (body.responseMode === 'quick'
-                ? config.modelName
-                : config.deepModelName),
-              model_options: {
-                reasoning: body.responseMode === 'quick'
-                  ? { enabled: false }
-                  : { enabled: true, effort: 'high' },
-              },
-            }),
-          });
+          const startedAt = Date.now();
+          const responseMode = body.responseMode === 'quick' ? 'quick' : 'deep';
+          /* Durable admission comes before the Hermes side effect. A crash or
+             timeout can therefore leave, at worst, one identifiable
+             `starting` record which holds the single-run slot; redelivery
+             never starts a second run for the same task. */
+          const admission = {
+            taskId: body.taskId,
+            businessId: body.businessId,
+            hermesRunId: null,
+            status: 'starting',
+            responseMode,
+            startedAt,
+            ...(body.deadlineAt === undefined ? {} : { deadlineAt: body.deadlineAt }),
+            leaseHash: hash(body.leaseToken),
+            grantNonceHash: hash(grantClaims(body.toolGrant).nonce),
+          };
+          await state.put(body.taskId, admission);
+          terminations.arm(admission);
+
+          let started;
+          try {
+            started = await hermes(config, '/v1/runs', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                input: body.input,
+                session_id: body.sessionId,
+                instructions: body.instructions,
+                model: body.model ?? (responseMode === 'quick'
+                  ? config.modelName
+                  : config.deepModelName),
+                /* fcbd1076a9's _request_reasoning_config consumes exactly
+                   this structured field. Keep it explicit so request intent
+                   wins over config-side reasoning_overrides. */
+                model_options: {
+                  reasoning: responseMode === 'quick'
+                    ? { enabled: false }
+                    : { enabled: true, effort: 'high' },
+                },
+              }),
+            });
+          } catch (error) {
+            /* The request outcome is ambiguous: retain the admission record
+               and slot so a retry cannot create a second Hermes run. Its
+               deadline/age reconciliation remains responsible for cleanup. */
+            await state.put(body.taskId, {
+              ...admission,
+              status: 'admission_unknown',
+              admissionError: boundedError(error),
+            });
+            return json(res, 502, { ok: false, error: 'Hermes start outcome is unknown' });
+          }
           const result = await responseJson(started);
           if (!started.ok || typeof result?.run_id !== 'string') {
+            const terminal = { status: 'failed', error: 'Hermes refused the run' };
+            await state.put(body.taskId, { ...admission, status: 'failed', terminal });
+            terminations.clear(body.taskId);
             return json(res, 502, { ok: false, error: 'Hermes refused the run' });
           }
 
-          await state.put(body.taskId, {
-            taskId: body.taskId,
-            businessId: body.businessId,
+          const latestAdmission = await state.get(body.taskId);
+          const terminating = latestAdmission?.status === 'expiring' ||
+            latestAdmission?.status === 'quarantined';
+          const running = {
+            ...admission,
+            ...latestAdmission,
             hermesRunId: result.run_id,
-            status: typeof result.status === 'string' ? result.status : 'started',
-            responseMode: body.responseMode === 'deep' ? 'deep' : 'quick',
-            startedAt: Date.now(),
-            leaseHash: hash(body.leaseToken),
-            grantNonceHash: hash(grantClaims(body.toolGrant).nonce),
-          });
+            status: terminating
+              ? latestAdmission.status
+              : typeof result.status === 'string' ? result.status : 'started',
+          };
+          await state.put(body.taskId, running);
           streams.start(body.taskId, result.run_id);
+          if (terminating) void terminations.resume(running);
+          else terminations.arm(running);
           return json(res, 202, {
             ok: true,
             taskId: body.taskId,
             hermesRunId: result.run_id,
-            status: result.status ?? 'started',
+            status: running.status,
           });
         } finally {
           admitting = false;
+          admittingTaskId = null;
         }
       }
 
@@ -384,6 +441,9 @@ export function createRunner(input) {
       if (eventsPath && req.method === 'GET') {
         const saved = await state.get(eventsPath[1]);
         if (!saved) return json(res, 404, { ok: false, error: 'task not found' });
+        if (typeof saved.hermesRunId !== 'string') {
+          return json(res, 409, { ok: false, error: 'task admission is incomplete' });
+        }
         streams.start(saved.taskId, saved.hermesRunId);
         return streams.pipe(saved.taskId, req, res);
       }
@@ -395,19 +455,28 @@ export function createRunner(input) {
         if (savedTerminalStatus(saved)) {
           return json(res, 409, { ok: false, error: 'task is terminal' });
         }
+        if (typeof saved.hermesRunId !== 'string') {
+          return json(res, 409, { ok: false, error: 'task admission is incomplete' });
+        }
         const body = await readJson(req);
         const requestId = safeApprovalRequestId(body?.requestId);
         const decision = body?.decision === 'approve' || body?.decision === 'deny'
           ? body.decision
           : '';
-        if (!requestId || !decision) {
-          return json(res, 400, { ok: false, error: 'requestId and decision are required' });
+        const reason = decision === 'deny' ? safeApprovalReason(body?.reason) : '';
+        if (!requestId || !decision ||
+            (body?.reason !== undefined && decision === 'deny' && !reason)) {
+          return json(res, 400, {
+            ok: false,
+            error: 'requestId, decision, and optional deny reason are invalid',
+          });
         }
         const resolution = await streams.resolveApproval(
           saved.taskId,
           saved.hermesRunId,
           requestId,
           decision,
+          reason,
         );
         if (resolution.error) {
           return json(res, resolution.status, { ok: false, error: resolution.error });
@@ -426,8 +495,15 @@ export function createRunner(input) {
       if (taskPath && req.method === 'GET') {
         const saved = await state.get(taskPath[1]);
         if (!saved) return json(res, 404, { ok: false, error: 'task not found' });
+        const due = await terminations.expireIfDue(saved);
+        if (due?.terminal) {
+          return json(res, 200, { ok: true, taskId: saved.taskId, ...due.terminal });
+        }
         const terminal = savedTerminalStatus(saved);
         if (terminal) return json(res, 200, { ok: true, taskId: saved.taskId, ...terminal });
+        if (typeof saved.hermesRunId !== 'string') {
+          return json(res, 200, { ok: true, taskId: saved.taskId, status: saved.status });
+        }
         const status = await hermes(config, `/v1/runs/${encodeURIComponent(saved.hermesRunId)}`);
         const result = await responseJson(status);
         if (!status.ok) {
@@ -435,8 +511,15 @@ export function createRunner(input) {
              Hermes. Quarantine it so the slot frees instead of returning 502
              forever (the worker would otherwise retry until attempts exhaust). */
           if (status.status === 404 || status.status === 410) {
-            const quarantined = await quarantine(state, saved, 'run vanished (Hermes returned not_found)');
-            return json(res, 200, { ok: true, taskId: saved.taskId, ...savedTerminalStatus(quarantined) });
+            const quarantined = await terminations.terminate(
+              saved.taskId,
+              'failed',
+              'run vanished (Hermes returned not_found)',
+            );
+            if (quarantined.terminal) {
+              return json(res, 200, { ok: true, taskId: saved.taskId, ...quarantined.terminal });
+            }
+            return json(res, 503, { ok: false, error: 'Hermes stop is not yet confirmed' });
           }
           return json(res, 502, { ok: false, error: 'Hermes status failed' });
         }
@@ -452,6 +535,9 @@ export function createRunner(input) {
            about a run whose slot was already judged dead. */
         const frozen = savedTerminalStatus(saved);
         if (frozen) return json(res, 200, { ok: true, taskId: saved.taskId, ...frozen });
+        if (typeof saved.hermesRunId !== 'string') {
+          return json(res, 503, { ok: false, error: 'Hermes run identity is unavailable' });
+        }
         const stopped = await hermes(
           config,
           `/v1/runs/${encodeURIComponent(saved.hermesRunId)}/stop`,
@@ -463,12 +549,25 @@ export function createRunner(input) {
              Hermes. Quarantine it so the slot frees and the caller sees a
              terminal snapshot instead of a forever-502. */
           if (stopped.status === 404 || stopped.status === 410) {
-            const quarantined = await quarantine(state, saved, 'run vanished (Hermes returned not_found)');
-            return json(res, 200, { ok: true, taskId: saved.taskId, ...savedTerminalStatus(quarantined) });
+            const quarantined = await terminations.terminate(
+              saved.taskId,
+              'failed',
+              'run vanished (Hermes returned not_found)',
+            );
+            if (quarantined.terminal) {
+              return json(res, 200, { ok: true, taskId: saved.taskId, ...quarantined.terminal });
+            }
+            return json(res, 503, { ok: false, error: 'Hermes stop is not yet confirmed' });
           }
           return json(res, 502, { ok: false, error: 'Hermes stop failed' });
         }
-        const observed = await persistObservedStatus(state, saved, result ?? { status: 'stopping' });
+        const stopStatus = typeof result?.status === 'string'
+          ? result.status.toLowerCase()
+          : '';
+        if (stopStatus !== 'stopping' && !TERMINAL.has(stopStatus)) {
+          return json(res, 502, { ok: false, error: 'Hermes returned an invalid stop outcome' });
+        }
+        const observed = await persistObservedStatus(state, saved, result);
         return json(res, 200, { ok: true, taskId: saved.taskId, ...observed });
       }
 
@@ -479,6 +578,11 @@ export function createRunner(input) {
       return json(res, status, { ok: false, error: status === 413 ? 'body too large' : 'runner error' });
     }
   });
+  server.once('close', () => {
+    if (watchdog) clearInterval(watchdog);
+    terminations.close();
+  });
+  return server;
 }
 
 /** Capabilities this runner may attest. Only the reviewed set is accepted;
@@ -556,22 +660,7 @@ function validated(config) {
   };
 }
 
-/** Persist a terminal failure that ends a task's hold on the runner slot.
-    Used for dead runs Hermes no longer knows and tasks that exhausted their
-    age bound; without this, a vanished run pins the runner busy forever. */
-async function quarantine(state, saved, reason) {
-  console.warn(`[quarantine] ${saved.taskId}: ${reason}`);
-  const terminal = { status: 'failed', error: reason };
-  await state.put(saved.taskId, {
-    ...saved,
-    status: 'failed',
-    terminal,
-    updated_at: Math.floor(Date.now() / 1000),
-  });
-  return { ...saved, status: 'failed', terminal };
-}
-
-async function activeTask(config, state, now = Date.now()) {
+async function activeTask(config, state, terminations, now = Date.now()) {
   for (const saved of await state.all()) {
     if (TERMINAL.has(saved.status) || savedTerminalStatus(saved)) continue;
     /* L2: a task may hold the runner only for a bounded interval. Hermes
@@ -580,17 +669,42 @@ async function activeTask(config, state, now = Date.now()) {
        check so a new task can always be admitted. */
     const mode = saved.responseMode === 'deep' ? 'deep' : 'quick';
     const ageLimit = TASK_AGE_LIMIT_MS[mode];
-    if (typeof saved.startedAt === 'number' && now - saved.startedAt > ageLimit) {
-      await quarantine(state, saved, `run exceeded the ${mode} age limit (${Math.round(ageLimit / 60000)}m)`);
+    if (saved.status === 'quarantined' || saved.status === 'expiring') {
+      const pending = await terminations.resume(saved);
+      if (!pending.terminal) return pending.record;
       continue;
     }
+    if (typeof saved.deadlineAt === 'number' && now >= saved.deadlineAt) {
+      const expired = await terminations.terminate(
+        saved.taskId,
+        'expired',
+        'run deadline exceeded',
+      );
+      if (!expired.terminal) return expired.record;
+      continue;
+    }
+    if (typeof saved.startedAt === 'number' && now - saved.startedAt > ageLimit) {
+      const quarantined = await terminations.terminate(
+        saved.taskId,
+        'failed',
+        `run exceeded the ${mode} age limit (${Math.round(ageLimit / 60000)}m)`,
+      );
+      if (!quarantined.terminal) return quarantined.record;
+      continue;
+    }
+    if (typeof saved.hermesRunId !== 'string') return saved;
     const response = await hermes(config, `/v1/runs/${encodeURIComponent(saved.hermesRunId)}`);
     if (!response.ok) {
       /* L1: Hermes no longer knows the run (e.g. the gateway restarted and
          lost it). A dead run must not pin the runner busy — quarantine gives
          the same terminal grade a normal failure would, and frees the slot. */
       if (response.status === 404 || response.status === 410) {
-        await quarantine(state, saved, 'run vanished (Hermes returned not_found)');
+        const quarantined = await terminations.terminate(
+          saved.taskId,
+          'failed',
+          'run vanished (Hermes returned not_found)',
+        );
+        if (!quarantined.terminal) return quarantined.record;
         continue;
       }
       /* Transient Hermes failure: keep the slot held so a second run cannot
@@ -638,6 +752,12 @@ function taskProblem(body, config) {
     if (typeof body.keepaliveUntil !== 'string' ||
         !Number.isFinite(Date.parse(body.keepaliveUntil))) {
       return 'keepaliveUntil must be a valid ISO instant';
+    }
+  }
+  if (body.deadlineAt !== undefined) {
+    if (!Number.isSafeInteger(body.deadlineAt) || body.deadlineAt <= Date.now() ||
+        body.deadlineAt - Date.now() > MAX_RUN_DEADLINE_MS) {
+      return 'deadlineAt must be a future epoch-millisecond instant no more than 3600 seconds away';
     }
   }
   const grant = validateGrant(body.toolGrant, config, body.taskId);
@@ -746,6 +866,10 @@ function runtimeRegion(req) {
 
 function hash(value) {
   return createHash('sha256').update(value).digest('hex');
+}
+
+function boundedError(error) {
+  return String(error?.message ?? error ?? 'unknown error').slice(0, 500);
 }
 
 function uuid(value) {
@@ -874,10 +998,12 @@ class StateStore {
   }
 
   async get(taskId) {
+    await this.writeChain;
     return (await this.read()).tasks[taskId] ?? null;
   }
 
   async all() {
+    await this.writeChain;
     return Object.values((await this.read()).tasks);
   }
 
@@ -901,6 +1027,274 @@ class StateStore {
       if (error?.code === 'ENOENT') return { version: 1, tasks: {} };
       throw error;
     }
+  }
+}
+
+/** Owns deadline and quarantine stops. A task is not made terminal until
+ * Hermes has either reported a terminal state or confirmed that the run is
+ * gone. Failed or merely accepted stops stay persisted as expiring/
+ * quarantined and are retried, so freeing the slot can never strand work. */
+class RunTerminations {
+  constructor(config, state, streams, admissionInFlight) {
+    this.config = config;
+    this.state = state;
+    this.streams = streams;
+    this.admissionInFlight = admissionInFlight;
+    this.deadlines = new Map();
+    this.retries = new Map();
+    this.operations = new Map();
+    this.closed = false;
+  }
+
+  async restore() {
+    try {
+      for (const saved of await this.state.all()) {
+        if (savedTerminalStatus(saved)) continue;
+        if (saved.status === 'quarantined' || saved.status === 'expiring') {
+          void this.resume(saved);
+        } else {
+          this.arm(saved);
+        }
+      }
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: 'runner.termination.restore.error',
+        message: boundedError(error),
+      }));
+    }
+  }
+
+  arm(saved) {
+    this.clearTimer(this.deadlines, saved?.taskId);
+    if (this.closed || savedTerminalStatus(saved) ||
+        !Number.isSafeInteger(saved?.deadlineAt)) return;
+    const delay = Math.max(0, saved.deadlineAt - Date.now());
+    const timer = setTimeout(() => {
+      this.deadlines.delete(saved.taskId);
+      void this.terminate(saved.taskId, 'expired', 'run deadline exceeded');
+    }, delay);
+    timer.unref?.();
+    this.deadlines.set(saved.taskId, timer);
+  }
+
+  async expireIfDue(saved, now = Date.now()) {
+    if (!Number.isSafeInteger(saved?.deadlineAt) || now < saved.deadlineAt ||
+        savedTerminalStatus(saved)) return null;
+    return this.terminate(saved.taskId, 'expired', 'run deadline exceeded');
+  }
+
+  resume(saved) {
+    const terminalStatus = saved.terminationStatus === 'expired' ? 'expired' : 'failed';
+    const reason = typeof saved.terminationReason === 'string'
+      ? saved.terminationReason
+      : terminalStatus === 'expired' ? 'run deadline exceeded' : 'run quarantined';
+    return this.terminate(saved.taskId, terminalStatus, reason);
+  }
+
+  async terminate(taskId, terminalStatus, reason) {
+    const existing = this.operations.get(taskId);
+    if (existing) return existing;
+    const operation = this.attempt(taskId, terminalStatus, reason)
+      .finally(() => this.operations.delete(taskId));
+    this.operations.set(taskId, operation);
+    return operation;
+  }
+
+  async attempt(taskId, terminalStatus, reason) {
+    const saved = await this.state.get(taskId);
+    const frozen = savedTerminalStatus(saved);
+    if (frozen) {
+      this.clear(taskId);
+      return { record: saved, terminal: frozen };
+    }
+    if (!saved) return { record: null, terminal: null };
+
+    const pendingStatus = terminalStatus === 'expired' ? 'expiring' : 'quarantined';
+    if (saved.status !== pendingStatus) {
+      console.warn(`[${pendingStatus}] ${saved.taskId}: ${reason}`);
+    }
+    this.clearTimer(this.deadlines, taskId);
+
+    if (typeof saved.hermesRunId !== 'string') {
+      /* A pre-spawn admission cannot be addressed through /v1/runs. The
+         authenticated readiness count is the only safe adoption signal: with
+         max_concurrent_runs=1, zero proves no orphan remains; any positive or
+         malformed count keeps the slot held and retrying. */
+      if (!this.admissionInFlight(saved.taskId)) {
+        try {
+          const detail = await hermes(this.config, '/health/detailed');
+          const activeRuns = hermesActiveRunCount(await responseJson(detail));
+          if (detail.ok && activeRuns === 0) {
+            return this.finalize(saved, terminalStatus, reason, {});
+          }
+        } catch {
+          /* Unknown health cannot prove the orphan stopped. */
+        }
+      }
+      const pending = await this.persistPending(saved, pendingStatus, terminalStatus, reason,
+        'Hermes run identity is unavailable');
+      this.schedule(taskId, terminalStatus, reason);
+      return { record: pending, terminal: null };
+    }
+
+    /* A run may have completed just before its deadline/age timer fired. On
+       the first termination attempt, observe that terminal result before
+       issuing stop so a completed answer is never relabelled as expired or
+       quarantined. Once a persisted termination is pending, later terminal
+       cancellation is intentionally finalized under the requested outcome. */
+    if (saved.status !== pendingStatus) {
+      try {
+        const response = await hermes(
+          this.config,
+          `/v1/runs/${encodeURIComponent(saved.hermesRunId)}`,
+        );
+        if (response.ok) {
+          const current = boundedTaskStatus(await responseJson(response));
+          if (typeof current.status === 'string' && TERMINAL.has(current.status)) {
+            return this.adoptTerminal(saved, current);
+          }
+        }
+      } catch {
+        /* Failure to preflight cannot suppress a required stop. */
+      }
+    }
+
+    let stopped;
+    try {
+      stopped = await hermes(
+        this.config,
+        `/v1/runs/${encodeURIComponent(saved.hermesRunId)}/stop`,
+        { method: 'POST' },
+      );
+    } catch (error) {
+      const pending = await this.persistPending(
+        saved,
+        pendingStatus,
+        terminalStatus,
+        reason,
+        boundedError(error),
+      );
+      this.schedule(taskId, terminalStatus, reason);
+      return { record: pending, terminal: null };
+    }
+
+    let observed = boundedTaskStatus(await responseJson(stopped));
+    if (stopped.status === 404 || stopped.status === 410) {
+      return this.finalize(saved, terminalStatus, reason, observed);
+    }
+    if (!stopped.ok) {
+      const pending = await this.persistPending(
+        saved,
+        pendingStatus,
+        terminalStatus,
+        reason,
+        `Hermes stop failed (${stopped.status})`,
+      );
+      this.schedule(taskId, terminalStatus, reason);
+      return { record: pending, terminal: null };
+    }
+    if (typeof observed.status === 'string' && TERMINAL.has(observed.status)) {
+      return this.finalize(saved, terminalStatus, reason, observed);
+    }
+
+    try {
+      const response = await hermes(
+        this.config,
+        `/v1/runs/${encodeURIComponent(saved.hermesRunId)}`,
+      );
+      if (response.status === 404 || response.status === 410) {
+        return this.finalize(saved, terminalStatus, reason, observed);
+      }
+      if (response.ok) {
+        observed = boundedTaskStatus(await responseJson(response));
+        if (typeof observed.status === 'string' && TERMINAL.has(observed.status)) {
+          return this.finalize(saved, terminalStatus, reason, observed);
+        }
+      }
+    } catch {
+      /* The accepted stop remains pending and will be observed on retry. */
+    }
+
+    const pending = await this.persistPending(
+      saved,
+      pendingStatus,
+      terminalStatus,
+      reason,
+      'Hermes stop is not yet terminal',
+    );
+    this.schedule(taskId, terminalStatus, reason);
+    return { record: pending, terminal: null };
+  }
+
+  async persistPending(saved, status, terminalStatus, reason, stopError) {
+    const pending = {
+      ...saved,
+      status,
+      terminationStatus: terminalStatus,
+      terminationReason: reason,
+      stopError,
+      updated_at: Math.floor(Date.now() / 1000),
+    };
+    await this.state.put(saved.taskId, pending);
+    return pending;
+  }
+
+  async finalize(saved, terminalStatus, reason, observed) {
+    const terminal = {
+      ...boundedTaskStatus(observed),
+      status: terminalStatus,
+      error: reason,
+    };
+    const record = {
+      ...saved,
+      status: terminalStatus,
+      terminal,
+      updated_at: Math.floor(Date.now() / 1000),
+    };
+    delete record.stopError;
+    await this.state.put(saved.taskId, record);
+    this.clear(saved.taskId);
+    this.streams.finishTask(saved.taskId);
+    return { record, terminal };
+  }
+
+  async adoptTerminal(saved, terminal) {
+    const record = { ...saved, status: terminal.status, terminal };
+    await this.state.put(saved.taskId, record);
+    this.clear(saved.taskId);
+    this.streams.finishTask(saved.taskId);
+    return { record, terminal };
+  }
+
+  schedule(taskId, terminalStatus, reason) {
+    this.clearTimer(this.retries, taskId);
+    if (this.closed) return;
+    const timer = setTimeout(() => {
+      this.retries.delete(taskId);
+      void this.terminate(taskId, terminalStatus, reason);
+    }, TERMINATION_RETRY_MS);
+    timer.unref?.();
+    this.retries.set(taskId, timer);
+  }
+
+  clear(taskId) {
+    this.clearTimer(this.deadlines, taskId);
+    this.clearTimer(this.retries, taskId);
+  }
+
+  clearTimer(map, taskId) {
+    const timer = map.get(taskId);
+    if (timer) clearTimeout(timer);
+    map.delete(taskId);
+  }
+
+  close() {
+    this.closed = true;
+    for (const timer of [...this.deadlines.values(), ...this.retries.values()]) {
+      clearTimeout(timer);
+    }
+    this.deadlines.clear();
+    this.retries.clear();
   }
 }
 
@@ -1099,10 +1493,10 @@ class SafeDeltaStreams {
     for (const subscriber of stream.subscribers) writeSse(subscriber, safe);
   }
 
-  /** Hermes's HTTP approval endpoint resolves its FIFO head and accepts no
-   * request id. The public runner route therefore binds the worker's id to the
-   * first safe event observed here before forwarding a one-shot choice. */
-  async resolveApproval(taskId, runId, requestId, decision) {
+  /** Bind the native Hermes request identity end to end. The in-flight
+   * operation and resolved map make same-process response-loss retries
+   * idempotent; Hermes also treats a repeated resolved request_id as a no-op. */
+  async resolveApproval(taskId, runId, requestId, decision, reason = '') {
     const stream = this.start(taskId, runId);
     const resolved = stream.resolvedApprovals.get(requestId);
     if (resolved) {
@@ -1129,7 +1523,11 @@ class SafeDeltaStreams {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ choice: decision === 'approve' ? 'once' : 'deny' }),
+          body: JSON.stringify({
+            choice: decision === 'approve' ? 'once' : 'deny',
+            request_id: requestId,
+            ...(decision === 'deny' && reason ? { reason } : {}),
+          }),
         },
       );
       if (!response.ok) {
@@ -1172,6 +1570,11 @@ class SafeDeltaStreams {
     stream.subscribers.clear();
     const cleanup = setTimeout(() => this.streams.delete(stream.taskId), STREAM_TTL_MS);
     cleanup.unref?.();
+  }
+
+  finishTask(taskId) {
+    const stream = this.streams.get(taskId);
+    if (stream) this.finish(stream);
   }
 }
 
@@ -1370,7 +1773,18 @@ function safeToolPreview(value) {
 }
 
 function safeApprovalRequestId(value) {
-  return typeof value === 'string' && /^[A-Za-z0-9_-]{16,128}$/.test(value) ? value : '';
+  return typeof value === 'string' && /^[0-9a-f]{32}$/i.test(value)
+    ? value.toLowerCase()
+    : '';
+}
+
+function safeApprovalReason(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string') return '';
+  const reason = value
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    .trim();
+  return reason && Buffer.byteLength(reason) <= 1_000 ? reason : '';
 }
 
 /** Hermes's native approval event deliberately has no tool field. Its
@@ -1384,6 +1798,11 @@ function approvalToolName(event) {
   if (plugin) return plugin;
   if (pattern || typeof event.command === 'string') return 'execute_code';
   return 'tool';
+}
+
+function hermesActiveRunCount(body) {
+  const count = body?.readiness?.checks?.background_queues?.active_api_runs;
+  return Number.isSafeInteger(count) && count >= 0 ? count : null;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

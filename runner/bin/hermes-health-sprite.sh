@@ -2,8 +2,10 @@
 set -euo pipefail
 
 runtime_env="${AISAR_RUNTIME_ENV_FILE:-/home/sprite/aisar/runtime.env}"
+hermes_env="${AISAR_HERMES_ENV_FILE:-/home/sprite/aisar/hermes.env}"
 set -a
 source "$runtime_env"
+source "$hermes_env"
 set +a
 
 curl --fail-with-body --silent --show-error \
