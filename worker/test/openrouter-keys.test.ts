@@ -17,6 +17,7 @@ const A = '99999999-9999-4999-8999-999999999999';
 const HASH = 'a'.repeat(64);
 const INFERENCE_KEY = `sk-or-v1-${'b'.repeat(64)}`;
 const MANAGEMENT_KEY = `sk-or-mgmt-${'c'.repeat(64)}`;
+const FMCV_CONTROL_SECRET = 'fmcv-control-secret-'.padEnd(48, 's');
 
 beforeEach(async () => {
   await truncateAll();
@@ -106,42 +107,64 @@ describe('per-runtime OpenRouter keys', () => {
     expect(new TextDecoder().decode(raw.model_key_ciphertext)).not.toContain(INFERENCE_KEY);
   });
 
-  it('uses the FMCV inference credential for every FMCV runtime', async () => {
+  it('derives and encrypts an isolated FMCV credential instead of returning the control secret', async () => {
+    const B = '88888888-8888-4888-8888-888888888888';
     const name = await runtimeName(A);
     const env = testEnv({
       AISAR_MODEL_BASE: 'https://router.fmcv.my',
-      AISAR_MODEL_KEY: 'fmcv-runtime-inference-key',
+      AISAR_MODEL_KEY: FMCV_CONTROL_SECRET,
     });
     await asTenant(A, (tx) => claimRuntime(env, tx, A, {
       provider: 'fly-sprite', providerName: name, release: '2026.08.28-3',
       runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
     }));
-    await expect(runtimeModelKey(env, A, name)).resolves.toBe('fmcv-runtime-inference-key');
+    const key = await runtimeModelKey(env, A, name);
+    expect(key).toMatch(/^sk-jentera-v1\./);
+    expect(key).not.toBe(FMCV_CONTROL_SECRET);
+    const stored = await asTenant(A, (tx) => getRuntimeModelCredential(env, tx, A));
+    expect(stored?.key).toBe(key);
+    await asOwner((sql) => sql`
+      insert into business (id, name, playbook_key) values (${B}, 'Beta', 'restaurant')`);
+    const otherName = await runtimeName(B);
+    await asTenant(B, (tx) => claimRuntime(env, tx, B, {
+      provider: 'fly-sprite', providerName: otherName, release: '2026.08.28-3',
+      runnerKey: 'x'.repeat(64), hermesApiKey: 'y'.repeat(64),
+    }));
+    const otherKey = await runtimeModelKey(env, B, otherName);
+    expect(otherKey).not.toBe(key);
+    expect(otherKey).not.toBe(FMCV_CONTROL_SECRET);
     await expect(runtimeModelKey(
       testEnv({ AISAR_MODEL_BASE: 'https://router.fmcv.my' }), A, name,
     )).rejects.toThrow(/FMCV model credential is unavailable/);
   });
 
-  it('does not rotate FMCV credentials through the OpenRouter manager', async () => {
+  it('detects FMCV control-secret rotation without using the OpenRouter manager', async () => {
     const name = await runtimeName(A);
     const env = testEnv({
       AISAR_MODEL_BASE: 'https://router.fmcv.my',
-      AISAR_MODEL_KEY: 'fmcv-runtime-inference-key',
+      AISAR_MODEL_KEY: FMCV_CONTROL_SECRET,
       AISAR_OPENROUTER_MANAGEMENT_KEY: MANAGEMENT_KEY,
     });
     await asTenant(A, (tx) => claimRuntime(env, tx, A, {
       provider: 'fly-sprite', providerName: name, release: '2026.08.28-3',
       runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
     }));
-    await expect(runtimeModelKey(env, A, name)).resolves.toBe('fmcv-runtime-inference-key');
+    const first = await runtimeModelKey(env, A, name);
     await expect(runtimeModelKeyNeedsRotation(env, A)).resolves.toBe(false);
+    const rotated = testEnv({
+      AISAR_MODEL_BASE: 'https://router.fmcv.my',
+      AISAR_MODEL_KEY: `${FMCV_CONTROL_SECRET}-rotated`,
+    });
+    await expect(runtimeModelKeyNeedsRotation(rotated, A)).resolves.toBe(true);
+    const second = await runtimeModelKey(rotated, A, name);
+    expect(second).not.toBe(first);
   });
 
   it('never sends an FMCV credential to the official OpenRouter endpoint', async () => {
     const name = await runtimeName(A);
     const env = testEnv({
       AISAR_MODEL_BASE: 'https://openrouter.ai/api/v1',
-      AISAR_MODEL_KEY: 'fmcv-runtime-inference-key',
+      AISAR_MODEL_KEY: FMCV_CONTROL_SECRET,
       AISAR_OPENROUTER_MANAGEMENT_KEY: MANAGEMENT_KEY,
     });
     await asTenant(A, (tx) => claimRuntime(env, tx, A, {

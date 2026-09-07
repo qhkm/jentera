@@ -980,6 +980,26 @@ describe('connections', () => {
     expect({ runs, tasks }).toEqual({ runs: '0', tasks: '0' });
   });
 
+  it('returns 503 when the webhook authentication lookup fails', async () => {
+    const paired = await pairTelegramChat(42);
+    env = testEnv({
+      HYPERDRIVE: {
+        connectionString: 'postgres://aisar_app:test-only-not-a-secret@127.0.0.1:1/aisar_test',
+      },
+    });
+
+    const response = await telegramHook(
+      paired.connectionId,
+      paired.secret,
+      42,
+      'Retry this after Neon recovers',
+      32,
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('Retry-After')).toBe('2');
+  });
+
   it('/stop cancels the active queued run for the paired chat before paid admission', async () => {
     const fetch = vi.fn(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
@@ -1021,7 +1041,7 @@ describe('connections', () => {
     expect(replies.some(({ text }) => text.includes('Stopped'))).toBe(true);
   });
 
-  it('/stop finalizes usage for an in-flight run (remoteRunId) so the reservation cannot strand', async () => {
+  it('/stop keeps usage reserved until the runner confirms termination', async () => {
     const fetch = vi.fn(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
     vi.stubGlobal('fetch', fetch);
@@ -1066,17 +1086,15 @@ describe('connections', () => {
         join runtime_usage u on u.runtime_task_id = t.id
        where t.id = ${task.id}`);
     expect(state).toEqual({
-      task_status: 'cancelled', usage_status: 'cancelled', usage_input: '0',
+      task_status: 'cancel_requested', usage_status: 'reserved', usage_input: '0',
     });
 
-    /* The control-plane cancel task is still published so the consumer stops
-       the remote run; finalize already happened in the webhook, so the
-       consumer's second finalize is a no-op (reservation is not stranded). */
+    /* The control-plane cancel task owns stop confirmation and measured usage. */
     expect(send).toHaveBeenCalled();
     const replies = fetch.mock.calls
       .filter(([url]) => String(url).includes('/sendMessage'))
       .map(([, init]) => JSON.parse(String(init?.body)) as { text: string });
-    expect(replies.some(({ text }) => text.includes('Stopped'))).toBe(true);
+    expect(replies.some(({ text }) => text.includes('Stopping'))).toBe(true);
   });
 
   it('/stop is a polite no-op when the paired chat has no active run', async () => {

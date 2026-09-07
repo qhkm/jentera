@@ -39,13 +39,14 @@ import { finishRun, recordWork, startRun } from '../runs';
 import { retrieve } from '../ask';
 import {
   handleRuntimeApprovalCallback,
-  publishRuntimeTask,
   runtimeFor,
   signalTelegramIntake,
 } from '../runtime';
+import { drainRuntimeTaskOutbox } from '../runtime/consumer';
 import {
   activeRuntimeRunTask,
   cancelRuntimeTask,
+  enqueueRuntimeTask,
 } from '../runtime/tasks';
 import { runtimeExecutionEnabled } from '../runtime/execution';
 import { finalizeRuntimeUsage } from '../runtime/usage';
@@ -322,9 +323,16 @@ async function telegramWebhook(
   /* Scoped to the business named in the URL, which is the only way
      this row is visible at all. Nothing is trusted yet — the secret
      decides. */
-  const access = await withTenant(env, businessId, (tx) =>
-    telegramWebhookAccess(env, tx, connectionId, presented),
-  ).catch((e: unknown) => ({ ok: false as const, why: `lookup failed: ${String(e)}` }));
+  let access: Awaited<ReturnType<typeof telegramWebhookAccess>>;
+  try {
+    access = await withTenant(env, businessId, (tx) =>
+      telegramWebhookAccess(env, tx, connectionId, presented));
+  } catch (error) {
+    /* Authentication lookup failure is not an authentication verdict. A 5xx
+       keeps Telegram's update retryable through a transient Neon outage. */
+    console.error(`[telegram] authentication lookup failed on ${connectionId}: ${String(error)}`);
+    return new Response(null, { status: 503, headers: { 'Retry-After': '2' } });
+  }
 
   if (!access.ok) return drop(access.why);
 
@@ -440,41 +448,60 @@ async function telegramWebhook(
     const cancelled = await withTenant(env, businessId, async (tx) => {
       const active = await activeRuntimeRunTask(tx, businessId, incoming.chatId);
       if (!active) return null;
-      const outcome = await cancelRuntimeTask(tx, businessId, active.id);
+      const outcome = await cancelRuntimeTask(tx, businessId, active.id, 'runner');
       if (!outcome) return null;
-      if (outcome.changed) {
-        await finalizeRuntimeUsage(tx, businessId, outcome.task.id, 'cancelled', {
-          inputTokens: 0,
-          outputTokens: 0,
-        });
+      let controlTaskId: string | null = null;
+      if (outcome.changed && outcome.task.status === 'cancelled') {
+        /* No runner dispatch was recorded, so cancellation is already
+           confirmed. Close any legacy reservation conservatively; remotely
+           admitted tasks stay reserved until the cancel consumer measures or
+           explicitly estimates their confirmed stop. */
+        await finalizeRuntimeUsage(tx, businessId, outcome.task.id, 'cancelled');
+        if (outcome.task.runId) {
+          await finishRun(tx, businessId, outcome.task.runId, 'cancelled', {
+            runtimeTaskId: outcome.task.id,
+            reason: 'owner_cancelled',
+          });
+        }
       }
-      if (outcome.changed && outcome.task.runId) {
-        await finishRun(tx, businessId, outcome.task.runId, 'cancelled', {
-          runtimeTaskId: outcome.task.id,
-          reason: 'owner_cancelled',
+      if (outcome.task.cancelState === 'requested') {
+        /* The control task and its outbox wake commit atomically with the
+           target's cancel_requested transition. A webhook replay finds the
+           same target/control pair and safely re-signals an unsent wake. */
+        const control = await enqueueRuntimeTask(tx, businessId, {
+          kind: 'cancel',
+          dedupeKey: `cancel:${outcome.task.id}:${Math.floor(Date.now() / 60_000)}`,
+          payload: { targetTaskId: outcome.task.id },
         });
+        controlTaskId = control.status === 'queued' || control.status === 'failed'
+          ? control.id
+          : null;
       }
-      return outcome;
+      return { ...outcome, controlTaskId };
     });
 
     if (!cancelled) {
       await sendMessage(token, incoming.chatId, 'Nothing is running right now.').catch(() => {});
       return ok;
     }
-    if (cancelled.changed && !cancelled.task.remoteRunId) {
+    if (cancelled.changed && cancelled.task.status === 'cancelled') {
       await settleCancelledDraft(env, businessId, cancelled.task.id, cancelled.task.payload);
     }
-    if (cancelled.task.remoteRunId) {
-      await publishRuntimeTask(env, businessId, {
-        kind: 'cancel',
-        dedupeKey: `cancel:${cancelled.task.id}:${Math.floor(Date.now() / 60_000)}`,
-        payload: { targetTaskId: cancelled.task.id },
-      });
+    if (cancelled.controlTaskId) {
+      await drainRuntimeTaskOutbox(env, { taskId: cancelled.controlTaskId });
     }
-    if (cancelled.task.runId) {
+    if (cancelled.task.status === 'cancelled' && cancelled.task.runId) {
       await publishRunProgressSafely(env, businessId, cancelled.task.runId, 'cancelled');
     }
-    await sendMessage(token, incoming.chatId, '⏹️ Stopped').catch(() => {});
+    await sendMessage(
+      token,
+      incoming.chatId,
+      cancelled.task.cancelState === 'requested'
+        ? '⏳ Stopping…'
+        : cancelled.task.cancelState === 'failed'
+          ? '⚠️ I could not confirm that the task stopped. Please try again shortly.'
+          : '⏹️ Stopped',
+    ).catch(() => {});
     return ok;
   }
 

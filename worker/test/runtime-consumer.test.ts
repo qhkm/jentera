@@ -1,17 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { asOwner, asTenant, testEnv, truncateAll } from './harness';
+import { asApp, asOwner, asTenant, testEnv, truncateAll } from './harness';
 import {
   ensureProviderRuntime,
   handleRuntimeMessage,
   handleRuntimeQueueMessage,
   LocalRuntimeProvider,
 } from '../src/runtime';
-import { enqueueRuntimeTask, leaseRuntimeTask, nextWaitingRuntimeTaskId, runtimeQueuePosition } from '../src/runtime/tasks';
-import { telegramFloodDelaySeconds, wakeNextRuntimeTask, sweepRuntimeDrift } from '../src/runtime/consumer';
+import {
+  cancelRuntimeTask,
+  enqueueRuntimeTask,
+  leaseRuntimeTask,
+  nextWaitingRuntimeTaskId,
+  runtimeQueuePosition,
+} from '../src/runtime/tasks';
+import {
+  drainRuntimeTaskOutbox,
+  publishRuntimeTask,
+  sweepRuntimeTaskRecovery,
+  telegramFloodDelaySeconds,
+  wakeNextRuntimeTask,
+  sweepRuntimeDrift,
+} from '../src/runtime/consumer';
 import type { DesiredRuntime, ObservedRuntime, RuntimeProvider } from '../src/runtime';
 import { markRuntimeReady, storeRuntimeModelCredential } from '../src/agent-runtime';
 import { startRun } from '../src/runs';
 import { bindTelegramInternalChat, saveConnection } from '../src/connections';
+import { reserveRuntimeUsage } from '../src/runtime/usage';
 
 const A = '11111111-1111-4111-8111-111111111111';
 
@@ -26,6 +40,141 @@ afterEach(() => {
 });
 
 describe('the runtime queue consumer', () => {
+  it('keeps a failed Queue publish in the transactional outbox for retry', async () => {
+    const unavailable = testEnv({
+      RUNTIME_QUEUE: { send: vi.fn(async () => { throw new Error('queue offline'); }) },
+    });
+    await expect(publishRuntimeTask(unavailable, A, {
+      kind: 'provision',
+      dedupeKey: 'outbox:publish-failure',
+    })).rejects.toThrow('queue offline');
+
+    const [pending] = await asOwner((sql) => sql<{
+      task_status: string;
+      sent_at: Date | null;
+      attempts: number;
+      last_error: string | null;
+    }[]>`
+      select t.status as task_status, o.sent_at, o.attempts, o.last_error
+        from runtime_task t join runtime_task_outbox o on o.task_id = t.id
+       where t.dedupe_key = 'outbox:publish-failure'`);
+    expect(pending).toMatchObject({
+      task_status: 'queued', sent_at: null, attempts: 1, last_error: 'queue offline',
+    });
+
+    const send = vi.fn(async () => {});
+    const recovered = testEnv({ RUNTIME_QUEUE: { send } });
+    expect(await drainRuntimeTaskOutbox(recovered)).toBe(1);
+    expect(send).toHaveBeenCalledTimes(1);
+    const [{ unsent }] = await asOwner((sql) => sql<{ unsent: string }[]>`
+      select count(*) filter (where sent_at is null)::text as unsent
+        from runtime_task_outbox`);
+    expect(unsent).toBe('0');
+  });
+
+  it('scheduled recovery releases a fresh lease whose owner heartbeat is dead', async () => {
+    const task = await provisionTask();
+    expect((await asTenant(A, (tx) =>
+      leaseRuntimeTask(tx, A, task.id, 'dead-owner', 300))).outcome).toBe('leased');
+    await asOwner((sql) => sql`
+      update runtime_task
+         set lease_heartbeat_at = now() - interval '2 minutes',
+             dispatch_phase = 'ambiguously_dispatched'
+       where id = ${task.id}`);
+
+    expect(await sweepRuntimeTaskRecovery(testEnv())).toBe(1);
+    const [state] = await asOwner((sql) => sql<{
+      status: string; lease_token: string | null; last_error: string;
+    }[]>`
+      select status, lease_token, last_error from runtime_task where id = ${task.id}`);
+    expect(state).toEqual({
+      status: 'failed',
+      lease_token: null,
+      last_error: 'dead_owner_recovered:ambiguously_dispatched',
+    });
+    const [{ wakes }] = await asOwner((sql) => sql<{ wakes: string }[]>`
+      select count(*) filter (where sent_at is null)::text as wakes
+        from runtime_task_outbox where task_id = ${task.id}`);
+    expect(wakes).toBe('1');
+  });
+
+  it('retries an unconfirmed stop and surfaces failed-to-cancel after the retry budget', async () => {
+    const env = testEnv({ RUNTIME_RELEASE: '2026.09.01-3' });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    const [owner] = await asOwner((sql) => sql<{ id: string }[]>`
+      insert into app_user (email, email_verified)
+      values ('cancel-owner@example.com', true) returning id`);
+    const connection = await asTenant(A, (tx) => saveConnection(env, tx, A, {
+      connector: 'telegram', method: 'bot_token', externalId: '123456789',
+      displayName: '@cancel_bot', secret: '123456789:AAtoken', connectedBy: owner.id,
+    }));
+    const target = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run',
+      dedupeKey: 'cancel:target',
+      payload: {
+        input: 'keep working',
+        telegram: {
+          connectionId: connection.id, chatId: 42, messageId: 7,
+          from: 'Owner', question: 'keep working', privateChat: true, liveMessageId: 77,
+        },
+      },
+    }));
+    await asTenant(A, (tx) => reserveRuntimeUsage(
+      tx, A, target.id, 'deepseek/deepseek-v4-flash-0731'));
+    await asOwner((sql) => sql`
+      update runtime_task
+         set remote_run_id = 'cancel-remote', remote_status = 'running',
+             dispatch_phase = 'remotely_running'
+       where id = ${target.id}`);
+    await asTenant(A, (tx) => cancelRuntimeTask(tx, A, target.id, 'runner'));
+    const control = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'cancel',
+      dedupeKey: 'cancel:control',
+      payload: { targetTaskId: target.id },
+    }));
+    const telegram = vi.fn(async () => jsonResponse({ ok: true, result: { message_id: 88 } }));
+    vi.stubGlobal('fetch', telegram);
+    const stopUnavailable: typeof fetch = async () =>
+      jsonResponse({ error: 'runner unavailable' }, 503);
+    const message = { version: 1 as const, businessId: A, taskId: control.id };
+
+    const retryDelays: number[] = [];
+    const first = await handleRuntimeMessage(env, message, { provider, fetch: stopUnavailable });
+    expect(first.action).toBe('requeue');
+    if (first.action === 'requeue') retryDelays.push(first.delaySeconds);
+    expect((await taskStatus(target.id)).status).toBe('cancel_requested');
+    for (let attempt = 2; attempt <= 5; attempt += 1) {
+      await asOwner((sql) => sql`
+        update runtime_task set available_at = now() where id = ${control.id}`);
+      const result = await handleRuntimeMessage(env, message, { provider, fetch: stopUnavailable });
+      if (attempt < 5) {
+        expect(result.action).toBe('requeue');
+        if (result.action === 'requeue') retryDelays.push(result.delaySeconds);
+      }
+      else expect(result).toEqual({ action: 'ack', reason: 'failed' });
+    }
+    expect(retryDelays).toEqual([15, 30, 60, 120]);
+    const [state] = await asOwner((sql) => sql<{
+      status: string; cancel_state: string; usage_status: string;
+    }[]>`
+      select t.status, t.cancel_state, u.status as usage_status
+        from runtime_task t join runtime_usage u on u.runtime_task_id = t.id
+       where t.id = ${target.id}`);
+    expect(state).toEqual({
+      status: 'cancel_requested', cancel_state: 'failed', usage_status: 'reserved',
+    });
+    const notices = telegram.mock.calls.filter(([input, init]) => {
+      if (!String(input).includes('/sendMessage')) return false;
+      const body = JSON.parse(String(init?.body)) as { text?: string };
+      return body.text?.includes('could not confirm') ?? false;
+    });
+    expect(notices).toHaveLength(1);
+  });
   it('leases, provisions, and completes one durable task', async () => {
     const task = await provisionTask();
     const result = await handleRuntimeMessage(
@@ -246,7 +395,8 @@ describe('the runtime queue consumer', () => {
     await asOwner((sql) => sql`
       update runtime_task
          set lease_expires_at = now() + interval '30 seconds',
-             remote_run_id = 'hermes-orphan', remote_status = 'running'
+             remote_run_id = 'hermes-orphan', remote_status = 'running',
+             dispatch_phase = 'remotely_running'
        where id = ${running.id}`);
     const waiting = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
       kind: 'provision', dedupeKey: 'orphan:waiting',
@@ -308,7 +458,8 @@ describe('the runtime queue consumer', () => {
     expect((await asTenant(A, (tx) =>
       leaseRuntimeTask(tx, A, running.id, 'live-lease'))).outcome).toBe('leased');
     await asOwner((sql) => sql`
-      update runtime_task set lease_expires_at = now() + interval '30 seconds'
+      update runtime_task set lease_expires_at = now() + interval '30 seconds',
+             dispatch_phase = 'remotely_running'
        where id = ${running.id}`);
     const waiting = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
       kind: 'provision', dedupeKey: 'orphan:still-waiting',
@@ -316,7 +467,7 @@ describe('the runtime queue consumer', () => {
     let probes = 0;
     const probeFetch: typeof fetch = async () => {
       probes += 1;
-      return jsonResponse({ ok: true, status: 'running' });
+      return jsonResponse({ error: 'not found' }, 404);
     };
 
     await expect(handleRuntimeMessage(
@@ -338,7 +489,7 @@ describe('the runtime queue consumer', () => {
     expect((await taskStatus(waiting.id)).status).toBe('queued');
   });
 
-  it('acks a fresh duplicate intake self-lease but rechecks it once stale', async () => {
+  it('never acks a fresh self-lease and recovers it once its owner heartbeat dies', async () => {
     const env = testEnv({ RUNTIME_RELEASE: '2026.08.27-1' });
     const provider = new LocalRuntimeProvider();
     await ensureProviderRuntime(env, A, {
@@ -391,10 +542,15 @@ describe('the runtime queue consumer', () => {
       leaseRuntimeTask(tx, A, task.id, 'duplicate-owner'))).outcome).toBe('leased');
 
     await expect(handleRuntimeQueueMessage(env, message, { provider }))
-      .resolves.toEqual({ action: 'ack', reason: 'already_done' });
+      .resolves.toMatchObject({
+        action: 'requeue',
+        delaySeconds: 120,
+        reason: 'task lease owner is still heartbeating',
+      });
 
     await asOwner((sql) => sql`
-      update runtime_task set lease_expires_at = now() + interval '30 seconds'
+      update runtime_task
+         set lease_heartbeat_at = now() - interval '2 minutes'
        where id = ${task.id}`);
     let probes = 0;
     const probeFetch: typeof fetch = async () => {
@@ -404,12 +560,12 @@ describe('the runtime queue consumer', () => {
     const stale = await handleRuntimeQueueMessage(env, message, { provider, fetch: probeFetch });
     expect(stale).toMatchObject({
       action: 'requeue',
-      delaySeconds: 65,
-      reason: 'business runtime is busy — waiting to recheck a stale lease',
+      delaySeconds: 1,
+      reason: 'dead owner recovered before runner dispatch',
       nextMessage: { version: 1, businessId: A, taskId: task.id },
     });
-    expect(probes).toBe(1);
-    expect(await taskStatus(task.id)).toEqual({ status: 'leased', lease_token: 'duplicate-owner' });
+    expect(probes).toBe(0);
+    expect(await taskStatus(task.id)).toEqual({ status: 'failed', lease_token: null });
   });
 
   it('uses one stable Telegram session per business chat', async () => {
@@ -708,10 +864,9 @@ describe('the runtime queue consumer', () => {
     });
     const published = await sweepRuntimeDrift(env);
     expect(published).toBe(1);
-    /* Published via the same dedupe key the sweep uses. */
     const tasks = await asOwner((sql) => sql<{ status: string; payload: unknown }[]>`
       select status, payload from runtime_task
-       where dedupe_key = ${`upgrade:${A}:2026.09.04-3`}`);
+       where business_id = ${A} and kind = 'upgrade'`);
     expect(tasks).toHaveLength(1);
     expect(tasks[0].status).toBe('queued');
     expect(tasks[0].payload).toMatchObject({
@@ -719,6 +874,102 @@ describe('the runtime queue consumer', () => {
       reason: 'drift-sweep',
     });
     expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('drift enumeration exposes identifiers only and cannot be shadowed by pg_temp', async () => {
+    const B = '22222222-2222-4222-8222-222222222222';
+    await asOwner(async (sql) => {
+      await sql`insert into business (id, name, playbook_key)
+        values (${B}, 'Beta', 'restaurant')`;
+      await sql`insert into agent_runtime
+        (business_id, provider, provider_name, status, desired_release, observed_release,
+         runner_key_ciphertext, runner_key_version, hermes_key_ciphertext, hermes_key_version)
+      values
+        (${A}, 'local', 'sprite-secure-a', 'ready', 'old', null,
+         decode('aabb', 'hex'), 1, decode('ccdd', 'hex'), 1),
+        (${B}, 'local', 'sprite-secure-b', 'ready', 'new', 'new',
+         decode('1122', 'hex'), 1, decode('3344', 'hex'), 1)`;
+    });
+
+    await asApp(async (sql) => {
+      const direct = await sql`select * from public.agent_runtime`;
+      expect(direct).toHaveLength(0);
+      await sql`create temporary table agent_runtime (
+        id uuid, business_id uuid, status text, desired_release text,
+        observed_release text, updated_at timestamptz, deleted_at timestamptz
+      )`;
+      await sql`insert into pg_temp.agent_runtime
+        values (gen_random_uuid(), ${B}, 'error', 'old', 'old', now(), null)`;
+      const rows = await sql<Record<string, unknown>[]>`
+        select * from public.runtime_drift_targets('new', null, 25, interval '15 minutes')`;
+      expect(rows).toHaveLength(1);
+      expect(rows[0].business_id).toBe(A);
+      expect(Object.keys(rows[0]).sort()).toEqual([
+        'business_id', 'repair_episode', 'runtime_id',
+      ]);
+      expect(JSON.stringify(rows[0])).not.toContain('aabb');
+      expect(JSON.stringify(rows[0])).not.toContain('ccdd');
+    });
+  });
+
+  it('creates a new repair episode when the same release drifts again', async () => {
+    await asOwner((sql) => sql`
+      insert into agent_runtime
+        (business_id, provider, provider_name, status, desired_release, observed_release)
+      values (${A}, 'local', 'sprite-episode', 'error', 'release-x', 'old')`);
+    const send = vi.fn(async () => {});
+    const env = testEnv({ RUNTIME_RELEASE: 'release-x', RUNTIME_QUEUE: { send } });
+    expect(await sweepRuntimeDrift(env)).toBe(1);
+    await asOwner(async (sql) => {
+      await sql`update runtime_task
+         set status = 'completed', completed_at = now()
+       where business_id = ${A} and kind = 'upgrade'`;
+      await sql`update agent_runtime
+         set updated_at = updated_at + interval '1 second'
+       where business_id = ${A}`;
+    });
+    expect(await sweepRuntimeDrift(env)).toBe(1);
+    const [{ episodes }] = await asOwner((sql) => sql<{ episodes: string }[]>`
+      select count(*)::text as episodes from runtime_task
+       where business_id = ${A} and kind = 'upgrade'`);
+    expect(episodes).toBe('2');
+  });
+
+  it('paginates more than 25 drift targets and includes stale lifecycle rows', async () => {
+    await asOwner(async (sql) => {
+      await sql`
+        insert into business (id, name, playbook_key)
+        select ('10000000-0000-4000-8000-' || lpad(i::text, 12, '0'))::uuid,
+               'Fleet ' || i, 'restaurant'
+          from generate_series(1, 27) as i`;
+      await sql`
+        insert into agent_runtime
+          (business_id, provider, provider_name, status, desired_release,
+           observed_release, updated_at)
+        select id, 'local', 'fleet-' || row_number() over (order by id),
+               case when row_number() over (order by id) = 27
+                    then 'provisioning' else 'ready' end,
+               'old-release',
+               case when row_number() over (order by id) = 27
+                    then null else 'old-release' end,
+               case when row_number() over (order by id) = 27
+                    then now() - interval '30 minutes' else now() end
+          from business where id::text like '10000000-0000-4000-8000-%'`;
+    });
+
+    await asApp(async (sql) => {
+      const first = await sql<{ business_id: string }[]>`
+        select business_id
+          from public.runtime_drift_targets('current-release', null, 25, interval '15 minutes')`;
+      expect(first).toHaveLength(25);
+      const second = await sql<{ business_id: string }[]>`
+        select business_id
+          from public.runtime_drift_targets(
+            'current-release', ${first[24].business_id}, 25, interval '15 minutes'
+          )`;
+      expect(second).toHaveLength(2);
+      expect(new Set([...first, ...second].map((row) => row.business_id)).size).toBe(27);
+    });
   });
 });
 

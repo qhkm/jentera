@@ -68,6 +68,34 @@ describe('runtime usage safety ledger', () => {
     expect(snapshot.usage.costMicrousd).toBe(9_000);
   });
 
+  it('repairs an estimated cancellation when measured usage arrives later', async () => {
+    const task = await runTask(A);
+    await asTenant(A, (tx) => reserveRuntimeUsage(tx, A, task.id, MODEL));
+    await asTenant(A, (tx) => finalizeRuntimeUsage(tx, A, task.id, 'cancelled'));
+    await asTenant(A, (tx) => finalizeRuntimeUsage(tx, A, task.id, 'cancelled', {
+      inputTokens: 321,
+      outputTokens: 45,
+    }));
+
+    const [row] = await asOwner((sql) => sql<{
+      status: string;
+      input_tokens: string;
+      output_tokens: string;
+      finalization_state: string;
+      finalization_method: string;
+    }[]>`
+      select status, input_tokens::text, output_tokens::text,
+             finalization_state, finalization_method
+        from runtime_usage where runtime_task_id = ${task.id}`);
+    expect(row).toEqual({
+      status: 'cancelled',
+      input_tokens: '321',
+      output_tokens: '45',
+      finalization_state: 'finalized',
+      finalization_method: 'measured',
+    });
+  });
+
   it('prices MiniMax-M3 runs on the customer-pinned route', async () => {
     const task = await runTask(A);
     await asTenant(A, (tx) => reserveRuntimeUsage(tx, A, task.id, 'MiniMax-M3'));

@@ -23,11 +23,16 @@ import {
   leaseRuntimeTaskWithBusinessLock,
   markRuntimeTaskFloodOwnerNotified,
   nextWaitingRuntimeTaskId,
+  queueRuntimeTaskWake,
   reclaimRuntimeTaskLease,
+  recoverDeadRuntimeTaskLease,
   recordRuntimeTaskTerminalOutcome,
   pauseRuntimeTaskForApproval,
   releaseRuntimeApprovalDecision,
   renewRuntimeTaskLease,
+  markRuntimeTaskDispatching,
+  confirmRuntimeTaskCancellation,
+  markRuntimeTaskCancelFailed,
   retryRuntimeTask,
   runtimeQueuePosition,
   runtimeTaskByDedupeKey,
@@ -44,7 +49,7 @@ import {
   stopRuntimeTask,
   type RunPayload,
 } from './run-task';
-import { finalizeRuntimeUsage, RuntimeBudgetExceeded } from './usage';
+import { finalizeRuntimeUsage, runtimeUsageDeadline, RuntimeBudgetExceeded } from './usage';
 import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
 import { publishRunProgressSafely } from './progress';
 import { STEP_STRIP_RE } from './step-progress';
@@ -88,6 +93,11 @@ const BUSY_RETRY_SECONDS = 2;
 const RUNTIME_LEASE_STALE_MS = 60_000;
 const RUNTIME_LEASE_RENEWAL_MS = 20_000;
 const ORPHAN_RETRY_SECONDS = 65;
+const DEAD_OWNER_SECONDS = 90;
+/** Keep two minutes clear of Cloudflare's 15-minute consumer ceiling for DB
+    persistence, Telegram cleanup, and durable outbox publication. */
+export const MAX_OBSERVATION_SLICE_MS = 13 * 60 * 1_000;
+const OUTBOX_MAX_DELAY_SECONDS = 12 * 60 * 60;
 /** L3: a runner slot held past this interval is wedged, not busy. The
     runner-side watchdog quarantines dead/expired runs within its own age
     bound (15m quick / 90m deep); if a slot is still held this long the
@@ -176,10 +186,16 @@ export async function publishRuntimeTask(
   },
 ): Promise<RuntimeTask> {
   if (!env.RUNTIME_QUEUE) throw new Error('RUNTIME_QUEUE is not configured');
-  const task = await withTenant(env, businessId, (tx) =>
-    enqueueRuntimeTask(tx, businessId, input),
-  );
-  await signalRuntimeTask(env, businessId, task.id);
+  const task = await withTenant(env, businessId, async (tx) => {
+    const queued = await enqueueRuntimeTask(tx, businessId, input);
+    if (queued.status === 'queued' || queued.status === 'failed') {
+      await queueRuntimeTaskWake(tx, businessId, queued.id);
+    }
+    return queued;
+  });
+  if (task.status === 'queued' || task.status === 'failed') {
+    await drainRuntimeTaskOutbox(env, { taskId: task.id });
+  }
   return task;
 }
 
@@ -192,11 +208,92 @@ export async function signalRuntimeTask(
   await env.RUNTIME_QUEUE.send({ version: 1, businessId, taskId });
 }
 
+interface RuntimeOutboxRow {
+  outbox_id: string;
+  business_id: string;
+  task_id: string;
+  not_before: Date;
+}
+
+/** Send durable task wakeups. A send failure updates diagnostics but never
+    removes the row, so this function or the scheduled sweep can retry it. */
+export async function drainRuntimeTaskOutbox(
+  env: Env,
+  options: { limit?: number; taskId?: string } = {},
+): Promise<number> {
+  if (!env.RUNTIME_QUEUE) throw new Error('RUNTIME_QUEUE is not configured');
+  const sql = connect(env);
+  let rows: RuntimeOutboxRow[];
+  try {
+    rows = await sql<RuntimeOutboxRow[]>`
+      select outbox_id, business_id, task_id, not_before
+        from public.runtime_outbox_batch(
+          ${options.limit ?? 100}, ${options.taskId ?? null}::uuid
+        )`;
+  } finally {
+    await sql.end({ timeout: 1 });
+  }
+  let sent = 0;
+  let firstError: unknown;
+  for (const row of rows) {
+    const delaySeconds = Math.min(
+      OUTBOX_MAX_DELAY_SECONDS,
+      Math.max(0, Math.ceil((new Date(row.not_before).getTime() - Date.now()) / 1_000)),
+    );
+    try {
+      await env.RUNTIME_QUEUE.send(
+        { version: 1, businessId: row.business_id, taskId: row.task_id },
+        delaySeconds > 0 ? { delaySeconds } : undefined,
+      );
+      await withTenant(env, row.business_id, async (tx) => {
+        await tx`
+          update runtime_task_outbox
+             set sent_at = now(), attempts = attempts + 1,
+                 last_error = null, updated_at = now()
+           where id = ${row.outbox_id} and business_id = ${row.business_id}
+             and sent_at is null`;
+      });
+      sent += 1;
+    } catch (error) {
+      firstError ??= error;
+      await withTenant(env, row.business_id, async (tx) => {
+        await tx`
+          update runtime_task_outbox
+             set attempts = attempts + 1,
+                 last_error = ${(error instanceof Error ? error.message : String(error)).slice(0, 1000)},
+                 updated_at = now()
+           where id = ${row.outbox_id} and business_id = ${row.business_id}
+             and sent_at is null`;
+      }).catch(() => {});
+    }
+  }
+  if (firstError) throw firstError;
+  return sent;
+}
+
+/** Persist a follow-up horizon before the current Queue message is acked. */
+export async function scheduleRuntimeTaskWake(
+  env: Env,
+  businessId: string,
+  taskId: string,
+  delaySeconds: number,
+): Promise<void> {
+  const notBefore = new Date(Date.now() + Math.max(0, delaySeconds) * 1_000);
+  await withTenant(env, businessId, (tx) =>
+    queueRuntimeTaskWake(tx, businessId, taskId, notBefore));
+  await drainRuntimeTaskOutbox(env, { taskId });
+  /* A prior terminal path may also have durably queued the next FIFO task
+     before its Queue send failed. Opportunistically drain those rows while a
+     healthy Queue binding is already proven in this invocation. */
+  await drainRuntimeTaskOutbox(env);
+}
+
 /** Fleet-wide drift sweep (scheduled cron). Publishes one upgrade task per
     runtime that is not on the pinned release (or is errored), so a release
     bump converges by itself instead of waiting for each business's next
-    customer message. Dedupe on `upgrade:<business>:<release>` keeps the queue
-    clean; an exhausted task is re-armed by enqueueRuntimeTask. */
+    customer message. Dedupe includes the drift function's repair episode, so
+    concurrent scans collapse while a later recurrence on the same release can
+    create fresh work; exhausted infrastructure failures are still re-armed. */
 export async function sweepRuntimeDrift(env: Env): Promise<number> {
   const release = env.RUNTIME_RELEASE?.trim();
   if (!release) return 0;
@@ -206,27 +303,93 @@ export async function sweepRuntimeDrift(env: Env): Promise<number> {
        plain SELECT from aisar_app is RLS-filtered to zero rows — the sweep
        would publish nothing forever. The function runs as the migration
        owner (BYPASSRLS) and returns exactly the drifted ids. */
-    const drifted = await sql<{ business_id: string }[]>`
-      select business_id from runtime_drift_targets()`;
     let published = 0;
-    for (const row of drifted) {
-      try {
-        const task = await publishRuntimeTask(env, row.business_id, {
-          kind: 'upgrade',
-          dedupeKey: `upgrade:${row.business_id}:${release}`,
-          payload: { release, reason: 'drift-sweep' },
-        });
-        /* Count only rows that actually changed state (queued = newly armed or
-           re-armed from exhausted); an already-active task is a no-op. */
-        if (task.status === 'queued') published += 1;
-      } catch (err) {
-        console.error(`[drift-sweep] business=${row.business_id} ${String(err)}`);
+    let afterBusinessId: string | null = null;
+    for (;;) {
+      const drifted: Array<{
+        runtime_id: string;
+        business_id: string;
+        repair_episode: string;
+      }> = await sql<{
+        runtime_id: string;
+        business_id: string;
+        repair_episode: string;
+      }[]>`
+        select runtime_id, business_id, repair_episode
+          from public.runtime_drift_targets(
+            ${release}, ${afterBusinessId}::uuid, 25, interval '15 minutes'
+          )`;
+      if (drifted.length === 0) break;
+      for (const row of drifted) {
+        try {
+          const task = await publishRuntimeTask(env, row.business_id, {
+            kind: 'upgrade',
+            dedupeKey: `upgrade:${row.runtime_id}:${release}:${row.repair_episode}`,
+            payload: {
+              release,
+              reason: 'drift-sweep',
+              repairEpisode: row.repair_episode,
+            },
+          });
+          if (task.status === 'queued') published += 1;
+        } catch (err) {
+          console.error(`[drift-sweep] business=${row.business_id} ${String(err)}`);
+        }
       }
+      afterBusinessId = drifted[drifted.length - 1].business_id;
+      if (drifted.length < 25) break;
     }
     return published;
   } finally {
     await sql.end();
   }
+}
+
+/** Recover tasks whose owning Worker stopped renewing its explicit heartbeat.
+    Dispatch phase remains durable: a never-dispatched task is immediately safe
+    to retry, while ambiguous/running work resumes by the stable task id. */
+export async function sweepRuntimeTaskRecovery(env: Env): Promise<number> {
+  const sql = connect(env);
+  let recovered = 0;
+  let afterBusinessId: string | null = null;
+  let afterTaskId: string | null = null;
+  try {
+    for (;;) {
+      const rows: Array<{
+        business_id: string;
+        task_id: string;
+        dispatch_phase: string;
+      }> = await sql<{
+        business_id: string;
+        task_id: string;
+        dispatch_phase: string;
+      }[]>`
+        select business_id, task_id, dispatch_phase
+          from public.runtime_recovery_targets(
+            ${afterBusinessId}::uuid, ${afterTaskId}::uuid,
+            25, ${`${DEAD_OWNER_SECONDS} seconds`}::interval
+          )`;
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        const changed = await withTenant(env, row.business_id, (tx) =>
+          recoverDeadRuntimeTaskLease(
+            tx,
+            row.business_id,
+            row.task_id,
+            `dead_owner_recovered:${row.dispatch_phase}`,
+            DEAD_OWNER_SECONDS,
+          ));
+        if (changed) recovered += 1;
+      }
+      const last: { business_id: string; task_id: string } = rows[rows.length - 1];
+      afterBusinessId = last.business_id;
+      afterTaskId = last.task_id;
+      if (rows.length < 25) break;
+    }
+  } finally {
+    await sql.end({ timeout: 1 });
+  }
+  return recovered;
 }
 
 /** Apply an authenticated Telegram button decision to one durable approval.
@@ -490,11 +653,10 @@ export async function handleRuntimeQueueMessage(
       admitted.task.status === 'exhausted') {
     return { action: 'ack', reason: 'already_done' };
   }
-  /* Another delivery already owns this exact task. Its Queue message remains
-     authoritative; acknowledging this duplicate prevents a second bubble. */
-  if (admitted.task.status === 'leased' && runtimeLeaseIsFresh(admitted.task.leaseExpiresAt)) {
-    return { action: 'ack', reason: 'already_done' };
-  }
+  /* A duplicate may be the only remaining Queue signal after its original
+     owner died. Never acknowledge merely because the lease is fresh; the
+     normal lease path below verifies the explicit owner heartbeat and leaves
+     a durable follow-up wake. */
 
   const existingBubbleId = telegramHint(admitted.task.payload)?.liveMessageId;
   let liveMessageId = existingBubbleId;
@@ -629,18 +791,20 @@ export async function handleRuntimeQueueMessage(
   return result.action === 'ack' ? result : { ...result, nextMessage };
 }
 
-/** Signal the oldest waiting task now that a slot just freed — the FIFO
-    wake that makes new messages behave like a Hermes session queue instead
-    of a racy poll. Safe to fire from any terminal path: the lease CAS and
-    the NOT EXISTS sibling guard let exactly one waiting task win. */
+/** Signal the oldest waiting task now that a slot just freed. Queue ordering
+    itself is not relied upon; this is only a wake, while the database query,
+    lease CAS, and sibling guard provide the ordered admission preference. */
 export async function wakeNextRuntimeTask(
   env: Env,
   businessId: string,
   _options: { reason?: string } = {},
 ): Promise<void> {
-  const nextId = await withTenant(env, businessId, (tx) =>
-    nextWaitingRuntimeTaskId(tx, businessId));
-  if (nextId) await signalRuntimeTask(env, businessId, nextId).catch(() => {});
+  const nextId = await withTenant(env, businessId, async (tx) => {
+    const id = await nextWaitingRuntimeTaskId(tx, businessId);
+    if (id) await queueRuntimeTaskWake(tx, businessId, id);
+    return id;
+  });
+  if (nextId) await drainRuntimeTaskOutbox(env, { taskId: nextId });
 }
 
 /** Probe only through tenant-scoped runtime access. A failure anywhere from
@@ -668,12 +832,6 @@ async function probeOrphanedRun(
   }
 }
 
-function runtimeLeaseIsFresh(leaseExpiresAt: Date | null): boolean {
-  return Boolean(
-    leaseExpiresAt && new Date(leaseExpiresAt).getTime() > Date.now() + RUNTIME_LEASE_STALE_MS,
-  );
-}
-
 export async function handleRuntimeMessage(
   env: Env,
   message: RuntimeTaskQueueMessage,
@@ -684,6 +842,8 @@ export async function handleRuntimeMessage(
     telegramToken?: string;
     liveMessageId?: number;
     runtimeSnapshot?: { value: AgentRuntimeRecord | null };
+    /** Test-only/specialized override; production keeps the 13-minute cap. */
+    observationSliceMs?: number;
   } = {},
 ): Promise<RuntimeMessageResult> {
   const messageStartedAt = Date.now();
@@ -715,10 +875,38 @@ export async function handleRuntimeMessage(
       : 0;
     const fresh = Boolean(blockingLeaseExpiresAt && remainingMs > RUNTIME_LEASE_STALE_MS);
     const stale = Boolean(lease.leasedId && blockingLeaseExpiresAt && !fresh);
-    if (lease.selfLeased && fresh) {
-      return { action: 'ack', reason: 'already_done' };
+    const heartbeatMs = lease.leasedLeaseHeartbeatAt
+      ? new Date(lease.leasedLeaseHeartbeatAt).getTime()
+      : 0;
+    const ownerDead = Boolean(lease.leasedId &&
+      heartbeatMs <= Date.now() - DEAD_OWNER_SECONDS * 1_000);
+    if (ownerDead && lease.leasedId) {
+      const recovered = await withTenant(env, message.businessId, (tx) =>
+        recoverDeadRuntimeTaskLease(
+          tx,
+          message.businessId,
+          lease.leasedId as string,
+          `dead_owner_recovered:${lease.leasedDispatchPhase ?? 'unknown'}`,
+          DEAD_OWNER_SECONDS,
+        ));
+      if (recovered) {
+        return {
+          action: 'requeue',
+          delaySeconds: 1,
+          reason: lease.leasedDispatchPhase === 'not_dispatched'
+            ? 'dead owner recovered before runner dispatch'
+            : 'dead owner recovered for durable runner resume',
+        };
+      }
     }
-    if (stale && lease.leasedId) {
+    if (lease.selfLeased && fresh) {
+      return {
+        action: 'requeue',
+        delaySeconds: Math.min(Math.max(Math.ceil(remainingMs / 1_000) + 5, 15), 120),
+        reason: 'task lease owner is still heartbeating',
+      };
+    }
+    if (stale && lease.leasedId && lease.leasedDispatchPhase !== 'not_dispatched') {
       const terminal = await probeOrphanedRun(
         env,
         message.businessId,
@@ -867,28 +1055,41 @@ export async function handleRuntimeMessage(
         if (typeof payload?.targetTaskId !== 'string' || !uuid(payload.targetTaskId)) {
           throw new Error('runtime cancel target is invalid');
         }
-        let stopped: Awaited<ReturnType<typeof stopRuntimeTask>> = null;
-        try {
-          stopped = await stopRuntimeTask(
-            env, message.businessId, payload.targetTaskId, options.fetch,
+        const stopped = await stopRuntimeTask(
+          env, message.businessId, payload.targetTaskId, options.fetch,
+        );
+        if (!stopped) throw new Error('runner did not confirm runtime cancellation');
+        const measured = measuredUsageOf(stopped) ?? undefined;
+        const target = await withTenant(env, message.businessId, async (tx) => {
+          const confirmed = await confirmRuntimeTaskCancellation(
+            tx,
+            message.businessId,
+            payload.targetTaskId as string,
+            typeof stopped.status === 'string' &&
+              ['cancelled', 'stopped', 'completed', 'failed'].includes(stopped.status)
+              ? stopped.status
+              : 'stopped',
           );
-        } catch (error) {
-          /* A cold/unreachable sprite stop must not skip finalization — the
-             reservation would otherwise strand forever against the monthly
-             budget (see the 97002811 leak). Finalize with measured usage when
-             the runner answered, else zero; the runner-side stop is retried
-             by re-delivery of this control task. */
-          console.warn('[runtime] cancel stop failed; finalizing usage anyway', error);
-        }
-        await withTenant(env, message.businessId, (tx) => finalizeRuntimeUsage(
-          tx,
-          message.businessId,
-          payload.targetTaskId as string,
-          'cancelled',
-          stopped ? measuredUsageOf(stopped) ?? { inputTokens: 0, outputTokens: 0 }
-            : { inputTokens: 0, outputTokens: 0 },
-        ));
+          if (!confirmed) throw new Error('runtime cancellation state changed before confirmation');
+          await finalizeRuntimeUsage(
+            tx,
+            message.businessId,
+            payload.targetTaskId as string,
+            'cancelled',
+            measured,
+          );
+          if (confirmed.runId) {
+            await finishRun(tx, message.businessId, confirmed.runId, 'cancelled', {
+              runtimeTaskId: confirmed.id,
+              reason: 'owner_cancelled_confirmed',
+            });
+          }
+          return confirmed;
+        });
         await settleCancelledDraft(env, message.businessId, payload.targetTaskId as string);
+        if (target.runId) {
+          await publishRunProgressSafely(env, message.businessId, target.runId, 'cancelled');
+        }
         break;
       }
       case 'run':
@@ -1054,97 +1255,157 @@ export async function handleRuntimeMessage(
               : `⏳ Working… (${elapsed}s)`);
           }, 5_000);
         }
-        const outcome = await dispatchRuntimeRun(env, lease.task, leaseToken, {
-          ...options,
-          onDelta: liveStream
-            ? async (delta) => {
-                if (!firstVisibleDelta && delta.trim()) {
-                  firstVisibleDelta = true;
-                  latency('first_visible_delta');
-                }
-                await liveStream.push(delta);
-              }
-            : undefined,
-          onToolEvent: liveStream
-            ? async (event) => {
-                if (event.type !== 'tool.started' && event.type !== 'tool.completed') {
-                  return;
-                }
-                if (event.type === 'tool.started') {
-                  if (!toolShown.has(event.tool)) {
-                    toolShown.add(event.tool);
-                    await liveStream.showTool(event.tool, event.preview);
+        if (!lease.task.remoteRunId) {
+          const dispatchMarked = await withTenant(env, message.businessId, (tx) =>
+            markRuntimeTaskDispatching(
+              tx,
+              message.businessId,
+              message.taskId,
+              leaseToken,
+            ));
+          if (!dispatchMarked) throw new Error('runtime task lease was lost before dispatch');
+          lease.task.dispatchPhase = 'ambiguously_dispatched';
+        }
+        const absoluteDeadline = await withTenant(env, message.businessId, (tx) =>
+          runtimeUsageDeadline(tx, message.businessId, message.taskId));
+        const observationEndsAt = Math.min(
+          messageStartedAt + (options.observationSliceMs ?? MAX_OBSERVATION_SLICE_MS),
+          absoluteDeadline.getTime(),
+        );
+        let outcome: Awaited<ReturnType<typeof dispatchRuntimeRun>> | null = null;
+        try {
+          outcome = await dispatchRuntimeRun(env, lease.task, leaseToken, {
+            ...options,
+            fetch: observationSliceFetch(options.fetch, observationEndsAt),
+            onDelta: liveStream
+              ? async (delta) => {
+                  if (!firstVisibleDelta && delta.trim()) {
+                    firstVisibleDelta = true;
+                    latency('first_visible_delta');
                   }
-                  /* Mirror the tool into the working bubble while no answer
-                     text exists yet, so the bubble itself stays alive. */
-                  if (!currentStep && !firstVisibleDelta) {
-                    currentStep = hermesToolLine(event.tool, event.preview);
-                    currentStepIsTool = true;
+                  await liveStream.push(delta);
+                }
+              : undefined,
+            onToolEvent: liveStream
+              ? async (event) => {
+                  if (event.type !== 'tool.started' && event.type !== 'tool.completed') {
+                    return;
+                  }
+                  if (event.type === 'tool.started') {
+                    if (!toolShown.has(event.tool)) {
+                      toolShown.add(event.tool);
+                      await liveStream.showTool(event.tool, event.preview);
+                    }
+                    /* Mirror the tool into the working bubble while no answer
+                       text exists yet, so the bubble itself stays alive. */
+                    if (!currentStep && !firstVisibleDelta) {
+                      currentStep = hermesToolLine(event.tool, event.preview);
+                      currentStepIsTool = true;
+                      const elapsed = Math.round((Date.now() - workingSince) / 1_000);
+                      await liveStream.setStatus(`${currentStep} · ${elapsed}s`);
+                    }
+                  } else if (currentStepIsTool) {
+                    currentStep = '';
+                    currentStepIsTool = false;
+                    if (quickReply && !firstVisibleDelta) {
+                      await liveStream.setStatus(QUICK_REPLY_STATUS);
+                    }
+                  }
+                }
+              : undefined,
+            onHeartbeat: liveStream
+              ? async () => {
+                  await liveStream.heartbeat();
+                  if (Date.now() - lastLeaseRenewal < RUNTIME_LEASE_RENEWAL_MS) return;
+                  const renewed = await withTenant(env, message.businessId, (tx) =>
+                    renewRuntimeTaskLease(
+                      tx,
+                      message.businessId,
+                      message.taskId,
+                      leaseToken,
+                    ));
+                  if (!renewed) throw new Error('runtime task lease was lost while streaming');
+                  lastLeaseRenewal = Date.now();
+                }
+              : undefined,
+            onProgress: liveStream
+              ? async (label) => {
+                  if (quickReply) return;
+                  currentStep = statusLine(label);
+                  currentStepIsTool = false;
+                  if (!firstVisibleDelta) {
                     const elapsed = Math.round((Date.now() - workingSince) / 1_000);
                     await liveStream.setStatus(`${currentStep} · ${elapsed}s`);
                   }
-                } else if (currentStepIsTool) {
-                  currentStep = '';
+                }
+              : undefined,
+            onThinking: liveStream
+              ? async (text) => {
+                  /* Live reasoning: the runner forwards the model's actual CoT as
+                     a bounded `thinking` lane. Render it in the ephemeral bubble
+                     status exactly like `@step:` narration — it is cleared the
+                     moment the first answer delta lands and never enters the
+                     durable answer lane (the runner keeps it out of `output`). */
+                  if (quickReply || firstVisibleDelta) return;
+                  const thinking = sanitiseThinking(text);
+                  if (!thinking) return;
+                  currentStep = thinking;
                   currentStepIsTool = false;
-                  if (quickReply && !firstVisibleDelta) {
-                    await liveStream.setStatus(QUICK_REPLY_STATUS);
-                  }
-                }
-              }
-            : undefined,
-          onHeartbeat: liveStream
-            ? async () => {
-                await liveStream.heartbeat();
-                if (Date.now() - lastLeaseRenewal < RUNTIME_LEASE_RENEWAL_MS) return;
-                const renewed = await withTenant(env, message.businessId, (tx) =>
-                  renewRuntimeTaskLease(
-                    tx,
-                    message.businessId,
-                    message.taskId,
-                    leaseToken,
-                  ));
-                if (!renewed) throw new Error('runtime task lease was lost while streaming');
-                lastLeaseRenewal = Date.now();
-              }
-            : undefined,
-          onProgress: liveStream
-            ? async (label) => {
-                if (quickReply) return;
-                currentStep = statusLine(label);
-                currentStepIsTool = false;
-                if (!firstVisibleDelta) {
                   const elapsed = Math.round((Date.now() - workingSince) / 1_000);
-                  await liveStream.setStatus(`${currentStep} · ${elapsed}s`);
+                  await liveStream.setStatus(`${thinking} · ${elapsed}s`);
                 }
+              : undefined,
+            onStage: (stage, elapsedMs) => {
+              latency(stage, elapsedMs);
+              if (quickReply) return;
+              const status = STAGE_STATUS[stage];
+              if (status) void liveStream?.setStatus(status);
+            },
+          });
+        } catch (error) {
+          if (Date.now() >= observationEndsAt - 250 && lease.task.remoteRunId) {
+            if (Date.now() >= absoluteDeadline.getTime()) {
+              const stopped = await stopRuntimeTask(
+                env, message.businessId, message.taskId, options.fetch,
+              ).catch(() => null);
+              outcome = {
+                state: 'terminal',
+                remoteRunId: lease.task.remoteRunId,
+                remoteStatus: 'cancelled',
+                result: { error: 'runtime task exceeded its time limit' },
+                summary: 'Runtime task exceeded its time limit.',
+                payload: lease.task.payload as RunPayload,
+                usage: stopped ? measuredUsageOf(stopped) ?? undefined : undefined,
+              };
+            } else {
+              const deferred = await withTenant(env, message.businessId, (tx) =>
+                deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
+                  remoteRunId: lease.task.remoteRunId ?? undefined,
+                  remoteStatus: lease.task.remoteStatus ?? 'running',
+                  delaySeconds: 2,
+                }));
+              if (!deferred) {
+                return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
               }
-            : undefined,
-          onThinking: liveStream
-            ? async (text) => {
-                /* Live reasoning: the runner forwards the model's actual CoT as
-                   a bounded `thinking` lane. Render it in the ephemeral bubble
-                   status exactly like `@step:` narration — it is cleared the
-                   moment the first answer delta lands and never enters the
-                   durable answer lane (the runner keeps it out of `output`). */
-                if (quickReply || firstVisibleDelta) return;
-                const thinking = sanitiseThinking(text);
-                if (!thinking) return;
-                currentStep = thinking;
-                currentStepIsTool = false;
-                const elapsed = Math.round((Date.now() - workingSince) / 1_000);
-                await liveStream.setStatus(`${thinking} · ${elapsed}s`);
+              if (lease.task.runId) {
+                await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'working');
               }
-            : undefined,
-          onStage: (stage, elapsedMs) => {
-            latency(stage, elapsedMs);
-            if (quickReply) return;
-            const status = STAGE_STATUS[stage];
-            if (status) void liveStream?.setStatus(status);
-          },
-        });
-        if (statusTimer) {
-          clearInterval(statusTimer);
-          statusTimer = undefined;
+              await pulseTelegramTyping(env, lease.task).catch(() => {});
+              return {
+                action: 'requeue',
+                delaySeconds: 2,
+                reason: 'bounded observation slice completed',
+              };
+            }
+          }
+          if (!lease.task.remoteRunId || Date.now() < absoluteDeadline.getTime()) throw error;
+        } finally {
+          if (statusTimer) {
+            clearInterval(statusTimer);
+            statusTimer = undefined;
+          }
         }
+        if (!outcome) throw new Error('runtime observation ended without a durable outcome');
         latency(outcome.state === 'terminal' ? 'terminal' : outcome.state);
         if (outcome.state === 'approval') {
           const telegram = outcome.payload.telegram;
@@ -1501,6 +1762,7 @@ export async function handleRuntimeMessage(
       busyExhausted;
     if (terminal) {
       let measured: { inputTokens: number; outputTokens: number } | undefined;
+      let failedCancelTarget: RuntimeTask | null = null;
       const failureReason = busyExhausted ? 'runtime slot stayed busy too long' : reason;
       if (executionTask && lease.task.remoteRunId) {
         const stopped = await stopRuntimeTask(
@@ -1518,6 +1780,17 @@ export async function handleRuntimeMessage(
           Boolean(telegramHint(lease.task.payload)),
         );
         if (!changed) return false;
+        if (lease.task.kind === 'cancel') {
+          const targetTaskId = (lease.task.payload as { targetTaskId?: unknown })?.targetTaskId;
+          if (typeof targetTaskId === 'string' && uuid(targetTaskId)) {
+            failedCancelTarget = await markRuntimeTaskCancelFailed(
+              tx,
+              message.businessId,
+              targetTaskId,
+              failureReason,
+            );
+          }
+        }
         if (executionTask) {
           await finalizeRuntimeUsage(
             tx,
@@ -1537,6 +1810,14 @@ export async function handleRuntimeMessage(
       });
       if (!exhausted) {
         return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
+      }
+      if (failedCancelTarget) {
+        await notifyTelegramCancelFailure(
+          env,
+          message.businessId,
+          failedCancelTarget,
+          options.telegramToken,
+        );
       }
       /* Terminal — tidy the working bubble so the chat never sits on a
          frozen "⏳ Working…" (the old draft lane at least expired). When the
@@ -1572,13 +1853,13 @@ export async function handleRuntimeMessage(
     if (executionTask && lease.task.runId) {
       await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'retrying');
     }
-    /* Lifecycle tasks back off exponentially (30s, 1m, 2m, 4m, 8m, … capped at
-       10m) so a flaky registry or sprite network does not burn the attempt
-       budget in a couple of minutes; interactive run tasks keep the snappy
-       fixed 30s the chat expects. */
+    /* Lifecycle and cancellation controls back off exponentially; ordinary
+       interactive work keeps the snappy fixed delay the chat expects. */
     const retryDelay = LIFECYCLE_TASK_KINDS.has(lease.task.kind)
       ? lifecycleRetryDelaySeconds(lease.task.attempt)
-      : 30;
+      : lease.task.kind === 'cancel'
+        ? Math.min(15 * 2 ** lease.task.attempt, 120)
+        : 30;
     return { action: 'requeue', delaySeconds: retryDelay, reason };
   }
 }
@@ -1601,6 +1882,25 @@ export function telegramFloodDelaySeconds(reportedWaitSeconds: number): number {
     TELEGRAM_FLOOD_DELAY_CAP_SECONDS,
     Math.max(60, wait * 2, wait + 60),
   );
+}
+
+function observationSliceFetch(
+  fetcher: typeof globalThis.fetch | undefined,
+  endsAtMs: number,
+): typeof globalThis.fetch {
+  const base = fetcher ?? ((input, init) => globalThis.fetch(input, init));
+  return (input, init = {}) => {
+    const url = String(input);
+    if (!url.includes('/events')) return base(input, init);
+    const remainingMs = Math.max(1, endsAtMs - Date.now());
+    /* RunnerClient owns a 15-minute stream timeout. Replace it with the
+       shorter task/invocation slice so the body reader, not only the header
+       request, is aborted before Cloudflare terminates the consumer. */
+    return base(input, {
+      ...init,
+      signal: AbortSignal.timeout(remainingMs),
+    });
+  };
 }
 
 async function notifyTelegramFloodOwner(
@@ -1628,6 +1928,31 @@ async function notifyTelegramFloodOwner(
     /* The notice can be rate-limited by the same Telegram flood. Keep the
        notified flag false so a later escalation may try once more. */
     console.warn('[runtime] Telegram flood notice was not delivered', {
+      businessId,
+      taskId: task.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function notifyTelegramCancelFailure(
+  env: Env,
+  businessId: string,
+  task: RuntimeTask,
+  existingToken?: string,
+): Promise<void> {
+  const telegram = telegramHint(task.payload);
+  if (!telegram) return;
+  try {
+    const token = existingToken ?? await withTenant(env, businessId, (tx) =>
+      useCredential(env, tx, telegram.connectionId));
+    await sendHermesMessage(
+      token,
+      telegram.chatId,
+      '⚠️ I could not confirm that the remote run stopped. It has been isolated for operator review; no further work will be started from this request.',
+    );
+  } catch (error) {
+    console.warn('[runtime] cancellation failure notice was not delivered', {
       businessId,
       taskId: task.id,
       error: error instanceof Error ? error.message : String(error),

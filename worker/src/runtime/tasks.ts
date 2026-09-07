@@ -19,8 +19,16 @@ export type RuntimeTaskStatus =
   | 'leased'
   | 'completed'
   | 'failed'
+  | 'cancel_requested'
   | 'cancelled'
   | 'exhausted';
+
+export type RuntimeTaskDispatchPhase =
+  | 'not_dispatched'
+  | 'ambiguously_dispatched'
+  | 'remotely_running';
+
+export type RuntimeTaskCancelState = 'none' | 'requested' | 'confirmed' | 'failed';
 
 export interface RuntimeTask {
   id: string;
@@ -33,6 +41,9 @@ export interface RuntimeTask {
   attempt: number;
   leaseToken: string | null;
   leaseExpiresAt: Date | null;
+  leaseHeartbeatAt: Date | null;
+  dispatchPhase: RuntimeTaskDispatchPhase;
+  cancelState: RuntimeTaskCancelState;
   remoteRunId: string | null;
   remoteStatus: string | null;
   result: unknown;
@@ -84,6 +95,9 @@ interface TaskRow {
   attempt: number;
   lease_token: string | null;
   lease_expires_at: Date | null;
+  lease_heartbeat_at: Date | null;
+  dispatch_phase: RuntimeTaskDispatchPhase;
+  cancel_state: RuntimeTaskCancelState;
   remote_run_id: string | null;
   remote_status: string | null;
   result: unknown;
@@ -101,6 +115,9 @@ const task = (row: TaskRow): RuntimeTask => ({
   attempt: row.attempt,
   leaseToken: row.lease_token,
   leaseExpiresAt: row.lease_expires_at,
+  leaseHeartbeatAt: row.lease_heartbeat_at,
+  dispatchPhase: row.dispatch_phase,
+  cancelState: row.cancel_state,
   remoteRunId: row.remote_run_id,
   remoteStatus: row.remote_status,
   result: row.result,
@@ -109,7 +126,8 @@ const task = (row: TaskRow): RuntimeTask => ({
 
 const cols = `id, business_id, run_id, kind, status, payload, dedupe_key,
               attempt, lease_token, lease_expires_at, remote_run_id,
-              remote_status, result, started_at`;
+              remote_status, result, started_at, lease_heartbeat_at,
+              dispatch_phase, cancel_state`;
 
 /** Failure reasons that are infrastructure noise, not product bugs. An
     exhausted lifecycle task (upgrade/provision) whose last error matches this
@@ -131,6 +149,9 @@ export async function enqueueRuntimeTask(
     dedupeKey: string;
   },
 ): Promise<RuntimeTask> {
+  /* Fleet repair callers include a repair-episode id in dedupeKey. Release
+     identity alone is insufficient: the same runtime can drift from release X
+     again after an earlier X repair completed successfully. */
   const [row] = await tx<TaskRow[]>`
     insert into runtime_task (business_id, run_id, kind, payload, dedupe_key)
     values (${businessId}, ${input.runId ?? null}, ${input.kind},
@@ -154,7 +175,28 @@ export async function enqueueRuntimeTask(
   const [existing] = await tx<TaskRow[]>`
     select ${tx.unsafe(cols)} from runtime_task
      where business_id = ${businessId} and dedupe_key = ${input.dedupeKey}`;
-  return task(existing);
+  const current = task(existing);
+  if (current.status === 'queued' || current.status === 'failed') {
+    await queueRuntimeTaskWake(tx, businessId, current.id, new Date());
+  }
+  return current;
+}
+
+/** Ensure a Queue wake has durable backing in the caller's transaction.
+    Re-signalling replaces the pending delivery horizon for this task. */
+export async function queueRuntimeTaskWake(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+  notBefore = new Date(),
+): Promise<string> {
+  const [row] = await tx<{ id: string }[]>`
+    insert into runtime_task_outbox (business_id, task_id, not_before)
+    values (${businessId}, ${taskId}, ${notBefore})
+    on conflict (task_id) where sent_at is null do update
+      set not_before = excluded.not_before, last_error = null, updated_at = now()
+    returning id`;
+  return row.id;
 }
 
 export async function runtimeTaskByDedupeKey(
@@ -180,7 +222,8 @@ export async function runtimeTaskForRun(
   return row ? task(row) : null;
 }
 
-/** Latest cancellable run belonging to one Telegram chat. */
+/** Prefer the task that actually holds the business execution lease. A newer
+    queued follow-up must never steal `/stop` from the run already executing. */
 export async function activeRuntimeRunTask(
   tx: postgres.TransactionSql,
   businessId: string,
@@ -190,9 +233,11 @@ export async function activeRuntimeRunTask(
     select ${tx.unsafe(cols)} from runtime_task
      where business_id = ${businessId}
        and kind in ('run', 'resume')
-       and status in ('queued', 'leased', 'failed')
+       and status in ('queued', 'leased', 'failed', 'cancel_requested')
        and payload #>> '{telegram,chatId}' = ${String(chatId)}
-     order by created_at desc
+     order by (status = 'leased') desc,
+              (status = 'cancel_requested') desc,
+              created_at desc
      limit 1`;
   return row ? task(row) : null;
 }
@@ -204,6 +249,8 @@ export type LeaseResult =
       leasedId: string | null;
       selfLeased: boolean;
       leasedLeaseExpiresAt: Date | null;
+      leasedLeaseHeartbeatAt: Date | null;
+      leasedDispatchPhase: RuntimeTaskDispatchPhase | null;
       leasedRemoteRunId: string | null;
       leasedRemoteStatus: string | null;
       siblingLeaseExpiresAt: Date | null;
@@ -259,6 +306,9 @@ export async function leaseRuntimeTaskWithBusinessLock(
     update runtime_task
        set status = 'leased', lease_token = ${leaseToken},
            lease_expires_at = now() + (${leaseSeconds} * interval '1 second'),
+           lease_heartbeat_at = now(),
+           dispatch_phase = case when remote_run_id is null
+                                 then dispatch_phase else 'remotely_running' end,
            last_error = null, updated_at = now()
      where id = ${taskId} and business_id = ${businessId}
        and status in ('queued','failed') and available_at <= now()
@@ -277,7 +327,17 @@ export async function leaseRuntimeTaskWithBusinessLock(
             and approval_wait.result #>> '{approval,id}' is not null
        )
     returning ${tx.unsafe(cols)}`;
-  if (leased) return { outcome: 'leased', task: task(leased) };
+  if (leased) {
+    /* This invocation is itself a successful wake delivery. Retire any
+       pending outbox row in the same lease transaction; if the owner dies,
+       dead-owner recovery creates a fresh wake with the recoverable state. */
+    await tx`
+      update runtime_task_outbox
+         set sent_at = coalesce(sent_at, now()), updated_at = now()
+       where task_id = ${taskId} and business_id = ${businessId}
+         and sent_at is null`;
+    return { outcome: 'leased', task: task(leased) };
+  }
 
   /* The uncommon fallback distinguishes a terminal/missing duplicate from a
      task parked behind the active lease, in one query. */
@@ -285,34 +345,44 @@ export async function leaseRuntimeTaskWithBusinessLock(
     status: RuntimeTaskStatus | null;
     current_id: string | null;
     current_lease_expires_at: Date | null;
+    current_lease_heartbeat_at: Date | null;
+    current_dispatch_phase: RuntimeTaskDispatchPhase | null;
     current_remote_run_id: string | null;
     current_remote_status: string | null;
     sibling_id: string | null;
     sibling_lease_expires_at: Date | null;
+    sibling_lease_heartbeat_at: Date | null;
+    sibling_dispatch_phase: RuntimeTaskDispatchPhase | null;
     sibling_remote_run_id: string | null;
     sibling_remote_status: string | null;
   }[]>`
     select current.status,
            current.id as current_id,
            current.lease_expires_at as current_lease_expires_at,
+           current.lease_heartbeat_at as current_lease_heartbeat_at,
+           current.dispatch_phase as current_dispatch_phase,
            current.remote_run_id as current_remote_run_id,
            current.remote_status as current_remote_status,
            sibling.id as sibling_id,
            sibling.lease_expires_at as sibling_lease_expires_at,
+           sibling.lease_heartbeat_at as sibling_lease_heartbeat_at,
+           sibling.dispatch_phase as sibling_dispatch_phase,
            sibling.remote_run_id as sibling_remote_run_id,
            sibling.remote_status as sibling_remote_status
       from (select 1) gate
       left join runtime_task current
         on current.id = ${taskId} and current.business_id = ${businessId}
       left join lateral (
-        select id, lease_expires_at, remote_run_id, remote_status
+        select id, lease_expires_at, lease_heartbeat_at, dispatch_phase,
+               remote_run_id, remote_status
           from runtime_task
          where business_id = ${businessId} and status = 'leased'
          order by updated_at desc
          limit 1
       ) sibling on true`;
   if (!state?.status) return { outcome: 'missing' };
-  if (state.status === 'completed' || state.status === 'cancelled' ||
+  if (state.status === 'completed' || state.status === 'cancel_requested' ||
+      state.status === 'cancelled' ||
       state.status === 'exhausted') {
     return { outcome: 'done' };
   }
@@ -325,6 +395,12 @@ export async function leaseRuntimeTaskWithBusinessLock(
     leasedId: selfLeased ? state.current_id : state.sibling_id,
     selfLeased,
     leasedLeaseExpiresAt,
+    leasedLeaseHeartbeatAt: selfLeased
+      ? state.current_lease_heartbeat_at
+      : state.sibling_lease_heartbeat_at,
+    leasedDispatchPhase: selfLeased
+      ? state.current_dispatch_phase
+      : state.sibling_dispatch_phase,
     leasedRemoteRunId: selfLeased
       ? state.current_remote_run_id
       : state.sibling_remote_run_id,
@@ -349,6 +425,7 @@ export async function reclaimRuntimeTaskLease(
   const rows = await tx`
     update runtime_task
        set status = 'failed', lease_token = null, lease_expires_at = null,
+           lease_heartbeat_at = null,
            attempt = attempt + 1, available_at = now(),
            last_error = ${reason.slice(0, 1000)}, updated_at = now()
      where id = ${taskId} and business_id = ${businessId}
@@ -358,8 +435,33 @@ export async function reclaimRuntimeTaskLease(
   return rows.length === 1;
 }
 
-/** Oldest task still waiting for a free slot — the FIFO next-in-line.
-    Hermes-style: a new message queues behind whatever is already ahead. */
+/** Recover ownership once the prior invocation stopped heartbeating. Unlike
+    lease expiry, this detects a dead owner while its original 300-second lease
+    is still fresh. Remote work remains addressable by the stable task id, so a
+    later slice can idempotently resume observation. */
+export async function recoverDeadRuntimeTaskLease(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+  reason = 'dead_owner_recovered',
+  deadAfterSeconds = 90,
+): Promise<boolean> {
+  const rows = await tx`
+    update runtime_task
+       set status = 'failed', lease_token = null, lease_expires_at = null,
+           lease_heartbeat_at = null, attempt = attempt + 1,
+           available_at = now(), last_error = ${reason.slice(0, 1000)},
+           updated_at = now()
+     where id = ${taskId} and business_id = ${businessId}
+       and status = 'leased'
+       and lease_heartbeat_at <= now() - (${deadAfterSeconds} * interval '1 second')
+    returning id`;
+  return rows.length === 1;
+}
+
+/** Oldest task still waiting for a free slot. This is a database admission
+    preference, not a Queue ordering guarantee: duplicate/out-of-order wakeups
+    are expected, and the advisory lock plus this ordering decide who runs. */
 export async function nextWaitingRuntimeTaskId(
   tx: postgres.TransactionSql,
   businessId: string,
@@ -419,6 +521,7 @@ export async function completeRuntimeTask(
   const rows = await tx`
     update runtime_task
        set status = 'completed', lease_token = null, lease_expires_at = null,
+           lease_heartbeat_at = null,
            remote_run_id = coalesce(${detail.remoteRunId ?? null}, remote_run_id),
            remote_status = coalesce(${detail.remoteStatus ?? null}, remote_status),
            result = ${detail.result === undefined ? tx`result` : tx.json(detail.result as never)},
@@ -446,6 +549,7 @@ export async function deferRuntimeTask(
   const rows = await tx`
     update runtime_task
        set status = 'queued', lease_token = null, lease_expires_at = null,
+           lease_heartbeat_at = null,
            remote_run_id = coalesce(${detail.remoteRunId ?? null}, remote_run_id),
            remote_status = coalesce(${detail.remoteStatus ?? null}, remote_status),
            result = ${detail.result === undefined ? tx`result` : tx.json(detail.result as never)},
@@ -498,7 +602,8 @@ export async function pauseRuntimeTaskForApproval(
   const rows = await tx`
     update runtime_task
        set kind = 'resume', status = 'queued', lease_token = null,
-           lease_expires_at = null, remote_run_id = ${input.remoteRunId},
+           lease_expires_at = null, lease_heartbeat_at = null,
+           dispatch_phase = 'remotely_running', remote_run_id = ${input.remoteRunId},
            remote_status = 'waiting_for_approval',
            result = ${tx.json({ ...current, approval } as never)},
            started_at = coalesce(started_at, now()),
@@ -760,10 +865,31 @@ export async function renewRuntimeTaskLease(
   const rows = await tx`
     update runtime_task
        set lease_expires_at = now() + (${leaseSeconds} * interval '1 second'),
+           lease_heartbeat_at = now(),
            updated_at = now()
      where id = ${taskId} and business_id = ${businessId}
        and status = 'leased' and lease_token = ${leaseToken}
        and lease_expires_at > now() + (${RUNTIME_LEASE_STALE_SECONDS} * interval '1 second')
+    returning id`;
+  return rows.length === 1;
+}
+
+/** Durable marker written immediately before remote admission. If the Worker
+    dies after this commit, recovery knows the POST may have crossed the wire;
+    if it dies before, the row remains `not_dispatched` and can be redispatched
+    without treating a runner 404 as ambiguous. */
+export async function markRuntimeTaskDispatching(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+  leaseToken: string,
+): Promise<boolean> {
+  const rows = await tx`
+    update runtime_task
+       set dispatch_phase = 'ambiguously_dispatched', updated_at = now()
+     where id = ${taskId} and business_id = ${businessId}
+       and status = 'leased' and lease_token = ${leaseToken}
+       and remote_run_id is null
     returning id`;
   return rows.length === 1;
 }
@@ -781,6 +907,7 @@ export async function recordRuntimeTaskRemoteRun(
   const rows = await tx`
     update runtime_task
        set remote_run_id = ${remoteRunId}, remote_status = ${remoteStatus},
+           dispatch_phase = 'remotely_running',
            started_at = coalesce(started_at, now()), updated_at = now()
      where id = ${taskId} and business_id = ${businessId}
        and status = 'leased' and lease_token = ${leaseToken}
@@ -799,6 +926,7 @@ export async function retryRuntimeTask(
   const rows = await tx`
     update runtime_task
        set status = 'failed', lease_token = null, lease_expires_at = null,
+           lease_heartbeat_at = null,
            attempt = attempt + 1,
            available_at = now() + (${delaySeconds} * interval '1 second'),
            last_error = ${error.slice(0, 1000)}, updated_at = now()
@@ -820,6 +948,7 @@ export async function exhaustRuntimeTask(
   const rows = await tx`
     update runtime_task
        set status = 'exhausted', lease_token = null, lease_expires_at = null,
+           lease_heartbeat_at = null,
            attempt = attempt + 1,
            payload = ${scrubPayload ? tx.json({} as never) : tx`payload`},
            result = ${scrubPayload ? tx.json({} as never) : tx`result`},
@@ -834,21 +963,62 @@ export async function cancelRuntimeTask(
   tx: postgres.TransactionSql,
   businessId: string,
   taskId: string,
+  confirmation: 'immediate' | 'runner' = 'immediate',
 ): Promise<{ task: RuntimeTask; changed: boolean } | null> {
   const [current] = await tx<TaskRow[]>`
     select ${tx.unsafe(cols)} from runtime_task
      where id = ${taskId} and business_id = ${businessId} for update`;
   if (!current) return null;
-  if (['completed', 'cancelled', 'exhausted'].includes(current.status)) {
+  if (['completed', 'cancel_requested', 'cancelled', 'exhausted'].includes(current.status)) {
     return { task: task(current), changed: false };
   }
+  const needsRunnerConfirmation = confirmation === 'runner' &&
+    (current.dispatch_phase !== 'not_dispatched' || current.remote_run_id !== null);
   const [cancelled] = await tx<TaskRow[]>`
     update runtime_task
-       set status = 'cancelled', lease_token = null, lease_expires_at = null,
-           completed_at = now(), updated_at = now()
+       set status = ${needsRunnerConfirmation ? 'cancel_requested' : 'cancelled'},
+           cancel_state = ${needsRunnerConfirmation ? 'requested' : 'confirmed'},
+           lease_token = null, lease_expires_at = null, lease_heartbeat_at = null,
+           completed_at = ${needsRunnerConfirmation ? null : tx`now()`}, updated_at = now()
      where id = ${taskId} and business_id = ${businessId}
     returning ${tx.unsafe(cols)}`;
   return { task: task(cancelled), changed: true };
+}
+
+export async function confirmRuntimeTaskCancellation(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+  remoteStatus = 'stopped',
+): Promise<RuntimeTask | null> {
+  const [row] = await tx<TaskRow[]>`
+    update runtime_task
+       set status = 'cancelled', cancel_state = 'confirmed', completed_at = now(),
+           remote_status = ${remoteStatus.slice(0, 64)}, updated_at = now()
+     where id = ${taskId} and business_id = ${businessId}
+       and status = 'cancel_requested' and cancel_state = 'requested'
+    returning ${tx.unsafe(cols)}`;
+  if (row) return task(row);
+  const [existing] = await tx<TaskRow[]>`
+    select ${tx.unsafe(cols)} from runtime_task
+     where id = ${taskId} and business_id = ${businessId}
+       and status = 'cancelled' and cancel_state = 'confirmed'`;
+  return existing ? task(existing) : null;
+}
+
+export async function markRuntimeTaskCancelFailed(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+  reason: string,
+): Promise<RuntimeTask | null> {
+  const [row] = await tx<TaskRow[]>`
+    update runtime_task
+       set cancel_state = 'failed', last_error = ${reason.slice(0, 1000)}, updated_at = now()
+     where id = ${taskId} and business_id = ${businessId}
+       and status = 'cancel_requested' and cancel_state = 'requested'
+    returning ${tx.unsafe(cols)}`;
+  return row ? task(row) : null;
 }
 
 export async function runtimeTaskIsCancelled(

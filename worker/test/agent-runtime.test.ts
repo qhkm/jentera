@@ -173,7 +173,7 @@ describe('provider provisioning', () => {
       RUNTIME_BUNDLE_COMMIT: 'a'.repeat(40),
       AISAR_MODEL_PROVIDER: 'openrouter',
       AISAR_MODEL_BASE: 'https://router.fmcv.my',
-      AISAR_MODEL_KEY: 'fmcv-runtime-inference-key',
+      AISAR_MODEL_KEY: 'fmcv-control-secret-'.padEnd(48, 's'),
       AISAR_MODEL_NAME: 'MiniMax-M3',
     });
     const row = await ensureProviderRuntime(runtimeEnv, A, {
@@ -197,7 +197,7 @@ describe('provider provisioning', () => {
       path: '/home/sprite/aisar/bootstrap.env.in',
       mode: 0o600,
     });
-    expect(provider.writes[0].data).not.toContain('fmcv-runtime-inference-key');
+    expect(provider.writes[0].data).not.toContain('fmcv-control-secret-');
     expect(provider.commands.map((entry) => entry.command)).toEqual([
       '/bin/bash', '/home/sprite/aisar/runner/bootstrap-runtime.sh',
     ]);
@@ -228,7 +228,7 @@ describe('provider provisioning', () => {
       RUNTIME_BUNDLE_COMMIT: 'a'.repeat(40),
       AISAR_MODEL_PROVIDER: 'openrouter',
       AISAR_MODEL_BASE: 'https://router.fmcv.my',
-      AISAR_MODEL_KEY: 'fmcv-runtime-inference-key',
+      AISAR_MODEL_KEY: 'fmcv-control-secret-'.padEnd(48, 's'),
       AISAR_MODEL_NAME: 'MiniMax-M3',
       SPRITES_TOKEN: 'organization-sprite-token',
     });

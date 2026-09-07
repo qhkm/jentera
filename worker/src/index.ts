@@ -17,7 +17,14 @@ import { handleEvents } from './routes/events';
 import { handleSupport } from './routes/support';
 import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
-import { handleRuntimeQueueMessage, sweepRuntimeDrift, type RuntimeQueueMessage } from './runtime/consumer';
+import {
+  drainRuntimeTaskOutbox,
+  handleRuntimeQueueMessage,
+  scheduleRuntimeTaskWake,
+  sweepRuntimeDrift,
+  sweepRuntimeTaskRecovery,
+  type RuntimeQueueMessage,
+} from './runtime/consumer';
 import { guardApiRequest } from './request-guard';
 
 export { RunStream } from './run-stream';
@@ -123,8 +130,14 @@ export default {
        tasks whose exhaustion was infra noise rather than a product bug. */
     const started = Date.now();
     try {
+      const recovered = await sweepRuntimeTaskRecovery(env);
+      const drainedBefore = await drainRuntimeTaskOutbox(env);
       const published = await sweepRuntimeDrift(env);
-      console.log(`[drift-sweep] published=${published} took=${Date.now() - started}ms`);
+      const drainedAfter = await drainRuntimeTaskOutbox(env);
+      console.log(
+        `[drift-sweep] recovered=${recovered} published=${published} ` +
+        `drained=${drainedBefore + drainedAfter} took=${Date.now() - started}ms`,
+      );
     } catch (err) {
       console.error(`[drift-sweep] ${String(err)}`);
     }
@@ -141,10 +154,15 @@ export default {
             `[runtime-queue] task=${queueId} action=requeue ` +
             `reason=${logValue(result.reason)}`,
           );
-          if (!env.RUNTIME_QUEUE) throw new Error('RUNTIME_QUEUE is not configured');
-          await env.RUNTIME_QUEUE.send(result.nextMessage ?? message.body, {
-            delaySeconds: result.delaySeconds,
-          });
+          const wake = result.nextMessage ??
+            (message.body.version === 1 ? message.body : null);
+          if (!wake) throw new Error('runtime task wake target is unavailable');
+          await scheduleRuntimeTaskWake(
+            env,
+            wake.businessId,
+            wake.taskId,
+            result.delaySeconds,
+          );
           message.ack();
         } else {
           console.warn(
@@ -152,10 +170,12 @@ export default {
             `reason=${logValue(result.reason)}`,
           );
           if (result.nextMessage) {
-            if (!env.RUNTIME_QUEUE) throw new Error('RUNTIME_QUEUE is not configured');
-            await env.RUNTIME_QUEUE.send(result.nextMessage, {
-              delaySeconds: result.delaySeconds,
-            });
+            await scheduleRuntimeTaskWake(
+              env,
+              result.nextMessage.businessId,
+              result.nextMessage.taskId,
+              result.delaySeconds,
+            );
             message.ack();
           } else {
             message.retry({ delaySeconds: result.delaySeconds });

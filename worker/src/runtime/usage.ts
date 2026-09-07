@@ -121,7 +121,25 @@ export async function markRuntimeUsageStarted(
     update runtime_usage
        set started_at = now(), updated_at = now()
      where business_id = ${businessId} and runtime_task_id = ${taskId}
-       and status = 'reserved'`;
+       and status = 'reserved' and finalization_state = 'reserved'`;
+}
+
+/** Absolute control-plane deadline used to bound each observation slice. A
+    missing reservation means this is the first dispatch, so the budget's run
+    ceiling starts now (reserveRuntimeUsage will persist nearly the same instant). */
+export async function runtimeUsageDeadline(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+): Promise<Date> {
+  const [row] = await tx<{ deadline: Date }[]>`
+    select coalesce(u.started_at, now()) +
+           (coalesce(b.max_run_seconds, 900) * interval '1 second') as deadline
+      from (select 1) gate
+      left join runtime_budget b on b.business_id = ${businessId}
+      left join runtime_usage u
+        on u.business_id = ${businessId} and u.runtime_task_id = ${taskId}`;
+  return row.deadline;
 }
 
 export async function finalizeRuntimeUsage(
@@ -135,11 +153,21 @@ export async function finalizeRuntimeUsage(
     model: string;
     reserved_input_tokens: string;
     reserved_output_tokens: string;
+    finalization_state: 'reserved' | 'finalizing' | 'finalized';
+    finalization_method: 'measured' | 'estimated' | null;
   }[]>`
-    select model, reserved_input_tokens::text, reserved_output_tokens::text
+    select model, reserved_input_tokens::text, reserved_output_tokens::text,
+           finalization_state, finalization_method
       from runtime_usage
-     where business_id = ${businessId} and runtime_task_id = ${taskId}`;
+     where business_id = ${businessId} and runtime_task_id = ${taskId}
+     for update`;
   if (!row) return;
+  const method = usage ? 'measured' : 'estimated';
+  /* A measured terminal report is authoritative over an earlier conservative
+     estimate (including historical cancellation rows finalized at zero). A
+     measured row is terminal and idempotent. */
+  if (row.finalization_state === 'finalized' &&
+      (row.finalization_method === 'measured' || method === 'estimated')) return;
   /* Unknown abnormal termination is charged at the reserved ceiling. This is
      deliberately conservative: recording zero would create unmetered spend. */
   const inputTokens = usage
@@ -149,14 +177,29 @@ export async function finalizeRuntimeUsage(
     ? tokenCount(usage.outputTokens)
     : number(row.reserved_output_tokens);
   const cost = modelCostMicrousd(row.model, inputTokens, outputTokens);
+  const claimed = await tx`
+    update runtime_usage
+       set finalization_state = 'finalizing', updated_at = now()
+     where business_id = ${businessId} and runtime_task_id = ${taskId}
+       and (
+         finalization_state in ('reserved', 'finalizing')
+         or (finalization_state = 'finalized' and finalization_method = 'estimated'
+             and ${method} = 'measured')
+       )
+    returning id`;
+  if (claimed.length !== 1) return;
   await tx`
     update runtime_usage
        set status = ${status}, input_tokens = ${inputTokens},
            output_tokens = ${outputTokens},
-           runtime_ms = greatest(0, floor(extract(epoch from (now() - started_at)) * 1000)),
-           cost_microusd = ${cost}, completed_at = now(), updated_at = now()
+           runtime_ms = case when completed_at is null
+             then greatest(0, floor(extract(epoch from (now() - started_at)) * 1000))
+             else runtime_ms end,
+           cost_microusd = ${cost}, completed_at = coalesce(completed_at, now()),
+           finalization_state = 'finalized', finalization_method = ${method},
+           updated_at = now()
      where business_id = ${businessId} and runtime_task_id = ${taskId}
-       and status = 'reserved'`;
+       and finalization_state = 'finalizing'`;
 }
 
 export async function runtimeBudgetSnapshot(

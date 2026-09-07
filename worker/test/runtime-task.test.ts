@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { asOwner, asTenant, truncateAll } from './harness';
 import {
+  activeRuntimeRunTask,
   claimRuntimeApprovalDecision,
   completeRuntimeApprovalDecision,
   completeRuntimeTask,
@@ -26,6 +27,46 @@ beforeEach(async () => {
 });
 
 describe('durable runtime tasks', () => {
+  it('selects the leased running task before a newer queued follow-up for /stop', async () => {
+    const running = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run',
+      dedupeKey: 'stop:running',
+      payload: { telegram: { chatId: 42 } },
+    }));
+    await lease(A, running.id, 'running-owner');
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run',
+      dedupeKey: 'stop:queued-follow-up',
+      payload: { telegram: { chatId: 42 } },
+    }));
+
+    const selected = await asTenant(A, (tx) => activeRuntimeRunTask(tx, A, 42));
+    expect(selected?.id).toBe(running.id);
+    expect(selected?.status).toBe('leased');
+  });
+
+  it('keeps an already-requested cancellation visible to webhook replay', async () => {
+    const cancelling = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run',
+      dedupeKey: 'stop:requested',
+      payload: { telegram: { chatId: 42 } },
+    }));
+    await asOwner((sql) => sql`
+      update runtime_task
+         set status = 'cancel_requested', cancel_state = 'requested'
+       where id = ${cancelling.id}`);
+    await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run',
+      dedupeKey: 'stop:newer-queued',
+      payload: { telegram: { chatId: 42 } },
+    }));
+
+    const selected = await asTenant(A, (tx) => activeRuntimeRunTask(tx, A, 42));
+    expect(selected?.id).toBe(cancelling.id);
+    expect(selected?.cancelState).toBe('requested');
+  });
+
   it('deduplicates the event that asks for work', async () => {
     const first = await queued(A, 'provision:first');
     const second = await queued(A, 'provision:first');
@@ -287,7 +328,8 @@ describe('lifecycle task self-heal (re-arm on republish)', () => {
     await asOwner((sql) => sql`
       update runtime_task
          set status = 'leased', lease_token = 'live-lease',
-             lease_expires_at = now() + interval '1 minute'
+             lease_expires_at = now() + interval '1 minute',
+             lease_heartbeat_at = now()
        where id = ${first.id}`);
     const republished = await upgrade(A, 'upgrade:A:rel-7');
     expect(republished.id).toBe(first.id);

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { markRuntimeReady } from '../src/agent-runtime';
 import { startRun } from '../src/runs';
 import { handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
@@ -8,6 +8,7 @@ import { ensureProviderRuntime } from '../src/runtime/provision';
 import { reserveRuntimeUsage } from '../src/runtime/usage';
 import type { RuntimeProvider } from '../src/runtime/provider';
 import { asOwner, asTenant, testEnv, truncateAll } from './harness';
+import { saveConnection } from '../src/connections';
 
 const A = '11111111-1111-4111-8111-111111111111';
 
@@ -17,7 +18,112 @@ beforeEach(async () => {
     insert into business (id, name, playbook_key) values (${A}, 'Alpha', 'restaurant')`);
 });
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe('durable Hermes run delivery', () => {
+  it('ends a live observation slice before the consumer ceiling and persists its next wake', async () => {
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.09.01-3',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const [owner] = await asOwner((sql) => sql<{ id: string }[]>`
+      insert into app_user (email, email_verified)
+      values ('slice-owner@example.com', true) returning id`);
+    const connection = await asTenant(A, (tx) => saveConnection(env, tx, A, {
+      connector: 'telegram',
+      method: 'bot_token',
+      externalId: '123456789',
+      displayName: '@slice_bot',
+      secret: '123456789:AAtoken',
+      connectedBy: owner.id,
+    }));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.message.telegram', runtime: 'hermes-sprite',
+      model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run',
+      runId: run.id,
+      dedupeKey: `slice:${run.id}`,
+      payload: {
+        input: 'Long research task',
+        model: 'MiniMax-M3',
+        telegram: {
+          connectionId: connection.id,
+          chatId: 42,
+          messageId: 7,
+          from: 'Owner',
+          question: 'Long research task',
+          privateChat: true,
+          liveMessageId: 77,
+        },
+      },
+    }));
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      response({ ok: true, result: { message_id: 77 } })));
+    const runnerFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return response({
+          ok: true,
+          release: '2026.09.01-3',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-06' },
+          toolMode: 'full-tools',
+          webSearchBackend: 'ddgs',
+          edgeAuthorizationForwarded: false,
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        return response({ ok: true, hermesRunId: 'slice-hermes-run', status: 'running' }, 202);
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}/events`)) {
+        const signal = init?.signal;
+        return new Response(new ReadableStream({
+          start(controller) {
+            signal?.addEventListener('abort', () => controller.error(signal.reason), { once: true });
+          },
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        });
+      }
+      return response({ error: 'not found' }, 404);
+    };
+
+    await expect(handleRuntimeMessage(
+      env,
+      { version: 1, businessId: A, taskId: task.id },
+      { provider, fetch: runnerFetch, observationSliceMs: 30 },
+    )).resolves.toEqual({
+      action: 'requeue', delaySeconds: 2, reason: 'bounded observation slice completed',
+    });
+    const [state] = await asOwner((sql) => sql<{
+      status: string; remote_run_id: string; dispatch_phase: string; wakes: string;
+    }[]>`
+      select t.status, t.remote_run_id, t.dispatch_phase,
+             count(o.id) filter (where o.sent_at is null)::text as wakes
+        from runtime_task t
+        left join runtime_task_outbox o on o.task_id = t.id
+       where t.id = ${task.id}
+       group by t.id`);
+    expect(state).toEqual({
+      status: 'queued',
+      remote_run_id: 'slice-hermes-run',
+      dispatch_phase: 'remotely_running',
+      wakes: '1',
+    });
+  });
+
   it('uses attested readiness as the single Sprite wake probe', async () => {
     const env = testEnv({
       RUNTIME_RELEASE: '2026.09.01-3',
