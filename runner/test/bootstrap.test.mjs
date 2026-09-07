@@ -110,7 +110,7 @@ test('Hermes installer bytes come from the reviewed Hermes commit (qhkm fork)', 
     source.includes('raw.githubusercontent.com/qhkm/hermes-agent/${hermes_commit}/scripts/install.sh'),
     'bootstrap fetches the installer from the qhkm fork at the pinned commit',
   );
-  assert.ok(source.includes('682f302f4084febf323558cf1a87ab8d311cba01e1e6088e4898d579871d10bf'));
+  assert.ok(source.includes('e6a44c55366aa676b281c7e75a4decc0834b9ca73daeb996e3eab0b404f097f4'));
   assert.ok(!source.includes('raw.githubusercontent.com/NousResearch/hermes-agent'));
 });
 
@@ -312,8 +312,8 @@ function fields(overrides = {}) {
     modelBase: 'https://openrouter.ai/api/v1',
     modelKey: 'o'.repeat(64),
     modelName: 'deepseek/deepseek-v4-flash-0731',
-    hermesTag: 'v2026.9.7',
-    hermesCommit: '111949b9750f7dafc8adaf0829de9cc108aa4236',
+    hermesTag: 'v2026.9.8',
+    hermesCommit: 'ff5b9fcfb029e230a2d3f90d1a3c06260ea1d413',
     ...overrides,
   };
   const body = [

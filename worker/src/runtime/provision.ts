@@ -131,8 +131,8 @@ async function bootstrapRuntime(
     field('MODEL_KEY_B64', modelKey),
     field('MODEL_NAME_B64', modelName),
     field('DEEP_MODEL_NAME_B64', deepModelName),
-    field('HERMES_TAG_B64', 'v2026.9.7'),
-    field('HERMES_COMMIT_B64', '111949b9750f7dafc8adaf0829de9cc108aa4236'),
+    field('HERMES_TAG_B64', 'v2026.9.8'),
+    field('HERMES_COMMIT_B64', 'ff5b9fcfb029e230a2d3f90d1a3c06260ea1d413'),
   ].join('\n') + '\n';
   const observed = {
     provider: runtime.provider,

@@ -1,5 +1,5 @@
 // Playwright is a devDependency of the apps/desktop workspace and is NOT
-// hoisted to the install root (v2026.9.7+ tree), so the historical
+// hoisted to the install root (v2026.9.8+ tree), so the historical
 // root node_modules path no longer resolves. bootstrap-runtime.sh locates
 // the real package entry and passes it here.
 const pwEntry =

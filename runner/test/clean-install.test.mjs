@@ -11,7 +11,7 @@ import { afterEach, before, test } from 'node:test';
  * REAL pinned Hermes commit — no fixtures, no network. Each test extracts the
  * pin from the read-only local clone (~/ios/hermes-agent) with `git archive`
  * and then drives the script as a subprocess, exactly as CI would. */
-const PIN = '111949b9750f7dafc8adaf0829de9cc108aa4236';
+const PIN = 'ff5b9fcfb029e230a2d3f90d1a3c06260ea1d413';
 const SCRIPT = new URL('../bin/patch-hermes-dependencies.mjs', import.meta.url).pathname;
 const HERMES_REPO = process.env.HERMES_AGENT_REPO || join(homedir(), 'ios', 'hermes-agent');
 

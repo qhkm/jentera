@@ -110,6 +110,11 @@
         # same fallback behaviour as Telegram/Discord/Slack (fixes #4954).
         fallback_model = GatewayRunner._load_fallback_model()
 
+        # Jentera: apply reviewed OpenRouter routing to API-server agents.
+        provider_routing = user_config.get("provider_routing") or {}
+        if not isinstance(provider_routing, dict):
+            provider_routing = {}
+
         agent = AIAgent(
             model=model,
             **runtime_kwargs,
@@ -128,29 +133,52 @@
             session_db=self._ensure_session_db(),
             fallback_model=fallback_model,
             reasoning_config=reasoning_config,
+            providers_allowed=provider_routing.get("only"),
+            providers_ignored=provider_routing.get("ignore"),
+            providers_order=provider_routing.get("order"),
+            provider_sort=provider_routing.get("sort"),
+            provider_require_parameters=provider_routing.get("require_parameters", False),
+            provider_data_collection=provider_routing.get("data_collection"),
             gateway_session_key=gateway_session_key,
         )
         return agent
 
     # ------------------------------------------------------------------
-    # HTTP Handlers
-    # ------------------------------------------------------------------
 
 
 # --------------------------------------------------------------------------
 # Verbatim slices of the pinned Hermes api_server.py @
-# 111949b9750f7dafc8adaf0829de9cc108aa4236 - health handler dict
-# (lines 2001-2006) and the run.completed reporting block (lines 5155-5200).
+# ff5b9fcfb029e230a2d3f90d1a3c06260ea1d413 - health handler dict
+# (lines 2014-2036) and the run.completed reporting block (lines 5184-5244,
+# incl. the usage-on-cancel port from the v0.20.5 line).
 # They keep the Stage-2 runtime anchors honest: if a future pin changes
 # either region the pinnedFixture test fails loudly instead of the patch
 # drifting silently.
 # --------------------------------------------------------------------------
-        return web.json_response({
-            "status": readiness["status"],
+
             "readiness": readiness,
             "platform": "hermes-agent",
+            # Jentera: expose bounded final reasoning and attest this runtime patch.
             "version": _hermes_version(),
+            "jentera_patch": "jentera-runtime-2026-09-06",
             "gateway_state": gw_state,
+            "platforms": runtime.get("platforms", {}),
+            "active_agents": gw_active,
+            "gateway_busy": derive_gateway_busy(
+                gateway_running=True,
+                gateway_state=gw_state,
+                active_agents=gw_active,
+            ),
+            "gateway_drainable": derive_gateway_drainable(
+                gateway_running=True,
+                gateway_state=gw_state,
+            ),
+            "exit_reason": runtime.get("exit_reason"),
+            # Contract: updated_at is RFC3339 string | null, never a number —
+            # the state file may carry legacy epoch floats or hand-edited junk.
+            "updated_at": normalize_updated_at(runtime.get("updated_at")),
+            "pid": os.getpid(),
+        })
                 # Check for structured failure (non-retryable client errors like
                 # 401/400 return failed=True instead of raising, so the except
                 # block below never fires — issue #15561).
@@ -170,18 +198,26 @@
                     )
                 else:
                     final_response = result.get("final_response", "") if isinstance(result, dict) else ""
+                    reasoning = (
+                        result.get("last_reasoning")
+                        if isinstance(result, dict)
+                        and isinstance(result.get("last_reasoning"), str)
+                        else None
+                    )
                     _put_event_if_active({
                         "event": "run.completed",
                         "run_id": run_id,
                         "timestamp": time.time(),
                         "output": final_response,
                         "usage": usage,
+                        **({"reasoning": reasoning} if reasoning else {}),
                     })
                     self._set_run_status(
                         run_id,
                         "completed",
                         output=final_response,
                         usage=usage,
+                        **({"reasoning": reasoning} if reasoning else {}),
                         last_event="run.completed",
                     )
             except asyncio.CancelledError:
@@ -189,11 +225,18 @@
                     run_id,
                     "cancelled",
                     last_event="run.cancelled",
+                    **({"usage": usage} if usage is not None else {}),
                 )
                 try:
                     _put_event_if_active({
                         "event": "run.cancelled",
                         "run_id": run_id,
                         "timestamp": time.time(),
+                        **({"usage": usage} if usage is not None else {}),
                     })
                 except Exception:
+                    pass
+                raise
+            except Exception as exc:
+                logger.exception("[api_server] run %s failed", run_id)
+                self._set_run_status(
