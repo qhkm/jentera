@@ -283,7 +283,7 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   'MiniMax-M3': { input: 30, output: 120 },
 };
 
-function modelCostMicrousd(model: string, inputTokens: number, outputTokens: number): number {
+export function modelCostMicrousd(model: string, inputTokens: number, outputTokens: number): number {
   const pricing = MODEL_PRICING[model];
   if (!pricing) throw new Error('runtime model pricing is not configured');
   return Math.ceil((inputTokens * pricing.input + outputTokens * pricing.output) / 100);

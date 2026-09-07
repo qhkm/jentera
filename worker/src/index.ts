@@ -15,6 +15,7 @@ import { handleConnect } from './routes/connect';
 import { handleRuntime } from './routes/runtime';
 import { handleEvents } from './routes/events';
 import { handleSupport } from './routes/support';
+import { handleModelProxy } from './routes/model';
 import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
 import {
@@ -77,6 +78,14 @@ export default {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers });
     }
+
+    /* Runtime-facing model proxy. Mounted before the API guard: chat
+       bodies/SSE exceed the API body cap, and these requests carry a
+       jentera runtime credential rather than a frontend cookie. */
+    const modelProxy = await handleModelProxy(request, env, url, headers, {
+      waitUntil: (promise) => ctx.waitUntil(promise),
+    });
+    if (modelProxy) return modelProxy;
 
     const guarded = await guardApiRequest(request, env, url, headers);
     if (guarded) return guarded;

@@ -56,8 +56,27 @@ export interface Env {
   /** FMCV inference credential. Kept in the control plane and installed only
       into isolated Jentera runtimes while FMCV tenant-key issuance is pending. */
   AISAR_MODEL_PROVIDER?: string;
+  /** Upstream model gateway the model proxy (routes/model.ts) forwards to.
+      Must be an allowlisted base; the credential it expects is
+      FMCV_UPSTREAM_KEY, never AISAR_MODEL_KEY. */
   AISAR_MODEL_BASE?: string;
+  /** Control secret signing runtime-facing `sk-jentera-v1.…` credentials.
+      Random, at least 32 characters, kept entirely inside this Worker —
+      never installed into a runtime, never sent to any gateway. Rotating
+      it deterministically rotates every runtime credential. */
   AISAR_MODEL_KEY?: string;
+  /** Model base handed to runtimes. When set to this Worker's own model
+      proxy (<API_ORIGIN>/v1/model), runtime credentials are derived tokens
+      verified here, and the upstream + its credential are configured purely
+      by AISAR_MODEL_BASE + FMCV_UPSTREAM_KEY. Absent: the official
+      OpenRouter endpoint is faced directly, and every other allowlisted
+      upstream automatically routes through this Worker's model proxy. */
+  AISAR_RUNTIME_MODEL_BASE?: string;
+  /** Credential the model proxy presents to the upstream gateway
+      (AISAR_MODEL_BASE) for every proxied call, and the only key the
+      upstream ever sees from this Worker. For the reviewed FMCV upstream
+      this is the FMCV master key pinned at B3 control-secret rotation. */
+  FMCV_UPSTREAM_KEY?: string;
   /** Official OpenRouter management credential stays control-plane-only and
       issues separate capped/expiring inference keys when that endpoint is used. */
   AISAR_OPENROUTER_MANAGEMENT_KEY?: string;

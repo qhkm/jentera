@@ -20,7 +20,7 @@ import {
   type AgentRuntimeRecord,
 } from '../agent-runtime';
 import { FlySpriteProvider } from './fly-sprite-provider';
-import { runtimeModelBaseAllowed } from './execution';
+import { runtimeFacingModelBase, runtimeFacingModelBaseAllowed } from './execution';
 import { canBootstrap, type BootstrapRuntimeProvider, type RuntimeProvider } from './provider';
 import { finalizeRuntimeModelKeyRotation, runtimeModelKey } from './openrouter-keys';
 import { RunnerClient } from './runner-client';
@@ -100,12 +100,14 @@ async function bootstrapRuntime(
 ): Promise<AgentRuntimeRecord> {
   const commit = env.RUNTIME_BUNDLE_COMMIT?.trim() ?? '';
   const modelProvider = env.AISAR_MODEL_PROVIDER?.trim() ?? '';
-  const modelBase = env.AISAR_MODEL_BASE?.trim() ?? '';
+  /* The base handed to the runtime: our own model proxy by default of
+     AISAR_RUNTIME_MODEL_BASE, otherwise the (allowlisted) upstream. */
+  const modelBase = runtimeFacingModelBase(env);
   const modelName = env.AISAR_MODEL_NAME?.trim() ?? '';
   const deepModelName = env.AISAR_DEEP_MODEL_NAME?.trim() || modelName;
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('RUNTIME_BUNDLE_COMMIT is invalid');
   if (modelProvider !== 'openrouter') throw new Error('Jentera model provider is not allowed');
-  if (!runtimeModelBaseAllowed(modelBase)) {
+  if (!runtimeFacingModelBaseAllowed(env, modelBase)) {
     throw new Error('Jentera model endpoint is not pinned');
   }
   if (!/^[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._:~-]+)?$/.test(modelName)) {
