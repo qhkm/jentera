@@ -2,8 +2,8 @@
 set -euo pipefail
 
 incoming="${1:-/home/sprite/aisar/vrs.env.in}"
-runtime_env="${AISAR_RUNTIME_ENV_FILE:-/home/sprite/aisar/runtime.env}"
-if [[ ! -r "$incoming" || ! -r "$runtime_env" ]]; then
+hermes_env="${AISAR_HERMES_ENV_FILE:-/home/sprite/aisar/hermes.env}"
+if [[ ! -r "$incoming" || ! -r "$hermes_env" ]]; then
   echo "VRS transfer or runtime environment is unavailable" >&2
   exit 1
 fi
@@ -46,13 +46,13 @@ key_slug="$(printf '%s' "$endpoint_identity" | tr '[:lower:]' '[:upper:]' | tr -
 key_slug="${key_slug##_}"
 key_slug="${key_slug%%_}"
 key_env="HERMES_CUSTOM_${key_slug}_API_KEY"
-runtime_tmp="$(mktemp /home/sprite/aisar/runtime.env.XXXXXX)"
-trap 'rm -f "$runtime_tmp"' EXIT
-grep -v "^${key_env}=" "$runtime_env" > "$runtime_tmp"
-printf '%s=' "$key_env" >> "$runtime_tmp"
-printf '%q\n' "$vrs_key" >> "$runtime_tmp"
-chmod 600 "$runtime_tmp"
-mv "$runtime_tmp" "$runtime_env"
+hermes_tmp="$(mktemp /home/sprite/aisar/hermes.env.XXXXXX)"
+trap 'rm -f "$hermes_tmp"' EXIT
+grep -v "^${key_env}=" "$hermes_env" > "$hermes_tmp"
+printf '%s=' "$key_env" >> "$hermes_tmp"
+printf '%q\n' "$vrs_key" >> "$hermes_tmp"
+chmod 600 "$hermes_tmp"
+mv "$hermes_tmp" "$hermes_env"
 
 /home/sprite/.hermes/hermes-agent/venv/bin/python \
   /home/sprite/aisar/runner/configure-vrs.py "$base_url" "$model_name" "$key_env"

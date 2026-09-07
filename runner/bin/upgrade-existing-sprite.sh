@@ -6,11 +6,19 @@ set -euo pipefail
 # bootstrap's data-only transfer and immediately rotates it through bootstrap.
 release="${1:?runtime release is required}"
 runtime_env="${AISAR_RUNTIME_ENV_FILE:-/home/sprite/aisar/runtime.env}"
+runner_env="${AISAR_RUNNER_ENV_FILE:-/home/sprite/aisar/runner.env}"
+hermes_env="${AISAR_HERMES_ENV_FILE:-/home/sprite/aisar/hermes.env}"
 [[ "$release" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[0-9]+$ ]] || exit 1
 [[ -r "$runtime_env" ]] || exit 1
 
 set -a
 source "$runtime_env"
+if [[ -r "$runner_env" ]]; then
+  source "$runner_env"
+fi
+if [[ -r "$hermes_env" ]]; then
+  source "$hermes_env"
+fi
 set +a
 : "${AISAR_BUSINESS_ID:?missing business id}"
 : "${AISAR_RUNNER_KEY:?missing runner key}"

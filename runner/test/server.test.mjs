@@ -25,6 +25,9 @@ let hermesRunMissing;
 let starts;
 let hermesEventsList;
 let approvalRequests;
+let stopRequests;
+let stopFailureStatus;
+let startBarrier;
 
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'aisar-runner-'));
@@ -34,6 +37,9 @@ beforeEach(async () => {
   hermesRunMissing = false;
   starts = [];
   approvalRequests = [];
+  stopRequests = 0;
+  stopFailureStatus = 0;
+  startBarrier = null;
   hermesEventsList = [
     { event: 'message.delta', delta: 'Hello' },
     { event: 'reasoning.available', text: 'private chain of thought' },
@@ -48,11 +54,20 @@ beforeEach(async () => {
   hermesServer = createServer(async (req, res) => {
     assert.equal(req.headers.authorization, `Bearer ${HERMES_KEY}`);
     if (req.url === '/health/detailed') {
-      return reply(res, 200, { status: 'ok', jentera_patch: hermesPatch, pid: 321 });
+      return reply(res, 200, {
+        status: 'ok',
+        jentera_patch: hermesPatch,
+        pid: 321,
+        readiness: {
+          status: 'ok',
+          checks: { background_queues: { active_api_runs: 0 } },
+        },
+      });
     }
     if (req.method === 'POST' && req.url === '/v1/runs') {
       const body = await bodyOf(req);
       starts.push(body);
+      if (startBarrier) await startBarrier;
       return reply(res, 202, { run_id: `run-${starts.length}`, status: 'started' });
     }
     if (req.url?.endsWith('/events')) {
@@ -71,8 +86,12 @@ beforeEach(async () => {
       });
     }
     if (req.method === 'POST' && req.url?.endsWith('/stop')) {
+      stopRequests += 1;
+      if (stopFailureStatus) return reply(res, stopFailureStatus, { error: 'stop failed' });
       if (hermesRunMissing) return reply(res, 404, { error: 'run not found' });
-      hermesStatus = 'stopping';
+      /* Hermes acknowledges `stopping` while its run status settles to the
+         terminal cancellation that carries measured usage. */
+      hermesStatus = 'cancelled';
       return reply(res, 200, { status: 'stopping' });
     }
     if (req.url?.startsWith('/v1/runs/')) {
@@ -213,6 +232,23 @@ test('starts one Hermes run for a valid leased Jentera task', async () => {
   });
 });
 
+test('persists a starting admission record before asking Hermes to spawn', async () => {
+  let releaseStart;
+  startBarrier = new Promise((resolve) => { releaseStart = resolve; });
+  const starting = start(TASK);
+  await waitFor(() => starts.length === 1);
+
+  const admitted = JSON.parse(await readFile(join(directory, 'state.json'), 'utf8'));
+  assert.equal(admitted.tasks[TASK].status, 'starting');
+  assert.equal(admitted.tasks[TASK].hermesRunId, null);
+  assert.equal(typeof admitted.tasks[TASK].startedAt, 'number');
+
+  releaseStart();
+  assert.equal((await starting).status, 202);
+  const persisted = JSON.parse(await readFile(join(directory, 'state.json'), 'utf8'));
+  assert.equal(persisted.tasks[TASK].hermesRunId, 'run-1');
+});
+
 test('disables reasoning for quick business conversation', async () => {
   const response = await start(TASK, { responseMode: 'quick' });
   assert.equal(response.status, 202);
@@ -281,6 +317,27 @@ test('polls and stops by Jentera task id without exposing Hermes directly', asyn
   const stopped = await call(`/v1/tasks/${TASK}/stop`, { method: 'POST' });
   assert.equal(stopped.status, 200);
   assert.equal((await stopped.json()).status, 'stopping');
+  assert.equal(stopRequests, 1);
+
+  const terminal = await (await call(`/v1/tasks/${TASK}`)).json();
+  assert.equal(terminal.status, 'cancelled');
+  assert.deepEqual(terminal.usage, { input_tokens: 42, output_tokens: 12, total_tokens: 54 });
+});
+
+test('reports a failed stop as failure and leaves the task retryable', async () => {
+  await start(TASK);
+  stopFailureStatus = 500;
+
+  const stopped = await call(`/v1/tasks/${TASK}/stop`, { method: 'POST' });
+  assert.equal(stopped.status, 502);
+  assert.equal((await stopped.json()).ok, false);
+  assert.equal(stopRequests, 1);
+
+  stopFailureStatus = 0;
+  const retried = await call(`/v1/tasks/${TASK}/stop`, { method: 'POST' });
+  assert.equal(retried.status, 200);
+  assert.equal((await retried.json()).status, 'stopping');
+  assert.equal(stopRequests, 2);
 });
 
 test('terminal status carries bounded output, usage, and reasoning — nothing else', async () => {
@@ -362,7 +419,7 @@ test('streams Hermes-visible assistant, tool, and bounded thinking events withou
 });
 
 test('relays only the bounded approval prompt and forwards an approved FIFO head', async () => {
-  const requestId = 'a'.repeat(32);
+  const requestId = 'aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa';
   hermesEventsList = [{
     event: 'approval.request',
     run_id: 'run-1',
@@ -392,7 +449,7 @@ test('relays only the bounded approval prompt and forwards an approved FIFO head
     body: JSON.stringify({ requestId, decision: 'approve' }),
   });
   assert.equal(approved.status, 200);
-  assert.deepEqual(approvalRequests, [{ choice: 'once' }]);
+  assert.deepEqual(approvalRequests, [{ choice: 'once', request_id: requestId }]);
   assert.equal((await approved.json()).status, 'running');
 
   const duplicate = await call(`/v1/tasks/${TASK}/approval`, {
@@ -402,11 +459,11 @@ test('relays only the bounded approval prompt and forwards an approved FIFO head
   });
   assert.equal(duplicate.status, 200);
   assert.equal((await duplicate.json()).duplicate, true);
-  assert.deepEqual(approvalRequests, [{ choice: 'once' }]);
+  assert.deepEqual(approvalRequests, [{ choice: 'once', request_id: requestId }]);
 });
 
-test('rejects a forged approval id and maps deny to Hermes deny', async () => {
-  const requestId = 'b'.repeat(32);
+test('rejects a forged approval id and forwards deny identity plus reason', async () => {
+  const requestId = 'bbbbbbbbbbbb4bbb8bbbbbbbbbbbbbbb';
   hermesEventsList = [{
     event: 'approval.request',
     request_id: requestId,
@@ -419,7 +476,10 @@ test('rejects a forged approval id and maps deny to Hermes deny', async () => {
   const forged = await call(`/v1/tasks/${TASK}/approval`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ requestId: 'c'.repeat(32), decision: 'approve' }),
+    body: JSON.stringify({
+      requestId: 'cccccccccccc4ccc8ccccccccccccccc',
+      decision: 'approve',
+    }),
   });
   assert.equal(forged.status, 409);
   assert.deepEqual(approvalRequests, []);
@@ -427,10 +487,14 @@ test('rejects a forged approval id and maps deny to Hermes deny', async () => {
   const denied = await call(`/v1/tasks/${TASK}/approval`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ requestId, decision: 'deny' }),
+    body: JSON.stringify({ requestId, decision: 'deny', reason: 'Owner declined this destination.' }),
   });
   assert.equal(denied.status, 200);
-  assert.deepEqual(approvalRequests, [{ choice: 'deny' }]);
+  assert.deepEqual(approvalRequests, [{
+    choice: 'deny',
+    request_id: requestId,
+    reason: 'Owner declined this destination.',
+  }]);
 });
 
 test('quarantines a run Hermes no longer knows so a new task can start', async () => {
@@ -451,10 +515,11 @@ test('quarantines a run Hermes no longer knows so a new task can start', async (
   const state = JSON.parse(await readFile(join(directory, 'state.json'), 'utf8'));
   assert.equal(state.tasks[TASK].status, 'failed');
   assert.equal(state.tasks[TASK].terminal.error, 'run vanished (Hermes returned not_found)');
+  assert.equal(stopRequests, 1);
 });
 
 test('a 409 surfaces the active task startedAt and an aged task is quarantined', async () => {
-  await start(TASK);
+  await start(TASK, { responseMode: 'quick' });
   const busy = await start(TASK_2);
   assert.equal(busy.status, 409);
   const busyBody = await busy.json();
@@ -474,10 +539,94 @@ test('a 409 surfaces the active task startedAt and an aged task is quarantined',
   const status = await (await call(`/v1/tasks/${TASK}`)).json();
   assert.equal(status.status, 'failed');
   assert.match(status.error, /age limit/);
+  assert.equal(stopRequests, 1);
+});
+
+test('a quarantine stop failure keeps the slot held and remains stoppable', async () => {
+  await start(TASK, { responseMode: 'quick' });
+  const stateFile = join(directory, 'state.json');
+  const state = JSON.parse(await readFile(stateFile, 'utf8'));
+  state.tasks[TASK].startedAt = Date.now() - 20 * 60 * 1000;
+  await writeFile(stateFile, JSON.stringify(state));
+  stopFailureStatus = 500;
+
+  assert.equal((await start(TASK_2)).status, 409);
+  const pending = JSON.parse(await readFile(stateFile, 'utf8'));
+  assert.equal(pending.tasks[TASK].status, 'quarantined');
+  assert.match(pending.tasks[TASK].stopError, /500/);
+
+  stopFailureStatus = 0;
+  assert.equal((await start(TASK_2)).status, 202);
+  assert.ok(stopRequests >= 2);
+});
+
+test('enforces deadlineAt, stops Hermes, and preserves post-stop usage as expired', async () => {
+  const deadlineAt = Date.now() + 100;
+  const response = await start(TASK, { deadlineAt });
+  assert.equal(response.status, 202);
+
+  await waitFor(async () => {
+    const status = await (await call(`/v1/tasks/${TASK}`)).json();
+    return status.status === 'expired';
+  });
+  const expired = await (await call(`/v1/tasks/${TASK}`)).json();
+  assert.equal(expired.status, 'expired');
+  assert.match(expired.error, /deadline/);
+  assert.deepEqual(expired.usage, { input_tokens: 42, output_tokens: 12, total_tokens: 54 });
+  assert.ok(stopRequests >= 1);
+
+  const state = JSON.parse(await readFile(join(directory, 'state.json'), 'utf8'));
+  assert.equal(state.tasks[TASK].deadlineAt, deadlineAt);
+  assert.equal(state.tasks[TASK].terminal.status, 'expired');
+});
+
+test('a deadline during admission waits for the Hermes run identity before releasing', async () => {
+  let releaseStart;
+  startBarrier = new Promise((resolve) => { releaseStart = resolve; });
+  const starting = start(TASK, { deadlineAt: Date.now() + 100 });
+  await waitFor(() => starts.length === 1);
+  await new Promise((resolve) => setTimeout(resolve, 120));
+
+  const pending = JSON.parse(await readFile(join(directory, 'state.json'), 'utf8'));
+  assert.equal(pending.tasks[TASK].status, 'expiring');
+  assert.equal(pending.tasks[TASK].hermesRunId, null);
+  assert.equal(stopRequests, 0);
+
+  releaseStart();
+  assert.equal((await starting).status, 202);
+  await waitFor(async () => {
+    const status = await (await call(`/v1/tasks/${TASK}`)).json();
+    return status.status === 'expired';
+  });
+  assert.ok(stopRequests >= 1);
+});
+
+test('a run completed before its deadline is preserved without a stop', async () => {
+  await start(TASK, { deadlineAt: Date.now() + 100 });
+  hermesStatus = 'completed';
+  await new Promise((resolve) => setTimeout(resolve, 120));
+
+  const completed = await (await call(`/v1/tasks/${TASK}`)).json();
+  assert.equal(completed.status, 'completed');
+  assert.deepEqual(completed.usage, { input_tokens: 42, output_tokens: 12, total_tokens: 54 });
+  assert.equal(stopRequests, 0);
+});
+
+test('rejects malformed, elapsed, and overlong deadlines before admission', async () => {
+  for (const deadlineAt of [
+    'soon',
+    Date.now() - 1,
+    Date.now() + 60 * 60 * 1000 + 5_000,
+  ]) {
+    const response = await start(TASK, { deadlineAt });
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /deadlineAt/);
+  }
+  assert.equal(starts.length, 0);
 });
 
 test('readyz reconciles the slot and reports the active task', async () => {
-  await start(TASK);
+  await start(TASK, { responseMode: 'quick' });
   const ready = await (await call('/readyz')).json();
   /* No runner source attestation in the test config, so readiness is 503 —
      but the runner still reconciles and reports the slot. */
@@ -570,4 +719,13 @@ function close(server) {
   return new Promise((resolve, reject) => {
     server.close((error) => error ? reject(error) : resolve());
   });
+}
+
+async function waitFor(predicate, timeoutMs = 2_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail('condition was not met before timeout');
 }

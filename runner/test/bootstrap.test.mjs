@@ -8,6 +8,7 @@ import { afterEach, test } from 'node:test';
 const SCRIPT = new URL('../bin/bootstrap-runtime.sh', import.meta.url).pathname;
 const CONFIGURE = new URL('../bin/configure-model-provider.py', import.meta.url).pathname;
 const HERMES_SERVICE = new URL('../bin/hermes-service.sh', import.meta.url).pathname;
+const RUNNER_SERVICE = new URL('../bin/runner-service.sh', import.meta.url).pathname;
 const PROVISION = new URL('../bin/provision-sprite.sh', import.meta.url).pathname;
 const DISPLAY_SERVICE = new URL('../bin/display-service.sh', import.meta.url).pathname;
 const directories = [];
@@ -66,6 +67,33 @@ test('runtime readiness binds the release to the runner bytes loaded by the proc
   const source = await readFile(SCRIPT, 'utf8');
   assert.match(source, /sha256sum \/home\/sprite\/aisar\/runner\/server\.mjs/);
   assert.match(source, /AISAR_RUNNER_SOURCE_SHA256=%q/);
+});
+
+test('bootstrap writes mode-0600 consumer-scoped credential files', async () => {
+  const source = await readFile(SCRIPT, 'utf8');
+  const runtime = writerBlock(source, "printf 'AISAR_BUSINESS_ID=%q", '} > "$runtime_tmp"');
+  const runner = writerBlock(source, "printf 'AISAR_RUNNER_KEY=%q", '} > "$runner_tmp"');
+  const hermes = writerBlock(source, "{\n  printf 'HERMES_API_KEY=%q", '} > "$hermes_tmp"');
+
+  assert.doesNotMatch(runtime, /AISAR_RUNNER_KEY|AISAR_EDGE_TOKEN|HERMES_API_KEY|API_SERVER_KEY|OPENROUTER_API_KEY/);
+  assert.match(runner, /AISAR_RUNNER_KEY/);
+  assert.match(runner, /AISAR_EDGE_TOKEN/);
+  assert.match(runner, /HERMES_API_KEY/);
+  assert.doesNotMatch(runner, /API_SERVER_KEY|OPENROUTER_API_KEY/);
+  assert.match(hermes, /HERMES_API_KEY/);
+  assert.match(hermes, /API_SERVER_KEY/);
+  assert.match(hermes, /OPENROUTER_API_KEY/);
+  assert.doesNotMatch(hermes, /AISAR_RUNNER_KEY|AISAR_EDGE_TOKEN/);
+  assert.match(source, /chmod 600 "\$runtime_tmp" "\$runner_tmp" "\$hermes_tmp"/);
+  assert.match(source, /mv "\$runner_tmp" "\$runner_env"/);
+  assert.match(source, /mv "\$hermes_tmp" "\$hermes_env"/);
+
+  const hermesService = await readFile(HERMES_SERVICE, 'utf8');
+  assert.match(hermesService, /AISAR_HERMES_ENV_FILE/);
+  assert.match(hermesService, /source "\$runtime_env"\nsource "\$hermes_env"/);
+  const runnerService = await readFile(RUNNER_SERVICE, 'utf8');
+  assert.match(runnerService, /AISAR_RUNNER_ENV_FILE/);
+  assert.match(runnerService, /source "\$runtime_env"\nsource "\$runner_env"/);
 });
 
 test('Hermes service replaces only a verified stale gateway process', async () => {
@@ -355,4 +383,12 @@ async function runConfigure(argv, preexisting = {}) {
     env: { ...process.env, PYTHONPATH: directory, AISAR_TEST_CONFIG: configPath },
   });
   return { ...result, configPath };
+}
+
+function writerBlock(source, startMarker, endMarker) {
+  const start = source.lastIndexOf('{', source.indexOf(startMarker));
+  const end = source.indexOf(endMarker, start);
+  assert.notEqual(start, -1, `missing writer start for ${startMarker}`);
+  assert.notEqual(end, -1, `missing writer end for ${endMarker}`);
+  return source.slice(start, end + endMarker.length);
 }
