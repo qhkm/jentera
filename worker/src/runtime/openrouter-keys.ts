@@ -99,14 +99,27 @@ export async function runtimeModelKey(
   options: { manager?: OpenRouterKeyManager } = {},
 ): Promise<string> {
   const modelBase = env.AISAR_MODEL_BASE?.trim() ?? '';
-  /* FMCV is a LiteLLM gateway without a self-serve virtual-key API, and the
-     B3 gateway verifier is not deployed yet. Until it is, provision the
-     configured gateway key directly (pre-B3 semantics — matches 09.06-2).
-     Re-land deriveFmcvRuntimeCredential after the verifier ships. */
+  /* FMCV is a LiteLLM gateway without a self-serve virtual-key API. Give each
+     runtime a signed, pseudonymous virtual credential derived from the
+     control-plane secret. The gateway verifier (gateway/fmcv-verifier/) can
+     enforce the embedded $5 monthly tenant ceiling without the master/control
+     secret ever entering a runtime. Rotating AISAR_MODEL_KEY deterministically
+     rotates every derived credential on the next reconciliation. */
   if (modelBase === FMCV_API) {
-    const fmcvKey = env.AISAR_MODEL_KEY?.trim() ?? '';
-    if (fmcvKey.length < 20) throw new Error('FMCV model credential is unavailable');
-    return fmcvKey;
+    const derived = await deriveFmcvRuntimeCredential(
+      env.AISAR_MODEL_KEY?.trim() ?? '', runtimeName,
+    );
+    const current = await withTenant(env, businessId, (tx) =>
+      getRuntimeModelCredential(env, tx, businessId));
+    if (current?.hash === derived.hash && current.key === derived.key) return current.key;
+    await withTenant(env, businessId, async (tx) => {
+      await storeRuntimeModelCredential(env, tx, businessId, derived);
+      if (current?.hash) await markRuntimeModelKeyRevoked(tx, businessId, current.hash);
+      if (current?.pendingRevocationHash) {
+        await markRuntimeModelKeyRevoked(tx, businessId, current.pendingRevocationHash);
+      }
+    });
+    return derived.key;
   }
   if (modelBase !== API) throw new Error('model endpoint is not supported for key issuance');
   const current = await withTenant(env, businessId, (tx) =>
@@ -139,7 +152,17 @@ export async function runtimeModelKeyNeedsRotation(
   env: Env,
   businessId: string,
 ): Promise<boolean> {
-  if (env.AISAR_MODEL_BASE?.trim() === FMCV_API) return false;
+  if (env.AISAR_MODEL_BASE?.trim() === FMCV_API) {
+    const secret = env.AISAR_MODEL_KEY?.trim() ?? '';
+    if (secret.length < 32) return false;
+    const { runtime, current } = await withTenant(env, businessId, async (tx) => ({
+      runtime: await getRuntime(tx, businessId),
+      current: await getRuntimeModelCredential(env, tx, businessId),
+    }));
+    if (!runtime) return false;
+    const expected = await deriveFmcvRuntimeCredential(secret, runtime.providerName);
+    return current?.hash !== expected.hash || current.key !== expected.key;
+  }
   if (!env.AISAR_OPENROUTER_MANAGEMENT_KEY?.trim()) return false;
   const { runtime, current } = await withTenant(env, businessId, async (tx) => ({
     runtime: await getRuntime(tx, businessId),
@@ -152,15 +175,18 @@ export async function runtimeModelKeyNeedsRotation(
 }
 
 /** Isomorphic FMCV virtual-key format. The payload contains only the already
-    pseudonymous runtime name and enforceable limit claims; tenant identity is
-    also bound into the HMAC input but is not disclosed in the credential. */
+    pseudonymous runtime name and enforceable limit claims; the runtime name is
+    also bound into the HMAC input (payload is signed as a whole), so the
+    gateway verifier validates statelessly with just the shared control secret:
+    it recomputes HMAC(secret, "jentera-fmcv-runtime-key:v1:{payload}") and
+    compares. No tenant/business identifier is disclosed in the credential and
+    no gateway-side database lookup is required. */
 export async function deriveFmcvRuntimeCredential(
   controlSecret: string,
-  businessId: string,
   runtimeName: string,
 ): Promise<RuntimeModelCredential> {
   if (controlSecret.length < 32) throw new Error('FMCV model credential is unavailable');
-  if (!/^[0-9a-f-]{36}$/i.test(businessId) || !/^aisar-b-[0-9a-f]{20}$/.test(runtimeName)) {
+  if (!/^aisar-b-[0-9a-f]{20}$/.test(runtimeName)) {
     throw new Error('runtime identity is invalid for FMCV key derivation');
   }
   const payload = base64Url(new TextEncoder().encode(JSON.stringify({
@@ -179,7 +205,7 @@ export async function deriveFmcvRuntimeCredential(
   const signature = new Uint8Array(await crypto.subtle.sign(
     'HMAC',
     signingKey,
-    new TextEncoder().encode(`${FMCV_DERIVATION_CONTEXT}:${businessId}:${payload}`),
+    new TextEncoder().encode(`${FMCV_DERIVATION_CONTEXT}:${payload}`),
   ));
   const key = `sk-jentera-v1.${payload}.${base64Url(signature)}`;
   const digest = new Uint8Array(await crypto.subtle.digest(
