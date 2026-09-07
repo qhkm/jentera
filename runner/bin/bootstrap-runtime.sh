@@ -4,7 +4,7 @@ set -euo pipefail
 # Idempotent bootstrap executed inside one newly-created Sprite. The transfer
 # file contains base64 data, never shell code, and is removed on every exit.
 incoming="${1:-/home/sprite/aisar/bootstrap.env.in}"
-hermes_installer_sha256="682f302f4084febf323558cf1a87ab8d311cba01e1e6088e4898d579871d10bf"
+hermes_installer_sha256="e6a44c55366aa676b281c7e75a4decc0834b9ca73daeb996e3eab0b404f097f4"
 
 if [[ ! -r "$incoming" ]]; then
   echo "runtime bootstrap transfer is unavailable" >&2
@@ -205,7 +205,7 @@ fi
 # assert the executable exists before any service can be marked ready.
 browser_cache=/home/sprite/.cache/ms-playwright
 # Playwright is a devDependency of the apps/desktop workspace in the pinned
-# hermes tree (v2026.9.7+) and is NOT hoisted to the install root, so the
+# hermes tree (v2026.9.8+) and is NOT hoisted to the install root, so the
 # historical root node_modules path no longer resolves. Locate the real
 # package entry once and use it for both the browser install and the smoke.
 playwright_dir="$(dirname "$(find "$install_dir" -type f \
