@@ -16,6 +16,7 @@ import { useDetailLevel } from '@/hooks/useDetailLevel';
 import { useT } from '@/i18n/I18nProvider';
 import { Icon, stripEmoji } from '@/components/Icon';
 import { OutcomeReceipt, type WorkSignalState } from '@/components/WorkSignal';
+import { ActivityHistory } from '@/components/ActivityHistory';
 import { useToast } from '@/components/Toast';
 import { useMutate, useRefresh, useSnapshot, type WorkQuality } from '@/lib/repo';
 import type { Approval, Business, Tone, WorkItem } from '@/lib/types';
@@ -53,7 +54,13 @@ function workSignal(status: string): WorkSignalState {
   return 'working';
 }
 
-export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> }) {
+export default function ActivityView({
+  b,
+  onOpenAsk,
+}: {
+  b: ReturnType<typeof useBusiness>;
+  onOpenAsk?: () => void;
+}) {
   const t = useT();
   const toast = useToast();
   const mutate = useMutate();
@@ -142,10 +149,7 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
           <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.work.desc')}</p>
         </header>
         <Card className="py-7">
-          <LoadingState
-            title={t('loading.activity.title')}
-            detail={t('loading.activity.detail')}
-          />
+          <LoadingState title={t('loading.activity.title')} detail={t('loading.activity.detail')} />
         </Card>
       </div>
     );
@@ -162,7 +166,9 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
           <p className="text-sm">{t('loading.activity.error')}</p>
           <p className="text-[13px] text-text-secondary">{activity.error?.message}</p>
           <div>
-            <Button variant="outline" onClick={activity.reload}>{t('loading.retry')}</Button>
+            <Button variant="outline" onClick={activity.reload}>
+              {t('loading.retry')}
+            </Button>
           </div>
         </Card>
       </div>
@@ -175,19 +181,6 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
        Telegram reply could sit waiting forever on a screen that did not
        render it — the gate raised, and no way to answer it. */
     const pending = snap.approvals.filter((a) => a.status === 'pending');
-    if (pending.length === 0 && activity.data!.work.length === 0) {
-      return (
-        <div className="flex flex-col gap-6">
-          <header className="flex flex-col gap-2">
-            <h1 className="font-pixel text-2xl tracking-tight">{t('view.work')}</h1>
-            <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.work.desc')}</p>
-          </header>
-          <Card className="items-center py-8 text-center">
-            <p className="text-sm text-text-secondary">{t('home.nothingyet')}</p>
-          </Card>
-        </div>
-      );
-    }
     return (
       <div className="flex flex-col gap-6">
         <header className="flex flex-col gap-2">
@@ -203,83 +196,81 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
           }}
         />
 
-        {activity.data!.work.length > 0 && (
-          <div className="grid gap-3">
-            {activity.data!.work.map((w) => (
-              <OutcomeReceipt
-                key={w.id}
-                title={w.objective}
-                outcome={w.outcome}
-                audience={t('ask.private')}
-                evidence={w.minutesSaved && w.minutesSaved > 0
+        <ActivityHistory work={activity.data!.work} onOpenAsk={onOpenAsk}>
+          {(w) => (
+            <OutcomeReceipt
+              key={w.id}
+              title={w.objective}
+              outcome={w.outcome}
+              audience={t('ask.private')}
+              evidence={
+                w.minutesSaved && w.minutesSaved > 0
                   ? t('work.receipt.saved', { n: w.minutesSaved })
                   : w.channel
                     ? t('work.receipt.channel', { channel: w.channel })
-                    : undefined}
-                meta={`${new Date(w.occurredAt).toLocaleString()}${w.function ? ` · ${w.function}` : ''}`}
-                statusLabel={t(workLabel(w.status))}
-                statusTone={workTone(w.status)}
-                state={workSignal(w.status)}
-              >
-                {/* Advanced mode only, and only where there is a run to
+                    : undefined
+              }
+              meta={`${new Date(w.occurredAt).toLocaleString()}${w.function ? ` · ${w.function}` : ''}`}
+              statusLabel={t(workLabel(w.status))}
+              statusTone={workTone(w.status)}
+              state={workSignal(w.status)}
+            >
+              {/* Advanced mode only, and only where there is a run to
                     trace. Collapsed by default: the trace is for the
                     moment something looks wrong, not for every glance. */}
-                {detail.advanced && w.runId && (
-                  <details className="mt-1">
-                    <summary className="cursor-pointer text-[11px] text-text-muted">
-                      Technical trace
-                    </summary>
-                    <div className="mt-2">
-                      <RunTrace runId={w.runId} />
-                    </div>
-                  </details>
-                )}
+              {detail.advanced && w.runId && (
+                <details className="mt-1">
+                  <summary className="cursor-pointer text-[11px] text-text-muted">
+                    {t('activity.trace')}
+                  </summary>
+                  <div className="mt-2">
+                    <RunTrace runId={w.runId} />
+                  </div>
+                </details>
+              )}
 
-                {/* Owner verdict — completed work only. The rating is
+              {/* Owner verdict — completed work only. The rating is
                     the signal that tells Jentera whether this kind of
                     task actually helped, so it shows on every finished
                     receipt and can be changed later. */}
-                {w.status === 'completed' && (
-                  <div
-                    className="mt-2 flex items-center gap-2 border-t border-border/60 pt-2"
-                    role="group"
-                    aria-label={t('work.rate.prompt')}
+              {w.status === 'completed' && (
+                <div
+                  className="mt-2 flex items-center gap-2 border-t border-border/60 pt-2"
+                  role="group"
+                  aria-label={t('work.rate.prompt')}
+                >
+                  <span className="text-[11px] text-text-muted">{t('work.rate.prompt')}</span>
+                  <button
+                    type="button"
+                    aria-pressed={w.outcomeQuality === 'good'}
+                    title={t('work.rate.good')}
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition-colors ${
+                      w.outcomeQuality === 'good'
+                        ? 'border-brand bg-brand/15 text-brand'
+                        : 'border-border text-text-muted hover:border-brand/60 hover:text-brand'
+                    }`}
+                    onClick={() => void rateWork(w.id, 'good')}
                   >
-                    <span className="text-[11px] text-text-muted">
-                      {t('work.rate.prompt')}
-                    </span>
-                    <button
-                      type="button"
-                      aria-pressed={w.outcomeQuality === 'good'}
-                      title={t('work.rate.good')}
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition-colors ${
-                        w.outcomeQuality === 'good'
-                          ? 'border-brand bg-brand/15 text-brand'
-                          : 'border-border text-text-muted hover:border-brand/60 hover:text-brand'
-                      }`}
-                      onClick={() => void rateWork(w.id, 'good')}
-                    >
-                      <Icon name="thumbsUp" size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      aria-pressed={w.outcomeQuality === 'poor'}
-                      title={t('work.rate.poor')}
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition-colors ${
-                        w.outcomeQuality === 'poor'
-                          ? 'border-red-500 bg-red-500/15 text-red-500'
-                          : 'border-border text-text-muted hover:border-red-500/60 hover:text-red-500'
-                      }`}
-                      onClick={() => void rateWork(w.id, 'poor')}
-                    >
-                      <Icon name="thumbsDown" size={14} />
-                    </button>
-                  </div>
-                )}
-              </OutcomeReceipt>
-            ))}
-          </div>
-        )}
+                    <Icon name="thumbsUp" size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={w.outcomeQuality === 'poor'}
+                    title={t('work.rate.poor')}
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition-colors ${
+                      w.outcomeQuality === 'poor'
+                        ? 'border-red-500 bg-red-500/15 text-red-500'
+                        : 'border-border text-text-muted hover:border-red-500/60 hover:text-red-500'
+                    }`}
+                    onClick={() => void rateWork(w.id, 'poor')}
+                  >
+                    <Icon name="thumbsDown" size={14} />
+                  </button>
+                </div>
+              )}
+            </OutcomeReceipt>
+          )}
+        </ActivityHistory>
       </div>
     );
   }
@@ -368,10 +359,7 @@ export default function ActivityView({ b }: { b: ReturnType<typeof useBusiness> 
                   >
                     {t('appr.reject')}
                   </Button>
-                  <Button
-                    className="px-4 py-1.5 text-xs"
-                    onClick={() => void decideTool(a, true)}
-                  >
+                  <Button className="px-4 py-1.5 text-xs" onClick={() => void decideTool(a, true)}>
                     {t('appr.approve')}
                   </Button>
                 </div>

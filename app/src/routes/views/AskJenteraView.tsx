@@ -12,6 +12,16 @@ import { ASK_PROMPTS, useAsk } from "@/hooks/useAsk";
 import { useIsCompact } from "@/hooks/useMediaQuery";
 import { Icon, DataIcon } from "@/components/Icon";
 import { JenteraMark } from "@/components/JenteraMark";
+import { ChatHistory } from "@/components/ChatHistory";
+import {
+  ArrowUp,
+  ChatCircleText,
+  ClipboardText,
+  ListChecks,
+  LockSimple,
+  Notepad,
+  Plus,
+} from "@phosphor-icons/react";
 import { OutcomeReceipt, TypingBubble } from "@/components/WorkSignal";
 import { useMentions } from "@/hooks/useMentions";
 import { useSignedIn } from "@/lib/repo/gate";
@@ -38,13 +48,17 @@ export default function AskJenteraView({
   /* CSS cannot shorten placeholder text, and the full string clips
      mid-word in the narrower mobile composer. */
   const compact = useIsCompact();
-  const [draft, setDraft] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const activity = useActivity();
   const onAskCompleted = useCallback(
     () => activity.reload(),
     [activity.reload],
   );
   const ask = useAsk(business, { handled, needs }, t, lang, onAskCompleted);
+  const draft = drafts[ask.activeId] ?? "";
+  function setDraft(value: string) {
+    setDrafts((current) => ({ ...current, [ask.activeId]: value }));
+  }
   const signedIn = useSignedIn();
   /* Telegram-style: the chat bar earns its place once the owner can
      hold more than one conversation — either signed in (persists) or
@@ -53,6 +67,15 @@ export default function AskJenteraView({
   const thread = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const mentions = useMentions(business.team);
+
+  useEffect(() => {
+    mentions.close();
+    const el = composer.current;
+    if (el) {
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+    }
+  }, [ask.activeId, mentions.close]);
 
   const stickToBottom = useCallback(() => {
     const el = thread.current;
@@ -115,98 +138,91 @@ export default function AskJenteraView({
     stickToBottom();
   }
 
+  function prepare(text: string) {
+    setDraft(text);
+    mentions.close();
+    requestAnimationFrame(() => {
+      const el = composer.current;
+      if (!el) return;
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+      el.focus();
+    });
+  }
+
   return (
     /* 100dvh minus the sticky header (64px) and the bottom nav (64px).
        dvh rather than vh so mobile browser chrome does not clip it. */
-    <div className="chat-shell flex flex-col gap-0 lg:h-auto lg:gap-6">
-      <header className="hidden flex-col gap-2 lg:flex">
+    <div className="chat-shell ask-workspace flex flex-col gap-0 lg:h-auto lg:gap-6">
+      <header className="sr-only flex-col gap-2 lg:not-sr-only lg:flex">
         <h1 className="font-pixel text-2xl tracking-tight">{t("view.chat")}</h1>
         <p className="max-w-[66ch] text-sm text-text-secondary">
           {t("view.chat.desc")}
         </p>
       </header>
 
-      <Card className="min-h-0 flex-1 gap-0 rounded-none border-x-0 border-b-0 p-0 lg:min-h-[440px] lg:flex-none lg:rounded-card lg:border">
-        {showSessions ? (
-          <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-rail px-4 py-2.5 [scrollbar-width:none] sm:px-5">
-            <button
-              type="button"
-              className="chip shrink-0 gap-1.5 border-dashed hover:border-brand-line"
-              onClick={ask.newSession}
-            >
-              <Icon name="plus" size={12} className="text-brand" />
-              <span className="max-sm:hidden">{t("ask.newChat")}</span>
-            </button>
-            {ask.sessions.map((session) => {
-              const active = session.id === ask.activeId;
-              return (
-                <div
-                  key={session.id}
-                  className={`flex shrink-0 items-center gap-1 rounded-pill border py-1 pl-3 pr-1.5 transition-colors ${
-                    active
-                      ? "border-brand bg-brand-soft"
-                      : "border-rail bg-bg-card hover:border-border-light"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    aria-pressed={active}
-                    title={session.title || t("ask.chat.untitled")}
-                    className="max-w-[10rem] truncate text-[12px] font-medium text-text-secondary hover:text-text"
-                    onClick={() => ask.openSession(session.id)}
-                  >
-                    {session.title || t("ask.chat.untitled")}
-                  </button>
-                  {ask.sessions.length > 1 ? (
-                    <button
-                      type="button"
-                      aria-label={t("ask.deleteChat")}
-                      className="rounded-full p-1 text-text-muted transition-colors hover:bg-border-light hover:text-text"
-                      onClick={() => ask.deleteSession(session.id)}
-                    >
-                      <Icon name="close" size={10} />
-                    </button>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
+      <Card className="ask-canvas min-h-0 flex-1 gap-0 rounded-none border-x-0 border-b-0 p-0 lg:min-h-[440px] lg:flex-none lg:rounded-card lg:border">
+        <div className="ask-toolbar">
+          {showSessions ? (
+            <ChatHistory
+              sessions={ask.sessions}
+              activeId={ask.activeId}
+              onOpen={ask.openSession}
+              onDelete={ask.deleteSession}
+            />
+          ) : (
+            <span className="ask-toolbar-label">{t("view.chat")}</span>
+          )}
+          <span className="ask-private-label">
+            <LockSimple size={13} aria-hidden="true" />
+            {t("ask.private")}
+          </span>
+          <button
+            type="button"
+            className="ask-new-chat"
+            aria-label={t("ask.newChat")}
+            onClick={ask.newSession}
+          >
+            <Plus size={16} aria-hidden="true" />
+            <span>{t("ask.newChat")}</span>
+          </button>
+        </div>
         <div
           ref={thread}
-          className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-5"
+          className="ask-thread flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-5"
         >
+          {ask.hasHistory && (
+            <h2 className="sr-only">{t("ask.conversation")}</h2>
+          )}
           {!ask.hasHistory ? (
-            <div className="ask-empty-panel flex flex-col items-center gap-3 py-10 text-center">
-              <JenteraMark size={56} />
+            <div className="ask-welcome">
+              <div className="ask-welcome-heading">
+                <JenteraMark size={48} />
+                <span>{t("ask.context", { name: business.name })}</span>
+              </div>
               <h2 className="font-pixel text-lg tracking-tight">
                 {t("ask.empty.title")}
               </h2>
-              <p className="max-w-[46ch] text-[13px] text-text-secondary">
-                {t(firstRun ? "ask.welcome.first" : "ask.welcome")}
+              <p className="ask-welcome-copy">
+                {t(firstRun ? "ask.welcome.first" : "ask.start.detail")}
               </p>
-              <div className="ask-start-options">
-                {ASK_PROMPTS.map((key) => (
+              <div className="ask-task-options">
+                {[
+                  { key: "reply", icon: ChatCircleText },
+                  { key: "plan", icon: ListChecks },
+                  { key: "notes", icon: Notepad },
+                  { key: "update", icon: ClipboardText },
+                ].map(({ key, icon: TaskIcon }) => (
                   <button
                     key={key}
                     type="button"
-                    onClick={() => {
-                      setDraft(t(`ask.prompt.${key}`));
-                      composer.current?.focus();
-                    }}
+                    onClick={() => prepare(t(`ask.starter.${key}.prompt`))}
                   >
-                    <Icon
-                      name={
-                        key === "status"
-                          ? "activity"
-                          : key === "approvals"
-                            ? "shield"
-                            : "chat"
-                      }
-                      size={22}
-                      weight="duotone"
-                    />
-                    <span>{t(`ask.prompt.${key}`)}</span>
+                    <TaskIcon size={23} weight="duotone" aria-hidden="true" />
+                    <span>
+                      <strong>{t(`ask.starter.${key}`)}</strong>
+                      <small>{t(`ask.starter.${key}.detail`)}</small>
+                    </span>
                   </button>
                 ))}
               </div>
@@ -339,7 +355,7 @@ export default function AskJenteraView({
                 key={key}
                 type="button"
                 className="chip shrink-0 hover:border-brand-line"
-                onClick={() => submit(t(`ask.prompt.${key}`))}
+                onClick={() => prepare(t(`ask.prompt.${key}`))}
               >
                 {t(`ask.prompt.${key}`)}
               </button>
@@ -360,6 +376,7 @@ export default function AskJenteraView({
                   <button
                     type="button"
                     role="option"
+                    id={`mention-option-${i}`}
                     aria-selected={i === mentions.active}
                     onMouseEnter={() => mentions.setActive(i)}
                     onMouseDown={(e) => {
@@ -389,7 +406,7 @@ export default function AskJenteraView({
         </div>
 
         <form
-          className="flex shrink-0 items-end gap-2 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-5 sm:pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+          className="ask-composer"
           onSubmit={(e) => {
             e.preventDefault();
             submit();
@@ -414,6 +431,7 @@ export default function AskJenteraView({
             }}
             onBlur={() => window.setTimeout(mentions.close, 120)}
             onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return;
               if (mentions.open) {
                 if (e.key === "ArrowDown") {
                   e.preventDefault();
@@ -441,23 +459,25 @@ export default function AskJenteraView({
                 submit();
               }
             }}
-            role="combobox"
-            aria-expanded={mentions.open}
-            aria-controls="mention-list"
+            aria-haspopup="listbox"
+            aria-activedescendant={
+              mentions.open ? `mention-option-${mentions.active}` : undefined
+            }
+            aria-controls={mentions.open ? "mention-list" : undefined}
             aria-autocomplete="list"
             placeholder={
               compact ? t("ask.placeholder.short") : t("ask.placeholder")
             }
             aria-label={t("ask.placeholder")}
-            className="input max-h-[120px] w-full min-w-0 flex-1 resize-none"
+            className="max-h-[120px] w-full min-w-0 flex-1 resize-none"
           />
           <Button
             type="submit"
             disabled={!draft.trim()}
-            className="shrink-0 px-4 sm:px-6"
+            className="ask-send shrink-0"
+            aria-label={t("ask.send")}
           >
-            <span className="sm:hidden">{t("chat.send")}</span>
-            <span className="hidden sm:inline">{t("ask.send")}</span>
+            <ArrowUp size={21} weight="bold" aria-hidden="true" />
           </Button>
         </form>
         <p className="hidden px-4 pb-4 text-[11px] text-text-muted sm:px-5 lg:block">

@@ -268,7 +268,7 @@ export default function Dashboard() {
               onOpenConnections={() => go('business', 'connections')}
             />
           </div>
-          {view === 'work' && <ActivityView b={b} />}
+          {view === 'work' && <ActivityView b={b} onOpenAsk={() => go('chat')} />}
           {view === 'business' && (
             <MyBusinessView
               b={b}

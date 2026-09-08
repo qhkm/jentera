@@ -4,16 +4,14 @@
    component, which is most of why the React port shrinks.
    ============================================================ */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { clearAskStorage } from '@/hooks/useAsk';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useI18n } from '@/i18n/I18nProvider';
 import { Button } from '@/components/ui';
-import { useTheme } from '@/hooks/useTheme';
-import { useSignedIn } from '@/lib/repo/gate';
-import { useDetailLevel } from '@/hooks/useDetailLevel';
 import { JenteraMark } from '@/components/JenteraMark';
+import { AccountMenu } from '@/components/AccountMenu';
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
@@ -54,21 +52,8 @@ export function Shell({
   className?: string;
   children: ReactNode;
 }) {
-  const { lang, t, toggleLang } = useI18n();
-  const { theme, toggleTheme } = useTheme();
-  const signedIn = useSignedIn();
-  const detail = useDetailLevel();
+  const { t } = useI18n();
   const [leaving, setLeaving] = useState(false);
-  const [utilityOpen, setUtilityOpen] = useState(false);
-
-  useEffect(() => {
-    if (!utilityOpen) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setUtilityOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [utilityOpen]);
 
   async function signOut() {
     setLeaving(true);
@@ -98,10 +83,7 @@ export function Shell({
             {onMenu ? (
               <button
                 type="button"
-                onClick={() => {
-                  setUtilityOpen(false);
-                  onMenu();
-                }}
+                onClick={onMenu}
                 className="relative -ml-1 flex size-8 flex-col items-center justify-center gap-[5px] lg:hidden"
                 aria-label={t('drawer.menu')}
               >
@@ -116,126 +98,15 @@ export function Shell({
             <Logo suffix={suffix} />
           </div>
 
-          <div className="hidden items-center gap-2 md:flex">
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="nav-link px-2 py-1"
-              aria-label={t(theme === 'dark' ? 'db.theme.toLight' : 'db.theme.toDark')}
-            >
-              {t(theme === 'dark' ? 'db.light' : 'db.dark')}
-            </button>
-            <button
-              type="button"
-              onClick={toggleLang}
-              className="nav-link px-2 py-1"
-              aria-label={t('nav.language')}
-            >
-              {lang === 'en' ? 'BM' : 'EN'}
-            </button>
-            {/* Only when signed in: the demo has no trace to reveal, so
-                the control would promise something it cannot give. */}
-            {detail.canChange ? (
-              <button
-                type="button"
-                onClick={() => detail.set(detail.advanced ? 'beginner' : 'advanced')}
-                className="nav-link px-2 py-1"
-                aria-pressed={detail.advanced}
-                title={
-                  detail.advanced
-                    ? 'Showing the technical trace'
-                    : 'Show the technical trace and raw operation names'
-                }
-              >
-                {detail.advanced ? 'SIMPLE' : 'DETAIL'}
-              </button>
-            ) : null}
-            {/* Only for a server-backed session. The anonymous demo has
-                nothing to log out of, and offering it there would imply
-                an account the visitor does not have. */}
-            {signedIn ? (
-              <button
-                type="button"
-                onClick={signOut}
-                className="nav-link px-2 py-1"
-                disabled={leaving}
-              >
-                {t('nav.logout')}
-              </button>
-            ) : null}
-            {actions}
+          <div className="flex items-center gap-3">
+            {actions ? <div className="hidden items-center gap-2 md:flex">{actions}</div> : null}
+            <AccountMenu
+              onSignOut={() => void signOut()}
+              leaving={leaving}
+              mobileActions={actions}
+            />
           </div>
-
-          <button
-            type="button"
-            onClick={() => setUtilityOpen((open) => !open)}
-            className="flex size-10 items-center justify-center rounded-item border border-rail text-lg leading-none md:hidden"
-            aria-label={t('nav.more')}
-            aria-expanded={utilityOpen}
-            aria-controls="mobile-utility-menu"
-          >
-            <span aria-hidden="true" className="-mt-1 tracking-[0.12em]">
-              •••
-            </span>
-          </button>
         </div>
-
-        {utilityOpen ? (
-          <div
-            id="mobile-utility-menu"
-            className="absolute right-4 top-[calc(100%+0.5rem)] z-40 flex w-[min(18rem,calc(100vw-2rem))] flex-col gap-1 rounded-card border border-border bg-bg p-2 shadow-xl md:hidden"
-          >
-            <button
-              type="button"
-              onClick={() => {
-                toggleTheme();
-                setUtilityOpen(false);
-              }}
-              className="nav-link flex w-full items-center justify-between rounded-item px-3 py-2.5 text-left"
-            >
-              <span>{t(theme === 'dark' ? 'db.theme.toLight' : 'db.theme.toDark')}</span>
-              <span className="text-text-muted">
-                {t(theme === 'dark' ? 'db.light' : 'db.dark')}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                toggleLang();
-                setUtilityOpen(false);
-              }}
-              className="nav-link flex w-full items-center justify-between rounded-item px-3 py-2.5 text-left"
-            >
-              <span>{t('nav.language')}</span>
-              <span className="text-text-muted">{lang === 'en' ? 'BM' : 'EN'}</span>
-            </button>
-            {detail.canChange ? (
-              <button
-                type="button"
-                onClick={() => {
-                  detail.set(detail.advanced ? 'beginner' : 'advanced');
-                  setUtilityOpen(false);
-                }}
-                className="nav-link flex w-full items-center justify-between rounded-item px-3 py-2.5 text-left"
-                aria-pressed={detail.advanced}
-              >
-                <span>{t('nav.detail')}</span>
-                <span className="text-text-muted">{detail.advanced ? 'SIMPLE' : 'DETAIL'}</span>
-              </button>
-            ) : null}
-            {signedIn ? (
-              <button
-                type="button"
-                onClick={() => void signOut()}
-                className="nav-link w-full rounded-item px-3 py-2.5 text-left"
-                disabled={leaving}
-              >
-                {t('nav.logout')}
-              </button>
-            ) : null}
-            {actions ? <div className="p-1">{actions}</div> : null}
-          </div>
-        ) : null}
       </header>
       <main
         className={

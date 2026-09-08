@@ -361,44 +361,6 @@
 .home-review-link svg:last-child {
   margin-left: auto;
 }
-.ask-empty-panel {
-  max-width: 640px;
-  width: 100%;
-  margin-inline: auto;
-}
-.ask-empty-panel h2 {
-  font-size: 26px;
-  margin-top: 12px;
-}
-.ask-start-options {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 20px;
-  width: 100%;
-}
-.ask-start-options > button {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-  padding: 20px;
-  border: 1px solid var(--rail);
-  border-radius: 12px;
-  background: var(--bg);
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.6;
-  text-align: left;
-}
-.ask-start-options > button > svg {
-  color: var(--accent-green);
-  flex-shrink: 0;
-}
-.ask-start-options > button:hover {
-  border-color: rgb(var(--accent-green-rgb) / 0.4);
-  background: rgb(var(--accent-green-rgb) / 0.04);
-}
-
 @media (max-width: 1100px) {
   .home-ask-cta {
     padding: 12px;
@@ -497,16 +459,6 @@
   }
   .home-recent {
     order: 4;
-  }
-  .ask-start-options {
-    grid-template-columns: 1fr;
-    max-width: 340px;
-  }
-  .ask-start-options > button {
-    flex-direction: row;
-    align-items: center;
-    min-height: 56px;
-    padding: 14px 16px;
   }
 }
 @media (max-width: 380px) {
