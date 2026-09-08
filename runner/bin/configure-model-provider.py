@@ -136,6 +136,14 @@ def main() -> None:
             }
         )
         auxiliary[task] = task_cfg
+    # Hermes forks a post-run "review the conversation and update the skill
+    # library" turn (auxiliary.background_review, default on): a full-context
+    # model call, observed at 23K-62K input tokens, producing skills the
+    # product never exposes. Pinned off on every provision; other keys under
+    # background_review are preserved.
+    background_review = dict(auxiliary.get("background_review") or {})
+    background_review["enabled"] = False
+    auxiliary["background_review"] = background_review
     config["auxiliary"] = auxiliary
 
     # Keep DS4 Flash fixed while requiring an underlying OpenRouter endpoint

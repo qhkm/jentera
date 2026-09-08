@@ -290,6 +290,20 @@ test('configure pins a route and reasoning override for each candidate model', a
   assert.match(invalid.stderr, /candidate model id is invalid/);
 });
 
+test('configure disables the post-run skill review on every provision', async () => {
+  /* Hermes forks a "review the conversation and update the skill library"
+     turn after runs (auxiliary.background_review, default on): a full-context
+     model call producing skills the product never exposes. Pinned off. */
+  const { status, stderr, configPath } = await runConfigure(
+    ['openrouter', 'https://router.fmcv.my', 'MiniMax-M3', 'OPENROUTER_API_KEY', '0', 'deepseek-v4-flash'],
+    { auxiliary: { background_review: { enabled: true, keep: 'me' } } },
+  );
+  assert.equal(status, 0, stderr);
+  const config = JSON.parse(await readFile(configPath, 'utf8'));
+  assert.equal(config.auxiliary.background_review.enabled, false);
+  assert.equal(config.auxiliary.background_review.keep, 'me');
+});
+
 test('computer use is gated, pinned, and proven before the runtime attests it', async () => {
   const source = await readFile(SCRIPT, 'utf8');
   // The transfer field is optional and defaults to disabled; only `1` enables
