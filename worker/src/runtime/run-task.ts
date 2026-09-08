@@ -84,6 +84,8 @@ export async function dispatchRuntimeRun(
     fetch?: typeof globalThis.fetch;
     onDelta?: (delta: string) => Promise<void>;
     onToolEvent?: (event: RunnerToolEvent) => Promise<void>;
+    /** The real Hermes model-call iteration and configured ceiling. */
+    onIteration?: (current: number, total: number) => Promise<void>;
     onHeartbeat?: () => Promise<void>;
     /** A complete `@step:` progress label the model emitted. */
     onProgress?: (label: string) => Promise<void>;
@@ -223,6 +225,7 @@ export async function dispatchRuntimeRun(
     ? client.stream(task.id, {
         onDelta: options.onDelta,
         onToolEvent: options.onToolEvent,
+        onIteration: options.onIteration,
         onHeartbeat: options.onHeartbeat,
         onProgress: options.onProgress,
         onThinking: options.onThinking,

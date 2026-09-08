@@ -16,8 +16,13 @@ const lockPath = join(root, 'package-lock.json');
 const apiServerPath = join(root, 'gateway/platforms/api_server.py');
 const routingMarker = '# Jentera: apply reviewed OpenRouter routing to API-server agents.';
 const runtimeMarker = '# Jentera: expose bounded final reasoning and attest this runtime patch.';
-const runtimePatchId = 'jentera-runtime-2026-09-06';
-const priorRuntimePatchId = 'jentera-runtime-2026-09-01';
+const iterationMarker = '# Jentera: expose real Hermes iteration progress to the run SSE.';
+const runtimePatchId = 'jentera-runtime-2026-09-07';
+const priorRuntimePatchId = 'jentera-runtime-2026-09-06';
+const legacyRuntimePatchIds = new Set([
+  'jentera-runtime-2026-09-01',
+  'jentera-runtime-2026-09-04',
+]);
 const bootstrapPath = join(root, 'agent/process_bootstrap.py');
 const runAgentPath = join(root, 'run_agent.py');
 const wireReorderPath = join(root, 'agent/wire_reorder.py');
@@ -145,7 +150,10 @@ if (!apiServer.includes(routingMarker) ||
     !apiServer.includes(runtimeMarker) ||
     !apiServer.includes(`"jentera_patch": "${runtimePatchId}",`) ||
     !apiServer.includes('result.get("last_reasoning")') ||
-    !apiServer.includes('**({"reasoning": reasoning} if reasoning else {}),')) {
+    !apiServer.includes('**({"reasoning": reasoning} if reasoning else {}),') ||
+    !apiServer.includes(iterationMarker) ||
+    !apiServer.includes('step_callback=_step_cb,') ||
+    !apiServer.includes('"event": "iteration.started",')) {
   throw new Error('Hermes API server is missing a reviewed Jentera patch');
 }
 const bootstrap = await readFile(bootstrapPath, 'utf8');
@@ -252,6 +260,103 @@ async function patchApiServer() {
       '                        last_event="run.completed",',
     ].join('\n');
     source = replaceReviewedAnchor(source, statusAnchor, statusPatch);
+  }
+
+  if (!source.includes(iterationMarker)) {
+    const signatureAnchor = [
+      '    def _create_agent(',
+      '        self,',
+      '        ephemeral_system_prompt: Optional[str] = None,',
+      '        session_id: Optional[str] = None,',
+      '        stream_delta_callback=None,',
+      '        tool_progress_callback=None,',
+      '        tool_start_callback=None,',
+    ].join('\n');
+    const signaturePatch = [
+      '    def _create_agent(',
+      '        self,',
+      '        ephemeral_system_prompt: Optional[str] = None,',
+      '        session_id: Optional[str] = None,',
+      '        stream_delta_callback=None,',
+      '        tool_progress_callback=None,',
+      '        step_callback=None,',
+      '        tool_start_callback=None,',
+    ].join('\n');
+    source = replaceReviewedAnchor(source, signatureAnchor, signaturePatch);
+
+    const agentCallbackAnchor = [
+      '            tool_progress_callback=tool_progress_callback,',
+      '            tool_start_callback=tool_start_callback,',
+    ].join('\n');
+    const agentCallbackPatch = [
+      '            tool_progress_callback=tool_progress_callback,',
+      '            step_callback=step_callback,',
+      '            tool_start_callback=tool_start_callback,',
+    ].join('\n');
+    source = replaceReviewedAnchor(source, agentCallbackAnchor, agentCallbackPatch);
+
+    const callbackAnchor = [
+      '            ts = time.time()',
+      '            if event_type == "tool.started":',
+    ].join('\n');
+    const callbackPatch = [
+      '            ts = time.time()',
+      `            ${iterationMarker}`,
+      '            if event_type == "iteration.started":',
+      '                try:',
+      '                    iteration = int(kwargs.get("iteration", 0))',
+      '                    max_iterations = int(kwargs.get("max_iterations", 0))',
+      '                except (TypeError, ValueError):',
+      '                    return',
+      '                if not (1 <= iteration <= max_iterations <= 10000):',
+      '                    return',
+      '                _push({',
+      '                    "event": "iteration.started",',
+      '                    "run_id": run_id,',
+      '                    "timestamp": ts,',
+      '                    "iteration": iteration,',
+      '                    "max_iterations": max_iterations,',
+      '                })',
+      '            elif event_type == "tool.started":',
+    ].join('\n');
+    source = replaceReviewedAnchor(source, callbackAnchor, callbackPatch);
+
+    const eventCallbackAnchor =
+      '        event_cb = self._make_run_event_callback(run_id, loop)\n';
+    const eventCallbackPatch = [
+      eventCallbackAnchor.trimEnd(),
+      '        agent_ref = {}',
+      '',
+      '        def _step_cb(iteration, _previous_tools=None):',
+      '            agent = agent_ref.get("agent")',
+      '            event_cb(',
+      '                "iteration.started",',
+      '                iteration=iteration,',
+      '                max_iterations=getattr(agent, "max_iterations", 0),',
+      '            )',
+    ].join('\n') + '\n';
+    source = replaceReviewedAnchor(source, eventCallbackAnchor, eventCallbackPatch);
+
+    const createAgentAnchor = [
+      '                        stream_delta_callback=_text_cb,',
+      '                        tool_progress_callback=event_cb,',
+      '                        gateway_session_key=gateway_session_key,',
+    ].join('\n');
+    const createAgentPatch = [
+      '                        stream_delta_callback=_text_cb,',
+      '                        tool_progress_callback=event_cb,',
+      '                        step_callback=_step_cb,',
+      '                        gateway_session_key=gateway_session_key,',
+    ].join('\n');
+    source = replaceReviewedAnchor(source, createAgentAnchor, createAgentPatch);
+
+    const activeAgentAnchor =
+      '                self._active_run_agents[run_id] = agent\n';
+    const activeAgentPatch = [
+      '                agent_ref["agent"] = agent',
+      activeAgentAnchor.trimEnd(),
+    ].join('\n') + '\n';
+    source = replaceReviewedAnchor(source, activeAgentAnchor, activeAgentPatch);
   }
   await writeFile(apiServerPath, source, { mode: 0o644 });
 }
@@ -375,9 +480,9 @@ function migrateRuntimePatchId(source) {
   if (!attested) return source;
   const id = attested[1];
   if (id === runtimePatchId) return source;
-  if (id === priorRuntimePatchId) {
+  if (id === priorRuntimePatchId || legacyRuntimePatchIds.has(id)) {
     return replaceReviewedAnchor(source,
-      `"jentera_patch": "${priorRuntimePatchId}",`,
+      `"jentera_patch": "${id}",`,
       `"jentera_patch": "${runtimePatchId}",`);
   }
   throw new Error(`unreviewed jentera_patch ${JSON.stringify(id)} requires review`);

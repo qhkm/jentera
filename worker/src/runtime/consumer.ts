@@ -109,6 +109,7 @@ const TELEGRAM_FLOOD_OWNER_NOTICE =
   '⏳ Telegram is rate-limiting this chat — your answer will appear as soon as it lifts.';
 const QUICK_REPLY_STATUS = '💭 Thinking…';
 const DEEP_WORK_STATUS = '🧠 Deep work started…';
+const LONG_TASK_STATUS_AFTER_MS = 60_000;
 export const HERMES_APPROVAL_WAIT_SECONDS = 60;
 
 /** Friendly one-line statuses for the ephemeral Telegram draft, keyed by the
@@ -1239,9 +1240,21 @@ export async function handleRuntimeMessage(
            bubble. Rendered with the elapsed ticker until the answer starts. */
         let currentStep = '';
         let currentStepIsTool = false;
+        let currentActivity = 'thinking';
+        let iteration: { current: number; total: number } | undefined;
         const workingSince = Date.now();
         const responseMode = runtimeResponseMode(lease.task.payload);
         const quickReply = responseMode === 'quick';
+        const timedStatus = () => {
+          const elapsedMs = Date.now() - workingSince;
+          if (!quickReply && elapsedMs >= LONG_TASK_STATUS_AFTER_MS) {
+            return formatLongTaskStatus(elapsedMs, iteration, currentActivity);
+          }
+          const elapsed = Math.round(elapsedMs / 1_000);
+          return currentStep
+            ? `${statusLine(currentStep)} · ${elapsed}s`
+            : `⏳ Working… (${elapsed}s)`;
+        };
         if (liveStream) {
           await liveStream.setStatus(quickReply ? QUICK_REPLY_STATUS : DEEP_WORK_STATUS);
           statusTimer = setInterval(() => {
@@ -1249,10 +1262,7 @@ export async function handleRuntimeMessage(
             /* A quick reply should feel like one short wait, not a miniature
                deep-research workflow. Only a real tool may replace its label. */
             if (quickReply && !currentStepIsTool) return;
-            const elapsed = Math.round((Date.now() - workingSince) / 1_000);
-            void liveStream.setStatus(currentStep
-              ? `${statusLine(currentStep)} · ${elapsed}s`
-              : `⏳ Working… (${elapsed}s)`);
+            void liveStream.setStatus(timedStatus());
           }, 5_000);
         }
         if (!lease.task.remoteRunId) {
@@ -1292,6 +1302,7 @@ export async function handleRuntimeMessage(
                     return;
                   }
                   if (event.type === 'tool.started') {
+                    currentActivity = statusLine(event.tool).replace(/_/g, ' ');
                     if (!toolShown.has(event.tool)) {
                       toolShown.add(event.tool);
                       await liveStream.showTool(event.tool, event.preview);
@@ -1301,15 +1312,27 @@ export async function handleRuntimeMessage(
                     if (!currentStep && !firstVisibleDelta) {
                       currentStep = hermesToolLine(event.tool, event.preview);
                       currentStepIsTool = true;
-                      const elapsed = Math.round((Date.now() - workingSince) / 1_000);
-                      await liveStream.setStatus(`${currentStep} · ${elapsed}s`);
+                      await liveStream.setStatus(timedStatus());
                     }
-                  } else if (currentStepIsTool) {
-                    currentStep = '';
-                    currentStepIsTool = false;
-                    if (quickReply && !firstVisibleDelta) {
-                      await liveStream.setStatus(QUICK_REPLY_STATUS);
+                  } else {
+                    currentActivity = 'thinking';
+                    if (currentStepIsTool) {
+                      currentStep = '';
+                      currentStepIsTool = false;
+                      if (quickReply && !firstVisibleDelta) {
+                        await liveStream.setStatus(QUICK_REPLY_STATUS);
+                      }
                     }
+                  }
+                }
+              : undefined,
+            onIteration: liveStream
+              ? async (current, total) => {
+                  iteration = { current, total };
+                  if (!currentStepIsTool) currentActivity = 'thinking';
+                  if (!quickReply && !firstVisibleDelta &&
+                      Date.now() - workingSince >= LONG_TASK_STATUS_AFTER_MS) {
+                    await liveStream.setStatus(timedStatus());
                   }
                 }
               : undefined,
@@ -1333,9 +1356,9 @@ export async function handleRuntimeMessage(
                   if (quickReply) return;
                   currentStep = statusLine(label);
                   currentStepIsTool = false;
+                  currentActivity = currentStep;
                   if (!firstVisibleDelta) {
-                    const elapsed = Math.round((Date.now() - workingSince) / 1_000);
-                    await liveStream.setStatus(`${currentStep} · ${elapsed}s`);
+                    await liveStream.setStatus(timedStatus());
                   }
                 }
               : undefined,
@@ -1351,8 +1374,8 @@ export async function handleRuntimeMessage(
                   if (!thinking) return;
                   currentStep = thinking;
                   currentStepIsTool = false;
-                  const elapsed = Math.round((Date.now() - workingSince) / 1_000);
-                  await liveStream.setStatus(`${thinking} · ${elapsed}s`);
+                  currentActivity = 'thinking';
+                  await liveStream.setStatus(timedStatus());
                 }
               : undefined,
             onStage: (stage, elapsedMs) => {
@@ -2267,4 +2290,30 @@ function statusLine(text: string): string {
     .replace(/[*_`~]+/g, '')
     .trim()
     .slice(0, 120);
+}
+
+/** Long-running Hermes work gets one compact, truthful heartbeat. `iteration`
+ * comes from Hermes's own model-call step callback; it is never inferred from
+ * timers or tool counts. The whole line remains within Telegram's status-lane
+ * bound even when a model-authored activity label is long. */
+export function formatLongTaskStatus(
+  elapsedMs: number,
+  iteration?: { current: number; total: number },
+  running?: string,
+): string {
+  const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1_000));
+  const minutes = Math.floor(elapsedSeconds / 60);
+  const seconds = elapsedSeconds % 60;
+  const elapsed = seconds === 0 ? `${minutes} min` : `${minutes}m ${seconds}s`;
+  const details: string[] = [];
+  if (iteration && Number.isSafeInteger(iteration.current) &&
+      Number.isSafeInteger(iteration.total) && iteration.current >= 1 &&
+      iteration.current <= iteration.total && iteration.total <= 10_000) {
+    details.push(`iteration ${iteration.current}/${iteration.total}`);
+  }
+  const activity = running ? statusLine(running).replace(/_/g, ' ').slice(0, 42) : '';
+  if (activity) details.push(`running: ${activity}`);
+  const suffix = details.length ? ` — ${details.join(', ')}` : '';
+  const value = `⏳ Still working… (${elapsed} elapsed${suffix})`;
+  return value.length <= 120 ? value : `${value.slice(0, 118)}…)`;
 }

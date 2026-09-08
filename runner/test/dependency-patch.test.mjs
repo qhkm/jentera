@@ -37,12 +37,15 @@ test('narrowly updates the reviewed vulnerable dependencies and verifies the loc
   assert.equal(lock.packages['node_modules/mermaid'].version, '11.16.1');
   const apiServer = await readFile(join(root, 'gateway/platforms/api_server.py'), 'utf8');
   assert.ok(apiServer.includes('provider_sort=provider_routing.get("sort"),'));
-  assert.ok(apiServer.includes('"jentera_patch": "jentera-runtime-2026-09-06",'));
+  assert.ok(apiServer.includes('"jentera_patch": "jentera-runtime-2026-09-07",'));
   assert.ok(apiServer.includes('result.get("last_reasoning")'));
   assert.equal(
     apiServer.match(/\*\*\(\{"reasoning": reasoning\} if reasoning else \{}\),/g)?.length,
     2,
   );
+  assert.ok(apiServer.includes('"event": "iteration.started",'));
+  assert.ok(apiServer.includes('step_callback=step_callback,'));
+  assert.ok(apiServer.includes('step_callback=_step_cb,'));
   const wireReorder = await readFile(join(root, 'agent/wire_reorder.py'), 'utf8');
   assert.ok(wireReorder.includes('PATCH_ID = "jentera-wire-order-2026-09-03"'));
   const bootstrap = await readFile(join(root, 'agent/process_bootstrap.py'), 'utf8');
@@ -94,13 +97,34 @@ async function fixture(override, locked, legacyReasoning = false) {
   }));
   await mkdir(join(root, 'gateway/platforms'), { recursive: true });
   await writeFile(join(root, 'gateway/platforms/api_server.py'), [
+    '    def _create_agent(',
+    '        self,',
+    '        ephemeral_system_prompt: Optional[str] = None,',
+    '        session_id: Optional[str] = None,',
+    '        stream_delta_callback=None,',
+    '        tool_progress_callback=None,',
+    '        tool_start_callback=None,',
+    '    ):',
     '        user_config = _load_gateway_config()',
     '        agent = AIAgent(',
     '            model=model,',
     '            **runtime_kwargs,',
+    '            tool_progress_callback=tool_progress_callback,',
+    '            tool_start_callback=tool_start_callback,',
     '            reasoning_config=reasoning_config,',
     '            gateway_session_key=gateway_session_key,',
     '        )',
+    '        def _callback(event_type: str, tool_name: str = None, preview: str = None, args=None, **kwargs):',
+    '            ts = time.time()',
+    '            if event_type == "tool.started":',
+    '                pass',
+    '        event_cb = self._make_run_event_callback(run_id, loop)',
+    '                agent = self._create_agent(',
+    '                        stream_delta_callback=_text_cb,',
+    '                        tool_progress_callback=event_cb,',
+    '                        gateway_session_key=gateway_session_key,',
+    '                )',
+    '                self._active_run_agents[run_id] = agent',
     '        return web.json_response({',
     '            "version": _hermes_version(),',
     '            "gateway_state": gw_state,',

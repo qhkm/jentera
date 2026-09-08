@@ -17,6 +17,7 @@ const HERMES_REPO = process.env.HERMES_AGENT_REPO || join(homedir(), 'ios', 'her
 
 const ROUTING_MARKER = '# Jentera: apply reviewed OpenRouter routing to API-server agents.';
 const RUNTIME_MARKER = '# Jentera: expose bounded final reasoning and attest this runtime patch.';
+const ITERATION_MARKER = '# Jentera: expose real Hermes iteration progress to the run SSE.';
 const WIRE_ORDER_MARKER = '# Jentera: reorder chat.completions wire bodies (tools first, messages last).';
 const WIRE_ORDER_PATCH_ID = 'jentera-wire-order-2026-09-03';
 
@@ -99,8 +100,12 @@ async function assertPatchedShapes(root) {
     ROUTING_MARKER,
     'provider_sort=provider_routing.get("sort"),',
     RUNTIME_MARKER,
+    ITERATION_MARKER,
     `"jentera_patch": "${runtimePatchId}",`,
     'result.get("last_reasoning")',
+    'step_callback=step_callback,',
+    'step_callback=_step_cb,',
+    '"event": "iteration.started",',
     '**({\"reasoning\": reasoning} if reasoning else {}),',
   ]) {
     assert.ok(apiServer.includes(shape), `api_server.py missing: ${JSON.stringify(shape)}`);

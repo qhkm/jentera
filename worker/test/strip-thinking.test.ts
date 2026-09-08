@@ -1,5 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { finalDurableText, stripHermesThinking } from '../src/runtime/consumer';
+import {
+  finalDurableText,
+  formatLongTaskStatus,
+  stripHermesThinking,
+} from '../src/runtime/consumer';
+
+describe('formatLongTaskStatus', () => {
+  it('shows real elapsed, iteration, and active-tool progress', () => {
+    expect(formatLongTaskStatus(
+      3 * 60_000,
+      { current: 12, total: 20 },
+      'process',
+    )).toBe('⏳ Still working… (3 min elapsed — iteration 12/20, running: process)');
+  });
+
+  it('omits invalid iteration data and bounds long activity labels', () => {
+    const status = formatLongTaskStatus(
+      185_000,
+      { current: 21, total: 20 },
+      'checking_sources_'.repeat(20),
+    );
+    expect(status).toMatch(/^⏳ Still working… \(3m 5s elapsed — running: /);
+    expect(status).not.toContain('iteration');
+    expect(status.length).toBeLessThanOrEqual(120);
+  });
+});
 
 describe('stripHermesThinking (durable answer backstop)', () => {
   it('strips pipe-framed blocks from the durable answer', () => {

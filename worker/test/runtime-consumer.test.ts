@@ -746,7 +746,7 @@ describe('the runtime queue consumer', () => {
           ok: true,
           release: '2026.09.01-3',
           runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
-          hermes: { jenteraPatch: 'jentera-runtime-2026-09-06' },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,

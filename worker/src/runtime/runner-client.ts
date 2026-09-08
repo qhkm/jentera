@@ -4,7 +4,7 @@ import type { ResponseMode } from './response-mode';
 
 const RESPONSE_LIMIT = 256 * 1024;
 const STREAM_LIMIT = 64 * 1024;
-const HERMES_PATCH_ID = 'jentera-runtime-2026-09-06';
+const HERMES_PATCH_ID = 'jentera-runtime-2026-09-07';
 const PROBE_TIMEOUT_MS = 3_000;
 const TERMINAL_TASK_STATUSES = new Set(['completed', 'failed', 'cancelled', 'stopped', 'expired']);
 
@@ -234,6 +234,8 @@ export class RunnerClient {
     handlers: {
       onDelta: (delta: string) => Promise<void>;
       onToolEvent?: (event: RunnerToolEvent) => Promise<void>;
+      /** The real Hermes model-call iteration and configured ceiling. */
+      onIteration?: (current: number, total: number) => Promise<void>;
       onHeartbeat?: () => Promise<void>;
       /** A complete `@step:` progress label the model emitted. */
       onProgress?: (label: string) => Promise<void>;
@@ -291,6 +293,10 @@ export class RunnerClient {
             received += event.tool.length + ('preview' in event ? event.preview?.length ?? 0 : 0);
             if (received > STREAM_LIMIT) throw new Error('runner stream exceeded limit');
             await handlers.onToolEvent?.(event);
+            continue;
+          }
+          if (event.type === 'iteration') {
+            await handlers.onIteration?.(event.current, event.total);
             continue;
           }
           if (event.type === 'thinking') {
@@ -361,6 +367,7 @@ export class RunnerClient {
 type SafeStreamEvent =
   | { type: 'delta'; delta: string }
   | RunnerToolEvent
+  | { type: 'iteration'; current: number; total: number }
   | { type: 'thinking'; text: string }
   | RunnerApprovalRequest
   | { type: 'heartbeat' }
@@ -393,6 +400,15 @@ function safeStreamEvent(frame: string): SafeStreamEvent | null {
   const event = value as Record<string, unknown>;
   if (event.type === 'heartbeat') return { type: 'heartbeat' };
   if (event.type === 'done') return { type: 'done' };
+  if (event.type === 'iteration' && Number.isSafeInteger(event.current) &&
+      Number.isSafeInteger(event.total) && Number(event.current) >= 1 &&
+      Number(event.current) <= Number(event.total) && Number(event.total) <= 10_000) {
+    return {
+      type: 'iteration',
+      current: Number(event.current),
+      total: Number(event.total),
+    };
+  }
   if (event.type === 'tool.started' && safeToolName(event.tool)) {
     return {
       type: 'tool.started',

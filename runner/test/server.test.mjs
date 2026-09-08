@@ -33,7 +33,7 @@ beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'aisar-runner-'));
   hermesStatus = 'running';
   hermesReasoning = 'The user asks a biographical question.\nKeep the answer focused and factual.';
-  hermesPatch = 'jentera-runtime-2026-09-06';
+  hermesPatch = 'jentera-runtime-2026-09-07';
   hermesRunMissing = false;
   starts = [];
   approvalRequests = [];
@@ -43,6 +43,7 @@ beforeEach(async () => {
   hermesEventsList = [
     { event: 'message.delta', delta: 'Hello' },
     { event: 'reasoning.available', text: 'private chain of thought' },
+    { event: 'iteration.started', iteration: 12, max_iterations: 20 },
     { event: 'tool.started', tool: 'execute_code', preview: 'import urllib.request' },
     { event: 'tool.completed', tool: 'execute_code', duration: 1.25, error: false },
     { event: 'message.delta', delta: ' from Hermes' },
@@ -156,7 +157,7 @@ test('detailed readiness requires the per-runtime key', async () => {
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.hermes.status, 'ok');
-  assert.equal(body.hermes.jenteraPatch, 'jentera-runtime-2026-09-06');
+  assert.equal(body.hermes.jenteraPatch, 'jentera-runtime-2026-09-07');
   assert.equal(body.hermes.pid, 321);
   assert.match(body.runner.sourceSha256, /^[0-9a-f]{64}$/);
   assert.equal(body.runner.sourceAttested, true);
@@ -405,6 +406,8 @@ test('streams Hermes-visible assistant, tool, and bounded thinking events withou
      terminal transcripts, and run outputs still never cross. */
   assert.match(stream, /"type":"thinking"/);
   assert.match(stream, /"text":"private chain of thought"/);
+  assert.match(stream, /"type":"iteration"/);
+  assert.match(stream, /"current":12,"total":20/);
   assert.doesNotMatch(
     stream,
     /terminal transcript|inline private reasoning| thinking/,

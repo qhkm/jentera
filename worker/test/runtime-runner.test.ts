@@ -77,7 +77,7 @@ describe('durable Hermes run delivery', () => {
           ok: true,
           release: '2026.09.01-3',
           runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
-          hermes: { jenteraPatch: 'jentera-runtime-2026-09-06' },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
@@ -159,7 +159,7 @@ describe('durable Hermes run delivery', () => {
           ok: true,
           release: '2026.09.01-3',
           runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
-          hermes: { jenteraPatch: 'jentera-runtime-2026-09-06' },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
@@ -234,7 +234,7 @@ describe('durable Hermes run delivery', () => {
           ok: true,
           release: '2026.08.27-1',
           runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
-          hermes: { jenteraPatch: 'jentera-runtime-2026-09-06' },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
@@ -336,7 +336,7 @@ describe('durable Hermes run delivery', () => {
           ok: true,
           release: '2026.08.27-1',
           runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
-          hermes: { jenteraPatch: 'jentera-runtime-2026-09-06' },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
@@ -399,7 +399,7 @@ describe('durable Hermes run delivery', () => {
           ok: true,
           release: '2026.08.27-1',
           runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
-          hermes: { jenteraPatch: 'jentera-runtime-2026-09-06' },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
@@ -470,7 +470,7 @@ describe('durable Hermes run delivery', () => {
           ok: true,
           release: '2026.08.27-1',
           runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
-          hermes: { jenteraPatch: 'jentera-runtime-2026-09-06' },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
@@ -697,7 +697,7 @@ describe('RunnerClient capability attestation', () => {
     ok: true,
     release: '2026.09.01-3',
     runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
-    hermes: { jenteraPatch: 'jentera-runtime-2026-09-06' },
+    hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
     toolMode: 'full-tools',
     webSearchBackend: 'ddgs',
     edgeAuthorizationForwarded: false,
@@ -814,6 +814,29 @@ describe('RunnerClient runtime_busy surfaces the admission stamp', () => {
 });
 
 describe('RunnerClient approval boundary', () => {
+  it('forwards only valid Hermes iteration progress', async () => {
+    const stream = [
+      `data: ${JSON.stringify({ type: 'iteration', current: 0, total: 20 })}`,
+      `data: ${JSON.stringify({ type: 'iteration', current: 12, total: 20 })}`,
+      `data: ${JSON.stringify({ type: 'iteration', current: 21, total: 20 })}`,
+      `data: ${JSON.stringify({ type: 'done' })}`,
+      '',
+    ].join('\n\n');
+    const client = new RunnerClient({
+      origin: 'https://sprite.test',
+      runnerKey: 'r'.repeat(64),
+      fetch: async () => new Response(stream, {
+        headers: { 'Content-Type': 'text/event-stream' },
+      }),
+    });
+    const iterations: Array<[number, number]> = [];
+    await expect(client.stream('task-1', {
+      onDelta: async () => {},
+      onIteration: async (current, total) => { iterations.push([current, total]); },
+    })).resolves.toBeNull();
+    expect(iterations).toEqual([[12, 20]]);
+  });
+
   it('returns a bounded approval event immediately and ignores forged shapes', async () => {
     const requestId = 'a'.repeat(32);
     const stream = [
