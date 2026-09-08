@@ -4,7 +4,7 @@
 
 export const HERO = {
   eyebrow: "Introducing Jentera · Built for business here",
-  headline: ["Jentera AI Agent for", "Malaysian businesses."],
+  headline: ["AI staff that works 24/7", "for Malaysian businesses."],
   detail:
     "You already built the business. Jentera helps with the enquiries, follow-ups, paperwork, and everyday jobs that take up your time.",
   ctaPrimary: "Meet Jentera",
