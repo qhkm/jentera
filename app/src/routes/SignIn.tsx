@@ -14,14 +14,13 @@ import { useEffect, useRef, useState } from 'react';
 import { clearAskStorage } from '@/hooks/useAsk';
 import {
   ArrowUpRight,
-  Check,
+  Storefront,
   EnvelopeSimple,
   Eye,
   EyeSlash,
   ShieldCheck,
 } from '@phosphor-icons/react';
 import { Link, useSearchParams } from 'react-router';
-import { LandingFooter, LandingHeader } from '@/components/landing/LandingChrome';
 import { trackActivation } from '@/lib/analytics';
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
@@ -151,48 +150,20 @@ export default function SignIn() {
   }
 
   return (
-    <div className="marketing-page min-h-dvh bg-bg text-text">
-      <LandingHeader />
-      <main id="main-content" className="lp-container auth-layout">
-        <div className="auth-intro">
-          <span className="lp-eyebrow">
-            <span className="lp-dot" /> Jentera, by AISAR
-          </span>
-          <h2>
-            {mode === 'signup' ? (
-              <>
-                You’ve got a business.
-                <br />
-                <span>Let’s get to work.</span>
-              </>
-            ) : (
-              <>
-                Back to your business.
-                <br />
-                <span>We’re ready when you are.</span>
-              </>
-            )}
-          </h2>
-          <p>
-            A private AI agent for the work that keeps landing on your desk. Start with your
-            business, and give Jentera its first job.
-          </p>
-          <ul>
-            {[
-              'Your business details, in one place',
-              'Everyday work, in ordinary language',
-              'A private workspace and Telegram chat',
-            ].map((item) => (
-              <li key={item}>
-                <Check size={15} aria-hidden="true" />
-                {item}
-              </li>
-            ))}
-          </ul>
-          <Link to="/onboard" className="lp-text-link">
-            Explore the setup first <ArrowUpRight size={16} aria-hidden="true" />
-          </Link>
-        </div>
+    <div className="marketing-page auth-entrance min-h-dvh bg-bg text-text">
+      <div className="auth-atmosphere" aria-hidden="true">
+        <span>Jentera</span>
+      </div>
+      <header className="auth-header">
+        <Link to="/" className="font-pixel text-2xl text-brand" aria-label="Jentera home">
+          Jentera<span className="auth-parent">by AISAR</span>
+        </Link>
+        <Link to={mode === 'signup' ? '/signin' : '/signin?mode=signup'} className="lp-text-link">
+          {mode === 'signup' ? 'Sign in' : 'Get started'}
+          <ArrowUpRight size={15} aria-hidden="true" />
+        </Link>
+      </header>
+      <main id="main-content" className="auth-layout">
         {sent ? (
           <div className="auth-card auth-confirmation" role="status">
             <EnvelopeSimple size={32} weight="duotone" className="text-brand" aria-hidden="true" />
@@ -212,7 +183,9 @@ export default function SignIn() {
                 </>
               )}
             </p>
-            <p className="text-text-secondary">Can’t find it? Check your spam or junk folder too.</p>
+            <p className="text-text-secondary">
+              Can’t find it? Check your spam or junk folder too.
+            </p>
             <button
               type="button"
               className="btn btn-outline"
@@ -227,7 +200,10 @@ export default function SignIn() {
           </div>
         ) : (
           <div className="auth-card">
-            <span className="auth-card-eyebrow">Your Jentera workspace</span>
+            <div className="auth-emblem">
+              <Storefront size={30} weight="duotone" aria-hidden="true" />
+            </div>
+            <span className="auth-card-eyebrow">Your business. A little more breathing room.</span>
             <h1>{mode === 'signup' ? 'Create your account' : 'Welcome back.'}</h1>
             <p className="auth-card-description">
               {mode === 'signup'
@@ -379,7 +355,14 @@ export default function SignIn() {
           </div>
         )}
       </main>
-      <LandingFooter />
+      <footer className="auth-footer">
+        <Link to="/" className="lp-text-link">
+          ← Back to Jentera
+        </Link>
+        <Link to="/onboard" className="lp-text-link">
+          Explore the setup first <ArrowUpRight size={14} aria-hidden="true" />
+        </Link>
+      </footer>
     </div>
   );
 }

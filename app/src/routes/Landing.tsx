@@ -50,8 +50,41 @@ function BusinessPreview() {
 
   return (
     <div id="example" className="business-preview">
-      <div className="preview-caption">
-        <span className="lp-status-dot" /> A little less on your plate.
+      <div className="preview-controls">
+        <div className="preview-caption">
+          <span className="lp-status-dot" /> A little less on your plate.
+        </div>
+        <div className="preview-tabs" role="tablist" aria-label="Choose a business example">
+          {BUSINESS_EXAMPLES.map((example, index) => (
+            <button
+              type="button"
+              role="tab"
+              key={example.id}
+              id={`tab-${example.id}`}
+              ref={(node) => {
+                tabs.current[index] = node;
+              }}
+              aria-selected={selected === index}
+              aria-controls="business-example-panel"
+              tabIndex={selected === index ? 0 : -1}
+              onClick={() => choose(index)}
+              onKeyDown={(event) => {
+                let next = index;
+                if (event.key === 'ArrowRight') next = (index + 1) % BUSINESS_EXAMPLES.length;
+                else if (event.key === 'ArrowLeft')
+                  next = (index + BUSINESS_EXAMPLES.length - 1) % BUSINESS_EXAMPLES.length;
+                else if (event.key === 'Home') next = 0;
+                else if (event.key === 'End') next = BUSINESS_EXAMPLES.length - 1;
+                else return;
+                event.preventDefault();
+                choose(next);
+                tabs.current[next]?.focus();
+              }}
+            >
+              {example.label}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="preview-window">
         <div className="preview-topbar">
@@ -105,8 +138,7 @@ function BusinessPreview() {
               <div className="preview-answer">
                 <span className="preview-kicker">Jentera’s plan</span>
                 <h3>
-                  Let’s take a few things
-                  <br />
+                  Let’s take a few things <br />
                   off your list.
                 </h3>
                 <ul>
@@ -135,37 +167,6 @@ function BusinessPreview() {
           you confirm.
         </div>
       </div>
-      <div className="preview-tabs" role="tablist" aria-label="Choose a business example">
-        {BUSINESS_EXAMPLES.map((example, index) => (
-          <button
-            type="button"
-            role="tab"
-            key={example.id}
-            id={`tab-${example.id}`}
-            ref={(node) => {
-              tabs.current[index] = node;
-            }}
-            aria-selected={selected === index}
-            aria-controls="business-example-panel"
-            tabIndex={selected === index ? 0 : -1}
-            onClick={() => choose(index)}
-            onKeyDown={(event) => {
-              let next = index;
-              if (event.key === 'ArrowRight') next = (index + 1) % BUSINESS_EXAMPLES.length;
-              else if (event.key === 'ArrowLeft')
-                next = (index + BUSINESS_EXAMPLES.length - 1) % BUSINESS_EXAMPLES.length;
-              else if (event.key === 'Home') next = 0;
-              else if (event.key === 'End') next = BUSINESS_EXAMPLES.length - 1;
-              else return;
-              event.preventDefault();
-              choose(next);
-              tabs.current[next]?.focus();
-            }}
-          >
-            {example.label}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }
@@ -179,7 +180,7 @@ export default function Landing() {
     <div className="marketing-page min-h-dvh bg-bg text-text">
       <LandingHeader />
       <main id="main-content">
-        <section className="lp-hero">
+        <section className="lp-hero hero-stage">
           <div className="lp-hero-grid" aria-hidden="true" />
           <div className="lp-container lp-hero-layout">
             <div className="lp-hero-copy">
