@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, before, test } from 'node:test';
@@ -18,8 +18,9 @@ const HERMES_REPO = process.env.HERMES_AGENT_REPO || join(homedir(), 'ios', 'her
 const ROUTING_MARKER = '# Jentera: apply reviewed OpenRouter routing to API-server agents.';
 const RUNTIME_MARKER = '# Jentera: expose bounded final reasoning and attest this runtime patch.';
 const ITERATION_MARKER = '# Jentera: expose real Hermes iteration progress to the run SSE.';
+// Retired 2026-09-08: the wire-order stage measured no cache benefit. A
+// patched tree must come out of apply without it.
 const WIRE_ORDER_MARKER = '# Jentera: reorder chat.completions wire bodies (tools first, messages last).';
-const WIRE_ORDER_PATCH_ID = 'jentera-wire-order-2026-09-03';
 
 // The runtime patch id is defined by the script itself (the release id lives in
 // the same file that injects it) — read it dynamically so this contract test
@@ -113,10 +114,9 @@ async function assertPatchedShapes(root) {
   const bootstrap = await readFile(join(root, 'agent/process_bootstrap.py'), 'utf8');
   const runAgent = await readFile(join(root, 'run_agent.py'), 'utf8');
   for (const source of [bootstrap, runAgent]) {
-    assert.ok(source.includes(WIRE_ORDER_MARKER), 'wire-order marker missing from keepalive client builder');
+    assert.ok(!source.includes(WIRE_ORDER_MARKER), 'retired wire-order marker present in keepalive client builder');
   }
-  const wireReorder = await readFile(join(root, 'agent/wire_reorder.py'), 'utf8');
-  assert.ok(wireReorder.includes(`PATCH_ID = "${WIRE_ORDER_PATCH_ID}"`), 'wire_reorder.py PATCH_ID drifted');
+  assert.ok(!existsSync(join(root, 'agent/wire_reorder.py')), 'retired wire_reorder.py present');
 }
 
 /** Item 7 contract: nanoid 3.3.18 / postcss 8.5.23 / react-router(dom) 7.18.2
@@ -159,7 +159,7 @@ test('clean install of the pinned Hermes commit applies and verifies (B1 release
 
   const apply = run(root);
   assert.equal(apply.status, 0, `apply failed: ${apply.stderr}`);
-  assert.ok(apply.stdout.includes('pinned Hermes dependencies (nanoid, undici, postcss, react-router, react-router-dom, sanitize-html, dompurify, mermaid), Jentera API-server and wire-order patches'),
+  assert.ok(apply.stdout.includes('pinned Hermes dependencies (nanoid, undici, postcss, react-router, react-router-dom, sanitize-html, dompurify, mermaid) and Jentera API-server patches'),
     `unexpected apply stdout: ${JSON.stringify(apply.stdout)}`);
 
   await assertPatchedShapes(root);
@@ -167,7 +167,7 @@ test('clean install of the pinned Hermes commit applies and verifies (B1 release
 
   const verify = run(root, ['--verify']);
   assert.equal(verify.status, 0, `verify failed: ${verify.stderr}`);
-  assert.ok(verify.stdout.includes('Hermes production dependency, Jentera API-server and wire-order patches verified'),
+  assert.ok(verify.stdout.includes('Hermes production dependency and Jentera API-server patches verified'),
     `unexpected verify stdout: ${JSON.stringify(verify.stdout)}`);
 });
 
@@ -198,7 +198,6 @@ test('re-applying the patch on a patched tree changes no file bytes', async () =
     'gateway/platforms/api_server.py',
     'agent/process_bootstrap.py',
     'run_agent.py',
-    'agent/wire_reorder.py',
   ];
   const before = Object.fromEntries(files.map((file) => [file, sha256(join(root, file))]));
 

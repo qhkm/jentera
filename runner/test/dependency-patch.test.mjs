@@ -1,12 +1,79 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
 
 const SCRIPT = new URL('../bin/patch-hermes-dependencies.mjs', import.meta.url).pathname;
 const directories = [];
+
+/* The wire-order stage (jentera-wire-order-2026-09-03) was retired: prefix
+   cache hit rates were identical with and without it. Sprites patched by an
+   earlier release still carry it in place, so these are the exact shapes the
+   old stage wrote and the pinned upstream anchors it must give back. */
+const WIRE_ORDER_MARKER = '# Jentera: reorder chat.completions wire bodies (tools first, messages last).';
+const BOOTSTRAP_ANCHOR = [
+  '        return client_cls(',
+  '            limits=limits,',
+  '            timeout=timeout,',
+  '            proxy=proxy,',
+  '            mounts=mounts or None,',
+  '            verify=verify,',
+  '        )',
+].join('\n');
+const BOOTSTRAP_WIRED = [
+  '        client = client_cls(',
+  '            limits=limits,',
+  '            timeout=timeout,',
+  '            proxy=proxy,',
+  '            mounts=mounts or None,',
+  '            verify=verify,',
+  '        )',
+  `        ${WIRE_ORDER_MARKER}`,
+  '        try:',
+  '            from agent.wire_reorder import wrap_http_client',
+  '',
+  '            client = wrap_http_client(client, async_mode=async_mode)',
+  '        except Exception:',
+  '            pass',
+  '        return client',
+].join('\n');
+const RUN_AGENT_ANCHOR = [
+  '            return _httpx.Client(',
+  '                limits=_limits,',
+  '                timeout=_timeout,',
+  '                proxy=_proxy,',
+  '                mounts=_mounts or None,',
+  '                verify=verify,',
+  '            )',
+].join('\n');
+const RUN_AGENT_WIRED = [
+  '            _client = _httpx.Client(',
+  '                limits=_limits,',
+  '                timeout=_timeout,',
+  '                proxy=_proxy,',
+  '                mounts=_mounts or None,',
+  '                verify=verify,',
+  '            )',
+  `            ${WIRE_ORDER_MARKER}`,
+  '            try:',
+  '                from agent.wire_reorder import wrap_http_client',
+  '',
+  '                _client = wrap_http_client(_client)',
+  '            except Exception:',
+  '                pass',
+  '            return _client',
+].join('\n');
+
+async function missing(path) {
+  try {
+    await access(path);
+    return false;
+  } catch {
+    return true;
+  }
+}
 
 afterEach(async () => {
   await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
@@ -46,15 +113,52 @@ test('narrowly updates the reviewed vulnerable dependencies and verifies the loc
   assert.ok(apiServer.includes('"event": "iteration.started",'));
   assert.ok(apiServer.includes('step_callback=step_callback,'));
   assert.ok(apiServer.includes('step_callback=_step_cb,'));
-  const wireReorder = await readFile(join(root, 'agent/wire_reorder.py'), 'utf8');
-  assert.ok(wireReorder.includes('PATCH_ID = "jentera-wire-order-2026-09-03"'));
   const bootstrap = await readFile(join(root, 'agent/process_bootstrap.py'), 'utf8');
   const runAgent = await readFile(join(root, 'run_agent.py'), 'utf8');
   for (const source of [bootstrap, runAgent]) {
-    assert.ok(source.includes('Jentera: reorder chat.completions wire bodies'));
-    assert.ok(source.includes('from agent.wire_reorder import wrap_http_client'));
+    assert.ok(!source.includes(WIRE_ORDER_MARKER), 'retired wire-order stage must not be applied');
   }
+  assert.ok(await missing(join(root, 'agent/wire_reorder.py')));
   assert.equal(run(root).status, 0, 'the complete patch is idempotent');
+  assert.equal(run(root, '--verify').status, 0);
+});
+
+test('removes the retired wire-order patch from a tree that still carries it', async () => {
+  const root = await fixture('3.3.17', '3.3.17', false, true);
+  const apply = run(root);
+  assert.equal(apply.status, 0, apply.stderr);
+  assert.ok(!apply.stdout.includes('wire-order'), apply.stdout);
+  const bootstrap = await readFile(join(root, 'agent/process_bootstrap.py'), 'utf8');
+  const runAgent = await readFile(join(root, 'run_agent.py'), 'utf8');
+  assert.ok(bootstrap.includes(BOOTSTRAP_ANCHOR), 'process_bootstrap.py anchor not restored');
+  assert.ok(runAgent.includes(RUN_AGENT_ANCHOR), 'run_agent.py anchor not restored');
+  for (const source of [bootstrap, runAgent]) {
+    assert.ok(!source.includes(WIRE_ORDER_MARKER));
+    assert.ok(!source.includes('wire_reorder'));
+  }
+  assert.ok(await missing(join(root, 'agent/wire_reorder.py')), 'wire_reorder.py must be deleted');
+  assert.equal(run(root).status, 0, 'removal is idempotent');
+  const verify = run(root, '--verify');
+  assert.equal(verify.status, 0, verify.stderr);
+  assert.ok(!verify.stdout.includes('wire-order'), verify.stdout);
+});
+
+test('verify fails closed while the retired wire-order patch is still present', async () => {
+  // A sprite patched by the retiring release: everything else current, the
+  // wire stage still in place because nothing has run apply since.
+  const root = await fixture('3.3.17', '3.3.17');
+  assert.equal(run(root).status, 0);
+  const bootstrapPath = join(root, 'agent/process_bootstrap.py');
+  const runAgentPath = join(root, 'run_agent.py');
+  await writeFile(bootstrapPath,
+    (await readFile(bootstrapPath, 'utf8')).replace(BOOTSTRAP_ANCHOR, BOOTSTRAP_WIRED));
+  await writeFile(runAgentPath,
+    (await readFile(runAgentPath, 'utf8')).replace(RUN_AGENT_ANCHOR, RUN_AGENT_WIRED));
+  await writeFile(join(root, 'agent/wire_reorder.py'), 'PATCH_ID = "jentera-wire-order-2026-09-03"\n');
+  const verify = run(root, '--verify');
+  assert.notEqual(verify.status, 0, 'verify must refuse a tree that still carries the retired patch');
+  assert.match(verify.stderr, /wire-order/);
+  assert.equal(run(root).status, 0, 'apply heals it');
   assert.equal(run(root, '--verify').status, 0);
 });
 
@@ -76,7 +180,7 @@ test('normalizes the reviewed one-off canary reasoning patch before applying the
   assert.ok(apiServer.includes('**({"reasoning": reasoning} if reasoning else {}),'));
 });
 
-async function fixture(override, locked, legacyReasoning = false) {
+async function fixture(override, locked, legacyReasoning = false, wiredOrder = false) {
   const root = await mkdtemp(join(tmpdir(), 'aisar-hermes-test-'));
   directories.push(root);
   await writeFile(join(root, 'package.json'), JSON.stringify({
@@ -151,9 +255,10 @@ async function fixture(override, locked, legacyReasoning = false) {
     '                    )',
     '',
   ].join('\n'));
-  // Keepalive builders: the wire-order stage patches these exact anchors.
+  // Keepalive builders: the retired wire-order stage patched these exact
+  // anchors; a wiredOrder fixture carries its output in place.
   await mkdir(join(root, 'agent'), { recursive: true });
-  await writeFile(join(root, 'agent/process_bootstrap.py'), [
+  const bootstrapSrc = [
     'def build_keepalive_http_client(',
     '    base_url: str = "",',
     '    *,',
@@ -189,8 +294,8 @@ async function fixture(override, locked, legacyReasoning = false) {
     '    except Exception:',
     '        return None',
     '',
-  ].join('\n'));
-  await writeFile(join(root, 'run_agent.py'), [
+  ].join('\n');
+  const runAgentSrc = [
     'class AIAgent:',
     '    @staticmethod',
     '    def _build_keepalive_http_client(base_url: str = "", *, verify: object = True):',
@@ -226,7 +331,16 @@ async function fixture(override, locked, legacyReasoning = false) {
     '        except Exception:',
     '            return None',
     '',
-  ].join('\n'));
+  ].join('\n');
+  await writeFile(join(root, 'agent/process_bootstrap.py'),
+    wiredOrder ? bootstrapSrc.replace(BOOTSTRAP_ANCHOR, BOOTSTRAP_WIRED) : bootstrapSrc);
+  await writeFile(join(root, 'run_agent.py'),
+    wiredOrder ? runAgentSrc.replace(RUN_AGENT_ANCHOR, RUN_AGENT_WIRED) : runAgentSrc);
+  if (wiredOrder) {
+    await writeFile(join(root, 'agent/wire_reorder.py'),
+      '# Jentera: reviewed wire-order stabilization for fmcv router prefix caches.\n' +
+      'PATCH_ID = "jentera-wire-order-2026-09-03"\n');
+  }
   return root;
 }
 

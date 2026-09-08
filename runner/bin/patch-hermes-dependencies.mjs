@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { access, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const root = process.argv[2];
@@ -25,9 +25,64 @@ const legacyRuntimePatchIds = new Set([
 ]);
 const bootstrapPath = join(root, 'agent/process_bootstrap.py');
 const runAgentPath = join(root, 'run_agent.py');
-const wireReorderPath = join(root, 'agent/wire_reorder.py');
-const wireOrderMarker = '# Jentera: reorder chat.completions wire bodies (tools first, messages last).';
-const wireOrderPatchId = 'jentera-wire-order-2026-09-03';
+/* Retired stage. jentera-wire-order-2026-09-03 reordered chat.completions
+   bodies for byte-prefix-keyed router caches; hit rates measured identical
+   with and without it (2026-09-08). Trees it touched are unpatched in place
+   below, since a sprite's Hermes checkout survives re-bootstrap as-is. */
+const retiredWireReorderPath = join(root, 'agent/wire_reorder.py');
+const retiredWireOrderMarker = '# Jentera: reorder chat.completions wire bodies (tools first, messages last).';
+const retiredWireOrderShapes = [
+  [bootstrapPath, [
+    '        return client_cls(',
+    '            limits=limits,',
+    '            timeout=timeout,',
+    '            proxy=proxy,',
+    '            mounts=mounts or None,',
+    '            verify=verify,',
+    '        )',
+  ].join('\n'), [
+    '        client = client_cls(',
+    '            limits=limits,',
+    '            timeout=timeout,',
+    '            proxy=proxy,',
+    '            mounts=mounts or None,',
+    '            verify=verify,',
+    '        )',
+    `        ${retiredWireOrderMarker}`,
+    '        try:',
+    '            from agent.wire_reorder import wrap_http_client',
+    '',
+    '            client = wrap_http_client(client, async_mode=async_mode)',
+    '        except Exception:',
+    '            pass',
+    '        return client',
+  ].join('\n')],
+  [runAgentPath, [
+    '            return _httpx.Client(',
+    '                limits=_limits,',
+    '                timeout=_timeout,',
+    '                proxy=_proxy,',
+    '                mounts=_mounts or None,',
+    '                verify=verify,',
+    '            )',
+  ].join('\n'), [
+    '            _client = _httpx.Client(',
+    '                limits=_limits,',
+    '                timeout=_timeout,',
+    '                proxy=_proxy,',
+    '                mounts=_mounts or None,',
+    '                verify=verify,',
+    '            )',
+    `            ${retiredWireOrderMarker}`,
+    '            try:',
+    '                from agent.wire_reorder import wrap_http_client',
+    '',
+    '                _client = wrap_http_client(_client)',
+    '            except Exception:',
+    '                pass',
+    '            return _client',
+  ].join('\n')],
+];
 const manifest = JSON.parse(await readFile(packagePath, 'utf8'));
 // Reviewed vulnerability floors (2026): a locked version below its floor
 // fails the bootstrap audit gate on the sprite (npm audit --omit=dev
@@ -126,8 +181,8 @@ if (!verify) {
   }
   await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`, { mode: 0o644 });
   await patchApiServer();
-  await patchWireOrder();
-  process.stdout.write('pinned Hermes dependencies (nanoid, undici, postcss, react-router, react-router-dom, sanitize-html, dompurify, mermaid), Jentera API-server and wire-order patches\n');
+  await removeRetiredWireOrder();
+  process.stdout.write('pinned Hermes dependencies (nanoid, undici, postcss, react-router, react-router-dom, sanitize-html, dompurify, mermaid) and Jentera API-server patches\n');
   process.exit(0);
 }
 
@@ -158,18 +213,12 @@ if (!apiServer.includes(routingMarker) ||
 }
 const bootstrap = await readFile(bootstrapPath, 'utf8');
 const runAgent = await readFile(runAgentPath, 'utf8');
-let wireReorder = '';
-try {
-  wireReorder = await readFile(wireReorderPath, 'utf8');
-} catch {
-  /* written by the apply path; missing fails closed below */
+if (bootstrap.includes(retiredWireOrderMarker) ||
+    runAgent.includes(retiredWireOrderMarker) ||
+    await present(retiredWireReorderPath)) {
+  throw new Error('retired Hermes wire-order patch is still present; apply removes it');
 }
-if (!bootstrap.includes(wireOrderMarker) ||
-    !runAgent.includes(wireOrderMarker) ||
-    !wireReorder.includes(`PATCH_ID = "${wireOrderPatchId}"`)) {
-  throw new Error('Hermes wire-order patch is missing or drifted');
-}
-process.stdout.write('Hermes production dependency, Jentera API-server and wire-order patches verified\n');
+process.stdout.write('Hermes production dependency and Jentera API-server patches verified\n');
 
 async function patchApiServer() {
   let source = await readFile(apiServerPath, 'utf8');
@@ -361,88 +410,25 @@ async function patchApiServer() {
   await writeFile(apiServerPath, source, { mode: 0o644 });
 }
 
-/** Stage 3: stabilize chat.completions wire bodies for byte-prefix-keyed
- * routers (router.fmcv.my MiniMax-M3). Reorders each outgoing body so the
- * stable fields (tools, model, …) come first and `messages` (whose tail
- * changes every turn) comes last. The module is copied into the tree and both
- * keepalive-client builders (main + auxiliary, sync + async) are wrapped. */
-async function patchWireOrder() {
-  const wireSrc = await readFile(new URL('./wire_reorder.py', import.meta.url), 'utf8');
-  if (!wireSrc.includes(`PATCH_ID = "${wireOrderPatchId}"`)) {
-    throw new Error('runner wire_reorder.py is missing its reviewed PATCH_ID');
+/** Give a tree patched by the retired wire-order stage its pinned upstream
+ * keepalive-client builders back and drop the module. Idempotent: a tree
+ * without the marker is left untouched, so the unchanged-bytes contract on
+ * re-apply holds; a tree with the marker but a drifted block fails closed. */
+async function removeRetiredWireOrder() {
+  for (const [path, anchor, wired] of retiredWireOrderShapes) {
+    const source = await readFile(path, 'utf8');
+    if (!source.includes(retiredWireOrderMarker)) continue;
+    await writeFile(path, replaceReviewedAnchor(source, wired, anchor), { mode: 0o644 });
   }
-  let existing = '';
+  await rm(retiredWireReorderPath, { force: true });
+}
+
+async function present(path) {
   try {
-    existing = await readFile(wireReorderPath, 'utf8');
+    await access(path);
+    return true;
   } catch {
-    /* not present yet — write below */
-  }
-  if (existing !== wireSrc) {
-    await writeFile(wireReorderPath, wireSrc, { mode: 0o644 });
-  }
-
-  let bootstrap = await readFile(bootstrapPath, 'utf8');
-  if (!bootstrap.includes(wireOrderMarker)) {
-    const anchor = [
-      '        return client_cls(',
-      '            limits=limits,',
-      '            timeout=timeout,',
-      '            proxy=proxy,',
-      '            mounts=mounts or None,',
-      '            verify=verify,',
-      '        )',
-    ].join('\n');
-    const replacement = [
-      '        client = client_cls(',
-      '            limits=limits,',
-      '            timeout=timeout,',
-      '            proxy=proxy,',
-      '            mounts=mounts or None,',
-      '            verify=verify,',
-      '        )',
-      `        ${wireOrderMarker}`,
-      '        try:',
-      '            from agent.wire_reorder import wrap_http_client',
-      '',
-      '            client = wrap_http_client(client, async_mode=async_mode)',
-      '        except Exception:',
-      '            pass',
-      '        return client',
-    ].join('\n');
-    bootstrap = replaceReviewedAnchor(bootstrap, anchor, replacement);
-    await writeFile(bootstrapPath, bootstrap, { mode: 0o644 });
-  }
-
-  let runAgent = await readFile(runAgentPath, 'utf8');
-  if (!runAgent.includes(wireOrderMarker)) {
-    const anchor = [
-      '            return _httpx.Client(',
-      '                limits=_limits,',
-      '                timeout=_timeout,',
-      '                proxy=_proxy,',
-      '                mounts=_mounts or None,',
-      '                verify=verify,',
-      '            )',
-    ].join('\n');
-    const replacement = [
-      '            _client = _httpx.Client(',
-      '                limits=_limits,',
-      '                timeout=_timeout,',
-      '                proxy=_proxy,',
-      '                mounts=_mounts or None,',
-      '                verify=verify,',
-      '            )',
-      `            ${wireOrderMarker}`,
-      '            try:',
-      '                from agent.wire_reorder import wrap_http_client',
-      '',
-      '                _client = wrap_http_client(_client)',
-      '            except Exception:',
-      '                pass',
-      '            return _client',
-    ].join('\n');
-    runAgent = replaceReviewedAnchor(runAgent, anchor, replacement);
-    await writeFile(runAgentPath, runAgent, { mode: 0o644 });
+    return false;
   }
 }
 
