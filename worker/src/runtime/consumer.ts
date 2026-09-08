@@ -41,7 +41,7 @@ import {
   type RuntimeTask,
   type RuntimeTaskKind,
 } from './tasks';
-import { append, finishRun, recordWork, resumeRunAfterApproval, startRun } from '../runs';
+import { append, finishRun, recordWork, resumeRunAfterApproval, startRun, updateWorkForRun } from '../runs';
 import {
   dispatchRuntimeRun,
   decideRuntimeTaskApproval,
@@ -111,6 +111,14 @@ const QUICK_REPLY_STATUS = '💭 Thinking…';
 const DEEP_WORK_STATUS = '🧠 Deep work started…';
 const LONG_TASK_STATUS_AFTER_MS = 60_000;
 export const HERMES_APPROVAL_WAIT_SECONDS = 60;
+/** What the owner sees when the monthly AI credit cap stops a run. The cap
+    is US$5 per business while Jentera is pre-launch (runtime_budget default
+    and the model-proxy rider ceiling agree). Shown in the Telegram bubble and
+    written as the work record's outcome so chat and Activity say the same. */
+export const CREDIT_CAP_NOTICE =
+  "⏸ This month's AI credits are used up. While Jentera is pre-launch every " +
+  'business gets US$5 of AI credits a month, and they reset on the 1st. ' +
+  'Reply here if you need more before then.';
 
 /** Friendly one-line statuses for the ephemeral Telegram draft, keyed by the
     run-task provisioning stages. Deep work may show them while the model has
@@ -1780,7 +1788,8 @@ export async function handleRuntimeMessage(
     const maxAttempts = LIFECYCLE_TASK_KINDS.has(lease.task.kind)
       ? MAX_LIFECYCLE_TASK_ATTEMPTS
       : MAX_TASK_ATTEMPTS;
-    const terminal = error instanceof RuntimeBudgetExceeded ||
+    const budgetExhausted = error instanceof RuntimeBudgetExceeded;
+    const terminal = budgetExhausted ||
       lease.task.attempt + 1 >= maxAttempts ||
       busyExhausted;
     if (terminal) {
@@ -1827,6 +1836,27 @@ export async function handleRuntimeMessage(
               runtimeTaskId: lease.task.id,
               reason: error instanceof RuntimeBudgetExceeded ? error.code : 'attempts_exhausted',
             });
+            /* A cap is a reason the owner can act on, unlike a generic
+               failure: make Activity say so, creating the record when the
+               run never got far enough to have one. */
+            if (budgetExhausted) {
+              const capPayload = lease.task.payload as RunPayload | null | undefined;
+              const updated = await updateWorkForRun(tx, message.businessId, lease.task.runId, {
+                status: 'failed',
+                outcome: CREDIT_CAP_NOTICE,
+              });
+              if (!updated) {
+                await recordWork(tx, message.businessId, {
+                  runId: lease.task.runId,
+                  objective: capPayload?.objective ?? capPayload?.input?.slice(0, 200) ?? 'AI request',
+                  outcome: CREDIT_CAP_NOTICE,
+                  status: 'failed',
+                  function: capPayload?.function ?? 'assistant',
+                  channel: capPayload?.channel ?? 'runtime',
+                  risk: 'low',
+                });
+              }
+            }
           }
         }
         return true;
@@ -1848,6 +1878,19 @@ export async function handleRuntimeMessage(
          momentarily unavailable instead of silently deleting the bubble. */
       let settled = false;
       const payload = lease.task.payload as RunPayload | null | undefined;
+      const capTelegram = budgetExhausted ? payload?.telegram ?? null : null;
+      if (capTelegram) {
+        settled = await settleFailedTelegramBubble(
+          env,
+          message.businessId,
+          capTelegram,
+          'runtime budget exceeded',
+          null,
+          liveBubbleId,
+          options.telegramToken,
+          CREDIT_CAP_NOTICE,
+        ).catch(() => false);
+      }
       const busyTelegram = busyExhausted ? payload?.telegram ?? null : null;
       if (busyTelegram) {
         settled = await settleFailedTelegramBubble(
@@ -2160,15 +2203,21 @@ async function settleFailedTelegramBubble(
   liveStream: TelegramLiveStream | null,
   liveBubbleId?: number,
   existingToken?: string,
+  override?: string,
 ): Promise<boolean> {
   const messageId = liveStream?.handoffMessageId() ?? liveBubbleId;
   if (!messageId) return false;
   const detail = typeof result === 'string' ? result : JSON.stringify(result ?? '');
+  /* The model proxy answers a spent rider ceiling with budget_exceeded; that
+     surfaces here as a failed run whose detail carries the marker. */
+  const capped = /budget_exceeded|model budget exhausted|runtime budget exceeded/i.test(detail);
   const temporary = /(?:http\s*50[234]|service unavailable|temporar(?:y|ily)|unreachable)/i
     .test(detail);
-  const text = temporary
-    ? '⚠️ The AI service is temporarily unavailable. Please try again in a moment.'
-    : '⚠️ I couldn\'t complete that reply. Please try again.';
+  const text = override ?? (capped
+    ? CREDIT_CAP_NOTICE
+    : temporary
+      ? '⚠️ The AI service is temporarily unavailable. Please try again in a moment.'
+      : '⚠️ I couldn\'t complete that reply. Please try again.');
   try {
     const token = existingToken ?? await withTenant(env, businessId, (tx) =>
       useCredential(env, tx, telegram.connectionId));

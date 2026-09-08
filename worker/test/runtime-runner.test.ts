@@ -555,6 +555,79 @@ describe('durable Hermes run delivery', () => {
     expect(state).toEqual({ task: 'exhausted', run: 'failed' });
   });
 
+  it('tells the owner the monthly AI credit cap was reached, on Telegram and in Activity', async () => {
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.08.27-1',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.27-1', 'v1'));
+    const [owner] = await asOwner((sql) => sql<{ id: string }[]>`
+      insert into app_user (email, email_verified)
+      values ('cap-owner@example.com', true) returning id`);
+    const connection = await asTenant(A, (tx) => saveConnection(env, tx, A, {
+      connector: 'telegram',
+      method: 'bot_token',
+      externalId: '123456789',
+      displayName: '@cap_bot',
+      secret: '123456789:AAtoken',
+      connectedBy: owner.id,
+    }));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.message.telegram', runtime: 'hermes-sprite',
+      model: env.AISAR_MODEL_NAME,
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `run:${run.id}`,
+      payload: {
+        input: 'hello', responseMode: 'quick',
+        telegram: {
+          connectionId: connection.id, chatId: 42, messageId: 7, from: 'Owner',
+          question: 'hello', privateChat: true, liveMessageId: 77,
+        },
+      },
+    }));
+    /* A one-micro-dollar cost ceiling: the first reservation trips it. */
+    await asOwner((sql) => sql`
+      insert into runtime_budget
+        (business_id, monthly_input_tokens, monthly_output_tokens,
+         monthly_runtime_seconds, monthly_cost_microusd, max_run_seconds)
+      values (${A}, 2000000, 500000, 360000, 1, 900)`);
+    const edits: { chatId: number; messageId: number; text: string }[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('editMessageText')) {
+        const body = JSON.parse(String(init?.body)) as { chat_id: number; message_id: number; text: string };
+        edits.push({ chatId: body.chat_id, messageId: body.message_id, text: body.text });
+        return response({ ok: true, result: { message_id: body.message_id } });
+      }
+      return response({ ok: true, result: {} });
+    }));
+
+    await expect(handleRuntimeMessage(
+      env,
+      { version: 1, businessId: A, taskId: task.id },
+      { provider },
+    )).resolves.toEqual({ action: 'ack', reason: 'failed' });
+
+    /* The working bubble becomes the explanation, not a generic "try again". */
+    const last = edits.at(-1)!;
+    expect(last).toMatchObject({ chatId: 42, messageId: 77 });
+    expect(last.text).toMatch(/credits/i);
+    expect(last.text).toMatch(/US\$5/);
+    /* And Activity carries the same reason, so the app agrees with the chat. */
+    const [work] = await asOwner((sql) => sql<{ status: string; outcome: string }[]>`
+      select status, outcome from work_record where run_id = ${run.id}`);
+    expect(work.status).toBe('failed');
+    expect(work.outcome).toMatch(/credits/i);
+    vi.unstubAllGlobals();
+  });
+
   it('stops and meters an existing remote run before exhausting its fifth real failure', async () => {
     const env = testEnv({
       RUNTIME_RELEASE: '2026.08.27-1',
