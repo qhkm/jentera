@@ -10,7 +10,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { asApp, asOwner, testEnv, truncateAll } from './harness';
 import { DUMMY_HASH, hashPassword, passwordProblem, verifyPassword } from '../src/password';
-import { authLandingPath, claimGoogleIdentity } from '../src/auth';
+import {
+  authLandingPath,
+  claimGoogleIdentity,
+  consumeLoginToken,
+  issueLoginToken,
+  loginWithPassword,
+} from '../src/auth';
 import { countAndRecord } from '../src/ratelimit';
 
 beforeEach(async () => {
@@ -110,6 +116,50 @@ describe('account linking', () => {
     );
     expect(row.password_hash).toBe(hash);
     expect(await verifyPassword('my-own-real-password', row.password_hash)).toBe(true);
+  });
+
+  it('clears the password when a magic LINK claims an UNVERIFIED account', async () => {
+    /* Same pre-hijacking case as the Google claim, through the other
+       door. The squatter registers a password against the victim's
+       address and waits; the victim signs in by link. Proving the address
+       must not also activate the squatter's password. */
+    const env = testEnv();
+    const hash = await hashPassword('squatter-chosen-password');
+    await asApp(
+      (sql) => sql`insert into app_user (email, password_hash, email_verified)
+                   values ('victim@example.com', ${hash}, false)`,
+    );
+
+    const { token } = await issueLoginToken(env, 'victim@example.com');
+    expect(token).not.toBeNull();
+    expect(await consumeLoginToken(env, token!)).not.toBeNull();
+
+    const [row] = await asOwner(
+      (sql) => sql`select password_hash, email_verified from app_user
+                    where email = 'victim@example.com'`,
+    );
+    expect(row.email_verified).toBe(true);
+    expect(row.password_hash).toBeNull();
+    expect(await loginWithPassword(
+      env, 'victim@example.com', 'squatter-chosen-password', verifyPassword, DUMMY_HASH,
+    )).toBe('bad-credentials');
+  });
+
+  it('keeps the password when a magic LINK claims a VERIFIED account', async () => {
+    const env = testEnv();
+    const hash = await hashPassword('my-own-real-password');
+    await asApp(
+      (sql) => sql`insert into app_user (email, password_hash, email_verified)
+                   values ('owner@example.com', ${hash}, true)`,
+    );
+
+    const { token } = await issueLoginToken(env, 'owner@example.com');
+    expect(await consumeLoginToken(env, token!)).not.toBeNull();
+
+    const [row] = await asOwner(
+      (sql) => sql`select password_hash from app_user where email = 'owner@example.com'`,
+    );
+    expect(row.password_hash).toBe(hash);
   });
 
   it('keys the identity on Google subject, not email', async () => {

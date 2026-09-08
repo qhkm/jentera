@@ -1223,3 +1223,45 @@ async function pairTelegramChat(chatId: number): Promise<{
   await asTenant(A, (tx) => markWebhookUpdates(tx, connection.id, 'message|callback_query'));
   return { connectionId: connection.id, secret };
 }
+
+describe('action policies are owner-controlled', () => {
+  async function staffCookie(): Promise<string> {
+    const staffId = await asOwner(async (sql) => {
+      const [staff] = await sql<{ id: string }[]>`
+        insert into app_user (email, email_verified)
+        values ('policy-staff@example.com', true) returning id`;
+      await sql`insert into membership (user_id, business_id, role)
+                values (${staff.id}, ${A}, 'staff')`;
+      return staff.id;
+    });
+    return signIn(staffId);
+  }
+
+  it('refuses a staff member changing a policy', async () => {
+    /* A policy decides whether customer-facing sends need the owner at
+       all. Letting staff flip one to automatic bypasses the approval gate
+       that deciding an approval already reserves for the owner. */
+    const cookie = await staffCookie();
+    const response = await state('POST', '/api/state/policy', {
+      cookie,
+      body: { op: 'send_message', policy: 'automatic' },
+    });
+    expect(response.status).toBe(403);
+    const rows = await asOwner((sql) => sql`
+      select policy from action_policy where business_id = ${A} and op = 'send_message'`);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('refuses a staff member resetting policies', async () => {
+    const set = await state('POST', '/api/state/policy', {
+      cookie: cookieA,
+      body: { op: 'send_message', policy: 'approval' },
+    });
+    expect(set.status).toBe(204);
+    const cookie = await staffCookie();
+    expect((await state('POST', '/api/state/policies/reset', { cookie })).status).toBe(403);
+    const rows = await asOwner((sql) => sql<{ policy: string }[]>`
+      select policy from action_policy where business_id = ${A} and op = 'send_message'`);
+    expect(rows.map((row) => row.policy)).toEqual(['approval']);
+  });
+});

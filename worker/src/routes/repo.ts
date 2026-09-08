@@ -377,6 +377,15 @@ export async function handleRepo(
     return noContent(cors);
   }
 
+  /* A policy decides whether an action needs the owner at all. Deciding an
+     approval is owner-only below; letting staff flip the policy that makes
+     approvals unnecessary would be the same authority through a side door. */
+  if (url.pathname === '/api/state/policy' || url.pathname === '/api/state/policies/reset') {
+    if (id.role !== 'owner') {
+      return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+    }
+  }
+
   if (url.pathname === '/api/state/policy') {
     const op = text(body.op);
     const policy = oneOf(body.policy, POLICIES);

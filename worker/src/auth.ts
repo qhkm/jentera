@@ -123,11 +123,22 @@ export async function consumeLoginToken(env: Env, token: string): Promise<Sessio
 
     /* Consuming the link IS the proof of address ownership, so this is
        where email_verified becomes true — including for an account that
-       was created by password signup and has been waiting for it. */
+       was created by password signup and has been waiting for it.
+
+       The password is the exception, and it mirrors the Google claim
+       below: a password on a still-unverified account was set by whoever
+       signed up on this address, which is not necessarily the person who
+       just proved they own it. Verifying the address must not activate
+       that password. A verified owner keeps theirs. */
     const [user] = await sql<{ id: string }[]>`
       insert into app_user (email, last_seen_at, email_verified)
       values (${email}, now(), true)
-      on conflict (email) do update set last_seen_at = now(), email_verified = true
+      on conflict (email) do update
+        set last_seen_at = now(),
+            email_verified = true,
+            password_hash = case when app_user.email_verified
+                                 then app_user.password_hash
+                                 else null end
       returning id
     `;
 
