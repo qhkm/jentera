@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRepository } from '@/lib/repo';
-import { useSignedIn } from '@/lib/repo/gate';
+import { useAccountKey, useSignedIn } from '@/lib/repo/gate';
 import { TEAM_GENERAL, TEAM_REPLIES } from '@/lib/data/conversations';
 import { TEAM_GENERAL_EN, TEAM_REPLIES_EN } from '@/i18n/agent-replies';
 import { stripEmoji } from '@/components/Icon';
@@ -51,10 +51,35 @@ export interface AskSession {
   messages: AskMessage[];
 }
 
+/* Storage is keyed per account. The earlier single global key meant the next
+   account to sign in on a shared browser inherited the previous account's
+   conversations; those unscoped keys are cleared, never migrated. */
+const ASK_STORAGE_PREFIX = 'jentera-ask';
 const ASK_SESSIONS_KEY = 'jentera-ask-sessions-v1';
-/** Legacy single-thread history — migrated into a session on first load. */
 const ASK_HISTORY_KEY = 'jentera-ask-history-v1';
 const MAX_SESSIONS = 20;
+
+function sessionsKey(account: string): string {
+  return `${ASK_SESSIONS_KEY}:${account}`;
+}
+
+/** Forget every account's Ask conversations on this browser. Called at
+    sign-out and on the sign-in screen so a shared device carries nothing
+    across accounts; unrelated flow gates are left alone. */
+export function clearAskStorage(): void {
+  try {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith(ASK_STORAGE_PREFIX)) localStorage.removeItem(key);
+    }
+  } catch {
+    /* Storage can be unavailable in private browsing. */
+  }
+  try {
+    sessionStorage.removeItem(ASK_HISTORY_KEY);
+  } catch {
+    /* Same. */
+  }
+}
 
 function isMessage(value: unknown): value is AskMessage {
   return Boolean(value) && typeof value === 'object' &&
@@ -84,9 +109,9 @@ function byRecent(a: AskSession, b: AskSession): number {
   return b.updatedAt - a.updatedAt;
 }
 
-function loadSessions(): AskSession[] {
+function loadSessions(account: string): AskSession[] {
   try {
-    const value = JSON.parse(localStorage.getItem(ASK_SESSIONS_KEY) ?? '[]') as unknown;
+    const value = JSON.parse(localStorage.getItem(sessionsKey(account)) ?? '[]') as unknown;
     if (Array.isArray(value)) {
       const sessions = value
         .filter((s): s is AskSession =>
@@ -101,25 +126,6 @@ function loadSessions(): AskSession[] {
           messages: s.messages.filter(isMessage).slice(-40),
         }));
       if (sessions.length) return sessions.sort(byRecent);
-    }
-    // Migrate the legacy single-thread history into one session.
-    let history: AskMessage[] = [];
-    try {
-      const raw = JSON.parse(sessionStorage.getItem(ASK_HISTORY_KEY) ?? '[]') as unknown;
-      if (Array.isArray(raw)) history = raw.filter(isMessage);
-    } catch {
-      /* ignore */
-    }
-    const stable = stableMessages(history).slice(-40);
-    if (stable.length) {
-      const now = Date.now();
-      return [{
-        id: crypto.randomUUID(),
-        title: titleFor(stable),
-        createdAt: now,
-        updatedAt: now,
-        messages: stable,
-      }];
     }
   } catch {
     /* Private mode / quota — fresh session below. */
@@ -157,8 +163,12 @@ export function useAsk(
 ) {
   const repo = useRepository();
   const grounded = useSignedIn();
+  /* Persist only when the account is known: a signed-in session without an
+     id would otherwise fall back to one shared key, which is the leak. */
+  const account = useAccountKey();
+  const persisted = grounded && account !== null;
   const [state, setState] = useState<AskState>(() => {
-    const sessions = grounded ? loadSessions() : [freshSession()];
+    const sessions = persisted ? loadSessions(account) : [freshSession()];
     return { sessions, activeId: sessions[0]?.id ?? '' };
   });
   const activeIdRef = useRef(state.activeId);
@@ -170,17 +180,17 @@ export function useAsk(
      In-flight pairs are excluded so a reload never restores a spinner
      that can never finish. */
   useEffect(() => {
-    if (!grounded) return;
+    if (!persisted) return;
     const stable = state.sessions.map((session) => ({
       ...session,
       messages: stableMessages(session.messages).slice(-40),
     }));
     try {
-      localStorage.setItem(ASK_SESSIONS_KEY, JSON.stringify(stable.slice(0, MAX_SESSIONS)));
+      localStorage.setItem(sessionsKey(account), JSON.stringify(stable.slice(0, MAX_SESSIONS)));
     } catch {
       /* Private mode / quota — conversation still works in memory. */
     }
-  }, [grounded, state.sessions]);
+  }, [persisted, account, state.sessions]);
 
   const answer = useCallback(
     (question: string): string => {

@@ -42,6 +42,27 @@ describe('RepositoryGate session transitions', () => {
     expect(screen.queryByRole('alert')).toBeNull();
     expect(fetch).toHaveBeenCalledTimes(2);
   });
+
+  it('exposes the session user id as the account key for per-browser state', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(json({ ok: true, userId: 'user-77', detailLevel: 'beginner' }))
+      .mockResolvedValueOnce(json({ snapshot: { onboarded: true } }));
+    vi.stubGlobal('fetch', fetch);
+
+    const { RepositoryGate, useAccountKey, useSignedIn } = await import('@/lib/repo/gate');
+
+    function Probe() {
+      return <div>{useSignedIn() ? 'signed in' : 'signed out'} as {useAccountKey() ?? 'nobody'}</div>;
+    }
+
+    render(
+      <RepositoryGate>
+        <Probe />
+      </RepositoryGate>,
+    );
+
+    expect(await screen.findByText('signed in as user-77')).toBeInTheDocument();
+  });
 });
 
 function json(body: unknown, status = 200): Response {

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { useAsk } from '@/hooks/useAsk';
+import { clearAskStorage, useAsk } from '@/hooks/useAsk';
 import { LocalRepository } from '@/lib/repo/local';
 import { RepositoryProvider } from '@/lib/repo/context';
 import { SignedInProvider } from '@/lib/repo/gate';
@@ -127,7 +127,7 @@ describe('useAsk durable answers', () => {
     const repo: Repository = new LocalRepository();
     repo.ask = async () => ({ text: 'Here is the answer', usedKeys: [], grounded: false });
     const wrapper = ({ children }: { children: ReactNode }) => (
-      <SignedInProvider value>
+      <SignedInProvider value account="user-1">
         <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
       </SignedInProvider>
     );
@@ -139,7 +139,7 @@ describe('useAsk durable answers', () => {
     act(() => first.result.current!.send('my question'));
     await waitFor(() => expect(first.result.current!.messages[1].text).toBe('Here is the answer'));
     await waitFor(() =>
-      expect(localStorage.getItem('jentera-ask-sessions-v1')).toContain('Here is the answer'));
+      expect(localStorage.getItem('jentera-ask-sessions-v1:user-1')).toContain('Here is the answer'));
     first.unmount();
 
     const second = renderHook(
@@ -154,5 +154,70 @@ describe('useAsk durable answers', () => {
       'my question',
       'Here is the answer',
     ]);
+  });
+});
+
+describe('useAsk keeps accounts apart on a shared browser', () => {
+  const repo: Repository = new LocalRepository();
+  repo.ask = async () => ({ text: 'private answer', usedKeys: [], grounded: false });
+  const wrapperFor = (account: string) => ({ children }: { children: ReactNode }) => (
+    <SignedInProvider value account={account}>
+      <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
+    </SignedInProvider>
+  );
+  const render = (account: string) => renderHook(
+    () => useAsk(business, { handled: 0, needs: 0 }, (key) => key),
+    { wrapper: wrapperFor(account) },
+  );
+
+  it('never shows one account the conversations of another', async () => {
+    const first = render('user-1');
+    await waitFor(() => expect(first.result.current).not.toBeNull());
+    act(() => first.result.current!.send('my private question'));
+    await waitFor(() => expect(first.result.current!.messages[1].text).toBe('private answer'));
+    await waitFor(() => expect(localStorage.getItem('jentera-ask-sessions-v1:user-1'))
+      .toContain('my private question'));
+    first.unmount();
+
+    const other = render('user-2');
+    await waitFor(() => expect(other.result.current).not.toBeNull());
+    expect(other.result.current!.messages).toEqual([]);
+    expect(other.result.current!.sessions.every((session) => session.messages.length === 0))
+      .toBe(true);
+    other.unmount();
+
+    const again = render('user-1');
+    await waitFor(() => expect(again.result.current).not.toBeNull());
+    expect(again.result.current!.messages.map((message) => message.text)).toEqual([
+      'my private question', 'private answer',
+    ]);
+  });
+
+  it('does not resurrect history saved before accounts were separated', async () => {
+    /* The old single global key belonged to whoever used the browser last.
+       Attributing it to the next account to sign in is the leak itself. */
+    localStorage.setItem('jentera-ask-sessions-v1', JSON.stringify([{
+      id: 'legacy', title: 'someone else', createdAt: 1, updatedAt: 1,
+      messages: [{ from: 'you', text: 'previous owner secret' }, { from: 'ai', text: 'ok' }],
+    }]));
+    sessionStorage.setItem('jentera-ask-history-v1', JSON.stringify([
+      { from: 'you', text: 'older secret' }, { from: 'ai', text: 'ok' },
+    ]));
+    const { result } = render('user-3');
+    await waitFor(() => expect(result.current).not.toBeNull());
+    expect(result.current!.messages).toEqual([]);
+  });
+
+  it('forgets every account on this browser when storage is cleared at sign-out', () => {
+    localStorage.setItem('jentera-ask-sessions-v1:user-1', '[]');
+    localStorage.setItem('jentera-ask-sessions-v1:user-2', '[]');
+    localStorage.setItem('jentera-ask-sessions-v1', '[]');
+    sessionStorage.setItem('jentera-ask-history-v1', '[]');
+    localStorage.setItem('aisar-onboarded-v1', '1');
+    clearAskStorage();
+    expect(Object.keys(localStorage).filter((key) => key.startsWith('jentera-ask'))).toEqual([]);
+    expect(sessionStorage.getItem('jentera-ask-history-v1')).toBeNull();
+    // Unrelated flow gates are untouched.
+    expect(localStorage.getItem('aisar-onboarded-v1')).toBe('1');
   });
 });

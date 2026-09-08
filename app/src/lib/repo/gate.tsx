@@ -19,12 +19,20 @@ import { LoadingState } from '@/components/ui';
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
-type Chosen = { repo: LocalRepository | RemoteRepository; mode: 'local' | 'remote' };
+type Chosen = {
+  repo: LocalRepository | RemoteRepository;
+  mode: 'local' | 'remote';
+  /** Session user id when remote; null for the demo. */
+  account: string | null;
+};
 
 /* `mode` was computed and then thrown away, so nothing downstream could
    tell an authenticated session from the anonymous demo — which is why
    /app was reachable by setting a localStorage flag in devtools. */
 const SignedInContext = createContext(false);
+/* Which account this server-backed session belongs to. Per-browser state
+   keyed by it (Ask history) stays private when accounts share a device. */
+const AccountContext = createContext<string | null>(null);
 
 /**
  * Declare a session as server-backed.
@@ -38,12 +46,28 @@ const SignedInContext = createContext(false);
  */
 export function SignedInProvider({
   value,
+  account = null,
   children,
 }: {
   value: boolean;
+  /** The signed-in account's opaque id; omit for the demo. */
+  account?: string | null;
   children: ReactNode;
 }) {
-  return <SignedInContext.Provider value={value}>{children}</SignedInContext.Provider>;
+  return (
+    <SignedInContext.Provider value={value}>
+      <AccountContext.Provider value={value ? account : null}>{children}</AccountContext.Provider>
+    </SignedInContext.Provider>
+  );
+}
+
+/**
+ * The signed-in account's opaque id, or null in the demo and when the
+ * session did not report one. Callers that persist per-browser state must
+ * key it by this and keep nothing when it is null.
+ */
+export function useAccountKey(): string | null {
+  return useContext(AccountContext);
 }
 
 /**
@@ -60,7 +84,7 @@ export function useSignedIn(): boolean {
 async function choose(): Promise<Chosen> {
   /* No backend configured: this is the anonymous demo, and it must keep
      working exactly as it does today. */
-  if (!API) return { repo: new LocalRepository(), mode: 'local' };
+  if (!API) return { repo: new LocalRepository(), mode: 'local', account: null };
 
   let signedIn = false;
   /* The body, not just the status. It carries the detail-level setting,
@@ -75,10 +99,10 @@ async function choose(): Promise<Chosen> {
     /* Unreachable API is not the same as signed out, but the honest
        fallback is the local demo rather than an error page for a visitor
        who never had an account. */
-    return { repo: new LocalRepository(), mode: 'local' };
+    return { repo: new LocalRepository(), mode: 'local', account: null };
   }
 
-  if (!signedIn) return { repo: new LocalRepository(), mode: 'local' };
+  if (!signedIn) return { repo: new LocalRepository(), mode: 'local', account: null };
 
   const remote = new RemoteRepository();
   if (me) remote.prime({ me });
@@ -97,12 +121,16 @@ async function choose(): Promise<Chosen> {
          /api/state. That is an ordinary signed-out transition, not a broken
          workspace. Falling back keeps public onboarding usable and lets the
          /app auth guard send protected routes to sign-in. */
-      return { repo: new LocalRepository(), mode: 'local' };
+      return { repo: new LocalRepository(), mode: 'local', account: null };
     } else {
       throw e;
     }
   }
-  return { repo: remote, mode: 'remote' };
+  return {
+    repo: remote,
+    mode: 'remote',
+    account: typeof me?.userId === 'string' && me.userId ? me.userId : null,
+  };
 }
 
 export function RepositoryGate({ children }: { children: ReactNode }) {
@@ -138,8 +166,8 @@ export function RepositoryGate({ children }: { children: ReactNode }) {
   }
 
   return (
-    <SignedInContext.Provider value={chosen.mode === 'remote'}>
+    <SignedInProvider value={chosen.mode === 'remote'} account={chosen.account}>
       <RepositoryProvider repository={chosen.repo}>{children}</RepositoryProvider>
-    </SignedInContext.Provider>
+    </SignedInProvider>
   );
 }

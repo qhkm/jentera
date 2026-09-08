@@ -5,6 +5,7 @@
    ============================================================ */
 
 import { useEffect, useState } from 'react';
+import { clearAskStorage } from '@/hooks/useAsk';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useI18n } from '@/i18n/I18nProvider';
@@ -67,11 +68,7 @@ export function Shell({
 
   async function signOut() {
     setLeaving(true);
-    try {
-      sessionStorage.removeItem('jentera-ask-history-v1');
-    } catch {
-      /* Storage can be unavailable in private browsing. */
-    }
+    clearAskStorage();
     try {
       /* Ask the server to destroy the session row before dropping the
          cookie. Clearing the cookie alone would leave a live session

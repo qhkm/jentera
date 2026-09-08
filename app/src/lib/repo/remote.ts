@@ -42,6 +42,9 @@ export class NotSignedInError extends Error {
 /** What /api/me answers with. Only the parts anything here reads. */
 export interface MeResponse {
   detailLevel?: string;
+  /** Opaque account id from the session; scopes per-browser state such as
+      Ask history so two accounts sharing a browser never see each other's. */
+  userId?: string;
 }
 
 /** No business yet — first sign-in, before the local state is migrated. */

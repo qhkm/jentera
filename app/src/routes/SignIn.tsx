@@ -11,6 +11,7 @@
    ============================================================ */
 
 import { useEffect, useRef, useState } from 'react';
+import { clearAskStorage } from '@/hooks/useAsk';
 import {
   ArrowUpRight,
   Check,
@@ -65,11 +66,7 @@ export default function SignIn() {
   useEffect(() => {
     /* Prevent a previous account's private owner conversation appearing if
        this tab is used to sign into a different account. */
-    try {
-      sessionStorage.removeItem('jentera-ask-history-v1');
-    } catch {
-      /* Storage can be unavailable in private browsing. */
-    }
+    clearAskStorage();
   }, []);
 
   useEffect(() => {
