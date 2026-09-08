@@ -11,6 +11,7 @@
 @import "./theme.css";
 @import "./landing.css";
 @import "./connect.css";
+@import "./component-refresh.css";
 
 /* ============================================================
    Base. Everything resolves through tokens — no literal colors

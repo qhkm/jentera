@@ -1,5 +1,5 @@
-/* Public pages use the existing charcoal, mint, pixel type and square
-   geometry. Keep the shared onboarding cursor and scroll reveal here. */
+/* Public page layout and shared onboarding cursor / scroll reveal.
+   Component treatments are refined in component-refresh.css. */
 @layer components {
   .lp-eyebrow {
     display: inline-flex;
@@ -64,8 +64,7 @@
   }
 }
 
-/* September positioning refresh. Keep the existing charcoal, mint, pixel
-   type and square geometry; all surfaces still resolve through theme tokens. */
+/* September positioning refresh. Surfaces resolve through theme tokens. */
 @layer components {
   .marketing-page {
     overflow-x: clip;

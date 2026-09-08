@@ -71,12 +71,13 @@
   --dur-slow:       .3s;
 
   /* ---- Radii ---- */
-  --radius-tag:   4px;
+  --radius-tag:   999px;
+  --radius-control: 12px;
   --radius-md:    .375rem;
-  --radius-item:  0;
+  --radius-item:  8px;
   --radius-lg:    .5rem;
   --radius-avatar:10px;
-  --radius-card:  0;
+  --radius-card:  16px;
   --radius-xl:    .75rem;
   --radius-2xl:   1rem;
   --radius-3xl:   1.5rem;
@@ -86,7 +87,7 @@
      Buttons and inputs must line up when stacked. Giving them one
      height and one block-padding rule makes that structural instead
      of a coincidence of utility classes at each call site. */
-  --control-h:      2.5rem;   /* 40px */
+  --control-h:      2.75rem;  /* 44px touch target */
   --control-pad-y:  12px;
   --control-pad-y-lg: 16px;   /* mobile tap target */
 

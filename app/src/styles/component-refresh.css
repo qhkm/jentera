@@ -1,0 +1,162 @@
+/* Component refinement from the September 2026 Naive reference.
+   The shared tokens handle controls throughout the app; these rules compose
+   the public pages with rounded frames, inset controls and quieter type. */
+@layer components {
+  .marketing-header {
+    width: calc(100% - 48px);
+    max-width: 1154px;
+    margin: 12px auto 0;
+    top: 12px;
+    border: 1px solid var(--rail);
+    border-radius: var(--radius-card);
+    background: rgb(from var(--bg) r g b / .94);
+    backdrop-filter: blur(16px);
+    box-shadow: 0 8px 28px rgb(0 0 0 / .08);
+  }
+  .marketing-header-bar {
+    display: flex;
+    min-height: 60px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 8px 12px 8px 20px;
+  }
+  .marketing-nav-link {
+    padding-inline: 12px;
+    border-radius: var(--radius-item);
+    font-size: 14px;
+    transition: color var(--dur-fast), background var(--dur-fast);
+  }
+  .marketing-nav-link:hover {
+    background: rgb(var(--border-ink) / .05);
+    color: var(--text);
+  }
+  #landing-mobile-menu {
+    border-radius: 0 0 var(--radius-card) var(--radius-card);
+  }
+  #landing-mobile-menu .nav-link {
+    font-family: var(--font-sans);
+    padding-inline: 12px;
+    border-radius: var(--radius-item);
+  }
+  #landing-mobile-menu .nav-link:hover {
+    background: rgb(var(--border-ink) / .05);
+  }
+  .marketing-page :where(section[id], #example) {
+    scroll-margin-top: 108px;
+  }
+  .lp-hero-grid { opacity: .12; }
+  .preview-window, .auth-card, .connections-start {
+    border-radius: var(--radius-card);
+  }
+  .preview-window {
+    background: linear-gradient(160deg, var(--bg-card-hover), var(--bg-card) 45%);
+    box-shadow: 0 18px 45px -30px rgb(0 0 0 / .45);
+  }
+  .preview-avatar, .preview-request, .connection-glyph {
+    border-radius: var(--radius-item);
+  }
+  .preview-business h2 { font-weight: 500; }
+  .preview-answer h3, .preview-draft h3,
+  .lp-work-title h3, .lp-steps h3, .lp-local-details h3,
+  .connection-row h3, .connections-start h2 {
+    font-family: var(--font-sans);
+    font-size: 20px;
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: -.025em;
+  }
+  .preview-content { min-height: 350px; }
+  .preview-answer li {
+    margin-top: 6px;
+    padding: 10px;
+    border: 1px solid var(--rail);
+    border-radius: var(--radius-item);
+    background: rgb(var(--border-ink) / .025);
+  }
+  .preview-open, .preview-back {
+    padding-inline: 12px;
+    border: 1px solid var(--rail);
+    border-radius: var(--radius-control);
+    font-family: var(--font-sans);
+    font-size: 12px;
+  }
+  .preview-open:hover, .preview-back:hover {
+    background: rgb(var(--accent-green-rgb) / .06);
+    text-decoration: none;
+  }
+  .preview-bottom { border-radius: 0 0 var(--radius-card) var(--radius-card); }
+  .preview-tabs, .connections-filters {
+    padding: 4px;
+    gap: 4px;
+    border-radius: var(--radius-control);
+    background: var(--bg-card);
+  }
+  .preview-tabs button, .connections-filters button {
+    border: 0;
+    border-radius: var(--radius-item);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .preview-tabs button + button, .connections-filters button + button { border: 0; }
+  .preview-tabs button[aria-selected='true'] {
+    box-shadow: inset 0 0 0 1px rgb(var(--accent-green-rgb) / .2);
+  }
+  .theme-light .preview-tabs button[aria-selected='true'],
+  .theme-light .connections-filters button[aria-pressed='true'] {
+    background: var(--bg);
+  }
+  .lp-work-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    border: 0;
+  }
+  .lp-work-row {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    padding: 28px;
+    border: 1px solid var(--rail);
+    border-radius: var(--radius-card);
+    background: linear-gradient(160deg, rgb(var(--border-ink) / .025), transparent 60%), var(--bg-card);
+  }
+  .lp-row-number { padding: 0; color: var(--text-dim); }
+  .lp-work-title { flex-direction: column; gap: 22px; padding: 0; }
+  .lp-work-description > span { color: var(--text-dim); }
+  .lp-steps { gap: 16px; border: 0; }
+  .lp-steps article {
+    border: 1px solid var(--rail);
+    border-radius: var(--radius-card);
+    background: var(--bg-card);
+  }
+  .lp-steps article + article { border: 1px solid var(--rail); }
+  .connections-start { border-top-width: 1px; }
+  .connections-list {
+    border: 1px solid var(--rail);
+    border-radius: var(--radius-card);
+    background: rgb(var(--border-ink) / .015);
+  }
+  .connection-row { padding-inline: 24px; }
+  .connection-row:last-child { border-bottom: 0; }
+  .connection-row .tag:not(.tag-green) { color: var(--text-secondary); }
+  .auth-password button { border-radius: 0 var(--radius-item) var(--radius-item) 0; }
+}
+
+@media (max-width: 800px) {
+  .marketing-header { width: calc(100% - 32px); }
+  .marketing-header-bar { padding-left: 16px; }
+  .lp-work-list { grid-template-columns: 1fr; }
+  .lp-work-row { padding: 24px; gap: 18px; }
+  .lp-work-title { flex-direction: row; align-items: center; gap: 16px; }
+  .lp-steps article + article { border: 1px solid var(--rail); }
+}
+@media (max-width: 420px) {
+  .marketing-brand { gap: 10px; }
+  .marketing-parent { padding-left: 10px; }
+  .preview-tabs button { font-size: 11px; }
+  .connections-filters button { padding-inline: 9px; font-size: 11px; }
+  .connection-row { padding-inline: 16px; }
+  .lp-work-title h3 { font-size: 20px; }
+}

@@ -100,12 +100,12 @@
     padding-inline: 1.5rem;      /* spacing * 6 */
     padding-block: var(--control-pad-y);
     border: 1px solid transparent;
-    border-radius: 0;
-    font-family: var(--font-nav);
+    border-radius: var(--radius-control);
+    font-family: var(--font-sans);
     font-size: 14px;
-    font-weight: 300;
-    letter-spacing: .03em;
-    text-transform: uppercase;
+    font-weight: 500;
+    letter-spacing: -.01em;
+    text-transform: none;
     white-space: nowrap;
     line-height: 1;
     cursor: pointer;
@@ -149,7 +149,7 @@
   .btn-outline {
     background: transparent;
     color: var(--text);
-    border-color: rgb(var(--border-ink) / .5);
+    border-color: rgb(var(--border-ink) / .2);
   }
   .btn-outline:hover:not(:where(:disabled, [aria-disabled="true"])) { border-color: rgb(var(--border-ink) / .8); background: rgb(var(--border-ink) / .08); }
 
@@ -325,11 +325,11 @@
     display: inline-flex;
     align-items: center;
     gap: .25rem;
-    font-family: var(--font-nav);
+    font-family: var(--font-sans);
     font-size: 12px;
-    font-weight: 300;
-    letter-spacing: .03em;
-    text-transform: uppercase;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
     color: var(--text-secondary);
     text-decoration: none;
     transition: color var(--dur-fast) var(--ease-signature);

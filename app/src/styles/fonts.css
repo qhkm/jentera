@@ -21,12 +21,11 @@
   font-display: auto;
 }
 
-/* Display face. The upstream design wires only the Circle cut;
-   Grid / Line / Square / Triangle also ship in the package if you
-   want a different display texture — swap the filename here. */
+/* Square is the current reference's display cut. Keep the local Geist
+   asset and shared family so existing headings pick up the refinement. */
 @font-face {
   font-family: "Geist Pixel";
-  src: url("../../node_modules/geist/dist/fonts/geist-pixel/GeistPixel-Circle.woff2") format("woff2");
+  src: url("../../node_modules/geist/dist/fonts/geist-pixel/GeistPixel-Square.woff2") format("woff2");
   font-weight: 500;
   font-style: normal;
   font-display: auto;

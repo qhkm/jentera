@@ -65,11 +65,11 @@ export function LandingHeader({
   }, [open]);
 
   return (
-    <header className="marketing-header sticky top-0 z-50 w-full border-b border-rail bg-bg/95 backdrop-blur-lg">
+    <header className="marketing-header sticky z-50">
       <a href="#main-content" className="marketing-skip-link">
         Skip to content
       </a>
-      <div className="mx-auto flex h-16 w-full max-w-[1250px] items-center justify-between px-6">
+      <div className="marketing-header-bar">
         <div className="marketing-brand">
           <Link
             to="/"
@@ -85,7 +85,7 @@ export function LandingHeader({
 
         <nav
           aria-label="Main navigation"
-          className="hidden flex-row items-center justify-center gap-6 lg:flex"
+          className="hidden flex-row items-center justify-center gap-1 lg:flex"
         >
           {navLinks.map((l) => (
             <ActionLink key={l.href} href={l.href} label={l.label} className="marketing-nav-link">
@@ -116,7 +116,7 @@ export function LandingHeader({
             type="button"
             ref={menuButton}
             onClick={() => setOpen((v) => !v)}
-            className="inline-flex size-11 items-center justify-center border border-rail lg:hidden"
+            className="inline-flex size-11 items-center justify-center rounded-item border border-rail lg:hidden"
             aria-label="Menu"
             aria-expanded={open}
             aria-controls="landing-mobile-menu"
