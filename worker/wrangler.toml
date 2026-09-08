@@ -59,7 +59,7 @@ API_ORIGIN = "https://api.jentera.ai"
 # The immutable runner/Hermes/browser bundle requested for newly
 # provisioned runtimes. Changing this asks reconciliation to upgrade;
 # it must never silently track "latest".
-RUNTIME_RELEASE = "2026.09.07-5"
+RUNTIME_RELEASE = "2026.09.08-1"
 RUNTIME_EXPECTED_REGION = "sin"
 SPRITES_API_ORIGIN = "https://api.sprites.dev"
 # Fail closed. Completing onboarding provisions one isolated runtime for the
@@ -70,7 +70,7 @@ MODEL_TRANSPORT_READY = "true"
 # business to own a fully bootstrapped, release-matched runtime row.
 RUNTIME_EXECUTION_ENABLED = "true"
 RUNTIME_BOOTSTRAP_ENABLED = "true"
-RUNTIME_BUNDLE_COMMIT = "221d8269ca77846baa974127df43c4256a0e58c5"
+RUNTIME_BUNDLE_COMMIT = "a825eed80949c74d84ff0bc76889be4c8e74dfbb"
 AISAR_MODEL_PROVIDER = "openrouter"
 # The UPSTREAM model gateway the proxy forwards to (allowlisted, see
 # worker/src/runtime/execution.ts). The credential presented to it is the
@@ -84,6 +84,11 @@ AISAR_MODEL_BASE = "https://router.fmcv.my"
 AISAR_RUNTIME_MODEL_BASE = "https://api.jentera.ai/v1/model"
 AISAR_MODEL_NAME = "MiniMax-M3"
 AISAR_DEEP_MODEL_NAME = "deepseek-v4-flash"
+# Trial routes every sprite accepts beside quick and deep. Traffic only moves
+# for businesses named in AISAR_QUICK_MODEL_OVERRIDES (quick replies only).
+AISAR_CANDIDATE_MODEL_NAMES = "MiniMax-M2.7-highspeed"
+# Canary: Kitakod Ventures quick replies on M2.7 for the speed comparison.
+AISAR_QUICK_MODEL_OVERRIDES = "4e8c2593-2af2-494f-b157-fec0295a50b5=MiniMax-M2.7-highspeed"
 # router.fmcv.my is a separate LiteLLM gateway and therefore uses the FMCV
 # AISAR_MODEL_KEY secret. Official OpenRouter keys are never sent to it.
 # Connector credentials are secrets, never vars:
