@@ -121,6 +121,7 @@ beforeEach(async () => {
     capabilities: ['computer_use'],
     modelName: 'MiniMax-M3',
     deepModelName: 'deepseek-v4-flash',
+    candidateModelNames: ['MiniMax-M2.7-highspeed'],
     stateFile: join(directory, 'state.json'),
   });
   runnerOrigin = await listen(runnerServer);
@@ -271,6 +272,22 @@ test('refuses a model outside the configured quick and deep routes', async () =>
   assert.equal(response.status, 400);
   assert.match((await response.json()).error, /model/);
   assert.equal(starts.length, 0);
+});
+
+test('accepts a candidate model route beside quick and deep', async () => {
+  const response = await start(TASK, { model: 'MiniMax-M2.7-highspeed', responseMode: 'quick' });
+  assert.equal(response.status, 202);
+  assert.equal(starts[0].model, 'MiniMax-M2.7-highspeed');
+});
+
+test('reads candidate model routes from the runtime environment', () => {
+  const config = configFromEnv({
+    AISAR_MODEL_NAME: 'MiniMax-M3',
+    AISAR_DEEP_MODEL_NAME: 'deepseek-v4-flash',
+    AISAR_CANDIDATE_MODEL_NAMES: ' MiniMax-M2.7-highspeed, vendor/other ',
+  });
+  assert.deepEqual(config.candidateModelNames, ['MiniMax-M2.7-highspeed', 'vendor/other']);
+  assert.deepEqual(configFromEnv({}).candidateModelNames, []);
 });
 
 test('rejects missing, expired, incomplete, unexpected, and cross-task grants', async () => {

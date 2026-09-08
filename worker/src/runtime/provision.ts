@@ -8,6 +8,7 @@
    ============================================================ */
 
 import type { Env } from '../env';
+import { candidateModelNames } from './response-mode';
 import { withTenant } from '../db';
 import {
   claimRuntime,
@@ -116,6 +117,7 @@ async function bootstrapRuntime(
   if (!/^[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._:~-]+)?$/.test(deepModelName)) {
     throw new Error('Jentera deep model name is invalid');
   }
+  const candidates = candidateModelNames(env);
   if (!runtime.providerId || !runtime.providerUrl) throw new Error('provider runtime is incomplete');
 
   const modelKey = await runtimeModelKey(env, businessId, runtime.providerName);
@@ -133,6 +135,7 @@ async function bootstrapRuntime(
     field('MODEL_KEY_B64', modelKey),
     field('MODEL_NAME_B64', modelName),
     field('DEEP_MODEL_NAME_B64', deepModelName),
+    ...(candidates.length ? [field('CANDIDATE_MODEL_NAMES_B64', candidates.join(','))] : []),
     field('HERMES_TAG_B64', 'v2026.9.8'),
     field('HERMES_COMMIT_B64', 'ff5b9fcfb029e230a2d3f90d1a3c06260ea1d413'),
   ].join('\n') + '\n';

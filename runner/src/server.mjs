@@ -613,6 +613,7 @@ export function configFromEnv(env = process.env) {
     capabilities: capabilitiesFromEnv(env),
     modelName: env.AISAR_MODEL_NAME,
     deepModelName: env.AISAR_DEEP_MODEL_NAME,
+    candidateModelNames: modelList(env.AISAR_CANDIDATE_MODEL_NAMES),
     runnerSourceSha256: env.AISAR_RUNNER_SOURCE_SHA256,
     port: Number(env.PORT ?? 8080),
     watchdogMs: Number(env.AISAR_RUNNER_WATCHDOG_MS ?? WATCHDOG_INTERVAL_MS),
@@ -644,6 +645,9 @@ function validated(config) {
   }
   if (!modelId(config.modelName) || !modelId(config.deepModelName)) {
     throw new Error('AISAR model routing is not configured');
+  }
+  if ((config.candidateModelNames ?? []).some((id) => !modelId(id))) {
+    throw new Error('AISAR candidate model routes are invalid');
   }
   const expectedSource = config.runnerSourceSha256 ?? RUNNER_SOURCE_SHA256;
   if (!/^[0-9a-f]{64}$/.test(expectedSource)) {
@@ -745,7 +749,8 @@ function taskProblem(body, config) {
     return 'responseMode must be quick or deep';
   }
   if (body.model !== undefined &&
-      body.model !== config.modelName && body.model !== config.deepModelName) {
+      body.model !== config.modelName && body.model !== config.deepModelName &&
+      !(config.candidateModelNames ?? []).includes(body.model)) {
     return 'model is not in the configured runtime routes';
   }
   if (body.keepaliveUntil !== undefined) {
@@ -876,6 +881,13 @@ function uuid(value) {
   return typeof value === 'string' &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
       .test(value);
+}
+
+/** Comma-separated model ids from the runtime environment; blanks dropped. */
+function modelList(value) {
+  return typeof value === 'string'
+    ? value.split(',').map((id) => id.trim()).filter(Boolean)
+    : [];
 }
 
 function modelId(value) {

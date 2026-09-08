@@ -247,6 +247,49 @@ test('bootstrap hands the deep model to the provider configure step', async () =
   );
 });
 
+test('bootstrap routes candidate models beside quick and deep', async () => {
+  const source = await readFile(SCRIPT, 'utf8');
+  assert.match(source, /CANDIDATE_MODEL_NAMES_B64\) CANDIDATE_MODEL_NAMES_B64="\$value" ;;/);
+  assert.match(source, /AISAR_CANDIDATE_MODEL_NAMES=%q.*\$candidate_model_names/);
+  assert.match(
+    source,
+    /configure-model-provider\.py \\\n\s+"\$model_provider" "\$model_base" "\$model_name" OPENROUTER_API_KEY "\$cua_enabled" \\\n\s+"\$deep_model_name" "\$candidate_model_names"/,
+  );
+});
+
+test('bootstrap refuses an invalid candidate model id before installing anything', async () => {
+  const transfer = await tempTransfer(fields({ candidateModelNames: 'MiniMax-M2.7-highspeed,bad model' }));
+  const result = run(transfer);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /candidate model id is invalid/);
+});
+
+test('configure pins a route and reasoning override for each candidate model', async () => {
+  const primary = 'MiniMax-M3';
+  const deep = 'deepseek-v4-flash';
+  const candidate = 'MiniMax-M2.7-highspeed';
+  const { status, stderr, configPath } = await runConfigure(
+    ['openrouter', 'https://router.fmcv.my', primary, 'OPENROUTER_API_KEY', '0', deep, candidate],
+    { platform_toolsets: { api_server: ['hermes-api-server'] } },
+  );
+  assert.equal(status, 0, stderr);
+  const config = JSON.parse(await readFile(configPath, 'utf8'));
+  assert.deepStrictEqual(config.gateway.api_server.extra.model_routes[candidate], {
+    model: candidate,
+    provider: 'openrouter',
+    base_url: 'https://router.fmcv.my',
+    api_key: '${OPENROUTER_API_KEY}',
+  });
+  assert.equal(config.agent.reasoning_overrides[candidate], 'high');
+  assert.equal(config.model.default, primary);
+
+  const invalid = await runConfigure(
+    ['openrouter', 'https://router.fmcv.my', primary, 'OPENROUTER_API_KEY', '0', deep, 'bad model'],
+  );
+  assert.notEqual(invalid.status, 0);
+  assert.match(invalid.stderr, /candidate model id is invalid/);
+});
+
 test('computer use is gated, pinned, and proven before the runtime attests it', async () => {
   const source = await readFile(SCRIPT, 'utf8');
   // The transfer field is optional and defaults to disabled; only `1` enables
@@ -332,10 +375,14 @@ function fields(overrides = {}) {
     ['HERMES_TAG_B64', input.hermesTag],
     ['HERMES_COMMIT_B64', input.hermesCommit],
   ].map(([key, value]) => `${key}=${Buffer.from(value).toString('base64')}`).join('\n') + '\n';
+  let extra = '';
   if (input.cuaEnabled) {
-    return body + `CUA_ENABLED_B64=${Buffer.from(String(input.cuaEnabled)).toString('base64')}\n`;
+    extra += `CUA_ENABLED_B64=${Buffer.from(String(input.cuaEnabled)).toString('base64')}\n`;
   }
-  return body;
+  if (input.candidateModelNames) {
+    extra += `CANDIDATE_MODEL_NAMES_B64=${Buffer.from(input.candidateModelNames).toString('base64')}\n`;
+  }
+  return body + extra;
 }
 
 // Spawn configure-model-provider.py against a hermetic stand-in for the pinned

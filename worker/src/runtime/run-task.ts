@@ -97,7 +97,8 @@ export async function dispatchRuntimeRun(
   const dispatchStartedAt = Date.now();
   const stage = (name: string) => options.onStage?.(name, Date.now() - dispatchStartedAt);
   const payload = runPayload(task.payload);
-  const model = payload.model ?? modelForResponseMode(env, payload.responseMode ?? 'deep');
+  const model = payload.model ??
+    modelForResponseMode(env, payload.responseMode ?? 'deep', task.businessId);
   const { runtime, secrets, reservation, keepaliveUntil } = await withTenant(
     env,
     task.businessId,

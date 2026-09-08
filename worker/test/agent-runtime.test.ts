@@ -206,6 +206,58 @@ describe('provider provisioning', () => {
     expect(business.runtime).toBe('hermes-sprite');
   });
 
+  it('hands candidate model routes to bootstrap and refuses invalid ids', async () => {
+    const readyz = async () => new Response(JSON.stringify({
+      ok: true,
+      release: '2026.08.27-1',
+      runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+      hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
+      toolMode: 'full-tools',
+      webSearchBackend: 'ddgs',
+      edgeAuthorizationForwarded: false,
+    }));
+    const base = {
+      RUNTIME_RELEASE: '2026.08.27-1',
+      RUNTIME_BOOTSTRAP_ENABLED: 'true',
+      RUNTIME_BUNDLE_COMMIT: 'a'.repeat(40),
+      AISAR_MODEL_PROVIDER: 'openrouter',
+      AISAR_MODEL_BASE: 'https://router.fmcv.my',
+      AISAR_MODEL_KEY: 'fmcv-control-secret-'.padEnd(48, 's'),
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+      AISAR_DEEP_MODEL_NAME: 'deepseek-v4-flash',
+    };
+    class CandidateBootstrapProvider extends LocalRuntimeProvider {
+      writes: { path: string; data: string; mode: number }[] = [];
+
+      async writeFile(_runtime: ObservedRuntime, path: string, data: string, mode: number) {
+        this.writes.push({ path, data, mode });
+      }
+
+      async exec() {
+        return { exitCode: 0, stdout: '{"ok":true}', stderr: '' };
+      }
+    }
+    const provider = new CandidateBootstrapProvider();
+    await ensureProviderRuntime(
+      testEnv({ ...base, AISAR_CANDIDATE_MODEL_NAMES: 'MiniMax-M2.7-highspeed' }),
+      A,
+      { provider, runnerKey: 'runner-key-for-alpha'.repeat(2), hermesApiKey: 'hermes-key-for-alpha', fetch: readyz },
+    );
+    const transfer = provider.writes[0].data as string;
+    expect(transfer).toContain(
+      `CANDIDATE_MODEL_NAMES_B64=${Buffer.from('MiniMax-M2.7-highspeed').toString('base64')}`,
+    );
+
+    await truncateAll();
+    await asOwner((sql) => sql`
+      insert into business (id, name, playbook_key) values (${A}, 'Alpha', 'restaurant')`);
+    await expect(ensureProviderRuntime(
+      testEnv({ ...base, AISAR_CANDIDATE_MODEL_NAMES: 'bad model' }),
+      A,
+      { provider: new CandidateBootstrapProvider(), runnerKey: 'runner-key-for-alpha'.repeat(2), hermesApiKey: 'hermes-key-for-alpha', fetch: readyz },
+    )).rejects.toThrow(/candidate model/);
+  });
+
   it('does not checkpoint or select Hermes when the edge forwards its bearer token', async () => {
     class GuardedBootstrapProvider extends LocalRuntimeProvider {
       checkpointCalls = 0;

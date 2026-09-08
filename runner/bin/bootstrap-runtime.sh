@@ -25,6 +25,7 @@ DEEP_MODEL_NAME_B64=
 HERMES_TAG_B64=
 HERMES_COMMIT_B64=
 CUA_ENABLED_B64=
+CANDIDATE_MODEL_NAMES_B64=
 while IFS='=' read -r name value; do
   [[ -z "$name" ]] && continue
   [[ "$value" =~ ^[A-Za-z0-9+/]*={0,2}$ ]] || {
@@ -45,6 +46,7 @@ while IFS='=' read -r name value; do
     HERMES_TAG_B64) HERMES_TAG_B64="$value" ;;
     HERMES_COMMIT_B64) HERMES_COMMIT_B64="$value" ;;
     CUA_ENABLED_B64) CUA_ENABLED_B64="$value" ;;
+    CANDIDATE_MODEL_NAMES_B64) CANDIDATE_MODEL_NAMES_B64="$value" ;;
     *)
       echo "runtime bootstrap transfer contains an unknown field" >&2
       exit 1
@@ -76,6 +78,27 @@ model_base="$(decode "$MODEL_BASE_B64")"
 model_key="$(decode "$MODEL_KEY_B64")"
 model_name="$(decode "$MODEL_NAME_B64")"
 deep_model_name="$(decode "${DEEP_MODEL_NAME_B64:-$MODEL_NAME_B64}")"
+# Candidate routes: extra model ids the control plane wants every sprite to
+# accept beside quick and deep (a canary business may be pointed at one).
+# Validated before anything is installed; the same id grammar as the Python
+# configure step so a bad id fails here, not halfway through provisioning.
+candidate_model_names="$(decode "${CANDIDATE_MODEL_NAMES_B64:-}")"
+# The control plane joins ids with bare commas; any whitespace means a hand
+# edit or a corrupted transfer, so refuse it rather than guess at trimming.
+[[ "$candidate_model_names" =~ [[:space:]] ]] && {
+  echo "candidate model id is invalid" >&2
+  exit 1
+}
+candidate_models=()
+if [[ -n "$candidate_model_names" ]]; then
+  IFS=',' read -r -a candidate_models <<< "$candidate_model_names"
+  for candidate in ${candidate_models[@]+"${candidate_models[@]}"}; do
+    [[ "$candidate" =~ ^[A-Za-z0-9._~-]+(/[A-Za-z0-9._:~-]+)?$ ]] || {
+      echo "candidate model id is invalid" >&2
+      exit 1
+    }
+  done
+fi
 hermes_tag="$(decode "$HERMES_TAG_B64")"
 hermes_commit="$(decode "$HERMES_COMMIT_B64")"
 edge_token="$(decode "$EDGE_TOKEN_B64")"
@@ -262,6 +285,7 @@ runner_source_sha256="${runner_source_sha256%% *}"
   printf 'AISAR_WEB_SEARCH_BACKEND=%q\n' 'ddgs'
   printf 'AISAR_MODEL_NAME=%q\n' "$model_name"
   printf 'AISAR_DEEP_MODEL_NAME=%q\n' "$deep_model_name"
+  printf 'AISAR_CANDIDATE_MODEL_NAMES=%q\n' "$candidate_model_names"
   printf 'AISAR_RUNNER_SOURCE_SHA256=%q\n' "$runner_source_sha256"
   printf 'HERMES_ORIGIN=%q\n' 'http://127.0.0.1:8642'
   printf 'PORT=%q\n' '8080'
@@ -296,7 +320,7 @@ trap 'rm -f "$incoming"' EXIT
 hermes_python="$install_dir/venv/bin/python"
 "$hermes_python" /home/sprite/aisar/runner/configure-model-provider.py \
   "$model_provider" "$model_base" "$model_name" OPENROUTER_API_KEY "$cua_enabled" \
-  "$deep_model_name"
+  "$deep_model_name" "$candidate_model_names"
 
 # Readiness without one real inference only proves that processes started. It
 # previously allowed an official OpenRouter key to be installed against FMCV,
@@ -306,6 +330,9 @@ smoke_models=("$model_name")
 if [[ "$deep_model_name" != "$model_name" ]]; then
   smoke_models+=("$deep_model_name")
 fi
+for candidate in ${candidate_models[@]+"${candidate_models[@]}"}; do
+  [[ " ${smoke_models[*]} " == *" $candidate "* ]] || smoke_models+=("$candidate")
+done
 for smoke_model in "${smoke_models[@]}"; do
   model_ready=false
   for _attempt in 1 2 3; do

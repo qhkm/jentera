@@ -13,10 +13,10 @@ from toolsets import resolve_toolset
 
 
 def main() -> None:
-    if len(sys.argv) not in (5, 6, 7):
+    if len(sys.argv) not in (5, 6, 7, 8):
         raise SystemExit(
             "usage: configure-model-provider.py PROVIDER BASE_URL MODEL KEY_ENV "
-            "[CUA_ENABLED] [DEEP_MODEL]"
+            "[CUA_ENABLED] [DEEP_MODEL] [CANDIDATE_MODELS]"
         )
     provider, base_url, model_name, key_env = (value.strip() for value in sys.argv[1:5])
     cua_enabled = sys.argv[5].strip() if len(sys.argv) >= 6 else ""
@@ -41,11 +41,18 @@ def main() -> None:
         raise SystemExit("model base URL is not pinned")
     if not re.fullmatch(r"[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._:~-]+)?", model_name):
         raise SystemExit("model id is invalid")
-    deep_model_name = sys.argv[6].strip() if len(sys.argv) == 7 else ""
+    deep_model_name = sys.argv[6].strip() if len(sys.argv) >= 7 else ""
     if deep_model_name and not re.fullmatch(
         r"[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._:~-]+)?", deep_model_name
     ):
         raise SystemExit("deep model id is invalid")
+    # Candidate routes (comma-separated): trial models every sprite accepts
+    # beside quick and deep. Same id grammar; a bad id aborts provisioning.
+    candidate_arg = sys.argv[7].strip() if len(sys.argv) == 8 else ""
+    candidate_model_names = [name.strip() for name in candidate_arg.split(",") if name.strip()]
+    for candidate in candidate_model_names:
+        if not re.fullmatch(r"[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._:~-]+)?", candidate):
+            raise SystemExit("candidate model id is invalid")
     if key_env != "OPENROUTER_API_KEY":
         raise SystemExit("OpenRouter key must use OPENROUTER_API_KEY")
 
@@ -84,6 +91,16 @@ def main() -> None:
             "base_url": base_url.rstrip("/"),
             "api_key": f"${{{key_env}}}",
         }
+    for candidate in candidate_model_names:
+        routes.setdefault(
+            candidate,
+            {
+                "model": candidate,
+                "provider": provider,
+                "base_url": base_url.rstrip("/"),
+                "api_key": f"${{{key_env}}}",
+            },
+        )
 
     # Hermes' auxiliary client (context compression, session titles, memory
     # flush, session search, vision, web extract, approval gating, skills hub,
@@ -166,6 +183,9 @@ def main() -> None:
     agent = dict(config.get("agent") or {})
     reasoning_overrides = dict(agent.get("reasoning_overrides") or {})
     reasoning_overrides[model_name] = "high"
+    # Candidates trial against the quick model, so they carry its reasoning setting.
+    for candidate in candidate_model_names:
+        reasoning_overrides[candidate] = "high"
     agent["reasoning_overrides"] = reasoning_overrides
     agent.update({"max_turns": 20, "run_budget_seconds": 900, "gateway_timeout": 900})
     config["agent"] = agent

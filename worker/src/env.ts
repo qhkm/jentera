@@ -86,6 +86,14 @@ export interface Env {
   AISAR_MODEL_NAME?: string;
   /** Optional heavier model used only for explicit deep/research work. */
   AISAR_DEEP_MODEL_NAME?: string;
+  /** Comma-separated extra model ids routed on every sprite beside quick and
+      deep (bootstrap transfer + Hermes model_routes + runner allowlist), so a
+      candidate can be trialled without moving fleet traffic. */
+  AISAR_CANDIDATE_MODEL_NAMES?: string;
+  /** Comma-separated `<businessId>=<modelId>`: quick replies for that business
+      use the named model instead of AISAR_MODEL_NAME. The model must be a
+      routed one (quick, deep, or a candidate); deep work is never overridden. */
+  AISAR_QUICK_MODEL_OVERRIDES?: string;
   /** Durable provisioning and Hermes task delivery. */
   RUNTIME_QUEUE?: Queue<import('./runtime/consumer').RuntimeQueueMessage>;
   /** Hibernating per-run WebSocket fan-out. Postgres remains task truth. */

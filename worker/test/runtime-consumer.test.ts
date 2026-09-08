@@ -628,6 +628,51 @@ describe('the runtime queue consumer', () => {
     expect(sessionIds[2]).not.toBe(sessionIds[0]);
   });
 
+  it('routes the canary business quick replies to the override model', async () => {
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.08.27-1',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+      AISAR_DEEP_MODEL_NAME: 'deepseek-v4-flash',
+      AISAR_CANDIDATE_MODEL_NAMES: 'MiniMax-M2.7-highspeed',
+      AISAR_QUICK_MODEL_OVERRIDES: `${A}=MiniMax-M2.7-highspeed`,
+    });
+    const provider = new LocalRuntimeProvider();
+    const [owner] = await asOwner((sql) => sql<{ id: string }[]>`
+      insert into app_user (email, email_verified)
+      values ('canary-owner@example.com', true) returning id`);
+    const connection = await asTenant(A, (tx) => saveConnection(env, tx, A, {
+      connector: 'telegram',
+      method: 'bot_token',
+      externalId: '123456789',
+      displayName: '@canary_bot',
+      secret: '123456789:AAtoken',
+      connectedBy: owner.id,
+    }));
+    const active = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'provision', dedupeKey: 'canary:active',
+    }));
+    expect((await asTenant(A, (tx) =>
+      leaseRuntimeTask(tx, A, active.id, 'active-owner', 300))).outcome).toBe('leased');
+    let liveMessageId = 90;
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      jsonResponse({ ok: true, result: { message_id: liveMessageId++ } })));
+    const intake = (messageId: number, text: string) => ({
+      version: 2 as const,
+      kind: 'telegram_intake' as const,
+      businessId: A,
+      connectionId: connection.id,
+      requestedAtMs: Date.now(),
+      incoming: { chatId: 42, messageId, from: 'Owner', text, privateChat: true as const },
+    });
+
+    await handleRuntimeQueueMessage(env, intake(1, 'Are we open on Sunday?'), { provider });
+    await handleRuntimeQueueMessage(env, intake(2, 'Research the latest payroll rules'), { provider });
+
+    const runs = await asTenant(A, (tx) => tx<{ model: string }[]>`
+      select model from run where business_id = ${A} order by created_at`);
+    expect(runs.map((run) => run.model)).toEqual(['MiniMax-M2.7-highspeed', 'deepseek-v4-flash']);
+  });
+
   it('wakes the oldest waiting task when a task completes (Hermes-style FIFO)', async () => {
     const sent: { businessId: string; taskId: string }[] = [];
     const env = testEnv({

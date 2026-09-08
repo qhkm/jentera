@@ -544,7 +544,7 @@ export async function handleRuntimeQueueMessage(
       }
 
       const responseMode = responseModeFor(message.incoming.text);
-      const model = modelForResponseMode(env, responseMode);
+      const model = modelForResponseMode(env, responseMode, message.businessId);
       /* Start Telegram's placeholder request while the remaining context/run
          queries execute. The transaction never awaits this network call; on
          any admission failure the best-effort cleanup below removes it. */
