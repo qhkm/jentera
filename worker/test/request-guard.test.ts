@@ -55,6 +55,62 @@ describe('pre-route API request guard', () => {
     expect(calls).toBe(0);
   });
 
+  /* Bodies with no Content-Length (chunked uploads) skip the declared-length
+     check and are measured through a clone of the stream. The cap must still
+     fire, promptly, and an in-limit body must remain readable by the route. */
+  function streamed(bytes: number, chunk = 16 * 1024): ReadableStream<Uint8Array> {
+    let sent = 0;
+    return new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent >= bytes) {
+          controller.close();
+          return;
+        }
+        const size = Math.min(chunk, bytes - sent);
+        controller.enqueue(new Uint8Array(size).fill(0x61));
+        sent += size;
+      },
+    });
+  }
+
+  it('rejects an oversized body that declares no length, without hanging', async () => {
+    let calls = 0;
+    const env = testEnv({
+      API_BURST: { limit: async () => { calls += 1; return { success: true }; } },
+    });
+    const req = request('/api/runs/ingest', {
+      method: 'POST',
+      body: streamed(MAX_API_BODY_BYTES + 1_024),
+      duplex: 'half',
+    } as RequestInit);
+    expect(req.headers.get('Content-Length')).toBeNull();
+
+    const outcome = await Promise.race([
+      guardApiRequest(req, env, new URL(req.url), cors),
+      new Promise<'hung'>((resolve) => setTimeout(() => resolve('hung'), 4_000)),
+    ]);
+    expect(outcome).not.toBe('hung');
+    expect((outcome as Response).status).toBe(413);
+    expect(calls).toBe(0);
+  });
+
+  it('leaves an in-limit body with no declared length readable for the route', async () => {
+    const env = testEnv();
+    const payload = JSON.stringify({ hello: 'world' });
+    const req = request('/api/state/facts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: new Blob([payload]).stream(),
+      duplex: 'half',
+    } as RequestInit);
+    expect(req.headers.get('Content-Length')).toBeNull();
+
+    const response = await guardApiRequest(req, env, new URL(req.url), cors);
+    expect(response).toBeNull();
+    /* The probe read a clone; the original must still carry the body. */
+    await expect(req.json()).resolves.toEqual({ hello: 'world' });
+  });
+
   it('checks runtime mutation by both opaque identity and source address', async () => {
     const keys: string[] = [];
     const env = testEnv({
