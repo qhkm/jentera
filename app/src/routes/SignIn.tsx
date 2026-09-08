@@ -14,7 +14,6 @@ import { useEffect, useRef, useState } from "react";
 import { clearAskStorage } from "@/hooks/useAsk";
 import {
   ArrowUpRight,
-  Storefront,
   EnvelopeSimple,
   Eye,
   EyeSlash,
@@ -22,6 +21,7 @@ import {
 } from "@phosphor-icons/react";
 import { Link, useSearchParams } from "react-router";
 import { trackActivation } from "@/lib/analytics";
+import { JenteraMark } from "@/components/JenteraMark";
 
 const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
@@ -171,6 +171,7 @@ export default function SignIn() {
           className="font-pixel text-2xl text-brand"
           aria-label="Jentera home"
         >
+          <JenteraMark size={32} />
           Jentera<span className="auth-parent">by AISAR</span>
         </Link>
         <Link
@@ -225,7 +226,7 @@ export default function SignIn() {
         ) : (
           <div className="auth-card">
             <div className="auth-emblem">
-              <Storefront size={30} weight="duotone" aria-hidden="true" />
+              <JenteraMark size={64} />
             </div>
             <span className="auth-card-eyebrow">
               For the business you already run

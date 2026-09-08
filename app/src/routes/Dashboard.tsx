@@ -52,7 +52,7 @@ export default function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedView = searchParams.get('view');
   const view: View = NAV.some((item) => item.id === requestedView)
-    ? requestedView as View
+    ? (requestedView as View)
     : 'home';
   const [drawerOpen, setDrawerOpen] = useState(false);
   const trackedOpen = useRef(false);
@@ -136,14 +136,16 @@ export default function Dashboard() {
         type="button"
         onClick={() => go(item.id)}
         aria-current={active ? 'page' : undefined}
-        className={`flex items-center justify-between gap-2 rounded-item px-3.5 py-2.5 text-[13px] transition-colors ${
+        className={`dashboard-nav-item flex items-center justify-between gap-2 rounded-item px-3.5 py-2.5 text-[13px] transition-colors ${
           active
             ? 'bg-brand-soft text-brand'
             : 'text-text-secondary hover:bg-[rgb(var(--border-ink)/0.05)] hover:text-text'
         }`}
       >
         <span className="flex items-center gap-2.5">
-          <Icon name={item.icon} size={17} />
+          <span className="dashboard-nav-icon">
+            <Icon name={item.icon} size={19} weight={active ? 'duotone' : 'regular'} />
+          </span>
           {t(item.labelKey)}
         </span>
         {badge > 0 ? <Tag tone="amber">{badge}</Tag> : null}
@@ -152,14 +154,19 @@ export default function Dashboard() {
   }
 
   const profile = (
-    <Card className="gap-2">
-      <div className="flex items-center gap-3">
+    <Card className="dashboard-profile gap-2">
+      <button
+        type="button"
+        className="flex items-center gap-3 text-left"
+        onClick={() => go('business')}
+        aria-label={t('home.profile.open')}
+      >
         <Avatar emoji={business.icon} />
         <div className="flex min-w-0 flex-col">
           <span className="truncate text-sm font-semibold">{business.name}</span>
           <span className="truncate text-[11px] text-text-muted">{business.loc}</span>
         </div>
-      </div>
+      </button>
       {/* Real progress for a real business; the playbook's projection
           for the demo. "Jentera can handle 82%" was the same number for
           every business of a type and moved for nobody — precise,
@@ -194,7 +201,7 @@ export default function Dashboard() {
 
   return (
     <Shell
-      suffix="/platform"
+      className={`dashboard-shell ${view === 'chat' ? 'dashboard-chat' : ''}`}
       onMenu={() => setDrawerOpen(true)}
       menuBadge={needsAttention}
       fullBleed={view === 'chat'}
@@ -204,11 +211,15 @@ export default function Dashboard() {
           view === 'chat' ? 'lg:gap-8' : 'pb-24'
         }`}
       >
-        <aside className="hidden shrink-0 flex-col gap-6 lg:flex lg:w-[220px]">
+        <aside className="dashboard-sidebar hidden shrink-0 flex-col gap-6 lg:flex lg:w-[220px]">
           {profile}
           <nav className="flex flex-col gap-1" aria-label="Dashboard sections">
             {NAV.map(navButton)}
           </nav>
+          <div className="dashboard-sidebar-note">
+            <Icon name="shield" size={17} />
+            <span>{t('home.workspace.private')}</span>
+          </div>
         </aside>
 
         {drawerOpen ? (
@@ -243,7 +254,7 @@ export default function Dashboard() {
           </>
         ) : null}
 
-        <div className="min-w-0 flex-1">
+        <div className="dashboard-content min-w-0 flex-1">
           {view === 'home' && <HomeView b={b} connections={connections} onNavigate={go} />}
           {/* Keep the owner conversation mounted while they inspect another
               section. Returning to Ask Jentera must not erase the exchange. */}
@@ -262,9 +273,11 @@ export default function Dashboard() {
             <MyBusinessView
               b={b}
               connections={connections}
-              initialTab={BUSINESS_TABS.includes(searchParams.get('tab') as BizTab)
-                ? searchParams.get('tab') as BizTab
-                : 'profile'}
+              initialTab={
+                BUSINESS_TABS.includes(searchParams.get('tab') as BizTab)
+                  ? (searchParams.get('tab') as BizTab)
+                  : 'profile'
+              }
               onTabChange={(tab) => setSearchParams({ view: 'business', tab })}
             />
           )}

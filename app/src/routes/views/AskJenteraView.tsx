@@ -11,6 +11,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { ASK_PROMPTS, useAsk } from "@/hooks/useAsk";
 import { useIsCompact } from "@/hooks/useMediaQuery";
 import { Icon, DataIcon } from "@/components/Icon";
+import { JenteraMark } from "@/components/JenteraMark";
 import { OutcomeReceipt, TypingBubble } from "@/components/WorkSignal";
 import { useMentions } from "@/hooks/useMentions";
 import { useSignedIn } from "@/lib/repo/gate";
@@ -176,19 +177,39 @@ export default function AskJenteraView({
           className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-5"
         >
           {!ask.hasHistory ? (
-            <div className="flex flex-col items-center gap-3 py-10 text-center">
-              <Icon
-                name="sparkle"
-                size={30}
-                weight="duotone"
-                className="text-brand"
-              />
+            <div className="ask-empty-panel flex flex-col items-center gap-3 py-10 text-center">
+              <JenteraMark size={56} />
               <h2 className="font-pixel text-lg tracking-tight">
                 {t("ask.empty.title")}
               </h2>
               <p className="max-w-[46ch] text-[13px] text-text-secondary">
                 {t(firstRun ? "ask.welcome.first" : "ask.welcome")}
               </p>
+              <div className="ask-start-options">
+                {ASK_PROMPTS.map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      setDraft(t(`ask.prompt.${key}`));
+                      composer.current?.focus();
+                    }}
+                  >
+                    <Icon
+                      name={
+                        key === "status"
+                          ? "activity"
+                          : key === "approvals"
+                            ? "shield"
+                            : "chat"
+                      }
+                      size={22}
+                      weight="duotone"
+                    />
+                    <span>{t(`ask.prompt.${key}`)}</span>
+                  </button>
+                ))}
+              </div>
               {signedIn &&
               activity.real &&
               activity.data!.counters.connections === 0 ? (
@@ -311,18 +332,20 @@ export default function AskJenteraView({
         </div>
 
         {/* Prompt chips */}
-        <div className="flex shrink-0 gap-2 overflow-x-auto border-t border-rail px-4 pt-3 [scrollbar-width:none] sm:px-5 lg:flex-wrap lg:overflow-visible">
-          {ASK_PROMPTS.map((key) => (
-            <button
-              key={key}
-              type="button"
-              className="chip shrink-0 hover:border-brand-line"
-              onClick={() => submit(t(`ask.prompt.${key}`))}
-            >
-              {t(`ask.prompt.${key}`)}
-            </button>
-          ))}
-        </div>
+        {ask.hasHistory ? (
+          <div className="flex shrink-0 gap-2 overflow-x-auto border-t border-rail px-4 pt-3 [scrollbar-width:none] sm:px-5 lg:flex-wrap lg:overflow-visible">
+            {ASK_PROMPTS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                className="chip shrink-0 hover:border-brand-line"
+                onClick={() => submit(t(`ask.prompt.${key}`))}
+              >
+                {t(`ask.prompt.${key}`)}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         <div className="relative">
           {mentions.open ? (

@@ -7,7 +7,7 @@ pnpm install
 pnpm dev          # http://localhost:5173
 pnpm build        # tsc -b && vite build → dist/
 pnpm typecheck
-pnpm deploy       # build + wrangler pages deploy dist --project-name aisar
+pnpm deploy       # build + publish to aisar-jentera (jentera.ai)
 ```
 
 ## What's here

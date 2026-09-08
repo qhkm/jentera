@@ -14,6 +14,21 @@ import type { Lang } from '@/lib/types';
 
 export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
   en: {
+    'home.greeting.morning': 'Good morning.',
+    'home.greeting.afternoon': 'Good afternoon.',
+    'home.greeting.evening': 'Good evening.',
+    'home.workspace.private': 'Your private business workspace',
+    'home.ask.title': 'What needs doing today?',
+    'home.ask.detail': 'Prepare a reply, organise your notes, or plan the next job.',
+    'home.summary': 'Your work at a glance',
+    'home.metrics': 'Business summary',
+    'home.review': '{n} waiting for your review',
+    'home.knowledge': 'Business knowledge',
+    'home.knowledge.count': 'Confirmed details: {n}',
+    'home.connections': 'Your connections',
+    'home.connections.detail': 'Manage where you work with Jentera',
+    'home.profile.open': 'Open your business profile',
+    'ask.empty.title': 'What needs doing?',
     /* Landing */
     'lp.eyebrow': 'Malaysia-first · managed AI operations',
     'lp.headline': 'Your business, without the busywork.',
@@ -33,7 +48,8 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'ob.m.body': 'Choose one to get started. You can add or correct details later.',
     'ob.m.auto.tag': 'Recommended',
     'ob.m.auto.title': 'Import automatically',
-    'ob.m.auto.body': 'Share your website or social profiles. Jentera creates a business profile for you to review.',
+    'ob.m.auto.body':
+      'Share your website or social profiles. Jentera creates a business profile for you to review.',
     'ob.m.auto.panelHead': 'Import from your online presence',
     'ob.m.auto.panelBody': 'Add at least one link. More sources produce a better first draft.',
     'ob.m.auto.website': 'Website',
@@ -42,9 +58,11 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'ob.m.auto.note': 'Jentera creates a draft only. Nothing goes live until you approve it.',
     'ob.m.manual.tag': 'Full control',
     'ob.m.manual.title': 'Enter manually',
-    'ob.m.manual.body': 'Describe your business and choose its type yourself. Best if you are not online yet.',
+    'ob.m.manual.body':
+      'Describe your business and choose its type yourself. Best if you are not online yet.',
     'ob.m.manual.panelHead': 'Describe it in your own words',
-    'ob.m.manual.panelBody': 'A sentence is enough. You can also pick the closest business type below.',
+    'ob.m.manual.panelBody':
+      'A sentence is enough. You can also pick the closest business type below.',
     'ob.m.manual.summary': 'Choose a business type instead',
     'ob.m.manual.cta': 'Build my profile →',
     'ob.m.need': 'Add a website or social profile to import your business.',
@@ -52,27 +70,33 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     /* Step 2 — scan */
     'ob.scan.eyebrow': 'Step 2 · Scanning',
     'ob.scan.head': 'Reading your business…',
-    'ob.scan.note': "We're reading your sources and building a Business Profile. This only takes a few seconds.",
+    'ob.scan.note':
+      "We're reading your sources and building a Business Profile. This only takes a few seconds.",
     'ob.scan.web': 'reading your website',
     'ob.scan.social': 'reading your social profiles',
     'ob.scan.desc': 'reading your description',
     'ob.scan.match': 'matching industry playbook ({type})',
     'ob.scan.detected': 'detected: {detect}',
     'ob.scan.imported': 'saved {n} facts for your review',
-    'ob.scan.failed': '{n} source(s) could not be read. You can continue and add the details manually.',
-    'ob.scan.demo': 'Demo preview: sign in to read the sources and save proposed facts to your business.',
+    'ob.scan.failed':
+      '{n} source(s) could not be read. You can continue and add the details manually.',
+    'ob.scan.demo':
+      'Demo preview: sign in to read the sources and save proposed facts to your business.',
 
     /* Step 3 — confirm */
     'ob.confirm.eyebrow': 'Step 3 · Did we get it right?',
-    'ob.confirm.body': 'Your Business Profile drives every recommendation. If anything is off, tell us now — it gets better from here.',
+    'ob.confirm.body':
+      'Your Business Profile drives every recommendation. If anything is off, tell us now — it gets better from here.',
     'ob.confirm.imported': 'Facts found in your sources',
     'ob.confirm.factCount': '{n} to review',
-    'ob.confirm.factNote': 'Approving confirms these facts as business memory. You can correct or remove them later in My Business.',
+    'ob.confirm.factNote':
+      'Approving confirms these facts as business memory. You can correct or remove them later in My Business.',
     'ob.confirm.saving': 'Saving profile…',
     'ob.confirm.failed': 'Could not confirm the imported business facts.',
     'ob.confirm.edit': 'Edit business information',
     'ob.confirm.editHead': 'Correct what Jentera found',
-    'ob.confirm.editBody': 'These corrections replace the scraped suggestions before Jentera uses them.',
+    'ob.confirm.editBody':
+      'These corrections replace the scraped suggestions before Jentera uses them.',
     'ob.confirm.otherFacts': 'Other facts from your sources',
     'ob.confirm.removeFact': 'Remove {name}',
     'ob.confirm.saveEdits': 'Save corrections',
@@ -96,15 +120,21 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     /* Step 6 — recommendation */
     'ob.reco.eyebrow': 'Step 6 · Your private agent',
     'ob.reco.head': 'I recommend starting here.',
-    'ob.reco.body': 'Based on your business profile and answers, this is the highest-impact automation.',
+    'ob.reco.body':
+      'Based on your business profile and answers, this is the highest-impact automation.',
     'ob.reco.agent': 'Business Assistant',
     'ob.reco.tag': 'recommended',
-    'ob.reco.handles': 'Helps with: operations · research · planning · writing · business questions',
+    'ob.reco.handles':
+      'Helps with: operations · research · planning · writing · business questions',
     'ob.reco.activating': 'Setting up…',
-    'ob.reco.extra.default': 'Good first tasks: weekly summaries · task planning · drafting replies for your review',
-    'ob.reco.extra.reservations': 'Good first tasks: review reservation workflows · plan the week · draft confirmations for your review',
-    'ob.reco.extra.marketing': 'Good first tasks: draft content · plan campaigns · review results with you',
-    'ob.reco.extra.inventory': 'Good first tasks: review stock · plan reorders · prepare an operations summary',
+    'ob.reco.extra.default':
+      'Good first tasks: weekly summaries · task planning · drafting replies for your review',
+    'ob.reco.extra.reservations':
+      'Good first tasks: review reservation workflows · plan the week · draft confirmations for your review',
+    'ob.reco.extra.marketing':
+      'Good first tasks: draft content · plan campaigns · review results with you',
+    'ob.reco.extra.inventory':
+      'Good first tasks: review stock · plan reorders · prepare an operations summary',
 
     /* Footer */
     'ob.nav.back': 'Back',
@@ -126,9 +156,11 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'ob.p.pain': 'Top pain',
     'ob.p.team': 'Private agent',
     'ob.p.teamValue': 'Business Assistant',
-    'ob.p.note': 'This profile updates live as you answer. Every recommendation Jentera makes is based on this — correct it anytime in the dashboard.',
+    'ob.p.note':
+      'This profile updates live as you answer. Every recommendation Jentera makes is based on this — correct it anytime in the dashboard.',
     'ob.ch.head': 'Which channels does your business use?',
-    'ob.ch.body': 'Pick the tools you already use. Telegram starts as your private chat with Jentera; customer-facing automation is a separate choice later.',
+    'ob.ch.body':
+      'Pick the tools you already use. Telegram starts as your private chat with Jentera; customer-facing automation is a separate choice later.',
     'ob.ch.cta': 'Activate Jentera →',
     'ob.ch.back': '← Back',
     'ob.ch.none': 'Pick at least one channel',
@@ -171,7 +203,8 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'su.step45.done': 'connected',
     'su.live.agentReady': 'agent ready',
     'su.live.settingUp': 'setting up',
-    'su.live.body': 'Choose how you want to chat with Jentera. Connect Telegram now, or continue with Ask Jentera in this web app.',
+    'su.live.body':
+      'Choose how you want to chat with Jentera. Connect Telegram now, or continue with Ask Jentera in this web app.',
     'su.live.profile': 'Business profile',
     'su.live.profileSaved': 'onboarding answers saved',
     'su.live.agent': 'Private Hermes agent',
@@ -189,14 +222,17 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'su.live.continue': 'Continue while Jentera sets up →',
     'su.live.jenteraApp': 'Jentera app',
     'su.live.comingSoon': 'coming soon',
-    'su.live.jenteraAppBody': 'Use Ask Jentera in this web app today. A dedicated Jentera mobile app is coming soon.',
-    'su.live.fallback': 'Jentera uses its safe inline fallback until the private agent reports ready.',
+    'su.live.jenteraAppBody':
+      'Use Ask Jentera in this web app today. A dedicated Jentera mobile app is coming soon.',
+    'su.live.fallback':
+      'Jentera uses its safe inline fallback until the private agent reports ready.',
     'su.live.checking': 'checking',
     'su.live.ready': 'ready',
     'su.live.attention': 'needs attention',
     'su.live.finishFailed': 'Could not finish setup.',
     'su.live.loader.eyebrow': 'Private agent setup',
-    'su.live.loader.note': 'Jentera checks automatically every 3 seconds. This can take a few minutes — there is no need to refresh this page.',
+    'su.live.loader.note':
+      'Jentera checks automatically every 3 seconds. This can take a few minutes — there is no need to refresh this page.',
     'su.live.loader.private': 'Private to your business',
     'su.live.loader.continue': 'Safe to connect Telegram or continue to web chat',
     'su.live.stage.checking': 'Checking your secure workspace…',
@@ -217,7 +253,8 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'biz.private.memory': 'Business memory and summaries',
     'biz.customerFuture.title': 'Customer-facing agents',
     'biz.customerFuture.off': 'Not available yet',
-    'biz.customerFuture.desc': 'These will appear only when Jentera can safely serve customers and you connect a supported customer channel such as WhatsApp or email. Your private Telegram chat does not enable them.',
+    'biz.customerFuture.desc':
+      'These will appear only when Jentera can safely serve customers and you connect a supported customer channel such as WhatsApp or email. Your private Telegram chat does not enable them.',
     'biz.tab.connections': 'Connections',
     'biz.tab.permissions': 'Action controls',
     'biz.guide.eyebrow': 'What do you want to do?',
@@ -230,31 +267,39 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'perm.desc':
       'Your private assistant can reply to you automatically. These controls cover its internal work with your business information.',
     'perm.recommended': 'Recommended defaults active',
-    'perm.recommended.desc': 'Reading and organising are automatic; exports and changes ask you first.',
+    'perm.recommended.desc':
+      'Reading and organising are automatic; exports and changes ask you first.',
     'perm.customise': 'Customise individual actions',
     'home.next.eyebrow': 'Next best step',
     'home.next.knows.title': 'Give Jentera something real to work from',
-    'home.next.knows.detail': 'Import your website or add one important business fact. You review it before Jentera treats it as true.',
+    'home.next.knows.detail':
+      'Import your website or add one important business fact. You review it before Jentera treats it as true.',
     'home.next.knows.cta': 'Add business knowledge →',
     'home.next.connected.title': 'Put Jentera in your pocket',
-    'home.next.connected.detail': 'Connect Telegram as your private owner chat. Customer-facing access stays off until you enable it later.',
+    'home.next.connected.detail':
+      'Connect Telegram as your private owner chat. Customer-facing access stays off until you enable it later.',
     'home.next.connected.cta': 'Connect private Telegram →',
     'home.next.working.title': 'Give Jentera its first useful task',
-    'home.next.working.detail': 'Ask a business question or tell your private assistant to research, plan, write, or organise something.',
+    'home.next.working.detail':
+      'Ask a business question or tell your private assistant to research, plan, write, or organise something.',
     'home.next.working.cta': 'Start my first chat →',
     'home.telegram.eyebrow': 'Private Telegram chat',
     'home.telegram.pending.tag': 'one step left',
     'home.telegram.pending.title': 'Finish connecting Telegram',
-    'home.telegram.pending.detail': 'Your bot is saved, but Telegram will not deliver your messages until you open the private chat and press Start.',
+    'home.telegram.pending.detail':
+      'Your bot is saved, but Telegram will not deliver your messages until you open the private chat and press Start.',
     'home.telegram.pending.cta': 'Open Telegram and press Start →',
-    'home.telegram.pending.note': 'Jentera checks automatically after you press Start. You can keep using web chat meanwhile.',
+    'home.telegram.pending.note':
+      'Jentera checks automatically after you press Start. You can keep using web chat meanwhile.',
     'home.telegram.missing.tag': 'recommended',
     'home.telegram.missing.title': 'Connect Telegram to chat with Jentera from your phone',
-    'home.telegram.missing.detail': 'Web chat is ready. Connect Telegram if you also want a private conversation with Jentera on your phone.',
+    'home.telegram.missing.detail':
+      'Web chat is ready. Connect Telegram if you also want a private conversation with Jentera on your phone.',
     'home.telegram.missing.cta': 'Set up Telegram →',
     'home.telegram.attention.tag': 'needs attention',
     'home.telegram.attention.title': 'Telegram needs your attention',
-    'home.telegram.attention.detail': 'Your private Telegram chat is not currently available. Review the connection to see what needs fixing.',
+    'home.telegram.attention.detail':
+      'Your private Telegram chat is not currently available. Review the connection to see what needs fixing.',
     'home.telegram.attention.cta': 'Review Telegram connection →',
     'home.telegram.details': 'View connection details',
     'perm.automatic': 'Automatic',
@@ -269,19 +314,23 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'perm.op.read': 'Read business information',
     'perm.op.read.desc': 'Use your Business Profile and confirmed business memory to answer you.',
     'perm.op.list': 'Review business records',
-    'perm.op.list.desc': 'Find and organise records that are already available to your private workspace.',
+    'perm.op.list.desc':
+      'Find and organise records that are already available to your private workspace.',
     'perm.op.export': 'Prepare an export',
-    'perm.op.export.desc': 'Create a file for you to review or download; it does not send the file to customers.',
+    'perm.op.export.desc':
+      'Create a file for you to review or download; it does not send the file to customers.',
     'perm.op.book': 'Create a booking',
     'perm.op.update': 'Update business memory',
-    'perm.op.update.desc': 'Correct or add internal business information. Changes require your approval by default.',
+    'perm.op.update.desc':
+      'Correct or add internal business information. Changes require your approval by default.',
     'perm.op.send': 'Message a customer',
     'perm.op.cancel': 'Cancel a booking',
     'perm.op.refund': 'Issue a refund',
     'perm.op.pay': 'Make a payment',
     'perm.future.title': 'Customer and transaction actions',
     'perm.future.tag': 'Unavailable for now',
-    'perm.future.desc': 'Messaging customers, managing bookings, refunds, and payments will appear only when the matching capability is working and you connect a supported account such as WhatsApp or email.',
+    'perm.future.desc':
+      'Messaging customers, managing bookings, refunds, and payments will appear only when the matching capability is working and you connect a supported account such as WhatsApp or email.',
     'db.handled': '{n} handled automatically',
     'db.disconnect': 'Disconnect',
     'db.theme.toLight': 'Switch to light theme',
@@ -292,7 +341,8 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'nav.detail': 'Detail level',
     'nav.more': 'More options',
     'loading.activity.title': 'Loading your activity…',
-    'loading.activity.detail': 'Checking completed work, active tasks, and decisions that need you.',
+    'loading.activity.detail':
+      'Checking completed work, active tasks, and decisions that need you.',
     'loading.activity.error': 'Your activity could not be loaded.',
     'loading.activity.unavailable': 'Recent activity is temporarily unavailable.',
     'loading.home.summary': 'Loading your latest activity…',
@@ -300,10 +350,12 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'loading.home.recent': 'Loading recent activity…',
     'loading.home.recent.detail': 'Checking the latest work completed by your agent.',
     'loading.connections.title': 'Loading your connections…',
-    'loading.connections.detail': 'Checking which private channels are connected before showing any setup controls.',
+    'loading.connections.detail':
+      'Checking which private channels are connected before showing any setup controls.',
     'loading.connections.error': 'Your connections could not be loaded.',
     'loading.retry': 'Try again',
-    'ask.welcome.first': 'Your private business assistant is ready. Choose a suggestion below or ask in your own words—Jentera will answer from what it knows about your business.',
+    'ask.welcome.first':
+      'Your private business assistant is ready. Choose a suggestion below or ask in your own words—Jentera will answer from what it knows about your business.',
     'ask.retry': 'Try this again',
     'ask.newChat': 'New chat',
     'ask.chat.untitled': 'New chat',
@@ -324,7 +376,8 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'ask.receipt.grounded': 'Grounded in your confirmed business information',
     'ask.receipt.noFacts': 'No saved business facts were needed',
     'ask.receipt.activity': 'View in Activity',
-    'ask.connection.optional': 'Start with private work now. A connection is only needed when you want Jentera to send or receive messages outside this workspace.',
+    'ask.connection.optional':
+      'Start with private work now. A connection is only needed when you want Jentera to send or receive messages outside this workspace.',
     'ask.connection.open': 'Connect a channel when ready',
     'work.receipt.saved': 'About {n} min saved',
     'work.receipt.channel': 'Handled through {channel}',
@@ -340,6 +393,21 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
   },
 
   bm: {
+    'home.greeting.morning': 'Selamat pagi.',
+    'home.greeting.afternoon': 'Selamat petang.',
+    'home.greeting.evening': 'Selamat malam.',
+    'home.workspace.private': 'Ruang kerja peribadi perniagaan anda',
+    'home.ask.title': 'Apa yang perlu disiapkan hari ini?',
+    'home.ask.detail': 'Sediakan balasan, susun nota, atau rancang tugasan seterusnya.',
+    'home.summary': 'Ringkasan kerja anda',
+    'home.metrics': 'Ringkasan perniagaan',
+    'home.review': '{n} menunggu semakan anda',
+    'home.knowledge': 'Pengetahuan perniagaan',
+    'home.knowledge.count': '{n} butiran disahkan',
+    'home.connections': 'Sambungan anda',
+    'home.connections.detail': 'Urus saluran anda bersama Jentera',
+    'home.profile.open': 'Buka profil perniagaan anda',
+    'ask.empty.title': 'Apa yang perlu disiapkan?',
     /* Landing */
     'lp.eyebrow': 'Malaysia dahulu · operasi AI terurus',
     'lp.headline': 'Perniagaan anda, tanpa kerja remeh.',
@@ -359,18 +427,22 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'ob.m.body': 'Pilih satu untuk mula. Anda boleh tambah atau betulkan butiran kemudian.',
     'ob.m.auto.tag': 'Disyorkan',
     'ob.m.auto.title': 'Import automatik',
-    'ob.m.auto.body': 'Kongsi laman web atau profil sosial anda. Jentera sediakan profil perniagaan untuk anda semak.',
+    'ob.m.auto.body':
+      'Kongsi laman web atau profil sosial anda. Jentera sediakan profil perniagaan untuk anda semak.',
     'ob.m.auto.panelHead': 'Import dari kehadiran dalam talian anda',
-    'ob.m.auto.panelBody': 'Tambah sekurang-kurangnya satu pautan. Lebih banyak sumber, lebih baik draf pertama.',
+    'ob.m.auto.panelBody':
+      'Tambah sekurang-kurangnya satu pautan. Lebih banyak sumber, lebih baik draf pertama.',
     'ob.m.auto.website': 'Laman web',
     'ob.m.auto.social': 'Profil sosial',
     'ob.m.auto.cta': 'Import perniagaan saya →',
     'ob.m.auto.note': 'Jentera sediakan draf sahaja. Tiada apa yang keluar sebelum anda luluskan.',
     'ob.m.manual.tag': 'Kawalan penuh',
     'ob.m.manual.title': 'Isi sendiri',
-    'ob.m.manual.body': 'Terangkan perniagaan anda dan pilih jenisnya sendiri. Sesuai jika anda belum ada dalam talian.',
+    'ob.m.manual.body':
+      'Terangkan perniagaan anda dan pilih jenisnya sendiri. Sesuai jika anda belum ada dalam talian.',
     'ob.m.manual.panelHead': 'Terangkan dalam ayat anda sendiri',
-    'ob.m.manual.panelBody': 'Satu ayat pun cukup. Anda juga boleh pilih jenis perniagaan yang paling hampir di bawah.',
+    'ob.m.manual.panelBody':
+      'Satu ayat pun cukup. Anda juga boleh pilih jenis perniagaan yang paling hampir di bawah.',
     'ob.m.manual.summary': 'Pilih jenis perniagaan sebaliknya',
     'ob.m.manual.cta': 'Bina profil saya →',
     'ob.m.need': 'Tambah laman web atau profil sosial untuk import perniagaan anda.',
@@ -378,27 +450,33 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     /* Langkah 2 — imbasan */
     'ob.scan.eyebrow': 'Langkah 2 · Mengimbas',
     'ob.scan.head': 'Membaca perniagaan anda…',
-    'ob.scan.note': 'Kami sedang baca sumber anda dan bina Profil Perniagaan. Ambil masa beberapa saat sahaja.',
+    'ob.scan.note':
+      'Kami sedang baca sumber anda dan bina Profil Perniagaan. Ambil masa beberapa saat sahaja.',
     'ob.scan.web': 'membaca laman web anda',
     'ob.scan.social': 'membaca profil sosial anda',
     'ob.scan.desc': 'membaca penerangan anda',
     'ob.scan.match': 'memadankan playbook industri ({type})',
     'ob.scan.detected': 'dikesan: {detect}',
     'ob.scan.imported': '{n} fakta disimpan untuk semakan anda',
-    'ob.scan.failed': '{n} sumber tidak dapat dibaca. Anda boleh teruskan dan tambah butiran secara manual.',
-    'ob.scan.demo': 'Pratonton demo: log masuk untuk membaca sumber dan simpan fakta cadangan pada perniagaan anda.',
+    'ob.scan.failed':
+      '{n} sumber tidak dapat dibaca. Anda boleh teruskan dan tambah butiran secara manual.',
+    'ob.scan.demo':
+      'Pratonton demo: log masuk untuk membaca sumber dan simpan fakta cadangan pada perniagaan anda.',
 
     /* Langkah 3 — sahkan */
     'ob.confirm.eyebrow': 'Langkah 3 · Betul ke?',
-    'ob.confirm.body': 'Profil Perniagaan anda menentukan setiap cadangan. Kalau ada yang tak kena, beritahu sekarang — ia jadi lebih tepat selepas ini.',
+    'ob.confirm.body':
+      'Profil Perniagaan anda menentukan setiap cadangan. Kalau ada yang tak kena, beritahu sekarang — ia jadi lebih tepat selepas ini.',
     'ob.confirm.imported': 'Fakta yang dijumpai dalam sumber anda',
     'ob.confirm.factCount': '{n} untuk disemak',
-    'ob.confirm.factNote': 'Kelulusan mengesahkan fakta ini sebagai memori perniagaan. Anda boleh membetulkan atau membuangnya kemudian dalam Perniagaan Saya.',
+    'ob.confirm.factNote':
+      'Kelulusan mengesahkan fakta ini sebagai memori perniagaan. Anda boleh membetulkan atau membuangnya kemudian dalam Perniagaan Saya.',
     'ob.confirm.saving': 'Menyimpan profil…',
     'ob.confirm.failed': 'Fakta perniagaan yang diimport tidak dapat disahkan.',
     'ob.confirm.edit': 'Edit maklumat perniagaan',
     'ob.confirm.editHead': 'Betulkan maklumat yang Jentera jumpa',
-    'ob.confirm.editBody': 'Pembetulan ini menggantikan cadangan yang diimbas sebelum Jentera menggunakannya.',
+    'ob.confirm.editBody':
+      'Pembetulan ini menggantikan cadangan yang diimbas sebelum Jentera menggunakannya.',
     'ob.confirm.otherFacts': 'Fakta lain daripada sumber anda',
     'ob.confirm.removeFact': 'Buang {name}',
     'ob.confirm.saveEdits': 'Simpan pembetulan',
@@ -425,12 +503,17 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'ob.reco.body': 'Berdasarkan profil dan jawapan anda, ini automasi paling berkesan.',
     'ob.reco.agent': 'Pembantu Perniagaan',
     'ob.reco.tag': 'disyorkan',
-    'ob.reco.handles': 'Membantu: operasi · penyelidikan · perancangan · penulisan · soalan perniagaan',
+    'ob.reco.handles':
+      'Membantu: operasi · penyelidikan · perancangan · penulisan · soalan perniagaan',
     'ob.reco.activating': 'Sedang sediakan…',
-    'ob.reco.extra.default': 'Tugasan awal yang sesuai: ringkasan mingguan · perancangan tugas · draf jawapan untuk semakan anda',
-    'ob.reco.extra.reservations': 'Tugasan awal yang sesuai: semak aliran tempahan · rancang minggu · draf pengesahan untuk semakan anda',
-    'ob.reco.extra.marketing': 'Tugasan awal yang sesuai: draf kandungan · rancang kempen · semak hasil bersama anda',
-    'ob.reco.extra.inventory': 'Tugasan awal yang sesuai: semak stok · rancang pesanan · sediakan ringkasan operasi',
+    'ob.reco.extra.default':
+      'Tugasan awal yang sesuai: ringkasan mingguan · perancangan tugas · draf jawapan untuk semakan anda',
+    'ob.reco.extra.reservations':
+      'Tugasan awal yang sesuai: semak aliran tempahan · rancang minggu · draf pengesahan untuk semakan anda',
+    'ob.reco.extra.marketing':
+      'Tugasan awal yang sesuai: draf kandungan · rancang kempen · semak hasil bersama anda',
+    'ob.reco.extra.inventory':
+      'Tugasan awal yang sesuai: semak stok · rancang pesanan · sediakan ringkasan operasi',
 
     /* Footer */
     'ob.nav.back': 'Kembali',
@@ -452,9 +535,11 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'ob.p.pain': 'Masalah utama',
     'ob.p.team': 'Ejen peribadi',
     'ob.p.teamValue': 'Pembantu Perniagaan',
-    'ob.p.note': 'Profil ini dikemas kini secara langsung sambil anda menjawab. Setiap cadangan Jentera berdasarkan ini — betulkan bila-bila masa dalam dashboard.',
+    'ob.p.note':
+      'Profil ini dikemas kini secara langsung sambil anda menjawab. Setiap cadangan Jentera berdasarkan ini — betulkan bila-bila masa dalam dashboard.',
     'ob.ch.head': 'Saluran mana yang perniagaan anda guna?',
-    'ob.ch.body': 'Pilih alat yang anda sudah guna. Telegram bermula sebagai chat peribadi anda dengan Jentera; automasi untuk pelanggan ialah pilihan berasingan kemudian.',
+    'ob.ch.body':
+      'Pilih alat yang anda sudah guna. Telegram bermula sebagai chat peribadi anda dengan Jentera; automasi untuk pelanggan ialah pilihan berasingan kemudian.',
     'ob.ch.cta': 'Aktifkan Jentera →',
     'ob.ch.back': '← Kembali',
     'ob.ch.none': 'Pilih sekurang-kurangnya satu saluran',
@@ -497,7 +582,8 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'su.step45.done': 'disambung',
     'su.live.agentReady': 'ejen sedia',
     'su.live.settingUp': 'sedang disediakan',
-    'su.live.body': 'Pilih cara anda mahu berbual dengan Jentera. Sambung Telegram sekarang, atau teruskan dengan Tanya Jentera dalam aplikasi web ini.',
+    'su.live.body':
+      'Pilih cara anda mahu berbual dengan Jentera. Sambung Telegram sekarang, atau teruskan dengan Tanya Jentera dalam aplikasi web ini.',
     'su.live.profile': 'Profil perniagaan',
     'su.live.profileSaved': 'jawapan onboarding disimpan',
     'su.live.agent': 'Ejen Hermes peribadi',
@@ -515,14 +601,17 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'su.live.continue': 'Teruskan sementara Jentera disediakan →',
     'su.live.jenteraApp': 'Aplikasi Jentera',
     'su.live.comingSoon': 'akan datang',
-    'su.live.jenteraAppBody': 'Gunakan Tanya Jentera dalam aplikasi web ini sekarang. Aplikasi mudah alih khas Jentera akan datang tidak lama lagi.',
-    'su.live.fallback': 'Jentera menggunakan fallback inline yang selamat sehingga ejen peribadi melaporkan sedia.',
+    'su.live.jenteraAppBody':
+      'Gunakan Tanya Jentera dalam aplikasi web ini sekarang. Aplikasi mudah alih khas Jentera akan datang tidak lama lagi.',
+    'su.live.fallback':
+      'Jentera menggunakan fallback inline yang selamat sehingga ejen peribadi melaporkan sedia.',
     'su.live.checking': 'menyemak',
     'su.live.ready': 'sedia',
     'su.live.attention': 'perlu perhatian',
     'su.live.finishFailed': 'Setup tidak dapat diselesaikan.',
     'su.live.loader.eyebrow': 'Setup ejen peribadi',
-    'su.live.loader.note': 'Jentera menyemak secara automatik setiap 3 saat. Proses ini mungkin mengambil beberapa minit — anda tidak perlu muat semula halaman ini.',
+    'su.live.loader.note':
+      'Jentera menyemak secara automatik setiap 3 saat. Proses ini mungkin mengambil beberapa minit — anda tidak perlu muat semula halaman ini.',
     'su.live.loader.private': 'Peribadi untuk perniagaan anda',
     'su.live.loader.continue': 'Selamat untuk sambung Telegram atau teruskan ke chat web',
     'su.live.stage.checking': 'Menyemak ruang kerja selamat anda…',
@@ -543,7 +632,8 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'biz.private.memory': 'Memori dan ringkasan perniagaan',
     'biz.customerFuture.title': 'Ejen untuk pelanggan',
     'biz.customerFuture.off': 'Belum tersedia',
-    'biz.customerFuture.desc': 'Ejen ini hanya akan muncul apabila Jentera boleh melayani pelanggan dengan selamat dan anda menyambungkan saluran pelanggan yang disokong seperti WhatsApp atau e-mel. Chat Telegram peribadi anda tidak mengaktifkannya.',
+    'biz.customerFuture.desc':
+      'Ejen ini hanya akan muncul apabila Jentera boleh melayani pelanggan dengan selamat dan anda menyambungkan saluran pelanggan yang disokong seperti WhatsApp atau e-mel. Chat Telegram peribadi anda tidak mengaktifkannya.',
     'biz.tab.connections': 'Sambungan',
     'biz.tab.permissions': 'Kawalan tindakan',
     'biz.guide.eyebrow': 'Apa yang anda mahu lakukan?',
@@ -556,31 +646,39 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'perm.desc':
       'Pembantu peribadi boleh menjawab anda secara automatik. Kawalan ini meliputi kerja dalaman dengan maklumat perniagaan anda.',
     'perm.recommended': 'Tetapan disyorkan aktif',
-    'perm.recommended.desc': 'Membaca dan menyusun adalah automatik; eksport dan perubahan akan meminta kebenaran anda dahulu.',
+    'perm.recommended.desc':
+      'Membaca dan menyusun adalah automatik; eksport dan perubahan akan meminta kebenaran anda dahulu.',
     'perm.customise': 'Ubah tindakan satu per satu',
     'home.next.eyebrow': 'Langkah terbaik seterusnya',
     'home.next.knows.title': 'Beri Jentera maklumat sebenar untuk digunakan',
-    'home.next.knows.detail': 'Import laman web atau tambah satu fakta penting. Anda menyemaknya sebelum Jentera menganggapnya benar.',
+    'home.next.knows.detail':
+      'Import laman web atau tambah satu fakta penting. Anda menyemaknya sebelum Jentera menganggapnya benar.',
     'home.next.knows.cta': 'Tambah pengetahuan perniagaan →',
     'home.next.connected.title': 'Bawa Jentera bersama anda',
-    'home.next.connected.detail': 'Sambungkan Telegram sebagai chat peribadi pemilik. Akses pelanggan kekal ditutup sehingga anda aktifkan kemudian.',
+    'home.next.connected.detail':
+      'Sambungkan Telegram sebagai chat peribadi pemilik. Akses pelanggan kekal ditutup sehingga anda aktifkan kemudian.',
     'home.next.connected.cta': 'Sambung Telegram peribadi →',
     'home.next.working.title': 'Beri Jentera tugasan berguna pertama',
-    'home.next.working.detail': 'Tanya soalan perniagaan atau minta pembantu peribadi menyelidik, merancang, menulis, atau menyusun sesuatu.',
+    'home.next.working.detail':
+      'Tanya soalan perniagaan atau minta pembantu peribadi menyelidik, merancang, menulis, atau menyusun sesuatu.',
     'home.next.working.cta': 'Mulakan chat pertama →',
     'home.telegram.eyebrow': 'Chat Telegram peribadi',
     'home.telegram.pending.tag': 'tinggal satu langkah',
     'home.telegram.pending.title': 'Selesaikan sambungan Telegram',
-    'home.telegram.pending.detail': 'Bot anda telah disimpan, tetapi Telegram tidak akan menghantar mesej anda sehingga anda membuka chat peribadi dan menekan Start.',
+    'home.telegram.pending.detail':
+      'Bot anda telah disimpan, tetapi Telegram tidak akan menghantar mesej anda sehingga anda membuka chat peribadi dan menekan Start.',
     'home.telegram.pending.cta': 'Buka Telegram dan tekan Start →',
-    'home.telegram.pending.note': 'Jentera menyemak secara automatik selepas anda menekan Start. Anda masih boleh menggunakan chat web sementara itu.',
+    'home.telegram.pending.note':
+      'Jentera menyemak secara automatik selepas anda menekan Start. Anda masih boleh menggunakan chat web sementara itu.',
     'home.telegram.missing.tag': 'disyorkan',
     'home.telegram.missing.title': 'Sambung Telegram untuk chat dengan Jentera dari telefon anda',
-    'home.telegram.missing.detail': 'Chat web sudah sedia. Sambung Telegram jika anda juga mahu berbual secara peribadi dengan Jentera melalui telefon.',
+    'home.telegram.missing.detail':
+      'Chat web sudah sedia. Sambung Telegram jika anda juga mahu berbual secara peribadi dengan Jentera melalui telefon.',
     'home.telegram.missing.cta': 'Sediakan Telegram →',
     'home.telegram.attention.tag': 'perlu perhatian',
     'home.telegram.attention.title': 'Telegram memerlukan perhatian anda',
-    'home.telegram.attention.detail': 'Chat Telegram peribadi anda tidak tersedia sekarang. Semak sambungan untuk melihat perkara yang perlu dibaiki.',
+    'home.telegram.attention.detail':
+      'Chat Telegram peribadi anda tidak tersedia sekarang. Semak sambungan untuk melihat perkara yang perlu dibaiki.',
     'home.telegram.attention.cta': 'Semak sambungan Telegram →',
     'home.telegram.details': 'Lihat butiran sambungan',
     'perm.automatic': 'Automatik',
@@ -593,21 +691,26 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'perm.changed': 'diubah',
     'perm.saved': 'Kebenaran dikemas kini',
     'perm.op.read': 'Baca maklumat perniagaan',
-    'perm.op.read.desc': 'Gunakan Profil Perniagaan dan memori perniagaan yang disahkan untuk menjawab anda.',
+    'perm.op.read.desc':
+      'Gunakan Profil Perniagaan dan memori perniagaan yang disahkan untuk menjawab anda.',
     'perm.op.list': 'Semak rekod perniagaan',
-    'perm.op.list.desc': 'Cari dan susun rekod yang sudah tersedia dalam ruang kerja peribadi anda.',
+    'perm.op.list.desc':
+      'Cari dan susun rekod yang sudah tersedia dalam ruang kerja peribadi anda.',
     'perm.op.export': 'Sediakan eksport',
-    'perm.op.export.desc': 'Cipta fail untuk anda semak atau muat turun; fail tidak dihantar kepada pelanggan.',
+    'perm.op.export.desc':
+      'Cipta fail untuk anda semak atau muat turun; fail tidak dihantar kepada pelanggan.',
     'perm.op.book': 'Buat tempahan',
     'perm.op.update': 'Kemas kini memori perniagaan',
-    'perm.op.update.desc': 'Betulkan atau tambah maklumat dalaman perniagaan. Perubahan memerlukan kelulusan anda secara lalai.',
+    'perm.op.update.desc':
+      'Betulkan atau tambah maklumat dalaman perniagaan. Perubahan memerlukan kelulusan anda secara lalai.',
     'perm.op.send': 'Mesej pelanggan',
     'perm.op.cancel': 'Batal tempahan',
     'perm.op.refund': 'Keluarkan bayaran balik',
     'perm.op.pay': 'Buat pembayaran',
     'perm.future.title': 'Tindakan pelanggan dan transaksi',
     'perm.future.tag': 'Belum tersedia',
-    'perm.future.desc': 'Mesej pelanggan, urusan tempahan, bayaran balik, dan pembayaran hanya akan muncul apabila keupayaan berkenaan berfungsi dan anda menyambungkan akaun yang disokong seperti WhatsApp atau e-mel.',
+    'perm.future.desc':
+      'Mesej pelanggan, urusan tempahan, bayaran balik, dan pembayaran hanya akan muncul apabila keupayaan berkenaan berfungsi dan anda menyambungkan akaun yang disokong seperti WhatsApp atau e-mel.',
     'db.handled': '{n} diselesaikan automatik',
     'db.disconnect': 'Putuskan',
     'db.theme.toLight': 'Tukar ke tema cerah',
@@ -618,7 +721,8 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'nav.detail': 'Tahap perincian',
     'nav.more': 'Pilihan lain',
     'loading.activity.title': 'Memuatkan aktiviti anda…',
-    'loading.activity.detail': 'Menyemak kerja siap, tugasan aktif, dan keputusan yang memerlukan anda.',
+    'loading.activity.detail':
+      'Menyemak kerja siap, tugasan aktif, dan keputusan yang memerlukan anda.',
     'loading.activity.error': 'Aktiviti anda tidak dapat dimuatkan.',
     'loading.activity.unavailable': 'Aktiviti terkini tidak tersedia buat sementara waktu.',
     'loading.home.summary': 'Memuatkan aktiviti terkini anda…',
@@ -626,10 +730,12 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'loading.home.recent': 'Memuatkan aktiviti terkini…',
     'loading.home.recent.detail': 'Menyemak kerja terkini yang diselesaikan oleh ejen anda.',
     'loading.connections.title': 'Memuatkan sambungan anda…',
-    'loading.connections.detail': 'Menyemak saluran peribadi yang telah disambungkan sebelum memaparkan kawalan setup.',
+    'loading.connections.detail':
+      'Menyemak saluran peribadi yang telah disambungkan sebelum memaparkan kawalan setup.',
     'loading.connections.error': 'Sambungan anda tidak dapat dimuatkan.',
     'loading.retry': 'Cuba lagi',
-    'ask.welcome.first': 'Pembantu perniagaan peribadi anda sudah sedia. Pilih cadangan di bawah atau tanya dengan ayat sendiri—Jentera akan menjawab berdasarkan pengetahuan tentang perniagaan anda.',
+    'ask.welcome.first':
+      'Pembantu perniagaan peribadi anda sudah sedia. Pilih cadangan di bawah atau tanya dengan ayat sendiri—Jentera akan menjawab berdasarkan pengetahuan tentang perniagaan anda.',
     'ask.retry': 'Cuba soalan ini lagi',
     'ask.newChat': 'Chat baharu',
     'ask.chat.untitled': 'Chat baharu',
@@ -650,7 +756,8 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'ask.receipt.grounded': 'Berdasarkan maklumat bisnes anda yang disahkan',
     'ask.receipt.noFacts': 'Fakta bisnes tersimpan tidak diperlukan',
     'ask.receipt.activity': 'Lihat dalam Aktiviti',
-    'ask.connection.optional': 'Mulakan dengan kerja peribadi sekarang. Sambungan hanya diperlukan apabila anda mahu Jentera menghantar atau menerima mesej di luar ruang kerja ini.',
+    'ask.connection.optional':
+      'Mulakan dengan kerja peribadi sekarang. Sambungan hanya diperlukan apabila anda mahu Jentera menghantar atau menerima mesej di luar ruang kerja ini.',
     'ask.connection.open': 'Sambungkan saluran apabila bersedia',
     'work.receipt.saved': 'Kira-kira {n} min dijimatkan',
     'work.receipt.channel': 'Diurus melalui {channel}',

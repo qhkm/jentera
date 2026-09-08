@@ -39,7 +39,16 @@ export function WorkPulse({
       }`}
       aria-hidden="true"
     >
-      <span>J</span>
+      <svg
+        width={compact ? 19 : 24}
+        height={compact ? 19 : 24}
+        viewBox="0 0 64 64"
+        fill="currentColor"
+        aria-hidden="true"
+      >
+        <path d="M28 14h20v19c0 12-7 19-19 19S10 45 10 34h12c0 5 2 7 7 7s7-3 7-8v-7h-8V14Z" />
+        <rect x="12" y="14" width="10" height="10" rx="2" opacity=".65" />
+      </svg>
     </span>
   );
 }

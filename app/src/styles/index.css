@@ -13,6 +13,7 @@
 @import "./connect.css";
 @import "./component-refresh.css";
 @import "./entrances.css";
+@import "./dashboard.css";
 
 /* ============================================================
    Base. Everything resolves through tokens — no literal colors

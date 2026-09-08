@@ -13,12 +13,14 @@ import { Button } from '@/components/ui';
 import { useTheme } from '@/hooks/useTheme';
 import { useSignedIn } from '@/lib/repo/gate';
 import { useDetailLevel } from '@/hooks/useDetailLevel';
+import { JenteraMark } from '@/components/JenteraMark';
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
 export function Logo({ suffix }: { suffix?: string }) {
   return (
     <Link to="/" aria-label="Jentera home" className="inline-flex items-center gap-2">
+      <JenteraMark size={32} />
       <span className="font-pixel text-xl tracking-wide text-brand md:text-2xl">Jentera</span>
       {suffix ? (
         <span className="hidden font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted md:inline">
@@ -35,6 +37,7 @@ export function Shell({
   onMenu,
   menuBadge = 0,
   fullBleed = false,
+  className = '',
   children,
 }: {
   suffix?: string;
@@ -48,6 +51,7 @@ export function Shell({
    * rather than sit as a card inside a padded page.
    */
   fullBleed?: boolean;
+  className?: string;
   children: ReactNode;
 }) {
   const { lang, t, toggleLang } = useI18n();
@@ -87,7 +91,7 @@ export function Shell({
   }
 
   return (
-    <div className="min-h-dvh bg-bg text-text">
+    <div className={`min-h-dvh bg-bg text-text ${className}`}>
       <header className="relative sticky top-0 z-30 border-b border-rail bg-bg/80 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1250px] items-center justify-between gap-3 px-4 sm:px-6">
           <div className="flex items-center gap-3">
@@ -170,7 +174,9 @@ export function Shell({
             aria-expanded={utilityOpen}
             aria-controls="mobile-utility-menu"
           >
-            <span aria-hidden="true" className="-mt-1 tracking-[0.12em]">•••</span>
+            <span aria-hidden="true" className="-mt-1 tracking-[0.12em]">
+              •••
+            </span>
           </button>
         </div>
 
@@ -188,7 +194,9 @@ export function Shell({
               className="nav-link flex w-full items-center justify-between rounded-item px-3 py-2.5 text-left"
             >
               <span>{t(theme === 'dark' ? 'db.theme.toLight' : 'db.theme.toDark')}</span>
-              <span className="text-text-muted">{t(theme === 'dark' ? 'db.light' : 'db.dark')}</span>
+              <span className="text-text-muted">
+                {t(theme === 'dark' ? 'db.light' : 'db.dark')}
+              </span>
             </button>
             <button
               type="button"

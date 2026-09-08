@@ -5,8 +5,20 @@
 
 import { Link } from 'react-router';
 import { Avatar, Button, Card, Eyebrow, LoadingState, Tag } from '@/components/ui';
-import { useT } from '@/i18n/I18nProvider';
-import { DataIcon, stripEmoji } from '@/components/Icon';
+import { useI18n } from '@/i18n/I18nProvider';
+import {
+  ArrowUpRight,
+  Bell,
+  CalendarBlank,
+  CheckCircle,
+  Clock,
+  ArrowRight,
+  BookOpen,
+  PlugsConnected,
+} from '@phosphor-icons/react';
+import { JenteraMark } from '@/components/JenteraMark';
+import { WorkPulse } from '@/components/WorkSignal';
+import { DataIcon } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
 import type { useBusiness } from '@/hooks/useBusiness';
 import { useActivity } from '@/hooks/useActivity';
@@ -18,6 +30,7 @@ import type { BizTab } from './MyBusinessView';
 
 /** The three counters, in the order they are rendered when real. */
 const PENDING_STATS = ['handled', 'needs', 'saved'] as const;
+const STAT_ICONS = [CheckCircle, Bell, Clock];
 
 export default function HomeView({
   b,
@@ -28,7 +41,10 @@ export default function HomeView({
   connections: ConnectionsState;
   onNavigate: (v: View, businessTab?: BizTab) => void;
 }) {
-  const t = useT();
+  const { t, lang } = useI18n();
+  const now = new Date();
+  const hour = now.getHours();
+  const greeting = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
   const activity = useActivity();
   const snap = useSnapshot();
   /* The illustration belongs to the anonymous demo alone. While a
@@ -64,9 +80,11 @@ export default function HomeView({
     : null;
   const toast = useToast();
   const { business, stage } = b;
-  const telegramReady = connections.real && (connections.rows ?? []).some(
-    (row) => row.connector === 'telegram' && row.status === 'connected' && row.paired === true,
-  );
+  const telegramReady =
+    connections.real &&
+    (connections.rows ?? []).some(
+      (row) => row.connector === 'telegram' && row.status === 'connected' && row.paired === true,
+    );
   const telegramPairing = connections.real
     ? (connections.rows ?? []).find(
         (row) =>
@@ -76,16 +94,16 @@ export default function HomeView({
           Boolean(row.pairingUrl),
       )
     : undefined;
-  const telegramNeedsAttention = connections.real && (connections.rows ?? []).some(
-    (row) => row.connector === 'telegram' && row.status !== 'connected',
-  );
+  const telegramNeedsAttention =
+    connections.real &&
+    (connections.rows ?? []).some(
+      (row) => row.connector === 'telegram' && row.status !== 'connected',
+    );
   const showTelegramNotice = connections.real && !telegramReady;
   const nextMilestone = activity.real
-    ? milestones(
-        snap,
-        activity.data!.counters.handled,
-        activity.data!.counters.connections,
-      ).find((milestone) => !milestone.done)
+    ? milestones(snap, activity.data!.counters.handled, activity.data!.counters.connections).find(
+        (milestone) => !milestone.done,
+      )
     : null;
 
   const pending = business.work
@@ -105,21 +123,40 @@ export default function HomeView({
       ? t('loading.home.summary')
       : activity.mode === 'error'
         ? null
-      : activity.data!.counters.handled === 0 && activity.data!.counters.needsYou === 0
-        ? t('home.empty')
-        : null;
+        : activity.data!.counters.handled === 0 && activity.data!.counters.needsYou === 0
+          ? t('home.empty')
+          : null;
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <h1 className="font-pixel text-2xl tracking-tight">{stripEmoji(t('view.home.greet'))}</h1>
-        <p className="text-sm text-text-secondary">
-          {stage === 'setup' ? t('sub.step1') : stage === 'connect' ? t('sub.step2') : t('sub.step3')}
-        </p>
+    <div className="home-view">
+      <header className="home-heading">
+        <div>
+          <Eyebrow>{business.name}</Eyebrow>
+          <h1 className="font-pixel tracking-tight">{t(`home.greeting.${greeting}`)}</h1>
+          <p className="text-sm text-text-secondary">
+            {stage === 'setup'
+              ? t('sub.step1')
+              : stage === 'connect'
+                ? t('sub.step2')
+                : t('sub.step3')}
+          </p>
+        </div>
+        <span className="home-date">
+          <CalendarBlank size={16} aria-hidden="true" />
+          <time
+            dateTime={`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`}
+          >
+            {now.toLocaleDateString(lang === 'bm' ? 'ms-MY' : 'en-MY', {
+              weekday: 'short',
+              day: 'numeric',
+              month: 'short',
+            })}
+          </time>
+        </span>
       </header>
 
       {showTelegramNotice ? (
-        <Card role="status" className="gap-4 border-brand-line bg-brand-soft">
+        <Card role="status" className="home-notice gap-4 border-brand-line bg-brand-soft">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex max-w-[62ch] flex-col gap-1">
               <Eyebrow>{t('home.telegram.eyebrow')}</Eyebrow>
@@ -193,7 +230,7 @@ export default function HomeView({
       ) : null}
 
       {activity.mode === 'error' ? (
-        <Card role="alert" className="gap-3">
+        <Card role="alert" className="home-notice gap-3">
           <p className="text-sm">{t('loading.activity.error')}</p>
           <p className="text-[13px] text-text-secondary">{activity.error?.message}</p>
           <div>
@@ -204,8 +241,20 @@ export default function HomeView({
         </Card>
       ) : null}
 
+      <button type="button" className="home-ask-launcher" onClick={() => onNavigate('chat')}>
+        <JenteraMark size={56} />
+        <span>
+          <strong>{t('home.ask.title')}</strong>
+          <span>{t('home.ask.detail')}</span>
+        </span>
+        <span className="home-ask-cta">
+          {t('nav.chat')}
+          <ArrowUpRight size={20} aria-hidden="true" />
+        </span>
+      </button>
+
       {stage !== 'operating' ? (
-        <Card className="gap-4">
+        <Card className="home-command gap-4">
           <div className="flex items-start justify-between gap-4">
             <div className="flex flex-col gap-1">
               <Eyebrow>{t(stage === 'setup' ? 'cmd.step1.title' : 'cmd.step2.title')}</Eyebrow>
@@ -224,17 +273,20 @@ export default function HomeView({
                 <Button className="px-5 py-2 text-sm">{t('cmd.step1.cta')}</Button>
               </Link>
             ) : (
-              <Button className="px-5 py-2 text-sm" onClick={() => onNavigate('business', 'connections')}>
+              <Button
+                className="px-5 py-2 text-sm"
+                onClick={() => onNavigate('business', 'connections')}
+              >
                 {t('cmd.step2.cta')}
               </Button>
             )}
           </div>
         </Card>
       ) : (
-        <Card className="gap-3">
+        <Card className="home-command gap-3">
           <div className="flex items-start justify-between gap-4">
             <div className="flex flex-col gap-1">
-              <Eyebrow>{t('cmd.step3.title')}</Eyebrow>
+              <Eyebrow>{t('home.summary')}</Eyebrow>
               <h2 className="font-pixel text-lg tracking-tight">
                 {t('db.handled', {
                   n: activity.real
@@ -258,11 +310,9 @@ export default function HomeView({
                 otherwise on a dashboard whose own counters read zero
                 is the sort of small untruth that makes a person stop
                 believing the rest. */}
-            {demo || (activity.real && activity.data!.counters.handled > 0) ? (
-              <Tag tone="green">live</Tag>
-            ) : (
-              <Tag>{t('roster.ready')}</Tag>
-            )}
+            <WorkPulse
+              state={activity.real && activity.data!.counters.needsYou > 0 ? 'waiting' : 'ready'}
+            />
           </div>
 
           {demo && pending.length ? (
@@ -292,13 +342,20 @@ export default function HomeView({
           ) : glanceNote ? (
             <p className="text-[12px] text-text-muted">{glanceNote}</p>
           ) : null}
+          {activity.real && activity.data!.counters.needsYou > 0 ? (
+            <button className="home-review-link" type="button" onClick={() => onNavigate('work')}>
+              <Bell size={17} aria-hidden="true" />
+              {t('home.review', { n: activity.data!.counters.needsYou })}
+              <ArrowRight size={17} aria-hidden="true" />
+            </button>
+          ) : null}
         </Card>
       )}
 
       {stage === 'operating' &&
       nextMilestone &&
       !(showTelegramNotice && nextMilestone.key === 'connected') ? (
-        <Card className="gap-4 border-brand-line bg-brand-soft">
+        <Card className="home-next gap-4 border-brand-line bg-brand-soft">
           <div className="flex flex-col gap-1">
             <Eyebrow>{t('home.next.eyebrow')}</Eyebrow>
             <h2 className="font-pixel text-lg tracking-tight">
@@ -323,28 +380,61 @@ export default function HomeView({
         </Card>
       ) : null}
 
+      {stage === 'operating' && activity.real && !nextMilestone ? (
+        <Card className="home-next home-shortcuts">
+          <h2 className="home-panel-title">{t('nav.business')}</h2>
+          <button type="button" onClick={() => onNavigate('business', 'knows')}>
+            <BookOpen size={20} weight="duotone" aria-hidden="true" />
+            <span>
+              <strong>{t('home.knowledge')}</strong>
+              <small>
+                {t('home.knowledge.count', {
+                  n: snap.facts.filter((fact) => fact.confirmed).length,
+                })}
+              </small>
+            </span>
+            <ArrowUpRight size={16} aria-hidden="true" />
+          </button>
+          <button type="button" onClick={() => onNavigate('business', 'connections')}>
+            <PlugsConnected size={20} weight="duotone" aria-hidden="true" />
+            <span>
+              <strong>{t('home.connections')}</strong>
+              <small>{t('home.connections.detail')}</small>
+            </span>
+            <ArrowUpRight size={16} aria-hidden="true" />
+          </button>
+        </Card>
+      ) : null}
+
       {/* Real figures when there is a server to ask; the playbook's
           illustrations otherwise. Never a mix — an owner cannot tell
           which half of a blended row is true. */}
       <div
-        className="grid gap-3 sm:grid-cols-3"
+        className="home-metrics grid gap-3 sm:grid-cols-3"
+        role="region"
         aria-busy={activity.mode === 'pending'}
-        aria-label={activity.mode === 'pending' ? t('loading.home.metrics') : undefined}
+        aria-label={activity.mode === 'pending' ? t('loading.home.metrics') : t('home.metrics')}
       >
         {realStats
-          ? realStats.map((s) => (
-              <Card key={s.d} className="gap-3">
-                <Eyebrow>{s.d}</Eyebrow>
-                <span className="font-pixel text-3xl tabular-nums">
-                  {s.v}
-                  {s.u ? <span className="text-lg text-text-muted">{s.u}</span> : null}
-                </span>
-                <span className="text-[13px] text-text-secondary">{s.l}</span>
-              </Card>
-            ))
+          ? realStats.map((s, index) => {
+              const Glyph = STAT_ICONS[index];
+              return (
+                <Card key={s.d} className={`home-stat home-stat-${PENDING_STATS[index]} gap-3`}>
+                  <div className="home-stat-label">
+                    <Eyebrow>{s.d}</Eyebrow>
+                    <Glyph size={18} weight="duotone" aria-hidden="true" />
+                  </div>
+                  <span className="font-pixel text-3xl tabular-nums">
+                    {s.v}
+                    {s.u ? <span className="text-lg text-text-muted">{s.u}</span> : null}
+                  </span>
+                  <span className="text-[13px] text-text-secondary">{s.l}</span>
+                </Card>
+              );
+            })
           : demo
             ? business.stats.map((s) => (
-                <Card key={s.d} className="gap-3">
+                <Card key={s.d} className="home-stat gap-3">
                   <Eyebrow>{s.d}</Eyebrow>
                   <span className="font-pixel text-3xl tabular-nums">
                     {s.v}
@@ -359,7 +449,7 @@ export default function HomeView({
                  flight — so the row lands at its final height and the
                  counts fill in where the dashes were. */
               PENDING_STATS.map((k) => (
-                <Card key={k} className="gap-3" aria-hidden="true">
+                <Card key={k} className="home-stat gap-3" aria-hidden="true">
                   <Eyebrow>{t(`db.stat.${k}`)}</Eyebrow>
                   <span className="font-pixel text-3xl tabular-nums text-text-muted">—</span>
                   <span className="text-[13px] text-text-secondary">{t(`db.stat.${k}.sub`)}</span>
@@ -368,12 +458,12 @@ export default function HomeView({
       </div>
 
       {/* Latest agent activity — a way into Chat */}
-      <Card className="gap-3">
+      <Card className="home-recent gap-3">
         <div className="flex items-center justify-between">
-          <Eyebrow>{t('home.recent')}</Eyebrow>
+          <h2 className="home-panel-title">{t('home.recent')}</h2>
           <button
             type="button"
-            className="text-[11px] text-brand hover:underline"
+            className="home-activity-link text-[11px] text-brand hover:underline"
             onClick={() => onNavigate('work')}
           >
             {t('home.openactivity')}
@@ -384,18 +474,66 @@ export default function HomeView({
             /* A signed-in owner with nothing done yet gets told what to
                do about it, not a borrowed example of someone else's
                activity. */
-            <p className="text-[12px] leading-snug text-text-secondary">
-              {t('home.nothingyet')}
-            </p>
+            <div className="home-empty">
+              <CheckCircle size={30} weight="duotone" aria-hidden="true" />
+              <p>{t('home.nothingyet')}</p>
+              <button type="button" onClick={() => onNavigate('chat')}>
+                {t('nav.chat')}
+                <ArrowRight size={16} aria-hidden="true" />
+              </button>
+            </div>
           ) : (
-            activity.data!.work.slice(0, 3).map((w) => (
-              <div key={w.id} className="flex min-w-0 flex-col gap-0.5">
-                <span className="text-[12px] font-semibold">{w.objective}</span>
-                {w.outcome && (
-                  <span className="text-[12px] leading-snug text-text-secondary">{w.outcome}</span>
-                )}
-              </div>
-            ))
+            activity.data!.work.slice(0, 4).map((w) => {
+              const status =
+                w.status === 'completed'
+                  ? 'done'
+                  : w.status === 'cancelled'
+                    ? 'declined'
+                    : w.status === 'failed'
+                      ? 'failed'
+                      : w.status === 'blocked'
+                        ? 'blocked'
+                        : w.status === 'needs_approval'
+                          ? 'waiting'
+                          : 'inprogress';
+              return (
+                <button
+                  key={w.id}
+                  type="button"
+                  className="home-activity-row"
+                  onClick={() => onNavigate('work')}
+                >
+                  <WorkPulse
+                    compact
+                    state={
+                      status === 'done' || status === 'declined'
+                        ? 'done'
+                        : status === 'failed'
+                          ? 'failed'
+                          : status === 'waiting' || status === 'blocked'
+                            ? 'waiting'
+                            : 'working'
+                    }
+                  />
+                  <span className="home-activity-copy">
+                    <strong>{w.objective}</strong>
+                    {w.outcome ? <span>{w.outcome}</span> : null}
+                    <span className="home-activity-meta">
+                      <span className={`home-status home-status-${status}`}>
+                        {t(`work.${status}`)}
+                      </span>
+                      <time dateTime={w.occurredAt}>
+                        {new Date(w.occurredAt).toLocaleDateString(
+                          lang === 'bm' ? 'ms-MY' : 'en-MY',
+                          { day: 'numeric', month: 'short' },
+                        )}
+                      </time>
+                    </span>
+                  </span>
+                  <ArrowUpRight size={15} aria-hidden="true" />
+                </button>
+              );
+            })
           )
         ) : demo ? (
           business.work.slice(0, 2).map((w, i) => (

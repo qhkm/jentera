@@ -7,6 +7,9 @@ import {
   Check,
   ChatCircle,
   FileText,
+  Coffee,
+  FirstAid,
+  ForkKnife,
   LockSimple,
   MagnifyingGlass,
   Plus,
@@ -18,6 +21,9 @@ import {
   LandingHeader,
 } from "@/components/landing/LandingChrome";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
+import { JenteraMark } from "@/components/JenteraMark";
+import { DataIcon } from "@/components/Icon";
+import { WorkIllustration } from "@/components/landing/WorkIllustration";
 import {
   BUSINESS_EXAMPLES,
   EVERYDAY_WORK,
@@ -44,6 +50,7 @@ function BusinessPreview() {
   const draftButton = useRef<HTMLButtonElement>(null);
   const restoreDraftFocus = useRef(false);
   const business = BUSINESS_EXAMPLES[selected];
+  const BusinessIcon = [Coffee, FirstAid, ForkKnife, Storefront][selected];
 
   useEffect(() => {
     if (showDraft) draftHeading.current?.focus({ preventScroll: true });
@@ -62,7 +69,8 @@ function BusinessPreview() {
     <div id="example" className="business-preview">
       <div className="preview-controls">
         <div className="preview-caption">
-          <span className="lp-status-dot" /> Practical help with the daily work.
+          <span className="preview-caption-index">01 — 04</span> Choose a
+          business. See Jentera at work.
         </div>
         <div
           className="preview-tabs"
@@ -99,6 +107,15 @@ function BusinessPreview() {
                 tabs.current[next]?.focus();
               }}
             >
+              {index === 0 ? (
+                <Coffee size={16} weight="duotone" aria-hidden="true" />
+              ) : index === 1 ? (
+                <FirstAid size={16} weight="duotone" aria-hidden="true" />
+              ) : index === 2 ? (
+                <ForkKnife size={16} weight="duotone" aria-hidden="true" />
+              ) : (
+                <Storefront size={16} weight="duotone" aria-hidden="true" />
+              )}
               {example.label}
             </button>
           ))}
@@ -106,14 +123,17 @@ function BusinessPreview() {
       </div>
       <div className="preview-window">
         <div className="preview-topbar">
-          <span className="font-pixel text-brand">Jentera</span>
+          <span className="jentera-wordmark font-pixel text-brand">
+            <JenteraMark size={24} />
+            Jentera
+          </span>
           <span>
             <LockSimple size={12} aria-hidden="true" /> Private workspace
           </span>
         </div>
         <div className="preview-business">
           <span className="preview-avatar">
-            <Storefront size={23} weight="duotone" aria-hidden="true" />
+            <BusinessIcon size={23} weight="duotone" aria-hidden="true" />
           </span>
           <div>
             <h2>{business.name}</h2>
@@ -150,6 +170,9 @@ function BusinessPreview() {
           ) : (
             <div key={business.id}>
               <div className="preview-request">
+                <span className="preview-business-art" aria-hidden="true">
+                  <BusinessIcon size={66} weight="duotone" />
+                </span>
                 <span>You</span>
                 <p>{business.request}</p>
               </div>
@@ -164,7 +187,7 @@ function BusinessPreview() {
                     <li key={task}>
                       <span className="preview-task-number">0{index + 1}</span>
                       <span>{task}</span>
-                      <Check size={14} aria-label="Example task" />
+                      <FileText size={14} aria-hidden="true" />
                     </li>
                   ))}
                 </ul>
@@ -208,9 +231,21 @@ export default function Landing() {
           <div className="lp-hero-grid" aria-hidden="true" />
           <div className="lp-container lp-hero-layout">
             <div className="lp-hero-copy">
+              <div className="hero-signature" aria-hidden="true">
+                <span className="signature-tile signature-tile-left">
+                  <ChatCircle size={26} weight="duotone" />
+                </span>
+                <span className="signature-line" />
+                <JenteraMark size={72} />
+                <span className="signature-line" />
+                <span className="signature-tile signature-tile-right">
+                  <FileText size={26} weight="duotone" />
+                </span>
+              </div>
               <Eyebrow>{HERO.eyebrow}</Eyebrow>
               <h1>
-                {HERO.headline[0]}
+                {HERO.headline[0].replace("24/7", "")}
+                <em className="hero-hours">24/7</em>{" "}
                 <span>{HERO.headline[1]}</span>
               </h1>
               <p className="lp-hero-description">{HERO.detail}</p>
@@ -252,12 +287,12 @@ export default function Landing() {
             </p>
           </div>
           <div className="lp-work-list">
-            {EVERYDAY_WORK.map((work, index) => {
+            {EVERYDAY_WORK.map((work) => {
               const Glyph = WORK_ICONS[work.icon];
               return (
                 <article
                   key={work.number}
-                  className={`lp-work-row ${index === 0 || index === EVERYDAY_WORK.length - 1 ? "lp-work-row-wide" : ""}`}
+                  className={`lp-work-row lp-work-${work.icon}`}
                 >
                   <span className="lp-row-number">{work.number}</span>
                   <div className="lp-work-title">
@@ -269,8 +304,8 @@ export default function Landing() {
                   </div>
                   <div className="lp-work-description">
                     <p>{work.body}</p>
-                    <span>{work.example}</span>
                   </div>
+                  <WorkIllustration kind={work.icon} />
                 </article>
               );
             })}
@@ -388,7 +423,7 @@ export default function Landing() {
             >
               {TRADE_TYPES.map(([symbol, name]) => (
                 <li key={name}>
-                  <span aria-hidden="true">{symbol}</span>
+                  <DataIcon emoji={symbol} size={20} />
                   {name}
                 </li>
               ))}
@@ -457,6 +492,7 @@ export default function Landing() {
 
         <section className="lp-closing">
           <div className="lp-container">
+            <JenteraMark size={64} className="closing-mark" />
             <span className="lp-closing-label">
               For the business you already run
             </span>

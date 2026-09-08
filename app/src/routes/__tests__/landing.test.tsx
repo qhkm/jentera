@@ -17,7 +17,7 @@ describe("Jentera landing experience", () => {
   it("offers account creation and a clearly labelled local-business illustration", () => {
     mount();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "AI staff that works 24/7for Malaysian businesses.",
+      "AI staff that works 24/7 for Malaysian businesses.",
     );
     for (const link of screen.getAllByRole("link", {
       name: /meet jentera|set up jentera/i,

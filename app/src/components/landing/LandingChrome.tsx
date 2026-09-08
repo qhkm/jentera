@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, List, X } from '@phosphor-icons/react';
 import { Link } from 'react-router';
 import { FOOTER, NAV_LINKS } from '@/lib/landing-content';
+import { JenteraMark } from '@/components/JenteraMark';
 
 interface MarketingLink {
   href: string;
@@ -74,8 +75,9 @@ export function LandingHeader({
           <Link
             to="/"
             aria-label="Jentera home"
-            className="font-pixel text-2xl tracking-tight text-brand"
+            className="jentera-wordmark font-pixel text-2xl tracking-tight text-brand"
           >
+            <JenteraMark size={32} />
             Jentera
           </Link>
           <a href="https://aisar.ai" className="marketing-parent">
@@ -173,7 +175,12 @@ export function LandingFooter({ tagline = FOOTER.tagline }: { tagline?: string }
       <div className="lp-container">
         <div className="marketing-footer-top">
           <div className="flex flex-col gap-3">
-            <Link to="/" aria-label="Jentera home" className="font-pixel text-2xl text-brand">
+            <Link
+              to="/"
+              aria-label="Jentera home"
+              className="jentera-wordmark font-pixel text-2xl text-brand"
+            >
+              <JenteraMark size={36} />
               Jentera
             </Link>
             <p className="text-sm text-text-secondary">{tagline}</p>

@@ -607,9 +607,9 @@ export default function Onboard() {
             {step === 1 ? (
               <section className="flex flex-col gap-3">
                 <Eyebrow>{t('ob.scan.eyebrow')}</Eyebrow>
-                <h2 className="font-pixel text-xl tracking-tight md:text-2xl">
+                <h1 className="font-pixel text-xl tracking-tight md:text-2xl">
                   {t('ob.scan.head')}
-                </h2>
+                </h1>
                 <div className="rounded-item border border-border bg-well p-4 font-mono text-[11px] leading-relaxed text-text-secondary md:p-5">
                   <span className="text-text-muted">$ </span>
                   jentera onboard --business{' '}
@@ -637,7 +637,7 @@ export default function Onboard() {
             {step === 2 ? (
               <section className="flex flex-col gap-3">
                 <Eyebrow>{t('ob.confirm.eyebrow')}</Eyebrow>
-                <h2 className="font-pixel text-xl tracking-tight md:text-2xl">{confirmText}</h2>
+                <h1 className="font-pixel text-xl tracking-tight md:text-2xl">{confirmText}</h1>
                 <p className="text-[13px] text-text-secondary md:text-sm">
                   {t('ob.confirm.body')}
                 </p>
@@ -799,7 +799,7 @@ export default function Onboard() {
             {step === 3 ? (
               <section className="flex flex-col gap-3">
                 <Eyebrow>{t('ob.ch.eyebrow')}</Eyebrow>
-                <h2 className="font-pixel text-xl tracking-tight md:text-2xl">{t('ob.ch.head')}</h2>
+                <h1 className="font-pixel text-xl tracking-tight md:text-2xl">{t('ob.ch.head')}</h1>
                 <p className="text-[13px] text-text-secondary md:text-sm">{t('ob.ch.body')}</p>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {CHANNELS.map(({ name, Glyph }) => (
@@ -818,9 +818,9 @@ export default function Onboard() {
             {step === 4 ? (
               <section className="flex flex-col gap-3">
                 <Eyebrow>{t('ob.pain.eyebrow')}</Eyebrow>
-                <h2 className="font-pixel text-xl tracking-tight md:text-2xl">
+                <h1 className="font-pixel text-xl tracking-tight md:text-2xl">
                   {t('ob.pain.head')}
-                </h2>
+                </h1>
                 <p className="text-[13px] text-text-secondary md:text-sm">{t('ob.pain.body')}</p>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {PAINS.map(({ key, Glyph }) => (
@@ -839,9 +839,9 @@ export default function Onboard() {
             {step === 5 ? (
               <section className="flex flex-col gap-3">
                 <Eyebrow>{t('ob.reco.eyebrow')}</Eyebrow>
-                <h2 className="font-pixel text-xl tracking-tight md:text-2xl">
+                <h1 className="font-pixel text-xl tracking-tight md:text-2xl">
                   {t('ob.reco.head')}
-                </h2>
+                </h1>
                 <p className="text-[13px] text-text-secondary md:text-sm">{t('ob.reco.body')}</p>
 
                 <Card className="gap-2">
@@ -976,7 +976,7 @@ function StepMethod({
     <section className="flex flex-col gap-4">
       <div className="flex flex-col gap-3">
         <Eyebrow>{t('ob.m.eyebrow')}</Eyebrow>
-        <h2 className="font-pixel text-xl tracking-tight md:text-2xl">{t('ob.m.head')}</h2>
+        <h1 className="font-pixel text-xl tracking-tight md:text-2xl">{t('ob.m.head')}</h1>
         <p className="text-[13px] text-text-secondary md:text-sm">{t('ob.m.body')}</p>
       </div>
 
