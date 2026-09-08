@@ -195,3 +195,80 @@ describe('minting pairing links', () => {
     expect((await support('/api/support/unknown', { key: 'support-secret' })).status).toBe(404);
   });
 });
+
+describe('announcements to owners', () => {
+  const text = 'Heads up: AI credits are capped at US$5 a month until launch.';
+
+  async function announce(payload: unknown, key = 'support-secret') {
+    const { request, url } = req('POST', '/api/support/announce', { body: payload });
+    request.headers.set('Authorization', `Bearer ${key}`);
+    const res = await handleSupport(request, env, url, cors);
+    if (!res) throw new Error('no route matched /api/support/announce');
+    return { status: res.status, body: JSON.parse(await res.text()) as Record<string, unknown> };
+  }
+
+  it('dry-runs a Telegram announcement: lists paired owner chats and sends nothing', async () => {
+    const bot = await seedBot(A);
+    await asTenant(A, (tx) => bindTelegramInternalChat(tx, bot.id, 42));
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const r = await announce({ businessIds: [A], channel: 'telegram', text, dryRun: true });
+    expect(r.status).toBe(200);
+    expect(r.body.results).toEqual([
+      { businessId: A, channel: 'telegram', target: 'chat:42', outcome: 'would_send' },
+    ]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('sends a Telegram announcement to each paired owner chat and skips unpaired businesses', async () => {
+    const bot = await seedBot(A);
+    await asTenant(A, (tx) => bindTelegramInternalChat(tx, bot.id, 42));
+    await seedBot(B, '@beta_bot');
+    const sent: { url: string; body: Record<string, unknown> }[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      sent.push({ url: String(input), body: JSON.parse(String(init?.body)) as Record<string, unknown> });
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 9 } }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+    const r = await announce({ businessIds: [A, B], channel: 'telegram', text });
+    expect(r.status).toBe(200);
+    expect(r.body.results).toEqual([
+      { businessId: A, channel: 'telegram', target: 'chat:42', outcome: 'sent' },
+      { businessId: B, channel: 'telegram', target: null, outcome: 'no_paired_chat' },
+    ]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].url).toContain('/bot123456789:SUPERSECRETTOKEN/sendMessage');
+    expect(sent[0].body).toMatchObject({ chat_id: 42, text });
+  });
+
+  it('emails every owner of the named businesses', async () => {
+    env = testEnv({ AISAR_SUPPORT_KEY: 'support-secret', RESEND_API_KEY: 're_test' });
+    const sent: { url: string; body: Record<string, unknown> }[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      sent.push({ url: String(input), body: JSON.parse(String(init?.body)) as Record<string, unknown> });
+      return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
+    }));
+    const r = await announce({
+      businessIds: [A], channel: 'email', subject: 'AI credits during pre-launch', text,
+    });
+    expect(r.status).toBe(200);
+    expect(r.body.results).toEqual([
+      { businessId: A, channel: 'email', target: 'email:alice@example.com', outcome: 'sent' },
+    ]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].url).toBe('https://api.resend.com/emails');
+    expect(sent[0].body).toMatchObject({
+      to: ['alice@example.com'],
+      subject: 'AI credits during pre-launch',
+    });
+    expect(String(sent[0].body.text)).toContain(text);
+  });
+
+  it('refuses malformed announcements before touching any tenant', async () => {
+    expect((await announce({ businessIds: ['nope'], channel: 'telegram', text })).status).toBe(400);
+    expect((await announce({ businessIds: [A], channel: 'sms', text })).status).toBe(400);
+    expect((await announce({ businessIds: [A], channel: 'telegram', text: '' })).status).toBe(400);
+    expect((await announce({ businessIds: [A], channel: 'email', text })).status).toBe(400);
+  });
+});

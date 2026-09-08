@@ -85,3 +85,30 @@ export async function sendMagicLink(
     console.error(`[email] resend ${res.status}: ${await res.text()}`);
   }
 }
+
+/** A plain-text notice to one address, same sender as the magic link.
+    Returns false (and logs) when the key is unset or Resend refuses. */
+export async function sendNotice(
+  env: Env,
+  email: string,
+  subject: string,
+  text: string,
+): Promise<boolean> {
+  if (!env.RESEND_API_KEY) {
+    console.log(`[email] no RESEND_API_KEY — notice for ${email}: ${subject}`);
+    return false;
+  }
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ from: env.MAGIC_FROM || FROM, to: [email], subject, text }),
+  });
+  if (!res.ok) {
+    console.error(`[email] resend ${res.status}: ${await res.text()}`);
+    return false;
+  }
+  return true;
+}

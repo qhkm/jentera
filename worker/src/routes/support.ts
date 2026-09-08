@@ -19,7 +19,10 @@ import {
   findConnectionById,
   listConnections,
   telegramInternalChat,
+  useCredential,
 } from '../connections';
+import { sendHermesMessage } from '../connectors/telegram';
+import { sendNotice } from '../email';
 import { telegramPairingCode, telegramPairingUrl } from '../telegram-pairing';
 import type { ConnectionRow } from '../connections';
 
@@ -64,6 +67,13 @@ export async function handleSupport(
   const presented = (request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
   if (!presented || !keyEquals(expected, presented)) {
     return json({ ok: false, err: 'unauthorized' }, { status: 401 }, cors);
+  }
+
+  if (url.pathname === '/api/support/announce') {
+    if (request.method !== 'POST') {
+      return json({ ok: false, err: 'method not allowed' }, { status: 405 }, cors);
+    }
+    return announce(request, env, cors);
   }
 
   if (url.pathname !== '/api/support/telegram-pairing') {
@@ -126,4 +136,113 @@ async function view(
     deepLink: paired ? null : await telegramPairingUrl(env, row.id, row.displayName),
     startCommand: code ? `/start ${code}` : null,
   };
+}
+
+/* ---- one-off notices to owners ------------------------------------- */
+
+type AnnounceOutcome = 'sent' | 'would_send' | 'no_paired_chat' | 'no_owner_email' | 'error';
+
+interface AnnounceResult {
+  businessId: string;
+  channel: 'telegram' | 'email';
+  target: string | null;
+  outcome: AnnounceOutcome;
+}
+
+/**
+ * Send one message to the owners of the named businesses, over their paired
+ * Telegram owner chat or their account email. Businesses are named
+ * explicitly and each is read inside its own tenant scope: support cannot
+ * enumerate tenants from here, and a wrong id yields "no target", never a
+ * cross-tenant send. `dryRun` lists targets without sending.
+ */
+async function announce(
+  request: Request,
+  env: Env,
+  cors: Record<string, string>,
+): Promise<Response> {
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return json({ ok: false, err: 'invalid JSON' }, { status: 400 }, cors);
+  }
+  const businessIds = Array.isArray(body.businessIds) ? body.businessIds : [];
+  if (businessIds.length === 0 || businessIds.length > 200 ||
+      !businessIds.every((id) => typeof id === 'string' && UUID.test(id))) {
+    return json({ ok: false, err: 'businessIds must be 1-200 UUIDs' }, { status: 400 }, cors);
+  }
+  const channel = body.channel === 'telegram' || body.channel === 'email' ? body.channel : null;
+  if (!channel) return json({ ok: false, err: 'channel must be telegram or email' }, { status: 400 }, cors);
+  const text = typeof body.text === 'string' ? body.text.trim() : '';
+  if (!text || text.length > 4_000) {
+    return json({ ok: false, err: 'text must be 1-4000 characters' }, { status: 400 }, cors);
+  }
+  const subject = typeof body.subject === 'string' ? body.subject.trim() : '';
+  if (channel === 'email' && (!subject || subject.length > 200)) {
+    return json({ ok: false, err: 'subject is required for email' }, { status: 400 }, cors);
+  }
+  const dryRun = body.dryRun === true;
+
+  const results: AnnounceResult[] = [];
+  for (const businessId of businessIds as string[]) {
+    if (channel === 'telegram') {
+      const chats = await withTenant(env, businessId, async (tx) => {
+        const rows = (await listConnections(tx))
+          .filter((row) => row.connector === 'telegram' && row.status === 'connected');
+        const found: { connectionId: string; chatId: number }[] = [];
+        for (const row of rows) {
+          const chatId = await telegramInternalChat(tx, row.id);
+          if (chatId !== null) found.push({ connectionId: row.id, chatId });
+        }
+        return found;
+      });
+      if (chats.length === 0) {
+        results.push({ businessId, channel, target: null, outcome: 'no_paired_chat' });
+        continue;
+      }
+      for (const chat of chats) {
+        const target = `chat:${chat.chatId}`;
+        if (dryRun) {
+          results.push({ businessId, channel, target, outcome: 'would_send' });
+          continue;
+        }
+        try {
+          const token = await withTenant(env, businessId, (tx) =>
+            useCredential(env, tx, chat.connectionId));
+          await sendHermesMessage(token, chat.chatId, text);
+          results.push({ businessId, channel, target, outcome: 'sent' });
+        } catch (error) {
+          console.error(`[support] announce to ${businessId} ${target} failed: ${String(error)}`);
+          results.push({ businessId, channel, target, outcome: 'error' });
+        }
+      }
+      continue;
+    }
+
+    const emails = await withTenant(env, businessId, async (tx) => {
+      const rows = await tx<{ email: string }[]>`
+        select u.email from membership m join app_user u on u.id = m.user_id
+         where m.business_id = ${businessId} and m.role = 'owner'
+         order by u.email`;
+      return rows.map((row) => row.email);
+    });
+    if (emails.length === 0) {
+      results.push({ businessId, channel, target: null, outcome: 'no_owner_email' });
+      continue;
+    }
+    for (const email of emails) {
+      const target = `email:${email}`;
+      if (dryRun) {
+        results.push({ businessId, channel, target, outcome: 'would_send' });
+        continue;
+      }
+      const sent = await sendNotice(env, email, subject, text).catch((error) => {
+        console.error(`[support] announce to ${businessId} ${target} failed: ${String(error)}`);
+        return false;
+      });
+      results.push({ businessId, channel, target, outcome: sent ? 'sent' : 'error' });
+    }
+  }
+  return json({ ok: true, dryRun, results }, {}, cors);
 }
