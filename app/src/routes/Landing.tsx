@@ -1,28 +1,23 @@
-/* ============================================================
-   Landing page — ported from index.html.
-
-   Section order and copy match the source. The repeated
-   "eyebrow / headline / lede / bordered panel grid" shape is one
-   component here rather than five near-identical markup blocks.
-   ============================================================ */
-
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
+import {
+  ArrowDown,
+  ArrowRight,
+  ArrowUpRight,
+  Check,
+  ChatCircle,
+  FileText,
+  LockSimple,
+  MagnifyingGlass,
+  Plus,
+  ShieldCheck,
+  Storefront,
+} from '@phosphor-icons/react';
 import { LandingFooter, LandingHeader } from '@/components/landing/LandingChrome';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
-import {
-  BUILT_FOR,
-  CLOSING_CTA,
-  DEMO_STEPS,
-  HERO,
-  HOW_IT_WORKS,
-  ONBOARDING,
-  START_BUSINESS,
-  WHAT_IT_RUNS,
-  type Section,
-} from '@/lib/landing-content';
+import { BUSINESS_EXAMPLES, EVERYDAY_WORK, FAQS, HERO, SETUP_STEPS } from '@/lib/landing-content';
 
-function Eyebrow({ children }: { children: string }) {
+function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
     <span className="lp-eyebrow">
       <span className="lp-dot" />
@@ -31,272 +26,376 @@ function Eyebrow({ children }: { children: string }) {
   );
 }
 
-/** eyebrow + headline + lede + a bordered grid of panels */
-function PanelSection({ section }: { section: Section }) {
-  return (
-    <section id={section.id} className="flex w-full flex-col border-b border-rail">
-      <div className="mx-auto flex w-full max-w-[1250px] flex-col gap-8 px-6 pt-14 md:gap-10 md:px-12 md:pt-16">
-        <div className="flex flex-col items-center gap-3 text-center md:gap-4">
-          <Eyebrow>{section.eyebrow}</Eyebrow>
-          <h2 className="heading-shine text-balance text-center font-pixel text-2xl font-normal leading-[1.08] tracking-tight md:text-4xl lg:text-5xl lg:leading-[1.05]">
-            {section.title}
-          </h2>
-          <p className="max-w-lg text-[13px] leading-relaxed text-text-secondary md:text-sm">
-            {section.lede}
-          </p>
-        </div>
-      </div>
+function BusinessPreview() {
+  const [selected, setSelected] = useState(0);
+  const [showDraft, setShowDraft] = useState(false);
+  const tabs = useRef<Array<HTMLButtonElement | null>>([]);
+  const draftHeading = useRef<HTMLHeadingElement>(null);
+  const draftButton = useRef<HTMLButtonElement>(null);
+  const restoreDraftFocus = useRef(false);
+  const business = BUSINESS_EXAMPLES[selected];
 
-      <div className="mx-auto w-full max-w-[1250px] overflow-hidden">
-        <div className={`grid grid-cols-1 border-t border-rail ${section.columns}`}>
-          {section.panels.map((p) => (
-            <article
-              key={p.title}
-              className="flex h-full flex-col gap-5 border-b border-rail px-6 py-8 transition-colors duration-300 hover:bg-[rgb(var(--border-ink)/0.04)] md:px-8 md:py-9"
-            >
-              <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
-                {p.eyebrow}
-              </span>
-              <h3 className="font-pixel text-lg tracking-tight md:text-xl">{p.title}</h3>
-              <p className="max-w-md text-[13px] leading-relaxed text-text-secondary md:text-sm">
-                {p.body}
-              </p>
-              {p.tags?.length ? (
-                <div className="flex flex-wrap gap-2">
-                  {p.tags.map((tag) => (
-                    <span key={tag} className="tag">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-            </article>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
+  useEffect(() => {
+    if (showDraft) draftHeading.current?.focus({ preventScroll: true });
+    else if (restoreDraftFocus.current) {
+      draftButton.current?.focus({ preventScroll: true });
+      restoreDraftFocus.current = false;
+    }
+  }, [showDraft]);
 
-function OnboardingDemo() {
-  const [state, setState] = useState<'idle' | 'working' | 'done'>('idle');
-
-  function activate() {
-    setState('working');
-    window.setTimeout(() => setState('done'), 900);
+  function choose(index: number) {
+    setSelected(index);
+    setShowDraft(false);
   }
 
   return (
-    <section id={ONBOARDING.id} className="flex w-full flex-col border-b border-rail">
-      <div className="mx-auto flex w-full max-w-[1250px] flex-col gap-8 px-6 pt-14 md:gap-10 md:px-12 md:pt-16">
-        <div className="flex flex-col items-center gap-3 text-center md:gap-4">
-          <Eyebrow>{ONBOARDING.eyebrow}</Eyebrow>
-          <h2 className="heading-shine text-center font-pixel text-2xl font-normal leading-[1.08] tracking-tight md:text-4xl lg:text-5xl lg:leading-[1.05]">
-            {ONBOARDING.title}
-          </h2>
-          <p className="max-w-lg text-[13px] leading-relaxed text-text-secondary md:text-sm">
-            {ONBOARDING.lede}
-          </p>
-        </div>
+    <div id="example" className="business-preview">
+      <div className="preview-caption">
+        <span className="lp-status-dot" /> A little less on your plate.
       </div>
-
-      <div className="mx-auto w-full max-w-[1250px] overflow-hidden">
-        <div className="grid grid-cols-1 border-t border-rail lg:grid-cols-2">
-          {/* ---- Terminal ---- */}
-          <div className="flex flex-col gap-4 border-b border-rail px-6 py-10 md:px-9 lg:border-b-0 lg:border-r">
-            <div className="rounded-card border border-[rgb(var(--border-ink)/0.12)] bg-[rgb(var(--border-ink)/0.02)] backdrop-blur-md">
-              <div className="flex items-center justify-between border-b border-rail px-4 py-3 md:px-5">
-                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
-                  onboarding
-                </span>
-                <span className="tag">~4 steps</span>
+      <div className="preview-window">
+        <div className="preview-topbar">
+          <span className="font-pixel text-brand">Jentera</span>
+          <span>
+            <LockSimple size={12} aria-hidden="true" /> Private workspace
+          </span>
+        </div>
+        <div className="preview-business">
+          <span className="preview-avatar">
+            <Storefront size={23} weight="duotone" aria-hidden="true" />
+          </span>
+          <div>
+            <h2>{business.name}</h2>
+            <p>{business.location}</p>
+          </div>
+          <span className="tag">Example</span>
+        </div>
+        <div
+          role="tabpanel"
+          id="business-example-panel"
+          aria-labelledby={`tab-${business.id}`}
+          className="preview-content"
+          tabIndex={0}
+        >
+          {showDraft ? (
+            <div className="preview-draft" key={`${business.id}-draft`}>
+              <span className="preview-kicker">Prepared for your review</span>
+              <h3 ref={draftHeading} tabIndex={-1}>
+                {business.draftTitle}
+              </h3>
+              <blockquote>{business.draft}</blockquote>
+              <p className="preview-context">{business.context}</p>
+              <button
+                type="button"
+                className="preview-back"
+                onClick={() => {
+                  restoreDraftFocus.current = true;
+                  setShowDraft(false);
+                }}
+              >
+                ← Back to the example
+              </button>
+            </div>
+          ) : (
+            <div key={business.id}>
+              <div className="preview-request">
+                <span>You</span>
+                <p>{business.request}</p>
               </div>
-
-              <div className="as-chat flex flex-col gap-3 p-4 font-mono text-[11px] leading-relaxed text-text-secondary md:p-5 md:text-[12px]">
-                {DEMO_STEPS.map((s) => (
-                  <div key={s.text} className="kv-chat-step" style={{ animationDelay: `${s.delay}s` }}>
-                    <span className={s.who === 'you' ? 'text-brand' : 'text-text-muted'}>
-                      {s.who}&gt;
-                    </span>{' '}
-                    <span className={s.typing ? 'kv-chat-typing' : undefined}>{s.text}</span>
-                  </div>
-                ))}
-
-                <div className="kv-chat-step" style={{ animationDelay: '5.4s' }}>
-                  <div className="mt-1 rounded-item border border-[rgb(var(--border-ink)/0.12)] bg-[rgb(var(--border-ink)/0.04)] p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-pixel text-xs text-text">{ONBOARDING.cardTitle}</span>
-                      <span className="tag tag-green">ready</span>
-                    </div>
-                    <div className="mt-2 text-text-secondary">{ONBOARDING.cardHandles}</div>
-                    <div className="mt-2 text-text-muted">{ONBOARDING.cardNeeds}</div>
-                    <button
-                      type="button"
-                      onClick={activate}
-                      disabled={state !== 'idle'}
-                      className={`as-reco-btn mt-3 w-full rounded-item px-3 py-2 text-[10px] uppercase tracking-widest ${
-                        state === 'done' ? 'opacity-60' : ''
-                      }`}
-                    >
-                      {state === 'idle'
-                        ? ONBOARDING.activate
-                        : state === 'working'
-                          ? ONBOARDING.activating
-                          : ONBOARDING.activated}
-                    </button>
-                  </div>
-                </div>
-
-                {state === 'done' ? (
-                  <div className="kv-chat-step" style={{ animationDelay: '.3s' }}>
-                    <span className="text-text-muted">jentera&gt;</span>{' '}
-                    <span className="text-brand">Your Business Assistant is ready.</span>{' '}
-                    It&rsquo;s private to your business. Ask it about operations, research, or
-                    anything you need to get done.
-                  </div>
-                ) : null}
+              <div className="preview-answer">
+                <span className="preview-kicker">Jentera’s plan</span>
+                <h3>
+                  Let’s take a few things
+                  <br />
+                  off your list.
+                </h3>
+                <ul>
+                  {business.tasks.map((task, index) => (
+                    <li key={task}>
+                      <span className="preview-task-number">0{index + 1}</span>
+                      <span>{task}</span>
+                      <Check size={14} aria-label="Example task" />
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  ref={draftButton}
+                  className="preview-open"
+                  onClick={() => setShowDraft(true)}
+                >
+                  See an example draft <ArrowUpRight size={16} aria-hidden="true" />
+                </button>
               </div>
             </div>
-          </div>
-
-          {/* ---- Explanation ---- */}
-          <div className="flex flex-col justify-center gap-5 px-6 py-10 md:px-9">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
-              {ONBOARDING.asideEyebrow}
-            </span>
-            <h3 className="font-pixel text-2xl leading-[1.08] tracking-tight md:text-3xl">
-              {ONBOARDING.asideTitle}
-            </h3>
-            <ul className="flex flex-col gap-3 text-[13px] leading-relaxed text-text-secondary md:text-sm">
-              {ONBOARDING.asidePoints.map((point) => (
-                <li key={point}>
-                  <span className="text-brand">✓</span> {point}
-                </li>
-              ))}
-            </ul>
-            <p className="text-[13px] leading-relaxed text-text-secondary md:text-sm">
-              {ONBOARDING.asideBody}
-            </p>
-          </div>
+          )}
+        </div>
+        <div className="preview-bottom">
+          <ShieldCheck size={13} aria-hidden="true" /> An illustration. Your work uses the details
+          you confirm.
         </div>
       </div>
-    </section>
+      <div className="preview-tabs" role="tablist" aria-label="Choose a business example">
+        {BUSINESS_EXAMPLES.map((example, index) => (
+          <button
+            type="button"
+            role="tab"
+            key={example.id}
+            id={`tab-${example.id}`}
+            ref={(node) => {
+              tabs.current[index] = node;
+            }}
+            aria-selected={selected === index}
+            aria-controls="business-example-panel"
+            tabIndex={selected === index ? 0 : -1}
+            onClick={() => choose(index)}
+            onKeyDown={(event) => {
+              let next = index;
+              if (event.key === 'ArrowRight') next = (index + 1) % BUSINESS_EXAMPLES.length;
+              else if (event.key === 'ArrowLeft')
+                next = (index + BUSINESS_EXAMPLES.length - 1) % BUSINESS_EXAMPLES.length;
+              else if (event.key === 'Home') next = 0;
+              else if (event.key === 'End') next = BUSINESS_EXAMPLES.length - 1;
+              else return;
+              event.preventDefault();
+              choose(next);
+              tabs.current[next]?.focus();
+            }}
+          >
+            {example.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
+
+const WORK_ICONS = { chat: ChatCircle, document: FileText, search: MagnifyingGlass };
 
 export default function Landing() {
   useScrollReveal();
 
   return (
-    <div className="min-h-dvh bg-bg text-text">
+    <div className="marketing-page min-h-dvh bg-bg text-text">
       <LandingHeader />
-
-      <main id="main-content" className="w-full max-w-full overflow-x-clip">
-        {/* ---- Hero ---- */}
-        {/* No min-height. The upstream markup carries min-h-[calc(100svh-4rem)]
-            but that class was never generated in its prebuilt CSS, so the live
-            hero has always been content-height — 518px on mobile, 535px on
-            desktop. Reproducing the class faithfully made the hero 780px and
-            pushed everything into the middle of the screen. */}
-        <section className="relative z-[1] flex w-full flex-col overflow-hidden border-b border-rail">
-          <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
-            <div className="kv-particles" />
-            <div className="kv-blob kv-blob-1" />
-            <div className="kv-blob kv-blob-2" />
-            <div className="kv-blob kv-blob-3" />
-            <div className="absolute inset-x-0 top-0 h-[16%] bg-gradient-to-b from-bg via-bg/35 to-transparent" />
-            <div className="absolute inset-x-0 bottom-0 h-[20%] bg-gradient-to-t from-bg via-bg/40 to-transparent" />
-            <div className="absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-bg/85 to-transparent md:w-10" />
-            <div className="absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-bg/85 to-transparent md:w-10" />
-          </div>
-
-          <div className="relative z-30 mx-auto flex w-full max-w-[1250px] flex-1 flex-col justify-center gap-4 px-6 py-8 md:gap-8 md:px-12 md:py-14">
-            <div className="mx-auto flex w-full max-w-5xl flex-col items-center gap-4 text-center md:gap-5">
-              {/* The mobile size is fluid rather than fixed because the line
-                  break after the comma is hard-coded, which caps how large the
-                  type can go: "without the busywork." is 9.84px wide per 1px of
-                  font-size, so it fills the content box (100vw - 3rem) at
-                  roughly 9.9vw. The calc lands that line at ~97% of the
-                  available width at every phone size — 26.9px at 320, 33.7px at
-                  390, 37.6px at 430 — instead of one fixed value that is too
-                  small on a Pro Max and overflows on an SE. */}
-              <h1 className="max-w-5xl font-pixel text-[clamp(1.65rem,calc(9.8vw-4.5px),2.35rem)] leading-[1.1] tracking-tight sm:text-4xl md:text-[3.5rem] lg:text-[4.5rem] xl:text-[5rem] lg:leading-[1.05]">
-                <span className="heading-shine-bright">
-                  {HERO.headline[0]}
-                  <br />
-                  {HERO.headline[1]}
-                </span>
+      <main id="main-content">
+        <section className="lp-hero">
+          <div className="lp-hero-grid" aria-hidden="true" />
+          <div className="lp-container lp-hero-layout">
+            <div className="lp-hero-copy">
+              <Eyebrow>{HERO.eyebrow}</Eyebrow>
+              <h1>
+                {HERO.headline[0]}
+                <span>{HERO.headline[1]}</span>
               </h1>
-              <p className="heading-shine-dim max-w-2xl text-base leading-snug sm:text-lg md:text-xl md:leading-normal">
-                {HERO.promise}
-              </p>
-              <p className="max-w-xl text-[13px] leading-relaxed text-text-secondary md:text-sm">
-                {HERO.detail}
-              </p>
-
-              <div className="flex w-full max-w-full items-center justify-center gap-2 overflow-x-auto font-mono text-[11px] uppercase tracking-[0.18em] text-text-muted sm:max-w-none">
-                <span className="text-brand">✓</span>
-                <span className="whitespace-nowrap">{HERO.ticker}</span>
-                <span className="kv-cursor" aria-hidden="true" />
-              </div>
-
-              <div className="flex w-full max-w-md flex-col justify-center gap-4 sm:max-w-none sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
-                <Link
-                  to="/signin?mode=signup"
-                  className="btn btn-primary w-full justify-center px-6 py-4 text-sm sm:w-auto sm:py-3"
-                >
+              <p className="lp-hero-description">{HERO.detail}</p>
+              <div className="lp-actions">
+                <Link to="/signin?mode=signup" className="btn btn-primary">
                   {HERO.ctaPrimary}
+                  <ArrowUpRight size={16} aria-hidden="true" />
                 </Link>
-                <a
-                  href="#onboarding"
-                  className="btn btn-outline w-full justify-center px-6 py-4 text-sm sm:w-auto sm:py-3"
-                >
+                <a href="#example" className="lp-text-link">
                   {HERO.ctaSecondary}
+                  <ArrowDown size={15} aria-hidden="true" />
                 </a>
               </div>
+              <p className="lp-hero-note">
+                <Check size={14} aria-hidden="true" /> Start with a description. No technical setup.
+              </p>
+            </div>
+            <BusinessPreview />
+          </div>
+          <div className="lp-container lp-region-line">
+            <span>Built in Malaysia. Made for Southeast Asia.</span>
+            <span>Kedai · Klinik · Kopitiam · Catering · You</span>
+          </div>
+        </section>
 
-              <div className="mt-2 flex flex-row items-start gap-6 sm:gap-8">
-                {HERO.stats.map((s) => (
-                  <div key={s.label} className="flex flex-col items-center gap-1 sm:items-start">
-                    <span className="font-pixel text-3xl text-text md:text-4xl">{s.value}</span>
-                    <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
-                      {s.label}
-                    </span>
+        <section id="work" className="lp-section lp-container">
+          <div className="lp-section-heading">
+            <Eyebrow>For the business you already run</Eyebrow>
+            <h2>
+              The work doesn’t stop
+              <br />
+              when the shop closes.
+            </h2>
+            <p>
+              You already have customers, a team, and a way of doing things. Jentera helps with the
+              everyday work that keeps landing on your desk.
+            </p>
+          </div>
+          <div className="lp-work-list">
+            {EVERYDAY_WORK.map((work) => {
+              const Glyph = WORK_ICONS[work.icon];
+              return (
+                <article key={work.number} className="lp-work-row">
+                  <span className="lp-row-number">{work.number}</span>
+                  <div className="lp-work-title">
+                    <Glyph size={26} weight="duotone" aria-hidden="true" />
+                    <h3>{work.title}</h3>
                   </div>
-                ))}
+                  <div className="lp-work-description">
+                    <p>{work.body}</p>
+                    <span>{work.example}</span>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+
+        <section id="how" className="lp-how-section">
+          <div className="lp-container lp-section">
+            <div className="lp-section-heading lp-heading-split">
+              <div>
+                <Eyebrow>How it works</Eyebrow>
+                <h2>
+                  A description.
+                  <br />A conversation.
+                  <br />
+                  <span className="text-brand">A job off your list.</span>
+                </h2>
               </div>
-            </div>
-          </div>
-        </section>
-
-        <PanelSection section={BUILT_FOR} />
-        <PanelSection section={HOW_IT_WORKS} />
-        <PanelSection section={WHAT_IT_RUNS} />
-        <OnboardingDemo />
-        <PanelSection section={START_BUSINESS} />
-
-        {/* ---- Closing CTA ---- */}
-        <section className="flex w-full flex-col border-b border-rail">
-          <div className="lp-cta-band mx-auto mt-14 w-full max-w-[1250px] overflow-hidden px-6 py-16 md:px-12 md:py-20">
-            <div className="relative z-10 mx-auto flex max-w-3xl flex-col items-center gap-6 text-center">
-              <h2 className="font-pixel text-2xl font-normal leading-[1.08] tracking-tight text-black md:text-4xl lg:text-5xl">
-                {CLOSING_CTA.headline[0]}
+              <p>
+                You know your business. Start there.
                 <br />
-                {CLOSING_CTA.headline[1]}
+                Jentera handles the setup behind the scenes.
+              </p>
+            </div>
+            <div className="lp-steps">
+              {SETUP_STEPS.map((step) => (
+                <article key={step.number}>
+                  <span className="lp-step-number">
+                    {step.number}
+                    <ArrowRight size={18} aria-hidden="true" />
+                  </span>
+                  <h3>{step.title}</h3>
+                  <p>{step.body}</p>
+                </article>
+              ))}
+            </div>
+            <Link to="/onboard" className="lp-text-link lp-try-link">
+              Try the setup without an account <ArrowUpRight size={16} aria-hidden="true" />
+            </Link>
+          </div>
+        </section>
+
+        <section className="lp-container lp-section lp-local-section">
+          <div className="lp-section-heading">
+            <Eyebrow>Built around life here</Eyebrow>
+            <h2>
+              Business here
+              <br />
+              has its own rhythm.
+            </h2>
+            <p>
+              The late-night enquiry. The family helping behind the counter. The order details
+              scattered across chats. We’re building for the way Southeast Asia actually works.
+            </p>
+            <Link to="/connect" className="lp-text-link">
+              See what connects today <ArrowUpRight size={16} aria-hidden="true" />
+            </Link>
+          </div>
+          <div className="lp-local-details">
+            <article>
+              <span className="lp-local-index">01 / THE WAY YOU TALK</span>
+              <h3>Start with a conversation.</h3>
+              <p>
+                Work with Jentera on the web or in your private Telegram chat. WhatsApp is part of
+                our direction, because that’s where so much business happens.
+              </p>
+              <span className="lp-availability">
+                <span className="lp-status-dot" /> Web + private Telegram available
+              </span>
+            </article>
+            <article>
+              <span className="lp-local-index">02 / THE WAY YOU WORK</span>
+              <h3>Your business comes first.</h3>
+              <p>
+                Your menu, your services, your opening hours. Jentera works from the details you
+                confirm, in a workspace private to your business.
+              </p>
+            </article>
+            <article>
+              <span className="lp-local-index">03 / THE WAY WE BUILD</span>
+              <h3>Made to be within reach.</h3>
+              <p>
+                A five-person business deserves useful AI too. We build the technology behind
+                Jentera to make everyday help practical for smaller teams.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section id="aisar" className="lp-about-section">
+          <div className="lp-container lp-about-layout">
+            <div>
+              <Eyebrow>Jentera, by AISAR</Eyebrow>
+              <h2>
+                AI agents that run
+                <br />
+                Southeast Asian businesses.
               </h2>
-              <p className="max-w-xl text-sm leading-relaxed text-black/75">{CLOSING_CTA.body}</p>
-              <Link
-                to="/signin?mode=signup"
-                className="btn w-full justify-center border-black bg-black px-6 py-3 text-sm text-white hover:opacity-90 sm:w-auto"
+            </div>
+            <div>
+              <p>That’s what AISAR builds. Jentera is how you put it to work in yours.</p>
+              <p>
+                One product to learn your business, help with the daily work, and give you room to
+                focus on what comes next.
+              </p>
+              <a
+                href="https://aisar.ai"
+                className="lp-text-link"
+                target="_blank"
+                rel="noopener noreferrer"
               >
-                {CLOSING_CTA.cta}
-              </Link>
+                Meet AISAR <ArrowUpRight size={16} aria-hidden="true" />
+              </a>
             </div>
           </div>
         </section>
 
-        <LandingFooter />
+        <section id="questions" className="lp-container lp-section lp-faq-section">
+          <div className="lp-section-heading">
+            <Eyebrow>A few useful answers</Eyebrow>
+            <h2>
+              Before you
+              <br />
+              hand over a job.
+            </h2>
+            <a href="mailto:hello@kitakodventures.com" className="lp-text-link">
+              Talk to a person <ArrowUpRight size={16} aria-hidden="true" />
+            </a>
+          </div>
+          <div className="lp-faq-list">
+            {FAQS.map((faq) => (
+              <details key={faq.question}>
+                <summary>
+                  {faq.question}
+                  <Plus size={17} aria-hidden="true" />
+                </summary>
+                <p>{faq.answer}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        <section className="lp-closing">
+          <div className="lp-container">
+            <span className="lp-closing-label">For the next chapter of your business</span>
+            <h2>
+              You’ve got a business to run.
+              <br />
+              <span>Let’s get to work.</span>
+            </h2>
+            <Link to="/signin?mode=signup" className="btn btn-primary">
+              Put Jentera to work <ArrowUpRight size={16} aria-hidden="true" />
+            </Link>
+            <p>Tell us about the business you already have.</p>
+          </div>
+        </section>
       </main>
+      <LandingFooter />
     </div>
   );
 }

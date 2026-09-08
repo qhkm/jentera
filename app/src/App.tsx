@@ -7,12 +7,27 @@ import { DetailLevelProvider } from '@/hooks/useDetailLevel';
 import { ActivityProvider } from '@/hooks/useActivity';
 import { isOnboarded, isSetupDone } from '@/lib/business';
 import Landing from '@/routes/Landing';
-import Connect from '@/routes/Connect';
-import Onboard from '@/routes/Onboard';
 import SignIn from '@/routes/SignIn';
-import Setup from '@/routes/Setup';
-import Dashboard from '@/routes/Dashboard';
-import type { ReactElement } from 'react';
+import { lazy, Suspense, type ReactElement } from 'react';
+
+// Visitors should not download the whole dashboard before reading the site.
+// Keep sign-in eager: it is the primary CTA and the release verifier checks
+// the entry bundle for its auth endpoint.
+const Connect = lazy(() => import('@/routes/Connect'));
+const Onboard = lazy(() => import('@/routes/Onboard'));
+const Setup = lazy(() => import('@/routes/Setup'));
+const Dashboard = lazy(() => import('@/routes/Dashboard'));
+
+function RouteLoading() {
+  return (
+    <main className="grid min-h-dvh place-content-center gap-3 bg-bg p-6 text-center text-text">
+      <span className="font-pixel text-2xl text-brand">Jentera</span>
+      <p role="status" className="text-sm text-text-secondary">
+        Loading your page…
+      </p>
+    </main>
+  );
+}
 
 /* ============================================================
    Flow gate. The static site did this with a redirect inside an
@@ -88,38 +103,40 @@ function AppShell() {
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        {/* Public, and free of any provider dependency. */}
-        <Route path="/" element={<Landing />} />
-        <Route path="/connect" element={<Connect />} />
-        <Route path="/signin" element={<SignIn />} />
+      <Suspense fallback={<RouteLoading />}>
+        <Routes>
+          {/* Public, and free of any provider dependency. */}
+          <Route path="/" element={<Landing />} />
+          <Route path="/connect" element={<Connect />} />
+          <Route path="/signin" element={<SignIn />} />
 
-        <Route element={<AppShell />}>
-          {/* The no-signup demo. Anonymous on purpose: migrate.ts carries
+          <Route element={<AppShell />}>
+            {/* The no-signup demo. Anonymous on purpose: migrate.ts carries
               whatever is built here onto the server at first sign-in. */}
-          <Route path="/onboard" element={<OnboardingStage />} />
-          <Route path="/setup" element={<SetupStage />} />
-          <Route
-            path="/app"
-            element={
-              /* Auth first, then onboarding: a signed-out visitor belongs
+            <Route path="/onboard" element={<OnboardingStage />} />
+            <Route path="/setup" element={<SetupStage />} />
+            <Route
+              path="/app"
+              element={
+                /* Auth first, then onboarding: a signed-out visitor belongs
                  at /signin, not part-way through the demo. */
-              <RequireAuth>
-                <RequireOnboarded>
-                  {/* One activity fetch for the whole dashboard. The
+                <RequireAuth>
+                  <RequireOnboarded>
+                    {/* One activity fetch for the whole dashboard. The
                       sidebar, Home and Activity all read it, and all
                       three settle at the same moment. */}
-                  <ActivityProvider>
-                    <Dashboard />
-                  </ActivityProvider>
-                </RequireOnboarded>
-              </RequireAuth>
-            }
-          />
-        </Route>
+                    <ActivityProvider>
+                      <Dashboard />
+                    </ActivityProvider>
+                  </RequireOnboarded>
+                </RequireAuth>
+              }
+            />
+          </Route>
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }
