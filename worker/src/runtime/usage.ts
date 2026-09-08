@@ -281,6 +281,9 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   'deepseek-v4-flash': { input: 6, output: 12 },
   // MiniMax M3 on the customer-pinned router: $0.30/M in, $1.20/M out
   'MiniMax-M3': { input: 30, output: 120 },
+  // MiniMax M2.7 highspeed on the same router: $0.60/M in, $2.40/M out
+  // (router.fmcv.my /model/info, read 2026-09-08)
+  'MiniMax-M2.7-highspeed': { input: 60, output: 240 },
 };
 
 export function modelCostMicrousd(model: string, inputTokens: number, outputTokens: number): number {
