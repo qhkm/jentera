@@ -104,6 +104,21 @@ describe('a business that has handled something', () => {
     expect(await screen.findByText(/1 handled automatically/i)).toBeInTheDocument();
     expect(screen.queryByText(NO_ACTIVITY)).toBeNull();
   });
+
+  it('keeps the summary and next action in a stack independent of recent work', async () => {
+    const { container } = await mount(true, ONE_HANDLED);
+    await screen.findByText(/1 handled automatically/i);
+    const overview = container.querySelector('.home-overview')!;
+    expect(overview.querySelector('.home-command')).toBeInTheDocument();
+    expect(overview.querySelector('.home-next')).toBeInTheDocument();
+    expect(overview.querySelector('.home-recent')).toBeNull();
+    const home = container.querySelector('.home-view')!;
+    const sections = [...home.children];
+    expect(sections.indexOf(container.querySelector('.home-metrics')!)).toBeLessThan(
+      sections.indexOf(overview),
+    );
+    expect(overview.nextElementSibling).toHaveClass('home-recent');
+  });
 });
 
 describe('a business that has genuinely done nothing', () => {

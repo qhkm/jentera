@@ -17,6 +17,7 @@
 @import "./account-menu.css";
 @import "./workspace.css";
 @import "./ask.css";
+@import "./dashboard-type.css";
 
 /* ============================================================
    Base. Everything resolves through tokens — no literal colors

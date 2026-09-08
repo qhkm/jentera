@@ -253,159 +253,6 @@ export default function HomeView({
         </span>
       </button>
 
-      {stage !== 'operating' ? (
-        <Card className="home-command gap-4">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex flex-col gap-1">
-              <Eyebrow>{t(stage === 'setup' ? 'cmd.step1.title' : 'cmd.step2.title')}</Eyebrow>
-              <h2 className="font-pixel text-lg tracking-tight">
-                {t(stage === 'setup' ? 'cmd.step1.head' : 'cmd.step2.head')}
-              </h2>
-              <p className="text-[13px] text-text-secondary">
-                {t(stage === 'setup' ? 'cmd.step1.body' : 'cmd.step2.body')}
-              </p>
-            </div>
-            <Tag tone="amber">{stage === 'setup' ? 'setup' : t('cmd.step2.tag')}</Tag>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {stage === 'setup' ? (
-              <Link to="/setup">
-                <Button className="px-5 py-2 text-sm">{t('cmd.step1.cta')}</Button>
-              </Link>
-            ) : (
-              <Button
-                className="px-5 py-2 text-sm"
-                onClick={() => onNavigate('business', 'connections')}
-              >
-                {t('cmd.step2.cta')}
-              </Button>
-            )}
-          </div>
-        </Card>
-      ) : (
-        <Card className="home-command gap-3">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex flex-col gap-1">
-              <Eyebrow>{t('home.summary')}</Eyebrow>
-              <h2 className="font-pixel text-lg tracking-tight">
-                {t('db.handled', {
-                  n: activity.real
-                    ? activity.data!.counters.handled
-                    : demo
-                      ? business.work.filter((w) => w.tag !== 'needs you').length
-                      : 0,
-                })}
-              </h2>
-              <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-text-secondary">
-                {business.team.slice(0, 3).map((m) => (
-                  <span key={m.n} className="inline-flex items-center gap-1.5">
-                    <DataIcon emoji={m.e} size={14} />
-                    {m.n}
-                  </span>
-                ))}
-              </p>
-            </div>
-            {/* "live" is a claim about now. An agent roster with
-                nothing behind it is a capability list, and saying
-                otherwise on a dashboard whose own counters read zero
-                is the sort of small untruth that makes a person stop
-                believing the rest. */}
-            <WorkPulse
-              state={activity.real && activity.data!.counters.needsYou > 0 ? 'waiting' : 'ready'}
-            />
-          </div>
-
-          {demo && pending.length ? (
-            pending.map(({ w, i }) => (
-              <div
-                key={i}
-                className="flex flex-wrap items-start justify-between gap-3 border-t border-rail pt-3"
-              >
-                <div className="flex flex-col gap-1">
-                  <span className="inline-flex items-center gap-1.5 text-[13px]">
-                    <DataIcon emoji={w.e} size={14} />
-                    {w.n}
-                  </span>
-                  <span className="text-[12px] text-text-secondary">{w.d}</span>
-                </div>
-                <Button
-                  className="px-4 py-1 text-xs"
-                  onClick={() => {
-                    b.completeWork(i);
-                    toast(w.cta ?? t('toast.approved'));
-                  }}
-                >
-                  {t('work.respond')}
-                </Button>
-              </div>
-            ))
-          ) : glanceNote ? (
-            <p className="text-[12px] text-text-muted">{glanceNote}</p>
-          ) : null}
-          {activity.real && activity.data!.counters.needsYou > 0 ? (
-            <button className="home-review-link" type="button" onClick={() => onNavigate('work')}>
-              <Bell size={17} aria-hidden="true" />
-              {t('home.review', { n: activity.data!.counters.needsYou })}
-              <ArrowRight size={17} aria-hidden="true" />
-            </button>
-          ) : null}
-        </Card>
-      )}
-
-      {stage === 'operating' &&
-      nextMilestone &&
-      !(showTelegramNotice && nextMilestone.key === 'connected') ? (
-        <Card className="home-next gap-4 border-brand-line bg-brand-soft">
-          <div className="flex flex-col gap-1">
-            <Eyebrow>{t('home.next.eyebrow')}</Eyebrow>
-            <h2 className="font-pixel text-lg tracking-tight">
-              {t(`home.next.${nextMilestone.key}.title`)}
-            </h2>
-            <p className="max-w-[62ch] text-[13px] text-text-secondary">
-              {t(`home.next.${nextMilestone.key}.detail`)}
-            </p>
-          </div>
-          <div>
-            <Button
-              className="px-5 py-2 text-sm"
-              onClick={() => {
-                if (nextMilestone.key === 'knows') onNavigate('business', 'knows');
-                else if (nextMilestone.key === 'connected') onNavigate('business', 'connections');
-                else onNavigate('chat');
-              }}
-            >
-              {t(`home.next.${nextMilestone.key}.cta`)}
-            </Button>
-          </div>
-        </Card>
-      ) : null}
-
-      {stage === 'operating' && activity.real && !nextMilestone ? (
-        <Card className="home-next home-shortcuts">
-          <h2 className="home-panel-title">{t('nav.business')}</h2>
-          <button type="button" onClick={() => onNavigate('business', 'knows')}>
-            <BookOpen size={20} weight="duotone" aria-hidden="true" />
-            <span>
-              <strong>{t('home.knowledge')}</strong>
-              <small>
-                {t('home.knowledge.count', {
-                  n: snap.facts.filter((fact) => fact.confirmed).length,
-                })}
-              </small>
-            </span>
-            <ArrowUpRight size={16} aria-hidden="true" />
-          </button>
-          <button type="button" onClick={() => onNavigate('business', 'connections')}>
-            <PlugsConnected size={20} weight="duotone" aria-hidden="true" />
-            <span>
-              <strong>{t('home.connections')}</strong>
-              <small>{t('home.connections.detail')}</small>
-            </span>
-            <ArrowUpRight size={16} aria-hidden="true" />
-          </button>
-        </Card>
-      ) : null}
-
       {/* Real figures when there is a server to ask; the playbook's
           illustrations otherwise. Never a mix — an owner cannot tell
           which half of a blended row is true. */}
@@ -455,6 +302,163 @@ export default function HomeView({
                   <span className="text-[13px] text-text-secondary">{t(`db.stat.${k}.sub`)}</span>
                 </Card>
               ))}
+      </div>
+
+      {/* Stack independently: long recent-work entries must not stretch
+          the space between the summary and the owner's next action. */}
+      <div className="home-overview">
+        {stage !== 'operating' ? (
+          <Card className="home-command gap-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col gap-1">
+                <Eyebrow>{t(stage === 'setup' ? 'cmd.step1.title' : 'cmd.step2.title')}</Eyebrow>
+                <h2 className="font-pixel text-lg tracking-tight">
+                  {t(stage === 'setup' ? 'cmd.step1.head' : 'cmd.step2.head')}
+                </h2>
+                <p className="text-[13px] text-text-secondary">
+                  {t(stage === 'setup' ? 'cmd.step1.body' : 'cmd.step2.body')}
+                </p>
+              </div>
+              <Tag tone="amber">{stage === 'setup' ? 'setup' : t('cmd.step2.tag')}</Tag>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {stage === 'setup' ? (
+                <Link to="/setup">
+                  <Button className="px-5 py-2 text-sm">{t('cmd.step1.cta')}</Button>
+                </Link>
+              ) : (
+                <Button
+                  className="px-5 py-2 text-sm"
+                  onClick={() => onNavigate('business', 'connections')}
+                >
+                  {t('cmd.step2.cta')}
+                </Button>
+              )}
+            </div>
+          </Card>
+        ) : (
+          <Card className="home-command gap-3">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col gap-1">
+                <Eyebrow>{t('home.summary')}</Eyebrow>
+                <h2 className="font-pixel text-lg tracking-tight">
+                  {t('db.handled', {
+                    n: activity.real
+                      ? activity.data!.counters.handled
+                      : demo
+                        ? business.work.filter((w) => w.tag !== 'needs you').length
+                        : 0,
+                  })}
+                </h2>
+                <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-text-secondary">
+                  {business.team.slice(0, 3).map((m) => (
+                    <span key={m.n} className="inline-flex items-center gap-1.5">
+                      <DataIcon emoji={m.e} size={14} />
+                      {m.n}
+                    </span>
+                  ))}
+                </p>
+              </div>
+              {/* "live" is a claim about now. An agent roster with
+                nothing behind it is a capability list, and saying
+                otherwise on a dashboard whose own counters read zero
+                is the sort of small untruth that makes a person stop
+                believing the rest. */}
+              <WorkPulse
+                state={activity.real && activity.data!.counters.needsYou > 0 ? 'waiting' : 'ready'}
+              />
+            </div>
+
+            {demo && pending.length ? (
+              pending.map(({ w, i }) => (
+                <div
+                  key={i}
+                  className="flex flex-wrap items-start justify-between gap-3 border-t border-rail pt-3"
+                >
+                  <div className="flex flex-col gap-1">
+                    <span className="inline-flex items-center gap-1.5 text-[13px]">
+                      <DataIcon emoji={w.e} size={14} />
+                      {w.n}
+                    </span>
+                    <span className="text-[12px] text-text-secondary">{w.d}</span>
+                  </div>
+                  <Button
+                    className="px-4 py-1 text-xs"
+                    onClick={() => {
+                      b.completeWork(i);
+                      toast(w.cta ?? t('toast.approved'));
+                    }}
+                  >
+                    {t('work.respond')}
+                  </Button>
+                </div>
+              ))
+            ) : glanceNote ? (
+              <p className="text-[12px] text-text-muted">{glanceNote}</p>
+            ) : null}
+            {activity.real && activity.data!.counters.needsYou > 0 ? (
+              <button className="home-review-link" type="button" onClick={() => onNavigate('work')}>
+                <Bell size={17} aria-hidden="true" />
+                {t('home.review', { n: activity.data!.counters.needsYou })}
+                <ArrowRight size={17} aria-hidden="true" />
+              </button>
+            ) : null}
+          </Card>
+        )}
+
+        {stage === 'operating' &&
+        nextMilestone &&
+        !(showTelegramNotice && nextMilestone.key === 'connected') ? (
+          <Card className="home-next gap-4 border-brand-line bg-brand-soft">
+            <div className="flex flex-col gap-1">
+              <Eyebrow>{t('home.next.eyebrow')}</Eyebrow>
+              <h2 className="font-pixel text-lg tracking-tight">
+                {t(`home.next.${nextMilestone.key}.title`)}
+              </h2>
+              <p className="max-w-[62ch] text-[13px] text-text-secondary">
+                {t(`home.next.${nextMilestone.key}.detail`)}
+              </p>
+            </div>
+            <div>
+              <Button
+                className="px-5 py-2 text-sm"
+                onClick={() => {
+                  if (nextMilestone.key === 'knows') onNavigate('business', 'knows');
+                  else if (nextMilestone.key === 'connected') onNavigate('business', 'connections');
+                  else onNavigate('chat');
+                }}
+              >
+                {t(`home.next.${nextMilestone.key}.cta`)}
+              </Button>
+            </div>
+          </Card>
+        ) : null}
+
+        {stage === 'operating' && activity.real && !nextMilestone ? (
+          <Card className="home-next home-shortcuts">
+            <h2 className="home-panel-title">{t('nav.business')}</h2>
+            <button type="button" onClick={() => onNavigate('business', 'knows')}>
+              <BookOpen size={20} weight="duotone" aria-hidden="true" />
+              <span>
+                <strong>{t('home.knowledge')}</strong>
+                <small>
+                  {t('home.knowledge.count', {
+                    n: snap.facts.filter((fact) => fact.confirmed).length,
+                  })}
+                </small>
+              </span>
+              <ArrowUpRight size={16} aria-hidden="true" />
+            </button>
+            <button type="button" onClick={() => onNavigate('business', 'connections')}>
+              <PlugsConnected size={20} weight="duotone" aria-hidden="true" />
+              <span>
+                <strong>{t('home.connections')}</strong>
+                <small>{t('home.connections.detail')}</small>
+              </span>
+              <ArrowUpRight size={16} aria-hidden="true" />
+            </button>
+          </Card>
+        ) : null}
       </div>
 
       {/* Latest agent activity — a way into Chat */}
@@ -517,7 +521,7 @@ export default function HomeView({
                   />
                   <span className="home-activity-copy">
                     <strong>{w.objective}</strong>
-                    {w.outcome ? <span>{w.outcome}</span> : null}
+                    {w.outcome ? <span className="home-activity-outcome">{w.outcome}</span> : null}
                     <span className="home-activity-meta">
                       <span className={`home-status home-status-${status}`}>
                         {t(`work.${status}`)}

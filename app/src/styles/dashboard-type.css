@@ -1,0 +1,133 @@
+/* A comfortable reading scale for the product, scoped away from marketing.
+   Bridge existing utility-sized panels and the newer named components so
+   switching dashboard sections does not change the size of ordinary text. */
+.dashboard-shell {
+  --workspace-caption: 0.75rem;
+  --workspace-small: 0.875rem;
+  --workspace-label: 0.9375rem;
+  --workspace-body: 1rem;
+  --workspace-heading: 1.125rem;
+  font-size: var(--workspace-body);
+}
+
+.dashboard-shell
+  :is(
+    .text-\[10px\],
+    .eyebrow,
+    .home-date,
+    .home-status,
+    .home-activity-meta time,
+    .ask-history-panel time,
+    .ask-history-panel > header span,
+    .activity-filters button span,
+    .activity-day > h3 > span,
+    .ask-studio-business,
+    .ask-writing-hint,
+    .ask-recent-chats header > span,
+    .ask-recent-chats time,
+    .ask-owner-message > span,
+    .ask-reply-ready
+  ) {
+  font-size: var(--workspace-caption);
+  line-height: 1.6;
+}
+
+.dashboard-shell
+  :is(
+    .text-\[11px\],
+    .text-xs,
+    .dashboard-sidebar-note,
+    .home-shortcuts small,
+    .home-review-link,
+    .home-activity-link,
+    .ask-history-trigger,
+    .ask-history-panel strong,
+    .ask-history-confirm,
+    .activity-overview span,
+    .activity-filters button,
+    .activity-result-count,
+    .activity-day > h3,
+    .business-identity-type,
+    .business-shortcuts span,
+    .business-profile-actions > p,
+    .business-knowledge-link,
+    .ask-studio-tools .ask-history-trigger,
+    .ask-studio-new,
+    .ask-context-link,
+    .ask-studio-starters > button,
+    .ask-recent-chats h3,
+    .ask-connection-nudge,
+    .ask-inline-action,
+    .ask-reply-source,
+    .ask-refinements > button,
+    .ask-jump-latest
+  ) {
+  font-size: var(--workspace-small);
+  line-height: 1.6;
+}
+
+.dashboard-shell
+  :is(
+    .text-\[12px\],
+    .home-shortcuts strong,
+    .home-activity-copy > strong,
+    .home-activity-copy > span,
+    .home-empty,
+    .workspace-section-heading p,
+    .workspace-empty p,
+    .business-identity p,
+    .business-tabs > button,
+    .business-shortcuts strong,
+    .ask-studio-intro,
+    .ask-recent-chats > button > span,
+    .ask-reply > header > strong
+  ) {
+  font-size: var(--workspace-label);
+  line-height: 1.65;
+}
+
+.dashboard-shell
+  :is(
+    .text-\[13px\],
+    .text-sm,
+    .home-ask-launcher > span > span,
+    .business-detail-row > span:last-child,
+    .ask-owner-message > p,
+    .ask-reply-text
+  ) {
+  font-size: var(--workspace-body);
+  line-height: 1.7;
+}
+
+.dashboard-shell
+  :is(
+    .workspace-section-heading h2,
+    .workspace-section-heading h3,
+    .home-panel-title
+  ) {
+  font-size: var(--workspace-heading);
+  line-height: 1.4;
+}
+
+/* Keep fields readable on mobile too, without triggering iOS input zoom. */
+.dashboard-shell :is(input, textarea, select) {
+  font-size: var(--workspace-body);
+  line-height: 1.6;
+}
+
+.dashboard-shell .business-tabs > button {
+  min-height: 46px;
+}
+
+@media (max-width: 700px) {
+  /* The three headline counters stay compact; their supporting lines
+     must still be readable and have room to wrap. */
+  .dashboard-shell .home-stat .eyebrow,
+  .dashboard-shell .home-stat > span:last-child {
+    font-size: var(--workspace-caption);
+    line-height: 1.5;
+  }
+  .dashboard-shell .home-stat-label {
+    min-height: 36px;
+  }
+}
