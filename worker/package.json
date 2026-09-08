@@ -16,6 +16,7 @@
     "db:migrate:drift-sweep": "node scripts/apply-drift-sweep.mjs",
     "db:migrate:runtime-task-recovery": "node scripts/apply-runtime-task-recovery.mjs",
     "db:migrate:fmcv-rider-spend": "node scripts/apply-fmcv-rider-spend.mjs",
+    "db:migrate:fmcv-rider-spend-microusd": "node scripts/apply-fmcv-rider-spend-microusd.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

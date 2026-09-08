@@ -65,8 +65,15 @@ function stubUpstream(status = 200, body: unknown | (() => Response) = { id: 'ok
   return { fetcher, seen };
 }
 
-async function spendCents(cents: number): Promise<void> {
-  await recordRiderSpend(proxyEnv(), RID, cents, riderMonthKey(new Date()));
+async function spendMicrousd(microusd: number): Promise<void> {
+  await recordRiderSpend(proxyEnv(), RID, microusd, riderMonthKey(new Date()));
+}
+
+async function ledgerMicrousd(): Promise<number | null> {
+  const [row] = await asOwner((sql) => sql<{ microusd: string | number }[]>`
+    select spend_microusd as microusd from fmcv_rider_spend
+     where rider_id = ${RID} and month = ${riderMonthKey(new Date())}`);
+  return row ? Number(row.microusd) : null;
 }
 
 beforeEach(async () => {
@@ -160,7 +167,7 @@ describe('model proxy route', () => {
 
   it('rejects a request from a rider whose monthly spend ceiling is exhausted', async () => {
     const env = proxyEnv();
-    await spendCents(500); /* the signed $5 monthly ceiling */
+    await spendMicrousd(5_000_000); /* the signed $5 monthly ceiling */
     const response = await callModel('POST', `${RUNTIME_PROXY_PATH}/chat/completions`,
       env, {
         token: await derivedKey(),
@@ -187,11 +194,66 @@ describe('model proxy route', () => {
     expect(seen).toHaveLength(1);
     /* recordUsage is awaited inside the route; give the ledger a beat. */
     await new Promise((resolve) => setTimeout(resolve, 50));
-    const [row] = await asOwner((sql) => sql<{ cents: number }[]>`
-      select spend_usd_cents as cents from fmcv_rider_spend
-       where rider_id = ${RID} and month = ${riderMonthKey(new Date())}`);
-    expect(row).toBeTruthy();
-    expect(row.cents).toBeGreaterThan(0);
+    // 1M in × $0.30/M + 2M out × $1.20/M = $2.70 = 2,700,000 micro-USD, exactly.
+    expect(await ledgerMicrousd()).toBe(2_700_000);
+  });
+
+  it('accumulates sub-cent completions exactly instead of rounding each up to a cent', async () => {
+    /* 1,000 in × $0.30/M + 100 out × $1.20/M = 420 micro-USD. Two of them are
+       840, not 20,000; the old cent ledger charged a full cent per call. */
+    const { fetcher } = stubUpstream(200, {
+      id: 'cmpl-small',
+      usage: { prompt_tokens: 1_000, completion_tokens: 100 },
+    });
+    const env = proxyEnv();
+    for (let i = 0; i < 2; i++) {
+      const response = await callModel('POST', `${RUNTIME_PROXY_PATH}/chat/completions`,
+        env, {
+          token: await derivedKey(),
+          body: { model: 'MiniMax-M3', messages: [{ role: 'user', content: 'hi' }] },
+          options: { upstreamFetch: fetcher },
+        });
+      expect(response.status).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    expect(await ledgerMicrousd()).toBe(840);
+  });
+
+  it('meters a stream whose earlier chunks carry "usage": null', async () => {
+    /* OpenAI-style streams with include_usage emit "usage": null on every
+       content chunk and the object only on the last. The scanner must not
+       latch onto the first null (or the word inside a delta) and miss it. */
+    const encoder = new TextEncoder();
+    const sse = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(
+          'data: {"choices":[{"delta":{"content":"he"}}],"usage":null}\n\n',
+        ));
+        controller.enqueue(encoder.encode(
+          'data: {"choices":[{"delta":{"content":" usage of"}}],"usage":null}\n\n',
+        ));
+        controller.enqueue(encoder.encode(
+          'data: {"choices":[],"usage":{"prompt_tokens":500000,"completion_tokens":1000000}}\n\n',
+        ));
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        controller.close();
+      },
+    });
+    const { fetcher } = stubUpstream(200, () => new Response(sse, {
+      headers: { 'Content-Type': 'text/event-stream' },
+    }));
+    const env = proxyEnv();
+    const response = await callModel('POST', `${RUNTIME_PROXY_PATH}/chat/completions`,
+      env, {
+        token: await derivedKey(),
+        body: { model: 'MiniMax-M3', messages: [{ role: 'user', content: 'hi' }], stream: true },
+        options: { upstreamFetch: fetcher },
+      });
+    expect(response.status).toBe(200);
+    await response.text();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // 500k in × $0.30/M + 1M out × $1.20/M = $1.35 = 1,350,000 micro-USD.
+    expect(await ledgerMicrousd()).toBe(1_350_000);
   });
 
   it('meters a streaming completion from the final usage chunk', async () => {
@@ -222,11 +284,7 @@ describe('model proxy route', () => {
     expect(text).toContain('[DONE]');
     expect(text).toContain('"usage"');
     await new Promise((resolve) => setTimeout(resolve, 50));
-    const [row] = await asOwner((sql) => sql<{ cents: number }[]>`
-      select spend_usd_cents as cents from fmcv_rider_spend
-       where rider_id = ${RID} and month = ${riderMonthKey(new Date())}`);
-    expect(row).toBeTruthy();
-    expect(row.cents).toBeGreaterThan(0);
+    expect(await ledgerMicrousd()).toBe(1_350_000);
   });
 
   it('injects stream_options.include_usage so streaming requests are metered', async () => {

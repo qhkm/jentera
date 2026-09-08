@@ -37,7 +37,6 @@ const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_RELAY_BODY_BYTES = 8 * 1024 * 1024;
 const UPSTREAM_TIMEOUT_MS = 5 * 60 * 1000;
 /** 1 USD-cent = 10,000 micro-USD. */
-const MICROUSD_PER_CENT = 10_000;
 
 export interface ModelProxyOptions {
   /** Injectable for tests; defaults to globalThis.fetch. */
@@ -270,30 +269,60 @@ function meteringStream(
   });
 }
 
-/** Extract the flat usage object ({"prompt_tokens":n,"completion_tokens":n,
-    …}) from a chunk buffer containing `"usage":{…}`. Usage objects are flat;
-    balance braces to find the end. Returns null when truncated/absent. */
+/** Extract the usage object ({"prompt_tokens":n,"completion_tokens":n,…})
+    from a chunk buffer. OpenAI-style streams with include_usage carry
+    `"usage":null` on every content chunk and the object only on the last,
+    and the word can also appear inside delta text; so every occurrence is
+    examined and only a `"usage": {` whose braces balance into an object
+    with token counts is accepted. Returns null when absent or truncated. */
 function extractUsage(buffer: string): Record<string, unknown> | null {
-  const index = buffer.indexOf('"usage"');
-  const open = buffer.indexOf('{', index + '"usage"'.length);
-  if (index < 0 || open < 0) return null;
+  const key = '"usage"';
+  let from = 0;
+  for (;;) {
+    const index = buffer.indexOf(key, from);
+    if (index < 0) return null;
+    from = index + key.length;
+    let cursor = from;
+    while (cursor < buffer.length && ' \t\r\n'.includes(buffer[cursor])) cursor++;
+    if (buffer[cursor] !== ':') continue;
+    cursor++;
+    while (cursor < buffer.length && ' \t\r\n'.includes(buffer[cursor])) cursor++;
+    if (buffer[cursor] !== '{') continue;
+    const parsed = balancedObject(buffer, cursor);
+    if (parsed === undefined) return null; // truncated: wait for more bytes
+    if (parsed && (typeof parsed.prompt_tokens === 'number' ||
+        typeof parsed.completion_tokens === 'number')) {
+      return parsed;
+    }
+  }
+}
+
+/** Parse the JSON object starting at `open`. `undefined` when the object
+    is not closed yet in this buffer; null when it closes but is not JSON. */
+function balancedObject(buffer: string, open: number): Record<string, unknown> | null | undefined {
   let depth = 0;
+  let inString = false;
   for (let i = open; i < buffer.length; i++) {
-    if (buffer[i] === '{') depth++;
-    else if (buffer[i] === '}') {
+    const c = buffer[i];
+    if (inString) {
+      if (c === '\\') i++;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') inString = true;
+    else if (c === '{') depth++;
+    else if (c === '}') {
       depth--;
       if (depth === 0) {
         try {
-          const parsed = JSON.parse(buffer.slice(open, i + 1)) as Record<string, unknown>;
-          return typeof parsed.prompt_tokens === 'number' || typeof parsed.completion_tokens === 'number'
-            ? parsed : null;
+          return JSON.parse(buffer.slice(open, i + 1)) as Record<string, unknown>;
         } catch {
           return null;
         }
       }
     }
   }
-  return null;
+  return undefined;
 }
 
 function recordUsage(
@@ -314,9 +343,8 @@ function recordUsage(
     console.error(`[model-proxy] model ${model} has no reviewed pricing`);
     return Promise.resolve();
   }
-  const cents = Math.ceil(microusd / MICROUSD_PER_CENT);
-  if (cents <= 0) return Promise.resolve();
-  return recordRiderSpend(env, claims.rid, cents, riderMonthKey(new Date()))
+  if (microusd <= 0) return Promise.resolve();
+  return recordRiderSpend(env, claims.rid, microusd, riderMonthKey(new Date()))
     .catch((error) => {
       console.error(`[model-proxy] metering failed: ${String(error)}`);
     });

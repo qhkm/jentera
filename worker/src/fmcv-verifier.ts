@@ -107,10 +107,13 @@ export async function verifyJenteraKey(
 
 export interface RiderBudgetStatus {
   month: string;
-  spendUsdCents: number;
-  limitUsdCents: number;
+  /** Micro-USD (1e-6 USD), the unit modelCostMicrousd produces; exact per request. */
+  spendMicrousd: number;
+  limitMicrousd: number;
   allowed: boolean;
 }
+
+const MICROUSD_PER_USD = 1_000_000;
 
 export async function riderBudgetStatus(
   env: Env,
@@ -118,18 +121,20 @@ export async function riderBudgetStatus(
   now = new Date(),
 ): Promise<RiderBudgetStatus> {
   const month = riderMonthKey(now);
-  const limitUsdCents = RUNTIME_MODEL_CEILING_LIMIT_USD * 100;
-  const spendUsdCents = await riderMonthSpend(env, riderId, month);
-  return { month, spendUsdCents, limitUsdCents, allowed: spendUsdCents < limitUsdCents };
+  const limitMicrousd = RUNTIME_MODEL_CEILING_LIMIT_USD * MICROUSD_PER_USD;
+  const spendMicrousd = await riderMonthSpend(env, riderId, month);
+  return { month, spendMicrousd, limitMicrousd, allowed: spendMicrousd < limitMicrousd };
 }
 
 export async function riderMonthSpend(env: Env, riderId: string, month: string): Promise<number> {
   const sql = connect(env);
   try {
-    const [row] = await sql<{ spend_usd_cents: number }[]>`
-      select spend_usd_cents from fmcv_rider_spend
+    /* bigint arrives as a string from postgres.js; the ceiling is far
+       inside safe-integer range, so Number() is exact here. */
+    const [row] = await sql<{ spend_microusd: string | number }[]>`
+      select spend_microusd from fmcv_rider_spend
        where rider_id = ${riderId} and month = ${month}`;
-    return row?.spend_usd_cents ?? 0;
+    return row ? Number(row.spend_microusd) : 0;
   } finally {
     await sql.end({ timeout: 1 });
   }
@@ -142,18 +147,18 @@ export async function riderMonthSpend(env: Env, riderId: string, month: string):
 export async function recordRiderSpend(
   env: Env,
   riderId: string,
-  usdCents: number,
+  microusd: number,
   month: string,
 ): Promise<void> {
-  if (!Number.isSafeInteger(usdCents) || usdCents <= 0) return;
+  if (!Number.isSafeInteger(microusd) || microusd <= 0) return;
   const sql = connect(env);
   try {
     await sql`
-      insert into fmcv_rider_spend (rider_id, month, spend_usd_cents, updated_at)
-      values (${riderId}, ${month}, ${usdCents}, now())
+      insert into fmcv_rider_spend (rider_id, month, spend_microusd, updated_at)
+      values (${riderId}, ${month}, ${microusd}, now())
       on conflict (rider_id, month)
       do update set
-        spend_usd_cents = fmcv_rider_spend.spend_usd_cents + excluded.spend_usd_cents,
+        spend_microusd = fmcv_rider_spend.spend_microusd + excluded.spend_microusd,
         updated_at = now()`;
   } finally {
     await sql.end({ timeout: 1 });
