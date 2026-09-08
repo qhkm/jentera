@@ -38,13 +38,16 @@ const WORK_STATUS: Record<string, { tone: Tone; label: string }> = {
   needs_approval: { tone: 'amber', label: 'work.waiting' },
   blocked: { tone: 'neutral', label: 'work.blocked' },
   failed: { tone: 'red', label: 'work.failed' },
+  /* The owner declined the proposed action; nothing was sent. Settled, so
+     it must not read as still in progress. */
+  cancelled: { tone: 'neutral', label: 'work.declined' },
 };
 
 const workTone = (status: string): Tone => WORK_STATUS[status]?.tone ?? 'neutral';
 const workLabel = (status: string): string => WORK_STATUS[status]?.label ?? 'work.inprogress';
 
 function workSignal(status: string): WorkSignalState {
-  if (status === 'completed') return 'done';
+  if (status === 'completed' || status === 'cancelled') return 'done';
   if (status === 'failed') return 'failed';
   if (status === 'needs_approval' || status === 'blocked') return 'waiting';
   return 'working';

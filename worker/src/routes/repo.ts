@@ -480,11 +480,25 @@ export async function handleRepo(
 
     /* A refusal is as much a part of the record as a send. Without it
        the trace of a rejected action simply stops, and later phases
-       cannot tell "the owner said no" from "something crashed". */
+       cannot tell "the owner said no" from "something crashed". It is
+       also an outcome, not a pause: the run and its work record leave
+       needs_approval here, or Activity keeps showing a decision the
+       owner already made as still waiting for them. */
     if (!approved && changed.runId) {
-      await withTenant(env, id.businessId, (tx) =>
-        append(tx, id.businessId, changed.runId!, 'approval.rejected', { approvalId: decide[1] }),
-      ).catch(() => {});
+      await withTenant(env, id.businessId, async (tx) => {
+        await append(tx, id.businessId, changed.runId!, 'approval.rejected', { approvalId: decide[1] });
+        await updateWorkForRun(tx, id.businessId, changed.runId!, {
+          status: 'cancelled',
+          outcome: 'You declined this reply; nothing was sent.',
+        });
+        await tx`update run set status = 'cancelled', ended_at = now()
+                  where id = ${changed.runId} and business_id = ${id.businessId}
+                    and status = 'needs_approval'`;
+      }).catch((error) => {
+        /* The approval row is already decided; a bookkeeping failure must
+           be visible in logs rather than silently leave the run parked. */
+        console.error(`[approvals] rejection bookkeeping failed for run ${changed.runId}: ${String(error)}`);
+      });
     }
 
     /* Approving is not merely a status change: it is the moment the

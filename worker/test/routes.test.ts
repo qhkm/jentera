@@ -24,7 +24,7 @@ import {
   telegramInternalChat,
   webhookSecret,
 } from '../src/connections';
-import { finishRun, homeCounters, startRun } from '../src/runs';
+import { finishRun, homeCounters, recordWork, startRun } from '../src/runs';
 import {
   enqueueRuntimeTask,
   leaseRuntimeTask,
@@ -1263,5 +1263,58 @@ describe('action policies are owner-controlled', () => {
     const rows = await asOwner((sql) => sql<{ policy: string }[]>`
       select policy from action_policy where business_id = ${A} and op = 'send_message'`);
     expect(rows.map((row) => row.policy)).toEqual(['approval']);
+  });
+});
+
+describe('rejecting a web approval settles its run and work record', () => {
+  it('moves both out of needs_approval and records the refusal', async () => {
+    /* A refusal is an outcome, not a pause. Leaving the run and work
+       record at needs_approval after the owner said no makes Activity
+       show a decision that was already taken as still waiting. */
+    const { runId, approvalId } = await asTenant(A, async (tx) => {
+      const run = await startRun(tx, A, {
+        kind: 'ask',
+        triggerShape: 'owner.message.telegram',
+        runtime: 'hermes-sprite',
+        model: 'MiniMax-M3',
+      });
+      const [approval] = await tx<{ id: string }[]>`
+        insert into approval (business_id, connector, op, args, risk)
+        values (${A}, 'telegram', 'send_message',
+                ${tx.json({ chatId: 42, connectionId: 'c1', from: 'Owner',
+                            question: 'hi', draft: 'Hello' } as never)}, 'medium')
+        returning id`;
+      await recordWork(tx, A, {
+        runId: run.id,
+        objective: 'Help Owner on Telegram',
+        outcome: 'Waiting for you to approve the reply',
+        status: 'needs_approval',
+        function: 'assistant',
+        channel: 'telegram',
+        approvalId: approval.id,
+      });
+      await finishRun(tx, A, run.id, 'needs_approval', { approvalId: approval.id });
+      return { runId: run.id, approvalId: approval.id };
+    });
+
+    const response = await state('POST', `/api/state/approvals/${approvalId}/decide`, {
+      cookie: cookieA,
+      body: { approved: false },
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true, status: 'rejected' });
+
+    const [run] = await asOwner((sql) => sql<{ status: string; ended: boolean }[]>`
+      select status, ended_at is not null as ended from run where id = ${runId}`);
+    expect(run).toEqual({ status: 'cancelled', ended: true });
+    const [work] = await asOwner((sql) => sql<{ status: string; outcome: string }[]>`
+      select status, outcome from work_record where run_id = ${runId}`);
+    expect(work.status).toBe('cancelled');
+    expect(work.outcome).toMatch(/declined/i);
+    const events = await asOwner((sql) => sql<{ type: string }[]>`
+      select type from run_event where run_id = ${runId} order by seq`);
+    expect(events.map((event) => event.type)).toEqual([
+      'work.requested', 'approval.requested', 'approval.rejected',
+    ]);
   });
 });
