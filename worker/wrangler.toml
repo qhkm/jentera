@@ -70,7 +70,7 @@ MODEL_TRANSPORT_READY = "true"
 # business to own a fully bootstrapped, release-matched runtime row.
 RUNTIME_EXECUTION_ENABLED = "true"
 RUNTIME_BOOTSTRAP_ENABLED = "true"
-RUNTIME_BUNDLE_COMMIT = "b31055a14d1461e627b7c54b8c67fef71a974f8d"
+RUNTIME_BUNDLE_COMMIT = "221d8269ca77846baa974127df43c4256a0e58c5"
 AISAR_MODEL_PROVIDER = "openrouter"
 # The UPSTREAM model gateway the proxy forwards to (allowlisted, see
 # worker/src/runtime/execution.ts). The credential presented to it is the
