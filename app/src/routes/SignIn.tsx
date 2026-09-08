@@ -10,8 +10,8 @@
    session cookie, so nothing downstream knows or cares which was.
    ============================================================ */
 
-import { useEffect, useRef, useState } from 'react';
-import { clearAskStorage } from '@/hooks/useAsk';
+import { useEffect, useRef, useState } from "react";
+import { clearAskStorage } from "@/hooks/useAsk";
 import {
   ArrowUpRight,
   Storefront,
@@ -19,35 +19,37 @@ import {
   Eye,
   EyeSlash,
   ShieldCheck,
-} from '@phosphor-icons/react';
-import { Link, useSearchParams } from 'react-router';
-import { trackActivation } from '@/lib/analytics';
+} from "@phosphor-icons/react";
+import { Link, useSearchParams } from "react-router";
+import { trackActivation } from "@/lib/analytics";
 
-const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
-type Mode = 'signin' | 'signup';
-type BusyAction = 'password' | 'link' | null;
+type Mode = "signin" | "signup";
+type BusyAction = "password" | "link" | null;
 
 /* Errors the server can put in the query string when it bounces the
    browser back here. Mapped rather than printed, so a crafted ?error=
    cannot render arbitrary text on a sign-in page. */
 const ERRORS: Record<string, string> = {
-  expired: 'That link has already been used or has expired. Request a new one below.',
-  'google-failed': 'Google sign-in did not complete. Please try again.',
-  'google-unverified':
-    'That Google account has an unverified email address, so we cannot use it to sign in.',
-  'google-unavailable': 'Google sign-in is not available right now. Use your email instead.',
+  expired:
+    "That link has already been used or has expired. Request a new one below.",
+  "google-failed": "Google sign-in did not complete. Please try again.",
+  "google-unverified":
+    "That Google account has an unverified email address, so we cannot use it to sign in.",
+  "google-unavailable":
+    "Google sign-in is not available right now. Use your email instead.",
 };
 
 export default function SignIn() {
   const [params, setParams] = useSearchParams();
   const [mode, setMode] = useState<Mode>(() =>
-    params.get('mode') === 'signup' ? 'signup' : 'signin',
+    params.get("mode") === "signup" ? "signup" : "signin",
   );
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState<BusyAction>(null);
-  const [sent, setSent] = useState<'link' | 'verify' | null>(null);
+  const [sent, setSent] = useState<"link" | "verify" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const emailInput = useRef<HTMLInputElement>(null);
@@ -69,31 +71,38 @@ export default function SignIn() {
   }, []);
 
   useEffect(() => {
-    setMode(params.get('mode') === 'signup' ? 'signup' : 'signin');
+    setMode(params.get("mode") === "signup" ? "signup" : "signin");
     setSent(null);
     setError(null);
   }, [params]);
 
-  const urlError = ERRORS[params.get('error') ?? ''] ?? null;
+  const urlError = ERRORS[params.get("error") ?? ""] ?? null;
 
   async function submitPassword(e: React.FormEvent) {
     e.preventDefault();
-    trackActivation(mode === 'signup' ? 'signup_started' : 'signin_started');
-    setBusy('password');
+    trackActivation(mode === "signup" ? "signup_started" : "signin_started");
+    setBusy("password");
     setError(null);
     try {
-      const res = await fetch(`${API}/api/auth/${mode === 'signup' ? 'signup' : 'login'}`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
+      const res = await fetch(
+        `${API}/api/auth/${mode === "signup" ? "signup" : "login"}`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        },
+      );
 
-      if (mode === 'signup') {
+      if (mode === "signup") {
         // 202 either way — the address may already be taken, and the
         // server deliberately does not say which.
-        if (res.ok) setSent('verify');
-        else setError((await res.json().catch(() => ({}))).err ?? 'Could not sign you up.');
+        if (res.ok) setSent("verify");
+        else
+          setError(
+            (await res.json().catch(() => ({}))).err ??
+              "Could not sign you up.",
+          );
         return;
       }
 
@@ -102,19 +111,21 @@ export default function SignIn() {
         // Full reload, not a client-side navigate: RepositoryGate reads
         // the session once at startup, so the app has to boot again to
         // pick up the cookie that was just set.
-        window.location.href = ['/onboard', '/setup', '/app'].includes(String(body.next))
+        window.location.href = ["/onboard", "/setup", "/app"].includes(
+          String(body.next),
+        )
           ? String(body.next)
-          : '/app';
+          : "/app";
         return;
       }
       if (res.status === 429) {
-        setError('Too many attempts. Wait a minute and try again.');
+        setError("Too many attempts. Wait a minute and try again.");
         return;
       }
       const body = (await res.json().catch(() => ({}))) as { err?: string };
-      setError(body.err ?? 'Email or password is incorrect.');
+      setError(body.err ?? "Email or password is incorrect.");
     } catch {
-      setError('Could not reach Jentera. Check your connection.');
+      setError("Could not reach Jentera. Check your connection.");
     } finally {
       setBusy(null);
     }
@@ -122,28 +133,28 @@ export default function SignIn() {
 
   async function sendLink() {
     if (!emailInput.current?.reportValidity()) return;
-    setBusy('link');
+    setBusy("link");
     setError(null);
     try {
       /* The same success response is shown whether or not an account
          exists. Transport failures still need an honest retry state. */
       const response = await fetch(`${API}/api/auth/request`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
       if (!response.ok) {
         setError(
           response.status === 429
-            ? 'Too many attempts. Wait a minute and try again.'
-            : 'Could not send your sign-in link. Please try again.',
+            ? "Too many attempts. Wait a minute and try again."
+            : "Could not send your sign-in link. Please try again.",
         );
         return;
       }
-      setSent('link');
+      setSent("link");
     } catch {
-      setError('Could not reach Jentera. Check your connection and try again.');
+      setError("Could not reach Jentera. Check your connection and try again.");
     } finally {
       setBusy(null);
     }
@@ -155,31 +166,44 @@ export default function SignIn() {
         <span>Jentera</span>
       </div>
       <header className="auth-header">
-        <Link to="/" className="font-pixel text-2xl text-brand" aria-label="Jentera home">
+        <Link
+          to="/"
+          className="font-pixel text-2xl text-brand"
+          aria-label="Jentera home"
+        >
           Jentera<span className="auth-parent">by AISAR</span>
         </Link>
-        <Link to={mode === 'signup' ? '/signin' : '/signin?mode=signup'} className="lp-text-link">
-          {mode === 'signup' ? 'Sign in' : 'Get started'}
+        <Link
+          to={mode === "signup" ? "/signin" : "/signin?mode=signup"}
+          className="lp-text-link"
+        >
+          {mode === "signup" ? "Sign in" : "Get started"}
           <ArrowUpRight size={15} aria-hidden="true" />
         </Link>
       </header>
       <main id="main-content" className="auth-layout">
         {sent ? (
           <div className="auth-card auth-confirmation" role="status">
-            <EnvelopeSimple size={32} weight="duotone" className="text-brand" aria-hidden="true" />
+            <EnvelopeSimple
+              size={32}
+              weight="duotone"
+              className="text-brand"
+              aria-hidden="true"
+            />
             <h1 ref={confirmationHeading} tabIndex={-1}>
               Check your inbox
             </h1>
             <p>
-              {sent === 'verify' ? (
+              {sent === "verify" ? (
                 <>
-                  If <strong>{email}</strong> is not already registered, a link to confirm it is on
-                  its way. Follow it to finish setting up your account.
+                  If <strong>{email}</strong> is not already registered, a link
+                  to confirm it is on its way. Follow it to finish setting up
+                  your account.
                 </>
               ) : (
                 <>
-                  If <strong>{email}</strong> has a Jentera account, a sign-in link is on its way.
-                  It works once and expires in 15 minutes.
+                  If <strong>{email}</strong> has a Jentera account, a sign-in
+                  link is on its way. It works once and expires in 15 minutes.
                 </>
               )}
             </p>
@@ -203,12 +227,16 @@ export default function SignIn() {
             <div className="auth-emblem">
               <Storefront size={30} weight="duotone" aria-hidden="true" />
             </div>
-            <span className="auth-card-eyebrow">Your business. A little more breathing room.</span>
-            <h1>{mode === 'signup' ? 'Create your account' : 'Welcome back.'}</h1>
+            <span className="auth-card-eyebrow">
+              For the business you already run
+            </span>
+            <h1>
+              {mode === "signup" ? "Create your account" : "Welcome back."}
+            </h1>
             <p className="auth-card-description">
-              {mode === 'signup'
-                ? 'A little about you. Then, your business.'
-                : 'Sign in to pick up where you left off.'}
+              {mode === "signup"
+                ? "A little about you. Then, your business."
+                : "Sign in to pick up where you left off."}
             </p>
 
             {urlError ? (
@@ -226,13 +254,20 @@ export default function SignIn() {
                   event.preventDefault();
                   return;
                 }
-                trackActivation(mode === 'signup' ? 'signup_started' : 'signin_started');
+                trackActivation(
+                  mode === "signup" ? "signup_started" : "signin_started",
+                );
               }}
             >
               {/* Inline rather than a remote asset: the page must not
                 depend on Google being reachable to render its own
                 sign-in button. */}
-              <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 18 18"
+                aria-hidden="true"
+              >
                 <path
                   fill="#4285F4"
                   d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62Z"
@@ -277,17 +312,23 @@ export default function SignIn() {
                 <input
                   className="input w-full"
                   id="signin-password"
-                  type={showPassword ? 'text' : 'password'}
+                  type={showPassword ? "text" : "password"}
                   required
                   minLength={10}
-                  autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                  placeholder={mode === 'signup' ? 'At least 10 characters' : 'Your password'}
+                  autoComplete={
+                    mode === "signup" ? "new-password" : "current-password"
+                  }
+                  placeholder={
+                    mode === "signup"
+                      ? "At least 10 characters"
+                      : "Your password"
+                  }
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
                 <button
                   type="button"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                   aria-pressed={showPassword}
                   onClick={() => setShowPassword((value) => !value)}
                 >
@@ -310,13 +351,13 @@ export default function SignIn() {
                 type="submit"
                 disabled={Boolean(busy) || !email || !password}
               >
-                {busy === 'password'
-                  ? mode === 'signup'
-                    ? 'Creating your account…'
-                    : 'Signing you in…'
-                  : mode === 'signup'
-                    ? 'Create account'
-                    : 'Sign in'}
+                {busy === "password"
+                  ? mode === "signup"
+                    ? "Creating your account…"
+                    : "Signing you in…"
+                  : mode === "signup"
+                    ? "Create account"
+                    : "Sign in"}
               </button>
             </form>
 
@@ -324,33 +365,38 @@ export default function SignIn() {
               it during signup silently sent nothing for a new address, which
               looked like broken email. Google remains the passwordless new-
               account path; the link returns once the account exists. */}
-            {mode === 'signin' ? (
+            {mode === "signin" ? (
               <button
                 type="button"
                 className="nav-link mt-4 w-full text-sm normal-case tracking-normal"
                 onClick={sendLink}
                 disabled={Boolean(busy) || !email}
               >
-                {busy === 'link' ? 'Sending your secure link…' : 'Email me a link instead'}
+                {busy === "link"
+                  ? "Sending your secure link…"
+                  : "Email me a link instead"}
               </button>
             ) : null}
 
             <p className="mt-6 text-center text-sm text-text-secondary">
-              {mode === 'signup' ? 'Already have an account?' : 'No account yet?'}{' '}
+              {mode === "signup"
+                ? "Already have an account?"
+                : "No account yet?"}{" "}
               <button
                 type="button"
                 className="nav-link normal-case tracking-normal"
                 disabled={Boolean(busy)}
                 onClick={() => {
-                  setParams(mode === 'signup' ? {} : { mode: 'signup' });
+                  setParams(mode === "signup" ? {} : { mode: "signup" });
                 }}
               >
-                {mode === 'signup' ? 'Sign in' : 'Create one'}
+                {mode === "signup" ? "Sign in" : "Create one"}
               </button>
             </p>
 
             <p className="auth-private">
-              <ShieldCheck size={14} aria-hidden="true" /> Private to you and your business.
+              <ShieldCheck size={14} aria-hidden="true" /> Private to you and
+              your business.
             </p>
           </div>
         )}

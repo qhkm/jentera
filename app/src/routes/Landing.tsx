@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router";
 import {
   ArrowDown,
   ArrowRight,
@@ -12,10 +12,20 @@ import {
   Plus,
   ShieldCheck,
   Storefront,
-} from '@phosphor-icons/react';
-import { LandingFooter, LandingHeader } from '@/components/landing/LandingChrome';
-import { useScrollReveal } from '@/hooks/useScrollReveal';
-import { BUSINESS_EXAMPLES, EVERYDAY_WORK, FAQS, HERO, SETUP_STEPS } from '@/lib/landing-content';
+} from "@phosphor-icons/react";
+import {
+  LandingFooter,
+  LandingHeader,
+} from "@/components/landing/LandingChrome";
+import { useScrollReveal } from "@/hooks/useScrollReveal";
+import {
+  BUSINESS_EXAMPLES,
+  EVERYDAY_WORK,
+  FAQS,
+  HERO,
+  SETUP_STEPS,
+  TRADE_TYPES,
+} from "@/lib/landing-content";
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
@@ -52,9 +62,13 @@ function BusinessPreview() {
     <div id="example" className="business-preview">
       <div className="preview-controls">
         <div className="preview-caption">
-          <span className="lp-status-dot" /> A little less on your plate.
+          <span className="lp-status-dot" /> Practical help with the daily work.
         </div>
-        <div className="preview-tabs" role="tablist" aria-label="Choose a business example">
+        <div
+          className="preview-tabs"
+          role="tablist"
+          aria-label="Choose a business example"
+        >
           {BUSINESS_EXAMPLES.map((example, index) => (
             <button
               type="button"
@@ -70,11 +84,15 @@ function BusinessPreview() {
               onClick={() => choose(index)}
               onKeyDown={(event) => {
                 let next = index;
-                if (event.key === 'ArrowRight') next = (index + 1) % BUSINESS_EXAMPLES.length;
-                else if (event.key === 'ArrowLeft')
-                  next = (index + BUSINESS_EXAMPLES.length - 1) % BUSINESS_EXAMPLES.length;
-                else if (event.key === 'Home') next = 0;
-                else if (event.key === 'End') next = BUSINESS_EXAMPLES.length - 1;
+                if (event.key === "ArrowRight")
+                  next = (index + 1) % BUSINESS_EXAMPLES.length;
+                else if (event.key === "ArrowLeft")
+                  next =
+                    (index + BUSINESS_EXAMPLES.length - 1) %
+                    BUSINESS_EXAMPLES.length;
+                else if (event.key === "Home") next = 0;
+                else if (event.key === "End")
+                  next = BUSINESS_EXAMPLES.length - 1;
                 else return;
                 event.preventDefault();
                 choose(next);
@@ -138,8 +156,8 @@ function BusinessPreview() {
               <div className="preview-answer">
                 <span className="preview-kicker">Jentera’s plan</span>
                 <h3>
-                  Let’s take a few things <br />
-                  off your list.
+                  Here is what I can <br />
+                  prepare for you.
                 </h3>
                 <ul>
                   {business.tasks.map((task, index) => (
@@ -156,22 +174,28 @@ function BusinessPreview() {
                   className="preview-open"
                   onClick={() => setShowDraft(true)}
                 >
-                  See an example draft <ArrowUpRight size={16} aria-hidden="true" />
+                  See an example draft{" "}
+                  <ArrowUpRight size={16} aria-hidden="true" />
                 </button>
               </div>
             </div>
           )}
         </div>
         <div className="preview-bottom">
-          <ShieldCheck size={13} aria-hidden="true" /> An illustration. Your work uses the details
-          you confirm.
+          <ShieldCheck size={13} aria-hidden="true" /> An illustration. Your
+          work uses the details you confirm.
         </div>
       </div>
     </div>
   );
 }
 
-const WORK_ICONS = { chat: ChatCircle, document: FileText, search: MagnifyingGlass };
+const WORK_ICONS = {
+  chat: ChatCircle,
+  document: FileText,
+  search: MagnifyingGlass,
+  shield: ShieldCheck,
+};
 
 export default function Landing() {
   useScrollReveal();
@@ -201,7 +225,9 @@ export default function Landing() {
                 </a>
               </div>
               <p className="lp-hero-note">
-                <Check size={14} aria-hidden="true" /> Start with a description. No technical setup.
+                <Check size={14} aria-hidden="true" /> Bahasa &amp; English
+                <span aria-hidden="true">·</span> You decide before anything
+                important goes out
               </p>
             </div>
             <BusinessPreview />
@@ -214,26 +240,32 @@ export default function Landing() {
 
         <section id="work" className="lp-section lp-container">
           <div className="lp-section-heading">
-            <Eyebrow>For the business you already run</Eyebrow>
+            <Eyebrow>For the work that keeps coming back</Eyebrow>
             <h2>
-              The work doesn’t stop
+              Less time on admin.
               <br />
-              when the shop closes.
+              <span className="text-brand">More time for the business.</span>
             </h2>
             <p>
-              You already have customers, a team, and a way of doing things. Jentera helps with the
-              everyday work that keeps landing on your desk.
+              Give Jentera the enquiries, follow-ups, and paperwork that keep
+              landing on your desk.
             </p>
           </div>
           <div className="lp-work-list">
-            {EVERYDAY_WORK.map((work) => {
+            {EVERYDAY_WORK.map((work, index) => {
               const Glyph = WORK_ICONS[work.icon];
               return (
-                <article key={work.number} className="lp-work-row">
+                <article
+                  key={work.number}
+                  className={`lp-work-row ${index === 0 || index === EVERYDAY_WORK.length - 1 ? "lp-work-row-wide" : ""}`}
+                >
                   <span className="lp-row-number">{work.number}</span>
                   <div className="lp-work-title">
                     <Glyph size={26} weight="duotone" aria-hidden="true" />
-                    <h3>{work.title}</h3>
+                    <div>
+                      <span className="lp-work-kicker">{work.kicker}</span>
+                      <h3>{work.title}</h3>
+                    </div>
                   </div>
                   <div className="lp-work-description">
                     <p>{work.body}</p>
@@ -249,16 +281,15 @@ export default function Landing() {
           <div className="lp-container lp-section">
             <div className="lp-section-heading lp-heading-split">
               <div>
-                <Eyebrow>How it works</Eyebrow>
+                <Eyebrow>Simple to get started</Eyebrow>
                 <h2>
-                  A description.
-                  <br />A conversation.
+                  Tell us about the business.
                   <br />
-                  <span className="text-brand">A job off your list.</span>
+                  <span className="text-brand">Give Jentera a job.</span>
                 </h2>
               </div>
               <p>
-                You know your business. Start there.
+                Start with the business you already know.
                 <br />
                 Jentera handles the setup behind the scenes.
               </p>
@@ -276,25 +307,28 @@ export default function Landing() {
               ))}
             </div>
             <Link to="/onboard" className="lp-text-link lp-try-link">
-              Try the setup without an account <ArrowUpRight size={16} aria-hidden="true" />
+              Try the setup without an account{" "}
+              <ArrowUpRight size={16} aria-hidden="true" />
             </Link>
           </div>
         </section>
 
         <section className="lp-container lp-section lp-local-section">
           <div className="lp-section-heading">
-            <Eyebrow>Built around life here</Eyebrow>
+            <Eyebrow>Why here is different</Eyebrow>
             <h2>
-              Business here
+              Built for the way business
               <br />
-              has its own rhythm.
+              works here.
             </h2>
             <p>
-              The late-night enquiry. The family helping behind the counter. The order details
-              scattered across chats. We’re building for the way Southeast Asia actually works.
+              The late-night enquiry. The family helping behind the counter. The
+              order details scattered across chats. We’re building around the
+              way businesses here already work.
             </p>
             <Link to="/connect" className="lp-text-link">
-              See what connects today <ArrowUpRight size={16} aria-hidden="true" />
+              See what connects today{" "}
+              <ArrowUpRight size={16} aria-hidden="true" />
             </Link>
           </div>
           <div className="lp-local-details">
@@ -302,47 +336,84 @@ export default function Landing() {
               <span className="lp-local-index">01 / THE WAY YOU TALK</span>
               <h3>Start with a conversation.</h3>
               <p>
-                Work with Jentera on the web or in your private Telegram chat. WhatsApp is part of
-                our direction, because that’s where so much business happens.
+                Work with Jentera on the web or in your private Telegram chat.
+                WhatsApp is part of our direction, because that’s where so much
+                business happens.
               </p>
               <span className="lp-availability">
-                <span className="lp-status-dot" /> Web + private Telegram available
+                <span className="lp-status-dot" /> Web + private Telegram
+                available
               </span>
             </article>
             <article>
               <span className="lp-local-index">02 / THE WAY YOU WORK</span>
               <h3>Your business comes first.</h3>
               <p>
-                Your menu, your services, your opening hours. Jentera works from the details you
-                confirm, in a workspace private to your business.
+                Your menu, your services, your opening hours. Jentera works from
+                the details you confirm, in a workspace private to your
+                business.
               </p>
             </article>
             <article>
               <span className="lp-local-index">03 / THE WAY WE BUILD</span>
-              <h3>Made to be within reach.</h3>
+              <h3>Made for smaller teams.</h3>
               <p>
-                A five-person business deserves useful AI too. We build the technology behind
-                Jentera to make everyday help practical for smaller teams.
+                A five-person business deserves useful AI too. We build the
+                technology behind Jentera to make everyday help practical for
+                smaller teams.
               </p>
             </article>
+          </div>
+        </section>
+
+        <section className="lp-trades-section">
+          <div className="lp-container lp-section">
+            <div className="lp-section-heading lp-heading-split">
+              <div>
+                <Eyebrow>Made for businesses here</Eyebrow>
+                <h2>
+                  Built around the work
+                  <br />
+                  <span className="text-brand">you already do.</span>
+                </h2>
+              </div>
+              <p>
+                From the first order to the last appointment. Jentera starts
+                with your trade and the way your business already runs.
+              </p>
+            </div>
+            <ul
+              className="lp-trade-grid"
+              aria-label="Businesses Jentera is designed for"
+            >
+              {TRADE_TYPES.map(([symbol, name]) => (
+                <li key={name}>
+                  <span aria-hidden="true">{symbol}</span>
+                  {name}
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
 
         <section id="aisar" className="lp-about-section">
           <div className="lp-container lp-about-layout">
             <div>
-              <Eyebrow>Jentera, by AISAR</Eyebrow>
+              <Eyebrow>Built by AISAR</Eyebrow>
               <h2>
-                AI agents that run
+                Good technology should work
                 <br />
-                Southeast Asian businesses.
+                for a small business too.
               </h2>
             </div>
             <div>
-              <p>That’s what AISAR builds. Jentera is how you put it to work in yours.</p>
               <p>
-                One product to learn your business, help with the daily work, and give you room to
-                focus on what comes next.
+                AISAR builds AI agents that run Southeast Asian businesses.
+                Jentera is how you put that work to use in yours.
+              </p>
+              <p>
+                One product to learn your business, help with the daily work,
+                and give you room to focus on what comes next.
               </p>
               <a
                 href="https://aisar.ai"
@@ -356,13 +427,16 @@ export default function Landing() {
           </div>
         </section>
 
-        <section id="questions" className="lp-container lp-section lp-faq-section">
+        <section
+          id="questions"
+          className="lp-container lp-section lp-faq-section"
+        >
           <div className="lp-section-heading">
-            <Eyebrow>A few useful answers</Eyebrow>
+            <Eyebrow>What owners usually ask</Eyebrow>
             <h2>
               Before you
               <br />
-              hand over a job.
+              get started.
             </h2>
             <a href="mailto:hello@kitakodventures.com" className="lp-text-link">
               Talk to a person <ArrowUpRight size={16} aria-hidden="true" />
@@ -383,16 +457,18 @@ export default function Landing() {
 
         <section className="lp-closing">
           <div className="lp-container">
-            <span className="lp-closing-label">For the next chapter of your business</span>
+            <span className="lp-closing-label">
+              For the business you already run
+            </span>
             <h2>
-              You’ve got a business to run.
+              More time for the business.
               <br />
-              <span>Let’s get to work.</span>
+              <span>Less time on the admin.</span>
             </h2>
             <Link to="/signin?mode=signup" className="btn btn-primary">
-              Put Jentera to work <ArrowUpRight size={16} aria-hidden="true" />
+              Set up Jentera <ArrowUpRight size={16} aria-hidden="true" />
             </Link>
-            <p>Tell us about the business you already have.</p>
+            <p>Start with one job that keeps taking up your time.</p>
           </div>
         </section>
       </main>
