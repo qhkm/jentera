@@ -1,0 +1,107 @@
+import { useEffect, useState } from 'react';
+import { ArrowUpRight, Check, Copy, Info, WarningCircle } from '@phosphor-icons/react';
+import { JenteraMark } from '@/components/JenteraMark';
+import { TypingBubble } from '@/components/WorkSignal';
+import { useToast } from '@/components/Toast';
+import { useT } from '@/i18n/I18nProvider';
+import type { AskMessage } from '@/hooks/useAsk';
+
+export function AskReply({
+  message,
+  onRetry,
+  onOpenActivity,
+}: {
+  message: AskMessage;
+  onRetry: () => void;
+  onOpenActivity?: () => void;
+}) {
+  const t = useT();
+  const toast = useToast();
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(message.text);
+      setCopied(true);
+      toast(t('ask.reply.copied'));
+    } catch {
+      toast(t('ask.reply.copyFailed'), 'error');
+    }
+  }
+
+  const failed = Boolean(message.failedQuestion);
+  return (
+    <article
+      className={`ask-reply ${failed ? 'ask-reply-failed' : ''}`}
+      aria-label={message.agent ?? 'Jentera'}
+    >
+      <header>
+        <JenteraMark size={25} />
+        <strong>{message.agent ?? 'Jentera'}</strong>
+        {message.state === 'done' && (
+          <span className="ask-reply-ready">
+            <Check size={12} aria-hidden="true" />
+            {t('ask.reply.ready')}
+          </span>
+        )}
+      </header>
+      {message.pendingId ? (
+        <TypingBubble label={message.text} />
+      ) : (
+        <>
+          <div className="ask-reply-text" role={failed ? 'alert' : undefined}>
+            {message.text}
+          </div>
+          {failed ? (
+            <button type="button" className="ask-inline-action" onClick={onRetry}>
+              <WarningCircle size={16} aria-hidden="true" />
+              {t('ask.retry')}
+            </button>
+          ) : (
+            <footer>
+              <button type="button" className="ask-inline-action" onClick={() => void copy()}>
+                {copied ? (
+                  <Check size={15} aria-hidden="true" />
+                ) : (
+                  <Copy size={15} aria-hidden="true" />
+                )}
+                {t(copied ? 'ask.reply.copied' : 'ask.reply.copy')}
+              </button>
+              {message.grounded !== undefined && (
+                <details className="ask-reply-source">
+                  <summary>
+                    <Info size={15} aria-hidden="true" />
+                    {t('ask.reply.source')}
+                  </summary>
+                  <p>
+                    {message.grounded
+                      ? message.usedKeys?.length
+                        ? t('ask.receipt.facts', { n: message.usedKeys.length })
+                        : t('ask.receipt.grounded')
+                      : t('ask.receipt.noFacts')}
+                  </p>
+                </details>
+              )}
+              {message.state === 'done' && message.mode === 'work' && onOpenActivity && (
+                <button
+                  type="button"
+                  className="ask-inline-action ask-reply-activity"
+                  onClick={onOpenActivity}
+                >
+                  {t('ask.receipt.activity')}
+                  <ArrowUpRight size={14} aria-hidden="true" />
+                </button>
+              )}
+            </footer>
+          )}
+        </>
+      )}
+    </article>
+  );
+}

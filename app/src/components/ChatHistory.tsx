@@ -73,7 +73,7 @@ export function ChatHistory({
         }}
       >
         <ClockCounterClockwise size={18} aria-hidden="true" />
-        <span>{active?.title || t('ask.chat.untitled')}</span>
+        <span>{active?.title || t('ask.history')}</span>
         <CaretDown size={12} aria-hidden="true" />
       </button>
       {open && (

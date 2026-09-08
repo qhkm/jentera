@@ -63,52 +63,6 @@
   color: var(--text-muted);
 }
 
-/* Ask: one conversation, a quiet history drawer and a proper writing surface. */
-.ask-canvas {
-  position: relative;
-  background: var(--bg-card);
-}
-.ask-workspace .chip {
-  color: var(--text-secondary);
-}
-.ask-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  min-height: 58px;
-  flex-shrink: 0;
-  padding: 8px 20px;
-  border-bottom: 1px solid var(--rail);
-}
-.ask-toolbar-label {
-  flex: 1;
-  font-size: 13px;
-}
-.ask-private-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-muted);
-  font-size: 11px;
-  white-space: nowrap;
-}
-.ask-new-chat {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 36px;
-  padding: 8px 10px;
-  border: 1px solid var(--rail);
-  border-radius: 9px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  white-space: nowrap;
-}
-.ask-new-chat:hover {
-  border-color: var(--accent-green);
-  color: var(--text);
-}
 .ask-history {
   position: relative;
   flex: 1;
@@ -230,110 +184,6 @@
   color: var(--text);
   border: 1px solid var(--border-light);
   border-radius: 6px;
-}
-.ask-welcome {
-  width: 100%;
-  max-width: 650px;
-  margin: auto;
-  padding: 22px 16px;
-}
-.ask-welcome-heading {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 24px;
-}
-.ask-welcome-heading > span {
-  color: var(--text-secondary);
-  font-size: 11px;
-  line-height: 1.7;
-}
-.ask-welcome h2 {
-  font-size: clamp(25px, 3vw, 34px);
-  line-height: 1.2;
-}
-.ask-welcome-copy {
-  max-width: 54ch;
-  margin-top: 12px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.8;
-}
-.ask-task-options {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 28px;
-}
-.ask-task-options > button {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  min-height: 92px;
-  padding: 18px 14px;
-  border: 1px solid var(--rail);
-  border-radius: 12px;
-  background: var(--bg);
-  text-align: left;
-  transition:
-    border-color 150ms,
-    background 150ms;
-}
-.ask-task-options > button > svg {
-  flex-shrink: 0;
-  color: var(--accent-green);
-}
-.ask-task-options > button > span {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.ask-task-options strong {
-  font-size: 12px;
-  font-weight: 500;
-}
-.ask-task-options small {
-  color: var(--text-muted);
-  font-size: 11px;
-  line-height: 1.6;
-}
-.ask-task-options > button:hover {
-  border-color: rgb(var(--accent-green-rgb) / 0.4);
-  background: rgb(var(--accent-green-rgb) / 0.04);
-}
-.ask-composer {
-  display: flex;
-  align-items: flex-end;
-  flex-shrink: 0;
-  gap: 12px;
-  margin: 16px 20px 12px;
-  padding: 12px;
-  border: 1px solid var(--border-light);
-  border-radius: 16px;
-  background: var(--bg);
-  transition: border-color 150ms;
-}
-.ask-composer:focus-within {
-  border-color: var(--accent-green);
-  box-shadow: 0 0 0 3px rgb(var(--accent-green-rgb) / 0.07);
-}
-.ask-composer textarea {
-  padding: 9px 5px;
-  background: transparent;
-  color: var(--text);
-  font-size: 13px;
-  line-height: 1.6;
-  outline: none;
-}
-.ask-composer textarea::placeholder {
-  color: var(--text-muted);
-}
-.ask-composer .ask-send {
-  width: 40px;
-  height: 40px;
-  min-height: 40px;
-  padding: 0;
-  border-radius: 11px;
 }
 
 /* Activity: approvals stay above this independently searchable history. */
@@ -489,8 +339,7 @@
   display: grid;
   gap: 12px;
 }
-.activity-records .outcome-receipt,
-.ask-thread .outcome-receipt {
+.activity-records .outcome-receipt {
   border-radius: 14px;
   overflow-wrap: anywhere;
 }
@@ -670,53 +519,7 @@
   font-size: 12px;
 }
 
-@media (min-width: 1024px) {
-  .ask-canvas {
-    height: clamp(570px, calc(100dvh - 232px), 850px);
-  }
-}
 @media (max-width: 767px) {
-  .ask-toolbar {
-    padding-inline: 16px;
-    gap: 10px;
-  }
-  .ask-private-label {
-    display: none;
-  }
-  .ask-welcome {
-    padding: 16px 2px;
-  }
-  .ask-welcome-heading {
-    margin-bottom: 20px;
-  }
-  .ask-welcome-heading img {
-    width: 40px;
-    height: 40px;
-  }
-  .ask-welcome-copy {
-    font-size: 12px;
-  }
-  .ask-task-options {
-    margin-top: 22px;
-    gap: 8px;
-  }
-  .ask-task-options > button {
-    flex-direction: column;
-    gap: 10px;
-    padding: 14px 12px;
-  }
-  .ask-task-options small {
-    font-size: 10px;
-  }
-  .ask-composer {
-    margin: 10px 14px max(14px, env(safe-area-inset-bottom));
-    padding: 8px;
-    gap: 6px;
-    border-radius: 14px;
-  }
-  .ask-composer textarea {
-    font-size: 16px;
-  }
   .activity-overview button {
     padding: 14px 12px;
   }
@@ -766,17 +569,5 @@
   .business-shortcuts span {
     grid-column: 2;
     margin: 0;
-  }
-}
-@media (max-width: 359px) {
-  .ask-new-chat {
-    padding-inline: 8px;
-    font-size: 11px;
-  }
-  .ask-task-options > button {
-    padding: 12px 10px;
-  }
-  .ask-task-options strong {
-    font-size: 11px;
   }
 }

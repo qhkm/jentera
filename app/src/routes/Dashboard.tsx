@@ -264,8 +264,10 @@ export default function Dashboard() {
               handled={handled}
               needs={needsAttention}
               firstRun={searchParams.get('first') === '1'}
+              active={view === 'chat'}
               onOpenActivity={() => go('work')}
               onOpenConnections={() => go('business', 'connections')}
+              onOpenKnowledge={() => go('business', 'knows')}
             />
           </div>
           {view === 'work' && <ActivityView b={b} onOpenAsk={() => go('chat')} />}
