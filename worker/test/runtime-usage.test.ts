@@ -104,8 +104,9 @@ describe('runtime usage safety ledger', () => {
       outputTokens: 20,
     }));
     const snapshot = await asTenant(A, (tx) => runtimeBudgetSnapshot(tx, A));
-    // (18000*30 + 20*120) / 100 = 5424 micro-USD
-    expect(snapshot.usage.costMicrousd).toBe(5_424);
+    // router.fmcv.my /model/info: $0.60/M in, $2.40/M out
+    // (18000*60 + 20*240) / 100 = 10848 micro-USD
+    expect(snapshot.usage.costMicrousd).toBe(10_848);
   });
 
   it('prices MiniMax-M2.7-highspeed runs at the router-reported rate', async () => {

@@ -194,13 +194,13 @@ describe('model proxy route', () => {
     expect(seen).toHaveLength(1);
     /* recordUsage is awaited inside the route; give the ledger a beat. */
     await new Promise((resolve) => setTimeout(resolve, 50));
-    // 1M in × $0.30/M + 2M out × $1.20/M = $2.70 = 2,700,000 micro-USD, exactly.
-    expect(await ledgerMicrousd()).toBe(2_700_000);
+    // 1M in × $0.60/M + 2M out × $2.40/M = $5.40 = 5,400,000 micro-USD, exactly.
+    expect(await ledgerMicrousd()).toBe(5_400_000);
   });
 
   it('accumulates sub-cent completions exactly instead of rounding each up to a cent', async () => {
-    /* 1,000 in × $0.30/M + 100 out × $1.20/M = 420 micro-USD. Two of them are
-       840, not 20,000; the old cent ledger charged a full cent per call. */
+    /* 1,000 in × $0.60/M + 100 out × $2.40/M = 840 micro-USD. Two of them are
+       1,680, not 20,000; the old cent ledger charged a full cent per call. */
     const { fetcher } = stubUpstream(200, {
       id: 'cmpl-small',
       usage: { prompt_tokens: 1_000, completion_tokens: 100 },
@@ -216,7 +216,7 @@ describe('model proxy route', () => {
       expect(response.status).toBe(200);
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    expect(await ledgerMicrousd()).toBe(840);
+    expect(await ledgerMicrousd()).toBe(1_680);
   });
 
   it('meters a stream whose earlier chunks carry "usage": null', async () => {
@@ -252,8 +252,8 @@ describe('model proxy route', () => {
     expect(response.status).toBe(200);
     await response.text();
     await new Promise((resolve) => setTimeout(resolve, 50));
-    // 500k in × $0.30/M + 1M out × $1.20/M = $1.35 = 1,350,000 micro-USD.
-    expect(await ledgerMicrousd()).toBe(1_350_000);
+    // 500k in × $0.60/M + 1M out × $2.40/M = $2.70 = 2,700,000 micro-USD.
+    expect(await ledgerMicrousd()).toBe(2_700_000);
   });
 
   it('meters a streaming completion from the final usage chunk', async () => {
@@ -284,7 +284,7 @@ describe('model proxy route', () => {
     expect(text).toContain('[DONE]');
     expect(text).toContain('"usage"');
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(await ledgerMicrousd()).toBe(1_350_000);
+    expect(await ledgerMicrousd()).toBe(2_700_000);
   });
 
   it('injects stream_options.include_usage so streaming requests are metered', async () => {

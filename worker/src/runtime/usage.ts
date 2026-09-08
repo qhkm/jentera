@@ -279,8 +279,10 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   'deepseek/deepseek-v4-flash-0731': { input: 6, output: 12 },
   'deepseek/deepseek-v4-flash-20260731': { input: 6, output: 12 },
   'deepseek-v4-flash': { input: 6, output: 12 },
-  // MiniMax M3 on the customer-pinned router: $0.30/M in, $1.20/M out
-  'MiniMax-M3': { input: 30, output: 120 },
+  // MiniMax M3 on the customer-pinned router: $0.60/M in, $2.40/M out
+  // (router.fmcv.my /model/info input_cost_per_token 6e-07, output 2.4e-06,
+  // read 2026-09-08; the earlier $0.30/$1.20 entry was half the router's rate)
+  'MiniMax-M3': { input: 60, output: 240 },
   // MiniMax M2.7 highspeed on the same router: $0.60/M in, $2.40/M out
   // (router.fmcv.my /model/info, read 2026-09-08)
   'MiniMax-M2.7-highspeed': { input: 60, output: 240 },
