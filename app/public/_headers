@@ -1,6 +1,6 @@
 # Cloudflare Pages headers — https://developers.cloudflare.com/pages/configuration/headers/
-# Rule matching is by most-specific segment, so /assets/* (immutable,
-# content-hashed) never inherits the security headers' no-store.
+# Cloudflare combines every matching rule. Keep caching out of the global
+# security block so route-specific policies are not cancelled by no-store.
 
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
@@ -17,29 +17,44 @@
 # every major view); flip Content-Security-Policy-Report-Only to
 # Content-Security-Policy once clean.
 /*
-  Cache-Control: no-cache, no-store, must-revalidate
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://api.jentera.ai https://aisar-api.qhkmdev90.workers.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
 
+# Route shells can change on every release and authenticated routes must never
+# be stored. These exact rules do not overlap sitemap.xml or robots.txt.
+/
+  Cache-Control: no-cache, no-store, must-revalidate
+/connect
+  Cache-Control: no-cache, no-store, must-revalidate
+
 # Duplicate noindex in the response as well as each static private shell.
 # Query strings do not change the path match; no private data is prerendered.
 /app
+  Cache-Control: no-cache, no-store, must-revalidate
   X-Robots-Tag: noindex, nofollow
 /app/*
+  Cache-Control: no-cache, no-store, must-revalidate
   X-Robots-Tag: noindex, nofollow
 /signin
+  Cache-Control: no-cache, no-store, must-revalidate
   X-Robots-Tag: noindex, nofollow
 /signin/*
+  Cache-Control: no-cache, no-store, must-revalidate
   X-Robots-Tag: noindex, nofollow
 /onboard
+  Cache-Control: no-cache, no-store, must-revalidate
   X-Robots-Tag: noindex, nofollow
 /onboard/*
+  Cache-Control: no-cache, no-store, must-revalidate
   X-Robots-Tag: noindex, nofollow
 /setup
+  Cache-Control: no-cache, no-store, must-revalidate
   X-Robots-Tag: noindex, nofollow
 /setup/*
+  Cache-Control: no-cache, no-store, must-revalidate
   X-Robots-Tag: noindex, nofollow
 /404
+  Cache-Control: no-cache, no-store, must-revalidate
   X-Robots-Tag: noindex, nofollow

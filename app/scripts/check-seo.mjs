@@ -66,6 +66,7 @@ if (sitemapResult.response) {
   assert.equal(sitemapResult.response.status, 200);
   assert.match(sitemapResult.response.headers.get('content-type'), /(?:application|text)\/xml/);
   assert.match(sitemapResult.response.headers.get('cache-control'), /public/);
+  assert.doesNotMatch(sitemapResult.response.headers.get('cache-control'), /no-store/);
 }
 const sitemap = responseText(sitemapResult.bytes);
 const sitemapDom = new JSDOM(sitemap, { contentType: 'application/xml' });
@@ -101,6 +102,7 @@ if (robotsResult.response) {
   assert.equal(robotsResult.response.status, 200);
   assert.match(robotsResult.response.headers.get('content-type'), /text\/plain/);
   assert.match(robotsResult.response.headers.get('cache-control'), /public/);
+  assert.doesNotMatch(robotsResult.response.headers.get('cache-control'), /no-store/);
 }
 const robots = responseText(robotsResult.bytes);
 assert.match(robots, /Sitemap: https:\/\/jentera.ai\/sitemap.xml/);
