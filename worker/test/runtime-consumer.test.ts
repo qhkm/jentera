@@ -666,7 +666,8 @@ describe('the runtime queue consumer', () => {
     });
 
     await handleRuntimeQueueMessage(env, intake(1, 'Are we open on Sunday?'), { provider });
-    await handleRuntimeQueueMessage(env, intake(2, 'Research the latest payroll rules'), { provider });
+    // Deep is opt-in now; the override must still not touch an explicit deep request.
+    await handleRuntimeQueueMessage(env, intake(2, '/deep research the latest payroll rules'), { provider });
 
     const runs = await asTenant(A, (tx) => tx<{ model: string }[]>`
       select model from run where business_id = ${A} order by created_at`);

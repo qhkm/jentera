@@ -11,13 +11,22 @@ describe('responseModeFor', () => {
   });
 
   it.each([
+    '/deep work through this operational problem',
+    '/research the latest payroll rules in Malaysia',
+  ])('reserves deep reasoning for an explicit request: %s', (message) => {
+    expect(responseModeFor(message)).toBe('deep');
+  });
+
+  /* Deep runs on Telegram took nine minutes each when a phrase like "deep
+     dive" tripped the heuristic. An owner who wants that waits for it on
+     purpose, with the slash command; wording alone never costs ten minutes. */
+  it.each([
     'Research the latest payroll rules in Malaysia',
     'Do a deep dive into our competitors',
     'Prepare a comprehensive market analysis',
     'Compare accounting providers for our business',
-    '/deep work through this operational problem',
-  ])('reserves deep reasoning for substantial work: %s', (message) => {
-    expect(responseModeFor(message)).toBe('deep');
+  ])('keeps substantial-sounding wording quick unless asked: %s', (message) => {
+    expect(responseModeFor(message)).toBe('quick');
   });
 
   it('lets the owner force a quick answer', () => {

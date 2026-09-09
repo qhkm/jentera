@@ -67,21 +67,17 @@ export function modelForResponseMode(
   return selected;
 }
 
-/** Ordinary business chat should feel conversational. Deep reasoning remains
- * available when the owner explicitly asks for research or substantial
- * analysis; `/quick` and `/deep` are deterministic escape hatches. */
+/** Ordinary business chat is quick. Deep reasoning is opt-in with `/deep`
+ * or `/research`; `/quick` is the escape hatch the other way.
+ *
+ * A wording heuristic ("deep dive", "comprehensive", "research…") used to
+ * pick deep on its own. The two Telegram replies it triggered in the week
+ * to 2026-09-09 took nine and ten minutes on deepseek while the owner
+ * waited for a chat answer. Ten minutes is a cost an owner should choose
+ * by typing the command, not incur by phrasing. */
 export function responseModeFor(input: string): ResponseMode {
   const text = input.trim().toLowerCase();
   if (/^\/quick(?:\s|$)/.test(text)) return 'quick';
   if (/^\/(?:deep|research)(?:\s|$)/.test(text)) return 'deep';
-
-  const deepRequest = [
-    /\b(?:deep[ -]?dive|in[ -]?depth|comprehensive|thorough)\b/,
-    /\b(?:research|investigate|due diligence)\b/,
-    /\b(?:market|competitor|competitive|financial|strategic) analysis\b/,
-    /\b(?:business plan|go-to-market|market entry|long-term strategy)\b/,
-    /\b(?:compare|evaluate)\b[^\n]{0,80}\b(?:options|vendors|providers|competitors|markets)\b/,
-  ].some((pattern) => pattern.test(text));
-
-  return deepRequest ? 'deep' : 'quick';
+  return 'quick';
 }
