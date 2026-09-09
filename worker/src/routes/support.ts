@@ -23,6 +23,11 @@ import {
 } from '../connections';
 import { sendHermesMessage } from '../connectors/telegram';
 import { sendNotice } from '../email';
+import {
+  drainRuntimeTaskOutbox,
+  sweepRuntimeDrift,
+  sweepRuntimeTaskRecovery,
+} from '../runtime/consumer';
 import { telegramPairingCode, telegramPairingUrl } from '../telegram-pairing';
 import type { ConnectionRow } from '../connections';
 
@@ -67,6 +72,13 @@ export async function handleSupport(
   const presented = (request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
   if (!presented || !keyEquals(expected, presented)) {
     return json({ ok: false, err: 'unauthorized' }, { status: 401 }, cors);
+  }
+
+  if (url.pathname === '/api/support/drift-sweep') {
+    if (request.method !== 'POST') {
+      return json({ ok: false, err: 'method not allowed' }, { status: 405 }, cors);
+    }
+    return driftSweep(env, cors);
   }
 
   if (url.pathname === '/api/support/announce') {
@@ -245,4 +257,29 @@ async function announce(
     }
   }
   return json({ ok: true, dryRun, results }, {}, cors);
+}
+
+/* ---- the cron's drift sweep, on demand --------------------------------- */
+
+/**
+ * ship-runtime.sh calls this right after deploying a new RUNTIME_RELEASE so
+ * the fleet starts converging at once instead of at the next quarter hour.
+ * The steps are the ones `scheduled` in index.ts runs: re-arm recoverable
+ * tasks, drain the outbox, publish one upgrade per drifted runtime, drain
+ * again. It is idempotent: dedupe keys collapse a sweep that races the cron.
+ */
+async function driftSweep(env: Env, cors: Record<string, string>): Promise<Response> {
+  const started = Date.now();
+  const recovered = await sweepRuntimeTaskRecovery(env);
+  const drainedBefore = await drainRuntimeTaskOutbox(env);
+  const published = await sweepRuntimeDrift(env);
+  const drainedAfter = await drainRuntimeTaskOutbox(env);
+  return json({
+    ok: true,
+    release: env.RUNTIME_RELEASE?.trim() ?? null,
+    recovered,
+    published,
+    drained: drainedBefore + drainedAfter,
+    tookMs: Date.now() - started,
+  }, {}, cors);
 }

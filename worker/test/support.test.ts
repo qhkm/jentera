@@ -272,3 +272,46 @@ describe('announcements to owners', () => {
     expect((await announce({ businessIds: [A], channel: 'email', text })).status).toBe(400);
   });
 });
+
+describe('on-demand drift sweep', () => {
+  const RUNTIME_ID = '33333333-3333-4333-8333-333333333333';
+
+  async function sweep(opts: { key?: string; method?: string } = {}) {
+    const { request, url } = req(opts.method ?? 'POST', '/api/support/drift-sweep');
+    if (opts.key) request.headers.set('Authorization', `Bearer ${opts.key}`);
+    const res = await handleSupport(request, env, url, cors);
+    if (!res) throw new Error('no route matched /api/support/drift-sweep');
+    const text = await res.text();
+    return { status: res.status, body: text ? (JSON.parse(text) as Record<string, unknown>) : null };
+  }
+
+  it('publishes an upgrade task for every runtime off the pinned release, like the cron', async () => {
+    const sent: unknown[] = [];
+    env = testEnv({
+      AISAR_SUPPORT_KEY: 'support-secret',
+      RUNTIME_RELEASE: '2026.09.09-1',
+      RUNTIME_QUEUE: {
+        send: async (message: unknown) => { sent.push(message); },
+        sendBatch: async () => {},
+      } as never,
+    });
+    await asOwner((sql) => sql`
+      insert into agent_runtime
+        (id, business_id, provider, provider_name, status, desired_release, observed_release)
+      values
+        (${RUNTIME_ID}, ${A}, 'fly-sprite', 'aisar-b-alpha', 'ready', '2026.09.08-2', '2026.09.08-2')`);
+
+    const res = await sweep({ key: 'support-secret' });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, release: '2026.09.09-1', published: 1 });
+    const tasks = await asOwner((sql) => sql<{ kind: string; status: string }[]>`
+      select kind, status from runtime_task where business_id = ${A}`);
+    expect(tasks).toEqual([{ kind: 'upgrade', status: 'queued' }]);
+    expect(sent.length).toBeGreaterThan(0);
+  });
+
+  it('needs the support key and only answers POST', async () => {
+    expect((await sweep()).status).toBe(401);
+    expect((await sweep({ key: 'support-secret', method: 'GET' })).status).toBe(405);
+  });
+});
