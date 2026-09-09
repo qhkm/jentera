@@ -21,6 +21,7 @@ import { useActivity } from '@/hooks/useActivity';
 import { DataIcon } from '@/components/Icon';
 import { JenteraMark } from '@/components/JenteraMark';
 import { ChatHistory } from '@/components/ChatHistory';
+import { ChatWorkspace } from '@/components/ChatWorkspace';
 import { AskReply } from '@/components/AskReply';
 import { useSignedIn } from '@/lib/repo/gate';
 import { useSnapshot, type AskMode } from '@/lib/repo';
@@ -39,6 +40,7 @@ export default function AskJenteraView({
   needs,
   firstRun = false,
   active = true,
+  workspace = false,
   onOpenActivity,
   onOpenConnections,
   onOpenKnowledge,
@@ -48,6 +50,7 @@ export default function AskJenteraView({
   needs: number;
   firstRun?: boolean;
   active?: boolean;
+  workspace?: boolean;
   onOpenActivity?: () => void;
   onOpenConnections?: () => void;
   onOpenKnowledge?: () => void;
@@ -125,14 +128,14 @@ export default function AskJenteraView({
     else composer.current?.focus();
   }
 
-  return (
+  const conversation = (
     <div
       className={`chat-shell ask-studio ${ask.hasHistory ? 'ask-studio-conversation' : 'ask-studio-start'}`}
     >
       <header className="ask-studio-topbar">
         <h1>{t('view.chat')}</h1>
         <div className="ask-studio-tools">
-          {(signedIn || ask.sessions.length > 1) && (
+          {!workspace && (signedIn || ask.sessions.length > 1) && (
             <ChatHistory
               sessions={ask.sessions}
               activeId={ask.activeId}
@@ -363,7 +366,7 @@ export default function AskJenteraView({
                 </button>
               ))}
             </div>
-            {recent.length > 0 && (
+            {!workspace && recent.length > 0 && (
               <section className="ask-recent-chats" aria-label={t('ask.studio.recent')}>
                 <header>
                   <h3>{t('ask.studio.recent')}</h3>
@@ -403,4 +406,18 @@ export default function AskJenteraView({
       </div>
     </div>
   );
+
+  return workspace ? (
+    <ChatWorkspace
+      active={active}
+      businessName={business.name}
+      sessions={ask.sessions}
+      activeId={ask.activeId}
+      onNew={ask.newSession}
+      onOpen={ask.openSession}
+      onDelete={ask.deleteSession}
+    >
+      {conversation}
+    </ChatWorkspace>
+  ) : conversation;
 }

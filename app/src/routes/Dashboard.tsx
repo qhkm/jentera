@@ -1,5 +1,5 @@
 /* ============================================================
-   Dashboard shell — four areas, deliberately not eight.
+   Two workspaces: conversations, and the business dashboard.
 
    Agent rosters, connections and approvals were separate views
    and read as competing technical products. They are now facts
@@ -11,9 +11,10 @@
      My Business knowledge, responsibilities, connections
    ============================================================ */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router';
 import { Shell } from '@/components/Shell';
+import { WorkspaceModeSwitch, type WorkspaceMode } from '@/components/WorkspaceModeSwitch';
 import { Avatar, Card, Eyebrow, Progress, Tag } from '@/components/ui';
 import { useBusiness } from '@/hooks/useBusiness';
 import { useActivity } from '@/hooks/useActivity';
@@ -22,7 +23,6 @@ import { useSnapshot } from '@/lib/repo';
 import { milestones, readiness } from '@/lib/business';
 import { useT } from '@/i18n/I18nProvider';
 import { Icon, type IconName } from '@/components/Icon';
-import { useIsCompact } from '@/hooks/useMediaQuery';
 import { useVisualViewport } from '@/hooks/useVisualViewport';
 import HomeView from './views/HomeView';
 import AskJenteraView from './views/AskJenteraView';
@@ -42,7 +42,6 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { id: 'home', labelKey: 'nav.home', icon: 'home' },
-  { id: 'chat', labelKey: 'nav.chat', icon: 'chat' },
   { id: 'work', labelKey: 'nav.work', icon: 'activity' },
   { id: 'business', labelKey: 'nav.business', icon: 'business' },
 ];
@@ -51,10 +50,13 @@ export default function Dashboard() {
   const t = useT();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedView = searchParams.get('view');
-  const view: View = NAV.some((item) => item.id === requestedView)
+  const view: View = requestedView === 'chat' || NAV.some((item) => item.id === requestedView)
     ? (requestedView as View)
     : 'home';
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const isChat = view === 'chat';
+  const requestedTab = searchParams.get('tab');
+  const businessTab = BUSINESS_TABS.includes(requestedTab as BizTab) ? requestedTab as BizTab : 'profile';
+  const lastDashboard = useRef<{ view: Exclude<View, 'chat'>; tab: BizTab }>({ view: 'home', tab: 'profile' });
   const trackedOpen = useRef(false);
   const b = useBusiness();
   const { business } = b;
@@ -78,10 +80,8 @@ export default function Dashboard() {
       ? b.needsYouCount + b.approvals.length
       : 0;
 
-  /* While the software keyboard is up in the chat, the bottom bar would
-     sit between the composer and the keyboard. Hide it for the duration. */
-  const compact = useIsCompact();
-  const keyboardOpen = useVisualViewport(compact && view === 'chat');
+  // Chat owns the visible viewport, including when the mobile keyboard opens.
+  useVisualViewport(isChat);
 
   const playbookHandled = useMemo(
     () => business.work.filter((w, i) => w.tag !== 'needs you' || b.workDone(i)).length,
@@ -103,28 +103,21 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    document.body.style.overflow = drawerOpen ? 'hidden' : '';
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [drawerOpen]);
-
-  useEffect(() => {
-    if (!drawerOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setDrawerOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [drawerOpen]);
+    if (view !== 'chat') lastDashboard.current = { view, tab: businessTab };
+  }, [view, businessTab]);
 
   function go(next: View, businessTab?: BizTab) {
     setSearchParams({
       view: next,
       ...(next === 'business' && businessTab ? { tab: businessTab } : {}),
     });
-    setDrawerOpen(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }
+
+  function switchMode(mode: WorkspaceMode) {
+    if ((mode === 'chat') === isChat) return;
+    if (mode === 'chat') go('chat');
+    else go(lastDashboard.current.view, lastDashboard.current.tab);
   }
 
   function navButton(item: NavItem) {
@@ -201,70 +194,36 @@ export default function Dashboard() {
 
   return (
     <Shell
-      className={`dashboard-shell ${view === 'chat' ? 'dashboard-chat' : ''}`}
-      onMenu={() => setDrawerOpen(true)}
-      menuBadge={needsAttention}
-      fullBleed={view === 'chat'}
+      className={`dashboard-shell workspace-shell ${isChat ? 'dashboard-chat workspace-chat' : 'workspace-dashboard'}`}
+      navigation={<WorkspaceModeSwitch mode={isChat ? 'chat' : 'dashboard'} onChange={switchMode} needsAttention={needsAttention} />}
+      fullBleed={isChat}
     >
       <div
-        className={`flex flex-col gap-8 lg:flex-row lg:pb-0 ${
-          view === 'chat' ? 'lg:gap-8' : 'pb-24'
-        }`}
+        className={`workspace-layout flex flex-col gap-8 lg:flex-row lg:pb-0 ${isChat ? '' : 'pb-24'}`}
       >
-        <aside className="dashboard-sidebar hidden shrink-0 flex-col gap-6 lg:flex lg:w-[220px]">
+        {!isChat && <aside className="dashboard-sidebar hidden shrink-0 flex-col gap-6 lg:flex lg:w-[220px]">
           {profile}
-          <nav className="flex flex-col gap-1" aria-label="Dashboard sections">
+          <nav className="flex flex-col gap-1" aria-label={t('workspace.mode.dashboard')}>
             {NAV.map(navButton)}
           </nav>
           <div className="dashboard-sidebar-note">
             <Icon name="shield" size={17} />
             <span>{t('home.workspace.private')}</span>
           </div>
-        </aside>
-
-        {drawerOpen ? (
-          <>
-            <div
-              className="fixed inset-0 z-40 bg-black/60 lg:hidden"
-              onClick={() => setDrawerOpen(false)}
-              aria-hidden="true"
-            />
-            <div
-              className="fixed inset-y-0 left-0 z-50 flex w-[min(82vw,300px)] flex-col gap-5 overflow-y-auto border-r border-rail bg-bg p-5 lg:hidden"
-              role="dialog"
-              aria-modal="true"
-              aria-label={t('drawer.menu')}
-            >
-              <div className="flex items-center justify-between">
-                <Eyebrow>{t('drawer.menu')}</Eyebrow>
-                <button
-                  type="button"
-                  onClick={() => setDrawerOpen(false)}
-                  className="nav-link px-2 py-1"
-                  aria-label="Close menu"
-                >
-                  ✕
-                </button>
-              </div>
-              {profile}
-              <nav className="flex flex-col gap-1" aria-label="Dashboard sections">
-                {NAV.map(navButton)}
-              </nav>
-            </div>
-          </>
-        ) : null}
+        </aside>}
 
         <div className="dashboard-content min-w-0 flex-1">
           {view === 'home' && <HomeView b={b} connections={connections} onNavigate={go} />}
           {/* Keep the owner conversation mounted while they inspect another
               section. Returning to Ask Jentera must not erase the exchange. */}
-          <div className={view === 'chat' ? '' : 'hidden'}>
+          <div className={isChat ? 'workspace-chat-panel' : 'hidden'} hidden={!isChat}>
             <AskJenteraView
               business={business}
               handled={handled}
               needs={needsAttention}
               firstRun={searchParams.get('first') === '1'}
               active={view === 'chat'}
+              workspace
               onOpenActivity={() => go('work')}
               onOpenConnections={() => go('business', 'connections')}
               onOpenKnowledge={() => go('business', 'knows')}
@@ -275,23 +234,17 @@ export default function Dashboard() {
             <MyBusinessView
               b={b}
               connections={connections}
-              initialTab={
-                BUSINESS_TABS.includes(searchParams.get('tab') as BizTab)
-                  ? (searchParams.get('tab') as BizTab)
-                  : 'profile'
-              }
+              initialTab={businessTab}
               onTabChange={(tab) => setSearchParams({ view: 'business', tab })}
             />
           )}
         </div>
       </div>
 
-      {/* Four areas, so the bottom bar mirrors the sidebar exactly. */}
-      <nav
-        className={`fixed inset-x-0 bottom-0 z-30 border-t border-rail bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden ${
-          keyboardOpen ? 'hidden' : 'flex'
-        }`}
-        aria-label="Primary"
+      {/* Chat has its own navigation; business sections stay in Dashboard. */}
+      {!isChat && <nav
+        className="dashboard-bottom-nav fixed inset-x-0 bottom-0 z-30 flex border-t border-rail bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+        aria-label={t('workspace.mode.dashboard')}
       >
         {NAV.map((item) => {
           const active = view === item.id;
@@ -314,7 +267,7 @@ export default function Dashboard() {
             </button>
           );
         })}
-      </nav>
+      </nav>}
     </Shell>
   );
 }

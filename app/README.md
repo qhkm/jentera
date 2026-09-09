@@ -35,28 +35,28 @@ pnpm deploy       # build + publish to aisar-jentera (jentera.ai)
 
 **English by default.** The engine defaulted from the country locale, so Malaysia opened in BM; `initialLang()` now returns `DEFAULT_LANG` (`en`) unless the user has explicitly picked a language. Any string rendered in a page must still live in `i18n/pages.ts` or the UI mixes languages when someone switches to BM.
 
-## Views
+## Workspace modes
 
-All eight dashboard views are ported, plus the landing and onboarding flows. Signed-in
-setup reads the real private-runtime state and embeds the live, private-owner Telegram pairing flow;
-only the anonymous demo uses the original timed setup preview.
+The header switches between two experiences, using the existing view URLs:
 
-| View | Notes |
-|---|---|
-| Home | Stage-driven — setup / connect / operating, one action each |
-| Chat | Per-agent threads, take over and hand back, quick replies, typing indicator |
-| Team Chat | Channels, @mention routing, and #escalations mirrored from Work |
-| Your Business | Editable name and location; edits propagate to every view |
-| AI Team | Agents plus recommendations derived from opportunity functions |
-| Work | Filter tabs, summary counts, approve and edit |
-| Connections | Tier, auth method and scope per connector |
-| Approvals | Risk-tiered queue; nothing sends without a human |
+| Mode | Entry | Contents |
+|---|---|---|
+| Chat | `/app?view=chat` | Full-height Ask Jentera, searchable conversation sidebar, per-chat drafts and replies |
+| Dashboard | `/app?view=home` (also the `/app` default) | Home, Activity (`view=work`), My Business (`view=business`) |
 
-Mobile has a hamburger drawer and a four-item bottom bar; the desktop sidebar is hidden below the `lg` breakpoint.
+Chat has no dashboard sidebar or bottom navigation. Below 1024px, its conversation
+list opens in a native modal dialog with keyboard focus containment and Escape
+dismissal. Dashboard uses a desktop sidebar and a three-section mobile bottom bar.
 
-### Cross-view wiring
+The conversation component stays mounted when switching modes: drafts and pending
+replies survive a visit to Dashboard. The mode switch returns to the last dashboard
+section and business tab visited in that mounted workspace. Direct links and browser
+Back/Forward use the existing `view` and `tab` parameters. Mode switching does not
+create a conversation or send a request.
 
-Approving an item in **Work** appends a closure message to **Team Chat → #escalations**, deduped by source index so the sync is idempotent. The escalation channel is derived state, not a hand-written thread.
+Completed chat history remains in the existing account-scoped browser storage;
+this is not cross-device chat synchronisation. No storage keys or API contracts
+were changed for the mode split. Customer-facing agents remain unavailable.
 
 ## Backend (optional)
 

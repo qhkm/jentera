@@ -19,7 +19,7 @@ export function Logo({ suffix }: { suffix?: string }) {
   return (
     <Link to="/" aria-label="Jentera home" className="inline-flex items-center gap-2">
       <JenteraMark size={32} />
-      <span className="font-pixel text-xl tracking-wide text-brand md:text-2xl">Jentera</span>
+      <span className="jentera-wordmark font-pixel text-xl tracking-wide text-brand md:text-2xl">Jentera</span>
       {suffix ? (
         <span className="hidden font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted md:inline">
           {suffix}
@@ -32,6 +32,7 @@ export function Logo({ suffix }: { suffix?: string }) {
 export function Shell({
   suffix,
   actions,
+  navigation,
   onMenu,
   menuBadge = 0,
   fullBleed = false,
@@ -40,6 +41,8 @@ export function Shell({
 }: {
   suffix?: string;
   actions?: ReactNode;
+  /** Workspace-level navigation, separate from page actions and account settings. */
+  navigation?: ReactNode;
   /** Supplied by the dashboard to open the mobile drawer. */
   onMenu?: () => void;
   menuBadge?: number;
@@ -97,6 +100,8 @@ export function Shell({
             ) : null}
             <Logo suffix={suffix} />
           </div>
+
+          {navigation ? <div className="shell-mode-navigation">{navigation}</div> : null}
 
           <div className="flex items-center gap-3">
             {actions ? <div className="hidden items-center gap-2 md:flex">{actions}</div> : null}
