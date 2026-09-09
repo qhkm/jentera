@@ -113,10 +113,16 @@ drop policy if exists routine_change_tenant on routine_change;
 create policy routine_change_tenant on routine_change
   using (business_id = (nullif(current_setting('app.business_id', true), ''))::uuid);
 
--- v1 never deletes: pause is the recoverable stop. No delete grant.
+-- v1 never deletes: pause is the recoverable stop. 000_role.sql's default
+-- privileges hand every new table select/insert/update/delete, so the
+-- grants below are stated in full and the rest revoked explicitly. The
+-- audit table is append-only for the app role.
 grant select, insert, update on routine to aisar_app;
+revoke delete, truncate, references, trigger on routine from aisar_app;
 grant select, insert, update on routine_occurrence to aisar_app;
+revoke delete, truncate, references, trigger on routine_occurrence from aisar_app;
 grant select, insert on routine_change to aisar_app;
+revoke update, delete, truncate, references, trigger on routine_change from aisar_app;
 
 -- The dispatcher runs without a tenant, where a plain select is RLS-filtered
 -- to nothing. This function returns only what the claim needs and nothing a

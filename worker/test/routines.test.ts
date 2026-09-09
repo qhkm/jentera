@@ -220,6 +220,18 @@ describe('create', () => {
 });
 
 describe('tenancy', () => {
+  it('gives the app role no way to delete a routine or rewrite its audit trail', async () => {
+    const routine = await create();
+    await expect(asTenant(A, (tx) => tx`delete from routine where id = ${routine.id}`))
+      .rejects.toThrow(/permission denied/);
+    await expect(asTenant(A, (tx) => tx`delete from routine_change where routine_id = ${routine.id}`))
+      .rejects.toThrow(/permission denied/);
+    await expect(asTenant(A, (tx) => tx`update routine_change set request_hash = 'x' where routine_id = ${routine.id}`))
+      .rejects.toThrow(/permission denied/);
+    // the row is still there
+    expect((await call('GET', `/api/routines/${routine.id}`, cookieOwnerA)).status).toBe(200);
+  });
+
   it('answers 404 for another tenant\'s routine on every operation', async () => {
     const routine = await create();
     const id = routine.id as string;
