@@ -10,6 +10,7 @@
 
 import type { Approval, CountryCode, Lang, Policy } from '@/lib/types';
 import { isRunId } from '@/lib/task';
+import { RemoteRoutinesApi } from '@/lib/routines/api';
 import type {
   Activity,
   BusinessSnapshot,
@@ -43,6 +44,7 @@ export class NotSignedInError extends Error {
 
 /** What /api/me answers with. Only the parts anything here reads. */
 export interface MeResponse {
+  features?: { routines?: { apiVersion?: number } };
   detailLevel?: string;
   /** Opaque account id from the session; scopes per-browser state such as
       Ask history so two accounts sharing a browser never see each other's. */
@@ -118,6 +120,7 @@ interface WireApproval {
 }
 
 export class RemoteRepository implements Repository {
+  readonly routines = new RemoteRoutinesApi();
   /** numeric id → server uuid, rebuilt on every load. */
   private ids = new Map<number, string>();
 

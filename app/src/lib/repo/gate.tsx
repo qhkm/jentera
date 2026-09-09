@@ -20,6 +20,7 @@ import { LoadingState } from '@/components/ui';
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
 type Chosen = {
+  routinesVersion?: number;
   repo: LocalRepository | RemoteRepository;
   mode: 'local' | 'remote';
   /** Session user id when remote; null for the demo. */
@@ -33,6 +34,12 @@ const SignedInContext = createContext(false);
 /* Which account this server-backed session belongs to. Per-browser state
    keyed by it (Ask history) stays private when accounts share a device. */
 const AccountContext = createContext<string | null>(null);
+const RoutinesContext = createContext(false);
+
+/** Discovery only. Live permissions come from /api/routines on every visit. */
+export function useRoutinesEnabled(): boolean {
+  return useContext(RoutinesContext);
+}
 
 /**
  * Declare a session as server-backed.
@@ -47,16 +54,20 @@ const AccountContext = createContext<string | null>(null);
 export function SignedInProvider({
   value,
   account = null,
+  routinesVersion,
   children,
 }: {
   value: boolean;
   /** The signed-in account's opaque id; omit for the demo. */
   account?: string | null;
+  routinesVersion?: number;
   children: ReactNode;
 }) {
   return (
     <SignedInContext.Provider value={value}>
-      <AccountContext.Provider value={value ? account : null}>{children}</AccountContext.Provider>
+      <AccountContext.Provider value={value ? account : null}>
+        <RoutinesContext.Provider value={value && routinesVersion === 1}>{children}</RoutinesContext.Provider>
+      </AccountContext.Provider>
     </SignedInContext.Provider>
   );
 }
@@ -130,6 +141,7 @@ async function choose(): Promise<Chosen> {
     repo: remote,
     mode: 'remote',
     account: typeof me?.userId === 'string' && me.userId ? me.userId : null,
+    routinesVersion: me?.features?.routines?.apiVersion,
   };
 }
 
@@ -166,7 +178,7 @@ export function RepositoryGate({ children }: { children: ReactNode }) {
   }
 
   return (
-    <SignedInProvider value={chosen.mode === 'remote'} account={chosen.account}>
+    <SignedInProvider value={chosen.mode === 'remote'} account={chosen.account} routinesVersion={chosen.routinesVersion}>
       <RepositoryProvider repository={chosen.repo}>{children}</RepositoryProvider>
     </SignedInProvider>
   );

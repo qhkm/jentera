@@ -204,6 +204,8 @@ export class NeedsAccountError extends Error {
 }
 
 export interface Repository {
+  /** Remote only; callers must also require /api/me v1 discovery. */
+  routines?: import('@/lib/routines/types').RoutinesApi;
   load(): Promise<BusinessSnapshot>;
 
   setBizType(key: string): Promise<void>;

@@ -72,6 +72,7 @@ import {
 
 const CHROME = {
   home: House,
+  routines: ArrowsClockwise,
   chat: ChatCircle,
   activity: Lightning,
   business: Buildings,

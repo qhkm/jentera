@@ -1,0 +1,73 @@
+.routines-view { display: flex; flex-direction: column; gap: 24px; font-size: var(--workspace-body); line-height: 1.65; }
+.routines-view :is(h1, h2, p, ol) { margin: 0; }
+.routines-view h1 { font-family: var(--font-pixel); font-size: clamp(1.75rem, 3vw, 2.25rem); line-height: 1.25; }
+.routines-view h2 { font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
+.routines-view :is(h1, h2)[tabindex="-1"]:focus { outline: none; }
+.routine-page-heading, .routine-section-heading, .routine-row-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.routine-page-heading { align-items: flex-start; }
+.routine-page-heading p { max-width: 60ch; margin-top: 9px; color: var(--text-secondary); }
+.routine-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.routine-actions .btn { gap: 8px; }
+.routine-section-heading > span, .routine-muted, .routine-footer, .routine-meta { color: var(--text-secondary); }
+.routine-section-heading p { margin-top: 6px; color: var(--text-secondary); }
+.routine-notice { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 16px 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); }
+.routine-starters { display: flex; flex-direction: column; gap: 20px; }
+.routine-starter-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.routine-starter.card { align-items: flex-start; gap: 14px; padding: 24px; text-align: left; transition: border-color 150ms ease, background 150ms ease; }
+.routine-starter:not(:disabled):hover, .routine-card:hover { border-color: var(--accent-green); background: var(--bg-card-hover); }
+.routine-starter > svg, .routine-job-icon, .routine-preview > svg, .routine-link { color: var(--accent-green); }
+.routine-starter > strong { font-size: 1.125rem; font-weight: 600; }
+.routine-starter > span:not(.routine-link) { color: var(--text-secondary); }
+.routine-starter-time { margin-top: auto; padding-top: 12px; }
+.routine-link { display: inline-flex; gap: 8px; align-items: center; min-height: 44px; text-align: left; text-decoration: none; }
+.routine-link:hover { text-decoration: underline; text-underline-offset: 4px; }
+.routine-list, .routine-detail { display: flex; flex-direction: column; gap: 14px; }
+.routine-card.card { display: flex; flex-direction: row; align-items: flex-start; padding: 22px; gap: 18px; text-align: left; }
+.routine-job-icon { padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg); flex-shrink: 0; }
+.routine-card-copy { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 7px; }
+.routine-card-copy strong { font-size: 1.125rem; overflow-wrap: anywhere; }
+.routine-card-arrow { margin-top: 5px; color: var(--text-muted); flex-shrink: 0; }
+.routine-latest { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; padding-top: 4px; color: var(--text-secondary); }
+.routine-status { display: inline-flex; align-items: center; gap: 7px; font-size: var(--workspace-body); white-space: nowrap; color: var(--text-secondary); }
+.routine-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.routine-status-good { color: var(--accent-green); }
+.routine-status-bad { color: var(--color-red-400); }
+.theme-light .routine-status-bad { color: var(--color-rose-700); }
+.routine-editor-gate { min-width: 0; border: 0; padding: 0; margin: 0; }
+.routine-editor.card, .routine-confirm.card { max-width: 760px; padding: 28px; gap: 20px; }
+.routine-editor label { display: flex; flex-direction: column; gap: 8px; font-weight: 500; min-width: 0; }
+.routine-editor .input { width: 100%; min-width: 0; color-scheme: dark; }
+.theme-light .routine-editor .input { color-scheme: light; }
+.routine-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; }
+.routine-editor .routine-checkbox { flex-direction: row; align-items: flex-start; font-weight: 400; padding: 8px 0; }
+.routine-checkbox input { width: 18px; height: 18px; margin-top: 4px; flex-shrink: 0; accent-color: var(--accent-green); }
+.routine-preview { display: flex; align-items: flex-start; gap: 14px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 20px 0; }
+.routine-preview > svg { margin-top: 3px; flex-shrink: 0; }
+.routine-preview p { color: var(--text-secondary); margin-top: 5px; }
+.routine-detail-card.card, .routine-history.card { padding: 24px; gap: 20px; }
+.routine-detail-card h2 { overflow-wrap: anywhere; }
+.routine-next { display: flex; flex-direction: column; gap: 4px; }
+.routine-next > span { color: var(--text-secondary); }
+.routine-history ol { padding: 0; list-style: none; }
+.routine-occurrence { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 20px 0; border-top: 1px solid var(--border); }
+.routine-occurrence .routine-row-heading { align-self: stretch; flex-wrap: wrap; }
+.routine-row-heading > div { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }
+.routine-occurrence time { color: var(--text-secondary); }
+.routine-occurrence p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.routine-footer { display: flex; gap: 10px; padding-top: 6px; }
+.routine-footer svg { margin-top: 5px; flex-shrink: 0; }
+.dashboard-bottom-nav > button { min-width: 0; }
+@media (max-width: 1100px) { .routine-starter-grid { grid-template-columns: 1fr; } }
+@media (max-width: 600px) {
+  .routines-view { gap: 20px; }
+  .routine-page-heading { flex-wrap: wrap; }
+  .routine-page-heading > .routine-actions { margin-left: auto; }
+  .routine-section-heading, .routine-row-heading { flex-wrap: wrap; }
+  .routine-editor.card, .routine-confirm.card, .routine-detail-card.card, .routine-history.card, .routine-starter.card { padding: 18px; }
+  .routine-card.card { padding: 18px; gap: 12px; }
+  .routine-job-icon { padding: 8px; }
+  .routine-card-arrow { display: none; }
+  .routine-card-copy { gap: 10px; }
+  .routine-fields { grid-template-columns: 1fr; }
+  .routine-actions .btn { white-space: normal; text-align: center; }
+}

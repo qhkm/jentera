@@ -19,7 +19,8 @@ import { Avatar, Card, Eyebrow, Progress, Tag } from '@/components/ui';
 import { useBusiness } from '@/hooks/useBusiness';
 import { useActivity } from '@/hooks/useActivity';
 import { useConnections } from '@/hooks/useConnections';
-import { useSnapshot } from '@/lib/repo';
+import { useRepository, useSnapshot } from '@/lib/repo';
+import { useRoutinesEnabled } from '@/lib/repo/gate';
 import { milestones, readiness } from '@/lib/business';
 import { useT } from '@/i18n/I18nProvider';
 import { Icon, type IconName } from '@/components/Icon';
@@ -30,8 +31,9 @@ import ActivityView from './views/ActivityView';
 import MyBusinessView, { type BizTab } from './views/MyBusinessView';
 import { trackActivation } from '@/lib/analytics';
 import { isRunId } from '@/lib/task';
+import RoutinesView from './views/RoutinesView';
 
-export type View = 'home' | 'chat' | 'work' | 'business';
+export type View = 'home' | 'chat' | 'work' | 'routines' | 'business';
 
 const BUSINESS_TABS: BizTab[] = ['profile', 'knows', 'handles', 'connections', 'permissions'];
 
@@ -49,9 +51,14 @@ const NAV: NavItem[] = [
 
 export default function Dashboard() {
   const t = useT();
+  const repository = useRepository();
+  const routinesEnabled = useRoutinesEnabled() && !!repository.routines;
+  const nav: NavItem[] = routinesEnabled
+    ? [...NAV.slice(0, 2), { id: 'routines', labelKey: 'routines.title', icon: 'routines' }, ...NAV.slice(2)]
+    : NAV;
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedView = searchParams.get('view');
-  const view: View = requestedView === 'chat' || NAV.some((item) => item.id === requestedView)
+  const view: View = requestedView === 'chat' || nav.some((item) => item.id === requestedView)
     ? (requestedView as View)
     : 'home';
   const isChat = view === 'chat';
@@ -59,7 +66,8 @@ export default function Dashboard() {
   const businessTab = BUSINESS_TABS.includes(requestedTab as BizTab) ? requestedTab as BizTab : 'profile';
   const focusedRunId = view === 'work' ? searchParams.get('run') : null;
   const [taskContext, setTaskContext] = useState<{ runId: string; title?: string } | null>(null);
-  const lastDashboard = useRef<{ view: Exclude<View, 'chat'>; tab: BizTab; runId: string | null }>({ view: 'home', tab: 'profile', runId: null });
+  const focusedRoutineId = view === 'routines' ? searchParams.get('routine') : null;
+  const lastDashboard = useRef<{ view: Exclude<View, 'chat'>; tab: BizTab; runId: string | null; routineId: string | null }>({ view: 'home', tab: 'profile', runId: null, routineId: null });
   const trackedOpen = useRef(false);
   const b = useBusiness();
   const { business } = b;
@@ -106,14 +114,15 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (view !== 'chat') lastDashboard.current = { view, tab: businessTab, runId: focusedRunId };
-  }, [view, businessTab, focusedRunId]);
+    if (view !== 'chat') lastDashboard.current = { view, tab: businessTab, runId: focusedRunId, routineId: focusedRoutineId };
+  }, [view, businessTab, focusedRunId, focusedRoutineId]);
 
-  function go(next: View, businessTab?: BizTab, runId?: string | null) {
+  function go(next: View, businessTab?: BizTab, runId?: string | null, routineId?: string | null) {
     setSearchParams({
       view: next,
       ...(next === 'business' && businessTab ? { tab: businessTab } : {}),
       ...(next === 'work' && runId ? { run: runId } : {}),
+      ...(next === 'routines' && routineId ? { routine: routineId } : {}),
     });
     window.scrollTo({ top: 0, behavior: 'instant' });
   }
@@ -121,7 +130,7 @@ export default function Dashboard() {
   function switchMode(mode: WorkspaceMode) {
     if ((mode === 'chat') === isChat) return;
     if (mode === 'chat') go('chat');
-    else go(lastDashboard.current.view, lastDashboard.current.tab, lastDashboard.current.runId);
+    else go(lastDashboard.current.view, lastDashboard.current.tab, lastDashboard.current.runId, lastDashboard.current.routineId);
   }
 
   function openTask(runId?: string, title?: string) {
@@ -214,7 +223,7 @@ export default function Dashboard() {
         {!isChat && <aside className="dashboard-sidebar hidden shrink-0 flex-col gap-6 lg:flex lg:w-[220px]">
           {profile}
           <nav className="flex flex-col gap-1" aria-label={t('workspace.mode.dashboard')}>
-            {NAV.map(navButton)}
+            {nav.map(navButton)}
           </nav>
           <div className="dashboard-sidebar-note">
             <Icon name="shield" size={17} />
@@ -255,6 +264,11 @@ export default function Dashboard() {
               onTabChange={(tab) => setSearchParams({ view: 'business', tab })}
             />
           )}
+          {routinesEnabled && repository.routines && <div hidden={view !== 'routines'} className={view === 'routines' ? '' : 'hidden'}>
+            <RoutinesView api={repository.routines} active={view === 'routines'}
+              selectedId={view === 'routines' ? focusedRoutineId : lastDashboard.current.routineId}
+              onSelect={(id) => go('routines', undefined, null, id)} onOpenTask={openTask} />
+          </div>}
         </div>
       </div>
 
@@ -263,7 +277,7 @@ export default function Dashboard() {
         className="dashboard-bottom-nav fixed inset-x-0 bottom-0 z-30 flex border-t border-rail bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
         aria-label={t('workspace.mode.dashboard')}
       >
-        {NAV.map((item) => {
+        {nav.map((item) => {
           const active = view === item.id;
           const badge = item.id === 'work' ? needsAttention : 0;
           return (

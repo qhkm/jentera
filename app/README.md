@@ -89,6 +89,35 @@ reads existing endpoints, with explicit loading/error states. This is an on-scre
 summary, not a scheduled delivery or an AI-generated report. No backend, storage
 key, onboarding or cache-header changes are needed.
 
+### Routines (capability-gated)
+
+`/app?view=routines` is available only when the authenticated `/api/me`
+advertises `features.routines.apiVersion: 1`. Missing or unsupported discovery
+means no navigation and no Routines requests, including in the anonymous demo.
+No frontend override enables scheduling. The backend contract is
+[`docs/plans/2026-09-09-routines-api-v1.md`](../docs/plans/2026-09-09-routines-api-v1.md),
+including Claude's twelve amendments on main (`d40c508`).
+
+Three deterministic jobs produce workspace-only results. Owners review a
+Malaysia-time schedule before saving or activating; run-once and pause/resume
+also require confirmation. Staff can read. Current server capabilities gate
+all writes, including the ability to pause while new scheduling is unavailable.
+Skipped occurrences are distinct from completed tasks, and real run IDs open
+the existing task detail endpoint. The backend still needs its deterministic
+result fallback, migration and scheduler acceptance gate before enabling v1.
+
+Writes never update status optimistically. Lost responses retain their exact
+request ID/body for explicit retry, including across Chat/Dashboard switches;
+conflicts force review of fresh records. Replay responses are followed by reads.
+The screen stays mounted during mode switches, but drafts and unresolved write
+requests are not persisted across a full reload. No storage keys, onboarding
+data, cache headers, backend routes or runtime settings changed in this slice.
+
+Verified against mocked responses: owner/staff, missing discovery, review,
+pause/resume availability, idempotent retry, revision conflicts, result links,
+pagination and errors. Browser checks cover 1440/1024/390/320px, dark/light,
+EN/BM, 15px body and 16px inputs, plus the existing public/onboarding routes.
+
 ## Backend (optional)
 
 The app runs fully local by default — approvals in localStorage, tool calls mocked. Set `VITE_API_URL` (see `.env.example`) and approvals plus execution route to the Worker in `../worker`, which persists to D1 and enforces the risk gate server-side. Nothing else changes; that is what the tool contract buys.

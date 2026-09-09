@@ -21,6 +21,7 @@
 @import "./workspace-modes.css";
 @import "./tasks.css";
 @import "./daily-brief.css";
+@import "./routines.css";
 
 /* ============================================================
    Base. Everything resolves through tokens — no literal colors

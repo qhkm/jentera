@@ -13,6 +13,18 @@ describe('RepositoryGate session transitions', () => {
     vi.unstubAllEnvs();
   });
 
+  it.each([undefined, 1, 2])('passes only supported Routines discovery from the existing me response: %s', async (apiVersion) => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(json({ userId: 'user-77', features: { routines: { apiVersion } } }))
+      .mockResolvedValueOnce(json({ snapshot: { onboarded: true } }));
+    vi.stubGlobal('fetch', fetch);
+    const { RepositoryGate, useRoutinesEnabled } = await import('@/lib/repo/gate');
+    function Probe() { return <div>{useRoutinesEnabled() ? 'routines available' : 'routines hidden'}</div>; }
+    render(<RepositoryGate><Probe /></RepositoryGate>);
+    await screen.findByText(apiVersion === 1 ? 'routines available' : 'routines hidden');
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it('falls back to public onboarding when logout races the state load', async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(json({ ok: true, detailLevel: 'beginner' }))
