@@ -19,7 +19,9 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
     const fetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response(ANSWER));
     vi.stubGlobal('fetch', fetch);
 
-    await expect(new RemoteRepository().ask('What happened?', { sessionId: 'chat-1' })).resolves.toEqual(ANSWER);
+    const created = vi.fn();
+    await expect(new RemoteRepository().ask('What happened?', { sessionId: 'chat-1', onRunCreated: created })).resolves.toEqual(ANSWER);
+    expect(created).toHaveBeenCalledExactlyOnceWith(ANSWER.runId);
     expect(fetch).toHaveBeenCalledOnce();
     const sent = JSON.parse(String(fetch.mock.calls[0][1]?.body));
     expect(sent.question).toBe('What happened?');
@@ -52,9 +54,11 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
       }));
     vi.stubGlobal('fetch', fetch);
 
-    await expect(new RemoteRepository().ask('What happened?')).rejects.toThrow(
+    const created = vi.fn();
+    await expect(new RemoteRepository().ask('What happened?', { onRunCreated: created })).rejects.toThrow(
       'Jentera could not answer that just now. Please try again.',
     );
+    expect(created).toHaveBeenCalledExactlyOnceWith(ANSWER.runId);
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
@@ -88,12 +92,15 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
       }
     });
     const progress: string[] = [];
+    const created = vi.fn();
 
     const answer = new RemoteRepository().ask('What happened?', {
       mode: 'work',
+      onRunCreated: created,
       onProgress: (state) => progress.push(state),
     });
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    expect(created).toHaveBeenCalledExactlyOnceWith(ANSWER.runId);
     const sent = JSON.parse(String(fetch.mock.calls[0][1]?.body));
     expect(sent.mode).toBe('work');
     expect(sockets[0].url).toContain(`/api/runs/${ANSWER.runId}/events`);
@@ -105,6 +112,21 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
     await expect(answer).resolves.toMatchObject(ANSWER);
     expect(progress).toEqual(['waking', 'working']);
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads one tenant-scoped task and rejects invalid or mismatched links', async () => {
+    const fetch = vi.fn().mockResolvedValue(response({ ...ANSWER, status: 'completed', pending: false }));
+    vi.stubGlobal('fetch', fetch);
+    const repo = new RemoteRepository();
+    await expect(repo.runResult('../activity')).rejects.toThrow('Invalid task link');
+    expect(fetch).not.toHaveBeenCalled();
+    await expect(repo.runResult(ANSWER.runId)).resolves.toMatchObject({ runId: ANSWER.runId, text: ANSWER.text });
+    expect(String(fetch.mock.calls[0][0])).toBe(`/api/runs/${ANSWER.runId}`);
+    expect(fetch.mock.calls[0][1].credentials).toBe('include');
+    fetch.mockResolvedValueOnce(response({ ...ANSWER, runId: 'another-task', status: 'completed', pending: false }));
+    await expect(repo.runResult(ANSWER.runId)).rejects.toThrow('Could not read');
+    fetch.mockResolvedValueOnce(response({ ok: false, err: 'run not found' }, 404));
+    await expect(repo.runResult(ANSWER.runId)).rejects.toThrow('run not found');
   });
 });
 

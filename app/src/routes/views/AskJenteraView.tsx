@@ -51,7 +51,7 @@ export default function AskJenteraView({
   firstRun?: boolean;
   active?: boolean;
   workspace?: boolean;
-  onOpenActivity?: () => void;
+  onOpenActivity?: (runId?: string, title?: string) => void;
   onOpenConnections?: () => void;
   onOpenKnowledge?: () => void;
 }) {

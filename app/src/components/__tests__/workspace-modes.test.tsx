@@ -96,6 +96,71 @@ describe('workspace navigation', () => {
     expect(repo.ask).toHaveBeenCalledOnce();
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
   });
+
+  it('opens the exact task from Chat and preserves that task and the draft across mode switches', async () => {
+    function Location() {
+      const { search } = useLocation();
+      const navigate = useNavigate();
+      return <><output data-testid="location">{search}</output><button onClick={() => navigate(-1)}>Browser back</button></>;
+    }
+    const user = userEvent.setup();
+    const repo = new LocalRepository();
+    const runId = '11111111-1111-4111-8111-111111111111';
+    repo.ask = vi.fn(async () => ({ runId, text: 'Your quotation is ready.', grounded: false, usedKeys: [] }));
+    repo.runResult = vi.fn(async () => ({ runId, status: 'completed', pending: false, text: 'Full quotation, not sent.' }));
+    await mount(<><Dashboard /><Location /></>, repo, '/app?view=chat');
+    await user.type(await screen.findByRole('textbox'), 'Prepare a quotation');
+    await user.click(screen.getByRole('button', { name: 'Send message' }));
+    const task = await screen.findByRole('button', { name: /Jentera task.*View task/ });
+    await user.type(screen.getByRole('textbox'), 'Draft for later');
+    await user.click(task);
+    expect(await screen.findByText('Full quotation, not sent.')).toBeInTheDocument();
+    expect(screen.getByTestId('location')).toHaveTextContent(`view=work&run=${runId}`);
+    expect(screen.getByTestId('location')).not.toHaveTextContent('quotation');
+    const modes = screen.getByRole('navigation', { name: 'Workspace mode' });
+    await user.click(within(modes).getByRole('button', { name: 'Chat' }));
+    expect(screen.getByRole('textbox')).toHaveValue('Draft for later');
+    await user.click(within(modes).getByRole('button', { name: /Dashboard/ }));
+    expect(await screen.findByText('Full quotation, not sent.')).toBeInTheDocument();
+    expect(screen.getByTestId('location')).toHaveTextContent(`view=work&run=${runId}`);
+    await user.click(screen.getByRole('button', { name: 'All activity' }));
+    expect(screen.getByTestId('location')).not.toHaveTextContent('run=');
+    await user.click(screen.getByRole('button', { name: 'Browser back' }));
+    expect(await screen.findByText('Full quotation, not sent.')).toBeInTheDocument();
+    expect(repo.ask).toHaveBeenCalledOnce();
+  });
+
+  it('keeps older replies without run IDs linked to general Activity', async () => {
+    const repo = new LocalRepository();
+    localStorage.setItem('jentera-ask-sessions-v1:workspace-modes-test', JSON.stringify([{
+      id: 'old-chat', title: 'Older work', createdAt: 1, updatedAt: 1,
+      messages: [{ from: 'ai', text: 'An older reply', state: 'done', mode: 'work' }],
+    }]));
+    repo.runResult = vi.fn();
+    await mount(<Dashboard />, repo, '/app?view=chat');
+    await userEvent.click(await screen.findByRole('button', { name: 'View in Activity' }));
+    expect(await screen.findByRole('heading', { name: 'Activity' })).toBeInTheDocument();
+    expect(repo.runResult).not.toHaveBeenCalled();
+  });
+
+  it('offers status checking instead of resending an accepted task when its reply is interrupted', async () => {
+    const repo = new LocalRepository();
+    const runId = '11111111-1111-4111-8111-111111111111';
+    repo.ask = vi.fn(async (_question, options) => {
+      options?.onRunCreated?.(runId);
+      throw new Error('Connection lost');
+    });
+    repo.runResult = vi.fn(async () => ({ runId, status: 'completed', pending: false, text: 'The task did finish.' }));
+    const user = userEvent.setup();
+    await mount(<Dashboard />, repo, '/app?view=chat');
+    await user.type(await screen.findByRole('textbox'), 'Prepare a quotation');
+    await user.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(await screen.findByText('Check this task before sending it again. It may still be running.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Check task status/ }));
+    expect(await screen.findByText('The task did finish.')).toBeInTheDocument();
+    expect(repo.ask).toHaveBeenCalledOnce();
+  });
 });
 
 describe('conversation sidebar', () => {

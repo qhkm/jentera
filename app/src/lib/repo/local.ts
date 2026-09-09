@@ -22,6 +22,7 @@ import type {
   Theme,
   OnboardingCompletion,
   RuntimeOverview,
+  RunResult,
 } from './types';
 import { NeedsAccountError } from './types';
 
@@ -308,6 +309,10 @@ export class LocalRepository implements Repository {
 
   async runTrace(): Promise<TraceEvent[]> {
     return [];
+  }
+
+  async runResult(): Promise<RunResult> {
+    throw new NeedsAccountError('Viewing task details');
   }
 
   async reset(): Promise<void> {

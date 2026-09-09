@@ -24,6 +24,7 @@ import { taggedAgent } from '@/hooks/useMentions';
 import type { Business } from '@/lib/types';
 import type { AskAnswer, AskMode, AskProgress } from '@/lib/repo';
 import { trackActivation } from '@/lib/analytics';
+import { isRunId } from '@/lib/task';
 
 export interface AskMessage {
   from: 'you' | 'ai';
@@ -38,6 +39,8 @@ export interface AskMessage {
   /** Real runtime state used by the live work card. */
   state?: 'sending' | AskProgress | 'done' | 'failed';
   mode?: AskMode;
+  runId?: string;
+  taskTitle?: string;
   /** Completion evidence returned by the server. */
   usedKeys?: string[];
   grounded?: boolean;
@@ -283,6 +286,18 @@ export function useAsk(
           .ask(question, {
             mode,
             sessionId,
+            onRunCreated: (runId: string) => {
+              if (!isRunId(runId)) return;
+              setState((prev) => ({
+                ...prev,
+                sessions: prev.sessions.map((session) => session.id !== sessionId ? session : {
+                  ...session,
+                  messages: session.messages.map((message) => message.pendingId === pendingId
+                    ? { ...message, runId, taskTitle: question }
+                    : message),
+                }),
+              }));
+            },
             onProgress: (progress: AskProgress) => {
               const key = progress === 'queued' ? 'ask.queued'
                 : progress === 'waking' ? 'ask.waking'
@@ -320,6 +335,8 @@ export function useAsk(
                       ? {
                           from: 'ai',
                           text: a.text,
+                          runId: isRunId(a.runId) ? a.runId : message.runId,
+                          taskTitle: question,
                           state: 'done' as const,
                           mode,
                           usedKeys: a.usedKeys,
@@ -349,6 +366,8 @@ export function useAsk(
                           text,
                           failedQuestion: question,
                           failedMode: mode,
+                          runId: message.runId,
+                          taskTitle: question,
                           state: 'failed' as const,
                           mode,
                         }

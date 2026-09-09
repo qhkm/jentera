@@ -22,8 +22,11 @@ describe('useAsk durable answers', () => {
   it('replaces the matching placeholder when answers finish out of order', async () => {
     const repo: Repository = new LocalRepository();
     const pending = new Map<string, (answer: AskAnswer) => void>();
-    repo.ask = (question: string): Promise<AskAnswer> =>
-      new Promise<AskAnswer>((resolve) => pending.set(question, resolve));
+    const ids = { first: '11111111-1111-4111-8111-111111111111', second: '22222222-2222-4222-8222-222222222222' };
+    repo.ask = (question: string, options?: AskOptions): Promise<AskAnswer> => {
+      options?.onRunCreated?.(ids[question as keyof typeof ids]);
+      return new Promise<AskAnswer>((resolve) => pending.set(question, resolve));
+    };
     const wrapper = ({ children }: { children: ReactNode }) => (
       <SignedInProvider value>
         <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
@@ -57,6 +60,8 @@ describe('useAsk durable answers', () => {
     expect(result.current!.messages.map((message) => message.text)).toEqual([
       'first', 'first answer', 'second', 'second answer',
     ]);
+    expect(result.current!.messages[1]).toMatchObject({ runId: ids.first, taskTitle: 'first' });
+    expect(result.current!.messages[3]).toMatchObject({ runId: ids.second, taskTitle: 'second' });
   });
 
   it('opts into durable work and projects WebSocket progress into its placeholder', async () => {
@@ -125,7 +130,8 @@ describe('useAsk durable answers', () => {
 
   it('restores completed conversation history in the same browser tab', async () => {
     const repo: Repository = new LocalRepository();
-    repo.ask = async () => ({ text: 'Here is the answer', usedKeys: [], grounded: false });
+    const runId = '11111111-1111-4111-8111-111111111111';
+    repo.ask = async () => ({ text: 'Here is the answer', usedKeys: [], grounded: false, runId });
     const wrapper = ({ children }: { children: ReactNode }) => (
       <SignedInProvider value account="user-1">
         <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
@@ -154,6 +160,27 @@ describe('useAsk durable answers', () => {
       'my question',
       'Here is the answer',
     ]);
+    expect(second.result.current!.messages[1]).toMatchObject({ runId, taskTitle: 'my question' });
+  });
+
+  it('retains an accepted run when the answer connection fails', async () => {
+    const repo: Repository = new LocalRepository();
+    const runId = '11111111-1111-4111-8111-111111111111';
+    repo.ask = async (_question, options) => {
+      options?.onRunCreated?.(runId);
+      throw new Error('Connection lost');
+    };
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SignedInProvider value account="task-recovery">
+        <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
+      </SignedInProvider>
+    );
+    const { result } = renderHook(() => useAsk(business, { handled: 0, needs: 0 }, (key) => key), { wrapper });
+    await waitFor(() => expect(result.current).not.toBeNull());
+    act(() => result.current!.send('Prepare the quotation'));
+    await waitFor(() => expect(result.current!.messages[1].state).toBe('failed'));
+    expect(result.current!.messages[1]).toMatchObject({ runId, taskTitle: 'Prepare the quotation' });
+    expect(localStorage.getItem('jentera-ask-sessions-v1:task-recovery')).toContain(runId);
   });
 });
 

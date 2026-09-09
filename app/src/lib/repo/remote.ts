@@ -9,6 +9,7 @@
    ============================================================ */
 
 import type { Approval, CountryCode, Lang, Policy } from '@/lib/types';
+import { isRunId } from '@/lib/task';
 import type {
   Activity,
   BusinessSnapshot,
@@ -26,6 +27,7 @@ import type {
   OnboardingCompletion,
   RuntimeOverview,
   WorkQuality,
+  RunResult,
 } from './types';
 
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
@@ -320,11 +322,13 @@ export class RemoteRepository implements Repository {
       if (!(error instanceof Error) || !error.message.includes('could not queue')) throw error;
       begun = await start();
     }
+    if (isRunId(begun.runId)) options.onRunCreated?.(begun.runId);
     if (!begun.pending) return begun;
-    if (!begun.runId) throw new Error('Jentera returned no run identifier.');
-    return options.onProgress
+    if (!isRunId(begun.runId)) throw new Error('Jentera returned no run identifier.');
+    const answer = await (options.onProgress
       ? streamAsk(begun.runId, options.onProgress)
-      : pollAsk(begun.runId);
+      : pollAsk(begun.runId));
+    return { ...answer, runId: begun.runId };
   }
 
   async connections(): Promise<Connection[]> {
@@ -376,6 +380,15 @@ export class RemoteRepository implements Repository {
 
   async activity(): Promise<Activity> {
     return call<Activity>('/api/runs/activity');
+  }
+
+  async runResult(runId: string): Promise<RunResult> {
+    if (!isRunId(runId)) throw new Error('Invalid task link.');
+    const result = await call<RunResult>(`/api/runs/${encodeURIComponent(runId)}`);
+    if (result.runId !== runId || typeof result.status !== 'string' || typeof result.pending !== 'boolean') {
+      throw new Error('Could not read this task’s status.');
+    }
+    return result;
   }
 
   rateWork = (workId: string, quality: WorkQuality) =>

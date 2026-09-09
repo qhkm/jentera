@@ -11,7 +11,7 @@
      My Business knowledge, responsibilities, connections
    ============================================================ */
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { Shell } from '@/components/Shell';
 import { WorkspaceModeSwitch, type WorkspaceMode } from '@/components/WorkspaceModeSwitch';
@@ -29,6 +29,7 @@ import AskJenteraView from './views/AskJenteraView';
 import ActivityView from './views/ActivityView';
 import MyBusinessView, { type BizTab } from './views/MyBusinessView';
 import { trackActivation } from '@/lib/analytics';
+import { isRunId } from '@/lib/task';
 
 export type View = 'home' | 'chat' | 'work' | 'business';
 
@@ -56,7 +57,9 @@ export default function Dashboard() {
   const isChat = view === 'chat';
   const requestedTab = searchParams.get('tab');
   const businessTab = BUSINESS_TABS.includes(requestedTab as BizTab) ? requestedTab as BizTab : 'profile';
-  const lastDashboard = useRef<{ view: Exclude<View, 'chat'>; tab: BizTab }>({ view: 'home', tab: 'profile' });
+  const focusedRunId = view === 'work' ? searchParams.get('run') : null;
+  const [taskContext, setTaskContext] = useState<{ runId: string; title?: string } | null>(null);
+  const lastDashboard = useRef<{ view: Exclude<View, 'chat'>; tab: BizTab; runId: string | null }>({ view: 'home', tab: 'profile', runId: null });
   const trackedOpen = useRef(false);
   const b = useBusiness();
   const { business } = b;
@@ -103,13 +106,14 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (view !== 'chat') lastDashboard.current = { view, tab: businessTab };
-  }, [view, businessTab]);
+    if (view !== 'chat') lastDashboard.current = { view, tab: businessTab, runId: focusedRunId };
+  }, [view, businessTab, focusedRunId]);
 
-  function go(next: View, businessTab?: BizTab) {
+  function go(next: View, businessTab?: BizTab, runId?: string | null) {
     setSearchParams({
       view: next,
       ...(next === 'business' && businessTab ? { tab: businessTab } : {}),
+      ...(next === 'work' && runId ? { run: runId } : {}),
     });
     window.scrollTo({ top: 0, behavior: 'instant' });
   }
@@ -117,7 +121,13 @@ export default function Dashboard() {
   function switchMode(mode: WorkspaceMode) {
     if ((mode === 'chat') === isChat) return;
     if (mode === 'chat') go('chat');
-    else go(lastDashboard.current.view, lastDashboard.current.tab);
+    else go(lastDashboard.current.view, lastDashboard.current.tab, lastDashboard.current.runId);
+  }
+
+  function openTask(runId?: string, title?: string) {
+    if (!isRunId(runId)) { go('work'); return; }
+    setTaskContext({ runId, title });
+    go('work', undefined, runId);
   }
 
   function navButton(item: NavItem) {
@@ -224,12 +234,19 @@ export default function Dashboard() {
               firstRun={searchParams.get('first') === '1'}
               active={view === 'chat'}
               workspace
-              onOpenActivity={() => go('work')}
+              onOpenActivity={openTask}
               onOpenConnections={() => go('business', 'connections')}
               onOpenKnowledge={() => go('business', 'knows')}
             />
           </div>
-          {view === 'work' && <ActivityView b={b} onOpenAsk={() => go('chat')} />}
+          {view === 'work' && <ActivityView
+            b={b}
+            onOpenAsk={() => go('chat')}
+            runId={focusedRunId}
+            taskTitle={taskContext?.runId === focusedRunId ? taskContext.title : undefined}
+            onOpenTask={openTask}
+            onCloseTask={() => go('work')}
+          />}
           {view === 'business' && (
             <MyBusinessView
               b={b}

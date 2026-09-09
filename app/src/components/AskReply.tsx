@@ -5,6 +5,8 @@ import { TypingBubble } from '@/components/WorkSignal';
 import { useToast } from '@/components/Toast';
 import { useT } from '@/i18n/I18nProvider';
 import type { AskMessage } from '@/hooks/useAsk';
+import { ChatTaskCard } from '@/components/ChatTaskCard';
+import { isRunId } from '@/lib/task';
 
 export function AskReply({
   message,
@@ -13,7 +15,7 @@ export function AskReply({
 }: {
   message: AskMessage;
   onRetry: () => void;
-  onOpenActivity?: () => void;
+  onOpenActivity?: (runId?: string, title?: string) => void;
 }) {
   const t = useT();
   const toast = useToast();
@@ -36,6 +38,7 @@ export function AskReply({
   }
 
   const failed = Boolean(message.failedQuestion);
+  const linkedTask = message.mode === 'work' && isRunId(message.runId) && Boolean(onOpenActivity);
   return (
     <article
       className={`ask-reply ${failed ? 'ask-reply-failed' : ''}`}
@@ -52,13 +55,15 @@ export function AskReply({
         )}
       </header>
       {message.pendingId ? (
-        <TypingBubble label={message.text} />
+        linkedTask ? <p className="sr-only" role="status">{message.text}</p> : <TypingBubble label={message.text} />
       ) : (
         <>
           <div className="ask-reply-text" role={failed ? 'alert' : undefined}>
             {message.text}
           </div>
-          {failed ? (
+          {failed && linkedTask ? (
+            <p className="task-recovery-note">{t('task.checkBeforeRetry')}</p>
+          ) : failed ? (
             <button type="button" className="ask-inline-action" onClick={onRetry}>
               <WarningCircle size={16} aria-hidden="true" />
               {t('ask.retry')}
@@ -88,11 +93,11 @@ export function AskReply({
                   </p>
                 </details>
               )}
-              {message.state === 'done' && message.mode === 'work' && onOpenActivity && (
+              {message.state === 'done' && message.mode === 'work' && onOpenActivity && !linkedTask && (
                 <button
                   type="button"
                   className="ask-inline-action ask-reply-activity"
-                  onClick={onOpenActivity}
+                  onClick={() => onOpenActivity()}
                 >
                   {t('ask.receipt.activity')}
                   <ArrowUpRight size={14} aria-hidden="true" />
@@ -101,6 +106,9 @@ export function AskReply({
             </footer>
           )}
         </>
+      )}
+      {linkedTask && (
+        <ChatTaskCard message={message} onOpen={() => onOpenActivity?.(message.runId, message.taskTitle)} />
       )}
     </article>
   );

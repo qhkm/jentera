@@ -58,6 +58,21 @@ Completed chat history remains in the existing account-scoped browser storage;
 this is not cross-device chat synchronisation. No storage keys or API contracts
 were changed for the mode split. Customer-facing agents remain unavailable.
 
+### Connected task cards
+
+Work replies with a server-issued run ID open `/app?view=work&run=<uuid>`.
+Task details read the existing tenant-scoped run endpoint, independently of the
+50 most recent Activity records, and refresh every three seconds while pending.
+Switching modes preserves the selected task and the current chat draft.
+
+The frontend retains accepted run IDs through reply failures so the owner can
+check the existing task before sending another request. Completed and failed
+reply links survive refresh in the same account-scoped chat storage; in-flight
+chat pairs still do not survive reload. Older replies without IDs open general
+Activity and are never matched by their wording. No storage keys, onboarding
+data, cache headers or backend endpoints changed. Approval links open the
+existing inbox; they do not infer which approval belongs to a task.
+
 ## Backend (optional)
 
 The app runs fully local by default — approvals in localStorage, tool calls mocked. Set `VITE_API_URL` (see `.env.example`) and approvals plus execution route to the Worker in `../worker`, which persists to D1 and enforces the risk gate server-side. Nothing else changes; that is what the tool contract buys.

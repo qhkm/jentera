@@ -8,10 +8,13 @@
    ============================================================ */
 
 import { useMemo, useState } from 'react';
+import { ArrowUpRight } from '@phosphor-icons/react';
 import { Avatar, Button, Card, Eyebrow, LoadingState, Tag } from '@/components/ui';
 import { useActivity } from '@/hooks/useActivity';
 import ApprovalInbox from './ApprovalInbox';
 import RunTrace from './RunTrace';
+import TaskDetailView from './TaskDetailView';
+import { isRunId } from '@/lib/task';
 import { useDetailLevel } from '@/hooks/useDetailLevel';
 import { useT } from '@/i18n/I18nProvider';
 import { Icon, stripEmoji } from '@/components/Icon';
@@ -57,9 +60,17 @@ function workSignal(status: string): WorkSignalState {
 export default function ActivityView({
   b,
   onOpenAsk,
+  runId,
+  taskTitle,
+  onOpenTask,
+  onCloseTask,
 }: {
   b: ReturnType<typeof useBusiness>;
   onOpenAsk?: () => void;
+  runId?: string | null;
+  taskTitle?: string;
+  onOpenTask?: (runId: string) => void;
+  onCloseTask?: () => void;
 }) {
   const t = useT();
   const toast = useToast();
@@ -133,6 +144,17 @@ export default function ActivityView({
   }
 
   const showApprovals = filter === 'needs you' || filter === 'all';
+
+  if (runId !== undefined && runId !== null) {
+    return <TaskDetailView
+      key={runId}
+      runId={runId}
+      title={taskTitle}
+      work={activity.real ? activity.data?.work.find((work) => work.runId === runId) : undefined}
+      onBack={onCloseTask}
+      onOpenAsk={onOpenAsk}
+    />;
+  }
 
   /* Real work replaces the illustration outright rather than sitting
      beside it. A list mixing things that happened with things that are
@@ -215,6 +237,11 @@ export default function ActivityView({
               statusTone={workTone(w.status)}
               state={workSignal(w.status)}
             >
+              {isRunId(w.runId) && onOpenTask && <div className="mt-2">
+                <button type="button" className="ask-inline-action" onClick={() => onOpenTask(w.runId!)}>
+                  {t('task.open')}<ArrowUpRight size={16} aria-hidden="true" />
+                </button>
+              </div>}
               {/* Advanced mode only, and only where there is a run to
                     trace. Collapsed by default: the trace is for the
                     moment something looks wrong, not for every glance. */}

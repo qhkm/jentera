@@ -75,6 +75,8 @@ export interface AskOptions {
   mode?: AskMode;
   /** Stable conversation id so Hermes can keep context per chat, like Telegram. */
   sessionId?: string;
+  /** Emitted once the server has accepted a real run, before its answer arrives. */
+  onRunCreated?: (runId: string) => void;
   onProgress?: (progress: AskProgress) => void;
 }
 
@@ -130,11 +132,21 @@ export interface TraceEvent {
 }
 
 export interface AskAnswer {
+  runId?: string;
   text: string;
   /** Fact keys the answer drew on, so a wrong answer is traceable. */
   usedKeys: string[];
   /** False when nothing confirmed was available to reason from. */
   grounded: boolean;
+}
+
+/** Read-only projection of the existing tenant-scoped run endpoint. */
+export interface RunResult {
+  runId: string;
+  status: string;
+  pending: boolean;
+  text?: string;
+  err?: string;
 }
 
 export interface Activity {
@@ -246,6 +258,7 @@ export interface Repository {
   setDetailLevel(level: 'beginner' | 'advanced'): Promise<void>;
   /** The append-only trace of one run, newest last. */
   runTrace(runId: string): Promise<TraceEvent[]>;
+  runResult(runId: string): Promise<RunResult>;
 
   /** Answer a question from confirmed facts and real work records. */
   ask(question: string, options?: AskOptions): Promise<AskAnswer>;
