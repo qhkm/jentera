@@ -61,6 +61,11 @@ API_ORIGIN = "https://api.jentera.ai"
 # it must never silently track "latest".
 RUNTIME_RELEASE = "2026.09.09-2"
 RUNTIME_EXPECTED_REGION = "sin"
+# Keep a sprite awake this many hours after each dispatch. Launch posture
+# was 24 on every plan; since 2026-09-09 it is 0: an idle sprite pauses and
+# stops billing, and the first message after a pause pays a wake of roughly
+# 15-30 s (docs/reply-latency.md). Unset means 24.
+AISAR_KEEPALIVE_GRACE_HOURS = "0"
 SPRITES_API_ORIGIN = "https://api.sprites.dev"
 # Fail closed. Completing onboarding provisions one isolated runtime for the
 # new business only when the complete secure bootstrap chain is configured.

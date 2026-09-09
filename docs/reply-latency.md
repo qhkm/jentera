@@ -104,9 +104,12 @@ Open, in order of expected payoff:
    Logs (`wrangler tail aisar-api --format json`, filter `runtime-latency`),
    which the wrangler OAuth token cannot query historically. Capture a few
    real runs to see whether the time is sprite wake, runner start, or
-   Hermes accept before changing anything. Every dispatch already holds the
-   sprite awake for 24 hours (`AISAR_KEEPALIVE_GRACE_HOURS`), so a business
-   in conversation should not be paying a wake.
+   Hermes accept before changing anything. Until 2026-09-09 every dispatch
+   held the sprite awake for 24 hours (`AISAR_KEEPALIVE_GRACE_HOURS`, then
+   defaulting to 24); it is now `0`, so an idle sprite pauses and stops
+   billing, and the first message after a pause pays a wake of roughly
+   15 to 30 seconds. Later messages in the same conversation do not: the
+   platform keeps a sprite awake while it is busy.
 4. Not a lever: `reasoning_overrides` for MiniMax (see above).
 
 ## Re-measuring

@@ -969,3 +969,79 @@ function response(body: unknown, status = 200): Response {
     headers: { 'Content-Type': 'application/json' },
   });
 }
+
+describe('sprite keepalive hold', () => {
+  async function dispatchBody(env: ReturnType<typeof testEnv>): Promise<Record<string, unknown>> {
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run',
+      runId: run.id,
+      dedupeKey: `hold:${run.id}`,
+      payload: { input: 'hello', model: 'MiniMax-M3' },
+    }));
+    let body: Record<string, unknown> | null = null;
+    const runnerFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return response({
+          ok: true,
+          release: '2026.09.01-3',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
+          toolMode: 'full-tools',
+          webSearchBackend: 'ddgs',
+          edgeAuthorizationForwarded: false,
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        return response({ ok: true, hermesRunId: 'hold-run', status: 'running' }, 202);
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}/events`)) {
+        const signal = init?.signal;
+        return new Response(new ReadableStream({
+          start(controller) {
+            signal?.addEventListener('abort', () => controller.error(signal.reason), { once: true });
+          },
+        }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      return response({ error: 'not found' }, 404);
+    };
+    await handleRuntimeMessage(
+      env,
+      { version: 1, businessId: A, taskId: task.id },
+      { provider, fetch: runnerFetch, observationSliceMs: 30 },
+    );
+    if (!body) throw new Error('the runner was never dispatched');
+    return body;
+  }
+
+  it('sends no hold when AISAR_KEEPALIVE_GRACE_HOURS is 0, so an idle sprite may pause', async () => {
+    const body = await dispatchBody(testEnv({
+      RUNTIME_RELEASE: '2026.09.01-3',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+      AISAR_KEEPALIVE_GRACE_HOURS: '0',
+    }));
+    expect(body).not.toHaveProperty('keepaliveUntil');
+  });
+
+  it('holds the sprite for the default 24 hours when the setting is absent', async () => {
+    const before = Date.now();
+    const body = await dispatchBody(testEnv({
+      RUNTIME_RELEASE: '2026.09.01-3',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+    }));
+    const until = Date.parse(String(body.keepaliveUntil));
+    expect(until - before).toBeGreaterThan(23.9 * 3_600_000);
+    expect(until - before).toBeLessThan(24.1 * 3_600_000);
+  });
+});

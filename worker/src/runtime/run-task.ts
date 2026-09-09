@@ -19,15 +19,20 @@ import { modelForResponseMode } from './response-mode';
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped']);
 
-/** Every dispatch holds the Sprite active this long past the dispatch
-    (all plans — launch posture). Each dispatch refreshes the window, so a
-    messaging business stays always-on and a silent one releases itself
-    (stops billing) after the grace window. */
+/** Every dispatch holds the Sprite active this long past the dispatch.
+    Each dispatch refreshes the window, so a messaging business stays
+    always-on and a silent one releases itself (stops billing) after the
+    grace window. Launch posture was 24 hours on every plan; production
+    sets AISAR_KEEPALIVE_GRACE_HOURS=0 since 2026-09-09, which sends no
+    hold at all: an idle sprite pauses and the first message after a pause
+    pays the wake. Unset or unparseable still means 24. */
 const KEEPALIVE_GRACE_HOURS_DEFAULT = 24;
 
 function keepaliveGraceHours(env: Env): number {
-  const value = Number(env.AISAR_KEEPALIVE_GRACE_HOURS);
-  return Number.isFinite(value) && value > 0 ? value : KEEPALIVE_GRACE_HOURS_DEFAULT;
+  const raw = env.AISAR_KEEPALIVE_GRACE_HOURS?.trim();
+  if (!raw) return KEEPALIVE_GRACE_HOURS_DEFAULT;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : KEEPALIVE_GRACE_HOURS_DEFAULT;
 }
 
 export interface RunPayload {
@@ -110,9 +115,10 @@ export async function dispatchRuntimeRun(
         task.id,
         model,
       );
-      const keepaliveUntil = new Date(
-        Date.now() + keepaliveGraceHours(env) * 3_600_000,
-      ).toISOString();
+      const graceHours = keepaliveGraceHours(env);
+      const keepaliveUntil = graceHours > 0
+        ? new Date(Date.now() + graceHours * 3_600_000).toISOString()
+        : null;
       return { runtime, secrets, reservation, keepaliveUntil };
     },
   );
