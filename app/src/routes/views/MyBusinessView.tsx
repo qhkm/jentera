@@ -8,10 +8,14 @@
    ============================================================ */
 
 import { useEffect, useId, useMemo, useState } from 'react';
+import { Link } from 'react-router';
 import {
+  ArrowRight,
   ArrowUpRight,
   BookOpenText,
   Buildings,
+  Check,
+  Info,
   MapPin,
   PlugsConnected,
   Robot,
@@ -21,6 +25,7 @@ import { Avatar, Button, Card, Eyebrow, Input, LoadingState, Tag } from '@/compo
 import { useT } from '@/i18n/I18nProvider';
 import { DataIcon } from '@/components/Icon';
 import { Tabs, type TabDef } from '@/components/Tabs';
+import { JenteraMark } from '@/components/JenteraMark';
 import PermissionsPanel from './PermissionsPanel';
 import KnowledgePanel from './KnowledgePanel';
 import TelegramConnect from './TelegramConnect';
@@ -158,12 +163,15 @@ export default function MyBusinessView({
         <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.business.desc')}</p>
       </header>
 
-      <section className="business-identity" aria-label={business.name}>
+      <section
+        className={`business-identity${tab === 'profile' ? '' : ' business-identity-compact'}`}
+        aria-label={business.name}
+      >
         <span className="business-identity-icon">
-          <DataIcon emoji={business.icon} size={32} />
+          <DataIcon emoji={business.icon} size={tab === 'profile' ? 32 : 22} />
         </span>
         <div>
-          <span className="business-identity-type">{business.type}</span>
+          {tab === 'profile' && <span className="business-identity-type">{business.type}</span>}
           <h2>{business.name}</h2>
           <p>
             <MapPin size={14} aria-hidden="true" />
@@ -357,50 +365,34 @@ export default function MyBusinessView({
           retain future customer-facing roles as product research data, but a
           role is not active merely because it was suggested. */}
         {tab === 'handles' && (
-          <section className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <Eyebrow>{t('biz.handles')}</Eyebrow>
-              <p className="max-w-[66ch] text-[13px] text-text-secondary">
-                {t('biz.handles.desc')}
-              </p>
-            </div>
-
-            <Card className="gap-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <Avatar emoji={business.team[0]?.e} />
-                  <div className="flex flex-col">
-                    <span className="text-sm font-semibold">{business.team[0]?.n}</span>
-                    <span className="text-[11px] text-text-muted">
-                      {t('team.audience.internal')}
-                    </span>
-                  </div>
+          <section className="business-staff">
+            <Card className="business-staff-card">
+              <header className="business-staff-heading">
+                <div>
+                  <JenteraMark size={44} />
+                  <h2>{t('biz.private.title')}</h2>
                 </div>
                 <Tag tone="green">{t('biz.private.active')}</Tag>
-              </div>
-              <p className="text-[13px] text-text-secondary">{business.team[0]?.d}</p>
-              <div className="grid gap-2 border-t border-rail pt-3 sm:grid-cols-2">
+              </header>
+              <p className="business-staff-description">{t('biz.private.description')}</p>
+              <ul className="business-staff-capabilities">
                 {['research', 'planning', 'operations', 'memory'].map((capability) => (
-                  <span
-                    key={capability}
-                    className="flex items-center gap-2 text-[12px] text-text-secondary"
-                  >
-                    <span className="text-brand" aria-hidden="true">
-                      ✓
-                    </span>
+                  <li key={capability}>
+                    <Check size={18} weight="bold" aria-hidden="true" />
                     {t(`biz.private.${capability}`)}
-                  </span>
+                  </li>
                 ))}
-              </div>
+              </ul>
+              <Link className="btn btn-primary business-staff-ask" to="/app?view=chat">
+                {t('nav.chat')}
+                <ArrowRight size={18} aria-hidden="true" />
+              </Link>
             </Card>
 
-            <Card className="gap-2 border-dashed">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <Eyebrow>{t('biz.customerFuture.title')}</Eyebrow>
-                <Tag>{t('biz.customerFuture.off')}</Tag>
-              </div>
-              <p className="text-[13px] text-text-secondary">{t('biz.customerFuture.desc')}</p>
-            </Card>
+            <div className="business-staff-notice" role="note">
+              <Info size={19} aria-hidden="true" />
+              <p>{t('biz.customerFuture.notice')}</p>
+            </div>
           </section>
         )}
 

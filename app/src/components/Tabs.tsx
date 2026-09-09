@@ -7,7 +7,7 @@
    both learned from fixing this at 390px the first time.
    ============================================================ */
 
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
 
 export interface TabDef<T extends string> {
   id: T;
@@ -34,8 +34,32 @@ export function Tabs<T extends string>({
   className?: string;
   idPrefix?: string;
 }) {
+  const strip = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const container = strip.current;
+    const selected = container?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!container || !selected) return;
+
+    // Direct links and responsive changes must reveal the active tab too.
+    // Move only the strip; scrollIntoView would also move the whole page.
+    const reveal = () => {
+      const bounds = container.getBoundingClientRect();
+      const item = selected.getBoundingClientRect();
+      if (item.left < bounds.left) container.scrollLeft += item.left - bounds.left;
+      else if (item.right > bounds.right) container.scrollLeft += item.right - bounds.right;
+    };
+    reveal();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(reveal);
+    observer.observe(container);
+    observer.observe(selected);
+    return () => observer.disconnect();
+  }, [active, tabs]);
+
   return (
     <div
+      ref={strip}
       className={`flex shrink-0 gap-1 overflow-x-auto border-b border-rail [scrollbar-width:none] ${className}`}
       role="tablist"
       aria-label={label}
@@ -71,8 +95,7 @@ export function Tabs<T extends string>({
                 event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
                   '[role="tab"]',
                 )[next];
-              target?.focus();
-              target?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+              target?.focus({ preventScroll: true });
             }}
             className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] transition-colors sm:px-4 ${
               on

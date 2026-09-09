@@ -392,6 +392,102 @@
 .business-identity p > svg {
   flex-shrink: 0;
 }
+/* Keep the full identity card on Profile; other tabs only need context. */
+.business-identity.business-identity-compact {
+  gap: 12px;
+  padding: 0 0 20px;
+  border: 0;
+  border-bottom: 1px solid var(--rail);
+  border-radius: 0;
+  background: none;
+}
+.business-identity-compact .business-identity-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+}
+.business-identity.business-identity-compact h2 {
+  margin: 0;
+  font-size: var(--workspace-heading);
+}
+.business-identity-compact p {
+  margin-top: 4px;
+}
+
+/* One available assistant, one way to start, and a quiet capability boundary. */
+.business-staff {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.business-staff-card {
+  padding: 28px;
+  gap: 20px;
+}
+.business-staff-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.business-staff-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.business-staff-heading h2 {
+  font-size: var(--workspace-heading);
+  font-weight: 600;
+  line-height: 1.4;
+}
+.business-staff-description {
+  max-width: 65ch;
+  color: var(--text-secondary);
+  font-size: var(--workspace-body);
+  line-height: 1.7;
+}
+.business-staff-capabilities {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--rail);
+}
+.business-staff-capabilities li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: var(--workspace-body);
+  line-height: 1.6;
+}
+.business-staff-capabilities svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--accent-green);
+}
+.business-staff-ask {
+  align-self: flex-start;
+  gap: 12px;
+}
+.business-staff-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: var(--workspace-body);
+  line-height: 1.7;
+}
+.business-staff-notice > svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.business-staff-notice p {
+  max-width: 72ch;
+}
+
 .business-tabs {
   gap: 5px;
   padding: 4px;
@@ -520,6 +616,13 @@
 }
 
 @media (max-width: 767px) {
+  .business-staff-card {
+    padding: 20px;
+  }
+  .business-staff-capabilities {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
   .activity-overview button {
     padding: 14px 12px;
   }

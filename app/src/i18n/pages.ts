@@ -330,7 +330,11 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     /* Dashboard */
     'ask.placeholder.short': 'Ask Jentera anything…',
     'biz.tab.profile': 'Profile',
-    'biz.tab.handles': 'Your private agent',
+    'biz.tab.knows': 'Knowledge',
+    'biz.tab.handles': 'AI staff',
+    'biz.private.title': 'Business Assistant',
+    'biz.private.description':
+      'Your private AI staff for research, planning and everyday business work.',
     'biz.private.active': 'Available now',
     'biz.private.research': 'Research and business questions',
     'biz.private.planning': 'Planning and decision support',
@@ -340,8 +344,10 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'biz.customerFuture.off': 'Not available yet',
     'biz.customerFuture.desc':
       'These will appear only when Jentera can safely serve customers and you connect a supported customer channel such as WhatsApp or email. Your private Telegram chat does not enable them.',
+    'biz.customerFuture.notice':
+      'Customer-facing agents aren’t available yet. Telegram is for your private chat.',
     'biz.tab.connections': 'Connections',
-    'biz.tab.permissions': 'Action controls',
+    'biz.tab.permissions': 'Controls',
     'biz.guide.eyebrow': 'What do you want to do?',
     'biz.guide.detail': 'Go straight to the task. You do not need to understand every setting.',
     'biz.guide.knowledge': 'Teach Jentera',
@@ -803,7 +809,11 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     /* Dashboard */
     'ask.placeholder.short': 'Tanya Jentera apa-apa…',
     'biz.tab.profile': 'Profil',
-    'biz.tab.handles': 'Ejen peribadi anda',
+    'biz.tab.knows': 'Pengetahuan',
+    'biz.tab.handles': 'Staf AI',
+    'biz.private.title': 'Pembantu Perniagaan',
+    'biz.private.description':
+      'Staf AI peribadi anda untuk penyelidikan, perancangan dan kerja harian perniagaan.',
     'biz.private.active': 'Tersedia sekarang',
     'biz.private.research': 'Penyelidikan dan soalan perniagaan',
     'biz.private.planning': 'Perancangan dan sokongan keputusan',
@@ -813,8 +823,10 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'biz.customerFuture.off': 'Belum tersedia',
     'biz.customerFuture.desc':
       'Ejen ini hanya akan muncul apabila Jentera boleh melayani pelanggan dengan selamat dan anda menyambungkan saluran pelanggan yang disokong seperti WhatsApp atau e-mel. Chat Telegram peribadi anda tidak mengaktifkannya.',
+    'biz.customerFuture.notice':
+      'Ejen untuk pelanggan belum tersedia. Telegram adalah untuk chat peribadi anda.',
     'biz.tab.connections': 'Sambungan',
-    'biz.tab.permissions': 'Kawalan tindakan',
+    'biz.tab.permissions': 'Kawalan',
     'biz.guide.eyebrow': 'Apa yang anda mahu lakukan?',
     'biz.guide.detail': 'Terus ke tugasan. Anda tidak perlu memahami setiap tetapan.',
     'biz.guide.knowledge': 'Ajar Jentera',

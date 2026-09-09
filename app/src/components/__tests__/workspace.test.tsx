@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { MemoryRouter } from 'react-router';
 import { AccountMenu } from '@/components/AccountMenu';
 import { ActivityHistory } from '@/components/ActivityHistory';
 import { ChatHistory } from '@/components/ChatHistory';
 import { ToastProvider } from '@/components/Toast';
+import { Tabs } from '@/components/Tabs';
 import { DetailLevelProvider } from '@/hooks/useDetailLevel';
 import { ActivityProvider } from '@/hooks/useActivity';
 import { useBusiness } from '@/hooks/useBusiness';
@@ -15,7 +17,7 @@ import { SignedInProvider } from '@/lib/repo/gate';
 import { LocalRepository } from '@/lib/repo/local';
 import type { Activity } from '@/lib/repo';
 import type { AskSession } from '@/hooks/useAsk';
-import MyBusinessView from '@/routes/views/MyBusinessView';
+import MyBusinessView, { type BizTab } from '@/routes/views/MyBusinessView';
 import ActivityView from '@/routes/views/ActivityView';
 import { KEYS } from '@/lib/storage';
 
@@ -236,19 +238,22 @@ describe('past chats', () => {
 });
 
 describe('business profile', () => {
-  function Harness() {
+  function Harness({ initialTab = 'profile' }: { initialTab?: BizTab }) {
     return (
-      <MyBusinessView
-        b={useBusiness()}
-        connections={{
-          mode: 'real',
-          real: true,
-          rows: [],
-          error: null,
-          retry: vi.fn(),
-          setRows: vi.fn(),
-        }}
-      />
+      <MemoryRouter>
+        <MyBusinessView
+          b={useBusiness()}
+          initialTab={initialTab}
+          connections={{
+            mode: 'real',
+            real: true,
+            rows: [],
+            error: null,
+            retry: vi.fn(),
+            setRows: vi.fn(),
+          }}
+        />
+      </MemoryRouter>
     );
   }
 
@@ -291,5 +296,81 @@ describe('business profile', () => {
     await userEvent.keyboard('{Home}');
     expect(profile).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('textbox', { name: 'Business name' })).toHaveValue('Unsaved shop name');
+  });
+
+  it('compacts the identity outside Profile and gives AI staff one clear card', async () => {
+    const repo = new LocalRepository();
+    await repo.setBizType('restaurant');
+    await repo.setBizProfile({ name: 'Kedai Kita', loc: 'Shah Alam' });
+    mount(<Harness />, { repo });
+    const identity = await screen.findByRole('region', { name: 'Kedai Kita' });
+    expect(identity).not.toHaveClass('business-identity-compact');
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent?.trim())).toEqual([
+      'Profile',
+      'Knowledge',
+      'Connections0',
+      'AI staff',
+      'Controls',
+    ]);
+    await userEvent.click(screen.getByRole('tab', { name: 'AI staff' }));
+    expect(identity).toHaveClass('business-identity-compact');
+    const panel = screen.getByRole('tabpanel');
+    expect(within(panel).getByRole('heading', { name: 'Business Assistant' })).toBeInTheDocument();
+    expect(within(panel).getAllByRole('listitem')).toHaveLength(4);
+    expect(panel.querySelectorAll('.card')).toHaveLength(1);
+    expect(within(panel).getByText('Available now')).toBeInTheDocument();
+    expect(within(panel).getByRole('note')).toHaveTextContent(
+      'Customer-facing agents aren’t available yet. Telegram is for your private chat.',
+    );
+    expect(within(panel).getByRole('link', { name: 'Ask Jentera' })).toHaveAttribute(
+      'href',
+      '/app?view=chat',
+    );
+    expect(screen.queryByText('Your private Business Assistant')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: 'Profile' }));
+    expect(identity).not.toHaveClass('business-identity-compact');
+    expect(screen.getByRole('textbox', { name: 'Business name' })).toHaveValue('Kedai Kita');
+  });
+
+  it('keeps the short tabs and capability boundary clear in Bahasa Malaysia', async () => {
+    const repo = new LocalRepository();
+    await repo.setBizType('restaurant');
+    await repo.setLang('bm');
+    mount(<Harness initialTab="handles" />, { repo });
+    expect(await screen.findByRole('tab', { name: 'Staf AI' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Pengetahuan' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Kawalan' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Pembantu Perniagaan' })).toBeInTheDocument();
+    expect(screen.getByRole('note')).toHaveTextContent(
+      'Ejen untuk pelanggan belum tersedia. Telegram adalah untuk chat peribadi anda.',
+    );
+    expect(screen.getByRole('link', { name: 'Tanya Jentera' })).toHaveAttribute('href', '/app?view=chat');
+  });
+});
+
+describe('business tab strip', () => {
+  it('reveals the selected tab horizontally without scrolling the whole page', () => {
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.getAttribute('role') === 'tablist') return new DOMRect(20, 0, 200, 40);
+        return this.textContent === 'Last'
+          ? new DOMRect(250, 0, 70, 40)
+          : new DOMRect(0, 0, 60, 40);
+      });
+    const pageScroll = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    const tabs = [{ id: 'first', label: 'First' }, { id: 'last', label: 'Last' }];
+    try {
+      const { rerender } = render(
+        <Tabs tabs={tabs} active="last" onSelect={vi.fn()} label="Sections" />,
+      );
+      const strip = screen.getByRole('tablist');
+      expect(strip.scrollLeft).toBe(100);
+      rerender(<Tabs tabs={tabs} active="first" onSelect={vi.fn()} label="Sections" />);
+      expect(strip.scrollLeft).toBe(80);
+      expect(pageScroll).not.toHaveBeenCalled();
+    } finally {
+      rect.mockRestore();
+      pageScroll.mockRestore();
+    }
   });
 });
