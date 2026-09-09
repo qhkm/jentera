@@ -20,7 +20,11 @@ for (const path of [...publicRoutes, ...privateRoutes, '/404']) {
     assert.equal(response.status, path === '/404' ? 404 : 200, path);
     assert.match(response.headers.get('content-type'), /text\/html/);
     if (privateRoutes.includes(path)) assert.match(response.headers.get('x-robots-tag'), /noindex/);
-    if (publicRoutes.includes(path)) assert.doesNotMatch(response.headers.get('x-robots-tag') ?? '', /noindex/);
+    // Pages adds noindex to preview deployments. Keep enforcing indexability
+    // on the primary/secondary custom domains and local production emulator.
+    if (publicRoutes.includes(path) && !new URL(base).hostname.endsWith('.pages.dev')) {
+      assert.doesNotMatch(response.headers.get('x-robots-tag') ?? '', /noindex/);
+    }
   }
   const dom = new JSDOM(bytes.toString());
   const doc = dom.window.document;

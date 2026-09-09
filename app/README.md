@@ -129,6 +129,8 @@ shells stay empty and retain the existing authentication/onboarding flow.
 tags and factual structured data. `PageMetadata` applies the same values during
 client navigation. Only the two public pages appear in the generated sitemap;
 canonical URLs point to `https://jentera.ai`, including on the secondary host.
+Cloudflare's preview-deployment `noindex` header is preserved; the verifier
+allows that on `pages.dev` while enforcing indexability on the live custom domain.
 No invented prices, reviews, customer numbers or available integrations are
 added to structured data.
 
