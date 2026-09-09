@@ -14,7 +14,7 @@ Do not expose the feature as available until tenant isolation, durable schedulin
 pause behaviour and the acceptance tests below pass. No frontend-only timer or
 localStorage schedule may stand in for the backend.
 
-**Backend acknowledgement:** pending.
+**Backend acknowledgement:** acknowledged with amendments 1–12 below (Claude, 2026-09-09).
 **Frontend activation:** not enabled.
 
 ## Product slice
@@ -377,3 +377,89 @@ budget checks.
    frontend and backend separately; a Pages deployment does not release a scheduler.
 
 No scheduling, runtime, production-data or UI changes are made by this document.
+
+## Backend acknowledgement (Claude, 2026-09-09)
+
+Confirmed as written: the three task kinds; workspace-only delivery; the
+routine and occurrence representations; the unique scheduled identity
+`(business_id, routine_id, scheduled_for)`; the misfire policy (one due
+occurrence per scan, at most 10 minutes late, older slots skipped with one
+audit event); the overlap, pause, resume, edit and `permission_revoked`
+rules; the error table; capability discovery through `GET /api/me` and
+`GET /api/routines`; POST-only mutations; UTC instants with the IANA zone
+stored; Postgres as the only scheduler; forced RLS on every new table, tested
+as `aisar_app` with two tenants. Each item below either changes a default or
+pins an implementation choice the contract left open. The frontend can build
+against the contract as amended here.
+
+1. **Dispatcher.** A second cron, `* * * * *`, added to `worker/wrangler.toml`;
+   `scheduled` branches on `controller.cron` so the fifteen-minute fleet
+   sweep is untouched. The due scan is a `SECURITY DEFINER` function
+   (`routine_due_targets(now, limit)`, precedent `runtime_drift_targets` in
+   migrations 018/019) that returns `(business_id, routine_id,
+   scheduled_for)` and nothing else; the claim happens per business inside
+   `withTenant`, `select … for update skip locked` on the routine row.
+2. **V1 jobs are deterministic. No model, no sprite, no budget
+   reservation.** `business_summary` and `weekly_summary` aggregate
+   `work_record` over the window in SQL and render fixed-format text in the
+   business's language; `approval_reminder` counts `approval.status =
+   'pending'` at execution time. The run row uses `kind = 'schedule'`,
+   `runtime = 'deterministic'`, `triggerShape = 'routine.scheduled' |
+   'routine.manual'`, and completes in the same transaction that admits it.
+   So in v1 an occurrence goes `queued → completed | failed | skipped`;
+   `working` and `needs_approval` stay in the vocabulary for a later
+   agent-backed kind. Phrasing by a model, when wanted, goes through the
+   existing reserve-and-meter path and the five-dollar cap; nothing in the
+   contract changes for it. This removes `runtime_unavailable` and sprite
+   wake from v1 entirely and keeps scheduled work off the interactive lane.
+3. **Run detail.** `GET /api/runs/:id` currently derives `text` from the
+   runtime task's result and would return a completed run with no text for
+   a deterministic job. Amend it to fall back to the run's work record
+   outcome when there is no runtime task. Same field, so the task page needs
+   no change. Part of the backend slice.
+4. **Idempotency without a generic table.** The `requestId` is stored on the
+   row the request created: `routine.create_request_id`,
+   `routine_occurrence.request_id` (run-now), and a `routine_change` audit
+   row for update and state changes, each unique per business and carrying
+   the canonical request hash. Replay returns the row; same id with a
+   different hash returns `409 IDEMPOTENCY_CONFLICT`. Retention is the row's
+   lifetime, which exceeds seven days since v1 never deletes. Create and
+   run-now serialise on `pg_advisory_xact_lock(hashtextextended(key, 0))`,
+   the pattern `startDurableAsk` already uses.
+5. **Concurrency.** There is no per-business execution limit in the control
+   plane today: the runner executes one task per sprite and the consumer
+   requeues `busy`. Because v1 jobs never reach the sprite, scheduled work
+   cannot starve interactive work. Rule 6's per-routine overlap check still
+   applies at the occurrence level.
+6. **Gating.** `ROUTINES_ENABLED` plus an `AISAR_ROUTINES_BUSINESS_IDS`
+   allowlist for the canary, following `AISAR_QUICK_MODEL_OVERRIDES`.
+   `features.routines` appears on `/api/me` only when both pass for that
+   tenant. With the flag off, existing routines remain readable and
+   pausable and `canSchedule` is false.
+7. **Occurrence statuses** are exactly `RunStatus` (`queued`, `working`,
+   `needs_approval`, `completed`, `failed`, `cancelled`) plus `skipped`.
+   There is no `stopped`.
+8. **Reports** query `work_record.occurred_at` over `[scheduledFor − 24h or
+   7d, scheduledFor)`, state the window and the total count, and truncate
+   only the rendered list (at most 40 lines, then "and N more"); counts are
+   never truncated. The Activity feed's cap of 50 is not involved.
+9. **Admission.** `request-guard.ts` treats `/api/runs/ask` and
+   `/api/runs/ingest` as paid runs. Run-now joins that list only when a task
+   kind can invoke a model; none can in v1, so it is guarded as an ordinary
+   mutation: session, exact Origin, JSON content type, request size.
+10. **Migration** `022_routines.sql`: `routine`, `routine_occurrence`,
+    `routine_change`, RLS enabled and forced, grants to `aisar_app`, the due
+    scan function, an index on `(status, next_run_at)`. Additive, with an
+    apply script under `db:migrate:routines`, per the house convention.
+11. **Time zone.** Asia/Kuala_Lumpur is UTC+8 without DST, but `nextRunAt`
+    is still computed through `Intl.DateTimeFormat` parts in the routine's
+    named zone (Workers ships full ICU), so a second zone later is a list
+    entry, not a rewrite.
+12. **Tests** live in `worker/test/routines.test.ts` on the existing harness:
+    arrange as owner, assert as `aisar_app`, two tenants; the dispatcher is
+    driven by calling `scheduled` with an injected clock. The acceptance
+    gate above is the test list.
+
+Deployment is a worker deploy plus migration 022; no runtime release, no
+sprite change. Frontend activation stays off until the gate is green and one
+internal business has run a real schedule.
