@@ -15,7 +15,8 @@ pause behaviour and the acceptance tests below pass. No frontend-only timer or
 localStorage schedule may stand in for the backend.
 
 **Backend acknowledgement:** acknowledged with amendments 1–12 below (Claude, 2026-09-09).
-**Frontend activation:** not enabled.
+**Backend status:** implemented on main, 2026-09-09; deployed behind `ROUTINES_ENABLED` with a one-business canary allowlist. See the gate below for what the tests prove.
+**Frontend activation:** not enabled beyond the canary business.
 
 ## Product slice
 
@@ -344,28 +345,30 @@ budget checks.
 
 ## Backend acceptance gate
 
-- [ ] Contract acknowledged or amended, with revision/date recorded here.
-- [ ] List/read and every mutation tested with two tenants as `aisar_app`.
-- [ ] Members can read but cannot create, edit, pause/resume or run once.
-- [ ] All schedule validation cases pass: strict time, ISO weekday, named timezone,
-      midnight, same-minute save, Friday→Monday weekdays, week/month/year boundaries.
-- [ ] Server-computed next trigger is correct when the browser is in another timezone.
-- [ ] Lost responses and repeated request IDs cannot create duplicate routines or runs.
-- [ ] Changed payload with reused request ID and stale revisions return conflicts.
-- [ ] Two concurrent dispatchers and queue redelivery create one scheduled occurrence.
-- [ ] Database commit followed by queue publish failure recovers without a new run.
-- [ ] Pause-vs-dispatch, edit-vs-dispatch, resume, manual-vs-scheduled and approval-wait
-      races follow the rules above. Already admitted work is not falsely cancelled.
-- [ ] Missed windows, long outages, budget denial, revocation and unavailable runtime
-      are bounded, visible and never reported as completed work.
-- [ ] Reports query the server-side window correctly with more than 50 work records.
-- [ ] Scheduled deterministic results and agent results both open in task details.
-- [ ] Reminder with no pending approvals skips without a fabricated completion.
-- [ ] Configuration and occurrence audit preserve actor, revision, inputs and outcome;
-      no reasoning/transcript persistence or raw credentials in responses/logs.
-- [ ] Canary one internal business before advertising v1 to other tenants.
-- [ ] Rollback hides creation/run-now capability, stops new admissions, preserves
-      history and leaves an owner able to pause existing routines.
+- [x] Contract acknowledged or amended, with revision/date recorded here (d40c508, 2026-09-09).
+- [x] List/read and every mutation tested with two tenants as `aisar_app` (`worker/test/routines.test.ts`).
+- [x] Members can read but cannot create, edit, pause/resume or run once.
+- [x] All schedule validation cases pass: strict time, ISO weekday, named timezone,
+      midnight, same-minute save, Friday→Monday weekdays, week/month/year boundaries
+      (`worker/test/routines-schedule.test.ts`).
+- [x] Server-computed next trigger is correct when the browser is in another timezone (and the process zone).
+- [x] Lost responses and repeated request IDs cannot create duplicate routines or runs.
+- [x] Changed payload with reused request ID and stale revisions return conflicts.
+- [x] Two concurrent dispatchers create one scheduled occurrence (row lock, skip locked, unique slot). Queue redelivery does not apply: v1 jobs complete inside the admitting transaction.
+- [n/a] Database commit followed by queue publish failure: no queue in v1 (amendment 2); the admission and the result commit together or not at all.
+- [x] Pause-vs-dispatch, edit-vs-dispatch, resume, manual-vs-scheduled and approval-wait
+      races follow the rules above (all serialise on the routine row; a still-active
+      occurrence yields `previous_run_active`). Already admitted work is not falsely cancelled.
+- [x] Missed windows, long outages and revocation are bounded, visible and never reported
+      as completed work. Budget denial and unavailable runtime cannot occur in v1 (no model, no sprite).
+- [x] Reports query the server-side window correctly with more than 50 work records (60 in the test).
+- [x] Scheduled deterministic results open in task details (`GET /api/runs/:id` reads the work record when there is no runtime task); agent results unchanged.
+- [x] Reminder with no pending approvals skips without a fabricated completion.
+- [x] Configuration and occurrence audit preserve actor, revision, inputs and outcome
+      (`routine_change`, occurrence snapshots, work-record `inputs_used`); nothing else is stored.
+- [ ] Canary one internal business before advertising v1 to other tenants. Kitakod Ventures is on the allowlist; the frontend has not been deployed yet.
+- [x] Rollback hides creation/run-now capability, stops new admissions, preserves
+      history and leaves an owner able to pause existing routines (flag off is tested).
 
 ## Delivery order
 

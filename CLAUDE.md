@@ -158,6 +158,16 @@ If it must be true on every sprite, it goes in the bundle. `fleet-exec.sh
 makes permanent; it iterates correctly under zsh and closes stdin, which the
 ad hoc loops it replaces did not.
 
+### Routines
+
+Owner-scheduled jobs, v1 deterministic (SQL over the tenant's own records,
+no model, no sprite). Postgres is the scheduler: `routine.next_run_at` is
+the clock, the one-minute cron in `index.ts` calls `dispatchDueRoutines`,
+and the cross-tenant due scan is a `SECURITY DEFINER` function that returns
+nothing but ids. Everything else runs inside `withTenant` under a row lock.
+Behind `ROUTINES_ENABLED` and `AISAR_ROUTINES_BUSINESS_IDS`; the contract,
+amendments and acceptance gate live in `docs/plans/2026-09-09-routines-api-v1.md`.
+
 ### Looking at production
 
 ```bash
