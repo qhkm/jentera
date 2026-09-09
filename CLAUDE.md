@@ -195,8 +195,13 @@ to `/dev/null` hid a 500 on every policy write for two full runs.
 Magic links are really delivered. `RESEND_API_KEY` holds a key scoped to
 `sending_access` on jentera.ai alone, so a leak cannot send as the other
 domains on that Resend account. jentera.ai carries SPF, DKIM and DMARC
-(`p=none`, reports to admin@kitakodventures.com — tighten to `quarantine`
-once a week of reports is clean).
+(`p=quarantine` since 2026-09-09, aggregate reports to
+admin@kitakodventures.com). Resend is the only sender: the apex has no MX
+and no SPF, DKIM is signed as jentera.ai with the `resend` selector, and the
+return path is send.jentera.ai, which aligns under relaxed SPF. Gmail's
+Authentication-Results on a real magic link read dkim=pass, spf=pass,
+dmarc=pass before the flip. Any new sender must go through Resend or carry
+its own aligned DKIM, or its mail lands in spam.
 
 Unsetting the secret falls back to logging the link to `npx wrangler tail`,
 which is how to test without sending. Resend's `delivered@resend.dev`
