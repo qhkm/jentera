@@ -123,6 +123,11 @@ HTTP are faked — the two things that would otherwise leave the machine.
 Prefer that over stubbing the data layer; the bugs here have all been
 in the seams a stub would hide.
 
+`docs/reply-latency.md` is where reply time and channel parity live: the
+path a message takes, what Telegram and app chat share, dated measurements
+and the levers tried. `worker/scripts/reply-latency.sh` reproduces its
+numbers; re-run it before quoting them.
+
 `test/runtime.test.ts` runs a contract over every adapter in one list.
 A new runtime is added there and either passes or is not finished.
 
