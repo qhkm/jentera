@@ -45,6 +45,9 @@
   --font-pixel:  "Geist Pixel", "Geist Mono", ui-monospace, monospace;
   --font-nav:    "JetBrains Mono", "Geist Mono", ui-monospace, monospace;
 
+  /* The landing hero paragraph is the reference for everyday product text. */
+  --font-body-size: .9375rem; /* 15px at the default browser text size */
+
   /* Optical stroke compensation for the pixel display face */
   --pixel-stroke-display:    .5px;
   --pixel-stroke-heading-sm: .2px;

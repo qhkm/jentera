@@ -180,7 +180,7 @@
     margin-top: 27px;
     max-width: 45ch;
     color: var(--text-secondary);
-    font-size: 15px;
+    font-size: var(--font-body-size);
     line-height: 1.8;
   }
   .lp-actions {

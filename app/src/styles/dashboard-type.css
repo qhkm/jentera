@@ -1,11 +1,11 @@
-/* A comfortable reading scale for the product, scoped away from marketing.
+/* Everyday text shares the landing hero paragraph's reading size.
    Bridge existing utility-sized panels and the newer named components so
    switching dashboard sections does not change the size of ordinary text. */
 .dashboard-shell {
   --workspace-caption: 0.75rem;
-  --workspace-small: 0.875rem;
-  --workspace-label: 0.9375rem;
-  --workspace-body: 1rem;
+  --workspace-body: var(--font-body-size);
+  --workspace-small: var(--workspace-body);
+  --workspace-label: var(--workspace-body);
   --workspace-heading: 1.125rem;
   font-size: var(--workspace-body);
 }
@@ -13,7 +13,9 @@
 .dashboard-shell
   :is(
     .text-\[10px\],
+    .tag,
     .eyebrow,
+    .account-menu-heading > span,
     .home-date,
     .home-status,
     .home-activity-meta time,
@@ -27,7 +29,7 @@
     .ask-recent-chats time,
     .ask-owner-message > span,
     .ask-reply-ready
-  ) {
+  ):not(:where(input, textarea, select)) {
   font-size: var(--workspace-caption);
   line-height: 1.6;
 }
@@ -61,7 +63,7 @@
     .ask-reply-source,
     .ask-refinements > button,
     .ask-jump-latest
-  ) {
+  ):not(:where(input, textarea, select)) {
   font-size: var(--workspace-small);
   line-height: 1.6;
 }
@@ -81,7 +83,7 @@
     .ask-studio-intro,
     .ask-recent-chats > button > span,
     .ask-reply > header > strong
-  ) {
+  ):not(:where(input, textarea, select)) {
   font-size: var(--workspace-label);
   line-height: 1.65;
 }
@@ -90,11 +92,18 @@
   :is(
     .text-\[13px\],
     .text-sm,
+    .text-base,
+    .btn,
+    .nav-link,
+    .bubble,
+    .account-menu-heading > strong,
+    .account-menu-item,
+    .account-menu-value,
     .home-ask-launcher > span > span,
     .business-detail-row > span:last-child,
     .ask-owner-message > p,
     .ask-reply-text
-  ) {
+  ):not(:where(input, textarea, select)) {
   font-size: var(--workspace-body);
   line-height: 1.7;
 }
@@ -109,9 +118,10 @@
   line-height: 1.4;
 }
 
-/* Keep fields readable on mobile too, without triggering iOS input zoom. */
-.dashboard-shell :is(input, textarea, select) {
-  font-size: var(--workspace-body);
+/* Fields are excluded from the text-size utility bridge above. Keep a
+   readable minimum on mobile without triggering iOS input zoom. */
+.dashboard-shell :is(.input, input, textarea, select) {
+  font-size: max(1rem, var(--workspace-body));
   line-height: 1.6;
 }
 
@@ -119,15 +129,24 @@
   min-height: 46px;
 }
 
+@media (min-width: 1101px) {
+  .dashboard-shell .home-ask-cta {
+    font-size: var(--workspace-body);
+  }
+}
+
 @media (max-width: 700px) {
   /* The three headline counters stay compact; their supporting lines
      must still be readable and have room to wrap. */
-  .dashboard-shell .home-stat .eyebrow,
-  .dashboard-shell .home-stat > span:last-child {
+  .dashboard-shell .home-stat .eyebrow {
     font-size: var(--workspace-caption);
     line-height: 1.5;
   }
   .dashboard-shell .home-stat-label {
     min-height: 36px;
+  }
+  .dashboard-shell .home-stat > span:last-child {
+    font-size: var(--workspace-body);
+    line-height: 1.5;
   }
 }
