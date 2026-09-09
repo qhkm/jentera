@@ -315,11 +315,22 @@ export async function handleRuns(
       return json({ ok: false, err: 'run not found' }, { status: 404 }, privateHeaders);
     }
     if (!state.task || state.run.runtime !== 'hermes-sprite') {
+      /* Deterministic work (routines) has no runtime task; its readable
+         result is the work record's outcome, so the task page can show it. */
+      const runId = state.run.id;
+      const outcome = state.run.status === 'completed'
+        ? await withTenant(env, id.businessId, async (tx) => {
+          const [row] = await tx<{ outcome: string | null }[]>`
+            select outcome from work_record where run_id = ${runId} order by occurred_at desc limit 1`;
+          return row?.outcome ?? null;
+        })
+        : null;
       return json({
         ok: true,
-        runId: state.run.id,
+        runId,
         status: state.run.status,
         pending: !terminalRun(state.run.status),
+        ...(outcome ? { text: outcome } : {}),
       }, {}, privateHeaders);
     }
     if (state.run.status === 'completed') {

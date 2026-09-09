@@ -93,6 +93,11 @@ AISAR_DEEP_MODEL_NAME = "deepseek-v4-flash"
 # Trial routes every sprite accepts beside quick and deep. Traffic only moves
 # for businesses named in AISAR_QUICK_MODEL_OVERRIDES (quick replies only).
 AISAR_CANDIDATE_MODEL_NAMES = "MiniMax-M3"
+# Routines v1 (docs/plans/2026-09-09-routines-api-v1.md). Off until the
+# backend acceptance gate is green; then one canary business id here first.
+# Canary: Kitakod Ventures only, 2026-09-09. Empty allowlist = every business.
+ROUTINES_ENABLED = "true"
+AISAR_ROUTINES_BUSINESS_IDS = "4e8c2593-2af2-494f-b157-fec0295a50b5"
 # router.fmcv.my is a separate LiteLLM gateway and therefore uses the FMCV
 # AISAR_MODEL_KEY secret. Official OpenRouter keys are never sent to it.
 # Connector credentials are secrets, never vars:
@@ -203,4 +208,6 @@ max_concurrency = 5
 # on the pinned release (or errored). A release bump then converges by
 # itself — no per-business message or operator trigger required.
 [triggers]
-crons = ["*/15 * * * *"]
+# */15: fleet drift sweep. * * * * *: owner routines dispatcher (index.ts
+# branches on controller.cron, so the sweep never runs every minute).
+crons = ["*/15 * * * *", "* * * * *"]

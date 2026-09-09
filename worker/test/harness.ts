@@ -158,7 +158,7 @@ export async function asTenant<T>(
 export async function truncateAll(): Promise<void> {
   await asOwner(async (sql) => {
     await sql.unsafe(`
-      truncate runtime_task_outbox, runtime_usage, runtime_budget, runtime_task, agent_runtime, credential, connection, run_event, run, work_record, business_fact, approval, action_policy, work_done, learn, membership,
+      truncate routine_change, routine_occurrence, routine, runtime_task_outbox, runtime_usage, runtime_budget, runtime_task, agent_runtime, credential, connection, run_event, run, work_record, business_fact, approval, action_policy, work_done, learn, membership,
                oauth_identity, session, login_token, auth_attempt, business, app_user, fmcv_rider_spend
       restart identity cascade`);
   });

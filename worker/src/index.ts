@@ -8,9 +8,13 @@
    queued for a human, never executed on the agent's say-so.
    ============================================================ */
 
+const ROUTINES_CRON = '* * * * *';
+
 import { handleSession } from './routes/session';
 import { handleRepo } from './routes/repo';
 import { handleRuns } from './routes/runs';
+import { handleRoutines } from './routes/routines';
+import { dispatchDueRoutines } from './routines/dispatch';
 import { handleConnect } from './routes/connect';
 import { handleRuntime } from './routes/runtime';
 import { handleEvents } from './routes/events';
@@ -110,6 +114,10 @@ export default {
     const runs = await handleRuns(request, env, url, headers);
     if (runs) return runs;
 
+    /* Routines: owner-scheduled deterministic jobs, behind a flag. */
+    const routines = await handleRoutines(request, env, url, headers);
+    if (routines) return routines;
+
     /* Connections, and the Telegram webhook — the one route here that
        is called by someone other than our own frontend. */
     const conn = await handleConnect(request, env, url, headers, ctx);
@@ -134,6 +142,24 @@ export default {
   },
 
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    /* The one-minute cron dispatches owner routines; the quarter-hour cron
+       runs the fleet sweep. Both fire together at :00, :15, :30 and :45. */
+    if (controller.cron === ROUTINES_CRON) {
+      const started = Date.now();
+      try {
+        const result = await dispatchDueRoutines(env);
+        if (result.admitted || result.skipped || result.errors) {
+          console.log(
+            `[routines] admitted=${result.admitted} skipped=${result.skipped} ` +
+            `errors=${result.errors} took=${Date.now() - started}ms`,
+          );
+        }
+      } catch (err) {
+        console.error(`[routines] ${String(err)}`);
+      }
+      return;
+    }
+
     /* Fleet drift sweep — keep every sprite on the pinned release without
        waiting for each business's next customer message, and re-arm lifecycle
        tasks whose exhaustion was infra noise rather than a product bug. */

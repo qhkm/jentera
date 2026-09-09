@@ -1,3 +1,4 @@
+import { routinesEnabledFor } from '../routines/gating';
 import type { Env } from '../env';
 import {
   clearedCookie,
@@ -314,7 +315,12 @@ export async function handleSession(
     const token = readCookie(request);
     const identity = token ? await verifySession(env, token) : null;
     if (!identity) return json({ ok: false, err: 'not signed in' }, { status: 401 }, cors);
-    return json({ ok: true, ...identity }, {}, cors);
+    /* Capability discovery: the frontend shows Routines only when this says
+       so, and the routes enforce the same answer on every write. */
+    const features = identity.businessId && routinesEnabledFor(env, identity.businessId)
+      ? { routines: { apiVersion: 1 } }
+      : undefined;
+    return json({ ok: true, ...identity, ...(features ? { features } : {}) }, {}, cors);
   }
 
   /* ---- sign out ------------------------------------------------------ */
