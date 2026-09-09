@@ -11,6 +11,30 @@ import urllib.error
 import urllib.request
 
 
+PROXY_BASE_URL = "https://api.jentera.ai/v1/model"
+
+
+def capped_by_proxy(base_url: str, status: int, body: bytes) -> bool:
+    """True when our own model proxy refused the call because the business's
+    monthly model budget is spent.
+
+    The proxy authenticated the runtime's token and applied its policy, so
+    the endpoint and credential are proven; only the model alias goes
+    unexercised. A capped business must still be able to take a runtime
+    release, which is why this is a pass. Anything else (an upstream rate
+    limit relayed as 429, a 429 from any other endpoint, any other status)
+    stays a failure.
+    """
+    if base_url != PROXY_BASE_URL or status != 429:
+        return False
+    try:
+        decoded = json.loads(body[: 64 * 1024])
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError):
+        return False
+    error = decoded.get("error") if isinstance(decoded, dict) else None
+    return isinstance(error, dict) and error.get("type") == "budget_exceeded"
+
+
 def main() -> None:
     base_url = os.environ.get("OPENROUTER_BASE_URL", "").strip().rstrip("/")
     api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
@@ -49,6 +73,15 @@ def main() -> None:
             body = response.read(64 * 1024 + 1)
             status = response.status
     except urllib.error.HTTPError as error:
+        try:
+            error_body = error.read(64 * 1024 + 1)
+        except OSError:
+            error_body = b""
+        if capped_by_proxy(base_url, error.code, error_body):
+            print("model smoke: budget capped by the Jentera proxy; endpoint and credential proven",
+                  file=sys.stderr)
+            print(json.dumps({"ok": True, "model": model, "capped": True}, separators=(",", ":")))
+            return
         raise SystemExit(f"model smoke failed (HTTP {error.code})") from None
     except (TimeoutError, urllib.error.URLError) as error:
         reason = type(getattr(error, "reason", error)).__name__

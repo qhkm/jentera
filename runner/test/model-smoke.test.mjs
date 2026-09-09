@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 
 const MODEL_SMOKE = new URL('../bin/model-smoke.py', import.meta.url).pathname;
@@ -49,4 +50,34 @@ test('model-smoke --local fails fast without an API server key', async () => {
   const local = localBranch(source);
   assert.match(local, /API_SERVER_KEY/);
   assert.match(local, /SystemExit\(/);
+});
+
+/* A business at its monthly model cap gets HTTP 429 budget_exceeded from our
+   own proxy on every call, including the bootstrap's smoke. That refusal is
+   the proxy authenticating the runtime's token and applying policy, so the
+   endpoint and credential are proven; treating it as broken inference left
+   a capped tenant unable to take a runtime release (2026-09-09). */
+test('model-smoke treats our proxy\'s budget_exceeded 429 as proven-but-capped, and nothing else', () => {
+  const decide = (args) => {
+    const result = spawnSync('python3', ['-c', [
+      'import importlib.util, sys',
+      `spec = importlib.util.spec_from_file_location('model_smoke', ${JSON.stringify(MODEL_SMOKE)})`,
+      'module = importlib.util.module_from_spec(spec)',
+      'spec.loader.exec_module(module)',
+      `print(module.capped_by_proxy(${args}))`,
+    ].join('\n')], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  const proxy = '"https://api.jentera.ai/v1/model"';
+  const capped = `b'{"error":{"message":"monthly model budget exhausted","type":"budget_exceeded","code":429}}'`;
+  assert.equal(decide(`${proxy}, 429, ${capped}`), 'True');
+  // an upstream rate limit relayed with the same status is still a failure
+  assert.equal(decide(`${proxy}, 429, b'{"error":{"message":"rate limited","type":"rate_limit_error","code":429}}'`), 'False');
+  // only our proxy applies our budget policy; another endpoint's 429 proves nothing
+  assert.equal(decide(`"https://router.fmcv.my", 429, ${capped}`), 'False');
+  // any other status is never a pass, whatever the body says
+  assert.equal(decide(`${proxy}, 401, ${capped}`), 'False');
+  // garbage bodies do not crash the decision
+  assert.equal(decide(`${proxy}, 429, b'not json'`), 'False');
 });

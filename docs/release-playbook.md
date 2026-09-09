@@ -77,6 +77,11 @@ the middle can be finished by hand, and so rollback has a recipe.
 - The drift sweep is NOT a repair loop for deterministic errors. A blocked
    release stays blocked until tasks are reset or the failure becomes
    transient.
+- A tenant at its monthly model cap gets 429 `budget_exceeded` from our own
+   proxy on every call, including the bootstrap's model smoke. Until release
+   2026.09.09-2 that read as broken inference and the capped business could
+   not take a release (NEOREKA, 2026-09-09). `model-smoke.py` now treats that
+   exact refusal, from our proxy only, as endpoint-and-credential proven.
 - Every release touches the bundle commit; if the commit isn't pushed, sprites
    download 404s. The gate's asset checks catch this (after CDN lag).
 - Upgrade-task payload carries only `{release, reason}` — the bootstrap script
