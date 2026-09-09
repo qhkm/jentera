@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, useNavigate } from 'react-router';
 import { PageMetadata } from '@/components/PageMetadata';
-import { INDEXABLE_PATHS, PRIVATE_PATHS, SOCIAL_IMAGE, metaEntries, pageSeo, seoHead, structuredData } from '../seo';
+import { INDEXABLE_PAGE_SOURCES, INDEXABLE_PATHS, PRIVATE_PATHS, SOCIAL_IMAGE, escapeXml, metaEntries, pageSeo, seoHead, structuredData } from '../seo';
 import { renderPublic } from '@/entry-prerender';
 
 afterEach(() => {
@@ -40,6 +40,15 @@ describe('public SEO and social previews', () => {
     expect(pageSeo('/connect/?utm_source=test').canonical).toBe('https://jentera.ai/connect');
     expect(pageSeo('/?ref=test').canonical).toBe('https://jentera.ai/');
     expect(pageSeo('/unknown').indexable).toBe(false);
+  });
+
+  it('tracks meaningful source files for every sitemap page and escapes XML values', () => {
+    expect(Object.keys(INDEXABLE_PAGE_SOURCES)).toEqual([...INDEXABLE_PATHS]);
+    for (const path of INDEXABLE_PATHS) {
+      expect(INDEXABLE_PAGE_SOURCES[path].length).toBeGreaterThan(1);
+      expect(INDEXABLE_PAGE_SOURCES[path].every((source) => source.startsWith('app/'))).toBe(true);
+    }
+    expect(escapeXml(`<&>"'`)).toBe('&lt;&amp;&gt;&quot;&apos;');
   });
 
   it('updates metadata across client navigation without duplicates or stale private tags', async () => {

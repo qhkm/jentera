@@ -6,6 +6,27 @@ export const SOCIAL_ALT = 'Jentera by AISAR. AI staff that works 24/7 for Malays
 export const INDEXABLE_PATHS = ['/', '/connect'] as const;
 export const PRIVATE_PATHS = ['/signin', '/onboard', '/setup', '/app'] as const;
 
+/** Files whose committed changes materially alter each public page. The build
+ * uses their most recent git commit for sitemap lastmod; it never stamps every
+ * deploy with today's date when the page itself did not change. */
+export const INDEXABLE_PAGE_SOURCES: Record<(typeof INDEXABLE_PATHS)[number], readonly string[]> = {
+  '/': [
+    'app/src/routes/Landing.tsx',
+    'app/src/lib/landing-content.ts',
+    'app/src/components/landing/LandingChrome.tsx',
+    'app/src/components/landing/WorkIllustration.tsx',
+    'app/src/styles/landing.css',
+    'app/src/lib/seo.ts',
+  ],
+  '/connect': [
+    'app/src/routes/Connect.tsx',
+    'app/src/lib/live-connectors.ts',
+    'app/src/components/landing/LandingChrome.tsx',
+    'app/src/styles/connect.css',
+    'app/src/lib/seo.ts',
+  ],
+};
+
 export interface PageSeo {
   title: string;
   description: string;
@@ -88,6 +109,10 @@ export function structuredData(path: string): Record<string, unknown> | null {
 
 export function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
+}
+
+export function escapeXml(text: string): string {
+  return text.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char]!);
 }
 
 export function seoHead(path: string): string {

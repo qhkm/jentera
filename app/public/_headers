@@ -5,6 +5,13 @@
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
+# These contain no account state and change only with a deployment. A short
+# public cache prevents needless origin reads while keeping discovery fresh.
+/sitemap.xml
+  Cache-Control: public, max-age=3600, must-revalidate
+/robots.txt
+  Cache-Control: public, max-age=3600, must-revalidate
+
 # SPA shell and every route it serves. The CSP ships Report-Only until it
 # has run in production without violations (Jentera → My Business → open
 # every major view); flip Content-Security-Policy-Report-Only to

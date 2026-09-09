@@ -127,8 +127,11 @@ shells stay empty and retain the existing authentication/onboarding flow.
 
 `src/lib/seo.ts` owns titles, descriptions, canonical URLs, Open Graph/Twitter
 tags and factual structured data. `PageMetadata` applies the same values during
-client navigation. Only the two public pages appear in the generated sitemap;
-canonical URLs point to `https://jentera.ai`, including on the secondary host.
+client navigation. Only the two public pages appear in the generated sitemap.
+Each `lastmod` is the most recent commit that materially changed that page,
+not the deployment time; a source archive without git history omits it instead
+of inventing one. Canonical URLs point to `https://jentera.ai`, including on
+the secondary host.
 Cloudflare's preview-deployment `noindex` header is preserved; the verifier
 allows that on `pages.dev` while enforcing indexability on the live custom domain.
 No invented prices, reviews, customer numbers or available integrations are
@@ -136,8 +139,10 @@ added to structured data.
 
 `public/_headers` adds `X-Robots-Tag: noindex, nofollow` for private routes;
 the corresponding HTML includes the same directive. Cache/security policies
-are otherwise unchanged. `robots.txt` allows crawling so crawlers can read
-those directives. This is indexing guidance, not access control. `_redirects`
+are otherwise unchanged. `robots.txt` owns only the sitemap directive because
+Cloudflare may prepend its managed content signals; crawling remains allowed so
+crawlers can read private-route `noindex`. This is indexing guidance, not access
+control. `_redirects`
 no longer rewrites every missing URL to a 200 landing page: each known route
 has a generated HTML file, trailing slashes redirect, and `404.html` handles
 unknown routes and missing assets with a real 404 on Pages.
@@ -160,8 +165,13 @@ when replacing it so shared-link caches can pick up the new image. The build
 copies the checked-in PNG; it does not download a browser or render artwork.
 
 The verifier checks raw HTML, canonical/noindex tags, readable public content,
-the sitemap and PNG dimensions/hash. Against a Pages URL it also checks real
-status codes, headers and image content type. Implementation references:
+the sitemap and PNG dimensions/hash. Sitemap checks include strict XML,
+duplicates, canonical origin, verifiable timestamps and live 200/indexable
+targets. Against a Pages URL it also checks real status codes, headers and
+image content type. The secondary `jentera.aisar.ai` hostname carries the same
+HTML canonical, but hostname-level redirects are unsupported in Pages
+`_redirects`; add an account-level Cloudflare Bulk Redirect to `jentera.ai`
+when that alias no longer needs to serve directly. Implementation references:
 [Google JavaScript SEO](https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics),
 [Open Graph](https://ogp.me/), and
 [Pages redirects](https://developers.cloudflare.com/pages/configuration/redirects/).
