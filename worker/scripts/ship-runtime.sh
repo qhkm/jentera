@@ -21,6 +21,9 @@
 #     --reset-exhausted     re-queue exhausted upgrade tasks for this release first
 #                           (a release blocked by a deterministic bootstrap error
 #                           stays blocked until this runs; see the playbook)
+#     --resume              origin/main already carries the release commit (a
+#                           previous run failed after pushing); skip pins, gate,
+#                           commit and push and continue from deploy
 #
 # Needs: git with push rights on main, node, pnpm or npx, wrangler auth,
 #        psql plus AISAR_NEON_OWNER_URL (or a logged-in neonctl) for the
@@ -36,6 +39,7 @@ DRY_RUN=0
 SWEEP=1
 WATCH=1
 RESET_EXHAUSTED=0
+RESUME=0
 
 usage() { sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; }
 die() { echo "ship-runtime: $*" >&2; exit 1; }
@@ -50,12 +54,17 @@ while [[ $# -gt 0 ]]; do
     --no-sweep) SWEEP=0; shift ;;
     --no-watch) WATCH=0; shift ;;
     --reset-exhausted) RESET_EXHAUSTED=1; shift ;;
+    --resume) RESUME=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "ship-runtime: unknown argument $1" >&2; usage >&2; exit 2 ;;
   esac
 done
-[[ -n "$MESSAGE" ]] || { usage >&2; die "-m/--message is required"; }
+[[ -n "$MESSAGE" || $RESUME == 1 ]] || { usage >&2; die "-m/--message is required"; }
 [[ "$MESSAGE" == *$'\n'* ]] && die "message must be one line"
+# wrangler bundles from worker/node_modules; a bare worktree has none, and the
+# failure would otherwise surface only at deploy, after the release is pushed.
+[[ -d "$ROOT/worker/node_modules/postgres" ]] \
+  || die "worker/node_modules is missing under $ROOT; run: cd worker && pnpm install"
 
 # ---- 0. what main says right now ------------------------------------------
 step "preflight"
@@ -75,7 +84,11 @@ CURRENT_BUNDLE="$(sed -n 's/^RUNTIME_BUNDLE_COMMIT = "\(.*\)"$/\1/p' <<<"$CURREN
 [[ -n "$CURRENT_RELEASE" && -n "$CURRENT_BUNDLE" ]] || die "could not read the pins from origin/main's wrangler.toml"
 API_ORIGIN="$(sed -n 's/^API_ORIGIN = "\(.*\)"$/\1/p' <<<"$CURRENT_TOML")"
 
-if [[ -z "$RELEASE" ]]; then
+if [[ $RESUME == 1 ]]; then
+  RELEASE="$CURRENT_RELEASE"
+  BUNDLE="$CURRENT_BUNDLE"
+  echo "resuming $RELEASE (bundle $BUNDLE) from deploy; origin/main is $MAIN_SHA"
+elif [[ -z "$RELEASE" ]]; then
   today="$(date +%Y.%m.%d)"
   last=0
   for id in "$CURRENT_RELEASE" $(git -C "$ROOT" log --format=%s -200 origin/main | grep -o "$today-[0-9]\{1,3\}"); do
@@ -86,15 +99,16 @@ if [[ -z "$RELEASE" ]]; then
   RELEASE="$today-$((last + 1))"
 fi
 [[ "$RELEASE" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[0-9]{1,3}$ ]] || die "release id must look like 2026.09.09-1, got $RELEASE"
-[[ "$RELEASE" != "$CURRENT_RELEASE" ]] || die "release $RELEASE is already the fleet target; pass a new -r"
-if [[ "$BUNDLE" == "$CURRENT_BUNDLE" ]]; then
-  echo "note: bundle $BUNDLE is already pinned; this release re-cuts it (worker-side change only)"
+if [[ $RESUME == 0 ]]; then
+  [[ "$RELEASE" != "$CURRENT_RELEASE" ]] || die "release $RELEASE is already the fleet target; pass a new -r, or --resume to finish it"
+  if [[ "$BUNDLE" == "$CURRENT_BUNDLE" ]]; then
+    echo "note: bundle $BUNDLE is already pinned; this release re-cuts it (worker-side change only)"
+  fi
+  echo "release:  $CURRENT_RELEASE -> $RELEASE"
+  echo "bundle:   $CURRENT_BUNDLE -> $BUNDLE"
+  echo "subject:  release(runtime): $RELEASE $MESSAGE"
+  git -C "$ROOT" log --format='          %h %s' "$CURRENT_BUNDLE..$BUNDLE" -- runner worker/src/runtime | head -20
 fi
-
-echo "release:  $CURRENT_RELEASE -> $RELEASE"
-echo "bundle:   $CURRENT_BUNDLE -> $BUNDLE"
-echo "subject:  release(runtime): $RELEASE $MESSAGE"
-git -C "$ROOT" log --format='          %h %s' "$CURRENT_BUNDLE..$BUNDLE" -- runner worker/src/runtime | head -20
 
 # ---- 1. scratch worktree, so a dirty checkout cannot leak into the release --
 step "scratch worktree"
@@ -105,6 +119,8 @@ trap cleanup EXIT
 git -C "$ROOT" worktree add -q --detach "$WT" origin/main || die "worktree add failed"
 [[ -d "$ROOT/worker/node_modules" ]] && ln -s "$ROOT/worker/node_modules" "$WT/worker/node_modules"
 [[ -d "$ROOT/node_modules" ]] && ln -s "$ROOT/node_modules" "$WT/node_modules"
+RELEASE_SHA="$MAIN_SHA"
+if [[ $RESUME == 0 ]]; then
 TOML="$WT/worker/wrangler.toml"
 sed -i.bak \
   -e "s/^RUNTIME_RELEASE = \"$CURRENT_RELEASE\"\$/RUNTIME_RELEASE = \"$RELEASE\"/" \
@@ -148,6 +164,7 @@ done
 [[ $pushed == 1 ]] || die "could not push main"
 RELEASE_SHA="$(git -C "$WT" rev-parse HEAD)"
 echo "main is now $RELEASE_SHA"
+fi
 
 # ---- 4. deploy the worker ---------------------------------------------------
 step "deploy worker"
