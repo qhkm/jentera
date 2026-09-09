@@ -13,7 +13,9 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { asOwner, asTenant, truncateAll } from './harness';
-import { answer, prepareHermesAgent, retrieve, retrieveHermesContext } from '../src/ask';
+import { answer, prepareHermesAgent, retrieve, retrieveHermesContext,
+  boundedAgentInput,
+} from '../src/ask';
 import { recordFact } from '../src/facts';
 import { recordWork, startRun } from '../src/runs';
 import type { Env } from '../src/env';
@@ -376,5 +378,17 @@ describe('the bracket is a note to the model, not to the reader', () => {
 
     await answer(env, 'where', facts, []);
     expect(seen[0]).toContain('[read from https://jentera.ai]');
+  });
+});
+
+describe('boundedAgentInput', () => {
+  it('leaves an ordinary request untouched', () => {
+    expect(boundedAgentInput('facts\n\nUser request: hi', 'hi')).toBe('facts\n\nUser request: hi');
+  });
+  it('truncates an oversized request but keeps the question at the end, framed as the agent expects', () => {
+    const input = `${'x'.repeat(30_000)}\n\nUser request: what now?`;
+    const bounded = boundedAgentInput(input, 'what now?');
+    expect(bounded.length).toBe(19_500);
+    expect(bounded.endsWith('\n\nUser request: what now?')).toBe(true);
   });
 });

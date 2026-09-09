@@ -24,7 +24,13 @@ import {
 import { recordFact } from '../facts';
 import { urlProblem } from '../ingest';
 import { runtimeFor, signalRuntimeTask } from '../runtime';
-import { prepareAsk, retrieve } from '../ask';
+import {
+  boundedAgentInput,
+  prepareAsk,
+  prepareHermesAgent,
+  retrieve,
+  retrieveHermesContext,
+} from '../ask';
 import { getRuntime } from '../agent-runtime';
 import {
   enqueueRuntimeTask,
@@ -410,11 +416,11 @@ async function startDurableAsk(
     }, { status: 503 }, cors);
   }
 
-  const { facts, work } = await withTenant(env, businessId, async (tx) => ({
-    facts: await retrieve(tx, question),
-    work: await recentWork(tx, 8),
-  }));
-  const prepared = prepareAsk(question, facts, work);
+  /* Same retrieval and the same agent prompt as a Telegram message, so a
+     question gets one answer regardless of where the owner typed it. */
+  const { facts, work } = await withTenant(env, businessId, (tx) =>
+    retrieveHermesContext(tx, question));
+  const prepared = prepareHermesAgent(question, facts, work);
   const model = modelForResponseMode(env, 'deep');
   const dedupeKey = `ask:${requestId}`;
   const created = await withTenant(env, businessId, async (tx) => {
@@ -444,7 +450,7 @@ async function startDurableAsk(
       runId: run.id,
       dedupeKey,
       payload: {
-        input: boundedAskInput(prepared.input, question),
+        input: boundedAgentInput(prepared.input, question),
         instructions: prepared.instructions,
         sessionId: sessionId ?? run.id,
         objective: question,
@@ -483,12 +489,6 @@ async function startDurableAsk(
   }, { status: 202 }, cors);
 }
 
-function boundedAskInput(input: string, question: string): string {
-  const max = 19_500;
-  if (input.length <= max) return input;
-  const suffix = `\n\nQuestion: ${question}`;
-  return `${input.slice(0, Math.max(0, max - suffix.length))}${suffix}`;
-}
 
 function askMetadata(task: RuntimeTask): { usedKeys: string[]; grounded: boolean } {
   if (!task.payload || typeof task.payload !== 'object') {

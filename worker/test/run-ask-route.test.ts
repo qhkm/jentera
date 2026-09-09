@@ -120,6 +120,28 @@ describe('Ask Jentera runtime bridge', () => {
     expect(row.payload).not.toHaveProperty('businessId');
   });
 
+  it('gives durable chat the same agent prompt and framing Telegram gets', async () => {
+    await readyRuntime(A);
+    const send = vi.fn(async () => {});
+    const response = await call('POST', '/api/runs/ask', durableEnv(send), cookieA, {
+      question: 'What should I improve?',
+      requestId: crypto.randomUUID(),
+      mode: 'work',
+    });
+    expect(response.status).toBe(202);
+    const body = await response.json() as { runId: string };
+    const [row] = await asOwner((sql) => sql<{ payload: { instructions: string; input: string } }[]>`
+      select t.payload from runtime_task t where t.run_id = ${body.runId}`);
+    /* prepareHermesAgent's shape: the agent persona with the date stamped
+       on, and the request framed as the agent sees it on Telegram. The
+       same question must not read differently because it came from the app. */
+    expect(row.payload.instructions).toMatch(/Current date \(UTC\): \d{4}-\d{2}-\d{2}\.$/);
+    expect(row.payload.input).toContain('Confirmed information about this business:');
+    expect(row.payload.input).toContain('Recent Jentera work:');
+    expect(row.payload.input).toMatch(/User request: What should I improve\?$/);
+    expect(row.payload.input).not.toContain('Question:');
+  });
+
   it('reuses the same run for simultaneous-safe request retries', async () => {
     await readyRuntime(A);
     const send = vi.fn(async () => {});

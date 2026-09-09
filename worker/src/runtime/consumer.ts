@@ -75,7 +75,7 @@ import {
   type AgentRuntimeRecord,
 } from '../agent-runtime';
 import { runtimeReady } from './execution';
-import { prepareHermesAgent, retrieveHermesContext } from '../ask';
+import { boundedAgentInput, prepareHermesAgent, retrieveHermesContext } from '../ask';
 import { modelForResponseMode, responseModeFor } from './response-mode';
 import { sanitizePublicRuntimeText } from './public-output';
 
@@ -593,7 +593,7 @@ export async function handleRuntimeQueueMessage(
         runId: run.id,
         dedupeKey,
         payload: {
-          input: boundedTelegramInput(prepared.input, message.incoming.text),
+          input: boundedAgentInput(prepared.input, message.incoming.text),
           instructions: prepared.instructions,
           sessionId: `telegram:${message.businessId}:${message.incoming.chatId}`,
           objective: `Help ${message.incoming.from} on Telegram`,
@@ -2243,13 +2243,6 @@ function validTelegramIntake(
     typeof incoming.from === 'string' && incoming.from.length > 0 && incoming.from.length <= 256 &&
     typeof incoming.text === 'string' && incoming.text.trim().length > 0 &&
     incoming.text.length <= 4_000 && incoming.privateChat === true;
-}
-
-function boundedTelegramInput(input: string, question: string): string {
-  const max = 19_500;
-  if (input.length <= max) return input;
-  const suffix = `\n\nUser request: ${question}`;
-  return `${input.slice(0, Math.max(0, max - suffix.length))}${suffix}`;
 }
 
 /** Durable final message: Hermes's `💭 **Reasoning:**` block (mirrored from

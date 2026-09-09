@@ -254,9 +254,10 @@ export function prepareAsk(
   };
 }
 
-/** Durable Telegram requests use Hermes as an agent, not merely as a
-    grounded text generator. Ordinary Ask Jentera continues to use prepareAsk so
-    enabling durable execution does not silently change the rest of the product. */
+/** Every durable request, Telegram or app chat, uses Hermes as an agent
+    with this one prompt, so the same question reads the same on both
+    channels. Only the inline non-Hermes answer path (mode 'ask') still
+    uses prepareAsk. */
 export function prepareHermesAgent(
   question: string,
   facts: FactRow[],
@@ -308,4 +309,14 @@ export async function answer(
        admit ignorance — but the caller can present it differently. */
     grounded: prepared.grounded,
   };
+}
+
+/** Cap the agent input at Hermes's comfortable size while keeping the
+    request itself at the end, framed the way prepareHermesAgent frames it.
+    Shared by the Telegram and app intakes so neither can drift. */
+export function boundedAgentInput(input: string, question: string): string {
+  const max = 19_500;
+  if (input.length <= max) return input;
+  const suffix = `\n\nUser request: ${question}`;
+  return `${input.slice(0, Math.max(0, max - suffix.length))}${suffix}`;
 }
