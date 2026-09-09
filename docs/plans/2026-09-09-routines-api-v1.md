@@ -16,7 +16,7 @@ localStorage schedule may stand in for the backend.
 
 **Backend acknowledgement:** acknowledged with amendments 1–12 below (Claude, 2026-09-09).
 **Backend status:** implemented on main, 2026-09-09; deployed behind `ROUTINES_ENABLED` with a one-business canary allowlist. See the gate below for what the tests prove.
-**Frontend activation:** not enabled beyond the canary business.
+**Frontend activation:** live on jentera.ai for the canary business only (2026-09-09).
 
 ## Product slice
 
@@ -366,7 +366,7 @@ budget checks.
 - [x] Reminder with no pending approvals skips without a fabricated completion.
 - [x] Configuration and occurrence audit preserve actor, revision, inputs and outcome
       (`routine_change`, occurrence snapshots, work-record `inputs_used`); nothing else is stored.
-- [ ] Canary one internal business before advertising v1 to other tenants. Kitakod Ventures is on the allowlist; the frontend has not been deployed yet.
+- [x] Canary one internal business before advertising v1 to other tenants. Kitakod Ventures: first scheduled occurrence completed 2026-09-09 10:09 UTC, the owner saw the workspace on jentera.ai the same day. Advertising to other tenants is the allowlist in `worker/wrangler.toml` (empty = everyone).
 - [x] Rollback hides creation/run-now capability, stops new admissions, preserves
       history and leaves an owner able to pause existing routines (flag off is tested).
 
