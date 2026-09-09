@@ -25,9 +25,18 @@ R=/home/sprite/aisar/runner.env
 H=/home/sprite/.hermes/hermes-agent
 rel=$(awk -F= '/^AISAR_RUNTIME_RELEASE=/{print $2}' "$E" 2>/dev/null)
 key=$(awk -F= '/^AISAR_RUNNER_KEY=/{print $2}' "$R" 2>/dev/null)
-ready=$(curl -s -m 10 -H "X-Aisar-Runner-Key: $key" http://127.0.0.1:8080/readyz 2>/dev/null \
-  | python3 -c "import json,sys; print(json.load(sys.stdin).get('release','?'))" 2>/dev/null \
-  || echo unreachable)
+# A suspended sprite is woken by this very exec and its runner comes up a
+# few seconds later; eight tries over about eighty seconds cover a resume
+# without hiding a runner that is really down.
+ready=unreachable
+for attempt in 1 2 3 4 5 6 7 8; do
+  body=$(curl -s -m 10 -H "X-Aisar-Runner-Key: $key" http://127.0.0.1:8080/readyz 2>/dev/null)
+  if [ -n "$body" ]; then
+    ready=$(printf '%s' "$body" | python3 -c "import json,sys; print(json.load(sys.stdin).get('release','?'))" 2>/dev/null || echo "?")
+    break
+  fi
+  sleep 5
+done
 /.sprite/bin/node /home/sprite/aisar/runner/patch-hermes-dependencies.mjs "$H" --verify >/dev/null 2>&1
 pv=$?
 svc=$(sprite-services list 2>/dev/null \

@@ -14,6 +14,8 @@
 # read` on purpose: zsh does not word-split $var, and a loop written that way
 # ran once with all twelve names glued together (2026-09-08). stdin is closed
 # for every exec so a here-string cannot be eaten by the first sprite.
+# A suspended sprite is woken by the exec itself; allow for its services
+# to come up before judging it (fleet-verify.sh retries readyz for that).
 #
 # Usage:
 #   fleet-exec.sh [-p N] [--only a,b] [--from-sprites] 'snippet'
