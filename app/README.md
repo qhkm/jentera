@@ -118,6 +118,52 @@ pause/resume availability, idempotent retry, revision conflicts, result links,
 pagination and errors. Browser checks cover 1440/1024/390/320px, dark/light,
 EN/BM, 15px body and 16px inputs, plus the existing public/onboarding routes.
 
+## Public SEO and link previews
+
+`pnpm build` now renders `/` and `/connect` to static HTML from their actual
+React components, then hydrates those pages in the browser. Public copy and
+metadata are available without JavaScript or an API request. Private route
+shells stay empty and retain the existing authentication/onboarding flow.
+
+`src/lib/seo.ts` owns titles, descriptions, canonical URLs, Open Graph/Twitter
+tags and factual structured data. `PageMetadata` applies the same values during
+client navigation. Only the two public pages appear in the generated sitemap;
+canonical URLs point to `https://jentera.ai`, including on the secondary host.
+No invented prices, reviews, customer numbers or available integrations are
+added to structured data.
+
+`public/_headers` adds `X-Robots-Tag: noindex, nofollow` for private routes;
+the corresponding HTML includes the same directive. Cache/security policies
+are otherwise unchanged. `robots.txt` allows crawling so crawlers can read
+those directives. This is indexing guidance, not access control. `_redirects`
+no longer rewrites every missing URL to a 200 landing page: each known route
+has a generated HTML file, trailing slashes redirect, and `404.html` handles
+unknown routes and missing assets with a real 404 on Pages.
+
+The social preview is a committed 1200×630 PNG, rendered from
+`scripts/social-card.html` using the existing mark and Geist fonts:
+
+```bash
+pnpm exec playwright install chromium  # only needed to regenerate the artwork
+pnpm social:image
+# Or use an installed Chrome: SOCIAL_CHROME_CHANNEL=chrome pnpm social:image
+pnpm build
+pnpm verify:seo
+SEO_BASE=http://127.0.0.1:5192 pnpm verify:seo # against wrangler pages dev dist
+SEO_BASE=https://jentera.ai pnpm verify:seo   # after an intentional Pages release
+```
+
+Inspect the rendered image before committing. Use a new versioned filename
+when replacing it so shared-link caches can pick up the new image. The build
+copies the checked-in PNG; it does not download a browser or render artwork.
+
+The verifier checks raw HTML, canonical/noindex tags, readable public content,
+the sitemap and PNG dimensions/hash. Against a Pages URL it also checks real
+status codes, headers and image content type. Implementation references:
+[Google JavaScript SEO](https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics),
+[Open Graph](https://ogp.me/), and
+[Pages redirects](https://developers.cloudflare.com/pages/configuration/redirects/).
+
 ## Backend (optional)
 
 The app runs fully local by default — approvals in localStorage, tool calls mocked. Set `VITE_API_URL` (see `.env.example`) and approvals plus execution route to the Worker in `../worker`, which persists to D1 and enforces the risk gate server-side. Nothing else changes; that is what the tool contract buys.

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Jentera social preview artwork</title>
+  <style>
+    @font-face { font-family: Geist; src: url('/sans.woff2') format('woff2'); font-weight: 400; }
+    @font-face { font-family: Pixel; src: url('/pixel.woff2') format('woff2'); font-weight: 400; }
+    * { box-sizing: border-box; }
+    body { margin: 0; width: 1200px; height: 630px; background: #1f1f1f; color: #fff; font-family: Geist, sans-serif; overflow: hidden; }
+    .frame { position: absolute; inset: 24px; border: 1px solid #414b46; border-radius: 28px; }
+    .brand { position: absolute; left: 64px; top: 57px; display: flex; align-items: center; gap: 16px; }
+    .brand img { width: 55px; height: 55px; }
+    .wordmark { font-family: Pixel, monospace; font-size: 42px; color: #00d294; letter-spacing: -1px; }
+    .parent { position: absolute; right: 64px; top: 75px; font-size: 21px; color: #b4b4b4; }
+    .eyebrow { position: absolute; left: 67px; top: 166px; font-size: 17px; letter-spacing: 3px; text-transform: uppercase; color: #b4b4b4; }
+    h1 { position: absolute; left: 64px; top: 212px; margin: 0; font-family: Pixel, monospace; font-size: 65px; line-height: 1.11; font-weight: 400; letter-spacing: -1.5px; }
+    h1 span { color: #00d294; }
+    .footer { position: absolute; left: 66px; right: 65px; bottom: 62px; padding-top: 22px; border-top: 1px solid #414b46; display: flex; justify-content: space-between; align-items: center; }
+    .footer p { margin: 0; color: #b4b4b4; font-size: 20px; }
+    .url { font-size: 22px; color: #fff; }
+    .clock { position: absolute; right: 63px; top: 192px; width: 235px; height: 235px; }
+    .clock svg { width: 100%; height: 100%; }
+    .clock-label { position: absolute; width: 235px; right: 63px; top: 441px; text-align: center; font-size: 17px; letter-spacing: 1.5px; color: #a4f4cf; }
+  </style>
+</head>
+<body>
+  <div class="frame"></div>
+  <div class="brand"><img src="/mark.svg" alt="" /><span class="wordmark">Jentera</span></div>
+  <span class="parent">by AISAR</span>
+  <div class="eyebrow">Built for business here</div>
+  <h1>AI staff that<br />works <span>24/7</span> for<br /><span>Malaysian businesses.</span></h1>
+  <div class="clock" aria-hidden="true">
+    <svg viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="1" y="1" width="238" height="238" rx="40" fill="#25312b" stroke="#406b56"/>
+      <circle cx="120" cy="120" r="86" stroke="#406b56" stroke-width="2" stroke-dasharray="2 10"/>
+      <path d="M120 35a85 85 0 1 1-85 85" stroke="#00d294" stroke-width="3" stroke-linecap="round"/>
+      <path d="m26 127 9-12 10 10" stroke="#00d294" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M120 63v57l36 24" stroke="#a4f4cf" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="120" cy="120" r="7" fill="#00d294"/>
+      <rect x="115" y="24" width="10" height="10" rx="2" fill="#00d294"/>
+    </svg>
+  </div>
+  <div class="clock-label">ENGLISH +<br />BAHASA MALAYSIA</div>
+  <div class="footer"><p>Replies. Follow-ups. Paperwork. Everyday work.</p><span class="url">jentera.ai ↗</span></div>
+</body>
+</html>

@@ -15,3 +15,24 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://api.jentera.ai https://aisar-api.qhkmdev90.workers.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+
+# Duplicate noindex in the response as well as each static private shell.
+# Query strings do not change the path match; no private data is prerendered.
+/app
+  X-Robots-Tag: noindex, nofollow
+/app/*
+  X-Robots-Tag: noindex, nofollow
+/signin
+  X-Robots-Tag: noindex, nofollow
+/signin/*
+  X-Robots-Tag: noindex, nofollow
+/onboard
+  X-Robots-Tag: noindex, nofollow
+/onboard/*
+  X-Robots-Tag: noindex, nofollow
+/setup
+  X-Robots-Tag: noindex, nofollow
+/setup/*
+  X-Robots-Tag: noindex, nofollow
+/404
+  X-Robots-Tag: noindex, nofollow

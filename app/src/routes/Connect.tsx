@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router';
 import {
   ArrowUpRight,
@@ -67,20 +67,6 @@ export default function Connect() {
   const visible = CONNECTIONS.filter(
     (connection) => filter === 'all' || connection.available === (filter === 'available'),
   );
-
-  useEffect(() => {
-    const previousTitle = document.title;
-    const description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-    const previousDescription = description?.content;
-    document.title = 'Jentera connections — The tools your business uses';
-    if (description)
-      description.content =
-        'Start with the Jentera web workspace and private Telegram chat. See which business connections are available and which are planned.';
-    return () => {
-      document.title = previousTitle;
-      if (description && previousDescription) description.content = previousDescription;
-    };
-  }, []);
 
   return (
     <div className="marketing-page min-h-dvh bg-bg text-text">

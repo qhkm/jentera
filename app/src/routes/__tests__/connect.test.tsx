@@ -47,11 +47,4 @@ describe('Jentera connections', () => {
     expect(screen.getAllByRole('article')).toHaveLength(5);
   });
 
-  it('restores the previous page title when leaving', () => {
-    const previousTitle = document.title;
-    const { unmount } = mount();
-    expect(document.title).toContain('Jentera connections');
-    unmount();
-    expect(document.title).toBe(previousTitle);
-  });
 });

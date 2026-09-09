@@ -31,11 +31,6 @@ const MESSAGES: Record<Lang, Record<string, string>> = {
   bm: { ...PORTED.bm, ...PAGE_MESSAGES.bm },
 };
 
-const TITLES: Record<Lang, string> = {
-  en: 'Jentera — Your business, without the busywork',
-  bm: 'Jentera — Perniagaan anda, tanpa kerja remeh',
-};
-
 export const DEFAULT_LANG: Lang = 'en';
 
 /** Named-slot interpolation: t('su.count', { done: 2, total: 5 }). */
@@ -62,7 +57,6 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const mutate = useMutate();
 
   useEffect(() => {
-    document.title = TITLES[lang];
     document.documentElement.lang = lang === 'bm' ? 'ms' : 'en';
   }, [lang]);
 

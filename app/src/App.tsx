@@ -8,12 +8,14 @@ import { ActivityProvider } from '@/hooks/useActivity';
 import { isOnboarded, isSetupDone } from '@/lib/business';
 import Landing from '@/routes/Landing';
 import SignIn from '@/routes/SignIn';
+import Connect from '@/routes/Connect';
+import NotFound from '@/routes/NotFound';
+import { PageMetadata } from '@/components/PageMetadata';
 import { lazy, Suspense, type ReactElement } from 'react';
 
 // Visitors should not download the whole dashboard before reading the site.
 // Keep sign-in eager: it is the primary CTA and the release verifier checks
 // the entry bundle for its auth endpoint.
-const Connect = lazy(() => import('@/routes/Connect'));
 const Onboard = lazy(() => import('@/routes/Onboard'));
 const Setup = lazy(() => import('@/routes/Setup'));
 const Dashboard = lazy(() => import('@/routes/Dashboard'));
@@ -100,9 +102,10 @@ function AppShell() {
   );
 }
 
-export default function App() {
+export function AppRoutes() {
   return (
-    <BrowserRouter>
+    <>
+      <PageMetadata />
       <Suspense fallback={<RouteLoading />}>
         <Routes>
           {/* Public, and free of any provider dependency. */}
@@ -134,9 +137,13 @@ export default function App() {
             />
           </Route>
 
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
-    </BrowserRouter>
+    </>
   );
+}
+
+export default function App() {
+  return <BrowserRouter><AppRoutes /></BrowserRouter>;
 }
