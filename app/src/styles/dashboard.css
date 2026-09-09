@@ -333,6 +333,9 @@
 .home-status-failed {
   color: var(--color-red-400);
 }
+.theme-light .home-status-failed {
+  color: var(--color-red-700);
+}
 .home-empty {
   display: flex;
   flex-direction: column;

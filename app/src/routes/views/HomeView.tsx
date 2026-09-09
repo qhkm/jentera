@@ -23,8 +23,11 @@ import { useToast } from '@/components/Toast';
 import type { useBusiness } from '@/hooks/useBusiness';
 import { useActivity } from '@/hooks/useActivity';
 import type { ConnectionsState } from '@/hooks/useConnections';
-import { milestones } from '@/lib/business';
 import { useSnapshot } from '@/lib/repo';
+import { DailyBrief } from '@/components/DailyBrief';
+import { useBusinessClock } from '@/hooks/useBusinessClock';
+import { BUSINESS_TIME_ZONE, malaysiaDay } from '@/lib/daily-brief';
+import { isRunId } from '@/lib/task';
 import type { View } from '../Dashboard';
 import type { BizTab } from './MyBusinessView';
 
@@ -39,11 +42,11 @@ export default function HomeView({
 }: {
   b: ReturnType<typeof useBusiness>;
   connections: ConnectionsState;
-  onNavigate: (v: View, businessTab?: BizTab) => void;
+  onNavigate: (v: View, businessTab?: BizTab, runId?: string) => void;
 }) {
   const { t, lang } = useI18n();
-  const now = new Date();
-  const hour = now.getHours();
+  const now = useBusinessClock();
+  const hour = Number(new Intl.DateTimeFormat('en-MY', { timeZone: BUSINESS_TIME_ZONE, hour: 'numeric', hourCycle: 'h23' }).format(now));
   const greeting = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
   const activity = useActivity();
   const snap = useSnapshot();
@@ -62,7 +65,7 @@ export default function HomeView({
           d: t('db.stat.handled'),
           v: String(activity.data!.counters.handled),
           u: '',
-          l: t('db.stat.handled.sub'),
+          l: t('brief.handled.total'),
         },
         {
           d: t('db.stat.needs'),
@@ -100,32 +103,10 @@ export default function HomeView({
       (row) => row.connector === 'telegram' && row.status !== 'connected',
     );
   const showTelegramNotice = connections.real && !telegramReady;
-  const nextMilestone = activity.real
-    ? milestones(snap, activity.data!.counters.handled, activity.data!.counters.connections).find(
-        (milestone) => !milestone.done,
-      )
-    : null;
 
   const pending = business.work
     .map((w, i) => ({ w, i }))
     .filter(({ w, i }) => w.tag === 'needs you' && !b.workDone(i));
-
-  /* The line under the counter. It was unconditional for anyone signed
-     in, so a business with one completed reply read "No activity yet.
-     Jentera will show completed work here." directly beneath "1 handled
-     automatically" — the card contradicting itself in two adjacent
-     lines, because the counter comes from the run counters and this
-     line came from the playbook's work list. Say it only when it is
-     true; when there is activity the heading already carries it. */
-  const glanceNote = demo
-    ? t('home.empty')
-    : activity.mode === 'pending'
-      ? t('loading.home.summary')
-      : activity.mode === 'error'
-        ? null
-        : activity.data!.counters.handled === 0 && activity.data!.counters.needsYou === 0
-          ? t('home.empty')
-          : null;
 
   return (
     <div className="home-view">
@@ -138,22 +119,25 @@ export default function HomeView({
               ? t('sub.step1')
               : stage === 'connect'
                 ? t('sub.step2')
-                : t('sub.step3')}
+                : t('brief.homeDetail')}
           </p>
         </div>
         <span className="home-date">
           <CalendarBlank size={16} aria-hidden="true" />
           <time
-            dateTime={`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`}
+            dateTime={malaysiaDay(now)}
           >
             {now.toLocaleDateString(lang === 'bm' ? 'ms-MY' : 'en-MY', {
               weekday: 'short',
               day: 'numeric',
               month: 'short',
+              timeZone: BUSINESS_TIME_ZONE,
             })}
           </time>
         </span>
       </header>
+
+      {!demo && <DailyBrief activity={activity} snapshot={snap} now={now} onNavigate={onNavigate} />}
 
       {showTelegramNotice ? (
         <Card role="status" className="home-notice gap-4 border-brand-line bg-brand-soft">
@@ -229,19 +213,7 @@ export default function HomeView({
         </Card>
       ) : null}
 
-      {activity.mode === 'error' ? (
-        <Card role="alert" className="home-notice gap-3">
-          <p className="text-sm">{t('loading.activity.error')}</p>
-          <p className="text-[13px] text-text-secondary">{activity.error?.message}</p>
-          <div>
-            <Button variant="outline" className="px-4 py-1.5 text-xs" onClick={activity.reload}>
-              {t('loading.retry')}
-            </Button>
-          </div>
-        </Card>
-      ) : null}
-
-      <button type="button" className="home-ask-launcher" onClick={() => onNavigate('chat')}>
+      {demo && <button type="button" className="home-ask-launcher" onClick={() => onNavigate('chat')}>
         <JenteraMark size={56} />
         <span>
           <strong>{t('home.ask.title')}</strong>
@@ -251,7 +223,7 @@ export default function HomeView({
           {t('nav.chat')}
           <ArrowUpRight size={20} aria-hidden="true" />
         </span>
-      </button>
+      </button>}
 
       {/* Real figures when there is a server to ask; the playbook's
           illustrations otherwise. Never a mix — an owner cannot tell
@@ -336,18 +308,14 @@ export default function HomeView({
               )}
             </div>
           </Card>
-        ) : (
+        ) : demo ? (
           <Card className="home-command gap-3">
             <div className="flex items-start justify-between gap-4">
               <div className="flex flex-col gap-1">
                 <Eyebrow>{t('home.summary')}</Eyebrow>
                 <h2 className="font-pixel text-lg tracking-tight">
                   {t('db.handled', {
-                    n: activity.real
-                      ? activity.data!.counters.handled
-                      : demo
-                        ? business.work.filter((w) => w.tag !== 'needs you').length
-                        : 0,
+                    n: business.work.filter((w) => w.tag !== 'needs you').length,
                   })}
                 </h2>
                 <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-text-secondary">
@@ -364,12 +332,10 @@ export default function HomeView({
                 otherwise on a dashboard whose own counters read zero
                 is the sort of small untruth that makes a person stop
                 believing the rest. */}
-              <WorkPulse
-                state={activity.real && activity.data!.counters.needsYou > 0 ? 'waiting' : 'ready'}
-              />
+              <WorkPulse state="ready" />
             </div>
 
-            {demo && pending.length ? (
+            {pending.length ? (
               pending.map(({ w, i }) => (
                 <div
                   key={i}
@@ -393,48 +359,11 @@ export default function HomeView({
                   </Button>
                 </div>
               ))
-            ) : glanceNote ? (
-              <p className="text-[12px] text-text-muted">{glanceNote}</p>
-            ) : null}
-            {activity.real && activity.data!.counters.needsYou > 0 ? (
-              <button className="home-review-link" type="button" onClick={() => onNavigate('work')}>
-                <Bell size={17} aria-hidden="true" />
-                {t('home.review', { n: activity.data!.counters.needsYou })}
-                <ArrowRight size={17} aria-hidden="true" />
-              </button>
-            ) : null}
-          </Card>
-        )}
-
-        {stage === 'operating' &&
-        nextMilestone &&
-        !(showTelegramNotice && nextMilestone.key === 'connected') ? (
-          <Card className="home-next gap-4 border-brand-line bg-brand-soft">
-            <div className="flex flex-col gap-1">
-              <Eyebrow>{t('home.next.eyebrow')}</Eyebrow>
-              <h2 className="font-pixel text-lg tracking-tight">
-                {t(`home.next.${nextMilestone.key}.title`)}
-              </h2>
-              <p className="max-w-[62ch] text-[13px] text-text-secondary">
-                {t(`home.next.${nextMilestone.key}.detail`)}
-              </p>
-            </div>
-            <div>
-              <Button
-                className="px-5 py-2 text-sm"
-                onClick={() => {
-                  if (nextMilestone.key === 'knows') onNavigate('business', 'knows');
-                  else if (nextMilestone.key === 'connected') onNavigate('business', 'connections');
-                  else onNavigate('chat');
-                }}
-              >
-                {t(`home.next.${nextMilestone.key}.cta`)}
-              </Button>
-            </div>
+            ) : <p className="text-[12px] text-text-muted">{t('home.empty')}</p>}
           </Card>
         ) : null}
 
-        {stage === 'operating' && activity.real && !nextMilestone ? (
+        {stage === 'operating' && activity.real ? (
           <Card className="home-next home-shortcuts">
             <h2 className="home-panel-title">{t('nav.business')}</h2>
             <button type="button" onClick={() => onNavigate('business', 'knows')}>
@@ -480,9 +409,9 @@ export default function HomeView({
                activity. */
             <div className="home-empty">
               <CheckCircle size={30} weight="duotone" aria-hidden="true" />
-              <p>{t('home.nothingyet')}</p>
-              <button type="button" onClick={() => onNavigate('chat')}>
-                {t('nav.chat')}
+              <p>{t(activity.data!.counters.handled > 0 ? 'brief.noRecent' : 'brief.noHistory')}</p>
+              <button type="button" onClick={() => onNavigate(activity.data!.counters.handled > 0 ? 'work' : 'chat')}>
+                {t(activity.data!.counters.handled > 0 ? 'view.work' : 'nav.chat')}
                 <ArrowRight size={16} aria-hidden="true" />
               </button>
             </div>
@@ -505,7 +434,7 @@ export default function HomeView({
                   key={w.id}
                   type="button"
                   className="home-activity-row"
-                  onClick={() => onNavigate('work')}
+                  onClick={() => onNavigate('work', undefined, isRunId(w.runId) ? w.runId : undefined)}
                 >
                   <WorkPulse
                     compact
@@ -529,7 +458,7 @@ export default function HomeView({
                       <time dateTime={w.occurredAt}>
                         {new Date(w.occurredAt).toLocaleDateString(
                           lang === 'bm' ? 'ms-MY' : 'en-MY',
-                          { day: 'numeric', month: 'short' },
+                          { day: 'numeric', month: 'short', timeZone: BUSINESS_TIME_ZONE },
                         )}
                       </time>
                     </span>

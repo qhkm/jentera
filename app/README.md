@@ -73,6 +73,22 @@ Activity and are never matched by their wording. No storage keys, onboarding
 data, cache headers or backend endpoints changed. Approval links open the
 existing inbox; they do not infer which approval belongs to a task.
 
+### Daily business brief
+
+Signed-in Home replaces the repeated handled summary and generic chat launcher
+with a brief from existing Activity data. It prioritises pending approvals,
+today's failed/blocked records, running work (including earlier days), then
+business knowledge or the next chat. Actions navigate; none execute work.
+
+“Recorded today” uses `Asia/Kuala_Lumpur` and shows at most two recent records.
+The feed is capped at 50; `occurredAt` is a record date, not a completion date,
+so the brief does not claim a daily completed total. All-time counters stay
+separate below. The date updates on a minute tick and when the tab returns;
+the visible refresh time belongs to the last successful Activity fetch. Refresh
+reads existing endpoints, with explicit loading/error states. This is an on-screen
+summary, not a scheduled delivery or an AI-generated report. No backend, storage
+key, onboarding or cache-header changes are needed.
+
 ## Backend (optional)
 
 The app runs fully local by default — approvals in localStorage, tool calls mocked. Set `VITE_API_URL` (see `.env.example`) and approvals plus execution route to the Worker in `../worker`, which persists to D1 and enforces the risk gate server-side. Nothing else changes; that is what the tool contract buys.

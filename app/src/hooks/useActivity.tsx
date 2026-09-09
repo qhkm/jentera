@@ -49,6 +49,8 @@ export interface ActivityState {
   /** True when these are real figures for this business. */
   real: boolean;
   reload: () => void;
+  /** When this browser last successfully fetched these figures. */
+  updatedAt: number | null;
 }
 
 function useActivityFetch(enabled: boolean): ActivityState {
@@ -57,6 +59,7 @@ function useActivityFetch(enabled: boolean): ActivityState {
   const [data, setData] = useState<Activity | null>(null);
   const [loading, setLoading] = useState(signedIn);
   const [error, setError] = useState<Error | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [nonce, setNonce] = useState(0);
   /* Guards the React 18 double-invoke in development, which would
      otherwise fire two identical requests on every mount. */
@@ -67,6 +70,7 @@ function useActivityFetch(enabled: boolean): ActivityState {
       setData(null);
       setLoading(false);
       setError(null);
+      setUpdatedAt(null);
       return;
     }
     if (inflight.current) return;
@@ -78,6 +82,7 @@ function useActivityFetch(enabled: boolean): ActivityState {
       .then((a) => {
         if (cancelled) return;
         setData(a);
+        setUpdatedAt(Date.now());
         setError(null);
         setLoading(false);
         inflight.current = false;
@@ -104,6 +109,7 @@ function useActivityFetch(enabled: boolean): ActivityState {
 
   const reload = useCallback(() => {
     setData(null);
+    setUpdatedAt(null);
     setError(null);
     setLoading(true);
     setNonce((n) => n + 1);
@@ -116,6 +122,7 @@ function useActivityFetch(enabled: boolean): ActivityState {
     mode,
     real: mode === 'real',
     reload,
+    updatedAt: mode === 'real' ? updatedAt : null,
   };
 }
 

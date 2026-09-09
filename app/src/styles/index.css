@@ -20,6 +20,7 @@
 @import "./dashboard-type.css";
 @import "./workspace-modes.css";
 @import "./tasks.css";
+@import "./daily-brief.css";
 
 /* ============================================================
    Base. Everything resolves through tokens — no literal colors

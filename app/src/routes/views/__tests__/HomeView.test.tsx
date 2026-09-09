@@ -98,22 +98,32 @@ const NO_ACTIVITY = /no activity yet/i;
 beforeEach(() => localStorage.clear());
 
 describe('a business that has handled something', () => {
+  it('does not call the business new just because its recent work feed is empty', async () => {
+    await mount(true, { ...ONE_HANDLED, work: [] });
+    expect(await screen.findByText('No recent work records are available here. Open Activity to check again.')).toBeInTheDocument();
+    expect(screen.queryByText('No work recorded yet. Give Jentera a task in Chat to get started.')).toBeNull();
+  });
+
   it('is not also told it has no activity', async () => {
     /* The bug, in one assertion. */
-    await mount(true, ONE_HANDLED);
-    expect(await screen.findByText(/1 handled automatically/i)).toBeInTheDocument();
+    const { container } = await mount(true, ONE_HANDLED);
+    await screen.findByText('Reply to qhkm on Telegram');
+    expect(container.querySelector('.home-stat-handled .font-pixel')).toHaveTextContent('1');
     expect(screen.queryByText(NO_ACTIVITY)).toBeNull();
   });
 
-  it('keeps the summary and next action in a stack independent of recent work', async () => {
+  it('puts the brief above the metrics without repeating the old summary or stretching shortcuts', async () => {
     const { container } = await mount(true, ONE_HANDLED);
-    await screen.findByText(/1 handled automatically/i);
+    await screen.findByText('Reply to qhkm on Telegram');
     const overview = container.querySelector('.home-overview')!;
-    expect(overview.querySelector('.home-command')).toBeInTheDocument();
+    expect(overview.querySelector('.home-command')).toBeNull();
     expect(overview.querySelector('.home-next')).toBeInTheDocument();
     expect(overview.querySelector('.home-recent')).toBeNull();
     const home = container.querySelector('.home-view')!;
     const sections = [...home.children];
+    expect(sections.indexOf(container.querySelector('.daily-brief')!)).toBeLessThan(
+      sections.indexOf(container.querySelector('.home-metrics')!),
+    );
     expect(sections.indexOf(container.querySelector('.home-metrics')!)).toBeLessThan(
       sections.indexOf(overview),
     );
@@ -125,17 +135,18 @@ describe('a business that has genuinely done nothing', () => {
   it('still gets told so', async () => {
     /* The line is not simply deleted — it is true here and it is the
        only thing on the card that says what to expect. */
-    await mount(true, NOTHING_YET);
-    expect(await screen.findByText(/0 handled automatically/i)).toBeInTheDocument();
-    expect(screen.getByText(NO_ACTIVITY)).toBeInTheDocument();
+    const { container } = await mount(true, NOTHING_YET);
+    await screen.findByText('No approvals waiting');
+    expect(container.querySelector('.home-stat-handled .font-pixel')).toHaveTextContent('0');
+    expect(screen.getByText(/No work recorded for today in the latest activity/i)).toBeInTheDocument();
     expect(screen.getByText(/connect Telegram to chat with Jentera from your phone/i))
       .toBeInTheDocument();
   });
 
   it('shows one clear next action instead of making the owner search settings', async () => {
     await mount(true, NOTHING_YET);
-    expect(await screen.findByText('Give Jentera something real to work from')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /add business knowledge/i })).toBeInTheDocument();
+    expect(await screen.findByText('Give Jentera the details it needs.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add business details' })).toBeInTheDocument();
   });
 });
 
@@ -167,7 +178,8 @@ describe('while the figures are still loading', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText(/handled automatically/i)).toBeInTheDocument();
+    expect(await screen.findByText('Putting your brief together…')).toBeInTheDocument();
+    expect(screen.queryByText('No approvals waiting')).toBeNull();
     expect(screen.queryByText(NO_ACTIVITY)).toBeNull();
   });
 });
@@ -208,7 +220,7 @@ describe('Telegram readiness', () => {
   it('removes the notice once the private owner chat is paired', async () => {
     await mount(true, NOTHING_YET, [{ ...unpaired, paired: true, pairingUrl: null }]);
 
-    await screen.findByText(/0 handled automatically/i);
+    await screen.findByText('No approvals waiting');
     expect(screen.queryByText('Finish connecting Telegram')).toBeNull();
     expect(screen.queryByText(/connect Telegram to chat with Jentera from your phone/i)).toBeNull();
   });

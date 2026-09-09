@@ -12,7 +12,8 @@
    flag, so a screen cannot show one source above and another below.
    ============================================================ */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
 import { render, screen, waitFor } from '@testing-library/react';
 import { useActivity } from '@/hooks/useActivity';
 import { RepositoryProvider } from '@/lib/repo/context';
@@ -32,6 +33,8 @@ function Probe() {
       <span data-testid="real">{String(a.real)}</span>
       <span data-testid="loading">{String(a.loading)}</span>
       <span data-testid="handled">{a.data ? a.data.counters.handled : 'none'}</span>
+      <span data-testid="updated">{a.updatedAt ?? 'none'}</span>
+      <button onClick={a.reload}>Refresh activity</button>
     </div>
   );
 }
@@ -95,6 +98,18 @@ describe('a signed-in business', () => {
 });
 
 describe('when the request fails', () => {
+  it('only timestamps successful fetches and clears that timestamp on a failed refresh', async () => {
+    const repo = new LocalRepository();
+    repo.activity = vi.fn().mockResolvedValueOnce(EMPTY).mockRejectedValueOnce(new Error('offline'));
+    mount(repo, true);
+    await waitFor(() => expect(screen.getByTestId('real')).toHaveTextContent('true'));
+    expect(Number(screen.getByTestId('updated').textContent)).toBeGreaterThan(0);
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh activity' }));
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+    expect(screen.getByTestId('updated')).toHaveTextContent('none');
+    expect(screen.getByTestId('handled')).toHaveTextContent('none');
+  });
+
   it('reports not-real rather than falling back to the illustration', async () => {
     /* Falling back would put the demo's numbers in front of a
        signed-in owner and label them as theirs — the worst of the
