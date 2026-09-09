@@ -6,6 +6,14 @@ runner bundle change, or worker change that touches the fleet). Built from the
 dropped, all 11 sprites failed deterministically, task re-arm never fired
 (transient-only), and exhausted tasks had to be reset by hand.
 
+## The script
+
+`worker/scripts/ship-runtime.sh -m "why this release"` runs every step below
+in order and stops at the first failure, naming it. `--dry-run` does only the
+pin edit and the gate; `--reset-exhausted` is step 6; `--no-sweep` leaves the
+trigger to the cron. The steps stay written out here so a run that fails in
+the middle can be finished by hand, and so rollback has a recipe.
+
 ## The moving parts
 
 - **`worker/wrangler.toml`** — `RUNTIME_RELEASE` (fleet target) and
@@ -34,19 +42,25 @@ dropped, all 11 sprites failed deterministically, task re-arm never fired
    `--force-commit` bug class fails here).
 4. **Push the branch.** Note: raw.githubusercontent.com can 404 new SHAs for
    ~2 min after push (object index lag) — re-run the gate if it 404s.
-5. **Deploy**: `cd worker && npm run deploy` (or GH Action if billing allows).
+5. **Deploy**: `cd worker && pnpm exec wrangler deploy`.
 6. **Reset exhausted tasks if a previous attempt of this release blocked**:
    ```sql
    update runtime_task set status='queued', attempt=0, lease_token=null,
      lease_expires_at=null, available_at=now() + interval '60 seconds',
      updated_at=now(), last_error=null
-   where dedupe_key like 'upgrade:%:RUNTIME_RELEASE' and status='exhausted';
+   where kind='upgrade' and status='exhausted'
+     and (dedupe_key like 'upgrade:%:RUNTIME_RELEASE' or dedupe_key like 'upgrade:%:RUNTIME_RELEASE:%');
    ```
    (via `unset PGOPTIONS; psql "$(neonctl connection-string ...)"` — stats.sh
    pins the session read-only, which also breaks pooled URLs.)
-7. **Watch convergence**: `./worker/scripts/watch-release-converge.sh
-   RUNTIME_RELEASE` (background + notify). Converged = all sprites
+7. **Trigger the sweep** instead of waiting up to 15 minutes for the cron:
+   `curl -X POST https://api.jentera.ai/api/support/drift-sweep -H "Authorization: Bearer $AISAR_SUPPORT_KEY"`.
+8. **Watch convergence**: `./worker/scripts/watch-release-converge.sh
+   RUNTIME_RELEASE` (background + notify). Converged = every live runtime
    `observed_release == desired_release`.
+9. **Verify every sprite**: `./worker/scripts/fleet-verify.sh RUNTIME_RELEASE`
+   checks runtime.env, the runner's /readyz release, the Hermes patch verify,
+   and that hermes and aisar-runner are running.
 
 ## Rollback
 

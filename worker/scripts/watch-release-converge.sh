@@ -28,8 +28,10 @@ for i in $(seq 1 25); do
   TASKS=$(q -c "select count(*) from runtime_task where kind='upgrade' and payload::text like '%${REL_ESCAPED}%' and created_at > now() - interval '30 minutes';" 2>/dev/null || echo "ERR")
   CONV=$(q -c "select count(*) from agent_runtime where deleted_at is null and observed_release = '${RELEASE}';" 2>/dev/null || echo "ERR")
   DRIFT=$(q -c "select count(*) from agent_runtime where deleted_at is null and desired_release <> observed_release;" 2>/dev/null || echo "ERR")
-  echo "tick=$i ts=$TS upgrade_tasks_30m=$TASKS converged=$CONV still_drifted=$DRIFT"
-  if [[ "$DRIFT" == "0" && "$CONV" -ge 11 ]]; then
+  # Converged means every live runtime, not a number that was true once.
+  TOTAL=$(q -c "select count(*) from agent_runtime where deleted_at is null;" 2>/dev/null || echo "ERR")
+  echo "tick=$i ts=$TS upgrade_tasks_30m=$TASKS converged=$CONV/$TOTAL still_drifted=$DRIFT"
+  if [[ "$DRIFT" == "0" && "$TOTAL" != "ERR" && "$TOTAL" -gt 0 && "$CONV" -ge "$TOTAL" ]]; then
     echo "FLEET CONVERGED: all sprites on $RELEASE"
     exit 0
   fi

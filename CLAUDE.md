@@ -133,6 +133,26 @@ meaningfully, so they arrive with the first adapter that needs them
 rather than as stubs nothing verifies. `mode` is how a caller will tell
 the two apart.
 
+### Shipping to sprites
+
+One path, no exceptions. A fleet change lands on main, then
+`worker/scripts/ship-runtime.sh -m "why"` pins that commit as the bundle,
+bumps `RUNTIME_RELEASE`, runs the release gate, commits, pushes, deploys the
+worker, triggers the drift sweep, waits for convergence, and runs
+`fleet-verify.sh` on every sprite. `--dry-run` stops after the gate.
+`docs/release-playbook.md` is the same procedure written out, with rollback.
+
+Nothing is applied to a sprite by hand. A sprite's Hermes checkout and
+runner directory survive re-bootstrap exactly as they are, so a hand-applied
+change is invisible to the next release and a removed one lingers:
+background review had to be switched off on twelve sprites before it was
+pinned in `configure-model-provider.py`, and retiring the wire-order patch
+needed an explicit unpatch stage because the patched files were still there.
+If it must be true on every sprite, it goes in the bundle. `fleet-exec.sh
+'snippet'` is for reading state and for one-off cleanups the next release
+makes permanent; it iterates correctly under zsh and closes stdin, which the
+ad hoc loops it replaces did not.
+
 ### Looking at production
 
 ```bash
