@@ -91,11 +91,12 @@ Done:
 
 Open, in order of expected payoff:
 
-1. **Quick model → MiniMax-M2.7-highspeed fleet-wide.** Same price as M3,
-   about half the per-call time and none of the swing. Three canary
-   completions so far. One `ship-runtime.sh` release, one line to roll back.
-   Not done: it changes the model behind every owner's quick reply and is
-   the owner's call.
+1. **Quick model → MiniMax-M2.7-highspeed fleet-wide.** Done 2026-09-09,
+   release 2026.09.09-1, on the owner's decision. Same price as M3, about
+   half the per-call time and none of the swing. M3 remains routed as a
+   candidate; `AISAR_QUICK_MODEL_OVERRIDES` moves a single business back
+   without a release. Re-run `reply-latency.sh db 7` after a week to see
+   the effect on the Telegram quick row.
 2. **Stream into the app.** Telegram already streams a live bubble from the
    runner's delta stream; the app replaces a placeholder at the end. The
    RunStream Durable Object exists; the work is in the app.
