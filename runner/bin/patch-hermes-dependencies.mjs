@@ -23,6 +23,8 @@ const legacyRuntimePatchIds = new Set([
   'jentera-runtime-2026-09-01',
   'jentera-runtime-2026-09-04',
 ]);
+const webToolsPath = join(root, 'tools/web_tools.py');
+const extractErrorMarker = '# Jentera: omit a null error from a successful extract result.';
 const bootstrapPath = join(root, 'agent/process_bootstrap.py');
 const runAgentPath = join(root, 'run_agent.py');
 /* Retired stage. jentera-wire-order-2026-09-03 reordered chat.completions
@@ -181,6 +183,7 @@ if (!verify) {
   }
   await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`, { mode: 0o644 });
   await patchApiServer();
+  await patchWebExtractResult();
   await removeRetiredWireOrder();
   process.stdout.write('pinned Hermes dependencies (nanoid, undici, postcss, react-router, react-router-dom, sanitize-html, dompurify, mermaid) and Jentera API-server patches\n');
   process.exit(0);
@@ -408,6 +411,46 @@ async function patchApiServer() {
     source = replaceReviewedAnchor(source, activeAgentAnchor, activeAgentPatch);
   }
   await writeFile(apiServerPath, source, { mode: 0o644 });
+}
+
+/** Stop a successful extraction from being reported as a failed one.
+ *
+ * `web_extract_tool` trims each result to url/title/content/error and sets
+ * `"error": r.get("error")` unconditionally, so a page that came back
+ * perfectly still carries `"error": null`. `agent/display.py::
+ * _detect_tool_failure` ends in a substring scan of the first 500 characters
+ * of the tool result for `"error"`, which that matches — so every successful
+ * extraction was logged `Tool web_extract returned error` and handed to the
+ * model tagged as a failure. The model reads the content anyway, which is why
+ * it went unnoticed, but being told its own successes are failures is an
+ * invitation to distrust extraction and fall back to driving a browser, and
+ * it makes any alerting on tool errors meaningless.
+ *
+ * The key is meaningful only when there is an error, and the very next line
+ * of that literal already includes `blocked_by_policy` exactly that way. */
+async function patchWebExtractResult() {
+  const source = await readFile(webToolsPath, 'utf8');
+  if (source.includes(extractErrorMarker)) return;
+  const anchor = [
+    '        # Trim output to minimal fields per entry: title, content, error',
+    '        trimmed_results = [',
+    '            {',
+    '                "url": r.get("url", ""),',
+    '                "title": r.get("title", ""),',
+    '                "content": r.get("content", ""),',
+    '                "error": r.get("error"),',
+  ].join('\n');
+  const patched = [
+    `        ${extractErrorMarker}`,
+    '        # A result carries the key only when it has one to report.',
+    '        trimmed_results = [',
+    '            {',
+    '                "url": r.get("url", ""),',
+    '                "title": r.get("title", ""),',
+    '                "content": r.get("content", ""),',
+    '                **({"error": r["error"]} if r.get("error") else {}),',
+  ].join('\n');
+  await writeFile(webToolsPath, replaceReviewedAnchor(source, anchor, patched), { mode: 0o644 });
 }
 
 /** Give a tree patched by the retired wire-order stage its pinned upstream

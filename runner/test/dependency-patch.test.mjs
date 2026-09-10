@@ -162,6 +162,27 @@ test('verify fails closed while the retired wire-order patch is still present', 
   assert.equal(run(root, '--verify').status, 0);
 });
 
+test('a successful extraction stops being reported as a failed one', async () => {
+  /* web_extract_tool set "error": r.get("error") unconditionally, so a page
+     that came back perfectly still carried "error": null — and
+     _detect_tool_failure ends in a substring scan of the first 500 characters
+     for "error", which matches. Every successful extraction was logged as a
+     tool error and handed to the model tagged as a failure. */
+  const root = await fixture('3.3.17', '3.3.17');
+  assert.equal(run(root).status, 0);
+  const webTools = await readFile(join(root, 'tools/web_tools.py'), 'utf8');
+  assert.ok(webTools.includes('**({"error": r["error"]} if r.get("error") else {}),'));
+  assert.ok(!webTools.includes('"error": r.get("error"),'));
+  /* The policy key beside it is untouched: this narrows one field, not the
+     shape of the result. */
+  assert.ok(webTools.includes('"blocked_by_policy"'));
+
+  /* Re-applying is a no-op rather than a second patch or a hard failure. */
+  const before = await readFile(join(root, 'tools/web_tools.py'), 'utf8');
+  assert.equal(run(root).status, 0);
+  assert.equal(await readFile(join(root, 'tools/web_tools.py'), 'utf8'), before);
+});
+
 test('refuses an upstream override drift and a vulnerable lock', async () => {
   const drifted = await fixture('3.3.16', '3.3.16');
   assert.notEqual(run(drifted).status, 0);
@@ -199,6 +220,21 @@ async function fixture(override, locked, legacyReasoning = false, wiredOrder = f
       'node_modules/mermaid': { version: '11.16.0' },
     },
   }));
+  await mkdir(join(root, 'tools'), { recursive: true });
+  await writeFile(join(root, 'tools/web_tools.py'), [
+    '        # Trim output to minimal fields per entry: title, content, error',
+    '        trimmed_results = [',
+    '            {',
+    '                "url": r.get("url", ""),',
+    '                "title": r.get("title", ""),',
+    '                "content": r.get("content", ""),',
+    '                "error": r.get("error"),',
+    '                **({  "blocked_by_policy": r["blocked_by_policy"]} if "blocked_by_policy" in r else {}),',
+    '            }',
+    '            for r in response.get("results", [])',
+    '        ]',
+    '',
+  ].join('\n'));
   await mkdir(join(root, 'gateway/platforms'), { recursive: true });
   await writeFile(join(root, 'gateway/platforms/api_server.py'), [
     '    def _create_agent(',
