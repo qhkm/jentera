@@ -153,6 +153,9 @@ flowchart LR
   does not depend directly on Hermes' process model.
 - Executes one active task per business runtime in the first release; queued work remains
   durable until the current lease finishes or pauses for approval.
+- Receives the owner's message exactly as typed as the user turn, with the confirmed facts
+  and recent work in the per-run instructions, which Hermes does not persist. The session
+  transcript then reads as the conversation, not as a copy of the business in every turn.
 - Receives short-lived scoped credentials; it does not own master secrets.
 
 ### Business Memory
@@ -240,7 +243,13 @@ This is also where the product becomes difficult to copy. Industry playbooks are
 
 - Keep the static frontend on Cloudflare Pages.
 - Add a TypeScript control-plane API using Cloudflare Workers.
-- Use Cloudflare Queues/Workflows for durable coordination and retries.
+- Use Cloudflare Queues for durable coordination and retries, and keep them off the reply's
+  critical path: queue consumers and crons are not placed (measured 10 September 2026 in
+  LAX, SJC and IAD, 1 to 2 s per tenant transaction against Neon in Singapore). The placed
+  HTTP handlers run the first slice of every reply, and the consumer hands its work to a
+  placed invocation of the same Worker over a service binding. A per-business Durable
+  Object was stress-tested and parked; see [`docs/reply-latency.md`](docs/reply-latency.md)
+  and [`docs/plans/2026-09-10-business-runtime-durable-object.md`](docs/plans/2026-09-10-business-runtime-durable-object.md).
 - Run Hermes or another full agent runtime in isolated containers outside Workers; terminal and browser tasks require a real sandboxed compute environment.
 - Use one Fly Sprite per business for the first hosted Hermes runtime. Provision lazily,
   keep Hermes behind the Jentera control plane, and revisit Cloudflare Containers or a
@@ -259,9 +268,12 @@ This is also where the product becomes difficult to copy. Industry playbooks are
 - Extract facts into a review screen with source and confidence.
 - Persist business memory.
 - Make Ask Jentera answer from verified business context and live activity data.
-- Keep ordinary Ask Jentera inline and fast. Route the explicit
-  "Work on this" action through the business's durable, tenant-scoped Hermes task, with authenticated
-  hibernating-WebSocket lifecycle progress and bounded polling only as recovery.
+- Run every Ask Jentera message on the business's durable, tenant-scoped Hermes task, quick
+  by default and deep on request. The placed intake executes the first slice itself so Hermes
+  is asked within about two seconds; progress streams over the authenticated
+  hibernating WebSocket as the agent's status line, a bounded reasoning slice and answer text,
+  with lifecycle records for recovery and bounded polling only as a fallback. A quick reply
+  that used no tool is conversation; deep mode or any tool use is work and gets a card.
 - Route paired owner Telegram messages for businesses with ready runtimes through the same
   durable Hermes task plane. Deduplicate on the Telegram connection/chat/message identity
   and retain only structured state plus the final sent
