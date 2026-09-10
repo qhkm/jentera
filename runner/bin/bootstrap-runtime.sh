@@ -10,7 +10,12 @@ if [[ ! -r "$incoming" ]]; then
   echo "runtime bootstrap transfer is unavailable" >&2
   exit 1
 fi
-trap 'rm -f "$incoming"' EXIT
+# The traps below preserve $? on the way out. An EXIT trap whose last command
+# succeeds otherwise replaces the shell's exit status with 0, which meant every
+# `: "${VAR:?...}"` guard printed its message and then reported success to the
+# control plane. Explicit `exit 1` paths were never affected — which is exactly
+# why it went unnoticed: the loud failures looked right, the quiet ones lied.
+trap 'keep=$?; rm -f "$incoming"; exit $keep' EXIT
 
 BUSINESS_ID_B64=
 RUNTIME_RELEASE_B64=
@@ -26,6 +31,20 @@ HERMES_TAG_B64=
 HERMES_COMMIT_B64=
 CUA_ENABLED_B64=
 CANDIDATE_MODEL_NAMES_B64=
+EXTRACT_BASE_B64=
+EXTRACT_KEY_B64=
+# Names the control plane sent that this bundle has no arm for. Surfaced in
+# the JSON result so a field that is not being applied is legible from the
+# control plane, rather than only in a stderr line nobody reads.
+ignored_fields=()
+# Wall-clock seconds per stage, for the question "what does an upgrade
+# actually spend its time on" — which nothing has been able to answer.
+stage_started=$SECONDS
+stage_timings=''
+stage_done() {
+  stage_timings+="${stage_timings:+,}\"$1\":$((SECONDS - stage_started))"
+  stage_started=$SECONDS
+}
 while IFS='=' read -r name value; do
   [[ -z "$name" ]] && continue
   [[ "$value" =~ ^[A-Za-z0-9+/]*={0,2}$ ]] || {
@@ -50,18 +69,24 @@ while IFS='=' read -r name value; do
     EXTRACT_BASE_B64) EXTRACT_BASE_B64="$value" ;;
     EXTRACT_KEY_B64) EXTRACT_KEY_B64="$value" ;;
     *)
-      # This allowlist is why a new transfer field cannot be shipped in one
-      # step. A sprite runs the bootstrap from the release it is *currently*
-      # on, so the moment the control plane starts sending a field, every
-      # sprite that has not already upgraded rejects the payload — including
-      # the payload that would have upgraded it. That deadlocked the fleet on
-      # 2026-09-10: twelve sprites retried to exhaustion against
-      # EXTRACT_BASE_B64 while the release carrying this line sat undelivered.
+      # Ignored, not fatal — and that asymmetry is the whole point.
       #
-      # So: teach the fleet to accept a field in one release, start sending it
-      # in the next. Never both at once.
-      echo "runtime bootstrap transfer contains an unknown field" >&2
-      exit 1
+      # The value has already passed the base64 check above, so an unknown
+      # name is inert data, never shell. Refusing it bought nothing and cost
+      # a fleet: on 2026-09-10 provision.ts sent EXTRACT_BASE_B64 while the
+      # pinned bundle had no arm for it, every sprite exited 1 here, and
+      # upgrade tasks retried to exhaustion until the field was withdrawn.
+      #
+      # A control plane newer than the bundle it pins is a normal moment in
+      # any rollout. It should mean a field is not applied yet, which is
+      # visible and recoverable, rather than a runtime that will not boot.
+      # Required fields are still guarded by the `:?` checks below, so a
+      # missing one fails as loudly as ever — this only relaxes surplus.
+      #
+      # The name is reported on stderr and in the JSON result so "not
+      # applied" stays a fact someone can read, not a silence.
+      echo "runtime bootstrap transfer: ignoring unknown field $name" >&2
+      ignored_fields+=("$name")
       ;;
   esac
 done < "$incoming"
@@ -70,16 +95,28 @@ decode() {
   printf '%s' "$1" | base64 --decode
 }
 
-: "${BUSINESS_ID_B64:?missing business id}"
-: "${RUNTIME_RELEASE_B64:?missing runtime release}"
-: "${RUNNER_KEY_B64:?missing runner key}"
-: "${HERMES_KEY_B64:?missing Hermes key}"
-: "${MODEL_PROVIDER_B64:?missing model provider}"
-: "${MODEL_BASE_B64:?missing model base URL}"
-: "${MODEL_KEY_B64:?missing model key}"
-: "${MODEL_NAME_B64:?missing model name}"
-: "${HERMES_TAG_B64:?missing Hermes tag}"
-: "${HERMES_COMMIT_B64:?missing Hermes commit}"
+# These were `: "${VAR:?message}"`, which printed the message and then exited
+# **zero**: on a parameter-expansion failure bash runs the EXIT trap with $?
+# already reset, so the trap could not preserve a status that was never there,
+# and the control plane read a failed bootstrap as a successful one. Explicit
+# `exit 1` paths were always fine, which is why this hid for so long — the
+# loud failures behaved and only the quiet ones lied.
+require() {
+  [[ -n "${!1:-}" ]] || {
+    echo "runtime bootstrap transfer is $2" >&2
+    exit 1
+  }
+}
+require BUSINESS_ID_B64 "missing a business id"
+require RUNTIME_RELEASE_B64 "missing a runtime release"
+require RUNNER_KEY_B64 "missing a runner key"
+require HERMES_KEY_B64 "missing a Hermes key"
+require MODEL_PROVIDER_B64 "missing a model provider"
+require MODEL_BASE_B64 "missing a model base URL"
+require MODEL_KEY_B64 "missing a model key"
+require MODEL_NAME_B64 "missing a model name"
+require HERMES_TAG_B64 "missing a Hermes tag"
+require HERMES_COMMIT_B64 "missing a Hermes commit"
 
 business_id="$(decode "$BUSINESS_ID_B64")"
 runtime_release="$(decode "$RUNTIME_RELEASE_B64")"
@@ -183,7 +220,7 @@ if [[ "$installed_commit" != "$hermes_commit" ]]; then
   # tag locally so the update checkout can resolve it.
   git -C "$install_dir" fetch origin "refs/tags/${hermes_tag}:refs/tags/${hermes_tag}" 2>/dev/null || true
   installer="$(mktemp /tmp/aisar-hermes-install.XXXXXX)"
-  trap 'rm -f "$incoming" "$installer"' EXIT
+  trap 'keep=$?; rm -f "$incoming" "$installer"; exit $keep' EXIT
   curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
     "$hermes_installer_url" --output "$installer"
   actual_sha="$(sha256sum "$installer")"
@@ -204,7 +241,7 @@ if [[ "$installed_commit" != "$hermes_commit" ]]; then
   install_cmd+=(--skip-setup --non-interactive --dir "$install_dir" --hermes-home /home/sprite/.hermes)
   HERMES_HOME=/home/sprite/.hermes "${install_cmd[@]}"
   rm -f "$installer"
-  trap 'rm -f "$incoming"' EXIT
+  trap 'keep=$?; rm -f "$incoming"; exit $keep' EXIT
 fi
 
 # Hermes' reviewed commit already pins patched nanoid 3.3.18, but carries
@@ -213,6 +250,7 @@ fi
 # without allowing a broad audit fix to rewrite unrelated dependencies, then
 # make future high severity production advisories a release-blocking event.
 /.sprite/bin/node /home/sprite/aisar/runner/patch-hermes-dependencies.mjs "$install_dir"
+stage_done install
 (
   cd "$install_dir"
   npm install --ignore-scripts --no-audit --no-fund
@@ -243,6 +281,7 @@ fi
 # place before Playwright downloads Chromium. The commit alone is therefore
 # not proof of a complete runtime. Repair the browser layer independently and
 # assert the executable exists before any service can be marked ready.
+stage_done npm
 browser_cache=/home/sprite/.cache/ms-playwright
 # Playwright is a devDependency of the apps/desktop workspace in the pinned
 # hermes tree (v2026.9.8+) and is NOT hoisted to the install root, so the
@@ -282,13 +321,14 @@ browser_binary="$(find "$browser_cache" -type f \
   exit 1
 }
 
+stage_done playwright
 runtime_env=/home/sprite/aisar/runtime.env
 runner_env=/home/sprite/aisar/runner.env
 hermes_env=/home/sprite/aisar/hermes.env
 runtime_tmp="$(mktemp /home/sprite/aisar/runtime.env.XXXXXX)"
 runner_tmp="$(mktemp /home/sprite/aisar/runner.env.XXXXXX)"
 hermes_tmp="$(mktemp /home/sprite/aisar/hermes.env.XXXXXX)"
-trap 'rm -f "$incoming" "$runtime_tmp" "$runner_tmp" "$hermes_tmp"' EXIT
+trap 'keep=$?; rm -f "$incoming" "$runtime_tmp" "$runner_tmp" "$hermes_tmp"; exit $keep' EXIT
 runner_source_sha256="$(sha256sum /home/sprite/aisar/runner/server.mjs)"
 runner_source_sha256="${runner_source_sha256%% *}"
 [[ "$runner_source_sha256" =~ ^[0-9a-f]{64}$ ]] || {
@@ -340,7 +380,7 @@ chmod 600 "$runtime_tmp" "$runner_tmp" "$hermes_tmp"
 mv "$runtime_tmp" "$runtime_env"
 mv "$runner_tmp" "$runner_env"
 mv "$hermes_tmp" "$hermes_env"
-trap 'rm -f "$incoming"' EXIT
+trap 'keep=$?; rm -f "$incoming"; exit $keep' EXIT
 
 hermes_python="$install_dir/venv/bin/python"
 # The extractor credentials are passed on this invocation rather than read from
@@ -351,6 +391,7 @@ FIRECRAWL_API_URL="$extract_base" FIRECRAWL_API_KEY="$extract_key" \
 "$hermes_python" /home/sprite/aisar/runner/configure-model-provider.py \
   "$model_provider" "$model_base" "$model_name" OPENROUTER_API_KEY "$cua_enabled" \
   "$deep_model_name" "$candidate_model_names"
+stage_done configure
 
 # Readiness without one real inference only proves that processes started. It
 # previously allowed an official OpenRouter key to be installed against FMCV,
@@ -440,7 +481,7 @@ if [[ "$cua_enabled" == "1" ]]; then
       ;;
   esac
   cua_tarball="$(mktemp /tmp/aisar-cua-driver.XXXXXX.tar.gz)"
-  trap 'rm -f "$incoming" "$cua_tarball"' EXIT
+  trap 'keep=$?; rm -f "$incoming" "$cua_tarball"; exit $keep' EXIT
   curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
     "https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.23.2/cua-driver-rs-0.23.2-linux-${cua_arch}-binary.tar.gz" \
     --output "$cua_tarball"
@@ -455,7 +496,7 @@ if [[ "$cua_enabled" == "1" ]]; then
   chmod 755 /home/sprite/.local/bin/cua-driver
   /home/sprite/.local/bin/cua-driver --version >/dev/null
   rm -f "$cua_tarball"
-  trap 'rm -f "$incoming"' EXIT
+  trap 'keep=$?; rm -f "$incoming"; exit $keep' EXIT
 
   cua_doctor_ready=false
   for _attempt in 1 2 3; do
@@ -535,5 +576,15 @@ if [[ "${AISAR_BOOTSTRAP_CONTROL_PLANE:-0}" != "1" ]]; then
 fi
 rm -f "$incoming"
 trap - EXIT
-printf '{"ok":true,"release":"%s","provider":"%s","model":"%s","checkpointCreated":%s}\n' \
-  "$runtime_release" "$model_provider" "$model_name" "$checkpoint_created"
+stage_done smokes
+# ignoredFields and stages ride the result so the control plane can see what a
+# bundle did not apply, and where an upgrade spent its minutes. Both were
+# invisible before: a rejected field surfaced only as a bootstrap exit code,
+# and "why does an upgrade take five minutes" had no answer at all.
+ignored_json=''
+for ignored in ${ignored_fields[@]+"${ignored_fields[@]}"}; do
+  ignored_json+="${ignored_json:+,}\"${ignored}\""
+done
+printf '{"ok":true,"release":"%s","provider":"%s","model":"%s","checkpointCreated":%s,"ignoredFields":[%s],"stages":{%s}}\n' \
+  "$runtime_release" "$model_provider" "$model_name" "$checkpoint_created" \
+  "$ignored_json" "$stage_timings"
