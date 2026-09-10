@@ -18,6 +18,13 @@
  *      pinned installer: the flag literal must appear in install.sh, or the
  *      installer must have no unknown-option rejection path (else FAIL).
  *   5. HERMES_TAG resolves to HERMES_COMMIT on the qhkm/hermes-agent fork.
+ *   6. Every transfer field provision.ts sends is allowlisted by the bootstrap
+ *      at the shipped bundle commit AND by the bootstrap the fleet is still
+ *      running. The second half is the one that matters: a sprite bootstraps
+ *      with the release it is currently on, so a field introduced in a single
+ *      release makes every sprite reject the payload carrying its own
+ *      replacement. That deadlocked the fleet on 2026-09-10 (0/12 converged,
+ *      24 upgrade tasks exhausted). A new field takes two releases.
  *
  * Usage: node worker/scripts/validate-release.mjs
  * Run from the repo root (reads worker/wrangler.toml + worker/src/runtime/provision.ts).
@@ -119,6 +126,71 @@ for (const asset of assets) {
   const res = await httpGet(`${RAW}/${REPO}/${bundleCommit}/${asset}`);
   if (res.ok) ok(`asset ${asset}`);
   else fail(`asset missing at ${bundleCommit}: ${asset}`);
+}
+
+// ---- 7. Every transfer field is allowlisted, in BOTH directions -----------
+//
+// bootstrap-runtime.sh parses the transfer against a closed `case` and exits 1
+// on anything else. Two commits matter, and only one of them is obvious.
+//
+// Forward: the bootstrap being shipped must accept every field, or the new
+// release is broken on arrival.
+//
+// Backward is the one that bites. A sprite runs the bootstrap from the release
+// it is CURRENTLY on, so during a rollout the old bootstrap must accept the
+// payload too — including the payload carrying its own replacement. On
+// 2026-09-10 EXTRACT_BASE_B64 shipped in a single release: every sprite
+// rejected the transfer, 24 upgrade tasks retried to exhaustion, convergence
+// sat at 0/12, and the release with the fix could not be delivered. The fleet
+// could not be rescued by shipping harder.
+//
+// So a new field takes two releases: teach the fleet to accept it, then start
+// sending it. This check is what makes that a gate rather than a discipline.
+const allowlistOf = (script) =>
+  new Set([...script.matchAll(/^\s*([A-Z0-9_]+_B64)\)\s*\1=/gm)].map((m) => m[1]));
+const sentFields = [...provision.matchAll(/field\('([A-Z0-9_]+_B64)'/g)].map((m) => m[1]);
+
+if (!sentFields.length) {
+  fail('no transfer fields found in provision.ts — the parser is broken, not the release');
+} else {
+  const shipped = allowlistOf(bootstrap);
+  const missing = sentFields.filter((f) => !shipped.has(f));
+  if (missing.length) fail(`bootstrap at ${bundleCommit} rejects: ${missing.join(', ')}`);
+  else ok(`shipped bootstrap accepts all ${sentFields.length} transfer fields`);
+
+  /* The pins are edited in the working tree before this runs, so HEAD still
+     carries what the fleet is converging from. */
+  let previousBundle = null;
+  try {
+    const { execFileSync } = await import('node:child_process');
+    const head = execFileSync('git', ['show', 'HEAD:worker/wrangler.toml'], {
+      cwd: new URL('../..', import.meta.url).pathname, encoding: 'utf8',
+    });
+    previousBundle = head.match(/RUNTIME_BUNDLE_COMMIT\s*=\s*"([0-9a-f]{40})"/)?.[1] ?? null;
+  } catch {
+    warn('could not read the previous bundle pin from git; backward check skipped');
+  }
+
+  if (previousBundle && previousBundle !== bundleCommit) {
+    const older = await readRaw(REPO, previousBundle, 'runner/bin/bootstrap-runtime.sh');
+    if (!older) {
+      warn(`bootstrap at previous bundle ${previousBundle} unreadable; backward check skipped`);
+    } else {
+      const accepted = allowlistOf(older);
+      const rejected = sentFields.filter((f) => !accepted.has(f));
+      if (rejected.length) {
+        fail(
+          `the fleet's current bootstrap (${previousBundle}) rejects: ${rejected.join(', ')}. ` +
+          'Ship a release that allowlists the field first, with the value still unset, ' +
+          'and send it only once the fleet has converged.',
+        );
+      } else {
+        ok('the fleet\'s current bootstrap accepts every field this release sends');
+      }
+    }
+  } else if (previousBundle) {
+    ok('bundle unchanged; no backward compatibility question');
+  }
 }
 
 if (process.exitCode) {
