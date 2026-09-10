@@ -111,7 +111,7 @@ export default {
     if (repo) return repo;
 
     /* Runs: ingestion, activity, and one run's trace. */
-    const runs = await handleRuns(request, env, url, headers);
+    const runs = await handleRuns(request, env, url, headers, ctx);
     if (runs) return runs;
 
     /* Routines: owner-scheduled deterministic jobs, behind a flag. */

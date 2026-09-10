@@ -24,6 +24,8 @@ import {
 import { recordFact } from '../facts';
 import { urlProblem } from '../ingest';
 import { runtimeFor, signalRuntimeTask } from '../runtime';
+import { handleRuntimeMessage, scheduleRuntimeTaskWake } from '../runtime/consumer';
+import type { RuntimeProvider } from '../runtime/provider';
 import {
   boundedAgentInput,
   prepareAsk,
@@ -51,11 +53,34 @@ function json(body: unknown, init: ResponseInit = {}, headers: Record<string, st
   });
 }
 
+/** Something that outlives the response: `ctx.waitUntil` in production. */
+export interface BackgroundContext {
+  waitUntil(promise: Promise<unknown>): void;
+}
+
+/** The intake runs the first slice of a durable ask itself (see
+    startDurableAsk). Tests inject the provider, the runner fetch and a
+    shorter slice through here; production uses the defaults. */
+export interface InlineSliceOptions {
+  provider?: RuntimeProvider;
+  fetch?: typeof globalThis.fetch;
+  observationSliceMs?: number;
+}
+
+/** waitUntil grants 30 s after the response. The slice stops at 20 s so its
+    own finalisation (status load, usage, work record, next wake) fits. */
+export const INLINE_SLICE_MS = 20_000;
+/** If the inline slice dies with its invocation, the queue consumer finds
+    the task by this delayed wake and carries on from stream_seq. */
+export const INLINE_SAFETY_NET_SECONDS = 30;
+
 export async function handleRuns(
   request: Request,
   env: Env,
   url: URL,
   cors: Record<string, string>,
+  ctx?: BackgroundContext,
+  inline?: InlineSliceOptions,
 ): Promise<Response | null> {
   if (!url.pathname.startsWith('/api/runs')) return null;
 
@@ -222,6 +247,8 @@ export async function handleRuns(
         cors,
         sessionId,
         responseMode,
+        ctx,
+        inline,
       );
     }
 
@@ -445,6 +472,8 @@ async function startDurableAsk(
   cors: Record<string, string>,
   sessionId?: string,
   requestedMode?: ResponseMode,
+  ctx?: BackgroundContext,
+  inline?: InlineSliceOptions,
 ): Promise<Response> {
   if (!env.RUNTIME_QUEUE || !env.AISAR_MODEL_NAME?.trim()) {
     return json({ ok: false, err: 'Jentera agent execution is unavailable' }, { status: 503 }, cors);
@@ -513,9 +542,19 @@ async function startDurableAsk(
 
   /* Sending after commit avoids a message racing an invisible row. If
      delivery fails, the browser can repeat the same requestId: it finds
-     this row and safely sends another wake-up signal. */
+     this row and safely sends another wake-up signal.
+
+     The intake is placed next to the database; the queue consumer is not,
+     and every tenant transaction cost it 1–2 s — a "yob" waited 12–16 s
+     before Hermes was even asked (Workers Logs, 2026-09-10). An HTTP
+     invocation has no wall-time limit, so the first slice — lease,
+     dispatch, live relay — runs here under waitUntil, and the queue only
+     gets a delayed wake as the safety net. Without a context the queue
+     does all of it, as before. */
   try {
-    await signalRuntimeTask(env, businessId, created.task.id);
+    await signalRuntimeTask(env, businessId, created.task.id, {
+      delaySeconds: ctx ? INLINE_SAFETY_NET_SECONDS : 0,
+    });
   } catch {
     /* Queue errors are intentionally not interpolated. Provider/library
        exceptions are not a safe logging contract for credentials. */
@@ -526,12 +565,35 @@ async function startDurableAsk(
     }, { status: 503 }, cors);
   }
   await publishRunProgressSafely(env, businessId, created.runId, 'queued');
+  if (ctx) ctx.waitUntil(runInlineSlice(env, businessId, created.task.id, inline));
   return json({
     ok: true,
     pending: true,
     status: created.task.status,
     runId: created.runId,
   }, { status: 202 }, cors);
+}
+
+/** One consumer slice, run by the intake instead of the queue. The result
+    is applied exactly as the queue handler applies it; a thrown error is
+    logged and left to the delayed safety-net wake. */
+async function runInlineSlice(
+  env: Env,
+  businessId: string,
+  taskId: string,
+  inline: InlineSliceOptions = {},
+): Promise<void> {
+  const message = { version: 1 as const, businessId, taskId };
+  try {
+    const result = await handleRuntimeMessage(env, message, {
+      ...inline,
+      observationSliceMs: inline.observationSliceMs ?? INLINE_SLICE_MS,
+    });
+    if (result.action === 'ack') return;
+    await scheduleRuntimeTaskWake(env, businessId, taskId, result.delaySeconds);
+  } catch (error) {
+    console.error(`[inline-ask] slice failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 

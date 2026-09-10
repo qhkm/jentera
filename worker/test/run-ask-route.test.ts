@@ -4,6 +4,8 @@ import type { Env } from '../src/env';
 import { handleRuns } from '../src/routes/runs';
 import { CREDIT_CAP_NOTICE } from '../src/runtime/consumer';
 import { asOwner, asTenant, req, signIn, testEnv, truncateAll } from './harness';
+import { LocalRuntimeProvider } from '../src/runtime';
+import { ensureProviderRuntime } from '../src/runtime/provision';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
@@ -403,5 +405,88 @@ describe('response mode from the web chat', () => {
   });
   it('rejects an unknown response mode', async () => {
     expect((await modelFor({ question: 'hi', responseMode: 'fast' })).status).toBe(400);
+  });
+});
+
+describe('the first slice of a web ask runs inline from the intake', () => {
+  /* The queue consumer runs far from the database: every tenant transaction
+     cost 1–2 s there and a "yob" waited 12–16 s before Hermes was even asked.
+     The intake is placed next to the database and an HTTP invocation has no
+     wall-time limit, so it now leases, dispatches and relays the first slice
+     itself. The queue message is sent with a delay, as a safety net only. */
+  it('starts and finishes a quick reply from the request, the queue only as a safety net', async () => {
+    const provider = new LocalRuntimeProvider();
+    const send = vi.fn(async () => {});
+    const published: Array<Record<string, unknown>> = [];
+    const env = testEnv({
+      RUNTIME_RELEASE: RELEASE,
+      RUNTIME_EXECUTION_ENABLED: 'true',
+      AISAR_MODEL_NAME: MODEL,
+      RUNTIME_QUEUE: { send },
+      RUN_STREAMS: {
+        idFromName: () => ({ toString: () => 'stream-id' }),
+        get: () => ({
+          fetch: async (_url: string, init?: RequestInit) => {
+            published.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+            return Response.json({ ok: true });
+          },
+        }),
+      },
+    });
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, RELEASE, 'v1'));
+    const events = [
+      { type: 'delta', seq: 1, delta: 'Yes, ' },
+      { type: 'delta', seq: 2, delta: 'we are open on Sunday.' },
+      { type: 'done' },
+    ].map((event) => `data: ${JSON.stringify(event)}`).join('\n\n') + '\n\n';
+    const runnerFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return Response.json({
+          ok: true, release: RELEASE,
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
+          toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        return Response.json({ ok: true, hermesRunId: 'inline-run', status: 'running' }, { status: 202 });
+      }
+      if (url.endsWith('/events')) {
+        return new Response(events, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      if (url.includes('/v1/tasks/')) {
+        return Response.json({ ok: true, status: 'completed', output: 'Yes, we are open on Sunday.' });
+      }
+      return Response.json({ error: 'not found' }, { status: 404 });
+    };
+    const background: Promise<unknown>[] = [];
+    const incoming = req('POST', '/api/runs/ask', {
+      cookie: cookieA,
+      body: { question: 'Are we open on Sunday?', requestId: crypto.randomUUID() },
+    });
+    const response = await handleRuns(
+      incoming.request, env, incoming.url, {},
+      { waitUntil: (promise) => { background.push(promise); } },
+      { provider, fetch: runnerFetch },
+    );
+    expect(response?.status).toBe(202);
+    const { runId } = await response!.json() as { runId: string };
+    expect(background).toHaveLength(1);
+    await Promise.all(background);
+
+    const [run] = await asOwner((sql) => sql<{ status: string }[]>`
+      select status from run where id = ${runId}`);
+    expect(run.status).toBe('completed');
+    expect(published.filter((event) => event.type === 'delta').map((event) => event.text).join(''))
+      .toBe('Yes, we are open on Sunday.');
+    expect(send).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledWith(
+      { version: 1, businessId: A, taskId: expect.any(String) },
+      { delaySeconds: 30 },
+    );
   });
 });
