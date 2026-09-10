@@ -2,7 +2,8 @@ import type { Env } from '../env';
 import { getRuntime, getRuntimeRegion } from '../agent-runtime';
 import { withTenant } from '../db';
 import { publishRuntimeTask } from '../runtime';
-import { cancelRuntimeTask } from '../runtime/tasks';
+import { cancelRuntimeTask, findRuntimeApproval } from '../runtime/tasks';
+import { applyRuntimeApprovalDecision } from '../runtime/approvals';
 import { finalizeRuntimeUsage, runtimeBudgetSnapshot } from '../runtime/usage';
 import { finishRun } from '../runs';
 import { hasBusiness, resolveTenant } from '../tenancy';
@@ -127,6 +128,103 @@ export async function handleRuntime(
       payload: { release },
     });
     return json({ ok: true, taskId: task.id, status: task.status }, { status: 202 }, cors);
+  }
+
+  /* What the owner is being asked. Any member may read it — seeing the
+     question is not deciding it — and the card needs this after a reload,
+     when the socket that announced the approval is long gone. */
+  const readApproval = url.pathname.match(/^\/api\/runtime\/approvals\/([0-9a-f-]{36})$/i);
+  if (readApproval && request.method === 'GET') {
+    const found = await withTenant(env, identity.businessId, (tx) =>
+      findRuntimeApproval(tx, identity.businessId, readApproval[1]));
+    if (!found) return json({ ok: false, err: 'approval not found' }, { status: 404 }, cors);
+    return json(
+      {
+        ok: true,
+        approval: {
+          id: found.approval.id,
+          tool: found.approval.tool,
+          message: found.approval.message,
+          status: found.approval.status,
+          expiresAt: found.approval.expiresAt,
+          surface: found.approval.surface,
+          runId: found.task.runId ?? null,
+          /* Deliberately not the requestId: it is what the runner binds a
+             decision to, and no surface needs to see it. */
+        },
+      },
+      { status: 200, headers: { 'Cache-Control': 'private, no-store' } },
+      cors,
+    );
+  }
+
+  const decide = url.pathname
+    .match(/^\/api\/runtime\/approvals\/([0-9a-f-]{36})\/decide$/i);
+  if (decide && request.method === 'POST') {
+    /* Owner only. Approving a tool call can run a command on the business's
+       machine, which is the same line the connector decide route draws when
+       it says a staff member must not authorise a customer-facing send.
+       Staff can read the card above; the buttons are theirs to look at. */
+    if (identity.role !== 'owner') {
+      return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+    }
+    /* The SameSite=Lax cookie is the real cross-site defence; these are the
+       belt to its braces. request-guard checks method, size and rate, and
+       the CORS headers in index.ts shape the *response* — none of them stops
+       a cross-site POST from arriving. */
+    const origin = request.headers.get('Origin');
+    if (!origin || cors['Access-Control-Allow-Origin'] !== origin) {
+      return json({ ok: false, err: 'origin not allowed' }, { status: 403 }, cors);
+    }
+    if (!(request.headers.get('Content-Type') ?? '').toLowerCase().includes('application/json')) {
+      return json({ ok: false, err: 'json body required' }, { status: 415 }, cors);
+    }
+    let decision: unknown;
+    try {
+      decision = ((await request.json()) as { decision?: unknown }).decision;
+    } catch {
+      return json({ ok: false, err: 'body is not valid JSON' }, { status: 400 }, cors);
+    }
+    if (decision !== 'approve' && decision !== 'deny') {
+      return json({ ok: false, err: 'decision must be approve or deny' }, { status: 400 }, cors);
+    }
+
+    const result = await applyRuntimeApprovalDecision(
+      env,
+      identity.businessId,
+      { surface: 'web', approvalId: decide[1], userId: identity.userId },
+      decision,
+    );
+    const body = (status: string) => ({
+      ok: true,
+      status,
+      approval: result.approval
+        ? {
+            id: result.approval.id,
+            tool: result.approval.tool,
+            status: result.approval.status,
+            decision: result.approval.decision ?? null,
+          }
+        : null,
+    });
+    const headers = { 'Cache-Control': 'private, no-store' };
+    if (result.outcome === 'accepted') {
+      /* Nothing is published here: the consumer publishes `working` when it
+         leases the resume, and the durable row is what the card reads if the
+         socket is gone. Announcing it twice would race that. */
+      return json(body('applied'), { status: 200, headers }, cors);
+    }
+    if (result.outcome === 'duplicate') {
+      return json(body('already_applied'), { status: 200, headers }, cors);
+    }
+    if (result.outcome === 'unavailable') {
+      return json(
+        { ok: false, code: 'RUNTIME_UNAVAILABLE' },
+        { status: 503, headers: { ...headers, 'Retry-After': '2' } },
+        cors,
+      );
+    }
+    return json({ ok: false, code: 'APPROVAL_NOT_PENDING' }, { status: 409, headers }, cors);
   }
 
   const cancel = url.pathname.match(/^\/api\/runtime\/tasks\/([0-9a-f-]{36})\/cancel$/i);

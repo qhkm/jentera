@@ -95,6 +95,9 @@ export interface RuntimeApproval {
   surface?: 'telegram' | 'web';
   /** Present only for the Telegram surface. */
   telegram?: { connectionId: string; chatId: number; messageId: number };
+  /** app_user.id of whoever decided, for the web surface. Telegram's answer
+      is attributable through the paired chat instead. */
+  decidedBy?: string;
 }
 
 export interface FloodDeferResult {
@@ -644,19 +647,27 @@ export type RuntimeApprovalClaim =
   | { outcome: 'duplicate'; task: RuntimeTask; approval: RuntimeApproval }
   | { outcome: 'invalid' };
 
-/** Claim one Telegram decision under the same business lock used by leases.
-    A callback must match tenant, connection, paired chat, bot message, opaque
-    approval id, pending state, and expiry before it can reach the runner. */
+/**
+ * A binding is the proof that this decision came from the surface the
+ * approval was actually offered on.
+ *
+ * For Telegram that is the connection, the paired chat and the bot message —
+ * the coordinates the bubble lives at. For the web it is a signed-in user of
+ * the same business, which the route has already established; the approval id
+ * is opaque and never guessable, and the surface tag stops a Telegram
+ * approval being answered by a web POST or the reverse.
+ */
+export type RuntimeApprovalBinding =
+  | { surface: 'telegram'; approvalId: string; connectionId: string; chatId: number; messageId: number }
+  | { surface: 'web'; approvalId: string; userId: string };
+
+/** Claim one decision under the same business lock used by leases. It must
+    match tenant, surface, binding, opaque approval id, pending state and
+    expiry before it can reach the runner. */
 export async function claimRuntimeApprovalDecision(
   tx: postgres.TransactionSql,
   businessId: string,
-  input: {
-    approvalId: string;
-    connectionId: string;
-    chatId: number;
-    messageId: number;
-    decision: 'approve' | 'deny';
-  },
+  input: RuntimeApprovalBinding & { decision: 'approve' | 'deny' },
 ): Promise<RuntimeApprovalClaim> {
   await tx`select pg_advisory_xact_lock(hashtextextended(${businessId}::text, 0))`;
   const [row] = await tx<TaskRow[]>`
@@ -669,13 +680,16 @@ export async function claimRuntimeApprovalDecision(
   const approval = runtimeApprovalFromTask(currentTask);
   if (!approval || currentTask.kind !== 'resume' ||
       !['queued', 'failed'].includes(currentTask.status) ||
-      /* This claim arrives from a Telegram callback, so it can only be about
-         a Telegram approval — and it must be about *this* bubble. A web
-         approval has no coordinates to match and is never claimable here. */
-      approval.surface !== 'telegram' ||
-      approval.telegram?.connectionId !== input.connectionId ||
-      approval.telegram?.chatId !== input.chatId ||
-      approval.telegram?.messageId !== input.messageId) return { outcome: 'invalid' };
+      /* The surface must match, so a Telegram approval cannot be answered by
+         a web POST or the reverse; and a Telegram claim must be about *this*
+         bubble. A web approval has no coordinates — the route has already
+         established a signed-in owner of this business, and the id is
+         opaque. */
+      approval.surface !== input.surface ||
+      (input.surface === 'telegram' && (
+        approval.telegram?.connectionId !== input.connectionId ||
+        approval.telegram?.chatId !== input.chatId ||
+        approval.telegram?.messageId !== input.messageId))) return { outcome: 'invalid' };
   if ((approval.status === 'approved' || approval.status === 'denied') &&
       approval.decision === input.decision) {
     return { outcome: 'duplicate', task: currentTask, approval };
@@ -693,6 +707,11 @@ export async function claimRuntimeApprovalDecision(
     ...approval,
     status: 'deciding',
     decision: input.decision,
+    /* Who answered, for the web surface. Telegram's answer is attributable
+       through the paired chat; the web's is only attributable if recorded,
+       and "a command ran on the business's machine" is exactly the kind of
+       thing that should name a person. */
+    ...(input.surface === 'web' ? { decidedBy: input.userId } : {}),
   };
   const result = { ...resultObject(row.result), approval: claimed };
   const rows = await tx`
@@ -799,6 +818,32 @@ export async function expireRuntimeApproval(
        and result #>> '{approval,id}' = ${approvalId}
     returning id`;
   return rows.length === 1 ? approval : null;
+}
+
+/**
+ * One approval by its opaque id, for a surface that has only that.
+ *
+ * The web card is reached by a link and survives a reload, so it cannot rely
+ * on holding the task id — and it should not: the approval id is the
+ * capability, scoped to the tenant by `withTenant` like everything else.
+ * Returns the task too, because every caller needs both.
+ */
+export async function findRuntimeApproval(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  approvalId: string,
+): Promise<{ task: RuntimeTask; approval: RuntimeApproval } | null> {
+  const [row] = await tx<TaskRow[]>`
+    select ${tx.unsafe(cols)} from runtime_task
+     where business_id = ${businessId}
+       and kind = 'resume'
+       and result #>> '{approval,id}' = ${approvalId}
+     order by created_at desc
+     limit 1`;
+  if (!row) return null;
+  const found = task(row);
+  const approval = runtimeApprovalFromTask(found);
+  return approval ? { task: found, approval } : null;
 }
 
 export function runtimeApprovalFromTask(task: RuntimeTask): RuntimeApproval | null {
@@ -1122,6 +1167,9 @@ function runtimeApprovalFromResult(value: unknown): RuntimeApproval | null {
     ...(approval.decision ? { decision: approval.decision as 'approve' | 'deny' } : {}),
     expiresAt: approval.expiresAt as string,
     ...(approval.decidedAt ? { decidedAt: approval.decidedAt as string } : {}),
+    ...(typeof approval.decidedBy === 'string' && uuid(approval.decidedBy)
+      ? { decidedBy: approval.decidedBy }
+      : {}),
     surface,
     ...(hasTelegram
       ? {

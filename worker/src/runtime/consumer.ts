@@ -60,6 +60,7 @@ import {
 import { finalizeRuntimeUsage, runtimeUsageDeadline, RuntimeBudgetExceeded } from './usage';
 import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
 import { publishRunProgressSafely } from './progress';
+import { applyRuntimeApprovalDecision } from './approvals';
 import { createWebProgress } from './web-progress';
 import { STEP_STRIP_RE } from './step-progress';
 import { deliverTelegramDraft, deleteTelegramLiveBubble, persistLiveMessageId, settleCancelledDraft } from '../telegram-delivery';
@@ -426,6 +427,14 @@ export async function sweepRuntimeTaskRecovery(env: Env): Promise<number> {
     The route has already verified Telegram's webhook secret and paired chat;
     this layer additionally binds the opaque callback id to the exact tenant,
     connection, chat, bot-owned bubble, task, and pending state. */
+/**
+ * The Telegram surface, wrapped around the shared decision path.
+ *
+ * Everything specific to Telegram is here — the toast, the keyboard, the
+ * bubble edit — and nothing else is. The sequence that actually resumes the
+ * run lives in `applyRuntimeApprovalDecision` so the web surface cannot
+ * drift from it; a second copy would be a second copy nobody compared.
+ */
 export async function handleRuntimeApprovalCallback(
   env: Env,
   businessId: string,
@@ -440,15 +449,28 @@ export async function handleRuntimeApprovalCallback(
   telegramToken: string,
   fetcher?: typeof globalThis.fetch,
 ): Promise<'accepted' | 'duplicate' | 'invalid' | 'unavailable'> {
-  const claim = await withTenant(env, businessId, (tx) =>
-    claimRuntimeApprovalDecision(tx, businessId, {
+  const { outcome } = await applyRuntimeApprovalDecision(
+    env,
+    businessId,
+    {
+      surface: 'telegram',
       approvalId: callback.approvalId,
       connectionId,
       chatId: callback.chatId,
       messageId: callback.messageId,
-      decision: callback.decision,
-    }));
-  if (claim.outcome === 'invalid') {
+    },
+    callback.decision,
+    {
+      fetch: fetcher,
+      /* Between a durable claim and the runner hearing about it — the only
+         moment "applying" is honestly true. */
+      onClaimed: async () => {
+        await answerCallbackQuery(telegramToken, callback.id, 'Applying…').catch(() => {});
+      },
+    },
+  );
+
+  if (outcome === 'invalid') {
     await answerCallbackQuery(
       telegramToken,
       callback.id,
@@ -456,63 +478,13 @@ export async function handleRuntimeApprovalCallback(
     ).catch(() => {});
     return 'invalid';
   }
-  if (claim.outcome === 'duplicate') {
+  if (outcome === 'duplicate') {
     await answerCallbackQuery(telegramToken, callback.id, 'Already applied.').catch(() => {});
-    await editMessageReplyMarkup(
-      telegramToken,
-      callback.chatId,
-      callback.messageId,
-    ).catch(() => {});
-    await signalRuntimeTask(env, businessId, claim.task.id);
+    await editMessageReplyMarkup(telegramToken, callback.chatId, callback.messageId)
+      .catch(() => {});
     return 'duplicate';
   }
-
-  await answerCallbackQuery(telegramToken, callback.id, 'Applying…').catch(() => {});
-  try {
-    const decided = await decideRuntimeTaskApproval(
-      env,
-      businessId,
-      claim.task.id,
-      claim.approval.requestId,
-      callback.decision,
-      fetcher,
-    );
-    if (!decided?.ok) throw new Error('runner approval decision was not accepted');
-  } catch (error) {
-    await withTenant(env, businessId, (tx) =>
-      releaseRuntimeApprovalDecision(
-        tx,
-        businessId,
-        claim.task.id,
-        claim.approval.id,
-      ));
-    console.warn('[runtime] approval decision could not reach runner', {
-      businessId,
-      taskId: claim.task.id,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return 'unavailable';
-  }
-
-  const finalized = await withTenant(env, businessId, async (tx) => {
-    const approval = await completeRuntimeApprovalDecision(
-      tx,
-      businessId,
-      claim.task.id,
-      claim.approval.id,
-      callback.decision,
-    );
-    if (!approval) return false;
-    if (claim.task.runId) {
-      await resumeRunAfterApproval(tx, businessId, claim.task.runId, callback.decision, {
-        runtimeTaskId: claim.task.id,
-        requestId: approval.requestId,
-        tool: approval.tool,
-      });
-    }
-    return true;
-  });
-  if (!finalized) return 'unavailable';
+  if (outcome === 'unavailable') return 'unavailable';
 
   await editMessageText(
     telegramToken,
@@ -521,7 +493,6 @@ export async function handleRuntimeApprovalCallback(
     callback.decision === 'approve' ? '✅ Approved — resuming…' : '⛔ Denied — finishing safely…',
     { inline_keyboard: [] },
   ).catch(() => {});
-  await signalRuntimeTask(env, businessId, claim.task.id);
   return 'accepted';
 }
 

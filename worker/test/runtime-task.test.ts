@@ -252,6 +252,7 @@ describe('durable runtime tasks', () => {
     expect(await asTenant(A, (tx) => nextWaitingRuntimeTaskId(tx, A))).toBeNull();
 
     expect((await asTenant(B, (tx) => claimRuntimeApprovalDecision(tx, B, {
+      surface: 'telegram' as const,
       approvalId: approval!.id,
       connectionId: CONNECTION,
       chatId: 42,
@@ -259,6 +260,7 @@ describe('durable runtime tasks', () => {
       decision: 'approve',
     }))).outcome).toBe('invalid');
     expect((await asTenant(A, (tx) => claimRuntimeApprovalDecision(tx, A, {
+      surface: 'telegram' as const,
       approvalId: approval!.id,
       connectionId: CONNECTION,
       chatId: 7,
@@ -267,6 +269,7 @@ describe('durable runtime tasks', () => {
     }))).outcome).toBe('invalid');
 
     const claim = await asTenant(A, (tx) => claimRuntimeApprovalDecision(tx, A, {
+      surface: 'telegram' as const,
       approvalId: approval!.id,
       connectionId: CONNECTION,
       chatId: 42,
