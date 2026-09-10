@@ -201,6 +201,7 @@ describe('Ask Jentera runtime bridge', () => {
       text: 'Hermes answered safely.',
       usedKeys: [],
       grounded: false,
+      kind: 'work',
     });
     expect((await call('GET', `/api/runs/${runId}`, durableEnv(), cookieB)).status).toBe(404);
   });
@@ -245,6 +246,35 @@ describe('Ask Jentera runtime bridge', () => {
     const response = await call('GET', `/api/runs/${runId}`, durableEnv(), cookieA);
     expect(await response.json()).toMatchObject({ ok: true, status: 'failed', err: CREDIT_CAP_NOTICE });
     expect(CREDIT_CAP_NOTICE).toMatch(/US\$5/);
+  });
+
+  it('tells the chat and Activity whether a finished run was conversation or work', async () => {
+    await readyRuntime(A);
+    const started = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
+      question: 'are we open on sunday?', requestId: crypto.randomUUID(), mode: 'work',
+    });
+    const { runId } = await started.json() as { runId: string };
+    await asOwner(async (sql) => {
+      await sql`update runtime_task set status = 'completed', result = ${'Yes.'} where run_id = ${runId}`;
+      await sql`update run set status = 'completed', ended_at = now() where id = ${runId}`;
+      await sql`insert into work_record (business_id, run_id, objective, outcome, status, function, channel, risk, kind)
+                values (${A}, ${runId}, 'are we open on sunday?', 'Yes.', 'completed', 'ask', 'app', 'low', 'conversation')`;
+    });
+    const detail = await call('GET', `/api/runs/${runId}`, durableEnv(), cookieA);
+    expect(await detail.json()).toMatchObject({ ok: true, status: 'completed', kind: 'conversation' });
+    /* Activity is the list of things Jentera did: conversation stays off it
+       and out of its counters, while a piece of work is listed with its kind. */
+    await asOwner((sql) => sql`
+      insert into work_record (business_id, objective, outcome, status, function, channel, risk, kind)
+      values (${A}, 'Chase the late invoice', 'Sent reminder', 'completed', 'assistant', 'telegram', 'low', 'work')`);
+    const activity = await call('GET', '/api/runs/activity', durableEnv(), cookieA);
+    const body = await activity.json() as {
+      work: Array<{ runId: string | null; objective: string; kind: string }>;
+      counters: { handled: number };
+    };
+    expect(body.work.find((item) => item.runId === runId)).toBeUndefined();
+    expect(body.work.map((item) => [item.objective, item.kind])).toEqual([['Chase the late invoice', 'work']]);
+    expect(body.counters.handled).toBe(1);
   });
 
   it('proxies a WebSocket only after origin, session, and tenant checks', async () => {

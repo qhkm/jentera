@@ -242,7 +242,7 @@ export async function handleRuns(
        connection open while it thinks. */
     const { facts, work } = await withTenant(env, id.businessId, async (tx) => ({
       facts: await retrieve(tx, question),
-      work: await recentWork(tx, 8),
+      work: await recentWork(tx, 8, { kind: 'work' }),
     }));
 
     await withTenant(env, id.businessId, (tx) =>
@@ -284,7 +284,9 @@ export async function handleRuns(
 
   if (url.pathname === '/api/runs/activity' && request.method === 'GET') {
     const [work, counters] = await withTenant(env, id.businessId, async (tx) => [
-      await recentWork(tx, 50),
+      /* Conversation stays on the run history and in the ledger; Activity
+         is the list of things Jentera did. */
+      await recentWork(tx, 50, { kind: 'work' }),
       await homeCounters(tx),
     ]);
     return json({ ok: true, work, counters }, {}, cors);
@@ -343,6 +345,12 @@ export async function handleRuns(
     }
     if (state.run.status === 'completed') {
       const metadata = askMetadata(state.task);
+      const completedRunId = state.run.id;
+      const kind = await withTenant(env, id.businessId, async (tx) => {
+        const [row] = await tx<{ kind: string }[]>`
+          select kind from work_record where run_id = ${completedRunId} order by occurred_at desc limit 1`;
+        return row?.kind ?? 'work';
+      });
       return json({
         ok: true,
         runId: state.run.id,
@@ -351,6 +359,7 @@ export async function handleRuns(
         text: answerText(state.task.result),
         usedKeys: metadata.usedKeys,
         grounded: metadata.grounded,
+        kind,
       }, {}, privateHeaders);
     }
     if (state.run.status === 'failed' || state.run.status === 'cancelled') {

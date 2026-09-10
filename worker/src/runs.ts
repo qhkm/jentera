@@ -42,6 +42,9 @@ export const EVENTS = [
   'work.completed',
   'work.failed',
   'outcome.observed',
+  /* The agent started a tool. One event per start; what it proves is that
+     the reply was work, not conversation. */
+  'agent.tool',
 ] as const;
 export type RunEventType = (typeof EVENTS)[number];
 
@@ -214,8 +217,13 @@ export async function runTrace(
 
 /* ---------- work records --------------------------------------------- */
 
+/** Conversation is a quick reply answered without a tool; everything else
+    is work. Decides whether the chat draws a card and Activity lists it. */
+export type WorkKind = 'work' | 'conversation';
+
 export interface WorkRecordInput {
   runId?: string | null;
+  kind?: WorkKind;
   objective: string;
   outcome?: string | null;
   status: string;
@@ -241,14 +249,15 @@ export async function recordWork(
   const [row] = await tx<{ id: string }[]>`
     insert into work_record
       (business_id, run_id, objective, outcome, status, function, channel,
-       subject, risk, approval_id, counters, minutes_saved, artifacts, decision, inputs_used)
+       subject, risk, approval_id, counters, minutes_saved, artifacts, decision, inputs_used, kind)
     values
       (${businessId}, ${w.runId ?? null}, ${w.objective}, ${w.outcome ?? null},
        ${w.status}, ${w.function ?? null}, ${w.channel ?? null}, ${w.subject ?? null},
        ${w.risk ?? null}, ${w.approvalId ?? null}, ${tx.json((w.counters ?? {}) as never)},
        ${w.minutesSaved ?? null}, ${tx.json((w.artifacts ?? []) as never)},
        ${w.decision ?? null},
-       ${w.inputsUsed === undefined ? null : tx.json(w.inputsUsed as never)})
+       ${w.inputsUsed === undefined ? null : tx.json(w.inputsUsed as never)},
+       ${w.kind ?? 'work'})
     returning id`;
   return row.id;
 }
@@ -269,12 +278,15 @@ export interface WorkSummary {
   outcomeQuality: WorkQuality | null;
   qualityAt: Date | null;
   occurredAt: Date;
+  kind: WorkKind;
 }
 
 export async function recentWork(
   tx: postgres.TransactionSql,
   limit = 50,
+  options: { kind?: WorkKind } = {},
 ): Promise<WorkSummary[]> {
+  const kind = options.kind ?? null;
   const rows = await tx<
     {
       id: string;
@@ -289,10 +301,13 @@ export async function recentWork(
       outcome_quality: WorkQuality | 'unknown' | null;
       quality_at: Date | null;
       occurred_at: Date;
+      kind: WorkKind;
     }[]
   >`select id, run_id, objective, outcome, status, function, channel,
-           subject, minutes_saved, outcome_quality, quality_at, occurred_at
-      from work_record order by occurred_at desc limit ${limit}`;
+           subject, minutes_saved, outcome_quality, quality_at, occurred_at, kind
+      from work_record
+     where ${kind}::text is null or kind = ${kind}::text
+     order by occurred_at desc limit ${limit}`;
   return rows.map((r) => ({
     id: r.id,
     runId: r.run_id,
@@ -310,7 +325,28 @@ export async function recentWork(
     outcomeQuality: r.outcome_quality === 'unknown' ? null : r.outcome_quality,
     qualityAt: r.quality_at,
     occurredAt: r.occurred_at,
+    kind: r.kind,
   }));
+}
+
+/** What a finished run was for the owner. Deep mode is work by request; a
+    quick reply is work only if the agent started a tool or asked for an
+    approval along the way. Reads the run's own task payload and trace, so
+    every completion path classifies the same way. */
+export async function workKindForRun(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  runId: string,
+): Promise<WorkKind> {
+  const [row] = await tx<{ deep: boolean; acted: string }[]>`
+    select
+      coalesce((select payload->>'responseMode' = 'deep' from runtime_task
+                 where business_id = ${businessId} and run_id = ${runId}
+                 order by created_at desc limit 1), false) as deep,
+      (select count(*)::text from run_event
+        where business_id = ${businessId} and run_id = ${runId}
+          and type in ('agent.tool', 'approval.requested', 'approval.granted')) as acted`;
+  return row.deep || Number(row.acted) > 0 ? 'work' : 'conversation';
 }
 
 /**
@@ -362,7 +398,7 @@ export async function homeCounters(
     }[]
   >`
     select
-      count(*) filter (where status = 'completed')::text                       as handled,
+      count(*) filter (where status = 'completed' and kind = 'work')::text     as handled,
       (select count(*)::text from approval where status = 'pending')           as needs_you,
       -- Real accounts, from the connection table. business.connections
       -- is a playbook-seeded list of what a business of this type
@@ -382,7 +418,7 @@ export async function homeCounters(
             )
           ))                                                                    as connections,
       coalesce(sum(minutes_saved), 0)::text                                    as minutes_saved,
-      count(*) filter (where occurred_at > now() - interval '7 days')::text    as this_week
+      count(*) filter (where occurred_at > now() - interval '7 days' and kind = 'work')::text as this_week
     from work_record`;
   return {
     handled: Number(row.handled),
@@ -406,13 +442,14 @@ export async function updateWorkForRun(
   tx: postgres.TransactionSql,
   businessId: string,
   runId: string,
-  patch: { status: string; outcome: string; minutesSaved?: number | null },
+  patch: { status: string; outcome: string; minutesSaved?: number | null; kind?: WorkKind },
 ): Promise<boolean> {
   const rows = await tx`
     update work_record
        set status = ${patch.status},
            outcome = ${patch.outcome.slice(0, 500)},
            minutes_saved = ${patch.minutesSaved ?? null},
+           kind = coalesce(${patch.kind ?? null}, kind),
            updated_at = now()
      where business_id = ${businessId} and run_id = ${runId}
     returning id`;

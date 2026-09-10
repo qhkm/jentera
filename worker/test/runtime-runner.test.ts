@@ -1161,3 +1161,75 @@ describe('live progress to the web chat', () => {
     }
   });
 });
+
+describe('conversation versus work', () => {
+  /* Every web message became a "task": a run, a work record and a card in
+     the chat and in Activity. A quick reply the agent answered from
+     memory is conversation; deep mode or any tool use is work. */
+  async function completeRun(env: ReturnType<typeof testEnv>, payload: Record<string, unknown>, events: Array<Record<string, unknown>>) {
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, { provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64) });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `kind:${run.id}`,
+      payload: { input: 'hello', model: 'MiniMax-M3', objective: 'hello', function: 'ask', channel: 'app', ...payload },
+    }));
+    const stream = [...events, { type: 'done' }].map((e) => `data: ${JSON.stringify(e)}`).join('\n\n') + '\n\n';
+    const runnerFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return response({
+          ok: true, release: '2026.09.01-3',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
+          toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        return response({ ok: true, hermesRunId: 'kind-run', status: 'started' }, 202);
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}/events`)) {
+        return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}`)) {
+        return response({ ok: true, status: 'completed', output: 'Yes, Sunday too.' });
+      }
+      return response({ error: 'not found' }, 404);
+    };
+    await expect(handleRuntimeMessage(env, { version: 1, businessId: A, taskId: task.id }, { provider, fetch: runnerFetch }))
+      .resolves.toEqual({ action: 'ack', reason: 'completed' });
+    const [record] = await asOwner((sql) => sql<{ kind: string; status: string }[]>`
+      select kind, status from work_record where run_id = ${run.id}`);
+    const tools = await asOwner((sql) => sql<{ n: string }[]>`
+      select count(*)::text as n from run_event where run_id = ${run.id} and type = 'agent.tool'`);
+    return { record, toolEvents: Number(tools[0].n) };
+  }
+  const env = () => testEnv({ RUNTIME_RELEASE: '2026.09.01-3', AISAR_MODEL_NAME: 'MiniMax-M3' });
+
+  it('records a quick reply answered without tools as conversation', async () => {
+    const { record, toolEvents } = await completeRun(env(), { responseMode: 'quick' }, [
+      { type: 'delta', delta: 'Yes, Sunday too.' },
+    ]);
+    expect(record).toEqual({ kind: 'conversation', status: 'completed' });
+    expect(toolEvents).toBe(0);
+  });
+
+  it('records a quick reply that used a tool as work, with the tool on the run trace', async () => {
+    const { record, toolEvents } = await completeRun(env(), { responseMode: 'quick' }, [
+      { type: 'tool.started', tool: 'web_search', preview: 'opening hours' },
+      { type: 'delta', delta: 'Yes, Sunday too.' },
+    ]);
+    expect(record).toEqual({ kind: 'work', status: 'completed' });
+    expect(toolEvents).toBe(1);
+  });
+
+  it('records deep mode as work even without tools', async () => {
+    const { record } = await completeRun(env(), { responseMode: 'deep' }, [
+      { type: 'delta', delta: 'Here is the analysis.' },
+    ]);
+    expect(record).toEqual({ kind: 'work', status: 'completed' });
+  });
+});

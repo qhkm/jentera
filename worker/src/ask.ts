@@ -97,6 +97,7 @@ export async function retrieveHermesContext(
           from (
             select objective, outcome, occurred_at
               from work_record
+             where kind = 'work'
              order by occurred_at desc
              limit ${workLimit}
           ) w

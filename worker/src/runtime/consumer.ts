@@ -41,7 +41,15 @@ import {
   type RuntimeTask,
   type RuntimeTaskKind,
 } from './tasks';
-import { append, finishRun, recordWork, resumeRunAfterApproval, startRun, updateWorkForRun } from '../runs';
+import {
+  append,
+  finishRun,
+  recordWork,
+  resumeRunAfterApproval,
+  startRun,
+  updateWorkForRun,
+  workKindForRun,
+} from '../runs';
 import {
   dispatchRuntimeRun,
   decideRuntimeTaskApproval,
@@ -1318,6 +1326,14 @@ export async function handleRuntimeMessage(
                   }
                   if (event.type === 'tool.started') {
                     currentActivity = statusLine(event.tool).replace(/_/g, ' ');
+                    /* On the durable trace, so completion (maybe a later
+                       slice) can tell work from conversation. */
+                    if (lease.task.runId) {
+                      const toolRunId = lease.task.runId;
+                      await withTenant(env, message.businessId, (tx) =>
+                        append(tx, message.businessId, toolRunId, 'agent.tool', { tool: event.tool }))
+                        .catch(() => undefined);
+                    }
                     await web?.status(hermesToolLine(event.tool, event.preview));
                     if (liveStream && !toolShown.has(event.tool)) {
                       toolShown.add(event.tool);
@@ -1672,6 +1688,7 @@ export async function handleRuntimeMessage(
           if (!lease.task.runId || (successful && outcome.payload.telegram)) return done;
           await recordWork(tx, message.businessId, {
             runId: lease.task.runId,
+            kind: await workKindForRun(tx, message.businessId, lease.task.runId),
             objective: outcome.payload.objective ?? outcome.payload.input.slice(0, 1_000),
             outcome: outcome.summary,
             status: successful ? 'completed' : 'failed',

@@ -8,7 +8,7 @@ import {
   TelegramLiveStream,
 } from './connectors/telegram';
 import { policyFor, type Policy } from './policy';
-import { append, finishRun, recordWork, updateWorkForRun } from './runs';
+import { append, finishRun, recordWork, updateWorkForRun, workKindForRun } from './runs';
 import { sanitizePublicRuntimeText } from './runtime/public-output';
 
 export interface TelegramIncoming {
@@ -152,14 +152,17 @@ export async function sendAndRecord(
       connector: 'telegram',
       messageId: sent.messageId,
     });
+    const kind = await workKindForRun(tx, businessId, runId);
     const amended = await updateWorkForRun(tx, businessId, runId, {
       status: 'completed',
       outcome: visibleText,
-      minutesSaved: 3,
+      minutesSaved: kind === 'work' ? 3 : null,
+      kind,
     });
     if (!amended) {
       await recordWork(tx, businessId, {
         runId,
+        kind,
         objective: `Help ${incoming.from} on Telegram`,
         outcome: visibleText.slice(0, 500),
         status: 'completed',
