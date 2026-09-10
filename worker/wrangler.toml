@@ -98,6 +98,19 @@ AISAR_DEEP_MODEL_NAME = "deepseek-v4-flash"
 # Trial routes every sprite accepts beside quick and deep. Traffic only moves
 # for businesses named in AISAR_QUICK_MODEL_OVERRIDES (quick replies only).
 AISAR_CANDIDATE_MODEL_NAMES = "MiniMax-M3"
+# Kitakod Ventures trials deepseek-v4-flash on quick replies from 2026-09-10.
+# Both MiniMax routes bill $0.60/M in and $2.40/M out; DS4 bills $0.06/$0.12,
+# ten and twenty times less, and input is ~98% of the bill (September: 1,280
+# output tokens per run against 77,086 input). MiniMax quick took 96% of the
+# month's spend on 87% of its calls while DS4 carried the most tokens per call
+# for 3.8%. docs/reply-latency.md also probes DS4 fastest per call, 1.0-2.0 s
+# and stable. What is untested is answer quality: DS4 returns ~40 characters of
+# reasoning where M2.7 returns 160-180, and no quality comparison exists yet.
+# Quick keeps its 300 s ceiling either way (QUICK_RUN_CAP_SECONDS in
+# runtime/run-task.ts caps on mode, not model), so the failure to watch for is
+# a reply that hits the cap where M2.7 would have landed. To end the trial,
+# clear this line: DS4 is already the deep route, so nothing is reprovisioned.
+AISAR_QUICK_MODEL_OVERRIDES = "4e8c2593-2af2-494f-b157-fec0295a50b5=deepseek-v4-flash"
 # Routines v1 (docs/plans/2026-09-09-routines-api-v1.md). Off until the
 # backend acceptance gate is green; then one canary business id here first.
 # Canary: Kitakod Ventures only, 2026-09-09. Empty allowlist = every business.

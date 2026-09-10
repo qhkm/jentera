@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { modelForResponseMode, responseModeFor, routedModelNames } from '../src/runtime/response-mode';
+import { modelCostMicrousd } from '../src/runtime/usage';
 
 describe('responseModeFor', () => {
   it.each([
@@ -83,5 +85,47 @@ describe('candidate routes and per-business quick overrides', () => {
     ]);
     expect(routedModelNames({ AISAR_MODEL_NAME: 'one', AISAR_CANDIDATE_MODEL_NAMES: 'one, two' }))
       .toEqual(['one', 'two']);
+  });
+});
+
+/* An override is a deployed string, and both ways it can be wrong fail on a
+   live request rather than at deploy: `quickModelOverride` throws when the
+   model is not one the sprites are provisioned to accept, and
+   `modelCostMicrousd` throws when it carries no price. Read the config that
+   actually ships rather than restating it here, so the two cannot drift. */
+describe('the deployed model routing in wrangler.toml', () => {
+  const toml = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8');
+  const value = (key: string): string | undefined =>
+    toml.match(new RegExp(`^${key} = "([^"]*)"`, 'm'))?.[1];
+
+  const env = {
+    AISAR_MODEL_NAME: value('AISAR_MODEL_NAME'),
+    AISAR_DEEP_MODEL_NAME: value('AISAR_DEEP_MODEL_NAME'),
+    AISAR_CANDIDATE_MODEL_NAMES: value('AISAR_CANDIDATE_MODEL_NAMES'),
+    AISAR_QUICK_MODEL_OVERRIDES: value('AISAR_QUICK_MODEL_OVERRIDES'),
+  };
+
+  const overridden = (env.AISAR_QUICK_MODEL_OVERRIDES ?? '')
+    .split(',')
+    .map((pair) => pair.trim())
+    .filter(Boolean)
+    .map((pair) => pair.slice(0, pair.indexOf('=')).trim());
+
+  it('routes every quick override to a model the sprites accept', () => {
+    for (const businessId of overridden) {
+      expect(routedModelNames(env)).toContain(modelForResponseMode(env, 'quick', businessId));
+    }
+  });
+
+  it('prices every model it routes, so a run can be billed', () => {
+    for (const model of routedModelNames(env)) {
+      expect(() => modelCostMicrousd(model, 1_000, 100)).not.toThrow();
+    }
+  });
+
+  it('leaves deep work on the deep route for an overridden business', () => {
+    for (const businessId of overridden) {
+      expect(modelForResponseMode(env, 'deep', businessId)).toBe(env.AISAR_DEEP_MODEL_NAME);
+    }
   });
 });
