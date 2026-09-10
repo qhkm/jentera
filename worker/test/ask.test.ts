@@ -250,6 +250,8 @@ describe('the durable Hermes agent request', () => {
     expect(prepared.instructions).toMatch(/owner and their team/i);
     expect(prepared.instructions).toMatch(/never as one of the business's customers/i);
     expect(prepared.instructions).toMatch(/do not behave as a public customer-support bot/i);
+    /* MiniMax slipped "上次" into a Malay reply on 2026-09-10. */
+    expect(prepared.instructions).toMatch(/one language and\s+one script/i);
   });
 
   it('requires live research for current questions and keeps source links in the answer', () => {

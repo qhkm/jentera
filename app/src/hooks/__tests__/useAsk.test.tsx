@@ -191,6 +191,13 @@ describe('useAsk durable answers', () => {
     act(() => options?.onProgress?.({ type: 'delta', text: ' Yes.' }));
     expect(result.current!.messages[1]).toMatchObject({ text: 'We are open on Sunday. Yes.' });
     expect(result.current!.messages[1].liveStatus).toBeUndefined();
+    // Stripped thinking blocks and step lines leave their newlines behind
+    // between tool calls; the reply keeps whitespace, so a run of them was a
+    // tall empty gap mid-answer. Runs collapse to one blank line.
+    act(() => options?.onProgress?.({ type: 'delta', text: '\n\n' }));
+    act(() => options?.onProgress?.({ type: 'delta', text: '\n \n\n' }));
+    act(() => options?.onProgress?.({ type: 'delta', text: '\nHey boss' }));
+    expect(result.current!.messages[1].text).toBe('We are open on Sunday. Yes.\n\nHey boss');
 
     await act(async () => {
       resolveAnswer?.({ text: 'We are open on Sunday, 9 to 5.', usedKeys: [], grounded: true });

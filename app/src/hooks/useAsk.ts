@@ -322,7 +322,13 @@ export function useAsk(
             onProgress: (event: AskProgressEvent) => {
               const project = (message: AskMessage): AskMessage => {
                 if (event.type === 'delta') {
-                  const text = (message.state === 'streaming' ? message.text : '') + (event.text ?? '');
+                  /* Stripped thinking blocks and step lines leave their
+                     newlines behind between tool calls; the reply keeps
+                     whitespace, so a run of them was a tall empty gap
+                     mid-answer. Runs collapse to one blank line. */
+                  const text = ((message.state === 'streaming' ? message.text : '') + (event.text ?? ''))
+                    .replace(/\n(?:[ \t]*\n){2,}/g, '\n\n')
+                    .replace(/^\s+/, '');
                   /* A blank first chunk (a newline before the answer) would
                      replace the status bubble with an empty reply. */
                   if (!text.trim()) return message;
