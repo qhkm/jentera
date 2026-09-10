@@ -20,6 +20,36 @@ identical: what an owner can connect this week, what needs a registration
 somebody has to start now, and what has no path at all and should stop being
 planned for.
 
+## The line: prepare, do not file
+
+Regulated and high-stakes work is last, or absent. Not deferred pending a
+design — excluded from the roadmap until everything unregulated is done, and
+in some cases excluded entirely.
+
+This is a product decision and it is worth stating plainly, because the
+commercially attractive items are exactly the ones on the wrong side of it. A
+mandate makes the customer buy; it also makes a regulator the counterparty
+when the software is wrong.
+
+The line runs between **preparing** and **filing**, and most of the value sits
+on the near side of it:
+
+| Near side — build | Far side — do not |
+|---|---|
+| Draft the e-invoice and show what it will contain | Submit it to LHDN |
+| Say which contributions are due and when | File with KWSP, PERKESO or EIS |
+| Reconcile a statement and flag what is unpaid | Move money, or read a live bank balance |
+| Prepare the payroll run for the owner to approve | Pay it |
+| Create a payment link; report whether it was paid | Hold or route funds |
+
+The near column is not a consolation. "Your March e-invoices are drafted and
+two are missing a TIN" is most of the work; pressing submit is the part the
+owner should own anyway, and the part where being wrong is expensive.
+
+Everything below is read with this in mind. Where an area appears in more
+than one tier, it is because its near-side half is buildable and its far-side
+half is not on the list.
+
 ## Triage by how the owner authenticates
 
 Grouping by business area hides the only thing that decides what can be built.
@@ -51,7 +81,6 @@ time is the reason to start now rather than when the connector is scheduled.
 | Marketplaces | Shopee MY, Lazada MY, TikTok Shop | Open Platform app, per-marketplace approval |
 | Documents / email | Google (Drive, Sheets, Gmail, Calendar), Microsoft (OneDrive, Outlook, Teams) | OAuth client, scope review |
 | Internal comms | Slack | OAuth app |
-| E-Invoice | MyInvois / LHDN | Taxpayer client credentials, or intermediary registration |
 | Logistics | Ninja Van, J&T Express | Merchant account API access |
 
 ### Tier 3 — no connector path
@@ -106,9 +135,13 @@ treatment. Three classes, and a connector should declare which it is:
 - **Reaches a person.** "Send payment reminders", "customer follow-up",
   "chase updates". Wrong output reaches the owner's customer in the owner's
   name, and cannot be recalled.
-- **Moves money or files a statutory return.** "Create payment links",
-  "submit e-invoices", "payroll preparation". Wrong output has a counterparty
-  and a regulator.
+- **Has a counterparty.** "Create payment links". Wrong output reaches a
+  business relationship, not just a person, and unwinding it involves someone
+  else's records.
+
+The fourth class — filing a statutory return — is not listed because nothing
+here does it. See "prepare, do not file": those operations are excluded rather
+than gated, and an approval prompt is not the right answer to a regulator.
 
 The approval card shipped on 2026-09-10 is the mechanism for the second and
 third. Which specific operations sit behind it is a product decision this
@@ -256,9 +289,10 @@ What must be decided before code:
 - **Version pinning.** Which AutoCount and SQL Account versions are supported,
   and what happens when the owner upgrades underneath it.
 
-### C. Live bank access — later, and a different business
+### C. Live bank access — not on the list
 
-Deferred deliberately. Bank data aggregation means *becoming an aggregator* —
+Not deferred: removed, until everything unregulated is built and someone
+decides deliberately to enter a licensed business. Bank data aggregation means *becoming an aggregator* —
 the category Brankas, Finantier and Plaid occupy. That is a licensing and
 partnership posture with code attached, not an engineering project, and the
 stake is not comparable to anything else on this page.
@@ -277,27 +311,34 @@ The questions to answer before any design, none of them technical:
   if so, is a read-only product worth the licensing?
 
 Section A delivers most of the value while these stay unanswered, which is the
-argument for answering them slowly.
+argument for not answering them at all for now. Nothing in A forecloses this
+later; starting here would foreclose a great deal.
 
-### D. MyInvois is the timing exception
+### D. E-invoicing — preparation only, and submission not at all
 
-The one place where waiting costs something. It has a real API, and the
-mandate arrives for each business on a known date whether they want it or not,
-so the buying decision is made for them and the only question is who they buy
-from. A business that has already solved e-invoicing will not revisit it.
+The commercially tempting one, and the clearest test of the rule above.
 
-That makes it the strongest candidate to be a product in its own right rather
-than a Jentera feature — and the one item here where "later" has a price.
+The mandate is real and it makes the customer buy. It also makes LHDN the
+counterparty when a submission is wrong, late, or duplicated, for a filing the
+owner is legally responsible for. Filing on their behalf is exactly the shape
+this plan excludes, and the temptation to make an exception for it is the
+reason the rule is written down.
 
-What must be decided:
+What is buildable, and is most of the work:
 
-- **Intermediary or per-taxpayer credentials.** Registering as an intermediary
-  is more work and more responsibility, and it is what lets a firm file for
-  many clients — the same accounting-firm buyer as the bridge.
-- **Where validation failures land.** A rejected submission is the product's
-  real surface; anyone can send a well-formed invoice.
-- **Retention and evidence.** What is kept, for how long, and what an owner
-  can show an auditor.
+- Draft e-invoices from the owner's own records and show what each will
+  contain.
+- Validate before anybody submits — a missing TIN, a malformed classification,
+  a customer with no registration on file. Finding these is the tedious part
+  and the part software is good at.
+- Track what has and has not been submitted, and say so before the deadline.
+
+The owner presses submit, in their own portal, under their own credentials.
+That is not a limitation to apologise for: it keeps a statutory act with the
+person answerable for it, and leaves us on the near side of the line.
+
+Revisit submission only if this becomes a separate, deliberately regulated
+product with its own agreements — never as a feature that grew.
 
 ### On selling any of these to others
 
@@ -335,6 +376,11 @@ it privately forecloses nothing; the reverse is not true.
    codebase, different deployment, different buyer. Last here only because it
    blocks nothing, not because it matters least — see Tier 3 above for why it
    is likely the most defensible thing on this page.
+
+Absent from this list on purpose: live bank access, and submitting anything to
+LHDN, KWSP, PERKESO or EIS. Their preparation halves are in scope and are most
+of the value; the filing halves are not scheduled, and adding them later
+should be a decision somebody makes rather than a step somebody takes.
 
 ## Acceptance gate
 
