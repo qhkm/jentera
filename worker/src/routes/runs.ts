@@ -39,6 +39,7 @@ import {
   type RuntimeTask,
 } from '../runtime/tasks';
 import { publishRunProgressSafely } from '../runtime/progress';
+import { CREDIT_CAP_NOTICE } from '../runtime/consumer';
 import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
 import { modelForResponseMode, responseModeFor } from '../runtime/response-mode';
 import type { ResponseMode } from '../runtime/response-mode';
@@ -353,6 +354,16 @@ export async function handleRuns(
       }, {}, privateHeaders);
     }
     if (state.run.status === 'failed' || state.run.status === 'cancelled') {
+      /* A run the monthly cap refused is the one failure the owner can act
+         on, and Telegram already says so. Only that exact notice crosses
+         from the work record to the browser; every other failure stays the
+         generic line so a provider error can never reach a page. */
+      const failedRunId = state.run.id;
+      const capped = state.run.status === 'failed' && await withTenant(env, id.businessId, async (tx) => {
+        const [row] = await tx<{ outcome: string | null }[]>`
+          select outcome from work_record where run_id = ${failedRunId} order by occurred_at desc limit 1`;
+        return row?.outcome === CREDIT_CAP_NOTICE;
+      });
       return json({
         ok: true,
         runId: state.run.id,
@@ -360,7 +371,9 @@ export async function handleRuns(
         pending: false,
         err: state.run.status === 'cancelled'
           ? 'Jentera stopped that answer.'
-          : 'Jentera could not answer that just now. Please try again.',
+          : capped
+            ? CREDIT_CAP_NOTICE
+            : 'Jentera could not answer that just now. Please try again.',
       }, {}, privateHeaders);
     }
     return json({

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { claimRuntime, markRuntimeReady } from '../src/agent-runtime';
 import type { Env } from '../src/env';
 import { handleRuns } from '../src/routes/runs';
+import { CREDIT_CAP_NOTICE } from '../src/runtime/consumer';
 import { asOwner, asTenant, req, signIn, testEnv, truncateAll } from './harness';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -224,6 +225,26 @@ describe('Ask Jentera runtime bridge', () => {
       pending: false,
       err: 'Jentera could not answer that just now. Please try again.',
     }));
+  });
+
+  it('tells the owner in the web chat when the run failed for the monthly cap', async () => {
+    await readyRuntime(A);
+    const started = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
+      question: 'yo bro', requestId: crypto.randomUUID(), mode: 'work',
+    });
+    const { runId } = await started.json() as { runId: string };
+    /* What the consumer writes when reserveRuntimeUsage refuses: the run
+       fails and Activity gets the credit-cap notice as the outcome. */
+    await asOwner(async (sql) => {
+      await sql`update runtime_task set status = 'failed', last_error = 'runtime budget exceeded (input_tokens)'
+                 where run_id = ${runId}`;
+      await sql`update run set status = 'failed', ended_at = now() where id = ${runId}`;
+      await sql`insert into work_record (business_id, run_id, objective, outcome, status, function, channel, risk)
+                values (${A}, ${runId}, 'yo bro', ${CREDIT_CAP_NOTICE}, 'failed', 'ask', 'app', 'low')`;
+    });
+    const response = await call('GET', `/api/runs/${runId}`, durableEnv(), cookieA);
+    expect(await response.json()).toMatchObject({ ok: true, status: 'failed', err: CREDIT_CAP_NOTICE });
+    expect(CREDIT_CAP_NOTICE).toMatch(/US\$5/);
   });
 
   it('proxies a WebSocket only after origin, session, and tenant checks', async () => {
