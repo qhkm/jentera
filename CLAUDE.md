@@ -123,18 +123,28 @@ HTTP are faked — the two things that would otherwise leave the machine.
 Prefer that over stubbing the data layer; the bugs here have all been
 in the seams a stub would hide.
 
-The queue consumer runs far from Neon: `placement.region` covers HTTP
-invocations only, and a tenant transaction that costs 60 ms in a route
-cost 1.1 to 2.3 s there (measured 2026-09-10). Anything on the reply's
-critical path therefore runs in the placed HTTP handler — the app intake
-and the Telegram webhook run the first slice of a run themselves
-(`src/runtime/inline-slice.ts`) and hand the rest to the queue — and the
-consumer is for what can afford to be slow: long runs, retries, recovery.
+The queue consumer runs far from Neon (LAX and SJC measured 2026-09-10;
+the cron in IAD): `placement.region` covers HTTP invocations only, and a
+tenant transaction that costs 60 ms in a route cost 1.1 to 2.3 s there.
+Two things follow. The app intake and the Telegram webhook run the first
+slice of a run themselves (`src/runtime/inline-slice.ts`) and hand the rest
+to the queue. And the consumer does not run the message itself: it hands it
+through the `SELF` service binding to `POST /api/support/runtime-slice`
+(`src/runtime/placed-slice.ts`), which is the same code in a placed
+invocation — 16 to 28 ms from Neon — and runs it locally only if that
+fails. A request to the public hostname is not a substitute: it is not
+reliably routed (error 522 from IAD), and `request.cf.colo` names the
+ingress edge, not where the code ran.
 
 `docs/reply-latency.md` is where reply time and channel parity live: the
 path a message takes, what Telegram and app chat share, dated measurements
 and the levers tried. `worker/scripts/reply-latency.sh` reproduces its
 numbers; re-run it before quoting them.
+
+`docs/sprites-vs-dedicated-vms.md` records the 10 September 2026 compute-provider
+comparison: retain Sprites, with an Alibaba 4 GB pilot proposed for sustained
+browser workloads. Its costs are illustrative, not our invoice. Read it before
+proposing a provider migration; model-loop cost work is a separate plan.
 
 `test/runtime.test.ts` runs a contract over every adapter in one list.
 A new runtime is added there and either passes or is not finished.

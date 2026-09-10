@@ -222,6 +222,30 @@ What to do instead, in order:
    multi-owner fairness. Build it from the corrected contract below, not
    from the draft.
 
+### Spike result (same day)
+
+A probe endpoint (`GET /api/support/placement`) reported three things about
+the invocation that served it: `request.cf.colo`, the edge nearest the
+handler's own outbound request (`/cdn-cgi/trace`), and one database round
+trip. Called from the queue consumer and from the cron:
+
+| caller | via | `cf.colo` | handler's edge | DB round trip |
+|---|---|---|---|---|
+| queue consumer (LAX, SJC) | public hostname | LAX / SJC | SIN | 16–28 ms |
+| queue consumer (SJC) | service binding | SJC | SIN | 17–25 ms |
+| cron (IAD) | public hostname | – | error 522 | – |
+| cron (IAD) | service binding | – | SIN | 24 ms |
+
+So: queue consumers run on the US west coast and crons in Ashburn; a
+service binding to the Worker itself invokes the placed fetch handler in
+Singapore from either; `request.cf.colo` reports the ingress edge, not the
+execution location, and misled the first reading; the public-hostname
+self-request is not reliable. Alternative A is built on the binding:
+`runtime/placed-slice.ts` hands every queue message to
+`POST /api/support/runtime-slice` through `env.SELF` and falls back to the
+local consumer on anything short of a well-formed result. Shipped
+2026-09-10.
+
 ### Blocking defects in the draft
 
 1. **Tenant binding is unstated.** The RPC inputs carry `connectionId`,

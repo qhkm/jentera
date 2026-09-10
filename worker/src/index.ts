@@ -22,10 +22,9 @@ import { handleSupport } from './routes/support';
 import { handleModelProxy, sweepModelCalls } from './routes/model';
 import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
-import { probePlacement } from './runtime/placement-probe';
+import { handleQueueMessagePlaced } from './runtime/placed-slice';
 import {
   drainRuntimeTaskOutbox,
-  handleRuntimeQueueMessage,
   scheduleRuntimeTaskWake,
   sweepRuntimeDrift,
   sweepRuntimeTaskRecovery,
@@ -165,7 +164,6 @@ export default {
        waiting for each business's next customer message, and re-arm lifecycle
        tasks whose exhaustion was infra noise rather than a product bug. */
     const started = Date.now();
-    ctx.waitUntil(probePlacement(env, 'cron'));
     try {
       const recovered = await sweepRuntimeTaskRecovery(env);
       const drainedBefore = await drainRuntimeTaskOutbox(env);
@@ -183,11 +181,11 @@ export default {
   },
 
   async queue(batch: MessageBatch<RuntimeQueueMessage>, env: Env): Promise<void> {
-    await probePlacement(env, 'queue').catch(() => {});
     for (const message of batch.messages) {
       try {
-        const result = await handleRuntimeQueueMessage(env, message.body);
+        const result = await handleQueueMessagePlaced(env, message.body);
         const queueId = runtimeQueueMessageId(message.body);
+        if (!result.placed) console.warn(`[runtime-queue] task=${queueId} ran unplaced`);
         if (result.action === 'ack') message.ack();
         else if (result.action === 'requeue') {
           console.warn(

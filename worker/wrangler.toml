@@ -177,6 +177,13 @@ namespace_id = "1005"
   limit = 12
   period = 60
 
+# Placement spike (2026-09-10): a service binding to this same Worker, so the
+# queue consumer (which runs unplaced, in LAX) can ask whether a binding call
+# is served at the placed location. Remove with the spike.
+[[services]]
+binding = "SELF"
+service = "aisar-api"
+
 [[durable_objects.bindings]]
 name = "RUN_STREAMS"
 class_name = "RunStream"

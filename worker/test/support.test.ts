@@ -328,3 +328,16 @@ describe('placement probe', () => {
     expect(res.body).toMatchObject({ ok: true, colo: null });
   });
 });
+
+describe('runtime slice for the queue consumer', () => {
+  it('runs one queue message here for a support key holder and returns the consumer result', async () => {
+    const { request, url } = req('POST', '/api/support/runtime-slice', {
+      body: { version: 1, businessId: A, taskId: '22222222-2222-4222-8222-222222222222' },
+    });
+    expect((await handleSupport(request, env, url, {}))?.status).toBe(401);
+    request.headers.set('Authorization', 'Bearer support-secret');
+    const res = await handleSupport(request, env, url, {});
+    expect(res?.status).toBe(200);
+    expect(await res?.json()).toEqual({ action: 'ack', reason: 'missing' });
+  });
+});

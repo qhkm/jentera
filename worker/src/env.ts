@@ -83,6 +83,8 @@ export interface Env {
   /** Key for the staff support endpoints (telegram-pairing minting).
       Falls back to AISAR_OPENROUTER_MANAGEMENT_KEY when unset. */
   AISAR_SUPPORT_KEY?: string;
+  /** Placement spike: a service binding to this Worker itself. */
+  SELF?: Fetcher;
   AISAR_MODEL_NAME?: string;
   /** Optional heavier model used only for explicit deep/research work. */
   AISAR_DEEP_MODEL_NAME?: string;

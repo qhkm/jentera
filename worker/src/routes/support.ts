@@ -14,7 +14,10 @@
    ============================================================ */
 
 import type { Env } from '../env';
-import { withTenant } from '../db';
+import { withTenant, withUser } from '../db';
+import { handleRuntimeQueueMessage } from '../runtime/consumer';
+import type { RuntimeQueueMessage } from '../runtime/consumer';
+import { PLACED_SLICE_PATH } from '../runtime/placed-slice';
 import {
   findConnectionById,
   listConnections,
@@ -83,11 +86,42 @@ export async function handleSupport(
       return json({ ok: false, err: 'method not allowed' }, { status: 405 }, cors);
     }
     const cf = (request as Request & { cf?: { colo?: unknown } }).cf;
+    /* A service-binding request carries no cf, so two more signals: the
+       edge nearest this invocation (/cdn-cgi/trace) and one database round
+       trip (about 5 ms next to Neon, about 200 ms from the US). */
+    let traceColo: string | null = null;
+    try {
+      const trace = await fetch(`${env.API_ORIGIN}/cdn-cgi/trace`, { signal: AbortSignal.timeout(3_000) });
+      traceColo = /^colo=(\w+)$/m.exec(await trace.text())?.[1] ?? null;
+    } catch { /* diagnostic only */ }
+    let dbMs: number | null = null;
+    try {
+      const started = Date.now();
+      await withUser(env, (sql) => sql`select 1`);
+      dbMs = Date.now() - started;
+    } catch { /* diagnostic only */ }
     return json({
       ok: true,
       colo: typeof cf?.colo === 'string' ? cf.colo : null,
+      traceColo,
+      dbMs,
       at: new Date().toISOString(),
     }, {}, cors);
+  }
+
+  /* The queue consumer runs far from Neon; through a service binding this
+     handler runs at the placed location. One queue message in, the
+     consumer's result out (see runtime/placed-slice.ts). */
+  if (url.pathname === PLACED_SLICE_PATH) {
+    if (request.method !== 'POST') {
+      return json({ ok: false, err: 'method not allowed' }, { status: 405 }, cors);
+    }
+    const message = await request.json().catch(() => null) as RuntimeQueueMessage | null;
+    if (!message || typeof message !== 'object' || (message.version !== 1 && message.version !== 2)) {
+      return json({ ok: false, err: 'queue message is invalid' }, { status: 400 }, cors);
+    }
+    const result = await handleRuntimeQueueMessage(env, message);
+    return json(result, {}, cors);
   }
 
   if (url.pathname === '/api/support/drift-sweep') {
