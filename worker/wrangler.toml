@@ -98,6 +98,13 @@ AISAR_DEEP_MODEL_NAME = "deepseek-v4-flash"
 # Trial routes every sprite accepts beside quick and deep. Traffic only moves
 # for businesses named in AISAR_QUICK_MODEL_OVERRIDES (quick replies only).
 AISAR_CANDIDATE_MODEL_NAMES = "MiniMax-M3"
+# Self-hosted Firecrawl backing Hermes web_extract, on stayflow-vps behind
+# nginx and a bearer token (AISAR_EXTRACT_KEY, a secret). Until 2026-09-10 the
+# pinned backend was ddgs, which is search-only: web_extract could not read a
+# page on any sprite, so the agent drove a browser instead and pulled whole
+# page snapshots into the transcript on every research question. Unset this
+# and sprites fall back to exactly that.
+AISAR_EXTRACT_BASE = "https://extract.kitakod.com"
 # Kitakod Ventures trials deepseek-v4-flash on quick replies from 2026-09-10.
 # Both MiniMax routes bill $0.60/M in and $2.40/M out; DS4 bills $0.06/$0.12,
 # ten and twenty times less, and input is ~98% of the bill (September: 1,280

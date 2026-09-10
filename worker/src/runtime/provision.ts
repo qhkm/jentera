@@ -45,6 +45,31 @@ export function runtimeProviderFor(env: Env): RuntimeProvider {
  * Ensure a business has a provider resource and persist its identity.
  * Safe to retry after every partial failure.
  */
+/**
+ * The web-extraction endpoint a sprite should be provisioned with, or null to
+ * leave it on the search-only backend it has today.
+ *
+ * Validated in the control plane rather than on the sprite so a typo is a
+ * provisioning failure someone sees, not twelve machines quietly falling back
+ * to driving a browser. Both fields or neither: a base without a key would
+ * hand every sprite an extractor whose only authentication is the proxy in
+ * front of it, and a key without a base configures nothing at all.
+ *
+ * A bare https origin, because it is concatenated into a client base URL —
+ * a path, query or credentials in it would go somewhere nobody reviewed.
+ */
+export function extractEndpoint(env: Env): { base: string; key: string } | null {
+  const base = env.AISAR_EXTRACT_BASE?.trim() ?? '';
+  const key = env.AISAR_EXTRACT_KEY?.trim() ?? '';
+  if (!base && !key) return null;
+  if (!base) throw new Error('Jentera extract credential is set without an endpoint');
+  if (!/^https:\/\/[A-Za-z0-9][A-Za-z0-9.-]*(?::\d{1,5})?$/.test(base)) {
+    throw new Error('Jentera extract endpoint must be a bare https origin');
+  }
+  if (!key) throw new Error('Jentera extract endpoint is configured without a credential');
+  return { base, key };
+}
+
 export async function ensureProviderRuntime(
   env: Env,
   businessId: string,
@@ -122,6 +147,8 @@ async function bootstrapRuntime(
 
   const modelKey = await runtimeModelKey(env, businessId, runtime.providerName);
 
+  const extract = extractEndpoint(env);
+
   const secrets = await withTenant(env, businessId, (tx) =>
     getRuntimeSecrets(env, tx, businessId),
   );
@@ -136,6 +163,9 @@ async function bootstrapRuntime(
     field('MODEL_NAME_B64', modelName),
     field('DEEP_MODEL_NAME_B64', deepModelName),
     ...(candidates.length ? [field('CANDIDATE_MODEL_NAMES_B64', candidates.join(','))] : []),
+    ...(extract
+      ? [field('EXTRACT_BASE_B64', extract.base), field('EXTRACT_KEY_B64', extract.key)]
+      : []),
     field('HERMES_TAG_B64', 'v2026.9.8'),
     field('HERMES_COMMIT_B64', 'ff5b9fcfb029e230a2d3f90d1a3c06260ea1d413'),
   ].join('\n') + '\n';
