@@ -803,9 +803,12 @@ describe('RunnerClient capability attestation', () => {
       region: 'sin',
       capabilities: ['computer_use'],
     });
+    /* `config` is null until a runtime runs a bundle that fetches one, and
+        asserting that explicitly keeps the readiness shape pinned. */
     await expect(c.ready()).resolves.toEqual({
       region: 'sin',
       capabilities: ['computer_use'],
+      config: null,
     });
   });
 
@@ -813,10 +816,12 @@ describe('RunnerClient capability attestation', () => {
     const c = client(['computer_use'], {
       ...baseReadyz,
       capabilities: ['computer_use', 'web_search'],
+      config: null,
     });
     await expect(c.ready()).resolves.toEqual({
       region: null,
       capabilities: ['computer_use', 'web_search'],
+      config: null,
     });
   });
 
@@ -849,12 +854,39 @@ describe('RunnerClient capability attestation', () => {
     await expect(c.ready()).resolves.toEqual({
       region: null,
       capabilities: ['computer_use'],
+      config: null,
     });
+  });
+
+  it('keeps a well-formed config attestation and drops nonsense', async () => {
+    /* Diagnostic, not a gate: a runner reporting rubbish must cost the caller
+       information, never the dispatch. So anything unrecognised becomes null
+       rather than throwing. */
+    const good = client(undefined, {
+      ...baseReadyz,
+      config: {
+        schema: 1, version: 'fbd722a39cdc8738', source: 'control-plane',
+        appliedAt: '2026-09-10T10:00:00Z', pendingVersion: 'aaaabbbbccccdddd',
+      },
+    });
+    await expect(good.ready()).resolves.toMatchObject({
+      config: {
+        version: 'fbd722a39cdc8738',
+        source: 'control-plane',
+        appliedAt: '2026-09-10T10:00:00Z',
+        pendingVersion: 'aaaabbbbccccdddd',
+      },
+    });
+
+    for (const config of [null, 'nope', [], {}, { schema: 1 }]) {
+      const c = client(undefined, { ...baseReadyz, config });
+      await expect(c.ready()).resolves.toMatchObject({ config: null });
+    }
   });
 
   it('treats an empty expectation list as no requirement', async () => {
     const c = client([], baseReadyz);
-    await expect(c.ready()).resolves.toEqual({ region: null, capabilities: [] });
+    await expect(c.ready()).resolves.toEqual({ region: null, capabilities: [], config: null });
   });
 });
 

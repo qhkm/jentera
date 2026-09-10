@@ -1,5 +1,10 @@
 import type { Env } from '../env';
-import { getRuntime, getRuntimeAccess, getRuntimeSecrets } from '../agent-runtime';
+import {
+  getRuntime,
+  getRuntimeAccess,
+  getRuntimeSecrets,
+  recordObservedConfigVersion,
+} from '../agent-runtime';
 import { withTenant } from '../db';
 import type { RuntimeProvider } from './provider';
 import { runtimeProviderFor } from './provision';
@@ -170,7 +175,14 @@ export async function dispatchRuntimeRun(
     expectedRelease: runtime.desiredRelease,
     fetch: options.fetch,
   });
-  await client.ready();
+  const readiness = await client.ready();
+  /* Convergence, observed rather than pushed. Best effort: a diagnostic must
+     not be able to cost the run it is describing. */
+  if (readiness.config) {
+    await withTenant(env, task.businessId, (tx) =>
+      recordObservedConfigVersion(tx, task.businessId, readiness.config!.version))
+      .catch(() => undefined);
+  }
   stage('runner_ready');
   const runSeconds = runSecondsFor(payload.responseMode, reservation.maxRunSeconds);
   if (Date.now() - reservation.startedAt.getTime() > runSeconds * 1_000) {
