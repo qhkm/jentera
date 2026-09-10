@@ -66,7 +66,9 @@ export function AskReply({
       {message.pendingId ? (
         message.state === 'streaming'
           ? <div className="ask-reply-text" aria-live="polite">{message.text}</div>
-          : linkedTask ? <p className="sr-only" role="status">{message.text}</p> : <TypingBubble label={message.text} />
+          : linkedTask
+            ? <p className="sr-only" role="status">{message.text}</p>
+            : <TypingBubble label={message.text} since={message.startedAt} />
       ) : (
         <>
           <div className="ask-reply-text" role={failed ? 'alert' : undefined}>

@@ -50,3 +50,18 @@ describe('AskReply: conversation versus work', () => {
     await waitFor(() => expect(container.querySelector('.chat-task-card')).not.toBeNull());
   });
 });
+
+describe('AskReply: the waiting bubble keeps moving', () => {
+  /* Native Hermes shows something changing the whole time it works. Between
+     two status lines nothing moved here for seconds, so the owner could not
+     tell a slow reply from a dead one. */
+  it('counts the seconds since the message was sent next to the status', async () => {
+    const { container } = mount({
+      from: 'ai', text: '💭 Thinking…', mode: 'work', state: 'working',
+      pendingId: 'p2', depth: 'quick', startedAt: Date.now() - 3_000,
+    });
+    await waitFor(() => expect(container.textContent).toContain('💭 Thinking…'));
+    await waitFor(() => expect(container.textContent).toMatch(/· [34]s/));
+    await waitFor(() => expect(container.textContent).toMatch(/· [45]s/), { timeout: 3_000 });
+  });
+});

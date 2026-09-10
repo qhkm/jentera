@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Icon } from "@/components/Icon";
 import { Button, Tag, type Tone } from "@/components/ui";
 
@@ -58,7 +58,24 @@ export function WorkPulse({
  * live state text (queued / waking / working / retrying). A pending answer
  * reads like a normal chat turn instead of a full-width status card.
  */
-export function TypingBubble({ label }: { label: string }) {
+/** Whole seconds since `since`, ticking once a second; null without one. */
+function useElapsedSeconds(since?: number): number | null {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (since === undefined) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [since]);
+  if (since === undefined) return null;
+  return Math.max(0, Math.floor((now - since) / 1_000));
+}
+
+/** The waiting bubble. With `since` it counts the seconds up next to the
+    status, so a slow reply and a dead one look different: the agent's own
+    status lines can be seconds apart, and nothing else moved in between. */
+export function TypingBubble({ label, since }: { label: string; since?: number }) {
+  const seconds = useElapsedSeconds(since);
   return (
     <div className="bubble bubble-in flex min-w-0 items-center gap-2.5">
       <span className="typing" aria-hidden="true">
@@ -71,6 +88,9 @@ export function TypingBubble({ label }: { label: string }) {
         className="min-w-0 text-[13px] font-medium leading-snug text-text-secondary"
       >
         {label}
+        {seconds !== null && seconds >= 1 ? (
+          <span className="text-text-tertiary tabular-nums"> · {seconds}s</span>
+        ) : null}
       </span>
     </div>
   );

@@ -33,6 +33,8 @@ export interface AskMessage {
   agent?: string;
   /** Correlates an in-flight answer without exposing runtime ids in the UI. */
   pendingId?: string;
+  /** When the question was sent; the waiting bubble counts up from it. */
+  startedAt?: number;
   /** The request that failed, retained so the UI can offer a real retry. */
   failedQuestion?: string;
   failedMode?: AskMode;
@@ -286,7 +288,10 @@ export function useAsk(
             messages: [
               ...session.messages,
               { from: 'you', text: question },
-              { from: 'ai', text: t('ask.working'), pendingId, state: 'sending', mode, depth: deep ? 'deep' : 'quick' },
+              {
+                from: 'ai', text: t('ask.working'), pendingId, state: 'sending', mode,
+                depth: deep ? 'deep' : 'quick', startedAt: now,
+              },
             ],
           };
           return {
