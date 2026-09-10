@@ -323,6 +323,9 @@ export function useAsk(
               const project = (message: AskMessage): AskMessage => {
                 if (event.type === 'delta') {
                   const text = (message.state === 'streaming' ? message.text : '') + (event.text ?? '');
+                  /* A blank first chunk (a newline before the answer) would
+                     replace the status bubble with an empty reply. */
+                  if (!text.trim()) return message;
                   return { ...message, text, state: 'streaming', liveStatus: undefined };
                 }
                 /* Once answer text is on screen, a status line must not erase

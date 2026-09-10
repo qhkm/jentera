@@ -175,6 +175,10 @@ describe('useAsk durable answers', () => {
     act(() => options?.onProgress?.({ type: 'thinking', detail: 'checking the calendar' }));
     expect(result.current!.messages[1].text).toContain('checking the calendar');
 
+    // a blank first chunk (a newline before the answer) must not replace the
+    // status bubble with an empty reply
+    act(() => options?.onProgress?.({ type: 'delta', text: '\n' }));
+    expect(result.current!.messages[1]).toMatchObject({ text: '💭 checking the calendar', state: 'working' });
     act(() => options?.onProgress?.({ type: 'delta', text: 'We are ' }));
     act(() => options?.onProgress?.({ type: 'delta', text: 'open on Sunday.' }));
     expect(result.current!.messages[1]).toMatchObject({ text: 'We are open on Sunday.', state: 'streaming' });
