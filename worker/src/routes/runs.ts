@@ -551,6 +551,7 @@ async function startDurableAsk(
      dispatch, live relay — runs here under waitUntil, and the queue only
      gets a delayed wake as the safety net. Without a context the queue
      does all of it, as before. */
+  if (ctx) ctx.waitUntil(runInlineSlice(env, businessId, created.task.id, inline));
   try {
     await signalRuntimeTask(env, businessId, created.task.id, {
       delaySeconds: ctx ? INLINE_SAFETY_NET_SECONDS : 0,
@@ -559,13 +560,16 @@ async function startDurableAsk(
     /* Queue errors are intentionally not interpolated. Provider/library
        exceptions are not a safe logging contract for credentials. */
     console.error('[durable-ask] queue signal failed');
-    return json({
-      ok: false,
-      err: 'Jentera could not queue that answer. Please try again.',
-    }, { status: 503 }, cors);
+    /* The inline slice is already running; only its safety net is missing,
+       and the recovery sweep re-arms a lease whose owner died. */
+    if (!ctx) {
+      return json({
+        ok: false,
+        err: 'Jentera could not queue that answer. Please try again.',
+      }, { status: 503 }, cors);
+    }
   }
   await publishRunProgressSafely(env, businessId, created.runId, 'queued');
-  if (ctx) ctx.waitUntil(runInlineSlice(env, businessId, created.task.id, inline));
   return json({
     ok: true,
     pending: true,

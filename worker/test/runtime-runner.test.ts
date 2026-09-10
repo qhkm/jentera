@@ -1350,5 +1350,10 @@ describe('resuming a run stream across observation slices', () => {
     expect(attached).toBe(2);
     expect(published.filter((event) => event.type === 'delta').map((event) => event.text).join(''))
       .toBe('We are open on Sunday.');
+    /* A quick reply is a conversation, not a research task: the label that
+       waits for the first token says so. */
+    const statuses = published.filter((event) => event.type === 'status').map((event) => event.detail);
+    expect(statuses).toContain('💭 Thinking…');
+    expect(statuses.join(' ')).not.toContain('Researching');
   });
 });

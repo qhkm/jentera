@@ -464,13 +464,14 @@ describe('the first slice of a web ask runs inline from the intake', () => {
       return Response.json({ error: 'not found' }, { status: 404 });
     };
     const background: Promise<unknown>[] = [];
+    const waitUntil = vi.fn((promise: Promise<unknown>) => { background.push(promise); });
     const incoming = req('POST', '/api/runs/ask', {
       cookie: cookieA,
       body: { question: 'Are we open on Sunday?', requestId: crypto.randomUUID() },
     });
     const response = await handleRuns(
       incoming.request, env, incoming.url, {},
-      { waitUntil: (promise) => { background.push(promise); } },
+      { waitUntil },
       { provider, fetch: runnerFetch },
     );
     expect(response?.status).toBe(202);
@@ -488,5 +489,8 @@ describe('the first slice of a web ask runs inline from the intake', () => {
       { version: 1, businessId: A, taskId: expect.any(String) },
       { delaySeconds: 30 },
     );
+    /* The slice starts the moment the task is committed; the queue send and
+       the stream publish happen while it already runs. */
+    expect(waitUntil.mock.invocationCallOrder[0]).toBeLessThan(send.mock.invocationCallOrder[0]);
   });
 });

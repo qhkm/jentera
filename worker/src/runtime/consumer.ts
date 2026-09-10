@@ -1428,7 +1428,11 @@ export async function handleRuntimeMessage(
               : undefined,
             onStage: (stage, elapsedMs) => {
               latency(stage, elapsedMs);
-              const status = STAGE_STATUS[stage];
+              /* A quick reply is a conversation, not a research task: the
+                 label that waits for the first token says so. */
+              const status = quickReply && stage === 'run_recorded'
+                ? QUICK_REPLY_STATUS
+                : STAGE_STATUS[stage];
               if (status) void web?.status(status);
               if (quickReply) return;
               if (status) void liveStream?.setStatus(status);
