@@ -33,7 +33,12 @@ Both channels end up on the same durable path. Only the first step differs.
    transaction cost it 1.1 to 2.3 s. The Telegram webhook does the same
    since 2026-09-10 (`handleIncoming` with a context): admission, dispatch
    and the first slice run under the webhook's `waitUntil`, and the intake
-   message goes to the queue with the 30 s delay.
+   message goes to the queue with the 30 s delay. A message that arrives
+   while the previous reply is still running (one reply per business at a
+   time) waits for the slot inside the slice, polling every second and
+   telling the web chat "Finishing your previous message first…", instead
+   of being parked for the queue's watchdog: measured 18.6 s to Hermes that
+   way on 2026-09-10 against 1.0 to 1.3 s for the neighbouring messages.
 4. **The agent loop.** Hermes calls the model through the worker's proxy
    (`https://api.jentera.ai/v1/model` → `router.fmcv.my`), usually several
    times per reply (think, maybe a tool, answer). This is where most of the
