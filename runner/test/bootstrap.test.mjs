@@ -18,11 +18,39 @@ afterEach(async () => {
   await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
-test('bootstrap treats its transfer as data, not shell code', async () => {
-  const transfer = await tempTransfer('SURPRISE_B64=YWJj\n');
+test('bootstrap reports an unknown transfer field and carries on', async () => {
+  /* It used to exit 1 here. That turned "the control plane is one deploy
+     ahead of the bundle it pins" — an ordinary moment in any rollout — into
+     a sprite that would not boot: on 2026-09-10 every runtime rejected
+     EXTRACT_BASE_B64 and upgrade tasks retried to exhaustion. The value has
+     already passed the base64 check, so an unknown name is inert data. It
+     is reported, not obeyed, and not fatal.
+
+     Reaching a *later* failure is the assertion: it proves the unknown
+     field did not stop the run. */
+  const transfer = await tempTransfer(`SURPRISE_B64=YWJj\n${fields()}`);
+  const result = run(transfer);
+  assert.match(result.stderr, /ignoring unknown field SURPRISE_B64/);
+  assert.doesNotMatch(result.stderr, /transfer contains an unknown field/);
+});
+
+test('bootstrap still refuses a transfer value that is not base64', async () => {
+  /* The relaxation above is only for unknown *names*. A value that is not
+     base64 is still refused, because that is what keeps the transfer data
+     rather than something that could become shell. */
+  const transfer = await tempTransfer('BUSINESS_ID_B64=not$(id)base64\n');
   const result = run(transfer);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /unknown field/);
+  assert.match(result.stderr, /invalid base64/);
+});
+
+test('bootstrap still refuses a transfer missing a required field', async () => {
+  /* Surplus is tolerated; absence is not. A missing runner key must fail as
+     loudly as it ever did. */
+  const transfer = await tempTransfer('BUSINESS_ID_B64=YWJj\n');
+  const result = run(transfer);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /missing/);
 });
 
 test('bootstrap refuses an unreviewed model endpoint before installing anything', async () => {
