@@ -59,8 +59,13 @@ create policy model_call_delete on public.model_call
   for delete to aisar_app
   using (true);
 
+-- 000_role.sql's default privileges hand every new table select/insert/
+-- update/delete to aisar_app, so the grant below is stated in full and the
+-- rest revoked explicitly. A recorded call is a fact about something that
+-- already happened: the app role appends and sweeps, and never rewrites.
 revoke all on public.model_call from public;
 grant select, insert, delete on public.model_call to aisar_app;
+revoke update, truncate, references, trigger on public.model_call from aisar_app;
 
 comment on table public.model_call is
   'Per-call diagnostic for the runtime model proxy: token counts and prompt '

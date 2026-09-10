@@ -497,6 +497,24 @@ describe('per-call model accounting', () => {
     expect(await ledgerMicrousd()).toBeNull();
   });
 
+  it('lets the app role append and sweep, but never rewrite a recorded call', async () => {
+    /* 000_role.sql's default privileges hand every new table update as well,
+       so the migration has to revoke it back. A recorded call is a fact
+       about something that already happened. */
+    await asOwner((sql) => sql`
+      insert into model_call (
+        rider_id, model, streamed, usage_seen, request_bytes, message_count,
+        tool_count, system_chars, tools_chars, history_chars, last_user_chars,
+        upstream_status, latency_ms
+      ) values (${RID}, 'MiniMax-M3', false, true, 10, 1, 0, 0, 0, 0, 2, 200, 10)`);
+    await expect(asApp((sql) => sql`
+      update model_call set prompt_tokens = 1 where rider_id = ${RID}`))
+      .rejects.toThrow(/permission denied/i);
+    const [row] = await asApp((sql) => sql<{ granted: boolean }[]>`
+      select has_table_privilege('aisar_app', 'public.model_call', 'update') as granted`);
+    expect(row.granted).toBe(false);
+  });
+
   it('sweeps rows past the retention window and leaves fresh ones', async () => {
     const env = proxyEnv();
     await asOwner((sql) => sql`
