@@ -80,12 +80,12 @@ describe('compose-first Ask Jentera', () => {
     await mount(<Harness />, repo);
     const input = await screen.findByRole('textbox');
     await user.type(input, 'Prepare a reply');
-    await user.keyboard('{Enter}');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
     await waitFor(() => expect(repo.ask).toHaveBeenCalledOnce());
     const send = screen.getByRole('button', { name: 'Send message' });
     expect(send).toBeDisabled();
     await user.type(input, 'Make it suitable for a quotation');
-    await user.keyboard('{Enter}');
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
     expect(repo.ask).toHaveBeenCalledOnce();
     expect(input).toHaveValue('Make it suitable for a quotation');
     await act(async () =>
@@ -103,15 +103,23 @@ describe('compose-first Ask Jentera', () => {
     expect(input).toHaveValue('Make your last answer shorter, keeping the important details.');
   });
 
-  it('does not submit Enter during IME composition or Shift+Enter', async () => {
+  it('uses Enter for line breaks and submits only with Cmd/Ctrl+Enter', async () => {
+    const user = userEvent.setup();
     const repo = new LocalRepository();
-    repo.ask = vi.fn();
+    repo.ask = vi.fn().mockResolvedValue({ text: 'Done.', grounded: false, usedKeys: [] });
     await mount(<Harness />, repo);
     const input = await screen.findByRole('textbox');
+    await user.type(input, 'First line{Enter}Second line');
+    expect(input).toHaveValue('First line\nSecond line');
+    expect(repo.ask).not.toHaveBeenCalled();
+
     fireEvent.change(input, { target: { value: '你好' } });
     fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
     fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
     expect(repo.ask).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
+    expect(repo.ask).toHaveBeenCalledWith('你好', expect.objectContaining({ mode: 'work' }));
   });
 
   it('retries the failed question and keeps the work mode', async () => {
