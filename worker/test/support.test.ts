@@ -315,3 +315,16 @@ describe('on-demand drift sweep', () => {
     expect((await sweep({ key: 'support-secret', method: 'GET' })).status).toBe(405);
   });
 });
+
+describe('placement probe', () => {
+  /* Where a request was served, for the spike that decides whether a
+     worker-originated request to its own hostname is placed next to Neon
+     (docs/plans/2026-09-10-business-runtime-durable-object.md, "Stress
+     test"). Node has no request.cf, so the colo is null here. */
+  it('reports the serving data centre to a support key holder only', async () => {
+    expect((await support('/api/support/placement')).status).toBe(401);
+    const res = await support('/api/support/placement', { key: 'support-secret' });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, colo: null });
+  });
+});

@@ -22,6 +22,7 @@ import { handleSupport } from './routes/support';
 import { handleModelProxy, sweepModelCalls } from './routes/model';
 import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
+import { probePlacement } from './runtime/placement-probe';
 import {
   drainRuntimeTaskOutbox,
   handleRuntimeQueueMessage,
@@ -164,6 +165,7 @@ export default {
        waiting for each business's next customer message, and re-arm lifecycle
        tasks whose exhaustion was infra noise rather than a product bug. */
     const started = Date.now();
+    ctx.waitUntil(probePlacement(env, 'cron'));
     try {
       const recovered = await sweepRuntimeTaskRecovery(env);
       const drainedBefore = await drainRuntimeTaskOutbox(env);
@@ -181,6 +183,7 @@ export default {
   },
 
   async queue(batch: MessageBatch<RuntimeQueueMessage>, env: Env): Promise<void> {
+    await probePlacement(env, 'queue').catch(() => {});
     for (const message of batch.messages) {
       try {
         const result = await handleRuntimeQueueMessage(env, message.body);

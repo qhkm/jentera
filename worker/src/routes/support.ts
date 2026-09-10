@@ -74,6 +74,22 @@ export async function handleSupport(
     return json({ ok: false, err: 'unauthorized' }, { status: 401 }, cors);
   }
 
+  /* Placement spike (2026-09-10): which data centre served this request.
+     Called from the queue consumer and the cron, whose own placement is
+     unknown, to learn whether a worker-originated request to the worker's
+     own hostname runs next to Neon. Remove with the spike. */
+  if (url.pathname === '/api/support/placement') {
+    if (request.method !== 'GET') {
+      return json({ ok: false, err: 'method not allowed' }, { status: 405 }, cors);
+    }
+    const cf = (request as Request & { cf?: { colo?: unknown } }).cf;
+    return json({
+      ok: true,
+      colo: typeof cf?.colo === 'string' ? cf.colo : null,
+      at: new Date().toISOString(),
+    }, {}, cors);
+  }
+
   if (url.pathname === '/api/support/drift-sweep') {
     if (request.method !== 'POST') {
       return json({ ok: false, err: 'method not allowed' }, { status: 405 }, cors);
