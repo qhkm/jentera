@@ -3,7 +3,7 @@ import { claimRuntime, markRuntimeReady } from '../src/agent-runtime';
 import type { Env } from '../src/env';
 import { handleRuns } from '../src/routes/runs';
 import { CREDIT_CAP_NOTICE } from '../src/runtime/consumer';
-import { asOwner, asTenant, req, signIn, testEnv, truncateAll } from './harness';
+import { asOwner, asTenant, fetchFake, req, sendFake, signIn, testEnv, truncateAll } from './harness';
 import { LocalRuntimeProvider } from '../src/runtime';
 import { ensureProviderRuntime } from '../src/runtime/provision';
 
@@ -52,7 +52,7 @@ describe('Ask Jentera runtime bridge', () => {
 
   it('routes a mode-less Ask to durable Hermes work by default', async () => {
     await readyRuntime(A);
-    const send = vi.fn(async () => {});
+    const send = sendFake();
     const response = await call('POST', '/api/runs/ask', durableEnv(send), cookieA, {
       question: 'Give me the quick answer',
       requestId: crypto.randomUUID(),
@@ -92,7 +92,7 @@ describe('Ask Jentera runtime bridge', () => {
 
   it('publishes one tenant-derived durable run without trusting a body business id', async () => {
     await readyRuntime(A);
-    const send = vi.fn(async () => {});
+    const send = sendFake();
     const response = await call('POST', '/api/runs/ask', durableEnv(send), cookieA, {
       question: 'What should I improve?',
       requestId: crypto.randomUUID(),
@@ -125,7 +125,7 @@ describe('Ask Jentera runtime bridge', () => {
 
   it('gives durable chat the same agent prompt and framing Telegram gets', async () => {
     await readyRuntime(A);
-    const send = vi.fn(async () => {});
+    const send = sendFake();
     const response = await call('POST', '/api/runs/ask', durableEnv(send), cookieA, {
       question: 'What should I improve?',
       requestId: crypto.randomUUID(),
@@ -171,7 +171,7 @@ describe('Ask Jentera runtime bridge', () => {
 
   it('reuses the same run for simultaneous-safe request retries', async () => {
     await readyRuntime(A);
-    const send = vi.fn(async () => {});
+    const send = sendFake();
     const env = durableEnv(send);
     const requestId = crypto.randomUUID();
     const [first, second] = await Promise.all([
@@ -309,7 +309,7 @@ describe('Ask Jentera runtime bridge', () => {
       question: 'Stream this', requestId: crypto.randomUUID(), mode: 'work',
     });
     const { runId } = await started.json() as { runId: string };
-    const streamFetch = vi.fn(async () => new Response(null, { status: 204 }));
+    const streamFetch = fetchFake(async () => new Response(null, { status: 204 }));
     const idFromName = vi.fn(() => ({ toString: () => 'stream-id' }));
     const env = durableEnv();
     env.RUN_STREAMS = {
@@ -346,7 +346,7 @@ async function readyRuntime(businessId: string): Promise<void> {
   await asTenant(businessId, (tx) => markRuntimeReady(tx, businessId, RELEASE, 'v1'));
 }
 
-function durableEnv(send = vi.fn(async () => {})): Env {
+function durableEnv(send = sendFake()): Env {
   return testEnv({
     RUNTIME_RELEASE: RELEASE,
     RUNTIME_EXECUTION_ENABLED: 'true',
@@ -390,7 +390,7 @@ async function streamCall(
 }
 
 describe('response mode from the web chat', () => {
-  const modes = (send = vi.fn(async () => {})) => testEnv({
+  const modes = (send = sendFake()) => testEnv({
     RUNTIME_RELEASE: RELEASE,
     RUNTIME_EXECUTION_ENABLED: 'true',
     AISAR_MODEL_NAME: 'quick-model',
@@ -440,7 +440,7 @@ describe('the first slice of a web ask runs inline from the intake', () => {
      itself. The queue message is sent with a delay, as a safety net only. */
   it('starts and finishes a quick reply from the request, the queue only as a safety net', async () => {
     const provider = new LocalRuntimeProvider();
-    const send = vi.fn(async () => {});
+    const send = sendFake();
     const published: Array<Record<string, unknown>> = [];
     const env = testEnv({
       RUNTIME_RELEASE: RELEASE,

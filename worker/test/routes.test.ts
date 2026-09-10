@@ -14,7 +14,7 @@
    ============================================================ */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { asOwner, asTenant, req, signIn, testEnv, truncateAll } from './harness';
+import { asOwner, asTenant, fetchFake, req, sendFake, signIn, testEnv, truncateAll } from './harness';
 import { handleRepo } from '../src/routes/repo';
 import { handleConnect } from '../src/routes/connect';
 import {
@@ -272,7 +272,7 @@ describe('finishing onboarding provisions one Hermes runtime', () => {
       return staff.id;
     });
     const staffCookie = await signIn(staffId);
-    env = automaticRuntimeEnv(vi.fn(async () => {}));
+    env = automaticRuntimeEnv(sendFake());
     const response = await state('POST', '/api/state/onboarding/complete', {
       cookie: staffCookie,
       body: { playbookKey: 'restaurant', channels: ['Telegram'] },
@@ -281,7 +281,7 @@ describe('finishing onboarding provisions one Hermes runtime', () => {
   });
 
   it('atomically commits final answers and one release-deduplicated provisioning task', async () => {
-    const send = vi.fn(async () => {});
+    const send = sendFake();
     env = automaticRuntimeEnv(send);
 
     const completion = {
@@ -327,7 +327,7 @@ describe('finishing onboarding provisions one Hermes runtime', () => {
   });
 
   it('does not let onboarding completion skip required Telegram setup', async () => {
-    const send = vi.fn(async () => {});
+    const send = sendFake();
     env = automaticRuntimeEnv(send);
     const response = await state('POST', '/api/state/onboarding/complete', {
       cookie: cookieA,
@@ -343,14 +343,14 @@ describe('finishing onboarding provisions one Hermes runtime', () => {
   });
 
   it('keeps the durable task recoverable when Queue signaling fails', async () => {
-    env = automaticRuntimeEnv(vi.fn(async () => { throw new Error('queue offline'); }));
+    env = automaticRuntimeEnv(sendFake(async () => { throw new Error('queue offline'); }));
     const failed = await state('POST', '/api/state/onboarding/complete', {
       cookie: cookieA,
       body: { playbookKey: 'restaurant', channels: ['Telegram'] },
     });
     expect(failed.status).toBe(503);
 
-    const retrySend = vi.fn(async () => {});
+    const retrySend = sendFake();
     env = automaticRuntimeEnv(retrySend);
     const retried = await state('POST', '/api/state/onboarding/complete', {
       cookie: cookieA,
@@ -389,7 +389,7 @@ describe('finishing onboarding provisions one Hermes runtime', () => {
   });
 
   it('allows setup to complete after onboarding without forcing an external channel', async () => {
-    env = automaticRuntimeEnv(vi.fn(async () => {}));
+    env = automaticRuntimeEnv(sendFake());
     expect((await state('POST', '/api/state/onboarding/complete', {
       cookie: cookieA,
       body: { playbookKey: 'restaurant', channels: ['Telegram'] },
@@ -649,7 +649,7 @@ describe('connections', () => {
     const code = new URL(view.pairingUrl).searchParams.get('start');
     expect(code).toMatch(/^[A-Za-z0-9_-]{32}$/);
 
-    const fetch = vi.fn(async () =>
+    const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
     vi.stubGlobal('fetch', fetch);
 
@@ -786,13 +786,13 @@ describe('connections', () => {
   });
 
   it('hands an authorised runtime message to Queue before creating any run or task', async () => {
-    const fetch = vi.fn(async () =>
+    const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
     vi.stubGlobal('fetch', fetch);
     const paired = await pairTelegramChat(42);
     fetch.mockClear();
 
-    const send = vi.fn(async () => {});
+    const send = sendFake();
     env = automaticRuntimeEnv(send);
     const response = await telegramHook(
       paired.connectionId,
@@ -827,7 +827,7 @@ describe('connections', () => {
   it('authenticates an approval callback to its paired chat and resumes the same task', async () => {
     const queued: unknown[] = [];
     env = automaticRuntimeEnv(async (message) => { queued.push(message); });
-    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+    const fetch = fetchFake(async (input) => {
       const url = String(input);
       if (url.includes('/v1/tasks/') && url.endsWith('/approval')) {
         return new Response(JSON.stringify({ ok: true, status: 'running' }), {
@@ -936,7 +936,7 @@ describe('connections', () => {
   });
 
   it('timestamps latency from webhook receipt rather than after paid admission', async () => {
-    const fetch = vi.fn(async () =>
+    const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
     vi.stubGlobal('fetch', fetch);
     const paired = await pairTelegramChat(42);
@@ -961,7 +961,7 @@ describe('connections', () => {
   });
 
   it('prewarms an existing Sprite without delaying the durable Queue handoff', async () => {
-    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+    const fetch = fetchFake(async (input) => {
       const url = String(input);
       return new Response(url.endsWith('/healthz')
         ? 'ok'
@@ -1008,7 +1008,7 @@ describe('connections', () => {
   });
 
   it('returns 503 when Queue is unavailable so Telegram redelivers the message', async () => {
-    const fetch = vi.fn(async () =>
+    const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
     vi.stubGlobal('fetch', fetch);
     const paired = await pairTelegramChat(42);
@@ -1053,7 +1053,7 @@ describe('connections', () => {
   });
 
   it('/stop cancels the active queued run for the paired chat before paid admission', async () => {
-    const fetch = vi.fn(async () =>
+    const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
     vi.stubGlobal('fetch', fetch);
     const paired = await pairTelegramChat(42);
@@ -1094,10 +1094,10 @@ describe('connections', () => {
   });
 
   it('/stop keeps usage reserved until the runner confirms termination', async () => {
-    const fetch = vi.fn(async () =>
+    const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
     vi.stubGlobal('fetch', fetch);
-    const send = vi.fn(async () => {});
+    const send = sendFake();
     env = testEnv({ RUNTIME_QUEUE: { send } });
     const paired = await pairTelegramChat(42);
     fetch.mockClear();
@@ -1150,7 +1150,7 @@ describe('connections', () => {
   });
 
   it('/stop is a polite no-op when the paired chat has no active run', async () => {
-    const fetch = vi.fn(async () =>
+    const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
     vi.stubGlobal('fetch', fetch);
     const paired = await pairTelegramChat(42);
@@ -1166,7 +1166,7 @@ describe('connections', () => {
   });
 
   it('/stop from an unpaired chat cannot cancel the paired owner\'s run', async () => {
-    const fetch = vi.fn(async () =>
+    const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
     vi.stubGlobal('fetch', fetch);
     const paired = await pairTelegramChat(42);

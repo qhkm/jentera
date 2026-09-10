@@ -1,0 +1,22 @@
+{
+  /* The test suite, typechecked.
+
+     `tsconfig.json` includes only `src`, so nothing ever checked `test/`
+     — and it showed: eighty-four errors on the first run, most of them
+     fakes declared with no parameters, whose `mock.calls[0][1]` therefore
+     read as `never`. Assertions about what the code *sent* were passing
+     without checking anything.
+
+     Kept separate from `tsconfig.json` rather than folded into it because
+     of `types` below: tests legitimately use Node globals and the Worker
+     must not, so widening the main config would stop it catching a Node
+     API that reached `src`. Both configs run in `pnpm typecheck`.
+
+     `src` is included here as well because the tests import it, and a type
+     error surfaces at the importing file. */
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/workers-types", "node"]
+  },
+  "include": ["src", "test"]
+}

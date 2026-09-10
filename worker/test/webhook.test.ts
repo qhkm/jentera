@@ -14,7 +14,7 @@
    ============================================================ */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { asApp, asOwner, asTenant, truncateAll } from './harness';
+import { asApp, asOwner, asTenant, fetchFake, truncateAll } from './harness';
 import { saveConnection, verifyWebhook, webhookSecret } from '../src/connections';
 import {
   parseCallbackQuery,
@@ -247,7 +247,7 @@ describe('reading an update', () => {
 
 describe('webhook registration', () => {
   it('subscribes to messages and inline-keyboard callback queries', async () => {
-    const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true })));
+    const fetch = fetchFake(async () => new Response(JSON.stringify({ ok: true })));
     vi.stubGlobal('fetch', fetch);
     await setWebhook('123456:token', 'https://api.test/hook', 'secret');
     expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({
@@ -259,7 +259,7 @@ describe('webhook registration', () => {
 describe('automatic reply typing', () => {
   it('refreshes without overlap, stops with the work, and has a hard cap', async () => {
     vi.useFakeTimers();
-    const fetch = vi.fn(async () =>
+    const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: true })));
     vi.stubGlobal('fetch', fetch);
     let finish!: (value: string) => void;
@@ -293,7 +293,7 @@ describe('automatic reply typing', () => {
 
 describe('Hermes-style Telegram live bubbles', () => {
   it('persists the final answer as a copyable ordinary message', async () => {
-    const fetch = vi.fn(async () =>
+    const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
     vi.stubGlobal('fetch', fetch);
 
@@ -307,7 +307,7 @@ describe('Hermes-style Telegram live bubbles', () => {
   });
 
   it('creates a bot-owned bubble with sendMessage and never touches the composer', async () => {
-    const fetch = vi.fn(async () =>
+    const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
     vi.stubGlobal('fetch', fetch);
     const stream = new TelegramLiveStream('123456789:AAtoken', 42);
@@ -326,7 +326,7 @@ describe('Hermes-style Telegram live bubbles', () => {
   });
 
   it('reattaches to the admission bubble and edits it in place', async () => {
-    const fetch = vi.fn(async () =>
+    const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
     vi.stubGlobal('fetch', fetch);
     const stream = new TelegramLiveStream('123456789:AAtoken', 42, { messageId: 91 });
@@ -347,7 +347,7 @@ describe('Hermes-style Telegram live bubbles', () => {
   it('publishes immediately, then at the 24-character buffer threshold', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
-    const fetch = vi.fn(async () =>
+    const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
     vi.stubGlobal('fetch', fetch);
     const stream = new TelegramLiveStream('123456789:AAtoken', 42);
@@ -373,7 +373,7 @@ describe('Hermes-style Telegram live bubbles', () => {
   it('refreshes Telegram typing alongside the live bubble heartbeat', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
-    const fetch = vi.fn(async () =>
+    const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
     vi.stubGlobal('fetch', fetch);
     const stream = new TelegramLiveStream('123456789:AAtoken', 42);
@@ -412,7 +412,7 @@ describe('Hermes-style Telegram live bubbles', () => {
   it('publishes a working status as a fresh bubble when no bubble exists yet', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
-    const fetch = vi.fn(async () =>
+    const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
     vi.stubGlobal('fetch', fetch);
     const stream = new TelegramLiveStream('123456789:AAtoken', 42);
@@ -429,7 +429,7 @@ describe('Hermes-style Telegram live bubbles', () => {
   it('status clears the moment answer text starts streaming', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
-    const fetch = vi.fn(async () =>
+    const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
     vi.stubGlobal('fetch', fetch);
     const stream = new TelegramLiveStream('123456789:AAtoken', 42);
@@ -449,7 +449,7 @@ describe('Hermes-style Telegram live bubbles', () => {
   it('ignores status updates once answer text has started', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
-    const fetch = vi.fn(async () =>
+    const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
     vi.stubGlobal('fetch', fetch);
     const stream = new TelegramLiveStream('123456789:AAtoken', 42);
@@ -465,7 +465,7 @@ describe('Hermes-style Telegram live bubbles', () => {
   it('coalesces rapid status churn but still surfaces the newest step', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-28T00:00:00Z'));
-    const fetch = vi.fn(async () =>
+    const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 91 } })));
     vi.stubGlobal('fetch', fetch);
     const stream = new TelegramLiveStream('123456789:AAtoken', 42);

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { publishRunProgress, publishRunProgressSafely } from '../src/runtime/progress';
-import { testEnv } from './harness';
+import { fetchFake, testEnv } from './harness';
 import { liveEvent, LIVE_DETAIL_MAX, LIVE_TEXT_MAX } from '../src/run-stream-events';
 
 const BUSINESS = '11111111-1111-4111-8111-111111111111';
@@ -8,7 +8,7 @@ const RUN = '22222222-2222-4222-8222-222222222222';
 
 describe('run progress binding', () => {
   it('addresses one private Durable Object per tenant run and sends only bounded state', async () => {
-    const fetch = vi.fn(async () => Response.json({ ok: true }));
+    const fetch = fetchFake(async () => Response.json({ ok: true }));
     const idFromName = vi.fn(() => ({ toString: () => 'stream-id' }));
     const env = testEnv({
       RUN_STREAMS: {
@@ -48,13 +48,13 @@ describe('run progress binding', () => {
 
 describe('live progress for the web chat', () => {
   it('carries bounded detail and text alongside the lifecycle type', async () => {
-    const fetch = vi.fn(async () => Response.json({ ok: true }));
+    const fetch = fetchFake(async () => Response.json({ ok: true }));
     const env = testEnv({
       RUN_STREAMS: { idFromName: () => ({ toString: () => 'stream-id' }), get: () => ({ fetch }) },
     });
     await publishRunProgress(env, BUSINESS, RUN, 'delta', { text: 'We are ' });
     await publishRunProgress(env, BUSINESS, RUN, 'status', { detail: 'Searching the web…' });
-    const bodies = fetch.mock.calls.map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+    const bodies = fetch.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
     expect(bodies).toEqual([
       { businessId: BUSINESS, runId: RUN, type: 'delta', text: 'We are ' },
       { businessId: BUSINESS, runId: RUN, type: 'status', detail: 'Searching the web…' },
