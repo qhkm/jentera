@@ -78,6 +78,11 @@ model_base="$(decode "$MODEL_BASE_B64")"
 model_key="$(decode "$MODEL_KEY_B64")"
 model_name="$(decode "$MODEL_NAME_B64")"
 deep_model_name="$(decode "${DEEP_MODEL_NAME_B64:-$MODEL_NAME_B64}")"
+# Web extraction. Optional: absent, Hermes keeps the search-only ddgs backend
+# and web_extract cannot read a page, which is the state every sprite has been
+# in until now. The control plane sends both fields or neither.
+extract_base="$(decode "${EXTRACT_BASE_B64:-}")"
+extract_key="$(decode "${EXTRACT_KEY_B64:-}")"
 # Candidate routes: extra model ids the control plane wants every sprite to
 # accept beside quick and deep (a canary business may be pointed at one).
 # Validated before anything is installed; the same id grammar as the Python
@@ -310,6 +315,14 @@ runner_source_sha256="${runner_source_sha256%% *}"
   # into config.yaml, which stays useful as the declared value the operator
   # reads — but it is this line that decides where traffic goes.
   printf 'OPENROUTER_BASE_URL=%q\n' "$model_base"
+  # Self-hosted Firecrawl. The plugin accepts a URL with no cloud key
+  # (plugins/web/firecrawl/provider.py fails only when both are absent), but
+  # the key still travels: the instance itself is unauthenticated, so the
+  # proxy in front of it is what checks this bearer.
+  if [[ -n "$extract_base" && -n "$extract_key" ]]; then
+    printf 'FIRECRAWL_API_URL=%q\n' "$extract_base"
+    printf 'FIRECRAWL_API_KEY=%q\n' "$extract_key"
+  fi
 } > "$hermes_tmp"
 chmod 600 "$runtime_tmp" "$runner_tmp" "$hermes_tmp"
 mv "$runtime_tmp" "$runtime_env"
@@ -318,6 +331,11 @@ mv "$hermes_tmp" "$hermes_env"
 trap 'rm -f "$incoming"' EXIT
 
 hermes_python="$install_dir/venv/bin/python"
+# The extractor credentials are passed on this invocation rather than read from
+# hermes.env, which this script does not source: the config decision and the
+# credentials that justify it then travel together, and a missing one shows up
+# here instead of as a sprite that quietly kept the search-only backend.
+FIRECRAWL_API_URL="$extract_base" FIRECRAWL_API_KEY="$extract_key" \
 "$hermes_python" /home/sprite/aisar/runner/configure-model-provider.py \
   "$model_provider" "$model_base" "$model_name" OPENROUTER_API_KEY "$cua_enabled" \
   "$deep_model_name" "$candidate_model_names"

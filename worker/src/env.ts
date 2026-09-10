@@ -77,6 +77,18 @@ export interface Env {
       upstream ever sees from this Worker. For the reviewed FMCV upstream
       this is the FMCV master key pinned at B3 control-secret rotation. */
   FMCV_UPSTREAM_KEY?: string;
+  /** Origin of the self-hosted Firecrawl that backs Hermes's `web_extract`.
+      Without it the pinned `ddgs` backend is search-only and cannot read a
+      page at all — it answers "DuckDuckGo (ddgs) is a search-only backend
+      and cannot extract URL content" — which leaves the twelve browser tools
+      as the only way the agent can see a web page, at a snapshot's token
+      cost per look. Set: sprites get `firecrawl` as their extract backend. */
+  AISAR_EXTRACT_BASE?: string;
+  /** Bearer the sprites present to AISAR_EXTRACT_BASE. Firecrawl self-hosted
+      has no authentication of its own — its SELF_HOST.md says so — so this is
+      checked by the reverse proxy in front of it, and it is the only thing
+      between that instance and anyone who can reach the origin. */
+  AISAR_EXTRACT_KEY?: string;
   /** Official OpenRouter management credential stays control-plane-only and
       issues separate capped/expiring inference keys when that endpoint is used. */
   AISAR_OPENROUTER_MANAGEMENT_KEY?: string;

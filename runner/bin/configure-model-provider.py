@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 from urllib.parse import urlparse
@@ -162,6 +163,19 @@ def main() -> None:
     web = dict(config.get("web") or {})
     web["backend"] = "ddgs"
     web["search_backend"] = "ddgs"
+    # Search and extraction are different jobs and ddgs only does the first.
+    # Probed 2026-09-10: web_extract answered "DuckDuckGo (ddgs) is a
+    # search-only backend and cannot extract URL content. Set
+    # web.extract_backend to firecrawl, tavily, exa, or parallel." — so on
+    # every sprite the tool whose job is reading a page could not read a
+    # page, and the agent fell back to driving a browser and pulling whole
+    # snapshots into the transcript. Set the backend only when the
+    # credentials for it actually arrived; naming it without them would
+    # trade a working fallback for a hard failure.
+    if os.environ.get("FIRECRAWL_API_URL") and os.environ.get("FIRECRAWL_API_KEY"):
+        web["extract_backend"] = "firecrawl"
+    else:
+        web.pop("extract_backend", None)
     config["web"] = web
 
     # The public Sprite URL reaches Jentera's runner, never Hermes. Hermes' own
