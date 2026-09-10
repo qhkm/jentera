@@ -440,6 +440,45 @@ so they spend real money the control plane does not see — a few cents.
 And a session-less replay understates the trial's real conditions, where
 Telegram sessions carry history; the live signal below covers that.
 
+### First replay, 2026-09-10 (two prompts, smoke test)
+
+`reply-latency.sh eval-questions | eval | eval-sheet` exists and ran
+end-to-end against the Kitakod sprite. Four real runs, all completed. Too
+small to mean anything about quality, but three things it measured are
+worth carrying:
+
+| prompt | model | secs | input tokens | output tokens |
+|---|---|---|---|---|
+| "how are you today" | M2.7-highspeed | 4.1 | 19,159 | 37 |
+| "how are you today" | deepseek-v4-flash | 4.1 | 19,159 | 24 |
+| "weather in KL today" | M2.7-highspeed | 18.1 | 59,239 | 495 |
+| "weather in KL today" | deepseek-v4-flash | 46.2 | 119,566 | 655 |
+
+**The floor is ~19,159 input tokens.** A one-line greeting answered in one
+call costs that much, identically on both models, which makes it fixed
+overhead — Hermes's system prompt, the tool schemas, and the instructions
+the worker builds. It is the largest single number in a cheap reply and no
+routing change touches it. At M2.7's rate that floor alone is $0.0115 a
+reply, about 430 greetings per $5.
+
+**Deepseek did roughly twice the reading on the research question** —
+119,566 against 59,239 input tokens, and 46.2s against 18.1s. That is the
+opposite of the per-call probes, which have deepseek fastest, and it does
+not contradict them: more iterations, not slower calls. It still came out
+about five times cheaper on that question ($0.0072 against $0.0355), so
+the price advantage survives the extra reading — but the **latency**
+criterion in the trial's exit conditions is the one at risk, not the cost
+one. Watch p50 model time.
+
+**The prompt's "Recent Jentera work" block is currently mostly errors.**
+Of the eight records `retrieveHermesContext` pulled, six were repeats of
+`CREDIT_CAP_NOTICE` and two were duplicate canary summaries. Every reply
+therefore spends tokens telling the model, six times, that credits ran
+out — and gives it a recent history composed of failures. `recentWork`
+filters on `kind = 'work'` but not on outcome or status. Worth fixing
+before step 3 measures anything about history size, since it is both
+noise in the measurement and, plausibly, noise in the answers.
+
 ### What ends the trial
 
 Run it for **two weeks**, or until forty blind pairs are scored, whichever
@@ -713,8 +752,9 @@ Step 2
 - [ ] Conversation records ratable by the founder (a `kind` parameter on
       `/api/runs/activity`, default unchanged; `run-quality-route.test.ts`
       covers a `conversation` record).
-- [ ] `reply-latency.sh eval` exists and produced ≥ 40 blind pairs; the
-      scoring sheet and its totals are attached or linked here.
+- [~] `reply-latency.sh eval` exists (`eval-questions`, `eval`,
+      `eval-sheet`) and ran end-to-end on 2026-09-10; ≥ 40 blind pairs and
+      the scoring sheet with its totals still to come.
 - [ ] Live fortnight table recorded: runs, failures, p50/p90 model time,
       p50/p90 input tokens, cost — quick only, by model.
 - [ ] Verdict, date, and the owner's sign-off written into this document;
