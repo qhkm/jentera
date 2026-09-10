@@ -37,16 +37,17 @@ Both channels end up on the same durable path. Only the first step differs.
 |---|---|---|
 | Prompt and framing | `prepareHermesAgent` | `prepareHermesAgent` (same since 21e1bb8, 2026-09-09; before that the app used the older `prepareAsk` prompt) |
 | Facts and recent work | `retrieveHermesContext` | same |
-| Response mode | `quick`, unless the message starts with `/deep` or `/research` (e54aea9, 2026-09-09; before that, wording like "deep dive" also chose deep) | always `deep` |
+| Response mode | `quick`, unless the message starts with `/deep` or `/research` (e54aea9, 2026-09-09; before that, wording like "deep dive" also chose deep) | `quick` by default since 27b3f65 (2026-09-10), `deep` via the Deep toggle or a typed `/deep`; before that always `deep` |
 | Model | quick model (`AISAR_MODEL_NAME`, MiniMax-M3), or the business's `AISAR_QUICK_MODEL_OVERRIDES` entry (M2.7-highspeed canary on Kitakod Ventures) | deep model (`AISAR_DEEP_MODEL_NAME`, deepseek-v4-flash) |
 | Session id | `telegram:<businessId>:<chatId>` | the app's chat-tab id |
 | Memory | Hermes reloads the persisted transcript for a stable session id (present since Hermes 2026.9.5; on the fleet since v2026.9.8, 2026-09-08). Confirmed 2026-09-09 with `reply-latency.sh continuity`: turn two recalled turn one. | same mechanism, per app tab |
 | Cross-channel memory | none: a Telegram chat and an app tab are separate sessions | |
-| While waiting | live bubble, status edits, streamed handoff | static "working" placeholder |
+| While waiting | live bubble, status edits, streamed handoff | since bdeeb21 (2026-09-10): the same status lines, a reasoning slice, then the answer streaming in place; before that a static placeholder |
 
-So the remaining difference by design is mode and model: chat is where an
-owner asks for work, Telegram is where they chat. The remaining difference
-not by design is that the app does not stream.
+Both channels now default to quick, share the prompt, and show live
+progress. What remains different is the session boundary (per Telegram
+chat versus per app tab) and the wake: the chat page warms the sprite as
+it opens (`POST /api/runtime/wake`), Telegram warms it under the webhook.
 
 ## Measurements, 2026-09-09
 
@@ -97,10 +98,15 @@ Open, in order of expected payoff:
    candidate; `AISAR_QUICK_MODEL_OVERRIDES` moves a single business back
    without a release. Re-run `reply-latency.sh db 7` after a week to see
    the effect on the Telegram quick row.
-2. **Stream into the app.** Telegram already streams a live bubble from the
-   runner's delta stream; the app replaces a placeholder at the end. The
-   RunStream Durable Object exists; the work is in the app.
-3. **The 7 to 12 s wait to start.** The stage breakdown is only in Workers
+2. **Stream into the app.** Done 2026-09-10 (bdeeb21): the run stream now
+   carries the agent's status line, a bounded reasoning slice and answer
+   text as live, unstored events; the chat renders them in the placeholder.
+   Every run with a run id is observed live, so Telegram and app get the
+   same view. First visible response on the web is now the first status
+   line, seconds after the message, instead of the finished answer.
+3. **The 7 to 12 s wait to start.** Since 2026-09-10 the chat page warms
+   the sprite as it opens, so the first message after a pause finds it
+   warm; the remaining wait is dispatch. The stage breakdown is only in Workers
    Logs (`wrangler tail aisar-api --format json`, filter `runtime-latency`),
    which the wrangler OAuth token cannot query historically. Capture a few
    real runs to see whether the time is sprite wake, runner start, or
