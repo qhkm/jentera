@@ -8,6 +8,7 @@ import { finishRun } from '../runs';
 import { hasBusiness, resolveTenant } from '../tenancy';
 import { publishRunProgressSafely } from '../runtime/progress';
 import { runtimeProvisioningProblem } from '../runtime/execution';
+import { prewarmSprite } from '../runtime/prewarm';
 import { settleCancelledDraft } from '../telegram-delivery';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
@@ -23,6 +24,7 @@ export async function handleRuntime(
   env: Env,
   url: URL,
   cors: Record<string, string>,
+  ctx?: Pick<ExecutionContext, 'waitUntil'>,
 ): Promise<Response | null> {
   if (!url.pathname.startsWith('/api/runtime')) return null;
   const identity = await resolveTenant(env, request);
@@ -60,6 +62,24 @@ export async function handleRuntime(
     }, {}, cors);
   }
 
+  if (url.pathname === '/api/runtime/wake' && request.method === 'POST') {
+    /* The chat page calls this as it opens. The probe runs after the
+       response so the page never waits on it; a business without a Sprite
+       has nothing to warm and hears so without an error. Any member may
+       call it: it changes nothing but the sprite's clock. */
+    const runtime = await withTenant(env, identity.businessId, (tx) =>
+      getRuntime(tx, identity.businessId));
+    const token = env.SPRITES_TOKEN?.trim();
+    const warming = Boolean(
+      ctx && token && runtime && runtime.provider === 'fly-sprite' && runtime.providerUrl,
+    );
+    if (warming) {
+      ctx!.waitUntil(prewarmSprite(runtime!.providerUrl!, token!, (outcome, extra) => {
+        console.info('[runtime-latency]', JSON.stringify({ stage: outcome, source: 'chat_open', ...extra }));
+      }));
+    }
+    return json({ ok: true, warming }, { status: 202 }, cors);
+  }
   if (url.pathname === '/api/runtime/provision' && request.method === 'POST') {
     if (identity.role !== 'owner') {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);

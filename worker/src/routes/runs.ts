@@ -40,7 +40,8 @@ import {
 } from '../runtime/tasks';
 import { publishRunProgressSafely } from '../runtime/progress';
 import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
-import { modelForResponseMode } from '../runtime/response-mode';
+import { modelForResponseMode, responseModeFor } from '../runtime/response-mode';
+import type { ResponseMode } from '../runtime/response-mode';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -180,6 +181,7 @@ export async function handleRuns(
       requestId?: unknown;
       mode?: unknown;
       sessionId?: unknown;
+      responseMode?: unknown;
     };
     const question = typeof body.question === 'string' ? body.question.trim() : '';
     if (!question) return json({ ok: false, err: 'ask me something' }, { status: 400 }, cors);
@@ -201,6 +203,10 @@ export async function handleRuns(
     if (mode !== 'ask' && mode !== 'work') {
       return json({ ok: false, err: 'ask mode is invalid' }, { status: 400 }, cors);
     }
+    if (body.responseMode !== undefined && body.responseMode !== 'quick' && body.responseMode !== 'deep') {
+      return json({ ok: false, err: 'response mode is invalid' }, { status: 400 }, cors);
+    }
+    const responseMode = body.responseMode as ResponseMode | undefined;
 
     if (mode === 'work') {
       if (!runtimeExecutionEnabled(env)) {
@@ -214,6 +220,7 @@ export async function handleRuns(
         typeof body.requestId === 'string' ? body.requestId : crypto.randomUUID(),
         cors,
         sessionId,
+        responseMode,
       );
     }
 
@@ -415,6 +422,7 @@ async function startDurableAsk(
   requestId: string,
   cors: Record<string, string>,
   sessionId?: string,
+  requestedMode?: ResponseMode,
 ): Promise<Response> {
   if (!env.RUNTIME_QUEUE || !env.AISAR_MODEL_NAME?.trim()) {
     return json({ ok: false, err: 'Jentera agent execution is unavailable' }, { status: 503 }, cors);
@@ -432,7 +440,11 @@ async function startDurableAsk(
   const { facts, work } = await withTenant(env, businessId, (tx) =>
     retrieveHermesContext(tx, question));
   const prepared = prepareHermesAgent(question, facts, work);
-  const model = modelForResponseMode(env, 'deep');
+  /* Quick by default, as on Telegram; the toggle or a typed /deep opts in
+     to the research loop. Chat was hard-wired to deep until 2026-09-10 and
+     every web message paid for it. */
+  const responseMode = requestedMode ?? responseModeFor(question);
+  const model = modelForResponseMode(env, responseMode, businessId);
   const dedupeKey = `ask:${requestId}`;
   const created = await withTenant(env, businessId, async (tx) => {
     /* The advisory lock makes the HTTP idempotency key atomic with run
@@ -469,7 +481,7 @@ async function startDurableAsk(
         channel: 'app',
         factKeys: prepared.usedKeys,
         grounded: prepared.grounded,
-        responseMode: 'deep',
+        responseMode,
         model,
         requestedAtMs: Date.now(),
       },

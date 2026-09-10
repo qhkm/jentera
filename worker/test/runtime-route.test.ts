@@ -272,3 +272,43 @@ async function call(method: string, path: string, env: Env, cookie?: string) {
   if (!response) throw new Error('runtime route did not match');
   return response;
 }
+
+describe('warming the agent when the chat opens', () => {
+  async function wake(env: Env, cookie: string, waited: Promise<unknown>[]) {
+    const { request, url } = req('POST', '/api/runtime/wake', { cookie });
+    const response = await handleRuntime(request, env, url, {}, {
+      waitUntil: (promise: Promise<unknown>) => { waited.push(promise); },
+    });
+    if (!response) throw new Error('runtime route did not match');
+    return response;
+  }
+
+  it('probes the sprite runner in the background and answers at once', async () => {
+    await asOwner((sql) => sql`
+      insert into agent_runtime
+        (business_id, provider, provider_id, provider_name, provider_url, status, desired_release, observed_release)
+      values (${A}, 'fly-sprite', 'sprite-1', 'aisar-b-alpha', 'https://aisar-b-alpha-x1.sprites.app', 'cold', '2026.09.01-1', '2026.09.01-1')`);
+    const fetchSpy = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchSpy);
+    const waited: Promise<unknown>[] = [];
+    const response = await wake(testEnv({ SPRITES_TOKEN: 'sprite-token' }), staffCookie, waited);
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ ok: true, warming: true });
+    await Promise.all(waited);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toBe('https://aisar-b-alpha-x1.sprites.app/healthz');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer sprite-token');
+  });
+
+  it('has nothing to warm without a sprite runtime, and says so without an error', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    const waited: Promise<unknown>[] = [];
+    const response = await wake(testEnv({ SPRITES_TOKEN: 'sprite-token' }), ownerCookie, waited);
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ ok: true, warming: false });
+    expect(waited).toHaveLength(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});

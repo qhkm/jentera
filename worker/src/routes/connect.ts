@@ -9,6 +9,7 @@
 
 import type { Env } from '../env';
 import { withTenant } from '../db';
+import { prewarmSprite } from '../runtime/prewarm';
 import { hasBusiness, resolveTenant } from '../tenancy';
 import {
   bindTelegramInternalChat,
@@ -523,7 +524,7 @@ async function telegramWebhook(
     ctx.waitUntil(prewarmSprite(
       access.runtimeUrl,
       env.SPRITES_TOKEN,
-      requestedAtMs,
+      (outcome, extra) => telegramWebhookLatency(outcome, requestedAtMs, extra),
     ));
   }
 
@@ -544,37 +545,6 @@ async function telegramWebhook(
      durable admission transaction and creates the editable working bubble. */
   await sendTyping(token, incoming.chatId).catch(() => {});
   return ok;
-}
-
-async function prewarmSprite(
-  runtimeUrl: string,
-  token: string,
-  requestedAtMs: number,
-): Promise<void> {
-  let url: URL;
-  try {
-    url = new URL('/healthz', runtimeUrl);
-  } catch {
-    return;
-  }
-  /* Never forward the organization Sprite token to an arbitrary stored URL. */
-  if (url.protocol !== 'https:' ||
-      (url.hostname !== 'sprites.app' && !url.hostname.endsWith('.sprites.app'))) {
-    return;
-  }
-  try {
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(8_000),
-    });
-    telegramWebhookLatency(response.ok ? 'prewarm_ready' : 'prewarm_rejected', requestedAtMs, {
-      status: response.status,
-    });
-  } catch (error) {
-    telegramWebhookLatency('prewarm_failed', requestedAtMs, {
-      error: error instanceof Error ? error.name : 'unknown',
-    });
-  }
 }
 
 function telegramWebhookLatency(

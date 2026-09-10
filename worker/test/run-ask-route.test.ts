@@ -311,3 +311,46 @@ async function streamCall(
   if (!response) throw new Error('run stream route did not match');
   return response;
 }
+
+describe('response mode from the web chat', () => {
+  const modes = (send = vi.fn(async () => {})) => testEnv({
+    RUNTIME_RELEASE: RELEASE,
+    RUNTIME_EXECUTION_ENABLED: 'true',
+    AISAR_MODEL_NAME: 'quick-model',
+    AISAR_DEEP_MODEL_NAME: 'deep-model',
+    RUNTIME_QUEUE: { send },
+  });
+  async function modelFor(body: Record<string, unknown>) {
+    await readyRuntime(A);
+    const response = await call('POST', '/api/runs/ask', modes(), cookieA, {
+      requestId: crypto.randomUUID(), mode: 'work', ...body,
+    });
+    if (response.status !== 202) return { status: response.status };
+    const { runId } = await response.json() as { runId: string };
+    const [row] = await asOwner((sql) => sql<{ model: string; payload: { responseMode?: string } }[]>`
+      select r.model, t.payload from run r join runtime_task t on t.run_id = r.id where r.id = ${runId}`);
+    return { status: 202, model: row.model, responseMode: row.payload.responseMode };
+  }
+
+  /* Chat was hard-wired to deep, so every web message paid the research
+     loop; Telegram defaults to quick. Same default on both since
+     2026-09-10, with the same explicit escape hatches. */
+  it('is quick by default', async () => {
+    expect(await modelFor({ question: 'Are we open on Sunday?' })).toEqual({
+      status: 202, model: 'quick-model', responseMode: 'quick',
+    });
+  });
+  it('goes deep when the toggle asks for it', async () => {
+    expect(await modelFor({ question: 'Compare our suppliers', responseMode: 'deep' })).toEqual({
+      status: 202, model: 'deep-model', responseMode: 'deep',
+    });
+  });
+  it('honours /deep typed into the message, like Telegram', async () => {
+    expect(await modelFor({ question: '/deep compare our suppliers' })).toEqual({
+      status: 202, model: 'deep-model', responseMode: 'deep',
+    });
+  });
+  it('rejects an unknown response mode', async () => {
+    expect((await modelFor({ question: 'hi', responseMode: 'fast' })).status).toBe(400);
+  });
+});

@@ -123,7 +123,7 @@ export default {
     const conn = await handleConnect(request, env, url, headers, ctx);
     if (conn) return conn;
 
-    const runtime = await handleRuntime(request, env, url, headers);
+    const runtime = await handleRuntime(request, env, url, headers, ctx);
     if (runtime) return runtime;
 
     try {
