@@ -70,15 +70,26 @@ describe('the web-extraction endpoint handed to a sprite', () => {
     }))).not.toThrow();
   });
 
-  it('is allowlisted by the bootstrap that will receive it', () => {
-    /* The deadlock of 2026-09-10: provision.ts sent EXTRACT_BASE_B64 while
-       the fleet's bootstrap still rejected unknown fields, so every sprite
-       refused the payload that would have upgraded it. Sending a field the
-       bootstrap does not parse is the bug; this catches it in the repo. */
-    const bootstrap = readFileSync(
-      new URL('../../runner/bin/bootstrap-runtime.sh', import.meta.url), 'utf8');
-    for (const fieldName of ['EXTRACT_BASE_B64', 'EXTRACT_KEY_B64']) {
-      expect(bootstrap).toContain(`${fieldName}) ${fieldName}=`);
-    }
+  it('sends no transfer field the bootstrap cannot parse', () => {
+    /* The deadlock of 2026-09-10: provision.ts sent EXTRACT_BASE_B64 while the
+       bootstrap still rejected unknown fields, so every sprite refused the
+       payload that would have upgraded it — 24 tasks exhausted, 0/12
+       converged. Every field, not just today's: the next one should fail here
+       rather than on twelve machines.
+
+       `validate-release.mjs` runs the same comparison at ship time against
+       the commits actually involved, including the one the fleet is still
+       running. This is the fast half, on every change. */
+    const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
+    const sent = [...read('../src/runtime/provision.ts')
+      .matchAll(/field\('([A-Z0-9_]+_B64)'/g)].map((m) => m[1]);
+    const allowlisted = new Set([...read('../../runner/bin/bootstrap-runtime.sh')
+      .matchAll(/^\s*([A-Z0-9_]+_B64)\)\s*\1=/gm)].map((m) => m[1]));
+
+    /* Guard the parsers themselves: a regex that silently matches nothing
+       would make this test pass for the wrong reason. */
+    expect(sent.length).toBeGreaterThan(5);
+    expect(allowlisted.size).toBeGreaterThan(5);
+    expect(sent.filter((f) => !allowlisted.has(f))).toEqual([]);
   });
 });
