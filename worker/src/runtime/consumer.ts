@@ -52,6 +52,7 @@ import {
 import { finalizeRuntimeUsage, runtimeUsageDeadline, RuntimeBudgetExceeded } from './usage';
 import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
 import { publishRunProgressSafely } from './progress';
+import { createWebProgress } from './web-progress';
 import { STEP_STRIP_RE } from './step-progress';
 import { deliverTelegramDraft, deleteTelegramLiveBubble, persistLiveMessageId, settleCancelledDraft } from '../telegram-delivery';
 import { telegramInternalChat, useCredential } from '../connections';
@@ -1237,6 +1238,11 @@ export async function handleRuntimeMessage(
           });
         }
         const toolShown = new Set<string>();
+        /* The web chat subscribes to the run stream; give it the same live
+           view the Telegram bubble gets, whichever channel asked. */
+        const web = lease.task.runId
+          ? createWebProgress(env, message.businessId, lease.task.runId)
+          : null;
         /* Typing is cosmetic and the webhook already emitted an immediate
            pulse. Refresh it in parallel so Telegram cannot hold model start
            behind another network round trip. */
@@ -1295,23 +1301,25 @@ export async function handleRuntimeMessage(
           outcome = await dispatchRuntimeRun(env, lease.task, leaseToken, {
             ...options,
             fetch: observationSliceFetch(options.fetch, observationEndsAt),
-            onDelta: liveStream
+            onDelta: (liveStream || web)
               ? async (delta) => {
                   if (!firstVisibleDelta && delta.trim()) {
                     firstVisibleDelta = true;
                     latency('first_visible_delta');
                   }
-                  await liveStream.push(delta);
+                  web?.delta(delta);
+                  await liveStream?.push(delta);
                 }
               : undefined,
-            onToolEvent: liveStream
+            onToolEvent: (liveStream || web)
               ? async (event) => {
                   if (event.type !== 'tool.started' && event.type !== 'tool.completed') {
                     return;
                   }
                   if (event.type === 'tool.started') {
                     currentActivity = statusLine(event.tool).replace(/_/g, ' ');
-                    if (!toolShown.has(event.tool)) {
+                    await web?.status(hermesToolLine(event.tool, event.preview));
+                    if (liveStream && !toolShown.has(event.tool)) {
                       toolShown.add(event.tool);
                       await liveStream.showTool(event.tool, event.preview);
                     }
@@ -1320,7 +1328,7 @@ export async function handleRuntimeMessage(
                     if (!currentStep && !firstVisibleDelta) {
                       currentStep = hermesToolLine(event.tool, event.preview);
                       currentStepIsTool = true;
-                      await liveStream.setStatus(timedStatus());
+                      await liveStream?.setStatus(timedStatus());
                     }
                   } else {
                     currentActivity = 'thinking';
@@ -1328,19 +1336,21 @@ export async function handleRuntimeMessage(
                       currentStep = '';
                       currentStepIsTool = false;
                       if (quickReply && !firstVisibleDelta) {
-                        await liveStream.setStatus(QUICK_REPLY_STATUS);
+                        await liveStream?.setStatus(QUICK_REPLY_STATUS);
                       }
                     }
                   }
                 }
               : undefined,
-            onIteration: liveStream
+            onIteration: (liveStream || web)
               ? async (current, total) => {
                   iteration = { current, total };
                   if (!currentStepIsTool) currentActivity = 'thinking';
-                  if (!quickReply && !firstVisibleDelta &&
-                      Date.now() - workingSince >= LONG_TASK_STATUS_AFTER_MS) {
-                    await liveStream.setStatus(timedStatus());
+                  if (!quickReply && !firstVisibleDelta) {
+                    await web?.status(timedStatus());
+                    if (Date.now() - workingSince >= LONG_TASK_STATUS_AFTER_MS) {
+                      await liveStream?.setStatus(timedStatus());
+                    }
                   }
                 }
               : undefined,
@@ -1359,37 +1369,42 @@ export async function handleRuntimeMessage(
                   lastLeaseRenewal = Date.now();
                 }
               : undefined,
-            onProgress: liveStream
+            onProgress: (liveStream || web)
               ? async (label) => {
                   if (quickReply) return;
                   currentStep = statusLine(label);
                   currentStepIsTool = false;
                   currentActivity = currentStep;
                   if (!firstVisibleDelta) {
-                    await liveStream.setStatus(timedStatus());
+                    await web?.status(timedStatus());
+                    await liveStream?.setStatus(timedStatus());
                   }
                 }
               : undefined,
-            onThinking: liveStream
+            onThinking: (liveStream || web)
               ? async (text) => {
                   /* Live reasoning: the runner forwards the model's actual CoT as
-                     a bounded `thinking` lane. Render it in the ephemeral bubble
-                     status exactly like `@step:` narration — it is cleared the
-                     moment the first answer delta lands and never enters the
-                     durable answer lane (the runner keeps it out of `output`). */
-                  if (quickReply || firstVisibleDelta) return;
+                     a bounded `thinking` lane. The web chat shows it whatever the
+                     mode; the Telegram bubble renders it like `@step:` narration
+                     on deep work only. Both drop it the moment the first answer
+                     delta lands, and it never enters the durable answer lane
+                     (the runner keeps it out of `output`). */
+                  if (firstVisibleDelta) return;
                   const thinking = sanitiseThinking(text);
                   if (!thinking) return;
+                  await web?.thinking(thinking);
+                  if (quickReply) return;
                   currentStep = thinking;
                   currentStepIsTool = false;
                   currentActivity = 'thinking';
-                  await liveStream.setStatus(timedStatus());
+                  await liveStream?.setStatus(timedStatus());
                 }
               : undefined,
             onStage: (stage, elapsedMs) => {
               latency(stage, elapsedMs);
-              if (quickReply) return;
               const status = STAGE_STATUS[stage];
+              if (status) void web?.status(status);
+              if (quickReply) return;
               if (status) void liveStream?.setStatus(status);
             },
           });
@@ -1435,6 +1450,7 @@ export async function handleRuntimeMessage(
             clearInterval(statusTimer);
             statusTimer = undefined;
           }
+          await web?.flush();
         }
         if (!outcome) throw new Error('runtime observation ended without a durable outcome');
         latency(outcome.state === 'terminal' ? 'terminal' : outcome.state);

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearAskStorage, useAsk } from '@/hooks/useAsk';
 import { LocalRepository } from '@/lib/repo/local';
 import { RepositoryProvider } from '@/lib/repo/context';
@@ -88,7 +88,7 @@ describe('useAsk durable answers', () => {
 
     act(() => result.current!.send('handle this', 'work'));
     expect(options?.mode).toBe('work');
-    act(() => options?.onProgress?.('waking'));
+    act(() => options?.onProgress?.({ type: 'waking' }));
     expect(result.current!.messages[1].text).toBe('Waking');
 
     await act(async () => {
@@ -101,6 +101,88 @@ describe('useAsk durable answers', () => {
       usedKeys: ['business.name'],
       grounded: true,
     });
+  });
+
+  it('warms the agent once when a signed-in chat opens', async () => {
+    const repo: Repository = new LocalRepository();
+    const warmAgent = vi.fn(async () => {});
+    repo.warmAgent = warmAgent;
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SignedInProvider value>
+        <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
+      </SignedInProvider>
+    );
+    const { result, rerender } = renderHook(
+      () => useAsk(business, { handled: 0, needs: 0 }, (key) => key),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current).not.toBeNull());
+    await waitFor(() => expect(warmAgent).toHaveBeenCalledTimes(1));
+    rerender();
+    expect(warmAgent).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks for a quick reply by default and a deep one only when toggled', async () => {
+    const repo: Repository = new LocalRepository();
+    const seen: AskOptions[] = [];
+    repo.ask = (_question: string, next?: AskOptions): Promise<AskAnswer> => {
+      if (next) seen.push(next);
+      return Promise.resolve({ text: 'ok', usedKeys: [], grounded: false });
+    };
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SignedInProvider value>
+        <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
+      </SignedInProvider>
+    );
+    const { result } = renderHook(
+      () => useAsk(business, { handled: 0, needs: 0 }, (key) => key),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current).not.toBeNull());
+    await act(async () => { result.current!.send('are we open?', 'work'); });
+    expect(seen[0]?.responseMode).toBe('quick');
+    act(() => result.current!.setDeep(true));
+    expect(result.current!.deep).toBe(true);
+    await act(async () => { result.current!.send('compare suppliers', 'work'); });
+    expect(seen[1]?.responseMode).toBe('deep');
+  });
+
+  it("streams the agent's status, thinking and answer text into the placeholder", async () => {
+    const repo: Repository = new LocalRepository();
+    let options: AskOptions | undefined;
+    let resolveAnswer: ((answer: AskAnswer) => void) | undefined;
+    repo.ask = (_question: string, next?: AskOptions): Promise<AskAnswer> => {
+      options = next;
+      return new Promise<AskAnswer>((resolve) => { resolveAnswer = resolve; });
+    };
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SignedInProvider value>
+        <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
+      </SignedInProvider>
+    );
+    const { result } = renderHook(
+      () => useAsk(business, { handled: 0, needs: 0 }, (key) => key),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current).not.toBeNull());
+    act(() => result.current!.send('are we open on sunday?', 'work'));
+
+    act(() => options?.onProgress?.({ type: 'status', detail: 'Searching the web…' }));
+    expect(result.current!.messages[1].text).toBe('Searching the web…');
+    act(() => options?.onProgress?.({ type: 'thinking', detail: 'checking the calendar' }));
+    expect(result.current!.messages[1].text).toContain('checking the calendar');
+
+    act(() => options?.onProgress?.({ type: 'delta', text: 'We are ' }));
+    act(() => options?.onProgress?.({ type: 'delta', text: 'open on Sunday.' }));
+    expect(result.current!.messages[1]).toMatchObject({ text: 'We are open on Sunday.', state: 'streaming' });
+    // a late status must not wipe answer text that has started arriving
+    act(() => options?.onProgress?.({ type: 'status', detail: 'Finishing…' }));
+    expect(result.current!.messages[1].text).toBe('We are open on Sunday.');
+
+    await act(async () => {
+      resolveAnswer?.({ text: 'We are open on Sunday, 9 to 5.', usedKeys: [], grounded: true });
+    });
+    expect(result.current!.messages[1]).toMatchObject({ text: 'We are open on Sunday, 9 to 5.', state: 'done' });
   });
 
   it('keeps a failed question retryable instead of presenting the error as an answer', async () => {

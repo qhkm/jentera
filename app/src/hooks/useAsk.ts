@@ -22,7 +22,7 @@ import { stripEmoji } from '@/components/Icon';
 import type { Lang } from '@/lib/types';
 import { taggedAgent } from '@/hooks/useMentions';
 import type { Business } from '@/lib/types';
-import type { AskAnswer, AskMode, AskProgress } from '@/lib/repo';
+import type { AskAnswer, AskMode, AskProgress, AskProgressEvent } from '@/lib/repo';
 import { trackActivation } from '@/lib/analytics';
 import { isRunId } from '@/lib/task';
 
@@ -37,7 +37,8 @@ export interface AskMessage {
   failedQuestion?: string;
   failedMode?: AskMode;
   /** Real runtime state used by the live work card. */
-  state?: 'sending' | AskProgress | 'done' | 'failed';
+  /** streaming: answer text is arriving and `text` is the partial answer. */
+  state?: 'sending' | AskProgress | 'streaming' | 'done' | 'failed';
   mode?: AskMode;
   runId?: string;
   taskTitle?: string;
@@ -166,6 +167,13 @@ export function useAsk(
 ) {
   const repo = useRepository();
   const grounded = useSignedIn();
+  /* Deep opts into the research loop; quick is the default, as on Telegram. */
+  const [deep, setDeep] = useState(false);
+  /* Wake the agent as the chat opens so the first message finds it warm. */
+  useEffect(() => {
+    if (!grounded) return;
+    void repo.warmAgent?.().catch(() => undefined);
+  }, [grounded, repo]);
   /* Persist only when the account is known: a signed-in session without an
      id would otherwise fall back to one shared key, which is the leak. */
   const account = useAccountKey();
@@ -286,6 +294,7 @@ export function useAsk(
           .ask(question, {
             mode,
             sessionId,
+            responseMode: deep ? 'deep' : 'quick',
             onRunCreated: (runId: string) => {
               if (!isRunId(runId)) return;
               setState((prev) => ({
@@ -298,10 +307,25 @@ export function useAsk(
                 }),
               }));
             },
-            onProgress: (progress: AskProgress) => {
-              const key = progress === 'queued' ? 'ask.queued'
-                : progress === 'waking' ? 'ask.waking'
-                  : progress === 'retrying' ? 'ask.retrying' : 'ask.working';
+            onProgress: (event: AskProgressEvent) => {
+              const project = (message: AskMessage): AskMessage => {
+                if (event.type === 'delta') {
+                  const text = (message.state === 'streaming' ? message.text : '') + (event.text ?? '');
+                  return { ...message, text, state: 'streaming' };
+                }
+                /* Once answer text is on screen, a status line must not erase it. */
+                if (message.state === 'streaming') return message;
+                if (event.type === 'status') {
+                  return { ...message, text: event.detail || t('ask.working'), state: 'working' };
+                }
+                if (event.type === 'thinking') {
+                  return { ...message, text: `💭 ${event.detail ?? ''}`.trim(), state: 'working' };
+                }
+                const key = event.type === 'queued' ? 'ask.queued'
+                  : event.type === 'waking' ? 'ask.waking'
+                    : event.type === 'retrying' ? 'ask.retrying' : 'ask.working';
+                return { ...message, text: t(key), state: event.type };
+              };
               setState((prev) => {
                 const index = prev.sessions.findIndex((s) => s.id === sessionId);
                 if (index === -1) return prev;
@@ -310,9 +334,7 @@ export function useAsk(
                   sessions: [...prev.sessions.slice(0, index), {
                     ...session,
                     messages: session.messages.map((message) =>
-                      message.pendingId === pendingId
-                        ? { ...message, text: t(key), state: progress }
-                        : message),
+                      message.pendingId === pendingId ? project(message) : message),
                   }, ...prev.sessions.slice(index + 1)],
                   activeId: prev.activeId,
                 };
@@ -432,5 +454,7 @@ export function useAsk(
     openSession,
     deleteSession,
     hasHistory: messages.length > 0,
+    deep,
+    setDeep,
   };
 }

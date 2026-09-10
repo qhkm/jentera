@@ -13,22 +13,22 @@ import { isRunId } from '@/lib/task';
 import { RemoteRoutinesApi } from '@/lib/routines/api';
 import type {
   Activity,
-  BusinessSnapshot,
-  Fact,
-  FactSource,
   AskAnswer,
   AskOptions,
-  AskProgress,
+  AskProgressEvent,
+  BusinessSnapshot,
   Connection,
   ConnectionHealth,
+  Fact,
+  FactSource,
   IngestResult,
-  Repository,
-  TraceEvent,
-  Theme,
   OnboardingCompletion,
-  RuntimeOverview,
-  WorkQuality,
+  Repository,
   RunResult,
+  RuntimeOverview,
+  Theme,
+  TraceEvent,
+  WorkQuality,
 } from './types';
 
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
@@ -313,6 +313,7 @@ export class RemoteRepository implements Repository {
         requestId,
         mode: options.mode ?? 'work',
         ...(options.sessionId ? { sessionId: options.sessionId } : {}),
+        ...(options.responseMode ? { responseMode: options.responseMode } : {}),
       }),
     });
     let begun;
@@ -332,6 +333,11 @@ export class RemoteRepository implements Repository {
       ? streamAsk(begun.runId, options.onProgress)
       : pollAsk(begun.runId));
     return { ...answer, runId: begun.runId };
+  }
+
+  async warmAgent(): Promise<void> {
+    /* Fire-and-forget: a failure here costs one cold wake, nothing else. */
+    await post('/api/runtime/wake', {}).catch(() => undefined);
   }
 
   async connections(): Promise<Connection[]> {
@@ -425,7 +431,7 @@ async function pollAsk(runId: string): Promise<AskAnswer> {
 
 async function streamAsk(
   runId: string,
-  onProgress: (progress: AskProgress) => void,
+  onProgress: (event: AskProgressEvent) => void,
 ): Promise<AskAnswer> {
   if (typeof WebSocket === 'undefined') return pollAsk(runId);
 
@@ -453,14 +459,20 @@ async function streamAsk(
     }
 
     socket.onmessage = (message) => {
-      let event: { version?: unknown; type?: unknown };
+      let event: { version?: unknown; type?: unknown; detail?: unknown; text?: unknown };
       try {
-        event = JSON.parse(String(message.data)) as { version?: unknown; type?: unknown };
+        event = JSON.parse(String(message.data)) as typeof event;
       } catch {
         return;
       }
       if (event.version !== 1 || typeof event.type !== 'string') return;
-      if (isAskProgress(event.type)) onProgress(event.type);
+      if (isProgressEventType(event.type)) {
+        onProgress({
+          type: event.type,
+          ...(typeof event.detail === 'string' ? { detail: event.detail } : {}),
+          ...(typeof event.text === 'string' ? { text: event.text } : {}),
+        });
+      }
       if (['completed', 'failed', 'cancelled'].includes(event.type)) finishFromDurableState();
     };
     socket.onerror = finishFromDurableState;
@@ -475,8 +487,8 @@ function websocketUrl(path: string): string {
   return url.toString();
 }
 
-function isAskProgress(value: string): value is AskProgress {
-  return ['queued', 'waking', 'working', 'retrying'].includes(value);
+function isProgressEventType(value: string): value is AskProgressEvent['type'] {
+  return ['queued', 'waking', 'working', 'retrying', 'status', 'thinking', 'delta'].includes(value);
 }
 
 const wait = (milliseconds: number) =>

@@ -1,24 +1,11 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from './env';
 
-export const RUN_PROGRESS_TYPES = [
-  'queued',
-  'waking',
-  'working',
-  'retrying',
-  'completed',
-  'failed',
-  'cancelled',
-] as const;
+import { liveEvent, RUN_PROGRESS_TYPES } from './run-stream-events';
+import type { RunProgressEvent, RunProgressType } from './run-stream-events';
 
-export type RunProgressType = (typeof RUN_PROGRESS_TYPES)[number];
-
-export interface RunProgressEvent {
-  version: 1;
-  seq: number;
-  type: RunProgressType;
-  at: string;
-}
+export { RUN_PROGRESS_TYPES } from './run-stream-events';
+export type { RunProgressEvent, RunProgressType } from './run-stream-events';
 
 interface StreamIdentity {
   businessId: string;
@@ -74,8 +61,22 @@ export class RunStream extends DurableObject<Env> {
   private async publish(request: Request): Promise<Response> {
     const body = await boundedJson(request);
     const identity = streamIdentity(body);
+    if (!identity) return new Response('invalid event', { status: 400 });
+    const live = liveEvent(body);
+    if (live) {
+      /* Broadcast only. Nothing about the agent's output is stored here; a
+         late subscriber gets the durable answer from Postgres instead. */
+      const existing = await this.ctx.storage.get<StreamIdentity>('identity');
+      if (existing &&
+          (existing.businessId !== identity.businessId || existing.runId !== identity.runId)) {
+        return new Response('stream identity conflict', { status: 409 });
+      }
+      const encoded = JSON.stringify(live);
+      for (const socket of this.ctx.getWebSockets()) safeSend(socket, encoded);
+      return Response.json({ ok: true, seq: 0, live: true });
+    }
     const type = progressType(body.type);
-    if (!identity || !type) return new Response('invalid event', { status: 400 });
+    if (!type) return new Response('invalid event', { status: 400 });
 
     const outcome = await this.ctx.storage.transaction(async (tx) => {
       const existing = await tx.get<StreamIdentity>('identity');

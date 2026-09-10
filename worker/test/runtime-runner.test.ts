@@ -168,6 +168,13 @@ describe('durable Hermes run delivery', () => {
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
         return response({ ok: true, hermesRunId: 'run-hermes-fast', status: 'started' }, 202);
       }
+      if (url.endsWith(`/v1/tasks/${task.id}/events`)) {
+        /* Every run is observed live now (the web chat streams from it); a
+           runner that finishes at once ends its stream with done. */
+        return new Response('data: {"type":"done"}\n\n', {
+          status: 200, headers: { 'Content-Type': 'text/event-stream' },
+        });
+      }
       if (url.endsWith(`/v1/tasks/${task.id}`)) {
         return response({ ok: true, status: 'completed', output: 'Done.' });
       }
@@ -242,6 +249,11 @@ describe('durable Hermes run delivery', () => {
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
         return response({ ok: true, hermesRunId: 'run-hermes-1', status: 'started' }, 202);
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}/events`)) {
+        return new Response('data: {"type":"done"}\n\n', {
+          status: 200, headers: { 'Content-Type': 'text/event-stream' },
+        });
       }
       if (url.endsWith(`/v1/tasks/${task.id}`)) {
         return response({
@@ -1071,5 +1083,81 @@ describe('per-run deadline by response mode', () => {
     const seconds = (Number(body.deadlineAt) - before) / 1_000;
     expect(seconds).toBeGreaterThan(890);
     expect(seconds).toBeLessThanOrEqual(905);
+  });
+});
+
+describe('live progress to the web chat', () => {
+  it("streams the agent's status, thinking and answer text to the run stream", async () => {
+    const published: Array<Record<string, unknown>> = [];
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.09.01-3',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+      RUN_STREAMS: {
+        idFromName: () => ({ toString: () => 'stream-id' }),
+        get: () => ({
+          fetch: async (_url: string, init?: RequestInit) => {
+            published.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+            return Response.json({ ok: true });
+          },
+        }),
+      },
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `live:${run.id}`,
+      payload: { input: 'Are we open on Sunday?', model: 'MiniMax-M3', responseMode: 'deep' },
+    }));
+    const events = [
+      { type: 'thinking', text: 'checking the calendar' },
+      { type: 'iteration', current: 1, total: 20 },
+      { type: 'tool.started', tool: 'web_search', preview: 'opening hours' },
+      { type: 'delta', delta: 'We are ' },
+      { type: 'delta', delta: 'open on Sunday.' },
+    ].map((event) => `data: ${JSON.stringify(event)}`).join('\n\n') + '\n\n';
+    const runnerFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return response({
+          ok: true, release: '2026.09.01-3',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
+          toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        return response({ ok: true, hermesRunId: 'live-run', status: 'running' }, 202);
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}/events`)) {
+        const signal = init?.signal;
+        return new Response(new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(events));
+            signal?.addEventListener('abort', () => controller.error(signal.reason), { once: true });
+          },
+        }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      return response({ error: 'not found' }, 404);
+    };
+    await handleRuntimeMessage(
+      env, { version: 1, businessId: A, taskId: task.id },
+      { provider, fetch: runnerFetch, observationSliceMs: 600 },
+    );
+    const types = published.map((event) => event.type);
+    expect(types).toContain('status');
+    expect(published.find((event) => event.type === 'thinking')).toMatchObject({
+      detail: expect.stringContaining('checking the calendar'),
+    });
+    expect(published.filter((event) => event.type === 'delta').map((event) => event.text).join(''))
+      .toBe('We are open on Sunday.');
+    for (const event of published) {
+      expect(event).toMatchObject({ businessId: A, runId: run.id });
+    }
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { publishRunProgress, publishRunProgressSafely } from '../src/runtime/progress';
 import { testEnv } from './harness';
+import { liveEvent, LIVE_DETAIL_MAX, LIVE_TEXT_MAX } from '../src/run-stream-events';
 
 const BUSINESS = '11111111-1111-4111-8111-111111111111';
 const RUN = '22222222-2222-4222-8222-222222222222';
@@ -42,5 +43,35 @@ describe('run progress binding', () => {
 
   it('is a no-op where the binding is intentionally absent', async () => {
     await expect(publishRunProgress(testEnv(), BUSINESS, RUN, 'queued')).resolves.toBeUndefined();
+  });
+});
+
+describe('live progress for the web chat', () => {
+  it('carries bounded detail and text alongside the lifecycle type', async () => {
+    const fetch = vi.fn(async () => Response.json({ ok: true }));
+    const env = testEnv({
+      RUN_STREAMS: { idFromName: () => ({ toString: () => 'stream-id' }), get: () => ({ fetch }) },
+    });
+    await publishRunProgress(env, BUSINESS, RUN, 'delta', { text: 'We are ' });
+    await publishRunProgress(env, BUSINESS, RUN, 'status', { detail: 'Searching the web…' });
+    const bodies = fetch.mock.calls.map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+    expect(bodies).toEqual([
+      { businessId: BUSINESS, runId: RUN, type: 'delta', text: 'We are ' },
+      { businessId: BUSINESS, runId: RUN, type: 'status', detail: 'Searching the web…' },
+    ]);
+  });
+
+  it('parses a live event only when its type and payload are the reviewed shape', () => {
+    expect(liveEvent({ type: 'status', detail: '  Reading 2 pages…  ' })).toMatchObject({
+      version: 1, seq: 0, type: 'status', detail: 'Reading 2 pages…',
+    });
+    expect(liveEvent({ type: 'thinking', detail: 'x'.repeat(LIVE_DETAIL_MAX + 50) })?.detail)
+      .toHaveLength(LIVE_DETAIL_MAX);
+    expect(liveEvent({ type: 'delta', text: 'y'.repeat(LIVE_TEXT_MAX + 5) })?.text)
+      .toHaveLength(LIVE_TEXT_MAX);
+    expect(liveEvent({ type: 'delta', text: '' })).toBeNull();
+    expect(liveEvent({ type: 'status' })).toBeNull();
+    expect(liveEvent({ type: 'working', detail: 'not live' })).toBeNull();
+    expect(liveEvent({ type: 'delta', detail: 'wrong field' })).toBeNull();
   });
 });

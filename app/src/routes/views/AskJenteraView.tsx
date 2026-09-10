@@ -332,6 +332,15 @@ export default function AskJenteraView({
                 </span>
               )}
               <button
+                type="button"
+                className="ask-inline-action ask-depth-toggle"
+                aria-pressed={ask.deep}
+                title={t('ask.deep.hint')}
+                onClick={() => ask.setDeep(!ask.deep)}
+              >
+                {t(ask.deep ? 'ask.deep.on' : 'ask.deep')}
+              </button>
+              <button
                 type="submit"
                 className="ask-studio-send"
                 disabled={!draft.trim() || busy}

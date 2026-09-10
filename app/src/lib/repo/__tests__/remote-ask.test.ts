@@ -97,7 +97,7 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
     const answer = new RemoteRepository().ask('What happened?', {
       mode: 'work',
       onRunCreated: created,
-      onProgress: (state) => progress.push(state),
+      onProgress: (event) => progress.push(event.type),
     });
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
     expect(created).toHaveBeenCalledExactlyOnceWith(ANSWER.runId);

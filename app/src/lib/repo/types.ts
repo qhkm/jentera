@@ -69,6 +69,15 @@ export interface IngestResult {
 }
 
 export type AskProgress = 'queued' | 'waking' | 'working' | 'retrying';
+
+/** One event from the run stream: a lifecycle state, or the agent's own
+    status line, a bounded slice of its reasoning, or answer text as it is
+    produced. */
+export interface AskProgressEvent {
+  type: AskProgress | 'status' | 'thinking' | 'delta';
+  detail?: string;
+  text?: string;
+}
 export type AskMode = 'ask' | 'work';
 
 export interface AskOptions {
@@ -77,7 +86,9 @@ export interface AskOptions {
   sessionId?: string;
   /** Emitted once the server has accepted a real run, before its answer arrives. */
   onRunCreated?: (runId: string) => void;
-  onProgress?: (progress: AskProgress) => void;
+  onProgress?: (event: AskProgressEvent) => void;
+  /** Quick is the default, as on Telegram; deep opts into the research loop. */
+  responseMode?: 'quick' | 'deep';
 }
 
 export type WorkQuality = 'good' | 'poor';
@@ -264,6 +275,8 @@ export interface Repository {
 
   /** Answer a question from confirmed facts and real work records. */
   ask(question: string, options?: AskOptions): Promise<AskAnswer>;
+  /** Wake the business's agent ahead of the first message; best effort. */
+  warmAgent?(): Promise<void>;
 
   /** Accounts this business has connected. Never includes secrets. */
   connections(): Promise<Connection[]>;
