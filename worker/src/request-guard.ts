@@ -126,8 +126,13 @@ export async function guardApiRequest(
 
   const identity = requestIdentity(request, url);
   const runtimeMutation = isRuntimeMutation(request.method, url.pathname);
-  const agentRun = request.method === 'POST' &&
-    ['/api/runs/ask', '/api/runs/ingest'].includes(url.pathname);
+  const agentRun = request.method === 'POST' && (
+    ['/api/runs/ask', '/api/runs/ingest'].includes(url.pathname) ||
+    /* An approval decision resumes a paid agent run, which is what this
+       brake is for. It must not share the 3/60s runtime-mutation bucket:
+       an owner who denies one approval and approves the next would be
+       refused for doing exactly what the surface asks of them. */
+    /^\/api\/runtime\/approvals\/[0-9a-f-]{36}\/decide$/i.test(url.pathname));
   const runStream = request.method === 'GET' &&
     /^\/api\/runs\/[0-9a-f-]{36}\/events$/i.test(url.pathname);
   try {
