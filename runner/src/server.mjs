@@ -911,7 +911,7 @@ export function configFromEnv(env = process.env) {
        derived runtime key already present for the model proxy; reusing it is
        what lets this ship without a new bootstrap transfer field. */
     configUrl: env.AISAR_CONFIG_URL,
-    configKey: env.OPENROUTER_API_KEY,
+    configKey: env.AISAR_CONFIG_KEY ?? env.OPENROUTER_API_KEY,
     configLkgFile: env.AISAR_CONFIG_LKG ?? '/home/sprite/aisar/config.lkg.json',
     hermesEnvFile: env.AISAR_HERMES_DOTENV ?? '/home/sprite/.hermes/.env',
     port: Number(env.PORT ?? 8080),
