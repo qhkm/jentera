@@ -1166,7 +1166,12 @@ describe('conversation versus work', () => {
   /* Every web message became a "task": a run, a work record and a card in
      the chat and in Activity. A quick reply the agent answered from
      memory is conversation; deep mode or any tool use is work. */
-  async function completeRun(env: ReturnType<typeof testEnv>, payload: Record<string, unknown>, events: Array<Record<string, unknown>>) {
+  async function completeRun(
+    env: ReturnType<typeof testEnv>,
+    payload: Record<string, unknown>,
+    events: Array<Record<string, unknown>>,
+    expected: { action: string; reason: string } = { action: 'ack', reason: 'completed' },
+  ) {
     const provider = new LocalRuntimeProvider();
     await ensureProviderRuntime(env, A, { provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64) });
     await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
@@ -1200,7 +1205,7 @@ describe('conversation versus work', () => {
       return response({ error: 'not found' }, 404);
     };
     await expect(handleRuntimeMessage(env, { version: 1, businessId: A, taskId: task.id }, { provider, fetch: runnerFetch }))
-      .resolves.toEqual({ action: 'ack', reason: 'completed' });
+      .resolves.toEqual(expected);
     const [record] = await asOwner((sql) => sql<{ kind: string; status: string }[]>`
       select kind, status from work_record where run_id = ${run.id}`);
     const tools = await asOwner((sql) => sql<{ n: string }[]>`
@@ -1231,6 +1236,18 @@ describe('conversation versus work', () => {
       { type: 'delta', delta: 'Here is the analysis.' },
     ]);
     expect(record).toEqual({ kind: 'work', status: 'completed' });
+  });
+
+  /* A failed "yo bro" sat at the top of the daily brief as "a task needs
+     another look" (2026-09-10). A failure is classified like a completion:
+     quick and no tool means conversation, whatever went wrong. */
+  it('records a quick reply that failed at the credit cap as conversation, not a task', async () => {
+    await asTenant(A, (tx) => tx`
+      insert into runtime_budget (business_id, monthly_cost_microusd) values (${A}, 100)`);
+    const { record } = await completeRun(env(), { responseMode: 'quick' }, [
+      { type: 'delta', delta: 'Yes.' },
+    ], { action: 'ack', reason: 'failed' });
+    expect(record).toEqual({ kind: 'conversation', status: 'failed' });
   });
 });
 

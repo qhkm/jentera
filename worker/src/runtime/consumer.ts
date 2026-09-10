@@ -1903,9 +1903,13 @@ export async function handleRuntimeMessage(
                run never got far enough to have one. */
             if (budgetExhausted) {
               const capPayload = lease.task.payload as RunPayload | null | undefined;
+              /* Classified like a completion: a failed quick reply without a
+                 tool is conversation, and must not surface as a task. */
+              const kind = await workKindForRun(tx, message.businessId, lease.task.runId);
               const updated = await updateWorkForRun(tx, message.businessId, lease.task.runId, {
                 status: 'failed',
                 outcome: CREDIT_CAP_NOTICE,
+                kind,
               });
               if (!updated) {
                 await recordWork(tx, message.businessId, {
@@ -1913,6 +1917,7 @@ export async function handleRuntimeMessage(
                   objective: capPayload?.objective ?? capPayload?.input?.slice(0, 200) ?? 'AI request',
                   outcome: CREDIT_CAP_NOTICE,
                   status: 'failed',
+                  kind,
                   function: capPayload?.function ?? 'assistant',
                   channel: capPayload?.channel ?? 'runtime',
                   risk: 'low',
