@@ -47,3 +47,12 @@ isolation is claimed by this feature. Before release, run the same handoff
 against the pinned Hermes browser tools on a canary Sprite, including a real
 service's login/MFA flow. Local tests use synthetic site state, not customer
 credentials. Laptop pairing remains a separate feature.
+
+### Kitakod startup regression (11 September)
+
+The explicit `--remote-debugging-address=127.0.0.1` flag hung Chromium's
+persistent launch on Kitakod's Sprite, although the original canary passed.
+Removing only that flag made the same synthetic handoff/restart test pass
+repeatedly in about 1.3–1.5 seconds. Keep Chromium's default loopback binding;
+the Linux smoke now asserts the actual CDP socket is loopback-only via procfs.
+Do not substitute a wildcard bind. Include Kitakod in future browser canaries.

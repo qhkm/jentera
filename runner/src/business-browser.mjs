@@ -71,7 +71,10 @@ export function createBusinessBrowser(config, deps = {}) {
       } catch {
         context = await chromium.launchPersistentContext(config.profileDir, {
           headless: true, viewport: BROWSER_VIEWPORT,
-          args: ['--remote-debugging-port=9222', '--remote-debugging-address=127.0.0.1', '--restore-last-session'],
+          // Chromium's CDP HTTP server binds loopback by default. Explicit
+          // --remote-debugging-address hangs startup on some Sprite hosts;
+          // keep the default and verify the actual bind in the Linux smoke.
+          args: ['--remote-debugging-port=9222', '--restore-last-session'],
           timeout: 20000, acceptDownloads: false,
         });
       }

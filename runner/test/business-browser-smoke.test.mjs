@@ -41,6 +41,17 @@ test('real Chromium owner input, agent CDP handoff and persistent session', {
     assert.ok(Buffer.from(frame.image, 'base64').length > 1000);
     await browser.command({ ...owner, action: 'release' });
     const port = (await readFile(join(config.profileDir, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
+    if (process.platform === 'linux') {
+      const sockets = (await Promise.all(['/proc/net/tcp', '/proc/net/tcp6'].map((path) => readFile(path, 'utf8'))))
+        .flatMap((table) => table.trim().split('\n').slice(1))
+        .map((line) => line.trim().split(/\s+/))
+        .filter((fields) => fields[3] === '0A' && parseInt(fields[1].split(':')[1], 16) === Number(port));
+      assert.ok(sockets.length, 'CDP listener exists');
+      for (const fields of sockets) {
+        assert.ok(['0100007F', '00000000000000000000000001000000'].includes(fields[1].split(':')[0]),
+          'CDP must listen on loopback only');
+      }
+    }
     agent = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
     assert.equal(await agent.contexts()[0].pages()[0].evaluate(() => localStorage.getItem('session')), 'synthetic-session');
     await context.close();

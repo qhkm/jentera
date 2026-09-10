@@ -23,7 +23,8 @@ function fixture() {
       connectOverCDP: async () => { throw new Error('not running'); },
       launchPersistentContext: async (path, opts) => {
         assert.equal(path, '/private/profile');
-        assert.ok(opts.args.includes('--remote-debugging-address=127.0.0.1'));
+        assert.ok(opts.args.includes('--remote-debugging-port=9222'));
+        assert.ok(!opts.args.some((arg) => arg.startsWith('--remote-debugging-address=')));
         launches += 1; return context;
       },
     },
