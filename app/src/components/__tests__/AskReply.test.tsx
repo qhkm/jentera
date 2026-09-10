@@ -64,4 +64,15 @@ describe('AskReply: the waiting bubble keeps moving', () => {
     await waitFor(() => expect(container.textContent).toMatch(/· [34]s/));
     await waitFor(() => expect(container.textContent).toMatch(/· [45]s/), { timeout: 3_000 });
   });
+
+  it('shows what the agent is doing under answer text that has already started', async () => {
+    const { container } = mount({
+      from: 'ai', text: 'Let me check that for you.', mode: 'work', state: 'streaming',
+      pendingId: 'p3', depth: 'quick', startedAt: Date.now() - 2_000,
+      liveStatus: '🔎 web_search: KL weather now',
+    });
+    await waitFor(() => expect(container.textContent).toContain('Let me check that for you.'));
+    expect(container.textContent).toContain('🔎 web_search: KL weather now');
+    await waitFor(() => expect(container.textContent).toMatch(/· [23]s/));
+  });
 });

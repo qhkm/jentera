@@ -35,6 +35,9 @@ export interface AskMessage {
   pendingId?: string;
   /** When the question was sent; the waiting bubble counts up from it. */
   startedAt?: number;
+  /** What the agent is doing while answer text is already on screen (a tool
+      mid-answer); cleared by the next piece of text. */
+  liveStatus?: string;
   /** The request that failed, retained so the UI can offer a real retry. */
   failedQuestion?: string;
   failedMode?: AskMode;
@@ -320,10 +323,20 @@ export function useAsk(
               const project = (message: AskMessage): AskMessage => {
                 if (event.type === 'delta') {
                   const text = (message.state === 'streaming' ? message.text : '') + (event.text ?? '');
-                  return { ...message, text, state: 'streaming' };
+                  return { ...message, text, state: 'streaming', liveStatus: undefined };
                 }
-                /* Once answer text is on screen, a status line must not erase it. */
-                if (message.state === 'streaming') return message;
+                /* Once answer text is on screen, a status line must not erase
+                   it; it rides alongside, so a tool running mid-answer still
+                   shows. */
+                if (message.state === 'streaming') {
+                  if (event.type === 'status' || event.type === 'thinking') {
+                    const detail = event.detail?.trim();
+                    return detail
+                      ? { ...message, liveStatus: event.type === 'thinking' ? `💭 ${detail}` : detail }
+                      : message;
+                  }
+                  return message;
+                }
                 if (event.type === 'status') {
                   return { ...message, text: event.detail || t('ask.working'), state: 'working' };
                 }

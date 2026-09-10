@@ -178,9 +178,15 @@ describe('useAsk durable answers', () => {
     act(() => options?.onProgress?.({ type: 'delta', text: 'We are ' }));
     act(() => options?.onProgress?.({ type: 'delta', text: 'open on Sunday.' }));
     expect(result.current!.messages[1]).toMatchObject({ text: 'We are open on Sunday.', state: 'streaming' });
-    // a late status must not wipe answer text that has started arriving
+    // a late status must not wipe answer text that has started arriving;
+    // it rides alongside it, so a tool running mid-answer is still visible
     act(() => options?.onProgress?.({ type: 'status', detail: 'Finishing…' }));
-    expect(result.current!.messages[1].text).toBe('We are open on Sunday.');
+    expect(result.current!.messages[1]).toMatchObject({
+      text: 'We are open on Sunday.', state: 'streaming', liveStatus: 'Finishing…',
+    });
+    act(() => options?.onProgress?.({ type: 'delta', text: ' Yes.' }));
+    expect(result.current!.messages[1]).toMatchObject({ text: 'We are open on Sunday. Yes.' });
+    expect(result.current!.messages[1].liveStatus).toBeUndefined();
 
     await act(async () => {
       resolveAnswer?.({ text: 'We are open on Sunday, 9 to 5.', usedKeys: [], grounded: true });
