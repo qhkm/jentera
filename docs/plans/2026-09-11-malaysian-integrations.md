@@ -20,6 +20,34 @@ identical: what an owner can connect this week, what needs a registration
 somebody has to start now, and what has no path at all and should stop being
 planned for.
 
+## Cloud only, and direct to SMEs
+
+Two decisions, made 11 September 2026, and they decide what qualifies before
+any other consideration does.
+
+**Everything runs in our infrastructure or the provider's.** Nothing is
+installed on a customer's machine. The reason is scale: an installed component
+is a computer nobody here controls, an update that cannot be rolled back
+centrally, and a fault that cannot be reproduced. Thirteen sprites are already
+a fleet; hundreds of office servers would be a different company.
+
+**The customer is the small business, directly.** Not accounting firms, not
+resellers, not other software vendors.
+
+Together these remove a category rather than reorder it. On-premise accounting
+— AutoCount, SQL Account, SQL Payroll — is out, and
+`2026-09-11-onpremise-bridge.md` records the argument in case the constraint is
+ever revisited. What remains is cloud services the owner already uses,
+connected by themselves, with nothing to install and nobody to send.
+
+It also relocates defensibility, which is worth being honest about. Tier 1
+connectors are not a moat; anyone can wire Billplz in a fortnight. For a cloud
+product sold directly to SMEs the moat is the agent, the Malaysian context in
+the playbooks, the language, and being reachable on WhatsApp where the business
+already is. Integrations are table stakes to get right cheaply, not the thing
+that wins — which is an argument for breadth and low cost per connector rather
+than depth in any one.
+
 ## The line: prepare, do not file
 
 Regulated and high-stakes work is last, or absent. Not deferred pending a
@@ -113,8 +141,16 @@ obligation.
 
 **On-premise accounting.** AutoCount, SQL Account, SQL Payroll, AutoCount
 Payroll are on-premise SQL Server products with no cloud API. Reaching them
-means either file import/export or an agent installed on the owner's own
-machine — a different product with its own support burden, not a connector.
+needs software on the owner's machine, which "Cloud only" rules out. **Not on
+the roadmap**; the reasoning is preserved in
+`2026-09-11-onpremise-bridge.md`.
+
+What remains available to those owners, with nothing installed, is file
+import: an export from their accounting system, read the way a bank statement
+is read. Worth considering after statement reconciliation, being the same
+mechanism pointed at a different file — and it stays cloud-only, because the
+owner does the exporting.
+
 StoreHub, EasyStore and Slurp! are cloud and belong in Tier 1 or 2 once their
 auth is confirmed.
 
@@ -257,37 +293,17 @@ What it does not give is a live balance or same-day movement. That limitation
 should be stated to owners rather than engineered around, because engineering
 around it is section C.
 
-### B. The on-premise bridge — AutoCount, SQL Account, SQL Payroll
+### B. The on-premise bridge — not pursued
 
-More work than statements, still no regulator, and the most defensible thing
-here.
+Ruled out by "Cloud only" above. It was the most defensible item here, and the
+tedium that made it defensible is the same tedium that makes it unscalable for
+a small team: hundreds of unattended installations on machines nobody here
+controls.
 
-These are SQL Server products installed on a machine in the office, with tens
-of thousands of Malaysian SMEs and accounting firms on them and no cloud path.
-A local agent that reads the database and exposes a normalised API is ordinary
-software: no counterparty, and no credential custody beyond the owner's own
-database.
-
-The moat is that it is tedious. Schema differences across versions, upgrades
-that move columns, machines that sleep, offices behind NAT. Nobody wants to
-own that, which is exactly why owning it is worth something.
-
-The buyer is likelier the accounting firm than the SME. A firm with fifty
-clients on AutoCount has the same problem fifty times, which is a better
-conversation than selling one shop a connector.
-
-What must be decided before code:
-
-- **Deployment.** A Windows service the owner installs, or a container on
-  their server. Updating it across hundreds of offices is the real engineering
-  problem, not reading the database.
-- **Direction.** Read-only first. A bridge that reports is recoverable when it
-  is wrong; one that writes into the owner's ledger is not, and a bad write
-  into somebody's accounts is a severe support event.
-- **Reach.** Outbound-only from the office. Anything needing an inbound port
-  or a static IP will not survive contact with real SME networks.
-- **Version pinning.** Which AutoCount and SQL Account versions are supported,
-  and what happens when the owner upgrades underneath it.
+`2026-09-11-onpremise-bridge.md` keeps the design and the argument. The part
+worth carrying forward regardless is its architectural rule — the agent asks
+the control plane and never reaches into a customer's network — which holds
+for anything touching a customer's own systems.
 
 ### C. Live bank access — not on the list
 
@@ -371,11 +387,8 @@ it privately forecloses nothing; the reverse is not true.
 5. **Statement reconciliation.** Independent of the broker and of every
    connector: it holds no credential and calls nobody, so it can be built
    beside any of the above. It delivers most of what the banking row promises
-   at the lowest stake on this page.
-6. **The on-premise bridge, as Jentera's own infrastructure.** Different
-   codebase, different deployment, different buyer. Last here only because it
-   blocks nothing, not because it matters least — see Tier 3 above for why it
-   is likely the most defensible thing on this page.
+   at the lowest stake here, and the owner installs nothing — they upload a
+   file they already have.
 
 Absent from this list on purpose: live bank access, and submitting anything to
 LHDN, KWSP, PERKESO or EIS. Their preparation halves are in scope and are most

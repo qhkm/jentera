@@ -1,8 +1,27 @@
 # The on-premise bridge — reaching AutoCount and SQL Account
 
-Status: **proposed**. Prepared 11 September 2026. Nothing is built.
-Companion to `2026-09-11-malaysian-integrations.md`, which argues why this is
-worth doing; this one is what it would be.
+Status: **not pursued**, decided 11 September 2026. Kept for the reasoning,
+not as a roadmap item. Nothing is built and nothing is planned.
+
+**Why it was dropped.** Jentera is a cloud product and stays one. Anything
+installed on a customer's machine scales the wrong way: every installation is
+a computer nobody here controls, an update that cannot be rolled back
+centrally, and a fault that cannot be reproduced. Thirteen sprites are already
+a fleet to manage; hundreds of office servers on unknown Windows versions,
+behind unknown networks, upgraded on their owners' schedules, is a different
+company.
+
+The defensibility argued below is real — and it is exactly the tedium that
+makes it unscalable. It was also written assuming accounting firms as the
+channel, which would have amortised the installations. Serving SMEs directly
+removes even that, but the cloud-only decision would rule it out regardless.
+
+The reasoning is kept because the architecture section holds independently:
+the agent asks the control plane and never reaches into a customer's network.
+That rule applies to anything touching a customer's own systems, however it is
+reached.
+
+Companion to `2026-09-11-malaysian-integrations.md`.
 
 ## Why this and not a connector
 
