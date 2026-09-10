@@ -70,16 +70,17 @@ describe('the web-extraction endpoint handed to a sprite', () => {
     }))).not.toThrow();
   });
 
-  it('sends no transfer field the bootstrap cannot parse', () => {
-    /* 2026-09-10: provision.ts sent EXTRACT_BASE_B64 with no matching `case`
-       arm anywhere, so every sprite rejected its transfer and convergence
-       stalled. Every field, not just that one — the next should fail here
-       rather than on twelve machines.
+  it('sends no transfer field the bootstrap would leave unapplied', () => {
+    /* Since 2026.09.10-4 an unknown field is ignored rather than fatal, so
+       this is no longer a guard against a stalled fleet — it is a lint for a
+       quieter failure: a field the bootstrap has no arm for is *not applied*,
+       and the feature that depends on it simply does not work. The sprite
+       reports the name in `ignoredFields`, but that is after the fact.
 
-       This compares the two files at the same commit, which is the cheap half
-       and catches a missing arm. It cannot catch the other shape: a
-       provision.ts that has outrun RUNTIME_BUNDLE_COMMIT, since the bootstrap
-       a sprite runs is curled from the pin, not from HEAD.
+       Every field, not just the one that caused 2026-09-10. This compares the
+       two files at the same commit, which catches a missing arm. It cannot
+       catch a provision.ts that has outrun RUNTIME_BUNDLE_COMMIT, since the
+       bootstrap a sprite runs is curled from the pin rather than from HEAD;
        `check-transfer-fields.mjs` covers that as a predeploy hook. */
     const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
     const sent = [...read('../src/runtime/provision.ts')
