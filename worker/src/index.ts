@@ -19,7 +19,7 @@ import { handleConnect } from './routes/connect';
 import { handleRuntime } from './routes/runtime';
 import { handleEvents } from './routes/events';
 import { handleSupport } from './routes/support';
-import { handleModelProxy } from './routes/model';
+import { handleModelProxy, sweepModelCalls } from './routes/model';
 import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
 import {
@@ -169,9 +169,11 @@ export default {
       const drainedBefore = await drainRuntimeTaskOutbox(env);
       const published = await sweepRuntimeDrift(env);
       const drainedAfter = await drainRuntimeTaskOutbox(env);
+      const sweptCalls = await sweepModelCalls(env);
       console.log(
         `[drift-sweep] recovered=${recovered} published=${published} ` +
-        `drained=${drainedBefore + drainedAfter} took=${Date.now() - started}ms`,
+        `drained=${drainedBefore + drainedAfter} model_calls_swept=${sweptCalls} ` +
+        `took=${Date.now() - started}ms`,
       );
     } catch (err) {
       console.error(`[drift-sweep] ${String(err)}`);

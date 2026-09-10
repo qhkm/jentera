@@ -21,6 +21,7 @@
     "db:migrate:runtime-budget-token-caps": "node scripts/apply-runtime-budget-token-caps.mjs",
     "db:migrate:work-record-kind": "node scripts/apply-work-record-kind.mjs",
     "db:migrate:runtime-task-stream-seq": "node scripts/apply-runtime-task-stream-seq.mjs",
+    "db:migrate:model-call": "node scripts/apply-model-call.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

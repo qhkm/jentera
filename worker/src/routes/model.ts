@@ -17,6 +17,16 @@
    final usage chunk (`stream_options.include_usage` is injected when
    absent) — if the upstream never emits one, that request is not
    metered. The $5 rider ceiling is a backstop, not billing-grade.
+
+   Two records come out of every call, and they answer different
+   questions. `fmcv_rider_spend` is the meter the ceiling reads: one
+   running total per rider per month. `model_call` is a diagnostic: one
+   row per upstream call carrying token counts and the *shape* of the
+   prompt — fixed overhead, transcript, last user message — because
+   `runtime_usage.input_tokens` is a single per-run sum and cannot say
+   which of those made a prompt big. It records unmetered streams too,
+   so the size of the metering gap above is a number rather than a
+   caveat. Never content, and no tenant columns.
    ============================================================ */
 
 import type { Env } from '../env';
@@ -32,6 +42,7 @@ import {
 } from '../fmcv-verifier';
 import { modelCostMicrousd } from '../runtime/usage';
 import { runtimeModelBaseAllowed } from '../runtime/execution';
+import { connect } from '../db';
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_RELAY_BODY_BYTES = 8 * 1024 * 1024;
@@ -123,6 +134,16 @@ export async function handleModelProxy(
   const upstream = upstreamUrl(env, '/chat/completions');
   const fetcher = options.upstreamFetch ?? ((input, init) => globalThis.fetch(input, init));
 
+  /* Serialise once: the same bytes go upstream and are measured, so
+     request_bytes is what was actually sent, injection included. */
+  const outboundBody = JSON.stringify(parsed);
+  const shape = promptShape(parsed, outboundBody.length);
+  const startedAt = Date.now();
+  const keepAlive = (promise: Promise<unknown>): void => {
+    if (options.waitUntil) options.waitUntil(promise);
+    else void promise;
+  };
+
   let upstreamResponse: Response;
   try {
     upstreamResponse = await fetcher(upstream, {
@@ -133,7 +154,7 @@ export async function handleModelProxy(
         Accept: request.headers.get('Accept') ?? 'application/json',
         'User-Agent': 'Jentera-Model-Proxy/1',
       },
-      body: JSON.stringify(parsed),
+      body: outboundBody,
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
   } catch {
@@ -150,6 +171,7 @@ export async function handleModelProxy(
         && contentType.includes('text/event-stream')) {
       const metered = body.pipeThrough(meteringStream(
         claims, String(parsed.model), env, options.waitUntil,
+        { shape, startedAt, upstreamStatus: upstreamResponse.status },
       ));
       return new Response(metered, {
         status: upstreamResponse.status,
@@ -175,17 +197,42 @@ export async function handleModelProxy(
     /* Relay malformed upstream bodies verbatim; the client gets the truth. */
   }
   if (usage) {
-    const promise = recordUsage(claims, String(parsed.model), usage, env);
-    if (options.waitUntil) {
-      options.waitUntil(promise);
-    } else {
-      void promise;
-    }
+    keepAlive(recordUsage(claims, String(parsed.model), usage, env));
   }
+  /* Recorded whether or not the body carried usage: a non-streaming reply
+     without it is exactly the gap this table exists to size. */
+  keepAlive(recordModelCall(env, claims, String(parsed.model), shape, {
+    streamed: false,
+    usage,
+    upstreamStatus: upstreamResponse.status,
+    latencyMs: Date.now() - startedAt,
+  }));
   return new Response(text, {
     status: upstreamResponse.status,
     headers: { ...headers, ...relayHeaders(upstreamResponse.headers) },
   });
+}
+
+/** Delete model_call rows past their retention window. The table is a
+    diagnostic for reading prompt shape over days, not a ledger, so it is
+    swept rather than kept; fmcv_rider_spend is what the ceiling reads and
+    is untouched by this. Bounded per run so the cron cannot stall on a
+    backlog. */
+export async function sweepModelCalls(env: Env, retentionDays = 90): Promise<number> {
+  const sql = connect(env);
+  try {
+    const deleted = await sql<{ id: string }[]>`
+      delete from model_call
+       where id in (
+         select id from model_call
+          where created_at < now() - ${`${retentionDays} days`}::interval
+          limit 5000
+       )
+       returning id`;
+    return deleted.length;
+  } finally {
+    await sql.end({ timeout: 1 });
+  }
 }
 
 /** Extract model id from a /models listing; only used for the relay path. */
@@ -245,10 +292,16 @@ function meteringStream(
   model: string,
   env: Env,
   waitUntil?: (promise: Promise<unknown>) => void,
+  accounting?: { shape: PromptShape; startedAt: number; upstreamStatus: number },
 ): TransformStream<Uint8Array, Uint8Array> {
   const decoder = new TextDecoder();
   let buffer = '';
   let metered = false;
+  let seen: Record<string, unknown> | null = null;
+  const keepAlive = (promise: Promise<unknown>): void => {
+    if (waitUntil) waitUntil(promise);
+    else void promise;
+  };
   return new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
       buffer += decoder.decode(chunk, { stream: true });
@@ -256,15 +309,27 @@ function meteringStream(
         const usage = extractUsage(buffer);
         if (usage) {
           metered = true;
-          const promise = recordUsage(claims, model, usage, env);
-          if (waitUntil) waitUntil(promise);
-          else void promise;
+          seen = usage;
+          keepAlive(recordUsage(claims, model, usage, env));
         }
       }
       /* Keep the scan window bounded while preserving enough tail to find
          a usage event that spans chunk boundaries. */
       if (buffer.length > 128 * 1024) buffer = buffer.slice(-64 * 1024);
       controller.enqueue(chunk);
+    },
+    /* One row per stream, at the end, so a stream that closed without ever
+       carrying a usage chunk is counted rather than silently lost. Those
+       calls are real spend the rider ledger never saw, and their number is
+       the size of the metering gap. */
+    flush() {
+      if (!accounting) return;
+      keepAlive(recordModelCall(env, claims, model, accounting.shape, {
+        streamed: true,
+        usage: seen,
+        upstreamStatus: accounting.upstreamStatus,
+        latencyMs: Date.now() - accounting.startedAt,
+      }));
     },
   });
 }
@@ -352,6 +417,128 @@ function recordUsage(
 
 function safeToken(value: unknown): number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+/** The three components of a prompt, measured rather than guessed.
+ *
+ * `runtime_usage.input_tokens` is one number per run — Hermes's
+ * session_prompt_tokens summed over every call — so it cannot say whether a
+ * large prompt is fixed overhead (system prompt plus tool schemas), the
+ * accumulated transcript, or one enormous tool result. Those have different
+ * levers. Characters, not tokens, because the proxy must not run a
+ * tokenizer on the request path; the ratio is stable enough to compare
+ * calls against each other, which is all this is for.
+ *
+ * The last user message is measured separately because it is the only part
+ * the owner actually typed: everything else is the loop talking to itself. */
+export function promptShape(parsed: Record<string, unknown>, requestBytes: number): PromptShape {
+  const messages = Array.isArray(parsed.messages) ? parsed.messages : [];
+  const tools = Array.isArray(parsed.tools) ? parsed.tools : [];
+  const contentChars = (message: unknown): number => {
+    if (!message || typeof message !== 'object') return 0;
+    const content = (message as { content?: unknown }).content;
+    if (typeof content === 'string') return content.length;
+    /* Multi-part content: sum the text parts, ignore binary references. */
+    if (Array.isArray(content)) {
+      return content.reduce<number>((total, part) => {
+        const text = part && typeof part === 'object' ? (part as { text?: unknown }).text : undefined;
+        return total + (typeof text === 'string' ? text.length : 0);
+      }, 0);
+    }
+    /* Tool-call payloads live outside `content`; count the whole message. */
+    return content === undefined || content === null ? JSON.stringify(message).length : 0;
+  };
+  const roleOf = (message: unknown): string =>
+    message && typeof message === 'object' && typeof (message as { role?: unknown }).role === 'string'
+      ? (message as { role: string }).role
+      : '';
+
+  let systemChars = 0;
+  for (const message of messages) if (roleOf(message) === 'system') systemChars += contentChars(message);
+
+  let lastUserIndex = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (roleOf(messages[i]) === 'user') { lastUserIndex = i; break; }
+  }
+  const lastUserChars = lastUserIndex >= 0 ? contentChars(messages[lastUserIndex]) : 0;
+
+  let historyChars = 0;
+  for (let i = 0; i < messages.length; i++) {
+    if (i === lastUserIndex || roleOf(messages[i]) === 'system') continue;
+    historyChars += contentChars(messages[i]);
+  }
+
+  return {
+    requestBytes,
+    messageCount: messages.length,
+    toolCount: tools.length,
+    systemChars,
+    toolsChars: tools.length > 0 ? JSON.stringify(tools).length : 0,
+    historyChars,
+    lastUserChars,
+  };
+}
+
+export interface PromptShape {
+  requestBytes: number;
+  messageCount: number;
+  toolCount: number;
+  systemChars: number;
+  toolsChars: number;
+  historyChars: number;
+  lastUserChars: number;
+}
+
+/** One diagnostic row per upstream call. Never on the response path: the
+    caller hands this to waitUntil, and a failure is logged, not raised —
+    a broken diagnostic must not cost anyone a reply. */
+function recordModelCall(
+  env: Env,
+  claims: JenteraKeyClaims,
+  model: string,
+  shape: PromptShape,
+  call: {
+    streamed: boolean;
+    usage: Record<string, unknown> | null;
+    upstreamStatus: number;
+    latencyMs: number;
+  },
+): Promise<void> {
+  const usage = call.usage;
+  const promptTokens = usage ? safeToken(usage.prompt_tokens) : null;
+  const completionTokens = usage ? safeToken(usage.completion_tokens) : null;
+  const details = usage && typeof usage.prompt_tokens_details === 'object' && usage.prompt_tokens_details
+    ? usage.prompt_tokens_details as Record<string, unknown>
+    : null;
+  const cachedTokens = details ? safeToken(details.cached_tokens) : null;
+  let costMicrousd: number | null = null;
+  if (promptTokens !== null && completionTokens !== null) {
+    try {
+      costMicrousd = modelCostMicrousd(model, promptTokens, completionTokens);
+    } catch {
+      /* Unpriced model: the shape is still worth recording. */
+    }
+  }
+  const sql = connect(env);
+  return sql`
+    insert into model_call (
+      rider_id, model, streamed, usage_seen,
+      prompt_tokens, completion_tokens, cached_tokens, cost_microusd,
+      request_bytes, message_count, tool_count,
+      system_chars, tools_chars, history_chars, last_user_chars,
+      upstream_status, latency_ms
+    ) values (
+      ${claims.rid}, ${model}, ${call.streamed}, ${usage !== null},
+      ${promptTokens}, ${completionTokens}, ${cachedTokens}, ${costMicrousd},
+      ${shape.requestBytes}, ${shape.messageCount}, ${shape.toolCount},
+      ${shape.systemChars}, ${shape.toolsChars}, ${shape.historyChars}, ${shape.lastUserChars},
+      ${call.upstreamStatus}, ${call.latencyMs}
+    )`
+    .then(() => undefined)
+    .catch((error) => {
+      console.error(`[model-proxy] call accounting failed: ${String(error)}`);
+    })
+    .finally(() => sql.end({ timeout: 1 }).catch(() => undefined));
 }
 
 /** Map a runtime-facing path to the upstream gateway path. Allowlisted
