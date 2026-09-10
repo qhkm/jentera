@@ -91,6 +91,7 @@ export interface AskOptions {
   responseMode?: 'quick' | 'deep';
 }
 
+export type WorkKind = 'work' | 'conversation';
 export type WorkQuality = 'good' | 'poor';
 
 export interface WorkSummary {
@@ -106,6 +107,10 @@ export interface WorkSummary {
   /** Owner's verdict, null until they rate it. Sent with activity. */
   outcomeQuality: WorkQuality | null;
   qualityAt: string | null;
+  /** work: Jentera did something (deep mode, a tool, an approval).
+      conversation: a quick reply answered from what it knew. Optional only
+      so fixtures predating the field still type; the server always sends it. */
+  kind?: WorkKind;
   occurredAt: string;
 }
 
@@ -149,6 +154,8 @@ export interface AskAnswer {
   usedKeys: string[];
   /** False when nothing confirmed was available to reason from. */
   grounded: boolean;
+  /** Present on durable answers: conversation or work. */
+  kind?: WorkKind;
 }
 
 /** Read-only projection of the existing tenant-scoped run endpoint. */

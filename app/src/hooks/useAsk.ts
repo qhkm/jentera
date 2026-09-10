@@ -22,7 +22,7 @@ import { stripEmoji } from '@/components/Icon';
 import type { Lang } from '@/lib/types';
 import { taggedAgent } from '@/hooks/useMentions';
 import type { Business } from '@/lib/types';
-import type { AskAnswer, AskMode, AskProgress, AskProgressEvent } from '@/lib/repo';
+import type { AskAnswer, AskMode, AskProgress, AskProgressEvent, WorkKind } from '@/lib/repo';
 import { trackActivation } from '@/lib/analytics';
 import { isRunId } from '@/lib/task';
 
@@ -45,6 +45,10 @@ export interface AskMessage {
   /** Completion evidence returned by the server. */
   usedKeys?: string[];
   grounded?: boolean;
+  /** What the owner asked for: deep is work by request. */
+  depth?: 'quick' | 'deep';
+  /** What the server decided the finished run was. */
+  kind?: WorkKind;
 }
 
 export interface AskSession {
@@ -282,7 +286,7 @@ export function useAsk(
             messages: [
               ...session.messages,
               { from: 'you', text: question },
-              { from: 'ai', text: t('ask.working'), pendingId, state: 'sending', mode },
+              { from: 'ai', text: t('ask.working'), pendingId, state: 'sending', mode, depth: deep ? 'deep' : 'quick' },
             ],
           };
           return {
@@ -361,6 +365,8 @@ export function useAsk(
                           taskTitle: question,
                           state: 'done' as const,
                           mode,
+                          depth: message.depth,
+                          kind: a.kind,
                           usedKeys: a.usedKeys,
                           grounded: a.grounded,
                         }

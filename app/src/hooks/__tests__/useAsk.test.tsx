@@ -127,7 +127,7 @@ describe('useAsk durable answers', () => {
     const seen: AskOptions[] = [];
     repo.ask = (_question: string, next?: AskOptions): Promise<AskAnswer> => {
       if (next) seen.push(next);
-      return Promise.resolve({ text: 'ok', usedKeys: [], grounded: false });
+      return Promise.resolve({ text: 'ok', usedKeys: [], grounded: false, kind: 'conversation' });
     };
     const wrapper = ({ children }: { children: ReactNode }) => (
       <SignedInProvider value>
@@ -141,10 +141,13 @@ describe('useAsk durable answers', () => {
     await waitFor(() => expect(result.current).not.toBeNull());
     await act(async () => { result.current!.send('are we open?', 'work'); });
     expect(seen[0]?.responseMode).toBe('quick');
+    expect(result.current!.messages[1]).toMatchObject({ depth: 'quick' });
     act(() => result.current!.setDeep(true));
     expect(result.current!.deep).toBe(true);
     await act(async () => { result.current!.send('compare suppliers', 'work'); });
     expect(seen[1]?.responseMode).toBe('deep');
+    expect(result.current!.messages[1]).toMatchObject({ state: 'done', kind: 'conversation' });
+    expect(result.current!.messages[3]).toMatchObject({ depth: 'deep' });
   });
 
   it("streams the agent's status, thinking and answer text into the placeholder", async () => {
