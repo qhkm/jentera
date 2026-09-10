@@ -406,6 +406,38 @@ button.ask-context-link:hover {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* The restricted Markdown subset. Nothing here is navigable: a link renders
+   as its text plus a plain, inert address, because an answer can carry words
+   a stranger's web page chose. */
+.ask-reply-text .reply-pre {
+  margin: 10px 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border: 1px solid var(--rail);
+  border-radius: 10px;
+  background: rgb(var(--border-ink) / 0.04);
+  white-space: pre;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.ask-reply-text .reply-code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgb(var(--border-ink) / 0.06);
+  font-size: 12.5px;
+}
+.ask-reply-text .reply-list {
+  margin: 6px 0;
+  padding-left: 22px;
+  list-style: disc;
+}
+.ask-reply-text .reply-list li {
+  margin: 2px 0;
+}
+.ask-reply-text .reply-link-url {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
 .ask-reply > footer {
   display: flex;
   align-items: flex-start;

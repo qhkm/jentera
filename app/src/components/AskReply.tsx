@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { RuntimeApprovalCard } from './RuntimeApprovalCard';
+import { renderReplyMarkdown } from '@/lib/reply-markdown';
 import { ArrowUpRight, Check, Copy, Info, WarningCircle } from '@phosphor-icons/react';
 import { JenteraMark } from '@/components/JenteraMark';
 import { TypingBubble } from '@/components/WorkSignal';
@@ -72,7 +73,7 @@ export function AskReply({
           ? (
             <>
               {message.text && message.state !== 'needs_approval'
-                ? <div className="ask-reply-text">{message.text}</div>
+                ? <div className="ask-reply-text">{renderReplyMarkdown(message.text)}</div>
                 : null}
               <RuntimeApprovalCard approvalId={message.approvalId} />
             </>
@@ -80,7 +81,9 @@ export function AskReply({
           : message.state === 'streaming'
           ? (
             <>
-              <div className="ask-reply-text" aria-live="polite">{message.text}</div>
+              <div className="ask-reply-text" aria-live="polite">
+                {renderReplyMarkdown(message.text)}
+              </div>
               {message.liveStatus && (
                 <div className="mt-2">
                   <TypingBubble label={message.liveStatus} since={message.startedAt} />
@@ -94,7 +97,7 @@ export function AskReply({
       ) : (
         <>
           <div className="ask-reply-text" role={failed ? 'alert' : undefined}>
-            {message.text}
+            {renderReplyMarkdown(message.text)}
           </div>
           {failed && linkedTask ? (
             <p className="task-recovery-note">{t('task.checkBeforeRetry')}</p>
