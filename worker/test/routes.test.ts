@@ -822,9 +822,7 @@ describe('connections', () => {
         requestId: 'a'.repeat(32),
         tool: 'execute_code',
         message: 'Allow execute_code to fetch the requested source?',
-        connectionId: paired.connectionId,
-        chatId: 42,
-        messageId: 55,
+        telegram: { connectionId: paired.connectionId, chatId: 42, messageId: 55 },
         remoteRunId: 'hermes-run-approval',
         delaySeconds: 60,
       });

@@ -67,18 +67,34 @@ export type RuntimeApprovalStatus =
   | 'denied'
   | 'expired';
 
+/**
+ * A pause waiting on a person.
+ *
+ * `surface` is the change that lets a web run have one at all. Until now the
+ * shape assumed Telegram — connectionId, chatId, messageId, all required —
+ * so an approval on any other channel could not be represented, and the
+ * consumer threw rather than parking it. A thrown approval is not a lost
+ * approval; it is a lost run.
+ *
+ * Rows written before this change have those three fields flat and no
+ * `surface`. The validator reads both and writes only this shape, the same
+ * rule CLAUDE.md already applies to work-done indices. The approval lives in
+ * `runtime_task.result` (jsonb), so there is no migration and the
+ * `approval_wait` lease predicate is untouched.
+ */
 export interface RuntimeApproval {
   id: string;
   requestId: string;
   tool: string;
   message: string;
-  connectionId: string;
-  chatId: number;
-  messageId: number;
   status: RuntimeApprovalStatus;
   decision?: 'approve' | 'deny';
   expiresAt: string;
   decidedAt?: string;
+  /** Where the owner is being asked. Absent on rows written before this. */
+  surface?: 'telegram' | 'web';
+  /** Present only for the Telegram surface. */
+  telegram?: { connectionId: string; chatId: number; messageId: number };
 }
 
 export interface FloodDeferResult {
@@ -581,9 +597,8 @@ export async function pauseRuntimeTaskForApproval(
     requestId: string;
     tool: string;
     message: string;
-    connectionId: string;
-    chatId: number;
-    messageId: number;
+    /** Absent for a web approval: there is no bubble to settle. */
+    telegram?: { connectionId: string; chatId: number; messageId: number };
     remoteRunId: string;
     delaySeconds: number;
     /** Last runner event seq relayed before the approval paused the run. */
@@ -601,11 +616,10 @@ export async function pauseRuntimeTaskForApproval(
     requestId: input.requestId,
     tool: input.tool.slice(0, 96),
     message: input.message.slice(0, 1_000),
-    connectionId: input.connectionId,
-    chatId: input.chatId,
-    messageId: input.messageId,
     status: 'pending',
     expiresAt: new Date(Date.now() + input.delaySeconds * 1_000).toISOString(),
+    surface: input.telegram ? 'telegram' : 'web',
+    ...(input.telegram ? { telegram: input.telegram } : {}),
   };
   const current = resultObject(row.result);
   const rows = await tx`
@@ -655,8 +669,13 @@ export async function claimRuntimeApprovalDecision(
   const approval = runtimeApprovalFromTask(currentTask);
   if (!approval || currentTask.kind !== 'resume' ||
       !['queued', 'failed'].includes(currentTask.status) ||
-      approval.connectionId !== input.connectionId || approval.chatId !== input.chatId ||
-      approval.messageId !== input.messageId) return { outcome: 'invalid' };
+      /* This claim arrives from a Telegram callback, so it can only be about
+         a Telegram approval — and it must be about *this* bubble. A web
+         approval has no coordinates to match and is never claimable here. */
+      approval.surface !== 'telegram' ||
+      approval.telegram?.connectionId !== input.connectionId ||
+      approval.telegram?.chatId !== input.chatId ||
+      approval.telegram?.messageId !== input.messageId) return { outcome: 'invalid' };
   if ((approval.status === 'approved' || approval.status === 'denied') &&
       approval.decision === input.decision) {
     return { outcome: 'duplicate', task: currentTask, approval };
@@ -758,8 +777,13 @@ export async function expireRuntimeApproval(
        and kind = 'resume' and status = 'leased' and lease_token = ${leaseToken}
      for update`;
   const current = runtimeApprovalFromResult(row?.result);
-  if (!row || !current || current.id !== approvalId ||
-      !['pending', 'deciding'].includes(current.status)) return null;
+  /* `deciding` is deliberately NOT expirable. It means a surface has already
+     claimed this approval and is relaying the owner's answer to the runner.
+     Expiring it there wrote a deny over a decision in flight: the runner
+     could end up approved while the worker retried a deny into 409s. A click
+     that lands on the same second as the deadline should win — the owner did
+     answer — and the timeout path should simply find nothing to do. */
+  if (!row || !current || current.id !== approvalId || current.status !== 'pending') return null;
   const approval: RuntimeApproval = {
     ...current,
     status: 'expired',
@@ -1060,9 +1084,6 @@ function runtimeApprovalFromResult(value: unknown): RuntimeApproval | null {
       !/^[A-Za-z0-9_-]{16,128}$/.test(approval.requestId) ||
       typeof approval.tool !== 'string' || !/^[a-zA-Z0-9_.:-]{1,96}$/.test(approval.tool) ||
       typeof approval.message !== 'string' || !approval.message || approval.message.length > 1_000 ||
-      typeof approval.connectionId !== 'string' || !uuid(approval.connectionId) ||
-      typeof approval.chatId !== 'number' || !Number.isSafeInteger(approval.chatId) ||
-      typeof approval.messageId !== 'number' || !Number.isSafeInteger(approval.messageId) ||
       typeof approval.status !== 'string' ||
       !statuses.includes(approval.status as RuntimeApprovalStatus) ||
       typeof approval.expiresAt !== 'string' || !Number.isFinite(Date.parse(approval.expiresAt)) ||
@@ -1072,7 +1093,46 @@ function runtimeApprovalFromResult(value: unknown): RuntimeApproval | null {
         (typeof approval.decidedAt !== 'string' || !Number.isFinite(Date.parse(approval.decidedAt))))) {
     return null;
   }
-  return approval as unknown as RuntimeApproval;
+  /* Two shapes in, one out. A row with flat connectionId/chatId/messageId and
+     no `surface` predates the web surface and is a Telegram approval; a row
+     with `surface` says so itself. Normalising here means every caller sees
+     the new shape and none of them has to know that history. */
+  const nested = approval.telegram && typeof approval.telegram === 'object'
+    ? approval.telegram as Record<string, unknown>
+    : approval;
+  const connectionId = nested.connectionId;
+  const chatId = nested.chatId;
+  const messageId = nested.messageId;
+  const hasTelegram = typeof connectionId === 'string' && uuid(connectionId) &&
+    typeof chatId === 'number' && Number.isSafeInteger(chatId) &&
+    typeof messageId === 'number' && Number.isSafeInteger(messageId);
+  const surface = approval.surface === 'web' || approval.surface === 'telegram'
+    ? approval.surface
+    : (hasTelegram ? 'telegram' : null);
+  /* A Telegram approval without somewhere to put the bubble is not an
+     approval anyone can answer, and neither is a surface we do not know. */
+  if (!surface) return null;
+  if (surface === 'telegram' && !hasTelegram) return null;
+  return {
+    id: approval.id as string,
+    requestId: approval.requestId as string,
+    tool: approval.tool as string,
+    message: approval.message as string,
+    status: approval.status as RuntimeApprovalStatus,
+    ...(approval.decision ? { decision: approval.decision as 'approve' | 'deny' } : {}),
+    expiresAt: approval.expiresAt as string,
+    ...(approval.decidedAt ? { decidedAt: approval.decidedAt as string } : {}),
+    surface,
+    ...(hasTelegram
+      ? {
+          telegram: {
+            connectionId: connectionId as string,
+            chatId: chatId as number,
+            messageId: messageId as number,
+          },
+        }
+      : {}),
+  };
 }
 
 function positiveInteger(value: unknown): number | null {

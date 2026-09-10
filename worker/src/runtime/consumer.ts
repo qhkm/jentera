@@ -1182,11 +1182,17 @@ export async function handleRuntimeMessage(
             }
             return true;
           });
+          /* Reachable for a benign reason since `deciding` stopped being
+             expirable: a click can land between reading the leased task and
+             opening this transaction. The retry re-reads the row as
+             `deciding` and takes the decision path below, which is what the
+             owner asked for — so this costs one attempt and resolves, rather
+             than writing a deny over an answer already in flight. */
           if (!expired) throw new Error('runtime approval state changed before expiry');
           await settleApprovalBubble(
             env,
             lease.task,
-            waitingApproval.messageId,
+            waitingApproval.telegram?.messageId ?? 0,
             'deny',
             true,
             options.telegramToken,
@@ -1234,7 +1240,7 @@ export async function handleRuntimeMessage(
             await settleApprovalBubble(
               env,
               lease.task,
-              waitingApproval.messageId,
+              waitingApproval.telegram?.messageId ?? 0,
               decision,
               false,
               options.telegramToken,
@@ -1499,8 +1505,49 @@ export async function handleRuntimeMessage(
         latency(outcome.state === 'terminal' ? 'terminal' : outcome.state);
         if (outcome.state === 'approval') {
           const telegram = outcome.payload.telegram;
+          /* A web run has nowhere to put a bubble, and until now that threw:
+             the run failed, five retries deep, and no approval was ever
+             written down. Park it instead. The owner cannot answer it yet —
+             the surface arrives in step 1 — but the run stops being destroyed
+             by a question, the pause is durable, and the trace says what was
+             actually asked. */
           if (!telegram?.privateChat) {
-            throw new Error('Hermes approval cannot be presented outside a private Telegram chat');
+            const parked = await withTenant(env, message.businessId, async (tx) => {
+              const paused = await pauseRuntimeTaskForApproval(
+                tx,
+                message.businessId,
+                message.taskId,
+                leaseToken,
+                {
+                  requestId: outcome.approval.requestId,
+                  tool: outcome.approval.tool,
+                  message: outcome.approval.message,
+                  remoteRunId: outcome.remoteRunId,
+                  delaySeconds: HERMES_APPROVAL_WAIT_SECONDS,
+                  streamSeq,
+                },
+              );
+              if (paused && lease.task.runId) {
+                /* run_event is the append-only evidence of what the owner was
+                   asked; the task's result is mutable and is not. */
+                await finishRun(tx, message.businessId, lease.task.runId, 'needs_approval', {
+                  runtimeTaskId: lease.task.id,
+                  requestId: paused.requestId,
+                  tool: paused.tool,
+                  message: paused.message,
+                  surface: 'web',
+                });
+              }
+              return paused;
+            });
+            if (!parked) {
+              return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
+            }
+            return {
+              action: 'requeue',
+              delaySeconds: HERMES_APPROVAL_WAIT_SECONDS,
+              reason: 'Hermes is waiting for owner approval',
+            };
           }
           let approvalMessageId = liveStream?.handoffMessageId() ?? liveBubbleId ??
             telegram.liveMessageId;
@@ -1533,9 +1580,11 @@ export async function handleRuntimeMessage(
                 requestId: outcome.approval.requestId,
                 tool: outcome.approval.tool,
                 message: outcome.approval.message,
-                connectionId: telegram.connectionId,
-                chatId: telegram.chatId,
-                messageId: approvalMessageId,
+                telegram: {
+                  connectionId: telegram.connectionId,
+                  chatId: telegram.chatId,
+                  messageId: approvalMessageId,
+                },
                 remoteRunId: outcome.remoteRunId,
                 delaySeconds: HERMES_APPROVAL_WAIT_SECONDS,
                 streamSeq,
