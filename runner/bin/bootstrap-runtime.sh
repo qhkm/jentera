@@ -347,12 +347,27 @@ runner_source_sha256="${runner_source_sha256%% *}"
   printf 'HERMES_ORIGIN=%q\n' 'http://127.0.0.1:8642'
   printf 'PORT=%q\n' '8080'
 } > "$runtime_tmp"
+# The config channel, derived rather than transferred: when the sprite is
+# already pointed at our own model proxy it can reach our own control plane,
+# and deriving it from that base keeps the two from disagreeing. Absent — a
+# sprite talking to the upstream gateway directly — the runner keeps whatever
+# the bootstrap wrote and reports source 'bootstrap'.
+config_url=
+case "$model_base" in
+  https://api.jentera.ai/v1/model) config_url="https://api.jentera.ai/v1/runtime/config" ;;
+esac
 {
   printf 'AISAR_RUNNER_KEY=%q\n' "$runner_key"
   if [[ -n "$edge_token" ]]; then
     printf 'AISAR_EDGE_TOKEN=%q\n' "$edge_token"
   fi
   printf 'HERMES_API_KEY=%q\n' "$hermes_key"
+  if [[ -n "$config_url" ]]; then
+    printf 'AISAR_CONFIG_URL=%q\n' "$config_url"
+    # The derived runtime credential the model proxy already verifies. Reusing
+    # it is what lets the channel ship without a new transfer field.
+    printf 'AISAR_CONFIG_KEY=%q\n' "$model_key"
+  fi
 } > "$runner_tmp"
 {
   printf 'HERMES_API_KEY=%q\n' "$hermes_key"
