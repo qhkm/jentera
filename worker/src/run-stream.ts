@@ -82,6 +82,12 @@ export class RunStream extends DurableObject<Env> {
     }
     const type = progressType(body.type);
     if (!type) return new Response('invalid event', { status: 400 });
+    /* Dropped rather than refused when malformed: a bad id costs the card a
+       fetch, and refusing would cost the run its lifecycle event. */
+    const approvalId = type === 'needs_approval' && typeof body.approvalId === 'string' &&
+      uuid(body.approvalId)
+      ? body.approvalId
+      : undefined;
 
     const outcome = await this.ctx.storage.transaction(async (tx) => {
       const existing = await tx.get<StreamIdentity>('identity');
@@ -100,6 +106,7 @@ export class RunStream extends DurableObject<Env> {
         seq,
         type,
         at: new Date().toISOString(),
+        ...(approvalId ? { approvalId } : {}),
       };
       await tx.put({
         identity,

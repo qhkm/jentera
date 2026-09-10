@@ -643,3 +643,46 @@ button.ask-context-link:hover {
     margin-bottom: 20px;
   }
 }
+
+/* A question waiting on a person, not a machine. Deliberately unlike the
+   typing bubble: nothing here is in progress, and a spinner would say the
+   opposite of what is true. */
+.ask-approval {
+  margin-top: 0.75rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent, currentColor);
+  border-radius: var(--radius, 12px);
+  background: var(--surface-2, transparent);
+}
+
+.ask-approval-title { margin: 0; font-weight: 600; }
+
+.ask-approval-tool {
+  margin: 0.25rem 0 0.5rem;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Model output, quoted rather than spoken by the page. Long commands wrap
+   instead of forcing the chat to scroll sideways. */
+.ask-approval-command {
+  display: block;
+  padding: 0.5rem 0.625rem;
+  border-radius: 8px;
+  background: var(--surface-3, rgba(127, 127, 127, 0.12));
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ask-approval-where { margin: 0.5rem 0 0; opacity: 0.7; }
+
+.ask-approval-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.ask-approval-note,
+.ask-approval-problem { margin: 0.75rem 0 0; opacity: 0.8; }

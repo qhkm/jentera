@@ -6,6 +6,9 @@ export interface RunProgressExtra {
   detail?: string;
   /** delta: answer text as the model produces it. */
   text?: string;
+  /** needs_approval: which approval to fetch. The id is all that travels;
+      what is being approved stays in Postgres. */
+  approvalId?: string;
 }
 
 /** Best-effort realtime projection. Postgres remains authoritative if this layer fails. */
@@ -27,6 +30,7 @@ export async function publishRunProgress(
       type,
       ...(extra.detail === undefined ? {} : { detail: extra.detail }),
       ...(extra.text === undefined ? {} : { text: extra.text }),
+      ...(extra.approvalId === undefined ? {} : { approvalId: extra.approvalId }),
     }),
   });
   if (!response.ok) throw new Error(`run stream refused progress (${response.status})`);

@@ -459,7 +459,10 @@ async function streamAsk(
     }
 
     socket.onmessage = (message) => {
-      let event: { version?: unknown; type?: unknown; detail?: unknown; text?: unknown };
+      let event: {
+        version?: unknown; type?: unknown; detail?: unknown; text?: unknown;
+        approvalId?: unknown;
+      };
       try {
         event = JSON.parse(String(message.data)) as typeof event;
       } catch {
@@ -471,6 +474,7 @@ async function streamAsk(
           type: event.type,
           ...(typeof event.detail === 'string' ? { detail: event.detail } : {}),
           ...(typeof event.text === 'string' ? { text: event.text } : {}),
+          ...(typeof event.approvalId === 'string' ? { approvalId: event.approvalId } : {}),
         });
       }
       if (['completed', 'failed', 'cancelled'].includes(event.type)) finishFromDurableState();
@@ -488,7 +492,8 @@ function websocketUrl(path: string): string {
 }
 
 function isProgressEventType(value: string): value is AskProgressEvent['type'] {
-  return ['queued', 'waking', 'working', 'retrying', 'status', 'thinking', 'delta'].includes(value);
+  return ['queued', 'waking', 'working', 'retrying', 'needs_approval',
+    'status', 'thinking', 'delta'].includes(value);
 }
 
 const wait = (milliseconds: number) =>
