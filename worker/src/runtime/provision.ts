@@ -213,7 +213,7 @@ async function bootstrapRuntime(
       '/home/sprite/aisar/runner/bootstrap-runtime.sh',
   ].join('\n');
   await provider.exec(observed, '/bin/bash', ['-lc', downloads]);
-  await provider.exec(
+  const bootstrapped = await provider.exec(
     observed,
     '/home/sprite/aisar/runner/bootstrap-runtime.sh',
     ['/home/sprite/aisar/bootstrap.env.in'],
@@ -243,7 +243,48 @@ async function bootstrapRuntime(
   );
   const ready = await withTenant(env, businessId, (tx) => getRuntime(tx, businessId));
   if (!ready) throw new Error('runtime disappeared after bootstrap');
-  return { ...ready, observedRegion: readiness.region };
+  return { ...ready, observedRegion: readiness.region, ...bootstrapReport(bootstrapped.stdout) };
+}
+
+/**
+ * The bootstrap's last stdout line, for the lifecycle task's record.
+ *
+ * Two things it reports have had nowhere to go. `ignoredFields` names what a
+ * bundle could not apply — since 2026.09.10-4 an unknown transfer field is
+ * skipped rather than fatal, so "not applied" needs to be visible or it is
+ * just silence. `stages` is where an upgrade spent its seconds, which nothing
+ * has been able to answer.
+ *
+ * Diagnostics, never a gate: a bootstrap that has already attested readiness
+ * is not un-provisioned by an unparseable line, so anything unexpected here
+ * is dropped rather than thrown.
+ */
+export function bootstrapReport(stdout: string): {
+  ignoredFields?: string[];
+  stages?: Record<string, number>;
+} {
+  const line = stdout.trimEnd().split('\n').pop() ?? '';
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== 'object') return {};
+  const body = parsed as Record<string, unknown>;
+  const report: { ignoredFields?: string[]; stages?: Record<string, number> } = {};
+  if (Array.isArray(body.ignoredFields)) {
+    const names = body.ignoredFields.filter((n): n is string => typeof n === 'string');
+    if (names.length) report.ignoredFields = names;
+  }
+  if (body.stages && typeof body.stages === 'object' && !Array.isArray(body.stages)) {
+    const stages: Record<string, number> = {};
+    for (const [stage, seconds] of Object.entries(body.stages as Record<string, unknown>)) {
+      if (typeof seconds === 'number' && Number.isFinite(seconds)) stages[stage] = seconds;
+    }
+    if (Object.keys(stages).length) report.stages = stages;
+  }
+  return report;
 }
 
 function field(name: string, value: string): string {

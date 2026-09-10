@@ -2109,8 +2109,20 @@ async function satisfiedReleaseRepair(
     : null;
 }
 
-function runtimeDiagnostic(runtime: { observedRegion: string | null }) {
-  return { region: runtime.observedRegion };
+/* What a lifecycle task keeps about the runtime it acted on. `ignoredFields`
+   and `stages` come from the bootstrap's own result line and are present only
+   on a task that ran one — a wake or a reconcile has no bootstrap to report,
+   so they are omitted rather than stored as null. */
+function runtimeDiagnostic(runtime: {
+  observedRegion: string | null;
+  ignoredFields?: string[];
+  stages?: Record<string, number>;
+}) {
+  return {
+    region: runtime.observedRegion,
+    ...(runtime.ignoredFields?.length ? { ignoredFields: runtime.ignoredFields } : {}),
+    ...(runtime.stages && Object.keys(runtime.stages).length ? { stages: runtime.stages } : {}),
+  };
 }
 
 async function pulseTelegramTyping(env: Env, task: RuntimeTask): Promise<void> {
