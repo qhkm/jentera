@@ -154,6 +154,38 @@ test('config refresh preserves bootstrap model credentials for the chief and spe
   }
 });
 
+test('a connected token is delivered and refreshed, while model auth is left alone', async () => {
+  /* The other half of the rule above. That test proves a *disconnected*
+     token is removed; this one proves a connected one arrives and keeps
+     arriving, because the two together are what makes connecting and
+     revoking a service both mean something. */
+  const withToken = {
+    ...GOOD,
+    version: 'a1b2c3d4e5f60718',
+    hermesEnv: { ...GOOD.hermesEnv, CLOUDFLARE_API_TOKEN: 'cf-live-token' },
+  };
+  const { channel: c, files } = channel({
+    config: { hermesConfigFile: '/tmp/hermes/config.yaml', hermesProfilesDir: '/tmp/hermes/profiles' },
+    deps: {
+      fetch: async () => ({ ok: true, json: async () => withToken }),
+      mkdir: async () => {},
+      copyFile: async () => {},
+    },
+  });
+  files.set('/tmp/hermes.env', 'OPENROUTER_API_KEY=test-model-key\nOPENROUTER_BASE_URL=https://api.jentera.ai/v1/model\n');
+  assert.equal(await c.refresh(async () => false), 'applied');
+
+  for (const path of ['/tmp/hermes.env', '/tmp/hermes/profiles/sp-pastry/.env']) {
+    const body = files.get(path);
+    /* The connector credential the document carries. */
+    assert.match(body, /^CLOUDFLARE_API_TOKEN=cf-live-token$/m);
+    /* Bootstrap's, untouched and not duplicated: the document cannot carry
+       it, because CONFIG_ALLOWED_ENV refuses the name. */
+    assert.match(body, /^OPENROUTER_API_KEY=test-model-key$/m);
+    assert.equal(body.match(/^OPENROUTER_API_KEY=/gm).length, 1);
+  }
+});
+
 test('a document is held, not applied, while a run is in flight', async () => {
   /* Hermes reads config when the agent is created; swapping mid-run would
      give one task two configurations. */
