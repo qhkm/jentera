@@ -256,6 +256,10 @@ This is also where the product becomes difficult to copy. Industry playbooks are
   shared EC2 fleet when measured duty cycle or durable-container support changes the
   trade-off. See
   [`docs/superpowers/specs/2026-08-26-hermes-sprites-runtime.md`](docs/superpowers/specs/2026-08-26-hermes-sprites-runtime.md).
+- The 10 September 2026 [Sprites vs dedicated VMs comparison](docs/sprites-vs-dedicated-vms.md)
+  retains Sprites as the default and proposes a matched Alibaba 4 GB pilot for
+  sustained browser workloads. It records price assumptions, break-even estimates
+  and migration gates; it does not authorise a purchase or fleet migration.
 - Store relational state in managed Postgres with row-level tenant isolation; add vector retrieval only where normal indexed search is insufficient.
 - Store imported documents and large run artifacts in the existing private R2 environment.
 - Keep credentials in a managed secret vault and issue short-lived connector grants.
