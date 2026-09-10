@@ -221,9 +221,14 @@ export async function signalRuntimeTask(
   env: Env,
   businessId: string,
   taskId: string,
+  options: { delaySeconds?: number } = {},
 ): Promise<void> {
   if (!env.RUNTIME_QUEUE) throw new Error('RUNTIME_QUEUE is not configured');
-  await env.RUNTIME_QUEUE.send({ version: 1, businessId, taskId });
+  const delaySeconds = Math.max(0, Math.floor(options.delaySeconds ?? 0));
+  await env.RUNTIME_QUEUE.send(
+    { version: 1, businessId, taskId },
+    delaySeconds > 0 ? { delaySeconds } : undefined,
+  );
 }
 
 interface RuntimeOutboxRow {
@@ -1304,11 +1309,16 @@ export async function handleRuntimeMessage(
           messageStartedAt + (options.observationSliceMs ?? MAX_OBSERVATION_SLICE_MS),
           absoluteDeadline.getTime(),
         );
+        /* Where the relay stopped, persisted with the task at every pause so
+           the next slice skips the runner's history replay (see stream_seq). */
+        let streamSeq = lease.task.streamSeq ?? 0;
         let outcome: Awaited<ReturnType<typeof dispatchRuntimeRun>> | null = null;
         try {
           outcome = await dispatchRuntimeRun(env, lease.task, leaseToken, {
             ...options,
             fetch: observationSliceFetch(options.fetch, observationEndsAt),
+            afterSeq: streamSeq,
+            onStreamSeq: (seq) => { streamSeq = Math.max(streamSeq, seq); },
             onDelta: (liveStream || web)
               ? async (delta) => {
                   if (!firstVisibleDelta && delta.trim()) {
@@ -1445,6 +1455,7 @@ export async function handleRuntimeMessage(
                   remoteRunId: lease.task.remoteRunId ?? undefined,
                   remoteStatus: lease.task.remoteStatus ?? 'running',
                   delaySeconds: 2,
+                  streamSeq,
                 }));
               if (!deferred) {
                 return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
@@ -1511,6 +1522,7 @@ export async function handleRuntimeMessage(
                 messageId: approvalMessageId,
                 remoteRunId: outcome.remoteRunId,
                 delaySeconds: HERMES_APPROVAL_WAIT_SECONDS,
+                streamSeq,
               },
             );
             if (paused && lease.task.runId) {
@@ -1549,6 +1561,7 @@ export async function handleRuntimeMessage(
             return deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
               remoteRunId: outcome.remoteRunId,
               remoteStatus: outcome.remoteStatus,
+              streamSeq,
             });
           });
           if (!deferred) {

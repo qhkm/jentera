@@ -48,6 +48,8 @@ export interface RuntimeTask {
   remoteStatus: string | null;
   result: unknown;
   startedAt: Date | null;
+  /** Last runner event seq a slice relayed; the next slice skips the replay. */
+  streamSeq: number;
 }
 
 export interface RuntimeTaskTerminalOutcome {
@@ -102,6 +104,7 @@ interface TaskRow {
   remote_status: string | null;
   result: unknown;
   started_at: Date | null;
+  stream_seq: number;
 }
 
 const task = (row: TaskRow): RuntimeTask => ({
@@ -122,12 +125,13 @@ const task = (row: TaskRow): RuntimeTask => ({
   remoteStatus: row.remote_status,
   result: row.result,
   startedAt: row.started_at,
+  streamSeq: row.stream_seq,
 });
 
 const cols = `id, business_id, run_id, kind, status, payload, dedupe_key,
               attempt, lease_token, lease_expires_at, remote_run_id,
               remote_status, result, started_at, lease_heartbeat_at,
-              dispatch_phase, cancel_state`;
+              dispatch_phase, cancel_state, stream_seq`;
 
 /** Failure reasons that are infrastructure noise, not product bugs. An
     exhausted lifecycle task (upgrade/provision) whose last error matches this
@@ -544,6 +548,8 @@ export async function deferRuntimeTask(
     remoteStatus?: string;
     delaySeconds?: number;
     result?: unknown;
+    /** Last runner event seq this slice relayed; never moves backwards. */
+    streamSeq?: number;
   },
 ): Promise<boolean> {
   const rows = await tx`
@@ -553,6 +559,7 @@ export async function deferRuntimeTask(
            remote_run_id = coalesce(${detail.remoteRunId ?? null}, remote_run_id),
            remote_status = coalesce(${detail.remoteStatus ?? null}, remote_status),
            result = ${detail.result === undefined ? tx`result` : tx.json(detail.result as never)},
+           stream_seq = greatest(stream_seq, ${detail.streamSeq ?? 0}::integer),
            started_at = coalesce(started_at, now()),
            available_at = now() + (${detail.delaySeconds ?? 5} * interval '1 second'),
            updated_at = now()
@@ -579,6 +586,8 @@ export async function pauseRuntimeTaskForApproval(
     messageId: number;
     remoteRunId: string;
     delaySeconds: number;
+    /** Last runner event seq relayed before the approval paused the run. */
+    streamSeq?: number;
   },
 ): Promise<RuntimeApproval | null> {
   const [row] = await tx<{ result: unknown }[]>`
@@ -606,6 +615,7 @@ export async function pauseRuntimeTaskForApproval(
            dispatch_phase = 'remotely_running', remote_run_id = ${input.remoteRunId},
            remote_status = 'waiting_for_approval',
            result = ${tx.json({ ...current, approval } as never)},
+           stream_seq = greatest(stream_seq, ${input.streamSeq ?? 0}::integer),
            started_at = coalesce(started_at, now()),
            available_at = now() + (${input.delaySeconds} * interval '1 second'),
            updated_at = now()

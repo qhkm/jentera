@@ -109,6 +109,10 @@ export async function dispatchRuntimeRun(
     /** A bounded slice of the model's live reasoning (runner-redacted). */
     onThinking?: (text: string) => Promise<void>;
     onStage?: (stage: string, elapsedMs: number) => void;
+    /** Skip the runner's history replay up to and including this seq. */
+    afterSeq?: number;
+    /** The runner seq of each relayed event, for the slice to persist. */
+    onStreamSeq?: (seq: number) => void;
   } = {},
 ): Promise<RuntimeRunOutcome> {
   const dispatchStartedAt = Date.now();
@@ -249,7 +253,8 @@ export async function dispatchRuntimeRun(
         onHeartbeat: options.onHeartbeat,
         onProgress: options.onProgress,
         onThinking: options.onThinking,
-      }).then(
+        onSeq: options.onStreamSeq,
+      }, { afterSeq: options.afterSeq }).then(
         (approval) => ({ ok: true as const, approval }),
         (error: unknown) => ({ ok: false as const, error }),
       )

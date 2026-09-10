@@ -241,8 +241,18 @@ export class RunnerClient {
       onProgress?: (label: string) => Promise<void>;
       /** A bounded slice of the model's live reasoning (runner-redacted). */
       onThinking?: (text: string) => Promise<void>;
+      /** Called with the runner seq of every event relayed (not skipped), so
+          the caller can persist where a slice stopped. */
+      onSeq?: (seq: number) => void;
     },
+    options: {
+      /** The runner replays a task's whole history to every subscriber. A
+          resumed slice passes the last seq it relayed and everything at or
+          before it is dropped, so the web chat never sees an answer twice. */
+      afterSeq?: number;
+    } = {},
   ): Promise<RunnerApprovalRequest | null> {
+    const afterSeq = options.afterSeq ?? 0;
     const response = await this.fetcher(
       `${this.origin}/v1/tasks/${encodeURIComponent(taskId)}/events`,
       {
@@ -276,6 +286,10 @@ export class RunnerClient {
         for (const frame of frames) {
           const event = safeStreamEvent(frame);
           if (!event) continue;
+          if (event.seq !== undefined) {
+            if (event.seq <= afterSeq) continue;
+            handlers.onSeq?.(event.seq);
+          }
           if (event.type === 'done') {
             done = true;
             break;
@@ -364,14 +378,15 @@ export class RunnerClient {
   }
 }
 
-type SafeStreamEvent =
+type SafeStreamEvent = (
   | { type: 'delta'; delta: string }
   | RunnerToolEvent
   | { type: 'iteration'; current: number; total: number }
   | { type: 'thinking'; text: string }
   | RunnerApprovalRequest
   | { type: 'heartbeat' }
-  | { type: 'done' };
+  | { type: 'done' }
+) & { seq?: number };
 
 export type RunnerToolEvent =
   | { type: 'tool.started'; tool: string; preview?: string }
@@ -398,6 +413,15 @@ function safeStreamEvent(frame: string): SafeStreamEvent | null {
   }
   if (!value || typeof value !== 'object') return null;
   const event = value as Record<string, unknown>;
+  const shaped = shapedStreamEvent(event);
+  if (!shaped) return null;
+  /* The runner numbers every history event; heartbeats and `done` carry none. */
+  return Number.isSafeInteger(event.seq) && Number(event.seq) >= 0
+    ? { ...shaped, seq: Number(event.seq) }
+    : shaped;
+}
+
+function shapedStreamEvent(event: Record<string, unknown>): SafeStreamEvent | null {
   if (event.type === 'heartbeat') return { type: 'heartbeat' };
   if (event.type === 'done') return { type: 'done' };
   if (event.type === 'iteration' && Number.isSafeInteger(event.current) &&

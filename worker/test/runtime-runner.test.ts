@@ -1233,3 +1233,122 @@ describe('conversation versus work', () => {
     expect(record).toEqual({ kind: 'work', status: 'completed' });
   });
 });
+
+describe('resuming a run stream across observation slices', () => {
+  /* The runner replays a task's whole event history to every subscriber.
+     A second slice (or an approval resume) therefore saw the same deltas
+     again and the web chat printed the answer twice. The last relayed seq
+     is persisted with the task and the next slice skips the replay. */
+  it('skips events at or before afterSeq and reports each relayed seq', async () => {
+    const stream = [1, 2, 3, 4]
+      .map((seq) => `data: ${JSON.stringify({ type: 'delta', seq, delta: `d${seq} ` })}`)
+      .concat([`data: ${JSON.stringify({ type: 'done' })}`, ''])
+      .join('\n\n');
+    const client = new RunnerClient({
+      origin: 'https://sprite.test',
+      runnerKey: 'r'.repeat(64),
+      fetch: async () => new Response(stream, {
+        headers: { 'Content-Type': 'text/event-stream' },
+      }),
+    });
+    const deltas: string[] = [];
+    const seqs: number[] = [];
+    await expect(client.stream('task-1', {
+      onDelta: async (delta) => { deltas.push(delta); },
+      onSeq: (seq) => { seqs.push(seq); },
+    }, { afterSeq: 2 })).resolves.toBeNull();
+    expect(deltas).toEqual(['d3 ', 'd4 ']);
+    expect(seqs).toEqual([3, 4]);
+  });
+
+  it('persists the last relayed seq at the slice end and skips the replay on re-attach', async () => {
+    const published: Array<Record<string, unknown>> = [];
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.09.01-3',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+      RUN_STREAMS: {
+        idFromName: () => ({ toString: () => 'stream-id' }),
+        get: () => ({
+          fetch: async (_url: string, init?: RequestInit) => {
+            published.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+            return Response.json({ ok: true });
+          },
+        }),
+      },
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `resume:${run.id}`,
+      payload: {
+        input: 'Are we open on Sunday?', model: 'MiniMax-M3', responseMode: 'quick',
+        objective: 'Are we open on Sunday?', function: 'ask', channel: 'app',
+      },
+    }));
+    const sse = (events: Array<Record<string, unknown>>) =>
+      events.map((event) => `data: ${JSON.stringify(event)}`).join('\n\n') + '\n\n';
+    const first = [
+      { type: 'delta', seq: 1, delta: 'We are ' },
+      { type: 'delta', seq: 2, delta: 'open ' },
+    ];
+    let attached = 0;
+    const runnerFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return response({
+          ok: true, release: '2026.09.01-3',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
+          toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        return response({ ok: true, hermesRunId: 'resume-run', status: 'running' }, 202);
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}/events`)) {
+        attached += 1;
+        if (attached === 1) {
+          const signal = init?.signal;
+          return new Response(new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode(sse(first)));
+              signal?.addEventListener('abort', () => controller.error(signal.reason), { once: true });
+            },
+          }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+        }
+        return new Response(
+          sse([...first, { type: 'delta', seq: 3, delta: 'on Sunday.' }, { type: 'done' }]),
+          { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+        );
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}`)) {
+        return response({
+          ok: true,
+          status: attached < 2 ? 'running' : 'completed',
+          output: 'We are open on Sunday.',
+        });
+      }
+      return response({ error: 'not found' }, 404);
+    };
+    const message = { version: 1 as const, businessId: A, taskId: task.id };
+    await expect(handleRuntimeMessage(
+      env, message, { provider, fetch: runnerFetch, observationSliceMs: 600 },
+    )).resolves.toMatchObject({ action: 'requeue', reason: 'bounded observation slice completed' });
+    const [parked] = await asOwner((sql) => sql<{ stream_seq: number; status: string }[]>`
+      select stream_seq, status from runtime_task where id = ${task.id}`);
+    expect(parked).toEqual({ stream_seq: 2, status: 'queued' });
+
+    await asOwner((sql) => sql`update runtime_task set available_at = now() where id = ${task.id}`);
+    await expect(handleRuntimeMessage(env, message, { provider, fetch: runnerFetch }))
+      .resolves.toEqual({ action: 'ack', reason: 'completed' });
+    expect(attached).toBe(2);
+    expect(published.filter((event) => event.type === 'delta').map((event) => event.text).join(''))
+      .toBe('We are open on Sunday.');
+  });
+});
