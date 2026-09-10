@@ -66,9 +66,17 @@ export function RuntimeApprovalCard({ approvalId }: { approvalId: string }) {
         return;
       }
       /* 503 is the retryable one: the decision was released back to pending,
-         so asking again is the right thing rather than a lost answer. */
-      setProblem(response.status === 503 ? t('ask.approval.retry') : t('ask.approval.closed'));
-      setPhase(response.status === 503 ? 'ready' : 'settled');
+         so asking again is the right thing rather than a lost answer, and the
+         problem line is what invites the second attempt. */
+      if (response.status === 503) {
+        setProblem(t('ask.approval.retry'));
+        setPhase('ready');
+        return;
+      }
+      /* Anything else settles, and the settled note already says the request
+         is no longer waiting. Setting `problem` here as well printed that
+         same sentence twice, once under the other. */
+      setPhase('settled');
     } catch {
       setProblem(t('ask.approval.retry'));
       setPhase('ready');
