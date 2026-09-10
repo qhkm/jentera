@@ -91,7 +91,10 @@ describe('public SEO and social previews', () => {
 
   it('keeps Cloudflare private headers and removes the blanket soft-404 rewrite', () => {
     const headers = readFileSync('public/_headers', 'utf8');
-    for (const path of PRIVATE_PATHS) expect(headers).toContain(`${path}\n  X-Robots-Tag: noindex, nofollow`);
+    for (const path of PRIVATE_PATHS) {
+      const escapedPath = path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      expect(headers).toMatch(new RegExp(`^${escapedPath}\\n(?:  [^\\n]+\\n)*  X-Robots-Tag: noindex, nofollow$`, 'm'));
+    }
     const redirects = readFileSync('public/_redirects', 'utf8');
     expect(redirects).not.toMatch(/^\/\*\s+\/index.html\s+200/m);
   });
