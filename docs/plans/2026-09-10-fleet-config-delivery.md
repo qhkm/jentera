@@ -711,6 +711,47 @@ than a week away, because `web_extract` is dead until then and the cost
 plan rates that as a groundedness problem, not only a cost one. If step 2
 is imminent, skip it and let Firecrawl be step 2's proof.
 
+### Step 1 results, measured 2026-09-10 (releases 2026.09.10-4 and -5)
+
+Shipped. Unknown transfer fields are ignored rather than fatal, the JSON
+result carries `ignoredFields` and `stages`, and `provision.ts` keeps it on
+the lifecycle task. Twelve upgrades with stage data:
+
+| stage | mean seconds |
+|---|---|
+| install (hermes clone/patch) | 1.3 |
+| npm | 6.6 |
+| playwright | 6.7 |
+| configure | 0.6 |
+| smokes | **18.6** |
+| **bootstrap total** | **~33.8** |
+
+Against a mean **upgrade task** of **129.4 s** (42.1 – 176.6 s over the same
+twelve). So the bootstrap script is about a quarter of an upgrade, and the
+remaining ~95 s is everything around it: waking a paused sprite, curling the
+runner assets, readiness polling, the checkpoint, and the control-plane
+round trips.
+
+Two things follow, and both cut against section 6's alternatives.
+
+**Pre-baked images are worth even less than section 6 estimated.** The stages
+an image could remove — install, npm, playwright — total ~14.6 s, about 11% of
+an upgrade. Baking would leave the smokes, the wake, the asset fetch and the
+checkpoint exactly where they are. Section 6's conclusion stands, now with a
+number behind it rather than an argument.
+
+**The largest single stage is the smokes at 18.6 s** — more than install, npm
+and playwright combined. If upgrade wall-clock ever needs to come down, that
+is the first place to look, not the install path. Whether the model smoke can
+be skipped when neither the model nor the pin changed is worth its own
+question; it is a correctness gate, so the answer is not obviously yes.
+
+**Corollary for lazy convergence (section 4):** at ~129 s per upgrade and ten
+concurrent slots, a hundred-sprite push occupies the fleet for ~22 minutes of
+pure upgrade time even if nothing fails — before counting the wake cost of
+sprites that had no work to do. That is the argument for upgrading on the
+tail of a real run, and it is now arithmetic rather than an estimate.
+
 ### Step 2 — the config channel, minimum viable (a deploy, then one release)
 
 Worker (deploy first; nothing calls it yet): `027_runtime_identity.sql` and
@@ -870,20 +911,24 @@ New risks, each with what bounds it:
 
 Step 1
 
-- [ ] `bootstrap-runtime.sh` ignores unknown `*_B64` names with a stderr
+- [x] `bootstrap-runtime.sh` ignores unknown `*_B64` names with a stderr
       line; base64 validation and required-field guards unchanged
       (`runner/test/bootstrap.test.mjs`: unknown field reported and ignored;
       invalid base64 still refused; missing runner key still refused).
-- [ ] Bootstrap JSON result carries `ignoredFields` and per-stage seconds;
+- [x] Bootstrap JSON result carries `ignoredFields` and per-stage seconds;
       `provision.ts` stores it in the lifecycle task's `result`
-      (`worker/test/runtime-consumer.test.ts` asserts the result shape on a
-      provisioned task).
-- [ ] `extract-endpoint.test.ts` allowlist case retained and reworded as a
-      "field is applied" lint.
-- [ ] Shipped via `ship-runtime.sh`; `fleet-verify.sh` green; the three
-      `2026.09.09-2` runtimes converged before any extract field is sent.
-- [ ] Stage timings from at least ten upgrades recorded here.
-- [ ] `validate-release.mjs` keeps the forward transfer-field check and
+      (asserted by `worker/test/bootstrap-report.test.ts` over the parser
+      rather than in runtime-consumer.test.ts: the shape is decided by
+      `bootstrapReport`, and a unit test covers the malformed-line cases an
+      integration assert would not reach).
+- [x] `extract-endpoint.test.ts` allowlist case retained and reworded as a
+      "field is applied" lint ("sends no transfer field the bootstrap would
+      leave unapplied").
+- [x] Shipped via `ship-runtime.sh`; `fleet-verify.sh` green (12/12 on
+      2026.09.10-4 and -5). The three lagging runtimes had already converged
+      on 2026.09.10-3, so step 1b was done before step 1 rather than after.
+- [x] Stage timings from at least ten upgrades recorded here (twelve).
+- [x] `validate-release.mjs` keeps the forward transfer-field check and
       loses the backward one; `check-transfer-fields.mjs` runs as
       `predeploy` against the pinned bundle's bootstrap and is tested
       against the b151bb8 / c6ed3c1 pair (fails on the first, passes on the
