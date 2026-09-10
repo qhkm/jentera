@@ -4,8 +4,10 @@ const RESERVED_INPUT_TOKENS = 100_000;
 const RESERVED_OUTPUT_TOKENS = 25_000;
 
 export interface RuntimeBudget {
-  monthlyInputTokens: number;
-  monthlyOutputTokens: number;
+  /** null: no token cap. Owners are promised dollars, not tokens; a row may
+      still set one explicitly. */
+  monthlyInputTokens: number | null;
+  monthlyOutputTokens: number | null;
   monthlyRuntimeSeconds: number;
   monthlyCostMicrousd: number;
   maxRunSeconds: number;
@@ -24,8 +26,8 @@ export interface RuntimeUsageTotals {
 }
 
 interface BudgetRow {
-  monthly_input_tokens: string;
-  monthly_output_tokens: string;
+  monthly_input_tokens: string | null;
+  monthly_output_tokens: string | null;
   monthly_runtime_seconds: string;
   monthly_cost_microusd: string;
   max_run_seconds: number;
@@ -86,10 +88,12 @@ export async function reserveRuntimeUsage(
     RESERVED_INPUT_TOKENS,
     RESERVED_OUTPUT_TOKENS,
   );
-  if (totals.inputTokens + RESERVED_INPUT_TOKENS > number(budgetRow.monthly_input_tokens)) {
+  const inputCap = optionalNumber(budgetRow.monthly_input_tokens);
+  if (inputCap !== null && totals.inputTokens + RESERVED_INPUT_TOKENS > inputCap) {
     throw new RuntimeBudgetExceeded('input_tokens');
   }
-  if (totals.outputTokens + RESERVED_OUTPUT_TOKENS > number(budgetRow.monthly_output_tokens)) {
+  const outputCap = optionalNumber(budgetRow.monthly_output_tokens);
+  if (outputCap !== null && totals.outputTokens + RESERVED_OUTPUT_TOKENS > outputCap) {
     throw new RuntimeBudgetExceeded('output_tokens');
   }
   if (totals.runtimeMs + budgetRow.max_run_seconds * 1_000 >
@@ -265,8 +269,8 @@ async function monthlyState(
 
 function budget(row: BudgetRow): RuntimeBudget {
   return {
-    monthlyInputTokens: number(row.monthly_input_tokens),
-    monthlyOutputTokens: number(row.monthly_output_tokens),
+    monthlyInputTokens: optionalNumber(row.monthly_input_tokens),
+    monthlyOutputTokens: optionalNumber(row.monthly_output_tokens),
     monthlyRuntimeSeconds: number(row.monthly_runtime_seconds),
     monthlyCostMicrousd: number(row.monthly_cost_microusd),
     maxRunSeconds: row.max_run_seconds,
@@ -296,6 +300,10 @@ export function modelCostMicrousd(model: string, inputTokens: number, outputToke
 
 function tokenCount(value: number): number {
   return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+function optionalNumber(value: string | null): number | null {
+  return value === null ? null : number(value);
 }
 
 function number(value: string): number {

@@ -57,6 +57,33 @@ describe('runtime usage safety ledger', () => {
     expect(count).toBe('0');
   });
 
+  /* Owners were told they have US$5 of credits a month. A default token
+     cap tripped a heavy user at $2.28 (2026-09-10), a second limit nobody
+     had been told about. Cost and runtime hours are the caps; tokens are
+     a cap only where a row sets one explicitly. */
+  it('admits any token volume by default; cost is the cap owners were promised', async () => {
+    const heavy = await runTask(A);
+    await asTenant(A, (tx) => reserveRuntimeUsage(tx, A, heavy.id, MODEL));
+    await asTenant(A, (tx) => finalizeRuntimeUsage(tx, A, heavy.id, 'completed', {
+      inputTokens: 9_000_000,
+      outputTokens: 900_000,
+    }));
+    const snapshot = await asTenant(A, (tx) => runtimeBudgetSnapshot(tx, A));
+    expect(snapshot.budget.monthlyInputTokens).toBeNull();
+    expect(snapshot.budget.monthlyOutputTokens).toBeNull();
+    expect(snapshot.budget.monthlyCostMicrousd).toBe(5_000_000);
+    const next = await runTask(A);
+    await expect(asTenant(A, (tx) => reserveRuntimeUsage(tx, A, next.id, MODEL))).resolves.toBeTruthy();
+  });
+
+  it('still refuses where a row sets a token cap, and always at the cost cap', async () => {
+    const task = await runTask(B);
+    await asTenant(B, (tx) => tx`
+      insert into runtime_budget (business_id, monthly_cost_microusd) values (${B}, 100)`);
+    await expect(asTenant(B, (tx) => reserveRuntimeUsage(tx, B, task.id, MODEL)))
+      .rejects.toEqual(expect.objectContaining<Partial<RuntimeBudgetExceeded>>({ dimension: 'cost' }));
+  });
+
   it('charges the reservation instead of zero when abnormal usage is unknown', async () => {
     const task = await runTask(A);
     await asTenant(A, (tx) => reserveRuntimeUsage(tx, A, task.id, MODEL));

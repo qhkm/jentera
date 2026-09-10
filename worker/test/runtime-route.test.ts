@@ -42,8 +42,8 @@ describe('runtime provisioning route', () => {
       runtime: null,
       budget: {
         budget: {
-          monthlyInputTokens: 2_000_000,
-          monthlyOutputTokens: 500_000,
+          monthlyInputTokens: null,
+          monthlyOutputTokens: null,
           monthlyRuntimeSeconds: 360_000,
           monthlyCostMicrousd: 5_000_000,
           maxRunSeconds: 900,
