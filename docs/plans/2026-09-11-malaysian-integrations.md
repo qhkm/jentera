@@ -54,14 +54,20 @@ time is the reason to start now rather than when the connector is scheduled.
 | E-Invoice | MyInvois / LHDN | Taxpayer client credentials, or intermediary registration |
 | Logistics | Ninja Van, J&T Express | Merchant account API access |
 
-### Tier 3 — no path, and planning should say so
+### Tier 3 — no connector path
+
+No amount of connector work reaches these, which is a different statement from
+"impossible". Each is reachable as its own product, at its own stake, and
+"Tier 3 as products" below is where that is argued. What matters here is that
+none of them is a connector, so none should sit on a connector roadmap.
+
 
 **Banking.** Maybank2u/M2E, CIMB BizChannel/OCTO Biz, RHB Reflex, Hong Leong
 ConnectFirst. There is no self-serve API for an SME. The routes that exist are
 a corporate host-to-host arrangement, which is bank onboarding rather than
 something an owner clicks, or driving the owner's own login — which this
-document argues against below and which per-transaction TAC is designed to
-prevent regardless.
+document argues against under "Tier 3 as products", and which per-transaction
+TAC is designed to prevent regardless.
 
 *The achievable version is statement-based.* An owner exports MT940 or CSV and
 Jentera reconciles against it. "Match transactions, prepare reconciliation" is
@@ -188,6 +194,126 @@ longer task. Without a broker, those connectors either put the secret on the
 sprite or cannot exist. With one, they can exist without the secret ever
 leaving the control plane.
 
+## Tier 3 as products, not integrations
+
+Tier 1 is not defensible. Any competitor wires Billplz and Shopify in a
+fortnight, because the provider did the hard part and published it. Tier 3 is
+a moat for the same reason it is hard: it is not an API problem, it is
+infrastructure somebody has to build and then keep running.
+
+That makes it worth doing eventually. It also makes it three different
+businesses, and building them as one "unified Tier 3 interface" would join
+together things whose only shared property is that no API exists — with very
+different stakes attached. Ordered here by stake, lowest first, because that
+is the order to build them in.
+
+### A. Statement reconciliation — the low-stake half of banking, available now
+
+The banking row's value is "match transactions, prepare reconciliation, check
+what is unpaid". Almost all of that is deliverable from a file the owner
+already has: every Malaysian bank exports statements as CSV, and many as
+MT940.
+
+An owner uploads a statement. Jentera matches it against invoices and tells
+them what cleared, what did not, and what is overdue. No credential is held,
+no bank is called, no regulator is involved, and nothing about it forecloses a
+licensed version later. It is the cheapest genuinely useful thing on this
+page and it needs permission from nobody.
+
+What it does not give is a live balance or same-day movement. That limitation
+should be stated to owners rather than engineered around, because engineering
+around it is section C.
+
+### B. The on-premise bridge — AutoCount, SQL Account, SQL Payroll
+
+More work than statements, still no regulator, and the most defensible thing
+here.
+
+These are SQL Server products installed on a machine in the office, with tens
+of thousands of Malaysian SMEs and accounting firms on them and no cloud path.
+A local agent that reads the database and exposes a normalised API is ordinary
+software: no counterparty, and no credential custody beyond the owner's own
+database.
+
+The moat is that it is tedious. Schema differences across versions, upgrades
+that move columns, machines that sleep, offices behind NAT. Nobody wants to
+own that, which is exactly why owning it is worth something.
+
+The buyer is likelier the accounting firm than the SME. A firm with fifty
+clients on AutoCount has the same problem fifty times, which is a better
+conversation than selling one shop a connector.
+
+What must be decided before code:
+
+- **Deployment.** A Windows service the owner installs, or a container on
+  their server. Updating it across hundreds of offices is the real engineering
+  problem, not reading the database.
+- **Direction.** Read-only first. A bridge that reports is recoverable when it
+  is wrong; one that writes into the owner's ledger is not, and a bad write
+  into somebody's accounts is a severe support event.
+- **Reach.** Outbound-only from the office. Anything needing an inbound port
+  or a static IP will not survive contact with real SME networks.
+- **Version pinning.** Which AutoCount and SQL Account versions are supported,
+  and what happens when the owner upgrades underneath it.
+
+### C. Live bank access — later, and a different business
+
+Deferred deliberately. Bank data aggregation means *becoming an aggregator* —
+the category Brankas, Finantier and Plaid occupy. That is a licensing and
+partnership posture with code attached, not an engineering project, and the
+stake is not comparable to anything else on this page.
+
+The questions to answer before any design, none of them technical:
+
+- What is BNM's current position on third-party access to bank data, and does
+  the intended service require authorisation? *This document's knowledge runs
+  to May 2026 and open banking was moving; confirm before planning around it.*
+- Would access come by agreement with each bank, or by driving the customer's
+  own credentials? The second is what this plan argues against elsewhere and
+  should not re-enter through a product wrapper.
+- Who is liable when a balance or transaction is reported wrongly, and what
+  does the customer agreement say?
+- Does per-transaction TAC make anything beyond reading impossible anyway, and
+  if so, is a read-only product worth the licensing?
+
+Section A delivers most of the value while these stay unanswered, which is the
+argument for answering them slowly.
+
+### D. MyInvois is the timing exception
+
+The one place where waiting costs something. It has a real API, and the
+mandate arrives for each business on a known date whether they want it or not,
+so the buying decision is made for them and the only question is who they buy
+from. A business that has already solved e-invoicing will not revisit it.
+
+That makes it the strongest candidate to be a product in its own right rather
+than a Jentera feature — and the one item here where "later" has a price.
+
+What must be decided:
+
+- **Intermediary or per-taxpayer credentials.** Registering as an intermediary
+  is more work and more responsibility, and it is what lets a firm file for
+  many clients — the same accounting-firm buyer as the bridge.
+- **Where validation failures land.** A rejected submission is the product's
+  real surface; anyone can send a well-formed invoice.
+- **Retention and evidence.** What is kept, for how long, and what an owner
+  can show an auditor.
+
+### On selling any of these to others
+
+Exposing a bridge to third parties changes the obligations more than it looks.
+Today, when Jentera is wrong it is our agent and our customer. When somebody
+else's product misreports a client's payables because a connector drifted
+after an AutoCount upgrade, that is a platform failure with their customer,
+and platform businesses carry versioned APIs, deprecation policy, a status
+page and a support commitment.
+
+That is a real and probably better business. It should be entered
+deliberately rather than discovered, and the sequencing that avoids
+discovering it is: **build as Jentera's own infrastructure, let it carry our
+load for a while, and expose it once it has stopped surprising us.** Building
+it privately forecloses nothing; the reverse is not true.
+
 ## Delivery order
 
 1. **Broker skeleton**, with Cloudflare as the first connector behind it, and
@@ -201,6 +327,14 @@ leaving the control plane.
    provider's error behaviour.
 4. **Start Tier 2 registrations in parallel** — WhatsApp and the marketplaces
    have the longest lead times and block nothing until they are needed.
+5. **Statement reconciliation.** Independent of the broker and of every
+   connector: it holds no credential and calls nobody, so it can be built
+   beside any of the above. It delivers most of what the banking row promises
+   at the lowest stake on this page.
+6. **The on-premise bridge, as Jentera's own infrastructure.** Different
+   codebase, different deployment, different buyer. Last here only because it
+   blocks nothing, not because it matters least — see Tier 3 above for why it
+   is likely the most defensible thing on this page.
 
 ## Acceptance gate
 
