@@ -20,6 +20,16 @@ beforeEach(() => localStorage.clear());
 afterEach(() => vi.useRealTimers());
 
 describe('exact task details', () => {
+  it('shows the authorization instructions without declaring the task done or polling forever', async () => {
+    const repo = new LocalRepository();
+    repo.runResult = vi.fn(async () => ({ runId, status: 'completed', taskStatus: 'needs_input',
+      pending: false, text: 'Open Cloudflare and authorize this login.' }));
+    mount(repo, { title: 'Log in to Cloudflare' });
+    expect(await screen.findByText('Open Cloudflare and authorize this login.')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Needs you');
+    expect(screen.getByRole('status')).not.toHaveTextContent('Done');
+    expect(repo.runResult).toHaveBeenCalledOnce();
+  });
   it('loads the result without a recent Activity record and moves keyboard focus to its heading', async () => {
     const repo = new LocalRepository();
     repo.runResult = vi.fn(async () => ({ runId, status: 'completed', pending: false, text: 'Quotation prepared, not sent.' }));

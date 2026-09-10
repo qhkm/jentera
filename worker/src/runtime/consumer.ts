@@ -7,6 +7,7 @@
    ============================================================ */
 
 import type { Env } from '../env';
+import { assessTaskOutcome, assessmentAnswer, taskAssessmentForRun } from '../task-outcome';
 import { connect, withTenant } from '../db';
 import { ensureProviderRuntime } from './provision';
 import type { RuntimeProvider } from './provider';
@@ -587,6 +588,7 @@ export async function handleRuntimeQueueMessage(
           messageId: message.incoming.messageId,
           from: message.incoming.from,
           question: message.incoming.text,
+          sessionId: `telegram:${message.businessId}:${message.incoming.chatId}`,
         },
         runtime: 'hermes-sprite',
         model,
@@ -1637,6 +1639,11 @@ export async function handleRuntimeMessage(
         }
 
         const successful = outcome.remoteStatus === 'completed';
+        const assessment = lease.task.runId ? await assessTaskOutcome(
+          env, message.businessId, lease.task.runId,
+          outcome.payload.telegram?.question ?? outcome.payload.input,
+          assessmentAnswer(outcome.result),
+        ) : null;
         const terminal = await withTenant(env, message.businessId, async (tx) => {
           const saved = await recordRuntimeTaskTerminalOutcome(
             tx,
@@ -1653,6 +1660,11 @@ export async function handleRuntimeMessage(
             },
           );
           if (!saved) return { saved: false, deliveryClaimed: false };
+          if (assessment && lease.task.runId && !await taskAssessmentForRun(tx, message.businessId, lease.task.runId)) {
+            await append(tx, message.businessId, lease.task.runId, 'outcome.observed', {
+              ...assessment, assessmentVersion: 1,
+            });
+          }
           if (!successful || !outcome.payload.telegram || !lease.task.runId) {
             return { saved: true, deliveryClaimed: false };
           }
@@ -1764,7 +1776,7 @@ export async function handleRuntimeMessage(
             kind: await workKindForRun(tx, message.businessId, lease.task.runId),
             objective: outcome.payload.objective ?? outcome.payload.input.slice(0, 1_000),
             outcome: outcome.summary,
-            status: successful ? 'completed' : 'failed',
+            status: successful ? assessment?.status ?? 'needs_review' : 'failed',
             function: outcome.payload.function ?? 'agent',
             channel: outcome.payload.channel ?? 'runtime',
             risk: 'low',

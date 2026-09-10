@@ -3,6 +3,7 @@ import { claimRuntime, markRuntimeReady } from '../src/agent-runtime';
 import type { Env } from '../src/env';
 import { handleRuns } from '../src/routes/runs';
 import { CREDIT_CAP_NOTICE } from '../src/runtime/consumer';
+import { append, recordWork } from '../src/runs';
 import { asOwner, asTenant, fetchFake, req, sendFake, signIn, testEnv, truncateAll } from './harness';
 import { LocalRuntimeProvider } from '../src/runtime';
 import { ensureProviderRuntime } from '../src/runtime/provision';
@@ -227,7 +228,7 @@ describe('Ask Jentera runtime bridge', () => {
       text: 'Hermes answered safely.',
       usedKeys: [],
       grounded: false,
-      kind: 'work',
+      kind: 'conversation',
     });
     expect((await call('GET', `/api/runs/${runId}`, durableEnv(), cookieB)).status).toBe(404);
   });
@@ -301,6 +302,25 @@ describe('Ask Jentera runtime bridge', () => {
     expect(body.work.find((item) => item.runId === runId)).toBeUndefined();
     expect(body.work.map((item) => [item.objective, item.kind])).toEqual([['Chase the late invoice', 'work']]);
     expect(body.counters.handled).toBe(1);
+  });
+
+  it('returns a finished reply and a separate needs-input task status', async () => {
+    await readyRuntime(A);
+    const started = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
+      question: 'can u do wrangler login', requestId: crypto.randomUUID(), mode: 'work',
+    });
+    const { runId } = await started.json() as { runId: string };
+    await asTenant(A, async (tx) => {
+      await tx`update runtime_task set status = 'completed', result = ${tx.json({ text: 'Please authorize in your browser.' })}
+        where run_id = ${runId}`;
+      await tx`update run set status = 'completed', ended_at = now() where id = ${runId}`;
+      await append(tx, A, runId, 'outcome.observed', { assessmentVersion: 1, kind: 'work', status: 'needs_input' });
+      await recordWork(tx, A, { runId, objective: 'Log in', kind: 'work', status: 'needs_input' });
+    });
+    expect(await (await call('GET', `/api/runs/${runId}`, durableEnv(), cookieA)).json())
+      .toMatchObject({ pending: false, status: 'completed', kind: 'work', taskStatus: 'needs_input',
+        text: 'Please authorize in your browser.' });
+    expect((await call('GET', `/api/runs/${runId}`, durableEnv(), cookieB)).status).toBe(404);
   });
 
   it('proxies a WebSocket only after origin, session, and tenant checks', async () => {

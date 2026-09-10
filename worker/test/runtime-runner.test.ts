@@ -310,7 +310,7 @@ describe('durable Hermes run delivery', () => {
     const events = await asOwner((sql) => sql<{ type: string }[]>`
       select type from run_event where run_id = ${run.id} order by seq`);
     expect(events.map((event) => event.type)).toEqual([
-      'work.requested', 'work.started', 'work.completed',
+      'work.requested', 'work.started', 'outcome.observed', 'work.completed',
     ]);
     const [usage] = await asOwner((sql) => sql<{
       status: string; input_tokens: string; output_tokens: string; cost_microusd: string;
@@ -1273,20 +1273,36 @@ describe('conversation versus work', () => {
     expect(toolEvents).toBe(0);
   });
 
-  it('records a quick reply that used a tool as work, with the tool on the run trace', async () => {
+  it('keeps a searched answer as conversation, with the tool still on the run trace', async () => {
     const { record, toolEvents } = await completeRun(env(), { responseMode: 'quick' }, [
       { type: 'tool.started', tool: 'web_search', preview: 'opening hours' },
       { type: 'delta', delta: 'Yes, Sunday too.' },
     ]);
-    expect(record).toEqual({ kind: 'work', status: 'completed' });
+    expect(record).toEqual({ kind: 'conversation', status: 'completed' });
     expect(toolEvents).toBe(1);
   });
 
-  it('records deep mode as work even without tools', async () => {
+  it('does not turn deep reasoning into a task', async () => {
     const { record } = await completeRun(env(), { responseMode: 'deep' }, [
       { type: 'delta', delta: 'Here is the analysis.' },
     ]);
-    expect(record).toEqual({ kind: 'work', status: 'completed' });
+    expect(record).toEqual({ kind: 'conversation', status: 'completed' });
+  });
+
+  it('finishes the agent run without completing a login that needs the owner', async () => {
+    const test = env();
+    test.AI = { run: async () => ({ response: JSON.stringify({ kind: 'work', status: 'needs_input' }) }) } as unknown as typeof test.AI;
+    const { record } = await completeRun(test, { input: 'can u do wrangler login' }, [
+      { type: 'tool.started', tool: 'terminal', preview: 'wrangler login' },
+    ]);
+    expect(record).toEqual({ kind: 'work', status: 'needs_input' });
+  });
+
+  it('does not claim completion when the outcome assessor returns invalid data', async () => {
+    const test = env();
+    test.AI = { run: async () => ({ response: 'not JSON' }) } as unknown as typeof test.AI;
+    const { record } = await completeRun(test, {}, []);
+    expect(record).toEqual({ kind: 'work', status: 'needs_review' });
   });
 
   /* A failed "yo bro" sat at the top of the daily brief as "a task needs

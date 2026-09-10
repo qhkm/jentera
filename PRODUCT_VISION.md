@@ -140,7 +140,7 @@ Each business defines the durable specialist responsibilities it actually needs.
 
 **Chat is where the owner asks. Activity is where the owner understands what happened.** A conversation transcript must never be the primary system of record.
 
-Every instruction, proactive job, and external action automatically becomes a structured business record. At a glance, the owner should see the outcome, status, channel, time, exception or approval required, and estimated time saved. Repeated work is grouped into useful summaries — for example, “18 Telegram enquiries handled, 2 bookings created, 1 escalated” — instead of displayed as dozens of messages or tool calls.
+Every run is traceable internally, but only requested actions, deliverables, proactive jobs, and external actions become tracked business work. Questions, explanations, and status checks stay in chat even when they use tools or deep reasoning. Clear follow-ups in the same conversation update the existing task. A finished reply is not a completed outcome: missing authorization or information means “Needs you”; uncertain completion means “Needs review”. At a glance, the owner should see the outcome, status, channel, time, exception or approval required, and estimated time saved. Repeated work is grouped into useful summaries — for example, “18 Telegram enquiries handled, 2 bookings created, 1 escalated” — instead of displayed as dozens of messages or tool calls.
 
 Each product surface has one job:
 

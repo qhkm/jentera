@@ -50,7 +50,8 @@ export interface AskMessage {
   /** Completion evidence returned by the server. */
   usedKeys?: string[];
   grounded?: boolean;
-  /** What the owner asked for: deep is work by request. */
+  taskStatus?: string;
+  /** Reasoning depth; does not imply a tracked task. */
   depth?: 'quick' | 'deep';
   /** What the server decided the finished run was. */
   kind?: WorkKind;
@@ -417,6 +418,7 @@ export function useAsk(
                           mode,
                           depth: message.depth,
                           kind: a.kind,
+                          taskStatus: a.taskStatus,
                           usedKeys: a.usedKeys,
                           grounded: a.grounded,
                         }

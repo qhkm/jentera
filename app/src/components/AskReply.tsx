@@ -40,15 +40,10 @@ export function AskReply({
   }
 
   const failed = Boolean(message.failedQuestion);
-  /* A card means Jentera did work: deep mode by request, or a finished run
-     the server classified as work (a tool, an approval). A quick reply the
-     server called conversation reads as a plain reply. Two cases keep the
-     card regardless: an answer with no verdict (replies saved before the
-     verdict existed) stays a task as it always was, and an accepted run
-     whose reply was interrupted must be checked, never resent. */
+  /* Execution mode and reasoning depth do not decide whether a reply is a
+     business task. Keep interrupted accepted runs reachable to prevent resends. */
   const accepted = Boolean(message.failedQuestion) && isRunId(message.runId);
-  const isWork = message.depth === 'deep' || message.kind === 'work' ||
-    (message.kind === undefined && message.state === 'done') || accepted;
+  const isWork = message.kind === 'work' || accepted;
   const linkedTask = isWork && message.mode === 'work' && isRunId(message.runId) && Boolean(onOpenActivity);
   return (
     <article
@@ -58,7 +53,7 @@ export function AskReply({
       <header>
         <JenteraMark size={25} />
         <strong>{message.agent ?? 'Jentera'}</strong>
-        {message.state === 'done' && (
+        {message.state === 'done' && message.kind === 'work' && message.taskStatus === 'completed' && (
           <span className="ask-reply-ready">
             <Check size={12} aria-hidden="true" />
             {t('ask.reply.ready')}
@@ -131,7 +126,7 @@ export function AskReply({
                   </p>
                 </details>
               )}
-              {message.state === 'done' && isWork && onOpenActivity && !linkedTask && (
+              {message.state === 'done' && (isWork || message.kind === undefined) && onOpenActivity && !linkedTask && (
                 <button
                   type="button"
                   className="ask-inline-action ask-reply-activity"

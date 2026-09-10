@@ -40,6 +40,8 @@ function riskTone(risk: string): Tone {
 const WORK_STATUS: Record<string, { tone: Tone; label: string }> = {
   completed: { tone: 'green', label: 'work.done' },
   needs_approval: { tone: 'amber', label: 'work.waiting' },
+  needs_input: { tone: 'amber', label: 'task.needsInput' },
+  needs_review: { tone: 'amber', label: 'task.needsReview' },
   blocked: { tone: 'neutral', label: 'work.blocked' },
   failed: { tone: 'red', label: 'work.failed' },
   /* The owner declined the proposed action; nothing was sent. Settled, so
@@ -53,7 +55,7 @@ const workLabel = (status: string): string => WORK_STATUS[status]?.label ?? 'wor
 function workSignal(status: string): WorkSignalState {
   if (status === 'completed' || status === 'cancelled') return 'done';
   if (status === 'failed') return 'failed';
-  if (status === 'needs_approval' || status === 'blocked') return 'waiting';
+  if (['needs_approval', 'needs_input', 'needs_review', 'blocked'].includes(status)) return 'waiting';
   return 'working';
 }
 

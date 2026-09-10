@@ -106,7 +106,7 @@ describe('workspace navigation', () => {
     const user = userEvent.setup();
     const repo = new LocalRepository();
     const runId = '11111111-1111-4111-8111-111111111111';
-    repo.ask = vi.fn(async () => ({ runId, text: 'Your quotation is ready.', grounded: false, usedKeys: [] }));
+    repo.ask = vi.fn(async () => ({ runId, text: 'Your quotation is ready.', grounded: false, usedKeys: [], kind: 'work' as const, taskStatus: 'completed' }));
     repo.runResult = vi.fn(async () => ({ runId, status: 'completed', pending: false, text: 'Full quotation, not sent.' }));
     await mount(<><Dashboard /><Location /></>, repo, '/app?view=chat');
     await user.type(await screen.findByRole('textbox'), 'Prepare a quotation');

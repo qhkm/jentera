@@ -9,6 +9,7 @@
    ============================================================ */
 
 import type postgres from 'postgres';
+import { taskAssessmentForRun } from './task-outcome';
 
 export type RunKind = 'ingest' | 'ask' | 'reply' | 'schedule';
 export type RunStatus =
@@ -217,8 +218,8 @@ export async function runTrace(
 
 /* ---------- work records --------------------------------------------- */
 
-/** Conversation is a quick reply answered without a tool; everything else
-    is work. Decides whether the chat draws a card and Activity lists it. */
+/** Business outcomes are work; answering a question is conversation,
+    independently of execution mode or tools used. */
 export type WorkKind = 'work' | 'conversation';
 
 export interface WorkRecordInput {
@@ -246,6 +247,28 @@ export async function recordWork(
   businessId: string,
   w: WorkRecordInput,
 ): Promise<string> {
+  if (w.runId && w.kind === 'work') {
+    const assessment = await taskAssessmentForRun(tx, businessId, w.runId);
+    if (assessment) {
+      const [existing] = await tx<{ id: string }[]>`
+        update work_record set status = ${w.status}, outcome = ${w.outcome ?? null},
+          kind = 'work', updated_at = now()
+        where business_id = ${businessId} and run_id = ${w.runId} returning id`;
+      if (existing) return existing.id;
+    }
+    if (assessment?.continuesWorkId && assessment.previousRunId) {
+      // Optimistic predecessor check: concurrent turns cannot overwrite a newer outcome.
+      const [continued] = await tx<{ id: string }[]>`
+        update work_record set run_id = ${w.runId}, outcome = ${w.outcome ?? null},
+          status = ${w.status}, updated_at = now(), outcome_quality = null, quality_at = null,
+          minutes_saved = ${w.minutesSaved ?? null}
+        where business_id = ${businessId} and id = ${assessment.continuesWorkId}
+          and run_id = ${assessment.previousRunId} and kind = 'work'
+          and status <> 'needs_approval'
+        returning id`;
+      if (continued) return continued.id;
+    }
+  }
   const [row] = await tx<{ id: string }[]>`
     insert into work_record
       (business_id, run_id, objective, outcome, status, function, channel,
@@ -329,24 +352,21 @@ export async function recentWork(
   }));
 }
 
-/** What a finished run was for the owner. Deep mode is work by request; a
-    quick reply is work only if the agent started a tool or asked for an
-    approval along the way. Reads the run's own task payload and trace, so
-    every completion path classifies the same way. */
+/** Use the persisted outcome verdict. For early failures without a verdict,
+    approvals remain tracked, but tool use or Deep mode alone is not work. */
 export async function workKindForRun(
   tx: postgres.TransactionSql,
   businessId: string,
   runId: string,
 ): Promise<WorkKind> {
-  const [row] = await tx<{ deep: boolean; acted: string }[]>`
+  const assessment = await taskAssessmentForRun(tx, businessId, runId);
+  if (assessment) return assessment.kind;
+  const [row] = await tx<{ acted: string }[]>`
     select
-      coalesce((select payload->>'responseMode' = 'deep' from runtime_task
-                 where business_id = ${businessId} and run_id = ${runId}
-                 order by created_at desc limit 1), false) as deep,
       (select count(*)::text from run_event
         where business_id = ${businessId} and run_id = ${runId}
-          and type in ('agent.tool', 'approval.requested', 'approval.granted')) as acted`;
-  return row.deep || Number(row.acted) > 0 ? 'work' : 'conversation';
+          and type in ('approval.requested', 'approval.granted')) as acted`;
+  return Number(row.acted) > 0 ? 'work' : 'conversation';
 }
 
 /**
@@ -399,7 +419,9 @@ export async function homeCounters(
   >`
     select
       count(*) filter (where status = 'completed' and kind = 'work')::text     as handled,
-      (select count(*)::text from approval where status = 'pending')           as needs_you,
+      ((select count(*) from approval where status = 'pending') +
+        count(*) filter (where kind = 'work' and status in ('needs_input', 'needs_review', 'blocked'))
+      )::text as needs_you,
       -- Real accounts, from the connection table. business.connections
       -- is a playbook-seeded list of what a business of this type
       -- typically uses: it named WhatsApp and Instagram for a business

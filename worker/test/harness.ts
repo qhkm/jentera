@@ -269,7 +269,10 @@ export function testEnv(over: Partial<Record<string, unknown>> = {}): import('..
     API_ORIGIN: 'http://localhost:8787',
     CREDENTIAL_KEY: btoa(String.fromCharCode(...new Uint8Array(32).fill(5))),
     RESEND_API_KEY: '',
-    AI: { run: async () => ({ response: 'A drafted reply.' }) },
+    AI: { run: async (_model: string, input: { messages?: { content: string }[] }) => ({
+      response: input.messages?.[0]?.content.startsWith('Classify an agent turn')
+        ? JSON.stringify({ kind: 'conversation', status: 'completed' }) : 'A drafted reply.',
+    }) },
     AUTH_BURST: { limit: async () => ({ success: true }) },
     API_BURST: { limit: async () => ({ success: true }) },
     RUNTIME_MUTATION_BURST: { limit: async () => ({ success: true }) },

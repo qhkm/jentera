@@ -18,10 +18,10 @@ const FILTERS: Filter[] = ['all', 'review', 'progress', 'completed', 'issues'];
 
 function matches(work: Work, filter: Filter): boolean {
   if (filter === 'all') return true;
-  if (filter === 'review') return work.status === 'needs_approval';
+  if (filter === 'review') return ['needs_approval', 'needs_input', 'needs_review'].includes(work.status);
   if (filter === 'completed') return work.status === 'completed';
   if (filter === 'issues') return work.status === 'failed' || work.status === 'blocked';
-  return !['completed', 'needs_approval', 'failed', 'blocked', 'cancelled'].includes(work.status);
+  return !['completed', 'needs_approval', 'needs_input', 'needs_review', 'failed', 'blocked', 'cancelled'].includes(work.status);
 }
 
 export function ActivityHistory({

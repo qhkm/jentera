@@ -14,6 +14,8 @@ const STATUS: Record<string, { label: string; tone: Tone }> = {
   running: { label: 'work.inprogress', tone: 'neutral' },
   working: { label: 'work.inprogress', tone: 'neutral' },
   needs_approval: { label: 'work.waiting', tone: 'amber' },
+  needs_input: { label: 'task.needsInput', tone: 'amber' },
+  needs_review: { label: 'task.needsReview', tone: 'amber' },
   blocked: { label: 'work.blocked', tone: 'amber' },
   completed: { label: 'work.done', tone: 'green' },
   failed: { label: 'work.failed', tone: 'red' },
@@ -64,9 +66,10 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk }
     return () => { live = false; clearTimeout(timer); };
   }, [repo, runId, attempt]);
 
-  const status = result ? STATUS[result.status] : undefined;
-  const completed = result?.status === 'completed';
-  const waiting = result?.status === 'needs_approval';
+  const outcomeStatus = result?.taskStatus ?? result?.status;
+  const status = outcomeStatus ? STATUS[outcomeStatus] : undefined;
+  const completed = outcomeStatus === 'completed';
+  const waiting = outcomeStatus === 'needs_approval';
   const failed = result?.status === 'failed' || result?.status === 'cancelled';
   const StatusIcon = completed ? CheckCircle : failed ? WarningCircle : Clock;
   const fullText = typeof result?.text === 'string' ? result.text.trim() : '';
@@ -99,9 +102,11 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk }
             <span><StatusIcon size={21} aria-hidden="true" /><strong>{t(status?.label ?? 'task.unknown')}</strong></span>
             <Tag tone={status?.tone ?? 'neutral'}>{t('task.card.label')}</Tag>
           </div>
-          {completed ? (
+          {completed || (result.status === 'completed' && fullText) ? (
             <Card className="task-result">
               <header><JenteraMark size={28} /><h2>{t(summary ? 'task.summary' : 'task.result')}</h2></header>
+              {outcomeStatus === 'needs_input' && <p>{t('task.needsInputNote')}</p>}
+              {outcomeStatus === 'needs_review' && <p>{t('task.needsReviewNote')}</p>}
               <div className="task-result-text">{fullText || summary || t('task.noResult')}</div>
             </Card>
           ) : (

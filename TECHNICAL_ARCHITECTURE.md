@@ -276,8 +276,14 @@ This is also where the product becomes difficult to copy. Industry playbooks are
   by default and deep on request. The placed intake executes the first slice itself so Hermes
   is asked within about two seconds; progress streams over the authenticated
   hibernating WebSocket as the agent's status line, a bounded reasoning slice and answer text,
-  with lifecycle records for recovery and bounded polling only as a fallback. A quick reply
-  that used no tool is conversation; deep mode or any tool use is work and gets a card.
+  with lifecycle records for recovery and bounded polling only as a fallback. Execution
+  mode and tool use do not determine task visibility. A bounded post-run assessment records
+  conversation versus business work and its outcome in `outcome.observed`. The execution
+  can be completed while business work needs input, is blocked, or needs review. Same-session
+  continuations update a stable work record with an optimistic predecessor check; each run
+  retains its own immutable trace and historical outcome. The assessment is advisory metadata,
+  never permission to execute an action. It uses the existing Workers AI binding, bounded to
+  180 output tokens and a five-second wait; invalid/unavailable verdicts need review, not Done.
 - Route paired owner Telegram messages for businesses with ready runtimes through the same
   durable Hermes task plane. Deduplicate on the Telegram connection/chat/message identity
   and retain only structured state plus the final sent

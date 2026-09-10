@@ -42,12 +42,28 @@ describe('AskReply: conversation versus work', () => {
     await waitFor(() => expect(container.querySelector('.chat-task-card')).not.toBeNull());
   });
 
-  it('shows the task card from the start when the owner asked for deep work', async () => {
+  it('does not infer a task from deep mode while the agent is running', async () => {
     const { container } = mount({
       from: 'ai', text: 'Working…', mode: 'work', runId: RUN, state: 'working',
       pendingId: 'p1', depth: 'deep', taskTitle: 'compare suppliers',
     });
-    await waitFor(() => expect(container.querySelector('.chat-task-card')).not.toBeNull());
+    await waitFor(() => expect(container.textContent).toContain('Working…'));
+    expect(container.querySelector('.chat-task-card')).toBeNull();
+  });
+
+  it('keeps a completed deep explanation as chat', async () => {
+    const { container } = mount({ from: 'ai', text: 'Explanation', mode: 'work', runId: RUN,
+      state: 'done', depth: 'deep', kind: 'conversation' });
+    await waitFor(() => expect(container.textContent).toContain('Explanation'));
+    expect(container.querySelector('.chat-task-card')).toBeNull();
+    expect(container.querySelector('.ask-reply-ready')).toBeNull();
+  });
+
+  it('shows Needs you instead of Done for a finished reply awaiting authorization', async () => {
+    const { container } = mount({ from: 'ai', text: 'Authorize in your browser', mode: 'work', runId: RUN,
+      state: 'done', kind: 'work', taskStatus: 'needs_input' });
+    await waitFor(() => expect(container.querySelector('.chat-task-card')).toHaveTextContent('Needs you'));
+    expect(container.querySelector('.ask-reply-ready')).toBeNull();
   });
 });
 

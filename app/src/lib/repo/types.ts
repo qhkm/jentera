@@ -163,6 +163,8 @@ export interface TraceEvent {
 }
 
 export interface AskAnswer {
+  /** Business outcome, independent of whether the agent finished replying. */
+  taskStatus?: string;
   runId?: string;
   text: string;
   /** Fact keys the answer drew on, so a wrong answer is traceable. */
@@ -175,6 +177,7 @@ export interface AskAnswer {
 
 /** Read-only projection of the existing tenant-scoped run endpoint. */
 export interface RunResult {
+  taskStatus?: string;
   runId: string;
   status: string;
   pending: boolean;

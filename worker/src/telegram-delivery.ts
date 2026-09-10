@@ -10,6 +10,7 @@ import {
 import { policyFor, type Policy } from './policy';
 import { append, finishRun, recordWork, updateWorkForRun, workKindForRun } from './runs';
 import { sanitizePublicRuntimeText } from './runtime/public-output';
+import { taskAssessmentForRun } from './task-outcome';
 
 export interface TelegramIncoming {
   chatId: number;
@@ -153,24 +154,26 @@ export async function sendAndRecord(
       messageId: sent.messageId,
     });
     const kind = await workKindForRun(tx, businessId, runId);
+    const assessment = await taskAssessmentForRun(tx, businessId, runId);
+    const status = assessment?.status ?? 'completed';
     const amended = await updateWorkForRun(tx, businessId, runId, {
-      status: 'completed',
+      status,
       outcome: visibleText,
-      minutesSaved: kind === 'work' ? 3 : null,
+      minutesSaved: kind === 'work' && status === 'completed' ? 3 : null,
       kind,
     });
     if (!amended) {
       await recordWork(tx, businessId, {
         runId,
         kind,
-        objective: `Help ${incoming.from} on Telegram`,
+        objective: incoming.text.slice(0, 1000),
         outcome: visibleText.slice(0, 500),
-        status: 'completed',
+        status,
         function: 'assistant',
         channel: 'telegram',
         subject: incoming.text.slice(0, 200),
         risk: 'medium',
-        minutesSaved: 3,
+        minutesSaved: kind === 'work' && status === 'completed' ? 3 : null,
         inputsUsed: { factKeys: usedKeys },
       });
     }

@@ -76,7 +76,7 @@ The core rule is:
 
 > Chat is where the owner asks. Activity is where the owner understands what happened.
 
-Every instruction, proactive job, and external action should automatically become a structured work record. At a glance, the owner should see:
+Every run remains traceable, but only actions, deliverables, proactive jobs, and external actions become tracked work. Questions and explanations stay in chat regardless of tools or reasoning depth. Follow-ups can update the same task; ending a reply does not prove the requested outcome is complete. At a glance, the owner should see:
 
 - the business outcome;
 - status and completion time;

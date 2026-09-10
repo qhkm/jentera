@@ -8,6 +8,7 @@
    ============================================================ */
 
 import type { Env } from './../env';
+import { taskAssessmentForRun } from '../task-outcome';
 import { withTenant } from '../db';
 import { hasBusiness, resolveTenant } from '../tenancy';
 import {
@@ -353,10 +354,12 @@ export async function handleRuns(
     if (state.run.status === 'completed') {
       const metadata = askMetadata(state.task);
       const completedRunId = state.run.id;
-      const kind = await withTenant(env, id.businessId, async (tx) => {
-        const [row] = await tx<{ kind: string }[]>`
-          select kind from work_record where run_id = ${completedRunId} order by occurred_at desc limit 1`;
-        return row?.kind ?? 'work';
+      const verdict = await withTenant(env, id.businessId, async (tx) => {
+        const assessment = await taskAssessmentForRun(tx, id.businessId, completedRunId);
+        const [row] = await tx<{ kind: string; status: string }[]>`
+          select kind, status from work_record where run_id = ${completedRunId} order by occurred_at desc limit 1`;
+        return { kind: assessment?.kind ?? row?.kind ?? 'conversation',
+          taskStatus: assessment?.status ?? (row?.kind === 'work' ? row.status : undefined) };
       });
       return json({
         ok: true,
@@ -366,7 +369,7 @@ export async function handleRuns(
         text: answerText(state.task.result),
         usedKeys: metadata.usedKeys,
         grounded: metadata.grounded,
-        kind,
+        ...verdict,
       }, {}, privateHeaders);
     }
     if (state.run.status === 'failed' || state.run.status === 'cancelled') {
