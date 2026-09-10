@@ -154,6 +154,16 @@ namespace_id = "1001"
   limit = 5
   period = 60
 
+# Config channel, keyed by rider id. A sprite fetches at start and on a nudge,
+# so 30/60s is far above real use and still a brake if one starts spinning.
+[[ratelimits]]
+name = "RUNTIME_CONFIG_BURST"
+namespace_id = "1006"
+
+  [ratelimits.simple]
+  limit = 30
+  period = 60
+
 # Broad API brake before session verification, Neon, or any provider call.
 # This is intentionally generous enough for normal dashboard bursts. WAF
 # rules at api.jentera.ai remain the first line of defence before invocation.
