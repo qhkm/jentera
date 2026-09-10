@@ -104,14 +104,18 @@ AISAR_CANDIDATE_MODEL_NAMES = "MiniMax-M3"
 # page on any sprite, so the agent drove a browser instead and pulled whole
 # page snapshots into the transcript on every research question. Unset this
 # and sprites fall back to exactly that.
-# Deliberately unset until the fleet is on a release whose bootstrap
-# allowlists EXTRACT_BASE_B64. A sprite runs the bootstrap from the release it
-# is currently on, so sending the field early makes every not-yet-upgraded
-# sprite reject the very payload that would upgrade it — which deadlocked all
-# twelve on 2026-09-10. Re-enable once `stats.sh sql "select desired_release,
-# observed_release ..."` shows the fleet converged, then bump the release again
-# so hermes.env is rewritten with the credentials.
-# AISAR_EXTRACT_BASE = "https://extract.kitakod.com"
+# Self-hosted Firecrawl backing Hermes web_extract, on stayflow-vps behind
+# nginx and a bearer token (AISAR_EXTRACT_KEY, a secret). Before this the
+# pinned backend was ddgs, which is search-only: web_extract could not read a
+# page on any sprite — it answered "DuckDuckGo (ddgs) is a search-only backend
+# and cannot extract URL content" — so the agent drove a browser instead and
+# pulled whole page snapshots into the transcript on every research question.
+#
+# EXTRACT_BASE_B64 is only parseable by a bootstrap that allowlists it, and the
+# bootstrap a sprite runs is curled from RUNTIME_BUNDLE_COMMIT. Setting this
+# while the pin named a bundle without the `case` arm is what stalled the fleet
+# on 2026-09-10; check-transfer-fields.mjs now blocks that as a predeploy hook.
+AISAR_EXTRACT_BASE = "https://extract.kitakod.com"
 # Kitakod Ventures trials deepseek-v4-flash on quick replies from 2026-09-10.
 # Both MiniMax routes bill $0.60/M in and $2.40/M out; DS4 bills $0.06/$0.12,
 # ten and twenty times less, and input is ~98% of the bill (September: 1,280
