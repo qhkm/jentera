@@ -208,9 +208,269 @@ function spriteTasksApi(sockPath, method, name, body) {
   });
 }
 
+/* ============================================================
+   Configuration the runtime is told, rather than born with.
+
+   Everything Hermes is configured with is written into the sprite at
+   bootstrap today, so changing one key costs a fleet release — which is
+   what made a single `extract_backend` flip cost three releases and a
+   fleet stall on 2026-09-10. This pulls the same settings from the
+   control plane instead, so a change becomes a worker deploy that lands
+   on the next wake.
+
+   Four rules hold this together:
+
+   - **Last known good, always.** A control plane that cannot be reached
+     must never be able to stop a sprite working. Every failure path ends
+     at the document already on disk, and a sprite with no document at all
+     keeps exactly what the bootstrap gave it.
+   - **Validate before believing.** The document arrives over the network
+     and is written into files Hermes executes against, so every key and
+     value is checked against a closed list here. Anything unexpected
+     rejects the whole document rather than being merged in part.
+   - **Apply only when idle.** Files are staged and renamed into place with
+     the runner's single slot empty, so a document never changes under a
+     run in flight.
+   - **Say what was applied.** /readyz carries the applied version, so
+     convergence is visible from the control plane without waking anyone.
+   ============================================================ */
+
+/** Hermes keys this runner understands. A document naming anything else is
+    refused whole: a partial merge would leave a config nobody designed. */
+const CONFIG_ALLOWED_HERMES = Object.freeze({
+  web: new Set(['backend', 'search_backend', 'extract_backend']),
+});
+/** Extraction backends Hermes actually implements as plugins. */
+const CONFIG_ALLOWED_EXTRACT = new Set(['firecrawl', 'tavily', 'exa', 'parallel']);
+const CONFIG_ALLOWED_SEARCH = new Set(['ddgs', 'searxng', 'firecrawl', 'tavily', 'exa', 'parallel']);
+/** Env names the document may set. Closed, because these are written into a
+    file Hermes reads as credentials. */
+const CONFIG_ALLOWED_ENV = new Set(['FIRECRAWL_API_URL', 'FIRECRAWL_API_KEY']);
+const CONFIG_SCHEMA_SUPPORTED = 1;
+const CONFIG_FETCH_TIMEOUT_MS = 10_000;
+/* 1, 5, 15 minutes then hourly. A paused sprite simply retries on its next
+   wake, so this only has to cover a control plane that is briefly away. */
+const CONFIG_BACKOFF_MS = Object.freeze([60_000, 300_000, 900_000, 3_600_000]);
+
+/**
+ * Reject anything not obviously safe, and say why.
+ *
+ * Returns a reason string when the document must be refused, or null when it
+ * may be applied. The reason reaches /readyz so a rejected document is
+ * visible rather than silently ignored.
+ */
+export function configRejection(document) {
+  if (!document || typeof document !== 'object') return 'document is not an object';
+  if (document.schema !== CONFIG_SCHEMA_SUPPORTED) return `schema ${document.schema} unsupported`;
+  if (typeof document.version !== 'string' || !/^[0-9a-f]{8,64}$/.test(document.version)) {
+    return 'version is not a hash';
+  }
+  const hermes = document.hermes;
+  if (!hermes || typeof hermes !== 'object') return 'hermes section missing';
+  for (const [section, values] of Object.entries(hermes)) {
+    const allowed = CONFIG_ALLOWED_HERMES[section];
+    if (!allowed) return `hermes.${section} is not a key this runner applies`;
+    if (!values || typeof values !== 'object') return `hermes.${section} is not an object`;
+    for (const [key, value] of Object.entries(values)) {
+      if (!allowed.has(key)) return `hermes.${section}.${key} is not allowed`;
+      if (typeof value !== 'string') return `hermes.${section}.${key} is not a string`;
+    }
+  }
+  const web = hermes.web ?? {};
+  if (web.extract_backend && !CONFIG_ALLOWED_EXTRACT.has(web.extract_backend)) {
+    return `extract backend ${web.extract_backend} is not implemented`;
+  }
+  for (const key of ['backend', 'search_backend']) {
+    if (web[key] && !CONFIG_ALLOWED_SEARCH.has(web[key])) return `${key} ${web[key]} is not implemented`;
+  }
+  const env = document.hermesEnv ?? {};
+  if (typeof env !== 'object' || Array.isArray(env)) return 'hermesEnv is not an object';
+  for (const [name, value] of Object.entries(env)) {
+    if (!CONFIG_ALLOWED_ENV.has(name)) return `hermesEnv.${name} is not allowed`;
+    if (typeof value !== 'string' || value.length > 4096) return `hermesEnv.${name} is not a string`;
+    /* These land in a dotenv file: a newline would let one value forge
+       another line, which is how a config channel becomes a way to set
+       arbitrary environment. */
+    if (/[\r\n]/.test(value)) return `hermesEnv.${name} contains a newline`;
+  }
+  if (env.FIRECRAWL_API_URL && !/^https:\/\/[A-Za-z0-9][A-Za-z0-9.-]*(?::\d{1,5})?$/
+      .test(env.FIRECRAWL_API_URL)) {
+    return 'FIRECRAWL_API_URL is not a bare https origin';
+  }
+  /* Naming a backend with nothing to serve it would replace a working
+     fallback with a hard failure — the same rule the sprite's Python
+     configure step applies. */
+  if (web.extract_backend === 'firecrawl' && !env.FIRECRAWL_API_URL) {
+    return 'firecrawl named without an endpoint';
+  }
+  return null;
+}
+
+/** A dotenv body for ~/.hermes/.env. Values are newline-free by validation. */
+export function renderHermesEnv(hermesEnv) {
+  return `${Object.entries(hermesEnv ?? {})
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([name, value]) => `${name}=${value}`)
+    .join('\n')}\n`;
+}
+
+/**
+ * The live config state for one runner process.
+ *
+ * Deliberately a small state machine rather than a class hierarchy: what
+ * /readyz reports and what gets applied are the same object, so the two
+ * cannot describe different worlds.
+ */
+export function createConfigChannel(config, deps = {}) {
+  const fetchImpl = deps.fetch ?? globalThis.fetch;
+  const writeFileImpl = deps.writeFile ?? writeFile;
+  const renameImpl = deps.rename ?? rename;
+  const readFileImpl = deps.readFile ?? readFile;
+  const now = deps.now ?? (() => Date.now());
+
+  let applied = null;         // the document currently in force
+  let source = 'bootstrap';   // where it came from: bootstrap | lkg | control-plane
+  let appliedAt = null;
+  let pending = null;         // validated, staged, waiting for an idle slot
+  let rejected = null;        // why the last document was refused
+  let failures = 0;
+  let staleSince = null;
+
+  /** What /readyz says. Names match the plan so the worker can record it. */
+  const state = () => ({
+    schema: applied?.schema ?? null,
+    version: applied?.version ?? null,
+    appliedAt,
+    source,
+    ...(pending ? { pendingVersion: pending.version } : {}),
+    ...(rejected ? { rejected } : {}),
+    ...(staleSince ? { staleSince } : {}),
+  });
+
+  /** Restore the last applied document so a control plane outage is a no-op. */
+  async function loadLastKnownGood() {
+    if (!config.configLkgFile) return;
+    try {
+      const saved = JSON.parse(await readFileImpl(config.configLkgFile, 'utf8'));
+      if (configRejection(saved.document)) return;
+      applied = saved.document;
+      appliedAt = saved.appliedAt ?? null;
+      source = 'lkg';
+    } catch {
+      /* No file, or an unreadable one: the bootstrap's own config stands. */
+    }
+  }
+
+  /** Write the document's files and record it as in force. */
+  async function commit(document) {
+    const envPath = config.hermesEnvFile;
+    if (envPath) {
+      await writeFileImpl(`${envPath}.next`, renderHermesEnv(document.hermesEnv), { mode: 0o600 });
+      await renameImpl(`${envPath}.next`, envPath);
+    }
+    applied = document;
+    appliedAt = new Date(now()).toISOString();
+    source = 'control-plane';
+    pending = null;
+    staleSince = null;
+    if (config.configLkgFile) {
+      await writeFileImpl(
+        `${config.configLkgFile}.next`,
+        `${JSON.stringify({ document, appliedAt }, null, 2)}\n`,
+        { mode: 0o600 },
+      );
+      await renameImpl(`${config.configLkgFile}.next`, config.configLkgFile);
+    }
+  }
+
+  /**
+   * Apply a validated document, or hold it until the slot frees.
+   *
+   * A document must never change under a run in flight — Hermes reads
+   * config at agent creation, so swapping it mid-run would give one task two
+   * different configurations.
+   */
+  async function applyOrHold(document, isBusy) {
+    if (applied && applied.version === document.version) {
+      pending = null;
+      return 'unchanged';
+    }
+    if (await isBusy()) {
+      pending = document;
+      return 'held';
+    }
+    await commit(document);
+    return 'applied';
+  }
+
+  /** Apply whatever was held, once the slot is empty. */
+  async function applyPending(isBusy) {
+    if (!pending) return 'none';
+    if (await isBusy()) return 'held';
+    await commit(pending);
+    return 'applied';
+  }
+
+  /**
+   * Ask the control plane for the current document.
+   *
+   * Every failure ends at last known good; none of them can stop a sprite
+   * serving. `desiredVersion` short-circuits the request when the control
+   * plane has already told us, on the readiness call before a run, that
+   * nothing has changed.
+   */
+  async function refresh(isBusy, desiredVersion = null) {
+    if (!config.configUrl || !config.configKey) return 'not-configured';
+    if (desiredVersion && applied && applied.version === desiredVersion && !pending) {
+      return 'unchanged';
+    }
+    let document;
+    try {
+      const response = await fetchImpl(config.configUrl, {
+        headers: {
+          Authorization: `Bearer ${config.configKey}`,
+          'X-Aisar-Config-Schema': String(CONFIG_SCHEMA_SUPPORTED),
+        },
+        signal: AbortSignal.timeout(CONFIG_FETCH_TIMEOUT_MS),
+      });
+      if (!response.ok) {
+        failures += 1;
+        staleSince = staleSince ?? new Date(now()).toISOString();
+        return `http-${response.status}`;
+      }
+      document = await response.json();
+    } catch {
+      failures += 1;
+      staleSince = staleSince ?? new Date(now()).toISOString();
+      return 'unreachable';
+    }
+    const reason = configRejection(document);
+    if (reason) {
+      /* A refused document is a fact worth reporting: silently keeping LKG
+         would hide a control plane sending something this runner cannot
+         apply, which is exactly the drift the channel exists to surface. */
+      rejected = reason;
+      failures += 1;
+      return 'rejected';
+    }
+    rejected = null;
+    failures = 0;
+    return applyOrHold(document, isBusy);
+  }
+
+  const backoffMs = () =>
+    CONFIG_BACKOFF_MS[Math.min(failures, CONFIG_BACKOFF_MS.length - 1)];
+
+  return { state, loadLastKnownGood, refresh, applyPending, backoffMs };
+}
+
 export function createRunner(input) {
   const config = validated(input);
   const state = new StateStore(config.stateFile);
+  /* The control plane is never on the critical path: the channel starts from
+     last known good and refreshes behind the request path, so a sprite whose
+     control plane is away still serves with the config it already had. */
+  const configChannel = input.configChannel ?? createConfigChannel(config);
   const streams = new SafeDeltaStreams(config);
   const keepalive = createSpriteKeepalive(process.env.SPRITE_API_SOCK);
   let admitting = false;
@@ -221,6 +481,27 @@ export function createRunner(input) {
     streams,
     (taskId) => admittingTaskId === taskId,
   );
+  /* A document must not change under a run in flight: Hermes reads its config
+     when the agent is created, so swapping mid-run would give one task two
+     configurations. */
+  const slotBusy = async () => Boolean(await activeTask(config, state, terminations));
+
+  /* Started in the background and never awaited: /readyz must not wait on the
+     control plane, and a sprite whose control plane is away has to come up on
+     last known good exactly as fast as one whose isn't. Retries back off and
+     the timer is unref'd, so a paused sprite simply tries again on its next
+     wake rather than holding the process alive to keep trying. */
+  let configTimer = null;
+  const refreshLoop = async () => {
+    const outcome = await configChannel.refresh(slotBusy).catch(() => 'threw');
+    if (['not-configured', 'applied', 'unchanged', 'held'].includes(outcome)) return;
+    configTimer = setTimeout(() => { void refreshLoop(); }, configChannel.backoffMs());
+    if (typeof configTimer.unref === 'function') configTimer.unref();
+  };
+  void (async () => {
+    await configChannel.loadLastKnownGood().catch(() => undefined);
+    await refreshLoop();
+  })();
   let watchdog = null;
   void terminations.restore();
   const watchdogMs = Number.isFinite(config.watchdogMs) ? config.watchdogMs : WATCHDOG_INTERVAL_MS;
@@ -283,6 +564,11 @@ export function createRunner(input) {
            even when no new task arrives to trigger it (health checks hit
            this endpoint periodically). */
         const active = await activeTask(config, state, terminations);
+        /* The slot was just reconciled, so this is the natural moment to let a
+           held document land: the probe runs periodically whether or not a
+           task arrives. Never allowed to fail the probe — a config that will
+           not apply is reported through `config`, not by refusing readiness. */
+        await configChannel.applyPending(slotBusy).catch(() => undefined);
         return json(res, ready ? 200 : 503, {
           ok: ready,
           release: config.release,
@@ -298,6 +584,10 @@ export function createRunner(input) {
             pid: process.pid,
             startedAt: RUNNER_STARTED_AT,
           },
+          /* Convergence, reported rather than pushed: the control plane reads
+             this on the readiness call it already makes before every run, so
+             it learns what each sprite applied without waking anything. */
+          config: configChannel.state(),
           activeTask: active
             ? {
                 taskId: active.taskId,
@@ -615,6 +905,15 @@ export function configFromEnv(env = process.env) {
     deepModelName: env.AISAR_DEEP_MODEL_NAME,
     candidateModelNames: modelList(env.AISAR_CANDIDATE_MODEL_NAMES),
     runnerSourceSha256: env.AISAR_RUNNER_SOURCE_SHA256,
+    /* The config channel. Absent, the runner keeps whatever the bootstrap
+       wrote and reports source 'bootstrap' — which is every sprite until the
+       release that starts sending AISAR_CONFIG_URL. The credential is the
+       derived runtime key already present for the model proxy; reusing it is
+       what lets this ship without a new bootstrap transfer field. */
+    configUrl: env.AISAR_CONFIG_URL,
+    configKey: env.OPENROUTER_API_KEY,
+    configLkgFile: env.AISAR_CONFIG_LKG ?? '/home/sprite/aisar/config.lkg.json',
+    hermesEnvFile: env.AISAR_HERMES_DOTENV ?? '/home/sprite/.hermes/.env',
     port: Number(env.PORT ?? 8080),
     watchdogMs: Number(env.AISAR_RUNNER_WATCHDOG_MS ?? WATCHDOG_INTERVAL_MS),
   };

@@ -1,0 +1,187 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { configRejection, createConfigChannel, renderHermesEnv } from '../src/server.mjs';
+
+const GOOD = Object.freeze({
+  schema: 1,
+  version: 'fbd722a39cdc8738',
+  release: '2026.09.10-5',
+  hermes: { web: { backend: 'ddgs', search_backend: 'ddgs', extract_backend: 'firecrawl' } },
+  hermesEnv: {
+    FIRECRAWL_API_URL: 'https://extract.kitakod.com',
+    FIRECRAWL_API_KEY: 'k'.repeat(64),
+  },
+});
+
+const doc = (over = {}) => ({ ...structuredClone(GOOD), ...over });
+
+test('a well-formed document is accepted', () => {
+  assert.equal(configRejection(GOOD), null);
+});
+
+test('an unknown hermes key rejects the whole document, not part of it', () => {
+  /* Merging the half it understood would leave a configuration nobody
+     designed, on a machine nobody is watching. */
+  const withExtra = doc({ hermes: { web: { backend: 'ddgs' }, agent: { max_turns: 99 } } });
+  assert.match(configRejection(withExtra), /hermes\.agent/);
+  const withExtraKey = doc({ hermes: { web: { backend: 'ddgs', danger: 'yes' } } });
+  assert.match(configRejection(withExtraKey), /hermes\.web\.danger/);
+});
+
+test('a backend Hermes does not implement is refused', () => {
+  assert.match(configRejection(doc({
+    hermes: { web: { extract_backend: 'camoufox' } },
+  })), /camoufox is not implemented/);
+});
+
+test('firecrawl without an endpoint is refused', () => {
+  /* Naming a backend with nothing to serve it trades a working fallback for
+     a hard failure — the same rule the sprite's Python configure applies. */
+  assert.match(configRejection(doc({ hermesEnv: {} })), /without an endpoint/);
+});
+
+test('an env name outside the closed list is refused', () => {
+  assert.match(configRejection(doc({
+    hermesEnv: { ...GOOD.hermesEnv, OPENROUTER_API_KEY: 'stolen' },
+  })), /OPENROUTER_API_KEY is not allowed/);
+});
+
+test('a newline in a value is refused, because the file is dotenv', () => {
+  /* A newline would let one value forge another line, which is how a config
+     channel becomes a way to set arbitrary environment. */
+  assert.match(configRejection(doc({
+    hermesEnv: { ...GOOD.hermesEnv, FIRECRAWL_API_KEY: 'a\nOPENROUTER_API_KEY=stolen' },
+  })), /contains a newline/);
+});
+
+test('a non-https or path-bearing extract URL is refused', () => {
+  for (const url of ['http://extract.kitakod.com', 'https://x.test/v2', 'not-a-url']) {
+    assert.match(
+      configRejection(doc({ hermesEnv: { ...GOOD.hermesEnv, FIRECRAWL_API_URL: url } })),
+      /bare https origin/,
+      url,
+    );
+  }
+});
+
+test('an unsupported schema is refused rather than guessed at', () => {
+  assert.match(configRejection(doc({ schema: 2 })), /schema 2 unsupported/);
+});
+
+test('the dotenv rendering is sorted and newline-terminated', () => {
+  assert.equal(
+    renderHermesEnv({ B: '2', A: '1' }),
+    'A=1\nB=2\n',
+  );
+});
+
+function channel(over = {}) {
+  const files = new Map();
+  const config = {
+    configUrl: 'https://api.jentera.ai/v1/runtime/config',
+    configKey: 'sk-jentera-v1.abc',
+    configLkgFile: '/tmp/lkg.json',
+    hermesEnvFile: '/tmp/hermes.env',
+    ...over.config,
+  };
+  const deps = {
+    writeFile: async (path, body) => { files.set(path, body); },
+    rename: async (from, to) => { files.set(to, files.get(from)); files.delete(from); },
+    readFile: async (path) => {
+      if (!files.has(path)) throw new Error('ENOENT');
+      return files.get(path);
+    },
+    ...over.deps,
+  };
+  return { channel: createConfigChannel(config, deps), files };
+}
+
+test('a fetched document is applied when the slot is empty', async () => {
+  const { channel: c, files } = channel({
+    deps: { fetch: async () => ({ ok: true, json: async () => GOOD }) },
+  });
+  assert.equal(await c.refresh(async () => false), 'applied');
+  assert.equal(c.state().version, GOOD.version);
+  assert.equal(c.state().source, 'control-plane');
+  assert.match(files.get('/tmp/hermes.env'), /FIRECRAWL_API_URL=https:\/\/extract\.kitakod\.com/);
+  assert.ok(files.get('/tmp/lkg.json'));
+});
+
+test('a document is held, not applied, while a run is in flight', async () => {
+  /* Hermes reads config when the agent is created; swapping mid-run would
+     give one task two configurations. */
+  const { channel: c, files } = channel({
+    deps: { fetch: async () => ({ ok: true, json: async () => GOOD }) },
+  });
+  assert.equal(await c.refresh(async () => true), 'held');
+  assert.equal(c.state().version, null);
+  assert.equal(c.state().pendingVersion, GOOD.version);
+  assert.equal(files.has('/tmp/hermes.env'), false);
+
+  assert.equal(await c.applyPending(async () => true), 'held');
+  assert.equal(await c.applyPending(async () => false), 'applied');
+  assert.equal(c.state().version, GOOD.version);
+  assert.equal(c.state().pendingVersion, undefined);
+});
+
+test('an unreachable control plane leaves the runtime exactly as it was', async () => {
+  const { channel: c, files } = channel({
+    deps: { fetch: async () => { throw new Error('offline'); } },
+  });
+  assert.equal(await c.refresh(async () => false), 'unreachable');
+  assert.equal(c.state().version, null);
+  assert.equal(c.state().source, 'bootstrap');
+  assert.equal(files.size, 0);
+  assert.ok(c.state().staleSince);
+});
+
+test('a refused document is reported rather than silently ignored', async () => {
+  /* Keeping last known good quietly would hide a control plane sending
+     something this runner cannot apply — the drift the channel exists to
+     surface. */
+  const { channel: c } = channel({
+    deps: { fetch: async () => ({ ok: true, json: async () => doc({ schema: 9 }) }) },
+  });
+  assert.equal(await c.refresh(async () => false), 'rejected');
+  assert.match(c.state().rejected, /schema 9 unsupported/);
+  assert.equal(c.state().version, null);
+});
+
+test('last known good is restored on start', async () => {
+  const { channel: c, files } = channel();
+  files.set('/tmp/lkg.json', JSON.stringify({ document: GOOD, appliedAt: '2026-09-10T00:00:00Z' }));
+  await c.loadLastKnownGood();
+  assert.equal(c.state().version, GOOD.version);
+  assert.equal(c.state().source, 'lkg');
+});
+
+test('an unchanged version does not rewrite anything', async () => {
+  const { channel: c, files } = channel({
+    deps: { fetch: async () => ({ ok: true, json: async () => GOOD }) },
+  });
+  await c.refresh(async () => false);
+  const before = files.get('/tmp/hermes.env');
+  assert.equal(await c.refresh(async () => false), 'unchanged');
+  assert.equal(files.get('/tmp/hermes.env'), before);
+});
+
+test('a known desired version skips the request entirely', async () => {
+  /* The worker already calls readiness before every run, so it can say "still
+     this hash" for free. Fetching anyway would spend a round trip to learn
+     what we were just told. */
+  let calls = 0;
+  const { channel: c } = channel({
+    deps: { fetch: async () => { calls += 1; return { ok: true, json: async () => GOOD }; } },
+  });
+  await c.refresh(async () => false);
+  assert.equal(calls, 1);
+  assert.equal(await c.refresh(async () => false, GOOD.version), 'unchanged');
+  assert.equal(calls, 1);
+});
+
+test('without a configured endpoint the channel does nothing at all', async () => {
+  const { channel: c, files } = channel({ config: { configUrl: undefined } });
+  assert.equal(await c.refresh(async () => false), 'not-configured');
+  assert.equal(c.state().source, 'bootstrap');
+  assert.equal(files.size, 0);
+});

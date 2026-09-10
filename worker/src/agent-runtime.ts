@@ -343,6 +343,27 @@ export async function recordProviderRuntime(
   return toRecord(row);
 }
 
+/**
+ * What configuration this runtime last reported applying.
+ *
+ * Written on the readiness call the dispatcher already makes, so convergence
+ * is observable without waking a sprite to ask. Best effort by design: it is
+ * a diagnostic, and a failure to record it must never cost the run that was
+ * about to happen.
+ */
+export async function recordObservedConfigVersion(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  version: string | null,
+): Promise<void> {
+  await tx`
+    update agent_runtime
+       set observed_config_version = ${version}, updated_at = now()
+     where business_id = ${businessId}
+       and deleted_at is null
+       and observed_config_version is distinct from ${version}`;
+}
+
 export async function markRuntimeReady(
   tx: postgres.TransactionSql,
   businessId: string,

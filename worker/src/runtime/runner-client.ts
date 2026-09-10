@@ -46,6 +46,10 @@ export interface RunnerTaskRequest {
 export interface RunnerTaskResponse {
   ok?: boolean;
   duplicate?: boolean;
+  /** /readyz only: what configuration the runtime says it applied. Shape is
+      checked by `configState` rather than trusted, because a diagnostic must
+      not be able to fail a dispatch. */
+  config?: unknown;
   taskId?: string;
   hermesRunId?: string;
   run_id?: string;
@@ -87,6 +91,20 @@ export interface RunnerReadiness {
   region: string | null;
   /** Capabilities the runner attested on /readyz (e.g. ['computer_use']). */
   capabilities: string[];
+  /** What configuration the runtime says it is running, when it runs a bundle
+      that fetches one. Null on every sprite until that release, and null again
+      whenever the runner has only what the bootstrap gave it. Reported, never
+      required: stale configuration must not fail a dispatch. */
+  config: RunnerConfigState | null;
+}
+
+export interface RunnerConfigState {
+  version: string | null;
+  source: string | null;
+  appliedAt: string | null;
+  pendingVersion?: string;
+  rejected?: string;
+  staleSince?: string;
 }
 
 /** The isolated runtime is still finishing an earlier task. This is normal
@@ -99,6 +117,34 @@ export class RuntimeBusyError extends Error {
     super('business runtime is busy');
     this.name = 'RuntimeBusyError';
   }
+}
+
+/**
+ * The runner's config attestation, kept only where it is well-formed.
+ *
+ * Deliberately forgiving. This is diagnostic: a runner that reports nothing,
+ * or reports nonsense, must not be able to fail a dispatch — the run matters
+ * and the version does not. Anything unrecognised becomes null and the caller
+ * simply learns less.
+ */
+function configState(value: unknown): RunnerConfigState | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const body = value as Record<string, unknown>;
+  const text = (key: string): string | null =>
+    typeof body[key] === 'string' && body[key] ? body[key] as string : null;
+  const optional = (key: string): string | undefined =>
+    typeof body[key] === 'string' && body[key] ? body[key] as string : undefined;
+  const version = text('version');
+  const source = text('source');
+  if (!version && !source) return null;
+  return {
+    version,
+    source,
+    appliedAt: text('appliedAt'),
+    ...(optional('pendingVersion') ? { pendingVersion: optional('pendingVersion') } : {}),
+    ...(optional('rejected') ? { rejected: optional('rejected') } : {}),
+    ...(optional('staleSince') ? { staleSince: optional('staleSince') } : {}),
+  };
 }
 
 /** Authenticated client for Jentera's narrow per-business runner API. */
@@ -160,7 +206,7 @@ export class RunnerClient {
     const region = typeof body.region === 'string' && /^[a-z0-9]{3}$/i.test(body.region.trim())
       ? body.region.trim().toLowerCase()
       : null;
-    return { region, capabilities: attestedCapabilities };
+    return { region, capabilities: attestedCapabilities, config: configState(body.config) };
   }
 
   async start(task: RunnerTaskRequest): Promise<RunnerTaskResponse> {
