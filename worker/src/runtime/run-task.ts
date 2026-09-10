@@ -28,6 +28,18 @@ const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped']);
     pays the wake. Unset or unparseable still means 24. */
 const KEEPALIVE_GRACE_HOURS_DEFAULT = 24;
 
+/** A quick reply is one chat turn. The business budget allows a run up to
+    max_run_seconds (900 by default) and deep work keeps that; a chat turn
+    still running after five minutes is stuck, and five minutes is what it
+    should cost. The runner enforces the deadline it is handed, so this
+    holds even when the worker loses track of the task. On 2026-09-03 a
+    two-word follow-up ran for 7 h 15 min before any limit applied. */
+export const QUICK_RUN_CAP_SECONDS = 300;
+
+function runSecondsFor(mode: ResponseMode | undefined, budgetSeconds: number): number {
+  return mode === 'quick' ? Math.min(budgetSeconds, QUICK_RUN_CAP_SECONDS) : budgetSeconds;
+}
+
 function keepaliveGraceHours(env: Env): number {
   const raw = env.AISAR_KEEPALIVE_GRACE_HOURS?.trim();
   if (!raw) return KEEPALIVE_GRACE_HOURS_DEFAULT;
@@ -156,7 +168,8 @@ export async function dispatchRuntimeRun(
   });
   await client.ready();
   stage('runner_ready');
-  if (Date.now() - reservation.startedAt.getTime() > reservation.maxRunSeconds * 1_000) {
+  const runSeconds = runSecondsFor(payload.responseMode, reservation.maxRunSeconds);
+  if (Date.now() - reservation.startedAt.getTime() > runSeconds * 1_000) {
     if (!task.remoteRunId) {
       throw new Error('runtime task exceeded its time limit before Hermes started');
     }
@@ -190,7 +203,7 @@ export async function dispatchRuntimeRun(
        retry reuses the same value instead of refreshing it (runner contract:
        FIX:FINDINGS B5). The pre-start guard above guarantees it is still in
        the future at this point. */
-    deadlineAt: reservation.startedAt.getTime() + reservation.maxRunSeconds * 1_000,
+    deadlineAt: reservation.startedAt.getTime() + runSeconds * 1_000,
     ...(keepaliveUntil ? { keepaliveUntil } : {}),
   });
   stage('hermes_started');

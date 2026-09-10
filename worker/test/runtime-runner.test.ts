@@ -970,8 +970,11 @@ function response(body: unknown, status = 200): Response {
   });
 }
 
-describe('sprite keepalive hold', () => {
-  async function dispatchBody(env: ReturnType<typeof testEnv>): Promise<Record<string, unknown>> {
+/** Dispatch one run and return the body the worker sent the runner. */
+async function dispatchBody(
+  env: ReturnType<typeof testEnv>,
+  payload: Record<string, unknown> = { input: 'hello', model: 'MiniMax-M3' },
+): Promise<Record<string, unknown>> {
     const provider = new LocalRuntimeProvider();
     await ensureProviderRuntime(env, A, {
       provider,
@@ -986,7 +989,7 @@ describe('sprite keepalive hold', () => {
       kind: 'run',
       runId: run.id,
       dedupeKey: `hold:${run.id}`,
-      payload: { input: 'hello', model: 'MiniMax-M3' },
+      payload,
     }));
     let body: Record<string, unknown> | null = null;
     const runnerFetch: typeof fetch = async (input, init) => {
@@ -1023,8 +1026,9 @@ describe('sprite keepalive hold', () => {
     );
     if (!body) throw new Error('the runner was never dispatched');
     return body;
-  }
+}
 
+describe('sprite keepalive hold', () => {
   it('sends no hold when AISAR_KEEPALIVE_GRACE_HOURS is 0, so an idle sprite may pause', async () => {
     const body = await dispatchBody(testEnv({
       RUNTIME_RELEASE: '2026.09.01-3',
@@ -1043,5 +1047,29 @@ describe('sprite keepalive hold', () => {
     const until = Date.parse(String(body.keepaliveUntil));
     expect(until - before).toBeGreaterThan(23.9 * 3_600_000);
     expect(until - before).toBeLessThan(24.1 * 3_600_000);
+  });
+});
+
+describe('per-run deadline by response mode', () => {
+  const env = () => testEnv({ RUNTIME_RELEASE: '2026.09.01-3', AISAR_MODEL_NAME: 'MiniMax-M3' });
+
+  /* On 2026-09-03 a two-word Telegram follow-up ran on the sprite for
+     7 h 15 min before the per-run limit was applied. The runner enforces
+     the deadline itself now; a chat turn that is still running after five
+     minutes is stuck, and five minutes is what it should cost. */
+  it('caps a quick reply at five minutes', async () => {
+    const before = Date.now();
+    const body = await dispatchBody(env(), { input: 'yo', model: 'MiniMax-M3', responseMode: 'quick' });
+    const seconds = (Number(body.deadlineAt) - before) / 1_000;
+    expect(seconds).toBeGreaterThan(290);
+    expect(seconds).toBeLessThanOrEqual(305);
+  });
+
+  it('leaves deep work on the budget limit', async () => {
+    const before = Date.now();
+    const body = await dispatchBody(env(), { input: 'research this', model: 'deepseek-v4-flash', responseMode: 'deep' });
+    const seconds = (Number(body.deadlineAt) - before) / 1_000;
+    expect(seconds).toBeGreaterThan(890);
+    expect(seconds).toBeLessThanOrEqual(905);
   });
 });

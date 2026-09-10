@@ -117,6 +117,11 @@ Open, in order of expected payoff:
    not. Awake time is therefore about the reply itself, roughly 40 s, not
    the gap after it.
 4. Not a lever: `reasoning_overrides` for MiniMax (see above).
+5. **Per-run cap by mode** (2026-09-10). Every business's budget allows a
+   run 900 s; a quick reply is now capped at 300 s at dispatch, deep work
+   keeps 900 s. The runner enforces the deadline itself, so a stuck chat
+   turn costs five minutes of sprite time at most. Before the runner-side
+   deadline existed (2026-09-07), one such turn ran for 7 h 15 min.
 
 ## Re-measuring
 
