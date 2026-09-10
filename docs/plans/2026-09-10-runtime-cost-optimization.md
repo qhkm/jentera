@@ -695,21 +695,56 @@ answering "what are our Monday hours" never clicks, types, scrolls or
 drives CDP. On count alone, dropping the browser toolset is the single
 largest available cut.
 
-**But it is load-bearing today, and that is the catch.**
-`HERMES_AGENT_PROMPT` instructs the model to "open the relevant primary
-pages with browser tools or terminal/curl", and to fall back to browser
-navigation when `web_extract` reports a search-only backend. So the browser
-tools are currently compensating for an unreliable extractor. Cutting them
-before `web_extract` is dependable would trade cost for exactly the
-groundedness axis step 2 weights highest.
+**Do not cut it. `web_extract` is dead, and browser is the only page
+reader we have.** Probed on the Kitakod sprite, 2026-09-10. Asked to call
+`web_extract` once on `https://example.com` and report the result verbatim,
+it returned:
 
-The order that follows from this: confirm whether `web_extract` still
-reports search-only (a `reply-latency.sh`-style probe on one sprite), fix
-or replace it if so, amend the prompt in the same release, and only then
-drop `browser` from the composite. Measure with step 1's query over ≥50
-quick replies either side. If `web_extract` cannot be made dependable,
-the smaller cut is still available: `image_gen`, `cronjob`, `vision_analyze`
-and `delegate_task` have no role in a two-sentence business answer.
+> DuckDuckGo (ddgs) is a search-only backend and cannot extract URL
+> content. Set web.extract_backend to firecrawl, tavily, exa, or parallel.
+
+`configure-model-provider.py` pins `web["backend"] = "ddgs"` and
+`web["search_backend"] = "ddgs"` and **never sets `web["extract_backend"]`**
+— the key the error names. So on every sprite in the fleet, the tool whose
+job is reading a web page cannot read a web page. It has presumably never
+worked.
+
+Three consequences, in increasing order of importance.
+
+*The browser toolset is not redundant, it is load-bearing.* The prompt's
+fallback — "open the relevant primary pages with browser tools or
+terminal/curl" — is not a fallback, it is the only path. Dropping those
+twelve tools today would leave the agent unable to read any page at all
+except through curl in a terminal.
+
+*It is probably a large part of the cost we are chasing.* A browser
+snapshot is far bigger than an extracted article, and it lands in the
+transcript and is resent every iteration. The 119,566-token research run
+in the replay above is the shape that predicts. Repairing extraction may
+cut more input tokens than trimming tools would, and it does so by
+replacing a bad mechanism rather than removing a capability.
+
+*It is a groundedness problem, not only a cost one.* Research answers today
+are built from DDGS discovery snippets plus whatever the browser scrapes.
+That is the axis step 2 weights highest, and it means the trial is being
+run over a research path that is impaired for both models equally — fair
+for the comparison, bad for the product.
+
+The order this forces:
+
+1. Choose an extraction backend (`firecrawl`, `tavily`, `exa`, `parallel`)
+   and get a key. A signup and a cost decision, not an engineering one.
+2. Set `web["extract_backend"]` in `configure-model-provider.py`, carry the
+   key through the bootstrap handoff the way `FMCV_UPSTREAM_KEY` is, ship
+   via `ship-runtime.sh`. Add it to the bootstrap's readiness attestation
+   so a sprite that cannot extract fails loudly instead of silently falling
+   back to a browser.
+3. Re-probe. Then measure research runs either side with step 1's query.
+4. Only then revisit `browser`, with the prompt amended in the same release.
+
+Until step 1 of that list happens, the available cut is the small one:
+`image_gen`, `cronjob`, `vision_analyze` and `delegate_task` have no role
+in a two-sentence business answer.
 
 Not yet measured: the per-tool character cost. The counts above are tool
 *names*; a schema-size ranking needs the serialised `tools` array, which
