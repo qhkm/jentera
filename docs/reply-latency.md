@@ -46,7 +46,7 @@ Both channels end up on the same durable path. Only the first step differs.
 
 | | Telegram | App chat |
 |---|---|---|
-| Prompt and framing | `prepareHermesAgent` | `prepareHermesAgent` (same since 21e1bb8, 2026-09-09; before that the app used the older `prepareAsk` prompt) |
+| Prompt and framing | `prepareHermesAgent` | `prepareHermesAgent` (same since 21e1bb8, 2026-09-09; before that the app used the older `prepareAsk` prompt). Since 2026-09-10 the message is the user turn exactly as typed and the facts and recent work travel in the per-run `instructions`, which Hermes does not persist; before that every stored turn carried a copy of the business context, replayed on every later reply. |
 | Facts and recent work | `retrieveHermesContext` | same |
 | Response mode | `quick`, unless the message starts with `/deep` or `/research` (e54aea9, 2026-09-09; before that, wording like "deep dive" also chose deep) | `quick` by default since 27b3f65 (2026-09-10), `deep` via the Deep toggle or a typed `/deep`; before that always `deep` |
 | Model | quick model (`AISAR_MODEL_NAME`, MiniMax-M3), or the business's `AISAR_QUICK_MODEL_OVERRIDES` entry (M2.7-highspeed canary on Kitakod Ventures) | deep model (`AISAR_DEEP_MODEL_NAME`, deepseek-v4-flash) |

@@ -235,7 +235,11 @@ describe('the durable Hermes agent request', () => {
     expect(prepared.instructions).toMatch(/final\s+Sources section/i);
     expect(prepared.instructions).toMatch(/Markdown links/i);
     expect(prepared.instructions).toMatch(/execute code|inspect files|use the browser/i);
-    expect(prepared.input).toContain("User request: what's latest today in tech?");
+    /* The message is the user turn, exactly as typed. Hermes persists the
+       user turns of a session and replays them next time; the old framing
+       ("Confirmed information… User request: …") put every fact into every
+       stored turn, so a ten-turn chat carried ten copies of the business. */
+    expect(prepared.input).toBe("what's latest today in tech?");
   });
 
   it('carries confirmed business context without restricting the agent to it', () => {
@@ -253,11 +257,30 @@ describe('the durable Hermes agent request', () => {
       new Date('2026-08-28T05:00:00.000Z'),
     );
 
-    expect(prepared.input).toContain('hours.monday: 9am to 6pm');
-    expect(prepared.input).toContain('Published the new menu — done');
+    expect(prepared.input).toBe('compare our opening hours with the event schedule online');
+    expect(prepared.instructions).toContain('Confirmed information about this business:');
+    expect(prepared.instructions).toContain('hours.monday: 9am to 6pm');
+    expect(prepared.instructions).toContain('Recent Jentera work:');
+    expect(prepared.instructions).toContain('Published the new menu — done');
     expect(prepared.usedKeys).toEqual(['hours.monday']);
     expect(prepared.grounded).toBe(true);
     expect(prepared.instructions).toMatch(/External\s+research supplements it/i);
+  });
+
+  it('bounds the business context so the runner request stays well under its body limit', () => {
+    const facts = Array.from({ length: 400 }, (_, i) => ({
+      key: `fact.${i}`,
+      value: 'v'.repeat(200),
+      source: 'owner',
+      sourceRef: null,
+      confidence: 1,
+      confirmed: true,
+    }));
+    const prepared = prepareHermesAgent('hi', facts, [], new Date('2026-08-28T05:00:00.000Z'));
+    expect(prepared.instructions.length).toBeLessThan(24_000);
+    expect(prepared.instructions).toContain('fact.0: ');
+    expect(prepared.instructions).toMatch(/more facts omitted/);
+    expect(prepared.input).toBe('hi');
   });
 });
 
@@ -382,13 +405,12 @@ describe('the bracket is a note to the model, not to the reader', () => {
 });
 
 describe('boundedAgentInput', () => {
-  it('leaves an ordinary request untouched', () => {
-    expect(boundedAgentInput('facts\n\nUser request: hi', 'hi')).toBe('facts\n\nUser request: hi');
+  it('leaves an ordinary message untouched', () => {
+    expect(boundedAgentInput('hi')).toBe('hi');
   });
-  it('truncates an oversized request but keeps the question at the end, framed as the agent expects', () => {
-    const input = `${'x'.repeat(30_000)}\n\nUser request: what now?`;
-    const bounded = boundedAgentInput(input, 'what now?');
+  it('truncates an oversized message and says so', () => {
+    const bounded = boundedAgentInput('x'.repeat(30_000));
     expect(bounded.length).toBe(19_500);
-    expect(bounded.endsWith('\n\nUser request: what now?')).toBe(true);
+    expect(bounded.endsWith('[message truncated]')).toBe(true);
   });
 });

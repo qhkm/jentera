@@ -136,13 +136,13 @@ describe('Ask Jentera runtime bridge', () => {
     const [row] = await asOwner((sql) => sql<{ payload: { instructions: string; input: string } }[]>`
       select t.payload from runtime_task t where t.run_id = ${body.runId}`);
     /* prepareHermesAgent's shape: the agent persona with the date stamped
-       on, and the request framed as the agent sees it on Telegram. The
-       same question must not read differently because it came from the app. */
-    expect(row.payload.instructions).toMatch(/Current date \(UTC\): \d{4}-\d{2}-\d{2}\.$/);
-    expect(row.payload.input).toContain('Confirmed information about this business:');
-    expect(row.payload.input).toContain('Recent Jentera work:');
-    expect(row.payload.input).toMatch(/User request: What should I improve\?$/);
-    expect(row.payload.input).not.toContain('Question:');
+       on and the business context in the instructions; the message itself
+       is the user turn, exactly as typed, as on Telegram. The same question
+       must not read differently because it came from the app. */
+    expect(row.payload.instructions).toMatch(/Current date \(UTC\): \d{4}-\d{2}-\d{2}\./);
+    expect(row.payload.instructions).toContain('Confirmed information about this business:');
+    expect(row.payload.instructions).toContain('Recent Jentera work:');
+    expect(row.payload.input).toBe('What should I improve?');
   });
 
   it('reuses the same run for simultaneous-safe request retries', async () => {

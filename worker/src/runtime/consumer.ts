@@ -619,7 +619,7 @@ export async function handleRuntimeQueueMessage(
         runId: run.id,
         dedupeKey,
         payload: {
-          input: boundedAgentInput(prepared.input, message.incoming.text),
+          input: boundedAgentInput(prepared.input),
           instructions: prepared.instructions,
           sessionId: `telegram:${message.businessId}:${message.incoming.chatId}`,
           objective: `Help ${message.incoming.from} on Telegram`,

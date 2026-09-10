@@ -255,10 +255,28 @@ export function prepareAsk(
   };
 }
 
+/** The business context is bounded so the runner's 64 KB task body has
+    room for the prompt, the tool grant and the message. */
+const HERMES_CONTEXT_MAX = 16_000;
+
+function boundedContext(context: string): string {
+  if (context.length <= HERMES_CONTEXT_MAX) return context;
+  const note = '\n- …(more facts omitted)';
+  return `${context.slice(0, HERMES_CONTEXT_MAX - note.length)}${note}`;
+}
+
 /** Every durable request, Telegram or app chat, uses Hermes as an agent
     with this one prompt, so the same question reads the same on both
     channels. Only the inline non-Hermes answer path (mode 'ask') still
-    uses prepareAsk. */
+    uses prepareAsk.
+
+    The message is the user turn exactly as typed; the business context
+    travels in the instructions. Hermes persists a session's user turns and
+    replays them on the next run (and `instructions` is ephemeral per run),
+    so the old framing — facts and recent work wrapped around every
+    message — put a copy of the whole business into every stored turn: a
+    ten-turn chat carried ten copies, paid for on every reply and stale
+    from the second one on. */
 export function prepareHermesAgent(
   question: string,
   facts: FactRow[],
@@ -271,10 +289,14 @@ export function prepareHermesAgent(
         .slice(0, 8)
         .map((entry) => `- ${entry.objective}${entry.outcome ? ` — ${entry.outcome}` : ''}`)
         .join('\n');
+  const context = boundedContext(
+    `Confirmed information about this business:\n${renderFacts(facts)}\n\n` +
+    `Recent Jentera work:\n${recent}`,
+  );
   return {
-    instructions: `${HERMES_AGENT_PROMPT}\n\nCurrent date (UTC): ${now.toISOString().slice(0, 10)}.`,
-    input: `Confirmed information about this business:\n${renderFacts(facts)}\n\n` +
-      `Recent Jentera work:\n${recent}\n\nUser request: ${question}`,
+    instructions: `${HERMES_AGENT_PROMPT}\n\nCurrent date (UTC): ${now.toISOString().slice(0, 10)}.` +
+      `\n\n${context}`,
+    input: question,
     usedKeys: facts.map((fact) => fact.key),
     grounded: facts.length > 0,
   };
@@ -312,12 +334,11 @@ export async function answer(
   };
 }
 
-/** Cap the agent input at Hermes's comfortable size while keeping the
-    request itself at the end, framed the way prepareHermesAgent frames it.
-    Shared by the Telegram and app intakes so neither can drift. */
-export function boundedAgentInput(input: string, question: string): string {
+/** Cap the message at Hermes's comfortable size and say so when it was
+    cut. Shared by the Telegram and app intakes so neither can drift. */
+export function boundedAgentInput(question: string): string {
   const max = 19_500;
-  if (input.length <= max) return input;
-  const suffix = `\n\nUser request: ${question}`;
-  return `${input.slice(0, Math.max(0, max - suffix.length))}${suffix}`;
+  if (question.length <= max) return question;
+  const note = '\n\n[message truncated]';
+  return `${question.slice(0, max - note.length)}${note}`;
 }

@@ -503,7 +503,7 @@ async function startDurableAsk(
       runId: run.id,
       dedupeKey,
       payload: {
-        input: boundedAgentInput(prepared.input, question),
+        input: boundedAgentInput(prepared.input),
         instructions: prepared.instructions,
         sessionId: sessionId ?? run.id,
         objective: question,
