@@ -107,9 +107,15 @@ Open, in order of expected payoff:
    Hermes accept before changing anything. Until 2026-09-09 every dispatch
    held the sprite awake for 24 hours (`AISAR_KEEPALIVE_GRACE_HOURS`, then
    defaulting to 24); it is now `0`, so an idle sprite pauses and stops
-   billing, and the first message after a pause pays a wake of roughly
-   15 to 30 seconds. Later messages in the same conversation do not: the
-   platform keeps a sprite awake while it is busy.
+   billing. Measured 2026-09-10 against the platform API: a sprite goes
+   `running` → `warm` within 15 s of its last activity (compute billing
+   stops there, processes frozen, wake 100–500 ms) and only later `cold`
+   (wake 1–2 s, then Hermes restarts, which is the 15–30 s an owner sees
+   on the first message after a long gap). Per docs.sprites.dev only live
+   activity keeps a sprite awake: an exec, a TTY, an open TCP connection,
+   or a service *with open connections*; a merely running service does
+   not. Awake time is therefore about the reply itself, roughly 40 s, not
+   the gap after it.
 4. Not a lever: `reasoning_overrides` for MiniMax (see above).
 
 ## Re-measuring
