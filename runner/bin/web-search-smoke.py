@@ -50,12 +50,48 @@ def check_search() -> str:
     return provider.name
 
 
+def assert_points_at_our_instance() -> str:
+    """Fail unless the client is aimed at the endpoint we configured.
+
+    "We got text back" is not the same claim as "we got it from our own
+    instance". The plugin builds a working client when either variable is
+    present and only passes `api_url` when the URL is non-empty, so a lost
+    FIRECRAWL_API_URL does not break extraction — it moves it to Firecrawl's
+    cloud, along with this bearer token and every URL we read. That failure
+    is invisible to a smoke that only counts characters.
+    """
+    expected = (os.environ.get("FIRECRAWL_API_URL") or "").strip().rstrip("/")
+    if not expected:
+        raise SystemExit("FIRECRAWL_API_URL is not set; refusing to extract")
+
+    from plugins.web.firecrawl.provider import _get_direct_firecrawl_config
+
+    resolved = _get_direct_firecrawl_config()
+    if not resolved:
+        raise SystemExit("Firecrawl reports no direct configuration")
+    kwargs = resolved[0] if isinstance(resolved, tuple) else resolved
+    actual = str((kwargs or {}).get("api_url") or "").strip().rstrip("/")
+    if actual != expected:
+        raise SystemExit(
+            f"Firecrawl would call {actual or 'its hosted cloud'}, "
+            f"not the configured {expected}"
+        )
+    # Belt and braces: the check above only proves the client matches what we
+    # asked for. If what we asked for is somebody's hosted API, our pages and
+    # this token leave our infrastructure whether or not the two agree.
+    for hosted in ("api.firecrawl.dev", "firecrawl.dev"):
+        if hosted in actual:
+            raise SystemExit(f"refusing hosted Firecrawl at {actual}")
+    return expected
+
+
 def check_extract() -> int:
     """Extract one page through the real provider. Returns characters read."""
     # Imported here, not at module scope: without an endpoint the SDK is not
     # installed, and an unconditional import would fail the search smoke too.
     from plugins.web.firecrawl.provider import FirecrawlWebSearchProvider
 
+    assert_points_at_our_instance()
     provider = FirecrawlWebSearchProvider()
     if not provider.is_available():
         raise SystemExit("Firecrawl provider is configured but reports unavailable")
@@ -82,13 +118,28 @@ def check_extract() -> int:
 
 
 def main() -> None:
+    have_url = bool((os.environ.get("FIRECRAWL_API_URL") or "").strip())
+    have_key = bool((os.environ.get("FIRECRAWL_API_KEY") or "").strip())
+    # Checked before any network work. The dangerous half is a key with no
+    # endpoint: the plugin accepts it and quietly calls Firecrawl's cloud with
+    # our token. Skipping on that combination is how a smoke looks away from
+    # the one state it exists to catch, so it fails instead — and it fails
+    # here, where no search backend being slow or rate-limited can mask it.
+    # Neither present is the documented ddgs fallback and proves nothing.
+    if have_key and not have_url:
+        raise SystemExit(
+            "FIRECRAWL_API_KEY is set with no FIRECRAWL_API_URL; "
+            "extraction would fall back to hosted Firecrawl"
+        )
+    configured = have_url and have_key
+    if configured:
+        assert_points_at_our_instance()
+
     report = {"ok": True, "backend": check_search()}
 
-    configured = bool(os.environ.get("FIRECRAWL_API_URL")) and bool(
-        os.environ.get("FIRECRAWL_API_KEY")
-    )
     if configured:
         report["extract_backend"] = "firecrawl"
+        report["extract_endpoint"] = assert_points_at_our_instance()
         report["extract_chars"] = check_extract()
     else:
         report["extract_backend"] = None

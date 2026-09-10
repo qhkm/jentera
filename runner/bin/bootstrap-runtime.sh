@@ -132,6 +132,21 @@ deep_model_name="$(decode "${DEEP_MODEL_NAME_B64:-$MODEL_NAME_B64}")"
 # in until now. The control plane sends both fields or neither.
 extract_base="$(decode "${EXTRACT_BASE_B64:-}")"
 extract_key="$(decode "${EXTRACT_KEY_B64:-}")"
+# A key without an endpoint is the dangerous half, and it fails loudly rather
+# than degrading. The Firecrawl plugin treats that combination as valid
+# configuration and omits `api_url`, which sends this credential and every URL
+# we read to Firecrawl's cloud instead of the instance we host — working
+# perfectly, and nowhere we intended. A missing key with an endpoint is
+# refused for the mirror-image reason: it would point the fleet at an
+# extractor with no credential to present.
+if [[ -n "$extract_key" && -z "$extract_base" ]]; then
+  echo "extract credential supplied without an endpoint; refusing to fall back to hosted Firecrawl" >&2
+  exit 1
+fi
+if [[ -n "$extract_base" && -z "$extract_key" ]]; then
+  echo "extract endpoint supplied without a credential" >&2
+  exit 1
+fi
 # Candidate routes: extra model ids the control plane wants every sprite to
 # accept beside quick and deep (a canary business may be pointed at one).
 # Validated before anything is installed; the same id grammar as the Python
@@ -421,6 +436,15 @@ FIRECRAWL_API_URL="$extract_base" FIRECRAWL_API_KEY="$extract_key" \
 # contents are stated here rather than inferred from someone else's
 # persistence behaviour, and the profiles get the same, since
 # multiplex_profiles makes each profile's copy the one a run actually reads.
+#
+# The extractor pair is written here too, and it travels together or not at
+# all. plugins/web/firecrawl/provider.py builds its client when *either*
+# variable is present and only passes `api_url` when the URL is non-empty —
+# so a file holding FIRECRAWL_API_KEY without FIRECRAWL_API_URL does not
+# fail, it silently points the SDK at Firecrawl's own cloud and sends this
+# bearer token and every URL we read to a third party. That is not a
+# hypothetical arrangement of this file: on 2026-09-10 it lost exactly two
+# variables and kept two others.
 write_hermes_env_file() {
   local target="$1"
   [[ -e "$target" || "$2" == "create" ]] || return 0
@@ -428,10 +452,15 @@ write_hermes_env_file() {
   tmp="$(mktemp "${target}.XXXXXX")" || return 1
   # Keep anything else already there; replace only what we own.
   if [[ -f "$target" ]]; then
-    grep -vE '^(OPENROUTER_API_KEY|OPENROUTER_BASE_URL)=' "$target" >> "$tmp" 2>/dev/null || true
+    grep -vE '^(OPENROUTER_API_KEY|OPENROUTER_BASE_URL|FIRECRAWL_API_KEY|FIRECRAWL_API_URL)=' \
+      "$target" >> "$tmp" 2>/dev/null || true
   fi
   printf 'OPENROUTER_API_KEY=%s\n' "$model_key" >> "$tmp"
   printf 'OPENROUTER_BASE_URL=%s\n' "$model_base" >> "$tmp"
+  if [[ -n "$extract_base" && -n "$extract_key" ]]; then
+    printf 'FIRECRAWL_API_URL=%s\n' "$extract_base" >> "$tmp"
+    printf 'FIRECRAWL_API_KEY=%s\n' "$extract_key" >> "$tmp"
+  fi
   chmod 600 "$tmp"
   mv "$tmp" "$target"
 }
