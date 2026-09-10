@@ -331,23 +331,28 @@ export default function AskJenteraView({
                   {t('ask.private')}
                 </span>
               )}
-              <button
-                type="button"
-                className="ask-inline-action ask-depth-toggle"
-                aria-pressed={ask.deep}
-                title={t('ask.deep.hint')}
-                onClick={() => ask.setDeep(!ask.deep)}
-              >
-                {t(ask.deep ? 'ask.deep.on' : 'ask.deep')}
-              </button>
-              <button
-                type="submit"
-                className="ask-studio-send"
-                disabled={!draft.trim() || busy}
-                aria-label={t('ask.studio.send')}
-              >
-                <ArrowUp size={20} weight="bold" aria-hidden="true" />
-              </button>
+              {/* Grouped with send, because it changes what send does. Left
+                  as a third child of a space-between row it was stranded in
+                  the middle of the composer, reading as a stray label. */}
+              <div className="ask-writing-actions">
+                <button
+                  type="button"
+                  className="ask-depth-toggle"
+                  aria-pressed={ask.deep}
+                  title={t('ask.deep.hint')}
+                  onClick={() => ask.setDeep(!ask.deep)}
+                >
+                  {t('ask.deep')}
+                </button>
+                <button
+                  type="submit"
+                  className="ask-studio-send"
+                  disabled={!draft.trim() || busy}
+                  aria-label={t('ask.studio.send')}
+                >
+                  <ArrowUp size={20} weight="bold" aria-hidden="true" />
+                </button>
+              </div>
             </div>
           </form>
           <p className="ask-writing-hint" id={hintId}>

@@ -171,6 +171,38 @@
   gap: 14px;
   margin-top: 12px;
 }
+/* The toggle and send travel together at the right edge. `space-between`
+   distributes children, so a third one landed dead centre — which is how
+   "Deep" ended up floating in the middle of the composer. */
+.ask-writing-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+/* It carried no rule at all: the class was on the element and styled nothing,
+   so a control with aria-pressed rendered as muted 11px text and its entire
+   on-state was a tick appended to the word. */
+.ask-depth-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--rail);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.ask-depth-toggle:hover {
+  border-color: rgb(var(--accent-green-rgb) / 0.35);
+  color: var(--text);
+}
+.ask-depth-toggle[aria-pressed='true'] {
+  border-color: rgb(var(--accent-green-rgb) / 0.4);
+  background: rgb(var(--accent-green-rgb) / 0.08);
+  color: var(--accent-green);
+}
 .ask-context-link {
   display: inline-flex;
   align-items: center;
