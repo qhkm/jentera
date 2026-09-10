@@ -165,24 +165,28 @@ worker, triggers the drift sweep, waits for convergence, and runs
 `fleet-verify.sh` on every sprite. `--dry-run` stops after the gate.
 `docs/release-playbook.md` is the same procedure written out, with rollback.
 
-**A new bootstrap transfer field takes two releases, never one.** The fields
+**A transfer field and its `case` arm ship in the same bundle.** The fields
 in `provision.ts`'s `transfer` are parsed by `bootstrap-runtime.sh` against a
-closed allowlist, and a sprite runs the bootstrap from the release it is
-*currently* on — not the one being shipped. So the moment the control plane
-starts sending a field, every sprite that has not already upgraded rejects
-the payload, including the payload that would have upgraded it. On
-2026-09-10 that deadlocked all twelve: `EXTRACT_BASE_B64` went out with the
-worker deploy, and the upgrade tasks retried to exhaustion with "runtime
-bootstrap transfer contains an unknown field" while the release carrying the
-matching allowlist line sat undelivered. Nothing converged, and the fleet
-could not be rescued by shipping harder.
+closed allowlist that exits 1 on anything else — and `bootstrapRuntime` curls
+that bootstrap from `RUNTIME_BUNDLE_COMMIT` and executes it, so the **pin**
+decides what parses, not whatever a sprite has on disk.
 
-Release one teaches the fleet to accept the field. Release two starts
-sending it. Between them the config stays commented out in `wrangler.toml`,
-and `extract-endpoint.test.ts` asserts that anything `provision.ts` sends is
-already named in the bootstrap's allowlist. The same trap applies to any
-value read at bootstrap: it reaches a sprite only by re-bootstrap, so a
-config-only change still needs a `RUNTIME_RELEASE` bump to take effect.
+The shape that breaks is a `provision.ts` that has outrun its pin, which
+`wrangler deploy` ships happily with no release involved. On 2026-09-10
+`EXTRACT_BASE_B64` went out in a worker deploy while the pinned bundle's
+bootstrap had no matching arm: every sprite rejected the transfer, upgrade
+tasks retried to exhaustion, and convergence stalled until the field was
+withdrawn and a bundle containing the arm was pinned.
+
+So: add the arm, pin a bundle that contains it, and only then deploy a worker
+that sends the field. `worker/scripts/check-transfer-fields.mjs` runs as
+`predeploy` and blocks exactly that mismatch; the release gate makes the same
+check with retries. Note this is a *pin* ordering rule, not a two-release
+rule — an earlier version of this file claimed sprites run their own on-disk
+bootstrap, which is true only of `upgrade-existing-sprite.sh`.
+
+Anything read at bootstrap still reaches a sprite only by re-bootstrap, so a
+config-only change needs a `RUNTIME_RELEASE` bump to take effect.
 
 Nothing is applied to a sprite by hand. A sprite's Hermes checkout and
 runner directory survive re-bootstrap exactly as they are, so a hand-applied

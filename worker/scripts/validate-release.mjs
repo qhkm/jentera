@@ -19,12 +19,12 @@
  *      installer must have no unknown-option rejection path (else FAIL).
  *   5. HERMES_TAG resolves to HERMES_COMMIT on the qhkm/hermes-agent fork.
  *   6. Every transfer field provision.ts sends is allowlisted by the bootstrap
- *      at the shipped bundle commit AND by the bootstrap the fleet is still
- *      running. The second half is the one that matters: a sprite bootstraps
- *      with the release it is currently on, so a field introduced in a single
- *      release makes every sprite reject the payload carrying its own
- *      replacement. That deadlocked the fleet on 2026-09-10 (0/12 converged,
- *      24 upgrade tasks exhausted). A new field takes two releases.
+ *      at RUNTIME_BUNDLE_COMMIT. bootstrapRuntime curls that bootstrap and
+ *      executes it, so the pin — not whatever a sprite has on disk — decides
+ *      what parses. The hazard is a provision.ts newer than its pinned bundle,
+ *      which a worker deploy can ship without any release; that stalled
+ *      convergence on 2026-09-10. check-transfer-fields.mjs runs the same
+ *      comparison as a predeploy hook.
  *
  * Usage: node worker/scripts/validate-release.mjs
  * Run from the repo root (reads worker/wrangler.toml + worker/src/runtime/provision.ts).
@@ -83,24 +83,38 @@ if (!bootstrapFlags.length) { fail('could not parse bootstrap installer invocati
 ok(`bootstrap passes flags: ${bootstrapFlags.map((f) => `--${f}`).join(' ')}`);
 
 // ---- 3. Installer hash vs pin -------------------------------------------
+/* Fail, but keep going. raw.githubusercontent throttles bursts and lags new
+   SHAs, so this check false-FAILs often enough to have its own note in the
+   runbook — and `process.exit(1)` here meant one throttled fetch silently
+   skipped every check below it, including the transfer-field guard that
+   exists to stop a fleet-wide stall. A gate that reports everything wrong is
+   worth more than one that stops at the first flake; ship-runtime.sh already
+   retries the whole gate three times. */
 const installSh = await readRaw(HERMES_REPO, hermesCommit, 'scripts/install.sh');
-if (!installSh) { fail(`install.sh missing at ${HERMES_REPO} ${hermesCommit}`); process.exit(1); }
-const actualSha = createHash('sha256').update(installSh).digest('hex');
-if (actualSha !== shaPin) {
-  fail(`installer sha256 mismatch: pin ${shaPin} vs actual ${actualSha} (hermes ${hermesCommit})`);
+if (!installSh) {
+  fail(`install.sh unreadable at ${HERMES_REPO} ${hermesCommit} (throttling? re-run) — hash check skipped`);
 } else {
-  ok(`installer sha256 matches pin (${shaPin.slice(0, 16)}…)`);
+  const actualSha = createHash('sha256').update(installSh).digest('hex');
+  if (actualSha !== shaPin) {
+    fail(`installer sha256 mismatch: pin ${shaPin} vs actual ${actualSha} (hermes ${hermesCommit})`);
+  } else {
+    ok(`installer sha256 matches pin (${shaPin.slice(0, 16)}…)`);
+  }
 }
 
 // ---- 4. Flag compatibility (the 2026.09.05-1 bug class) ------------------
-const rejectsUnknown = /Unknown option/.test(installSh);
-for (const flag of bootstrapFlags) {
-  if (installSh.includes(`--${flag}`)) {
-    ok(`installer supports --${flag}`);
-  } else if (rejectsUnknown) {
-    fail(`installer does not support --${flag} and rejects unknown options — bootstrap would exit 1`);
-  } else {
-    warn(`installer has no literal --${flag} but no unknown-option rejection found; assume permissive`);
+if (!installSh) {
+  warn('installer unreadable; flag-compatibility check skipped');
+} else {
+  const rejectsUnknown = /Unknown option/.test(installSh);
+  for (const flag of bootstrapFlags) {
+    if (installSh.includes(`--${flag}`)) {
+      ok(`installer supports --${flag}`);
+    } else if (rejectsUnknown) {
+      fail(`installer does not support --${flag} and rejects unknown options — bootstrap would exit 1`);
+    } else {
+      warn(`installer has no literal --${flag} but no unknown-option rejection found; assume permissive`);
+    }
   }
 }
 
@@ -128,24 +142,23 @@ for (const asset of assets) {
   else fail(`asset missing at ${bundleCommit}: ${asset}`);
 }
 
-// ---- 7. Every transfer field is allowlisted, in BOTH directions -----------
+// ---- 7. The pinned bootstrap can parse every field provision.ts sends -----
 //
 // bootstrap-runtime.sh parses the transfer against a closed `case` and exits 1
-// on anything else. Two commits matter, and only one of them is obvious.
+// on anything else. The commit that matters is RUNTIME_BUNDLE_COMMIT: a
+// control-plane bootstrap curls the runner assets — bootstrap-runtime.sh
+// included — from that commit and executes them, so a sprite runs the pinned
+// bootstrap, never the one it happens to have on disk.
 //
-// Forward: the bootstrap being shipped must accept every field, or the new
-// release is broken on arrival.
+// The hazard is therefore a `provision.ts` newer than the bundle it is pinned
+// to, which a worker deploy can ship on its own without any release. That is
+// what happened on 2026-09-10: EXTRACT_BASE_B64 went out in a worker deploy
+// while RUNTIME_BUNDLE_COMMIT still named a bundle whose bootstrap had no
+// matching `case` arm. Every sprite rejected the transfer, upgrade tasks
+// retried to exhaustion, and convergence stalled.
 //
-// Backward is the one that bites. A sprite runs the bootstrap from the release
-// it is CURRENTLY on, so during a rollout the old bootstrap must accept the
-// payload too — including the payload carrying its own replacement. On
-// 2026-09-10 EXTRACT_BASE_B64 shipped in a single release: every sprite
-// rejected the transfer, 24 upgrade tasks retried to exhaustion, convergence
-// sat at 0/12, and the release with the fix could not be delivered. The fleet
-// could not be rescued by shipping harder.
-//
-// So a new field takes two releases: teach the fleet to accept it, then start
-// sending it. This check is what makes that a gate rather than a discipline.
+// `worker/scripts/check-transfer-fields.mjs` runs this same comparison as a
+// predeploy hook, because a deploy is the path that can outrun the pin.
 const allowlistOf = (script) =>
   new Set([...script.matchAll(/^\s*([A-Z0-9_]+_B64)\)\s*\1=/gm)].map((m) => m[1]));
 const sentFields = [...provision.matchAll(/field\('([A-Z0-9_]+_B64)'/g)].map((m) => m[1]);
@@ -153,43 +166,19 @@ const sentFields = [...provision.matchAll(/field\('([A-Z0-9_]+_B64)'/g)].map((m)
 if (!sentFields.length) {
   fail('no transfer fields found in provision.ts — the parser is broken, not the release');
 } else {
-  const shipped = allowlistOf(bootstrap);
-  const missing = sentFields.filter((f) => !shipped.has(f));
-  if (missing.length) fail(`bootstrap at ${bundleCommit} rejects: ${missing.join(', ')}`);
-  else ok(`shipped bootstrap accepts all ${sentFields.length} transfer fields`);
-
-  /* The pins are edited in the working tree before this runs, so HEAD still
-     carries what the fleet is converging from. */
-  let previousBundle = null;
-  try {
-    const { execFileSync } = await import('node:child_process');
-    const head = execFileSync('git', ['show', 'HEAD:worker/wrangler.toml'], {
-      cwd: new URL('../..', import.meta.url).pathname, encoding: 'utf8',
-    });
-    previousBundle = head.match(/RUNTIME_BUNDLE_COMMIT\s*=\s*"([0-9a-f]{40})"/)?.[1] ?? null;
-  } catch {
-    warn('could not read the previous bundle pin from git; backward check skipped');
+  const pinned = allowlistOf(bootstrap);
+  if (pinned.size < 5) {
+    fail('bootstrap allowlist parsed as almost empty — the parser is broken, not the release');
   }
-
-  if (previousBundle && previousBundle !== bundleCommit) {
-    const older = await readRaw(REPO, previousBundle, 'runner/bin/bootstrap-runtime.sh');
-    if (!older) {
-      warn(`bootstrap at previous bundle ${previousBundle} unreadable; backward check skipped`);
-    } else {
-      const accepted = allowlistOf(older);
-      const rejected = sentFields.filter((f) => !accepted.has(f));
-      if (rejected.length) {
-        fail(
-          `the fleet's current bootstrap (${previousBundle}) rejects: ${rejected.join(', ')}. ` +
-          'Ship a release that allowlists the field first, with the value still unset, ' +
-          'and send it only once the fleet has converged.',
-        );
-      } else {
-        ok('the fleet\'s current bootstrap accepts every field this release sends');
-      }
-    }
-  } else if (previousBundle) {
-    ok('bundle unchanged; no backward compatibility question');
+  const missing = sentFields.filter((f) => !pinned.has(f));
+  if (missing.length) {
+    fail(
+      `bootstrap at ${bundleCommit} rejects: ${missing.join(', ')}. ` +
+      'Add the `case` arm to runner/bin/bootstrap-runtime.sh and pin a bundle ' +
+      'that contains it, in the same release that starts sending the field.',
+    );
+  } else {
+    ok(`pinned bootstrap accepts all ${sentFields.length} transfer fields`);
   }
 }
 

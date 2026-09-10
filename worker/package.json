@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "predeploy": "node scripts/check-transfer-fields.mjs",
     "deploy": "wrangler deploy",
     "waf:dry-run": "node scripts/apply-waf.mjs",
     "waf:apply": "node scripts/apply-waf.mjs --apply",
