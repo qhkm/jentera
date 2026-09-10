@@ -29,9 +29,17 @@ describe('the web-extraction endpoint handed to a sprite', () => {
       .toThrow(/credential/);
   });
 
-  it('refuses a credential with no endpoint, rather than configuring nothing', () => {
-    expect(() => extractEndpoint(env({ AISAR_EXTRACT_KEY: 'a'.repeat(64) })))
-      .toThrow(/endpoint/);
+  it('tolerates a credential staged before its endpoint, because that is the rollout', () => {
+    /* The secret must exist before the config that names it, or the first
+       request after enabling the endpoint finds no credential. Treating this
+       middle state as an error failed 23 upgrade tasks on 2026-09-10 while
+       the fleet was mid-rollout exactly as intended. */
+    expect(extractEndpoint(env({ AISAR_EXTRACT_KEY: 'a'.repeat(64) }))).toBeNull();
+  });
+
+  it('still refuses an endpoint with no credential — the dangerous half', () => {
+    expect(() => extractEndpoint(env({ AISAR_EXTRACT_BASE: 'https://extract.kitakod.com' })))
+      .toThrow(/credential/);
   });
 
   it.each([

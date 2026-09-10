@@ -61,8 +61,16 @@ export function runtimeProviderFor(env: Env): RuntimeProvider {
 export function extractEndpoint(env: Env): { base: string; key: string } | null {
   const base = env.AISAR_EXTRACT_BASE?.trim() ?? '';
   const key = env.AISAR_EXTRACT_KEY?.trim() ?? '';
-  if (!base && !key) return null;
-  if (!base) throw new Error('Jentera extract credential is set without an endpoint');
+  /* A staged credential with no endpoint yet is the correct middle of a
+     rollout, not a misconfiguration: the secret has to exist before the
+     config that uses it, or the first request after enabling the endpoint
+     finds no credential. Treating it as an error took down provisioning on
+     2026-09-10 — 23 upgrade tasks failed with "extract credential is set
+     without an endpoint" — while the fleet was mid-rollout by design.
+     The asymmetry is deliberate. An endpoint without a credential is the
+     dangerous half: it would hand every sprite an extractor whose only
+     protection is the proxy in front of it. That still fails loudly. */
+  if (!base) return null;
   if (!/^https:\/\/[A-Za-z0-9][A-Za-z0-9.-]*(?::\d{1,5})?$/.test(base)) {
     throw new Error('Jentera extract endpoint must be a bare https origin');
   }
