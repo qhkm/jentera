@@ -80,7 +80,7 @@ export interface IngestResult {
   suggestions?: { key: string; value: string; confidence: number }[];
 }
 
-export type AskProgress = 'queued' | 'waking' | 'working' | 'retrying';
+export type AskProgress = 'queued' | 'waking' | 'working' | 'retrying' | 'needs_approval';
 
 /** One event from the run stream: a lifecycle state, or the agent's own
     status line, a bounded slice of its reasoning, or answer text as it is
@@ -89,6 +89,9 @@ export interface AskProgressEvent {
   type: AskProgress | 'status' | 'thinking' | 'delta';
   detail?: string;
   text?: string;
+  /** needs_approval: which approval to fetch. Nothing about the request
+      travels through the stream — the card asks the API what it is. */
+  approvalId?: string;
 }
 export type AskMode = 'ask' | 'work';
 

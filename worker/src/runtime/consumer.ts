@@ -1526,6 +1526,18 @@ export async function handleRuntimeMessage(
             if (!parked) {
               return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
             }
+            if (lease.task.runId) {
+              /* A lifecycle event, so a tab that connects late still learns
+                 the run is waiting on a person rather than showing a spinner
+                 for something that will never move on its own. */
+              await publishRunProgressSafely(
+                env,
+                message.businessId,
+                lease.task.runId,
+                'needs_approval',
+                { approvalId: parked.id },
+              );
+            }
             return {
               action: 'requeue',
               delaySeconds: HERMES_APPROVAL_WAIT_SECONDS,

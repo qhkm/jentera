@@ -14,6 +14,10 @@ export const RUN_PROGRESS_TYPES = [
   'waking',
   'working',
   'retrying',
+  /* The run is paused on a person, not on a machine. A lifecycle event, so a
+     tab that connects late still learns the run is waiting rather than
+     showing a spinner for something that will never move on its own. */
+  'needs_approval',
   'completed',
   'failed',
   'cancelled',
@@ -28,6 +32,10 @@ export interface RunProgressEvent {
   seq: number;
   type: RunProgressType;
   at: string;
+  /** Only on `needs_approval`. The id is the whole payload: what is being
+      approved lives in Postgres, so nothing about the request — a tool name,
+      a command — travels through the stream object or its storage. */
+  approvalId?: string;
 }
 
 export interface RunLiveEvent {

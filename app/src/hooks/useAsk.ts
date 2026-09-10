@@ -54,6 +54,9 @@ export interface AskMessage {
   depth?: 'quick' | 'deep';
   /** What the server decided the finished run was. */
   kind?: WorkKind;
+  /** Set with state 'needs_approval': the card fetches the question with it.
+      Nothing about what is being approved travels through the stream. */
+  approvalId?: string;
 }
 
 export interface AskSession {
@@ -338,6 +341,14 @@ export function useAsk(
                    it; it rides alongside, so a tool running mid-answer still
                    shows. */
                 if (message.state === 'streaming') {
+                  if (event.type === 'needs_approval') {
+                    return {
+                      ...message,
+                      state: 'needs_approval',
+                      approvalId: event.approvalId,
+                      liveStatus: undefined,
+                    };
+                  }
                   if (event.type === 'status' || event.type === 'thinking') {
                     const detail = event.detail?.trim();
                     return detail
@@ -351,6 +362,18 @@ export function useAsk(
                 }
                 if (event.type === 'thinking') {
                   return { ...message, text: `💭 ${event.detail ?? ''}`.trim(), state: 'working' };
+                }
+                if (event.type === 'needs_approval') {
+                  /* Any answer text already streamed is kept: the agent may
+                     have said what it intends to do before asking, and
+                     replacing that with a bare card would throw away the
+                     reason the owner needs in order to decide. */
+                  return {
+                    ...message,
+                    state: 'needs_approval',
+                    approvalId: event.approvalId,
+                    liveStatus: undefined,
+                  };
                 }
                 const key = event.type === 'queued' ? 'ask.queued'
                   : event.type === 'waking' ? 'ask.waking'

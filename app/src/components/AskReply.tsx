@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { RuntimeApprovalCard } from './RuntimeApprovalCard';
 import { ArrowUpRight, Check, Copy, Info, WarningCircle } from '@phosphor-icons/react';
 import { JenteraMark } from '@/components/JenteraMark';
 import { TypingBubble } from '@/components/WorkSignal';
@@ -64,7 +65,19 @@ export function AskReply({
         )}
       </header>
       {message.pendingId ? (
-        message.state === 'streaming'
+        /* Waiting on a person, not a machine — so no spinner. Any answer text
+           already streamed stays above the card: the agent often says what it
+           intends before asking, and that is the reason the owner needs. */
+        message.state === 'needs_approval' && message.approvalId
+          ? (
+            <>
+              {message.text && message.state !== 'needs_approval'
+                ? <div className="ask-reply-text">{message.text}</div>
+                : null}
+              <RuntimeApprovalCard approvalId={message.approvalId} />
+            </>
+          )
+          : message.state === 'streaming'
           ? (
             <>
               <div className="ask-reply-text" aria-live="polite">{message.text}</div>
