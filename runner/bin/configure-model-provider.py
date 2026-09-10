@@ -35,7 +35,39 @@ STARTER_SPECIALIST_PROFILES = {
 }
 
 
+def extract_is_configured() -> bool:
+    """Whether Jentera gave this sprite an endpoint for reading pages.
+
+    The same condition selects `web.extract_backend` and pins the SDK in
+    bootstrap-runtime.sh. Read it from one place so what the agent is told,
+    what the config selects, and what is installed cannot drift apart.
+    """
+    return bool(os.environ.get("FIRECRAWL_API_URL") and os.environ.get("FIRECRAWL_API_KEY"))
+
+
+# Written into SOUL.md only where extraction is actually configured, because
+# on a sprite without an endpoint every word of it would be false.
+#
+# It exists because the agent answered an owner's "can u use firecrawl" by
+# running `which firecrawl`, finding nothing, and reporting the capability
+# missing — while web_extract was working on that same sprite, having read
+# 8,290 characters of a page twenty minutes earlier. A hosted service reached
+# through a library leaves no trace on the filesystem, so the filesystem is
+# the one place that cannot answer the question.
+WEB_EXTRACT_NOTE = """
+## Reading a web page
+
+`web_extract` reads one, and it works: Jentera hosts and configures the
+service behind it. That service is an endpoint you call, not a program
+installed here, so `which` and `pip` will report it missing while extraction
+is working — never answer a question about your own ability to read pages by
+searching this machine. Call `web_extract` and see. Prefer it to the browser,
+which pulls an entire page snapshot into the conversation at far greater cost.
+"""
+
+
 def managed_soul(role: str, remit: str) -> str:
+    extract_note = WEB_EXTRACT_NOTE if extract_is_configured() else ""
     return f"""# Jentera — {role}
 
 You are the persistent {role} specialist inside one business's private Jentera team.
@@ -49,7 +81,7 @@ You are the persistent {role} specialist inside one business's private Jentera t
 - Stay within your remit. State cross-functional dependencies clearly instead of
   claiming another specialist's work is complete.
 - Never take an irreversible external action without the approval required by Jentera.
-"""
+{extract_note}"""
 
 
 def configure_specialist_profiles() -> None:
@@ -91,7 +123,8 @@ You are the persistent private Chief of Staff for one business and its team.
 - Coordinate internal specialist help without making the owner route agents.
 - Verify delegated work and return one coherent answer or outcome in Jentera's voice.
 - Keep this business's information private and require approval before irreversible actions.
-""",
+"""
+        + (WEB_EXTRACT_NOTE if extract_is_configured() else ""),
         encoding="utf-8",
     )
 
@@ -255,7 +288,7 @@ def main() -> None:
     # snapshots into the transcript. Set the backend only when the
     # credentials for it actually arrived; naming it without them would
     # trade a working fallback for a hard failure.
-    if os.environ.get("FIRECRAWL_API_URL") and os.environ.get("FIRECRAWL_API_KEY"):
+    if extract_is_configured():
         web["extract_backend"] = "firecrawl"
     else:
         web.pop("extract_backend", None)

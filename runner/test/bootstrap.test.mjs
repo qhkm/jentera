@@ -355,6 +355,57 @@ test('configure creates one isolated persistent profile for every business speci
   assert.match(await readFile(join(home, 'SOUL.md'), 'utf8'), /persistent private Chief of Staff/i);
 });
 
+test('the agent is told how it reads pages, and only where it can', async () => {
+  /* An owner asked "can u use firecrawl i think we have it installed". The
+     agent ran `which firecrawl`, found nothing, and reported the capability
+     missing — twenty minutes after web_extract had read 8,290 characters of
+     a page on that same sprite. A hosted service reached through a library
+     leaves no trace on the filesystem, so the filesystem is the one place
+     that cannot answer the question. Tell it so, in the only file it always
+     reads, and only where the claim is actually true. */
+  const extract = {
+    FIRECRAWL_API_URL: 'https://extract.example.com',
+    FIRECRAWL_API_KEY: 'k'.repeat(40),
+  };
+  const configured = await runConfigure(
+    ['openrouter', 'https://router.fmcv.my', 'MiniMax-M3', 'OPENROUTER_API_KEY', '0', 'deepseek-v4-flash'],
+    {},
+    extract,
+  );
+  assert.equal(configured.status, 0, configured.stderr);
+  const home = join(configured.configPath, '..');
+  const config = JSON.parse(await readFile(configured.configPath, 'utf8'));
+  assert.equal(config.web.extract_backend, 'firecrawl');
+
+  /* The Chief of Staff is who the owner actually asked, and a specialist
+     doing research is exactly who would go looking on disk. */
+  for (const soulPath of [
+    join(home, 'SOUL.md'),
+    join(home, 'profiles', 'operations', 'SOUL.md'),
+  ]) {
+    const soul = await readFile(soulPath, 'utf8');
+    assert.match(soul, /web_extract/);
+    assert.match(soul, /not a program\s+installed here/);
+    assert.match(soul, /never answer a question about your own ability to read/i);
+  }
+
+  /* Without an endpoint every word of that would be false, and the note has
+     to disappear with the backend it describes — one predicate decides both. */
+  const bare = await runConfigure(
+    ['openrouter', 'https://router.fmcv.my', 'MiniMax-M3', 'OPENROUTER_API_KEY', '0', 'deepseek-v4-flash'],
+  );
+  assert.equal(bare.status, 0, bare.stderr);
+  const bareHome = join(bare.configPath, '..');
+  const bareConfig = JSON.parse(await readFile(bare.configPath, 'utf8'));
+  assert.equal(bareConfig.web.extract_backend, undefined);
+  for (const soulPath of [
+    join(bareHome, 'SOUL.md'),
+    join(bareHome, 'profiles', 'operations', 'SOUL.md'),
+  ]) {
+    assert.equal(/web_extract/.test(await readFile(soulPath, 'utf8')), false);
+  }
+});
+
 test('computer use is gated, pinned, and proven before the runtime attests it', async () => {
   const source = await readFile(SCRIPT, 'utf8');
   // The transfer field is optional and defaults to disabled; only `1` enables
@@ -455,7 +506,7 @@ function fields(overrides = {}) {
 // modules on PYTHONPATH. load_config/save_config read and write JSON so the
 // test can assert on the exact bytes the script provisions, including the
 // gateway.api_server.extra.model_routes block it must emit.
-async function runConfigure(argv, preexisting = {}) {
+async function runConfigure(argv, preexisting = {}, extraEnv = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'aisar-configure-test-'));
   directories.push(directory);
   const fakePackage = join(directory, 'hermes_cli');
@@ -501,6 +552,7 @@ async function runConfigure(argv, preexisting = {}) {
       PYTHONPATH: directory,
       HERMES_HOME: directory,
       AISAR_TEST_CONFIG: configPath,
+      ...extraEnv,
     },
   });
   return { ...result, configPath };
