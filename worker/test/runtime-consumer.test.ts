@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { asApp, asOwner, asTenant, testEnv, truncateAll } from './harness';
+import { asApp, asOwner, asTenant, fetchFake, testEnv, truncateAll } from './harness';
 import {
   ensureProviderRuntime,
   handleRuntimeMessage,
@@ -22,6 +22,7 @@ import {
   sweepRuntimeDrift,
 } from '../src/runtime/consumer';
 import type { DesiredRuntime, ObservedRuntime, RuntimeProvider } from '../src/runtime';
+import type { RuntimeMessageResult } from '../src/runtime/consumer';
 import { markRuntimeReady, storeRuntimeModelCredential } from '../src/agent-runtime';
 import { startRun } from '../src/runs';
 import { bindTelegramInternalChat, saveConnection } from '../src/connections';
@@ -137,7 +138,7 @@ describe('the runtime queue consumer', () => {
       dedupeKey: 'cancel:control',
       payload: { targetTaskId: target.id },
     }));
-    const telegram = vi.fn(async () => jsonResponse({ ok: true, result: { message_id: 88 } }));
+    const telegram = fetchFake(async () => jsonResponse({ ok: true, result: { message_id: 88 } }));
     vi.stubGlobal('fetch', telegram);
     const stopUnavailable: typeof fetch = async () =>
       jsonResponse({ error: 'runner unavailable' }, 503);
@@ -365,10 +366,15 @@ describe('the runtime queue consumer', () => {
       kind: 'provision', dedupeKey: 'watchdog:waiting',
     }));
     const result = await handleRuntimeMessage(env, { version: 1, businessId: A, taskId: waiting.id }, { provider });
-    expect(result.action).toBe('requeue');
-    expect(result.reason).toContain('busy');
+    /* Narrowed rather than merely asserted: `delaySeconds` exists on the
+       requeue and retry arms and on no others, so reading it off the bare
+       union is the type system pointing out that the assertion above does
+       not actually establish which arm this is. */
+    const parked = mustDelay(result);
+    expect(parked.action).toBe('requeue');
+    expect(parked.reason).toContain('busy');
     // Fresh 300s sibling lease → watchdog aligned to its horizon, capped at 120s.
-    expect(result.delaySeconds).toBe(120);
+    expect(parked.delaySeconds).toBe(120);
     // The task stays parked in the durable queue, untouched.
     expect((await taskStatus(waiting.id)).status).toBe('queued');
   });
@@ -1029,6 +1035,25 @@ const taskStatus = (id: string) => asOwner(async (sql) => {
     select status, lease_token from runtime_task where id = ${id}`;
   return row;
 });
+
+/**
+ * The result, once it is known to be one that carries a delay.
+ *
+ * Only the requeue and retry arms have a horizon; an ack has nothing to
+ * wait for. Asserting on `action` with `expect` proves it at run time but
+ * tells the compiler nothing, so a test reading `delaySeconds` off the
+ * bare union is reading a property that two thirds of the type does not
+ * have. This throws with the arm it actually got, which is also a better
+ * failure message than `undefined !== 120`.
+ */
+function mustDelay(
+  result: RuntimeMessageResult,
+): Extract<RuntimeMessageResult, { delaySeconds: number }> {
+  if (result.action === 'ack') {
+    throw new Error(`expected a delayed result, got ack (${result.reason})`);
+  }
+  return result;
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

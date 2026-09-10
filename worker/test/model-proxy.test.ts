@@ -9,7 +9,7 @@ import {
 } from '../src/fmcv-verifier';
 import type { ModelProxyOptions } from '../src/routes/model';
 import { handleModelProxy, sweepModelCalls } from '../src/routes/model';
-import { asApp, asOwner, req, testEnv, truncateAll } from './harness';
+import { asApp, asOwner, jsonOf, req, testEnv, truncateAll } from './harness';
 
 const CONTROL_SECRET = 'fmcv-control-secret-'.padEnd(48, 's');
 const UPSTREAM_KEY = 'f'.repeat(32);
@@ -119,7 +119,8 @@ describe('model proxy route', () => {
       token: 'sk-jentera-v1.aaa.bbb',
     });
     expect(unconfigured.status).toBe(503);
-    expect((await unconfigured.json()).error.message).toMatch(/control secret/);
+    expect((await jsonOf<{ error: { message: string } }>(unconfigured)).error.message)
+      .toMatch(/control secret/);
 
     const stray = await callModel('GET', RUNTIME_PROXY_PATH, env, { token: 'openrouter-fake' });
     expect(stray.status).toBe(401);
@@ -135,7 +136,7 @@ describe('model proxy route', () => {
       options: { upstreamFetch: fetcher },
     });
     expect(response.status).toBe(200);
-    expect((await response.json()).data[0].id).toBe('MiniMax-M3');
+    expect((await jsonOf<{ data: { id: string }[] }>(response)).data[0].id).toBe('MiniMax-M3');
     expect(seen).toHaveLength(1);
     const auth = new Headers(seen[0].init.headers).get('Authorization');
     expect(auth).toBe(`Bearer ${UPSTREAM_KEY}`);
@@ -174,7 +175,7 @@ describe('model proxy route', () => {
         body: { model: 'MiniMax-M3', messages: [{ role: 'user', content: 'hi' }] },
       });
     expect(response.status).toBe(429);
-    expect((await response.json()).error.type).toBe('budget_exceeded');
+    expect((await jsonOf<{ error: { type: string } }>(response)).error.type).toBe('budget_exceeded');
   });
 
   it('meters a non-streaming completion into the rider spend ledger', async () => {

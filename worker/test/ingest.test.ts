@@ -15,6 +15,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { extractFacts, fetchPage, htmlToText, urlProblem } from '../src/ingest';
 import type { Env } from '../src/env';
+import { fetchFake } from './harness';
 
 /** An Env whose model returns exactly what a test dictates. */
 const withModel = (response: unknown): Env =>
@@ -273,12 +274,12 @@ describe('fetching the page', () => {
   });
 
   it('identifies itself honestly', async () => {
-    const spy = vi.fn(
+    const spy = fetchFake(
       async () => new Response('<p>hi</p>', { headers: { 'Content-Type': 'text/html' } }),
     );
     vi.stubGlobal('fetch', spy);
     await fetchPage('https://example.com');
-    const headers = (spy.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+    const headers = spy.mock.calls[0][1]?.headers as Record<string, string>;
     // A site owner reading their logs should be able to tell what this was.
     expect(headers['User-Agent']).toMatch(/Jentera/);
     expect(headers['User-Agent']).toMatch(/jentera\.ai/);

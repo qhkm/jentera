@@ -22,9 +22,30 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import postgres from 'postgres';
+import { vi } from 'vitest';
 
-const CONTAINER = 'aisar-test-pg';
-const PORT = 55432;
+/* One container and one port per vitest run, not one per machine.
+
+   Both used to be fixed, and `startDatabase` opens with `docker rm -f`.
+   A second run therefore destroyed the first run's database mid-test:
+   296 failures in one sitting, none of them a real defect, including
+   password-hashing tests that never touch Postgres. The pid makes the
+   name unique and Docker picks the port, so two runs cannot collide
+   and neither has to guess which high port is free.
+
+   Both travel by environment variable because `globalSetup` runs in
+   Vitest's own process and the tests run in workers: a module-level
+   `let` assigned during setup is simply not the same variable the
+   tests would read. */
+const CONTAINER = process.env.AISAR_TEST_PG_CONTAINER ?? `aisar-test-pg-${process.pid}`;
+
+function port(): number {
+  const value = Number(process.env.AISAR_TEST_PG_PORT ?? 0);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error('startDatabase() has not run: there is no test database to connect to');
+  }
+  return value;
+}
 const APP_PASSWORD = 'test-only-not-a-secret';
 const MIGRATIONS = new URL('../migrations', import.meta.url).pathname;
 
@@ -42,6 +63,8 @@ function quiet(cmd: string, args: string[]): void {
 
 /** Start the container and apply every migration in order. */
 export async function startDatabase(): Promise<void> {
+  process.env.AISAR_TEST_PG_CONTAINER = CONTAINER;
+  reapAbandoned();
   quiet('docker', ['rm', '-f', CONTAINER]);
 
   sh('docker', [
@@ -49,13 +72,16 @@ export async function startDatabase(): Promise<void> {
     '-e', 'POSTGRES_PASSWORD=owner',
     '-e', 'POSTGRES_USER=owner',
     '-e', 'POSTGRES_DB=aisar_test',
-    '-p', `${PORT}:5432`,
+    /* An empty host port means "whatever is free" — asked for below. */
+    '-p', '127.0.0.1::5432',
     // tmpfs and fsync=off: this database is thrown away in seconds, so
     // durability is pure cost.
     '--tmpfs', '/var/lib/postgresql/data',
     'postgres:16-alpine',
     '-c', 'fsync=off', '-c', 'full_page_writes=off',
   ]);
+
+  process.env.AISAR_TEST_PG_PORT = String(publishedPort());
 
   await waitReady();
 
@@ -79,6 +105,61 @@ export async function startDatabase(): Promise<void> {
 
 export function stopDatabase(): void {
   quiet('docker', ['rm', '-f', CONTAINER]);
+  delete process.env.AISAR_TEST_PG_PORT;
+  delete process.env.AISAR_TEST_PG_CONTAINER;
+}
+
+/**
+ * Remove test containers whose run is over.
+ *
+ * A per-run name means a crashed run leaks its container rather than
+ * having the next run stomp it — so something has to collect them, and
+ * the owning pid says exactly which are safe: a container named for a
+ * process that no longer exists cannot be in use. A live run is never
+ * touched, which is the whole point of the rename.
+ */
+function reapAbandoned(): void {
+  let names: string[];
+  try {
+    names = sh('docker', ['ps', '-a', '--filter', 'name=aisar-test-pg', '--format', '{{.Names}}'])
+      .split('\n')
+      .map((n) => n.trim())
+      .filter(Boolean);
+  } catch {
+    return; /* No Docker yet: the run below will say so far more clearly. */
+  }
+  for (const name of names) {
+    if (name === CONTAINER) continue;
+    /* The legacy fixed name predates per-run containers and owns no pid. */
+    if (name === 'aisar-test-pg') {
+      quiet('docker', ['rm', '-f', name]);
+      continue;
+    }
+    /* Docker's name filter matches substrings, so re-check the prefix. */
+    if (!name.startsWith('aisar-test-pg-')) continue;
+    const pid = Number(name.slice('aisar-test-pg-'.length));
+    if (!Number.isInteger(pid) || pid <= 0) continue;
+    try {
+      process.kill(pid, 0);
+    } catch (e) {
+      /* Only ESRCH means "no such process". EPERM means it is alive and
+         owned by someone else — the one case where removing the container
+         would break a run that is still using it. */
+      if ((e as NodeJS.ErrnoException).code === 'ESRCH') {
+        quiet('docker', ['rm', '-f', name]);
+      }
+    }
+  }
+}
+
+/** The host port Docker chose for 5432. */
+function publishedPort(): number {
+  const mapping = sh('docker', ['port', CONTAINER, '5432/tcp']).trim().split('\n')[0];
+  const port = Number(mapping.slice(mapping.lastIndexOf(':') + 1));
+  if (!Number.isInteger(port) || port <= 0) {
+    throw new Error(`Could not read the test database port from: ${mapping}`);
+  }
+  return port;
 }
 
 async function waitReady(): Promise<void> {
@@ -101,7 +182,9 @@ async function waitReady(): Promise<void> {
 function connect(user: string, password: string) {
   return postgres({
     host: '127.0.0.1',
-    port: PORT,
+    /* Read per call, not once at import: the port is only known after
+       the container starts, and postgres() connects lazily anyway. */
+    port: port(),
     database: 'aisar_test',
     username: user,
     password,
@@ -176,7 +259,10 @@ export async function truncateAll(): Promise<void> {
 export function testEnv(over: Partial<Record<string, unknown>> = {}): import('../src/env').Env {
   return {
     HYPERDRIVE: {
-      connectionString: `postgres://aisar_app:${APP_PASSWORD}@127.0.0.1:${PORT}/aisar_test`,
+      /* Tests that never touch Postgres also call this, so an absent
+         database is a connection string that fails on use, not here. */
+      connectionString:
+        `postgres://aisar_app:${APP_PASSWORD}@127.0.0.1:${process.env.AISAR_TEST_PG_PORT ?? 0}/aisar_test`,
     },
     ALLOWED_ORIGINS: 'http://localhost:5173',
     APP_ORIGIN: 'http://localhost:5173',
@@ -237,4 +323,40 @@ export function req(
         : JSON.stringify(opts.body),
   });
   return { request, url };
+}
+
+/* ------------------------------------------------------------
+   Stand-ins for the two collaborators tests fake most: an outbound
+   `fetch` and a queue `send`.
+
+   Both are declared with the signature of the real thing. That is not
+   ceremony: `vi.fn(async () => ...)` types its call tuple as `[]`, so
+   every later `mock.calls[0][1]` reads as `never` and every assertion
+   about what the code *sent* silently checks nothing. That was most of
+   the eighty-four errors the first typecheck of `test/` turned up.
+   ------------------------------------------------------------ */
+
+/** A fake `fetch`, typed so `mock.calls` carries `[input, init]`. */
+export function fetchFake(
+  impl: (input: RequestInfo | URL, init?: RequestInit) => Response | Promise<Response>,
+) {
+  return vi.fn(impl);
+}
+
+/** A fake queue producer, typed so `mock.calls` carries `[message]`. */
+export function sendFake<T = unknown>(
+  impl: (message: T) => Promise<void> = async () => {},
+) {
+  return vi.fn(impl);
+}
+
+/**
+ * The body of a response, as the shape the test already expects.
+ *
+ * `Response.json()` is `unknown` under workers-types — correctly, since
+ * nothing has validated the bytes. A test knows what it asked for, so it
+ * says so here rather than scattering casts down the assertion.
+ */
+export async function jsonOf<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
 }

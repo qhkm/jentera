@@ -227,12 +227,29 @@ write; that's a server-side guard, not a regex over the query.
 ### Testing the worker
 
 ```bash
-cd worker && pnpm test     # needs Docker running
+cd worker && pnpm test       # needs Docker running
+cd worker && pnpm typecheck  # src, then src + test
 ```
 
 The suite runs a throwaway Postgres in Docker and applies `migrations/`
 in order, including `000_role.sql`, which is the only description
 anywhere of the `aisar_app` role and its grants.
+
+The container is named and ported per run, so two suites can run at once
+— they used to share one fixed name that `startDatabase` begins by
+`docker rm -f`-ing, which meant a second run deleted the first run's
+database out from under it and produced hundreds of failures that looked
+like real ones. A run that crashes leaves its container behind; the next
+run collects it, and only if the owning process is gone.
+
+`pnpm typecheck` runs twice, and both passes matter. The first is `src`
+alone under Worker globals, so a Node API that reached the Worker is
+still an error. The second adds `test/`, which nothing checked until
+2026-09-10: `tsconfig.json` includes only `src`, and the eighty-four
+errors that surfaced were mostly fakes declared with no parameters, whose
+`mock.calls[0][1]` read as `never` — assertions about what the code sent
+that could not fail. `fetchFake`, `sendFake` and `jsonOf` in `harness.ts`
+are the typed stand-ins to reach for instead of a bare `vi.fn`.
 
 **Assert as `aisar_app`, arrange as `owner`.** `harness.ts` hands out
 both. RLS does not exist for a superuser, so a test that asserts as the

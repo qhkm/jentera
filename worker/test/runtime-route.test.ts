@@ -5,7 +5,7 @@ import { startRun } from '../src/runs';
 import { enqueueRuntimeTask } from '../src/runtime/tasks';
 import { reserveRuntimeUsage } from '../src/runtime/usage';
 import { saveConnection } from '../src/connections';
-import { asOwner, asTenant, req, signIn, testEnv, truncateAll } from './harness';
+import { asOwner, asTenant, fetchFake, jsonOf, req, sendFake, signIn, testEnv, truncateAll } from './harness';
 
 const A = '11111111-1111-4111-8111-111111111111';
 let ownerCookie: string;
@@ -70,7 +70,7 @@ describe('runtime provisioning route', () => {
       RUNTIME_EXPECTED_REGION: 'sin',
     }), ownerCookie);
     expect(response.status).toBe(200);
-    expect((await response.json()).runtime).toMatchObject({
+    expect((await jsonOf<{ runtime: unknown }>(response)).runtime).toMatchObject({
       observedRegion: 'fra',
       expectedRegion: 'sin',
       regionStatus: 'different',
@@ -95,23 +95,24 @@ describe('runtime provisioning route', () => {
       RUNTIME_PROVISIONING_ENABLED: 'true',
     }), ownerCookie);
     expect(insecure.status).toBe(503);
-    expect((await insecure.json()).err).toMatch(/secure model transport/);
+    expect((await jsonOf<{ err: string }>(insecure)).err).toMatch(/secure model transport/);
     const noBootstrap = await call('POST', '/api/runtime/provision', testEnv({
       RUNTIME_PROVISIONING_ENABLED: 'true',
       MODEL_TRANSPORT_READY: 'true',
     }), ownerCookie);
     expect(noBootstrap.status).toBe(503);
-    expect((await noBootstrap.json()).err).toMatch(/bootstrap is disabled/);
+    expect((await jsonOf<{ err: string }>(noBootstrap)).err).toMatch(/bootstrap is disabled/);
   });
 
   it('publishes one deduplicated provisioning task for any owner', async () => {
-    const send = vi.fn(async () => {});
+    const send = sendFake();
     const env = enabled(send);
     const first = await call('POST', '/api/runtime/provision', env, ownerCookie);
     const second = await call('POST', '/api/runtime/provision', env, ownerCookie);
     expect(first.status).toBe(202);
     expect(second.status).toBe(202);
-    expect((await second.json()).taskId).toBe((await first.json()).taskId);
+    expect((await jsonOf<{ taskId: string }>(second)).taskId)
+      .toBe((await jsonOf<{ taskId: string }>(first)).taskId);
     expect(send).toHaveBeenCalledTimes(2);
     expect(send.mock.calls[0][0]).toMatchObject({ version: 1, businessId: A });
     const [{ count }] = await asOwner((sql) => sql<{ count: string }[]>`
@@ -120,7 +121,7 @@ describe('runtime provisioning route', () => {
   });
 
   it('accepts the pinned production model gateway for a new account', async () => {
-    const send = vi.fn(async () => {});
+    const send = sendFake();
     const response = await call('POST', '/api/runtime/provision', enabled(send, {
       AISAR_MODEL_BASE: 'https://router.fmcv.my',
       AISAR_RUNTIME_MODEL_BASE: 'http://localhost:8787/v1/model',
@@ -135,7 +136,7 @@ describe('runtime provisioning route', () => {
   });
 
   it('refuses proxy provisioning without the model control secret', async () => {
-    const response = await call('POST', '/api/runtime/provision', enabled(vi.fn(async () => {}), {
+    const response = await call('POST', '/api/runtime/provision', enabled(sendFake(), {
       AISAR_MODEL_BASE: 'https://router.fmcv.my',
       AISAR_RUNTIME_MODEL_BASE: 'http://localhost:8787/v1/model',
       AISAR_MODEL_KEY: undefined,
@@ -144,11 +145,11 @@ describe('runtime provisioning route', () => {
     }), ownerCookie);
 
     expect(response.status).toBe(503);
-    expect((await response.json()).err).toMatch(/model control secret/);
+    expect((await jsonOf<{ err: string }>(response)).err).toMatch(/model control secret/);
   });
 
   it('cancels a durable run once and safely repeats its deduplicated stop signal', async () => {
-    const send = vi.fn(async () => {});
+    const send = sendFake();
     const run = await asTenant(A, (tx) => startRun(tx, A, {
       kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite',
       model: 'deepseek/deepseek-v4-flash-0731',
@@ -192,8 +193,8 @@ describe('runtime provisioning route', () => {
   });
 
   it('settles the admitted live bubble with a visible cancelled note for a queued Telegram run', async () => {
-    const send = vi.fn(async () => {});
-    const telegram = vi.fn(async () =>
+    const send = sendFake();
+    const telegram = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }), {
         headers: { 'Content-Type': 'application/json' },
       }));
@@ -236,7 +237,7 @@ describe('runtime provisioning route', () => {
       return url.includes('/editMessageText');
     });
     expect(editCalls.length).toBe(1);
-    const body = JSON.parse((editCalls[0][1] as RequestInit).body as string);
+    const body = JSON.parse(String(editCalls[0][1]?.body));
     expect(body.chat_id).toBe(42);
     expect(body.message_id).toBe(55);
     expect(body.text).toContain('⚠️ Cancelled');
@@ -246,7 +247,7 @@ describe('runtime provisioning route', () => {
 });
 
 function enabled(
-  send = vi.fn(async () => {}),
+  send = sendFake(),
   overrides: Partial<Env> = {},
 ): Env {
   return testEnv({
@@ -288,7 +289,7 @@ describe('warming the agent when the chat opens', () => {
       insert into agent_runtime
         (business_id, provider, provider_id, provider_name, provider_url, status, desired_release, observed_release)
       values (${A}, 'fly-sprite', 'sprite-1', 'aisar-b-alpha', 'https://aisar-b-alpha-x1.sprites.app', 'cold', '2026.09.01-1', '2026.09.01-1')`);
-    const fetchSpy = vi.fn(async () => new Response('{}', { status: 200 }));
+    const fetchSpy = fetchFake(async () => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchSpy);
     const waited: Promise<unknown>[] = [];
     const response = await wake(testEnv({ SPRITES_TOKEN: 'sprite-token' }), staffCookie, waited);
@@ -296,9 +297,9 @@ describe('warming the agent when the chat opens', () => {
     expect(await response.json()).toEqual({ ok: true, warming: true });
     await Promise.all(waited);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fetchSpy.mock.calls[0];
     expect(String(url)).toBe('https://aisar-b-alpha-x1.sprites.app/healthz');
-    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer sprite-token');
+    expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer sprite-token');
   });
 
   it('has nothing to warm without a sprite runtime, and says so without an error', async () => {
