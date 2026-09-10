@@ -1,8 +1,8 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from './env';
 
-import { liveEvent, RUN_PROGRESS_TYPES } from './run-stream-events';
-import type { RunProgressEvent, RunProgressType } from './run-stream-events';
+import { liveEvent, rememberLive, RUN_PROGRESS_TYPES } from './run-stream-events';
+import type { RunLiveEvent, RunProgressEvent, RunProgressType } from './run-stream-events';
 
 export { RUN_PROGRESS_TYPES } from './run-stream-events';
 export type { RunProgressEvent, RunProgressType } from './run-stream-events';
@@ -64,13 +64,18 @@ export class RunStream extends DurableObject<Env> {
     if (!identity) return new Response('invalid event', { status: 400 });
     const live = liveEvent(body);
     if (live) {
-      /* Broadcast only. Nothing about the agent's output is stored here; a
-         late subscriber gets the durable answer from Postgres instead. */
+      /* Broadcast, and only the latest status or thinking line is kept, for
+         a browser that connects after it went out (the intake's first lines
+         are seconds ahead of the client's subscription). Nothing about the
+         agent's answer is stored here; a late subscriber gets that from
+         Postgres instead. */
       const existing = await this.ctx.storage.get<StreamIdentity>('identity');
       if (existing &&
           (existing.businessId !== identity.businessId || existing.runId !== identity.runId)) {
         return new Response('stream identity conflict', { status: 409 });
       }
+      const remembered = rememberLive(undefined, live);
+      if (remembered) await this.ctx.storage.put('live', remembered);
       const encoded = JSON.stringify(live);
       for (const socket of this.ctx.getWebSockets()) safeSend(socket, encoded);
       return Response.json({ ok: true, seq: 0, live: true });
@@ -102,6 +107,7 @@ export class RunStream extends DurableObject<Env> {
         lastType: type,
         [eventKey(seq)]: next,
       });
+      if (TERMINAL.has(type)) await tx.delete('live');
       if (seq > MAX_EVENTS) await tx.delete(eventKey(seq - MAX_EVENTS));
       await tx.setAlarm(Date.now() + RETENTION_MS);
       return { kind: 'published', event: next } as const;
@@ -165,7 +171,12 @@ export class RunStream extends DurableObject<Env> {
       safeSend(server, JSON.stringify(event));
       terminal ||= TERMINAL.has(event.type);
     }
-    if (terminal) safeClose(server, 1000, 'run finished');
+    if (terminal) {
+      safeClose(server, 1000, 'run finished');
+    } else {
+      const live = await this.ctx.storage.get<RunLiveEvent>('live');
+      if (live) safeSend(server, JSON.stringify(live));
+    }
 
     return new Response(null, { status: 101, webSocket: client });
   }

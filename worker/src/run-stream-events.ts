@@ -61,3 +61,13 @@ export function liveEvent(body: Record<string, unknown>): RunLiveEvent | null {
   const detail = typeof body.detail === 'string' ? body.detail.trim().slice(0, LIVE_DETAIL_MAX) : '';
   return detail ? { version: 1, seq: 0, type: body.type, at, detail } : null;
 }
+
+/** The live event worth replaying to a late subscriber: the latest status
+    or thinking line. Answer text is never remembered here — Postgres holds
+    the durable answer and a reconnecting client falls back to it. */
+export function rememberLive(
+  current: RunLiveEvent | undefined,
+  event: RunLiveEvent,
+): RunLiveEvent | undefined {
+  return event.type === 'delta' ? current : event;
+}
