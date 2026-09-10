@@ -32,6 +32,7 @@ import { JenteraMark } from '@/components/JenteraMark';
 import PermissionsPanel from './PermissionsPanel';
 import KnowledgePanel from './KnowledgePanel';
 import TelegramConnect from './TelegramConnect';
+import TokenConnect from './TokenConnect';
 import { isLive, withoutLinkClaim } from '@/lib/live-connectors';
 import { connectedNames, type ConnectionsState } from '@/hooks/useConnections';
 import { useSignedIn } from '@/lib/repo/gate';
@@ -531,7 +532,13 @@ export default function MyBusinessView({
                 </div>
               </Card>
             ) : (
-              <TelegramConnect rows={conns.rows} setRows={conns.setRows} />
+              <>
+                <TelegramConnect rows={conns.rows} setRows={conns.setRows} />
+                {/* Under the connections most owners use, not competing
+                    with them: this one renders nothing unless the backend
+                    offers something to connect. */}
+                <TokenConnect rows={conns.rows} setRows={conns.setRows} />
+              </>
             )}
             <div className="flex flex-col gap-1">
               <Eyebrow>{t('biz.connections')}</Eyebrow>

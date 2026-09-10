@@ -334,6 +334,17 @@ export class LocalRepository implements Repository {
     return [];
   }
 
+  /* Nothing to connect without a backend: the demo has no provider to
+     verify a token against, and inventing a connected state here would be
+     the kind of lie the playbook figures already taught us not to tell. */
+  async tokenConnectors(): Promise<{ connector: string; label: string }[]> {
+    return [];
+  }
+
+  async connectToken(): Promise<Connection> {
+    throw new Error('Connecting a service needs an account.');
+  }
+
   async connectTelegram(): Promise<Connection> {
     throw new NeedsAccountError('Connecting Telegram');
   }

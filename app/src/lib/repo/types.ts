@@ -311,6 +311,11 @@ export interface Repository {
   connections(): Promise<Connection[]>;
   /** Connect a Telegram bot the owner created. */
   connectTelegram(token: string): Promise<Connection>;
+  /** Services that are connected by pasting a scoped token. Names only. */
+  tokenConnectors(): Promise<{ connector: string; label: string }[]>;
+  /** Connect one of them. The token is verified with the provider before
+      it is stored, so a rejection arrives here rather than later. */
+  connectToken(connector: string, token: string): Promise<Connection>;
   disconnect(id: string): Promise<void>;
   /** What the far side thinks the connection is doing. The answer to
       "I messaged the bot and nothing happened". */

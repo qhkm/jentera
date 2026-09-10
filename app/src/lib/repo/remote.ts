@@ -366,6 +366,21 @@ export class RemoteRepository implements Repository {
     return connection;
   }
 
+  async tokenConnectors(): Promise<{ connector: string; label: string }[]> {
+    const { connectors } = await call<{ connectors: { connector: string; label: string }[] }>(
+      '/api/connections/token',
+    );
+    return connectors;
+  }
+
+  async connectToken(connector: string, token: string): Promise<Connection> {
+    const { connection } = await call<{ connection: Connection }>('/api/connections/token', {
+      method: 'POST',
+      body: JSON.stringify({ connector, token }),
+    });
+    return connection;
+  }
+
   async disconnect(id: string): Promise<void> {
     await call<void>(`/api/connections/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
