@@ -42,7 +42,10 @@ import {
   handleRuntimeApprovalCallback,
   runtimeFor,
   signalTelegramIntake,
+  telegramIntakeMessage,
 } from '../runtime';
+import { INLINE_SAFETY_NET_SECONDS, runInlineSlice } from '../runtime/inline-slice';
+import type { BackgroundContext, InlineSliceOptions } from '../runtime/inline-slice';
 import { drainRuntimeTaskOutbox } from '../runtime/consumer';
 import {
   activeRuntimeRunTask,
@@ -532,8 +535,8 @@ async function telegramWebhook(
      invocation. Context retrieval and Postgres run/task admission happen in
      the consumer, not on Telegram's response path. */
   try {
-    await handleIncoming(env, businessId, connectionId, incoming, token, requestedAtMs);
-    telegramWebhookLatency('intake_queued', requestedAtMs);
+    await handleIncoming(env, businessId, connectionId, incoming, token, requestedAtMs, ctx);
+    telegramWebhookLatency(ctx ? 'intake_inline' : 'intake_queued', requestedAtMs);
   } catch (e) {
     /* A 5xx deliberately asks Telegram to redeliver. Returning the usual 200
        after a failed Queue write would acknowledge and permanently lose the
@@ -581,6 +584,8 @@ export async function handleIncoming(
   incoming: TelegramIncoming,
   telegramToken?: string,
   requestedAtMs = Date.now(),
+  ctx?: BackgroundContext,
+  inline?: InlineSliceOptions,
 ): Promise<void> {
   if (runtimeExecutionEnabled(env)) {
     if (!env.RUNTIME_QUEUE || !env.AISAR_MODEL_NAME?.trim()) {
@@ -589,19 +594,27 @@ export async function handleIncoming(
     if (!Number.isSafeInteger(incoming.messageId)) {
       throw new Error('Telegram message id is missing');
     }
-    await signalTelegramIntake(
-      env,
-      businessId,
-      connectionId,
-      {
-        chatId: incoming.chatId,
-        messageId: incoming.messageId as number,
-        from: incoming.from,
-        text: incoming.text,
-        privateChat: true,
-      },
-      requestedAtMs,
-    );
+    const message = {
+      chatId: incoming.chatId,
+      messageId: incoming.messageId as number,
+      from: incoming.from,
+      text: incoming.text,
+      privateChat: true as const,
+    };
+    /* The webhook is a placed HTTP handler and the queue consumer is not
+       (see inline-slice.ts): admission, dispatch and the first slice of the
+       relay run here under waitUntil, and the queue gets the intake with a
+       delay as the safety net. Without a context the queue does it all. */
+    if (ctx) {
+      ctx.waitUntil(runInlineSlice(
+        env,
+        telegramIntakeMessage(businessId, connectionId, message, requestedAtMs),
+        inline,
+      ));
+    }
+    await signalTelegramIntake(env, businessId, connectionId, message, requestedAtMs, {
+      delaySeconds: ctx ? INLINE_SAFETY_NET_SECONDS : 0,
+    });
     return;
   }
 

@@ -127,9 +127,9 @@ The queue consumer runs far from Neon: `placement.region` covers HTTP
 invocations only, and a tenant transaction that costs 60 ms in a route
 cost 1.1 to 2.3 s there (measured 2026-09-10). Anything on the reply's
 critical path therefore runs in the placed HTTP handler — the app intake
-runs the first slice of a run itself and hands the rest to the queue — and
-the consumer is for what can afford to be slow: long runs, retries,
-recovery.
+and the Telegram webhook run the first slice of a run themselves
+(`src/runtime/inline-slice.ts`) and hand the rest to the queue — and the
+consumer is for what can afford to be slow: long runs, retries, recovery.
 
 `docs/reply-latency.md` is where reply time and channel parity live: the
 path a message takes, what Telegram and app chat share, dated measurements

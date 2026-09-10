@@ -24,8 +24,8 @@ import {
 import { recordFact } from '../facts';
 import { urlProblem } from '../ingest';
 import { runtimeFor, signalRuntimeTask } from '../runtime';
-import { handleRuntimeMessage, scheduleRuntimeTaskWake } from '../runtime/consumer';
-import type { RuntimeProvider } from '../runtime/provider';
+import { INLINE_SAFETY_NET_SECONDS, runInlineSlice } from '../runtime/inline-slice';
+import type { BackgroundContext, InlineSliceOptions } from '../runtime/inline-slice';
 import {
   boundedAgentInput,
   prepareAsk,
@@ -52,27 +52,6 @@ function json(body: unknown, init: ResponseInit = {}, headers: Record<string, st
     headers: { 'Content-Type': 'application/json', ...headers, ...(init.headers ?? {}) },
   });
 }
-
-/** Something that outlives the response: `ctx.waitUntil` in production. */
-export interface BackgroundContext {
-  waitUntil(promise: Promise<unknown>): void;
-}
-
-/** The intake runs the first slice of a durable ask itself (see
-    startDurableAsk). Tests inject the provider, the runner fetch and a
-    shorter slice through here; production uses the defaults. */
-export interface InlineSliceOptions {
-  provider?: RuntimeProvider;
-  fetch?: typeof globalThis.fetch;
-  observationSliceMs?: number;
-}
-
-/** waitUntil grants 30 s after the response. The slice stops at 20 s so its
-    own finalisation (status load, usage, work record, next wake) fits. */
-export const INLINE_SLICE_MS = 20_000;
-/** If the inline slice dies with its invocation, the queue consumer finds
-    the task by this delayed wake and carries on from stream_seq. */
-export const INLINE_SAFETY_NET_SECONDS = 30;
 
 export async function handleRuns(
   request: Request,
@@ -551,7 +530,11 @@ async function startDurableAsk(
      dispatch, live relay — runs here under waitUntil, and the queue only
      gets a delayed wake as the safety net. Without a context the queue
      does all of it, as before. */
-  if (ctx) ctx.waitUntil(runInlineSlice(env, businessId, created.task.id, inline));
+  if (ctx) {
+    ctx.waitUntil(runInlineSlice(
+      env, { version: 1, businessId, taskId: created.task.id }, inline,
+    ));
+  }
   try {
     await signalRuntimeTask(env, businessId, created.task.id, {
       delaySeconds: ctx ? INLINE_SAFETY_NET_SECONDS : 0,
@@ -576,28 +559,6 @@ async function startDurableAsk(
     status: created.task.status,
     runId: created.runId,
   }, { status: 202 }, cors);
-}
-
-/** One consumer slice, run by the intake instead of the queue. The result
-    is applied exactly as the queue handler applies it; a thrown error is
-    logged and left to the delayed safety-net wake. */
-async function runInlineSlice(
-  env: Env,
-  businessId: string,
-  taskId: string,
-  inline: InlineSliceOptions = {},
-): Promise<void> {
-  const message = { version: 1 as const, businessId, taskId };
-  try {
-    const result = await handleRuntimeMessage(env, message, {
-      ...inline,
-      observationSliceMs: inline.observationSliceMs ?? INLINE_SLICE_MS,
-    });
-    if (result.action === 'ack') return;
-    await scheduleRuntimeTaskWake(env, businessId, taskId, result.delaySeconds);
-  } catch (error) {
-    console.error(`[inline-ask] slice failed: ${error instanceof Error ? error.message : String(error)}`);
-  }
 }
 
 

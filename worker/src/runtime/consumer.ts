@@ -175,22 +175,29 @@ export type RuntimeQueueMessageResult = RuntimeMessageResult & {
   nextMessage?: RuntimeTaskQueueMessage;
 };
 
+export function telegramIntakeMessage(
+  businessId: string,
+  connectionId: string,
+  incoming: TelegramIntakeQueueMessage['incoming'],
+  requestedAtMs = Date.now(),
+): TelegramIntakeQueueMessage {
+  return { version: 2, kind: 'telegram_intake', businessId, connectionId, requestedAtMs, incoming };
+}
+
 export async function signalTelegramIntake(
   env: Env,
   businessId: string,
   connectionId: string,
   incoming: TelegramIntakeQueueMessage['incoming'],
   requestedAtMs = Date.now(),
+  options: { delaySeconds?: number } = {},
 ): Promise<void> {
   if (!env.RUNTIME_QUEUE) throw new Error('RUNTIME_QUEUE is not configured');
-  await env.RUNTIME_QUEUE.send({
-    version: 2,
-    kind: 'telegram_intake',
-    businessId,
-    connectionId,
-    requestedAtMs,
-    incoming,
-  });
+  const delaySeconds = Math.max(0, Math.floor(options.delaySeconds ?? 0));
+  await env.RUNTIME_QUEUE.send(
+    telegramIntakeMessage(businessId, connectionId, incoming, requestedAtMs),
+    delaySeconds > 0 ? { delaySeconds } : undefined,
+  );
 }
 
 export async function publishRuntimeTask(
@@ -526,7 +533,12 @@ export async function handleRuntimeApprovalCallback(
 export async function handleRuntimeQueueMessage(
   env: Env,
   message: RuntimeQueueMessage,
-  options: { provider?: RuntimeProvider; fetch?: typeof globalThis.fetch } = {},
+  options: {
+    provider?: RuntimeProvider;
+    fetch?: typeof globalThis.fetch;
+    /** The inline first slice (see inline-slice.ts) bounds its observation. */
+    observationSliceMs?: number;
+  } = {},
 ): Promise<RuntimeQueueMessageResult> {
   if (message.version === 1) return handleRuntimeMessage(env, message, options);
   if (!validTelegramIntake(message)) return { action: 'ack', reason: 'missing' };

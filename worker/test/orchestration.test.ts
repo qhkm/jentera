@@ -1036,3 +1036,73 @@ function successfulRunner(answer: string): typeof fetch {
     return runnerResponse({ error: 'not found' }, 404);
   };
 }
+
+describe('the Telegram webhook runs the first slice itself', () => {
+  /* The queue consumer runs far from the database (1–2 s per tenant
+     transaction); the webhook is a placed HTTP handler. It now admits,
+     dispatches and relays the first slice under waitUntil and sends the
+     intake message to the queue with a delay, as the safety net only. */
+  it('admits, answers and finishes a quick reply from the webhook, the queue only as a safety net', async () => {
+    const provider = new LocalRuntimeProvider();
+    const queued: Array<{ message: RuntimeQueueMessage; options?: { delaySeconds?: number } }> = [];
+    const durableEnv = testEnv({
+      RUNTIME_RELEASE: '2026.08.28-4',
+      RUNTIME_EXECUTION_ENABLED: 'true',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+      RUNTIME_QUEUE: {
+        send: async (message: RuntimeQueueMessage, options?: { delaySeconds?: number }) => {
+          queued.push({ message, options });
+        },
+      },
+    });
+    await ensureProviderRuntime(durableEnv, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.28-4', 'v1'));
+    const fetcher: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return runnerResponse({
+          ok: true, release: '2026.08.28-4',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
+          toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        return runnerResponse({ ok: true, hermesRunId: 'inline-telegram-1', status: 'started' }, 202);
+      }
+      if (url.endsWith('/events')) {
+        const body = [
+          { type: 'delta', seq: 1, delta: 'Yes, ' },
+          { type: 'delta', seq: 2, delta: 'we are open on Sunday.' },
+          { type: 'done' },
+        ].map((event) => `data: ${JSON.stringify(event)}`).join('\n\n') + '\n\n';
+        return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      if (url.includes('/v1/tasks/')) {
+        return runnerResponse({
+          ok: true, status: 'completed', output: 'Yes, we are open on Sunday.',
+          usage: { input_tokens: 120, output_tokens: 9 },
+        });
+      }
+      return runnerResponse({ error: 'not found' }, 404);
+    };
+    const background: Promise<unknown>[] = [];
+    await handleIncoming(
+      durableEnv, A, connId, incoming, undefined, Date.now(),
+      { waitUntil: (promise) => { background.push(promise); } },
+      { provider, fetch: fetcher },
+    );
+    expect(background).toHaveLength(1);
+    await Promise.all(background);
+
+    expect((await runRow()).status).toBe('completed');
+    expect(edits).toContainEqual({ chatId: 42, messageId: 99, text: 'Yes, we are open on Sunday.' });
+    expect(queued).toHaveLength(1);
+    expect(queued[0]).toMatchObject({
+      message: { version: 2, kind: 'telegram_intake', businessId: A },
+      options: { delaySeconds: 30 },
+    });
+  });
+});

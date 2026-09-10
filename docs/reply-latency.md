@@ -30,8 +30,10 @@ Both channels end up on the same durable path. Only the first step differs.
    resuming from `runtime_task.stream_seq` so nothing is relayed twice. The
    reason is placement: the HTTP handler is placed next to Neon
    (`placement.region`), the queue consumer is not, and every tenant
-   transaction cost it 1.1 to 2.3 s. Telegram still enters through the
-   queue.
+   transaction cost it 1.1 to 2.3 s. The Telegram webhook does the same
+   since 2026-09-10 (`handleIncoming` with a context): admission, dispatch
+   and the first slice run under the webhook's `waitUntil`, and the intake
+   message goes to the queue with the 30 s delay.
 4. **The agent loop.** Hermes calls the model through the worker's proxy
    (`https://api.jentera.ai/v1/model` → `router.fmcv.my`), usually several
    times per reply (think, maybe a tool, answer). This is where most of the
@@ -155,8 +157,9 @@ Open, in order of expected payoff:
    itself and the wait to start is 2.7 to 3.9 s. The stage breakdown lives
    in Workers Logs; the dashboard's Observability → Events view with the
    needle `runtime-latency` shows it for the last hours, which the wrangler
-   OAuth token cannot query. Telegram still enters through the queue and
-   keeps the old wait until its webhook does the same. Until 2026-09-09 every dispatch
+   OAuth token cannot query. The Telegram webhook runs its first slice the
+   same way since the same day; re-run `reply-latency.sh db 7` after a week
+   to see both channels' wait-to-start settle. Until 2026-09-09 every dispatch
    held the sprite awake for 24 hours (`AISAR_KEEPALIVE_GRACE_HOURS`, then
    defaulting to 24); it is now `0`, so an idle sprite pauses and stops
    billing. Measured 2026-09-10 against the platform API: a sprite goes

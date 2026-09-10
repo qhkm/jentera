@@ -946,7 +946,9 @@ describe('connections', () => {
     );
     expect(response.status).toBe(200);
     expect(queued).toHaveLength(1);
-    expect(background).toHaveLength(1);
+    /* The prewarm and the inline first slice both outlive the response;
+       neither is awaited before Telegram gets its 200. */
+    expect(background).toHaveLength(2);
     await Promise.all(background);
 
     const prewarm = fetch.mock.calls.find(([input]) => String(input).endsWith('/healthz'));
