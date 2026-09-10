@@ -135,6 +135,25 @@ test('a customer-defined role becomes an isolated Hermes profile', async () => {
   assert.match(files.get('/tmp/hermes/profiles/sp-pastry/SOUL.md'), /Prefer local ingredients/);
 });
 
+test('config refresh preserves bootstrap model credentials for the chief and specialists, but removes disconnected tokens', async () => {
+  const { channel: c, files } = channel({
+    config: { hermesConfigFile: '/tmp/hermes/config.yaml', hermesProfilesDir: '/tmp/hermes/profiles' },
+    deps: {
+      fetch: async () => ({ ok: true, json: async () => GOOD }),
+      mkdir: async () => {},
+      copyFile: async () => {},
+    },
+  });
+  files.set('/tmp/hermes.env', 'OPENROUTER_API_KEY=test-model-key\nOPENROUTER_BASE_URL=https://api.jentera.ai/v1/model\nCLOUDFLARE_API_TOKEN=disconnected-token\n');
+  assert.equal(await c.refresh(async () => false), 'applied');
+  for (const path of ['/tmp/hermes.env', '/tmp/hermes/profiles/sp-pastry/.env']) {
+    assert.match(files.get(path), /^OPENROUTER_API_KEY=test-model-key$/m);
+    assert.match(files.get(path), /^OPENROUTER_BASE_URL=https:\/\/api.jentera.ai\/v1\/model$/m);
+    assert.match(files.get(path), /FIRECRAWL_API_KEY=/);
+    assert.doesNotMatch(files.get(path), /CLOUDFLARE_API_TOKEN|disconnected-token/);
+  }
+});
+
 test('a document is held, not applied, while a run is in flight', async () => {
   /* Hermes reads config when the agent is created; swapping mid-run would
      give one task two configurations. */

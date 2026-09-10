@@ -357,10 +357,15 @@ function specialistSoul(specialist) {
 }
 
 /** A dotenv body for ~/.hermes/.env. Values are newline-free by validation. */
-export function renderHermesEnv(hermesEnv) {
-  return `${Object.entries(hermesEnv ?? {})
+export function renderHermesEnv(hermesEnv, existing = '') {
+  // Bootstrap owns model authentication. The config channel owns only the
+  // closed connector allowlist; replacing its values must not erase model
+  // credentials (nor preserve a disconnected connector's old grant).
+  const bootstrap = existing.split(/\r?\n/)
+    .filter((line) => /^(OPENROUTER_API_KEY|OPENROUTER_BASE_URL)=/.test(line));
+  return `${[...bootstrap, ...Object.entries(hermesEnv ?? {})
     .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([name, value]) => `${name}=${value}`)
+    .map(([name, value]) => `${name}=${value}`)]
     .join('\n')}\n`;
 }
 
@@ -420,8 +425,15 @@ export function createConfigChannel(config, deps = {}) {
   /** Write the document's files and record it as in force. */
   async function commit(document) {
     const envPath = config.hermesEnvFile;
+    let envBody;
     if (envPath) {
-      await writeFileImpl(`${envPath}.next`, renderHermesEnv(document.hermesEnv), { mode: 0o600 });
+      let existing = '';
+      try { existing = await readFileImpl(envPath, 'utf8'); }
+      catch (error) {
+        if (error.code !== 'ENOENT' && error.message !== 'ENOENT') throw error;
+      }
+      envBody = renderHermesEnv(document.hermesEnv, existing);
+      await writeFileImpl(`${envPath}.next`, envBody, { mode: 0o600 });
       await renameImpl(`${envPath}.next`, envPath);
     }
     if (config.hermesProfilesDir && config.hermesConfigFile) {
@@ -431,7 +443,7 @@ export function createConfigChannel(config, deps = {}) {
           await mkdirImpl(child ? `${profileDir}/${child}` : profileDir, { recursive: true });
         }
         await copyFileImpl(config.hermesConfigFile, `${profileDir}/config.yaml`);
-        if (envPath) await writeFileImpl(`${profileDir}/.env`, renderHermesEnv(document.hermesEnv), { mode: 0o600 });
+        if (envPath) await writeFileImpl(`${profileDir}/.env`, envBody, { mode: 0o600 });
         await writeFileImpl(
           `${profileDir}/profile.yaml`,
           `description: ${JSON.stringify(`Jentera's persistent ${specialist.name} specialist.`)}\n` +
