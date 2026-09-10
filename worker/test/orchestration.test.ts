@@ -612,11 +612,20 @@ describe('durable Hermes Telegram replies', () => {
     });
     const [waiting] = await asOwner((sql) => sql<{
       id: string; kind: string; status: string; lease_token: string | null;
-      result: { approval: { id: string; status: string; messageId: number } };
+      result: {
+        approval: {
+          id: string; status: string; surface: string;
+          telegram: { messageId: number };
+        };
+      };
     }[]>`select id, kind, status, lease_token, result from runtime_task where business_id = ${A}`);
+    /* The bubble coordinates moved under `telegram` when the approval became
+       surface-tagged, so a web run could have one at all. */
     expect(waiting).toMatchObject({
       kind: 'resume', status: 'queued', lease_token: null,
-      result: { approval: { status: 'pending', messageId: 99 } },
+      result: {
+        approval: { status: 'pending', surface: 'telegram', telegram: { messageId: 99 } },
+      },
     });
     const telegramFetch = vi.mocked(globalThis.fetch);
     const approvalEdit = telegramFetch.mock.calls
