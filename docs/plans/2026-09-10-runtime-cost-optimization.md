@@ -669,6 +669,54 @@ Each of these is a line in the script, a bundle commit, a `RUNTIME_RELEASE`
 bump, and a fleet convergence. Ship them one per release so an effect can
 be attributed, and after 3a, so the prompt change is not confounded.
 
+**What the tool block actually contains, measured 2026-09-10.** Resolved on
+the Kitakod sprite from the pinned config: **31 tools across 13 toolsets**,
+serialising to 53,080 characters — about 65% of a quick reply's prompt,
+against a 31-character question.
+
+| toolset | tools | what they are |
+|---|---|---|
+| browser | **12** | back, cdp, click, console, dialog, get_images, navigate, press, scroll, snapshot, type, vision |
+| file | 4 | patch, read_file, search_files, write_file |
+| skills | 3 | skill_manage, skill_view, skills_list |
+| terminal | 2 | process, terminal |
+| web | 2 | web_extract, web_search |
+| eight others | 1 each | code_execution, cronjob, delegation, image_gen, memory, session_search, todo, vision_analyze |
+
+Two things this settles.
+
+**`homeassistant` costs nothing.** `configure-model-provider.py` lists it in
+`platform_toolsets["api_server"]`, but it does not appear in the resolved
+set — its own credential check gates registration, exactly as the comment
+beside it says. Leave it alone; it is not the fat.
+
+**Browser is the fat: twelve of the thirty-one tools.** A business agent
+answering "what are our Monday hours" never clicks, types, scrolls or
+drives CDP. On count alone, dropping the browser toolset is the single
+largest available cut.
+
+**But it is load-bearing today, and that is the catch.**
+`HERMES_AGENT_PROMPT` instructs the model to "open the relevant primary
+pages with browser tools or terminal/curl", and to fall back to browser
+navigation when `web_extract` reports a search-only backend. So the browser
+tools are currently compensating for an unreliable extractor. Cutting them
+before `web_extract` is dependable would trade cost for exactly the
+groundedness axis step 2 weights highest.
+
+The order that follows from this: confirm whether `web_extract` still
+reports search-only (a `reply-latency.sh`-style probe on one sprite), fix
+or replace it if so, amend the prompt in the same release, and only then
+drop `browser` from the composite. Measure with step 1's query over ≥50
+quick replies either side. If `web_extract` cannot be made dependable,
+the smaller cut is still available: `image_gen`, `cronjob`, `vision_analyze`
+and `delegate_task` have no role in a two-sentence business answer.
+
+Not yet measured: the per-tool character cost. The counts above are tool
+*names*; a schema-size ranking needs the serialised `tools` array, which
+`model_call` deliberately does not store. A one-off probe printing each
+schema's length would order the cut precisely — worth doing before the
+release, not before the decision.
+
 **3d. Iteration cap per mode.** `agent.max_turns = 20` is pinned and is
 gateway-wide; the pinned `/v1/runs` does not read a per-run value. A quick
 cap lower than deep's needs the Jentera patch to read
