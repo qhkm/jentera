@@ -11,6 +11,7 @@ import type { Env } from '../env';
 import { withTenant } from '../db';
 import { prewarmSprite } from '../runtime/prewarm';
 import { hasBusiness, resolveTenant } from '../tenancy';
+import { TOKEN_CONNECTORS, tokenConnector } from '../token-connectors';
 import {
   bindTelegramInternalChat,
   findConnection,
@@ -132,6 +133,75 @@ export async function handleConnect(
       }
     }
     return json({ ok: true, connections: rows }, {}, cors);
+  }
+
+  /* ---- what can be connected by pasting a token ------------------------ */
+
+  if (url.pathname === '/api/connections/token' && request.method === 'GET') {
+    /* Names and labels only. Nothing here is a secret, but it is also not
+       interesting to anyone but the owner about to use it. */
+    return json({
+      ok: true,
+      connectors: Object.values(TOKEN_CONNECTORS).map((entry) => ({
+        connector: entry.connector,
+        label: entry.label,
+      })),
+    }, {}, cors);
+  }
+
+  /* ---- connect a service with a scoped token --------------------------- */
+
+  if (url.pathname === '/api/connections/token' && request.method === 'POST') {
+    if (id.role !== 'owner') {
+      return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+    }
+    const body = (await request.json().catch(() => ({}))) as {
+      connector?: string;
+      token?: string;
+    };
+    const entry = tokenConnector(typeof body.connector === 'string' ? body.connector : '');
+    if (!entry) {
+      return json({ ok: false, err: 'unknown connector' }, { status: 400 }, cors);
+    }
+    const token = typeof body.token === 'string' ? body.token.trim() : '';
+    /* Shape first: an obvious paste error becomes a message instead of a
+       round trip, and a mistyped password never reaches an outbound
+       request that some intermediary might record. */
+    if (!entry.looksRight(token)) {
+      return json(
+        { ok: false, err: `That does not look like a ${entry.label} API token.` },
+        { status: 400 },
+        cors,
+      );
+    }
+
+    /* Proven before it is stored. A credential that has never been used is
+       a connection the owner believes in and a failure they meet later, in
+       the middle of something else. */
+    let account;
+    try {
+      account = await entry.verify(token);
+    } catch (e) {
+      return json(
+        { ok: false, err: e instanceof Error ? e.message : `Could not reach ${entry.label}` },
+        { status: 400 },
+        cors,
+      );
+    }
+
+    const saved = await withTenant(env, id.businessId, (tx) =>
+      saveConnection(env, tx, id.businessId, {
+        connector: entry.connector,
+        method: 'api_token',
+        externalId: account.externalId,
+        displayName: account.displayName,
+        secret: token,
+        connectedBy: id.userId,
+      }),
+    );
+    const connection = await withTenant(env, id.businessId, (tx) =>
+      connectionView(env, tx, saved));
+    return json({ ok: true, connection }, {}, cors);
   }
 
   /* ---- connect a Telegram bot ----------------------------------------- */
