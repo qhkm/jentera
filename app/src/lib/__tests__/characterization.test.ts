@@ -92,7 +92,7 @@ describe('business profile overrides', () => {
   it('starts every business with a private internal assistant', async () => {
     const business = resolveBusiness(await snap(), 'restaurant');
     expect(business.team[0]).toMatchObject({
-      n: 'Business Assistant',
+      n: 'Chief of Staff',
       audience: 'internal',
     });
     expect(business.team).toHaveLength(1);

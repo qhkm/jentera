@@ -263,8 +263,10 @@ describe('what onboarding writes', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('I recommend starting here.')).toBeInTheDocument();
-    expect(screen.getAllByText('Business Assistant').length).toBeGreaterThan(0);
+    expect(await screen.findByText('One person to ask. A team behind them.')).toBeInTheDocument();
+    expect(screen.getAllByText('Chief of Staff').length).toBeGreaterThan(0);
+    expect(screen.getByText('Customer communications')).toBeInTheDocument();
+    expect(screen.getByText('first focus')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /put jentera to work/i })).toBeInTheDocument();
   });
 
@@ -294,7 +296,7 @@ describe('what onboarding writes', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('I recommend starting here.')).toBeInTheDocument();
+    expect(await screen.findByText('One person to ask. A team behind them.')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(await screen.findByText('Step 3 · Did we get it right?')).toBeInTheDocument();
 

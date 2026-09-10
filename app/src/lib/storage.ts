@@ -28,6 +28,7 @@ export const KEYS = {
   learn: 'aisar-learn:',
   /** Business facts in the anonymous demo, keyed by fact key. */
   facts: 'aisar-facts',
+  specialists: 'aisar-specialists-v1',
   /** First-run presentation state. Business answers still live in the repository. */
   onboardingDraft: 'aisar-onboarding-draft-v1',
 } as const;

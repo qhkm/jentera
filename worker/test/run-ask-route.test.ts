@@ -145,6 +145,30 @@ describe('Ask Jentera runtime bridge', () => {
     expect(row.payload.input).toBe('What should I improve?');
   });
 
+  it('routes clear work to this business’s persistent specialist profile', async () => {
+    await readyRuntime(A);
+    await asTenant(A, (tx) => tx`
+      insert into specialist_profile
+        (business_id, profile_key, name, description)
+      values (${A}, 'customers', 'Customer communications',
+              'Customer complaints, enquiries, replies and bookings')`);
+    const response = await call('POST', '/api/runs/ask', durableEnv(vi.fn(async () => {})), cookieA, {
+      question: 'Draft a reply to this customer complaint',
+      requestId: crypto.randomUUID(),
+      mode: 'work',
+      sessionId: 'customer-thread',
+    });
+    expect(response.status).toBe(202);
+    const body = await response.json() as { runId: string };
+    const [row] = await asOwner((sql) => sql<{
+      payload: { profile: string; instructions: string; sessionId: string };
+    }[]>`select payload from runtime_task where run_id = ${body.runId}`);
+    expect(row.payload.profile).toBe('customers');
+    expect(row.payload.sessionId).toBe('customer-thread');
+    expect(row.payload.instructions).toContain('Customer communications specialist profile');
+    expect(row.payload.instructions).toContain('do not expose internal profile names');
+  });
+
   it('reuses the same run for simultaneous-safe request retries', async () => {
     await readyRuntime(A);
     const send = vi.fn(async () => {});
@@ -450,6 +474,7 @@ describe('the first slice of a web ask runs inline from the intake', () => {
           runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
           hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
           toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {

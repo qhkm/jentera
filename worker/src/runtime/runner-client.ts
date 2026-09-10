@@ -1,6 +1,7 @@
 import { createStepProgressExtractor } from './step-progress';
 import { StreamingThinkScrubber } from './think-scrubber';
 import type { ResponseMode } from './response-mode';
+import { specialistProfileValid, type SpecialistProfile } from '../specialists';
 
 const RESPONSE_LIMIT = 256 * 1024;
 const STREAM_LIMIT = 64 * 1024;
@@ -28,6 +29,7 @@ export interface RunnerTaskRequest {
   taskId: string;
   leaseToken: string;
   input: string;
+  profile?: SpecialistProfile;
   sessionId?: string;
   instructions?: string;
   responseMode?: ResponseMode;
@@ -73,6 +75,7 @@ export interface RunnerTaskResponse {
   webSearchBackend?: string;
   /** Capabilities the runner attests (e.g. ['computer_use']). */
   capabilities?: string[];
+  specialistProfiles?: Record<string, unknown>;
   region?: string | null;
   edgeAuthorizationForwarded?: boolean;
   release?: string;
@@ -91,6 +94,7 @@ export interface RunnerReadiness {
   region: string | null;
   /** Capabilities the runner attested on /readyz (e.g. ['computer_use']). */
   capabilities: string[];
+  specialistProfiles: SpecialistProfile[];
   /** What configuration the runtime says it is running, when it runs a bundle
       that fetches one. Null on every sprite until that release, and null again
       whenever the runner has only what the bootstrap gave it. Reported, never
@@ -193,6 +197,9 @@ export class RunnerClient {
     if (body.edgeAuthorizationForwarded !== false) {
       throw new Error('runner did not attest edge credential isolation');
     }
+    const specialistProfiles = Object.entries(body.specialistProfiles ?? {})
+      .filter(([profile, ready]) => specialistProfileValid(profile) && ready === true)
+      .map(([profile]) => profile);
     const attestedCapabilities = Array.isArray(body.capabilities)
       ? body.capabilities.filter((id) => typeof id === 'string')
       : [];
@@ -206,7 +213,12 @@ export class RunnerClient {
     const region = typeof body.region === 'string' && /^[a-z0-9]{3}$/i.test(body.region.trim())
       ? body.region.trim().toLowerCase()
       : null;
-    return { region, capabilities: attestedCapabilities, config: configState(body.config) };
+    return {
+      region,
+      capabilities: attestedCapabilities,
+      specialistProfiles,
+      config: configState(body.config),
+    };
   }
 
   async start(task: RunnerTaskRequest): Promise<RunnerTaskResponse> {

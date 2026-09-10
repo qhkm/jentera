@@ -81,6 +81,7 @@ describe('durable Hermes run delivery', () => {
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
@@ -163,6 +164,7 @@ describe('durable Hermes run delivery', () => {
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
@@ -245,6 +247,7 @@ describe('durable Hermes run delivery', () => {
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
@@ -352,6 +355,7 @@ describe('durable Hermes run delivery', () => {
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });
       }
       if (url.endsWith('/v1/tasks')) {
@@ -415,6 +419,7 @@ describe('durable Hermes run delivery', () => {
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') starts += 1;
@@ -486,6 +491,7 @@ describe('durable Hermes run delivery', () => {
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') starts += 1;
@@ -552,6 +558,7 @@ describe('durable Hermes run delivery', () => {
         toolMode: 'full-tools',
         webSearchBackend: 'ddgs',
         edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
       });
     };
 
@@ -786,6 +793,7 @@ describe('RunnerClient capability attestation', () => {
     toolMode: 'full-tools',
     webSearchBackend: 'ddgs',
     edgeAuthorizationForwarded: false,
+    specialistProfiles: { operations: true, customers: true, growth: true, records: true },
   };
 
   function client(expectedCapabilities: string[] | undefined, body: unknown) {
@@ -808,6 +816,7 @@ describe('RunnerClient capability attestation', () => {
     await expect(c.ready()).resolves.toEqual({
       region: 'sin',
       capabilities: ['computer_use'],
+      specialistProfiles: ['operations', 'customers', 'growth', 'records'],
       config: null,
     });
   });
@@ -821,6 +830,7 @@ describe('RunnerClient capability attestation', () => {
     await expect(c.ready()).resolves.toEqual({
       region: null,
       capabilities: ['computer_use', 'web_search'],
+      specialistProfiles: ['operations', 'customers', 'growth', 'records'],
       config: null,
     });
   });
@@ -854,6 +864,7 @@ describe('RunnerClient capability attestation', () => {
     await expect(c.ready()).resolves.toEqual({
       region: null,
       capabilities: ['computer_use'],
+      specialistProfiles: ['operations', 'customers', 'growth', 'records'],
       config: null,
     });
   });
@@ -886,7 +897,12 @@ describe('RunnerClient capability attestation', () => {
 
   it('treats an empty expectation list as no requirement', async () => {
     const c = client([], baseReadyz);
-    await expect(c.ready()).resolves.toEqual({ region: null, capabilities: [], config: null });
+    await expect(c.ready()).resolves.toEqual({
+      region: null,
+      capabilities: [],
+      specialistProfiles: ['operations', 'customers', 'growth', 'records'],
+      config: null,
+    });
   });
 });
 
@@ -1047,6 +1063,7 @@ async function dispatchBody(
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
@@ -1161,6 +1178,7 @@ describe('live progress to the web chat', () => {
           runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
           hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
           toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
@@ -1223,6 +1241,7 @@ describe('conversation versus work', () => {
           runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
           hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
           toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
@@ -1355,6 +1374,7 @@ describe('resuming a run stream across observation slices', () => {
           runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
           hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
           toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {

@@ -23,6 +23,7 @@ import {
   ConfigSchemaUnsupported,
   renderRuntimeConfig,
 } from '../runtime/config-document';
+import { listSpecialists } from '../specialists';
 
 export const RUNTIME_CONFIG_PATH = '/v1/runtime/config';
 
@@ -72,12 +73,21 @@ export async function handleRuntimeConfig(
     return json({ err: 'schema header is invalid' }, 400, headers);
   }
 
-  const runtime = await withTenant(env, identity.businessId, (tx) =>
-    getRuntime(tx, identity.businessId));
+  const configured = await withTenant(env, identity.businessId, async (tx) => ({
+    runtime: await getRuntime(tx, identity.businessId),
+    specialists: await listSpecialists(tx, { enabledOnly: true }),
+  }));
+  const runtime = configured.runtime;
   if (!runtime) return json({ err: 'runtime is not provisioned' }, 403, headers);
 
   try {
-    const document = await renderRuntimeConfig(env, runtime, requested);
+    const document = await renderRuntimeConfig(
+      env,
+      runtime,
+      requested,
+      new Date(),
+      configured.specialists,
+    );
     return json(document, 200, headers);
   } catch (err) {
     if (err instanceof ConfigSchemaUnsupported) {

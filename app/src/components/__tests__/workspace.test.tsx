@@ -298,7 +298,7 @@ describe('business profile', () => {
     expect(screen.getByRole('textbox', { name: 'Business name' })).toHaveValue('Unsaved shop name');
   });
 
-  it('compacts the identity outside Profile and gives AI staff one clear card', async () => {
+  it('compacts the identity outside Profile and gives the Chief of Staff one clear card', async () => {
     const repo = new LocalRepository();
     await repo.setBizType('restaurant');
     await repo.setBizProfile({ name: 'Kedai Kita', loc: 'Shah Alam' });
@@ -309,13 +309,14 @@ describe('business profile', () => {
       'Profile',
       'Knowledge',
       'Connections0',
-      'AI staff',
+      'Your team',
       'Controls',
     ]);
-    await userEvent.click(screen.getByRole('tab', { name: 'AI staff' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Your team' }));
     expect(identity).toHaveClass('business-identity-compact');
     const panel = screen.getByRole('tabpanel');
-    expect(within(panel).getByRole('heading', { name: 'Business Assistant' })).toBeInTheDocument();
+    expect(within(panel).getByRole('heading', { name: 'Chief of Staff' })).toBeInTheDocument();
+    expect(within(panel).getByRole('heading', { name: 'Operations' })).toBeInTheDocument();
     expect(within(panel).getAllByRole('listitem')).toHaveLength(4);
     expect(panel.querySelectorAll('.card')).toHaveLength(1);
     expect(within(panel).getByText('Available now')).toBeInTheDocument();
@@ -326,10 +327,33 @@ describe('business profile', () => {
       'href',
       '/app?view=chat',
     );
-    expect(screen.queryByText('Your private Business Assistant')).not.toBeInTheDocument();
+    expect(screen.queryByText('Your Chief of Staff')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('tab', { name: 'Profile' }));
     expect(identity).not.toHaveClass('business-identity-compact');
     expect(screen.getByRole('textbox', { name: 'Business name' })).toHaveValue('Kedai Kita');
+  });
+
+  it('lets the owner define a specialist for this business', async () => {
+    const repo = new LocalRepository();
+    const create = vi.spyOn(repo, 'createSpecialist');
+    mount(<Harness initialTab="handles" />, { repo });
+    await userEvent.click(await screen.findByRole('button', { name: 'Add specialist' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Role name' }), 'Pastry R&D');
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'What should this specialist own?' }),
+      'Develop recipes and test lamination.',
+    );
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Instructions (optional)' }),
+      'Prefer local ingredients.',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Save specialist' }));
+    await screen.findByRole('heading', { name: 'Pastry R&D' });
+    expect(create).toHaveBeenCalledWith({
+      name: 'Pastry R&D',
+      description: 'Develop recipes and test lamination.',
+      instructions: 'Prefer local ingredients.',
+    });
   });
 
   it('keeps the short tabs and capability boundary clear in Bahasa Malaysia', async () => {
@@ -337,10 +361,10 @@ describe('business profile', () => {
     await repo.setBizType('restaurant');
     await repo.setLang('bm');
     mount(<Harness initialTab="handles" />, { repo });
-    expect(await screen.findByRole('tab', { name: 'Staf AI' })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByRole('tab', { name: 'Pasukan anda' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'Pengetahuan' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Kawalan' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Pembantu Perniagaan' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Ketua Staf' })).toBeInTheDocument();
     expect(screen.getByRole('note')).toHaveTextContent(
       'Ejen untuk pelanggan belum tersedia. Telegram adalah untuk chat peribadi anda.',
     );

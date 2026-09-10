@@ -23,6 +23,7 @@ import type {
   OnboardingCompletion,
   RuntimeOverview,
   RunResult,
+  Specialist,
 } from './types';
 import { NeedsAccountError } from './types';
 
@@ -46,6 +47,30 @@ function collectPrefixed<T>(prefix: string, fallback: T): Record<string, T> {
    exists to provide. */
 interface StoredFact extends Fact {
   live: boolean;
+}
+
+const STARTER_SPECIALISTS: Specialist[] = [
+  { id: 'operations', profile: 'operations', name: 'Operations', description: 'Processes, planning, stock, suppliers and follow-through.', instructions: '', enabled: true },
+  { id: 'customers', profile: 'customers', name: 'Customer communications', description: 'Enquiries, replies, bookings and service recovery.', instructions: '', enabled: true },
+  { id: 'growth', profile: 'growth', name: 'Growth and marketing', description: 'Research, campaigns, content, sales and retention.', instructions: '', enabled: true },
+  { id: 'records', profile: 'records', name: 'Finance and records', description: 'Invoices, expenses, cash flow, documents and summaries.', instructions: '', enabled: true },
+];
+
+function localSpecialists(): Specialist[] {
+  return store.getJSON<Specialist[]>(KEYS.specialists, STARTER_SPECIALISTS)
+    .filter((specialist) => specialist.enabled);
+}
+
+function specialistInput(input: Pick<Specialist, 'name' | 'description' | 'instructions'>) {
+  const clean = {
+    name: input.name.trim(),
+    description: input.description.trim(),
+    instructions: input.instructions.trim(),
+  };
+  if (!clean.name || clean.name.length > 60) throw new Error('Specialist name must be 1 to 60 characters.');
+  if (!clean.description || clean.description.length > 500) throw new Error('Specialist remit must be 1 to 500 characters.');
+  if (clean.instructions.length > 4000) throw new Error('Specialist instructions must be at most 4000 characters.');
+  return clean;
 }
 
 function allVersions(): StoredFact[] {
@@ -79,6 +104,7 @@ export class LocalRepository implements Repository {
       facts: allVersions().filter((f) => f.live).sort((a, b) => a.key.localeCompare(b.key)),
       workDone,
       learn: collectPrefixed<Record<string, number>>(KEYS.learn, {}),
+      specialists: localSpecialists(),
     };
   }
 
@@ -242,6 +268,33 @@ export class LocalRepository implements Repository {
     return allVersions()
       .filter((r) => r.key === key)
       .sort((a, b) => b.version - a.version);
+  }
+
+  async createSpecialist(input: Pick<Specialist, 'name' | 'description' | 'instructions'>): Promise<void> {
+    const specialists = localSpecialists();
+    if (specialists.length >= 8) throw new Error('A business can have at most 8 active specialists.');
+    const id = crypto.randomUUID();
+    store.setJSON(KEYS.specialists, [
+      ...specialists,
+      { ...specialistInput(input), id, profile: `sp-${id.replace(/-/g, '').slice(0, 20)}`, enabled: true },
+    ]);
+  }
+
+  async updateSpecialist(
+    id: string,
+    input: Pick<Specialist, 'name' | 'description' | 'instructions'>,
+  ): Promise<void> {
+    const specialists = localSpecialists();
+    if (!specialists.some((specialist) => specialist.id === id)) throw new Error('Specialist not found.');
+    const clean = specialistInput(input);
+    store.setJSON(KEYS.specialists, specialists.map((specialist) =>
+      specialist.id === id ? { ...specialist, ...clean } : specialist));
+  }
+
+  async disableSpecialist(id: string): Promise<void> {
+    const specialists = localSpecialists();
+    if (!specialists.some((specialist) => specialist.id === id)) throw new Error('Specialist not found.');
+    store.setJSON(KEYS.specialists, specialists.filter((specialist) => specialist.id !== id));
   }
 
   /* The demo has no server, so it cannot fetch anything. Saying so

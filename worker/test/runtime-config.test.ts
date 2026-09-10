@@ -73,8 +73,8 @@ describe('the rendered configuration document', () => {
   it('gives the same version for the same configuration, whatever the clock says', async () => {
     /* The version is compared for equality, so it must not drift with time
        or with object insertion order. */
-    const a = await renderRuntimeConfig(configEnv(), runtime, 1, new Date('2026-01-01T00:00:00Z'));
-    const b = await renderRuntimeConfig(configEnv(), runtime, 1, new Date('2026-09-11T02:00:00Z'));
+    const a = await renderRuntimeConfig(configEnv(), runtime, CONFIG_SCHEMA, new Date('2026-01-01T00:00:00Z'));
+    const b = await renderRuntimeConfig(configEnv(), runtime, CONFIG_SCHEMA, new Date('2026-09-11T02:00:00Z'));
     expect(a.version).toBe(b.version);
     expect(a.issuedAt).not.toBe(b.issuedAt);
   });
@@ -84,6 +84,23 @@ describe('the rendered configuration document', () => {
     const off = await renderRuntimeConfig(
       configEnv({ AISAR_EXTRACT_BASE: undefined, AISAR_EXTRACT_KEY: undefined }), runtime);
     expect(on.version).not.toBe(off.version);
+  });
+
+  it('moves the version when the owner changes a specialist remit', async () => {
+    const base = {
+      id: '11111111-1111-4111-8111-111111111111',
+      profile: 'sp-pastry',
+      name: 'Pastry R&D',
+      description: 'Develop recipes.',
+      instructions: '',
+      enabled: true,
+    };
+    const first = await renderRuntimeConfig(
+      configEnv(), runtime, CONFIG_SCHEMA, new Date(), [base]);
+    const revised = await renderRuntimeConfig(
+      configEnv(), runtime, CONFIG_SCHEMA, new Date(),
+      [{ ...base, description: 'Develop and cost recipes.' }]);
+    expect(revised.version).not.toBe(first.version);
   });
 
   it('never lets a secret reach the version hash', async () => {
@@ -98,7 +115,7 @@ describe('the rendered configuration document', () => {
   });
 
   it('refuses a schema it cannot render', async () => {
-    await expect(renderRuntimeConfig(configEnv(), runtime, 2)).rejects.toThrow(ConfigSchemaUnsupported);
+    await expect(renderRuntimeConfig(configEnv(), runtime, CONFIG_SCHEMA + 1)).rejects.toThrow(ConfigSchemaUnsupported);
   });
 });
 
@@ -119,7 +136,16 @@ describe('the runtime config route', () => {
   });
 
   it('serves the document to the runtime that credential belongs to', async () => {
-    await seedRuntime();
+    const businessId = await seedRuntime();
+    await asApp(async (sql) => {
+      await sql.begin(async (tx) => {
+        await tx`select set_config('app.business_id', ${businessId}, true)`;
+        await tx`insert into specialist_profile
+          (business_id, profile_key, name, description, instructions)
+          values (${businessId}, 'sp-pastry', 'Pastry R&D',
+                  'Develop recipes and test lamination.', 'Prefer local ingredients.')`;
+      });
+    });
     const response = await call(configEnv(), { token: await credential() });
     expect(response!.status).toBe(200);
     expect(response!.headers.get('Cache-Control')).toBe('no-store');
@@ -127,14 +153,20 @@ describe('the runtime config route', () => {
     expect(body.schema).toBe(CONFIG_SCHEMA);
     expect(body.release).toBe('2026.09.10-5');
     expect((body.hermesEnv as Record<string, string>).FIRECRAWL_API_URL).toBe(EXTRACT);
+    expect(body.specialists).toEqual([{
+      profile: 'sp-pastry',
+      name: 'Pastry R&D',
+      description: 'Develop recipes and test lamination.',
+      instructions: 'Prefer local ingredients.',
+    }]);
     expect(typeof body.version).toBe('string');
   });
 
   it('answers 409 for a schema it cannot render, so the runtime keeps last known good', async () => {
     await seedRuntime();
-    const response = await call(configEnv(), { token: await credential(), schema: '2' });
+    const response = await call(configEnv(), { token: await credential(), schema: String(CONFIG_SCHEMA + 1) });
     expect(response!.status).toBe(409);
-    expect(await response!.json()).toMatchObject({ err: 'schema unsupported', supported: 1 });
+    expect(await response!.json()).toMatchObject({ err: 'schema unsupported', supported: CONFIG_SCHEMA });
   });
 
   it('rejects a nonsense schema header rather than guessing', async () => {

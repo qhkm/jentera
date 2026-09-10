@@ -23,6 +23,7 @@ let hermesReasoning;
 let hermesPatch;
 let hermesRunMissing;
 let starts;
+let hermesPaths;
 let hermesEventsList;
 let approvalRequests;
 let stopRequests;
@@ -36,6 +37,7 @@ beforeEach(async () => {
   hermesPatch = 'jentera-runtime-2026-09-07';
   hermesRunMissing = false;
   starts = [];
+  hermesPaths = [];
   approvalRequests = [];
   stopRequests = 0;
   stopFailureStatus = 0;
@@ -54,7 +56,9 @@ beforeEach(async () => {
   ];
   hermesServer = createServer(async (req, res) => {
     assert.equal(req.headers.authorization, `Bearer ${HERMES_KEY}`);
-    if (req.url === '/health/detailed') {
+    hermesPaths.push(req.url);
+    const requestPath = req.url?.replace(/^\/p\/(?:operations|customers|growth|records)/, '');
+    if (requestPath === '/health/detailed') {
       return reply(res, 200, {
         status: 'ok',
         jentera_patch: hermesPatch,
@@ -65,28 +69,28 @@ beforeEach(async () => {
         },
       });
     }
-    if (req.method === 'POST' && req.url === '/v1/runs') {
+    if (req.method === 'POST' && requestPath === '/v1/runs') {
       const body = await bodyOf(req);
       starts.push(body);
       if (startBarrier) await startBarrier;
       return reply(res, 202, { run_id: `run-${starts.length}`, status: 'started' });
     }
-    if (req.url?.endsWith('/events')) {
+    if (requestPath?.endsWith('/events')) {
       res.writeHead(200, { 'Content-Type': 'text/event-stream' });
       for (const event of hermesEventsList) res.write(`data: ${JSON.stringify(event)}\n\n`);
       return res.end();
     }
-    if (req.method === 'POST' && req.url?.endsWith('/approval')) {
+    if (req.method === 'POST' && requestPath?.endsWith('/approval')) {
       approvalRequests.push(await bodyOf(req));
       hermesStatus = 'running';
       return reply(res, 200, {
         object: 'hermes.run.approval_response',
-        run_id: req.url.split('/').at(-2),
+        run_id: requestPath.split('/').at(-2),
         choice: approvalRequests.at(-1).choice,
         resolved: 1,
       });
     }
-    if (req.method === 'POST' && req.url?.endsWith('/stop')) {
+    if (req.method === 'POST' && requestPath?.endsWith('/stop')) {
       stopRequests += 1;
       if (stopFailureStatus) return reply(res, stopFailureStatus, { error: 'stop failed' });
       if (hermesRunMissing) return reply(res, 404, { error: 'run not found' });
@@ -95,10 +99,10 @@ beforeEach(async () => {
       hermesStatus = 'cancelled';
       return reply(res, 200, { status: 'stopping' });
     }
-    if (req.url?.startsWith('/v1/runs/')) {
+    if (requestPath?.startsWith('/v1/runs/')) {
       if (hermesRunMissing) return reply(res, 404, { error: 'run not found' });
       return reply(res, 200, {
-        run_id: req.url.split('/').at(-1),
+        run_id: requestPath.split('/').at(-1),
         status: hermesStatus,
         output: 'Who is Nikola Tesla? Answer in two sentences.',
         reasoning: hermesReasoning,
@@ -166,6 +170,12 @@ test('detailed readiness requires the per-runtime key', async () => {
   assert.match(body.runner.startedAt, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal(body.webSearchBackend, 'ddgs');
   assert.deepEqual(body.capabilities, ['computer_use']);
+  assert.deepEqual(body.specialistProfiles, {
+    operations: true,
+    customers: true,
+    growth: true,
+    records: true,
+  });
   assert.equal(body.edgeAuthorizationForwarded, false);
   assert.equal(body.region, null);
 
@@ -232,6 +242,28 @@ test('starts one Hermes run for a valid leased Jentera task', async () => {
       reasoning: { enabled: true, effort: 'high' },
     },
   });
+});
+
+test('routes a specialist task through its isolated Hermes profile for its whole lifecycle', async () => {
+  const response = await start(TASK, { profile: 'operations' });
+  assert.equal(response.status, 202);
+  assert.ok(hermesPaths.includes('/p/operations/v1/runs'));
+
+  await call(`/v1/tasks/${TASK}`);
+  assert.ok(hermesPaths.includes('/p/operations/v1/runs/run-1'));
+
+  await call(`/v1/tasks/${TASK}/stop`, { method: 'POST' });
+  assert.ok(hermesPaths.includes('/p/operations/v1/runs/run-1/stop'));
+
+  const state = JSON.parse(await readFile(join(directory, 'state.json'), 'utf8'));
+  assert.equal(state.tasks[TASK].profile, 'operations');
+});
+
+test('refuses a caller-defined Hermes profile', async () => {
+  const response = await start(TASK, { profile: '../other-business' });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /profile/);
+  assert.equal(starts.length, 0);
 });
 
 test('persists a starting admission record before asking Hermes to spawn', async () => {

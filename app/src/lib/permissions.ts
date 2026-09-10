@@ -35,7 +35,7 @@ export const OPERATIONS = [
 
 export type Operation = (typeof OPERATIONS)[number];
 
-/** Controls that belong to the private Business Assistant today. */
+/** Controls that belong to the private Chief of Staff today. */
 export const PRIVATE_OPERATIONS = [
   'read',
   'list',

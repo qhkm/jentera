@@ -188,6 +188,7 @@ describe('provider provisioning', () => {
         toolMode: 'full-tools',
         webSearchBackend: 'ddgs',
         edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
       })),
     });
     expect(row.status).toBe('ready');
@@ -215,6 +216,7 @@ describe('provider provisioning', () => {
       toolMode: 'full-tools',
       webSearchBackend: 'ddgs',
       edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
     }));
     const base = {
       RUNTIME_RELEASE: '2026.08.27-1',
@@ -297,6 +299,7 @@ describe('provider provisioning', () => {
         toolMode: 'full-tools',
         webSearchBackend: 'ddgs',
         edgeAuthorizationForwarded: true,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
       }),
     })).rejects.toThrow('edge credential isolation');
     expect(provider.checkpointCalls).toBe(0);

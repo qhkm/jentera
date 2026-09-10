@@ -246,12 +246,31 @@ describe('the durable Hermes agent request', () => {
       new Date('2026-08-28T05:00:00.000Z'),
     );
 
-    expect(prepared.instructions).toMatch(/private internal business agent/i);
+    expect(prepared.instructions).toMatch(/private Chief of Staff/i);
     expect(prepared.instructions).toMatch(/owner and their team/i);
+    expect(prepared.instructions).toMatch(/single point of contact/i);
+    expect(prepared.instructions).toMatch(/delegate_task/);
+    expect(prepared.instructions).toMatch(/Do not make the owner coordinate agents/i);
     expect(prepared.instructions).toMatch(/never as one of the business's customers/i);
     expect(prepared.instructions).toMatch(/do not behave as a public customer-support bot/i);
     /* MiniMax slipped "上次" into a Malay reply on 2026-09-10. */
     expect(prepared.instructions).toMatch(/one language and\s+one script/i);
+  });
+
+  it('keeps a routed specialist behind the single Jentera identity', () => {
+    const prepared = prepareHermesAgent(
+      'check our stock',
+      [],
+      [],
+      new Date('2026-08-28T05:00:00.000Z'),
+      {
+        id: 'operations', profile: 'operations', name: 'Operations',
+        description: 'Stock and supplier planning.', instructions: '', enabled: true,
+      },
+    );
+    expect(prepared.instructions).toMatch(/Operations specialist profile/);
+    expect(prepared.instructions).toMatch(/owner-facing Jentera answer/);
+    expect(prepared.instructions).toMatch(/do not expose internal profile names/i);
   });
 
   it('requires live research for current questions and keeps source links in the answer', () => {

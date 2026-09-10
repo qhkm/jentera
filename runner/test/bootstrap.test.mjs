@@ -332,6 +332,29 @@ test('configure disables the post-run skill review on every provision', async ()
   assert.equal(config.auxiliary.background_review.keep, 'me');
 });
 
+test('configure creates one isolated persistent profile for every business specialist', async () => {
+  const { status, stderr, configPath } = await runConfigure(
+    ['openrouter', 'https://router.fmcv.my', 'MiniMax-M3', 'OPENROUTER_API_KEY', '0', 'deepseek-v4-flash'],
+  );
+  assert.equal(status, 0, stderr);
+  const home = join(configPath, '..');
+  const config = JSON.parse(await readFile(configPath, 'utf8'));
+  assert.equal(config.gateway.multiplex_profiles, true);
+
+  for (const profile of ['operations', 'customers', 'growth', 'records']) {
+    const root = join(home, 'profiles', profile);
+    const soul = await readFile(join(root, 'SOUL.md'), 'utf8');
+    assert.match(soul, /persistent .* specialist/i);
+    assert.match(soul, /owner speaks to one Jentera Chief of Staff/i);
+    assert.deepEqual(
+      JSON.parse(await readFile(join(root, 'config.yaml'), 'utf8')),
+      config,
+    );
+    assert.equal((await readFile(join(root, '.no-bundled-skills'), 'utf8')).length > 0, true);
+  }
+  assert.match(await readFile(join(home, 'SOUL.md'), 'utf8'), /persistent private Chief of Staff/i);
+});
+
 test('computer use is gated, pinned, and proven before the runtime attests it', async () => {
   const source = await readFile(SCRIPT, 'utf8');
   // The transfer field is optional and defaults to disabled; only `1` enables
@@ -469,11 +492,16 @@ async function runConfigure(argv, preexisting = {}) {
     join(directory, 'toolsets.py'),
     'def resolve_toolset(name):\n    return {name, "fake-inference-tool"}\n',
   );
-  const configPath = join(directory, 'config.json');
+  const configPath = join(directory, 'config.yaml');
   await writeFile(configPath, JSON.stringify(preexisting));
   const result = spawnSync('python3', [CONFIGURE, ...argv], {
     encoding: 'utf8',
-    env: { ...process.env, PYTHONPATH: directory, AISAR_TEST_CONFIG: configPath },
+    env: {
+      ...process.env,
+      PYTHONPATH: directory,
+      HERMES_HOME: directory,
+      AISAR_TEST_CONFIG: configPath,
+    },
   });
   return { ...result, configPath };
 }

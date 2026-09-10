@@ -148,7 +148,7 @@ describe('signed-in setup', () => {
     expect(await screen.findByText(
       'installed and verified in Frankfurt (FRA); Singapore (SIN) is preferred',
     )).toBeInTheDocument();
-    expect(screen.getByText('ready')).toBeInTheDocument();
+    expect(screen.getAllByText('ready').length).toBeGreaterThan(0);
   });
 
   it('allows the built-in web chat without requiring Telegram', async () => {

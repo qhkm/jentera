@@ -26,6 +26,7 @@ import type {
   Repository,
   RunResult,
   RuntimeOverview,
+  Specialist,
   Theme,
   TraceEvent,
   WorkQuality,
@@ -186,6 +187,7 @@ export class RemoteRepository implements Repository {
       workDone: (snapshot.workDone as Record<string, string[]>) ?? {},
       learn: (snapshot.learn as Record<string, Record<string, number>>) ?? {},
       facts: (snapshot.facts as Fact[]) ?? [],
+      specialists: (snapshot.specialists as Specialist[]) ?? [],
     };
   }
 
@@ -262,6 +264,17 @@ export class RemoteRepository implements Repository {
     });
     return history;
   }
+
+  createSpecialist = (input: Pick<Specialist, 'name' | 'description' | 'instructions'>) =>
+    post('/api/state/specialists', input);
+
+  updateSpecialist = (
+    id: string,
+    input: Pick<Specialist, 'name' | 'description' | 'instructions'>,
+  ) => post(`/api/state/specialists/${encodeURIComponent(id)}`, input);
+
+  disableSpecialist = (id: string) =>
+    post(`/api/state/specialists/${encodeURIComponent(id)}`, { disable: true });
 
   async ingest(url: string): Promise<IngestResult> {
     /* The server answers 200 with ok:false when the RUN happened but

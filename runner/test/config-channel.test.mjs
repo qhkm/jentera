@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { configRejection, createConfigChannel, renderHermesEnv } from '../src/server.mjs';
 
 const GOOD = Object.freeze({
-  schema: 1,
+  schema: 2,
   version: 'fbd722a39cdc8738',
   release: '2026.09.10-5',
   hermes: { web: { backend: 'ddgs', search_backend: 'ddgs', extract_backend: 'firecrawl' } },
@@ -11,6 +11,12 @@ const GOOD = Object.freeze({
     FIRECRAWL_API_URL: 'https://extract.kitakod.com',
     FIRECRAWL_API_KEY: 'k'.repeat(64),
   },
+  specialists: [{
+    profile: 'sp-pastry',
+    name: 'Pastry R&D',
+    description: 'Develop recipes and test lamination.',
+    instructions: 'Prefer local ingredients.',
+  }],
 });
 
 const doc = (over = {}) => ({ ...structuredClone(GOOD), ...over });
@@ -65,7 +71,7 @@ test('a non-https or path-bearing extract URL is refused', () => {
 });
 
 test('an unsupported schema is refused rather than guessed at', () => {
-  assert.match(configRejection(doc({ schema: 2 })), /schema 2 unsupported/);
+  assert.match(configRejection(doc({ schema: 3 })), /schema 3 unsupported/);
 });
 
 test('the dotenv rendering is sorted and newline-terminated', () => {
@@ -105,6 +111,28 @@ test('a fetched document is applied when the slot is empty', async () => {
   assert.equal(c.state().source, 'control-plane');
   assert.match(files.get('/tmp/hermes.env'), /FIRECRAWL_API_URL=https:\/\/extract\.kitakod\.com/);
   assert.ok(files.get('/tmp/lkg.json'));
+  assert.deepEqual(c.profiles(), ['sp-pastry']);
+});
+
+test('a customer-defined role becomes an isolated Hermes profile', async () => {
+  const { channel: c, files } = channel({
+    config: {
+      hermesConfigFile: '/tmp/hermes/config.yaml',
+      hermesProfilesDir: '/tmp/hermes/profiles',
+    },
+    deps: {
+      fetch: async () => ({ ok: true, json: async () => GOOD }),
+      mkdir: async () => {},
+      copyFile: async (from, to) => { files.set(to, `copied:${from}`); },
+    },
+  });
+  await c.refresh(async () => false);
+  assert.equal(
+    files.get('/tmp/hermes/profiles/sp-pastry/config.yaml'),
+    'copied:/tmp/hermes/config.yaml',
+  );
+  assert.match(files.get('/tmp/hermes/profiles/sp-pastry/SOUL.md'), /Pastry R&D/);
+  assert.match(files.get('/tmp/hermes/profiles/sp-pastry/SOUL.md'), /Prefer local ingredients/);
 });
 
 test('a document is held, not applied, while a run is in flight', async () => {

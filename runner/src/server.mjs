@@ -8,7 +8,7 @@
 
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { createServer, request as httpRequest } from 'node:http';
 import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -28,6 +28,12 @@ const TERMINATION_RETRY_MS = 1_000;
 const STREAM_THINK_LIMIT = 8 * 1024;
 const STREAM_TTL_MS = 5 * 60 * 1000;
 const HERMES_PATCH_ID = 'jentera-runtime-2026-09-07';
+export const STARTER_SPECIALIST_PROFILES = Object.freeze([
+  'operations',
+  'customers',
+  'growth',
+  'records',
+]);
 const RUNNER_STARTED_AT = new Date().toISOString();
 /* Computed while this module is being loaded, so an old process cannot begin
    reporting a new on-disk bundle after provisioning overwrites server.mjs. */
@@ -246,7 +252,7 @@ const CONFIG_ALLOWED_SEARCH = new Set(['ddgs', 'searxng', 'firecrawl', 'tavily',
 /** Env names the document may set. Closed, because these are written into a
     file Hermes reads as credentials. */
 const CONFIG_ALLOWED_ENV = new Set(['FIRECRAWL_API_URL', 'FIRECRAWL_API_KEY']);
-const CONFIG_SCHEMA_SUPPORTED = 1;
+const CONFIG_SCHEMA_SUPPORTED = 2;
 const CONFIG_FETCH_TIMEOUT_MS = 10_000;
 /* 1, 5, 15 minutes then hourly. A paused sprite simply retries on its next
    wake, so this only has to cover a control plane that is briefly away. */
@@ -303,7 +309,44 @@ export function configRejection(document) {
   if (web.extract_backend === 'firecrawl' && !env.FIRECRAWL_API_URL) {
     return 'firecrawl named without an endpoint';
   }
+  if (!Array.isArray(document.specialists) || document.specialists.length > 8) {
+    return 'specialists must be an array of at most 8 roles';
+  }
+  const seenProfiles = new Set();
+  for (const specialist of document.specialists) {
+    if (!specialist || typeof specialist !== 'object' || Array.isArray(specialist)) {
+      return 'specialist is not an object';
+    }
+    const extra = Object.keys(specialist)
+      .filter((key) => !['profile', 'name', 'description', 'instructions'].includes(key));
+    if (extra.length) return `specialist.${extra[0]} is not allowed`;
+    if (typeof specialist.profile !== 'string' ||
+        !/^[a-z][a-z0-9-]{0,47}$/.test(specialist.profile) ||
+        seenProfiles.has(specialist.profile)) return 'specialist profile is invalid or duplicated';
+    seenProfiles.add(specialist.profile);
+    if (typeof specialist.name !== 'string' || !specialist.name.trim() || specialist.name.length > 60) {
+      return 'specialist name must contain 1 to 60 characters';
+    }
+    if (typeof specialist.description !== 'string' || !specialist.description.trim() ||
+        specialist.description.length > 500) {
+      return 'specialist description must contain 1 to 500 characters';
+    }
+    if (typeof specialist.instructions !== 'string' || specialist.instructions.length > 4000) {
+      return 'specialist instructions must be at most 4000 characters';
+    }
+  }
   return null;
+}
+
+function specialistSoul(specialist) {
+  return `# Jentera — ${specialist.name}\n\n` +
+    `You are a persistent specialist inside one business's private Jentera team.\n\n` +
+    `Your business-defined remit: ${specialist.description}\n\n` +
+    `${specialist.instructions ? `Business-owner instructions:\n${specialist.instructions}\n\n` : ''}` +
+    `- Work only for this business and keep its information private.\n` +
+    `- Build continuity from this profile's own memory, sessions, skills, and workspace.\n` +
+    `- Return work through Jentera's Chief of Staff without exposing internal routing.\n` +
+    `- Never take an irreversible external action without the approval required by Jentera.\n`;
 }
 
 /** A dotenv body for ~/.hermes/.env. Values are newline-free by validation. */
@@ -326,6 +369,8 @@ export function createConfigChannel(config, deps = {}) {
   const writeFileImpl = deps.writeFile ?? writeFile;
   const renameImpl = deps.rename ?? rename;
   const readFileImpl = deps.readFile ?? readFile;
+  const mkdirImpl = deps.mkdir ?? mkdir;
+  const copyFileImpl = deps.copyFile ?? copyFile;
   const now = deps.now ?? (() => Date.now());
 
   let applied = null;         // the document currently in force
@@ -346,6 +391,10 @@ export function createConfigChannel(config, deps = {}) {
     ...(rejected ? { rejected } : {}),
     ...(staleSince ? { staleSince } : {}),
   });
+  const profiles = () => (applied ? applied.specialists : STARTER_SPECIALIST_PROFILES
+    .map((profile) => ({ profile })))
+    .map((specialist) => specialist.profile)
+    .filter((profile) => typeof profile === 'string');
 
   /** Restore the last applied document so a control plane outage is a no-op. */
   async function loadLastKnownGood() {
@@ -367,6 +416,26 @@ export function createConfigChannel(config, deps = {}) {
     if (envPath) {
       await writeFileImpl(`${envPath}.next`, renderHermesEnv(document.hermesEnv), { mode: 0o600 });
       await renameImpl(`${envPath}.next`, envPath);
+    }
+    if (config.hermesProfilesDir && config.hermesConfigFile) {
+      for (const specialist of document.specialists) {
+        const profileDir = `${config.hermesProfilesDir}/${specialist.profile}`;
+        for (const child of ['', 'memories', 'sessions', 'skills', 'skins', 'logs', 'plans', 'workspace', 'cron', 'home']) {
+          await mkdirImpl(child ? `${profileDir}/${child}` : profileDir, { recursive: true });
+        }
+        await copyFileImpl(config.hermesConfigFile, `${profileDir}/config.yaml`);
+        if (envPath) await writeFileImpl(`${profileDir}/.env`, renderHermesEnv(document.hermesEnv), { mode: 0o600 });
+        await writeFileImpl(
+          `${profileDir}/profile.yaml`,
+          `description: ${JSON.stringify(`Jentera's persistent ${specialist.name} specialist.`)}\n` +
+            `description_auto: false\n`,
+        );
+        await writeFileImpl(`${profileDir}/SOUL.md`, specialistSoul(specialist));
+        await writeFileImpl(
+          `${profileDir}/.no-bundled-skills`,
+          'Managed Jentera specialist profile; install only reviewed role skills.\n',
+        );
+      }
     }
     applied = document;
     appliedAt = new Date(now()).toISOString();
@@ -461,7 +530,7 @@ export function createConfigChannel(config, deps = {}) {
   const backoffMs = () =>
     CONFIG_BACKOFF_MS[Math.min(failures, CONFIG_BACKOFF_MS.length - 1)];
 
-  return { state, loadLastKnownGood, refresh, applyPending, backoffMs };
+  return { state, profiles, loadLastKnownGood, refresh, applyPending, backoffMs };
 }
 
 export function createRunner(input) {
@@ -557,9 +626,26 @@ export function createRunner(input) {
       }
 
       if (req.method === 'GET' && url.pathname === '/readyz') {
-        const detail = await hermes(config, '/health/detailed');
+        /* A customer's specialist edits travel through the config channel.
+           Refresh on the authenticated pre-dispatch probe so a newly-created
+           role is usable on its first job, not only after a process restart. */
+        await configChannel.refresh(slotBusy).catch(() => undefined);
+        const specialistProfiles = configChannel.profiles?.() ?? STARTER_SPECIALIST_PROFILES;
+        const [detail, ...specialistDetails] = await Promise.all([
+          hermes(config, '/health/detailed'),
+          ...specialistProfiles.map((profile) =>
+            hermes(config, '/health/detailed', {}, profile)),
+        ]);
         const body = await responseJson(detail);
-        const ready = detail.ok && readiness(body) && config.runnerSourceAttested;
+        const specialistBodies = await Promise.all(specialistDetails.map(responseJson));
+        const specialistReadiness = Object.fromEntries(specialistProfiles.map(
+          (profile, index) => [
+            profile,
+            specialistDetails[index].ok && readiness(specialistBodies[index]),
+          ],
+        ));
+        const profilesReady = Object.values(specialistReadiness).every(Boolean);
+        const ready = detail.ok && readiness(body) && profilesReady && config.runnerSourceAttested;
         /* Reconcile the slot on probe: a dead/expired task is quarantined
            even when no new task arrives to trigger it (health checks hit
            this endpoint periodically). */
@@ -575,6 +661,7 @@ export function createRunner(input) {
           toolMode: config.toolMode,
           webSearchBackend: config.webSearchBackend,
           capabilities: config.capabilities,
+          specialistProfiles: specialistReadiness,
           region: runtimeRegion(req),
           edgeAuthorizationForwarded: typeof req.headers.authorization === 'string',
           edgeTokenEnforced: Boolean(config.edgeToken),
@@ -607,7 +694,8 @@ export function createRunner(input) {
 
       if (req.method === 'POST' && url.pathname === '/v1/tasks') {
         const body = await readJson(req);
-        const problem = taskProblem(body, config);
+        const availableProfiles = configChannel.profiles?.() ?? STARTER_SPECIALIST_PROFILES;
+        const problem = taskProblem(body, config, availableProfiles);
         if (problem) return json(res, 400, { ok: false, error: problem });
 
         keepalive.arm(body.keepaliveUntil); // paid-plan always-on hold
@@ -616,7 +704,7 @@ export function createRunner(input) {
         if (previous) {
           terminations.arm(previous);
           if (!TERMINAL.has(previous.status) && typeof previous.hermesRunId === 'string') {
-            streams.start(previous.taskId, previous.hermesRunId);
+            streams.start(previous.taskId, previous.hermesRunId, previous.profile);
           }
           return json(res, 200, {
             ok: true,
@@ -651,6 +739,7 @@ export function createRunner(input) {
             hermesRunId: null,
             status: 'starting',
             responseMode,
+            ...(body.profile ? { profile: body.profile } : {}),
             startedAt,
             ...(body.deadlineAt === undefined ? {} : { deadlineAt: body.deadlineAt }),
             leaseHash: hash(body.leaseToken),
@@ -680,7 +769,7 @@ export function createRunner(input) {
                     : { enabled: true, effort: 'high' },
                 },
               }),
-            });
+            }, body.profile);
           } catch (error) {
             /* The request outcome is ambiguous: retain the admission record
                and slot so a retry cannot create a second Hermes run. Its
@@ -712,7 +801,7 @@ export function createRunner(input) {
               : typeof result.status === 'string' ? result.status : 'started',
           };
           await state.put(body.taskId, running);
-          streams.start(body.taskId, result.run_id);
+          streams.start(body.taskId, result.run_id, body.profile);
           if (terminating) void terminations.resume(running);
           else terminations.arm(running);
           return json(res, 202, {
@@ -734,7 +823,7 @@ export function createRunner(input) {
         if (typeof saved.hermesRunId !== 'string') {
           return json(res, 409, { ok: false, error: 'task admission is incomplete' });
         }
-        streams.start(saved.taskId, saved.hermesRunId);
+        streams.start(saved.taskId, saved.hermesRunId, saved.profile);
         return streams.pipe(saved.taskId, req, res);
       }
 
@@ -767,6 +856,7 @@ export function createRunner(input) {
           requestId,
           decision,
           reason,
+          saved.profile,
         );
         if (resolution.error) {
           return json(res, resolution.status, { ok: false, error: resolution.error });
@@ -794,7 +884,12 @@ export function createRunner(input) {
         if (typeof saved.hermesRunId !== 'string') {
           return json(res, 200, { ok: true, taskId: saved.taskId, status: saved.status });
         }
-        const status = await hermes(config, `/v1/runs/${encodeURIComponent(saved.hermesRunId)}`);
+        const status = await hermes(
+          config,
+          `/v1/runs/${encodeURIComponent(saved.hermesRunId)}`,
+          {},
+          saved.profile,
+        );
         const result = await responseJson(status);
         if (!status.ok) {
           /* L1: an in-flight task whose run vanished can never finish through
@@ -832,6 +927,7 @@ export function createRunner(input) {
           config,
           `/v1/runs/${encodeURIComponent(saved.hermesRunId)}/stop`,
           { method: 'POST' },
+          saved.profile,
         );
         const result = await responseJson(stopped);
         if (!stopped.ok) {
@@ -914,6 +1010,8 @@ export function configFromEnv(env = process.env) {
     configKey: env.AISAR_CONFIG_KEY ?? env.OPENROUTER_API_KEY,
     configLkgFile: env.AISAR_CONFIG_LKG ?? '/home/sprite/aisar/config.lkg.json',
     hermesEnvFile: env.AISAR_HERMES_DOTENV ?? '/home/sprite/.hermes/.env',
+    hermesConfigFile: env.AISAR_HERMES_CONFIG ?? '/home/sprite/.hermes/config.yaml',
+    hermesProfilesDir: env.AISAR_HERMES_PROFILES ?? '/home/sprite/.hermes/profiles',
     port: Number(env.PORT ?? 8080),
     watchdogMs: Number(env.AISAR_RUNNER_WATCHDOG_MS ?? WATCHDOG_INTERVAL_MS),
   };
@@ -996,7 +1094,12 @@ async function activeTask(config, state, terminations, now = Date.now()) {
       continue;
     }
     if (typeof saved.hermesRunId !== 'string') return saved;
-    const response = await hermes(config, `/v1/runs/${encodeURIComponent(saved.hermesRunId)}`);
+    const response = await hermes(
+      config,
+      `/v1/runs/${encodeURIComponent(saved.hermesRunId)}`,
+      {},
+      saved.profile,
+    );
     if (!response.ok) {
       /* L1: Hermes no longer knows the run (e.g. the gateway restarted and
          lost it). A dead run must not pin the runner busy — quarantine gives
@@ -1027,7 +1130,7 @@ async function activeTask(config, state, terminations, now = Date.now()) {
   return null;
 }
 
-function taskProblem(body, config) {
+function taskProblem(body, config, specialistProfiles = STARTER_SPECIALIST_PROFILES) {
   if (!body || typeof body !== 'object') return 'invalid JSON object';
   if (body.businessId !== config.businessId) return 'business does not match runtime identity';
   if (!uuid(body.taskId)) return 'taskId must be a UUID';
@@ -1042,6 +1145,9 @@ function taskProblem(body, config) {
   }
   if (body.instructions !== undefined && typeof body.instructions !== 'string') {
     return 'instructions must be a string';
+  }
+  if (body.profile !== undefined && !specialistProfiles.includes(body.profile)) {
+    return 'profile is not an available Jentera specialist';
   }
   if (body.responseMode !== undefined &&
       body.responseMode !== 'quick' && body.responseMode !== 'deep') {
@@ -1103,8 +1209,12 @@ function grantClaims(token) {
   return JSON.parse(Buffer.from(token.split('.')[0], 'base64url').toString('utf8'));
 }
 
-async function hermes(config, path, init = {}) {
-  return fetch(`${config.hermesOrigin}${path}`, {
+function hermesProfilePath(path, profile) {
+  return profile ? `/p/${profile}${path}` : path;
+}
+
+async function hermes(config, path, init = {}, profile) {
+  return fetch(`${config.hermesOrigin}${hermesProfilePath(path, profile)}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${config.hermesKey}`,
@@ -1114,14 +1224,17 @@ async function hermes(config, path, init = {}) {
   });
 }
 
-async function hermesEvents(config, runId) {
-  return fetch(`${config.hermesOrigin}/v1/runs/${encodeURIComponent(runId)}/events`, {
+async function hermesEvents(config, runId, profile) {
+  return fetch(
+    `${config.hermesOrigin}${hermesProfilePath(`/v1/runs/${encodeURIComponent(runId)}/events`, profile)}`,
+    {
     headers: {
       Authorization: `Bearer ${config.hermesKey}`,
       Accept: 'text/event-stream',
     },
     signal: AbortSignal.timeout(15 * 60 * 1000),
-  });
+    },
+  );
 }
 
 function readiness(body) {
@@ -1433,7 +1546,7 @@ class RunTerminations {
          malformed count keeps the slot held and retrying. */
       if (!this.admissionInFlight(saved.taskId)) {
         try {
-          const detail = await hermes(this.config, '/health/detailed');
+          const detail = await hermes(this.config, '/health/detailed', {}, saved.profile);
           const activeRuns = hermesActiveRunCount(await responseJson(detail));
           if (detail.ok && activeRuns === 0) {
             return this.finalize(saved, terminalStatus, reason, {});
@@ -1458,6 +1571,8 @@ class RunTerminations {
         const response = await hermes(
           this.config,
           `/v1/runs/${encodeURIComponent(saved.hermesRunId)}`,
+          {},
+          saved.profile,
         );
         if (response.ok) {
           const current = boundedTaskStatus(await responseJson(response));
@@ -1476,6 +1591,7 @@ class RunTerminations {
         this.config,
         `/v1/runs/${encodeURIComponent(saved.hermesRunId)}/stop`,
         { method: 'POST' },
+        saved.profile,
       );
     } catch (error) {
       const pending = await this.persistPending(
@@ -1512,6 +1628,8 @@ class RunTerminations {
       const response = await hermes(
         this.config,
         `/v1/runs/${encodeURIComponent(saved.hermesRunId)}`,
+        {},
+        saved.profile,
       );
       if (response.status === 404 || response.status === 410) {
         return this.finalize(saved, terminalStatus, reason, observed);
@@ -1624,12 +1742,13 @@ class SafeDeltaStreams {
     this.streams = new Map();
   }
 
-  start(taskId, runId) {
+  start(taskId, runId, profile) {
     const existing = this.streams.get(taskId);
     if (existing) return existing;
     const stream = {
       taskId,
       runId,
+      profile,
       nextSeq: 1,
       bytes: 0,
       thinkBytes: 0,
@@ -1679,7 +1798,7 @@ class SafeDeltaStreams {
 
   async pump(stream) {
     try {
-      const response = await hermesEvents(this.config, stream.runId);
+      const response = await hermesEvents(this.config, stream.runId, stream.profile);
       if (!response.ok || !response.body) return;
       let pending = '';
       const decoder = new TextDecoder();
@@ -1820,8 +1939,8 @@ class SafeDeltaStreams {
   /** Bind the native Hermes request identity end to end. The in-flight
    * operation and resolved map make same-process response-loss retries
    * idempotent; Hermes also treats a repeated resolved request_id as a no-op. */
-  async resolveApproval(taskId, runId, requestId, decision, reason = '') {
-    const stream = this.start(taskId, runId);
+  async resolveApproval(taskId, runId, requestId, decision, reason = '', profile) {
+    const stream = this.start(taskId, runId, profile);
     const resolved = stream.resolvedApprovals.get(requestId);
     if (resolved) {
       return resolved === decision
@@ -1853,6 +1972,7 @@ class SafeDeltaStreams {
             ...(decision === 'deny' && reason ? { reason } : {}),
           }),
         },
+        stream.profile,
       );
       if (!response.ok) {
         return {

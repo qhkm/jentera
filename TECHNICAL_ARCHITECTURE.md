@@ -312,7 +312,7 @@ This is also where the product becomes difficult to copy. Industry playbooks are
 
 - Convert successful repeated runs into versioned business procedures, derived from the Phase 2 run history rather than authored by hand.
 - Test procedure updates against historical cases before activation.
-- Add specialist delegation behind the single Jentera identity.
+- Turn the current bounded task delegation into tenant-scoped, customer-defined specialist responsibility profiles behind the single Chief of Staff identity. Profile keys are immutable and server-generated so a renamed role keeps its memory; disabled profiles retain their runtime data but leave the routing allowlist. The owner defines the roster but never routes individual jobs between it: Jentera supplies relevant business context, verifies the work, and synthesizes one outcome.
 
 ## Vertical-Slice Acceptance Criteria
 

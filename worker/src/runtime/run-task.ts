@@ -21,6 +21,7 @@ import { runtimeTaskIsCancelled } from './tasks';
 import { append } from '../runs';
 import type { ResponseMode } from './response-mode';
 import { modelForResponseMode } from './response-mode';
+import { specialistProfileValid, type SpecialistProfile } from '../specialists';
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped']);
 
@@ -55,6 +56,7 @@ function keepaliveGraceHours(env: Env): number {
 export interface RunPayload {
   input: string;
   instructions?: string;
+  profile?: SpecialistProfile;
   sessionId?: string;
   objective?: string;
   function?: string;
@@ -176,6 +178,9 @@ export async function dispatchRuntimeRun(
     fetch: options.fetch,
   });
   const readiness = await client.ready();
+  if (payload.profile && !readiness.specialistProfiles.includes(payload.profile)) {
+    throw new Error('business specialist profile has not reached the runtime yet');
+  }
   /* Convergence, observed rather than pushed. Best effort: a diagnostic must
      not be able to cost the run it is describing. */
   if (readiness.config) {
@@ -212,6 +217,7 @@ export async function dispatchRuntimeRun(
     input: payload.input,
     sessionId: payload.sessionId,
     instructions: payload.instructions,
+    profile: payload.profile,
     responseMode: payload.responseMode,
     model,
     toolGrant,
@@ -403,9 +409,17 @@ function runPayload(value: unknown): RunPayload {
     }
     return body[key];
   };
+  let profile: SpecialistProfile | undefined;
+  if (body.profile !== undefined) {
+    if (!specialistProfileValid(body.profile)) {
+      throw new Error('runtime run profile is invalid');
+    }
+    profile = body.profile as SpecialistProfile;
+  }
   return {
     input,
     instructions: optional('instructions', 20_000),
+    profile,
     sessionId: optional('sessionId', 500),
     objective: optional('objective', 1_000),
     function: optional('function', 100),

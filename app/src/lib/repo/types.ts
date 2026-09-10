@@ -25,6 +25,16 @@ export interface Fact {
   createdAt: string;
 }
 
+export interface Specialist {
+  id: string;
+  /** Stable internal profile id. Owners edit the role, never this key. */
+  profile: string;
+  name: string;
+  description: string;
+  instructions: string;
+  enabled: boolean;
+}
+
 /**
  * Everything the app persists for one business, loaded in one shot.
  *
@@ -54,6 +64,8 @@ export interface BusinessSnapshot {
   learn: Record<string, Record<string, number>>;
   /** Live facts only. Superseded versions are fetched on demand. */
   facts: Fact[];
+  /** Persistent roles defined by this business. The Chief of Staff is built in. */
+  specialists: Specialist[];
 }
 
 export interface IngestResult {
@@ -266,6 +278,13 @@ export interface Repository {
   forgetFact(key: string): Promise<void>;
   /** Every version of one key, newest first. */
   factHistory(key: string): Promise<Fact[]>;
+
+  createSpecialist(input: Pick<Specialist, 'name' | 'description' | 'instructions'>): Promise<void>;
+  updateSpecialist(
+    id: string,
+    input: Pick<Specialist, 'name' | 'description' | 'instructions'>,
+  ): Promise<void>;
+  disableSpecialist(id: string): Promise<void>;
 
   /** Read a business's own website and propose facts from it. */
   ingest(url: string): Promise<IngestResult>;

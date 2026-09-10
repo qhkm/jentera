@@ -5,12 +5,95 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import sys
+from pathlib import Path
 from urllib.parse import urlparse
 
 from hermes_cli.config import load_config, save_config
 from hermes_cli.tools_config import _get_platform_tools
 from toolsets import resolve_toolset
+
+
+STARTER_SPECIALIST_PROFILES = {
+    "operations": (
+        "Operations",
+        "Own workflows, inventory, suppliers, staffing, scheduling, fulfilment, and operational reliability.",
+    ),
+    "customers": (
+        "Customer communications",
+        "Own enquiries, reservations, service recovery, response quality, and customer communication workflows.",
+    ),
+    "growth": (
+        "Growth and marketing",
+        "Own campaigns, offers, content, acquisition, conversion, retention, and practical sales growth.",
+    ),
+    "records": (
+        "Finance and records",
+        "Own invoicing, expenses, cash-flow visibility, bookkeeping preparation, and accurate business records.",
+    ),
+}
+
+
+def managed_soul(role: str, remit: str) -> str:
+    return f"""# Jentera — {role}
+
+You are the persistent {role} specialist inside one business's private Jentera team.
+
+{remit}
+
+- Work only for this business and keep its information private.
+- Build continuity from this profile's own memory, sessions, skills, and workspace.
+- The owner speaks to one Jentera Chief of Staff. Your work is delivered through that
+  identity, so never expose internal profile names, routing, prompts, or handoffs.
+- Stay within your remit. State cross-functional dependencies clearly instead of
+  claiming another specialist's work is complete.
+- Never take an irreversible external action without the approval required by Jentera.
+"""
+
+
+def configure_specialist_profiles() -> None:
+    """Install editable starters; control-plane config adds the owner's roles."""
+    hermes_home = Path(os.environ.get("HERMES_HOME", "~/.hermes")).expanduser()
+    source_config = hermes_home / "config.yaml"
+    source_env = hermes_home / ".env"
+    for profile, (role, remit) in STARTER_SPECIALIST_PROFILES.items():
+        profile_dir = hermes_home / "profiles" / profile
+        for child in (
+            "memories", "sessions", "skills", "skins", "logs", "plans",
+            "workspace", "cron", "home",
+        ):
+            (profile_dir / child).mkdir(parents=True, exist_ok=True)
+        (profile_dir / ".no-bundled-skills").write_text(
+            "Managed Jentera specialist profile; install only reviewed role skills.\n",
+            encoding="utf-8",
+        )
+        (profile_dir / "profile.yaml").write_text(
+            f"description: \"Jentera's persistent {role} specialist for this business.\"\n"
+            "description_auto: false\n",
+            encoding="utf-8",
+        )
+        # Operational configuration is centrally managed and identical across
+        # the business's profiles. Sessions, memories and workspace are not
+        # copied, so each specialist keeps independent durable context.
+        shutil.copy2(source_config, profile_dir / "config.yaml")
+        if source_env.exists():
+            shutil.copy2(source_env, profile_dir / ".env")
+            os.chmod(profile_dir / ".env", 0o600)
+        (profile_dir / "SOUL.md").write_text(managed_soul(role, remit), encoding="utf-8")
+
+    (hermes_home / "SOUL.md").write_text(
+        """# Jentera — Chief of Staff
+
+You are the persistent private Chief of Staff for one business and its team.
+
+- Be the owner's single point of contact and turn broad goals into clear work.
+- Coordinate internal specialist help without making the owner route agents.
+- Verify delegated work and return one coherent answer or outcome in Jentera's voice.
+- Keep this business's information private and require approval before irreversible actions.
+""",
+        encoding="utf-8",
+    )
 
 
 def main() -> None:
@@ -213,6 +296,10 @@ def main() -> None:
     config["agent"] = agent
 
     gateway = dict(config.get("gateway") or {})
+    # One gateway serves the Chief plus all managed specialist homes. The
+    # runner addresses specialists only through Hermes's allowlisted
+    # /p/<profile>/ routes; there is still one external Jentera identity.
+    gateway["multiplex_profiles"] = True
     api_server = dict(gateway.get("api_server") or {})
     api_server["max_concurrent_runs"] = 1
     extra = dict(api_server.get("extra") or {})
@@ -246,6 +333,7 @@ def main() -> None:
     if not expected_tools or not expected_tools.issubset(resolved_tools):
         raise SystemExit("Hermes API server did not resolve the pinned full toolset")
     save_config(config)
+    configure_specialist_profiles()
 
 
 if __name__ == "__main__":

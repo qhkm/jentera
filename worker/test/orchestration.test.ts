@@ -455,6 +455,7 @@ describe('durable Hermes Telegram replies', () => {
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
@@ -571,6 +572,7 @@ describe('durable Hermes Telegram replies', () => {
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
@@ -693,6 +695,7 @@ describe('durable Hermes Telegram replies', () => {
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
@@ -771,6 +774,7 @@ describe('durable Hermes Telegram replies', () => {
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
@@ -865,6 +869,7 @@ describe('durable Hermes Telegram replies', () => {
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
@@ -1024,6 +1029,7 @@ function successfulRunner(answer: string): typeof fetch {
         toolMode: 'full-tools',
         webSearchBackend: 'ddgs',
         edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
       });
     }
     if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
@@ -1076,6 +1082,7 @@ describe('the Telegram webhook runs the first slice itself', () => {
           runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
           hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
           toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {

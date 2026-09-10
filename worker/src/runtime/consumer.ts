@@ -88,6 +88,7 @@ import { runtimeReady } from './execution';
 import { boundedAgentInput, prepareHermesAgent, retrieveHermesContext } from '../ask';
 import { modelForResponseMode, responseModeFor } from './response-mode';
 import { sanitizePublicRuntimeText } from './public-output';
+import { listSpecialists, specialistProfileForRequest } from '../specialists';
 
 const MAX_TASK_ATTEMPTS = 5;
 /** Background lifecycle tasks (upgrade/provision/reconcile) get a wider net
@@ -566,7 +567,17 @@ export async function handleRuntimeQueueMessage(
         return live;
       }).catch(() => null);
       const { facts, work } = await retrieveHermesContext(tx, message.incoming.text);
-      const prepared = prepareHermesAgent(message.incoming.text, facts, work);
+      const specialist = specialistProfileForRequest(
+        message.incoming.text,
+        await listSpecialists(tx, { enabledOnly: true }),
+      );
+      const prepared = prepareHermesAgent(
+        message.incoming.text,
+        facts,
+        work,
+        new Date(),
+        specialist,
+      );
       telegramLatency('admission_context_ready', message.requestedAtMs);
       const run = await startRun(tx, message.businessId, {
         kind: 'ask',
@@ -592,6 +603,7 @@ export async function handleRuntimeQueueMessage(
         payload: {
           input: boundedAgentInput(prepared.input),
           instructions: prepared.instructions,
+          ...(specialist ? { profile: specialist.profile } : {}),
           sessionId: `telegram:${message.businessId}:${message.incoming.chatId}`,
           objective: `Help ${message.incoming.from} on Telegram`,
           function: 'assistant',

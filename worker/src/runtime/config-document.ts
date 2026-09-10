@@ -6,10 +6,9 @@
    a config change is a worker deploy that reaches each sprite on its next
    wake.
 
-   Schema 1 is deliberately almost empty: the extract backend and its
-   credentials, nothing else. That is the one piece already proven to work
-   end to end, and keeping the document small means the first release that
-   consumes it changes as little behaviour as possible. Step 3 fills it.
+   Schema 2 adds the business's enabled specialist roster to the existing
+   extract configuration. Profile ids contain no customer or secret data;
+   names, remits, and instructions are authored by that business's owner.
 
    The renderer is pure — `Env` and a runtime row in, a document out, no I/O
    — so the version hash is reproducible and the whole thing is testable
@@ -18,9 +17,10 @@
 
 import type { Env } from '../env';
 import { extractEndpoint } from './provision';
+import type { SpecialistDefinition } from '../specialists';
 
 /** The only schema this worker knows how to render. */
-export const CONFIG_SCHEMA = 1;
+export const CONFIG_SCHEMA = 2;
 
 export interface RuntimeConfigDocument {
   schema: number;
@@ -29,6 +29,7 @@ export interface RuntimeConfigDocument {
   release: string;
   hermes: { web: Record<string, string> };
   hermesEnv: Record<string, string>;
+  specialists: Pick<SpecialistDefinition, 'profile' | 'name' | 'description' | 'instructions'>[];
 }
 
 export class ConfigSchemaUnsupported extends Error {
@@ -94,6 +95,7 @@ export async function renderRuntimeConfig(
   runtime: { desiredRelease: string },
   schema: number = CONFIG_SCHEMA,
   now: Date = new Date(),
+  specialists: readonly SpecialistDefinition[] = [],
 ): Promise<RuntimeConfigDocument> {
   if (schema !== CONFIG_SCHEMA) throw new ConfigSchemaUnsupported(schema);
 
@@ -114,6 +116,12 @@ export async function renderRuntimeConfig(
     release: runtime.desiredRelease,
     hermes: { web },
     hermesEnv,
+    specialists: specialists.filter((specialist) => specialist.enabled).map((specialist) => ({
+      profile: specialist.profile,
+      name: specialist.name,
+      description: specialist.description,
+      instructions: specialist.instructions,
+    })),
   };
   return {
     ...body,

@@ -17,6 +17,7 @@
 
 import type postgres from 'postgres';
 import type { Env } from './env';
+import { specialistRunInstructions, type SpecialistDefinition } from './specialists';
 import { MODEL } from './ingest';
 
 export interface Answer {
@@ -171,10 +172,15 @@ Rules:
   interactions". Inventing provenance is worse than admitting you do
   not know, because the owner cannot check it.`;
 
-const HERMES_AGENT_PROMPT = `You are Jentera, a private internal business agent for the owner and their team.
+const HERMES_AGENT_PROMPT = `You are Jentera, the private Chief of Staff for the owner and their team.
 The Telegram user has been explicitly paired by the signed-in business owner.
 
 Rules:
+- Be the owner's single point of contact. Turn broad goals into clear work, coordinate the
+  right specialist help behind the scenes, and return one coherent answer or outcome.
+- When the delegate_task tool is available and a task benefits from independent specialist
+  work, use it deliberately. Give each specialist a bounded role and the relevant business
+  context, then verify and synthesize their work. Do not make the owner coordinate agents.
 - Work for the user's own business: help with operations, research, planning, analysis,
   writing, documents, and getting tasks done. Address the user as the owner or a teammate,
   never as one of the business's customers.
@@ -300,6 +306,7 @@ export function prepareHermesAgent(
   facts: FactRow[],
   work: { objective: string; outcome: string | null }[],
   now = new Date(),
+  specialist?: SpecialistDefinition,
 ): { instructions: string; input: string; usedKeys: string[]; grounded: boolean } {
   const recent = work.length === 0
     ? '(nothing yet)'
@@ -313,6 +320,7 @@ export function prepareHermesAgent(
   );
   return {
     instructions: `${HERMES_AGENT_PROMPT}\n\nCurrent date (UTC): ${now.toISOString().slice(0, 10)}.` +
+      `${specialist ? `\n\n${specialistRunInstructions(specialist)}` : ''}` +
       `\n\n${context}`,
     input: question,
     usedKeys: facts.map((fact) => fact.key),

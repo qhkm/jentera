@@ -796,6 +796,7 @@ describe('the runtime queue consumer', () => {
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {

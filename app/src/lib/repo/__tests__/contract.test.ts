@@ -33,13 +33,17 @@ interface FakeState {
   permissions: Record<string, string>;
   workDone: Record<string, string[]>;
   learn: Record<string, Record<string, number>>;
+  specialists: Array<{
+    id: string; profile: string; name: string; description: string;
+    instructions: string; enabled: boolean;
+  }>;
 }
 
 function installFakeWorker(): FakeState {
   const state: FakeState = {
     onboarded: false, setupDone: false, bizType: '', bizName: '', bizLoc: '',
     channels: null, conns: null, country: 'MY', lang: 'en', theme: 'dark',
-    approvals: [], permissions: {}, workDone: {}, learn: {},
+    approvals: [], permissions: {}, workDone: {}, learn: {}, specialists: [],
   };
   let seq = 0;
 
@@ -76,6 +80,26 @@ function installFakeWorker(): FakeState {
       state.permissions[String(body.op)] = String(body.policy); return done();
     }
     if (path === '/api/state/policies/reset') { state.permissions = {}; return done(); }
+    if (path === '/api/state/specialists') {
+      const id = `specialist-${++seq}`;
+      state.specialists.push({
+        id, profile: `sp-${seq}`, name: String(body.name),
+        description: String(body.description), instructions: String(body.instructions ?? ''),
+        enabled: true,
+      });
+      return ok({ ok: true });
+    }
+    const specialist = path.match(/^\/api\/state\/specialists\/([^/]+)$/);
+    if (specialist) {
+      const row = state.specialists.find((item) => item.id === specialist[1]);
+      if (!row) return new Response(JSON.stringify({ ok: false, err: 'not found' }), { status: 404 });
+      if (body.disable === true) state.specialists = state.specialists.filter((item) => item.id !== row.id);
+      else Object.assign(row, {
+        name: String(body.name), description: String(body.description),
+        instructions: String(body.instructions ?? ''),
+      });
+      return done();
+    }
     if (path === '/api/state/approvals') {
       const remoteId = `uuid-${++seq}`;
       state.approvals.push({
@@ -208,6 +232,28 @@ describe.each(IMPLS)('%s satisfies the Repository contract', (_name, make) => {
     expect((await repo.load()).permissions).toEqual({ send: 'automatic', book: 'blocked' });
     await repo.resetPolicies();
     expect((await repo.load()).permissions).toEqual({});
+  });
+
+  it('lets the business define and revise its own specialists', async () => {
+    /* Local starts with editable suggestions; clear them so both backends
+       exercise the same create/update/disable contract. */
+    for (const item of (await repo.load()).specialists) await repo.disableSpecialist(item.id);
+    await repo.createSpecialist({
+      name: 'Pastry R&D',
+      description: 'Develop recipes and test lamination.',
+      instructions: 'Prefer local ingredients.',
+    });
+    let [specialist] = (await repo.load()).specialists;
+    expect(specialist.name).toBe('Pastry R&D');
+    await repo.updateSpecialist(specialist.id, {
+      name: 'Menu R&D',
+      description: 'Develop and cost new menu items.',
+      instructions: '',
+    });
+    [specialist] = (await repo.load()).specialists;
+    expect(specialist.name).toBe('Menu R&D');
+    await repo.disableSpecialist(specialist.id);
+    expect((await repo.load()).specialists).toEqual([]);
   });
 
   it('queues an approval and decides it exactly once', async () => {

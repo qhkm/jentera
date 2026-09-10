@@ -207,6 +207,58 @@ describe('creating the first business', () => {
        where m.user_id = ${orphan}`);
     expect({ businesses, memberships }).toEqual({ businesses: '1', memberships: '1' });
   });
+
+  it('starts a new business with editable specialist suggestions', async () => {
+    const response = await state('POST', '/api/state/business', {
+      cookie: cookieOrphan,
+      body: { name: 'Specialist owner', playbookKey: 'generic' },
+    });
+    expect(response.status).toBe(200);
+    const businessId = String(response.body?.businessId);
+    const rows = await asOwner((sql) => sql<{ profile_key: string }[]>`
+      select profile_key from specialist_profile
+       where business_id = ${businessId} order by sort_order`);
+    expect(rows.map((row) => row.profile_key)).toEqual([
+      'operations', 'customers', 'growth', 'records',
+    ]);
+  });
+});
+
+describe('customer-defined specialists', () => {
+  it('creates, edits and archives a tenant-scoped persistent role', async () => {
+    const created = await state('POST', '/api/state/specialists', {
+      cookie: cookieA,
+      body: {
+        name: 'Pastry R&D',
+        description: 'Develop recipes and test lamination.',
+        instructions: 'Prefer local ingredients.',
+      },
+    });
+    expect(created.status).toBe(200);
+    const specialist = created.body?.specialist as { id: string; profile: string };
+    expect(specialist.profile).toMatch(/^sp-[0-9a-f]{20}$/);
+
+    const alpha = await state('GET', '/api/state', { cookie: cookieA });
+    const beta = await state('GET', '/api/state', { cookie: cookieB });
+    expect((alpha.body?.snapshot as { specialists: unknown[] }).specialists).toHaveLength(1);
+    expect((beta.body?.snapshot as { specialists: unknown[] }).specialists).toHaveLength(0);
+
+    expect((await state('POST', `/api/state/specialists/${specialist.id}`, {
+      cookie: cookieA,
+      body: { name: 'Menu R&D', description: 'Develop new menu items.', instructions: '' },
+    })).status).toBe(204);
+    const edited = await state('GET', '/api/state', { cookie: cookieA });
+    expect((edited.body?.snapshot as { specialists: Array<{ name: string; profile: string }> })
+      .specialists[0]).toMatchObject({ name: 'Menu R&D', profile: specialist.profile });
+
+    expect((await state('POST', `/api/state/specialists/${specialist.id}`, {
+      cookie: cookieA,
+      body: { disable: true },
+    })).status).toBe(204);
+    const archived = await asOwner((sql) => sql<{ enabled: boolean }[]>`
+      select enabled from specialist_profile where id = ${specialist.id}`);
+    expect(archived).toEqual([{ enabled: false }]);
+  });
 });
 
 describe('finishing onboarding provisions one Hermes runtime', () => {

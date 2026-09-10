@@ -8,7 +8,7 @@ The simplest expression of the product is:
 
 > A managed autonomous business operator for non-technical owners—powerful agent capability without installation, configuration, API keys, or technical knowledge.
 
-Externally, customers work with one AISAR. Internally, AISAR may use multiple specialist agents, models, tools, skills, schedules, and integrations. That complexity stays behind the product.
+Externally, customers work with one Chief of Staff: a persistent, accountable point of contact that knows the business. Each business can define the specialist roles it needs; internally, AISAR may give those roles distinct memory, models, tools, skills, schedules, and integrations. The Chief of Staff coordinates that work and returns one outcome; the owner never has to route tasks or reconcile agents themselves.
 
 ## Ideal Customer and Positioning
 

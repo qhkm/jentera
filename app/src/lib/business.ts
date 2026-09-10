@@ -63,10 +63,10 @@ export function resolveBusiness(snap: BusinessSnapshot, key: string): Business {
 function internalBusinessAssistant(): TeamMember {
   return {
     e: '🧭',
-    n: 'Business Assistant',
+    n: 'Chief of Staff',
     ch: 'Private workspace · Telegram',
-    d: 'Works with you on operations, research, planning, writing, and day-to-day business tasks. Not customer-facing by default.',
-    m: 'Private · ready for your instructions',
+    d: 'Your single point of contact. Coordinates specialist help for operations, research, planning, writing, and day-to-day business tasks.',
+    m: 'Private · coordinates work for you',
     audience: 'internal',
   };
 }

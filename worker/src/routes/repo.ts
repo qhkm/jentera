@@ -25,6 +25,7 @@ import {
 import { signalRuntimeTask } from '../runtime';
 import { runtimeProvisioningProblem } from '../runtime/execution';
 import { enqueueRuntimeTask } from '../runtime/tasks';
+import { DEFAULT_SPECIALISTS, listSpecialists } from '../specialists';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -107,6 +108,7 @@ async function loadSnapshot(env: Env, id: TenantIdentity) {
     for (const p of policies) permissions[p.op] = p.policy;
 
     const facts = await liveFacts(tx);
+    const specialists = await listSpecialists(tx, { enabledOnly: true });
 
     return {
       onboarded: biz.onboarded,
@@ -138,6 +140,7 @@ async function loadSnapshot(env: Env, id: TenantIdentity) {
       workDone,
       learn,
       facts,
+      specialists,
     };
   });
 }
@@ -205,6 +208,12 @@ export async function handleRepo(
          purely so a failure leaves neither row. */
       await tx`insert into membership (user_id, business_id, role)
                values (${identity.userId}, ${businessId}, 'owner')`;
+      for (const [sort, specialist] of DEFAULT_SPECIALISTS.entries()) {
+        await tx`insert into specialist_profile
+          (business_id, profile_key, name, description, sort_order)
+          values (${businessId}, ${specialist.profile}, ${specialist.name},
+                  ${specialist.description}, ${(sort + 1) * 10})`;
+      }
       return true;
     });
 
@@ -226,6 +235,77 @@ export async function handleRepo(
 
   if (request.method !== 'POST') return null;
   const body = (await request.json().catch(() => ({}))) as Body;
+
+  if (url.pathname === '/api/state/specialists') {
+    if (id.role !== 'owner') {
+      return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+    }
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    const description = typeof body.description === 'string' ? body.description.trim() : '';
+    const instructions = typeof body.instructions === 'string' ? body.instructions.trim() : '';
+    if (!name || name.length > 60) return badRequest(cors, 'specialist name must be 1 to 60 characters');
+    if (!description || description.length > 500) {
+      return badRequest(cors, 'specialist remit must be 1 to 500 characters');
+    }
+    if (instructions.length > 4000) {
+      return badRequest(cors, 'specialist instructions must be at most 4000 characters');
+    }
+    const specialist = await withTenant(env, id.businessId, async (tx) => {
+      await tx`select pg_advisory_xact_lock(hashtextextended(${`specialists:${id.businessId}`}, 0))`;
+      const [count] = await tx<{ total: number }[]>`
+        select count(*)::int as total from specialist_profile where enabled = true`;
+      if (count.total >= 8) return null;
+      const profile = `sp-${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
+      const [row] = await tx<{ id: string }[]>`
+        insert into specialist_profile
+          (business_id, profile_key, name, description, instructions, sort_order)
+        values (${id.businessId}, ${profile}, ${name}, ${description}, ${instructions},
+                ${(count.total + 1) * 10})
+        returning id`;
+      return { id: row.id, profile, name, description, instructions, enabled: true };
+    });
+    if (!specialist) return badRequest(cors, 'a business can have at most 8 active specialists');
+    return json({ ok: true, specialist }, {}, cors);
+  }
+
+  const specialistMatch = url.pathname.match(/^\/api\/state\/specialists\/([0-9a-f-]{36})$/i);
+  if (specialistMatch) {
+    if (id.role !== 'owner') {
+      return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+    }
+    const specialistId = specialistMatch[1];
+    if (body.disable === true) {
+      const changed = await withTenant(env, id.businessId, async (tx) => {
+        const rows = await tx`update specialist_profile
+                                set enabled = false, updated_at = now()
+                              where id = ${specialistId} and enabled = true
+                              returning id`;
+        return rows.length > 0;
+      });
+      if (!changed) return json({ ok: false, err: 'specialist not found' }, { status: 404 }, cors);
+      return noContent(cors);
+    }
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    const description = typeof body.description === 'string' ? body.description.trim() : '';
+    const instructions = typeof body.instructions === 'string' ? body.instructions.trim() : '';
+    if (!name || name.length > 60) return badRequest(cors, 'specialist name must be 1 to 60 characters');
+    if (!description || description.length > 500) {
+      return badRequest(cors, 'specialist remit must be 1 to 500 characters');
+    }
+    if (instructions.length > 4000) {
+      return badRequest(cors, 'specialist instructions must be at most 4000 characters');
+    }
+    const changed = await withTenant(env, id.businessId, async (tx) => {
+      const rows = await tx`update specialist_profile
+                              set name = ${name}, description = ${description},
+                                  instructions = ${instructions}, updated_at = now()
+                            where id = ${specialistId} and enabled = true
+                            returning id`;
+      return rows.length > 0;
+    });
+    if (!changed) return json({ ok: false, err: 'specialist not found' }, { status: 404 }, cors);
+    return noContent(cors);
+  }
 
   /* The authenticated onboarding transition. All owner answers that define
      the initial business state land in the same transaction as the flow gate

@@ -38,6 +38,7 @@ import {
 import { Shell } from '@/components/Shell';
 import { Button, Card, Eyebrow, Input, Progress, Tag } from '@/components/ui';
 import { DataIcon } from '@/components/Icon';
+import { JenteraMark } from '@/components/JenteraMark';
 import { useToast } from '@/components/Toast';
 import { inferPlaybook } from '@/lib/infer';
 import { PLAYBOOKS } from '@/lib/data/playbooks';
@@ -844,13 +845,54 @@ export default function Onboard() {
                 </h1>
                 <p className="text-[13px] text-text-secondary md:text-sm">{t('ob.reco.body')}</p>
 
-                <Card className="gap-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="font-pixel text-sm md:text-base">{t('ob.reco.agent')}</span>
+                <Card className="gap-4 border-brand-line bg-brand-soft">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <JenteraMark size={42} />
+                      <div className="flex flex-col gap-1">
+                        <span className="font-pixel text-sm md:text-base">{t('ob.reco.agent')}</span>
+                        <span className="text-[11px] text-text-muted">{t('ob.reco.singleContact')}</span>
+                      </div>
+                    </div>
                     <Tag tone="green">{t('ob.reco.tag')}</Tag>
                   </div>
-                  <p className="text-[13px] text-text-secondary">{t('ob.reco.handles')}</p>
+                  <p className="text-[13px] leading-relaxed text-text-secondary">
+                    {t('ob.reco.handles')}
+                  </p>
                 </Card>
+
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <Eyebrow>{t('ob.reco.support.eyebrow')}</Eyebrow>
+                    <p className="mt-1 text-[12px] leading-relaxed text-text-muted">
+                      {t('ob.reco.support.body')}
+                    </p>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {supportRoles(pain).map((role, index) => (
+                      <div
+                        key={role}
+                        className="flex items-start gap-3 rounded-item border border-border bg-surface px-3 py-3"
+                      >
+                        <span
+                          className="flex size-7 shrink-0 items-center justify-center rounded-full border border-brand-line bg-brand-soft font-mono text-[10px] text-brand"
+                          aria-hidden="true"
+                        >
+                          {String(index + 1).padStart(2, '0')}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="flex flex-wrap items-center gap-2 text-[12px] font-medium text-text">
+                            {t(`ob.reco.support.${role}.title`)}
+                            {index === 0 ? <Tag tone="green">{t('ob.reco.support.focus')}</Tag> : null}
+                          </span>
+                          <span className="mt-1 block text-[11px] leading-relaxed text-text-muted">
+                            {t(`ob.reco.support.${role}.body`)}
+                          </span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
                 <p className="text-[12px] text-text-muted">{recoExtra}</p>
 
@@ -923,6 +965,20 @@ export default function Onboard() {
       </div>
     </Shell>
   );
+}
+
+type SupportRole = 'operations' | 'customers' | 'growth' | 'records';
+
+function supportRoles(pain: string | null): SupportRole[] {
+  const focus: SupportRole = pain === 'Answering enquiries' || pain === 'Reservations'
+    ? 'customers'
+    : pain === 'Marketing'
+      ? 'growth'
+      : pain === 'Inventory'
+        ? 'operations'
+        : 'operations';
+  return [focus, ...(['operations', 'customers', 'growth', 'records'] as SupportRole[])
+    .filter((role) => role !== focus)];
 }
 
 function normalizeWebUrl(value: string): string {

@@ -130,6 +130,12 @@ Jentera follows a continuous loop:
 
 The interface begins with outcomes such as “answer customer enquiries” or “manage bookings,” never a blank agent or workflow builder.
 
+### Chief of Staff model
+
+The owner's front door is one persistent **Chief of Staff**: one conversation, one business context, and one accountable point of contact. It turns broad goals into clear work, coordinates specialist support behind the scenes, and returns a coherent outcome. Owners may see which business responsibility helped with a task, but they never have to create agents, route work, repeat context, or reconcile competing answers themselves.
+
+Each business defines the durable specialist responsibilities it actually needs. Operations, customer communications, growth and marketing, and finance and records are editable starter suggestions, not a fixed roster. Owners may name a role, describe its remit, and give it working instructions; the profile keeps its own memory even when renamed. Sensitive work continues through the same permission, approval, and activity controls regardless of which specialist performs it.
+
 ### Operational visibility
 
 **Chat is where the owner asks. Activity is where the owner understands what happened.** A conversation transcript must never be the primary system of record.
@@ -151,6 +157,7 @@ Owner-facing summaries lead with business outcomes. Raw messages, retrieved sour
 - Say **put Jentera to work**, not “deploy an agent.”
 - Say **handle this task**, not “build a workflow.”
 - Say **connect your tools**, not “configure integrations.”
+- Say **ask your Chief of Staff**, not “choose an agent.”
 - Show what Jentera is ready to do, what approval it needs, and what it completed.
 - Summarize repeated actions into business outcomes instead of exposing a stream of agent messages.
 - Keep models, prompts, APIs, orchestration, and implementation details behind the curtain.
