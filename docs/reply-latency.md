@@ -18,11 +18,20 @@ Both channels end up on the same durable path. Only the first step differs.
    and a `runtime_task`, and publishes to the `aisar-runtime` queue
    (`max_batch_size = 1`, `max_batch_timeout = 0`, so the queue itself adds
    well under a second).
-3. **Dispatch.** The consumer leases the task, reserves budget, wakes the
-   business's sprite if it is suspended, and starts the run on the runner,
-   which starts it on Hermes. `run-task.ts` records stages
-   (`database_ready`, `runner_ready`, `hermes_started`, …) and the consumer
-   logs them as `[runtime-latency]` lines to Workers Logs.
+3. **Dispatch.** A slice of the consumer leases the task, reserves budget,
+   wakes the business's sprite if it is suspended, starts the run on the
+   runner (which starts it on Hermes) and relays the live stream.
+   `run-task.ts` records stages (`database_ready`, `runner_ready`,
+   `hermes_started`, …) and the consumer logs them as `[runtime-latency]`
+   lines to Workers Logs. **Since 2026-09-10 the app intake runs the first
+   slice itself** (`runInlineSlice` in `routes/runs.ts`, 20 s under
+   `waitUntil`) and sends the queue message with a 30 s delay as the safety
+   net; the queue consumer takes over only for runs longer than the slice,
+   resuming from `runtime_task.stream_seq` so nothing is relayed twice. The
+   reason is placement: the HTTP handler is placed next to Neon
+   (`placement.region`), the queue consumer is not, and every tenant
+   transaction cost it 1.1 to 2.3 s. Telegram still enters through the
+   queue.
 4. **The agent loop.** Hermes calls the model through the worker's proxy
    (`https://api.jentera.ai/v1/model` → `router.fmcv.my`), usually several
    times per reply (think, maybe a tool, answer). This is where most of the
@@ -83,6 +92,41 @@ candidate in `configure-model-provider.py`). Sending `effort: low` changed
 nothing measurable: M3's reasoning length was identical and its time was
 inside the same swing. Treat that override as cosmetic for MiniMax.
 
+## Measurements, 2026-09-10: where the wait to start went
+
+Workers Logs (`[runtime-latency]`, `requestElapsedMs`) for six app-chat
+quick replies on the Kitakod Ventures sprite, before the inline slice:
+
+| stage | after the request |
+|---|---|
+| queue consumer invoked | 4.4 to 4.7 s |
+| `leased` | + 2.6 s of prelude, then a 1.9 s lease transaction |
+| `database_ready` (mark dispatching, deadline, access, reserve) | + 4.5 s |
+| `runner_ready` (readyz through the edge, sprite awake) | + 0.07 s |
+| `hermes_started` | + 0.07 s |
+| `run_recorded` | + 1.9 s |
+| `first_visible_delta` (Hermes's first token) | + 2.7 s |
+| **total to the first token** | **17.4 to 17.7 s** |
+
+Every tenant transaction in the queue consumer cost 1.1 to 2.3 s; the same
+transactions from the placed HTTP handler cost 60 to 100 ms
+(`/api/runs/activity` round trip from a browser: 126 to 260 ms). Hermes
+itself admitted the run 50 ms after the runner did and answered "yob" in
+3.9 s. The sprite was awake throughout; readyz was not the problem.
+
+After the inline slice (same sprite, same model, deployed 13:03 GMT+8):
+
+| message | Hermes started | first token | done |
+|---|---|---|---|
+| "hey, quick one: how are things today?" (first after a 30 min idle) | 3.9 s | 11.0 s | 13.0 s |
+| "yob" | 2.7 s | 5.2 s | 6.0 s |
+
+For "yob": 1.3 s from the committed task to the slice start (the queue send
+and stream publish came first; fixed the same day so the slice starts at
+commit), lease 89 ms, checks and reserve 258 ms, readyz 594 ms, start 258 ms,
+record 83 ms, then 2.5 s of Hermes time to the first token. What remains
+is Hermes's own time to first token and the edge round trip to the sprite.
+
 ## Levers
 
 Done:
@@ -106,11 +150,13 @@ Open, in order of expected payoff:
    line, seconds after the message, instead of the finished answer.
 3. **The 7 to 12 s wait to start.** Since 2026-09-10 the chat page warms
    the sprite as it opens, so the first message after a pause finds it
-   warm; the remaining wait is dispatch. The stage breakdown is only in Workers
-   Logs (`wrangler tail aisar-api --format json`, filter `runtime-latency`),
-   which the wrangler OAuth token cannot query historically. Capture a few
-   real runs to see whether the time is sprite wake, runner start, or
-   Hermes accept before changing anything. Until 2026-09-09 every dispatch
+   warm. The rest was the queue consumer's distance from the database (see
+   the 2026-09-10 measurements): the app intake now runs the first slice
+   itself and the wait to start is 2.7 to 3.9 s. The stage breakdown lives
+   in Workers Logs; the dashboard's Observability → Events view with the
+   needle `runtime-latency` shows it for the last hours, which the wrangler
+   OAuth token cannot query. Telegram still enters through the queue and
+   keeps the old wait until its webhook does the same. Until 2026-09-09 every dispatch
    held the sprite awake for 24 hours (`AISAR_KEEPALIVE_GRACE_HOURS`, then
    defaulting to 24); it is now `0`, so an idle sprite pauses and stops
    billing. Measured 2026-09-10 against the platform API: a sprite goes
