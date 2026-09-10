@@ -95,9 +95,26 @@ export async function retrieveHermesContext(
           'outcome', w.outcome
         ) order by w.occurred_at desc)
           from (
+            /* Completed work only, and each outcome once.
+               Measured 2026-09-10: six of the eight records this returned
+               were repeats of CREDIT_CAP_NOTICE and two were duplicate
+               canary summaries — so every reply spent tokens telling the
+               model six times that credits had run out, and handed it a
+               recent history composed entirely of failures. A failed run
+               is something the owner should see on Activity and something
+               the model has no use for.
+               Two levels because distinct on must order by its own keys
+               first: the inner query keeps the newest of each identical
+               (objective, outcome) pair, the outer one takes the newest
+               few of those. The limit has to live here — after the
+               jsonb_agg it would limit result rows, not input rows. */
             select objective, outcome, occurred_at
-              from work_record
-             where kind = 'work'
+              from (
+                select distinct on (objective, outcome) objective, outcome, occurred_at
+                  from work_record
+                 where kind = 'work' and status = 'completed'
+                 order by objective, outcome, occurred_at desc
+              ) d
              order by occurred_at desc
              limit ${workLimit}
           ) w

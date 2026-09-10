@@ -17,7 +17,7 @@ import { answer, prepareHermesAgent, retrieve, retrieveHermesContext,
   boundedAgentInput,
 } from '../src/ask';
 import { recordFact } from '../src/facts';
-import { recordWork, startRun } from '../src/runs';
+import { recentWork, recordWork, startRun } from '../src/runs';
 import type { Env } from '../src/env';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -145,6 +145,45 @@ describe('choosing which facts to show', () => {
       objective: 'Prepared the weekly rota',
       outcome: 'Ready for review',
     });
+  });
+
+  it('keeps failures and repeats out of the prompt, without hiding them from Activity', async () => {
+    /* Measured on 2026-09-10: six of the eight records this returned were
+       repeats of the credit-cap notice and two were duplicate canary
+       summaries, so every reply paid tokens to tell the model six times
+       that credits had run out. A failed run belongs on Activity, where
+       the owner can see it, and nowhere near the model's context. */
+    const newRun = async () => asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask',
+      triggerShape: 'owner.message.telegram',
+      runtime: 'hermes-sprite',
+    }));
+    const record = async (
+      objective: string, outcome: string, status: 'completed' | 'failed',
+    ) => {
+      const run = await newRun();
+      await asTenant(A, (tx) => recordWork(tx, A, { runId: run.id, objective, outcome, status }));
+    };
+
+    await record('Help the owner', "This month's AI credits are used up.", 'failed');
+    await record('Help the owner', "This month's AI credits are used up.", 'failed');
+    await record('Daily summary', '5 pieces of work recorded.', 'completed');
+    await record('Daily summary', '5 pieces of work recorded.', 'completed');
+    await record('Drafted the supplier email', 'Waiting for your approval', 'completed');
+
+    const context = await asTenant(A, (tx) => retrieveHermesContext(tx, 'anything for me?'));
+    const outcomes = context.work.map((entry) => entry.outcome);
+    expect(outcomes).not.toContain("This month's AI credits are used up.");
+    /* The duplicate pair collapses to one, so the budget buys new context. */
+    expect(outcomes.filter((o) => o === '5 pieces of work recorded.')).toHaveLength(1);
+    expect(context.work).toContainEqual({
+      objective: 'Drafted the supplier email',
+      outcome: 'Waiting for your approval',
+    });
+
+    /* Activity is unchanged: the owner still sees the failures. */
+    const activity = await asTenant(A, (tx) => recentWork(tx, 50, { kind: 'work' }));
+    expect(activity.filter((w) => w.status === 'failed')).toHaveLength(2);
   });
 });
 
