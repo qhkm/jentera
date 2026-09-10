@@ -340,6 +340,7 @@ test('configure creates one isolated persistent profile for every business speci
   const home = join(configPath, '..');
   const config = JSON.parse(await readFile(configPath, 'utf8'));
   assert.equal(config.gateway.multiplex_profiles, true);
+  assert.equal(config.browser.cdp_url, 'http://127.0.0.1:9222');
 
   for (const profile of ['operations', 'customers', 'growth', 'records']) {
     const root = join(home, 'profiles', profile);

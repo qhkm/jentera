@@ -17,6 +17,7 @@ import { handleRoutines } from './routes/routines';
 import { dispatchDueRoutines } from './routines/dispatch';
 import { handleConnect } from './routes/connect';
 import { handleRuntime } from './routes/runtime';
+import { handleBrowser } from './routes/browser';
 import { handleEvents } from './routes/events';
 import { handleSupport } from './routes/support';
 import { handleModelProxy, sweepModelCalls } from './routes/model';
@@ -131,6 +132,8 @@ export default {
 
     const runtime = await handleRuntime(request, env, url, headers, ctx);
     if (runtime) return runtime;
+    const browser = await handleBrowser(request, env, url, headers);
+    if (browser) return browser;
 
     try {
       /* ---- POST /api/tools/call ---------------------------------- */

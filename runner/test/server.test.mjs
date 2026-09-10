@@ -29,6 +29,9 @@ let approvalRequests;
 let stopRequests;
 let stopFailureStatus;
 let startBarrier;
+let browserPaused;
+let browserCommands;
+let browserBarrier;
 
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'aisar-runner-'));
@@ -42,6 +45,9 @@ beforeEach(async () => {
   stopRequests = 0;
   stopFailureStatus = 0;
   startBarrier = null;
+  browserPaused = false;
+  browserCommands = [];
+  browserBarrier = null;
   hermesEventsList = [
     { event: 'message.delta', delta: 'Hello' },
     { event: 'reasoning.available', text: 'private chain of thought' },
@@ -115,6 +121,17 @@ beforeEach(async () => {
   hermesOrigin = await listen(hermesServer);
 
   runnerServer = createRunner({
+    businessBrowser: {
+      ensure: async () => {},
+      isPaused: async () => browserPaused,
+      status: async () => ({ enabled: true, paused: browserPaused }),
+      command: async (body) => {
+        browserCommands.push(body);
+        if (browserBarrier) await browserBarrier;
+        browserPaused = body.action !== 'release';
+        return { paused: browserPaused };
+      },
+    },
     businessId: BUSINESS,
     runnerKey: RUNNER_KEY,
     hermesKey: HERMES_KEY,
@@ -729,6 +746,28 @@ const start = (taskId, overrides = {}) => call('/v1/tasks', {
     toolGrant: grant(taskId),
     ...overrides,
   }),
+});
+
+test('browser control authenticates, checks business and excludes agent admission', async () => {
+  const command = (businessId = BUSINESS, action = 'claim') => call('/v1/browser', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ businessId, action }),
+  });
+  assert.equal((await fetch(`${runnerOrigin}/v1/browser`)).status, 401);
+  assert.equal((await command(TASK)).status, 403);
+  let unlock;
+  browserBarrier = new Promise((resolve) => { unlock = resolve; });
+  const claiming = command();
+  await waitFor(() => browserCommands.length === 1);
+  assert.equal((await start(TASK)).status, 409);
+  unlock();
+  assert.equal((await claiming).status, 200);
+  assert.equal((await start(TASK)).status, 409);
+  assert.equal(starts.length, 0);
+  assert.equal((await command(BUSINESS, 'release')).status, 200);
+  assert.equal((await start(TASK)).status, 202);
+  assert.equal((await command()).status, 409);
+  assert.equal(browserCommands.length, 2);
 });
 
 function grant(taskId, overrides = {}) {

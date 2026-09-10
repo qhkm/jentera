@@ -175,6 +175,26 @@ export interface AskAnswer {
   kind?: WorkKind;
 }
 
+export type BrowserCommand = { controlId: string } & (
+  | { action: 'claim' | 'release' | 'frame' }
+  | { action: 'navigate'; url: string }
+  | { action: 'click'; x: number; y: number }
+  | { action: 'text'; text: string }
+  | { action: 'key'; key: string }
+  | { action: 'scroll'; deltaY: number }
+  | { action: 'tab'; index: number }
+);
+export interface BusinessBrowserState {
+  enabled?: boolean;
+  paused?: boolean;
+  controlled?: boolean;
+  expiresAt?: number;
+  image?: string;
+  width?: number;
+  height?: number;
+  tabs?: { index: number; origin: string; selected: boolean }[];
+}
+
 /** Read-only projection of the existing tenant-scoped run endpoint. */
 export interface RunResult {
   taskStatus?: string;
@@ -326,6 +346,7 @@ export interface Repository {
 
   /** Owner-safe runtime state; provider ids, URLs and credentials are never returned. */
   runtimeStatus(): Promise<RuntimeOverview>;
+  businessBrowser(command?: BrowserCommand): Promise<BusinessBrowserState>;
   /** Idempotently create or re-signal this business's provisioning task. */
   provisionRuntime(): Promise<void>;
 

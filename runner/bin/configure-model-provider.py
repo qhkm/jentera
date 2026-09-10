@@ -277,6 +277,11 @@ def main() -> None:
     provider_routing["allow_fallbacks"] = True
     provider_routing["require_parameters"] = True
     config["provider_routing"] = provider_routing
+    # One persistent browser per business, shared with the owner's private
+    # takeover view. CDP never leaves the Sprite's loopback interface.
+    browser = dict(config.get("browser") or {})
+    browser["cdp_url"] = "http://127.0.0.1:9222"
+    config["browser"] = browser
 
     # Production research must have a deterministic backend. DDGS is the
     # reviewed keyless search provider; bootstrap installs and exercises it

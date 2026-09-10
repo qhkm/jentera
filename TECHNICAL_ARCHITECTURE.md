@@ -221,7 +221,7 @@ This is one codebase, one backend, and one information architecture with a prefe
 
 Draft editing is listed here as a disclosure control, but it is not a convenience. The delta between what Jentera proposed and what the owner approved is the strongest correction signal the product will ever receive, and Procedure Derivation Requirements below depends on it being captured as a first-class event rather than an overwritten field.
 
-What advanced mode does **not** unlock for ordinary customers in the first release: model selection, custom instructions, custom tools, or agent-runtime choice. Each business runtime uses the operator-pinned Hermes tool bundle; owners do not alter that bundle or receive direct terminal/browser access. Those are separate decisions with their own costs, addressed under Non-Goals and in the delivery plan.
+What advanced mode does **not** unlock for ordinary customers in the first release: model selection, custom instructions, custom tools, or agent-runtime choice. Each business runtime uses the operator-pinned Hermes tool bundle; owners do not alter that bundle or receive direct terminal or raw CDP access. The managed business-browser viewer is a narrow exception: owners can exclusively take over the existing browser while the agent is idle, sign in, and explicitly hand it back. A durable pause survives controller expiry and runner restarts. See `docs/plans/2026-09-11-business-browser.md` for this boundary and release checks.
 
 ### Procedure Derivation Requirements
 

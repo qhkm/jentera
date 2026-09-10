@@ -318,6 +318,10 @@ export class LocalRepository implements Repository {
     throw new NeedsAccountError('Rating Jentera\'s work');
   }
 
+  async businessBrowser(): Promise<import('./types').BusinessBrowserState> {
+    throw new Error('Sign in to use your business browser.');
+  }
+
   async runtimeStatus(): Promise<RuntimeOverview> {
     return { runtime: null };
   }

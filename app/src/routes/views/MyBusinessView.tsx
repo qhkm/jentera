@@ -33,6 +33,7 @@ import PermissionsPanel from './PermissionsPanel';
 import KnowledgePanel from './KnowledgePanel';
 import TelegramConnect from './TelegramConnect';
 import TokenConnect from './TokenConnect';
+import BusinessBrowser from './BusinessBrowser';
 import { isLive, withoutLinkClaim } from '@/lib/live-connectors';
 import { connectedNames, type ConnectionsState } from '@/hooks/useConnections';
 import { useSignedIn } from '@/lib/repo/gate';
@@ -538,6 +539,7 @@ export default function MyBusinessView({
                     with them: this one renders nothing unless the backend
                     offers something to connect. */}
                 <TokenConnect rows={conns.rows} setRows={conns.setRows} />
+                {signedIn && <BusinessBrowser />}
               </>
             )}
             <div className="flex flex-col gap-1">

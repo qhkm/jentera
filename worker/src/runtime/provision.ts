@@ -189,6 +189,7 @@ async function bootstrapRuntime(
   const raw = `https://raw.githubusercontent.com/qhkm/jentera/${commit}`;
   const assets = [
     'runner/src/server.mjs',
+    'runner/src/business-browser.mjs',
     'runner/bin/browser-smoke.mjs',
     'runner/bin/model-smoke.py',
     'runner/bin/web-search-smoke.py',

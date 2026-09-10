@@ -12,6 +12,8 @@ import type { Approval, CountryCode, Lang, Policy } from '@/lib/types';
 import { isRunId } from '@/lib/task';
 import { RemoteRoutinesApi } from '@/lib/routines/api';
 import type {
+  BrowserCommand,
+  BusinessBrowserState,
   Activity,
   AskAnswer,
   AskOptions,
@@ -208,6 +210,9 @@ export class RemoteRepository implements Repository {
   }
 
   setBizType = (key: string) => post('/api/state/biz-type', { key });
+  businessBrowser(command?: BrowserCommand): Promise<BusinessBrowserState> {
+    return call('/api/browser', command ? { method: 'POST', body: JSON.stringify(command) } : {});
+  }
   setBizProfile = (p: { name?: string; loc?: string }) => post('/api/state/biz-profile', p);
   completeOnboarding = (input: OnboardingCompletion) =>
     post('/api/state/onboarding/complete', input);

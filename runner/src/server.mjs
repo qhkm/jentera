@@ -12,6 +12,7 @@ import { access, copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/pr
 import { createServer, request as httpRequest } from 'node:http';
 import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { createBusinessBrowser, BrowserProblem } from './business-browser.mjs';
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped', 'expired']);
 const BODY_LIMIT = 64 * 1024;
@@ -563,6 +564,12 @@ export function createRunner(input) {
   const keepalive = createSpriteKeepalive(process.env.SPRITE_API_SOCK);
   let admitting = false;
   let admittingTaskId = null;
+  const businessBrowser = input.businessBrowser ?? (config.businessBrowserEnabled
+    ? createBusinessBrowser({
+      stateFile: '/var/lib/aisar/browser-control.json',
+      profileDir: '/home/sprite/.jentera-browser',
+      playwrightEntry: config.playwrightEntry,
+    }) : null);
   const terminations = new RunTerminations(
     config,
     state,
@@ -572,7 +579,7 @@ export function createRunner(input) {
   /* A document must not change under a run in flight: Hermes reads its config
      when the agent is created, so swapping mid-run would give one task two
      configurations. */
-  const slotBusy = async () => Boolean(await activeTask(config, state, terminations));
+  const slotBusy = async () => admitting || Boolean(await businessBrowser?.isPaused()) || Boolean(await activeTask(config, state, terminations));
 
   /* Started in the background and never awaited: /readyz must not wait on the
      control plane, and a sprite whose control plane is away has to come up on
@@ -642,6 +649,32 @@ export function createRunner(input) {
         !sameSecret(authorizationBearer(req.headers.authorization), config.edgeToken)
       ) {
         return json(res, 401, { ok: false, error: 'unauthorized' });
+      }
+
+      if (url.pathname === '/v1/browser') {
+        res.setHeader('Cache-Control', 'no-store');
+        if (!businessBrowser) return json(res, 503, { ok: false, error: 'browser_unavailable' });
+        try {
+          if (req.method === 'GET') return json(res, 200, await businessBrowser.status());
+          if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' });
+          const body = await readJson(req);
+          if (body.businessId !== config.businessId) return json(res, 403, { error: 'wrong_business' });
+          // Use the same admission guard as task start: neither side can
+          // acquire the browser while the other is entering its async work.
+          if (admitting) return json(res, 409, { error: 'runtime_busy' });
+          admitting = true;
+          try {
+            const active = await activeTask(config, state, terminations);
+            if (active) return json(res, 409, { error: 'runtime_busy' });
+            return json(res, 200, await businessBrowser.command(body));
+          }
+          finally { admitting = false; }
+        } catch (error) {
+          // Playwright errors can contain typed text or private page URLs.
+          // Never forward or log them from the owner-control surface.
+          return json(res, error instanceof BrowserProblem ? error.status : 503,
+            { error: error instanceof BrowserProblem ? error.message : 'browser_unavailable' });
+        }
       }
 
       if (req.method === 'GET' && url.pathname === '/readyz') {
@@ -735,7 +768,8 @@ export function createRunner(input) {
         }
 
         const active = await activeTask(config, state, terminations);
-        if (active || admitting) {
+        const browserPaused = await businessBrowser?.isPaused();
+        if (active || admitting || browserPaused) {
           return json(res, 409, {
             ok: false,
             error: 'runtime_busy',
@@ -746,6 +780,9 @@ export function createRunner(input) {
         admitting = true;
         admittingTaskId = body.taskId;
         try {
+          // The agent's configured loopback CDP endpoint and the owner's
+          // browser view must always refer to this same persistent profile.
+          await businessBrowser?.ensure();
           const startedAt = Date.now();
           const responseMode = body.responseMode === 'quick' ? 'quick' : 'deep';
           /* Durable admission comes before the Hermes side effect. A crash or
@@ -1006,6 +1043,8 @@ export function capabilitiesFromEnv(env = process.env) {
 
 export function configFromEnv(env = process.env) {
   return {
+    businessBrowserEnabled: env.AISAR_BUSINESS_BROWSER === '1',
+    playwrightEntry: env.PLAYWRIGHT_ENTRY,
     businessId: env.AISAR_BUSINESS_ID,
     runnerKey: env.AISAR_RUNNER_KEY,
     edgeToken: env.AISAR_EDGE_TOKEN,
