@@ -445,12 +445,35 @@ hermes_uv=/home/sprite/.hermes/bin/uv
   echo "Hermes managed uv is unavailable" >&2
   exit 1
 }
+# Firecrawl is nearly the same story, with one difference that hides it.
+# Hermes does not ship the SDK either, but plugins/web/firecrawl/provider.py
+# calls tools.lazy_deps.ensure() and installs it on first use — so extraction
+# is not broken without this, it is merely slow in the worst possible place.
+# Measured on an untouched sprite 2026-09-10: the first web_extract spent
+# 11.4 s inside `Lazy-installing firecrawl-py==4.17.0` before returning, 13.4 s
+# for the tool call in total, against 2.5 s for every call after it. That first
+# call is also the one that came back shaped oddly enough for the executor to
+# log it as an error while its payload held the extracted page.
+#
+# So pin it here for the same reason ddgs is pinned: a release should decide
+# what a sprite runs, and an owner's first research question should not pay to
+# install it. Gated on the endpoint because that is the condition under which
+# configure-model-provider.py selects the backend — "configured" and
+# "installed" then cannot drift apart in either direction.
+extract_pins=('ddgs==9.16.0')
+if [[ -n "$extract_base" && -n "$extract_key" ]]; then
+  extract_pins+=('firecrawl==4.17.0')
+fi
 UV_NO_CONFIG=1 UV_NO_PROGRESS=1 "$hermes_uv" pip install \
-  --python "$install_dir/venv/bin/python" 'ddgs==9.16.0'
+  --python "$install_dir/venv/bin/python" "${extract_pins[@]}"
 UV_NO_CONFIG=1 "$hermes_uv" pip check --python "$install_dir/venv/bin/python"
 web_search_ready=false
 for _attempt in 1 2 3; do
-  if timeout --foreground -k 5 45 \
+  # Passed on the invocation for the same reason configure-model-provider.py
+  # is: this script never sources hermes.env, so the smoke would otherwise
+  # see no endpoint and skip the extraction check it exists to make.
+  if FIRECRAWL_API_URL="$extract_base" FIRECRAWL_API_KEY="$extract_key" \
+      timeout --foreground -k 5 60 \
       "$install_dir/venv/bin/python" /home/sprite/aisar/runner/web-search-smoke.py; then
     web_search_ready=true
     break
@@ -458,7 +481,7 @@ for _attempt in 1 2 3; do
   sleep 2
 done
 [[ "$web_search_ready" == "true" ]] || {
-  echo "Hermes web search did not pass its live smoke test" >&2
+  echo "Hermes web search or extraction did not pass its live smoke test" >&2
   exit 1
 }
 
