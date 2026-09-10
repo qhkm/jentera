@@ -45,14 +45,32 @@ describe('the web-extraction endpoint handed to a sprite', () => {
       .toThrow(/https origin/);
   });
 
-  it('matches what wrangler.toml actually ships', () => {
+  it('accepts whatever wrangler.toml ships, when it ships one', () => {
     /* The deployed value is a string in a config file; read it rather than
-       restate it, so a typo fails here instead of at provisioning time. */
+       restate it, so a typo fails here instead of at provisioning time.
+       It is legitimately absent while a rollout is in flight: the field can
+       only be sent once every sprite runs a bootstrap that allowlists it, so
+       the config is commented out between those two releases. */
     const toml = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8');
     const base = toml.match(/^AISAR_EXTRACT_BASE = "([^"]*)"/m)?.[1];
-    expect(base).toBeTruthy();
+    if (base === undefined) {
+      expect(toml).toMatch(/^# AISAR_EXTRACT_BASE = /m);
+      return;
+    }
     expect(() => extractEndpoint(env({
       AISAR_EXTRACT_BASE: base, AISAR_EXTRACT_KEY: 'k'.repeat(64),
     }))).not.toThrow();
+  });
+
+  it('is allowlisted by the bootstrap that will receive it', () => {
+    /* The deadlock of 2026-09-10: provision.ts sent EXTRACT_BASE_B64 while
+       the fleet's bootstrap still rejected unknown fields, so every sprite
+       refused the payload that would have upgraded it. Sending a field the
+       bootstrap does not parse is the bug; this catches it in the repo. */
+    const bootstrap = readFileSync(
+      new URL('../../runner/bin/bootstrap-runtime.sh', import.meta.url), 'utf8');
+    for (const fieldName of ['EXTRACT_BASE_B64', 'EXTRACT_KEY_B64']) {
+      expect(bootstrap).toContain(`${fieldName}) ${fieldName}=`);
+    }
   });
 });

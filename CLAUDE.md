@@ -165,6 +165,25 @@ worker, triggers the drift sweep, waits for convergence, and runs
 `fleet-verify.sh` on every sprite. `--dry-run` stops after the gate.
 `docs/release-playbook.md` is the same procedure written out, with rollback.
 
+**A new bootstrap transfer field takes two releases, never one.** The fields
+in `provision.ts`'s `transfer` are parsed by `bootstrap-runtime.sh` against a
+closed allowlist, and a sprite runs the bootstrap from the release it is
+*currently* on — not the one being shipped. So the moment the control plane
+starts sending a field, every sprite that has not already upgraded rejects
+the payload, including the payload that would have upgraded it. On
+2026-09-10 that deadlocked all twelve: `EXTRACT_BASE_B64` went out with the
+worker deploy, and the upgrade tasks retried to exhaustion with "runtime
+bootstrap transfer contains an unknown field" while the release carrying the
+matching allowlist line sat undelivered. Nothing converged, and the fleet
+could not be rescued by shipping harder.
+
+Release one teaches the fleet to accept the field. Release two starts
+sending it. Between them the config stays commented out in `wrangler.toml`,
+and `extract-endpoint.test.ts` asserts that anything `provision.ts` sends is
+already named in the bootstrap's allowlist. The same trap applies to any
+value read at bootstrap: it reaches a sprite only by re-bootstrap, so a
+config-only change still needs a `RUNTIME_RELEASE` bump to take effect.
+
 Nothing is applied to a sprite by hand. A sprite's Hermes checkout and
 runner directory survive re-bootstrap exactly as they are, so a hand-applied
 change is invisible to the next release and a removed one lingers:

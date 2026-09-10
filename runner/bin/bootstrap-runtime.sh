@@ -47,7 +47,19 @@ while IFS='=' read -r name value; do
     HERMES_COMMIT_B64) HERMES_COMMIT_B64="$value" ;;
     CUA_ENABLED_B64) CUA_ENABLED_B64="$value" ;;
     CANDIDATE_MODEL_NAMES_B64) CANDIDATE_MODEL_NAMES_B64="$value" ;;
+    EXTRACT_BASE_B64) EXTRACT_BASE_B64="$value" ;;
+    EXTRACT_KEY_B64) EXTRACT_KEY_B64="$value" ;;
     *)
+      # This allowlist is why a new transfer field cannot be shipped in one
+      # step. A sprite runs the bootstrap from the release it is *currently*
+      # on, so the moment the control plane starts sending a field, every
+      # sprite that has not already upgraded rejects the payload — including
+      # the payload that would have upgraded it. That deadlocked the fleet on
+      # 2026-09-10: twelve sprites retried to exhaustion against
+      # EXTRACT_BASE_B64 while the release carrying this line sat undelivered.
+      #
+      # So: teach the fleet to accept a field in one release, start sending it
+      # in the next. Never both at once.
       echo "runtime bootstrap transfer contains an unknown field" >&2
       exit 1
       ;;
