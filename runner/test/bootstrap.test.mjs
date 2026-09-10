@@ -385,8 +385,12 @@ test('the agent is told how it reads pages, and only where it can', async () => 
   ]) {
     const soul = await readFile(soulPath, 'utf8');
     assert.match(soul, /web_extract/);
-    assert.match(soul, /not a program\s+installed here/);
-    assert.match(soul, /never answer a question about your own ability to read/i);
+    /* Named, because the owner asks for it by name. A note that only said
+       "web_extract" left the agent unable to connect the question "can u use
+       firecrawl" to the tool that answers it, and it went looking on disk. */
+    assert.match(soul, /Firecrawl/);
+    assert.match(soul, /no `firecrawl` command/);
+    assert.match(soul, /never by searching this filesystem/i);
   }
 
   /* Without an endpoint every word of that would be false, and the note has

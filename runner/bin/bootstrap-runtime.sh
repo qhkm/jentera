@@ -406,6 +406,39 @@ FIRECRAWL_API_URL="$extract_base" FIRECRAWL_API_KEY="$extract_key" \
 "$hermes_python" /home/sprite/aisar/runner/configure-model-provider.py \
   "$model_provider" "$model_base" "$model_name" OPENROUTER_API_KEY "$cua_enabled" \
   "$deep_model_name" "$candidate_model_names"
+
+# config.yaml asks for the model credential by name — `api_key:
+# ${OPENROUTER_API_KEY}` — and Hermes resolves that from ~/.hermes/.env, not
+# from the environment the gateway was started with. On 2026-09-10 that file
+# came out of a bootstrap holding the two Firecrawl variables and nothing
+# else: 129 bytes where the key alone is 157. Every model route then resolved
+# to an empty credential and fell back to openrouter.ai unauthenticated, so
+# every agent on all thirteen sprites answered HTTP 401 while hermes.env,
+# config.yaml, the routes and Hermes' own `"model": {"status": "ok"}` all
+# read correct.
+#
+# Whatever writes that file, this decides what ends up in it. The desired
+# contents are stated here rather than inferred from someone else's
+# persistence behaviour, and the profiles get the same, since
+# multiplex_profiles makes each profile's copy the one a run actually reads.
+write_hermes_env_file() {
+  local target="$1"
+  [[ -e "$target" || "$2" == "create" ]] || return 0
+  local tmp
+  tmp="$(mktemp "${target}.XXXXXX")" || return 1
+  # Keep anything else already there; replace only what we own.
+  if [[ -f "$target" ]]; then
+    grep -vE '^(OPENROUTER_API_KEY|OPENROUTER_BASE_URL)=' "$target" >> "$tmp" 2>/dev/null || true
+  fi
+  printf 'OPENROUTER_API_KEY=%s\n' "$model_key" >> "$tmp"
+  printf 'OPENROUTER_BASE_URL=%s\n' "$model_base" >> "$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$target"
+}
+write_hermes_env_file /home/sprite/.hermes/.env create
+for _profile in /home/sprite/.hermes/profiles/*/; do
+  [[ -d "$_profile" ]] && write_hermes_env_file "${_profile}.env" create
+done
 stage_done configure
 
 # Readiness without one real inference only proves that processes started. It
@@ -602,6 +635,47 @@ for _attempt in $(seq 1 60); do
 done
 [[ "$ready" == "1" ]] || {
   echo "runner did not become ready" >&2
+  exit 1
+}
+
+# One real inference *through the gateway*, which is a different claim from
+# the model smoke above. That one passes the credential on its own command
+# line, so it proves the endpoint and the key are good; it cannot notice that
+# the gateway is unable to resolve `${OPENROUTER_API_KEY}` from ~/.hermes/.env
+# and is quietly falling back to openrouter.ai unauthenticated. On 2026-09-10
+# that gap let a release checkpoint green on all thirteen sprites while every
+# owner's next message failed with HTTP 401 — Hermes' own readiness endpoint
+# reported `"model": {"status": "ok"}` throughout.
+gateway_ready=false
+for _attempt in 1 2 3; do
+  gateway_run="$(curl --silent --max-time 120 -X POST \
+    "http://127.0.0.1:8642/v1/runs" \
+    -H "Authorization: Bearer $hermes_key" \
+    -H 'Content-Type: application/json' \
+    -d "{\"input\":\"Reply with the single word: ready\",\"model\":\"$model_name\"}" 2>/dev/null)"
+  gateway_id="$(printf '%s' "$gateway_run" \
+    | sed -n 's/.*"run_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+  if [[ -n "$gateway_id" ]]; then
+    for _poll in $(seq 1 40); do
+      sleep 3
+      gateway_state="$(curl --silent --max-time 30 \
+        "http://127.0.0.1:8642/v1/runs/$gateway_id" \
+        -H "Authorization: Bearer $hermes_key" 2>/dev/null)"
+      gateway_status="$(printf '%s' "$gateway_state" \
+        | sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+      case "$gateway_status" in
+        completed) gateway_ready=true; break ;;
+        failed|cancelled|error)
+          echo "gateway inference failed: $(printf '%s' "$gateway_state" | head -c 300)" >&2
+          break ;;
+      esac
+    done
+  fi
+  [[ "$gateway_ready" == "true" ]] && break
+  sleep 3
+done
+[[ "$gateway_ready" == "true" ]] || {
+  echo "the gateway could not complete one real inference" >&2
   exit 1
 }
 

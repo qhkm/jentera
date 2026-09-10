@@ -57,11 +57,16 @@ def extract_is_configured() -> bool:
 WEB_EXTRACT_NOTE = """
 ## Reading a web page
 
-`web_extract` reads one, and it works: Jentera hosts and configures the
-service behind it. That service is an endpoint you call, not a program
-installed here, so `which` and `pip` will report it missing while extraction
-is working — never answer a question about your own ability to read pages by
-searching this machine. Call `web_extract` and see. Prefer it to the browser,
+`web_extract` reads one, and it works. It is backed by **Firecrawl**, which
+Jentera hosts and configures for you — a self-hosted service you call over
+HTTPS, plus its Python library inside Hermes. There is no `firecrawl` command
+on this machine and there never will be, so `which firecrawl` and `pip show`
+answer nothing about whether extraction works; they will report it missing
+while it is working perfectly.
+
+If you are asked whether you can read pages, or whether Firecrawl is
+available or installed, the answer is yes and the way to show it is to call
+`web_extract` — never by searching this filesystem. Prefer it to the browser,
 which pulls an entire page snapshot into the conversation at far greater cost.
 """
 
