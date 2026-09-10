@@ -8,8 +8,8 @@ import {
   verifyJenteraKey,
 } from '../src/fmcv-verifier';
 import type { ModelProxyOptions } from '../src/routes/model';
-import { handleModelProxy } from '../src/routes/model';
-import { asOwner, req, testEnv, truncateAll } from './harness';
+import { handleModelProxy, sweepModelCalls } from '../src/routes/model';
+import { asApp, asOwner, req, testEnv, truncateAll } from './harness';
 
 const CONTROL_SECRET = 'fmcv-control-secret-'.padEnd(48, 's');
 const UPSTREAM_KEY = 'f'.repeat(32);
@@ -338,5 +338,177 @@ describe('model proxy route', () => {
       token: await derivedKey(),
     });
     expect(response.status).toBe(404);
+  });
+});
+
+describe('per-call model accounting', () => {
+  /* Read as aisar_app, the role the worker actually runs as. The owner
+     bypasses RLS, so an owner-side assertion would pass while production
+     could not see its own rows. */
+  const calls = () => asApp((sql) => sql<Record<string, unknown>[]>`
+    select * from model_call order by id`);
+
+  it('records one row per non-streaming call, with the prompt broken into parts', async () => {
+    const system = 'S'.repeat(300);
+    const older = 'H'.repeat(120);
+    const question = 'Q'.repeat(40);
+    const tools = [{ type: 'function', function: { name: 'search', parameters: {} } }];
+    const { fetcher } = stubUpstream(200, {
+      id: 'cmpl-shape',
+      usage: {
+        prompt_tokens: 1_000, completion_tokens: 100,
+        prompt_tokens_details: { cached_tokens: 400 },
+      },
+    });
+    const env = proxyEnv();
+    const response = await callModel('POST', `${RUNTIME_PROXY_PATH}/chat/completions`,
+      env, {
+        token: await derivedKey(),
+        body: {
+          model: 'MiniMax-M3',
+          tools,
+          messages: [
+            { role: 'system', content: system },
+            { role: 'user', content: older },
+            { role: 'assistant', content: older },
+            { role: 'user', content: question },
+          ],
+        },
+        options: { upstreamFetch: fetcher },
+      });
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    const [row] = await calls();
+    expect(row).toBeDefined();
+    expect(row.rider_id).toBe(RID);
+    expect(row.model).toBe('MiniMax-M3');
+    expect(row.streamed).toBe(false);
+    expect(row.usage_seen).toBe(true);
+    expect(Number(row.prompt_tokens)).toBe(1_000);
+    expect(Number(row.completion_tokens)).toBe(100);
+    expect(Number(row.cached_tokens)).toBe(400);
+    /* 1,000 in × $0.60/M + 100 out × $2.40/M = 840 micro-USD. */
+    expect(Number(row.cost_microusd)).toBe(840);
+    expect(Number(row.message_count)).toBe(4);
+    expect(Number(row.tool_count)).toBe(1);
+    expect(Number(row.system_chars)).toBe(300);
+    expect(Number(row.tools_chars)).toBe(JSON.stringify(tools).length);
+    /* Both non-system messages before the final user turn. */
+    expect(Number(row.history_chars)).toBe(240);
+    expect(Number(row.last_user_chars)).toBe(40);
+    expect(Number(row.upstream_status)).toBe(200);
+    expect(Number(row.request_bytes)).toBeGreaterThan(300);
+  });
+
+  it('marks a stream that closed without a usage chunk as unmetered', async () => {
+    /* The gap the header comment describes: real spend the rider ledger
+       never saw. It has to be a countable row, not a caveat. */
+    const encoder = new TextEncoder();
+    const sse = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"hi"}}]}\n\n'));
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        controller.close();
+      },
+    });
+    const { fetcher } = stubUpstream(200, () => new Response(sse, {
+      headers: { 'Content-Type': 'text/event-stream' },
+    }));
+    const env = proxyEnv();
+    const response = await callModel('POST', `${RUNTIME_PROXY_PATH}/chat/completions`,
+      env, {
+        token: await derivedKey(),
+        body: { model: 'MiniMax-M3', messages: [{ role: 'user', content: 'hi' }], stream: true },
+        options: { upstreamFetch: fetcher },
+      });
+    expect(response.status).toBe(200);
+    await response.text();
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    const [row] = await calls();
+    expect(row).toBeDefined();
+    expect(row.streamed).toBe(true);
+    expect(row.usage_seen).toBe(false);
+    expect(row.prompt_tokens).toBeNull();
+    expect(row.cost_microusd).toBeNull();
+    /* Nothing reached the ledger either — that is the point of the row. */
+    expect(await ledgerMicrousd()).toBeNull();
+  });
+
+  it('records a metered stream once, alongside the ledger write', async () => {
+    const encoder = new TextEncoder();
+    const sse = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"he"}}]}\n\n'));
+        controller.enqueue(encoder.encode(
+          'data: {"usage":{"prompt_tokens":500000,"completion_tokens":1000000}}\n\n',
+        ));
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        controller.close();
+      },
+    });
+    const { fetcher } = stubUpstream(200, () => new Response(sse, {
+      headers: { 'Content-Type': 'text/event-stream' },
+    }));
+    const env = proxyEnv();
+    const response = await callModel('POST', `${RUNTIME_PROXY_PATH}/chat/completions`,
+      env, {
+        token: await derivedKey(),
+        body: { model: 'MiniMax-M3', messages: [{ role: 'user', content: 'hi' }], stream: true },
+        options: { upstreamFetch: fetcher },
+      });
+    expect(response.status).toBe(200);
+    await response.text();
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    const rows = await calls();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].streamed).toBe(true);
+    expect(rows[0].usage_seen).toBe(true);
+    expect(Number(rows[0].prompt_tokens)).toBe(500_000);
+    expect(await ledgerMicrousd()).toBe(2_700_000);
+  });
+
+  it('records the shape of an unpriced model even though it cannot cost it', async () => {
+    /* modelCostMicrousd throws for a model with no reviewed pricing. The
+       ledger skips those; the diagnostic must not, or a misconfigured
+       route becomes invisible exactly when it is costing money. */
+    const { fetcher } = stubUpstream(200, {
+      id: 'cmpl-unpriced',
+      usage: { prompt_tokens: 10, completion_tokens: 5 },
+    });
+    const env = proxyEnv();
+    const response = await callModel('POST', `${RUNTIME_PROXY_PATH}/chat/completions`,
+      env, {
+        token: await derivedKey(),
+        body: { model: 'some-unrouted-model', messages: [{ role: 'user', content: 'hi' }] },
+        options: { upstreamFetch: fetcher },
+      });
+    expect(response.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    const [row] = await calls();
+    expect(row).toBeDefined();
+    expect(row.model).toBe('some-unrouted-model');
+    expect(row.usage_seen).toBe(true);
+    expect(Number(row.prompt_tokens)).toBe(10);
+    expect(row.cost_microusd).toBeNull();
+    expect(await ledgerMicrousd()).toBeNull();
+  });
+
+  it('sweeps rows past the retention window and leaves fresh ones', async () => {
+    const env = proxyEnv();
+    await asOwner((sql) => sql`
+      insert into model_call (
+        rider_id, model, streamed, usage_seen, request_bytes, message_count,
+        tool_count, system_chars, tools_chars, history_chars, last_user_chars,
+        upstream_status, latency_ms, created_at
+      ) values
+        (${RID}, 'MiniMax-M3', false, true, 10, 1, 0, 0, 0, 0, 2, 200, 10, now() - interval '120 days'),
+        (${RID}, 'MiniMax-M3', false, true, 10, 1, 0, 0, 0, 0, 2, 200, 10, now())`);
+    expect(await sweepModelCalls(env)).toBe(1);
+    const rows = await calls();
+    expect(rows).toHaveLength(1);
   });
 });
