@@ -71,15 +71,16 @@ describe('the web-extraction endpoint handed to a sprite', () => {
   });
 
   it('sends no transfer field the bootstrap cannot parse', () => {
-    /* The deadlock of 2026-09-10: provision.ts sent EXTRACT_BASE_B64 while the
-       bootstrap still rejected unknown fields, so every sprite refused the
-       payload that would have upgraded it — 24 tasks exhausted, 0/12
-       converged. Every field, not just today's: the next one should fail here
+    /* 2026-09-10: provision.ts sent EXTRACT_BASE_B64 with no matching `case`
+       arm anywhere, so every sprite rejected its transfer and convergence
+       stalled. Every field, not just that one — the next should fail here
        rather than on twelve machines.
 
-       `validate-release.mjs` runs the same comparison at ship time against
-       the commits actually involved, including the one the fleet is still
-       running. This is the fast half, on every change. */
+       This compares the two files at the same commit, which is the cheap half
+       and catches a missing arm. It cannot catch the other shape: a
+       provision.ts that has outrun RUNTIME_BUNDLE_COMMIT, since the bootstrap
+       a sprite runs is curled from the pin, not from HEAD.
+       `check-transfer-fields.mjs` covers that as a predeploy hook. */
     const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
     const sent = [...read('../src/runtime/provision.ts')
       .matchAll(/field\('([A-Z0-9_]+_B64)'/g)].map((m) => m[1]);
