@@ -96,6 +96,7 @@ export async function renderRuntimeConfig(
   schema: number = CONFIG_SCHEMA,
   now: Date = new Date(),
   specialists: readonly SpecialistDefinition[] = [],
+  runtimeCredentials: Readonly<Record<string, string>> = {},
 ): Promise<RuntimeConfigDocument> {
   if (schema !== CONFIG_SCHEMA) throw new ConfigSchemaUnsupported(schema);
 
@@ -109,6 +110,13 @@ export async function renderRuntimeConfig(
     web.extract_backend = 'firecrawl';
     hermesEnv.FIRECRAWL_API_URL = extract.base;
     hermesEnv.FIRECRAWL_API_KEY = extract.key;
+  }
+  /* Credentials for the few tools the agent runs itself. The version hash
+     below sees only the *names*, so connecting or disconnecting one moves
+     the fleet while rotating its value does not — the same trade already
+     documented for the extractor key. */
+  for (const [name, value] of Object.entries(runtimeCredentials)) {
+    if (value) hermesEnv[name] = value;
   }
 
   const body = {

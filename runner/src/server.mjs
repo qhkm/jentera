@@ -251,7 +251,14 @@ const CONFIG_ALLOWED_EXTRACT = new Set(['firecrawl', 'tavily', 'exa', 'parallel'
 const CONFIG_ALLOWED_SEARCH = new Set(['ddgs', 'searxng', 'firecrawl', 'tavily', 'exa', 'parallel']);
 /** Env names the document may set. Closed, because these are written into a
     file Hermes reads as credentials. */
-const CONFIG_ALLOWED_ENV = new Set(['FIRECRAWL_API_URL', 'FIRECRAWL_API_KEY']);
+/* A closed allowlist: the control plane may set these and nothing else,
+   so widening what a sprite's environment can hold is a reviewed change
+   rather than a value the control plane can decide on its own. */
+const CONFIG_ALLOWED_ENV = new Set([
+  'FIRECRAWL_API_URL',
+  'FIRECRAWL_API_KEY',
+  'CLOUDFLARE_API_TOKEN',
+]);
 const CONFIG_SCHEMA_SUPPORTED = 2;
 const CONFIG_FETCH_TIMEOUT_MS = 10_000;
 /* 1, 5, 15 minutes then hourly. A paused sprite simply retries on its next

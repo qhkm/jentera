@@ -18,6 +18,7 @@ import type { Env } from '../env';
 import { withTenant } from '../db';
 import { getRuntime } from '../agent-runtime';
 import { resolveRuntimeIdentity, RuntimeIdentityError } from '../runtime/identity';
+import { runtimeCredentials } from '../runtime/runtime-credentials';
 import {
   CONFIG_SCHEMA,
   ConfigSchemaUnsupported,
@@ -76,6 +77,9 @@ export async function handleRuntimeConfig(
   const configured = await withTenant(env, identity.businessId, async (tx) => ({
     runtime: await getRuntime(tx, identity.businessId),
     specialists: await listSpecialists(tx, { enabledOnly: true }),
+    /* Read inside the tenant transaction like everything else here, so a
+       credential is reachable exactly when its connection is. */
+    credentials: await runtimeCredentials(env, tx, identity.businessId),
   }));
   const runtime = configured.runtime;
   if (!runtime) return json({ err: 'runtime is not provisioned' }, 403, headers);
@@ -87,6 +91,7 @@ export async function handleRuntimeConfig(
       requested,
       new Date(),
       configured.specialists,
+      configured.credentials,
     );
     return json(document, 200, headers);
   } catch (err) {
