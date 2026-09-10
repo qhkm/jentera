@@ -239,6 +239,91 @@ appended only when a live Telegram bubble or a web subscriber exists
 only since 2026-09-10. It is evidence of work-versus-conversation
 (`workKindForRun`), not a tool count. Do not use it as one until step 1b.
 
+### Step 0 results, run 2026-09-10
+
+**Measured versus estimated.** 100 of 133 rows, and **68.1% of the month's
+$3.13**, were reservation ceilings rather than reports:
+
+| model | finalization | rows | usd | avg input |
+|---|---|---|---|---|
+| MiniMax-M3 | estimated | 90 | 2.0225 | 69,190 |
+| MiniMax-M2.7-highspeed | measured | 19 | 0.7320 | 63,537 |
+| MiniMax-M3 | measured | 4 | 0.2588 | 163,362 |
+| deepseek-v4-flash | estimated | 10 | 0.1066 | 173,612 |
+| deepseek-v4-flash | measured | 7 | 0.0082 | 18,770 |
+
+**But the split is a date, not a model — and the problem is already
+fixed.** Every estimated row predates 2026-09-07; since 09-08 all 32 runs
+are measured:
+
+| day | estimated | measured |
+|---|---|---|
+| 09-01 → 09-06 | 98 | 0 |
+| 09-07 | 2 | 1 |
+| 09-08 → 09-10 | 0 | 32 |
+
+So the month's per-run cost means are inflated by a window that has
+closed, and no work is needed here. What has *not* been undone is the
+effect: those inflated figures still sit in `runtime_usage` and still
+count against `runtime_budget.monthly_cost_microusd`, so businesses active
+before 09-07 are carrying September charges a fixed bug produced. Whether
+to rebase those rows is a step 4 question, not a metering one.
+
+**The two ledgers.** Both directions of disagreement are present, on
+different tenants:
+
+| business | proxy USD | control plane USD | ratio |
+|---|---|---|---|
+| NEOREKA ASIA | 5.0175 | 0.2012 | 24.9× |
+| Kitakod Ventures | 1.0595 | 2.7035 | 0.39× |
+| Warung Demo | 0.0925 | 0.0851 | 1.09× |
+| seven others | ~0.0705 | 0.0000 | — |
+
+NEOREKA's gap is the estimated window: the proxy metered the calls it
+really made while the control plane charged an estimate a fifth the size.
+It had crossed `RUNTIME_MODEL_CEILING_LIMIT_USD` and every model call had
+been refused since 2026-09-09 01:50 — invisible in `stats.sh`, which reads
+the control plane. Reset to zero on 2026-09-10 so the account could be
+used again; the 5.0175 above is therefore historical.
+
+Kitakod's gap runs the other way **on measured rows**, which the estimated
+window does not explain. The likely reading is that Hermes's
+`session_prompt_tokens` counts the full prompt on every call while the
+router bills cached prefixes at a lower rate — which would mean the cap
+over-charges every tenant by roughly this factor. Unresolved; it is the
+first thing step 1's `cached_tokens` column should settle.
+
+The uniform ~$0.0705 against zero runs on seven businesses is the more
+uncomfortable number: a provisioned sprite costs that much per month
+before its owner sends anything. The near-identical value across tenants
+points at the per-release model smoke. Not yet confirmed.
+
+**Quick versus deep, measured rows only.** The like-for-like comparison
+the trial needed:
+
+| model | mode | runs | in p50 | in p90 | secs | usd |
+|---|---|---|---|---|---|---|
+| MiniMax-M2.7-highspeed | quick | 12 | 20,828 | 67,158 | 18.9 | 0.2217 |
+| MiniMax-M2.7-highspeed | (Telegram) | 7 | 83,097 | 181,453 | 21.0 | 0.5103 |
+| MiniMax-M3 | (Telegram) | 4 | 138,586 | 222,322 | 80.4 | 0.2588 |
+| deepseek-v4-flash | deep | 7 | 18,950 | 19,510 | 36.2 | 0.0082 |
+| deepseek-v4-flash | quick | 2 | 19,150 | 19,157 | 6.8 | 0.0023 |
+
+Carrying the caveat this document already states: Telegram runs have their
+payload scrubbed at completion, so those rows show no mode.
+
+At near-identical prompt size, quick on deepseek cost **$0.0012 a run
+against M2.7's $0.0185, and answered in 6.8s against 18.9s** — fifteen
+times cheaper and nearly three times faster. Two runs is not a verdict and
+they predate the trial, but it is the first evidence that is quick against
+quick rather than deep against quick, and it points the same way as list
+price. Step 2 stands as written.
+
+One number here deserves its own line, because it is what the whole
+exercise is about: an M2.7 quick reply on 2026-09-10 spent **83,097 input
+tokens to produce 42 output tokens**, and cost five cents. That is about a
+hundred replies per $5 month.
+
 ## Step 1 — per-call token accounting at the model proxy
 
 ### 1a. Record every call (this repo; a worker deploy)
@@ -677,19 +762,23 @@ so the next month's numbers do not need a measurement phase.
 
 Step 0
 
-- [ ] Measured-versus-estimated split for the month recorded here, with
-      the estimated share of spend as a percentage.
-- [ ] Ledger reconciliation recorded per business: proxy USD, control
-      plane USD, and the explanation for any gap over 10%.
-- [ ] Quick-versus-deep table by model recorded, with Telegram mode
+- [x] Measured-versus-estimated split for the month recorded here, with
+      the estimated share of spend as a percentage. (68.1% of spend; the
+      split turned out to be a date, not a model, and the cause was fixed
+      on 09-07/08.)
+- [x] Ledger reconciliation recorded per business: proxy USD, control
+      plane USD, and the explanation for any gap over 10%. (Kitakod's
+      0.39x on measured rows is unexplained and is step 1's first job.)
+- [x] Quick-versus-deep table by model recorded, with Telegram mode
       inferred from the trigger question and the caveat stated.
 
 Step 1a
 
-- [ ] Migration `026_model_call.sql` applied; apply script verifies the
+- [x] Migration `026_model_call.sql` applied; apply script verifies the
       table, its index, RLS enabled, and the grants; `db:migrate:model-call`
-      in `package.json`.
-- [ ] `model-proxy.test.ts` asserts a row for a non-streaming completion,
+      in `package.json`. (Applied 2026-09-10; the grant check caught the
+      000_role default-privilege UPDATE before it reached the database.)
+- [x] `model-proxy.test.ts` asserts a row for a non-streaming completion,
       a streamed completion with a final usage chunk, and a streamed
       completion with none (`usage_seen = false`); asserts no content
       column exists (a test that reads the table's columns and fails on
@@ -700,7 +789,7 @@ Step 1a
 - [ ] First answers written here: fixed overhead per call in tokens; share
       of a turn's first call that is history; iterations per quick reply
       (p50, p90); unmetered-stream rate per model.
-- [ ] 90-day retention runs in the sweep and is tested.
+- [x] 90-day retention runs in the sweep and is tested.
 
 Step 1b (only if triggered)
 

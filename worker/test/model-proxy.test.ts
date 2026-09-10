@@ -348,6 +348,31 @@ describe('per-call model accounting', () => {
   const calls = () => asApp((sql) => sql<Record<string, unknown>[]>`
     select * from model_call order by id`);
 
+  it('has no column that could hold content', async () => {
+    /* The invariant the whole table rests on: sizes, counts, token numbers
+       and a model id — never a message, a prompt, a tool output or a page.
+       Asserting the column list means a future migration that adds
+       somewhere to put content fails here rather than in review. */
+    const columns = await asOwner((sql) => sql<{ column_name: string; data_type: string }[]>`
+      select column_name, data_type from information_schema.columns
+       where table_schema = 'public' and table_name = 'model_call'
+       order by ordinal_position`);
+    expect(columns.map((c) => c.column_name)).toEqual([
+      'id', 'rider_id', 'model', 'streamed', 'usage_seen',
+      'prompt_tokens', 'completion_tokens', 'cached_tokens', 'cost_microusd',
+      'request_bytes', 'message_count', 'tool_count',
+      'system_chars', 'tools_chars', 'history_chars', 'last_user_chars',
+      'upstream_status', 'latency_ms', 'created_at',
+    ]);
+    /* Only two columns can hold a string at all, and both are identifiers
+       the proxy already holds. Everything describing the prompt is a
+       number — `message_count` counts messages, it does not keep one. */
+    const textual = columns.filter((c) => c.data_type === 'text' || c.data_type.includes('char'));
+    expect(textual.map((c) => c.column_name)).toEqual(['rider_id', 'model']);
+    expect(textual.some((c) => /content|message|prompt|body|text|input|output/.test(c.column_name)))
+      .toBe(false);
+  });
+
   it('records one row per non-streaming call, with the prompt broken into parts', async () => {
     const system = 'S'.repeat(300);
     const older = 'H'.repeat(120);
