@@ -20,6 +20,7 @@ import { handleRuntime } from './routes/runtime';
 import { handleEvents } from './routes/events';
 import { handleSupport } from './routes/support';
 import { handleModelProxy, sweepModelCalls } from './routes/model';
+import { handleRuntimeConfig } from './routes/runtime-config';
 import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
 import { handleQueueMessagePlaced } from './runtime/placed-slice';
@@ -90,6 +91,11 @@ export default {
       waitUntil: (promise) => ctx.waitUntil(promise),
     });
     if (modelProxy) return modelProxy;
+
+    /* Runtime configuration, mounted here for the same reason: a sprite
+       presents a runtime credential, not a session cookie. */
+    const runtimeConfig = await handleRuntimeConfig(request, env, url, headers);
+    if (runtimeConfig) return runtimeConfig;
 
     const guarded = await guardApiRequest(request, env, url, headers);
     if (guarded) return guarded;

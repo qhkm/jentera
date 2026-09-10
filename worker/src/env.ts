@@ -20,6 +20,10 @@ export interface Env {
       before session verification or any database/provider work. */
   API_BURST: RateLimit;
   RUNTIME_MUTATION_BURST: RateLimit;
+  /** Config-channel brake, keyed by rider rather than IP: sprites share
+      egress addresses, so an IP key would let one busy runtime brake the
+      rest. A sprite fetches at start and on a nudge, so this is generous. */
+  RUNTIME_CONFIG_BURST: RateLimit;
   /** Paid agent-run admission. Separate from lifecycle mutations so
       normal conversation does not share a three-per-minute bucket with provisioning. */
   AGENT_RUN_BURST: RateLimit;
