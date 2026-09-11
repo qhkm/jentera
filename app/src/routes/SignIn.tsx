@@ -11,6 +11,7 @@
    ============================================================ */
 
 import { useEffect, useRef, useState } from "react";
+import { useSignedInRedirect } from "@/hooks/useSignedInRedirect";
 import { clearAskStorage } from "@/hooks/useAsk";
 import {
   ArrowUpRight,
@@ -42,6 +43,9 @@ const ERRORS: Record<string, string> = {
 };
 
 export default function SignIn() {
+  /* Already signed in: the workspace, not the form. A 401 leaves the form
+     alone, so a magic link or a fresh sign-in still works. */
+  useSignedInRedirect("/app");
   const [params, setParams] = useSearchParams();
   const [mode, setMode] = useState<Mode>(() =>
     params.get("mode") === "signup" ? "signup" : "signin",

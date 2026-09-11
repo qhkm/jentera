@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import SignIn from '@/routes/SignIn';
 
@@ -93,5 +93,38 @@ describe('sign-in experience', () => {
     await user.click(screen.getByRole('button', { name: 'Use a different email' }));
     expect(screen.getByLabelText('Email address')).toHaveFocus();
     expect(screen.getByLabelText('Email address')).toHaveValue('owner@example.com');
+  });
+});
+
+describe('a signed-in visitor on the sign-in page', () => {
+  /* Same rule as the landing page: an owner who is already signed in is
+     sent to the app once /api/me answers; a 401 leaves the form alone so a
+     magic link or a fresh sign-in still works. */
+  afterEach(() => vi.unstubAllEnvs());
+
+  function mountAt(fetchFake: typeof fetch) {
+    vi.stubEnv('VITE_API_URL', 'https://api.test');
+    vi.stubGlobal('fetch', fetchFake);
+    return render(
+      <MemoryRouter initialEntries={['/signin?mode=signup']}>
+        <Routes>
+          <Route path="/signin" element={<SignIn />} />
+          <Route path="/app" element={<h1>Workspace</h1>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  it('is sent to the app when already signed in', async () => {
+    mountAt(async (input) =>
+      String(input).endsWith('/api/me') ? Response.json({ userId: 'u1' }) : new Response('', { status: 404 }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Workspace' })).toBeInTheDocument());
+  });
+
+  it('keeps the form when signed out', async () => {
+    mountAt(async () => new Response('', { status: 401 }));
+    await screen.findByLabelText('Email address');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByRole('heading', { name: 'Workspace' })).toBeNull();
   });
 });
