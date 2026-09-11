@@ -27,3 +27,6 @@ __pycache__/
 
 # OS
 .DS_Store
+
+# Claude Code native worktrees live here; never part of the repo
+.claude/worktrees/
