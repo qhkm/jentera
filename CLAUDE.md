@@ -123,9 +123,16 @@ app takes a fresh endpoint. `pushToUser(env, businessId, userId, payload)`
 fans out to every device and forgets the ones the service reports gone;
 it never throws. Configuration is two secrets, `VAPID_PRIVATE_JWK` (one
 JWK string, `generateVapidJwk()` makes one) and `VAPID_SUBJECT`; without
-them the app shows no switch and nothing is sent. The one caller today is
-the confirmation push on subscribe; routine outcomes call it from the
-notification insert once the inbox lands.
+them the app shows no switch and nothing is sent. Notifications reach
+devices through an outbox, not a direct send: `enqueuePush(tx, …)` queues
+a row in the same tenant transaction as the notification it mirrors, and
+`sweepPushOutbox` on the minute cron delivers it, retrying with doubling
+delays and giving up after eight tries with the error on the row
+(`push_outbox`, migration 031; the due scan is a security definer function
+returning ids only, like the routines one). Nothing is sent from inside a
+transaction, and a request that dies after the insert loses nothing. The
+notification insert in `src/notifications/store.ts` is the one caller;
+the confirmation push on subscribe is sent directly.
 
 ### Where work runs
 

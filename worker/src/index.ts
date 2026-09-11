@@ -15,6 +15,7 @@ import { handleRepo } from './routes/repo';
 import { handleRuns } from './routes/runs';
 import { handleRoutines } from './routes/routines';
 import { handlePush } from './routes/push';
+import { sweepPushOutbox } from './push/outbox';
 import { handleNotifications } from './routes/notifications';
 import { dispatchDueRoutines } from './routines/dispatch';
 import { handleConnect } from './routes/connect';
@@ -172,6 +173,15 @@ export default {
         }
       } catch (err) {
         console.error(`[routines] ${String(err)}`);
+      }
+      /* Notifications queued for the owner's devices go out on the same tick. */
+      try {
+        const pushed = await sweepPushOutbox(env);
+        if (pushed.delivered || pushed.retried || pushed.gaveUp) {
+          console.log(`[push-outbox] delivered=${pushed.delivered} retried=${pushed.retried} gaveUp=${pushed.gaveUp}`);
+        }
+      } catch (err) {
+        console.error(`[push-outbox] ${String(err)}`);
       }
       return;
     }
