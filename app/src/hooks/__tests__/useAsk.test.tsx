@@ -150,6 +150,32 @@ describe('useAsk durable answers', () => {
     expect(result.current!.messages[3]).toMatchObject({ depth: 'deep' });
   });
 
+  it('takes the steps from the durable answer when none arrived live', async () => {
+    /* A reload mid-run, or a socket that never opened: the run detail
+       still knows what the agent did, so the receipt is not lost. */
+    const repo: Repository = new LocalRepository();
+    repo.ask = (): Promise<AskAnswer> => Promise.resolve({
+      text: 'Three headlines.', usedKeys: [], grounded: true,
+      steps: ['Searching for headlines', '🔎 web_search: "news"'],
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SignedInProvider value>
+        <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
+      </SignedInProvider>
+    );
+    const { result } = renderHook(
+      () => useAsk(business, { handled: 0, needs: 0 }, (key) => key),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current).not.toBeNull());
+    await act(async () => { result.current!.send('news?', 'work'); });
+    expect(result.current!.messages[1]).toMatchObject({
+      state: 'done',
+      text: 'Three headlines.',
+      steps: ['Searching for headlines', '🔎 web_search: "news"'],
+    });
+  });
+
   it("streams the agent's status, thinking and answer text into the placeholder", async () => {
     const repo: Repository = new LocalRepository();
     let options: AskOptions | undefined;

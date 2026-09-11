@@ -1336,15 +1336,17 @@ export async function handleRuntimeMessage(
                   }
                   if (event.type === 'tool.started') {
                     currentActivity = statusLine(event.tool).replace(/_/g, ' ');
+                    const toolLine = hermesToolLine(event.tool, event.preview);
                     /* On the durable trace, so completion (maybe a later
-                       slice) can tell work from conversation. */
+                       slice) can tell work from conversation, and so the
+                       chat's receipt can be rebuilt after a reload. */
                     if (lease.task.runId) {
                       const toolRunId = lease.task.runId;
                       await withTenant(env, message.businessId, (tx) =>
-                        append(tx, message.businessId, toolRunId, 'agent.tool', { tool: event.tool }))
+                        append(tx, message.businessId, toolRunId, 'agent.tool', { tool: event.tool, detail: toolLine }))
                         .catch(() => undefined);
                     }
-                    await web?.status(hermesToolLine(event.tool, event.preview), 'tool');
+                    await web?.status(toolLine, 'tool');
                     if (liveStream && !toolShown.has(event.tool)) {
                       toolShown.add(event.tool);
                       await liveStream.showTool(event.tool, event.preview);
@@ -1352,7 +1354,7 @@ export async function handleRuntimeMessage(
                     /* Mirror the tool into the working bubble while no answer
                        text exists yet, so the bubble itself stays alive. */
                     if (!currentStep && !firstVisibleDelta) {
-                      currentStep = hermesToolLine(event.tool, event.preview);
+                      currentStep = toolLine;
                       currentStepIsTool = true;
                       await liveStream?.setStatus(timedStatus());
                     }
@@ -1399,7 +1401,16 @@ export async function handleRuntimeMessage(
               ? async (label) => {
                   /* The web keeps every step as a list item, in either mode;
                      the Telegram label below stays quiet for quick replies. */
-                  await web?.status(statusLine(label), 'step');
+                  const step = statusLine(label);
+                  await web?.status(step, 'step');
+                  /* And on the run's trace, so the receipt outlives this
+                     socket: a reload or another device reads it back. */
+                  if (step && lease.task.runId) {
+                    const stepRunId = lease.task.runId;
+                    await withTenant(env, message.businessId, (tx) =>
+                      append(tx, message.businessId, stepRunId, 'agent.step', { detail: step }))
+                      .catch(() => undefined);
+                  }
                   if (quickReply) return;
                   currentStep = statusLine(label);
                   currentStepIsTool = false;

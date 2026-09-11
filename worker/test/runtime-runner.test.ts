@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { markRuntimeReady } from '../src/agent-runtime';
-import { startRun } from '../src/runs';
+import { runTrace, startRun } from '../src/runs';
 import { handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
 import { RunnerClient, RuntimeBusyError } from '../src/runtime/runner-client';
 import { FAILURE_NOTICES } from '../src/runtime/failure-notice';
@@ -1218,6 +1218,15 @@ describe('live progress to the web chat', () => {
     for (const event of published) {
       expect(event).toMatchObject({ businessId: A, runId: run.id });
     }
+    /* The steps outlive the socket: they sit on the run's trace, so the
+       run detail can hand them back after a reload or on another device. */
+    const trace = await asTenant(A, (tx) => runTrace(tx, run.id));
+    expect(trace).toContainEqual(expect.objectContaining({
+      type: 'agent.step', payload: { detail: 'Checking the opening hours' },
+    }));
+    expect(trace.find((event) => event.type === 'agent.tool')).toMatchObject({
+      payload: { tool: 'web_search', detail: expect.stringContaining('web_search') },
+    });
   });
 });
 

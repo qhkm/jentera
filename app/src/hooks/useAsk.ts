@@ -108,6 +108,15 @@ function isMessage(value: unknown): value is AskMessage {
 
 /* In-flight pairs are excluded from storage: restoring "working" after
    a reload would create a spinner that can never finish. */
+/** The steps the run remembers, for when none were seen live: the socket
+    never opened, or the page was reloaded while the agent worked. */
+function durableSteps(answer: AskAnswer): string[] | undefined {
+  const steps = answer.steps;
+  return Array.isArray(steps) && steps.length && steps.every((step) => typeof step === 'string')
+    ? steps
+    : undefined;
+}
+
 function stableMessages(messages: AskMessage[]): AskMessage[] {
   return messages.filter((message, index) =>
     !message.pendingId && !(message.from === 'you' && messages[index + 1]?.pendingId));
@@ -427,7 +436,7 @@ export function useAsk(
                           state: 'done' as const,
                           mode,
                           depth: message.depth,
-                          steps: message.steps,
+                          steps: message.steps?.length ? message.steps : durableSteps(a),
                           kind: a.kind,
                           taskStatus: a.taskStatus,
                           usedKeys: a.usedKeys,

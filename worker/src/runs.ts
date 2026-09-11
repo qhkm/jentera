@@ -44,8 +44,12 @@ export const EVENTS = [
   'work.failed',
   'outcome.observed',
   /* The agent started a tool. One event per start; what it proves is that
-     the reply was work, not conversation. */
+     the reply was work, not conversation. `detail` is the line the chat
+     showed for it, kept so the receipt can be rebuilt after a reload. */
   'agent.tool',
+  /* One of the agent's own `@step:` lines, as shown. Narration, not proof
+     of anything: `runSteps` reads these back for the chat's receipt. */
+  'agent.step',
 ] as const;
 export type RunEventType = (typeof EVENTS)[number];
 
@@ -214,6 +218,31 @@ export async function runTrace(
     select seq, type, payload, created_at from run_event
      where run_id = ${runId} order by seq`;
   return rows.map((r) => ({ seq: r.seq, type: r.type, payload: r.payload, createdAt: r.created_at }));
+}
+
+/** The chat keeps this many of the agent's steps with a reply. */
+export const MAX_RUN_STEPS = 20;
+
+/** What the agent did, as the lines the chat showed while it worked: its
+    own `@step:` narration and the tools it started, in order. A repeated
+    line is the same step; tool rows from before lines were kept have
+    nothing to show and are skipped. */
+export async function runSteps(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  runId: string,
+): Promise<string[]> {
+  const rows = await tx<{ payload: { detail?: unknown } | null }[]>`
+    select payload from run_event
+     where run_id = ${runId} and business_id = ${businessId}
+       and type in ('agent.step', 'agent.tool')
+     order by seq`;
+  const steps: string[] = [];
+  for (const row of rows) {
+    const detail = typeof row.payload?.detail === 'string' ? row.payload.detail.trim() : '';
+    if (detail && steps.at(-1) !== detail) steps.push(detail);
+  }
+  return steps.slice(-MAX_RUN_STEPS);
 }
 
 /* ---------- work records --------------------------------------------- */

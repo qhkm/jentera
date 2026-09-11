@@ -178,6 +178,9 @@ export interface AskAnswer {
   grounded: boolean;
   /** Present on durable answers: conversation or work. */
   kind?: WorkKind;
+  /** What the agent did, as the chat showed it: its steps and tool calls.
+      Read back from the run when the live list was missed. */
+  steps?: string[];
 }
 
 export type BrowserCommand = { controlId: string } & (

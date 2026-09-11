@@ -234,6 +234,55 @@ describe('Ask Jentera runtime bridge', () => {
     expect((await call('GET', `/api/runs/${runId}`, durableEnv(), cookieB)).status).toBe(404);
   });
 
+  it("hands back the agent's steps with the answer, in order and without repeats", async () => {
+    await readyRuntime(A);
+    const started = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
+      question: 'Give me an update', requestId: crypto.randomUUID(), mode: 'work',
+    });
+    const { runId } = await started.json() as { runId: string };
+    await asTenant(A, async (tx) => {
+      await append(tx, A, runId, 'agent.step', { detail: 'Searching for today\'s headlines' });
+      await append(tx, A, runId, 'agent.tool', { tool: 'web_search', detail: '🔎 web_search: "news"' });
+      await append(tx, A, runId, 'agent.tool', { tool: 'web_search', detail: '🔎 web_search: "news"' });
+      /* A tool row from before lines were kept has nothing to show. */
+      await append(tx, A, runId, 'agent.tool', { tool: 'web_extract' });
+      await append(tx, A, runId, 'agent.step', { detail: 'Summarising' });
+    });
+    await asOwner(async (sql) => {
+      await sql`update runtime_task
+                   set status = 'completed', result = ${sql.json({ text: 'Three headlines.' })}
+                 where run_id = ${runId}`;
+      await sql`update run set status = 'completed', ended_at = now() where id = ${runId}`;
+    });
+
+    const own = await call('GET', `/api/runs/${runId}`, durableEnv(), cookieA);
+    expect(await own.json()).toMatchObject({
+      status: 'completed',
+      text: 'Three headlines.',
+      steps: ['Searching for today\'s headlines', '🔎 web_search: "news"', 'Summarising'],
+    });
+  });
+
+  it('keeps the steps on a failed run so the owner can see how far it got', async () => {
+    await readyRuntime(A);
+    const started = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
+      question: 'Give me an update', requestId: crypto.randomUUID(), mode: 'work',
+    });
+    const { runId } = await started.json() as { runId: string };
+    await asTenant(A, (tx) => append(tx, A, runId, 'agent.step', { detail: 'Opening the calendar' }));
+    await asOwner(async (sql) => {
+      await sql`update runtime_task set status = 'failed', last_error = 'boom' where run_id = ${runId}`;
+      await sql`update run set status = 'failed', ended_at = now() where id = ${runId}`;
+    });
+
+    const response = await call('GET', `/api/runs/${runId}`, durableEnv(), cookieA);
+    expect(await response.json()).toMatchObject({
+      status: 'failed',
+      err: 'Jentera could not answer that just now. Please try again.',
+      steps: ['Opening the calendar'],
+    });
+  });
+
   it('does not expose provider errors from failed durable runs', async () => {
     await readyRuntime(A);
     const started = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
