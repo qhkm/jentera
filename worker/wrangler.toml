@@ -91,13 +91,13 @@ AISAR_RUNTIME_MODEL_BASE = "https://api.jentera.ai/v1/model"
 # Token Plan 429 on 2026-09-11. deepseek-v4-flash passed direct proxy probes
 # while Hermes's route selector still fell back to its configured default.
 # Make the working model the default so that fallback cannot select a blocked
-# MiniMax route. Keep M3 installed as a candidate for a deliberate recovery
-# probe; candidate routes receive no traffic by themselves.
+# MiniMax route.
 AISAR_MODEL_NAME = "deepseek-v4-flash"
 AISAR_DEEP_MODEL_NAME = "deepseek-v4-flash"
-# Trial routes every sprite accepts beside quick and deep. Traffic only moves
-# for businesses named in AISAR_QUICK_MODEL_OVERRIDES (quick replies only).
-AISAR_CANDIDATE_MODEL_NAMES = "MiniMax-M3"
+# A candidate participates in every runtime's live bootstrap smoke, even when
+# it receives no customer traffic. Keep this empty while both MiniMax routes
+# return the provider's Token Plan 429.
+AISAR_CANDIDATE_MODEL_NAMES = ""
 # Self-hosted Firecrawl backing Hermes web_extract, on stayflow-vps behind
 # nginx and a bearer token (AISAR_EXTRACT_KEY, a secret). Until 2026-09-10 the
 # pinned backend was ddgs, which is search-only: web_extract could not read a

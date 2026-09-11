@@ -150,8 +150,9 @@ Open, in order of expected payoff:
    without a release. Re-run `reply-latency.sh db 7` after a week to see
    the effect on the Telegram quick row. Superseded 2026-09-11: both MiniMax
    routes returned the provider's Token Plan 429 while deepseek-v4-flash
-   passed the production proxy probe. DeepSeek became the fleet default;
-   M3 remains candidate-only and receives no ordinary traffic.
+   passed the production proxy probe. DeepSeek became the fleet default and
+   M3 was removed from candidates because candidates participate in the live
+   bootstrap smoke even when they receive no ordinary traffic.
 2. **Stream into the app.** Done 2026-09-10 (bdeeb21): the run stream now
    carries the agent's status line, a bounded reasoning slice and answer
    text as live, unstored events; the chat renders them in the placeholder.
