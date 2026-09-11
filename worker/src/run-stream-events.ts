@@ -38,6 +38,11 @@ export interface RunProgressEvent {
   approvalId?: string;
 }
 
+/** What a status line is, so the browser can keep the agent's own steps and
+    tool calls as a list and treat the dispatch stages as a label. */
+export const STATUS_KINDS = ['stage', 'step', 'tool'] as const;
+export type StatusKind = (typeof STATUS_KINDS)[number];
+
 export interface RunLiveEvent {
   version: 1;
   seq: 0;
@@ -45,6 +50,7 @@ export interface RunLiveEvent {
   at: string;
   detail?: string;
   text?: string;
+  kind?: StatusKind;
 }
 
 /** Status and reasoning lines are read at a glance; answer text is capped so
@@ -67,7 +73,12 @@ export function liveEvent(body: Record<string, unknown>): RunLiveEvent | null {
     return text ? { version: 1, seq: 0, type: 'delta', at, text } : null;
   }
   const detail = typeof body.detail === 'string' ? body.detail.trim().slice(0, LIVE_DETAIL_MAX) : '';
-  return detail ? { version: 1, seq: 0, type: body.type, at, detail } : null;
+  if (!detail) return null;
+  const kind = body.type === 'status' && typeof body.kind === 'string' &&
+    (STATUS_KINDS as readonly string[]).includes(body.kind)
+    ? body.kind as StatusKind
+    : undefined;
+  return { version: 1, seq: 0, type: body.type, at, detail, ...(kind ? { kind } : {}) };
 }
 
 /** The live event worth replaying to a late subscriber: the latest status

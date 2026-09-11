@@ -1344,7 +1344,7 @@ export async function handleRuntimeMessage(
                         append(tx, message.businessId, toolRunId, 'agent.tool', { tool: event.tool }))
                         .catch(() => undefined);
                     }
-                    await web?.status(hermesToolLine(event.tool, event.preview));
+                    await web?.status(hermesToolLine(event.tool, event.preview), 'tool');
                     if (liveStream && !toolShown.has(event.tool)) {
                       toolShown.add(event.tool);
                       await liveStream.showTool(event.tool, event.preview);
@@ -1397,6 +1397,9 @@ export async function handleRuntimeMessage(
               : undefined,
             onProgress: (liveStream || web)
               ? async (label) => {
+                  /* The web keeps every step as a list item, in either mode;
+                     the Telegram label below stays quiet for quick replies. */
+                  await web?.status(statusLine(label), 'step');
                   if (quickReply) return;
                   currentStep = statusLine(label);
                   currentStepIsTool = false;

@@ -74,6 +74,18 @@ function sanitiseStep(label: string): string {
     .slice(0, STEP_LABEL_LIMIT);
 }
 
+const STEP_LEAD = /^\s*(?:[-*•>]\s*)?(?:\*\*|\*)?\s*/;
+const STEP_MARKER = '@step:';
+
+/** A partial line that could still turn into a step marker once more tokens
+    arrive. The model streams "@step:" as separate tokens; releasing "@" as
+    answer text let the whole step line follow it into the reply. */
+function couldBecomeStep(partial: string): boolean {
+  if (STEP_LINE.test(partial)) return true;
+  const rest = partial.replace(STEP_LEAD, '');
+  return rest.length <= STEP_MARKER.length && STEP_MARKER.startsWith(rest.toLowerCase());
+}
+
 export function createStepProgressExtractor(
   budget = STEP_BUDGET_DEFAULT,
 ): StepProgressExtractor {
@@ -108,7 +120,7 @@ export function createStepProgressExtractor(
       /* A partial line that begins with the step marker is a step still
          in flight (the model's tokens split it); wait for its newline.
          Any other partial line is answer text and may stream at once. */
-      if (buffer && !STEP_LINE.test(buffer)) {
+      if (buffer && !couldBecomeStep(buffer)) {
         rest += buffer;
         buffer = '';
       }

@@ -1,5 +1,6 @@
 import type { Env } from '../env';
 import { LIVE_DETAIL_MAX, LIVE_TEXT_MAX } from '../run-stream-events';
+import type { StatusKind } from '../run-stream-events';
 import { publishRunProgressSafely } from './progress';
 
 /** How long answer text may sit before it is sent, and how much may
@@ -9,7 +10,9 @@ const DELTA_FLUSH_MS = 250;
 const DELTA_FLUSH_CHARS = 400;
 
 export interface WebProgress {
-  status(detail: string): Promise<void>;
+  /** A status line: a dispatch stage (the default label), one of the
+      agent's own `@step` lines, or a tool call. */
+  status(detail: string, kind?: StatusKind): Promise<void>;
   thinking(detail: string): Promise<void>;
   delta(text: string): void;
   flush(): Promise<void>;
@@ -41,11 +44,11 @@ export function createWebProgress(env: Env, businessId: string, runId: string): 
     return enqueue(() => publishRunProgressSafely(env, businessId, runId, 'delta', { text }));
   };
   return {
-    status(detail) {
+    status(detail, kind = 'stage') {
       const line = detail.trim().slice(0, LIVE_DETAIL_MAX);
       if (!line || line === lastStatus) return chain;
       lastStatus = line;
-      return enqueue(() => publishRunProgressSafely(env, businessId, runId, 'status', { detail: line }));
+      return enqueue(() => publishRunProgressSafely(env, businessId, runId, 'status', { detail: line, kind }));
     },
     thinking(detail) {
       const line = detail.trim().slice(0, LIVE_DETAIL_MAX);

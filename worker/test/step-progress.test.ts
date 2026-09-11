@@ -121,3 +121,29 @@ describe('step progress extractor', () => {
     expect(answer.replace(STEP_STRIP_RE, '')).toBe(answer);
   });
 });
+
+describe('a step marker split across tokens', () => {
+  /* The model streams "@step:" as separate tokens. The first one alone did
+     not match the marker, was released as answer text, and the rest of the
+     line followed it: the web chat printed "@step: Searching for today's
+     Malaysian news headlines" as the reply (2026-09-11). A partial line that
+     could still become the marker is held until it resolves. */
+  it('holds a possible marker prefix and yields one step, no text', () => {
+    const steps = createStepProgressExtractor();
+    const a = steps.push('@');
+    const b = steps.push('step: Sear');
+    const c = steps.push("ching for today's news\n");
+    const d = steps.push('Here are');
+    expect([a, b, c].flatMap((x) => x.steps)).toEqual(["Searching for today's news"]);
+    expect(a.rest + b.rest + c.rest).toBe('');
+    expect(d.rest).toBe('Here are');
+  });
+
+  it('releases a partial line as soon as it can no longer be a marker', () => {
+    const steps = createStepProgressExtractor();
+    expect(steps.push('@').rest).toBe('');
+    expect(steps.push('kedai').rest).toBe('@kedai');
+    expect(steps.push(' is open\n').rest).toBe(' is open\n');
+    expect(steps.push('Yes, ').rest).toBe('Yes, ');
+  });
+});

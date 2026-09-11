@@ -75,3 +75,13 @@ describe('live progress for the web chat', () => {
     expect(liveEvent({ type: 'delta', detail: 'wrong field' })).toBeNull();
   });
 });
+
+describe('status kinds for the steps view', () => {
+  it('keeps a known kind on a status and drops anything else', () => {
+    expect(liveEvent({ type: 'status', detail: 'Reading the site', kind: 'step' }))
+      .toMatchObject({ type: 'status', detail: 'Reading the site', kind: 'step' });
+    expect(liveEvent({ type: 'status', detail: 'web_search', kind: 'tool' })).toMatchObject({ kind: 'tool' });
+    expect(liveEvent({ type: 'status', detail: 'x', kind: 'bogus' })).not.toHaveProperty('kind');
+    expect(liveEvent({ type: 'status', detail: 'x' })).not.toHaveProperty('kind');
+  });
+});

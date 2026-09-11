@@ -1167,6 +1167,8 @@ describe('live progress to the web chat', () => {
     const events = [
       { type: 'thinking', text: 'checking the calendar' },
       { type: 'iteration', current: 1, total: 20 },
+      { type: 'delta', delta: '@' },
+      { type: 'delta', delta: 'step: Checking the opening hours\n' },
       { type: 'tool.started', tool: 'web_search', preview: 'opening hours' },
       { type: 'delta', delta: 'We are ' },
       { type: 'delta', delta: 'open on Sunday.' },
@@ -1207,6 +1209,12 @@ describe('live progress to the web chat', () => {
     });
     expect(published.filter((event) => event.type === 'delta').map((event) => event.text).join(''))
       .toBe('We are open on Sunday.');
+    /* Each status says what kind of thing it is, so the web can keep the
+       agent's own steps and tools as a list and treat the rest as a label. */
+    const statuses = published.filter((event) => event.type === 'status');
+    expect(statuses).toContainEqual(expect.objectContaining({ detail: 'Checking the opening hours', kind: 'step' }));
+    expect(statuses.find((event) => String(event.detail).includes('web_search'))).toMatchObject({ kind: 'tool' });
+    expect(statuses.find((event) => String(event.detail).includes('System ready'))).toMatchObject({ kind: 'stage' });
     for (const event of published) {
       expect(event).toMatchObject({ businessId: A, runId: run.id });
     }

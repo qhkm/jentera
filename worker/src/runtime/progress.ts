@@ -1,3 +1,4 @@
+import type { StatusKind } from '../run-stream-events';
 import type { Env } from '../env';
 import type { RunLiveType, RunProgressType } from '../run-stream-events';
 
@@ -9,6 +10,8 @@ export interface RunProgressExtra {
   /** needs_approval: which approval to fetch. The id is all that travels;
       what is being approved stays in Postgres. */
   approvalId?: string;
+  /** For status: a dispatch stage, one of the agent's steps, or a tool call. */
+  kind?: StatusKind;
 }
 
 /** Best-effort realtime projection. Postgres remains authoritative if this layer fails. */
@@ -31,6 +34,7 @@ export async function publishRunProgress(
       ...(extra.detail === undefined ? {} : { detail: extra.detail }),
       ...(extra.text === undefined ? {} : { text: extra.text }),
       ...(extra.approvalId === undefined ? {} : { approvalId: extra.approvalId }),
+      ...(extra.kind === undefined ? {} : { kind: extra.kind }),
     }),
   });
   if (!response.ok) throw new Error(`run stream refused progress (${response.status})`);
