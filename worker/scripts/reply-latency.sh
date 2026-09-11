@@ -81,7 +81,10 @@ case "$CMD" in
       set -u
       key=$(awk -F= "/^OPENROUTER_API_KEY=/{print \$2}" /home/sprite/aisar/hermes.env)
       base=$(awk -F= "/^OPENROUTER_BASE_URL=/{print \$2}" /home/sprite/aisar/hermes.env)
-      models=$(awk -F= "/^AISAR_(MODEL|DEEP_MODEL|CANDIDATE_MODEL)_NAMES?=/{print \$2}" /home/sprite/aisar/runtime.env | tr "," "\n" | awk "NF && !seen[\$0]++")
+      models=$(awk -F= "/^AISAR_(MODEL|DEEP_MODEL|CANDIDATE_MODEL)_NAMES?=/{print \$2}" /home/sprite/aisar/runtime.env \
+        | tr "," "\n" \
+        | tr -d "\047\042" \
+        | awk "NF && !seen[\$0]++")
       probe() {
         for i in 1 2; do
           t=$(curl -s -m 120 -o /tmp/rl.$$ -w "%{http_code} %{time_total}" -X POST "$base/chat/completions" \
