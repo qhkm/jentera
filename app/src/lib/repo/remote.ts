@@ -16,6 +16,7 @@ import type {
   BusinessBrowserState,
   Activity,
   AskAnswer,
+  ResumeAskOptions,
   AskOptions,
   AskProgressEvent,
   BusinessSnapshot,
@@ -422,6 +423,11 @@ export class RemoteRepository implements Repository {
 
   async activity(): Promise<Activity> {
     return call<Activity>('/api/runs/activity');
+  }
+
+  async resumeAsk(runId: string, options?: ResumeAskOptions): Promise<AskAnswer> {
+    if (!isRunId(runId)) throw new Error('Invalid task link.');
+    return streamAsk(runId, options?.onProgress ?? (() => undefined));
   }
 
   async runResult(runId: string): Promise<RunResult> {

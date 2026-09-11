@@ -100,6 +100,8 @@ export interface AskProgressEvent {
 }
 export type AskMode = 'ask' | 'work';
 
+export type ResumeAskOptions = Pick<AskOptions, 'onProgress'>;
+
 export interface AskOptions {
   mode?: AskMode;
   /** Stable conversation id so Hermes can keep context per chat, like Telegram. */
@@ -335,6 +337,9 @@ export interface Repository {
 
   /** Answer a question from confirmed facts and real work records. */
   ask(question: string, options?: AskOptions): Promise<AskAnswer>;
+  /** Reattach to a run this browser started before a reload took the
+      page away: progress resumes and the answer lands as if it had not. */
+  resumeAsk?(runId: string, options?: ResumeAskOptions): Promise<AskAnswer>;
   /** Wake the business's agent ahead of the first message; best effort. */
   warmAgent?(): Promise<void>;
 

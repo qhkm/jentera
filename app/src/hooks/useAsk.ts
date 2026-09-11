@@ -106,8 +106,6 @@ function isMessage(value: unknown): value is AskMessage {
     typeof (value as AskMessage).text === 'string';
 }
 
-/* In-flight pairs are excluded from storage: restoring "working" after
-   a reload would create a spinner that can never finish. */
 /** The steps the run remembers, for when none were seen live: the socket
     never opened, or the page was reloaded while the agent worked. */
 function durableSteps(answer: AskAnswer): string[] | undefined {
@@ -117,9 +115,85 @@ function durableSteps(answer: AskAnswer): string[] | undefined {
     : undefined;
 }
 
+type Translate = (key: string, vars?: Record<string, string | number>) => string;
+
+/** One progress event applied to the placeholder it belongs to. Pure, so
+    the same projection serves a run this page started and one it resumed
+    after a reload. */
+function applyProgress(message: AskMessage, event: AskProgressEvent, t: Translate): AskMessage {
+  /* The agent's own steps and tool calls read as a list; a
+     repeated line is the same step, not a new one. */
+  if (event.type === 'status' && (event.kind === 'step' || event.kind === 'tool')) {
+    const detail = event.detail?.trim();
+    if (detail && message.steps?.at(-1) !== detail) {
+      message = { ...message, steps: [...(message.steps ?? []), detail].slice(-20) };
+    }
+  }
+  if (event.type === 'delta') {
+    /* Stripped thinking blocks and step lines leave their
+       newlines behind between tool calls; the reply keeps
+       whitespace, so a run of them was a tall empty gap
+       mid-answer. Runs collapse to one blank line. */
+    const text = ((message.state === 'streaming' ? message.text : '') + (event.text ?? ''))
+      .replace(/\n(?:[ \t]*\n){2,}/g, '\n\n')
+      .replace(/^\s+/, '');
+    /* A blank first chunk (a newline before the answer) would
+       replace the status bubble with an empty reply. */
+    if (!text.trim()) return message;
+    return { ...message, text, state: 'streaming', liveStatus: undefined };
+  }
+  /* Once answer text is on screen, a status line must not erase
+     it; it rides alongside, so a tool running mid-answer still
+     shows. */
+  if (message.state === 'streaming') {
+    if (event.type === 'needs_approval') {
+      return {
+        ...message,
+        state: 'needs_approval',
+        approvalId: event.approvalId,
+        liveStatus: undefined,
+      };
+    }
+    if (event.type === 'status' || event.type === 'thinking') {
+      const detail = event.detail?.trim();
+      return detail
+        ? { ...message, liveStatus: event.type === 'thinking' ? `💭 ${detail}` : detail }
+        : message;
+    }
+    return message;
+  }
+  if (event.type === 'status') {
+    return { ...message, text: event.detail || t('ask.working'), state: 'working' };
+  }
+  if (event.type === 'thinking') {
+    return { ...message, text: `💭 ${event.detail ?? ''}`.trim(), state: 'working' };
+  }
+  if (event.type === 'needs_approval') {
+    /* Any answer text already streamed is kept: the agent may
+       have said what it intends to do before asking, and
+       replacing that with a bare card would throw away the
+       reason the owner needs in order to decide. */
+    return {
+      ...message,
+      state: 'needs_approval',
+      approvalId: event.approvalId,
+      liveStatus: undefined,
+    };
+  }
+  const key = event.type === 'queued' ? 'ask.queued'
+    : event.type === 'waking' ? 'ask.waking'
+      : event.type === 'retrying' ? 'ask.retrying' : 'ask.working';
+  return { ...message, text: t(key), state: event.type };
+}
+
+/* A pair still in flight is kept only once the run exists: the next mount
+   reattaches to it. Before that there is nothing to go back to, and a
+   restored spinner could never finish. */
 function stableMessages(messages: AskMessage[]): AskMessage[] {
+  const resumable = (message: AskMessage | undefined) => Boolean(message?.runId);
   return messages.filter((message, index) =>
-    !message.pendingId && !(message.from === 'you' && messages[index + 1]?.pendingId));
+    (!message.pendingId || resumable(message)) &&
+    !(message.from === 'you' && messages[index + 1]?.pendingId && !resumable(messages[index + 1])));
 }
 
 function titleFor(messages: AskMessage[]): string {
@@ -212,8 +286,8 @@ export function useAsk(
   const turn = useRef(0);
 
   /* Keep conversations through navigation and refresh in this browser.
-     In-flight pairs are excluded so a reload never restores a spinner
-     that can never finish. */
+     A pair still in flight is kept once its run exists, so the next
+     mount can pick it back up. */
   useEffect(() => {
     if (!persisted) return;
     const stable = state.sessions.map((session) => ({
@@ -281,6 +355,132 @@ export function useAsk(
     });
   }, []);
 
+  /** One placeholder, patched in place; the session and pair ids find it. */
+  const patchPending = useCallback((
+    sessionId: string,
+    pendingId: string,
+    patch: (message: AskMessage) => AskMessage,
+  ) => {
+    setState((prev) => {
+      const index = prev.sessions.findIndex((s) => s.id === sessionId);
+      if (index === -1) return prev;
+      const session = prev.sessions[index];
+      return {
+        sessions: [...prev.sessions.slice(0, index), {
+          ...session,
+          messages: session.messages.map((message) =>
+            message.pendingId === pendingId ? patch(message) : message),
+        }, ...prev.sessions.slice(index + 1)],
+        activeId: prev.activeId,
+      };
+    });
+  }, []);
+
+  /** The answer, or the failure, replaces the placeholder; the same for a
+      run this page sent and one it picked back up after a reload. */
+  const settlePending = useCallback((
+    sessionId: string,
+    pendingId: string,
+    question: string,
+    mode: AskMode,
+    promise: Promise<AskAnswer>,
+  ) => {
+    promise.then((a) => {
+      // Replace the placeholder rather than appending, so the
+      // thinking indicator does not stay in the transcript.
+      setState((prev) => {
+        const index = prev.sessions.findIndex((s) => s.id === sessionId);
+        if (index === -1) return prev;
+        const session = prev.sessions[index];
+        return {
+          sessions: [...prev.sessions.slice(0, index), {
+            ...session,
+            updatedAt: Date.now(),
+            messages: session.messages.map((message) =>
+              message.pendingId === pendingId
+                ? {
+                    from: 'ai',
+                    text: a.text,
+                    runId: isRunId(a.runId) ? a.runId : message.runId,
+                    taskTitle: question,
+                    state: 'done' as const,
+                    mode,
+                    depth: message.depth,
+                    steps: message.steps?.length ? message.steps : durableSteps(a),
+                    kind: a.kind,
+                    taskStatus: a.taskStatus,
+                    usedKeys: a.usedKeys,
+                    grounded: a.grounded,
+                  }
+                : message),
+          }, ...prev.sessions.slice(index + 1)],
+          activeId: prev.activeId,
+        };
+      });
+      onCompleted?.(mode, a);
+      trackActivation(mode === 'work' ? 'work_completed' : 'ask_completed');
+    }, (reason: unknown) => {
+      const text = reason instanceof Error ? reason.message : 'Jentera could not answer.';
+      setState((prev) => {
+        const index = prev.sessions.findIndex((s) => s.id === sessionId);
+        if (index === -1) return prev;
+        const session = prev.sessions[index];
+        return {
+          sessions: [...prev.sessions.slice(0, index), {
+            ...session,
+            updatedAt: Date.now(),
+            messages: session.messages.map((message) =>
+              message.pendingId === pendingId
+                ? {
+                    from: 'ai',
+                    text,
+                    failedQuestion: question,
+                    failedMode: mode,
+                    runId: message.runId,
+                    taskTitle: question,
+                    state: 'failed' as const,
+                    mode,
+                    steps: message.steps,
+                  }
+                : message),
+          }, ...prev.sessions.slice(index + 1)],
+          activeId: prev.activeId,
+        };
+      });
+    });
+  }, [onCompleted]);
+
+  /* A pair kept through a reload has a run to go back to. Reattach once,
+     into the same placeholder: the steps seen so far stay, the partial
+     text does not (the durable answer replaces it). Without a way to
+     resume, the question is offered back for a retry, not dropped. */
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (!persisted || resumed.current) return;
+    resumed.current = true;
+    for (const session of state.sessions) {
+      session.messages.forEach((message, index) => {
+        if (!message.pendingId || !message.runId) return;
+        const { pendingId, runId } = message;
+        const question = message.taskTitle ?? session.messages[index - 1]?.text ?? '';
+        const mode = message.mode ?? 'work';
+        if (!repo.resumeAsk) {
+          settlePending(session.id, pendingId, question, mode,
+            Promise.reject(new Error('Jentera could not answer.')));
+          return;
+        }
+        patchPending(session.id, pendingId, (current) => ({
+          ...current, text: t('ask.working'), state: 'working', liveStatus: undefined,
+        }));
+        settlePending(session.id, pendingId, question, mode, repo.resumeAsk(runId, {
+          onProgress: (event) => patchPending(session.id, pendingId, (current) => applyProgress(current, event, t)),
+        }));
+      });
+    }
+    /* Once, over the sessions restored at mount; later state is not re-read. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persisted, repo, patchPending, settlePending, t]);
+
   const send = useCallback(
     (raw: string, mode: AskMode = 'work') => {
       const question = raw.trim();
@@ -317,167 +517,17 @@ export function useAsk(
             activeId: prev.activeId,
           };
         });
-        void repo
-          .ask(question, {
-            mode,
-            sessionId,
-            responseMode: deep ? 'deep' : 'quick',
-            onRunCreated: (runId: string) => {
-              if (!isRunId(runId)) return;
-              setState((prev) => ({
-                ...prev,
-                sessions: prev.sessions.map((session) => session.id !== sessionId ? session : {
-                  ...session,
-                  messages: session.messages.map((message) => message.pendingId === pendingId
-                    ? { ...message, runId, taskTitle: question }
-                    : message),
-                }),
-              }));
-            },
-            onProgress: (event: AskProgressEvent) => {
-              const project = (message: AskMessage): AskMessage => {
-                /* The agent's own steps and tool calls read as a list; a
-                   repeated line is the same step, not a new one. */
-                if (event.type === 'status' && (event.kind === 'step' || event.kind === 'tool')) {
-                  const detail = event.detail?.trim();
-                  if (detail && message.steps?.at(-1) !== detail) {
-                    message = { ...message, steps: [...(message.steps ?? []), detail].slice(-20) };
-                  }
-                }
-                if (event.type === 'delta') {
-                  /* Stripped thinking blocks and step lines leave their
-                     newlines behind between tool calls; the reply keeps
-                     whitespace, so a run of them was a tall empty gap
-                     mid-answer. Runs collapse to one blank line. */
-                  const text = ((message.state === 'streaming' ? message.text : '') + (event.text ?? ''))
-                    .replace(/\n(?:[ \t]*\n){2,}/g, '\n\n')
-                    .replace(/^\s+/, '');
-                  /* A blank first chunk (a newline before the answer) would
-                     replace the status bubble with an empty reply. */
-                  if (!text.trim()) return message;
-                  return { ...message, text, state: 'streaming', liveStatus: undefined };
-                }
-                /* Once answer text is on screen, a status line must not erase
-                   it; it rides alongside, so a tool running mid-answer still
-                   shows. */
-                if (message.state === 'streaming') {
-                  if (event.type === 'needs_approval') {
-                    return {
-                      ...message,
-                      state: 'needs_approval',
-                      approvalId: event.approvalId,
-                      liveStatus: undefined,
-                    };
-                  }
-                  if (event.type === 'status' || event.type === 'thinking') {
-                    const detail = event.detail?.trim();
-                    return detail
-                      ? { ...message, liveStatus: event.type === 'thinking' ? `💭 ${detail}` : detail }
-                      : message;
-                  }
-                  return message;
-                }
-                if (event.type === 'status') {
-                  return { ...message, text: event.detail || t('ask.working'), state: 'working' };
-                }
-                if (event.type === 'thinking') {
-                  return { ...message, text: `💭 ${event.detail ?? ''}`.trim(), state: 'working' };
-                }
-                if (event.type === 'needs_approval') {
-                  /* Any answer text already streamed is kept: the agent may
-                     have said what it intends to do before asking, and
-                     replacing that with a bare card would throw away the
-                     reason the owner needs in order to decide. */
-                  return {
-                    ...message,
-                    state: 'needs_approval',
-                    approvalId: event.approvalId,
-                    liveStatus: undefined,
-                  };
-                }
-                const key = event.type === 'queued' ? 'ask.queued'
-                  : event.type === 'waking' ? 'ask.waking'
-                    : event.type === 'retrying' ? 'ask.retrying' : 'ask.working';
-                return { ...message, text: t(key), state: event.type };
-              };
-              setState((prev) => {
-                const index = prev.sessions.findIndex((s) => s.id === sessionId);
-                if (index === -1) return prev;
-                const session = prev.sessions[index];
-                return {
-                  sessions: [...prev.sessions.slice(0, index), {
-                    ...session,
-                    messages: session.messages.map((message) =>
-                      message.pendingId === pendingId ? project(message) : message),
-                  }, ...prev.sessions.slice(index + 1)],
-                  activeId: prev.activeId,
-                };
-              });
-            },
-          })
-          .then((a) => {
-            // Replace the placeholder rather than appending, so the
-            // thinking indicator does not stay in the transcript.
-            setState((prev) => {
-              const index = prev.sessions.findIndex((s) => s.id === sessionId);
-              if (index === -1) return prev;
-              const session = prev.sessions[index];
-              return {
-                sessions: [...prev.sessions.slice(0, index), {
-                  ...session,
-                  updatedAt: Date.now(),
-                  messages: session.messages.map((message) =>
-                    message.pendingId === pendingId
-                      ? {
-                          from: 'ai',
-                          text: a.text,
-                          runId: isRunId(a.runId) ? a.runId : message.runId,
-                          taskTitle: question,
-                          state: 'done' as const,
-                          mode,
-                          depth: message.depth,
-                          steps: message.steps?.length ? message.steps : durableSteps(a),
-                          kind: a.kind,
-                          taskStatus: a.taskStatus,
-                          usedKeys: a.usedKeys,
-                          grounded: a.grounded,
-                        }
-                      : message),
-                }, ...prev.sessions.slice(index + 1)],
-                activeId: prev.activeId,
-              };
-            });
-            onCompleted?.(mode, a);
-            trackActivation(mode === 'work' ? 'work_completed' : 'ask_completed');
-          }, (reason: unknown) => {
-            const text = reason instanceof Error ? reason.message : 'Jentera could not answer.';
-            setState((prev) => {
-              const index = prev.sessions.findIndex((s) => s.id === sessionId);
-              if (index === -1) return prev;
-              const session = prev.sessions[index];
-              return {
-                sessions: [...prev.sessions.slice(0, index), {
-                  ...session,
-                  updatedAt: Date.now(),
-                  messages: session.messages.map((message) =>
-                    message.pendingId === pendingId
-                      ? {
-                          from: 'ai',
-                          text,
-                          failedQuestion: question,
-                          failedMode: mode,
-                          runId: message.runId,
-                          taskTitle: question,
-                          state: 'failed' as const,
-                          mode,
-                          steps: message.steps,
-                        }
-                      : message),
-                }, ...prev.sessions.slice(index + 1)],
-                activeId: prev.activeId,
-              };
-            });
-          });
+        settlePending(sessionId, pendingId, question, mode, repo.ask(question, {
+          mode,
+          sessionId,
+          responseMode: deep ? 'deep' : 'quick',
+          onRunCreated: (runId: string) => {
+            if (!isRunId(runId)) return;
+            patchPending(sessionId, pendingId, (message) => ({ ...message, runId, taskTitle: question }));
+          },
+          onProgress: (event: AskProgressEvent) =>
+            patchPending(sessionId, pendingId, (message) => applyProgress(message, event, t)),
+        }));
         return;
       }
 
@@ -517,7 +567,7 @@ export function useAsk(
         };
       });
     },
-    [answer, business.team, lang, grounded, repo, onCompleted, t],
+    [answer, business.team, lang, grounded, repo, patchPending, settlePending, t],
   );
 
   const active = state.sessions.find((s) => s.id === state.activeId) ?? state.sessions[0];

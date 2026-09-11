@@ -114,6 +114,36 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it('reattaches to a run by its id and returns the durable answer', async () => {
+    /* After a reload the page has a run id and nothing else; the same
+       socket and durable poll finish it as if the tab never went away. */
+    const fetch = vi.fn().mockResolvedValueOnce(response({ ...ANSWER, pending: false, status: 'completed' }));
+    vi.stubGlobal('fetch', fetch);
+    const sockets: FakeWebSocket[] = [];
+    vi.stubGlobal('WebSocket', class extends FakeWebSocket {
+      constructor(url: string) {
+        super(url);
+        sockets.push(this);
+      }
+    });
+    const progress: string[] = [];
+
+    const answer = new RemoteRepository().resumeAsk(ANSWER.runId, {
+      onProgress: (event) => progress.push(event.type),
+    });
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    expect(sockets[0].url).toContain(`/api/runs/${ANSWER.runId}/events`);
+    sockets[0].message({ version: 1, seq: 2, type: 'working' });
+    sockets[0].message({ version: 1, seq: 3, type: 'completed' });
+
+    await expect(answer).resolves.toMatchObject(ANSWER);
+    expect(progress).toEqual(['working']);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(String(fetch.mock.calls[0][0])).toBe(`/api/runs/${ANSWER.runId}`);
+
+    await expect(new RemoteRepository().resumeAsk('not-a-run')).rejects.toThrow('Invalid task link.');
+  });
+
   it('reads one tenant-scoped task and rejects invalid or mismatched links', async () => {
     const fetch = vi.fn().mockResolvedValue(response({ ...ANSWER, status: 'completed', pending: false }));
     vi.stubGlobal('fetch', fetch);

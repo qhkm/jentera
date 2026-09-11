@@ -5,7 +5,7 @@ import { clearAskStorage, useAsk } from '@/hooks/useAsk';
 import { LocalRepository } from '@/lib/repo/local';
 import { RepositoryProvider } from '@/lib/repo/context';
 import { SignedInProvider } from '@/lib/repo/gate';
-import type { AskAnswer, AskOptions, Repository } from '@/lib/repo';
+import type { AskAnswer, AskOptions, AskProgressEvent, Repository } from '@/lib/repo';
 import type { Business } from '@/lib/types';
 
 const business = {
@@ -299,6 +299,74 @@ describe('useAsk durable answers', () => {
       'Here is the answer',
     ]);
     expect(second.result.current!.messages[1]).toMatchObject({ runId, taskTitle: 'my question' });
+  });
+
+  it('resumes a run that was in flight when the page was reloaded', async () => {
+    /* The question and its placeholder used to vanish on reload. With a
+       run id the pair is kept, and the next mount reattaches to the run:
+       progress carries on into the same placeholder and the answer lands. */
+    const repo: Repository = new LocalRepository();
+    const runId = '11111111-1111-4111-8111-111111111111';
+    repo.ask = (_question, options) => {
+      options?.onRunCreated?.(runId);
+      options?.onProgress?.({ type: 'status', detail: 'Checking hours', kind: 'step' });
+      return new Promise<AskAnswer>(() => { /* the tab goes away first */ });
+    };
+    const resumeAsk = vi.fn(async (id: string, options?: { onProgress?: (event: AskProgressEvent) => void }) => {
+      expect(id).toBe(runId);
+      options?.onProgress?.({ type: 'status', detail: 'Reading the calendar', kind: 'step' });
+      return { text: 'We open at 9.', usedKeys: [], grounded: true, runId, kind: 'work' as const };
+    });
+    repo.resumeAsk = resumeAsk;
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SignedInProvider value account="resume-1">
+        <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
+      </SignedInProvider>
+    );
+    const first = renderHook(() => useAsk(business, { handled: 0, needs: 0 }, (key) => key), { wrapper });
+    await waitFor(() => expect(first.result.current).not.toBeNull());
+    act(() => first.result.current!.send('hours?', 'work'));
+    await waitFor(() => expect(first.result.current!.messages[1]).toMatchObject({ runId, steps: ['Checking hours'] }));
+    await waitFor(() => expect(localStorage.getItem('jentera-ask-sessions-v1:resume-1')).toContain(runId));
+    expect(resumeAsk).not.toHaveBeenCalled();
+    first.unmount();
+
+    const second = renderHook(() => useAsk(business, { handled: 0, needs: 0 }, (key) => key), { wrapper });
+    await waitFor(() => expect(second.result.current).not.toBeNull());
+    await waitFor(() => expect(second.result.current!.messages[1]).toMatchObject({ state: 'done' }));
+    expect(resumeAsk).toHaveBeenCalledTimes(1);
+    expect(second.result.current!.messages.map((message) => message.text)).toEqual(['hours?', 'We open at 9.']);
+    expect(second.result.current!.messages[1]).toMatchObject({
+      runId, taskTitle: 'hours?', mode: 'work', kind: 'work',
+      steps: ['Checking hours', 'Reading the calendar'],
+    });
+  });
+
+  it('keeps a resumed run retryable when it cannot be reattached', async () => {
+    const repo: Repository = new LocalRepository();
+    const runId = '22222222-2222-4222-8222-222222222222';
+    repo.ask = (_question, options) => {
+      options?.onRunCreated?.(runId);
+      return new Promise<AskAnswer>(() => { /* the tab goes away first */ });
+    };
+    repo.resumeAsk = async () => { throw new Error('Jentera stopped that answer.'); };
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SignedInProvider value account="resume-2">
+        <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
+      </SignedInProvider>
+    );
+    const first = renderHook(() => useAsk(business, { handled: 0, needs: 0 }, (key) => key), { wrapper });
+    await waitFor(() => expect(first.result.current).not.toBeNull());
+    act(() => first.result.current!.send('hours?', 'ask'));
+    await waitFor(() => expect(localStorage.getItem('jentera-ask-sessions-v1:resume-2')).toContain(runId));
+    first.unmount();
+
+    const second = renderHook(() => useAsk(business, { handled: 0, needs: 0 }, (key) => key), { wrapper });
+    await waitFor(() => expect(second.result.current).not.toBeNull());
+    await waitFor(() => expect(second.result.current!.messages[1]).toMatchObject({ state: 'failed' }));
+    expect(second.result.current!.messages[1]).toMatchObject({
+      text: 'Jentera stopped that answer.', failedQuestion: 'hours?', failedMode: 'ask', runId,
+    });
   });
 
   it('retains an accepted run when the answer connection fails', async () => {

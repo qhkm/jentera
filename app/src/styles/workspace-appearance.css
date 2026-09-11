@@ -1,0 +1,178 @@
+/* Workspace-only surface and ink scale. Recompute derived tokens here:
+   inherited custom properties otherwise retain their root-level colors. */
+.dashboard-shell {
+  --bg: #212121;
+  --bg-card: #292929;
+  --bg-card-hover: #303030;
+  --text: #ececec;
+  --text-secondary: #bcbcbc;
+  --text-muted: #aaa;
+  --text-dim: var(--text-muted);
+  --border: rgb(var(--border-ink) / .035);
+  --rail: rgb(var(--border-ink) / .065);
+  --border-light: rgb(var(--border-ink) / .12);
+  --ov-surface: var(--bg-card);
+  --ov-line: var(--border);
+  --ov-line-2: var(--rail);
+  --ov-line-3: var(--border-light);
+  --radius-card: 22px;
+  --radius-item: 12px;
+  --radius-control: 999px;
+  --workspace-control: #343434;
+  --workspace-control-hover: #3d3d3d;
+  --workspace-primary: #e6e6e6;
+  --workspace-primary-hover: #fff;
+  --workspace-primary-ink: #252525;
+  --workspace-focus: #8fbfae;
+}
+
+:is(.theme-light, .site-theme-light) .dashboard-shell {
+  --bg: #faf9f7;
+  --bg-card: #f2f1ee;
+  --bg-card-hover: #eae9e6;
+  --text: #292929;
+  --text-secondary: #545454;
+  --text-muted: #656565;
+  --border: rgb(var(--border-ink) / .025);
+  --rail: rgb(var(--border-ink) / .055);
+  --workspace-control: #e9e8e5;
+  --workspace-control-hover: #deddd9;
+  --workspace-primary: #343434;
+  --workspace-primary-hover: #242424;
+  --workspace-primary-ink: #fff;
+  --workspace-focus: #397663;
+}
+
+/* Rounded, tonal controls keep the label as the strongest visual cue. */
+.dashboard-shell .btn {
+  border-radius: var(--radius-control);
+}
+.dashboard-shell .btn-primary {
+  border-color: transparent;
+  background: var(--workspace-primary);
+  color: var(--workspace-primary-ink);
+}
+.dashboard-shell .btn-primary:hover:not(:where(:disabled, [aria-disabled='true'])) {
+  border-color: transparent;
+  background: var(--workspace-primary-hover);
+  opacity: 1;
+}
+.dashboard-shell :is(.btn-outline, .btn-ghost, .btn-reco) {
+  border-color: transparent;
+  background: var(--workspace-control);
+  color: var(--text);
+}
+.dashboard-shell .btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+.dashboard-shell :is(.btn-outline, .btn-ghost, .btn-reco):hover:not(:where(:disabled, [aria-disabled='true'])) {
+  border-color: transparent;
+  background: var(--workspace-control-hover);
+  color: var(--text);
+  opacity: 1;
+}
+.dashboard-shell :is(.input, .workspace-search, .conversation-search) {
+  border-radius: 14px;
+}
+.dashboard-shell :focus-visible {
+  outline-color: var(--workspace-focus);
+}
+.dashboard-shell .input:focus {
+  border-color: var(--workspace-focus);
+}
+
+/* Surface value provides the card boundary; dividers remain hairlines. */
+.dashboard-shell :is(.dashboard-profile, .daily-brief, .home-ask-launcher, .home-notice, .business-identity:not(.business-identity-compact)) {
+  border-color: var(--border);
+  border-radius: var(--radius-card);
+  background: var(--bg-card);
+}
+.dashboard-shell :is(.home-ask-launcher, .routine-starter:not(:disabled), .routine-card, .chat-task-card):hover {
+  border-color: var(--rail);
+  background: var(--bg-card-hover);
+}
+.dashboard-shell .dashboard-nav-item {
+  border-radius: 14px;
+}
+.dashboard-shell .dashboard-nav-item[aria-current='page'],
+.dashboard-shell .conversation-list-scroll .conversation-selected {
+  border-color: transparent;
+  background: var(--workspace-control);
+  color: var(--text);
+}
+.dashboard-shell .dashboard-nav-item[aria-current='page'] .dashboard-nav-icon {
+  background: transparent;
+  color: var(--accent-green);
+}
+.dashboard-shell .workspace-mode-switch {
+  border-color: transparent;
+  border-radius: 999px;
+}
+.dashboard-shell .workspace-mode-switch > button {
+  border-radius: 999px;
+}
+.dashboard-shell .workspace-mode-switch > button[aria-current='page'] {
+  background: var(--workspace-control);
+  color: var(--text);
+}
+.dashboard-shell .activity-filters button {
+  border-radius: 999px;
+}
+.dashboard-shell .activity-filters button[aria-pressed='true'] {
+  border-color: transparent;
+  background: var(--workspace-control);
+  color: var(--text);
+}
+
+/* Carry the same treatment into the conversation and its suggestions. */
+.dashboard-shell :is(.conversation-new, .ask-studio-new, .ask-depth-toggle, .ask-studio-starters > button, .ask-refinements > button) {
+  border-color: transparent;
+  border-radius: 999px;
+  background: var(--workspace-control);
+  color: var(--text-secondary);
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+.dashboard-shell :is(.conversation-new, .ask-studio-new, .ask-depth-toggle, .ask-studio-starters > button, .ask-refinements > button):hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--workspace-control-hover);
+  color: var(--text);
+}
+.dashboard-shell .ask-depth-toggle[aria-pressed='true'] {
+  background: rgb(var(--accent-green-rgb) / var(--accent-fill-alpha));
+  color: var(--accent-green);
+}
+.dashboard-shell .ask-writing-pad {
+  border-color: var(--rail);
+  border-radius: 26px;
+  box-shadow: 0 4px 20px rgb(0 0 0 / .025);
+}
+.dashboard-shell :is(.ask-writing-pad, .conversation-search, .workspace-search):focus-within {
+  border-color: var(--workspace-focus);
+  box-shadow: 0 0 0 2px rgb(var(--accent-green-rgb) / .08);
+}
+.dashboard-shell .ask-studio-send {
+  border-radius: 50%;
+}
+.dashboard-shell .ask-studio-send:not(:disabled) {
+  border-color: transparent;
+  background: var(--workspace-primary);
+  color: var(--workspace-primary-ink);
+}
+
+/* Smooth reading type for the workspace; the brand wordmark keeps its face. */
+.dashboard-shell .dashboard-content .font-pixel,
+.dashboard-shell :is(.ask-studio-topbar h1, .ask-studio-welcome h2, .daily-brief-identity h2) {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  letter-spacing: -.025em;
+  -webkit-text-stroke: 0;
+}
+.dashboard-shell .home-stat > span.font-pixel {
+  font-variant-numeric: tabular-nums;
+}
+.dashboard-shell .eyebrow {
+  font-family: var(--font-sans);
+  letter-spacing: .025em;
+  text-transform: none;
+}
