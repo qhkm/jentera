@@ -8,6 +8,7 @@ import type { Env } from '../src/env';
 import { handleRoutines } from '../src/routes/routines';
 import { handleRuns } from '../src/routes/runs';
 import { handleSession } from '../src/routes/session';
+import { handleNotifications } from '../src/routes/notifications';
 import { dispatchDueRoutines } from '../src/routines/dispatch';
 import { asOwner, asTenant, req, signIn, testEnv, truncateAll } from './harness';
 
@@ -152,6 +153,75 @@ describe('capabilities and permissions', () => {
     expect(paused.body.routine.status).toBe('paused');
     expect((await call('POST', `/api/routines/${routine.id}/state`, cookieOwnerA,
       { requestId: uuid(), expectedRevision: 2, status: 'active' }, disabled)).body.code).toBe('ROUTINES_DISABLED');
+  });
+});
+
+describe('Sprite-backed routines', () => {
+  it('validates an instruction and durably queues one Sprite task', async () => {
+    const sent: unknown[] = [];
+    const runtimeEnv = testEnv({
+      ROUTINES_ENABLED: 'true',
+      RUNTIME_EXECUTION_ENABLED: 'true',
+      AISAR_MODEL_NAME: 'deepseek-v4-flash',
+      RUNTIME_QUEUE: { send: async (message: unknown) => { sent.push(message); } },
+    });
+    await asOwner((sql) => sql`
+      insert into agent_runtime
+        (business_id, provider, provider_name, provider_id, provider_url, status, desired_release, observed_release)
+      values (${A}, 'fly-sprite', 'alpha-runtime', 'sprite-1', 'https://sprite.test',
+              'ready', 'release-1', 'release-1')`);
+
+    const bad = await call('POST', '/api/routines', cookieOwnerA, createBody({
+      task: { kind: 'agent_task', prompt: '   ' },
+    }), runtimeEnv);
+    expect(bad.status).toBe(400);
+    expect(bad.body.fieldErrors).toHaveProperty('task.prompt');
+
+    const routine = await create({
+      task: { kind: 'agent_task', prompt: 'Research local events and prepare a promotion plan.' },
+      enabled: false,
+    }, cookieOwnerA);
+    const run = await call('POST', `/api/routines/${routine.id}/run`, cookieOwnerA, {
+      requestId: uuid(), expectedRevision: routine.revision,
+    }, runtimeEnv);
+    expect(run.status).toBe(202);
+    expect(run.body.occurrence).toMatchObject({ status: 'working', trigger: 'manual' });
+    expect(sent).toHaveLength(1);
+    const rows = await asTenant(A, (tx) => tx<{ kind: string; payload: Body }[]>`
+      select kind, payload from runtime_task where run_id = ${run.body.occurrence.runId}`);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].kind).toBe('run');
+    expect(rows[0].payload.routine).toMatchObject({ id: routine.id, occurrenceId: run.body.occurrence.id });
+  });
+});
+
+describe('notifications', () => {
+  async function notifications(cookie: string, method = 'GET', path = '/api/notifications') {
+    const { request, url } = req(method, path, { cookie, body: method === 'POST' ? {} : undefined });
+    const response = await handleNotifications(request, env, url, cors);
+    return { status: response!.status, body: await response!.json() as Body };
+  }
+
+  it('creates one recipient-scoped notification for a scheduled result and marks it read', async () => {
+    await seedWork(1, new Date(Date.now() - 3_600_000).toISOString());
+    const routine = await create();
+    await asOwner((sql) => sql`update routine set next_run_at = now() - interval '1 minute' where id = ${routine.id}`);
+    await dispatchDueRoutines(env, new Date());
+    await dispatchDueRoutines(env, new Date());
+
+    const owner = await notifications(cookieOwnerA);
+    expect(owner.body.unread).toBe(1);
+    expect(owner.body.notifications).toHaveLength(1);
+    expect(owner.body.notifications[0]).toMatchObject({
+      kind: 'routine_completed', routineId: routine.id, readAt: null,
+    });
+    expect((await notifications(cookieStaffA)).body.notifications).toEqual([]);
+    expect((await notifications(cookieOwnerB)).body.notifications).toEqual([]);
+
+    const id = owner.body.notifications[0].id;
+    expect((await notifications(cookieOwnerA, 'POST', `/api/notifications/${id}/read`)).status).toBe(200);
+    expect((await notifications(cookieOwnerA)).body).toMatchObject({ unread: 0 });
+    expect((await notifications(cookieOwnerB, 'POST', `/api/notifications/${id}/read`)).status).toBe(404);
   });
 });
 

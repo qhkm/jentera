@@ -28,7 +28,8 @@ export function dailyBrief(activity: Activity, snapshot: BusinessSnapshot, now: 
     })
     .sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt));
   const today = recent.filter((work) => malaysiaDay(new Date(work.occurredAt)) === day);
-  if (activity.counters.needsYou > 0) return { priority: 'approval', today };
+  if (activity.counters.needsYou > 0) return { priority: 'approval', today,
+    focus: activity.counters.needsYou === 1 ? recent.find((work) => ['needs_approval', 'needs_input', 'needs_review', 'blocked'].includes(work.status)) : undefined };
   const failed = today.find((work) => work.status === 'failed' || work.status === 'blocked');
   if (failed) return { priority: 'failed', focus: failed, today };
   const working = recent.find((work) => ['queued', 'working', 'running'].includes(work.status));

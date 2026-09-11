@@ -11,6 +11,7 @@
 import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
 import type { Tone } from '@/lib/types';
 import { DataIcon } from '@/components/Icon';
+import { JenteraMark } from '@/components/JenteraMark';
 
 export type { Tone };
 
@@ -113,6 +114,21 @@ export function Progress({ value, label }: { value: number; label?: string }) {
 }
 
 /* ---- Async feedback --------------------------------------------------- */
+
+/** Route and session loading share the workspace's surface treatment. */
+export function PageLoading({ title, detail }: { title: string; detail?: string }) {
+  return (
+    <main className="workspace-loading flex min-h-dvh items-center justify-center bg-bg px-4 py-8 text-text sm:px-6">
+      <Card className="w-full max-w-md gap-4 p-6 sm:p-8">
+        <div className="flex items-center gap-3 text-xl font-medium tracking-tight">
+          <JenteraMark size={32} />
+          <span>Jentera</span>
+        </div>
+        <LoadingState title={title} detail={detail} />
+      </Card>
+    </main>
+  );
+}
 
 export function LoadingState({
   title,

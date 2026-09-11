@@ -1,5 +1,19 @@
 # Jentera Product Vision
 
+## Current positioning — 11 September 2026
+
+> Jentera automates the day-to-day work businesses still do manually.
+
+Business automation is the core promise; “AI staff” is its customer-friendly
+explanation. Owners describe what should be handled. The product centers on
+automations, tasks, approvals, activity, connections, and knowledge.
+
+The [product thesis and homepage direction](docs/marketing/product-thesis-and-homepage.md)
+is the current authority for positioning and customer-facing UX. It supersedes
+the workforce-management language below, including exposing named workers as the
+primary product structure. The earlier material remains as strategic and
+technical context; capability lists and pricing are not verified live offers.
+
 ## Elevator pitch
 
 Jentera deploys AI workers for Southeast Asian businesses.

@@ -11,6 +11,7 @@ import SignIn from '@/routes/SignIn';
 import Connect from '@/routes/Connect';
 import NotFound from '@/routes/NotFound';
 import { PageMetadata } from '@/components/PageMetadata';
+import { PageLoading } from '@/components/ui';
 import { lazy, Suspense, type ReactElement } from 'react';
 
 // Visitors should not download the whole dashboard before reading the site.
@@ -21,14 +22,7 @@ const Setup = lazy(() => import('@/routes/Setup'));
 const Dashboard = lazy(() => import('@/routes/Dashboard'));
 
 function RouteLoading() {
-  return (
-    <main className="grid min-h-dvh place-content-center gap-3 bg-bg p-6 text-center text-text">
-      <span className="font-pixel text-2xl text-brand">Jentera</span>
-      <p role="status" className="text-sm text-text-secondary">
-        Loading your page…
-      </p>
-    </main>
-  );
+  return <PageLoading title="Loading your page…" />;
 }
 
 /* ============================================================

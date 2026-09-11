@@ -330,7 +330,7 @@ function RuntimePreparing({ stage }: { stage: string }) {
       role="status"
       aria-live="polite"
       aria-atomic="true"
-      className="relative overflow-hidden border border-brand-line bg-brand-soft p-5 sm:p-6"
+      className="relative overflow-hidden rounded-card border border-border bg-bg-card p-5 sm:p-6"
     >
       <div className="absolute inset-x-0 top-0 h-px overflow-hidden bg-brand-line" aria-hidden="true">
         <span className="loading-sweep block h-full w-1/3 bg-brand" />
@@ -338,7 +338,7 @@ function RuntimePreparing({ stage }: { stage: string }) {
       <div className="flex items-start gap-4 sm:items-center sm:gap-5">
         <div className="relative flex size-14 shrink-0 items-center justify-center" aria-hidden="true">
           <span className="loading-ring absolute inset-0 rounded-full border border-brand-line border-t-brand" />
-          <span className="absolute inset-2 border border-brand-line" />
+          <span className="absolute inset-2 rounded-full border border-brand-line" />
           <span className="font-pixel text-lg text-brand">J</span>
         </div>
         <div className="min-w-0 flex-1">
@@ -351,11 +351,11 @@ function RuntimePreparing({ stage }: { stage: string }) {
       </div>
       <div className="mt-5 grid gap-2 border-t border-brand-line pt-4 text-[12px] text-text-secondary sm:grid-cols-2">
         <span className="flex items-center gap-2">
-          <span className="size-1.5 bg-brand" aria-hidden="true" />
+          <span className="size-1.5 rounded-full bg-brand" aria-hidden="true" />
           {t('su.live.loader.private')}
         </span>
         <span className="flex items-center gap-2">
-          <span className="size-1.5 bg-brand" aria-hidden="true" />
+          <span className="size-1.5 rounded-full bg-brand" aria-hidden="true" />
           {t('su.live.loader.continue')}
         </span>
       </div>

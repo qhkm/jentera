@@ -32,8 +32,10 @@ import MyBusinessView, { type BizTab } from './views/MyBusinessView';
 import { trackActivation } from '@/lib/analytics';
 import { isRunId } from '@/lib/task';
 import RoutinesView from './views/RoutinesView';
+import NotificationsView from './views/NotificationsView';
+import { useNotifications } from '@/hooks/useNotifications';
 
-export type View = 'home' | 'chat' | 'work' | 'routines' | 'business';
+export type View = 'home' | 'chat' | 'work' | 'routines' | 'notifications' | 'business';
 
 const BUSINESS_TABS: BizTab[] = ['profile', 'knows', 'handles', 'connections', 'permissions'];
 
@@ -46,6 +48,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { id: 'home', labelKey: 'nav.home', icon: 'home' },
   { id: 'work', labelKey: 'nav.work', icon: 'activity' },
+  { id: 'notifications', labelKey: 'notifications.title', icon: 'notifications' },
   { id: 'business', labelKey: 'nav.business', icon: 'business' },
 ];
 
@@ -66,6 +69,7 @@ export default function Dashboard() {
   const businessTab = BUSINESS_TABS.includes(requestedTab as BizTab) ? requestedTab as BizTab : 'profile';
   const focusedRunId = view === 'work' ? searchParams.get('run') : null;
   const [taskContext, setTaskContext] = useState<{ runId: string; title?: string } | null>(null);
+  const [taskDraft, setTaskDraft] = useState<{ text: string; key: number; sessionId?: string } | null>(null);
   const focusedRoutineId = view === 'routines' ? searchParams.get('routine') : null;
   const lastDashboard = useRef<{ view: Exclude<View, 'chat'>; tab: BizTab; runId: string | null; routineId: string | null }>({ view: 'home', tab: 'profile', runId: null, routineId: null });
   const trackedOpen = useRef(false);
@@ -79,6 +83,7 @@ export default function Dashboard() {
      `pending` as "otherwise" put that same "1" there for the length of
      the fetch, on every load. */
   const activity = useActivity();
+  const notifications = useNotifications();
   /* Home's Telegram notice and My Business's connection controls must
      describe the same server answer. Keeping the request here also lets a
      pending Telegram pairing clear while the owner moves between views. */
@@ -141,7 +146,7 @@ export default function Dashboard() {
 
   function navButton(item: NavItem) {
     const active = view === item.id;
-    const badge = item.id === 'work' ? needsAttention : 0;
+    const badge = item.id === 'work' ? needsAttention : item.id === 'notifications' ? notifications.unread : 0;
     return (
       <button
         key={item.id}
@@ -243,6 +248,7 @@ export default function Dashboard() {
               firstRun={searchParams.get('first') === '1'}
               active={view === 'chat'}
               workspace
+              taskDraft={taskDraft}
               onOpenActivity={openTask}
               onOpenConnections={() => go('business', 'connections')}
               onOpenKnowledge={() => go('business', 'knows')}
@@ -250,11 +256,19 @@ export default function Dashboard() {
           </div>
           {view === 'work' && <ActivityView
             b={b}
-            onOpenAsk={() => go('chat')}
+            onOpenAsk={(context, sessionId) => {
+              if (context) setTaskDraft({ text: context, key: Date.now(), sessionId });
+              go('chat');
+            }}
             runId={focusedRunId}
             taskTitle={taskContext?.runId === focusedRunId ? taskContext.title : undefined}
             onOpenTask={openTask}
             onCloseTask={() => go('work')}
+          />}
+          {view === 'notifications' && <NotificationsView
+            state={notifications}
+            onOpenTask={openTask}
+            onOpenRoutine={(id) => go('routines', undefined, null, id)}
           />}
           {view === 'business' && (
             <MyBusinessView
@@ -279,7 +293,7 @@ export default function Dashboard() {
       >
         {nav.map((item) => {
           const active = view === item.id;
-          const badge = item.id === 'work' ? needsAttention : 0;
+          const badge = item.id === 'work' ? needsAttention : item.id === 'notifications' ? notifications.unread : 0;
           return (
             <button
               key={item.id}
@@ -291,7 +305,7 @@ export default function Dashboard() {
               }`}
             >
               <Icon name={item.icon} size={19} />
-              {t(item.labelKey)}
+              {t(item.id === 'notifications' ? 'notifications.short' : item.labelKey)}
               {badge > 0 ? (
                 <span className="unread absolute right-[18%] top-1.5">{badge}</span>
               ) : null}

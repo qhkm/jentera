@@ -8,6 +8,8 @@ import { useDetailLevel } from '@/hooks/useDetailLevel';
 import { isRunId } from '@/lib/task';
 import type { Tone } from '@/lib/types';
 import RunTrace from './RunTrace';
+import { RuntimeApprovalCard } from '@/components/RuntimeApprovalCard';
+import { useActivity } from '@/hooks/useActivity';
 
 const STATUS: Record<string, { label: string; tone: Tone }> = {
   queued: { label: 'task.queued', tone: 'neutral' },
@@ -29,11 +31,14 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk }
   title?: string;
   work?: WorkSummary;
   onBack?: () => void;
-  onOpenAsk?: () => void;
+  onOpenAsk?: (context?: string, sessionId?: string) => void;
 }) {
   const t = useT();
   const repo = useRepository();
   const detail = useDetailLevel();
+  const activity = useActivity();
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const [result, setResult] = useState<RunResult | null>(null);
   const [error, setError] = useState(false);
@@ -74,13 +79,31 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk }
   const StatusIcon = completed ? CheckCircle : failed ? WarningCircle : Clock;
   const fullText = typeof result?.text === 'string' ? result.text.trim() : '';
   const summary = completed && !fullText ? work?.outcome : null;
+  const needsReview = outcomeStatus === 'needs_review';
+  const needsInput = outcomeStatus === 'needs_input' || outcomeStatus === 'blocked';
+  function continueTask() {
+    const taskTitle = (work?.objective || title || runId).slice(0, 120);
+    const excerpt = fullText.length > 300 ? `${fullText.slice(0, 300)}…` : fullText;
+    onOpenAsk?.(t('task.feedbackContext', { title: taskTitle }) + '\n\n' + excerpt + '\n\n' + t('task.feedbackPrompt'), result?.sessionId);
+  }
+  async function confirmReview() {
+    if (!repo.confirmTaskReview) return;
+    setReviewBusy(true);
+    setReviewError(null);
+    try {
+      await repo.confirmTaskReview(runId);
+      activity.reload();
+      setAttempt((n) => n + 1);
+    } catch (e) { setReviewError(e instanceof Error ? e.message : t('task.reviewError')); }
+    finally { setReviewBusy(false); }
+  }
   return (
     <section className="task-detail" aria-labelledby="task-heading">
       <nav className="task-detail-nav" aria-label={t('task.navigation')}>
         {onBack && <button type="button" className="ask-inline-action" onClick={onBack}>
           <ArrowLeft size={17} aria-hidden="true" />{t('task.allActivity')}
         </button>}
-        {onOpenAsk && <button type="button" className="ask-inline-action" onClick={onOpenAsk}>
+        {onOpenAsk && <button type="button" className="ask-inline-action" onClick={() => onOpenAsk()}>
           <ChatCircle size={17} aria-hidden="true" />{t('task.backToChat')}
         </button>}
       </nav>
@@ -114,11 +137,22 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk }
               <p>{failed
                 ? (typeof result.err === 'string' && result.err) || t(result.status === 'cancelled' ? 'task.cancelledNote' : 'task.failedNote')
                 : t(waiting ? 'task.approvalNote' : result.status === 'blocked' ? 'task.blockedNote' : status && result.pending ? 'task.runningNote' : 'task.unknown')}</p>
-              {waiting && onBack && <div><Button variant="outline" onClick={onBack}>
+              {waiting && !result.approvalId && onBack && <div><Button variant="outline" onClick={onBack}>
                 {t('task.approvalInbox')}<ArrowUpRight size={17} aria-hidden="true" />
               </Button></div>}
             </Card>
           )}
+          {result.approvalId && <RuntimeApprovalCard approvalId={result.approvalId} onDecided={() => {
+            activity.reload(); setAttempt((n) => n + 1);
+          }} />}
+          {(needsReview || needsInput) && <Card className="gap-3">
+            <p>{t(needsReview ? 'task.reviewHelp' : 'task.inputHelp')}</p>
+            <div className="flex flex-wrap gap-2">
+              {needsReview && repo.confirmTaskReview && <Button disabled={reviewBusy} onClick={() => void confirmReview()}>{t('task.confirmReview')}</Button>}
+              {onOpenAsk && <Button variant="outline" onClick={continueTask}>{t(needsReview ? 'task.requestChanges' : 'task.provideInput')}</Button>}
+            </div>
+            {reviewError && <p role="alert">{reviewError}</p>}
+          </Card>}
           {detail.advanced && <details className="task-trace" onToggle={(event) => setTraceOpen(event.currentTarget.open)}>
             <summary>{t('activity.trace')}</summary>
             {traceOpen && <RunTrace runId={runId} />}

@@ -10,6 +10,7 @@ import { hasBusiness, resolveTenant } from '../tenancy';
 import { routinesEnabledFor } from '../routines/gating';
 import { TASK_KINDS, type TaskKind } from '../routines/jobs';
 import { executeOccurrence } from '../routines/execute';
+import { drainRuntimeTaskOutbox } from '../runtime/consumer';
 import { nextRunAfter, SUPPORTED_TIME_ZONES, validateSchedule, type Schedule } from '../routines/schedule';
 import {
   activeOccurrence,
@@ -86,6 +87,7 @@ function sortKeys(value: unknown): unknown {
 interface RoutineForm {
   name: string;
   taskKind: TaskKind;
+  taskPrompt: string | null;
   schedule: Schedule;
 }
 
@@ -102,12 +104,20 @@ function parseRoutineForm(
   if (!name || name.length > 80) fieldErrors.name = 'name must be 1 to 80 characters';
   const task = body.task as Record<string, unknown> | undefined;
   const kind = task && typeof task === 'object' ? task.kind : undefined;
+  const prompt = task && typeof task.prompt === 'string' ? task.prompt.trim() : '';
+  const allowedTaskKeys = kind === 'agent_task' ? ['kind', 'prompt'] : ['kind'];
   if (!task || typeof task !== 'object' || Array.isArray(task) ||
-      Object.keys(task).some((key) => key !== 'kind')) {
-    fieldErrors.task = 'task must be { kind }';
+      Object.keys(task).some((key) => !allowedTaskKeys.includes(key))) {
+    fieldErrors.task = kind === 'agent_task' ? 'task must be { kind, prompt }' : 'task must be { kind }';
   }
   if (typeof kind !== 'string' || !TASK_KINDS.includes(kind as TaskKind)) {
     fieldErrors['task.kind'] = `task.kind must be one of ${TASK_KINDS.join(', ')}`;
+  }
+  if (kind === 'agent_task' && (!prompt || prompt.length > 2000)) {
+    fieldErrors['task.prompt'] = 'task.prompt must be 1 to 2000 characters';
+  }
+  if (kind !== 'agent_task' && task && 'prompt' in task) {
+    fieldErrors['task.prompt'] = 'task.prompt is only allowed for agent tasks';
   }
   if (body.delivery !== 'workspace') fieldErrors.delivery = 'delivery must be workspace';
   const validated = validateSchedule(body.schedule);
@@ -123,7 +133,14 @@ function parseRoutineForm(
     const code = onlySchedule && scheduleErrors ? 'INVALID_SCHEDULE' : 'INVALID_ROUTINE';
     return { response: (cors) => fail(400, code, 'the routine form is not valid', cors, fieldErrors) };
   }
-  return { form: { name, taskKind: kind as TaskKind, schedule: (validated as { schedule: Schedule }).schedule } };
+  return {
+    form: {
+      name,
+      taskKind: kind as TaskKind,
+      taskPrompt: kind === 'agent_task' ? prompt : null,
+      schedule: (validated as { schedule: Schedule }).schedule,
+    },
+  };
 }
 
 function requestIdOf(body: Record<string, unknown>): string | null {
@@ -206,6 +223,7 @@ export async function handleRoutines(
       const row = await insertRoutine(tx, businessId, {
         name: form.name,
         taskKind: form.taskKind,
+        taskPrompt: form.taskPrompt,
         schedule: form.schedule,
         status: body.enabled ? 'active' : 'paused',
         nextRunAt: body.enabled ? nextRunAfter(form.schedule, now) : null,
@@ -295,6 +313,7 @@ export async function handleRoutines(
         return updateRoutineConfig(tx, businessId, row.id, {
           name: parsed.form.name,
           taskKind: parsed.form.taskKind,
+          taskPrompt: parsed.form.taskPrompt,
           schedule: parsed.form.schedule,
           nextRunAt: row.status === 'active' ? nextRunAfter(parsed.form.schedule, now) : null,
         });
@@ -356,8 +375,8 @@ export async function handleRoutines(
         routineId: row.id, requestId, operation: 'run', requestHash: hash,
         revisionBefore: row.revision, revisionAfter: row.revision, actor,
       });
-      const finished = await executeOccurrence(tx, businessId, row, occurrence, actor);
-      return { occurrence: occurrenceJson(finished) };
+      const execution = await executeOccurrence(env, tx, businessId, row, occurrence, actor);
+      return { occurrence: occurrenceJson(execution.occurrence), taskId: execution.taskId };
     });
     if ('conflict' in outcome) {
       switch (outcome.conflict) {
@@ -370,6 +389,11 @@ export async function handleRoutines(
           }, { status: 409 }, cors);
         default: return fail(409, 'IDEMPOTENCY_CONFLICT', 'this requestId was already used with a different request', cors);
       }
+    }
+    if (outcome.taskId) {
+      await drainRuntimeTaskOutbox(env, { taskId: outcome.taskId }).catch((error) => {
+        console.error(`[routines] runtime wake failed task=${outcome.taskId} ${String(error)}`);
+      });
     }
     return json({ ok: true, apiVersion: API_VERSION, occurrence: outcome.occurrence }, { status: 202 }, cors);
   }

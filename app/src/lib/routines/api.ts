@@ -43,6 +43,9 @@ function routine(value: unknown): value is Routine {
   return isRunId(value.id) && positive(value.revision)
     && typeof value.name === 'string' && value.name.trim().length > 0 && value.name.length <= 80
     && ROUTINE_KINDS.some((supported) => supported === kind)
+    && (kind === 'agent_task'
+      ? typeof value.task.prompt === 'string' && value.task.prompt.trim().length > 0 && value.task.prompt.length <= 2000
+      : value.task.prompt === undefined)
     && validSchedule(value.schedule as Routine['schedule']) && value.delivery === 'workspace'
     && typeof value.status === 'string' && value.status.length > 0
     && nullableInstant(value.nextRunAt) && instant(value.createdAt) && instant(value.updatedAt)

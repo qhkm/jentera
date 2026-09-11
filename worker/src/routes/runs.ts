@@ -40,6 +40,7 @@ import {
   enqueueRuntimeTask,
   runtimeTaskByDedupeKey,
   runtimeTaskForRun,
+  runtimeApprovalFromTask,
   type RuntimeTask,
 } from '../runtime/tasks';
 import { publishRunProgressSafely } from '../runtime/progress';
@@ -322,13 +323,40 @@ export async function handleRuns(
     return json({ ok: true }, {}, cors);
   }
 
+  const review = url.pathname.match(/^\/api\/runs\/([0-9a-f-]{36})\/review$/i);
+  if (review && request.method === 'POST') {
+    if (id.role !== 'owner') return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+    if (!request.headers.get('Origin') || request.headers.get('Origin') !== cors['Access-Control-Allow-Origin']) {
+      return json({ ok: false, err: 'origin not allowed' }, { status: 403 }, cors);
+    }
+    const body = await request.json().catch(() => null) as { decision?: string } | null;
+    if (body?.decision !== 'confirm') return json({ ok: false, err: 'confirm decision required' }, { status: 400 }, cors);
+    const confirmed = await withTenant(env, id.businessId, async (tx) => {
+      const [run] = await tx<{ status: string }[]>`select status from run
+        where id = ${review[1]} and business_id = ${id.businessId} for update`;
+      if (run?.status !== 'completed') return false;
+      const rows = await tx`update work_record set status = 'completed', updated_at = now()
+        where business_id = ${id.businessId} and run_id = ${review[1]}
+          and kind = 'work' and status = 'needs_review' returning id`;
+      if (!rows.length) return false;
+      await append(tx, id.businessId, review[1], 'outcome.observed', {
+        assessmentVersion: 1, kind: 'work', status: 'completed',
+        source: 'owner.review', reviewedBy: id.userId,
+      });
+      return true;
+    });
+    return json({ ok: confirmed, ...(!confirmed ? { err: 'Task is no longer awaiting review. Refresh to check its status.' } : {}) }, { status: confirmed ? 200 : 409 }, cors);
+  }
+
   const status = url.pathname.match(/^\/api\/runs\/([0-9a-f-]{36})$/i);
   if (status && request.method === 'GET') {
     const privateHeaders = { ...cors, 'Cache-Control': 'private, no-store' };
     const state = await withTenant(env, id.businessId, async (tx) => {
       const run = await getRun(tx, id.businessId, status[1]);
       const task = run ? await runtimeTaskForRun(tx, id.businessId, run.id) : null;
-      return { run, task };
+      const [context] = run ? await tx<{ sessionId: string | null }[]>`select trigger_ref->>'sessionId' as "sessionId"
+        from run where business_id = ${id.businessId} and id = ${run.id}` : [];
+      return { run, task, sessionId: context?.sessionId ?? undefined };
     });
     if (!state.run) {
       return json({ ok: false, err: 'run not found' }, { status: 404 }, privateHeaders);
@@ -369,6 +397,7 @@ export async function handleRuns(
         status: 'completed',
         pending: false,
         text: answerText(state.task.result),
+        sessionId: state.sessionId,
         usedKeys: metadata.usedKeys,
         grounded: metadata.grounded,
         ...verdict,
@@ -409,6 +438,7 @@ export async function handleRuns(
       runId: state.run.id,
       status: state.run.status,
       pending: true,
+      ...(runtimeApprovalFromTask(state.task) ? { approvalId: runtimeApprovalFromTask(state.task)!.id } : {}),
     }, {}, privateHeaders);
   }
 

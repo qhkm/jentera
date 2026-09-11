@@ -1,6 +1,7 @@
 /* Workspace-only surface and ink scale. Recompute derived tokens here:
    inherited custom properties otherwise retain their root-level colors. */
-.dashboard-shell {
+.dashboard-shell,
+.workspace-loading {
   --bg: #212121;
   --bg-card: #292929;
   --bg-card-hover: #303030;
@@ -24,15 +25,27 @@
   --workspace-primary-hover: #fff;
   --workspace-primary-ink: #252525;
   --workspace-focus: #8fbfae;
+
+  /* Tailwind's semantic aliases also resolve where they are declared. */
+  --color-bg: var(--bg);
+  --color-bg-card: var(--bg-card);
+  --color-bg-card-hover: var(--bg-card-hover);
+  --color-text: var(--text);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-dim: var(--text-dim);
+  --color-border: var(--border);
+  --color-rail: var(--rail);
+  --color-border-light: var(--border-light);
 }
 
-:is(.theme-light, .site-theme-light) .dashboard-shell {
+:is(.theme-light, .site-theme-light) :is(.dashboard-shell, .workspace-loading) {
   --bg: #faf9f7;
   --bg-card: #f2f1ee;
   --bg-card-hover: #eae9e6;
   --text: #292929;
   --text-secondary: #545454;
-  --text-muted: #656565;
+  --text-muted: #606060;
   --border: rgb(var(--border-ink) / .025);
   --rail: rgb(var(--border-ink) / .055);
   --workspace-control: #e9e8e5;
@@ -87,6 +100,9 @@
   border-color: var(--border);
   border-radius: var(--radius-card);
   background: var(--bg-card);
+}
+.dashboard-shell .home-action {
+  border-color: var(--rail);
 }
 .dashboard-shell :is(.home-ask-launcher, .routine-starter:not(:disabled), .routine-card, .chat-task-card):hover {
   border-color: var(--rail);

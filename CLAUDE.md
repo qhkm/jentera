@@ -4,6 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `AGENTS.md` carries the same house rules in shorter form. `PRODUCT_VISION.md`, `DISCUSSION_SUMMARY.md` and `TECHNICAL_ARCHITECTURE.md` carry product direction — read those before changing what the product *does*, not just how it's built.
 
+For current positioning and customer-facing UX, follow
+[`docs/marketing/product-thesis-and-homepage.md`](docs/marketing/product-thesis-and-homepage.md).
+Jentera automates everyday business work; “AI staff” is the explanation, not a
+workforce-management interface. This direction supersedes earlier worker-roster
+framing. Publish only supported capabilities and verified outcome counts.
+
 ## React rebuild (`app/`)
 
 ```bash
@@ -223,11 +229,15 @@ ad hoc loops it replaces did not.
 
 ### Routines
 
-Owner-scheduled jobs, v1 deterministic (SQL over the tenant's own records,
-no model, no sprite). Postgres is the scheduler: `routine.next_run_at` is
+Owner-scheduled jobs use Postgres as the scheduler: `routine.next_run_at` is
 the clock, the one-minute cron in `index.ts` calls `dispatchDueRoutines`,
 and the cross-tenant due scan is a `SECURITY DEFINER` function that returns
 nothing but ids. Everything else runs inside `withTenant` under a row lock.
+The three report/reminder jobs remain deterministic. `agent_task` creates a
+normal metered `schedule` run, durable runtime task and outbox wake; the queue
+wakes the tenant's Sprite and the consumer projects completion or approval back
+onto the occurrence. Scheduled outcomes create recipient-scoped rows in
+`notification`; Sprites still never own a local cron.
 Behind `ROUTINES_ENABLED` and `AISAR_ROUTINES_BUSINESS_IDS`; the contract,
 amendments and acceptance gate live in `docs/plans/2026-09-09-routines-api-v1.md`.
 

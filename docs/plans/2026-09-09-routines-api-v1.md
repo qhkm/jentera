@@ -18,6 +18,13 @@ localStorage schedule may stand in for the backend.
 **Backend status:** implemented on main, 2026-09-09; deployed behind `ROUTINES_ENABLED` with a one-business canary allowlist. See the gate below for what the tests prove.
 **Frontend activation:** live on jentera.ai for the canary business only (2026-09-09).
 
+**11 September amendment:** `agent_task` adds an owner-written instruction
+(1–2,000 characters). The central dispatcher creates a durable, metered runtime
+task and wakes the tenant's Sprite through the existing queue/outbox path; no
+cron is installed inside Hermes. Scheduled outcomes and approval waits create
+idempotent, recipient-scoped in-app notifications. The original three jobs
+remain deterministic and all actions retain the ordinary approval boundary.
+
 ## Product slice
 
 An owner chooses a repeatable job, reviews its schedule in Malaysia time, and
@@ -31,17 +38,18 @@ Proposed first jobs:
 | `business_summary` | Prepare my business summary every morning at 8 | Summarise structured work recorded during the preceding 24 hours. |
 | `weekly_summary` | Summarise this week's work every Friday | Summarise structured work recorded during the preceding 7 days. |
 | `approval_reminder` | Remind me to review pending actions at 5 | Record an in-workspace reminder from approvals still pending when the job executes. |
+| `agent_task` | Research local events every Monday | Wake the business Sprite and run the confirmed instruction through the managed agent path. |
 
-V1 results stay **inside Jentera**. A reminder is an Activity result, not a promise
-of a push notification, email, or Telegram message. If no approvals are pending,
+Results stay **inside Jentera** and now also create an in-app notification. This
+is not a promise of OS push, email, or Telegram delivery. If no approvals are pending,
 record a skipped occurrence with reason `nothing_pending`; do not invent a task
 completion or send an empty reminder.
 
-These bounded jobs are the proposed first release, not a general workflow builder.
-Arbitrary recurring instructions, outbound delivery, customer follow-ups,
+`agent_task` now accepts a bounded recurring instruction and runs it through the
+ordinary managed runtime path. Outbound delivery, unapproved customer follow-ups,
 payments, nested runtime cron jobs and automatically parsing schedules from Chat
-are deferred. A future general-purpose recurring task must pass the same tool,
-approval and budget boundaries as interactive work.
+remain deferred. Agent routines use the same tool, approval and budget boundaries
+as interactive work.
 
 ## Existing pieces to reuse
 
@@ -140,8 +148,9 @@ Rules:
 - `revision` is a positive integer for owner configuration changes. Scheduler
   status updates do not increment this configuration revision.
 - `name`: trimmed, 1–80 characters. Reject blank names and unknown fields.
-- `task.kind`: one of the three task kinds above. No client-supplied prompt,
-  executable code, model, tool list, customer recipient or policy override.
+- `task.kind`: one of the four task kinds above. `agent_task` additionally
+  requires a trimmed `prompt` of 1–2,000 characters. No executable code,
+  model, tool list, customer recipient or policy override is accepted.
 - `delivery`: exactly `workspace` in v1.
 - `schedule.frequency`: `daily`, `weekdays` (Monday–Friday), or `weekly`.
   `weekly` additionally requires `weekday`, an ISO integer 1–7 (Monday–Sunday).

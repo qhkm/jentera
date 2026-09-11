@@ -44,6 +44,7 @@ export default function AskJenteraView({
   onOpenActivity,
   onOpenConnections,
   onOpenKnowledge,
+  taskDraft,
 }: {
   business: Business;
   handled: number;
@@ -54,6 +55,7 @@ export default function AskJenteraView({
   onOpenActivity?: (runId?: string, title?: string) => void;
   onOpenConnections?: () => void;
   onOpenKnowledge?: () => void;
+  taskDraft?: { text: string; key: number; sessionId?: string } | null;
 }) {
   const { t, lang } = useI18n();
   const compact = useIsCompact();
@@ -65,6 +67,14 @@ export default function AskJenteraView({
   const draft = drafts[ask.activeId] ?? '';
   const signedIn = useSignedIn();
   const composer = useRef<HTMLTextAreaElement>(null);
+  const consumedDraft = useRef<number | null>(null);
+  useEffect(() => {
+    if (!active || !taskDraft || consumedDraft.current === taskDraft.key) return;
+    consumedDraft.current = taskDraft.key;
+    const id = ask.newSession(taskDraft.sessionId);
+    setDrafts((current) => ({ ...current, [id]: taskDraft.text }));
+    composer.current?.focus();
+  }, [active, taskDraft, ask.newSession]);
   const mentions = useMentions(business.team);
   const scroll = useConversationScroll(ask.messages, ask.activeId, active);
   const mentionId = useId();
@@ -146,7 +156,7 @@ export default function AskJenteraView({
           <button
             type="button"
             className="ask-studio-new"
-            onClick={ask.newSession}
+            onClick={() => ask.newSession()}
             aria-label={t('ask.newChat')}
           >
             <Plus size={17} aria-hidden="true" />

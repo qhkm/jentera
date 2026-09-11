@@ -119,7 +119,7 @@ export interface Env {
       use the named model instead of AISAR_MODEL_NAME. The model must be a
       routed one (quick, deep, or a candidate); deep work is never overridden. */
   AISAR_QUICK_MODEL_OVERRIDES?: string;
-  /** Routines v1: 'true' turns owner-scheduled jobs on. Off by default. */
+  /** 'true' turns owner-scheduled deterministic and Sprite-backed jobs on. */
   ROUTINES_ENABLED?: string;
   /** Comma-separated business ids allowed to see and use routines while the
       feature is canaried; empty means every business once enabled. */

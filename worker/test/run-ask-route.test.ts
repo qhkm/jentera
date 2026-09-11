@@ -263,6 +263,25 @@ describe('Ask Jentera runtime bridge', () => {
     });
   });
 
+  it('exposes the linked approval ID only to the run tenant', async () => {
+    await readyRuntime(A);
+    const started = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
+      question: 'Prepare a report', requestId: crypto.randomUUID(), mode: 'work',
+    });
+    const { runId } = await started.json() as { runId: string };
+    const approvalId = crypto.randomUUID();
+    await asOwner(async (sql) => {
+      await sql`update run set status = 'needs_approval' where id = ${runId}`;
+      await sql`update runtime_task set result = ${sql.json({ approval: { id: approvalId,
+        requestId: 'private-runner-id', tool: 'terminal', message: 'Run report', status: 'pending',
+        surface: 'web', expiresAt: new Date(Date.now() + 60000).toISOString() } })} where run_id = ${runId}`;
+    });
+    const result = await (await call('GET', `/api/runs/${runId}`, durableEnv(), cookieA)).json();
+    expect(result).toMatchObject({ approvalId, status: 'needs_approval' });
+    expect(JSON.stringify(result)).not.toContain('private-runner-id');
+    expect((await call('GET', `/api/runs/${runId}`, durableEnv(), cookieB)).status).toBe(404);
+  });
+
   it('keeps the steps on a failed run so the owner can see how far it got', async () => {
     await readyRuntime(A);
     const started = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {

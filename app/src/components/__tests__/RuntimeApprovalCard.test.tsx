@@ -127,7 +127,8 @@ describe('answering an approval from the chat', () => {
   it('says so plainly when the request is gone, rather than showing a dead card', async () => {
     vi.stubGlobal('fetch', fetchFake(() => jsonOnce({ err: 'not found' }, 404)));
     mount();
-    expect(await screen.findByText(/no longer waiting/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Could not load this approval/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
   });
 });

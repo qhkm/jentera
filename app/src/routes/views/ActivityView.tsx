@@ -68,7 +68,7 @@ export default function ActivityView({
   onCloseTask,
 }: {
   b: ReturnType<typeof useBusiness>;
-  onOpenAsk?: () => void;
+  onOpenAsk?: (context?: string, sessionId?: string) => void;
   runId?: string | null;
   taskTitle?: string;
   onOpenTask?: (runId: string) => void;

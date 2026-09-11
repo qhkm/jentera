@@ -6,8 +6,13 @@
  */
 import type postgres from 'postgres';
 
-export type TaskKind = 'business_summary' | 'weekly_summary' | 'approval_reminder';
-export const TASK_KINDS: readonly TaskKind[] = ['business_summary', 'weekly_summary', 'approval_reminder'];
+export type TaskKind = 'business_summary' | 'weekly_summary' | 'approval_reminder' | 'agent_task';
+export const TASK_KINDS: readonly TaskKind[] = [
+  'business_summary',
+  'weekly_summary',
+  'approval_reminder',
+  'agent_task',
+];
 
 export type Lang = 'en' | 'bm';
 

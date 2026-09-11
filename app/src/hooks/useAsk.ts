@@ -327,12 +327,14 @@ export function useAsk(
     [business.sug, counts, t],
   );
 
-  const newSession = useCallback(() => {
+  const newSession = useCallback((resumeId?: string) => {
     const session = freshSession();
+    if (resumeId) session.id = resumeId;
     setState((prev) => ({
-      sessions: [session, ...prev.sessions].slice(0, MAX_SESSIONS),
+      sessions: prev.sessions.some((s) => s.id === session.id) ? prev.sessions : [session, ...prev.sessions].slice(0, MAX_SESSIONS),
       activeId: session.id,
     }));
+    return session.id;
   }, []);
 
   const openSession = useCallback((id: string) => {

@@ -15,6 +15,7 @@ import { connect, withTenant } from '../db';
 import type { Env } from '../env';
 import { routinesEnabledFor } from './gating';
 import { executeOccurrence } from './execute';
+import { drainRuntimeTaskOutbox } from '../runtime/consumer';
 import { nextRunAfter } from './schedule';
 import {
   activeOccurrence,
@@ -56,9 +57,14 @@ export async function dispatchDueRoutines(env: Env, now = new Date()): Promise<D
   for (const target of targets) {
     if (!routinesEnabledFor(env, target.business_id)) continue;
     try {
-      const outcome = await withTenant(env, target.business_id, (tx) => admit(tx, target, now));
-      if (outcome === 'admitted') summary.admitted += 1;
-      else if (outcome === 'skipped') summary.skipped += 1;
+      const result = await withTenant(env, target.business_id, (tx) => admit(env, tx, target, now));
+      if (result.outcome === 'admitted') summary.admitted += 1;
+      else if (result.outcome === 'skipped') summary.skipped += 1;
+      if (result.taskId) {
+        await drainRuntimeTaskOutbox(env, { taskId: result.taskId }).catch((error) => {
+          console.error(`[routines] runtime wake failed task=${result.taskId} ${String(error)}`);
+        });
+      }
     } catch (err) {
       summary.errors += 1;
       console.error(`[routines] business=${target.business_id} routine=${target.routine_id} ${String(err)}`);
@@ -67,18 +73,19 @@ export async function dispatchDueRoutines(env: Env, now = new Date()): Promise<D
   return summary;
 }
 
-type Outcome = 'admitted' | 'skipped' | 'none';
+type Outcome = { outcome: 'admitted' | 'skipped' | 'none'; taskId: string | null };
 
 async function admit(
+  env: Env,
   tx: Parameters<Parameters<typeof withTenant>[2]>[0],
   target: DueTarget,
   now: Date,
 ): Promise<Outcome> {
   const routine = await lockRoutine(tx, target.routine_id, 'skip');
   // Another dispatcher holds it, or it moved on since the scan.
-  if (!routine || routine.status !== 'active' || !routine.next_run_at) return 'none';
-  if (routine.next_run_at.getTime() !== target.next_run_at.getTime()) return 'none';
-  if (routine.next_run_at.getTime() > now.getTime()) return 'none';
+  if (!routine || routine.status !== 'active' || !routine.next_run_at) return { outcome: 'none', taskId: null };
+  if (routine.next_run_at.getTime() !== target.next_run_at.getTime()) return { outcome: 'none', taskId: null };
+  if (routine.next_run_at.getTime() > now.getTime()) return { outcome: 'none', taskId: null };
   const businessId = routine.business_id;
   const slot = routine.next_run_at;
   const schedule = scheduleOf(routine);
@@ -90,7 +97,7 @@ async function admit(
     await updateRoutineState(tx, businessId, routine.id, {
       status: 'paused', nextRunAt: null, bumpRevision: false,
     });
-    return 'skipped';
+    return { outcome: 'skipped', taskId: null };
   }
 
   if (now.getTime() - slot.getTime() > MISSED_WINDOW_MS) {
@@ -98,7 +105,7 @@ async function admit(
       routine, trigger: 'scheduled', scheduledFor: slot, status: 'skipped', reason: 'missed_window',
     });
     await advanceRoutine(tx, businessId, routine.id, nextRunAfter(schedule, now));
-    return 'skipped';
+    return { outcome: 'skipped', taskId: null };
   }
 
   if (await activeOccurrence(tx, routine.id)) {
@@ -106,13 +113,13 @@ async function admit(
       routine, trigger: 'scheduled', scheduledFor: slot, status: 'skipped', reason: 'previous_run_active',
     });
     await advanceRoutine(tx, businessId, routine.id, nextRunAfter(schedule, slot));
-    return 'skipped';
+    return { outcome: 'skipped', taskId: null };
   }
 
   const occurrence = await insertOccurrence(tx, businessId, {
     routine, trigger: 'scheduled', scheduledFor: slot, status: 'queued',
   });
   await advanceRoutine(tx, businessId, routine.id, nextRunAfter(schedule, slot));
-  await executeOccurrence(tx, businessId, routine, occurrence, null);
-  return 'admitted';
+  const execution = await executeOccurrence(env, tx, businessId, routine, occurrence, null);
+  return { outcome: 'admitted', taskId: execution.taskId };
 }

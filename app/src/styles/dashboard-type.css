@@ -1,12 +1,12 @@
-/* Everyday text shares the landing hero paragraph's reading size.
-   Bridge existing utility-sized panels and the newer named components so
-   switching dashboard sections does not change the size of ordinary text. */
+/* A compact workspace type scale, independent of the marketing pages.
+   Bridge utility-sized panels and named components across all sections. */
 .dashboard-shell {
+  --font-body-size: .875rem;
   --workspace-caption: 0.75rem;
   --workspace-body: var(--font-body-size);
-  --workspace-small: var(--workspace-body);
+  --workspace-small: .8125rem;
   --workspace-label: var(--workspace-body);
-  --workspace-heading: 1.125rem;
+  --workspace-heading: 1rem;
   font-size: var(--workspace-body);
 }
 
@@ -105,7 +105,7 @@
     .ask-reply-text
   ):not(:where(input, textarea, select)) {
   font-size: var(--workspace-body);
-  line-height: 1.7;
+  line-height: 1.6;
 }
 
 .dashboard-shell
@@ -126,7 +126,13 @@
 }
 
 .dashboard-shell .business-tabs > button {
-  min-height: 46px;
+  min-height: 44px;
+}
+
+@media (min-width: 701px) {
+  .dashboard-shell :is(.input, input, textarea, select) {
+    font-size: var(--workspace-body);
+  }
 }
 
 @media (min-width: 1101px) {

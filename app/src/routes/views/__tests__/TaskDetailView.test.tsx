@@ -20,6 +20,24 @@ beforeEach(() => localStorage.clear());
 afterEach(() => vi.useRealTimers());
 
 describe('exact task details', () => {
+  it('confirms reviewed work and reloads its status', async () => {
+    const confirmTaskReview = vi.fn(async () => {});
+    const repo = Object.assign(new LocalRepository(), { confirmTaskReview });
+    repo.runResult = vi.fn().mockResolvedValueOnce({ runId, status: 'completed', taskStatus: 'needs_review', pending: false, text: 'Report ready' })
+      .mockResolvedValue({ runId, status: 'completed', taskStatus: 'completed', pending: false, text: 'Report ready' });
+    mount(repo);
+    await userEvent.click(await screen.findByRole('button', { name: 'Confirm task complete' }));
+    expect(confirmTaskReview).toHaveBeenCalledWith(runId);
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Done'));
+  });
+  it('opens feedback with the result and original conversation, without approving anything', async () => {
+    const repo = new LocalRepository();
+    repo.runResult = vi.fn(async () => ({ runId, status: 'completed', taskStatus: 'needs_review', sessionId: 'original-chat', pending: false, text: 'Report ready' }));
+    const open = vi.fn();
+    mount(repo, { onOpenAsk: open, title: 'Prepare report' });
+    await userEvent.click(await screen.findByRole('button', { name: 'Request changes in Chat' }));
+    expect(open).toHaveBeenCalledWith(expect.stringContaining('Report ready'), 'original-chat');
+  });
   it('shows the authorization instructions without declaring the task done or polling forever', async () => {
     const repo = new LocalRepository();
     repo.runResult = vi.fn(async () => ({ runId, status: 'completed', taskStatus: 'needs_input',

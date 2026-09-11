@@ -12,6 +12,7 @@ export interface RoutineRow {
   business_id: string;
   name: string;
   task_kind: TaskKind;
+  task_prompt: string | null;
   frequency: Schedule['frequency'];
   weekday: number | null;
   time_of_day: string;
@@ -40,7 +41,7 @@ export interface OccurrenceRow {
   reason: string | null;
 }
 
-export const ROUTINE_COLUMNS = `id, business_id, name, task_kind, frequency, weekday, time_of_day, time_zone,
+export const ROUTINE_COLUMNS = `id, business_id, name, task_kind, task_prompt, frequency, weekday, time_of_day, time_zone,
   delivery, status, revision, next_run_at, created_by, authorised_by, created_at, updated_at`;
 const OCCURRENCE_COLUMNS = `id, routine_id, routine_revision, trigger, scheduled_for, started_at, finished_at,
   status, run_id, summary, reason`;
@@ -85,7 +86,7 @@ export interface RoutineJson {
   id: string;
   revision: number;
   name: string;
-  task: { kind: TaskKind };
+  task: { kind: TaskKind; prompt?: string };
   schedule: Schedule;
   delivery: 'workspace';
   status: 'active' | 'paused';
@@ -100,7 +101,9 @@ export function routineJson(row: RoutineRow, last: OccurrenceRow | null): Routin
     id: row.id,
     revision: row.revision,
     name: row.name,
-    task: { kind: row.task_kind },
+    task: row.task_kind === 'agent_task'
+      ? { kind: row.task_kind, prompt: row.task_prompt ?? '' }
+      : { kind: row.task_kind },
     schedule: scheduleOf(row),
     delivery: row.delivery,
     status: row.status,
@@ -154,6 +157,7 @@ export async function insertRoutine(
   input: {
     name: string;
     taskKind: TaskKind;
+    taskPrompt: string | null;
     schedule: Schedule;
     status: 'active' | 'paused';
     nextRunAt: Date | null;
@@ -163,12 +167,13 @@ export async function insertRoutine(
 ): Promise<RoutineRow> {
   const [row] = await tx.unsafe<RoutineRow[]>(
     `insert into routine
-       (business_id, name, task_kind, frequency, weekday, time_of_day, time_zone, delivery, status,
+       (business_id, name, task_kind, task_prompt, frequency, weekday, time_of_day, time_zone, delivery, status,
         next_run_at, created_by, authorised_by, create_request_id)
-     values ($1, $2, $3, $4, $5, $6, $7, 'workspace', $8, $9, $10, $10, $11)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, 'workspace', $9, $10, $11, $11, $12)
      returning ${ROUTINE_COLUMNS}`,
-    [businessId, input.name, input.taskKind, input.schedule.frequency, input.schedule.weekday ?? null,
-      input.schedule.time, input.schedule.timeZone, input.status, input.nextRunAt, input.actor, input.requestId],
+    [businessId, input.name, input.taskKind, input.taskPrompt, input.schedule.frequency,
+      input.schedule.weekday ?? null, input.schedule.time, input.schedule.timeZone, input.status,
+      input.nextRunAt, input.actor, input.requestId],
   );
   return row;
 }
@@ -177,16 +182,17 @@ export async function updateRoutineConfig(
   tx: postgres.TransactionSql,
   businessId: string,
   id: string,
-  input: { name: string; taskKind: TaskKind; schedule: Schedule; nextRunAt: Date | null },
+  input: { name: string; taskKind: TaskKind; taskPrompt: string | null; schedule: Schedule; nextRunAt: Date | null },
 ): Promise<RoutineRow> {
   const [row] = await tx.unsafe<RoutineRow[]>(
     `update routine
-        set name = $3, task_kind = $4, frequency = $5, weekday = $6, time_of_day = $7, time_zone = $8,
-            next_run_at = $9, revision = revision + 1, updated_at = now()
+        set name = $3, task_kind = $4, task_prompt = $5, frequency = $6, weekday = $7,
+            time_of_day = $8, time_zone = $9, next_run_at = $10,
+            revision = revision + 1, updated_at = now()
       where business_id = $1 and id = $2
       returning ${ROUTINE_COLUMNS}`,
-    [businessId, id, input.name, input.taskKind, input.schedule.frequency, input.schedule.weekday ?? null,
-      input.schedule.time, input.schedule.timeZone, input.nextRunAt],
+    [businessId, id, input.name, input.taskKind, input.taskPrompt, input.schedule.frequency,
+      input.schedule.weekday ?? null, input.schedule.time, input.schedule.timeZone, input.nextRunAt],
   );
   return row;
 }
@@ -277,7 +283,9 @@ export async function insertOccurrence(
   },
 ): Promise<OccurrenceRow> {
   const snapshot = {
-    task: { kind: input.routine.task_kind },
+    task: input.routine.task_kind === 'agent_task'
+      ? { kind: input.routine.task_kind, prompt: input.routine.task_prompt }
+      : { kind: input.routine.task_kind },
     schedule: scheduleOf(input.routine),
     name: input.routine.name,
     revision: input.routine.revision,
@@ -312,6 +320,22 @@ export async function finishOccurrence(
       where business_id = $1 and id = $2
       returning ${OCCURRENCE_COLUMNS}`,
     [businessId, id, input.status, input.runId, input.summary, input.reason, input.startedAt],
+  );
+  return row;
+}
+
+export async function startOccurrence(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  id: string,
+  runId: string,
+): Promise<OccurrenceRow> {
+  const [row] = await tx.unsafe<OccurrenceRow[]>(
+    `update routine_occurrence
+        set status = 'working', run_id = $3, started_at = now()
+      where business_id = $1 and id = $2 and status = 'queued'
+      returning ${OCCURRENCE_COLUMNS}`,
+    [businessId, id, runId],
   );
   return row;
 }

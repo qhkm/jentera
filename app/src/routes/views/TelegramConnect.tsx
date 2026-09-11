@@ -136,7 +136,7 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
               </div>
 
               {!c.paired && c.pairingUrl ? (
-                <div role="status" className="border border-brand-line bg-brand-soft p-4">
+                <div role="status" className="rounded-card border border-border bg-bg-card p-4">
                   <Eyebrow>Action required</Eyebrow>
                   <h3 className="mt-2 font-pixel text-lg tracking-tight">Finish connecting Telegram</h3>
                   <p className="mt-2 max-w-[38rem] text-[13px] leading-relaxed text-text-secondary">
@@ -145,7 +145,7 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
                   </p>
                   <div className="mt-4 flex flex-wrap items-center gap-3">
                     <a
-                      className="btn btn-primary"
+                      className="btn btn-primary max-w-full whitespace-normal text-center"
                       href={c.pairingUrl}
                       target="_blank"
                       rel="noreferrer"

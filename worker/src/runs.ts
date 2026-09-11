@@ -449,6 +449,8 @@ export async function homeCounters(
     select
       count(*) filter (where status = 'completed' and kind = 'work')::text     as handled,
       ((select count(*) from approval where status = 'pending') +
+        (select count(*) from runtime_task where status in ('queued', 'failed', 'leased')
+          and result #>> '{approval,status}' in ('pending', 'deciding')) +
         count(*) filter (where kind = 'work' and status in ('needs_input', 'needs_review', 'blocked'))
       )::text as needs_you,
       -- Real accounts, from the connection table. business.connections

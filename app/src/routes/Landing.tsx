@@ -216,6 +216,137 @@ function BusinessPreview() {
   );
 }
 
+const TRUST_SIGNALS = [
+  {
+    icon: LockSimple,
+    title: "Private workspace",
+    body: "Your business data is scoped to your account.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Approval when it matters",
+    body: "Important actions pause for your decision.",
+  },
+  {
+    icon: FileText,
+    title: "A clear activity history",
+    body: "See what ran and what still needs your attention.",
+  },
+] as const;
+
+function TrustProof() {
+  return (
+    <section id="control" className="lp-proof-section" aria-labelledby="proof-heading">
+      <div className="lp-container">
+        <div className="lp-proof-shell">
+          <div className="lp-proof-art" aria-hidden="true">
+            <img
+              src="/images/jentera-malaysian-business-poster-v1-768.webp"
+              srcSet="/images/jentera-malaysian-business-poster-v1-768.webp 768w, /images/jentera-malaysian-business-poster-v1-1536.webp 1536w"
+              sizes="(max-width: 800px) 100vw, 520px"
+              width="1536"
+              height="1024"
+              loading="lazy"
+              decoding="async"
+              alt=""
+            />
+          </div>
+
+          <div className="lp-proof-copy">
+            <Eyebrow>Built for owner control</Eyebrow>
+            <h2 id="proof-heading">
+              The work moves.
+              <br />
+              <span>You stay in control.</span>
+            </h2>
+            <p>
+              Jentera shows what it handled, pauses when your input is needed,
+              and keeps the outcome in one place.
+            </p>
+            <ul className="lp-trust-signals">
+              {TRUST_SIGNALS.map(({ icon: SignalIcon, title, body }) => (
+                <li key={title}>
+                  <span className="lp-trust-icon">
+                    <SignalIcon size={18} weight="duotone" aria-hidden="true" />
+                  </span>
+                  <span>
+                    <strong>{title}</strong>
+                    <small>{body}</small>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="lp-proof-demo" aria-label="Illustrative Jentera workflow">
+            <header>
+              <span className="lp-proof-demo-brand">
+                <JenteraMark size={28} />
+                <span>
+                  <small>Illustrative workflow</small>
+                  <strong>Friday supplier brief</strong>
+                </span>
+              </span>
+              <span className="tag tag-green">Scheduled</span>
+            </header>
+
+            <div className="lp-proof-request">
+              <span>You asked</span>
+              <p>
+                Every Friday, review the supplier pages I share and prepare a
+                short price-change brief.
+              </p>
+            </div>
+
+            <ol className="lp-proof-timeline">
+              <li>
+                <span className="lp-proof-step is-done">
+                  <Check size={13} aria-hidden="true" />
+                </span>
+                <span>
+                  <small>8:00 AM</small>
+                  <strong>Scheduled task started</strong>
+                </span>
+              </li>
+              <li>
+                <span className="lp-proof-step is-done">
+                  <Check size={13} aria-hidden="true" />
+                </span>
+                <span>
+                  <small>8:02 AM</small>
+                  <strong>Supplier pages reviewed</strong>
+                </span>
+              </li>
+              <li>
+                <span className="lp-proof-step">
+                  <FileText size={13} aria-hidden="true" />
+                </span>
+                <span>
+                  <small>8:03 AM</small>
+                  <strong>Price-change brief prepared</strong>
+                </span>
+              </li>
+            </ol>
+
+            <div className="lp-proof-review">
+              <span>Needs your attention</span>
+              <p>Choose which supplier change should go into next week’s plan.</p>
+              <span className="lp-proof-review-action">
+                Review result <ArrowUpRight size={15} aria-hidden="true" />
+              </span>
+            </div>
+
+            <footer>
+              <FileText size={14} aria-hidden="true" /> Saved to Activity with
+              its status and result.
+            </footer>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 const WORK_ICONS = {
   chat: ChatCircle,
   document: FileText,
@@ -230,7 +361,7 @@ export default function Landing() {
   useSignedInRedirect("/app");
 
   return (
-    <div className="marketing-page min-h-dvh bg-bg text-text">
+    <div className="marketing-page landing-home min-h-dvh bg-bg text-text">
       <LandingHeader />
       <main id="main-content">
         <section className="lp-hero hero-stage">
@@ -250,9 +381,18 @@ export default function Landing() {
               </div>
               <Eyebrow>{HERO.eyebrow}</Eyebrow>
               <h1>
-                {HERO.headline[0].replace("24/7", "")}
+                {HERO.headline.lead.replace("24/7", "")}
                 <em className="hero-hours">24/7</em>{" "}
-                <span>{HERO.headline[1]}</span>
+                <span>
+                  {HERO.headline.preposition}{" "}
+                  <span className="hero-country">
+                    <span role="img" aria-label="Malaysia">
+                      {HERO.headline.flag}
+                    </span>{" "}
+                    {HERO.headline.country}
+                  </span>{" "}
+                  {HERO.headline.audience}
+                </span>
               </h1>
               <p className="lp-hero-description">{HERO.detail}</p>
               <div className="lp-actions">
@@ -278,6 +418,8 @@ export default function Landing() {
             <span>Kedai · Klinik · Kopitiam · Catering · You</span>
           </div>
         </section>
+
+        <TrustProof />
 
         <section id="work" className="lp-section lp-container">
           <div className="lp-section-heading">

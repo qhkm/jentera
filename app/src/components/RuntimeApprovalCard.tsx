@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useT } from '@/i18n/I18nProvider';
+const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
 /**
  * The question Jentera is waiting on, and the two answers to it.
@@ -18,26 +19,32 @@ export interface PendingApproval {
   tool: string;
   message: string;
   status: 'pending' | 'deciding' | 'approved' | 'denied' | 'expired';
+  surface?: 'web' | 'telegram';
 }
 
 type Phase = 'loading' | 'ready' | 'deciding' | 'settled' | 'gone';
 
-export function RuntimeApprovalCard({ approvalId }: { approvalId: string }) {
+export function RuntimeApprovalCard({ approvalId, onDecided }: { approvalId: string; onDecided?: () => void }) {
   const t = useT();
   const [approval, setApproval] = useState<PendingApproval | null>(null);
   const [phase, setPhase] = useState<Phase>('loading');
   const [problem, setProblem] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setPhase('loading');
+    setApproval(null);
+    setProblem(null);
     (async () => {
       try {
-        const response = await fetch(`/api/runtime/approvals/${approvalId}`, {
+        const response = await fetch(`${API}/api/runtime/approvals/${approvalId}`, {
           credentials: 'include',
         });
         if (cancelled) return;
         if (!response.ok) { setPhase('gone'); return; }
         const body = await response.json() as { approval: PendingApproval };
+        if (cancelled) return;
         setApproval(body.approval);
         setPhase(body.approval.status === 'pending' ? 'ready' : 'settled');
       } catch {
@@ -45,13 +52,13 @@ export function RuntimeApprovalCard({ approvalId }: { approvalId: string }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [approvalId]);
+  }, [approvalId, attempt]);
 
   const decide = useCallback(async (decision: 'approve' | 'deny') => {
     setPhase('deciding');
     setProblem(null);
     try {
-      const response = await fetch(`/api/runtime/approvals/${approvalId}/decide`, {
+      const response = await fetch(`${API}/api/runtime/approvals/${approvalId}/decide`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -63,12 +70,13 @@ export function RuntimeApprovalCard({ approvalId }: { approvalId: string }) {
           status: decision === 'approve' ? 'approved' : 'denied',
         });
         setPhase('settled');
+        onDecided?.();
         return;
       }
       /* 503 is the retryable one: the decision was released back to pending,
          so asking again is the right thing rather than a lost answer, and the
          problem line is what invites the second attempt. */
-      if (response.status === 503) {
+      if (response.status >= 500 || response.status === 401 || response.status === 403 || response.status === 429) {
         setProblem(t('ask.approval.retry'));
         setPhase('ready');
         return;
@@ -81,11 +89,12 @@ export function RuntimeApprovalCard({ approvalId }: { approvalId: string }) {
       setProblem(t('ask.approval.retry'));
       setPhase('ready');
     }
-  }, [approvalId, t]);
+  }, [approvalId, t, onDecided]);
 
   if (phase === 'loading') return null;
   if (phase === 'gone') {
-    return <div className="ask-approval-note">{t('ask.approval.closed')}</div>;
+    return <div className="ask-approval-note"><p>{t('task.approvalUnavailable')}</p>
+      <button type="button" className="btn btn-outline" onClick={() => setAttempt((n) => n + 1)}>{t('loading.retry')}</button></div>;
   }
 
   const settled = phase === 'settled';
@@ -97,7 +106,7 @@ export function RuntimeApprovalCard({ approvalId }: { approvalId: string }) {
       {/* Said plainly, because "approve and run" invites the wrong mental
           model: this runs on Jentera's machine, not the owner's. */}
       <p className="ask-approval-where">{t('ask.approval.where')}</p>
-      {settled ? (
+      {approval?.surface === 'telegram' && !settled ? <p>{t('task.telegramApproval')}</p> : settled ? (
         <p className="ask-approval-note">
           {approval?.status === 'approved'
             ? t('ask.approval.approved')

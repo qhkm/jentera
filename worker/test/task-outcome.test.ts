@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { assessTaskOutcome, parseTaskAssessment } from '../src/task-outcome';
+import { assessTaskOutcome, parseTaskAssessment, validateTaskEvidence } from '../src/task-outcome';
 import { append, homeCounters, recordWork, recentWork, startRun } from '../src/runs';
 import { asOwner, asTenant, testEnv, truncateAll } from './harness';
 
@@ -42,8 +42,10 @@ describe('task outcome assessment', () => {
     const current = await run();
     const model = vi.fn(async () => ({ response: JSON.stringify({
       kind: 'work', status: 'completed', continuesWorkId: workId,
+      intentEvidence: 'try again', completionCriteria: 'Verified login identity', completionSource: 'tool', effect: 'external',
       completionEvidence: 'Verified Cloudflare identity with wrangler whoami.',
     }) }));
+    await asTenant(A, (tx) => append(tx, A, current.id, 'action.executed', { result: 'Verified Cloudflare identity with wrangler whoami.' }));
     const verdict = await assessTaskOutcome(testEnv({ AI: { run: model } }), A, current.id,
       "I've authorized it, try again", 'Verified Cloudflare identity with wrangler whoami.');
     const input = model.mock.calls[0] as unknown as [string, { messages: { content: string }[] }];
@@ -94,12 +96,55 @@ describe('task outcome assessment', () => {
     });
   });
 
-  it('downgrades a claimed completion with no supporting quote', async () => {
+  it('keeps a claimed completion without evidence out of the review queue', async () => {
     const current = await run();
     const env = testEnv({ AI: { run: async () => ({ response: JSON.stringify({
       kind: 'work', status: 'completed', completionEvidence: 'Login verified',
+      intentEvidence: 'Log in', completionCriteria: 'Login verified', completionSource: 'tool', effect: 'external',
     }) }) } });
     expect(await assessTaskOutcome(env, A, current.id, 'Log in', 'Please authorize in your browser.'))
-      .toEqual({ kind: 'work', status: 'needs_review' });
+      .toMatchObject({ kind: 'conversation', classification: 'uncertain', uncertaintyReason: 'missing_completion_evidence' });
+  });
+
+  it.each(['error', 'invalid', 'uncertain'])('does not create pending work when classification is %s', async (mode) => {
+    const current = await run();
+    const verdict = await assessTaskOutcome(testEnv({ AI: { run: async () => {
+      if (mode === 'error') throw new Error('AI unavailable');
+      return { response: mode === 'invalid' ? 'invalid json' : '{"kind":"uncertain"}' };
+    } } }), A, current.id, 'hello', 'Hello!');
+    expect(verdict).toMatchObject({ kind: 'conversation', classification: 'uncertain' });
+    await asTenant(A, async (tx) => {
+      await recordWork(tx, A, { runId: current.id, objective: 'hello', kind: verdict.kind, status: verdict.status });
+      expect(await homeCounters(tx)).toMatchObject({ handled: 0, needsYou: 0 });
+    });
+  });
+
+  it('requires user intent and a completion criterion before adding work', () => {
+    expect(validateTaskEvidence({ kind: 'work', status: 'needs_input', intentEvidence: 'Schedule a digest',
+      completionCriteria: 'Enabled daily schedule' }, 'What can you do?', 'I can schedule a digest.', ''))
+      .toMatchObject({ classification: 'uncertain', uncertaintyReason: 'missing_user_intent' });
+    expect(validateTaskEvidence({ kind: 'work', status: 'needs_input', intentEvidence: 'Schedule a digest' },
+      'Schedule a digest', 'What time?', '')).toMatchObject({ classification: 'uncertain' });
+  });
+
+  it('requires something concrete to review instead of treating doubt as a review request', () => {
+    const base = { kind: 'work' as const, status: 'needs_review' as const,
+      intentEvidence: 'Draft a reply', completionCriteria: 'A reply ready for owner review' };
+    expect(validateTaskEvidence(base, 'Draft a reply', 'I will prepare it.', ''))
+      .toMatchObject({ uncertaintyReason: 'missing_reviewable_result' });
+    expect(validateTaskEvidence({ ...base, reviewEvidence: 'Dear Aminah, your order is ready.' },
+      'Draft a reply', 'Draft: Dear Aminah, your order is ready.', '')).toMatchObject({ kind: 'work', status: 'needs_review' });
+  });
+
+  it('does not accept an answer quote as tool verification', () => {
+    const base = { kind: 'work' as const, status: 'completed' as const, intentEvidence: 'Enable my digest',
+      completionCriteria: 'Daily digest schedule saved and enabled', completionSource: 'tool' as const,
+      completionEvidence: 'schedule enabled', effect: 'external' as const };
+    expect(validateTaskEvidence(base, 'Enable my digest', 'schedule enabled', ''))
+      .toMatchObject({ uncertaintyReason: 'missing_completion_evidence' });
+    expect(validateTaskEvidence(base, 'Enable my digest', 'Done.', 'Verified schedule enabled'))
+      .toMatchObject({ kind: 'work', status: 'completed' });
+    expect(validateTaskEvidence({ ...base, completionSource: 'answer' }, 'Enable my digest', 'schedule enabled', ''))
+      .toMatchObject({ uncertaintyReason: 'missing_external_verification' });
   });
 });

@@ -25,6 +25,7 @@
     "db:migrate:model-call": "node scripts/apply-model-call.mjs",
     "db:migrate:runtime-identity": "node scripts/apply-runtime-identity.mjs",
     "db:migrate:specialist-profiles": "node scripts/apply-specialist-profiles.mjs",
+    "db:migrate:notifications": "node scripts/apply-notifications-and-agent-routines.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

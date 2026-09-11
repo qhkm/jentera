@@ -15,6 +15,7 @@ import { handleRepo } from './routes/repo';
 import { handleRuns } from './routes/runs';
 import { handleRoutines } from './routes/routines';
 import { handlePush } from './routes/push';
+import { handleNotifications } from './routes/notifications';
 import { dispatchDueRoutines } from './routines/dispatch';
 import { handleConnect } from './routes/connect';
 import { handleRuntime } from './routes/runtime';
@@ -127,6 +128,9 @@ export default {
     /* Routines: owner-scheduled deterministic jobs, behind a flag. */
     const routines = await handleRoutines(request, env, url, headers);
     if (routines) return routines;
+
+    const notifications = await handleNotifications(request, env, url, headers);
+    if (notifications) return notifications;
 
     /* Connections, and the Telegram webhook — the one route here that
        is called by someone other than our own frontend. */

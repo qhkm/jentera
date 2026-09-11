@@ -37,6 +37,8 @@
 .routine-editor.card, .routine-confirm.card { max-width: 760px; padding: 28px; gap: 20px; }
 .routine-editor label { display: flex; flex-direction: column; gap: 8px; font-weight: 500; min-width: 0; }
 .routine-editor .input { width: 100%; min-width: 0; color-scheme: dark; }
+.routine-editor textarea.input { min-height: 120px; resize: vertical; line-height: 1.55; }
+.routine-field-help { color: var(--text-secondary); font-size: var(--workspace-support); font-weight: 400; }
 .theme-light .routine-editor .input { color-scheme: light; }
 .routine-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; }
 .routine-editor .routine-checkbox { flex-direction: row; align-items: flex-start; font-weight: 400; padding: 8px 0; }

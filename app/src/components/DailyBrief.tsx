@@ -32,7 +32,7 @@ export function DailyBrief({ activity, snapshot, now, onNavigate }: {
   }
   function next() {
     if (!brief) return;
-    if (brief.priority === 'approval') openWork();
+    if (brief.priority === 'approval') openWork(brief.focus);
     else if (brief.focus) openWork(brief.focus);
     else if (brief.priority === 'knowledge') onNavigate('business', 'knows');
     else onNavigate('chat');

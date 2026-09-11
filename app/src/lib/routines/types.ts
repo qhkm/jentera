@@ -1,7 +1,7 @@
-/** Routines v1, including Claude's amendments in the 9 September contract.
- * These jobs read work records; they do not start a model or a sprite. */
+/** Routines v1. Preset reports stay deterministic; agent_task is delivered
+ * through the same durable Sprite queue as an owner chat request. */
 export const ROUTINE_ZONE = 'Asia/Kuala_Lumpur';
-export const ROUTINE_KINDS = ['business_summary', 'weekly_summary', 'approval_reminder'] as const;
+export const ROUTINE_KINDS = ['business_summary', 'weekly_summary', 'approval_reminder', 'agent_task'] as const;
 export type RoutineKind = typeof ROUTINE_KINDS[number];
 export type RoutineSchedule = {
   time: string;
@@ -10,7 +10,7 @@ export type RoutineSchedule = {
 
 export interface RoutineConfig {
   name: string;
-  task: { kind: RoutineKind };
+  task: { kind: Exclude<RoutineKind, 'agent_task'> } | { kind: 'agent_task'; prompt: string };
   schedule: RoutineSchedule;
   delivery: 'workspace';
 }

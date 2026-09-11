@@ -91,6 +91,12 @@ import { boundedAgentInput, prepareHermesAgent, retrieveHermesContext } from '..
 import { modelForResponseMode, responseModeFor } from './response-mode';
 import { sanitizePublicRuntimeText } from './public-output';
 import { listSpecialists, specialistProfileForRequest } from '../specialists';
+import {
+  cancelRoutineRuntimeOccurrence,
+  finishRoutineRuntimeOccurrence,
+  markRoutineNeedsApproval,
+  routineRuntimeMeta,
+} from '../routines/runtime-result';
 
 const MAX_TASK_ATTEMPTS = 5;
 /** Background lifecycle tasks (upgrade/provision/reconcile) get a wider net
@@ -1100,6 +1106,9 @@ export async function handleRuntimeMessage(
               runtimeTaskId: confirmed.id,
               reason: 'owner_cancelled_confirmed',
             });
+            await cancelRoutineRuntimeOccurrence(
+              tx, message.businessId, confirmed.payload, confirmed.runId,
+            );
           }
           return confirmed;
         });
@@ -1533,6 +1542,9 @@ export async function handleRuntimeMessage(
                   message: paused.message,
                   surface: 'web',
                 });
+                await markRoutineNeedsApproval(
+                  tx, message.businessId, lease.task.payload, lease.task.runId, paused.message,
+                );
               }
               return paused;
             });
@@ -1604,6 +1616,9 @@ export async function handleRuntimeMessage(
                 requestId: paused.requestId,
                 tool: paused.tool,
               });
+              await markRoutineNeedsApproval(
+                tx, message.businessId, lease.task.payload, lease.task.runId, paused.message,
+              );
             }
             return paused;
           });
@@ -1784,7 +1799,9 @@ export async function handleRuntimeMessage(
           if (!lease.task.runId || (successful && outcome.payload.telegram)) return done;
           await recordWork(tx, message.businessId, {
             runId: lease.task.runId,
-            kind: await workKindForRun(tx, message.businessId, lease.task.runId),
+            kind: routineRuntimeMeta(lease.task.payload)
+              ? 'work'
+              : await workKindForRun(tx, message.businessId, lease.task.runId),
             objective: outcome.payload.objective ?? outcome.payload.input.slice(0, 1_000),
             /* A failure stores the owner-facing notice; the raw provider
                detail stays on the task's terminal outcome for us. */
@@ -1804,6 +1821,13 @@ export async function handleRuntimeMessage(
             lease.task.runId,
             successful ? 'completed' : 'failed',
             { runtimeTaskId: lease.task.id, remoteStatus: outcome.remoteStatus },
+          );
+          await finishRoutineRuntimeOccurrence(
+            tx,
+            message.businessId,
+            lease.task.payload,
+            lease.task.runId,
+            { successful, summary: successful ? outcome.summary : failureNotice(outcome.summary) },
           );
           return true;
         });
@@ -1967,6 +1991,17 @@ export async function handleRuntimeMessage(
               runtimeTaskId: lease.task.id,
               reason: error instanceof RuntimeBudgetExceeded ? error.code : 'attempts_exhausted',
             });
+            await finishRoutineRuntimeOccurrence(
+              tx,
+              message.businessId,
+              lease.task.payload,
+              lease.task.runId,
+              {
+                successful: false,
+                summary: budgetExhausted ? CREDIT_CAP_NOTICE : failureNotice(failureReason),
+                budgetExceeded: budgetExhausted,
+              },
+            );
             /* A cap is a reason the owner can act on, unlike a generic
                failure: make Activity say so, creating the record when the
                run never got far enough to have one. */
@@ -1974,7 +2009,9 @@ export async function handleRuntimeMessage(
               const capPayload = lease.task.payload as RunPayload | null | undefined;
               /* Classified like a completion: a failed quick reply without a
                  tool is conversation, and must not surface as a task. */
-              const kind = await workKindForRun(tx, message.businessId, lease.task.runId);
+              const kind = routineRuntimeMeta(lease.task.payload)
+                ? 'work'
+                : await workKindForRun(tx, message.businessId, lease.task.runId);
               const updated = await updateWorkForRun(tx, message.businessId, lease.task.runId, {
                 status: 'failed',
                 outcome: CREDIT_CAP_NOTICE,

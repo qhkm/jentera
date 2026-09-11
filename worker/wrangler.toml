@@ -118,8 +118,7 @@ AISAR_CANDIDATE_MODEL_NAMES = ""
 AISAR_EXTRACT_BASE = "https://extract.kitakod.com"
 # No tenant override is needed while quick and deep share the working default.
 AISAR_QUICK_MODEL_OVERRIDES = ""
-# Routines v1 (docs/plans/2026-09-09-routines-api-v1.md). Off until the
-# backend acceptance gate is green; then one canary business id here first.
+# Routines (deterministic reports plus Sprite-backed agent tasks). Canary first.
 # Canary: Kitakod Ventures only, 2026-09-09. Empty allowlist = every business.
 ROUTINES_ENABLED = "true"
 AISAR_ROUTINES_BUSINESS_IDS = "4e8c2593-2af2-494f-b157-fec0295a50b5"

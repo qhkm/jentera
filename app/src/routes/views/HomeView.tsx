@@ -14,7 +14,10 @@ import {
   Clock,
   ArrowRight,
   BookOpen,
+  ChatCircle,
+  Lightning,
   PlugsConnected,
+  SquaresFour,
 } from '@phosphor-icons/react';
 import { JenteraMark } from '@/components/JenteraMark';
 import { WorkPulse } from '@/components/WorkSignal';
@@ -136,6 +139,29 @@ export default function HomeView({
           </time>
         </span>
       </header>
+
+      <section className="home-actions" aria-label={t('home.actions')}>
+        <button type="button" className="home-action home-action-chat" onClick={() => onNavigate('chat')}>
+          <span className="home-action-icon"><ChatCircle size={22} weight="duotone" aria-hidden="true" /></span>
+          <span><strong>{t('home.action.chat')}</strong><small>{t('home.action.chat.detail')}</small></span>
+        </button>
+        <button type="button" className="home-action home-action-activity" onClick={() => onNavigate('work')}>
+          <span className="home-action-icon"><Lightning size={22} weight="duotone" aria-hidden="true" /></span>
+          <span><strong>{t('home.action.activity')}</strong><small>{t('home.action.activity.detail')}</small></span>
+        </button>
+        <button
+          type="button"
+          className="home-action home-action-alerts"
+          onClick={() => onNavigate('notifications')}
+        >
+          <span className="home-action-icon"><Bell size={22} weight="duotone" aria-hidden="true" /></span>
+          <span><strong>{t('home.action.alerts')}</strong><small>{t('home.action.alerts.detail')}</small></span>
+        </button>
+        <button type="button" className="home-action home-action-more" onClick={() => onNavigate('business')}>
+          <span className="home-action-icon"><SquaresFour size={22} weight="duotone" aria-hidden="true" /></span>
+          <span><strong>{t('home.action.business')}</strong><small>{t('home.action.business.detail')}</small></span>
+        </button>
+      </section>
 
       {!demo && <DailyBrief activity={activity} snapshot={snap} now={now} onNavigate={onNavigate} />}
 
@@ -426,7 +452,7 @@ export default function HomeView({
                       ? 'failed'
                       : w.status === 'blocked'
                         ? 'blocked'
-                        : w.status === 'needs_approval'
+                        : ['needs_approval', 'needs_input', 'needs_review'].includes(w.status)
                           ? 'waiting'
                           : 'inprogress';
               return (
@@ -453,7 +479,7 @@ export default function HomeView({
                     {w.outcome ? <span className="home-activity-outcome">{w.outcome}</span> : null}
                     <span className="home-activity-meta">
                       <span className={`home-status home-status-${status}`}>
-                        {t(`work.${status}`)}
+                        {t(w.status === 'needs_review' ? 'task.needsReview' : w.status === 'needs_input' ? 'task.needsInput' : `work.${status}`)}
                       </span>
                       <time dateTime={w.occurredAt}>
                         {new Date(w.occurredAt).toLocaleDateString(

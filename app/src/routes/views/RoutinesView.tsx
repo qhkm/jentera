@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { ArrowLeft, ArrowUpRight, Bell, CalendarBlank, Clock, FileText, Pause, Play, Plus, ArrowClockwise } from '@phosphor-icons/react';
+import { ArrowLeft, ArrowUpRight, Bell, CalendarBlank, Clock, FileText, Pause, Play, Plus, ArrowClockwise, Robot } from '@phosphor-icons/react';
 import { Button, LoadingState } from '@/components/ui';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useRoutines } from '@/hooks/useRoutines';
@@ -12,7 +12,7 @@ import {
   type RoutineOccurrence, type RoutinesApi,
 } from '@/lib/routines/types';
 
-const JOB_ICONS = { business_summary: FileText, weekly_summary: CalendarBlank, approval_reminder: Bell };
+const JOB_ICONS = { business_summary: FileText, weekly_summary: CalendarBlank, approval_reminder: Bell, agent_task: Robot };
 type Editor = { config: RoutineConfig; paused: boolean; source?: Routine };
 type Pending = {
   action: RoutineAction;
@@ -70,14 +70,22 @@ function RoutineEditor({ editor, onChange, onReview, onCancel }: {
   const change = (patch: Partial<RoutineConfig>) => { setInvalid(false); onChange({ ...editor, config: { ...config, ...patch } }); };
   return <form className="routine-editor card" onSubmit={(event) => {
     event.preventDefault();
-    if (!config.name.trim() || config.name.trim().length > 80 || !validSchedule(config.schedule)) { setInvalid(true); return; }
+    if (!config.name.trim() || config.name.trim().length > 80 || !validSchedule(config.schedule) ||
+        (config.task.kind === 'agent_task' && !config.task.prompt.trim())) { setInvalid(true); return; }
     onReview();
   }}>
     <div className="routine-section-heading"><h2>{t(editor.source ? 'routines.edit' : 'routines.add')}</h2><span>{t('routines.zone')}</span></div>
-    <label>{t('routines.job')}<select className="input" value={config.task.kind} onChange={(event) => change({ task: { kind: event.target.value as RoutineKind } })}>
+    <label>{t('routines.job')}<select className="input" value={config.task.kind} onChange={(event) => {
+      const kind = event.target.value as RoutineKind;
+      change({ task: kind === 'agent_task' ? { kind, prompt: '' } : { kind } });
+    }}>
       {ROUTINE_KINDS.map((kind) => <option key={kind} value={kind}>{t(`routines.kind.${kind}`)}</option>)}
     </select></label>
     <p className="routine-muted">{t(`routines.description.${config.task.kind}`)}</p>
+    {config.task.kind === 'agent_task' && <label>{t('routines.prompt')}<textarea className="input" required maxLength={2000}
+      rows={5} value={config.task.prompt} placeholder={t('routines.prompt.placeholder')}
+      onChange={(event) => change({ task: { kind: 'agent_task', prompt: event.target.value } })} />
+      <span className="routine-field-help">{t('routines.prompt.help')}</span></label>}
     <label>{t('routines.name')}<input className="input" required maxLength={80} value={config.name}
       onChange={(event) => change({ name: event.target.value })} autoComplete="off" /></label>
     <div className="routine-fields">
@@ -149,7 +157,7 @@ export default function RoutinesView({ api, active, selectedId, onSelect, onOpen
     if (!canAdd || pending) return;
     setNotice(null);
     setReceipt(null);
-    setEditor({ config: { name: t(`routines.name.${kind}`), task: { kind }, schedule: starterSchedule(kind), delivery: 'workspace' }, paused: false });
+    setEditor({ config: { name: t(`routines.name.${kind}`), task: kind === 'agent_task' ? { kind, prompt: '' } : { kind }, schedule: starterSchedule(kind), delivery: 'workspace' }, paused: false });
   }
 
   function review() {

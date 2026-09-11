@@ -1,0 +1,143 @@
+/* One step smaller in the workspace: reduce type and whitespace together.
+   Phone gutters, viewport sizing, and accessible control heights stay explicit. */
+.dashboard-shell {
+  --control-pad-y: 8px;
+  --workspace-panel-pad: 22px;
+  --workspace-section-gap: 20px;
+}
+
+@layer components {
+  .dashboard-shell .card { padding: 16px; }
+}
+
+.dashboard-shell .btn {
+  padding-inline: 20px;
+  line-height: 1.5;
+}
+.dashboard-shell .workspace-layout { gap: 24px; }
+.dashboard-shell:not(.workspace-chat) > main { padding-top: 24px; }
+.dashboard-shell .dashboard-sidebar { gap: 20px; }
+.dashboard-shell .dashboard-profile { padding: 16px 14px; }
+.dashboard-shell .dashboard-nav-item { min-height: 44px; padding-block: 8px; }
+.dashboard-shell :is(.home-view, .home-overview) { gap: 16px; }
+.dashboard-shell :is(.dashboard-content > .flex.flex-col, .routines-view, .task-detail) { gap: var(--workspace-section-gap); }
+
+.dashboard-shell .dashboard-content > div > header h1,
+.dashboard-shell .home-heading h1,
+.dashboard-shell .routines-view h1 { font-size: 28px; }
+.dashboard-shell :is(.daily-brief-identity h2, .brief-priority h3, .home-command h2, .business-identity:not(.business-identity-compact) h2) { font-size: 20px; }
+.dashboard-shell :is(.home-next h2, .home-ask-launcher strong) { font-size: 18px; }
+.dashboard-shell :is(.task-result h2, .routines-view h2) { font-size: var(--workspace-heading); }
+.dashboard-shell .task-detail-heading h1 { font-size: clamp(20px, 2.2vw, 26px); }
+.dashboard-shell .home-stat > span.font-pixel { font-size: 32px; }
+.dashboard-shell .activity-overview strong { font-size: 23px; }
+
+.dashboard-shell :is(.home-command, .home-next, .home-recent, .home-ask-launcher, .business-identity:not(.business-identity-compact), .routine-editor.card, .routine-confirm.card, .routine-detail-card.card, .routine-history.card, .routine-starter.card, .task-result) {
+  padding: var(--workspace-panel-pad);
+}
+.dashboard-shell .home-stat { padding: 18px; }
+.dashboard-shell .daily-brief-header { padding: 16px var(--workspace-panel-pad); }
+.dashboard-shell :is(.brief-priority, .brief-records, .brief-state) { padding: var(--workspace-panel-pad); gap: 12px; }
+.dashboard-shell .daily-brief-footer { padding: 12px var(--workspace-panel-pad); }
+.dashboard-shell .activity-overview button { padding: 14px 18px; }
+.dashboard-shell .home-activity-row { padding-block: 14px; }
+.dashboard-shell .home-empty { padding: 24px 12px; gap: 12px; }
+.dashboard-shell .business-identity-icon { width: 56px; height: 56px; }
+.dashboard-shell .business-identity-compact .business-identity-icon { width: 40px; height: 40px; }
+
+.workspace-chat .chat-conversations { flex-basis: 256px; }
+.workspace-chat .conversation-list { padding: 20px 12px 12px; gap: 12px; }
+.workspace-chat .conversation-list-scroll ul { gap: 3px; }
+.workspace-chat .conversation-open {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 60px;
+  padding: 8px 10px;
+  gap: 3px 8px;
+}
+.workspace-chat .conversation-title {
+  grid-column: 1 / -1;
+  padding-right: 30px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.workspace-chat .conversation-preview {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.workspace-chat .conversation-meta {
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px 6px;
+  width: auto;
+  max-width: 90px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.workspace-chat .conversation-delete {
+  top: 0;
+  right: 0;
+  width: 40px;
+  height: 40px;
+}
+.workspace-chat .ask-studio-topbar h1 { font-size: 18px; }
+.workspace-chat .ask-studio-welcome h2 { font-size: clamp(28px, 3vw, 36px); }
+.workspace-chat .ask-studio-start .ask-studio-body { padding-block: clamp(24px, 5vh, 56px) 24px; }
+.workspace-chat .ask-studio-welcome { margin-bottom: 22px; }
+.workspace-chat .ask-studio-emblem { width: 68px; height: 68px; margin-bottom: 16px; }
+.workspace-chat .ask-studio-emblem img { width: 44px; height: 44px; }
+.workspace-chat .ask-studio-intro { margin-top: 12px; }
+.workspace-chat .ask-writing-pad { padding: 20px; }
+.workspace-chat .ask-writing-pad textarea { min-height: 56px; }
+.workspace-chat .ask-studio-starters { margin-top: 16px; }
+.workspace-chat .ask-recent-chats { margin-top: 28px; }
+
+@media (min-width: 1024px) {
+  .dashboard-shell .dashboard-sidebar { width: 200px; }
+}
+
+@media (max-width: 700px) {
+  .dashboard-shell {
+    --workspace-panel-pad: 16px;
+    --workspace-section-gap: 16px;
+  }
+  .dashboard-shell:not(.workspace-chat) > main { padding-top: 20px; }
+  .dashboard-shell .dashboard-content > div > header h1,
+  .dashboard-shell .home-heading h1,
+  .dashboard-shell .routines-view h1 { font-size: 26px; }
+  .dashboard-shell .home-stat { padding: 12px 10px; }
+  .dashboard-shell .home-stat > span.font-pixel { font-size: 26px; }
+  .dashboard-shell .home-stat-label { min-height: 32px; }
+  .dashboard-shell .home-stat > span:last-child { font-size: var(--workspace-small); }
+  .dashboard-shell .daily-brief-header { padding-block: 12px; }
+  .workspace-chat .ask-studio-topbar h1 { font-size: 16px; }
+  .workspace-chat .ask-studio-welcome h2 { font-size: 28px; }
+  .workspace-chat .ask-studio-emblem { width: 60px; height: 60px; margin-bottom: 12px; }
+  .workspace-chat .ask-studio-emblem img { width: 38px; height: 38px; }
+}
+
+/* Keyboard space belongs to the composer. Keep the same textarea mounted
+   so browser focus, selection and the draft survive viewport changes. */
+@media (max-width: 1023px) {
+  .kb-open .workspace-chat .ask-studio-start .ask-studio-stream,
+  .kb-open .workspace-chat .ask-studio-extras,
+  .kb-open .workspace-chat .ask-writing-hint,
+  .kb-open .workspace-chat .ask-refinements {
+    display: none;
+  }
+  .kb-open .workspace-chat .ask-studio-start .ask-studio-body {
+    justify-content: flex-end;
+    padding: 12px;
+  }
+  .kb-open .workspace-chat .ask-studio-conversation .ask-writing-zone {
+    padding-bottom: 10px;
+  }
+  .kb-open .workspace-chat .ask-studio-conversation .ask-studio-stream {
+    padding-block: 8px;
+  }
+  .kb-open .workspace-chat .ask-writing-pad textarea {
+    min-height: 28px;
+    max-height: clamp(28px, calc(var(--vvh, 100dvh) - 264px), 140px);
+  }
+}
