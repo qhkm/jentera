@@ -494,7 +494,7 @@ async function streamAsk(
     socket.onmessage = (message) => {
       let event: {
         version?: unknown; type?: unknown; detail?: unknown; text?: unknown;
-        approvalId?: unknown;
+        approvalId?: unknown; kind?: unknown;
       };
       try {
         event = JSON.parse(String(message.data)) as typeof event;
@@ -508,6 +508,7 @@ async function streamAsk(
           ...(typeof event.detail === 'string' ? { detail: event.detail } : {}),
           ...(typeof event.text === 'string' ? { text: event.text } : {}),
           ...(typeof event.approvalId === 'string' ? { approvalId: event.approvalId } : {}),
+          ...(event.kind === 'stage' || event.kind === 'step' || event.kind === 'tool' ? { kind: event.kind } : {}),
         });
       }
       if (['completed', 'failed', 'cancelled'].includes(event.type)) finishFromDurableState();

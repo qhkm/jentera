@@ -85,10 +85,15 @@ export type AskProgress = 'queued' | 'waking' | 'working' | 'retrying' | 'needs_
 /** One event from the run stream: a lifecycle state, or the agent's own
     status line, a bounded slice of its reasoning, or answer text as it is
     produced. */
+export type AskStatusKind = 'stage' | 'step' | 'tool';
+
 export interface AskProgressEvent {
   type: AskProgress | 'status' | 'thinking' | 'delta';
   detail?: string;
   text?: string;
+  /** status only: a dispatch stage (a label), one of the agent's own steps,
+      or a tool call (both kept as a list). */
+  kind?: AskStatusKind;
   /** needs_approval: which approval to fetch. Nothing about the request
       travels through the stream — the card asks the API what it is. */
   approvalId?: string;

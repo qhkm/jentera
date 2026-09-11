@@ -485,6 +485,60 @@ button.ask-context-link:hover {
 .ask-reply-activity {
   margin-left: auto;
 }
+/* The agent's steps: a quiet list, done ones ticked, the current one moving. */
+.ask-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.ask-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+.ask-steps li[aria-current="step"] {
+  color: var(--text);
+}
+.ask-step-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ask-step-done {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--accent);
+}
+.ask-step-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: ask-step-pulse 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ask-step-dot {
+    animation: none;
+  }
+}
+@keyframes ask-step-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+.ask-reply-steps .ask-steps {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--rail);
+  border-radius: 8px;
+}
 .ask-reply-failed {
   padding: 16px;
   border: 1px solid rgb(255 101 104 / 0.3);
@@ -675,8 +729,15 @@ button.ask-context-link:hover {
   .ask-recent-chats {
     margin-top: 28px;
   }
+  /* Phones: the conversation gets the width; 12px gutters instead of 20. */
+  .ask-studio-conversation .ask-studio-stream {
+    padding-inline: 12px;
+  }
+  .ask-studio-conversation .ask-writing-zone {
+    padding: 0 10px max(10px, env(safe-area-inset-bottom));
+  }
   .ask-owner-message {
-    padding-left: 20px;
+    padding-left: 12px;
   }
   .ask-owner-message > p {
     max-width: 100%;

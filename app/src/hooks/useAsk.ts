@@ -38,6 +38,8 @@ export interface AskMessage {
   /** What the agent is doing while answer text is already on screen (a tool
       mid-answer); cleared by the next piece of text. */
   liveStatus?: string;
+  /** The agent's own steps and tool calls, in order, kept with the reply. */
+  steps?: string[];
   /** The request that failed, retained so the UI can offer a real retry. */
   failedQuestion?: string;
   failedMode?: AskMode;
@@ -325,6 +327,14 @@ export function useAsk(
             },
             onProgress: (event: AskProgressEvent) => {
               const project = (message: AskMessage): AskMessage => {
+                /* The agent's own steps and tool calls read as a list; a
+                   repeated line is the same step, not a new one. */
+                if (event.type === 'status' && (event.kind === 'step' || event.kind === 'tool')) {
+                  const detail = event.detail?.trim();
+                  if (detail && message.steps?.at(-1) !== detail) {
+                    message = { ...message, steps: [...(message.steps ?? []), detail].slice(-20) };
+                  }
+                }
                 if (event.type === 'delta') {
                   /* Stripped thinking blocks and step lines leave their
                      newlines behind between tool calls; the reply keeps
@@ -417,6 +427,7 @@ export function useAsk(
                           state: 'done' as const,
                           mode,
                           depth: message.depth,
+                          steps: message.steps,
                           kind: a.kind,
                           taskStatus: a.taskStatus,
                           usedKeys: a.usedKeys,
@@ -450,6 +461,7 @@ export function useAsk(
                           taskTitle: question,
                           state: 'failed' as const,
                           mode,
+                          steps: message.steps,
                         }
                       : message),
                 }, ...prev.sessions.slice(index + 1)],

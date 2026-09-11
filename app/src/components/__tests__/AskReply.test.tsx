@@ -92,3 +92,36 @@ describe('AskReply: the waiting bubble keeps moving', () => {
     await waitFor(() => expect(container.textContent).toMatch(/· [23]s/));
   });
 });
+
+describe('AskReply: the agent\'s steps', () => {
+  /* "@step:" lines used to replace one label, and once leaked into the reply
+     as text. They are the agent narrating its work, so they read as a list:
+     done steps ticked, the current one moving, and the whole list kept as a
+     small receipt under the finished answer. */
+  it('lists the steps while working, with the latest one current', async () => {
+    const { container } = mount({
+      from: 'ai', text: '💭 Thinking…', mode: 'work', state: 'working', pendingId: 'p4', depth: 'quick',
+      startedAt: Date.now() - 2_000,
+      steps: ['Searching for today\'s headlines', '🌐 web_extract: "https://www.malaymail.com/"'],
+    });
+    await waitFor(() => expect(container.querySelector('.ask-steps')).not.toBeNull());
+    const items = Array.from(container.querySelectorAll('.ask-steps li'));
+    expect(items.map((li) => li.textContent)).toEqual(
+      expect.arrayContaining([expect.stringContaining('Searching for today'), expect.stringContaining('web_extract')]),
+    );
+    expect(items.at(-1)?.getAttribute('aria-current')).toBe('step');
+    expect(items[0].getAttribute('aria-current')).toBeNull();
+  });
+
+  it('keeps the steps as a collapsed receipt under the finished answer', async () => {
+    const { container } = mount({
+      from: 'ai', text: 'Top stories today: …', mode: 'work', runId: RUN, state: 'done',
+      depth: 'quick', kind: 'work', taskTitle: 'news', steps: ['Searching', 'Reading Malay Mail', 'Summarising'],
+    });
+    await waitFor(() => expect(container.textContent).toContain('Top stories today'));
+    const receipt = container.querySelector('details.ask-reply-steps');
+    expect(receipt).not.toBeNull();
+    expect(receipt?.querySelector('summary')?.textContent).toContain('3');
+    expect(receipt?.querySelectorAll('li')).toHaveLength(3);
+  });
+});

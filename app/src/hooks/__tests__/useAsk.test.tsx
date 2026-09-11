@@ -191,6 +191,13 @@ describe('useAsk durable answers', () => {
     act(() => options?.onProgress?.({ type: 'delta', text: ' Yes.' }));
     expect(result.current!.messages[1]).toMatchObject({ text: 'We are open on Sunday. Yes.' });
     expect(result.current!.messages[1].liveStatus).toBeUndefined();
+    // The agent's own steps and tool calls accumulate as a list; dispatch
+    // stages only ever change the label. Both survive into the final reply.
+    act(() => options?.onProgress?.({ type: 'status', detail: '✅ Agent started — thinking…', kind: 'stage' }));
+    act(() => options?.onProgress?.({ type: 'status', detail: 'Checking the calendar', kind: 'step' }));
+    act(() => options?.onProgress?.({ type: 'status', detail: 'Checking the calendar', kind: 'step' }));
+    act(() => options?.onProgress?.({ type: 'status', detail: '🔎 web_search: "opening hours"', kind: 'tool' }));
+    expect(result.current!.messages[1].steps).toEqual(['Checking the calendar', '🔎 web_search: "opening hours"']);
     // Stripped thinking blocks and step lines leave their newlines behind
     // between tool calls; the reply keeps whitespace, so a run of them was a
     // tall empty gap mid-answer. Runs collapse to one blank line.
@@ -202,7 +209,10 @@ describe('useAsk durable answers', () => {
     await act(async () => {
       resolveAnswer?.({ text: 'We are open on Sunday, 9 to 5.', usedKeys: [], grounded: true });
     });
-    expect(result.current!.messages[1]).toMatchObject({ text: 'We are open on Sunday, 9 to 5.', state: 'done' });
+    expect(result.current!.messages[1]).toMatchObject({
+      text: 'We are open on Sunday, 9 to 5.', state: 'done',
+      steps: ['Checking the calendar', '🔎 web_search: "opening hours"'],
+    });
   });
 
   it('keeps a failed question retryable instead of presenting the error as an answer', async () => {

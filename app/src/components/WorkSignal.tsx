@@ -71,6 +71,13 @@ function useElapsedSeconds(since?: number): number | null {
   return Math.max(0, Math.floor((now - since) / 1_000));
 }
 
+/** The seconds since `since`, for a row that is still in progress. */
+export function ElapsedSince({ since }: { since?: number }) {
+  const seconds = useElapsedSeconds(since);
+  if (seconds === null || seconds < 1) return null;
+  return <span className="text-text-tertiary tabular-nums"> · {seconds}s</span>;
+}
+
 /** The waiting bubble. With `since` it counts the seconds up next to the
     status, so a slow reply and a dead one look different: the agent's own
     status lines can be seconds apart, and nothing else moved in between. */
