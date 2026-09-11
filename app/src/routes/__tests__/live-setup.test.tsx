@@ -151,6 +151,24 @@ describe('signed-in setup', () => {
     expect(screen.getAllByText('ready').length).toBeGreaterThan(0);
   });
 
+  it('measures profile and agent only, so skipping Telegram is not held at 67%', async () => {
+    /* Telegram is optional here, and the row says so; the bar used to
+       count it as one of three steps anyway. */
+    const ready = new ReadyRepository();
+    await ready.setOnboarded(true);
+    const { unmount } = mount(ready);
+    await screen.findByRole('button', { name: /open my dashboard/i });
+    await waitFor(() => expect(screen.getByRole('progressbar', { name: 'Setup progress' }))
+      .toHaveAttribute('aria-valuenow', '100'));
+    unmount();
+
+    const provisioning = new ProvisioningRepository();
+    await provisioning.setOnboarded(true);
+    mount(provisioning);
+    await waitFor(() => expect(screen.getByRole('progressbar', { name: 'Setup progress' }))
+      .toHaveAttribute('aria-valuenow', '50'));
+  });
+
   it('allows the built-in web chat without requiring Telegram', async () => {
     const repo = new ReadyRepository();
     await repo.setOnboarded(true);

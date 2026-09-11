@@ -114,7 +114,10 @@ function LiveSetup() {
     row.connector === 'telegram' && row.status === 'connected' && row.paired === true);
   const telegramWaitingForStart = (connections.rows ?? []).some((row) =>
     row.connector === 'telegram' && row.status === 'connected' && row.paired !== true);
-  const completed = 1 + Number(runtimeReady) + Number(telegramReady);
+  /* Progress is what has to be true before web chat works: the profile
+     and the agent. Telegram is optional, and counting it held an owner who
+     skipped it at 67% with nothing left to do. */
+    const completed = 1 + Number(runtimeReady);
 
   async function finish() {
     setFinishing(true);
@@ -162,7 +165,7 @@ function LiveSetup() {
           <p className="text-text-secondary">
             {t('su.live.body')}
           </p>
-          <Progress value={(completed / 3) * 100} label="Setup progress" />
+          <Progress value={(completed / 2) * 100} label="Setup progress" />
         </div>
 
         {!runtimeReady && !runtimeError ? (
