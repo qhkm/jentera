@@ -1,7 +1,7 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router";
-import { describe, expect, it } from "vitest";
+import { MemoryRouter, Route, Routes } from "react-router";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import Landing from "@/routes/Landing";
 import { BUSINESS_EXAMPLES } from "@/lib/landing-content";
 
@@ -99,5 +99,52 @@ describe("Jentera landing experience", () => {
     ).not.toBeInTheDocument();
     expect(menu).toHaveAttribute("aria-expanded", "false");
     expect(menu).toHaveFocus();
+  });
+});
+
+describe("a signed-in visitor on the landing page", () => {
+  /* The landing sits outside the repository gate on purpose (first paint
+     must not wait on the API), so it asks /api/me itself, after paint, and
+     sends an owner who is already signed in to the app. */
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  function mountAt(fetchFake: typeof fetch) {
+    vi.stubEnv("VITE_API_URL", "https://api.test");
+    vi.stubGlobal("fetch", fetchFake);
+    return render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/app" element={<h1>Workspace</h1>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  it("is sent to the app once the session check answers", async () => {
+    const calls: string[] = [];
+    mountAt(async (input) => {
+      calls.push(String(input));
+      return Response.json({ userId: "u1" });
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Workspace" })).toBeInTheDocument(),
+    );
+    expect(calls).toEqual(["https://api.test/api/me"]);
+  });
+
+  it("stays on the landing page when signed out or when the API is unreachable", async () => {
+    mountAt(async () => new Response("", { status: 401 }));
+    await screen.findByRole("heading", { level: 1 });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByRole("heading", { name: "Workspace" })).toBeNull();
+
+    vi.unstubAllGlobals();
+    mountAt(async () => { throw new TypeError("Failed to fetch"); });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByRole("heading", { name: "Workspace" })).toBeNull();
   });
 });

@@ -21,6 +21,7 @@ import {
   LandingHeader,
 } from "@/components/landing/LandingChrome";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
+import { useSignedInRedirect } from "@/hooks/useSignedInRedirect";
 import { JenteraMark } from "@/components/JenteraMark";
 import { DataIcon } from "@/components/Icon";
 import { WorkIllustration } from "@/components/landing/WorkIllustration";
@@ -222,6 +223,9 @@ const WORK_ICONS = {
 
 export default function Landing() {
   useScrollReveal();
+  /* An owner who is already signed in belongs in the workspace, not on the
+     marketing page. Checked after paint so the page never waits on it. */
+  useSignedInRedirect("/app");
 
   return (
     <div className="marketing-page min-h-dvh bg-bg text-text">
