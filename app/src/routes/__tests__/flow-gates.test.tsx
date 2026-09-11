@@ -240,6 +240,50 @@ describe('what onboarding writes', () => {
     }));
   });
 
+  it("keeps the owner's corrections when the description also names the business", async () => {
+    /* Activation re-read the typed description and let the name and place
+       parsed from it override what the owner had just corrected at review. */
+    const repo = new LocalRepository();
+    await repo.setBizType('restaurant');
+    await repo.setBizProfile({ name: 'Wrong Name Cafe', loc: 'Petaling Jaya' });
+    localStorage.setItem(KEYS.onboardingDraft, JSON.stringify({
+      step: 2,
+      mode: 'manual',
+      desc: 'wrong name cafe in petaling jaya',
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/onboard']}>
+        <SignedInProvider value>
+          <RepositoryProvider repository={repo}>
+            <I18nProvider>
+              <ToastProvider>
+                <Routes>
+                  <Route path="/onboard" element={<Onboard />} />
+                  <Route path="/setup" element={<div data-testid="setup" />} />
+                </Routes>
+              </ToastProvider>
+            </I18nProvider>
+          </RepositoryProvider>
+        </SignedInProvider>
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit business information' }));
+    await userEvent.clear(screen.getByLabelText('Name'));
+    await userEvent.type(screen.getByLabelText('Name'), 'Correct Business');
+    await userEvent.clear(screen.getByLabelText('Location'));
+    await userEvent.type(screen.getByLabelText('Location'), 'Kuala Lumpur');
+    await userEvent.click(screen.getByRole('button', { name: 'Save corrections' }));
+    await waitFor(async () => expect((await repo.load()).bizName).toBe('Correct Business'));
+
+    await userEvent.click(screen.getByRole('button', { name: "Yes — that's my business →" }));
+    await waitFor(async () => expect((await repo.load()).onboarded).toBe(true));
+    const snapshot = await repo.load();
+    expect(snapshot.bizName).toBe('Correct Business');
+    expect(snapshot.bizLoc).toBe('Kuala Lumpur');
+  });
+
   it('resumes a completed demo at final review after sign-in', async () => {
     const repo = new LocalRepository();
     await repo.setBizType('restaurant');

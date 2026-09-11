@@ -498,12 +498,16 @@ export default function Onboard() {
   /* ---- Activate ---- */
 
   async function finishActivation() {
+    /* The parsed description is the fallback, never the authority: what
+       the owner corrected at review (or a scan found) is already in
+       importedProfile, and re-reading the description here used to undo
+       those corrections at the last step. */
     const profile = desc.trim() ? planRegisterBusiness(snap, desc.trim()) : null;
     await mutate((r) => r.completeOnboarding({
       playbookKey: bizType,
       channels,
-      name: profile?.bizName ?? importedProfile.name,
-      locality: profile?.bizLoc ?? importedProfile.locality,
+      name: importedProfile.name ?? profile?.bizName,
+      locality: importedProfile.locality ?? profile?.bizLoc ?? undefined,
     }));
     trackActivation('onboarding_completed');
     completedRef.current = true;
