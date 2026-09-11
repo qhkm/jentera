@@ -134,6 +134,29 @@ commit), lease 89 ms, checks and reserve 258 ms, readyz 594 ms, start 258 ms,
 record 83 ms, then 2.5 s of Hermes time to the first token. What remains
 is Hermes's own time to first token and the edge round trip to the sprite.
 
+## Measurements, 2026-09-11: after the inline and placed slices
+
+`reply-latency.sh db 1` the day after the inline slice (2026-09-10, 13:03
+GMT+8) and the placed queue slice (the same evening) went live. Every run
+in the window used DeepSeek: release 2026.09.11-7 routed chat through the
+one model that was available after the MiniMax quota was hit.
+
+| channel | model | runs | wait to start p50 / p90 | model time p50 / p90 | total p50 / p90 |
+|---|---|---|---|---|---|
+| App chat | deepseek-v4-flash | 22 | 1.9 s / 2.7 s | 40 s / 72 s | 43 s / 74 s |
+| Telegram | deepseek-v4-flash | 2 | 2.7 s / 3.1 s | 39 s / 40 s | 42 s / 43 s |
+
+Two days earlier the wait to start was 11.3 s / 21 s for app chat and
+6.8 s / 12.1 s on Telegram. What is left is model time; three of the 22
+app runs were web-research questions asked to check the steps view, each
+30 to 70 s of search and extraction.
+
+The 7-day view (`db 7`) still carries the older shape: 13.1 s at p90 for
+app chat, from the runs before the slices, and a 3.5 h p90 for Telegram on
+MiniMax-M3, from four runs on the evening of 2026-09-05 that took 2.5 to
+4.5 hours each with no approval involved, before the runner-side deadline
+existed. Nothing since 2026-09-06 has run longer than 11 minutes.
+
 ## Levers
 
 Done:
