@@ -1,7 +1,16 @@
 # The on-premise bridge — reaching AutoCount and SQL Account
 
-Status: **not pursued**, decided 11 September 2026. Kept for the reasoning,
-not as a roadmap item. Nothing is built and nothing is planned.
+Status: **not pursued as a product; partly superseded**, 11 September 2026.
+Kept for the reasoning, not as a roadmap item. Nothing is built.
+
+**Superseded by** `2026-09-11-local-driver.md`. The same databases are
+reachable as a named flow of an optional, cross-platform driver on a machine
+the owner already runs — which is a far smaller proposition than the bespoke
+service designed below. What stays true here: read-only first, version
+pinning, machines that are switched off, first-sync size, and being blamed for
+the customer's month-end. What is reversed is the architectural rule in
+"Shape" — a local driver does reach the owner's machine, and the superseding
+plan argues that rather than assuming it.
 
 **Why it was dropped.** Jentera is a cloud product and stays one. Anything
 installed on a customer's machine scales the wrong way: every installation is

@@ -25,20 +25,28 @@ planned for.
 Two decisions, made 11 September 2026, and they decide what qualifies before
 any other consideration does.
 
-**Everything runs in our infrastructure or the provider's.** Nothing is
-installed on a customer's machine. The reason is scale: an installed component
-is a computer nobody here controls, an update that cannot be rolled back
-centrally, and a fault that cannot be reproduced. Thirteen sprites are already
-a fleet; hundreds of office servers would be a different company.
+**Everything a customer needs runs in our infrastructure or the provider's.**
+The reason is scale: an installed component is a computer nobody here
+controls, an update that cannot be rolled back centrally, and a fault that
+cannot be reproduced. Thirteen sprites are already a fleet; requiring hundreds
+of office installations would be a different company.
+
+*Amended later the same day.* An **optional** local driver may add reach the
+cloud cannot have — a logged-in browser session, a desktop application. See
+`2026-09-11-local-driver.md`. The rule that survives is the one that matters:
+it is a capability provider, never a dependency. Everything works without it,
+and no roadmap item here assumes it. Requiring an install is a burden on every
+customer; offering one is a burden only for those who choose it.
 
 **The customer is the small business, directly.** Not accounting firms, not
 resellers, not other software vendors.
 
-Together these remove a category rather than reorder it. On-premise accounting
-— AutoCount, SQL Account, SQL Payroll — is out, and
-`2026-09-11-onpremise-bridge.md` records the argument in case the constraint is
-ever revisited. What remains is cloud services the owner already uses,
-connected by themselves, with nothing to install and nobody to send.
+Together these decide what the roadmap may assume: cloud services the owner
+already uses, connected by themselves, with nothing to install and nobody to
+send. On-premise accounting is not something any connector reaches, and a
+bespoke bridge for it stays cancelled — but it may return as one named flow of
+the optional driver, which is a much smaller proposition than a service we
+deploy and update. `2026-09-11-onpremise-bridge.md` keeps that argument.
 
 It also relocates defensibility, which is worth being honest about. Tier 1
 connectors are not a moat; anyone can wire Billplz in a fortnight. For a cloud
@@ -140,10 +148,11 @@ the owner's behalf* is not, and is a poor thing to promise about a statutory
 obligation.
 
 **On-premise accounting.** AutoCount, SQL Account, SQL Payroll, AutoCount
-Payroll are on-premise SQL Server products with no cloud API. Reaching them
-needs software on the owner's machine, which "Cloud only" rules out. **Not on
-the roadmap**; the reasoning is preserved in
-`2026-09-11-onpremise-bridge.md`.
+Payroll are on-premise SQL Server products with no cloud API. No connector
+reaches them, and no bespoke bridge is planned. They may become named flows of
+the optional local driver (`2026-09-11-local-driver.md`), reached on a machine
+the owner already runs rather than through a service we deploy — but nothing
+on this roadmap depends on that.
 
 What remains available to those owners, with nothing installed, is file
 import: an export from their accounting system, read the way a bank statement
@@ -293,17 +302,22 @@ What it does not give is a live balance or same-day movement. That limitation
 should be stated to owners rather than engineered around, because engineering
 around it is section C.
 
-### B. The on-premise bridge — not pursued
+### B. The on-premise bridge — cancelled as a product, revived as a flow
 
-Ruled out by "Cloud only" above. It was the most defensible item here, and the
-tedium that made it defensible is the same tedium that makes it unscalable for
-a small team: hundreds of unattended installations on machines nobody here
-controls.
+A bespoke service we deploy and update across hundreds of offices stays
+cancelled: the tedium that made it defensible is the same tedium that makes it
+unscalable for a small team.
 
-`2026-09-11-onpremise-bridge.md` keeps the design and the argument. The part
-worth carrying forward regardless is its architectural rule — the agent asks
-the control plane and never reaches into a customer's network — which holds
-for anything touching a customer's own systems.
+What changed is that the optional local driver
+(`2026-09-11-local-driver.md`) reaches the same databases on a machine the
+owner already runs, as a named flow rather than a product. Much of the earlier
+design still applies — read-only, version pinning, machines that are switched
+off — and `2026-09-11-onpremise-bridge.md` keeps it.
+
+Its architectural rule is the one thing genuinely reversed: with a local
+driver the agent does reach the owner's own machine. The local-driver plan
+argues that reversal rather than assuming it, and its blast-radius section is
+the part to read.
 
 ### C. Live bank access — not on the list
 
