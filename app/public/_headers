@@ -4,6 +4,17 @@
 
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+/workbox-*.js
+  Cache-Control: public, max-age=31536000, immutable
+
+# The installed app checks these on every launch; a cached copy would pin a
+# phone to an old release until the browser's 24-hour worker check ran.
+/sw.js
+  Cache-Control: no-cache, must-revalidate
+/manifest.webmanifest
+  Cache-Control: no-cache, must-revalidate
+/offline.html
+  Cache-Control: no-cache, must-revalidate
 
 # These contain no account state and change only with a deployment. A short
 # public cache prevents needless origin reads while keeping discovery fresh.

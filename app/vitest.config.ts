@@ -5,6 +5,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      /* Provided by vite-plugin-pwa in the real build; here the app must
+         render as if no service worker existed. */
+      'virtual:pwa-register/react': fileURLToPath(new URL('./src/test-support/pwa-register.ts', import.meta.url)),
     },
   },
   test: {

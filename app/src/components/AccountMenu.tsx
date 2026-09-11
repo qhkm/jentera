@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import {
   CaretDown,
+  DeviceMobile,
   Moon,
   SignOut,
   SlidersHorizontal,
@@ -12,6 +13,8 @@ import { useI18n } from '@/i18n/I18nProvider';
 import { useTheme } from '@/hooks/useTheme';
 import { useDetailLevel } from '@/hooks/useDetailLevel';
 import { useSignedIn } from '@/lib/repo/gate';
+import { useToast } from '@/components/Toast';
+import { usePwaInstall } from '@/pwa/install';
 
 export function AccountMenu({
   onSignOut,
@@ -26,6 +29,8 @@ export function AccountMenu({
   const { theme, toggleTheme } = useTheme();
   const detail = useDetailLevel();
   const signedIn = useSignedIn();
+  const toast = useToast();
+  const install = usePwaInstall();
   const [open, setOpen] = useState(false);
   const container = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -55,6 +60,18 @@ export function AccountMenu({
   function choose(action: () => void) {
     action();
     close();
+  }
+
+  /* Chromium shows its own sheet; Safari on iPhone has no prompt to show,
+     so the owner is told where Add to Home Screen lives instead. */
+  function installApp() {
+    if (install.canPrompt) {
+      void install.promptInstall().then((outcome) => {
+        if (outcome === 'accepted') toast(t('pwa.installed'));
+      });
+      return;
+    }
+    toast(t('pwa.ios.hint'), 'neutral');
   }
 
   function handleKey(event: KeyboardEvent<HTMLDivElement>) {
@@ -178,6 +195,18 @@ export function AccountMenu({
                 <span className="account-menu-value">
                   {t(detail.advanced ? 'account.advanced' : 'account.simple')}
                 </span>
+              </button>
+            ) : null}
+            {signedIn && (install.canPrompt || install.iosHint) ? (
+              <button
+                type="button"
+                role="menuitem"
+                tabIndex={-1}
+                className="account-menu-item"
+                onClick={() => choose(installApp)}
+              >
+                <DeviceMobile size={18} weight="duotone" aria-hidden="true" />
+                <span>{t('pwa.install')}</span>
               </button>
             ) : null}
             {signedIn ? (

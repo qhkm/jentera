@@ -12,6 +12,7 @@ import { useI18n } from '@/i18n/I18nProvider';
 import { Button } from '@/components/ui';
 import { JenteraMark } from '@/components/JenteraMark';
 import { AccountMenu } from '@/components/AccountMenu';
+import { PwaUpdateNotice } from '@/components/PwaUpdateNotice';
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
@@ -122,6 +123,7 @@ export function Shell({
       >
         {children}
       </main>
+      <PwaUpdateNotice />
     </div>
   );
 }
