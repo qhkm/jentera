@@ -1,7 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { InstallNudge, INSTALL_NUDGE_KEY } from '@/components/InstallNudge';
+import { InstallNudge, INSTALL_NUDGE_KEY, LandingInstallNudge } from '@/components/InstallNudge';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { RepositoryProvider } from '@/lib/repo/context';
 import { SignedInProvider } from '@/lib/repo/gate';
@@ -99,5 +99,32 @@ describe('InstallNudge', () => {
     mount();
     await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
     expect(screen.queryByRole('region', { name: /install jentera/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('LandingInstallNudge, for visitors on the marketing page', () => {
+  it('needs no account and no providers, and offers the install in plain English', async () => {
+    const event = installPrompt();
+    act(() => { window.dispatchEvent(event); });
+    const user = userEvent.setup();
+    render(<LandingInstallNudge delayMs={0} />);
+    const nudge = await screen.findByRole('region', { name: /get jentera on your phone/i });
+    expect(nudge).toHaveTextContent(/notifications/i);
+    await user.click(screen.getByRole('button', { name: 'Install' }));
+    expect(event.prompt).toHaveBeenCalledOnce();
+  });
+
+  it('gives an iPhone the Share steps', async () => {
+    vi.stubGlobal('navigator', { ...navigator, userAgent: IPHONE });
+    render(<LandingInstallNudge delayMs={0} />);
+    expect(await screen.findByRole('region', { name: /get jentera on your phone/i })).toHaveTextContent(/Share.*Add to Home Screen/);
+  });
+
+  it('honours a Not now given anywhere in the app', async () => {
+    localStorage.setItem(INSTALL_NUDGE_KEY, String(Date.now()));
+    act(() => { window.dispatchEvent(installPrompt()); });
+    render(<LandingInstallNudge delayMs={0} />);
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(screen.queryByRole('region', { name: /get jentera/i })).not.toBeInTheDocument();
   });
 });

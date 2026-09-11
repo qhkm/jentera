@@ -25,6 +25,8 @@ import { useSignedInRedirect } from "@/hooks/useSignedInRedirect";
 import { JenteraMark } from "@/components/JenteraMark";
 import { DataIcon } from "@/components/Icon";
 import { WorkIllustration } from "@/components/landing/WorkIllustration";
+import { LandingInstallNudge } from "@/components/InstallNudge";
+import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import {
   BUSINESS_EXAMPLES,
   EVERYDAY_WORK,
@@ -513,6 +515,8 @@ export default function Landing() {
         </section>
       </main>
       <LandingFooter />
+      <LandingInstallNudge />
+      <ServiceWorkerRegistration />
     </div>
   );
 }

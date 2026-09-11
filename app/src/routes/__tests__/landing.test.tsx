@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +14,23 @@ function mount() {
 }
 
 describe("Jentera landing experience", () => {
+  it("invites a phone visitor to install once the page has settled", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal("navigator", {
+        ...navigator,
+        userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 19_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1",
+      });
+      mount();
+      expect(screen.queryByRole("region", { name: /get jentera on your phone/i })).not.toBeInTheDocument();
+      await act(async () => { vi.advanceTimersByTime(6_500); });
+      expect(screen.getByRole("region", { name: /get jentera on your phone/i })).toHaveTextContent(/Add to Home Screen/);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("offers account creation and a clearly labelled local-business illustration", () => {
     mount();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(

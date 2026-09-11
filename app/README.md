@@ -157,7 +157,11 @@ pieces, and where each one lives:
   page settles: Install and Not now where Chromium has offered its prompt,
   the Share → Add to Home Screen instructions on an iPhone. Not now keeps
   it quiet for 30 days (`jentera-install-nudge-v1` holds the timestamp);
-  it never shows once the app runs from the home screen.
+  it never shows once the app runs from the home screen. The landing page
+  carries `LandingInstallNudge`, the same card floating at the bottom for
+  any visitor, in plain English because that page renders without the
+  app's providers; it also registers the worker so a browser judging
+  installability finds one. Both share the dismissal key.
 - **Install entry point.** The account menu shows "Install Jentera app" to a
   signed-in owner when Chromium has offered its install prompt
   (`beforeinstallprompt`, captured at module load in `src/pwa/install.ts`
