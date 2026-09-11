@@ -14,6 +14,7 @@ import { handleSession } from './routes/session';
 import { handleRepo } from './routes/repo';
 import { handleRuns } from './routes/runs';
 import { handleRoutines } from './routes/routines';
+import { handlePush } from './routes/push';
 import { dispatchDueRoutines } from './routines/dispatch';
 import { handleConnect } from './routes/connect';
 import { handleRuntime } from './routes/runtime';
@@ -121,6 +122,8 @@ export default {
     const runs = await handleRuns(request, env, url, headers, ctx);
     if (runs) return runs;
 
+    const push = await handlePush(request, env, url, headers, { ctx });
+    if (push) return push;
     /* Routines: owner-scheduled deterministic jobs, behind a flag. */
     const routines = await handleRoutines(request, env, url, headers);
     if (routines) return routines;

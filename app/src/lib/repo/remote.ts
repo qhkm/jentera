@@ -17,6 +17,7 @@ import type {
   Activity,
   AskAnswer,
   ResumeAskOptions,
+  PushSubscriptionJson,
   AskOptions,
   AskProgressEvent,
   BusinessSnapshot,
@@ -430,6 +431,32 @@ export class RemoteRepository implements Repository {
     return streamAsk(runId, options?.onProgress ?? (() => undefined));
   }
 
+  /* Web push. These read the status themselves: a 503 means "not
+     configured" and a 409 means "another account's device", both answers
+     the caller acts on, where `call` would have thrown. */
+  async pushPublicKey(): Promise<string | null> {
+    const res = await fetch(`${BASE}/api/push/vapid-public-key`, { credentials: 'include' });
+    if (!res.ok) return null;
+    const body = (await res.json().catch(() => ({}))) as { key?: unknown };
+    return typeof body.key === 'string' ? body.key : null;
+  }
+
+  async savePushSubscription(subscription: PushSubscriptionJson): Promise<'saved' | 'conflict'> {
+    const res = await fetch(`${BASE}/api/push/subscription`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(subscription),
+    });
+    if (res.status === 409) return 'conflict';
+    if (res.status === 401) throw new NotSignedInError();
+    if (!res.ok) throw new Error('Could not turn on notifications for this device.');
+    return 'saved';
+  }
+
+  deletePushSubscription = (endpoint: string) =>
+    call<void>('/api/push/subscription', { method: 'DELETE', body: JSON.stringify({ endpoint }) });
+
   async runResult(runId: string): Promise<RunResult> {
     if (!isRunId(runId)) throw new Error('Invalid task link.');
     const result = await call<RunResult>(`/api/runs/${encodeURIComponent(runId)}`);
@@ -438,6 +465,9 @@ export class RemoteRepository implements Repository {
     }
     return result;
   }
+
+  confirmTaskReview = (runId: string) =>
+    post(`/api/runs/${encodeURIComponent(runId)}/review`, { decision: 'confirm' });
 
   rateWork = (workId: string, quality: WorkQuality) =>
     post('/api/runs/quality', { workId, quality });

@@ -99,6 +99,13 @@ export interface Env {
   /** Key for the staff support endpoints (telegram-pairing minting).
       Falls back to AISAR_OPENROUTER_MANAGEMENT_KEY when unset. */
   AISAR_SUPPORT_KEY?: string;
+  /** Web push. The VAPID key pair as one JWK string (`generateVapidJwk`
+      in src/push/crypto.ts makes one); set with `wrangler secret put
+      VAPID_PRIVATE_JWK`. The public half is derived from it. Absent: the
+      app offers no notification switch and no push is ever sent. */
+  VAPID_PRIVATE_JWK?: string;
+  /** RFC 8292 subject, `mailto:` an address the push services can reach. */
+  VAPID_SUBJECT?: string;
   /** Placement spike: a service binding to this Worker itself. */
   SELF?: Fetcher;
   AISAR_MODEL_NAME?: string;

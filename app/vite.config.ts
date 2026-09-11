@@ -17,30 +17,20 @@ export default defineConfig({
        no route here matches it. Updates wait for the owner (`prompt`), so a
        deploy cannot reload a page mid-reply. */
     VitePWA({
+      /* src/sw.ts is the worker: the caching described above plus the
+         push and notification-click handlers, which a generated worker
+         cannot carry. Its precache list is injected at build time. */
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'prompt',
       injectRegister: false,
       manifest,
       includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'icons/*.png', 'offline.html'],
-      workbox: {
+      injectManifest: {
         globPatterns: ['**/*.{js,css,woff2,svg,png}', 'offline.html'],
-        globIgnores: ['**/social/**'],
+        globIgnores: ['**/social/**', 'sw.js', 'workbox-*.js'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
-        navigateFallback: null,
-        cleanupOutdatedCaches: true,
-        clientsClaim: true,
-        skipWaiting: false,
-        runtimeCaching: [
-          {
-            urlPattern: ({ request, sameOrigin }) => sameOrigin && request.mode === 'navigate',
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'jentera-pages',
-              networkTimeoutSeconds: 5,
-              expiration: { maxEntries: 24, maxAgeSeconds: 7 * 24 * 60 * 60 },
-              precacheFallback: { fallbackURL: '/offline.html' },
-            },
-          },
-        ],
       },
     }),
   ],

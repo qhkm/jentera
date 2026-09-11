@@ -13,6 +13,8 @@ import { Button } from '@/components/ui';
 import { JenteraMark } from '@/components/JenteraMark';
 import { AccountMenu } from '@/components/AccountMenu';
 import { PwaUpdateNotice } from '@/components/PwaUpdateNotice';
+import { disablePush } from '@/pwa/push';
+import { useRepository } from '@/lib/repo';
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
@@ -58,10 +60,14 @@ export function Shell({
 }) {
   const { t } = useI18n();
   const [leaving, setLeaving] = useState(false);
+  const repo = useRepository();
 
   async function signOut() {
     setLeaving(true);
     clearAskStorage();
+    /* This browser must stop receiving this owner's notifications before
+       the session goes; the endpoint is the browser's, not the account's. */
+    await disablePush(repo);
     try {
       /* Ask the server to destroy the session row before dropping the
          cookie. Clearing the cookie alone would leave a live session

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import {
+  BellRinging,
   CaretDown,
   DeviceMobile,
   Moon,
@@ -15,6 +16,7 @@ import { useDetailLevel } from '@/hooks/useDetailLevel';
 import { useSignedIn } from '@/lib/repo/gate';
 import { useToast } from '@/components/Toast';
 import { usePwaInstall } from '@/pwa/install';
+import { usePushNotifications } from '@/pwa/push';
 
 export function AccountMenu({
   onSignOut,
@@ -31,6 +33,7 @@ export function AccountMenu({
   const signedIn = useSignedIn();
   const toast = useToast();
   const install = usePwaInstall();
+  const push = usePushNotifications();
   const [open, setOpen] = useState(false);
   const container = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -64,6 +67,18 @@ export function AccountMenu({
 
   /* Chromium shows its own sheet; Safari on iPhone has no prompt to show,
      so the owner is told where Add to Home Screen lives instead. */
+  async function togglePush() {
+    if (push.state === 'on') {
+      await push.disable();
+      toast(t('pwa.push.disabled'), 'neutral');
+      return;
+    }
+    const outcome = await push.enable();
+    if (outcome === 'on') toast(t('pwa.push.enabled'));
+    else if (outcome === 'denied') toast(t('pwa.push.deniedHint'), 'neutral');
+    else toast(t('pwa.push.unavailable'), 'neutral');
+  }
+
   function installApp() {
     if (install.canPrompt) {
       void install.promptInstall().then((outcome) => {
@@ -194,6 +209,22 @@ export function AccountMenu({
                 <span>{t('nav.detail')}</span>
                 <span className="account-menu-value">
                   {t(detail.advanced ? 'account.advanced' : 'account.simple')}
+                </span>
+              </button>
+            ) : null}
+            {signedIn && push.state !== 'unsupported' ? (
+              <button
+                type="button"
+                role="menuitem"
+                tabIndex={-1}
+                className="account-menu-item"
+                aria-busy={push.state === 'checking' || undefined}
+                onClick={() => choose(() => void togglePush())}
+              >
+                <BellRinging size={18} weight="duotone" aria-hidden="true" />
+                <span>{t('pwa.push')}</span>
+                <span className="account-menu-value">
+                  {t(push.state === 'on' ? 'pwa.push.on' : push.state === 'denied' ? 'pwa.push.blocked' : 'pwa.push.off')}
                 </span>
               </button>
             ) : null}

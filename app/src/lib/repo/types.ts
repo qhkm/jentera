@@ -102,6 +102,12 @@ export type AskMode = 'ask' | 'work';
 
 export type ResumeAskOptions = Pick<AskOptions, 'onProgress'>;
 
+/** `PushSubscription.toJSON()`: the endpoint and the two browser keys. */
+export interface PushSubscriptionJson {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}
+
 export interface AskOptions {
   mode?: AskMode;
   /** Stable conversation id so Hermes can keep context per chat, like Telegram. */
@@ -207,6 +213,8 @@ export interface BusinessBrowserState {
 
 /** Read-only projection of the existing tenant-scoped run endpoint. */
 export interface RunResult {
+  sessionId?: string;
+  approvalId?: string;
   taskStatus?: string;
   runId: string;
   status: string;
@@ -334,6 +342,7 @@ export interface Repository {
   /** The append-only trace of one run, newest last. */
   runTrace(runId: string): Promise<TraceEvent[]>;
   runResult(runId: string): Promise<RunResult>;
+  confirmTaskReview?(runId: string): Promise<void>;
 
   /** Answer a question from confirmed facts and real work records. */
   ask(question: string, options?: AskOptions): Promise<AskAnswer>;
@@ -342,6 +351,14 @@ export interface Repository {
   resumeAsk?(runId: string, options?: ResumeAskOptions): Promise<AskAnswer>;
   /** Wake the business's agent ahead of the first message; best effort. */
   warmAgent?(): Promise<void>;
+
+  /** Web push, remote only. The server's VAPID public key, or null when
+      push is not configured there. */
+  pushPublicKey?(): Promise<string | null>;
+  /** Hand this browser's subscription to the server. 'conflict' means the
+      same browser is registered to another account; take a new one. */
+  savePushSubscription?(subscription: PushSubscriptionJson): Promise<'saved' | 'conflict'>;
+  deletePushSubscription?(endpoint: string): Promise<void>;
 
   /** Accounts this business has connected. Never includes secrets. */
   connections(): Promise<Connection[]>;

@@ -159,6 +159,22 @@ pieces, and where each one lives:
   prompts and the item explains Share → Add to Home Screen. The item is
   hidden once the app is running from the home screen.
 
+- **Push notifications.** The account menu's "Notifications on this
+  device" switch (`src/pwa/push.ts`) asks the browser's permission on the
+  tap, subscribes with the server's VAPID key from
+  `GET /api/push/vapid-public-key`, and hands the subscription to
+  `PUT /api/push/subscription`, which answers with a first push so the
+  device is seen working. The worker (`src/sw.ts`, built in injectManifest
+  mode so it can carry handlers) shows the payload as a notification and
+  opens the app at the payload's path on tap; `src/pwa/sw-push.ts` keeps
+  that shaping testable and refuses any URL off this origin. Signing out
+  unsubscribes the browser first, so a shared device does not keep the
+  previous owner's notifications. A 409 from the server means the same
+  browser is registered to another account; the hook drops that
+  subscription and takes a fresh endpoint. iPhone receives push only once
+  the app is on the home screen, which is why the switch is hidden in
+  Safari itself.
+
 **Signing in inside the installed app.** iOS gives a home-screen app its own
 cookie jar, separate from Safari. A magic link tapped in Mail opens in
 Safari and signs Safari in, not the installed app. Password and Google

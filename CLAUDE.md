@@ -105,6 +105,22 @@ Webhook verification is done — this line used to say it was not.
 time. Stored rather than derived from `CREDENTIAL_KEY`, because
 deriving it would break every live webhook on a key rotation.
 
+Web push lives in `src/push/`. `crypto.ts` is RFC 8291 payload encryption
+and RFC 8292 VAPID on Web Crypto, and `test/push-crypto.test.ts` holds it
+to the RFC's worked example byte for byte — a change that still "works"
+against one browser but drifts from the spec fails there first.
+Subscriptions are tenant rows under RLS (`push_subscription`, migration
+030) keyed by the browser's endpoint, which is unique across tenants: the
+same browser keeps its endpoint whoever signs in, so a second account's
+insert collides with a row RLS hides and the route answers 409, and the
+app takes a fresh endpoint. `pushToUser(env, businessId, userId, payload)`
+fans out to every device and forgets the ones the service reports gone;
+it never throws. Configuration is two secrets, `VAPID_PRIVATE_JWK` (one
+JWK string, `generateVapidJwk()` makes one) and `VAPID_SUBJECT`; without
+them the app shows no switch and nothing is sent. The one caller today is
+the confirmation push on subscribe; routine outcomes call it from the
+notification insert once the inbox lands.
+
 ### Where work runs
 
 `src/runtime/` is the seam. `run.runtime` and `run.model` are snapshots
