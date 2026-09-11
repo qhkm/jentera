@@ -44,12 +44,14 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
       }
     } catch { return json({ err: 'invalid command' }, 400); }
   }
+  let stage = 'credentials';
   try {
     const { runtime, secrets } = await withTenant(env, identity.businessId, (tx) => getRuntimeAccess(env, tx, identity.businessId));
     if (!runtime.providerUrl || runtime.provider !== 'fly-sprite' || !env.SPRITES_TOKEN ||
         !['ready', 'cold', 'idle', 'busy'].includes(runtime.status)) return json({ err: 'Business browser is not ready yet.' }, 503);
     const endpoint = new URL('/v1/browser', runtime.providerUrl);
     if (endpoint.protocol !== 'https:') return json({ err: 'Business browser is unavailable.' }, 503);
+    stage = 'connect';
     const upstream = await fetch(endpoint, {
       method: request.method, redirect: 'error', signal: AbortSignal.timeout(25000),
       headers: { 'X-Aisar-Runner-Key': secrets.runnerKey, Authorization: `Bearer ${env.SPRITES_TOKEN}`,
@@ -60,13 +62,22 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
       const body = await upstream.json().catch(() => ({})) as { error?: string };
       const code = typeof body.error === 'string' && Object.hasOwn(MESSAGES, body.error)
         ? body.error : 'browser_unavailable';
+      console.warn('[business-browser]', JSON.stringify({ stage: 'upstream', status: upstream.status, code, action: command?.action ?? 'status' }));
       return json({ err: MESSAGES[code] ?? 'Business browser is unavailable. Try again shortly.', code },
         [400, 409].includes(upstream.status) ? upstream.status : 503);
     }
     // The private runner returns only its narrow browser DTO. Do not relay
     // upstream headers, Set-Cookie, server errors or arbitrary proxy content.
+    stage = 'decode';
     const body = await upstream.json() as Record<string, unknown>;
     return json(Object.fromEntries(['enabled', 'paused', 'controlled', 'expiresAt', 'image', 'width', 'height', 'tabs', 'ok']
       .filter((key) => body[key] !== undefined).map((key) => [key, body[key]])));
-  } catch { return json({ err: 'Business browser is unavailable. Try again shortly.' }, 503); }
+  } catch (error) {
+    // Never log exception messages, request bodies, URLs, controller IDs,
+    // credentials, screenshots, or typed input. Only fixed diagnostic labels.
+    const name = error instanceof Error && ['TypeError', 'TimeoutError', 'AbortError', 'OperationError', 'SyntaxError'].includes(error.name)
+      ? error.name : 'Error';
+    console.warn('[business-browser]', JSON.stringify({ stage, name, action: command?.action ?? 'status' }));
+    return json({ err: 'Business browser is unavailable. Try again shortly.' }, 503);
+  }
 }
