@@ -13,6 +13,7 @@ import { Button } from '@/components/ui';
 import { JenteraMark } from '@/components/JenteraMark';
 import { AccountMenu } from '@/components/AccountMenu';
 import { PwaUpdateNotice } from '@/components/PwaUpdateNotice';
+import { InstallNudge } from '@/components/InstallNudge';
 import { disablePush } from '@/pwa/push';
 import { useRepository } from '@/lib/repo';
 
@@ -120,6 +121,7 @@ export function Shell({
           </div>
         </div>
       </header>
+      <InstallNudge />
       <main
         className={
           fullBleed

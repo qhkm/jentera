@@ -152,6 +152,12 @@ pieces, and where each one lives:
   rather than reloading a page mid-reply. Under vitest the virtual module is
   aliased to `src/test-support/pwa-register.ts`, so the app renders as if no
   worker existed.
+- **Install nudge.** `InstallNudge`, mounted once in `Shell` under the
+  header, invites a signed-in owner to install a few seconds after the
+  page settles: Install and Not now where Chromium has offered its prompt,
+  the Share → Add to Home Screen instructions on an iPhone. Not now keeps
+  it quiet for 30 days (`jentera-install-nudge-v1` holds the timestamp);
+  it never shows once the app runs from the home screen.
 - **Install entry point.** The account menu shows "Install Jentera app" to a
   signed-in owner when Chromium has offered its install prompt
   (`beforeinstallprompt`, captured at module load in `src/pwa/install.ts`
