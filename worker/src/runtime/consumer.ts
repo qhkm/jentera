@@ -62,6 +62,7 @@ import { finalizeRuntimeUsage, runtimeUsageDeadline, RuntimeBudgetExceeded } fro
 import { deleteRuntime, reconcileRuntime, upgradeRuntime } from './lifecycle';
 import { publishRunProgressSafely } from './progress';
 import { applyRuntimeApprovalDecision } from './approvals';
+import { CREDIT_CAP_NOTICE, failureNotice } from './failure-notice';
 import { createWebProgress } from './web-progress';
 import { STEP_STRIP_RE } from './step-progress';
 import { deliverTelegramDraft, deleteTelegramLiveBubble, persistLiveMessageId, settleCancelledDraft } from '../telegram-delivery';
@@ -123,14 +124,10 @@ const QUICK_REPLY_STATUS = '💭 Thinking…';
 const DEEP_WORK_STATUS = '🧠 Deep work started…';
 const LONG_TASK_STATUS_AFTER_MS = 60_000;
 export const HERMES_APPROVAL_WAIT_SECONDS = 60;
-/** What the owner sees when the monthly AI credit cap stops a run. The cap
-    is US$5 per business while Jentera is pre-launch (runtime_budget default
-    and the model-proxy rider ceiling agree). Shown in the Telegram bubble and
-    written as the work record's outcome so chat and Activity say the same. */
-export const CREDIT_CAP_NOTICE =
-  "⏸ This month's AI credits are used up. While Jentera is pre-launch every " +
-  'business gets US$5 of AI credits a month, and they reset on the 1st. ' +
-  'Reply here if you need more before then.';
+/** The monthly credit cap notice lives with the other failure notices; it is
+    re-exported here because routes and tests have always imported it from
+    the consumer. */
+export { CREDIT_CAP_NOTICE } from './failure-notice';
 
 /** Friendly one-line statuses for the ephemeral Telegram draft, keyed by the
     run-task provisioning stages. Deep work may show them while the model has
@@ -1775,7 +1772,9 @@ export async function handleRuntimeMessage(
             runId: lease.task.runId,
             kind: await workKindForRun(tx, message.businessId, lease.task.runId),
             objective: outcome.payload.objective ?? outcome.payload.input.slice(0, 1_000),
-            outcome: outcome.summary,
+            /* A failure stores the owner-facing notice; the raw provider
+               detail stays on the task's terminal outcome for us. */
+            outcome: successful ? outcome.summary : failureNotice(outcome.summary),
             status: successful ? assessment?.status ?? 'needs_review' : 'failed',
             function: outcome.payload.function ?? 'agent',
             channel: outcome.payload.channel ?? 'runtime',
@@ -2342,17 +2341,9 @@ async function settleFailedTelegramBubble(
 ): Promise<boolean> {
   const messageId = liveStream?.handoffMessageId() ?? liveBubbleId;
   if (!messageId) return false;
-  const detail = typeof result === 'string' ? result : JSON.stringify(result ?? '');
-  /* The model proxy answers a spent rider ceiling with budget_exceeded; that
-     surfaces here as a failed run whose detail carries the marker. */
-  const capped = /budget_exceeded|model budget exhausted|runtime budget exceeded/i.test(detail);
-  const temporary = /(?:http\s*50[234]|service unavailable|temporar(?:y|ily)|unreachable)/i
-    .test(detail);
-  const text = override ?? (capped
-    ? CREDIT_CAP_NOTICE
-    : temporary
-      ? '⚠️ The AI service is temporarily unavailable. Please try again in a moment.'
-      : '⚠️ I couldn\'t complete that reply. Please try again.');
+  /* One vocabulary for every channel: the model proxy's budget_exceeded, the
+     router's quota, an outage, a misconfiguration, or the generic line. */
+  const text = override ?? failureNotice(result);
   try {
     const token = existingToken ?? await withTenant(env, businessId, (tx) =>
       useCredential(env, tx, telegram.connectionId));

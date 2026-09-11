@@ -3,6 +3,7 @@ import { claimRuntime, markRuntimeReady } from '../src/agent-runtime';
 import type { Env } from '../src/env';
 import { handleRuns } from '../src/routes/runs';
 import { CREDIT_CAP_NOTICE } from '../src/runtime/consumer';
+import { FAILURE_NOTICES } from '../src/runtime/failure-notice';
 import { append, recordWork } from '../src/runs';
 import { asOwner, asTenant, fetchFake, req, sendFake, signIn, testEnv, truncateAll } from './harness';
 import { LocalRuntimeProvider } from '../src/runtime';
@@ -273,6 +274,25 @@ describe('Ask Jentera runtime bridge', () => {
     const response = await call('GET', `/api/runs/${runId}`, durableEnv(), cookieA);
     expect(await response.json()).toMatchObject({ ok: true, status: 'failed', err: CREDIT_CAP_NOTICE });
     expect(CREDIT_CAP_NOTICE).toMatch(/US\$5/);
+  });
+
+  it("tells the owner in the web chat when the model provider hit its own limit", async () => {
+    await readyRuntime(A);
+    const started = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
+      question: 'yob', requestId: crypto.randomUUID(), mode: 'work',
+    });
+    const { runId } = await started.json() as { runId: string };
+    /* What the consumer writes for a router quota error: the raw text stays
+       on the task, the work record carries the owner-facing notice. */
+    await asOwner(async (sql) => {
+      await sql`update runtime_task set status = 'failed' where run_id = ${runId}`;
+      await sql`update run set status = 'failed', ended_at = now() where id = ${runId}`;
+      await sql`insert into work_record (business_id, run_id, objective, outcome, status, function, channel, risk, kind)
+                values (${A}, ${runId}, 'yob', ${FAILURE_NOTICES.provider_quota}, 'failed', 'ask', 'app', 'low', 'conversation')`;
+    });
+    const response = await call('GET', `/api/runs/${runId}`, durableEnv(), cookieA);
+    expect(await response.json()).toMatchObject({ ok: true, status: 'failed', err: FAILURE_NOTICES.provider_quota });
+    expect(FAILURE_NOTICES.provider_quota).not.toMatch(/litellm|HTTP/);
   });
 
   it('tells the chat and Activity whether a finished run was conversation or work', async () => {

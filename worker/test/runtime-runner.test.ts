@@ -3,6 +3,7 @@ import { markRuntimeReady } from '../src/agent-runtime';
 import { startRun } from '../src/runs';
 import { handleRuntimeMessage, LocalRuntimeProvider } from '../src/runtime';
 import { RunnerClient, RuntimeBusyError } from '../src/runtime/runner-client';
+import { FAILURE_NOTICES } from '../src/runtime/failure-notice';
 import { enqueueRuntimeTask } from '../src/runtime/tasks';
 import { ensureProviderRuntime } from '../src/runtime/provision';
 import { reserveRuntimeUsage } from '../src/runtime/usage';
@@ -1221,6 +1222,7 @@ describe('conversation versus work', () => {
     payload: Record<string, unknown>,
     events: Array<Record<string, unknown>>,
     expected: { action: string; reason: string } = { action: 'ack', reason: 'completed' },
+    terminal: Record<string, unknown> = { status: 'completed', output: 'Yes, Sunday too.' },
   ) {
     const provider = new LocalRuntimeProvider();
     await ensureProviderRuntime(env, A, { provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64) });
@@ -1251,14 +1253,14 @@ describe('conversation versus work', () => {
         return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
       }
       if (url.endsWith(`/v1/tasks/${task.id}`)) {
-        return response({ ok: true, status: 'completed', output: 'Yes, Sunday too.' });
+        return response({ ok: true, ...terminal });
       }
       return response({ error: 'not found' }, 404);
     };
     await expect(handleRuntimeMessage(env, { version: 1, businessId: A, taskId: task.id }, { provider, fetch: runnerFetch }))
       .resolves.toEqual(expected);
-    const [record] = await asOwner((sql) => sql<{ kind: string; status: string }[]>`
-      select kind, status from work_record where run_id = ${run.id}`);
+    const [record] = await asOwner((sql) => sql<{ kind: string; status: string; outcome: string | null }[]>`
+      select kind, status, outcome from work_record where run_id = ${run.id}`);
     const tools = await asOwner((sql) => sql<{ n: string }[]>`
       select count(*)::text as n from run_event where run_id = ${run.id} and type = 'agent.tool'`);
     return { record, toolEvents: Number(tools[0].n) };
@@ -1269,7 +1271,7 @@ describe('conversation versus work', () => {
     const { record, toolEvents } = await completeRun(env(), { responseMode: 'quick' }, [
       { type: 'delta', delta: 'Yes, Sunday too.' },
     ]);
-    expect(record).toEqual({ kind: 'conversation', status: 'completed' });
+    expect(record).toMatchObject({ kind: 'conversation', status: 'completed' });
     expect(toolEvents).toBe(0);
   });
 
@@ -1278,7 +1280,7 @@ describe('conversation versus work', () => {
       { type: 'tool.started', tool: 'web_search', preview: 'opening hours' },
       { type: 'delta', delta: 'Yes, Sunday too.' },
     ]);
-    expect(record).toEqual({ kind: 'conversation', status: 'completed' });
+    expect(record).toMatchObject({ kind: 'conversation', status: 'completed' });
     expect(toolEvents).toBe(1);
   });
 
@@ -1286,7 +1288,7 @@ describe('conversation versus work', () => {
     const { record } = await completeRun(env(), { responseMode: 'deep' }, [
       { type: 'delta', delta: 'Here is the analysis.' },
     ]);
-    expect(record).toEqual({ kind: 'conversation', status: 'completed' });
+    expect(record).toMatchObject({ kind: 'conversation', status: 'completed' });
   });
 
   it('finishes the agent run without completing a login that needs the owner', async () => {
@@ -1295,26 +1297,36 @@ describe('conversation versus work', () => {
     const { record } = await completeRun(test, { input: 'can u do wrangler login' }, [
       { type: 'tool.started', tool: 'terminal', preview: 'wrangler login' },
     ]);
-    expect(record).toEqual({ kind: 'work', status: 'needs_input' });
+    expect(record).toMatchObject({ kind: 'work', status: 'needs_input' });
   });
 
   it('does not claim completion when the outcome assessor returns invalid data', async () => {
     const test = env();
     test.AI = { run: async () => ({ response: 'not JSON' }) } as unknown as typeof test.AI;
     const { record } = await completeRun(test, {}, []);
-    expect(record).toEqual({ kind: 'work', status: 'needs_review' });
+    expect(record).toMatchObject({ kind: 'work', status: 'needs_review' });
   });
 
   /* A failed "yo bro" sat at the top of the daily brief as "a task needs
      another look" (2026-09-10). A failure is classified like a completion:
      quick and no tool means conversation, whatever went wrong. */
+  it("records the provider's own quota error as an owner-facing notice, never the raw text", async () => {
+    const raw = 'HTTP 429: litellm.RateLimitError: RateLimitError: OpenAIException - ' +
+      'Token Plan usage limit reached: Upgrade your Token Plan or purchase Credits for more usage.';
+    /* The consumer acks a runner-reported failure as processed ("completed"
+       is the delivery, not the run); the record is what the owner sees. */
+    const { record } = await completeRun(env(), { responseMode: 'quick' }, [],
+      { action: 'ack', reason: 'completed' }, { status: 'failed', error: raw });
+    expect(record).toMatchObject({ kind: 'conversation', status: 'failed', outcome: FAILURE_NOTICES.provider_quota });
+  });
+
   it('records a quick reply that failed at the credit cap as conversation, not a task', async () => {
     await asTenant(A, (tx) => tx`
       insert into runtime_budget (business_id, monthly_cost_microusd) values (${A}, 100)`);
     const { record } = await completeRun(env(), { responseMode: 'quick' }, [
       { type: 'delta', delta: 'Yes.' },
     ], { action: 'ack', reason: 'failed' });
-    expect(record).toEqual({ kind: 'conversation', status: 'failed' });
+    expect(record).toMatchObject({ kind: 'conversation', status: 'failed' });
   });
 });
 
