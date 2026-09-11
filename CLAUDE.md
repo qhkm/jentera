@@ -146,6 +146,12 @@ comparison: retain Sprites, with an Alibaba 4 GB pilot proposed for sustained
 browser workloads. Its costs are illustrative, not our invoice. Read it before
 proposing a provider migration; model-loop cost work is a separate plan.
 
+`docs/provisioning-time.md` is where cold-provision and upgrade time live: the
+measured cost of each bootstrap stage, the 160 s around the bootstrap that
+nothing times yet, why the script-level speedups were not taken, and what Fly
+has said about forking a sprite from a template. Read it before touching
+`bootstrap-runtime.sh` for speed.
+
 `test/runtime.test.ts` runs a contract over every adapter in one list.
 A new runtime is added there and either passes or is not finished.
 
