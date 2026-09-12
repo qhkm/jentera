@@ -15,18 +15,29 @@ import type { ReactNode } from 'react';
  * string it renders, so injection is impossible by construction rather than
  * sanitised afterwards.
  *
- * Links are the deliberate omission. `[text](url)` renders as its text with
- * the address beside it, visible and inert. A crafted page that talks the
- * model into emitting "[Verify your account](https://evil.example)" gets
- * words in a chat window, not a button for the owner to click.
+ * Links allow absolute HTTP(S) only, without embedded credentials. Named
+ * links show their actual destination too. They never fetch previews, execute
+ * HTML, or imply the destination is trusted merely because the model wrote it.
  */
 
 const FENCE = /^```[^\n]*\n([\s\S]*?)```$/;
 
+function renderLink(label: string | null, raw: string, key: string): ReactNode {
+  let url: URL;
+  try {
+    if (!/^https?:\/\//i.test(raw) || /[\s\u0000-\u001f\u007f\\]/.test(raw)) throw new Error();
+    url = new URL(raw);
+    if (url.username || url.password) throw new Error();
+  } catch { return <span key={key}>{label ? `${label} (${raw})` : raw}</span>; }
+  return <a key={key} className="reply-link" href={url.href} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
+    {label || url.href}{label && <span className="reply-link-url"> ({url.href})</span>}
+  </a>;
+}
+
 /** Inline marks, applied left to right: `code`, **bold**, [text](url). */
 function renderInline(text: string, keyPrefix: string): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const pattern = /`([^`]+)`|\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^)\s]+)\)/g;
+  const pattern = /`([^`]+)`|\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^\s()]*(?:\([^\s()]*\)[^\s()]*)*)\)|https?:\/\/[^\s<>"`]+/gi;
   let last = 0;
   let match: RegExpExecArray | null;
   let index = 0;
@@ -38,14 +49,13 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
       nodes.push(<code key={key} className="reply-code">{match[1]}</code>);
     } else if (match[2] !== undefined) {
       nodes.push(<strong key={key}>{match[2]}</strong>);
+    } else if (match[3] !== undefined) {
+      nodes.push(renderLink(match[3], match[4], key));
     } else {
-      /* Text first, address second and plain: the owner can read where it
-         points and copy it on purpose, but nothing here is clickable. */
-      nodes.push(
-        <span key={key}>
-          {match[3]} <span className="reply-link-url">{match[4]}</span>
-        </span>,
-      );
+      let raw = match[0].replace(/[.,;:!?]+$/, '');
+      while (raw.endsWith(')') && (raw.match(/\)/g)?.length ?? 0) > (raw.match(/\(/g)?.length ?? 0)) raw = raw.slice(0, -1);
+      raw = raw.replace(/[\]}]+$/, '');
+      nodes.push(renderLink(null, raw, key), match[0].slice(raw.length));
     }
     last = pattern.lastIndex;
   }

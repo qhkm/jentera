@@ -7,8 +7,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Shell } from '@/components/Shell';
-import { Check } from '@phosphor-icons/react';
-import { JenteraMark } from '@/components/JenteraMark';
 import { Button, Card, Eyebrow, LoadingState, Progress, Tag } from '@/components/ui';
 import { useMutate, useRepository } from '@/lib/repo';
 import type { RuntimeSummary } from '@/lib/repo';
@@ -16,6 +14,8 @@ import { useSignedIn } from '@/lib/repo/gate';
 import { useConnections } from '@/hooks/useConnections';
 import TelegramConnect from '@/routes/views/TelegramConnect';
 import { useT } from '@/i18n/I18nProvider';
+import { FirstJob } from '@/components/FirstJob';
+import { computerStatus } from '@/lib/computer-status';
 
 type Status = 'pending' | 'running' | 'waiting' | 'done';
 
@@ -92,8 +92,7 @@ function LiveSetup() {
     const poll = async () => {
       const current = await refreshRuntime();
       if (!live) return;
-      const settled = current && ['ready', 'cold', 'idle', 'busy'].includes(current.status) &&
-        current.observedRelease === current.desiredRelease;
+      const settled = current && ['ready', 'asleep', 'busy'].includes(computerStatus({ runtime: current }));
       if (!settled) timer = window.setTimeout(poll, 3000);
     };
     void repo.provisionRuntime()
@@ -111,10 +110,7 @@ function LiveSetup() {
     };
   }, [refreshRuntime, repo]);
 
-  const runtimeReady = Boolean(
-    runtime && ['ready', 'cold', 'idle', 'busy'].includes(runtime.status) &&
-      runtime.observedRelease === runtime.desiredRelease,
-  );
+  const runtimeReady = Boolean(runtime && ['ready', 'asleep', 'busy'].includes(computerStatus({ runtime })));
   const telegramReady = (connections.rows ?? []).some((row) =>
     row.connector === 'telegram' && row.status === 'connected' && row.paired === true);
   const telegramWaitingForStart = (connections.rows ?? []).some((row) =>
@@ -160,6 +156,7 @@ function LiveSetup() {
   return (
     <Shell suffix="/setup">
       <div className="mx-auto flex max-w-[720px] flex-col gap-8 py-8">
+        <FirstJob ready={runtimeReady} />
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-4">
             <Eyebrow>{t('su.eyebrow')}</Eyebrow>
@@ -206,8 +203,6 @@ function LiveSetup() {
             last
           />
         </Card>
-
-        <ChiefOfStaffCard ready={runtimeReady} />
 
         {runtimeError ? (
           <div className="flex flex-wrap items-center gap-3">
@@ -273,43 +268,6 @@ function LiveSetup() {
         </div>
       </div>
     </Shell>
-  );
-}
-
-function ChiefOfStaffCard({ ready }: { ready: boolean }) {
-  const t = useT();
-  return (
-    <Card className="gap-5 border-brand-line">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <JenteraMark size={46} />
-          <div>
-            <Eyebrow>{t('su.chief.eyebrow')}</Eyebrow>
-            <h2 className="mt-1 font-pixel text-lg">{t('su.chief.title')}</h2>
-          </div>
-        </div>
-        <Tag tone={ready ? 'green' : 'amber'}>
-          {ready ? t('su.chief.ready') : t('su.chief.preparing')}
-        </Tag>
-      </div>
-      <p className="text-[13px] leading-relaxed text-text-secondary">{t('su.chief.body')}</p>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {(['operations', 'customers', 'growth', 'records'] as const).map((role) => (
-          <div key={role} className="flex items-start gap-2.5 rounded-item border border-border p-3">
-            <Check className="mt-0.5 shrink-0 text-brand" size={16} weight="bold" aria-hidden="true" />
-            <span>
-              <span className="block text-[12px] font-medium">{t(`su.chief.${role}`)}</span>
-              <span className="mt-0.5 block text-[10px] text-text-muted">
-                {t('su.chief.coordinated')}
-              </span>
-            </span>
-          </div>
-        ))}
-      </div>
-      <p className="border-t border-rail pt-3 text-[11px] leading-relaxed text-text-muted">
-        {t('su.chief.note')}
-      </p>
-    </Card>
   );
 }
 

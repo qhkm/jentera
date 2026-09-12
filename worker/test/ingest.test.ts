@@ -16,10 +16,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { extractFacts, fetchPage, htmlToText, urlProblem } from '../src/ingest';
 import type { Env } from '../src/env';
 import { fetchFake } from './harness';
+import { InlineRuntime } from '../src/runtime/inline';
 
 /** An Env whose model returns exactly what a test dictates. */
 const withModel = (response: unknown): Env =>
   ({ AI: { run: async () => response } }) as unknown as Env;
+
+describe('thin public pages', () => {
+  it('rejects a JavaScript shell before asking the model to invent a business profile', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('<title>Demo</title><div id="root"></div><script>render()</script>', { headers: { 'Content-Type': 'text/html' } }));
+    const model = vi.fn();
+    try {
+      await expect(new InlineRuntime({ AI: { run: model } } as unknown as Env).readPage('https://example.com')).rejects.toThrow('too little readable text');
+      expect(model).not.toHaveBeenCalled();
+    } finally { fetchMock.mockRestore(); }
+  });
+});
 
 describe('refusing a URL before fetching it', () => {
   it('accepts ordinary public addresses', () => {

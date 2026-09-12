@@ -14,6 +14,8 @@ import type { Lang } from '@/lib/types';
 
 export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
   en: {
+    'ask.reconnecting': 'Connection interrupted. Reconnecting to your task—don’t resend it.',
+    'ask.checkingResult': 'Connection restored. Checking your task’s result…',
     'computer.title': 'Jentera’s computer',
     'computer.checking': 'Checking readiness…',
     'computer.checking.detail': 'Checking the latest setup status.',
@@ -916,6 +918,8 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
   },
 
   bm: {
+    'ask.reconnecting': 'Sambungan terputus. Menyambung semula ke tugasan anda—jangan hantar semula.',
+    'ask.checkingResult': 'Sambungan pulih. Menyemak hasil tugasan anda…',
     'computer.title': 'Komputer Jentera',
     'computer.checking': 'Menyemak kesiapsiagaan…',
     'computer.checking.detail': 'Menyemak status persediaan terkini.',

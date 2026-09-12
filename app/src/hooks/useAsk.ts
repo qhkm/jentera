@@ -39,6 +39,8 @@ export interface AskMessage {
   /** What the agent is doing while answer text is already on screen (a tool
       mid-answer); cleared by the next piece of text. */
   liveStatus?: string;
+  /** Client-side result recovery, separate from the agent's progress. */
+  connectionStatus?: string;
   /** The agent's own steps and tool calls, in order, kept with the reply. */
   steps?: string[];
   /** Files the agent produced for the owner, offered as downloads. */
@@ -127,6 +129,9 @@ type Translate = (key: string, vars?: Record<string, string | number>) => string
     the same projection serves a run this page started and one it resumed
     after a reload. */
 function applyProgress(message: AskMessage, event: AskProgressEvent, t: Translate): AskMessage {
+  if (event.type === 'reconnecting') return {
+    ...message, connectionStatus: t(event.detail === 'recovered' ? 'ask.checkingResult' : 'ask.reconnecting'),
+  };
   /* The agent's own steps and tool calls read as a list; a
      repeated line is the same step, not a new one. */
   if (event.type === 'status' && (event.kind === 'step' || event.kind === 'tool')) {

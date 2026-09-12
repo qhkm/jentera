@@ -21,6 +21,9 @@ export class InlineRuntime implements RuntimeAdapter {
 
   async readPage(url: string) {
     const page = await fetchPage(url);
+    if (page.text.trim().length < 120) {
+      throw new Error('This page has too little readable text. Try a public About or Services page, upload a document, or describe your business.');
+    }
     return {
       candidates: await extractFacts(this.env, page.text, page.title),
       title: page.title,

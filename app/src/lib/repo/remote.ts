@@ -73,6 +73,8 @@ export class NoBusinessError extends Error {
   }
 }
 
+class TemporaryConnectionError extends Error {}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
@@ -85,7 +87,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     });
   } catch {
     // fetch rejects only on network failure, never on a 4xx/5xx.
-    throw new Error('Could not reach Jentera. Check your connection.');
+    throw new TemporaryConnectionError('Could not reach Jentera. Check your connection.');
   }
 
   if (res.status === 401) throw new NotSignedInError();
@@ -96,7 +98,8 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (res.status === 404 && body.code === 'NO_BUSINESS') throw new NoBusinessError();
   if (!res.ok || body.ok === false) {
-    throw new Error(String(body.err ?? `${res.status} ${res.statusText}`));
+    const ErrorType = res.status === 408 || res.status === 429 || res.status >= 500 ? TemporaryConnectionError : Error;
+    throw new ErrorType(String(body.err ?? `${res.status} ${res.statusText}`));
   }
   return body as T;
 }
@@ -361,7 +364,7 @@ export class RemoteRepository implements Repository {
   }
 
   async ask(question: string, options: AskOptions = {}): Promise<AskAnswer> {
-    const requestId = crypto.randomUUID();
+    const requestId = options.requestId ?? crypto.randomUUID();
     const start = () => call<AskAnswer & {
       pending?: boolean;
       status?: string;
@@ -587,21 +590,32 @@ export class RemoteRepository implements Repository {
   reset = () => post('/api/state/reset');
 }
 
-async function pollAsk(runId: string): Promise<AskAnswer> {
+async function pollAsk(runId: string, onProgress?: (event: AskProgressEvent) => void): Promise<AskAnswer> {
   const started = Date.now();
   const deadline = started + 16 * 60 * 1_000;
   let first = true;
+  let failures = 0;
   while (Date.now() < deadline) {
     if (!first) {
       const elapsed = Date.now() - started;
-      await wait(elapsed < 30_000 ? 1_500 : 5_000);
+      await wait(failures ? Math.min(15000, 1500 * 2 ** Math.min(failures - 1, 4)) : elapsed < 30_000 ? 1_500 : 5_000);
     }
     first = false;
-    const state = await call<AskAnswer & {
+    let state: AskAnswer & {
       pending?: boolean;
       status?: string;
       err?: string;
-    }>(`/api/runs/${encodeURIComponent(runId)}`);
+    };
+    try {
+      state = await call<typeof state>(`/api/runs/${encodeURIComponent(runId)}`, { signal: AbortSignal.timeout(15000) });
+    } catch (error) {
+      if (!(error instanceof TemporaryConnectionError)) throw error;
+      failures++;
+      if (failures === 1) onProgress?.({ type: 'reconnecting' });
+      continue;
+    }
+    if (failures) onProgress?.({ type: 'reconnecting', detail: 'recovered' });
+    failures = 0;
     if (!state.pending && state.status === 'completed') return state;
     if (!state.pending && state.status) {
       throw new Error(state.err ?? 'Jentera could not complete that answer.');
@@ -614,7 +628,7 @@ async function streamAsk(
   runId: string,
   onProgress: (event: AskProgressEvent) => void,
 ): Promise<AskAnswer> {
-  if (typeof WebSocket === 'undefined') return pollAsk(runId);
+  if (typeof WebSocket === 'undefined') return pollAsk(runId, onProgress);
 
   return new Promise<AskAnswer>((resolve, reject) => {
     let socket: WebSocket;
@@ -628,7 +642,7 @@ async function streamAsk(
       } catch {
         /* The handshake may have failed before a socket opened. */
       }
-      void pollAsk(runId).then(resolve, reject);
+      void pollAsk(runId, onProgress).then(resolve, reject);
     };
     const timeout = globalThis.setTimeout(finishFromDurableState, 16 * 60 * 1_000);
 

@@ -1,0 +1,32 @@
+.business-onboarding { max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; padding: 24px 0 48px; }
+.business-onboarding h1 { font-family: var(--font-pixel); font-size: clamp(28px, 5vw, 42px); line-height: 1.2; letter-spacing: -0.025em; }
+.business-onboarding h1:focus { outline: none; }
+.business-onboarding header p, .first-job > p { margin-top: 12px; color: var(--text-secondary); line-height: 1.7; }
+.onboarding-moments { display: flex; gap: 16px; margin-bottom: 12px; }
+.onboarding-moments li { display: flex; align-items: center; gap: 8px; flex: 1; color: var(--text-muted); font-size: 12px; }
+.onboarding-moments li[aria-current] { color: var(--accent-green); }
+.onboarding-moments li > span { display: grid; place-items: center; min-width: 24px; height: 24px; border: 1px solid var(--rail); border-radius: 50%; }
+.onboarding-source-options, .first-job-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.onboarding-source-options button, .first-job-options button { padding: 18px; border: 1px solid var(--rail); border-radius: 14px; text-align: left; background: var(--bg-card); }
+.onboarding-source-options button[aria-pressed="true"], .first-job-options button[aria-pressed="true"] { border-color: var(--accent-green); background: rgb(var(--accent-green-rgb) / 0.08); }
+.onboarding-source-panel, .first-job { display: flex; flex-direction: column; gap: 20px; border: 1px solid var(--rail); border-radius: 20px; background: var(--bg-card); padding: 24px; }
+.onboarding-source-panel p, .onboarding-finding small { font-size: 12px; color: var(--text-secondary); line-height: 1.6; overflow-wrap: anywhere; }
+.business-onboarding label, .first-job label { display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
+.onboarding-source-panel input[type="file"] { width: 100%; min-width: 0; }
+.business-onboarding textarea, .first-job textarea { width: 100%; min-height: 120px; padding: 12px; border: 1px solid var(--rail); border-radius: 10px; resize: vertical; line-height: 1.7; background: var(--bg); }
+.onboarding-findings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.onboarding-finding { display: flex; flex-direction: column; gap: 12px; padding: 18px; border: 1px solid var(--rail); border-radius: 16px; background: var(--bg-card); }
+.onboarding-finding .onboarding-finding-label { flex-direction: row; align-items: center; overflow-wrap: anywhere; }
+.onboarding-finding input { accent-color: var(--accent-green); }
+.onboarding-error { padding: 16px; border: 1px solid var(--rail); border-radius: 12px; }
+.first-job h2 { font-size: 26px; line-height: 1.3; letter-spacing: -0.02em; }
+.first-job-options button { display: flex; justify-content: space-between; gap: 10px; min-height: 90px; }
+@media (max-width: 600px) {
+  .onboarding-moments { gap: 8px; }
+  .onboarding-moments li { flex-direction: column; align-items: flex-start; font-size: 11px; }
+  .onboarding-source-options { grid-template-columns: 1fr; gap: 8px; }
+  .onboarding-source-options button { padding: 14px; }
+  .onboarding-findings, .first-job-options { grid-template-columns: 1fr; }
+  .onboarding-source-panel, .first-job { padding: 18px; }
+  .first-job-options button { min-height: 54px; }
+}

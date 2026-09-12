@@ -48,6 +48,7 @@ import { useMutate, useRepository, useSnapshot } from '@/lib/repo';
 import { useSignedIn } from '@/lib/repo/gate';
 import * as store from '@/lib/storage';
 import { trackActivation } from '@/lib/analytics';
+import BusinessOnboarding from '@/routes/BusinessOnboarding';
 
 /* Writes are fire-and-forget by design; the provider surfaces failures
    centrally, so this only stops an unhandled rejection. */
@@ -156,6 +157,10 @@ function readDraft(): OnboardingDraft {
 }
 
 export default function Onboard() {
+  return useSignedIn() ? <BusinessOnboarding /> : <DemoOnboard />;
+}
+
+function DemoOnboard() {
   const t = useT();
   const navigate = useNavigate();
   const toast = useToast();

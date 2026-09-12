@@ -91,7 +91,7 @@ export type AskProgress = 'queued' | 'waking' | 'working' | 'retrying' | 'needs_
 export type AskStatusKind = 'stage' | 'step' | 'tool';
 
 export interface AskProgressEvent {
-  type: AskProgress | 'status' | 'thinking' | 'delta';
+  type: AskProgress | 'status' | 'thinking' | 'delta' | 'reconnecting';
   detail?: string;
   text?: string;
   /** status only: a dispatch stage (a label), one of the agent's own steps,
@@ -112,6 +112,8 @@ export interface PushSubscriptionJson {
 }
 
 export interface AskOptions {
+  /** Stable across an explicit retry of the same first-job submission. */
+  requestId?: string;
   mode?: AskMode;
   /** Stable conversation id so Hermes can keep context per chat, like Telegram. */
   sessionId?: string;

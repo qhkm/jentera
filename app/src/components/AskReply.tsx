@@ -84,6 +84,7 @@ export function AskReply({
           </span>
         )}
       </header>
+      {message.pendingId && message.connectionStatus && <p role="status" className="text-sm text-text-secondary">{message.connectionStatus}</p>}
       {message.pendingId ? (
         /* Waiting on a person, not a machine — so no spinner. Any answer text
            already streamed stays above the card: the agent often says what it

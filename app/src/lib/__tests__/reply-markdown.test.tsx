@@ -63,24 +63,41 @@ describe('the marks the agent actually writes', () => {
     expect(screen.getByTestId('body')).toHaveTextContent('left | right');
   });
 
-  it('keeps HTML and links inert inside table cells', () => {
+  it('keeps HTML inert and renders web links inside table cells', () => {
     show('| A | B |\n| --- | --- |\n| <img src=x onerror=alert(1)> | [click](https://evil.example) |');
     const table = screen.getByRole('table');
-    expect(table.querySelector('img, a')).toBeNull();
+    expect(table.querySelector('img')).toBeNull();
+    expect(table.querySelector('a')).toHaveAttribute('href', 'https://evil.example/');
     expect(table).toHaveTextContent('<img src=x onerror=alert(1)>');
   });
 });
 
 describe('what a stranger writing through the model cannot do', () => {
-  it('never renders a link as something to click', () => {
+  it('shows the real destination beside named links', () => {
     show('Please [Verify your account](https://evil.example/steal) now.');
     const body = screen.getByTestId('body');
 
-    /* The words survive and the address is readable, so the owner can judge
-       it. Neither is navigable. */
     expect(body.textContent).toContain('Verify your account');
     expect(body.textContent).toContain('https://evil.example/steal');
-    expect(body.querySelector('a')).toBeNull();
+    expect(body.querySelector('a')).toHaveAttribute('href', 'https://evil.example/steal');
+    expect(body.querySelector('a')).toHaveAttribute('target', '_blank');
+    expect(body.querySelector('a')).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(body.querySelector('a')).toHaveAttribute('referrerpolicy', 'no-referrer');
+  });
+
+  it.each(['javascript:alert(1)', 'data:text/html,test', 'file:///etc/passwd', '//evil.example', 'https://trusted.example@evil.example/path'])('does not activate unsafe or credential-bearing targets: %s', url => {
+    show(`[Open](${url})`);
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+
+  it('links bare URLs without trailing prose punctuation and preserves balanced parentheses', () => {
+    show('Open https://example.com/login. Read (https://example.com/a_(b)).');
+    expect(screen.getAllByRole('link').map(a => a.getAttribute('href'))).toEqual(['https://example.com/login', 'https://example.com/a_(b)']);
+  });
+
+  it('does not activate URLs inside code', () => {
+    show('`https://example.com`\n```\nhttps://example.com\n```');
+    expect(screen.queryByRole('link')).toBeNull();
   });
 
   it('renders HTML in an answer as the characters it is', () => {

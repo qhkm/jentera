@@ -131,7 +131,7 @@ describe('finishing setup', () => {
 });
 
 describe('what onboarding writes', () => {
-  it('sends a signed-in owner to required Telegram setup before the dashboard', async () => {
+  it('sends a signed-in owner to computer preparation before the dashboard', async () => {
     const repo = new LocalRepository();
     localStorage.setItem(KEYS.onboardingDraft, JSON.stringify({
       step: 2,
@@ -157,9 +157,8 @@ describe('what onboarding writes', () => {
       </MemoryRouter>,
     );
 
-    await userEvent.click(await screen.findByRole('button', {
-      name: "Yes — that's my business →",
-    }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Learn about my business' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Confirm details & prepare Jentera' }));
     await screen.findByTestId('telegram-setup');
     expect(screen.queryByTestId('dashboard')).toBeNull();
     await waitFor(async () => {
@@ -206,39 +205,21 @@ describe('what onboarding writes', () => {
       </MemoryRouter>,
     );
 
-    await userEvent.click(await screen.findByRole('button', {
-      name: 'Edit business information',
-    }));
-    await userEvent.clear(screen.getByLabelText('Name'));
-    await userEvent.type(screen.getByLabelText('Name'), 'Correct Business');
-    await userEvent.clear(screen.getByLabelText('Location'));
-    await userEvent.type(screen.getByLabelText('Location'), 'Kuala Lumpur');
-    await userEvent.selectOptions(screen.getByLabelText('Type'), 'salon');
-    await userEvent.clear(screen.getByLabelText('Website'));
-    await userEvent.type(screen.getByLabelText('Website'), 'correct.example');
-    await userEvent.clear(screen.getByLabelText('Social'));
-    await userEvent.type(screen.getByLabelText('Social'), 'instagram.com/correct');
-    await userEvent.clear(screen.getByLabelText('Business Phone'));
-    await userEvent.type(screen.getByLabelText('Business Phone'), '03-1111 2222');
-    await userEvent.click(screen.getByRole('button', { name: 'Save corrections' }));
+    const phone = await screen.findByRole('textbox', { name: 'Phone' });
+    await userEvent.clear(phone);
+    await userEvent.type(phone, '03-1111 2222');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm details & prepare Jentera' }));
 
     await waitFor(async () => {
       const snapshot = await repo.load();
-      expect(snapshot.bizName).toBe('Correct Business');
-      expect(snapshot.bizLoc).toBe('Kuala Lumpur');
-      expect(snapshot.bizType).toBe('salon');
+      expect(snapshot.bizName).toBe('Wrong Name');
       expect(snapshot.facts.find((fact) => fact.key === 'business.phone')).toMatchObject({
         value: '03-1111 2222',
         source: 'owner',
         confirmed: true,
       });
     });
-    await waitFor(() => expect(JSON.parse(
-      localStorage.getItem(KEYS.onboardingDraft) ?? '{}',
-    )).toMatchObject({
-      url: 'correct.example',
-      social: 'instagram.com/correct',
-    }));
+    expect(localStorage.getItem(KEYS.onboardingDraft)).toBeNull();
   });
 
   it("keeps the owner's corrections when the description also names the business", async () => {
@@ -270,22 +251,17 @@ describe('what onboarding writes', () => {
       </MemoryRouter>,
     );
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Edit business information' }));
-    await userEvent.clear(screen.getByLabelText('Name'));
-    await userEvent.type(screen.getByLabelText('Name'), 'Correct Business');
-    await userEvent.clear(screen.getByLabelText('Location'));
-    await userEvent.type(screen.getByLabelText('Location'), 'Kuala Lumpur');
-    await userEvent.click(screen.getByRole('button', { name: 'Save corrections' }));
-    await waitFor(async () => expect((await repo.load()).bizName).toBe('Correct Business'));
-
-    await userEvent.click(screen.getByRole('button', { name: "Yes — that's my business →" }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Learn about my business' }));
+    await userEvent.clear(screen.getByRole('textbox', { name: 'Business name' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Business name' }), 'Correct Business');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm details & prepare Jentera' }));
     await waitFor(async () => expect((await repo.load()).onboarded).toBe(true));
     const snapshot = await repo.load();
     expect(snapshot.bizName).toBe('Correct Business');
-    expect(snapshot.bizLoc).toBe('Kuala Lumpur');
+    expect(snapshot.bizLoc).toBe('Petaling Jaya');
   });
 
-  it('resumes a completed demo at final review after sign-in', async () => {
+  it('returns a completed demo to real business input after sign-in', async () => {
     const repo = new LocalRepository();
     await repo.setBizType('restaurant');
     await repo.setChannels(['Telegram']);
@@ -308,14 +284,12 @@ describe('what onboarding writes', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('One person to ask. A team behind them.')).toBeInTheDocument();
-    expect(screen.getAllByText('Chief of Staff').length).toBeGreaterThan(0);
-    expect(screen.getByText('Customer communications')).toBeInTheDocument();
-    expect(screen.getByText('first focus')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /put jentera to work/i })).toBeInTheDocument();
+    expect(await screen.findByText('Where can I learn about your business?')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Learn about my business' })).toBeInTheDocument();
+    expect((await repo.load()).onboarded).toBe(false);
   });
 
-  it('lets a signed-in owner navigate back from the condensed third step', async () => {
+  it('lets a signed-in owner return from real review to retained source inputs', async () => {
     const repo = new LocalRepository();
     await repo.setBizType('restaurant');
     await repo.setChannels(['Telegram']);
@@ -341,12 +315,10 @@ describe('what onboarding writes', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('One person to ask. A team behind them.')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
-    expect(await screen.findByText('Step 3 · Did we get it right?')).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
-    expect(await screen.findByText('How should Jentera learn your business?')).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: 'Learn about my business' }));
+    expect(await screen.findByText('Here’s what I understood.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Change source' }));
+    expect(await screen.findByText('Where can I learn about your business?')).toBeInTheDocument();
     expect(screen.getByDisplayValue('I run a restaurant in Kuala Lumpur')).toBeInTheDocument();
   });
 

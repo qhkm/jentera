@@ -406,9 +406,7 @@ button.ask-context-link:hover {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-/* The restricted Markdown subset. Nothing here is navigable: a link renders
-   as its text plus a plain, inert address, because an answer can carry words
-   a stranger's web page chose. */
+/* Restricted Markdown: escaped text and explicitly validated web links. */
 .ask-reply-text .reply-pre {
   margin: 10px 0;
   padding: 10px 12px;
@@ -466,6 +464,8 @@ button.ask-context-link:hover {
   color: var(--text-muted);
   overflow-wrap: anywhere;
 }
+.ask-reply-text .reply-link { color: var(--accent-green); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.ask-reply-text .reply-link:focus-visible { outline: 2px solid var(--accent-green); outline-offset: 3px; border-radius: 3px; }
 .ask-reply > footer {
   display: flex;
   align-items: flex-start;

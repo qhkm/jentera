@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RemoteRepository } from '@/lib/repo/remote';
 
 const ANSWER = {
@@ -10,6 +10,7 @@ const ANSWER = {
 };
 
 describe('RemoteRepository durable Ask Jentera bridge', () => {
+  afterEach(() => vi.useRealTimers());
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
@@ -40,6 +41,46 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
     await expect(new RemoteRepository().ask('What happened?')).resolves.toMatchObject(ANSWER);
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(String(fetch.mock.calls[1][0])).toBe(`/api/runs/${ANSWER.runId}`);
+  });
+
+  it('recovers status reads after network and server failures without posting the job again', async () => {
+    vi.useFakeTimers(); vi.stubGlobal('WebSocket', undefined);
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({ ok: true, pending: true, status: 'queued', runId: ANSWER.runId }, 202))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(response({ err: 'Unavailable' }, 503))
+      .mockResolvedValueOnce(response({ ...ANSWER, pending: false, status: 'completed' }));
+    vi.stubGlobal('fetch', fetch);
+    const progress = vi.fn();
+    const result = new RemoteRepository().ask('Do the job', { onProgress: progress });
+    const check = expect(result).resolves.toMatchObject(ANSWER);
+    await vi.advanceTimersByTimeAsync(10000); await check;
+    expect(fetch.mock.calls.filter(call => call[1]?.method === 'POST')).toHaveLength(1);
+    expect(fetch.mock.calls.slice(1).every(call => String(call[0]) === `/api/runs/${ANSWER.runId}`)).toBe(true);
+    expect(progress).toHaveBeenCalledWith({ type: 'reconnecting' });
+    expect(progress).toHaveBeenCalledWith({ type: 'reconnecting', detail: 'recovered' });
+  });
+
+  it.each([401, 403, 404])('does not retry access failures (%s)', async status => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({ ok: true, pending: true, runId: ANSWER.runId }, 202))
+      .mockResolvedValueOnce(response({ err: 'Access denied' }, status));
+    vi.stubGlobal('fetch', fetch);
+    await expect(new RemoteRepository().ask('Do the job')).rejects.toThrow();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops recovering at the deadline instead of polling indefinitely', async () => {
+    vi.useFakeTimers(); vi.stubGlobal('WebSocket', undefined);
+    const fetch = vi.fn().mockRejectedValue(new TypeError('offline'));
+    vi.stubGlobal('fetch', fetch);
+    const result = new RemoteRepository().resumeAsk(ANSWER.runId);
+    const check = expect(result).rejects.toThrow('taking longer than expected');
+    await vi.advanceTimersByTimeAsync(17 * 60 * 1000); await check;
+    const count = fetch.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(fetch).toHaveBeenCalledTimes(count);
+    expect(fetch.mock.calls.every(call => call[1]?.method !== 'POST')).toBe(true);
   });
 
   it('surfaces a safe terminal failure without waiting again', async () => {
@@ -112,6 +153,23 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
     await expect(answer).resolves.toMatchObject(ANSWER);
     expect(progress).toEqual(['waking', 'working']);
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('recovers after the socket closes and the first fallback read fails', async () => {
+    vi.useFakeTimers();
+    const fetch = vi.fn().mockRejectedValueOnce(new TypeError('network changed'))
+      .mockResolvedValueOnce(response({ ...ANSWER, pending: false, status: 'completed' }));
+    vi.stubGlobal('fetch', fetch);
+    const sockets: FakeWebSocket[] = [];
+    vi.stubGlobal('WebSocket', class extends FakeWebSocket {
+      constructor(url: string) { super(url); sockets.push(this); }
+    });
+    const result = new RemoteRepository().resumeAsk(ANSWER.runId);
+    const check = expect(result).resolves.toMatchObject(ANSWER);
+    sockets[0].onclose?.();
+    await vi.advanceTimersByTimeAsync(5000); await check;
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls.every(call => call[1]?.method !== 'POST')).toBe(true);
   });
 
   it('reattaches to a run by its id and returns the durable answer', async () => {
