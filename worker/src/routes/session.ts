@@ -1,5 +1,7 @@
 import { routinesEnabledFor } from '../routines/gating';
 import type { Env } from '../env';
+import { withTenant } from '../db';
+import { getBusinessPlan } from '../agent-runtime';
 import {
   clearedCookie,
   consumeLoginToken,
@@ -315,12 +317,19 @@ export async function handleSession(
     const token = readCookie(request);
     const identity = token ? await verifySession(env, token) : null;
     if (!identity) return json({ ok: false, err: 'not signed in' }, { status: 401 }, cors);
-    /* Capability discovery: the frontend shows Routines only when this says
-       so, and the routes enforce the same answer on every write. */
-    const features = identity.businessId && routinesEnabledFor(env, identity.businessId)
-      ? { routines: { apiVersion: 1 } }
-      : undefined;
-    return json({ ok: true, ...identity, ...(features ? { features } : {}) }, {}, cors);
+    /* Capability discovery: the frontend shows Routines, and the Team tab,
+       only when this says so, and the routes enforce the same answer on
+       every write. Team is a plan: every account is one person unless its
+       business is on it. */
+    const businessId = identity.businessId;
+    const plan = businessId
+      ? await withTenant(env, businessId, (tx) => getBusinessPlan(tx, businessId))
+      : null;
+    const features = {
+      ...(businessId && routinesEnabledFor(env, businessId) ? { routines: { apiVersion: 1 } } : {}),
+      ...(plan === 'team' ? { team: { apiVersion: 1 } } : {}),
+    };
+    return json({ ok: true, ...identity, ...(Object.keys(features).length ? { features } : {}) }, {}, cors);
   }
 
   /* ---- sign out ------------------------------------------------------ */

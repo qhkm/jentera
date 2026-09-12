@@ -124,19 +124,20 @@ agent memory by person is not cheap and is not proposed for v1.
 
 ## The team plan — gate
 
-`business.plan` is `free | pro` (migration 016), read in one place,
-`getBusinessPlan` in `agent-runtime.ts`, to decide whether the sprite is
-held always-on. It is a control-plane fact: nothing in the code writes it,
-an operator sets it by SQL against the owner connection, and
-`apply-business-plan.mjs` exists to apply the migration to production. In
-production today: 17 businesses on `free`, 1 on `pro`.
+`business.plan` is `free | pro` (migration 016), read by
+`getBusinessPlan` in `agent-runtime.ts`. It is a control-plane fact:
+nothing in the code writes it, an operator sets it by SQL against the
+owner connection, and `apply-business-plan.mjs` exists to apply the
+migration to production. In production today: 17 businesses on `free`,
+1 on `pro`. Note that the always-on hold is not tied to the plan in code
+today: `keepaliveGraceHours` reads `AISAR_KEEPALIVE_GRACE_HOURS`, set to
+0 since 2026-09-09, and `getBusinessPlan` had no caller until this work.
 
-The team tier is a third value, `team`, and it includes `pro`: a team
-business is always-on. Concretely:
+The team tier is a third value, `team`, and it includes `pro`: when the
+hold is tied back to the plan, `team` counts as `pro`. Concretely:
 
-- Migration widens the check to `('free', 'pro', 'team')`;
-  `getBusinessPlan` returns the third value and the keepalive gate treats
-  `team` as `pro`.
+- Migration 033 widens the check to `('free', 'pro', 'team')` and
+  `getBusinessPlan` returns the third value (`BusinessPlan`).
 - Every team route — create or revoke an invitation, manage members,
   create a workspace or its members — checks the plan inside the same
   tenant transaction and answers 402 with "This business is not on the

@@ -216,15 +216,19 @@ export async function getRuntimeAccess(
   };
 }
 
-/** Paid-plan gate for runtime entitlements. Absent or unknown plans
-    are treated as 'free' (wake-on-request, no always-on hold). */
+/** 'free' and 'pro' are one person; 'team' is several people in one
+    business and includes everything 'pro' does (migrations 016, 033). */
+export type BusinessPlan = 'free' | 'pro' | 'team';
+
+/** The plan is a control-plane fact an operator sets. Absent or unknown
+    plans are treated as 'free' (wake-on-request, one person). */
 export async function getBusinessPlan(
   tx: postgres.TransactionSql,
   businessId: string,
-): Promise<'free' | 'pro'> {
+): Promise<BusinessPlan> {
   const [row] = await tx<{ plan: string | null }[]>`
     select plan from business where id = ${businessId}`;
-  return row?.plan === 'pro' ? 'pro' : 'free';
+  return row?.plan === 'pro' || row?.plan === 'team' ? row.plan : 'free';
 }
 
 /** Decrypt runtime credentials only inside a tenant-scoped transaction. */
