@@ -389,6 +389,10 @@ export class LocalRepository implements Repository {
     return '#';
   }
 
+  async fetchArtifact(_id: string): Promise<Blob> {
+    throw new Error('This file could not be opened.');
+  }
+
   async runResult(): Promise<RunResult> {
     throw new NeedsAccountError('Viewing task details');
   }

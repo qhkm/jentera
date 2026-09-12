@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FileText } from '@phosphor-icons/react';
+import { ArtifactPreview } from '@/components/ArtifactPreview';
 import { Button, Card, Eyebrow, LoadingState } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
 import { useRepository } from '@/lib/repo';
@@ -16,6 +17,7 @@ export default function FilesView({ onOpenTask }: { onOpenTask: (runId: string) 
   const repo = useRepository();
   const [files, setFiles] = useState<Artifact[] | null>(null);
   const [failed, setFailed] = useState(false);
+  const [open, setOpen] = useState<Artifact | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -47,7 +49,9 @@ export default function FilesView({ onOpenTask }: { onOpenTask: (runId: string) 
             <li key={file.id} className="card flex-row flex-wrap items-center gap-3 px-4 py-3">
               <FileText size={22} weight="duotone" aria-hidden="true" className="shrink-0 text-brand" />
               <div className="min-w-0 flex-1">
-                <strong className="block truncate text-[14px]">{file.name}</strong>
+                <button type="button" className="block max-w-full truncate text-left text-[14px] font-semibold text-text hover:underline" onClick={() => setOpen(file)}>
+                  {file.name}
+                </button>
                 <span className="text-[12px] text-text-muted">
                   {formatBytes(file.size)} · {new Date(file.createdAt).toLocaleString()}
                 </span>
@@ -68,6 +72,7 @@ export default function FilesView({ onOpenTask }: { onOpenTask: (runId: string) 
           ))}
         </ul>
       ) : null}
+      {open && <ArtifactPreview artifact={open} onClose={() => setOpen(null)} />}
     </section>
   );
 }

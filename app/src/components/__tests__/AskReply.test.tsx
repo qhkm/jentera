@@ -1,4 +1,5 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import type { ReactNode } from 'react';
 import { AskReply } from '@/components/AskReply';
@@ -144,13 +145,21 @@ describe('AskReply: files the agent produced', () => {
         { id: 'a2', runId: RUN, name: 'sources.csv', contentType: 'text/csv', size: 640, createdAt: '2026-09-12T01:00:00.000Z' },
       ],
     };
+    repo.fetchArtifact = async () => new Blob(['# Digest'], { type: 'text/markdown' });
     render(<AskReply message={message} onOpenActivity={() => {}} onRetry={() => {}} />, { wrapper });
     const list = await screen.findByRole('list', { name: 'Files' });
-    const links = within(list).getAllByRole('link');
-    expect(links.map((a) => a.textContent)).toEqual([expect.stringContaining('tech-digest.md'), expect.stringContaining('sources.csv')]);
-    expect(links[0]).toHaveAttribute('href', 'https://api.test/api/artifacts/a1');
-    expect(links[0]).toHaveAttribute('download', 'tech-digest.md');
-    expect(links[0]).toHaveTextContent('5.2 KB');
-    expect(links[1]).toHaveTextContent('640 B');
+    const chips = within(list).getAllByRole('button');
+    expect(chips.map((b) => b.textContent)).toEqual([expect.stringContaining('tech-digest.md'), expect.stringContaining('sources.csv')]);
+    expect(chips[0]).toHaveTextContent('5.2 KB');
+    expect(chips[1]).toHaveTextContent('640 B');
+    const download = within(list).getByRole('link', { name: 'Download tech-digest.md' });
+    expect(download).toHaveAttribute('href', 'https://api.test/api/artifacts/a1');
+    expect(download).toHaveAttribute('download', 'tech-digest.md');
+
+    /* Tapping a chip opens the file in place instead of downloading it. */
+    const user = userEvent.setup();
+    await user.click(chips[0]);
+    const dialog = await screen.findByRole('dialog', { name: 'tech-digest.md' });
+    expect(await within(dialog).findByRole('heading', { name: 'Digest' })).toBeInTheDocument();
   });
 });

@@ -378,6 +378,8 @@ export interface Repository {
   listArtifacts?(options?: { runId?: string; limit?: number }): Promise<Artifact[]>;
   /** Where a file downloads from; the session cookie travels with the click. */
   artifactUrl?(id: string): string;
+  /** The file's bytes, for showing it in place. */
+  fetchArtifact?(id: string): Promise<Blob>;
 
   /** Accounts this business has connected. Never includes secrets. */
   connections(): Promise<Connection[]>;

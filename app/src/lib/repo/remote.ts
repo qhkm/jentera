@@ -472,6 +472,13 @@ export class RemoteRepository implements Repository {
 
   artifactUrl = (id: string) => `${BASE}/api/artifacts/${encodeURIComponent(id)}`;
 
+  fetchArtifact = async (id: string): Promise<Blob> => {
+    const res = await fetch(this.artifactUrl(id), { credentials: 'include' });
+    if (res.status === 401) throw new NotSignedInError();
+    if (!res.ok) throw new Error('This file could not be opened.');
+    return res.blob();
+  };
+
   async runResult(runId: string): Promise<RunResult> {
     if (!isRunId(runId)) throw new Error('Invalid task link.');
     const result = await call<RunResult>(`/api/runs/${encodeURIComponent(runId)}`);

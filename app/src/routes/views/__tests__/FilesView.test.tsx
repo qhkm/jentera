@@ -5,11 +5,12 @@ import { I18nProvider } from '@/i18n/I18nProvider';
 import { RepositoryProvider } from '@/lib/repo/context';
 import { SignedInProvider } from '@/lib/repo/gate';
 import { LocalRepository } from '@/lib/repo/local';
+import type { Repository } from '@/lib/repo';
 import FilesView from '@/routes/views/FilesView';
 
 const RUN = '11111111-1111-4111-8111-111111111111';
 
-function mount(repo: LocalRepository, onOpenTask = vi.fn()) {
+function mount(repo: Repository, onOpenTask = vi.fn()) {
   render(
     <SignedInProvider value account="files-test">
       <RepositoryProvider repository={repo}>
@@ -27,7 +28,7 @@ beforeEach(() => {
 
 describe('FilesView', () => {
   it('lists every file Jentera produced, newest first, with a download and the task it came from', async () => {
-    const repo = new LocalRepository();
+    const repo: Repository = new LocalRepository();
     repo.artifactUrl = (id: string) => `https://api.test/api/artifacts/${id}`;
     repo.listArtifacts = vi.fn(async () => [
       { id: 'a2', runId: RUN, name: 'sources.csv', contentType: 'text/csv', size: 640, createdAt: '2026-09-12T02:00:00.000Z' },
@@ -45,6 +46,11 @@ describe('FilesView', () => {
     expect(download).toHaveAttribute('download', 'tech-digest.md');
     await user.click(within(items[1]).getByRole('button', { name: /Open task/ }));
     expect(onOpenTask).toHaveBeenCalledWith(RUN);
+
+    /* The name opens the file in place. */
+    repo.fetchArtifact = async () => new Blob(['# Digest'], { type: 'text/markdown' });
+    await user.click(within(items[1]).getByRole('button', { name: /tech-digest\.md/ }));
+    expect(await screen.findByRole('dialog', { name: 'tech-digest.md' })).toBeInTheDocument();
   });
 
   it('says so when there are no files yet, and when the list cannot load', async () => {
