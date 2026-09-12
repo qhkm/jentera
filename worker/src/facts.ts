@@ -14,6 +14,8 @@ export type FactSource = 'owner' | 'import' | 'agent' | 'connector';
 export const SOURCES: readonly FactSource[] = ['owner', 'import', 'agent', 'connector'];
 
 export interface Fact {
+  pending?: boolean;
+  currentValue?: unknown;
   key: string;
   value: unknown;
   source: FactSource;
@@ -26,6 +28,8 @@ export interface Fact {
 }
 
 interface Row {
+  pending?: boolean;
+  current_value?: unknown;
   key: string;
   value: unknown;
   source: FactSource;
@@ -38,6 +42,7 @@ interface Row {
 }
 
 const toFact = (r: Row): Fact => ({
+  ...(r.pending ? { pending: true, currentValue: r.current_value } : {}),
   key: r.key,
   value: r.value,
   source: r.source,
@@ -52,16 +57,20 @@ const toFact = (r: Row): Fact => ({
 /** Everything currently believed about this business. */
 export async function liveFacts(tx: postgres.TransactionSql): Promise<Fact[]> {
   const rows = await tx<Row[]>`
-    select key, value, source, source_ref, confidence,
-           confirmed_by, confirmed_at, version, created_at
-      from business_fact
-     where live
-     order by key`;
+    select distinct on (f.key) f.key, f.value, f.source, f.source_ref, f.confidence,
+           f.confirmed_by, f.confirmed_at, f.version, f.created_at, f.pending,
+           (select current.value from business_fact current
+             where current.business_id = f.business_id and current.key = f.key
+               and current.live and current.confirmed_by is not null) as current_value
+      from business_fact f
+     where f.live or f.pending
+     order by f.key, f.pending desc, f.version desc`;
   return rows.map(toFact);
 }
 
 /**
- * Record a fact, superseding whatever was believed before.
+ * Confirmed writes replace the live value. Unconfirmed writes preserve an
+ * existing confirmed value and occupy a separate pending slot until reviewed.
  *
  * The order is load-bearing. Retiring the old row BEFORE inserting the
  * new one is what keeps the partial unique index satisfiable: for the
@@ -87,10 +96,16 @@ export async function recordFact(
     confirmedBy?: string | null;
   },
 ): Promise<Fact> {
+  await lockFact(tx, businessId, input.key);
+  const [current] = await tx<{ value: unknown }[]>`
+    select value from business_fact where business_id = ${businessId}
+      and key = ${input.key} and live and confirmed_by is not null`;
+  const pending = !input.confirmedBy && Boolean(current);
   await tx`
     update business_fact
-       set live = false, superseded_at = now()
-     where business_id = ${businessId} and key = ${input.key} and live`;
+       set live = false, pending = false, superseded_at = now()
+     where business_id = ${businessId} and key = ${input.key}
+       and (pending or (live and not ${pending}))`;
 
   /* Counted over the whole history, not over the row just retired.
      A key that was forgotten has no live row, so deriving the version
@@ -108,15 +123,20 @@ export async function recordFact(
   const [row] = await tx<Row[]>`
     insert into business_fact
       (business_id, key, value, source, source_ref, confidence,
-       confirmed_by, confirmed_at, version)
+       confirmed_by, confirmed_at, version, live, pending)
     values
       (${businessId}, ${input.key}, ${tx.json(input.value as never)}, ${input.source},
        ${input.sourceRef ?? null}, ${input.confidence ?? 1.0},
-       ${confirmedBy}, ${confirmedBy ? tx`now()` : null}, ${nextVersion})
+       ${confirmedBy}, ${confirmedBy ? tx`now()` : null}, ${nextVersion}, ${!pending}, ${pending})
     returning key, value, source, source_ref, confidence,
-              confirmed_by, confirmed_at, version, created_at`;
+              confirmed_by, confirmed_at, version, created_at, pending`;
 
+  row.current_value = current?.value;
   return toFact(row);
+}
+
+async function lockFact(tx: postgres.TransactionSql, businessId: string, key: string) {
+  await tx`select pg_advisory_xact_lock(hashtextextended(${`fact:${businessId}:${key}`}, 0))`;
 }
 
 /**
@@ -132,11 +152,24 @@ export async function confirmFact(
   businessId: string,
   key: string,
   userId: string,
+  version?: number,
 ): Promise<boolean> {
+  await lockFact(tx, businessId, key);
+  const [candidate] = await tx<{ id: string; version: number; pending: boolean }[]>`
+    select id, version, pending from business_fact
+     where business_id = ${businessId} and key = ${key} and (live or pending)
+     order by pending desc, version desc limit 1`;
+  // An old client must never approve a replacement it has not displayed.
+  if (!candidate || (version !== undefined && version !== candidate.version)
+    || (candidate.pending && version === undefined)) return false;
+  if (candidate.pending) {
+    await tx`update business_fact set live = false, superseded_at = now()
+      where business_id = ${businessId} and key = ${key} and live`;
+  }
   const rows = await tx`
     update business_fact
-       set confirmed_by = ${userId}, confirmed_at = now()
-     where business_id = ${businessId} and key = ${key} and live
+       set confirmed_by = ${userId}, confirmed_at = now(), live = true, pending = false
+     where id = ${candidate.id} and business_id = ${businessId}
     returning id`;
   return rows.length > 0;
 }
@@ -152,11 +185,14 @@ export async function forgetFact(
   tx: postgres.TransactionSql,
   businessId: string,
   key: string,
+  version?: number,
 ): Promise<boolean> {
+  await lockFact(tx, businessId, key);
   const rows = await tx`
     update business_fact
-       set live = false, superseded_at = now()
-     where business_id = ${businessId} and key = ${key} and live
+       set live = false, pending = false, superseded_at = now()
+     where business_id = ${businessId} and key = ${key} and (live or pending)
+       and (${version ?? null}::int is null or version = ${version ?? null})
     returning id`;
   return rows.length > 0;
 }

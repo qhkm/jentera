@@ -200,6 +200,7 @@ export class RemoteRepository implements Repository {
       workDone: (snapshot.workDone as Record<string, string[]>) ?? {},
       learn: (snapshot.learn as Record<string, Record<string, number>>) ?? {},
       facts: (snapshot.facts as Fact[]) ?? [],
+      canManageKnowledge: snapshot.canManageKnowledge === true,
       specialists: (snapshot.specialists as Specialist[]) ?? [],
     };
   }
@@ -269,9 +270,10 @@ export class RemoteRepository implements Repository {
     confidence?: number;
   }) => post('/api/state/facts', f);
 
-  confirmFact = (key: string) => post('/api/state/facts/confirm', { key });
+  taskReviewSummary = (runId: string) => call<RunResult>(`/api/runs/${encodeURIComponent(runId)}/review-summary`);
+  confirmFact = (key: string, version?: number) => post('/api/state/facts/confirm', { key, version });
   confirmFacts = (keys: string[]) => post('/api/state/facts/confirm-batch', { keys });
-  forgetFact = (key: string) => post('/api/state/facts/forget', { key });
+  forgetFact = (key: string, version?: number) => post('/api/state/facts/forget', { key, version });
 
   async factHistory(key: string): Promise<Fact[]> {
     const { history } = await call<{ history: Fact[] }>('/api/state/facts/history', {

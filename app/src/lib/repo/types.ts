@@ -14,6 +14,8 @@ export type FactSource = 'owner' | 'import' | 'agent' | 'connector';
  * stand behind the value, regardless of how it was obtained.
  */
 export interface Fact {
+  pending?: boolean;
+  currentValue?: unknown;
   key: string;
   value: unknown;
   source: FactSource;
@@ -43,6 +45,7 @@ export interface Specialist {
  * swap in a network-backed implementation without touching consumers.
  */
 export interface BusinessSnapshot {
+  canManageKnowledge?: boolean;
   onboarded: boolean;
   setupDone: boolean;
   bizType: string;
@@ -225,6 +228,8 @@ export interface BusinessBrowserState {
 
 /** Read-only projection of the existing tenant-scoped run endpoint. */
 export interface RunResult {
+  summaryOnly?: boolean;
+  objective?: string;
   sessionId?: string;
   approvalId?: string;
   taskStatus?: string;
@@ -339,11 +344,11 @@ export interface Repository {
     confidence?: number;
   }): Promise<void>;
   /** Vouch for the live value without changing its confidence. */
-  confirmFact(key: string): Promise<void>;
+  confirmFact(key: string, version?: number): Promise<void>;
   /** Confirm the imported facts the owner reviewed during onboarding. */
   confirmFacts(keys: string[]): Promise<void>;
   /** Retire the fact, keeping its history. */
-  forgetFact(key: string): Promise<void>;
+  forgetFact(key: string, version?: number): Promise<void>;
   /** Every version of one key, newest first. */
   factHistory(key: string): Promise<Fact[]>;
 
@@ -366,6 +371,7 @@ export interface Repository {
   /** The append-only trace of one run, newest last. */
   runTrace(runId: string): Promise<TraceEvent[]>;
   runResult(runId: string): Promise<RunResult>;
+  taskReviewSummary?(runId: string): Promise<RunResult>;
   confirmTaskReview?(runId: string): Promise<void>;
   /** The people in this business and the invitations still open. Team plan
       only; the server says who may manage them. */

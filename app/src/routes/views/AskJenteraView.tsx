@@ -1,5 +1,6 @@
 /* The owner's private instruction channel. No customer-facing capabilities are implied. */
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { hasConfirmedValue } from '@/lib/knowledge';
 import {
   ArrowDown,
   ArrowRight,
@@ -102,7 +103,7 @@ export default function AskJenteraView({
   const mentionId = useId();
   const hintId = useId();
   const busy = ask.messages.some((message) => Boolean(message.pendingId));
-  const confirmed = snapshot.facts.filter((fact) => fact.confirmed).length;
+  const confirmed = snapshot.facts.filter(hasConfirmedValue).length;
   const recent = ask.sessions
     .filter((session) => session.id !== ask.activeId && session.messages.length > 0)
     .slice(0, 3);

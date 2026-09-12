@@ -40,7 +40,7 @@ export async function notifyOwnersWorkNeedsYou(
       body: `${who(asked.email)} asked for this. ${detail}`,
       sourceKey: `${input.runId}:work_needs_you`,
       runId: input.runId,
-      url: `/app?view=work&run=${input.runId}`,
+      url: `/app?view=work&review=${input.runId}`,
     })) sent += 1;
   }
   return sent;
@@ -65,7 +65,7 @@ export async function notifyOwnersApprovalRequested(
       body: `${who(asked.email)} asked for this. ${(input.summary ?? '').trim().slice(0, 300) || 'Open the task to approve or decline.'}`,
       sourceKey: `${input.runId}:approval_requested`,
       runId: input.runId,
-      url: `/app?view=work&run=${input.runId}`,
+      url: `/app?view=work&review=${input.runId}`,
     })) sent += 1;
   }
   return sent;

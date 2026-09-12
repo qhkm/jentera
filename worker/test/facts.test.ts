@@ -17,6 +17,7 @@ import {
   liveFacts,
   recordFact,
 } from '../src/facts';
+import { retrieve } from '../src/ask';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
@@ -161,6 +162,26 @@ describe('corrections', () => {
 });
 
 describe('confirmation', () => {
+  it('keeps the confirmed value available until the exact replacement is accepted', async () => {
+    await asTenant(A, (tx) => recordFact(tx, A, { key: 'service.price', value: 'RM 100', source: 'owner', confirmedBy: userId }));
+    const proposal = await asTenant(A, (tx) => recordFact(tx, A, { key: 'service.price', value: 'RM 80', source: 'agent' }));
+    expect(proposal).toMatchObject({ pending: true, currentValue: 'RM 100', confirmed: false });
+    expect(await asTenant(A, (tx) => retrieve(tx, 'price'))).toEqual(expect.arrayContaining([expect.objectContaining({ value: 'RM 100' })]));
+    expect(await asTenant(A, (tx) => confirmFact(tx, A, 'service.price', userId))).toBe(false);
+    await asTenant(A, (tx) => recordFact(tx, A, { key: 'service.price', value: 'RM 90', source: 'agent' }));
+    expect(await asTenant(A, (tx) => confirmFact(tx, A, 'service.price', userId, proposal.version))).toBe(false);
+    const [latest] = await asTenant(A, liveFacts);
+    expect(await asTenant(A, (tx) => confirmFact(tx, A, 'service.price', userId, latest.version))).toBe(true);
+    expect((await asTenant(A, (tx) => retrieve(tx, 'price')))[0].value).toBe('RM 90');
+  });
+
+  it('discarding a proposed replacement preserves the confirmed value and history', async () => {
+    await asTenant(A, (tx) => recordFact(tx, A, { key: 'hours.monday', value: '9-5', source: 'owner', confirmedBy: userId }));
+    const proposal = await asTenant(A, (tx) => recordFact(tx, A, { key: 'hours.monday', value: '10-6', source: 'agent' }));
+    expect(await asTenant(A, (tx) => forgetFact(tx, A, proposal.key, proposal.version))).toBe(true);
+    expect(await asTenant(A, liveFacts)).toEqual([expect.objectContaining({ value: '9-5', confirmed: true })]);
+    expect(await asTenant(A, (tx) => factHistory(tx, A, proposal.key))).toHaveLength(2);
+  });
   it('marks the live row without changing confidence', async () => {
     await asTenant(A, (tx) =>
       recordFact(tx, A, { key: 'hours.tue', value: '9-5', source: 'agent', confidence: 0.4 }),

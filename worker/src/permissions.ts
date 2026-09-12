@@ -13,6 +13,8 @@
    ============================================================ */
 
 export const PERMISSIONS = {
+  /** Change, import, confirm, and forget shared business knowledge. */
+  'knowledge.manage': ['owner'],
   /** Connect, token-refresh and drop connectors. */
   'connections.manage': ['owner'],
   /** Hold the Telegram pairing link, which binds a chat as the owner chat. */

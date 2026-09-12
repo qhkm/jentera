@@ -4,6 +4,7 @@
    ============================================================ */
 
 import { Link } from 'react-router';
+import { hasConfirmedValue } from '@/lib/knowledge';
 import { Avatar, Button, Card, Eyebrow, LoadingState, Tag } from '@/components/ui';
 import { useI18n } from '@/i18n/I18nProvider';
 import {
@@ -380,7 +381,7 @@ export default function HomeView({
                 <strong>{t('home.knowledge')}</strong>
                 <small>
                   {t('home.knowledge.count', {
-                    n: snap.facts.filter((fact) => fact.confirmed).length,
+                    n: snap.facts.filter(hasConfirmedValue).length,
                   })}
                 </small>
               </span>

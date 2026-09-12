@@ -34,6 +34,7 @@ import TeamPanel from './TeamPanel';
 import { JenteraMark } from '@/components/JenteraMark';
 import PermissionsPanel from './PermissionsPanel';
 import KnowledgePanel from './KnowledgePanel';
+import { hasConfirmedValue, confirmedValue } from '@/lib/knowledge';
 import TelegramConnect from './TelegramConnect';
 import TokenConnect from './TokenConnect';
 import BusinessBrowser from './BusinessBrowser';
@@ -77,7 +78,7 @@ export default function MyBusinessView({
   const mutate = useMutate();
   const { business } = b;
   const unconfirmed = snap.facts.filter((f) => !f.confirmed).length;
-  const confirmed = snap.facts.filter((f) => f.confirmed);
+  const confirmed = snap.facts.filter(hasConfirmedValue).map((fact) => ({ ...fact, value: confirmedValue(fact) }));
   const signedIn = useSignedIn();
   const [name, setName] = useState(business.name);
   const [loc, setLoc] = useState(business.loc);

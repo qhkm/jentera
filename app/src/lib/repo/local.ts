@@ -102,7 +102,10 @@ export class LocalRepository implements Repository {
       theme: theme === 'light' ? 'light' : 'dark',
       approvals: store.getJSON<Approval[]>(KEYS.approvals, []),
       permissions: store.getJSON<Record<string, Policy>>(KEYS.permissions, {}),
-      facts: allVersions().filter((f) => f.live).sort((a, b) => a.key.localeCompare(b.key)),
+      canManageKnowledge: true,
+      facts: [...new Map(allVersions().filter((f) => f.live || f.pending)
+        .sort((a, b) => a.version - b.version).map((f) => [f.key, f])).values()]
+        .sort((a, b) => a.key.localeCompare(b.key)),
       workDone,
       learn: collectPrefixed<Record<string, number>>(KEYS.learn, {}),
       specialists: localSpecialists(),
@@ -218,6 +221,8 @@ export class LocalRepository implements Repository {
   }): Promise<void> {
     const rows = allVersions();
     const source = f.source ?? 'owner';
+    const current = rows.find((r) => r.key === f.key && r.live && r.confirmed);
+    const pending = source !== 'owner' && Boolean(current);
     // Version counts over the whole history, not over the live row:
     // a key that was forgotten has no live row, and restarting at 1
     // would collide with the 1 already stored.
@@ -225,7 +230,8 @@ export class LocalRepository implements Repository {
     const now = new Date().toISOString();
 
     store.setJSON(KEYS.facts, [
-      ...rows.map((r) => (r.key === f.key && r.live ? { ...r, live: false } : r)),
+      ...rows.map((r) => (r.key === f.key && (r.pending || (r.live && !pending))
+        ? { ...r, live: false, pending: false } : r)),
       {
         key: f.key,
         value: f.value,
@@ -238,18 +244,24 @@ export class LocalRepository implements Repository {
         confirmedAt: source === 'owner' ? now : null,
         version,
         createdAt: now,
-        live: true,
+        live: !pending,
+        ...(pending ? { pending: true, currentValue: current?.value } : {}),
       },
     ]);
   }
 
-  async confirmFact(key: string): Promise<void> {
+  async confirmFact(key: string, version?: number): Promise<void> {
+    const rows = allVersions();
+    const candidate = rows.filter((r) => r.key === key && (r.live || r.pending))
+      .sort((a, b) => b.version - a.version)[0];
+    if (!candidate || (version !== undefined && version !== candidate.version)
+      || (candidate.pending && version === undefined)) throw new Error('This fact changed. Refresh and review it again.');
     store.setJSON(
       KEYS.facts,
-      allVersions().map((r) =>
-        r.key === key && r.live
-          ? { ...r, confirmed: true, confirmedAt: new Date().toISOString() }
-          : r,
+      rows.map((r) =>
+        r.key === key && r.version === candidate.version
+          ? { ...r, live: true, pending: false, confirmed: true, confirmedAt: new Date().toISOString() }
+          : r.key === key && r.live ? { ...r, live: false } : r,
       ),
     );
   }
@@ -258,10 +270,11 @@ export class LocalRepository implements Repository {
     for (const key of [...new Set(keys)]) await this.confirmFact(key);
   }
 
-  async forgetFact(key: string): Promise<void> {
+  async forgetFact(key: string, version?: number): Promise<void> {
     store.setJSON(
       KEYS.facts,
-      allVersions().map((r) => (r.key === key && r.live ? { ...r, live: false } : r)),
+      allVersions().map((r) => (r.key === key && (r.live || r.pending)
+        && (version === undefined || r.version === version) ? { ...r, live: false, pending: false } : r)),
     );
   }
 

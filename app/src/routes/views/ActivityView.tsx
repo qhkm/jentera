@@ -64,6 +64,7 @@ export default function ActivityView({
   b,
   onOpenAsk,
   runId,
+  reviewOnly,
   taskTitle,
   onOpenTask,
   onCloseTask,
@@ -71,6 +72,7 @@ export default function ActivityView({
   b: ReturnType<typeof useBusiness>;
   onOpenAsk?: (context?: string, sessionId?: string) => void;
   runId?: string | null;
+  reviewOnly?: boolean;
   taskTitle?: string;
   onOpenTask?: (runId: string) => void;
   onCloseTask?: () => void;
@@ -154,6 +156,7 @@ export default function ActivityView({
     return <TaskDetailView
       key={runId}
       runId={runId}
+      reviewOnly={reviewOnly}
       title={taskTitle}
       work={activity.real ? activity.data?.work.find((work) => work.runId === runId) : undefined}
       onBack={onCloseTask}

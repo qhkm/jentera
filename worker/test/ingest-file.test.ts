@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Env } from '../src/env';
 import { handleRuns } from '../src/routes/runs';
+import { liveFacts, recordFact } from '../src/facts';
+import { retrieve } from '../src/ask';
 import { asOwner, asTenant, jsonOf, req, signIn, testEnv, truncateAll } from './harness';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -50,6 +52,15 @@ async function upload(name: string, body: string | Uint8Array, contentType: stri
 }
 
 describe('learning from an uploaded document', () => {
+  it('an old price list becomes a proposal without displacing the approved price', async () => {
+    const [member] = await asTenant(A, (tx) => tx<{ user_id: string }[]>`select user_id from membership where business_id = ${A} and role = 'owner'`);
+    await asTenant(A, (tx) => recordFact(tx, A, { key: 'service.price', value: 'RM 100', source: 'owner', confirmedBy: member.user_id }));
+    const response = await upload('old-prices.txt', 'Service RM 80.', 'text/plain',
+      env([{ key: 'service.price', value: 'RM 80', confidence: 0.9 }]));
+    expect(await jsonOf(response)).toMatchObject({ ok: true, facts: 1 });
+    expect(await asTenant(A, liveFacts)).toEqual([expect.objectContaining({ value: 'RM 80', pending: true, currentValue: 'RM 100' })]);
+    expect((await asTenant(A, (tx) => retrieve(tx, 'price')))[0].value).toBe('RM 100');
+  });
   it('reads a text file, suggests its facts for confirmation, and records the reading as work', async () => {
     const response = await upload('opening-hours.txt', 'We open 9am to 6pm, closed Sundays. Call 03-1234 5678.', 'text/plain',
       env([{ key: 'hours.weekdays', value: '9am to 6pm', confidence: 0.9 }, { key: 'phone', value: '03-1234 5678', confidence: 0.8 }]));

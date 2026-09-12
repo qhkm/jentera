@@ -20,6 +20,18 @@ beforeEach(() => localStorage.clear());
 afterEach(() => vi.useRealTimers());
 
 describe('exact task details', () => {
+  it('owner review loads the shared summary without fetching or continuing the private chat', async () => {
+    const taskReviewSummary = vi.fn(async () => ({ runId, status: 'completed', taskStatus: 'needs_review',
+      pending: false, summaryOnly: true, text: 'Shared business outcome', objective: 'Prepare digest' }));
+    const repo = Object.assign(new LocalRepository(), { taskReviewSummary });
+    repo.runResult = vi.fn();
+    mount(repo, { reviewOnly: true, onOpenAsk: vi.fn() });
+    expect(await screen.findByText('Shared business outcome')).toBeInTheDocument();
+    expect(screen.getByText(/private conversation and its files are not included/)).toBeInTheDocument();
+    expect(repo.runResult).not.toHaveBeenCalled();
+    expect(taskReviewSummary).toHaveBeenCalledWith(runId);
+    expect(screen.queryByRole('button', { name: 'Request changes' })).toBeNull();
+  });
   it('lists the files the task produced, each as a download', async () => {
     const repo = new LocalRepository();
     repo.artifactUrl = (id: string) => `https://api.test/api/artifacts/${id}`;

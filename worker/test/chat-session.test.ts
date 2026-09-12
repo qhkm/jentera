@@ -3,6 +3,7 @@ import { handleArtifacts } from '../src/routes/artifacts';
 import { handleRuns } from '../src/routes/runs';
 import { recordArtifact } from '../src/artifacts';
 import { ensureChatSession, runVisibleTo } from '../src/chat-sessions';
+import { notifyOwnersWorkNeedsYou } from '../src/notifications/work';
 import { finishRun, recordWork, startRun } from '../src/runs';
 import { asOwner, asTenant, jsonOf, req, signIn, testEnv, truncateAll } from './harness';
 
@@ -92,6 +93,27 @@ describe('a chat and who may read its runs', () => {
       expect(await runVisibleTo(tx, A, sharedRun, staff)).toBe(true);
       expect(await runVisibleTo(tx, A, 'ffffffff-ffff-4fff-8fff-ffffffffffff', staff)).toBe(false);
     });
+  });
+
+  it('an owner notification opens only the shared summary, with a working review decision', async () => {
+    const runId = await finishedRun(staff, CHAT);
+    await asTenant(A, async (tx) => {
+      await tx`update work_record set status = 'needs_review' where run_id = ${runId}`;
+      await notifyOwnersWorkNeedsYou(tx, A, { runId, status: 'needs_review', objective: 'Prepare the digest' });
+    });
+    const [notification] = await asTenant(A, (tx) => tx<{ url: string }[]>`select url from push_outbox where user_id = ${owner}`);
+    expect(notification.url).toBe(`/app?view=work&review=${runId}`);
+    const summary = await get(`/api/runs/${runId}/review-summary`, cookieOwner);
+    expect(await jsonOf(summary)).toEqual({ ok: true, runId, objective: 'Prepare the digest', text: 'Digest prepared.',
+      status: 'completed', taskStatus: 'needs_review', summaryOnly: true, pending: false });
+    expect((await get(`/api/runs/${runId}`, cookieOwner)).status).toBe(404);
+    expect((await get(`/api/runs/${runId}/trace`, cookieOwner)).status).toBe(404);
+    expect((await get(`/api/runs/${runId}/review-summary`, cookieStaff)).status).toBe(403);
+    expect((await get('/api/runs/ffffffff-ffff-4fff-8fff-ffffffffffff/review-summary', cookieOwner)).status).toBe(404);
+    const incoming = req('POST', `/api/runs/${runId}/review`, { cookie: cookieOwner, body: { decision: 'confirm' } });
+    incoming.request.headers.set('Origin', 'https://app.test');
+    expect((await handleRuns(incoming.request, testEnv(), incoming.url, { 'Access-Control-Allow-Origin': 'https://app.test' }))?.status).toBe(200);
+    expect(await jsonOf(await get(`/api/runs/${runId}/review-summary`, cookieOwner))).toMatchObject({ taskStatus: 'completed' });
   });
 
   it('shows the task page and the trace only to the person whose chat it is', async () => {

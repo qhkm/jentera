@@ -70,11 +70,12 @@ export default function Dashboard() {
   const isChat = view === 'chat';
   const requestedTab = searchParams.get('tab');
   const businessTab = BUSINESS_TABS.includes(requestedTab as BizTab) ? requestedTab as BizTab : 'profile';
-  const focusedRunId = view === 'work' ? searchParams.get('run') : null;
+  const focusedReviewId = view === 'work' ? searchParams.get('review') : null;
+  const focusedRunId = view === 'work' ? focusedReviewId ?? searchParams.get('run') : null;
   const [taskContext, setTaskContext] = useState<{ runId: string; title?: string } | null>(null);
   const [taskDraft, setTaskDraft] = useState<{ text: string; key: number; sessionId?: string } | null>(null);
   const focusedRoutineId = view === 'routines' ? searchParams.get('routine') : null;
-  const lastDashboard = useRef<{ view: Exclude<View, 'chat'>; tab: BizTab; runId: string | null; routineId: string | null }>({ view: 'home', tab: 'profile', runId: null, routineId: null });
+  const lastDashboard = useRef<{ view: Exclude<View, 'chat'>; tab: BizTab; runId: string | null; routineId: string | null; reviewId: string | null }>({ view: 'home', tab: 'profile', runId: null, routineId: null, reviewId: null });
   const trackedOpen = useRef(false);
   const b = useBusiness();
   const { business } = b;
@@ -122,8 +123,8 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (view !== 'chat') lastDashboard.current = { view, tab: businessTab, runId: focusedRunId, routineId: focusedRoutineId };
-  }, [view, businessTab, focusedRunId, focusedRoutineId]);
+    if (view !== 'chat') lastDashboard.current = { view, tab: businessTab, runId: focusedRunId, routineId: focusedRoutineId, reviewId: focusedReviewId };
+  }, [view, businessTab, focusedRunId, focusedRoutineId, focusedReviewId]);
 
   function go(next: View, businessTab?: BizTab, runId?: string | null, routineId?: string | null) {
     setSearchParams({
@@ -138,6 +139,7 @@ export default function Dashboard() {
   function switchMode(mode: WorkspaceMode) {
     if ((mode === 'chat') === isChat) return;
     if (mode === 'chat') go('chat');
+    else if (lastDashboard.current.reviewId) setSearchParams({ view: 'work', review: lastDashboard.current.reviewId });
     else go(lastDashboard.current.view, lastDashboard.current.tab, lastDashboard.current.runId, lastDashboard.current.routineId);
   }
 
@@ -264,6 +266,7 @@ export default function Dashboard() {
               go('chat');
             }}
             runId={focusedRunId}
+            reviewOnly={Boolean(focusedReviewId)}
             taskTitle={taskContext?.runId === focusedRunId ? taskContext.title : undefined}
             onOpenTask={openTask}
             onCloseTask={() => go('work')}
@@ -272,6 +275,7 @@ export default function Dashboard() {
           {view === 'notifications' && <NotificationsView
             state={notifications}
             onOpenTask={openTask}
+            onOpenReview={(runId) => setSearchParams({ view: 'work', review: runId })}
             onOpenRoutine={(id) => go('routines', undefined, null, id)}
           />}
           {view === 'business' && (

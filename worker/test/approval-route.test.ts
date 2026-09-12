@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { handleRuntime } from '../src/routes/runtime';
+import { handleRuns } from '../src/routes/runs';
+import { ensureChatSession } from '../src/chat-sessions';
+import { startRun, finishRun } from '../src/runs';
 import { pauseRuntimeTaskForApproval } from '../src/runtime/tasks';
 import type { Env } from '../src/env';
 import { asOwner, asTenant, req, signIn, testEnv, truncateAll } from './harness';
@@ -34,13 +37,13 @@ beforeEach(async () => {
 });
 
 /** A web approval parked on a leased task, as the consumer now does. */
-async function parkWebApproval(): Promise<string> {
+async function parkWebApproval(runId: string | null = null): Promise<string> {
   const taskId = crypto.randomUUID();
   const leaseToken = crypto.randomUUID();
   await asOwner((sql) => sql`
-    insert into runtime_task (id, business_id, kind, status, payload, dedupe_key,
+    insert into runtime_task (id, business_id, run_id, kind, status, payload, dedupe_key,
                               lease_token, lease_expires_at, lease_heartbeat_at, attempt)
-    values (${taskId}, ${A}, 'run', 'leased', '{}'::jsonb, ${taskId},
+    values (${taskId}, ${A}, ${runId}, 'run', 'leased', '{}'::jsonb, ${taskId},
             ${leaseToken}, now() + interval '5 minutes', now(), 1)`);
   const approval = await asTenant(A, (tx) =>
     pauseRuntimeTaskForApproval(tx, A, taskId, leaseToken, {
@@ -77,6 +80,23 @@ async function call(
 }
 
 describe('reading what the owner is being asked', () => {
+  it('opens owner review for a private task paused before a work record exists', async () => {
+    const run = await asTenant(A, async (tx) => {
+      const [staff] = await tx<{ user_id: string }[]>`select user_id from membership where business_id = ${A} and role = 'staff'`;
+      const sessionId = crypto.randomUUID();
+      await ensureChatSession(tx, A, sessionId, staff.user_id);
+      const run = await startRun(tx, A, { kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite',
+        sessionId, requestedBy: staff.user_id, triggerRef: { question: 'PRIVATE QUESTION' } });
+      await finishRun(tx, A, run.id, 'needs_approval');
+      return run;
+    });
+    const approvalId = await parkWebApproval(run.id);
+    const incoming = req('GET', `/api/runs/${run.id}/review-summary`, { cookie: ownerCookie });
+    const response = await handleRuns(incoming.request, testEnv(), incoming.url, {});
+    expect(response?.status).toBe(200);
+    expect(await response!.json()).toEqual({ ok: true, runId: run.id, objective: 'Review requested action',
+      text: '', status: 'needs_approval', taskStatus: 'needs_approval', summaryOnly: true, pending: true, approvalId });
+  });
   it('shows the question to any member, without the runner binding', async () => {
     /* Seeing the question is not deciding it, so staff may read. requestId is
        what the runner binds a decision to and no surface needs it. */

@@ -1,4 +1,5 @@
 import type { Activity, BusinessSnapshot, WorkSummary } from '@/lib/repo';
+import { hasConfirmedValue } from '@/lib/knowledge';
 
 export const BUSINESS_TIME_ZONE = 'Asia/Kuala_Lumpur';
 const dayFormat = new Intl.DateTimeFormat('en-CA', {
@@ -34,7 +35,7 @@ export function dailyBrief(activity: Activity, snapshot: BusinessSnapshot, now: 
   if (failed) return { priority: 'failed', focus: failed, today };
   const working = recent.find((work) => ['queued', 'working', 'running'].includes(work.status));
   if (working) return { priority: 'working', focus: working, today };
-  if (!snapshot.facts.some((fact) => fact.confirmed)) return { priority: 'knowledge', today };
+  if (!snapshot.facts.some(hasConfirmedValue)) return { priority: 'knowledge', today };
   if (activity.counters.handled === 0) return { priority: 'first', today };
   return { priority: 'ready', today };
 }

@@ -42,6 +42,8 @@ describe('daily brief from real records', () => {
     expect(dailyBrief(activity([], 0, 0), { facts: [{ confirmed: false }] } as BusinessSnapshot, now).priority).toBe('knowledge');
     expect(dailyBrief(activity([], 0, 0), known, now).priority).toBe('first');
     expect(dailyBrief(activity([], 0, 12), known, now).priority).toBe('ready');
+    const replacement = { facts: [{ confirmed: false, pending: true, currentValue: 'Approved value' }] } as BusinessSnapshot;
+    expect(dailyBrief(activity([], 0, 12), replacement, now).priority).toBe('ready');
   });
   it('does not turn all-time counters into today’s work or invent records outside the feed', () => {
     const result = dailyBrief(activity([], 0, 900), known, now);

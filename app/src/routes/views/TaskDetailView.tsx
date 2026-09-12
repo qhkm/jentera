@@ -27,8 +27,9 @@ const STATUS: Record<string, { label: string; tone: Tone }> = {
 
 /** Fetch by run ID even when the task has fallen out of the recent Activity list.
  * A missing/forbidden run never falls back to a locally cached result. */
-export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk }: {
+export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk, reviewOnly = false }: {
   runId: string;
+  reviewOnly?: boolean;
   title?: string;
   work?: WorkSummary;
   onBack?: () => void;
@@ -55,7 +56,8 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk }
     async function read() {
       try {
         if (!isRunId(runId)) throw new Error('Invalid task link');
-        const next = await repo.runResult(runId);
+        if (reviewOnly && !repo.taskReviewSummary) throw new Error('Review is unavailable');
+        const next = reviewOnly ? await repo.taskReviewSummary!(runId) : await repo.runResult(runId);
         if (!live) return;
         setResult(next);
         if (next.pending && !['completed', 'failed', 'cancelled'].includes(next.status)) {
@@ -70,7 +72,7 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk }
     }
     void read();
     return () => { live = false; clearTimeout(timer); };
-  }, [repo, runId, attempt]);
+  }, [repo, runId, attempt, reviewOnly]);
 
   const outcomeStatus = result?.taskStatus ?? result?.status;
   const status = outcomeStatus ? STATUS[outcomeStatus] : undefined;
@@ -110,7 +112,7 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk }
       </nav>
       <header className="task-detail-heading">
         <Eyebrow>{t('task.title')}</Eyebrow>
-        <h1 id="task-heading" tabIndex={-1} ref={heading}>{result ? work?.objective || title || t('task.title') : t('task.title')}</h1>
+        <h1 id="task-heading" tabIndex={-1} ref={heading}>{result ? result.objective || work?.objective || title || t('task.title') : t('task.title')}</h1>
       </header>
       {error ? (
         <Card className="gap-4" role="alert">
@@ -122,13 +124,14 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk }
         <Card><LoadingState title={t('task.loading')} /></Card>
       ) : (
         <>
+          {result.summaryOnly && <Card><p>{t('task.sharedReviewNote')}</p></Card>}
           <div className="task-status-bar" role="status">
             <span><StatusIcon size={21} aria-hidden="true" /><strong>{t(status?.label ?? 'task.unknown')}</strong></span>
             <Tag tone={status?.tone ?? 'neutral'}>{t('task.card.label')}</Tag>
           </div>
           {completed || (result.status === 'completed' && fullText) ? (
             <Card className="task-result">
-              <header><JenteraMark size={28} /><h2>{t(summary ? 'task.summary' : 'task.result')}</h2></header>
+              <header><JenteraMark size={28} /><h2>{t(summary || result.summaryOnly ? 'task.summary' : 'task.result')}</h2></header>
               {outcomeStatus === 'needs_input' && <p>{t('task.needsInputNote')}</p>}
               {outcomeStatus === 'needs_review' && <p>{t('task.needsReviewNote')}</p>}
               <div className="task-result-text">{fullText || summary || t('task.noResult')}</div>
@@ -156,13 +159,13 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk }
             <p>{t(needsReview ? 'task.reviewHelp' : 'task.inputHelp')}</p>
             <div className="flex flex-wrap gap-2">
               {needsReview && repo.confirmTaskReview && <Button disabled={reviewBusy} onClick={() => void settle('confirm')}>{t('task.confirmReview')}</Button>}
-              {onOpenAsk && <Button variant={needsReview ? 'outline' : 'primary'} onClick={continueTask}>{t(needsReview ? 'task.requestChanges' : 'task.provideInput')}</Button>}
+              {onOpenAsk && !result.summaryOnly && <Button variant={needsReview ? 'outline' : 'primary'} onClick={continueTask}>{t(needsReview ? 'task.requestChanges' : 'task.provideInput')}</Button>}
               {needsInput && repo.confirmTaskReview && <Button variant="outline" disabled={reviewBusy} onClick={() => void settle('confirm')}>{t('task.markDone')}</Button>}
               {repo.dismissTask && <Button variant="outline" disabled={reviewBusy} onClick={() => void settle('dismiss')}>{t('task.dismiss')}</Button>}
             </div>
             {reviewError && <p role="alert">{reviewError}</p>}
           </Card>}
-          {detail.advanced && <details className="task-trace" onToggle={(event) => setTraceOpen(event.currentTarget.open)}>
+          {detail.advanced && !result.summaryOnly && <details className="task-trace" onToggle={(event) => setTraceOpen(event.currentTarget.open)}>
             <summary>{t('activity.trace')}</summary>
             {traceOpen && <RunTrace runId={runId} />}
           </details>}

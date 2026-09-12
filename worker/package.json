@@ -32,6 +32,7 @@
     "db:migrate:workspace": "node scripts/apply-workspace.mjs",
     "db:migrate:notification-kinds": "node scripts/apply-notification-kinds.mjs",
     "db:migrate:team-plan-gate": "node scripts/apply-team-plan-gate.mjs",
+    "db:migrate:fact-proposals": "node scripts/apply-fact-proposals.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -78,6 +78,10 @@ export async function handleRuns(
     return json({ ok: false, err: 'no business', code: 'NO_BUSINESS' }, { status: 404 }, cors);
   }
   const id = identity;
+  if (request.method === 'POST' && ['/api/runs/ingest', '/api/runs/ingest/file'].includes(url.pathname)
+    && !can(id, 'knowledge.manage')) {
+    return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+  }
 
   /* ---- read the business's own website ------------------------------- */
 
@@ -122,6 +126,9 @@ export async function handleRuns(
         append(tx, id.businessId, run.id, 'work.started', { file: name, chars: bounded.length }));
       const candidates = await extractFacts(env, bounded, name);
       const written = await withTenant(env, id.businessId, async (tx) => {
+        for (const key of candidates.map((c) => c.key).sort()) {
+          await tx`select pg_advisory_xact_lock(hashtextextended(${`fact:${id.businessId}:${key}`}, 0))`;
+        }
         const keys: string[] = [];
         for (const c of candidates) {
           await recordFact(tx, id.businessId, {
@@ -202,11 +209,12 @@ export async function handleRuns(
 
       const candidates = page.candidates;
 
-      /* Written as unconfirmed agent facts, each carrying the page it
-         came from. A correction later supersedes rather than deletes,
-         so re-reading the site next month cannot quietly reinstate
-         something the owner already rejected. */
+      /* Proposals retain their source and await review. A confirmed value
+         keeps its live slot until its proposed replacement is accepted. */
       const written = await withTenant(env, id.businessId, async (tx) => {
+        for (const key of candidates.map((c) => c.key).sort()) {
+          await tx`select pg_advisory_xact_lock(hashtextextended(${`fact:${id.businessId}:${key}`}, 0))`;
+        }
         const keys: string[] = [];
         for (const c of candidates) {
           await recordFact(tx, id.businessId, {
@@ -437,6 +445,32 @@ export async function handleRuns(
       return json({ ok: false, err: 'work record not found' }, { status: 404 }, cors);
     }
     return json({ ok: true }, {}, cors);
+  }
+
+  // Owner review shares only the existing business work record and approval.
+  // Private answers, session IDs, files, and traces keep their normal boundary.
+  const reviewSummary = url.pathname.match(/^\/api\/runs\/([0-9a-f-]{36})\/review-summary$/i);
+  if (reviewSummary && request.method === 'GET') {
+    if (!can(id, 'tasks.review')) return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+    const summary = await withTenant(env, id.businessId, async (tx) => {
+      const [work] = await tx<{ objective: string; outcome: string | null; status: string; run_status: string }[]>`
+        select w.objective, w.outcome, w.status, r.status as run_status
+          from work_record w join run r on r.id = w.run_id and r.business_id = w.business_id
+         where w.business_id = ${id.businessId} and w.run_id = ${reviewSummary[1]} and w.kind = 'work'
+         order by w.occurred_at desc limit 1`;
+      const task = await runtimeTaskForRun(tx, id.businessId, reviewSummary[1]);
+      const approval = task ? runtimeApprovalFromTask(task) : null;
+      // A paused tool can request approval before a completed work record exists.
+      if (!work && !approval) return null;
+      const run = work ? null : await getRun(tx, id.businessId, reviewSummary[1]);
+      const status = work?.run_status ?? run?.status;
+      if (!status) return null;
+      return { runId: reviewSummary[1], objective: work?.objective ?? 'Review requested action', text: work?.outcome ?? '',
+        status, taskStatus: approval && ['pending', 'deciding'].includes(approval.status) ? 'needs_approval' : work?.status ?? status,
+        summaryOnly: true, pending: !terminalRun(status), ...(approval ? { approvalId: approval.id } : {}) };
+    });
+    return json(summary ? { ok: true, ...summary } : { ok: false, err: 'review not found' },
+      { status: summary ? 200 : 404 }, { ...cors, 'Cache-Control': 'private, no-store' });
   }
 
   const review = url.pathname.match(/^\/api\/runs\/([0-9a-f-]{36})\/review$/i);

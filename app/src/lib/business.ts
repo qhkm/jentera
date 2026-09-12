@@ -9,6 +9,7 @@
    ============================================================ */
 
 import { PLAYBOOKS } from './data/playbooks';
+import { hasConfirmedValue } from '@/lib/knowledge';
 import type { Business, TeamMember } from './types';
 import { getCountry, localizeDetect, localizeSite } from './country';
 import { FALLBACK_KEY, extractLocation, extractName, inferPlaybook } from './infer';
@@ -226,7 +227,7 @@ export function milestones(
   connections: number,
 ): Milestone[] {
   return [
-    { key: 'knows', done: snap.facts.some((f) => f.confirmed) },
+    { key: 'knows', done: snap.facts.some(hasConfirmedValue) },
     /* The real connection count, not `snap.conns`. That list is seeded
        from the playbook — it named WhatsApp, Instagram, Google Calendar
        and Google Sheets for a business that had connected none of them,

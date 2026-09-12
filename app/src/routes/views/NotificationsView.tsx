@@ -12,9 +12,10 @@ function Glyph({ item }: { item: AppNotification }) {
   return <span className={`notification-icon notification-icon-${item.kind}`}><Icon size={20} weight="duotone" aria-hidden="true" /></span>;
 }
 
-export default function NotificationsView({ state, onOpenTask, onOpenRoutine }: {
+export default function NotificationsView({ state, onOpenTask, onOpenRoutine, onOpenReview }: {
   state: NotificationsState;
   onOpenTask: (runId: string, title?: string) => void;
+  onOpenReview?: (runId: string) => void;
   onOpenRoutine: (routineId: string) => void;
 }) {
   const { lang, t } = useI18n();
@@ -23,7 +24,8 @@ export default function NotificationsView({ state, onOpenTask, onOpenRoutine }: 
   }).format(new Date(instant));
   async function open(item: AppNotification) {
     await state.markRead(item.id).catch(() => undefined);
-    if (item.runId) onOpenTask(item.runId, item.title);
+    if (item.runId && onOpenReview && ['work_needs_you', 'approval_requested'].includes(item.kind)) onOpenReview(item.runId);
+    else if (item.runId) onOpenTask(item.runId, item.title);
     else if (item.routineId) onOpenRoutine(item.routineId);
   }
   return <section className="notifications-view" aria-labelledby="notifications-title">

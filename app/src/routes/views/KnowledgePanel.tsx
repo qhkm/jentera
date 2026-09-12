@@ -18,6 +18,8 @@ import { useMutate, useRefresh, useRepository, useSnapshot } from '@/lib/repo';
 import type { Fact } from '@/lib/repo/types';
 import type { Tone } from '@/lib/types';
 import AgentMemoryPanel from './AgentMemoryPanel';
+import { useSignedIn } from '@/lib/repo/gate';
+import { useT } from '@/i18n/I18nProvider';
 
 /* Below this, a page gave up little more than its <title>: almost
    certainly a JavaScript-rendered shell rather than a thin site. 400
@@ -87,7 +89,8 @@ function sourceLabel(f: Fact): string {
   return `From a connection · ${pct}% sure`;
 }
 
-function FactRow({ fact }: { fact: Fact }) {
+function FactRow({ fact, canManage }: { fact: Fact; canManage: boolean }) {
+  const t = useT();
   const mutate = useMutate();
   const repo = useRepository();
   const [editing, setEditing] = useState(false);
@@ -114,7 +117,9 @@ function FactRow({ fact }: { fact: Fact }) {
         <Tag tone={sourceTone(fact)}>{sourceLabel(fact)}</Tag>
       </div>
 
-      {editing ? (
+      {fact.pending && <p className="text-sm text-text-secondary">{t('knowledge.currentValue', { value: show(fact.currentValue) })}</p>}
+      {fact.sourceRef && <p className="text-xs text-text-secondary">{t('knowledge.source', { source: fact.sourceRef })}</p>}
+      {editing && canManage ? (
         <div className="flex flex-wrap items-center gap-2">
           <Input
             className="min-w-[12rem] flex-1"
@@ -130,14 +135,16 @@ function FactRow({ fact }: { fact: Fact }) {
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           <span className="flex-1 text-sm text-text-secondary">{show(fact.value)}</span>
-          {!fact.confirmed && (
-            <Button onClick={() => void mutate((r) => r.confirmFact(fact.key)).catch(noop)}>
+          {!fact.confirmed && canManage && (
+            <Button onClick={() => void mutate((r) => r.confirmFact(fact.key, fact.version)).catch(noop)}>
               That&rsquo;s right
             </Button>
           )}
-          <Button variant="ghost" onClick={() => setEditing(true)}>
+          {canManage && <Button variant="ghost" onClick={() => { setDraft(show(fact.value)); setEditing(true); }}>
             {fact.confirmed ? 'Change' : 'Fix it'}
-          </Button>
+          </Button>}
+          {canManage && !fact.confirmed && <Button variant="ghost"
+            onClick={() => void mutate((r) => r.forgetFact(fact.key, fact.version)).catch(noop)}>{t('knowledge.discard')}</Button>}
           {fact.version > 1 && (
             <Button variant="ghost" onClick={() => void toggleHistory()}>
               {history ? 'Hide history' : `${fact.version} versions`}
@@ -162,6 +169,8 @@ function FactRow({ fact }: { fact: Fact }) {
 
 export default function KnowledgePanel() {
   const snap = useSnapshot();
+  const signedIn = useSignedIn();
+  const canManage = snap.canManageKnowledge ?? !signedIn;
   const mutate = useMutate();
   const [key, setKey] = useState('');
   const [value, setValue] = useState('');
@@ -247,17 +256,17 @@ export default function KnowledgePanel() {
         ) : (
           <div className="mt-2 flex flex-col">
             {facts.map((f) => (
-              <FactRow key={f.key} fact={f} />
+              <FactRow key={`${f.key}:${f.version}`} fact={f} canManage={canManage} />
             ))}
           </div>
         )}
       </Card>
 
-      <Card>
+      {canManage && <Card>
         <Eyebrow>Let Jentera read your website or a document</Eyebrow>
         <p className="mt-2 text-sm text-text-secondary">
           Paste the address, or upload a document, and Jentera will read it and suggest what it
-          learned. Nothing is sent to anyone and nothing goes live — you confirm each item first.
+          learned. Suggestions wait for your confirmation; existing confirmed values stay in use.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Input
@@ -291,7 +300,7 @@ export default function KnowledgePanel() {
             compact
             className="mt-3"
             title="Reading your website…"
-            detail="Checking the page and extracting suggestions. Nothing is saved until you confirm it."
+            detail="Extracting suggestions for review. Existing confirmed values stay in use."
           />
         ) : null}
         {note && (
@@ -299,9 +308,9 @@ export default function KnowledgePanel() {
             {note}
           </p>
         )}
-      </Card>
+      </Card>}
 
-      <Card>
+      {canManage && <Card>
         <Eyebrow>Tell Jentera something</Eyebrow>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Input
@@ -322,9 +331,9 @@ export default function KnowledgePanel() {
             Add
           </Button>
         </div>
-      </Card>
+      </Card>}
 
-      <AgentMemoryPanel />
+      {canManage && <AgentMemoryPanel />}
     </div>
   );
 }

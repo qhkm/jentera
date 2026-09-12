@@ -141,6 +141,7 @@ async function loadSnapshot(env: Env, id: TenantIdentity) {
       workDone,
       learn,
       facts,
+      canManageKnowledge: can(id, 'knowledge.manage'),
       specialists,
     };
   });
@@ -235,6 +236,10 @@ export async function handleRepo(
   }
 
   if (request.method !== 'POST') return null;
+  if (url.pathname.startsWith('/api/state/facts') && url.pathname !== '/api/state/facts/history'
+    && !can(id, 'knowledge.manage')) {
+    return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+  }
   const body = (await request.json().catch(() => ({}))) as Body;
 
   if (url.pathname === '/api/state/specialists') {
@@ -705,9 +710,18 @@ export async function handleRepo(
     const problem = keyProblem(body.key);
     if (problem) return badRequest(cors, problem);
     const ok = await withTenant(env, id.businessId, (tx) =>
-      confirmFact(tx, id.businessId, String(body.key), id.userId),
+      confirmFact(tx, id.businessId, String(body.key), id.userId,
+        typeof body.version === 'number' ? body.version : undefined),
     );
-    if (!ok) return json({ ok: false, err: 'no live fact for that key' }, { status: 404 }, cors);
+    if (!ok) {
+      const exists = await withTenant(env, id.businessId, async (tx) => {
+        const [row] = await tx`select 1 from business_fact where business_id = ${id.businessId}
+          and key = ${String(body.key)} and (live or pending) limit 1`;
+        return Boolean(row);
+      });
+      return json({ ok: false, err: exists ? 'This fact changed. Refresh and review it again.' : 'no live fact for that key' },
+        { status: exists ? 409 : 404 }, cors);
+    }
     return noContent(cors);
   }
 
@@ -722,10 +736,13 @@ export async function handleRepo(
       if (problem) return badRequest(cors, problem);
     }
     const confirmed = await withTenant(env, id.businessId, async (tx) => {
-      for (const key of keys) {
+      for (const key of keys.sort()) {
+        await tx`select pg_advisory_xact_lock(hashtextextended(${`fact:${id.businessId}:${key}`}, 0))`;
         const [current] = await tx<{ found: number }[]>`
           select 1 as found from business_fact
-           where business_id = ${id.businessId} and key = ${key} and live`;
+           where business_id = ${id.businessId} and key = ${key} and live
+             and not exists (select 1 from business_fact p where p.business_id = ${id.businessId}
+               and p.key = ${key} and p.pending)`;
         if (!current) return false;
       }
       for (const key of keys) await confirmFact(tx, id.businessId, key, id.userId);
@@ -741,7 +758,7 @@ export async function handleRepo(
     const problem = keyProblem(body.key);
     if (problem) return badRequest(cors, problem);
     const ok = await withTenant(env, id.businessId, (tx) =>
-      forgetFact(tx, id.businessId, String(body.key)),
+      forgetFact(tx, id.businessId, String(body.key), typeof body.version === 'number' ? body.version : undefined),
     );
     if (!ok) return json({ ok: false, err: 'no live fact for that key' }, { status: 404 }, cors);
     return noContent(cors);
