@@ -953,6 +953,7 @@ describe('RunnerClient approval boundary', () => {
       `data: ${JSON.stringify({ type: 'iteration', current: 0, total: 20 })}`,
       `data: ${JSON.stringify({ type: 'iteration', current: 12, total: 20 })}`,
       `data: ${JSON.stringify({ type: 'iteration', current: 21, total: 20 })}`,
+      `data: ${JSON.stringify({ type: 'context.compressing', text: 'private context' })}`,
       `data: ${JSON.stringify({ type: 'done' })}`,
       '',
     ].join('\n\n');
@@ -964,11 +965,14 @@ describe('RunnerClient approval boundary', () => {
       }),
     });
     const iterations: Array<[number, number]> = [];
+    const progress: string[] = [];
     await expect(client.stream('task-1', {
       onDelta: async () => {},
       onIteration: async (current, total) => { iterations.push([current, total]); },
+      onProgress: async label => { progress.push(label); },
     })).resolves.toBeNull();
     expect(iterations).toEqual([[12, 20]]);
+    expect(progress).toEqual(['Shortening conversation context before continuing…']);
   });
 
   it('returns a bounded approval event immediately and ignores forged shapes', async () => {

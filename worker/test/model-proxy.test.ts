@@ -166,6 +166,29 @@ describe('model proxy route', () => {
     expect(big.status).toBe(413);
   });
 
+  it('accepts a current image larger than the old 1 MB cap without altering it', async () => {
+    const { fetcher, seen } = stubUpstream();
+    const image = 'data:image/png;base64,' + 'A'.repeat(1_100_000);
+    const response = await callModel('POST', `${RUNTIME_PROXY_PATH}/chat/completions`, proxyEnv(), {
+      token: await derivedKey(),
+      body: { model: 'test', messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: image } }] }] },
+      options: { upstreamFetch: fetcher },
+    });
+    expect(response.status).toBe(200);
+    expect(JSON.parse(String(seen[0].init.body)).messages[0].content[0].image_url.url).toBe(image);
+  });
+
+  it('keeps the 8 MB hard limit even for image requests', async () => {
+    const { fetcher, seen } = stubUpstream();
+    const response = await callModel('POST', `${RUNTIME_PROXY_PATH}/chat/completions`, proxyEnv(), {
+      token: await derivedKey(),
+      body: { model: 'test', messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'A'.repeat(8 * 1024 * 1024) } }] }] },
+      options: { upstreamFetch: fetcher },
+    });
+    expect(response.status).toBe(413);
+    expect(seen).toHaveLength(0);
+  });
+
   it('rejects a request from a rider whose monthly spend ceiling is exhausted', async () => {
     const env = proxyEnv();
     await spendMicrousd(5_000_000); /* the signed $5 monthly ceiling */

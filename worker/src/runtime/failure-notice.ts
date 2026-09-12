@@ -21,11 +21,14 @@ export type FailureKind =
   | 'capped'
   | 'provider_quota'
   | 'context_limit'
+  | 'payload_limit'
   | 'provider_unavailable'
   | 'model_auth'
   | 'generic';
 
 export const FAILURE_NOTICES: Record<Exclude<FailureKind, 'capped'>, string> = {
+  payload_limit:
+    '⚠️ The image or conversation data was too large to send to the AI model. Try a smaller image or start a new chat. Any saved files remain available.',
   provider_quota:
     '⚠️ The AI model provider has hit its own usage limit for now. This is on our ' +
     'side, not your credits. Please try again in a few minutes.',
@@ -56,6 +59,7 @@ export function classifyRunFailure(detail: unknown): FailureKind {
   const text = typeof detail === 'string' ? detail : detail == null ? '' : JSON.stringify(detail);
   if (!text) return 'generic';
   if (CAPPED.test(text)) return 'capped';
+  if (/payload too large|model request body.*(?:too large|limit)|model context is too large/i.test(text)) return 'payload_limit';
   if (CONTEXT_LIMIT.test(text)) return 'context_limit';
   if (PROVIDER_QUOTA.test(text)) return 'provider_quota';
   if (MODEL_AUTH.test(text)) return 'model_auth';

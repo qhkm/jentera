@@ -2048,6 +2048,10 @@ class SafeDeltaStreams {
       this.emitThinking(stream, event.text);
       return;
     }
+    if (event?.event === 'context.compressing') {
+      this.emitEvent(stream, { type: 'context.compressing', seq: stream.nextSeq++ });
+      return;
+    }
     if (event?.event === 'iteration.started' &&
         Number.isSafeInteger(event.iteration) &&
         Number.isSafeInteger(event.max_iterations) &&

@@ -367,6 +367,10 @@ export class RunnerClient {
             await handlers.onToolEvent?.(event);
             continue;
           }
+          if (event.type === 'context.compressing') {
+            await handlers.onProgress?.('Shortening conversation context before continuing…');
+            continue;
+          }
           if (event.type === 'iteration') {
             await handlers.onIteration?.(event.current, event.total);
             continue;
@@ -440,6 +444,7 @@ type SafeStreamEvent = (
   | { type: 'delta'; delta: string }
   | RunnerToolEvent
   | { type: 'iteration'; current: number; total: number }
+  | { type: 'context.compressing' }
   | { type: 'thinking'; text: string }
   | RunnerApprovalRequest
   | { type: 'heartbeat' }
@@ -481,6 +486,7 @@ function safeStreamEvent(frame: string): SafeStreamEvent | null {
 
 function shapedStreamEvent(event: Record<string, unknown>): SafeStreamEvent | null {
   if (event.type === 'heartbeat') return { type: 'heartbeat' };
+  if (event.type === 'context.compressing') return { type: 'context.compressing' };
   if (event.type === 'done') return { type: 'done' };
   if (event.type === 'iteration' && Number.isSafeInteger(event.current) &&
       Number.isSafeInteger(event.total) && Number(event.current) >= 1 &&

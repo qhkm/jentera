@@ -113,6 +113,8 @@ test('narrowly updates the reviewed vulnerable dependencies and verifies the loc
   assert.ok(apiServer.includes('"event": "iteration.started",'));
   assert.ok(apiServer.includes('step_callback=step_callback,'));
   assert.ok(apiServer.includes('step_callback=_step_cb,'));
+  assert.ok(apiServer.includes('agent._compress_context = _compress_with_progress'));
+  assert.ok(apiServer.includes('event_cb("context.compressing")'));
   const bootstrap = await readFile(join(root, 'agent/process_bootstrap.py'), 'utf8');
   const runAgent = await readFile(join(root, 'run_agent.py'), 'utf8');
   for (const source of [bootstrap, runAgent]) {

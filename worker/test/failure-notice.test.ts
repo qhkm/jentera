@@ -24,6 +24,7 @@ describe('what the owner is told when a run fails', () => {
     expect(classifyRunFailure('HTTP 401: Missing Authentication header')).toBe('model_auth');
     expect(classifyRunFailure('run vanished (Hermes returned not_found)')).toBe('generic');
     expect(classifyRunFailure('')).toBe('generic');
+    expect(classifyRunFailure('Request payload too large: max compression attempts (3) reached.')).toBe('payload_limit');
   });
 
   it("keeps the business's own credit cap distinct from the provider's quota", () => {

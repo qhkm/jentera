@@ -30,6 +30,7 @@
    ============================================================ */
 
 import type { Env } from '../env';
+import { prepareModelPayload, readModelBody } from '../model-payload';
 import {
   JenteraKeyError,
   JenteraKeyUnavailableError,
@@ -45,6 +46,7 @@ import { runtimeModelBaseAllowed } from '../runtime/execution';
 import { connect } from '../db';
 
 const MAX_BODY_BYTES = 1024 * 1024;
+const MAX_IMAGE_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_RELAY_BODY_BYTES = 8 * 1024 * 1024;
 const UPSTREAM_TIMEOUT_MS = 5 * 60 * 1000;
 /** 1 USD-cent = 10,000 micro-USD. */
@@ -102,14 +104,17 @@ export async function handleModelProxy(
     return jsonError(429, 'monthly model budget exhausted', headers, 429, 'budget_exceeded');
   }
 
-  const raw = await request.text();
-  if (raw.length > MAX_BODY_BYTES) return jsonError(413, 'model request body is too large', headers);
+  const raw = await readModelBody(request, MAX_IMAGE_BODY_BYTES);
+  if (raw === null) return jsonError(413, 'model request body exceeds the 8 MB input limit', headers);
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(raw) as Record<string, unknown>;
   } catch {
     return jsonError(400, 'model request body is not valid JSON', headers);
   }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return jsonError(400, 'model request body must be an object', headers);
+  const prepared = prepareModelPayload(parsed);
+  parsed = prepared.body;
   if (typeof parsed.model !== 'string' || !parsed.model) {
     return jsonError(400, 'model request body has no model', headers);
   }
@@ -137,7 +142,11 @@ export async function handleModelProxy(
   /* Serialise once: the same bytes go upstream and are measured, so
      request_bytes is what was actually sent, injection included. */
   const outboundBody = JSON.stringify(parsed);
-  const shape = promptShape(parsed, outboundBody.length);
+  const outboundBytes = new TextEncoder().encode(outboundBody).byteLength;
+  if (outboundBytes > (prepared.hasImage ? MAX_IMAGE_BODY_BYTES : MAX_BODY_BYTES)) {
+    return jsonError(413, 'model context is too large; start a new chat or read smaller file sections', headers);
+  }
+  const shape = promptShape(parsed, outboundBytes);
   const startedAt = Date.now();
   const keepAlive = (promise: Promise<unknown>): void => {
     if (options.waitUntil) options.waitUntil(promise);

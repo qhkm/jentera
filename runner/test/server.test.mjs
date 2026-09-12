@@ -56,6 +56,7 @@ beforeEach(async () => {
     { event: 'message.delta', delta: 'Hello' },
     { event: 'reasoning.available', text: 'private chain of thought' },
     { event: 'iteration.started', iteration: 12, max_iterations: 20 },
+    { event: 'context.compressing', text: 'private prompt must not cross' },
     { event: 'tool.started', tool: 'execute_code', preview: 'import urllib.request' },
     { event: 'tool.completed', tool: 'execute_code', duration: 1.25, error: false },
     { event: 'message.delta', delta: ' from Hermes' },
@@ -491,6 +492,8 @@ test('streams Hermes-visible assistant, tool, and bounded thinking events withou
   assert.match(stream, /"type":"thinking"/);
   assert.match(stream, /"text":"private chain of thought"/);
   assert.match(stream, /"type":"iteration"/);
+  assert.match(stream, /"type":"context.compressing"/);
+  assert.doesNotMatch(stream, /private prompt must not cross/);
   assert.match(stream, /"current":12,"total":20/);
   assert.doesNotMatch(
     stream,

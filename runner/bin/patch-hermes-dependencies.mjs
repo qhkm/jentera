@@ -210,6 +210,7 @@ if (!apiServer.includes(routingMarker) ||
     !apiServer.includes('result.get("last_reasoning")') ||
     !apiServer.includes('**({"reasoning": reasoning} if reasoning else {}),') ||
     !apiServer.includes(iterationMarker) ||
+    !apiServer.includes('agent._compress_context = _compress_with_progress') ||
     !apiServer.includes('step_callback=_step_cb,') ||
     !apiServer.includes('"event": "iteration.started",')) {
   throw new Error('Hermes API server is missing a reviewed Jentera patch');
@@ -409,6 +410,23 @@ async function patchApiServer() {
       activeAgentAnchor.trimEnd(),
     ].join('\n') + '\n';
     source = replaceReviewedAnchor(source, activeAgentAnchor, activeAgentPatch);
+  }
+  const compressionMarker = '# Jentera: expose context compression without prompt contents.';
+  if (!source.includes(compressionMarker)) {
+    source = replaceReviewedAnchor(source, '            if event_type == "iteration.started":', [
+      '            if event_type == "context.compressing":',
+      '                _push({"event": "context.compressing", "run_id": run_id, "timestamp": ts})',
+      '            elif event_type == "iteration.started":',
+    ].join('\n'));
+    source = replaceReviewedAnchor(source, '                agent_ref["agent"] = agent', [
+      `                ${compressionMarker}`,
+      '                _original_compress = agent._compress_context',
+      '                def _compress_with_progress(*args, **kwargs):',
+      '                    event_cb("context.compressing")',
+      '                    return _original_compress(*args, **kwargs)',
+      '                agent._compress_context = _compress_with_progress',
+      '                agent_ref["agent"] = agent',
+    ].join('\n'));
   }
   await writeFile(apiServerPath, source, { mode: 0o644 });
 }
