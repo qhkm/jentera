@@ -11,6 +11,7 @@ import type { Tone } from '@/lib/types';
 import RunTrace from './RunTrace';
 import { RuntimeApprovalCard } from '@/components/RuntimeApprovalCard';
 import { useActivity } from '@/hooks/useActivity';
+import { TaskCoordination } from '@/components/TaskCoordination';
 
 const STATUS: Record<string, { label: string; tone: Tone }> = {
   queued: { label: 'task.queued', tone: 'neutral' },
@@ -125,6 +126,7 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk, 
       ) : (
         <>
           {result.summaryOnly && <Card><p>{t('task.sharedReviewNote')}</p></Card>}
+          {!reviewOnly && !result.summaryOnly && <TaskCoordination key={runId} runId={runId} live={result.pending} />}
           <div className="task-status-bar" role="status">
             <span><StatusIcon size={21} aria-hidden="true" /><strong>{t(status?.label ?? 'task.unknown')}</strong></span>
             <Tag tone={status?.tone ?? 'neutral'}>{t('task.card.label')}</Tag>

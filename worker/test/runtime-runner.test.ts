@@ -1170,6 +1170,8 @@ describe('live progress to the web chat', () => {
       { type: 'delta', delta: '@' },
       { type: 'delta', delta: 'step: Checking the opening hours\n' },
       { type: 'tool.started', tool: 'web_search', preview: 'opening hours' },
+      { type: 'tool.started', tool: 'delegate_task', seq: 9, preview: 'Bounded research assignment' },
+      { type: 'tool.completed', tool: 'delegate_task', seq: 10, duration: 1, error: false },
       { type: 'delta', delta: 'We are ' },
       { type: 'delta', delta: 'open on Sunday.' },
     ].map((event) => `data: ${JSON.stringify(event)}`).join('\n\n') + '\n\n';
@@ -1227,6 +1229,10 @@ describe('live progress to the web chat', () => {
     expect(trace.find((event) => event.type === 'agent.tool')).toMatchObject({
       payload: { tool: 'web_search', detail: expect.stringContaining('web_search') },
     });
+    expect(trace.filter(event => event.type === 'agent.delegation').map(event => event.payload)).toEqual([
+      { taskId: task.id, streamSeq: 9, stage: 'requested' },
+      { taskId: task.id, streamSeq: 10, stage: 'returned' },
+    ]);
   });
 });
 

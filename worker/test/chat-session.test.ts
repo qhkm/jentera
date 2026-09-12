@@ -5,6 +5,8 @@ import { recordArtifact } from '../src/artifacts';
 import { ensureChatSession, runVisibleTo } from '../src/chat-sessions';
 import { notifyOwnersWorkNeedsYou } from '../src/notifications/work';
 import { finishRun, recordWork, startRun } from '../src/runs';
+import { recordDelegation, runCoordination } from '../src/coordination';
+import { enqueueRuntimeTask } from '../src/runtime/tasks';
 import { asOwner, asTenant, jsonOf, req, signIn, testEnv, truncateAll } from './harness';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -44,6 +46,38 @@ beforeEach(async () => {
   staff = users[1].id;
   cookieOwner = await signIn(owner);
   cookieStaff = await signIn(staff);
+});
+
+it('keeps coordination private and records only deduplicated tool evidence', async () => {
+  const runId = await finishedRun(staff, CHAT);
+  await asTenant(A, async tx => {
+    const task = await enqueueRuntimeTask(tx, A, { kind: 'run', runId, dedupeKey: `coord:${runId}`,
+      payload: { profile: 'operations', profileName: 'Operations', instructions: 'PRIVATE INSTRUCTIONS' } });
+    const event = { type: 'tool.started' as const, tool: 'delegate_task', seq: 4, preview: 'PRIVATE PROMPT' };
+    await recordDelegation(tx, A, runId, task.id, event);
+    await recordDelegation(tx, A, runId, task.id, event);
+    await recordDelegation(tx, A, runId, task.id, { type: 'tool.completed', tool: 'delegate_task', seq: 5, error: false, duration: 2 });
+    await recordDelegation(tx, A, runId, task.id, { type: 'tool.completed', tool: 'delegate_task', seq: 6, error: true, duration: 2 });
+    await recordDelegation(tx, A, runId, task.id, { ...event, tool: 'web_search', seq: 7 });
+    await recordDelegation(tx, A, runId, task.id, { ...event, seq: undefined });
+  });
+  expect((await get(`/api/runs/${runId}/coordination`, cookieOwner)).status).toBe(404);
+  const response = await get(`/api/runs/${runId}/coordination`, cookieStaff);
+  expect(response.status).toBe(200);
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+  const body = await jsonOf<{ assignment: { role: string }; events: { stage: string }[] }>(response);
+  expect(body.assignment.role).toBe('Operations');
+  expect(body.events.map(e => e.stage)).toEqual(['requested', 'returned', 'failed']);
+  // RLS remains the boundary even when a caller supplies another tenant's IDs.
+  expect(await asTenant(P1, tx => runCoordination(tx, A, runId))).toEqual({ assignment: null, events: [] });
+  expect(JSON.stringify(body)).not.toMatch(/PRIVATE|streamSeq|taskId/);
+  expect((await get(`/api/runs/${P1}/coordination`, cookieStaff)).status).toBe(404);
+});
+
+it('does not manufacture a coordinator or handoffs for non-runtime work', async () => {
+  const runId = await finishedRun(owner, null);
+  const data = await asTenant(A, tx => runCoordination(tx, A, runId));
+  expect(data).toEqual({ assignment: null, events: [] });
 });
 
 /** A finished run with a work record, so the task page has something to show. */

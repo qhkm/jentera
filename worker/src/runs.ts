@@ -48,6 +48,7 @@ export const EVENTS = [
      the reply was work, not conversation. `detail` is the line the chat
      showed for it, kept so the receipt can be rebuilt after a reload. */
   'agent.tool',
+  'agent.delegation',
   /* One of the agent's own `@step:` lines, as shown. Narration, not proof
      of anything: `runSteps` reads these back for the chat's receipt. */
   'agent.step',

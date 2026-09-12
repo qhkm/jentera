@@ -45,6 +45,7 @@ try {
       if (path === '/api/me') body = { ok: true, userId: 'demo-owner', detailLevel: 'simple', features: {} };
       else if (path === '/api/state') body = { ok: true, snapshot };
       else if (path === '/api/runs/activity') body = { ok: true, work, counters: { completed: 1, needsApproval: 1, minutesSaved: 0, failed: 0 } };
+      else if (path.endsWith('/coordination')) body = { ok: true, assignment: null, events: [] };
       else if (path === `/api/runs/${runId}`) body = { ok: true, runId, objective: work[0].objective, status: 'completed', pending: false,
         text: 'Three options, compared from the quotes you shared.\n\nSupplier A — RM 0.42 per box. Minimum 500. Delivery in 3–5 days.\nSupplier B — RM 0.38 per box. Minimum 1,000. Delivery in 7 days.\nSupplier C — RM 0.48 per box. Minimum 200. Delivery in 2 days.\n\nFor a small first order, Supplier C has the lowest minimum. Confirm delivery charges and request a sample before ordering.',
         artifacts: [{ id: 'demo-report', name: 'supplier-comparison.csv', mimeType: 'text/csv', size: 428 }] };

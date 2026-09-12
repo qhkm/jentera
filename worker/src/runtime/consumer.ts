@@ -91,6 +91,7 @@ import { boundedAgentInput, prepareHermesAgent, retrieveHermesContext } from '..
 import { modelForResponseMode, responseModeFor } from './response-mode';
 import { sanitizePublicRuntimeText } from './public-output';
 import { listSpecialists, specialistForTurn } from '../specialists';
+import { recordDelegation } from '../coordination';
 import { notifyOwnersApprovalRequested, notifyOwnersWorkNeedsYou } from '../notifications/work';
 import {
   cancelRoutineRuntimeOccurrence,
@@ -613,7 +614,7 @@ export async function handleRuntimeQueueMessage(
         payload: {
           input: boundedAgentInput(prepared.input),
           instructions: prepared.instructions,
-          ...(specialist ? { profile: specialist.profile } : {}),
+          ...(specialist ? { profile: specialist.profile, profileName: specialist.name } : {}),
           sessionId: telegramSessionId,
           objective: `Help ${message.incoming.from} on Telegram`,
           function: 'assistant',
@@ -1347,6 +1348,12 @@ export async function handleRuntimeMessage(
               ? async (event) => {
                   if (event.type !== 'tool.started' && event.type !== 'tool.completed') {
                     return;
+                  }
+                  if (event.tool === 'delegate_task' && lease.task.runId) {
+                    const runId = lease.task.runId;
+                    await withTenant(env, message.businessId, tx =>
+                      recordDelegation(tx, message.businessId, runId, message.taskId, event))
+                      .catch(() => undefined);
                   }
                   if (event.type === 'tool.started') {
                     currentActivity = statusLine(event.tool).replace(/_/g, ' ');

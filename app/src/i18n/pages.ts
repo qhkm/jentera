@@ -14,6 +14,18 @@ import type { Lang } from '@/lib/types';
 
 export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
   en: {
+    'handoff.title': 'Who’s working on this',
+    'handoff.coordinator': 'Chief of Staff',
+    'handoff.specialist': 'Specialist',
+    'handoff.assigned': 'Assigned to {role}.',
+    'handoff.history': 'Recorded handoffs',
+    'handoff.count': '{n} events',
+    'handoff.requested': 'Specialist assistance requested',
+    'handoff.returned': 'Delegation returned to the lead role',
+    'handoff.failed': 'Delegation reported an error',
+    'handoff.evidence': 'Recorded delegation events. The runtime does not supply destination-role names. A return is not proof the task succeeded.',
+    'handoff.none': 'No delegation events recorded. Assignment alone is not a handoff.',
+    'handoff.unavailable': 'Role activity is unavailable right now.',
     'notifications.title': 'Notifications',
     'notifications.short': 'Alerts',
     'notifications.intro': 'Scheduled work, results and decisions that need your attention.',
@@ -878,6 +890,18 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
   },
 
   bm: {
+    'handoff.title': 'Siapa yang mengendalikan tugas ini',
+    'handoff.coordinator': 'Ketua Staf',
+    'handoff.specialist': 'Pakar',
+    'handoff.assigned': 'Ditugaskan kepada {role}.',
+    'handoff.history': 'Penyerahan tugas yang direkodkan',
+    'handoff.count': '{n} peristiwa',
+    'handoff.requested': 'Bantuan pakar diminta',
+    'handoff.returned': 'Delegasi kembali kepada peranan utama',
+    'handoff.failed': 'Delegasi melaporkan ralat',
+    'handoff.evidence': 'Peristiwa delegasi yang direkodkan. Sistem tidak memberikan nama peranan penerima. Kepulangan bukan bukti tugas berjaya.',
+    'handoff.none': 'Tiada peristiwa delegasi direkodkan. Penugasan sahaja bukan penyerahan tugas.',
+    'handoff.unavailable': 'Aktiviti peranan tidak tersedia sekarang.',
     'notifications.title': 'Notifikasi',
     'notifications.short': 'Makluman',
     'notifications.intro': 'Kerja berjadual, hasil dan keputusan yang memerlukan perhatian anda.',

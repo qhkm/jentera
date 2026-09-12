@@ -1,3 +1,12 @@
+.task-coordination { margin-block: 12px; padding: 12px 14px; border: 1px solid var(--rail); border-radius: 12px; font-size: 13px; overflow-wrap: anywhere; }
+.task-coordination summary { cursor: pointer; min-height: 28px; }
+.task-coordination summary:focus-visible { outline: 2px solid var(--accent-green); outline-offset: 4px; }
+.task-coordination summary span { color: var(--text-secondary); }
+.task-coordination p { margin: 10px 0 0; font-size: 12px; }
+.task-coordination ol { list-style: none; margin: 12px 0; padding-left: 12px; border-left: 2px solid var(--rail); }
+.task-coordination li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; padding-block: 7px; }
+.task-coordination time { color: var(--text-muted); font-size: 11px; }
+
 /* One compact bridge from a conversation to the actual work record. */
 .chat-task-card {
   display: flex;

@@ -447,8 +447,8 @@ type SafeStreamEvent = (
 ) & { seq?: number };
 
 export type RunnerToolEvent =
-  | { type: 'tool.started'; tool: string; preview?: string }
-  | { type: 'tool.completed'; tool: string; duration: number; error: boolean };
+  (| { type: 'tool.started'; tool: string; preview?: string }
+  | { type: 'tool.completed'; tool: string; duration: number; error: boolean }) & { seq?: number };
 
 export interface RunnerApprovalRequest {
   type: 'approval';

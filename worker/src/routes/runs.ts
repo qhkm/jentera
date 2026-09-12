@@ -52,6 +52,7 @@ import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
 import { modelForResponseMode, responseModeFor } from '../runtime/response-mode';
 import type { ResponseMode } from '../runtime/response-mode';
 import { listSpecialists, specialistForTurn } from '../specialists';
+import { runCoordination } from '../coordination';
 import { ensureChatSession, isChatSessionId, isWorkspaceMember, runVisibleTo } from '../chat-sessions';
 import { answerText } from '../runtime/answer-text';
 
@@ -505,6 +506,15 @@ export async function handleRuns(
     return json({ ok: settled, ...(!settled ? { err: 'This task is no longer waiting on you. Refresh to check its status.' } : {}) }, { status: settled ? 200 : 409 }, cors);
   }
 
+  const coordination = url.pathname.match(/^\/api\/runs\/([0-9a-f-]{36})\/coordination$/i);
+  if (coordination && request.method === 'GET') {
+    const data = await withTenant(env, id.businessId, async tx =>
+      await runVisibleTo(tx, id.businessId, coordination[1], id.userId)
+        ? runCoordination(tx, id.businessId, coordination[1]) : null);
+    return json(data ? { ok: true, ...data } : { ok: false, err: 'run not found' },
+      { status: data ? 200 : 404 }, { ...cors, 'Cache-Control': 'private, no-store' });
+  }
+
   const status = url.pathname.match(/^\/api\/runs\/([0-9a-f-]{36})$/i);
   if (status && request.method === 'GET') {
     const privateHeaders = { ...cors, 'Cache-Control': 'private, no-store' };
@@ -727,7 +737,7 @@ async function startDurableAsk(
       payload: {
         input: boundedAgentInput(prepared.input),
         instructions: prepared.instructions,
-        ...(specialist ? { profile: specialist.profile } : {}),
+        ...(specialist ? { profile: specialist.profile, profileName: specialist.name } : {}),
         sessionId: sessionId ?? run.id,
         objective: question,
         function: 'ask',

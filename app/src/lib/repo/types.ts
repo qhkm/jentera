@@ -227,6 +227,11 @@ export interface BusinessBrowserState {
 }
 
 /** Read-only projection of the existing tenant-scoped run endpoint. */
+export interface RunCoordination {
+  assignment: { role: string | null; kind: 'specialist' | 'coordinator' } | null;
+  events: { id: number; stage: 'requested' | 'returned' | 'failed'; at: string }[];
+}
+
 export interface RunResult {
   summaryOnly?: boolean;
   objective?: string;
@@ -369,6 +374,7 @@ export interface Repository {
   detailLevel(): Promise<'beginner' | 'advanced'>;
   setDetailLevel(level: 'beginner' | 'advanced'): Promise<void>;
   /** The append-only trace of one run, newest last. */
+  runCoordination?(runId: string): Promise<RunCoordination>;
   runTrace(runId: string): Promise<TraceEvent[]>;
   runResult(runId: string): Promise<RunResult>;
   taskReviewSummary?(runId: string): Promise<RunResult>;
