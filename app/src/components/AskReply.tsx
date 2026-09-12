@@ -3,20 +3,37 @@ import { RuntimeApprovalCard } from './RuntimeApprovalCard';
 import { renderReplyMarkdown } from '@/lib/reply-markdown';
 import { ArrowUpRight, Check, Copy, Info, WarningCircle } from '@phosphor-icons/react';
 import { JenteraMark } from '@/components/JenteraMark';
-import { TypingBubble } from '@/components/WorkSignal';
+import { ElapsedSince, TypingBubble } from '@/components/WorkSignal';
 import { ArtifactList } from '@/components/ArtifactList';
 import { useToast } from '@/components/Toast';
-import { useT } from '@/i18n/I18nProvider';
+import { useT, useI18n } from '@/i18n/I18nProvider';
+import { displayTaskStep, displayWorkspacePaths } from '@/lib/task-presentation';
 import type { AskMessage } from '@/hooks/useAsk';
 import { ChatTaskCard } from '@/components/ChatTaskCard';
 import { isRunId } from '@/lib/task';
 import { TaskCoordination } from './TaskCoordination';
 import { useRepository, type Artifact } from '@/lib/repo';
-import { TaskProgress } from '@/components/TaskProgress';
 
-/** A bounded activity summary; tool starts do not prove successful completion. */
+/** The agent's steps and tool calls as a list: done ones ticked, the
+    current one moving with the seconds since the message was sent. */
 function StepsList({ steps, live, since }: { steps: string[]; live: boolean; since?: number }) {
-  return <TaskProgress steps={steps} live={live} since={since} />;
+  const { lang } = useI18n();
+  return (
+    <ol className="ask-steps" aria-label="Steps">
+      {steps.map((step, index) => {
+        const current = live && index === steps.length - 1;
+        return (
+          <li key={`${index}-${step}`} aria-current={current ? 'step' : undefined}>
+            {current
+              ? <span className="ask-step-dot" aria-hidden="true" />
+              : <Check size={13} aria-hidden="true" className="ask-step-done" />}
+            <span className="ask-step-label">{displayTaskStep(step, lang)}</span>
+            {current && <ElapsedSince since={since} />}
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
 
 export function AskReply({
@@ -51,7 +68,7 @@ export function AskReply({
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(message.text);
+      await navigator.clipboard.writeText(displayWorkspacePaths(message.text));
       setCopied(true);
       toast(t('ask.reply.copied'));
     } catch {
@@ -90,7 +107,7 @@ export function AskReply({
           ? (
             <>
               {message.text && message.state !== 'needs_approval'
-                ? <div className="ask-reply-text">{renderReplyMarkdown(message.text)}</div>
+                ? <div className="ask-reply-text">{renderReplyMarkdown(displayWorkspacePaths(message.text))}</div>
                 : null}
               <RuntimeApprovalCard approvalId={message.approvalId} />
             </>
@@ -99,7 +116,7 @@ export function AskReply({
           ? (
             <>
               <div className="ask-reply-text" aria-live="polite">
-                {renderReplyMarkdown(message.text)}
+                {renderReplyMarkdown(displayWorkspacePaths(message.text))}
               </div>
               {message.steps?.length
                 ? <StepsList steps={message.steps} live={Boolean(message.liveStatus)} since={message.startedAt} />
@@ -110,7 +127,7 @@ export function AskReply({
                 )}
             </>
           )
-          : linkedTask && !message.steps?.length
+          : linkedTask
             ? <p className="sr-only" role="status">{message.text}</p>
             : message.steps?.length
               ? (
@@ -123,15 +140,9 @@ export function AskReply({
       ) : (
         <>
           <div className="ask-reply-text" role={failed ? 'alert' : undefined}>
-            {renderReplyMarkdown(message.text)}
+            {renderReplyMarkdown(displayWorkspacePaths(message.text))}
           </div>
           {files.length > 0 && <ArtifactList artifacts={files} inlineImages label={t('ask.files')} className="mt-3" />}
-          {failed && message.steps && message.steps.length > 0 && (
-            <details className="ask-reply-source ask-reply-steps">
-              <summary>{t('ask.steps.title')} · {t('ask.steps.count', { n: message.steps.length })}</summary>
-              <TaskProgress steps={message.steps} live={false} receipt />
-            </details>
-          )}
           {failed && linkedTask ? (
             <p className="task-recovery-note">{t('task.checkBeforeRetry')}</p>
           ) : failed ? (
@@ -156,7 +167,7 @@ export function AskReply({
                     <Info size={15} aria-hidden="true" />
                     {t('ask.steps.title')} · {t('ask.steps.count', { n: message.steps.length })}
                   </summary>
-                  <TaskProgress steps={message.steps} live={false} receipt />
+                  <StepsList steps={message.steps} live={false} />
                 </details>
               )}
               {message.grounded !== undefined && (

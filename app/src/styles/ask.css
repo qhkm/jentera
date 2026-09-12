@@ -514,22 +514,6 @@ button.ask-context-link:hover {
   margin-left: auto;
 }
 /* The agent's steps: a quiet list, done ones ticked, the current one moving. */
-.task-progress { margin-top: 14px; padding: 16px; border: 1px solid var(--rail); border-radius: 16px; background: var(--bg-card); font-size: 13px; }
-.task-progress > header { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
-.task-progress > header strong { font-size: 15px; }
-.task-progress > header span, .task-progress-time, .task-progress-privacy { color: var(--text-secondary); font-size: 12px; }
-.task-progress-activities { display: flex; flex-direction: column; gap: 12px; list-style: none; padding: 0; margin: 0; }
-.task-progress-activities li { display: flex; gap: 10px; align-items: baseline; color: var(--text-secondary); }
-.task-progress-activities li[aria-current] { color: var(--text); }
-.task-progress-activities small { margin-left: auto; color: var(--text-secondary); }
-.task-progress-dot { width: 6px; height: 6px; flex-shrink: 0; background: var(--text-secondary); border-radius: 50%; }
-.task-progress-time { display: flex; gap: 6px; margin-top: 12px; }
-.task-progress details { margin-top: 14px; border-top: 1px solid var(--rail); padding-top: 12px; }
-.task-progress summary { cursor: pointer; color: var(--text-secondary); }
-.task-progress summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-.task-progress-privacy { margin: 8px 0; }
-.task-progress-technical { padding-left: 22px; max-height: 220px; overflow: auto; overflow-wrap: anywhere; color: var(--text-secondary); font-size: 12px; }
-.task-progress-technical li { padding: 3px 0; }
 .ask-steps {
   display: flex;
   flex-direction: column;

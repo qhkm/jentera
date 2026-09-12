@@ -114,6 +114,12 @@ describe('AskReply: the waiting bubble keeps moving', () => {
 });
 
 describe('AskReply: the agent\'s steps', () => {
+  it('keeps login values in older command traces hidden after restoring the list', async () => {
+    const { container } = mount({ from: 'ai', text: 'Working', pendingId: 'p', state: 'working', steps: ['process: "submit proc_old private-login-value"'] });
+    expect(await screen.findByText('Checking task progress')).toBeInTheDocument();
+    expect(container.textContent).not.toContain('private-login-value');
+    expect(container.querySelector('.task-progress')).toBeNull();
+  });
   /* "@step:" lines used to replace one label, and once leaked into the reply
      as text. They are the agent narrating its work, so they read as a list:
      done steps ticked, the current one moving, and the whole list kept as a
@@ -124,14 +130,13 @@ describe('AskReply: the agent\'s steps', () => {
       startedAt: Date.now() - 2_000,
       steps: ['Searching for today\'s headlines', '🌐 web_extract: "https://www.malaymail.com/"'],
     });
-    await waitFor(() => expect(container.querySelector('.task-progress')).not.toBeNull());
-    const items = Array.from(container.querySelectorAll('.task-progress-activities li'));
+    await waitFor(() => expect(container.querySelector('.ask-steps')).not.toBeNull());
+    const items = Array.from(container.querySelectorAll('.ask-steps li'));
     expect(items.map((li) => li.textContent)).toEqual(
       expect.arrayContaining([expect.stringContaining('Working through the task'), expect.stringContaining('Reading information')]),
     );
     expect(items.at(-1)?.getAttribute('aria-current')).toBe('step');
     expect(items[0].getAttribute('aria-current')).toBeNull();
-    expect(container.querySelector('.task-progress details')).not.toHaveAttribute('open');
   });
 
   it('keeps the steps as a collapsed receipt under the finished answer', async () => {
