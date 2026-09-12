@@ -8,9 +8,9 @@
 
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { access, copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { access, copyFile, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { createServer, request as httpRequest } from 'node:http';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createBusinessBrowser, BrowserProblem } from './business-browser.mjs';
 
@@ -804,6 +804,20 @@ export function createRunner(input) {
           await state.put(body.taskId, admission);
           terminations.arm(admission);
 
+          /* The task's own folder for files the owner should receive; the
+             instruction points the model at it. A folder that cannot be made
+             leaves the instruction out rather than promising what cannot land. */
+          let outputsDir = null;
+          try {
+            outputsDir = outputsDirFor(config.outputsRoot ?? OUTPUTS_ROOT_DEFAULT, body.taskId);
+            await mkdir(outputsDir, { recursive: true, mode: 0o700 });
+          } catch {
+            outputsDir = null;
+          }
+          const instructions = outputsDir
+            ? `${body.instructions ? `${body.instructions}\n\n` : ''}${outputsInstruction(outputsDir)}`
+            : body.instructions;
+
           let started;
           try {
             started = await hermes(config, '/v1/runs', {
@@ -812,7 +826,7 @@ export function createRunner(input) {
               body: JSON.stringify({
                 input: body.input,
                 session_id: body.sessionId,
-                instructions: body.instructions,
+                instructions,
                 model: body.model ?? (responseMode === 'quick'
                   ? config.modelName
                   : config.deepModelName),
@@ -964,7 +978,7 @@ export function createRunner(input) {
           }
           return json(res, 502, { ok: false, error: 'Hermes status failed' });
         }
-        const observed = await persistObservedStatus(state, saved, result);
+        const observed = await persistObservedStatus(state, saved, result, { config });
         return json(res, 200, { ok: true, taskId: saved.taskId, ...observed });
       }
 
@@ -1009,7 +1023,7 @@ export function createRunner(input) {
         if (stopStatus !== 'stopping' && !TERMINAL.has(stopStatus)) {
           return json(res, 502, { ok: false, error: 'Hermes returned an invalid stop outcome' });
         }
-        const observed = await persistObservedStatus(state, saved, result);
+        const observed = await persistObservedStatus(state, saved, result, { config });
         return json(res, 200, { ok: true, taskId: saved.taskId, ...observed });
       }
 
@@ -1067,6 +1081,7 @@ export function configFromEnv(env = process.env) {
     configUrl: env.AISAR_CONFIG_URL,
     configKey: env.AISAR_CONFIG_KEY ?? env.OPENROUTER_API_KEY,
     configLkgFile: env.AISAR_CONFIG_LKG ?? '/home/sprite/aisar/config.lkg.json',
+    outputsRoot: env.AISAR_OUTPUTS_DIR ?? OUTPUTS_ROOT_DEFAULT,
     hermesEnvFile: env.AISAR_HERMES_DOTENV ?? '/home/sprite/.hermes/.env',
     hermesConfigFile: env.AISAR_HERMES_CONFIG ?? '/home/sprite/.hermes/config.yaml',
     hermesProfilesDir: env.AISAR_HERMES_PROFILES ?? '/home/sprite/.hermes/profiles',
@@ -1177,7 +1192,7 @@ async function activeTask(config, state, terminations, now = Date.now()) {
     }
     const current = await responseJson(response);
     if (typeof current?.status === 'string') {
-      const observed = await persistObservedStatus(state, saved, current);
+      const observed = await persistObservedStatus(state, saved, current, { config });
       if (!TERMINAL.has(observed.status)) {
         return { ...saved, status: observed.status, startedAt: saved.startedAt ?? null };
       }
@@ -1421,6 +1436,14 @@ function boundedTaskStatus(result) {
   if (typeof result.reasoning === 'string' && result.reasoning) {
     out.reasoning = result.reasoning.slice(0, 48_000);
   }
+  /* Files delivered to the worker for this task, names and sizes only. */
+  if (Array.isArray(result.artifacts)) {
+    out.artifacts = result.artifacts.slice(0, 20).map((file) => ({
+      name: String(file?.name ?? '').slice(0, 120),
+      size: Number.isSafeInteger(file?.size) ? file.size : 0,
+      contentType: String(file?.contentType ?? '').slice(0, 120),
+    }));
+  }
   for (const key of Object.keys(result)) {
     if (/^(created|started|finished|completed|updated)(_at)?$/i.test(key)) {
       const value = result[key];
@@ -1434,15 +1457,31 @@ function boundedTaskStatus(result) {
 /** Persist only the bounded terminal presentation. Hermes reaps completed run
     records independently of Jentera Queue redelivery; the task row is the
     durable bridge that keeps a finished answer recoverable after that 404. */
-async function persistObservedStatus(state, saved, result) {
+async function persistObservedStatus(state, saved, result, deps = {}) {
   /* A terminal record is frozen: once a run is completed, failed, or
      quarantined, a later Hermes 200 must never resurrect it as running
      (Hermes can keep answering for a run whose slot was already judged
      dead). Serve the frozen snapshot. */
   const already = savedTerminalStatus(saved);
   if (already) return already;
-  const observed = boundedTaskStatus(result);
+  let observed = boundedTaskStatus(result);
   const status = typeof observed.status === 'string' ? observed.status : 'unknown';
+  if (TERMINAL.has(status) && deps.config) {
+    /* Files the agent saved for the owner go to the worker now, so the
+       first "completed" the control plane sees already carries them. Any
+       other ending just clears the folder. */
+    if (status === 'completed') {
+      const delivered = await deliverOutputs(deps.config, saved.taskId, deps.fetch);
+      if (delivered) {
+        observed = {
+          ...observed,
+          artifacts: delivered.uploaded.map(({ name, size, contentType }) => ({ name, size, contentType })),
+        };
+      }
+    } else {
+      await discardOutputs(deps.config, saved.taskId);
+    }
+  }
   await state.put(saved.taskId, {
     ...saved,
     status,
@@ -2305,6 +2344,164 @@ function approvalToolName(event) {
 function hermesActiveRunCount(body) {
   const count = body?.readiness?.checks?.background_queues?.active_api_runs;
   return Number.isSafeInteger(count) && count >= 0 ? count : null;
+}
+
+/* ---------- task outputs: files the agent hands the owner ---------------
+   Each task gets its own folder. The instruction appended to the Hermes run
+   tells the model to save deliverables there; when Hermes reports the run
+   complete, the runner uploads every file to the worker (which stores it
+   under the tenant and attaches it to the run) and then clears the folder.
+   The upload happens before the task is reported complete, so a finished
+   run already knows its files. Nothing here can name a tenant: the worker
+   resolves it from the runtime credential and the task id. */
+export const OUTPUTS_ROOT_DEFAULT = '/home/sprite/aisar/outputs';
+export const OUTPUT_LIMITS = Object.freeze({
+  maxFiles: 20,
+  maxFileBytes: 20 * 1024 * 1024,
+  maxTotalBytes: 60 * 1024 * 1024,
+});
+const OUTPUT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/;
+const TASK_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CONTENT_TYPES = Object.freeze({
+  md: 'text/markdown', markdown: 'text/markdown', txt: 'text/plain', csv: 'text/csv',
+  json: 'application/json', pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg',
+  jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', svg: 'image/svg+xml',
+  html: 'text/html', htm: 'text/html', xml: 'application/xml', yaml: 'application/yaml',
+  yml: 'application/yaml', ics: 'text/calendar', zip: 'application/zip',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  xls: 'application/vnd.ms-excel',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  doc: 'application/msword',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+});
+
+export function outputsDirFor(root, taskId) {
+  if (typeof taskId !== 'string' || !TASK_ID.test(taskId)) throw new Error('task id must be a uuid');
+  return join(root, taskId);
+}
+
+export function outputsInstruction(dir) {
+  return `Files for the owner: if the owner should receive a file (a report, a spreadsheet, a document, an image), save it in ${dir} with a plain file name (letters, digits, dot, dash, underscore; up to 20 files of 20 MB). Everything in that folder is attached to your reply when you finish, so do not paste the file's contents into the reply; say what the file is.`;
+}
+
+export function contentTypeFor(name) {
+  const text = String(name);
+  const dot = text.lastIndexOf('.');
+  if (dot <= 0) return 'application/octet-stream';
+  return CONTENT_TYPES[text.slice(dot + 1).toLowerCase()] ?? 'application/octet-stream';
+}
+
+/** Regular files with plain names, by name; nothing hidden, nested, linked,
+    empty or oversize, and no more than the caps allow. */
+export async function collectOutputs(dir, limits = OUTPUT_LIMITS) {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const candidates = entries
+    .filter((entry) => entry.isFile() && !entry.isSymbolicLink() && OUTPUT_NAME.test(entry.name))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const files = [];
+  let total = 0;
+  for (const entry of candidates) {
+    if (files.length >= limits.maxFiles) break;
+    const path = join(dir, entry.name);
+    const info = await lstat(path).catch(() => null);
+    if (!info?.isFile()) continue;
+    if (info.size === 0 || info.size > limits.maxFileBytes) continue;
+    if (total + info.size > limits.maxTotalBytes) break;
+    total += info.size;
+    files.push({ name: entry.name, path, size: info.size, contentType: contentTypeFor(entry.name) });
+  }
+  return files;
+}
+
+/** One POST per file to the worker, with the runtime credential the config
+    channel already uses. Bounded per file and overall so a slow upload can
+    never hold the task slot for long; what did not land is reported. */
+export async function uploadOutputs({
+  configUrl, configKey, taskId, files, fetch: fetchImpl = fetch, timeoutMs = 15_000, budgetMs = 40_000,
+}) {
+  if (!configUrl || !configKey) return { uploaded: [], failed: [], skipped: 'not-configured' };
+  const endpoint = new URL('/v1/runtime/artifacts', configUrl).href;
+  const deadline = Date.now() + budgetMs;
+  const uploaded = [];
+  const failed = [];
+  for (const file of files) {
+    if (Date.now() > deadline) {
+      failed.push({ name: file.name, error: 'upload budget exhausted' });
+      continue;
+    }
+    try {
+      const body = await readFile(file.path);
+      const response = await fetchImpl(endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${configKey}`,
+          'X-Aisar-Task-Id': taskId,
+          'X-Aisar-Artifact-Name': file.name,
+          'Content-Type': file.contentType,
+          'Content-Length': String(body.byteLength),
+        },
+        body,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!response.ok) {
+        failed.push({ name: file.name, error: `http-${response.status}` });
+        continue;
+      }
+      const result = await response.json().catch(() => ({}));
+      uploaded.push({
+        name: file.name, size: file.size, contentType: file.contentType,
+        id: typeof result?.artifact?.id === 'string' ? result.artifact.id : null,
+      });
+    } catch (error) {
+      failed.push({ name: file.name, error: String(error?.message ?? error) });
+    }
+  }
+  return { uploaded, failed };
+}
+
+async function discardOutputs(config, taskId) {
+  try {
+    await rm(outputsDirFor(config.outputsRoot ?? OUTPUTS_ROOT_DEFAULT, taskId), { recursive: true, force: true });
+  } catch {
+    /* A folder left behind is untidy, not a fault. */
+  }
+}
+
+const deliveringOutputs = new Map();
+/** Collect, upload and clear a completed task's folder, once, even if two
+    status polls observe completion at the same time. */
+function deliverOutputs(config, taskId, fetchImpl) {
+  if (!deliveringOutputs.has(taskId)) {
+    deliveringOutputs.set(taskId, (async () => {
+      try {
+        const dir = outputsDirFor(config.outputsRoot ?? OUTPUTS_ROOT_DEFAULT, taskId);
+        const files = await collectOutputs(dir);
+        if (files.length === 0) return null;
+        const result = await uploadOutputs({
+          configUrl: config.configUrl, configKey: config.configKey, taskId, files, fetch: fetchImpl,
+        });
+        for (const miss of result.failed ?? []) {
+          console.error(`[outputs] task=${taskId} file=${miss.name} not delivered: ${miss.error}`);
+        }
+        return {
+          uploaded: result.uploaded ?? [],
+          failed: (result.failed ?? []).map((miss) => miss.name),
+        };
+      } catch (error) {
+        console.error(`[outputs] task=${taskId} ${String(error?.message ?? error)}`);
+        return null;
+      } finally {
+        await discardOutputs(config, taskId);
+        deliveringOutputs.delete(taskId);
+      }
+    })());
+  }
+  return deliveringOutputs.get(taskId);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
