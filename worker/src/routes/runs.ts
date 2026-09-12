@@ -49,7 +49,7 @@ import { artifactsForRun } from '../artifacts';
 import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
 import { modelForResponseMode, responseModeFor } from '../runtime/response-mode';
 import type { ResponseMode } from '../runtime/response-mode';
-import { listSpecialists, specialistProfileForRequest } from '../specialists';
+import { listSpecialists, specialistForTurn } from '../specialists';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -522,11 +522,11 @@ async function startDurableAsk(
 
   /* Same retrieval and the same agent prompt as a Telegram message, so a
      question gets one answer regardless of where the owner typed it. */
-  const { facts, work, specialists } = await withTenant(env, businessId, async (tx) => {
+  const { facts, work, specialist } = await withTenant(env, businessId, async (tx) => {
     const context = await retrieveHermesContext(tx, question);
-    return { ...context, specialists: await listSpecialists(tx, { enabledOnly: true }) };
+    const specialists = await listSpecialists(tx, { enabledOnly: true });
+    return { ...context, specialist: await specialistForTurn(tx, businessId, sessionId, question, specialists) };
   });
-  const specialist = specialistProfileForRequest(question, specialists);
   const prepared = prepareHermesAgent(question, facts, work, new Date(), specialist);
   /* Quick by default, as on Telegram; the toggle or a typed /deep opts in
      to the research loop. Chat was hard-wired to deep until 2026-09-10 and

@@ -89,3 +89,53 @@ export function specialistRunInstructions(specialist: SpecialistDefinition): str
     `If the request materially crosses another domain, state the dependency plainly without ` +
     `pretending it was completed.`;
 }
+
+/** How long a chat keeps the specialist that last answered in it. Hermes
+    keeps each profile's conversation in its own store, so a turn that lands
+    on a different specialist cannot see the turns before it: on 2026-09-12
+    "yes run the test run" reached the Chief of Staff, who had never seen the
+    digest request the Growth specialist had just scheduled. A Telegram chat
+    is one session for life, so the window is what lets it re-route once a
+    thread has gone quiet. */
+export const STICKY_SPECIALIST_WINDOW_MS = 6 * 60 * 60 * 1000;
+
+/** The profile that answered the most recent turn of this session inside
+    the window: a profile key for a specialist, `null` for the Chief of
+    Staff, `undefined` when there is no such turn. */
+export async function previousProfileInSession(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  sessionId: string,
+  now = new Date(),
+): Promise<string | null | undefined> {
+  const since = new Date(now.getTime() - STICKY_SPECIALIST_WINDOW_MS);
+  const [row] = await tx<{ profile: string | null }[]>`
+    select t.payload->>'profile' as profile
+      from run r join runtime_task t on t.run_id = r.id and t.business_id = r.business_id
+     where r.business_id = ${businessId} and r.trigger_ref->>'sessionId' = ${sessionId}
+       and r.created_at > ${since}
+     order by r.created_at desc limit 1`;
+  if (!row) return undefined;
+  return row.profile ?? null;
+}
+
+/** Who answers this turn: the specialist that answered the previous turn of
+    the same chat, so the conversation stays in one memory; otherwise, and
+    for a chat that has gone quiet, the request is scored on its own. */
+export async function specialistForTurn(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  sessionId: string | undefined,
+  input: string,
+  specialists: readonly SpecialistDefinition[],
+): Promise<SpecialistDefinition | undefined> {
+  if (sessionId) {
+    const previous = await previousProfileInSession(tx, businessId, sessionId);
+    if (previous === null) return undefined;
+    if (previous) {
+      const same = specialists.find((specialist) => specialist.enabled && specialist.profile === previous);
+      if (same) return same;
+    }
+  }
+  return specialistProfileForRequest(input, specialists);
+}

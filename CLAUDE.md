@@ -177,6 +177,15 @@ fails. A request to the public hostname is not a substitute: it is not
 reliably routed (error 522 from IAD), and `request.cf.colo` names the
 ingress edge, not where the code ran.
 
+A turn is answered by the specialist that answered the previous turn of the
+same chat, for six hours after it (`specialistForTurn` in `specialists.ts`);
+only a fresh or quiet chat is scored on its own words. Hermes keeps each
+profile's conversation in its own store on the sprite, so a turn routed to a
+different specialist cannot see the turns before it — which is how "yes run
+the test run" reached a Chief of Staff who had never seen the digest request
+Growth had just scheduled. The Telegram session is one for life, so the
+window is what lets it re-route once a thread has gone quiet.
+
 `docs/reply-latency.md` is where reply time and channel parity live: the
 path a message takes, what Telegram and app chat share, dated measurements
 and the levers tried. `worker/scripts/reply-latency.sh` reproduces its

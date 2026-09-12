@@ -171,6 +171,49 @@ describe('Ask Jentera runtime bridge', () => {
     expect(row.payload.instructions).toContain('do not expose internal profile names');
   });
 
+  it('keeps a follow-up in the same chat with the specialist that answered the previous turn', async () => {
+    await readyRuntime(A);
+    await asTenant(A, (tx) => tx`
+      insert into specialist_profile (business_id, profile_key, name, description) values
+        (${A}, 'customers', 'Customer communications', 'Customer complaints, enquiries, replies and bookings'),
+        (${A}, 'growth', 'Growth and marketing', 'Research, campaigns, content, sales and retention')`);
+    const env = durableEnv(vi.fn(async () => {}));
+    const ask = (question: string, sessionId: string) => call('POST', '/api/runs/ask', env, cookieA, {
+      question, requestId: crypto.randomUUID(), mode: 'work', sessionId,
+    });
+    const first = await ask('Draft a reply to this customer complaint', 'one-thread');
+    /* Scored on its own this goes to growth; in the same chat it follows
+       the turn before it, so the specialist that holds the context answers. */
+    const second = await ask('Now plan a marketing campaign around that research', 'one-thread');
+    const fresh = await ask('Now plan a marketing campaign around that research', 'another-thread');
+    expect([first.status, second.status, fresh.status]).toEqual([202, 202, 202]);
+    const [a, b, c] = await Promise.all([first, second, fresh].map((r) => r.json() as Promise<{ runId: string }>));
+    const rows = await asOwner((sql) => sql<{ run_id: string; profile: string | null }[]>`
+      select run_id, payload->>'profile' as profile from runtime_task
+       where run_id in ${sql([a.runId, b.runId, c.runId])}`);
+    const byRun = new Map(rows.map((row) => [row.run_id, row.profile]));
+    expect(byRun.get(a.runId)).toBe('customers');
+    expect(byRun.get(b.runId)).toBe('customers');
+    expect(byRun.get(c.runId)).toBe('growth');
+  });
+
+  it('keeps a chat the Chief of Staff opened with the Chief of Staff', async () => {
+    await readyRuntime(A);
+    await asTenant(A, (tx) => tx`
+      insert into specialist_profile (business_id, profile_key, name, description) values
+        (${A}, 'growth', 'Growth and marketing', 'Research, campaigns, content, sales and retention')`);
+    const env = durableEnv(vi.fn(async () => {}));
+    const ask = (question: string) => call('POST', '/api/runs/ask', env, cookieA, {
+      question, requestId: crypto.randomUUID(), mode: 'work', sessionId: 'general-thread',
+    });
+    const first = await ask('What should I focus on tomorrow?');
+    const second = await ask('Plan a marketing campaign for that');
+    const [a, b] = await Promise.all([first, second].map((r) => r.json() as Promise<{ runId: string }>));
+    const rows = await asOwner((sql) => sql<{ run_id: string; profile: string | null }[]>`
+      select run_id, payload->>'profile' as profile from runtime_task where run_id in ${sql([a.runId, b.runId])}`);
+    expect(rows.map((row) => row.profile)).toEqual([null, null]);
+  });
+
   it('reuses the same run for simultaneous-safe request retries', async () => {
     await readyRuntime(A);
     const send = sendFake();

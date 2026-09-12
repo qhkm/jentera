@@ -90,7 +90,7 @@ import { runtimeReady } from './execution';
 import { boundedAgentInput, prepareHermesAgent, retrieveHermesContext } from '../ask';
 import { modelForResponseMode, responseModeFor } from './response-mode';
 import { sanitizePublicRuntimeText } from './public-output';
-import { listSpecialists, specialistProfileForRequest } from '../specialists';
+import { listSpecialists, specialistForTurn } from '../specialists';
 import {
   cancelRoutineRuntimeOccurrence,
   finishRoutineRuntimeOccurrence,
@@ -571,7 +571,11 @@ export async function handleRuntimeQueueMessage(
         return live;
       }).catch(() => null);
       const { facts, work } = await retrieveHermesContext(tx, message.incoming.text);
-      const specialist = specialistProfileForRequest(
+      const telegramSessionId = `telegram:${message.businessId}:${message.incoming.chatId}`;
+      const specialist = await specialistForTurn(
+        tx,
+        message.businessId,
+        telegramSessionId,
         message.incoming.text,
         await listSpecialists(tx, { enabledOnly: true }),
       );
@@ -591,7 +595,7 @@ export async function handleRuntimeQueueMessage(
           messageId: message.incoming.messageId,
           from: message.incoming.from,
           question: message.incoming.text,
-          sessionId: `telegram:${message.businessId}:${message.incoming.chatId}`,
+          sessionId: telegramSessionId,
         },
         runtime: 'hermes-sprite',
         model,
@@ -609,7 +613,7 @@ export async function handleRuntimeQueueMessage(
           input: boundedAgentInput(prepared.input),
           instructions: prepared.instructions,
           ...(specialist ? { profile: specialist.profile } : {}),
-          sessionId: `telegram:${message.businessId}:${message.incoming.chatId}`,
+          sessionId: telegramSessionId,
           objective: `Help ${message.incoming.from} on Telegram`,
           function: 'assistant',
           channel: 'telegram',
