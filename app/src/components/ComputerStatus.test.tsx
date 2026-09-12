@@ -9,14 +9,32 @@ import { computerStatus } from '@/lib/computer-status';
 import { ComputerStatus } from './ComputerStatus';
 
 const ready: RuntimeSummary = { status: 'ready', desiredRelease: 'v1', observedRelease: 'v1', lastReadyAt: '2026-09-12T00:00:00Z', lastError: null };
-function mount(read: () => Promise<RuntimeOverview>, signedIn = true, onOpenChat = vi.fn()) {
+function mount(read: () => Promise<RuntimeOverview>, signedIn = true, onOpenChat = vi.fn(), mobileTarget?: HTMLElement) {
   const repo = Object.assign(new LocalRepository(), { runtimeStatus: read });
   return render(<MemoryRouter><SignedInProvider value={signedIn}><RepositoryProvider repository={repo}>
-    <I18nProvider><ComputerStatus onOpenChat={onOpenChat} onOpenKnowledge={vi.fn()} /></I18nProvider>
+    <I18nProvider><ComputerStatus mobileTarget={mobileTarget} onOpenChat={onOpenChat} onOpenKnowledge={vi.fn()} /></I18nProvider>
   </RepositoryProvider></SignedInProvider></MemoryRouter>);
 }
 afterEach(() => vi.useRealTimers());
 describe('computer readiness', () => {
+  it('shares one status poll with the mobile header and supports disclosure dismissal', async () => {
+    const target = document.createElement('div'); document.body.append(target);
+    const read = vi.fn().mockResolvedValue({ runtime: ready });
+    const view = mount(read, true, vi.fn(), target);
+    try {
+      const user = userEvent.setup();
+      const button = await screen.findByRole('button', { name: 'Jentera’s computer · Ready for work' });
+      expect(view.container.querySelector('.computer-status')).toHaveClass('computer-status-mobile-hidden');
+      await user.click(button);
+      expect(button).toHaveAttribute('aria-expanded', 'true');
+      await user.keyboard('{Escape}');
+      expect(button).toHaveFocus();
+      expect(button).toHaveAttribute('aria-expanded', 'false');
+      await user.click(button); await user.click(document.body);
+      expect(button).toHaveAttribute('aria-expanded', 'false');
+      expect(read).toHaveBeenCalledOnce();
+    } finally { view.unmount(); target.remove(); }
+  });
   it.each([
     [{ runtime: null }, 'missing'],
     [{ runtime: null, setupStatus: 'queued' }, 'settingUp'],

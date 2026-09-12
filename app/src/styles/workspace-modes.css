@@ -86,6 +86,22 @@
 .computer-status-copy p { margin: 6px 0 0; font-size: 12px; line-height: 1.6; color: var(--text-secondary); }
 .computer-status-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .computer-status-compact { padding: 10px 14px; align-items: center; }
+.computer-status-header-slot { display: none; }
+.computer-status-disclosure { position: relative; }
+.computer-status-trigger { position: relative; display: grid; place-items: center; width: 36px; height: 40px; color: var(--text-secondary); border-radius: 10px; }
+.computer-status-trigger:focus-visible { outline: 2px solid var(--accent-green); }
+.computer-status-dot { position: absolute; right: 5px; bottom: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+.computer-status-trigger:is([data-state="ready"], [data-state="busy"]) .computer-status-dot { background: var(--accent-green); }
+.computer-status-trigger:is([data-state="attention"], [data-state="missing"], [data-state="unknown"], [data-state="unavailable"]) .computer-status-dot { background: var(--color-amber-500, #d99b26); }
+.computer-status-popover { position: fixed; top: 64px; right: 12px; width: min(340px, calc(100vw - 24px)); max-height: calc(100dvh - 80px); overflow-y: auto; padding: 16px; border: 1px solid var(--rail); border-radius: 14px; background: var(--bg-card); box-shadow: 0 12px 32px rgb(0 0 0 / 0.18); z-index: 100; }
+.computer-status-popover > svg { display: none; }
+.computer-status-popover .computer-status-actions:not(:empty) { margin-top: 12px; }
+@media (max-width: 767px) {
+  .computer-status-header-slot { display: block; }
+  .computer-status-mobile-hidden { display: none; }
+  .workspace-shell .shell-mode-navigation { position: static; transform: none; margin-left: auto; }
+  .workspace-shell .workspace-mode-switch > button { padding-inline: 7px; gap: 4px; }
+}
 .workspace-chat .dashboard-content { display: flex; flex-direction: column; }
 .workspace-chat .computer-status { margin: 8px 12px; }
 .workspace-chat .workspace-chat-panel { flex: 1; height: auto; min-height: 0; }

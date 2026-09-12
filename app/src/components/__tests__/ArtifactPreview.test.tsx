@@ -43,6 +43,23 @@ describe('ArtifactPreview', () => {
     expect(download).toHaveAttribute('download', 'tech-digest.md');
   });
 
+  it('renders the marketing calendar Markdown as a table, preserving surrounding text', async () => {
+    mount(file(), new Blob(['## Week 1\n\n| Day | Platform | Post |\n|---|---|---|\n| Mon 14 | LinkedIn | **Bio update** |\n| Tue 15 | Facebook | Workshop story |\n\nCaption W1-A']));
+    const table = await screen.findByRole('table');
+    expect(within(table).getAllByRole('columnheader').map(c => c.textContent)).toEqual(['Day', 'Platform', 'Post']);
+    expect(within(table).getAllByRole('row')).toHaveLength(3);
+    expect(table.querySelector('strong')).toHaveTextContent('Bio update');
+    expect(screen.getByText('Caption W1-A')).toBeInTheDocument();
+    expect(table.parentElement).toHaveAttribute('tabindex', '0');
+  });
+
+  it('does not interpret headings or tables inside a Markdown code fence', async () => {
+    mount(file(), new Blob(['```md\n# Example\n| A | B |\n| --- | --- |\n| 1 | 2 |\n```']));
+    expect(await screen.findByText(/# Example/)).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument();
+  });
+
   it('lays a CSV out as a table', async () => {
     mount(file({ id: 'a2', name: 'sales.csv', contentType: 'text/csv' }), new Blob(['product,qty\n"Nasi lemak, large",12\nTeh tarik,30\n']));
     const table = await screen.findByRole('table');

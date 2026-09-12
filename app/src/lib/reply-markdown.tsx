@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
  * Answers arrive as plain strings and were shown as plain strings, so a reply
  * containing `**Two ways to use it:**` and a fenced code block displayed its
  * asterisks and backticks. This renders the handful of marks that carry
- * meaning — bold, inline code, fenced code, and lists — and nothing else.
+ * meaning — bold, inline code, fenced code, lists, and pipe tables.
  *
  * It builds React nodes and never HTML. There is no `dangerouslySetInnerHTML`
  * here and there must not be one: an answer is model output, and since
@@ -61,6 +61,21 @@ function listLabel(line: string): string {
   return line.replace(/^\s*([-*]|\d+\.)\s+/, '');
 }
 
+/** Split unescaped pipes, allowing optional outer pipes and literal \| in cells. */
+function tableCells(line: string): string[] {
+  const cells: string[] = [];
+  let cell = '';
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '\\' && ['|', '\\'].includes(line[i + 1])) cell += line[++i];
+    else if (line[i] === '|') { cells.push(cell.trim()); cell = ''; }
+    else cell += line[i];
+  }
+  cells.push(cell.trim());
+  if (cells.length > 1 && cells[0] === '') cells.shift();
+  if (cells.length > 1 && cells[cells.length - 1] === '') cells.pop();
+  return cells;
+}
+
 /** Split on fenced blocks first: nothing inside a fence is interpreted. */
 export function renderReplyMarkdown(text: string): ReactNode[] {
   const out: ReactNode[] = [];
@@ -106,16 +121,43 @@ export function renderReplyMarkdown(text: string): ReactNode[] {
       listBuffer = [];
     };
 
-    lines.forEach((line, lineIndex) => {
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const line = lines[lineIndex];
       const key = `p-${partIndex}-${lineIndex}`;
+      const headers = tableCells(line);
+      const separators = tableCells(lines[lineIndex + 1] ?? '');
+      if (line.includes('|') && headers.length === separators.length &&
+          separators.every(cell => /^:?-{3,}:?$/.test(cell))) {
+        flushText(`t-${key}`);
+        flushList(`l-${key}`);
+        const rows: string[][] = [];
+        lineIndex += 2;
+        while (lineIndex < lines.length && lines[lineIndex].includes('|') && lines[lineIndex].trim()) {
+          rows.push(tableCells(lines[lineIndex++]));
+        }
+        lineIndex--;
+        const alignments = separators.map(cell => cell.endsWith(':')
+          ? cell.startsWith(':') ? 'center' : 'right' : 'left');
+        out.push(<div key={`table-${key}`} className="reply-table-scroll" tabIndex={0}>
+          <table className="reply-table">
+            <thead><tr>{headers.map((cell, c) => <th key={c} scope="col" style={{ textAlign: alignments[c] }}>
+              {renderInline(cell, `${key}-head-${c}`)}
+            </th>)}</tr></thead>
+            <tbody>{rows.map((row, r) => <tr key={r}>{headers.map((_, c) =>
+              <td key={c} style={{ textAlign: alignments[c] }}>{renderInline(row[c] ?? '', `${key}-${r}-${c}`)}</td>,
+            )}</tr>)}</tbody>
+          </table>
+        </div>);
+        continue;
+      }
       if (isListLine(line)) {
         flushText(`t-${key}`);
         listBuffer.push(line);
-        return;
+        continue;
       }
       flushList(`l-${key}`);
       buffer.push(line);
-    });
+    }
     flushText(`t-end-${partIndex}`);
     flushList(`l-end-${partIndex}`);
   });

@@ -37,6 +37,7 @@ export function Shell({
   suffix,
   actions,
   navigation,
+  accountAccessory,
   onMenu,
   menuBadge = 0,
   fullBleed = false,
@@ -47,6 +48,7 @@ export function Shell({
   actions?: ReactNode;
   /** Workspace-level navigation, separate from page actions and account settings. */
   navigation?: ReactNode;
+  accountAccessory?: ReactNode;
   /** Supplied by the dashboard to open the mobile drawer. */
   onMenu?: () => void;
   menuBadge?: number;
@@ -113,6 +115,7 @@ export function Shell({
 
           <div className="flex items-center gap-3">
             {actions ? <div className="hidden items-center gap-2 md:flex">{actions}</div> : null}
+            {accountAccessory}
             <AccountMenu
               onSignOut={() => void signOut()}
               leaving={leaving}

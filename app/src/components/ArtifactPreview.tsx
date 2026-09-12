@@ -12,12 +12,15 @@ import { renderReplyMarkdown } from '@/lib/reply-markdown';
 function renderMarkdownDocument(text: string): ReactNode[] {
   const out: ReactNode[] = [];
   let buffer: string[] = [];
+  let fenced = false;
   const flush = () => {
     const chunk = buffer.join('\n').trim();
     if (chunk) out.push(<div key={`p-${out.length}`}>{renderReplyMarkdown(chunk)}</div>);
     buffer = [];
   };
   for (const line of text.split('\n')) {
+    if (line.startsWith('```')) fenced = !fenced;
+    if (fenced || line.startsWith('```')) { buffer.push(line); continue; }
     const heading = /^(#{1,3})\s+(.+?)\s*#*\s*$/.exec(line);
     if (heading) {
       flush();

@@ -43,6 +43,32 @@ describe('the marks the agent actually writes', () => {
     expect(pre?.textContent).toBe('**not bold** and `not code`');
     expect(screen.getByTestId('body').querySelector('strong')).toBeNull();
   });
+
+  it('supports table alignment, optional outer pipes, escaped pipes and short rows', () => {
+    show('Name | Qty | Note\n:--- | ---: | :---:\n**Tea** | 12 | `hot`\\|cold\nCoffee | 3');
+    const table = screen.getByRole('table');
+    expect(table.querySelectorAll('th')).toHaveLength(3);
+    expect(table.querySelectorAll('td')).toHaveLength(6);
+    expect(table.querySelectorAll('th')[1]).toHaveStyle({ textAlign: 'right' });
+    expect(table.querySelectorAll('th')[2]).toHaveStyle({ textAlign: 'center' });
+    expect(table.querySelector('strong')).toHaveTextContent('Tea');
+    expect(table.querySelector('code')).toHaveTextContent('hot');
+    expect(table).toHaveTextContent('hot|cold');
+    expect(table.querySelectorAll('td')[5]).toHaveTextContent('');
+  });
+
+  it('leaves malformed table separators and ordinary pipes as text', () => {
+    show('a | b\n-- | ---\n1 | 2\n\nleft | right');
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getByTestId('body')).toHaveTextContent('left | right');
+  });
+
+  it('keeps HTML and links inert inside table cells', () => {
+    show('| A | B |\n| --- | --- |\n| <img src=x onerror=alert(1)> | [click](https://evil.example) |');
+    const table = screen.getByRole('table');
+    expect(table.querySelector('img, a')).toBeNull();
+    expect(table).toHaveTextContent('<img src=x onerror=alert(1)>');
+  });
 });
 
 describe('what a stranger writing through the model cannot do', () => {
