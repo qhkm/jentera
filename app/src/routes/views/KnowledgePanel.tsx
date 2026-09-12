@@ -13,6 +13,7 @@
    ============================================================ */
 
 import { useState } from 'react';
+import { renderSourceLink } from '@/lib/reply-markdown';
 import { Button, Card, Eyebrow, Input, LoadingState, Tag } from '@/components/ui';
 import { useMutate, useRefresh, useRepository, useSnapshot } from '@/lib/repo';
 import type { Fact } from '@/lib/repo/types';
@@ -118,7 +119,7 @@ function FactRow({ fact, canManage }: { fact: Fact; canManage: boolean }) {
       </div>
 
       {fact.pending && <p className="text-sm text-text-secondary">{t('knowledge.currentValue', { value: show(fact.currentValue) })}</p>}
-      {fact.sourceRef && <p className="text-xs text-text-secondary">{t('knowledge.source', { source: fact.sourceRef })}</p>}
+      {fact.sourceRef && <p className="text-xs text-text-secondary">{t('knowledge.source', { source: '' })}{renderSourceLink(fact.sourceRef)}</p>}
       {editing && canManage ? (
         <div className="flex flex-wrap items-center gap-2">
           <Input

@@ -25,6 +25,16 @@ function mount(over: Partial<Repository> = {}) {
 beforeEach(() => { localStorage.clear(); localStorage.setItem('aisar-lang', 'en'); });
 
 describe('learning from a document', () => {
+  it('opens website provenance as a safe external link', async () => {
+    const local = new LocalRepository();
+    await local.setFact({ key: 'business.about', value: 'Workshops', source: 'agent', sourceRef: 'https://example.com/about' });
+    mount();
+    const link = await screen.findByRole('link', { name: 'https://example.com/about' });
+    expect(link).toHaveAttribute('href', 'https://example.com/about');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
   it('staff can read facts without import, edit, confirm, or memory controls', async () => {
     const local = new LocalRepository();
     await local.setFact({ key: 'service.price', value: 'RM 100', source: 'owner' });

@@ -8,6 +8,7 @@ import { onboardingCopy } from '@/lib/onboarding-copy';
 import * as store from '@/lib/storage';
 import type { IngestResult } from '@/lib/repo/types';
 import { useNavigate } from 'react-router';
+import { renderSourceLink } from '@/lib/reply-markdown';
 
 type Finding = { key: string; value: string; source: string; selected: boolean; original: string };
 
@@ -113,7 +114,7 @@ export default function BusinessOnboarding() {
       <div className="onboarding-findings">{findings.map((f, i) => <article key={f.key} className="onboarding-finding">
         <label className="onboarding-finding-label"><input type="checkbox" checked={f.selected} disabled={busy} onChange={e => setFindings(current => current.map((item, index) => index === i ? { ...item, selected: e.target.checked } : item))} />{fieldLabel(f.key)}</label>
         <textarea aria-label={fieldLabel(f.key)} value={f.value} disabled={busy} onChange={e => setFindings(current => current.map((item, index) => index === i ? { ...item, value: e.target.value } : item))} />
-        <small>{c.source}: {f.source}</small>
+        <small>{c.source}: {renderSourceLink(f.source)}</small>
       </article>)}</div>
       <p className="text-text-secondary">{c.consent}</p>
       <Button disabled={busy || !findings.some(f => f.selected && f.value.trim())} onClick={() => void confirm()}>{busy ? c.saving : c.confirm}</Button>

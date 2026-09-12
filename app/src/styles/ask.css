@@ -464,8 +464,8 @@ button.ask-context-link:hover {
   color: var(--text-muted);
   overflow-wrap: anywhere;
 }
-.ask-reply-text .reply-link { color: var(--accent-green); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
-.ask-reply-text .reply-link:focus-visible { outline: 2px solid var(--accent-green); outline-offset: 3px; border-radius: 3px; }
+.reply-link { color: var(--accent-green); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.reply-link:focus-visible { outline: 2px solid var(--accent-green); outline-offset: 3px; border-radius: 3px; }
 .ask-reply > footer {
   display: flex;
   align-items: flex-start;

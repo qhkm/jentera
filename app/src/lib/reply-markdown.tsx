@@ -22,6 +22,11 @@ import type { ReactNode } from 'react';
 
 const FENCE = /^```[^\n]*\n([\s\S]*?)```$/;
 
+/** Source metadata is a literal URL or filename, not model-authored Markdown. */
+export function renderSourceLink(source: string): ReactNode {
+  return /^https?:\/\//i.test(source) ? renderLink(null, source, 'source') : source;
+}
+
 function renderLink(label: string | null, raw: string, key: string): ReactNode {
   let url: URL;
   try {
@@ -35,9 +40,9 @@ function renderLink(label: string | null, raw: string, key: string): ReactNode {
 }
 
 /** Inline marks, applied left to right: `code`, **bold**, [text](url). */
-function renderInline(text: string, keyPrefix: string): ReactNode[] {
+function renderInline(text: string, keyPrefix: string, references: Map<string, string> = new Map()): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const pattern = /`([^`]+)`|\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^\s()]*(?:\([^\s()]*\)[^\s()]*)*)\)|https?:\/\/[^\s<>"`]+/gi;
+  const pattern = /`([^`]+)`|\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^\s()]*(?:\([^\s()]*\)[^\s()]*)*)\)|\[([^\]]+)\](?:\[([^\]]*)\])?|https?:\/\/[^\s<>"`]+/gi;
   let last = 0;
   let match: RegExpExecArray | null;
   let index = 0;
@@ -48,9 +53,12 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
     if (match[1] !== undefined) {
       nodes.push(<code key={key} className="reply-code">{match[1]}</code>);
     } else if (match[2] !== undefined) {
-      nodes.push(<strong key={key}>{match[2]}</strong>);
+      nodes.push(<strong key={key}>{renderInline(match[2], key, references)}</strong>);
     } else if (match[3] !== undefined) {
       nodes.push(renderLink(match[3], match[4], key));
+    } else if (match[5] !== undefined) {
+      const target = references.get((match[6] || match[5]).trim().replace(/\s+/g, ' ').toLowerCase());
+      nodes.push(target ? renderLink(match[5], target, key) : match[0]);
     } else {
       let raw = match[0].replace(/[.,;:!?]+$/, '');
       while (raw.endsWith(')') && (raw.match(/\)/g)?.length ?? 0) > (raw.match(/\(/g)?.length ?? 0)) raw = raw.slice(0, -1);
@@ -90,6 +98,19 @@ function tableCells(line: string): string[] {
 export function renderReplyMarkdown(text: string): ReactNode[] {
   const out: ReactNode[] = [];
   const parts = text.split(/(```[^\n]*\n[\s\S]*?```)/g);
+  const references = new Map<string, string>();
+  // Only explicit definitions supply destinations; never invent URLs for citations.
+  const definition = /^ {0,3}\[([^\]]+)\]:\s*(?:<([^<>\s]+)>|(\S+))(?:\s+"[^"]*")?\s*$/;
+  for (const part of parts) {
+    if (FENCE.test(part)) continue;
+    for (const line of part.split('\n')) {
+      const match = definition.exec(line);
+      if (match) {
+        const id = match[1].trim().replace(/\s+/g, ' ').toLowerCase();
+        if (!references.has(id)) references.set(id, match[2] || match[3]);
+      }
+    }
+  }
 
   parts.forEach((part, partIndex) => {
     if (!part) return;
@@ -113,7 +134,7 @@ export function renderReplyMarkdown(text: string): ReactNode[] {
       if (!buffer.length) return;
       const body = buffer.join('\n');
       if (body.trim()) {
-        out.push(<span key={key}>{renderInline(body, key)}</span>);
+        out.push(<span key={key}>{renderInline(body, key, references)}</span>);
       } else {
         out.push(body);
       }
@@ -124,7 +145,7 @@ export function renderReplyMarkdown(text: string): ReactNode[] {
       out.push(
         <ul key={key} className="reply-list">
           {listBuffer.map((item, i) => (
-            <li key={`${key}-${i}`}>{renderInline(listLabel(item), `${key}-${i}`)}</li>
+            <li key={`${key}-${i}`}>{renderInline(listLabel(item), `${key}-${i}`, references)}</li>
           ))}
         </ul>,
       );
@@ -134,6 +155,13 @@ export function renderReplyMarkdown(text: string): ReactNode[] {
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
       const key = `p-${partIndex}-${lineIndex}`;
+      const source = definition.exec(line);
+      if (source) {
+        flushText(`t-${key}`);
+        flushList(`l-${key}`);
+        out.push(<span key={`source-${key}`}>{renderLink(source[1], source[2] || source[3], key)}{'\n'}</span>);
+        continue;
+      }
       const headers = tableCells(line);
       const separators = tableCells(lines[lineIndex + 1] ?? '');
       if (line.includes('|') && headers.length === separators.length &&
@@ -151,10 +179,10 @@ export function renderReplyMarkdown(text: string): ReactNode[] {
         out.push(<div key={`table-${key}`} className="reply-table-scroll" tabIndex={0}>
           <table className="reply-table">
             <thead><tr>{headers.map((cell, c) => <th key={c} scope="col" style={{ textAlign: alignments[c] }}>
-              {renderInline(cell, `${key}-head-${c}`)}
+              {renderInline(cell, `${key}-head-${c}`, references)}
             </th>)}</tr></thead>
             <tbody>{rows.map((row, r) => <tr key={r}>{headers.map((_, c) =>
-              <td key={c} style={{ textAlign: alignments[c] }}>{renderInline(row[c] ?? '', `${key}-${r}-${c}`)}</td>,
+              <td key={c} style={{ textAlign: alignments[c] }}>{renderInline(row[c] ?? '', `${key}-${r}-${c}`, references)}</td>,
             )}</tr>)}</tbody>
           </table>
         </div>);

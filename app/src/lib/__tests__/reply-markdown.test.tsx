@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { renderReplyMarkdown } from '@/lib/reply-markdown';
+import { renderReplyMarkdown, renderSourceLink } from '@/lib/reply-markdown';
 
 /**
  * An answer is model output, and since `web_extract` began pulling arbitrary
@@ -14,6 +14,38 @@ function show(text: string) {
 }
 
 describe('the marks the agent actually writes', () => {
+  it('links sources inside bold text', () => {
+    show('**[Source](https://example.com/report)**');
+    expect(screen.getByRole('link')).toHaveAttribute('href', 'https://example.com/report');
+    expect(screen.getByRole('link').closest('strong')).not.toBeNull();
+  });
+
+  it('resolves explicit source references in prose and tables', () => {
+    show('Read [the report][REPORT] and [1].\n\n| Source |\n| --- |\n| [Report][] |\n\n[report]: https://example.com/report "Report"\n[1]: <https://example.com/one>');
+    expect(screen.getAllByRole('link').map(a => a.getAttribute('href'))).toEqual([
+      'https://example.com/report', 'https://example.com/one', 'https://example.com/report',
+      'https://example.com/report', 'https://example.com/one',
+    ]);
+  });
+
+  it('does not invent destinations or resolve source definitions inside code', () => {
+    show('Unresolved [1] and [missing][2].\n```\n[1]: https://example.com\n```');
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getByTestId('body')).toHaveTextContent('[missing][2]');
+  });
+
+  it('keeps unsafe reference destinations inert', () => {
+    show('Read [source][1].\n[1]: javascript:alert(1)');
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+
+  it('links literal source URLs but not uploaded filenames or unsafe metadata', () => {
+    render(<div>{renderSourceLink('https://example.com/report')}{renderSourceLink('business.txt')}{renderSourceLink('javascript:alert(1)')}</div>);
+    expect(screen.getAllByRole('link')).toHaveLength(1);
+    expect(screen.getByRole('link')).toHaveAttribute('href', 'https://example.com/report');
+    expect(screen.getByText(/business.txt/)).toBeInTheDocument();
+  });
+
   it('renders bold, inline code and fenced blocks instead of their punctuation', () => {
     show('**Two ways to use it:**\n\nCall `web_extract`.\n\n```py\nimport firecrawl\n```');
     const body = screen.getByTestId('body');

@@ -36,6 +36,7 @@ describe('real business onboarding', () => {
     await repo.setFact({ key: 'business.about', value: 'Unwanted claim', source: 'agent', sourceRef: 'https://example.com' });
     mount(repo);
     const input = await screen.findByRole('textbox', { name: 'Business name' });
+    expect(screen.getAllByRole('link', { name: 'https://example.com/' })).toHaveLength(2);
     await userEvent.clear(input); await userEvent.type(input, 'Correct Business');
     await userEvent.click(screen.getByRole('checkbox', { name: 'About your business' }));
     await userEvent.click(screen.getByRole('button', { name: 'Confirm details & prepare Jentera' }));
