@@ -1280,7 +1280,10 @@ describe('conversation versus work', () => {
       select kind, status, outcome from work_record where run_id = ${run.id}`);
     const tools = await asOwner((sql) => sql<{ n: string }[]>`
       select count(*)::text as n from run_event where run_id = ${run.id} and type = 'agent.tool'`);
-    return { record, toolEvents: Number(tools[0].n) };
+    const [assessment] = await asTenant(A, (tx) => tx<{ payload: Record<string, unknown> }[]>`
+      select payload from run_event where run_id = ${run.id} and type = 'outcome.observed'
+        and payload->>'assessmentVersion' = '1' order by seq desc limit 1`);
+    return { record, toolEvents: Number(tools[0].n), assessment: assessment?.payload };
   }
   const env = () => testEnv({ RUNTIME_RELEASE: '2026.09.01-3', AISAR_MODEL_NAME: 'MiniMax-M3' });
 
@@ -1310,7 +1313,8 @@ describe('conversation versus work', () => {
 
   it('finishes the agent run without completing a login that needs the owner', async () => {
     const test = env();
-    test.AI = { run: async () => ({ response: JSON.stringify({ kind: 'work', status: 'needs_input' }) }) } as unknown as typeof test.AI;
+    test.AI = { run: async () => ({ response: JSON.stringify({ kind: 'work', status: 'needs_input',
+      intentEvidence: 'can u do wrangler login', completionCriteria: 'The Cloudflare account is authenticated.' }) }) } as unknown as typeof test.AI;
     const { record } = await completeRun(test, { input: 'can u do wrangler login' }, [
       { type: 'tool.started', tool: 'terminal', preview: 'wrangler login' },
     ]);
@@ -1320,8 +1324,11 @@ describe('conversation versus work', () => {
   it('does not claim completion when the outcome assessor returns invalid data', async () => {
     const test = env();
     test.AI = { run: async () => ({ response: 'not JSON' }) } as unknown as typeof test.AI;
-    const { record } = await completeRun(test, {}, []);
-    expect(record).toMatchObject({ kind: 'work', status: 'needs_review' });
+    const { record, assessment } = await completeRun(test, {}, []);
+    // An unavailable classifier is not a delivered result needing review.
+    // Keep the reply in chat, exclude it from work counters, retain uncertainty.
+    expect(record).toMatchObject({ kind: 'conversation', status: 'completed' });
+    expect(assessment).toMatchObject({ classification: 'uncertain', uncertaintyReason: 'classifier_unavailable', uncertaintyDetail: 'unparseable' });
   });
 
   /* A failed "yo bro" sat at the top of the daily brief as "a task needs
