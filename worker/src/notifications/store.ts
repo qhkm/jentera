@@ -5,7 +5,11 @@ export type NotificationKind =
   | 'routine_completed'
   | 'routine_failed'
   | 'routine_skipped'
-  | 'routine_needs_approval';
+  | 'routine_needs_approval'
+  /* A colleague's task ended waiting on the owner (migration 037). */
+  | 'work_needs_you'
+  /* An action awaits an owner's decision, asked for by someone else. */
+  | 'approval_requested';
 
 export interface NotificationRow {
   id: string;
@@ -47,39 +51,55 @@ export function notificationJson(row: NotificationRow): NotificationJson {
   };
 }
 
-export async function createRoutineNotification(
+export interface NotificationInput {
+  recipientUserId: string;
+  kind: NotificationKind;
+  title: string;
+  body: string;
+  sourceKey: string;
+  runId?: string | null;
+  routineId?: string | null;
+  occurrenceId?: string | null;
+  /** Where a tap on the device notification lands; the inbox by default. */
+  url?: string;
+}
+
+/** One notification for one person, and the push that mirrors it. The
+    source key makes it idempotent per recipient: the same event told twice
+    is one row and one push. */
+export async function createNotification(
   tx: postgres.TransactionSql,
   businessId: string,
-  input: {
-    recipientUserId: string;
-    kind: NotificationKind;
-    title: string;
-    body: string;
-    sourceKey: string;
-    runId?: string | null;
-    routineId: string;
-    occurrenceId: string;
-  },
-): Promise<void> {
+  input: NotificationInput,
+): Promise<boolean> {
   const [inserted] = await tx<{ id: string }[]>`
     insert into notification
       (business_id, recipient_user_id, kind, title, body, source_key,
        run_id, routine_id, occurrence_id)
     values (${businessId}, ${input.recipientUserId}, ${input.kind},
             ${input.title.slice(0, 160)}, ${input.body.slice(0, 500)}, ${input.sourceKey},
-            ${input.runId ?? null}, ${input.routineId}, ${input.occurrenceId})
+            ${input.runId ?? null}, ${input.routineId ?? null}, ${input.occurrenceId ?? null})
     on conflict (business_id, recipient_user_id, source_key) do nothing
     returning id`;
-  /* Every notification also reaches the owner's devices: queued in this
+  /* Every notification also reaches the person's devices: queued in this
      same transaction, sent by the cron within the minute (src/push/outbox.ts).
      A duplicate insert queues nothing. */
-  if (!inserted) return;
+  if (!inserted) return false;
   await enqueuePush(tx, businessId, input.recipientUserId, {
     title: input.title,
     body: input.body,
-    url: '/app?view=notifications',
+    url: input.url ?? '/app?view=notifications',
     tag: `notification:${input.sourceKey}`,
   });
+  return true;
+}
+
+export async function createRoutineNotification(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  input: Omit<NotificationInput, 'routineId' | 'occurrenceId' | 'url'> & { routineId: string; occurrenceId: string },
+): Promise<void> {
+  await createNotification(tx, businessId, input);
 }
 
 export async function unreadNotificationCount(

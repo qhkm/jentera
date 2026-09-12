@@ -246,9 +246,17 @@ appear:
   with the workspace, and the chat stays there for life. A badge on the
   chat says which workspace it is shared with.
 
-The founder is the owner; everyone invited is staff. Notification
-recipients by role and offboarding are the next steps in
-`docs/plans/2026-09-12-team-features.md`.
+- **Owners hear about colleagues' work.** When a staff member's task ends
+  waiting on the owner, or an action a colleague asked for awaits approval,
+  every owner but the asker gets a notification and a push. A business of
+  one receives none of these.
+
+The founder is the owner; everyone invited is staff. Offboarding is the
+next step in `docs/plans/2026-09-12-team-features.md`.
+
+On a phone the bottom bar shows Home, Activity and Alerts; everything else
+sits behind **More**, which opens a sheet with the remaining sections and
+carries their badges.
 
 ## Public SEO and link previews
 

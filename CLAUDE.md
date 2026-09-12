@@ -133,7 +133,13 @@ delays and giving up after eight tries with the error on the row
 returning ids only, like the routines one). Nothing is sent from inside a
 transaction, and a request that dies after the insert loses nothing. The
 notification insert in `src/notifications/store.ts` is the one caller;
-the confirmation push on subscribe is sent directly.
+the confirmation push on subscribe is sent directly. On a team, two more
+kinds reach owners (`work_needs_you`, `approval_requested`, migration 037):
+a colleague's task that ended waiting on the owner, or an action awaiting an
+owner's decision, told to every owner except the one who asked
+(`notifications/recipients.ts`, `notifications/work.ts`, called from the
+consumer at outcome and approval time). A business of one, where the owner
+asks everything, receives none of them.
 
 Artifacts are files the agent hands the owner. The runner gives each task
 a folder (`/home/sprite/aisar/outputs/<task>`), appends an instruction

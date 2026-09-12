@@ -91,6 +91,7 @@ import { boundedAgentInput, prepareHermesAgent, retrieveHermesContext } from '..
 import { modelForResponseMode, responseModeFor } from './response-mode';
 import { sanitizePublicRuntimeText } from './public-output';
 import { listSpecialists, specialistForTurn } from '../specialists';
+import { notifyOwnersApprovalRequested, notifyOwnersWorkNeedsYou } from '../notifications/work';
 import {
   cancelRoutineRuntimeOccurrence,
   finishRoutineRuntimeOccurrence,
@@ -1546,6 +1547,12 @@ export async function handleRuntimeMessage(
                   message: paused.message,
                   surface: 'web',
                 });
+                /* Owners other than the asker hear about it; alone, nobody does. */
+                await notifyOwnersApprovalRequested(tx, message.businessId, {
+                  runId: lease.task.runId,
+                  objective: outcome.payload.objective ?? outcome.payload.input.slice(0, 200),
+                  summary: paused.message,
+                });
                 await markRoutineNeedsApproval(
                   tx, message.businessId, lease.task.payload, lease.task.runId, paused.message,
                 );
@@ -1619,6 +1626,11 @@ export async function handleRuntimeMessage(
                 runtimeTaskId: lease.task.id,
                 requestId: paused.requestId,
                 tool: paused.tool,
+              });
+              await notifyOwnersApprovalRequested(tx, message.businessId, {
+                runId: lease.task.runId,
+                objective: outcome.payload.objective ?? outcome.payload.input.slice(0, 200),
+                summary: paused.message,
               });
               await markRoutineNeedsApproval(
                 tx, message.businessId, lease.task.payload, lease.task.runId, paused.message,
@@ -1819,6 +1831,16 @@ export async function handleRuntimeMessage(
               grounded: outcome.payload.grounded ?? false,
             },
           });
+          /* A colleague's task that ends waiting on the owner reaches the
+             owners' inbox and devices; the asker is watching it land. Routines
+             have their own notifications. */
+          if (successful && !routineRuntimeMeta(lease.task.payload)) {
+            await notifyOwnersWorkNeedsYou(tx, message.businessId, {
+              runId: lease.task.runId,
+              status: assessment?.status ?? 'needs_review',
+              objective: outcome.payload.objective ?? outcome.payload.input.slice(0, 200),
+            });
+          }
           await finishRun(
             tx,
             message.businessId,

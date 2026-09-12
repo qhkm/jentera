@@ -8,7 +8,7 @@ type NotificationsState = ReturnType<typeof useNotifications>;
 
 function Glyph({ item }: { item: AppNotification }) {
   const Icon = item.kind === 'routine_failed' ? WarningCircle
-    : item.kind === 'routine_needs_approval' ? Bell : Check;
+    : item.kind === 'routine_needs_approval' || item.kind === 'approval_requested' || item.kind === 'work_needs_you' ? Bell : Check;
   return <span className={`notification-icon notification-icon-${item.kind}`}><Icon size={20} weight="duotone" aria-hidden="true" /></span>;
 }
 
