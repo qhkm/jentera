@@ -59,6 +59,40 @@
 .routine-footer { display: flex; gap: 10px; padding-top: 6px; }
 .routine-footer svg { margin-top: 5px; flex-shrink: 0; }
 .dashboard-bottom-nav > button { min-width: 0; }
+
+/* The "More" sheet behind the phone bottom bar: a short list rising from
+   the bottom edge, the same rows as the bar would have shown. */
+.bottom-nav-sheet {
+  position: fixed;
+  inset: auto 0 0 0;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0.5rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom));
+  border: 0;
+  border-top: 1px solid var(--border-light);
+  border-radius: 1rem 1rem 0 0;
+  background: var(--bg);
+  color: var(--text);
+}
+.bottom-nav-sheet::backdrop { background: rgb(0 0 0 / 0.45); }
+.bottom-nav-sheet ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.bottom-nav-sheet li button {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.85rem 0.5rem;
+  border: 0;
+  border-bottom: 1px solid var(--border-light);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.bottom-nav-sheet li:last-child button { border-bottom: 0; }
+.bottom-nav-sheet li button[aria-current='page'] { color: var(--brand); }
+.bottom-nav-sheet li button .unread { margin-left: auto; position: static; }
 @media (max-width: 1100px) { .routine-starter-grid { grid-template-columns: 1fr; } }
 @media (max-width: 600px) {
   .routines-view { gap: 20px; }

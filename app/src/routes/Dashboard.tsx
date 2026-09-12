@@ -34,6 +34,7 @@ import { isRunId } from '@/lib/task';
 import RoutinesView from './views/RoutinesView';
 import NotificationsView from './views/NotificationsView';
 import FilesView from './views/FilesView';
+import { BottomNav } from '@/components/BottomNav';
 import { useNotifications } from '@/hooks/useNotifications';
 
 export type View = 'home' | 'chat' | 'work' | 'files' | 'routines' | 'notifications' | 'business';
@@ -290,32 +291,17 @@ export default function Dashboard() {
       </div>
 
       {/* Chat has its own navigation; business sections stay in Dashboard. */}
-      {!isChat && <nav
-        className="dashboard-bottom-nav fixed inset-x-0 bottom-0 z-30 flex border-t border-rail bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
-        aria-label={t('workspace.mode.dashboard')}
-      >
-        {nav.map((item) => {
-          const active = view === item.id;
-          const badge = item.id === 'work' ? needsAttention : item.id === 'notifications' ? notifications.unread : 0;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => go(item.id)}
-              aria-current={active ? 'page' : undefined}
-              className={`relative flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px] transition-colors ${
-                active ? 'text-brand' : 'text-text-muted'
-              }`}
-            >
-              <Icon name={item.icon} size={19} />
-              {t(item.id === 'notifications' ? 'notifications.short' : item.labelKey)}
-              {badge > 0 ? (
-                <span className="unread absolute right-[18%] top-1.5">{badge}</span>
-              ) : null}
-            </button>
-          );
-        })}
-      </nav>}
+      {!isChat && <BottomNav
+        label={t('workspace.mode.dashboard')}
+        current={view}
+        onGo={(next) => go(next)}
+        items={nav.map((item) => ({
+          id: item.id,
+          icon: item.icon,
+          label: t(item.id === 'notifications' ? 'notifications.short' : item.labelKey),
+          badge: item.id === 'work' ? needsAttention : item.id === 'notifications' ? notifications.unread : 0,
+        }))}
+      />}
     </Shell>
   );
 }
