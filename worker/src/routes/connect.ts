@@ -11,6 +11,7 @@ import type { Env } from '../env';
 import { withTenant } from '../db';
 import { prewarmSprite } from '../runtime/prewarm';
 import { hasBusiness, resolveTenant } from '../tenancy';
+import { can } from '../permissions';
 import { TOKEN_CONNECTORS, tokenConnector } from '../token-connectors';
 import {
   bindTelegramInternalChat,
@@ -125,7 +126,7 @@ export async function handleConnect(
     /* Staff may inspect connection status, but the pairing deep link is
        the boundary that binds an arbitrary Telegram chat as the internal
        owner chat — only the owner may hold it. */
-    if (id.role !== 'owner') {
+    if (!can(id, 'connections.pair')) {
       for (const c of rows) {
         if (c && typeof c === 'object' && 'pairingUrl' in c) {
           (c as { pairingUrl: string | null }).pairingUrl = null;
@@ -152,7 +153,7 @@ export async function handleConnect(
   /* ---- connect a service with a scoped token --------------------------- */
 
   if (url.pathname === '/api/connections/token' && request.method === 'POST') {
-    if (id.role !== 'owner') {
+    if (!can(id, 'connections.manage')) {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
     const body = (await request.json().catch(() => ({}))) as {
@@ -207,7 +208,7 @@ export async function handleConnect(
   /* ---- connect a Telegram bot ----------------------------------------- */
 
   if (url.pathname === '/api/connections/telegram' && request.method === 'POST') {
-    if (id.role !== 'owner') {
+    if (!can(id, 'connections.manage')) {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
     const body = (await request.json().catch(() => ({}))) as { token?: string };
@@ -346,7 +347,7 @@ export async function handleConnect(
 
   const drop = url.pathname.match(/^\/api\/connections\/([0-9a-f-]{36})$/i);
   if (drop && request.method === 'DELETE') {
-    if (id.role !== 'owner') {
+    if (!can(id, 'connections.manage')) {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
     await withTenant(env, id.businessId, async (tx) => {

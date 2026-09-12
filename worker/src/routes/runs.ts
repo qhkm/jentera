@@ -11,6 +11,7 @@ import type { Env } from './../env';
 import { taskAssessmentForRun } from '../task-outcome';
 import { withTenant } from '../db';
 import { hasBusiness, resolveTenant } from '../tenancy';
+import { can } from '../permissions';
 import {
   append,
   finishRun,
@@ -326,7 +327,7 @@ export async function handleRuns(
 
   const review = url.pathname.match(/^\/api\/runs\/([0-9a-f-]{36})\/review$/i);
   if (review && request.method === 'POST') {
-    if (id.role !== 'owner') return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+    if (!can(id, 'tasks.review')) return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     if (!request.headers.get('Origin') || request.headers.get('Origin') !== cors['Access-Control-Allow-Origin']) {
       return json({ ok: false, err: 'origin not allowed' }, { status: 403 }, cors);
     }

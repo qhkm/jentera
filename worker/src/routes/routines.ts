@@ -7,6 +7,7 @@
 import type { Env } from '../env';
 import { withTenant } from '../db';
 import { hasBusiness, resolveTenant } from '../tenancy';
+import { can } from '../permissions';
 import { routinesEnabledFor } from '../routines/gating';
 import { TASK_KINDS, type TaskKind } from '../routines/jobs';
 import { executeOccurrence } from '../routines/execute';
@@ -167,7 +168,7 @@ export async function handleRoutines(
   }
   const businessId = identity.businessId;
   const actor = identity.userId;
-  const owner = identity.role === 'owner';
+  const owner = can(identity, 'routines.manage');
   const enabled = routinesEnabledFor(env, businessId);
   const capabilities = {
     canManage: owner,

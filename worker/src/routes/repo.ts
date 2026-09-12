@@ -12,6 +12,7 @@ import { withTenant } from '../db';
 import { sendAndRecord } from '../telegram-delivery';
 import { append, updateWorkForRun } from '../runs';
 import { hasBusiness, resolveTenant, type TenantIdentity } from '../tenancy';
+import { can } from '../permissions';
 import {
   SOURCES,
   confirmFact,
@@ -237,7 +238,7 @@ export async function handleRepo(
   const body = (await request.json().catch(() => ({}))) as Body;
 
   if (url.pathname === '/api/state/specialists') {
-    if (id.role !== 'owner') {
+    if (!can(id, 'specialists.manage')) {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
     const name = typeof body.name === 'string' ? body.name.trim() : '';
@@ -270,7 +271,7 @@ export async function handleRepo(
 
   const specialistMatch = url.pathname.match(/^\/api\/state\/specialists\/([0-9a-f-]{36})$/i);
   if (specialistMatch) {
-    if (id.role !== 'owner') {
+    if (!can(id, 'specialists.manage')) {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
     const specialistId = specialistMatch[1];
@@ -312,7 +313,7 @@ export async function handleRepo(
      and the deduplicated provisioning task. A browser crash therefore cannot
      produce an "onboarded" business with stale channels or playbook data. */
   if (url.pathname === '/api/state/onboarding/complete') {
-    if (id.role !== 'owner') {
+    if (!can(id, 'business.setup')) {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
     const playbookKey = text(body.playbookKey);
@@ -359,7 +360,7 @@ export async function handleRepo(
      direct API call cannot set the gate without the final answers and runtime
      task that now define that transition. */
   if (url.pathname === '/api/state/onboarded') {
-    if (id.role !== 'owner') {
+    if (!can(id, 'business.setup')) {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
     const onboarded = Boolean(body.value);
@@ -378,7 +379,7 @@ export async function handleRepo(
   /* setup_done is a flow transition, not a free scalar. It cannot be used
      to skip onboarding, and only the owner may complete or reopen setup. */
   if (url.pathname === '/api/state/setup-done') {
-    if (id.role !== 'owner') {
+    if (!can(id, 'business.setup')) {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
     const setupDone = Boolean(body.value);
@@ -461,7 +462,7 @@ export async function handleRepo(
      approval is owner-only below; letting staff flip the policy that makes
      approvals unnecessary would be the same authority through a side door. */
   if (url.pathname === '/api/state/policy' || url.pathname === '/api/state/policies/reset') {
-    if (id.role !== 'owner') {
+    if (!can(id, 'policies.manage')) {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
   }
@@ -530,7 +531,7 @@ export async function handleRepo(
 
   const decide = url.pathname.match(/^\/api\/state\/approvals\/([^/]+)\/decide$/);
   if (decide) {
-    if (id.role !== 'owner') {
+    if (!can(id, 'approvals.decide')) {
       /* Deciding an approval ships a message (or refuses one) on behalf
          of the business — a staff member must not be able to authorise
          customer-facing sends. */

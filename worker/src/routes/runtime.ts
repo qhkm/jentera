@@ -7,6 +7,7 @@ import { applyRuntimeApprovalDecision } from '../runtime/approvals';
 import { finalizeRuntimeUsage, runtimeBudgetSnapshot } from '../runtime/usage';
 import { finishRun } from '../runs';
 import { hasBusiness, resolveTenant } from '../tenancy';
+import { can } from '../permissions';
 import { publishRunProgressSafely } from '../runtime/progress';
 import { runtimeProvisioningProblem } from '../runtime/execution';
 import { prewarmSprite } from '../runtime/prewarm';
@@ -82,7 +83,7 @@ export async function handleRuntime(
     return json({ ok: true, warming }, { status: 202 }, cors);
   }
   if (url.pathname === '/api/runtime/provision' && request.method === 'POST') {
-    if (identity.role !== 'owner') {
+    if (!can(identity, 'runtime.manage')) {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
     const onboarded = await withTenant(env, identity.businessId, async (tx) => {
@@ -105,7 +106,7 @@ export async function handleRuntime(
   }
 
   if (url.pathname === '/api/runtime/reconcile' && request.method === 'POST') {
-    const blocked = mutationProblem(identity.role, env);
+    const blocked = mutationProblem(identity, env);
     if (blocked) return json({ ok: false, err: blocked.message }, { status: blocked.status }, cors);
     const window = Math.floor(Date.now() / (5 * 60 * 1_000));
     const task = await publishRuntimeTask(env, identity.businessId, {
@@ -116,7 +117,7 @@ export async function handleRuntime(
   }
 
   if (url.pathname === '/api/runtime/upgrade' && request.method === 'POST') {
-    const blocked = mutationProblem(identity.role, env);
+    const blocked = mutationProblem(identity, env);
     if (blocked) return json({ ok: false, err: blocked.message }, { status: blocked.status }, cors);
     const release = env.RUNTIME_RELEASE?.trim();
     if (!release) {
@@ -165,7 +166,7 @@ export async function handleRuntime(
        machine, which is the same line the connector decide route draws when
        it says a staff member must not authorise a customer-facing send.
        Staff can read the card above; the buttons are theirs to look at. */
-    if (identity.role !== 'owner') {
+    if (!can(identity, 'approvals.decide')) {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
     /* The SameSite=Lax cookie is the real cross-site defence; these are the
@@ -229,7 +230,7 @@ export async function handleRuntime(
 
   const cancel = url.pathname.match(/^\/api\/runtime\/tasks\/([0-9a-f-]{36})\/cancel$/i);
   if (cancel && request.method === 'POST') {
-    if (identity.role !== 'owner') {
+    if (!can(identity, 'runtime.manage')) {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
     const cancelled = await withTenant(env, identity.businessId, async (tx) => {
@@ -278,7 +279,7 @@ export async function handleRuntime(
   }
 
   if (url.pathname === '/api/runtime' && request.method === 'DELETE') {
-    if (identity.role !== 'owner') {
+    if (!can(identity, 'runtime.manage')) {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
     const runtime = await withTenant(env, identity.businessId, (tx) =>
@@ -300,10 +301,10 @@ function validRegion(value: string | undefined): string | null {
 }
 
 function mutationProblem(
-  role: string | null,
+  identity: { role: string | null },
   env: Env,
 ): { status: number; message: string } | null {
-  if (role !== 'owner') return { status: 403, message: 'owner access required' };
+  if (!can(identity, 'runtime.manage')) return { status: 403, message: 'owner access required' };
   const problem = runtimeProvisioningProblem(env);
   if (problem) return { status: 503, message: problem };
   return null;

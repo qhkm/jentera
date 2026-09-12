@@ -2,6 +2,7 @@ import type { Env } from '../env';
 import { withTenant } from '../db';
 import { getRuntimeAccess } from '../agent-runtime';
 import { hasBusiness, resolveTenant } from '../tenancy';
+import { can } from '../permissions';
 
 const ACTIONS = new Set(['claim', 'release', 'frame', 'navigate', 'click', 'text', 'key', 'scroll', 'tab']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -25,7 +26,7 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
   const identity = await resolveTenant(env, request);
   if (!identity) return json({ err: 'not signed in' }, 401);
   if (!hasBusiness(identity)) return json({ err: 'no business' }, 404);
-  if (identity.role !== 'owner') return json({ err: 'owner access required' }, 403);
+  if (!can(identity, 'browser.control')) return json({ err: 'owner access required' }, 403);
   let command: Record<string, unknown> | undefined;
   if (request.method === 'POST') {
     const origin = request.headers.get('Origin');
