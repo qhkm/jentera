@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DownloadSimple, X } from '@phosphor-icons/react';
 import { Button } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
@@ -52,12 +52,26 @@ export function ArtifactPreview({ artifact, onClose }: { artifact: Artifact; onC
   const t = useT();
   const repo = useRepository();
   const [loaded, setLoaded] = useState<Loaded>({ state: 'loading' });
+  const [closing, setClosing] = useState(false);
   const dialog = useRef<HTMLDivElement>(null);
   const kind = previewKind(artifact.contentType, artifact.name);
 
+  /* Leave the way it arrived, unless the owner asked for no motion, in
+     which case (and wherever media queries are missing) close at once. */
+  const requestClose = useCallback(() => {
+    const animate = typeof window.matchMedia === 'function' &&
+      !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!animate) {
+      onClose();
+      return;
+    }
+    setClosing(true);
+    window.setTimeout(onClose, 220);
+  }, [onClose]);
+
   useEffect(() => {
     dialog.current?.focus();
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') requestClose(); };
     document.addEventListener('keydown', onKey);
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -65,7 +79,7 @@ export function ArtifactPreview({ artifact, onClose }: { artifact: Artifact; onC
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = previous;
     };
-  }, [onClose]);
+  }, [requestClose]);
 
   useEffect(() => {
     let live = true;
@@ -128,14 +142,18 @@ export function ArtifactPreview({ artifact, onClose }: { artifact: Artifact; onC
   }, [artifact.name, kind, loaded, t]);
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-6" onClick={onClose}>
+    <div
+      className="file-preview-backdrop fixed inset-0 z-[1000] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-6"
+      data-closing={closing || undefined}
+      onClick={requestClose}
+    >
       <div
         ref={dialog}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={artifact.name}
-        className="card max-h-[92dvh] w-full max-w-3xl gap-0 overflow-hidden p-0 outline-none sm:max-h-[85vh]"
+        className="file-preview-dialog card max-h-[92dvh] w-full max-w-3xl gap-0 overflow-hidden rounded-b-none rounded-t-2xl p-0 outline-none sm:max-h-[85vh] sm:rounded-card"
         onClick={(event) => event.stopPropagation()}
       >
         <header className="flex items-center gap-3 border-b border-border px-4 py-3">
@@ -147,7 +165,7 @@ export function ArtifactPreview({ artifact, onClose }: { artifact: Artifact; onC
             <DownloadSimple size={16} aria-hidden="true" />
             {t('files.download')}
           </a>
-          <Button variant="outline" aria-label={t('files.close')} onClick={onClose}>
+          <Button variant="outline" aria-label={t('files.close')} onClick={requestClose}>
             <X size={18} aria-hidden="true" />
           </Button>
         </header>

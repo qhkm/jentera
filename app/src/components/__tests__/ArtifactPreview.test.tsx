@@ -50,6 +50,16 @@ describe('ArtifactPreview', () => {
     expect(within(table).getAllByRole('cell').map((c) => c.textContent)).toEqual(['Nasi lemak, large', '12', 'Teh tarik', '30']);
   });
 
+  it('arrives with the sheet motion and, where motion is reduced or unavailable, leaves at once', async () => {
+    const { onClose } = mount(file(), new Blob(['# Digest']));
+    const dialog = await screen.findByRole('dialog', { name: 'tech-digest.md' });
+    expect(dialog).toHaveClass('file-preview-dialog');
+    expect(dialog.parentElement).toHaveClass('file-preview-backdrop');
+    const user = userEvent.setup();
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it('shows an image from the fetched bytes and lets it go on close', async () => {
     const { onClose } = mount(file({ id: 'a3', name: 'chart.png', contentType: 'image/png' }), new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' }));
     const image = await screen.findByRole('img', { name: 'chart.png' });
