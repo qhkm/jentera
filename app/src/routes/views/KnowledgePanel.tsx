@@ -17,6 +17,7 @@ import { Button, Card, Eyebrow, Input, LoadingState, Tag } from '@/components/ui
 import { useMutate, useRefresh, useRepository, useSnapshot } from '@/lib/repo';
 import type { Fact } from '@/lib/repo/types';
 import type { Tone } from '@/lib/types';
+import AgentMemoryPanel from './AgentMemoryPanel';
 
 /* Below this, a page gave up little more than its <title>: almost
    certainly a JavaScript-rendered shell rather than a thin site. 400
@@ -34,7 +35,13 @@ const SHELL_CHARS = 400;
  * happened costs one sentence and saves the owner trusting a fact base
  * built from a page title.
  */
-export function describeRead(r: { facts: number; chars: number }): string {
+export function describeRead(r: { facts: number; chars: number }, file?: string): string {
+  if (file) {
+    /* A document has no JavaScript shell to warn about; short is just short. */
+    return r.facts === 0
+      ? `Jentera read ${file} but found nothing clear enough to suggest. Documents with your hours, prices, services or policies work best.`
+      : `Jentera found ${r.facts} thing${r.facts === 1 ? '' : 's'} in ${file}. They are listed above, waiting for you to confirm.`;
+  }
   if (r.chars < SHELL_CHARS) {
     const found =
       r.facts === 0
@@ -181,6 +188,23 @@ export default function KnowledgePanel() {
     }
   }
 
+  /* A document instead of an address: the same reading, from bytes the
+     owner hands over. The file is not kept, only what was learned. */
+  async function readFile(file: File | undefined) {
+    if (!file || !repo.ingestFile) return;
+    setReading(true);
+    setNote(null);
+    try {
+      const r = await repo.ingestFile(file);
+      setNote(describeRead(r, file.name));
+      await refresh();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : 'Could not read that file.');
+    } finally {
+      setReading(false);
+    }
+  }
+
   /* Unconfirmed first: those are the ones needing a decision. Within
      each group, least confident first. */
   const facts = [...snap.facts].sort((a, b) => {
@@ -230,10 +254,10 @@ export default function KnowledgePanel() {
       </Card>
 
       <Card>
-        <Eyebrow>Let Jentera read your website</Eyebrow>
+        <Eyebrow>Let Jentera read your website or a document</Eyebrow>
         <p className="mt-2 text-sm text-text-secondary">
-          Paste the address and Jentera will read the page and suggest what it learned. Nothing is
-          sent to anyone and nothing goes live — you confirm each item first.
+          Paste the address, or upload a document, and Jentera will read it and suggest what it
+          learned. Nothing is sent to anyone and nothing goes live — you confirm each item first.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Input
@@ -248,6 +272,20 @@ export default function KnowledgePanel() {
             {reading ? 'Reading website…' : 'Read it'}
           </Button>
         </div>
+        {repo.ingestFile && (
+          <label className="mt-3 flex flex-wrap items-center gap-2 text-sm text-text-secondary">
+            <span>or upload a document</span>
+            <input
+              type="file"
+              aria-label="Upload a document"
+              className="text-[13px]"
+              accept=".txt,.md,.csv,.json,.pdf,.docx,.xlsx,.pptx,.html,.png,.jpg,.jpeg,.webp"
+              disabled={reading}
+              onChange={(e) => { void readFile(e.target.files?.[0]); e.target.value = ''; }}
+            />
+            <span className="text-[12px] text-text-muted">Text, PDF, Word, Excel or an image. The file is not kept.</span>
+          </label>
+        )}
         {reading ? (
           <LoadingState
             compact
@@ -285,6 +323,8 @@ export default function KnowledgePanel() {
           </Button>
         </div>
       </Card>
+
+      <AgentMemoryPanel />
     </div>
   );
 }

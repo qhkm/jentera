@@ -25,7 +25,7 @@ import {
   runSteps,
 } from '../runs';
 import { recordFact } from '../facts';
-import { urlProblem } from '../ingest';
+import { extractFacts, urlProblem } from '../ingest';
 import { runtimeFor, signalRuntimeTask } from '../runtime';
 import { INLINE_SAFETY_NET_SECONDS, runInlineSlice } from '../runtime/inline-slice';
 import type { BackgroundContext, InlineSliceOptions } from '../runtime/inline-slice';
@@ -80,6 +80,96 @@ export async function handleRuns(
   const id = identity;
 
   /* ---- read the business's own website ------------------------------- */
+
+  /* ---- learn from an uploaded document ---------------------------------
+     The same reading as a page, from bytes the owner hands over instead of
+     a URL: text-like files are read as they are, documents go through
+     Workers AI's Markdown conversion first, and the facts found land
+     unconfirmed with the file name as their source. The file itself is not
+     kept — only what was learned from it. */
+  if (url.pathname === '/api/runs/ingest/file' && request.method === 'POST') {
+    const name = (request.headers.get('X-Aisar-File-Name') ?? '').trim();
+    if (!UPLOAD_NAME.test(name)) return json({ ok: false, err: 'a file name is required' }, { status: 400 }, cors);
+    const declaredType = (request.headers.get('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
+    const kind = uploadKind(name, declaredType);
+    if (!kind) return json({ ok: false, err: 'That kind of file cannot be read. Use text, Markdown, CSV, JSON, PDF, Word, Excel or an image.' }, { status: 415 }, cors);
+    const limit = kind.mode === 'text' ? UPLOAD_TEXT_LIMIT : UPLOAD_DOCUMENT_LIMIT;
+    const declared = Number(request.headers.get('Content-Length'));
+    if (Number.isFinite(declared) && declared > limit) return json({ ok: false, err: `a file is at most ${limit} bytes` }, { status: 413 }, cors);
+    const bytes = new Uint8Array(await request.arrayBuffer());
+    if (bytes.byteLength === 0) return json({ ok: false, err: 'the file is empty' }, { status: 400 }, cors);
+    if (bytes.byteLength > limit) return json({ ok: false, err: `a file is at most ${limit} bytes` }, { status: 413 }, cors);
+
+    const runtime = runtimeFor(env, id.businessId);
+    const run = await withTenant(env, id.businessId, (tx) =>
+      startRun(tx, id.businessId, {
+        kind: 'ingest',
+        triggerShape: 'owner.ingest.file',
+        triggerRef: { file: name, contentType: kind.type, bytes: bytes.byteLength },
+        requestedBy: id.userId,
+        runtime: runtime.id,
+        model: runtime.model,
+      }),
+    );
+    try {
+      const text = kind.mode === 'text'
+        ? new TextDecoder().decode(bytes)
+        : await documentToText(env, name, kind.type, bytes);
+      const trimmed = text.replace(/\u0000/g, '').trim();
+      if (!trimmed) throw new Error('No readable text was found in that file.');
+      const bounded = trimmed.slice(0, UPLOAD_TEXT_LIMIT);
+      await withTenant(env, id.businessId, (tx) =>
+        append(tx, id.businessId, run.id, 'work.started', { file: name, chars: bounded.length }));
+      const candidates = await extractFacts(env, bounded, name);
+      const written = await withTenant(env, id.businessId, async (tx) => {
+        const keys: string[] = [];
+        for (const c of candidates) {
+          await recordFact(tx, id.businessId, {
+            key: c.key, value: c.value, source: 'agent', sourceRef: name, confidence: c.confidence,
+          });
+          keys.push(c.key);
+        }
+        await append(tx, id.businessId, run.id, 'action.proposed', { facts: keys });
+        await recordWork(tx, id.businessId, {
+          runId: run.id,
+          objective: `Read ${name} and learn about the business`,
+          outcome: keys.length === 0
+            ? 'Nothing clear enough to suggest'
+            : `Suggested ${keys.length} thing${keys.length === 1 ? '' : 's'} to confirm`,
+          status: 'completed',
+          function: 'ingest',
+          channel: 'upload',
+          subject: name,
+          risk: 'low',
+          counters: { facts: keys.length },
+          minutesSaved: keys.length * 2,
+          artifacts: [{ kind: 'file', ref: name }],
+          inputsUsed: { file: name, chars: bounded.length },
+        });
+        await finishRun(tx, id.businessId, run.id, 'completed', { facts: keys.length });
+        return keys;
+      });
+      return json({
+        ok: true,
+        runId: run.id,
+        facts: written.length,
+        keys: written,
+        chars: bounded.length,
+        source: name,
+        suggestions: candidates.map(({ key, value, confidence }) => ({ key, value, confidence })),
+      }, {}, cors);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'something went wrong';
+      await withTenant(env, id.businessId, async (tx) => {
+        await recordWork(tx, id.businessId, {
+          runId: run.id, objective: `Read ${name}`, outcome: message, status: 'failed',
+          function: 'ingest', channel: 'upload', risk: 'low',
+        });
+        await finishRun(tx, id.businessId, run.id, 'failed', { error: message });
+      });
+      return json({ ok: false, runId: run.id, err: message }, {}, cors);
+    }
+  }
 
   if (url.pathname === '/api/runs/ingest' && request.method === 'POST') {
     const body = (await request.json().catch(() => ({}))) as { url?: string };
@@ -670,6 +760,42 @@ function askMetadata(task: RuntimeTask): { usedKeys: string[]; grounded: boolean
     ? payload.factKeys.filter((key): key is string => typeof key === 'string').slice(0, 24)
     : [];
   return { usedKeys, grounded: payload.grounded === true };
+}
+
+/* Uploads: a plain file name, and the types that can be read. Text-like
+   files are decoded as they are; the rest go through Workers AI's Markdown
+   conversion, which reads PDF, Office documents and images. */
+const UPLOAD_NAME = /^[A-Za-z0-9][A-Za-z0-9 ._()-]{0,119}$/;
+export const UPLOAD_TEXT_LIMIT = 1_048_576;
+export const UPLOAD_DOCUMENT_LIMIT = 8 * 1_048_576;
+const TEXT_TYPES: Record<string, string> = {
+  txt: 'text/plain', md: 'text/markdown', markdown: 'text/markdown', csv: 'text/csv', json: 'application/json',
+};
+const DOCUMENT_TYPES: Record<string, string> = {
+  pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  html: 'text/html', htm: 'text/html',
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp',
+};
+
+function uploadKind(name: string, declaredType: string): { mode: 'text' | 'document'; type: string } | null {
+  const ext = name.toLowerCase().split('.').pop() ?? '';
+  if (TEXT_TYPES[ext] || declaredType.startsWith('text/plain') || declaredType === 'text/markdown' || declaredType === 'text/csv' || declaredType === 'application/json') {
+    return { mode: 'text', type: TEXT_TYPES[ext] ?? declaredType };
+  }
+  const documentType = DOCUMENT_TYPES[ext] ?? (Object.values(DOCUMENT_TYPES).includes(declaredType) ? declaredType : null);
+  return documentType ? { mode: 'document', type: documentType } : null;
+}
+
+async function documentToText(env: Env, name: string, type: string, bytes: Uint8Array): Promise<string> {
+  const [converted] = await env.AI.toMarkdown([{ name, blob: new Blob([bytes], { type }) }]);
+  if (!converted || !('data' in converted) || typeof converted.data !== 'string') {
+    const reason = converted && 'error' in converted ? String((converted as { error?: unknown }).error) : 'conversion failed';
+    throw new Error(reason);
+  }
+  return converted.data;
 }
 
 function terminalRun(status: string): boolean {

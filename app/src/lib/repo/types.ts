@@ -388,6 +388,13 @@ export interface Repository {
       as cancelled afterwards, never as handled. */
   dismissTask?(runId: string): Promise<void>;
 
+  /** What the agent itself remembers, by specialist, and forgetting one entry.
+      Owner only; `available` is false on a runtime that cannot answer yet. */
+  agentMemory?(): Promise<AgentMemory>;
+  forgetAgentMemory?(entry: { profile: string; file: 'MEMORY.md' | 'USER.md'; text: string }): Promise<void>;
+  /** Learn from a document the owner uploads: the facts found land unconfirmed,
+      with the file name as their source. The file itself is not kept. */
+  ingestFile?(file: File): Promise<IngestResult & { source?: string }>;
   /** Answer a question from confirmed facts and real work records. */
   ask(question: string, options?: AskOptions): Promise<AskAnswer>;
   /** Reattach to a run this browser started before a reload took the
@@ -511,3 +518,10 @@ export interface ChatTranscript {
   lastAt: string;
   turns: ChatTurn[];
 }
+
+/* ---- The agent's own memory ---- */
+
+export interface AgentMemoryEntry { index: number; text: string }
+export interface AgentMemoryFile { file: 'MEMORY.md' | 'USER.md'; entries: AgentMemoryEntry[] }
+export interface AgentMemoryProfile { profile: string; files: AgentMemoryFile[] }
+export interface AgentMemory { available: boolean; profiles: AgentMemoryProfile[] }

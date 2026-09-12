@@ -36,6 +36,7 @@ import type {
   Team,
   TeamInvitation,
   Theme,
+  AgentMemory,
   ChatTranscript,
   Workspace,
   WorkspaceChat,
@@ -291,6 +292,35 @@ export class RemoteRepository implements Repository {
   disableSpecialist = (id: string) =>
     post(`/api/state/specialists/${encodeURIComponent(id)}`, { disable: true });
 
+  async ingestFile(file: File): Promise<IngestResult & { source?: string }> {
+    const res = await fetch(`${BASE}/api/runs/ingest/file`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+        'X-Aisar-File-Name': file.name,
+      },
+      body: file,
+    });
+    const body = (await res.json().catch(() => ({}))) as {
+      ok?: boolean; err?: string; runId?: string; facts?: number; keys?: string[]; chars?: number; source?: string;
+      suggestions?: { key?: unknown; value?: unknown; confidence?: unknown }[];
+    };
+    if (res.status === 401) throw new NotSignedInError();
+    if (!body.ok) throw new Error(body.err ?? 'Could not read that file.');
+    return {
+      runId: body.runId ?? '',
+      facts: body.facts ?? 0,
+      keys: body.keys ?? [],
+      chars: body.chars ?? 0,
+      source: body.source,
+      suggestions: (body.suggestions ?? []).flatMap((suggestion) =>
+        typeof suggestion.key === 'string' && typeof suggestion.value === 'string'
+          ? [{ key: suggestion.key, value: suggestion.value, confidence: typeof suggestion.confidence === 'number' ? suggestion.confidence : 0 }]
+          : []),
+    };
+  }
+
   async ingest(url: string): Promise<IngestResult> {
     /* The server answers 200 with ok:false when the RUN happened but
        the reading failed — the run is on record either way, so `call`
@@ -518,6 +548,11 @@ export class RemoteRepository implements Repository {
     call<{ businessName: string }>('/api/team/invitations/accept', {
       method: 'POST', body: JSON.stringify({ token }),
     });
+
+  agentMemory = () => call<AgentMemory>('/api/agent/memory');
+
+  forgetAgentMemory = (entry: { profile: string; file: 'MEMORY.md' | 'USER.md'; text: string }) =>
+    call<void>('/api/agent/memory/forget', { method: 'POST', body: JSON.stringify(entry) });
 
   workspaces = () => call<Workspaces>('/api/workspaces');
 
