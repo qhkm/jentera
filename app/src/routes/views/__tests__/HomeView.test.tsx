@@ -11,8 +11,9 @@
    by a type error: both halves are individually correct.
    ============================================================ */
 
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import HomeView from '@/routes/views/HomeView';
 import { ActivityProvider } from '@/hooks/useActivity';
@@ -64,12 +65,15 @@ function connectionState(rows: Connection[], real = true): ConnectionsState {
   };
 }
 
-function Harness({ connections = connectionState([]) }: { connections?: ConnectionsState }) {
+function Harness({ connections = connectionState([]), onNavigate = () => {} }: {
+  connections?: ConnectionsState;
+  onNavigate?: (view: string, tab?: string, runId?: string | null) => void;
+}) {
   const b = useBusiness();
-  return <HomeView b={b} connections={connections} onNavigate={() => {}} />;
+  return <HomeView b={b} connections={connections} onNavigate={onNavigate as never} />;
 }
 
-async function mount(signedIn: boolean, activity: Activity | null, rows: Connection[] = []) {
+async function mount(signedIn: boolean, activity: Activity | null, rows: Connection[] = [], onNavigate?: (view: string, tab?: string, runId?: string | null) => void) {
   localStorage.setItem('aisar-biz-type', 'restaurant');
   localStorage.setItem('aisar-onboarded-v1', '1');
   localStorage.setItem('aisar-setup-done-v1', '1');
@@ -83,7 +87,7 @@ async function mount(signedIn: boolean, activity: Activity | null, rows: Connect
           <I18nProvider>
             <ToastProvider>
               <ActivityProvider>
-                <Harness connections={connectionState(rows, signedIn)} />
+                <Harness connections={connectionState(rows, signedIn)} onNavigate={onNavigate} />
               </ActivityProvider>
             </ToastProvider>
           </I18nProvider>
@@ -229,5 +233,22 @@ describe('Telegram readiness', () => {
     await screen.findByText('No approvals waiting');
     expect(screen.queryByText('Finish connecting Telegram')).toBeNull();
     expect(screen.queryByText(/connect Telegram to chat with Jentera from your phone/i)).toBeNull();
+  });
+});
+
+describe('a colleague\'s private chat', () => {
+  it('lists the outcome but opens Activity without focusing the run', async () => {
+    const navigate = vi.fn();
+    await mount(true, {
+      counters: { handled: 2, needsYou: 0, minutesSaved: 6, thisWeek: 2, connections: 1 },
+      work: [
+        { ...ONE_HANDLED.work[0], id: 'mine', runId: '11111111-1111-4111-8111-111111111111', objective: 'My digest', canOpen: true },
+        { ...ONE_HANDLED.work[0], id: 'theirs', runId: '22222222-2222-4222-8222-222222222222', objective: 'Their supplier list', canOpen: false },
+      ],
+    }, [], navigate);
+    await userEvent.click(await screen.findByRole('button', { name: /Their supplier list/ }));
+    expect(navigate).toHaveBeenLastCalledWith('work', undefined, undefined);
+    await userEvent.click(screen.getByRole('button', { name: /My digest/ }));
+    expect(navigate).toHaveBeenLastCalledWith('work', undefined, '11111111-1111-4111-8111-111111111111');
   });
 });

@@ -146,6 +146,22 @@ the tenant before touching the bucket and always answers as an attachment.
 Names are plain (`[A-Za-z0-9][A-Za-z0-9._-]{0,119}`), 20 MB a file, 20 a
 run. The runner half ships in the bundle like any runner change.
 
+A chat is a row, and it decides who may read a run. `chat_session`
+(migration 034) is owned by whoever opened the chat; the app's chat id
+becomes the row's id under `(business_id, id)`, and `run.session_id`
+points at it. `chat-sessions.ts` states the one rule: a run with no chat —
+Telegram, a routine, an ingest — is the business's and every member may
+read it; a run with a chat may be read by the person who opened that chat.
+`runVisibleTo` enforces it on the run, events, trace and artifact routes
+(a colleague's private run answers 404, never 403, so the id alone
+confirms nothing), and Activity carries `canOpen` per row so the app shows
+the outcome without a way into the conversation. Workspaces widen the
+second half when they arrive; nothing else should restate the rule. With
+one person per business — every business today — nothing is hidden.
+Team features are a plan: `business.plan` is `free | pro | team`
+(migration 033), `/api/me` carries `features.team`, and every team write
+will check it; `docs/plans/2026-09-12-team-features.md` is the plan.
+
 ### Where work runs
 
 `src/runtime/` is the seam. `run.runtime` and `run.model` are snapshots

@@ -239,7 +239,7 @@ export default function ActivityView({
               statusTone={workTone(w.status)}
               state={workSignal(w.status)}
             >
-              {isRunId(w.runId) && onOpenTask && <div className="mt-2">
+              {isRunId(w.runId) && w.canOpen !== false && onOpenTask && <div className="mt-2">
                 <button type="button" className="ask-inline-action" onClick={() => onOpenTask(w.runId!)}>
                   {t('task.open')}<ArrowUpRight size={16} aria-hidden="true" />
                 </button>

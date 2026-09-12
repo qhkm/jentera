@@ -51,6 +51,7 @@ import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
 import { modelForResponseMode, responseModeFor } from '../runtime/response-mode';
 import type { ResponseMode } from '../runtime/response-mode';
 import { listSpecialists, specialistForTurn } from '../specialists';
+import { ensureChatSession, isChatSessionId, runVisibleTo } from '../chat-sessions';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -238,16 +239,19 @@ export async function handleRuns(
     }
 
     const askRuntime = runtimeFor(env, id.businessId);
-    const run = await withTenant(env, id.businessId, (tx) =>
-      startRun(tx, id.businessId, {
+    const chat = isChatSessionId(sessionId) ? sessionId : null;
+    const run = await withTenant(env, id.businessId, async (tx) => {
+      if (chat) await ensureChatSession(tx, id.businessId, chat, id.userId);
+      return startRun(tx, id.businessId, {
         kind: 'ask',
         triggerShape: 'owner.ask',
-        triggerRef: { question },
+        triggerRef: { question, ...(sessionId ? { sessionId } : {}) },
         requestedBy: id.userId,
         runtime: askRuntime.id,
         model: askRuntime.model,
-      }),
-    );
+        sessionId: chat,
+      });
+    });
 
     /* Retrieval and recent work are read first, in their own
        transaction, so the model call is not holding a database
@@ -298,7 +302,7 @@ export async function handleRuns(
     const [work, counters] = await withTenant(env, id.businessId, async (tx) => [
       /* Conversation stays on the run history and in the ledger; Activity
          is the list of things Jentera did. */
-      await recentWork(tx, 50, { kind: 'work' }),
+      await recentWork(tx, 50, { kind: 'work', viewer: id.userId }),
       await homeCounters(tx),
     ]);
     return json({ ok: true, work, counters }, {}, cors);
@@ -361,7 +365,10 @@ export async function handleRuns(
   if (status && request.method === 'GET') {
     const privateHeaders = { ...cors, 'Cache-Control': 'private, no-store' };
     const state = await withTenant(env, id.businessId, async (tx) => {
-      const run = await getRun(tx, id.businessId, status[1]);
+      const found = await getRun(tx, id.businessId, status[1]);
+      /* A colleague's private chat reads as not found, not as forbidden:
+         the id alone must not confirm the run exists. */
+      const run = found && await runVisibleTo(tx, id.businessId, found.id, id.userId) ? found : null;
       const task = run ? await runtimeTaskForRun(tx, id.businessId, run.id) : null;
       const [context] = run ? await tx<{ sessionId: string | null }[]>`select trigger_ref->>'sessionId' as "sessionId"
         from run where business_id = ${id.businessId} and id = ${run.id}` : [];
@@ -468,7 +475,10 @@ export async function handleRuns(
     if (!env.RUN_STREAMS) {
       return json({ ok: false, err: 'realtime updates unavailable' }, { status: 503 }, cors);
     }
-    const run = await withTenant(env, id.businessId, (tx) => getRun(tx, id.businessId, events[1]));
+    const run = await withTenant(env, id.businessId, async (tx) => {
+      const found = await getRun(tx, id.businessId, events[1]);
+      return found && await runVisibleTo(tx, id.businessId, found.id, id.userId) ? found : null;
+    });
     if (!run || run.runtime !== 'hermes-sprite') {
       return json({ ok: false, err: 'run not found' }, { status: 404 }, cors);
     }
@@ -491,7 +501,9 @@ export async function handleRuns(
 
   const trace = url.pathname.match(/^\/api\/runs\/([0-9a-f-]{36})\/trace$/i);
   if (trace && request.method === 'GET') {
-    const events = await withTenant(env, id.businessId, (tx) => runTrace(tx, trace[1]));
+    const events = await withTenant(env, id.businessId, async (tx) =>
+      await runVisibleTo(tx, id.businessId, trace[1], id.userId) ? runTrace(tx, trace[1]) : null);
+    if (!events) return json({ ok: false, err: 'run not found' }, { status: 404 }, cors);
     return json({ ok: true, events }, {}, cors);
   }
 
@@ -546,6 +558,10 @@ async function startDurableAsk(
       return { runId: existing.runId, task: existing };
     }
 
+    /* The chat becomes a row owned by whoever opened it, and the run
+       points at it; that is what decides who may read the run later. */
+    const chat = isChatSessionId(sessionId) ? sessionId : null;
+    if (chat) await ensureChatSession(tx, businessId, chat, userId);
     const run = await startRun(tx, businessId, {
       kind: 'ask',
       triggerShape: 'owner.ask',
@@ -553,6 +569,7 @@ async function startDurableAsk(
       requestedBy: userId,
       runtime: 'hermes-sprite',
       model,
+      sessionId: chat,
     });
     await append(tx, businessId, run.id, 'fact.retrieved', {
       keys: prepared.usedKeys,

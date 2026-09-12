@@ -125,6 +125,10 @@ export type WorkQuality = 'good' | 'poor';
 export interface WorkSummary {
   id: string;
   runId: string | null;
+  /** Whether this person may open the run behind it. False for a
+      colleague's private chat: the outcome is the business's to see, the
+      conversation is not. Absent means yes; the server always sends it. */
+  canOpen?: boolean;
   objective: string;
   outcome: string | null;
   status: string;

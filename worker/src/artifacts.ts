@@ -103,19 +103,22 @@ export async function countArtifactsForRun(
 export async function listArtifacts(
   tx: postgres.TransactionSql,
   businessId: string,
-  options: { runId?: string | null; limit?: number } = {},
+  options: { runId?: string | null; limit?: number; viewer?: string } = {},
 ): Promise<ArtifactRow[]> {
   const limit = Math.max(1, Math.min(options.limit ?? 50, 200));
-  if (options.runId) {
-    return tx<ArtifactRow[]>`
-      select id, run_id, name, content_type, size_bytes, r2_key, created_at from artifact
-       where business_id = ${businessId} and run_id = ${options.runId}
-       order by created_at desc, id desc limit ${limit}`;
-  }
+  const runId = options.runId ?? null;
+  /* Files follow their run: a colleague's private chat keeps its files
+     out of this person's list (chat-sessions.ts states the rule). */
+  const viewer = options.viewer ?? null;
   return tx<ArtifactRow[]>`
-    select id, run_id, name, content_type, size_bytes, r2_key, created_at from artifact
-     where business_id = ${businessId}
-     order by created_at desc, id desc limit ${limit}`;
+    select a.id, a.run_id, a.name, a.content_type, a.size_bytes, a.r2_key, a.created_at
+      from artifact a
+      join run r on r.id = a.run_id and r.business_id = a.business_id
+      left join chat_session c on c.business_id = r.business_id and c.id = r.session_id
+     where a.business_id = ${businessId}
+       and (${runId}::uuid is null or a.run_id = ${runId}::uuid)
+       and (${viewer}::uuid is null or r.session_id is null or c.created_by = ${viewer}::uuid)
+     order by a.created_at desc, a.id desc limit ${limit}`;
 }
 
 export async function getArtifact(

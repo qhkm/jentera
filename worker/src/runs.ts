@@ -100,6 +100,8 @@ export async function startRun(
     /* Snapshotted, never looked up again. See the migration. */
     runtime: string;
     model?: string | null;
+    /** The chat this run belongs to, when it came from one (chat-sessions.ts). */
+    sessionId?: string | null;
   },
 ): Promise<Run> {
   const requested = {
@@ -109,10 +111,11 @@ export async function startRun(
   const [row] = await tx<RunRow[]>`
     with started as (
       insert into run (business_id, kind, status, trigger_shape, trigger_ref,
-                       requested_by, runtime, model, started_at)
+                       requested_by, runtime, model, session_id, started_at)
       values (${businessId}, ${input.kind}, 'working', ${input.triggerShape},
               ${input.triggerRef === undefined ? null : tx.json(input.triggerRef as never)},
-              ${input.requestedBy ?? null}, ${input.runtime}, ${input.model ?? null}, now())
+              ${input.requestedBy ?? null}, ${input.runtime}, ${input.model ?? null},
+              ${input.sessionId ?? null}, now())
       returning id, kind, status, trigger_shape, runtime, model,
                 started_at, ended_at, created_at
     ), requested as (
@@ -319,6 +322,9 @@ export type WorkQuality = 'good' | 'poor';
 export interface WorkSummary {
   id: string;
   runId: string | null;
+  /** Whether the viewer may open this work's run: false for a colleague's
+      private chat. The outcome itself is the business's to see. */
+  canOpen: boolean;
   objective: string;
   outcome: string | null;
   status: string;
@@ -336,13 +342,17 @@ export interface WorkSummary {
 export async function recentWork(
   tx: postgres.TransactionSql,
   limit = 50,
-  options: { kind?: WorkKind } = {},
+  options: {
+    /** Who is asking; without it every row reads as openable. */
+    viewer?: string; kind?: WorkKind } = {},
 ): Promise<WorkSummary[]> {
   const kind = options.kind ?? null;
+  const viewer = options.viewer ?? null;
   const rows = await tx<
     {
       id: string;
       run_id: string | null;
+      can_open: boolean;
       objective: string;
       outcome: string | null;
       status: string;
@@ -355,14 +365,19 @@ export async function recentWork(
       occurred_at: Date;
       kind: WorkKind;
     }[]
-  >`select id, run_id, objective, outcome, status, function, channel,
-           subject, minutes_saved, outcome_quality, quality_at, occurred_at, kind
-      from work_record
-     where ${kind}::text is null or kind = ${kind}::text
-     order by occurred_at desc limit ${limit}`;
+  >`select w.id, w.run_id, w.objective, w.outcome, w.status, w.function, w.channel,
+           w.subject, w.minutes_saved, w.outcome_quality, w.quality_at, w.occurred_at, w.kind,
+           (${viewer}::uuid is null or r.id is null or r.session_id is null
+              or c.created_by = ${viewer}::uuid) as can_open
+      from work_record w
+      left join run r on r.id = w.run_id and r.business_id = w.business_id
+      left join chat_session c on c.business_id = r.business_id and c.id = r.session_id
+     where ${kind}::text is null or w.kind = ${kind}::text
+     order by w.occurred_at desc limit ${limit}`;
   return rows.map((r) => ({
     id: r.id,
     runId: r.run_id,
+    canOpen: r.can_open,
     objective: r.objective,
     outcome: r.outcome,
     status: r.status,

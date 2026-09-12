@@ -442,7 +442,7 @@ export default function HomeView({
                   key={w.id}
                   type="button"
                   className="home-activity-row"
-                  onClick={() => onNavigate('work', undefined, isRunId(w.runId) ? w.runId : undefined)}
+                  onClick={() => onNavigate('work', undefined, isRunId(w.runId) && w.canOpen !== false ? w.runId : undefined)}
                 >
                   <WorkPulse
                     compact

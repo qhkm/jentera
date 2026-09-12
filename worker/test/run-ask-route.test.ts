@@ -214,6 +214,27 @@ describe('Ask Jentera runtime bridge', () => {
     expect(rows.map((row) => row.profile)).toEqual([null, null]);
   });
 
+  it('records the chat under the asker and stamps the run with it', async () => {
+    await readyRuntime(A);
+    const env = durableEnv(vi.fn(async () => {}));
+    const chat = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    const ask = (sessionId: string) => call('POST', '/api/runs/ask', env, cookieA, {
+      question: 'Draft the digest', requestId: crypto.randomUUID(), mode: 'work', sessionId,
+    });
+    const inChat = await ask(chat);
+    /* Older builds send a free-form id; that is still a session for Hermes,
+       but it is not a chat row and the run stays the business's. */
+    const legacy = await ask('chat-abc');
+    const [a, b] = await Promise.all([inChat, legacy].map((r) => r.json() as Promise<{ runId: string }>));
+    const rows = await asOwner((sql) => sql<{ id: string; session_id: string | null }[]>`
+      select id, session_id from run where id in ${sql([a.runId, b.runId])} order by created_at`);
+    expect(rows).toEqual([{ id: a.runId, session_id: chat }, { id: b.runId, session_id: null }]);
+    const [session] = await asOwner((sql) => sql<{ created_by: string; business_id: string }[]>`
+      select created_by, business_id from chat_session where id = ${chat}`);
+    const [{ id: userA }] = await asOwner((sql) => sql<{ id: string }[]>`select id from app_user where email = 'a@example.com'`);
+    expect(session).toEqual({ created_by: userA, business_id: A });
+  });
+
   it('reuses the same run for simultaneous-safe request retries', async () => {
     await readyRuntime(A);
     const send = sendFake();

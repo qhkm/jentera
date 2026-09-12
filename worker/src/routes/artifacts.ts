@@ -15,6 +15,7 @@ import type { Env } from '../env';
 import { withTenant } from '../db';
 import { hasBusiness, resolveTenant } from '../tenancy';
 import { resolveRuntimeIdentity, RuntimeIdentityError } from '../runtime/identity';
+import { runVisibleTo } from '../chat-sessions';
 import {
   artifactJson,
   artifactKey,
@@ -113,7 +114,7 @@ export async function handleArtifacts(
     if (runIdParam && !UUID.test(runIdParam)) return json({ ok: false, err: 'runId must be a run id' }, { status: 400 }, cors);
     const limit = Number(url.searchParams.get('limit') ?? 50);
     const rows = await withTenant(env, identity.businessId, (tx) => listArtifacts(tx, identity.businessId, {
-      runId: runIdParam, limit: Number.isFinite(limit) ? limit : 50,
+      runId: runIdParam, limit: Number.isFinite(limit) ? limit : 50, viewer: identity.userId,
     }));
     return json({ ok: true, artifacts: rows.map(artifactJson) }, {}, { ...cors, 'Cache-Control': 'private, no-store' });
   }
@@ -123,7 +124,10 @@ export async function handleArtifacts(
     const identity = await resolveTenant(env, request);
     if (!hasBusiness(identity)) return json({ ok: false, err: 'unauthorized' }, { status: 401 }, cors);
     if (!UUID.test(single[1])) return json({ ok: false, err: 'not found' }, { status: 404 }, cors);
-    const row = await withTenant(env, identity.businessId, (tx) => getArtifact(tx, identity.businessId, single[1]));
+    const row = await withTenant(env, identity.businessId, async (tx) => {
+      const found = await getArtifact(tx, identity.businessId, single[1]);
+      return found && await runVisibleTo(tx, identity.businessId, found.run_id, identity.userId) ? found : null;
+    });
     if (!row) return json({ ok: false, err: 'not found' }, { status: 404 }, cors);
     if (!env.ARTIFACTS) return json({ ok: false, err: 'artifact storage is not configured' }, { status: 503 }, cors);
     const object = await env.ARTIFACTS.get(row.r2_key);

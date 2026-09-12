@@ -27,6 +27,7 @@
     "db:migrate:specialist-profiles": "node scripts/apply-specialist-profiles.mjs",
     "db:migrate:notifications": "node scripts/apply-notifications-and-agent-routines.mjs",
     "db:migrate:business-plan-team": "node scripts/apply-business-plan-team.mjs",
+    "db:migrate:chat-session": "node scripts/apply-chat-session.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
