@@ -8,6 +8,7 @@
    row under RLS before it ever touches the bucket.
    ============================================================ */
 import type postgres from 'postgres';
+import { visibleRunPredicate } from './chat-sessions';
 
 /** One file, one request; larger deliverables are the agent's job to split. */
 export const MAX_ARTIFACT_BYTES = 20 * 1024 * 1024;
@@ -117,7 +118,7 @@ export async function listArtifacts(
       left join chat_session c on c.business_id = r.business_id and c.id = r.session_id
      where a.business_id = ${businessId}
        and (${runId}::uuid is null or a.run_id = ${runId}::uuid)
-       and (${viewer}::uuid is null or r.session_id is null or c.created_by = ${viewer}::uuid)
+       and ${visibleRunPredicate(tx, viewer)}
      order by a.created_at desc, a.id desc limit ${limit}`;
 }
 

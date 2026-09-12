@@ -52,7 +52,8 @@ import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
 import { modelForResponseMode, responseModeFor } from '../runtime/response-mode';
 import type { ResponseMode } from '../runtime/response-mode';
 import { listSpecialists, specialistForTurn } from '../specialists';
-import { ensureChatSession, isChatSessionId, runVisibleTo } from '../chat-sessions';
+import { ensureChatSession, isChatSessionId, isWorkspaceMember, runVisibleTo } from '../chat-sessions';
+import { answerText } from '../runtime/answer-text';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -195,6 +196,7 @@ export async function handleRuns(
       mode?: unknown;
       sessionId?: unknown;
       responseMode?: unknown;
+      workspaceId?: unknown;
     };
     const question = typeof body.question === 'string' ? body.question.trim() : '';
     if (!question) return json({ ok: false, err: 'ask me something' }, { status: 400 }, cors);
@@ -211,6 +213,20 @@ export async function handleRuns(
         : null;
     if (sessionId === null) {
       return json({ ok: false, err: 'session id is invalid' }, { status: 400 }, cors);
+    }
+    /* A chat opened inside a workspace: the person must be in it, and the
+       chat must be a real chat id, or there is nothing for the workspace to
+       hold. A later turn in an existing chat ignores this; the chat stays
+       where it was opened. */
+    const workspaceId = body.workspaceId === undefined ? null
+      : typeof body.workspaceId === 'string' && uuid(body.workspaceId) ? body.workspaceId : undefined;
+    if (workspaceId === undefined) return json({ ok: false, err: 'workspace id is invalid' }, { status: 400 }, cors);
+    if (workspaceId && !isChatSessionId(sessionId)) {
+      return json({ ok: false, err: 'a workspace chat needs a chat id' }, { status: 400 }, cors);
+    }
+    if (workspaceId) {
+      const member = await withTenant(env, id.businessId, (tx) => isWorkspaceMember(tx, id.businessId, workspaceId, id.userId));
+      if (!member) return json({ ok: false, err: 'You are not in that workspace.' }, { status: 403 }, cors);
     }
     const mode = body.mode ?? 'work';
     if (mode !== 'ask' && mode !== 'work') {
@@ -238,13 +254,14 @@ export async function handleRuns(
         inline,
         /* A membership always has a role; the fallback only satisfies the type. */
         { email: id.email, role: id.role ?? 'staff' },
+        workspaceId,
       );
     }
 
     const askRuntime = runtimeFor(env, id.businessId);
     const chat = isChatSessionId(sessionId) ? sessionId : null;
     const run = await withTenant(env, id.businessId, async (tx) => {
-      if (chat) await ensureChatSession(tx, id.businessId, chat, id.userId);
+      if (chat) await ensureChatSession(tx, id.businessId, chat, id.userId, { workspaceId, title: question });
       return startRun(tx, id.businessId, {
         kind: 'ask',
         triggerShape: 'owner.ask',
@@ -525,6 +542,7 @@ async function startDurableAsk(
   ctx?: BackgroundContext,
   inline?: InlineSliceOptions,
   speaker?: Speaker,
+  workspaceId: string | null = null,
 ): Promise<Response> {
   if (!env.RUNTIME_QUEUE || !env.AISAR_MODEL_NAME?.trim()) {
     return json({ ok: false, err: 'Jentera agent execution is unavailable' }, { status: 503 }, cors);
@@ -565,7 +583,7 @@ async function startDurableAsk(
     /* The chat becomes a row owned by whoever opened it, and the run
        points at it; that is what decides who may read the run later. */
     const chat = isChatSessionId(sessionId) ? sessionId : null;
-    if (chat) await ensureChatSession(tx, businessId, chat, userId);
+    if (chat) await ensureChatSession(tx, businessId, chat, userId, { workspaceId, title: question });
     const run = await startRun(tx, businessId, {
       kind: 'ask',
       triggerShape: 'owner.ask',
@@ -652,15 +670,6 @@ function askMetadata(task: RuntimeTask): { usedKeys: string[]; grounded: boolean
     ? payload.factKeys.filter((key): key is string => typeof key === 'string').slice(0, 24)
     : [];
   return { usedKeys, grounded: payload.grounded === true };
-}
-
-function answerText(result: unknown): string {
-  if (typeof result === 'string' && result.trim()) return result.trim().slice(0, 20_000);
-  if (result && typeof result === 'object') {
-    const text = (result as Record<string, unknown>).text;
-    if (typeof text === 'string' && text.trim()) return text.trim().slice(0, 20_000);
-  }
-  return 'Jentera completed the work but returned no readable answer.';
 }
 
 function terminalRun(status: string): boolean {

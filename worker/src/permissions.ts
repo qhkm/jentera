@@ -35,6 +35,8 @@ export const PERMISSIONS = {
   'tasks.review': ['owner'],
   /** Invite people to the business and revoke invitations. */
   'team.manage': ['owner'],
+  /** Create workspaces and decide who is in them. */
+  'workspaces.manage': ['owner'],
 } as const satisfies Record<string, readonly ('owner' | 'staff')[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

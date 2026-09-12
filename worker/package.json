@@ -29,6 +29,7 @@
     "db:migrate:business-plan-team": "node scripts/apply-business-plan-team.mjs",
     "db:migrate:chat-session": "node scripts/apply-chat-session.mjs",
     "db:migrate:invitation": "node scripts/apply-invitation.mjs",
+    "db:migrate:workspace": "node scripts/apply-workspace.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

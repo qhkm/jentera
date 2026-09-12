@@ -9,6 +9,7 @@
    ============================================================ */
 
 import type postgres from 'postgres';
+import { visibleRunPredicate } from './chat-sessions';
 import { taskAssessmentForRun } from './task-outcome';
 
 export type RunKind = 'ingest' | 'ask' | 'reply' | 'schedule';
@@ -370,8 +371,7 @@ export async function recentWork(
     }[]
   >`select w.id, w.run_id, w.objective, w.outcome, w.status, w.function, w.channel,
            w.subject, w.minutes_saved, w.outcome_quality, w.quality_at, w.occurred_at, w.kind,
-           (${viewer}::uuid is null or r.id is null or r.session_id is null
-              or c.created_by = ${viewer}::uuid) as can_open,
+           (r.id is null or ${visibleRunPredicate(tx, viewer)}) as can_open,
            u.email as requested_by
       from work_record w
       left join run r on r.id = w.run_id and r.business_id = w.business_id

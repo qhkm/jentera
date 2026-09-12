@@ -19,6 +19,8 @@ import { handleArtifacts, RUNTIME_ARTIFACTS_PATH } from './routes/artifacts';
 import { sweepPushOutbox } from './push/outbox';
 import { handleNotifications } from './routes/notifications';
 import { handleTeam } from './routes/team';
+import { handleWorkspaces } from './routes/workspaces';
+import { handleChats } from './routes/chats';
 import { dispatchDueRoutines } from './routines/dispatch';
 import { handleConnect } from './routes/connect';
 import { handleRuntime } from './routes/runtime';
@@ -145,6 +147,10 @@ export default {
     /* The team: members and invitations. A plan, not a default. */
     const team = await handleTeam(request, env, url, headers);
     if (team) return team;
+    const workspaces = await handleWorkspaces(request, env, url, headers);
+    if (workspaces) return workspaces;
+    const chatList = await handleChats(request, env, url, headers);
+    if (chatList) return chatList;
 
     /* Connections, and the Telegram webhook — the one route here that
        is called by someone other than our own frontend. */
