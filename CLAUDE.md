@@ -308,6 +308,10 @@ bumps `RUNTIME_RELEASE`, runs the release gate, commits, pushes, deploys the
 worker, triggers the drift sweep, waits for convergence, and runs
 `fleet-verify.sh` on every sprite. `--dry-run` stops after the gate.
 `docs/release-playbook.md` is the same procedure written out, with rollback.
+`docs/todo.md` is the open follow-up list: what shipped but was never
+exercised live, what the next release must carry, what waits on Fly or on the
+owner, and what was deferred. Read it before asking what is next; move an
+item to its Closed section when it is done.
 
 **A transfer field and its `case` arm ship in the same bundle.** The fields
 in `provision.ts`'s `transfer` are parsed by `bootstrap-runtime.sh` against a
