@@ -16,6 +16,7 @@ invitations.
 |---|---|---|
 | Team flow end to end | Steps 0–7 of `docs/plans/2026-09-12-team-features.md` shipped 12 Sep; Kitakod Ventures is on the plan; no invitation has ever been sent live | From Kitakod, invite a second address you control; the email arrives through Resend; `/join` accepts; a chat opened in a workspace is readable by the other member; `DELETE /api/team/members/:userId` ends their session at once. Note anything off in `docs/team-plan.md` |
 | Restore path | `provider.restore` has never run in production, and until 51c844b (12 Sep) the stored id was Fly's `Current` pseudo-entry, so a restore would have gone to the last hourly snapshot | On the poc sprite, restore to a real `vN` id and watch the runner come back on the expected release |
+| Web push on a real device | Until the evening of 12 Sep the API refused the switch's PUT twice over (CORS preflight, then the pre-route guard), so no device has ever subscribed; `push_subscription` is empty | Turn "Notifications on this device" on from a phone or desktop; the welcome push arrives; one row in `push_subscription` |
 | Document upload | `POST /api/runs/ingest/file` shipped 12 Sep; the release was verified as served, the upload itself may not have been tried live | Upload one PDF and one CSV on production; facts land unconfirmed with the file name as source |
 
 ## Next runtime release must carry
