@@ -108,6 +108,10 @@ export interface Env {
   VAPID_SUBJECT?: string;
   /** Placement spike: a service binding to this Worker itself. */
   SELF?: Fetcher;
+  /** R2 bucket for files the agent hands the owner (routes/artifacts.ts).
+      Keys are `<business>/<run>/<artifact id>/<name>`; nothing reads the
+      bucket without first resolving the artifact row under RLS. */
+  ARTIFACTS?: R2Bucket;
   AISAR_MODEL_NAME?: string;
   /** Optional heavier model used only for explicit deep/research work. */
   AISAR_DEEP_MODEL_NAME?: string;

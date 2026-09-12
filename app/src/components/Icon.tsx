@@ -77,6 +77,7 @@ const CHROME = {
   chat: ChatCircle,
   activity: Lightning,
   notifications: Bell,
+  files: Files,
   business: Buildings,
   search: MagnifyingGlass,
   sparkle: Sparkle,

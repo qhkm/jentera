@@ -191,6 +191,29 @@ Safari and signs Safari in, not the installed app. Password and Google
 sign-in work inside the app; the magic link does not carry across. Android
 and desktop Chromium share cookies with the browser and are unaffected.
 
+## Files the agent hands you
+
+A reply can carry files. The runner gives every task its own folder on
+the sprite and tells the model, in the run instructions, to save any
+deliverable there (a report, a spreadsheet, a document, an image) instead
+of pasting it into the reply. When Hermes reports the run complete, the
+runner uploads each file to the worker before the task reads as complete,
+so the finished reply already knows its files.
+
+- **Where they live.** R2 bucket `jentera-artifacts`, key
+  `<business>/<run>/<artifact id>/<name>`, indexed by the `artifact` table
+  under RLS. The download route resolves the row under the tenant first and
+  always answers as an attachment, never rendered at the API origin.
+- **Where they show.** `ArtifactList` renders the chips on a finished reply
+  (`AskReply`) and the Files card on the task page (`TaskDetailView`). The
+  Files view in the dashboard lists everything, newest first, each with a
+  download and the task it came from. The download is a plain link to
+  `GET /api/artifacts/:id`: a top-level click across sites still carries the
+  Lax session cookie, so no token travels in the URL.
+- **Limits.** 20 files per run, 20 MB each; plain file names only (letters,
+  digits, dot, dash, underscore). What the runner could not upload is logged
+  on the sprite and left out of the reply rather than failing the run.
+
 ## Public SEO and link previews
 
 `pnpm build` now renders `/` and `/connect` to static HTML from their actual

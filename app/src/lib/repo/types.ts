@@ -189,6 +189,8 @@ export interface AskAnswer {
   /** What the agent did, as the chat showed it: its steps and tool calls.
       Read back from the run when the live list was missed. */
   steps?: string[];
+  /** Files the agent produced for the owner, attached to the reply. */
+  artifacts?: Artifact[];
 }
 
 export type BrowserCommand = { controlId: string } & (
@@ -221,6 +223,18 @@ export interface RunResult {
   pending: boolean;
   text?: string;
   err?: string;
+  /** Files the agent produced for the owner during this run. */
+  artifacts?: Artifact[];
+}
+
+/** A file the agent handed the owner, stored under the business. */
+export interface Artifact {
+  id: string;
+  runId: string;
+  name: string;
+  contentType: string;
+  size: number;
+  createdAt: string;
 }
 
 export interface Activity {
@@ -359,6 +373,11 @@ export interface Repository {
       same browser is registered to another account; take a new one. */
   savePushSubscription?(subscription: PushSubscriptionJson): Promise<'saved' | 'conflict'>;
   deletePushSubscription?(endpoint: string): Promise<void>;
+
+  /** Files the agent produced, newest first; remote only. */
+  listArtifacts?(options?: { runId?: string; limit?: number }): Promise<Artifact[]>;
+  /** Where a file downloads from; the session cookie travels with the click. */
+  artifactUrl?(id: string): string;
 
   /** Accounts this business has connected. Never includes secrets. */
   connections(): Promise<Connection[]>;

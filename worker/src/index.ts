@@ -15,6 +15,7 @@ import { handleRepo } from './routes/repo';
 import { handleRuns } from './routes/runs';
 import { handleRoutines } from './routes/routines';
 import { handlePush } from './routes/push';
+import { handleArtifacts, RUNTIME_ARTIFACTS_PATH } from './routes/artifacts';
 import { sweepPushOutbox } from './push/outbox';
 import { handleNotifications } from './routes/notifications';
 import { dispatchDueRoutines } from './routines/dispatch';
@@ -100,6 +101,11 @@ export default {
        presents a runtime credential, not a session cookie. */
     const runtimeConfig = await handleRuntimeConfig(request, env, url, headers);
     if (runtimeConfig) return runtimeConfig;
+    /* A task's output files, uploaded by the runner with the same credential. */
+    if (url.pathname === RUNTIME_ARTIFACTS_PATH) {
+      const uploaded = await handleArtifacts(request, env, url, headers);
+      if (uploaded) return uploaded;
+    }
 
     const guarded = await guardApiRequest(request, env, url, headers);
     if (guarded) return guarded;
@@ -126,6 +132,8 @@ export default {
 
     const push = await handlePush(request, env, url, headers, { ctx });
     if (push) return push;
+    const artifacts = await handleArtifacts(request, env, url, headers);
+    if (artifacts) return artifacts;
     /* Routines: owner-scheduled deterministic jobs, behind a flag. */
     const routines = await handleRoutines(request, env, url, headers);
     if (routines) return routines;

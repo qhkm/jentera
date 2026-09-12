@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ArtifactList } from '@/components/ArtifactList';
 import { ArrowLeft, ArrowUpRight, ChatCircle, CheckCircle, Clock, WarningCircle } from '@phosphor-icons/react';
 import { Button, Card, Eyebrow, LoadingState, Tag } from '@/components/ui';
 import { JenteraMark } from '@/components/JenteraMark';
@@ -140,6 +141,12 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk }
               {waiting && !result.approvalId && onBack && <div><Button variant="outline" onClick={onBack}>
                 {t('task.approvalInbox')}<ArrowUpRight size={17} aria-hidden="true" />
               </Button></div>}
+            </Card>
+          )}
+          {result.artifacts && result.artifacts.length > 0 && (
+            <Card className="task-files gap-3" role="region" aria-label={t('files.title')}>
+              <h2 className="m-0 text-[15px]">{t('files.title')}</h2>
+              <ArtifactList artifacts={result.artifacts} label={t('files.title')} />
             </Card>
           )}
           {result.approvalId && <RuntimeApprovalCard approvalId={result.approvalId} onDecided={() => {

@@ -45,6 +45,7 @@ import {
 } from '../runtime/tasks';
 import { publishRunProgressSafely } from '../runtime/progress';
 import { isFailureNotice } from '../runtime/failure-notice';
+import { artifactsForRun } from '../artifacts';
 import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
 import { modelForResponseMode, responseModeFor } from '../runtime/response-mode';
 import type { ResponseMode } from '../runtime/response-mode';
@@ -383,13 +384,14 @@ export async function handleRuns(
     if (state.run.status === 'completed') {
       const metadata = askMetadata(state.task);
       const completedRunId = state.run.id;
-      const { steps, ...verdict } = await withTenant(env, id.businessId, async (tx) => {
+      const { steps, artifacts, ...verdict } = await withTenant(env, id.businessId, async (tx) => {
         const assessment = await taskAssessmentForRun(tx, id.businessId, completedRunId);
         const [row] = await tx<{ kind: string; status: string }[]>`
           select kind, status from work_record where run_id = ${completedRunId} order by occurred_at desc limit 1`;
         return { kind: assessment?.kind ?? row?.kind ?? 'conversation',
           taskStatus: assessment?.status ?? (row?.kind === 'work' ? row.status : undefined),
-          steps: await runSteps(tx, id.businessId, completedRunId) };
+          steps: await runSteps(tx, id.businessId, completedRunId),
+          artifacts: await artifactsForRun(tx, id.businessId, completedRunId) };
       });
       return json({
         ok: true,
@@ -402,6 +404,7 @@ export async function handleRuns(
         grounded: metadata.grounded,
         ...verdict,
         ...(steps.length ? { steps } : {}),
+        ...(artifacts.length ? { artifacts } : {}),
       }, {}, privateHeaders);
     }
     if (state.run.status === 'failed' || state.run.status === 'cancelled') {
@@ -411,7 +414,7 @@ export async function handleRuns(
          provider text can never reach a page. */
       const failedRunId = state.run.id;
       const failedStatus = state.run.status;
-      const { notice, steps } = await withTenant(env, id.businessId, async (tx) => {
+      const { notice, steps, artifacts } = await withTenant(env, id.businessId, async (tx) => {
         const [row] = failedStatus === 'failed'
           ? await tx<{ outcome: string | null }[]>`
             select outcome from work_record where run_id = ${failedRunId} order by occurred_at desc limit 1`
@@ -420,6 +423,7 @@ export async function handleRuns(
           notice: isFailureNotice(row?.outcome) ? row!.outcome as string : null,
           /* How far it got is still worth showing next to the notice. */
           steps: await runSteps(tx, id.businessId, failedRunId),
+          artifacts: await artifactsForRun(tx, id.businessId, failedRunId),
         };
       });
       return json({
@@ -431,6 +435,7 @@ export async function handleRuns(
           ? 'Jentera stopped that answer.'
           : notice ?? 'Jentera could not answer that just now. Please try again.',
         ...(steps.length ? { steps } : {}),
+        ...(artifacts.length ? { artifacts } : {}),
       }, {}, privateHeaders);
     }
     return json({

@@ -33,9 +33,10 @@ import { trackActivation } from '@/lib/analytics';
 import { isRunId } from '@/lib/task';
 import RoutinesView from './views/RoutinesView';
 import NotificationsView from './views/NotificationsView';
+import FilesView from './views/FilesView';
 import { useNotifications } from '@/hooks/useNotifications';
 
-export type View = 'home' | 'chat' | 'work' | 'routines' | 'notifications' | 'business';
+export type View = 'home' | 'chat' | 'work' | 'files' | 'routines' | 'notifications' | 'business';
 
 const BUSINESS_TABS: BizTab[] = ['profile', 'knows', 'handles', 'connections', 'permissions'];
 
@@ -48,6 +49,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { id: 'home', labelKey: 'nav.home', icon: 'home' },
   { id: 'work', labelKey: 'nav.work', icon: 'activity' },
+  { id: 'files', labelKey: 'nav.files', icon: 'files' },
   { id: 'notifications', labelKey: 'notifications.title', icon: 'notifications' },
   { id: 'business', labelKey: 'nav.business', icon: 'business' },
 ];
@@ -265,6 +267,7 @@ export default function Dashboard() {
             onOpenTask={openTask}
             onCloseTask={() => go('work')}
           />}
+          {view === 'files' && <FilesView onOpenTask={(runId) => openTask(runId)} />}
           {view === 'notifications' && <NotificationsView
             state={notifications}
             onOpenTask={openTask}

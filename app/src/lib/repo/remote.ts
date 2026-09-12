@@ -10,11 +10,13 @@
 
 import type { Approval, CountryCode, Lang, Policy } from '@/lib/types';
 import { isRunId } from '@/lib/task';
+import { isArtifact } from '@/lib/artifacts';
 import { RemoteRoutinesApi } from '@/lib/routines/api';
 import type {
   BrowserCommand,
   BusinessBrowserState,
   Activity,
+  Artifact,
   AskAnswer,
   ResumeAskOptions,
   PushSubscriptionJson,
@@ -456,6 +458,19 @@ export class RemoteRepository implements Repository {
 
   deletePushSubscription = (endpoint: string) =>
     call<void>('/api/push/subscription', { method: 'DELETE', body: JSON.stringify({ endpoint }) });
+
+  /* Files the agent produced. The download is a plain link to the API:
+     a top-level GET across sites still carries the Lax session cookie. */
+  listArtifacts = async (options: { runId?: string; limit?: number } = {}): Promise<Artifact[]> => {
+    const params = new URLSearchParams();
+    if (options.runId) params.set('runId', options.runId);
+    if (options.limit) params.set('limit', String(options.limit));
+    const query = params.toString();
+    const { artifacts } = await call<{ artifacts?: unknown }>(`/api/artifacts${query ? `?${query}` : ''}`);
+    return Array.isArray(artifacts) ? artifacts.filter(isArtifact) : [];
+  };
+
+  artifactUrl = (id: string) => `${BASE}/api/artifacts/${encodeURIComponent(id)}`;
 
   async runResult(runId: string): Promise<RunResult> {
     if (!isRunId(runId)) throw new Error('Invalid task link.');

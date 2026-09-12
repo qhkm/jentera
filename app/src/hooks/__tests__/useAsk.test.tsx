@@ -150,6 +150,21 @@ describe('useAsk durable answers', () => {
     expect(result.current!.messages[3]).toMatchObject({ depth: 'deep' });
   });
 
+  it('keeps the files the agent produced with the finished reply', async () => {
+    const repo: Repository = new LocalRepository();
+    const artifact = { id: 'a1', runId: '11111111-1111-4111-8111-111111111111', name: 'digest.md', contentType: 'text/markdown', size: 8, createdAt: '2026-09-12T01:00:00.000Z' };
+    repo.ask = (): Promise<AskAnswer> => Promise.resolve({ text: 'Your digest is attached.', usedKeys: [], grounded: true, artifacts: [artifact] });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SignedInProvider value>
+        <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
+      </SignedInProvider>
+    );
+    const { result } = renderHook(() => useAsk(business, { handled: 0, needs: 0 }, (key) => key), { wrapper });
+    await waitFor(() => expect(result.current).not.toBeNull());
+    await act(async () => { result.current!.send('digest please', 'work'); });
+    expect(result.current!.messages[1]).toMatchObject({ state: 'done', artifacts: [artifact] });
+  });
+
   it('takes the steps from the durable answer when none arrived live', async () => {
     /* A reload mid-run, or a socket that never opened: the run detail
        still knows what the agent did, so the receipt is not lost. */

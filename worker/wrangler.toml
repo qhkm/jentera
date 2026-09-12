@@ -31,6 +31,13 @@ region = "aws:ap-southeast-1"
 binding = "HYPERDRIVE"
 id = "f77c72f8d6614bb0b6955170caadad07"
 
+# Files the agent hands the owner: reports, spreadsheets, documents. Keys
+# are `<business>/<run>/<artifact id>/<name>`; every read goes through
+# routes/artifacts.ts, which resolves the row under RLS before the bucket.
+[[r2_buckets]]
+binding = "ARTIFACTS"
+bucket_name = "jentera-artifacts"
+
 # Workers Logs. Without this, invocation-level telemetry (status codes,
 # subrequests, exceptions) is not retained and post-incident diagnosis of
 # runtime stalls (e.g. 2026-09-03 12:10 clientDisconnected) is guesswork.

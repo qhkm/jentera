@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RepositoryProvider } from '@/lib/repo/context';
@@ -20,6 +20,21 @@ beforeEach(() => localStorage.clear());
 afterEach(() => vi.useRealTimers());
 
 describe('exact task details', () => {
+  it('lists the files the task produced, each as a download', async () => {
+    const repo = new LocalRepository();
+    repo.artifactUrl = (id: string) => `https://api.test/api/artifacts/${id}`;
+    repo.runResult = vi.fn(async () => ({
+      runId, status: 'completed', pending: false, text: 'Digest attached.',
+      artifacts: [{ id: 'a1', runId, name: 'tech-digest.md', contentType: 'text/markdown', size: 5321, createdAt: '2026-09-12T01:00:00.000Z' }],
+    }));
+    mount(repo);
+    const files = await screen.findByRole('region', { name: 'Files' });
+    const link = within(files).getByRole('link', { name: /tech-digest\.md/ });
+    expect(link).toHaveAttribute('href', 'https://api.test/api/artifacts/a1');
+    expect(link).toHaveAttribute('download', 'tech-digest.md');
+  });
+
+
   it('confirms reviewed work and reloads its status', async () => {
     const confirmTaskReview = vi.fn(async () => {});
     const repo = Object.assign(new LocalRepository(), { confirmTaskReview });

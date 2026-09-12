@@ -4,6 +4,7 @@ import { renderReplyMarkdown } from '@/lib/reply-markdown';
 import { ArrowUpRight, Check, Copy, Info, WarningCircle } from '@phosphor-icons/react';
 import { JenteraMark } from '@/components/JenteraMark';
 import { ElapsedSince, TypingBubble } from '@/components/WorkSignal';
+import { ArtifactList } from '@/components/ArtifactList';
 import { useToast } from '@/components/Toast';
 import { useT } from '@/i18n/I18nProvider';
 import type { AskMessage } from '@/hooks/useAsk';
@@ -132,7 +133,11 @@ export function AskReply({
               {t('ask.retry')}
             </button>
           ) : (
-            <footer>
+            <>
+              {message.artifacts && message.artifacts.length > 0 && (
+                <ArtifactList artifacts={message.artifacts} label={t('ask.files')} className="mt-3" />
+              )}
+              <footer>
               <button type="button" className="ask-inline-action" onClick={() => void copy()}>
                 {copied ? (
                   <Check size={15} aria-hidden="true" />
@@ -176,6 +181,7 @@ export function AskReply({
                 </button>
               )}
             </footer>
+            </>
           )}
         </>
       )}

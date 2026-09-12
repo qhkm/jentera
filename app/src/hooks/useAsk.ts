@@ -22,7 +22,8 @@ import { stripEmoji } from '@/components/Icon';
 import type { Lang } from '@/lib/types';
 import { taggedAgent } from '@/hooks/useMentions';
 import type { Business } from '@/lib/types';
-import type { AskAnswer, AskMode, AskProgress, AskProgressEvent, WorkKind } from '@/lib/repo';
+import type { Artifact, AskAnswer, AskMode, AskProgress, AskProgressEvent, WorkKind } from '@/lib/repo';
+import { artifactsOf } from '@/lib/artifacts';
 import { trackActivation } from '@/lib/analytics';
 import { isRunId } from '@/lib/task';
 
@@ -40,6 +41,8 @@ export interface AskMessage {
   liveStatus?: string;
   /** The agent's own steps and tool calls, in order, kept with the reply. */
   steps?: string[];
+  /** Files the agent produced for the owner, offered as downloads. */
+  artifacts?: Artifact[];
   /** The request that failed, retained so the UI can offer a real retry. */
   failedQuestion?: string;
   failedMode?: AskMode;
@@ -409,6 +412,7 @@ export function useAsk(
                     mode,
                     depth: message.depth,
                     steps: message.steps?.length ? message.steps : durableSteps(a),
+                    artifacts: artifactsOf(a.artifacts),
                     kind: a.kind,
                     taskStatus: a.taskStatus,
                     usedKeys: a.usedKeys,

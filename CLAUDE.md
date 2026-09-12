@@ -134,6 +134,18 @@ transaction, and a request that dies after the insert loses nothing. The
 notification insert in `src/notifications/store.ts` is the one caller;
 the confirmation push on subscribe is sent directly.
 
+Artifacts are files the agent hands the owner. The runner gives each task
+a folder (`/home/sprite/aisar/outputs/<task>`), appends an instruction
+pointing the model at it, and on completion uploads every file there to
+`POST /v1/runtime/artifacts` with the runtime credential the config channel
+uses, before the task reads as complete — so the first "completed" the
+control plane sees already carries the files. The worker stores bytes in
+R2 (`ARTIFACTS`, bucket `jentera-artifacts`) and indexes them in `artifact`
+under RLS (migration 032); `GET /api/artifacts/:id` resolves the row under
+the tenant before touching the bucket and always answers as an attachment.
+Names are plain (`[A-Za-z0-9][A-Za-z0-9._-]{0,119}`), 20 MB a file, 20 a
+run. The runner half ships in the bundle like any runner change.
+
 ### Where work runs
 
 `src/runtime/` is the seam. `run.runtime` and `run.model` are snapshots

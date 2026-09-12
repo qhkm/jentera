@@ -9,6 +9,7 @@ import * as store from '@/lib/storage';
 import { KEYS } from '@/lib/storage';
 import type { Approval, CountryCode, Lang, Policy } from '@/lib/types';
 import type {
+  Artifact,
   Activity,
   BusinessSnapshot,
   Fact,
@@ -377,6 +378,15 @@ export class LocalRepository implements Repository {
 
   async runTrace(): Promise<TraceEvent[]> {
     return [];
+  }
+
+  /* The demo has no agent and produces no files; the views render empty. */
+  async listArtifacts(): Promise<Artifact[]> {
+    return [];
+  }
+
+  artifactUrl(_id: string): string {
+    return '#';
   }
 
   async runResult(): Promise<RunResult> {
