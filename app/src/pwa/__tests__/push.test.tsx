@@ -42,9 +42,85 @@ const wrapper = (repo: Repository) => ({ children }: { children: ReactNode }) =>
   <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
 );
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('usePushNotifications', () => {
+  it.each([
+    ['permission', 'permission'], ['key', 'network'], ['subscribe', 'browser'], ['save', 'save'], ['auth', 'signin'],
+  ])('reports %s failures without leaking raw errors', async (stage, expected) => {
+    const manager = browser();
+    const error = new Error('private endpoint should not be shown');
+    if (stage === 'auth') error.name = 'NotSignedInError';
+    const repo = repoWith();
+    if (stage === 'permission') vi.mocked(Notification.requestPermission).mockRejectedValue(error);
+    if (stage === 'key') vi.mocked(repo.pushPublicKey!).mockRejectedValue(error);
+    if (stage === 'subscribe') manager.subscribe.mockRejectedValue(new DOMException('push provider failed', 'AbortError'));
+    if (stage === 'save' || stage === 'auth') vi.mocked(repo.savePushSubscription!).mockRejectedValue(error);
+    const { result } = renderHook(() => usePushNotifications(), { wrapper: wrapper(repo) });
+    await waitFor(() => expect(result.current.state).toBe('off'));
+    await act(async () => { expect(await result.current.enable()).toBe(expected); });
+    expect(result.current.busy).toBe(false);
+    expect(result.current.state).toBe('off');
+  });
+
+  it('reuses the subscription after a failed save, without unsubscribing or duplicating it', async () => {
+    const manager = browser();
+    const save = vi.fn().mockRejectedValueOnce(new TypeError('offline')).mockResolvedValueOnce('saved');
+    const { result } = renderHook(() => usePushNotifications(), { wrapper: wrapper(repoWith({ savePushSubscription: save })) });
+    await waitFor(() => expect(result.current.state).toBe('off'));
+    await act(async () => { expect(await result.current.enable()).toBe('save'); });
+    const subscription = await manager.getSubscription();
+    expect(subscription?.unsubscribe).not.toHaveBeenCalled();
+    await act(async () => { expect(await result.current.enable()).toBe('on'); });
+    expect(manager.subscribe).toHaveBeenCalledOnce();
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
+  it('renews a subscription only when its application server key changed', async () => {
+    const existing = Object.assign(fakeSubscription('https://push.example/old'), { options: { applicationServerKey: new Uint8Array(65).buffer } });
+    const manager = browser({ existing, permission: 'granted' });
+    const { result } = renderHook(() => usePushNotifications(), { wrapper: wrapper(repoWith()) });
+    await waitFor(() => expect(result.current.state).toBe('on'));
+    await act(async () => { expect(await result.current.enable()).toBe('on'); });
+    expect(existing.unsubscribe).toHaveBeenCalledOnce();
+    expect(manager.subscribe).toHaveBeenCalledOnce();
+  });
+
+  it('distinguishes a dismissed prompt from blocked permission', async () => {
+    browser();
+    vi.mocked(Notification.requestPermission).mockResolvedValue('default');
+    const { result } = renderHook(() => usePushNotifications(), { wrapper: wrapper(repoWith()) });
+    await waitFor(() => expect(result.current.state).toBe('off'));
+    await act(async () => { expect(await result.current.enable()).toBe('dismissed'); });
+    expect(result.current.state).toBe('off');
+  });
+
+  it('bounds the wait for a missing service worker', async () => {
+    browser({ permission: 'granted' });
+    vi.stubGlobal('navigator', { serviceWorker: { ready: new Promise(() => {}) } });
+    const { result } = renderHook(() => usePushNotifications(), { wrapper: wrapper(repoWith()) });
+    await waitFor(() => expect(result.current?.state).toBe('checking'));
+    vi.useFakeTimers();
+    await act(async () => {
+      const outcome = result.current.enable();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(await outcome).toBe('worker');
+    });
+    expect(result.current.busy).toBe(false);
+  });
+
+  it('does not run duplicate subscriptions for repeated taps', async () => {
+    const manager = browser();
+    const { result } = renderHook(() => usePushNotifications(), { wrapper: wrapper(repoWith()) });
+    await waitFor(() => expect(result.current.state).toBe('off'));
+    await act(async () => {
+      const first = result.current.enable();
+      expect(await result.current.enable()).toBe('busy');
+      expect(await first).toBe('on');
+    });
+    expect(manager.subscribe).toHaveBeenCalledOnce();
+  });
+
   it('is unsupported where the browser has no push', async () => {
     vi.stubGlobal('navigator', { ...navigator, serviceWorker: undefined });
     const { result } = renderHook(() => usePushNotifications(), { wrapper: wrapper(repoWith()) });

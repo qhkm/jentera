@@ -479,8 +479,10 @@ export class RemoteRepository implements Repository {
      configured" and a 409 means "another account's device", both answers
      the caller acts on, where `call` would have thrown. */
   async pushPublicKey(): Promise<string | null> {
-    const res = await fetch(`${BASE}/api/push/vapid-public-key`, { credentials: 'include' });
-    if (!res.ok) return null;
+    const res = await fetch(`${BASE}/api/push/vapid-public-key`, { credentials: 'include', signal: AbortSignal.timeout(15_000) });
+    if (res.status === 503) return null;
+    if (res.status === 401) throw new NotSignedInError();
+    if (!res.ok) throw new Error('Could not load notification configuration.');
     const body = (await res.json().catch(() => ({}))) as { key?: unknown };
     return typeof body.key === 'string' ? body.key : null;
   }
@@ -491,6 +493,7 @@ export class RemoteRepository implements Repository {
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(subscription),
+      signal: AbortSignal.timeout(15_000),
     });
     if (res.status === 409) return 'conflict';
     if (res.status === 401) throw new NotSignedInError();

@@ -10,6 +10,17 @@ const SUBSCRIPTION = {
 };
 
 describe('RemoteRepository web push', () => {
+  it('does not confuse connection/server failures or expired sessions with missing configuration', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockRejectedValueOnce(new TypeError('offline'))
+      .mockResolvedValueOnce(response({}, 502))
+      .mockResolvedValueOnce(response({}, 401)));
+    const repo = new RemoteRepository();
+    await expect(repo.pushPublicKey()).rejects.toThrow('offline');
+    await expect(repo.pushPublicKey()).rejects.toThrow('Could not load');
+    await expect(repo.pushPublicKey()).rejects.toMatchObject({ name: 'NotSignedInError' });
+  });
+
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();

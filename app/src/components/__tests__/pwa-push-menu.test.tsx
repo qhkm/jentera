@@ -56,6 +56,21 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('notifications on this device, from the account menu', () => {
+  it('keeps failure guidance in the menu and lets Enable retry registration', async () => {
+    const manager = pushCapableBrowser();
+    manager.subscribe.mockRejectedValueOnce(new DOMException('registration failed', 'AbortError'));
+    const user = userEvent.setup();
+    mount(pushRepo());
+    await user.click(await screen.findByRole('button', { name: 'Account menu' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Notifications on this device/ }));
+    expect(await screen.findByRole('status')).toHaveTextContent('PUSH_BROWSER');
+    await user.click(await screen.findByRole('button', { name: 'Account menu' }));
+    const item = await screen.findByRole('menuitem', { name: /Notifications on this device/ });
+    expect(item).toHaveAccessibleDescription(/PUSH_BROWSER/);
+    await user.click(item);
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent("You'll get Jentera's updates"));
+  });
+
   it('offers the switch only where the browser can receive push', async () => {
     vi.stubGlobal('navigator', { ...navigator, serviceWorker: undefined });
     const user = userEvent.setup();
