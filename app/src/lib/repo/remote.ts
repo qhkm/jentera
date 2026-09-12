@@ -36,6 +36,10 @@ import type {
   Team,
   TeamInvitation,
   Theme,
+  ChatTranscript,
+  Workspace,
+  WorkspaceChat,
+  Workspaces,
   TraceEvent,
   WorkQuality,
 } from './types';
@@ -337,6 +341,7 @@ export class RemoteRepository implements Repository {
         requestId,
         mode: options.mode ?? 'work',
         ...(options.sessionId ? { sessionId: options.sessionId } : {}),
+        ...(options.workspaceId ? { workspaceId: options.workspaceId } : {}),
         ...(options.responseMode ? { responseMode: options.responseMode } : {}),
       }),
     });
@@ -510,6 +515,26 @@ export class RemoteRepository implements Repository {
     call<{ businessName: string }>('/api/team/invitations/accept', {
       method: 'POST', body: JSON.stringify({ token }),
     });
+
+  workspaces = () => call<Workspaces>('/api/workspaces');
+
+  createWorkspace = async (name: string, memberIds: string[]) =>
+    (await call<{ workspace: Workspace }>('/api/workspaces', {
+      method: 'POST', body: JSON.stringify({ name, memberIds }),
+    })).workspace;
+
+  addWorkspaceMember = (workspaceId: string, userId: string) =>
+    call<void>(`/api/workspaces/${encodeURIComponent(workspaceId)}/members`, {
+      method: 'POST', body: JSON.stringify({ userId }),
+    });
+
+  removeWorkspaceMember = (workspaceId: string, userId: string) =>
+    call<void>(`/api/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+
+  workspaceChats = async (workspaceId: string) =>
+    (await call<{ chats: WorkspaceChat[] }>(`/api/chats?workspaceId=${encodeURIComponent(workspaceId)}`)).chats;
+
+  chat = async (chatId: string) => (await call<{ chat: ChatTranscript }>(`/api/chats/${encodeURIComponent(chatId)}`)).chat;
 
   rateWork = (workId: string, quality: WorkQuality) =>
     post('/api/runs/quality', { workId, quality });

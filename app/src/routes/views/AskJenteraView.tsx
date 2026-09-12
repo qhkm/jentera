@@ -11,8 +11,11 @@ import {
   LockSimple,
   Notepad,
   Plus,
+  UsersThree,
 } from '@phosphor-icons/react';
 import { useI18n } from '@/i18n/I18nProvider';
+import { useRepository } from '@/lib/repo';
+import { useSharedChats } from '@/hooks/useSharedChats';
 import { useAsk } from '@/hooks/useAsk';
 import { useIsCompact } from '@/hooks/useMediaQuery';
 import { useConversationScroll } from '@/hooks/useConversationScroll';
@@ -23,7 +26,7 @@ import { JenteraMark } from '@/components/JenteraMark';
 import { ChatHistory } from '@/components/ChatHistory';
 import { ChatWorkspace } from '@/components/ChatWorkspace';
 import { AskReply } from '@/components/AskReply';
-import { useSignedIn } from '@/lib/repo/gate';
+import { useTeamEnabled, useSignedIn } from '@/lib/repo/gate';
 import { useSnapshot, type AskMode } from '@/lib/repo';
 import type { Business } from '@/lib/types';
 
@@ -63,6 +66,25 @@ export default function AskJenteraView({
   const activity = useActivity();
   const onAskCompleted = useCallback(() => activity.reload(), [activity.reload]);
   const ask = useAsk(business, { handled, needs }, t, lang, onAskCompleted);
+  /* Shared chats exist only on the team plan; the hook reads nothing otherwise. */
+  const teamEnabled = useTeamEnabled();
+  const sharedChats = useSharedChats(teamEnabled);
+  const repoForShared = useRepository();
+  const openShared = useCallback(async (chatId: string) => {
+    if (!repoForShared.chat) return;
+    try {
+      ask.importSession(await repoForShared.chat(chatId));
+    } catch {
+      /* The list will show it again; nothing to do here. */
+    }
+  }, [repoForShared, ask]);
+  const shared = teamEnabled && sharedChats.workspaces.length > 0 ? {
+    workspaces: sharedChats.workspaces,
+    loading: sharedChats.loading,
+    onOpenShared: (chatId: string) => { void openShared(chatId); },
+    onNewIn: (workspaceId: string) => { ask.newSession(undefined, workspaceId); },
+  } : undefined;
+  const activeWorkspace = sharedChats.workspaces.find((w) => w.id === ask.sessions.find((s) => s.id === ask.activeId)?.workspaceId);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const draft = drafts[ask.activeId] ?? '';
   const signedIn = useSignedIn();
@@ -144,6 +166,9 @@ export default function AskJenteraView({
     >
       <header className="ask-studio-topbar">
         <h1>{t('view.chat')}</h1>
+        {activeWorkspace && (
+          <span className="ask-shared-badge"><UsersThree size={14} aria-hidden="true" />{t('chat.shared.badge', { name: activeWorkspace.name })}</span>
+        )}
         <div className="ask-studio-tools">
           {!workspace && (signedIn || ask.sessions.length > 1) && (
             <ChatHistory
@@ -440,6 +465,7 @@ export default function AskJenteraView({
       onNew={ask.newSession}
       onOpen={ask.openSession}
       onDelete={ask.deleteSession}
+      shared={shared}
     >
       {conversation}
     </ChatWorkspace>

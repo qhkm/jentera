@@ -153,12 +153,17 @@ becomes the row's id under `(business_id, id)`, and `run.session_id`
 points at it. `chat-sessions.ts` states the one rule: a run with no chat —
 Telegram, a routine, an ingest — is the business's and every member may
 read it; a run with a chat may be read by the person who opened that chat.
-`runVisibleTo` enforces it on the run, events, trace and artifact routes
-(a colleague's private run answers 404, never 403, so the id alone
-confirms nothing), and Activity carries `canOpen` per row so the app shows
-the outcome without a way into the conversation. Workspaces widen the
-second half when they arrive; nothing else should restate the rule. With
-one person per business — every business today — nothing is hidden.
+`visibleRunPredicate` is that rule as one SQL fragment — a chat's run is
+also readable by every member of the workspace it was opened in
+(`workspace`, `workspace_member`, migration 036) — and the run, Activity
+and artifact queries embed it rather than restate it; `runVisibleTo`
+answers 404, never 403, for a colleague's private run, so the id alone
+confirms nothing, and Activity carries `canOpen` per row so the app shows
+the outcome without a way into the conversation. A chat opened with
+`workspaceId` on the ask stays in that workspace for life; `/api/chats`
+lists a workspace's chats and one chat's turns to whoever may read them,
+so members who never saw a chat typed can pick it up. With one person per
+business nothing is hidden.
 Team features are a plan: `business.plan` is `free | pro | team`
 (migration 033), `/api/me` carries `features.team`, and every team write
 checks it inside the tenant transaction (402 otherwise). An operator puts a

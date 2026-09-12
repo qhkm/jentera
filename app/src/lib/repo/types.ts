@@ -117,6 +117,9 @@ export interface AskOptions {
   onProgress?: (event: AskProgressEvent) => void;
   /** Quick is the default, as on Telegram; deep opts into the research loop. */
   responseMode?: 'quick' | 'deep';
+  /** Open this chat inside a workspace, so every member may read it. Only
+      the first turn decides; later turns leave the chat where it is. */
+  workspaceId?: string;
 }
 
 export type WorkKind = 'work' | 'conversation';
@@ -371,6 +374,14 @@ export interface Repository {
   revokeTeamInvitation?(id: string): Promise<void>;
   /** Accept an invitation for the signed-in address; answers the business's name. */
   acceptInvitation?(token: string): Promise<{ businessName: string }>;
+  /** Workspaces this person is in (the owner: all, with `member` saying which). */
+  workspaces?(): Promise<Workspaces>;
+  createWorkspace?(name: string, memberIds: string[]): Promise<Workspace>;
+  addWorkspaceMember?(workspaceId: string, userId: string): Promise<void>;
+  removeWorkspaceMember?(workspaceId: string, userId: string): Promise<void>;
+  /** A workspace's chats, newest first, and one chat's turns for anyone who may read it. */
+  workspaceChats?(workspaceId: string): Promise<WorkspaceChat[]>;
+  chat?(chatId: string): Promise<ChatTranscript>;
   /** Close a task that is waiting on the owner without doing it: it reads
       as cancelled afterwards, never as handled. */
   dismissTask?(runId: string): Promise<void>;
@@ -445,4 +456,56 @@ export interface Team {
   invitations: TeamInvitation[];
   /** Whether the signed-in person may invite and revoke. */
   canManage: boolean;
+}
+
+/* ---- Workspaces: shared chats ---- */
+
+export interface WorkspaceMember {
+  userId: string;
+  email: string;
+  you: boolean;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  createdAt: string;
+  /** Whether the signed-in person is in it and may read its chats. */
+  member: boolean;
+  members: WorkspaceMember[];
+}
+
+export interface Workspaces {
+  workspaces: Workspace[];
+  canManage: boolean;
+}
+
+export interface WorkspaceChat {
+  id: string;
+  title: string | null;
+  createdBy: string;
+  createdAt: string;
+  lastAt: string;
+  turns: number;
+}
+
+export interface ChatTurn {
+  runId: string;
+  question: string;
+  status: string;
+  requestedBy: string | null;
+  createdAt: string;
+  /** The answer, once the run completed; null while it runs or after it failed. */
+  text: string | null;
+  artifacts: Artifact[];
+}
+
+export interface ChatTranscript {
+  id: string;
+  title: string | null;
+  workspaceId: string | null;
+  createdBy: string;
+  createdAt: string;
+  lastAt: string;
+  turns: ChatTurn[];
 }

@@ -2,6 +2,16 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { ChatCircleText, MagnifyingGlass, Plus, SidebarSimple, Trash, X } from '@phosphor-icons/react';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { AskSession } from '@/hooks/useAsk';
+import type { SharedWorkspace } from '@/hooks/useSharedChats';
+import { UsersThree } from '@phosphor-icons/react';
+
+export interface SharedChats {
+  workspaces: SharedWorkspace[];
+  loading: boolean;
+  /** Bring a colleague's chat into this browser and make it current. */
+  onOpenShared: (chatId: string) => void;
+  onNewIn: (workspaceId: string) => void;
+}
 
 interface ConversationsProps {
   sessions: AskSession[];
@@ -10,9 +20,11 @@ interface ConversationsProps {
   onOpen: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
+  /** Present only on the team plan, for a person in at least one workspace. */
+  shared?: SharedChats;
 }
 
-export function ConversationList({ sessions, activeId, businessName, onOpen, onNew, onDelete }: ConversationsProps) {
+export function ConversationList({ sessions, activeId, businessName, onOpen, onNew, onDelete, shared }: ConversationsProps) {
   const { t, lang } = useI18n();
   const [query, setQuery] = useState('');
   const [removing, setRemoving] = useState<string | null>(null);
@@ -117,6 +129,44 @@ export function ConversationList({ sessions, activeId, businessName, onOpen, onN
           </div>
         )}
       </div>
+      {shared && shared.workspaces.length > 0 && (
+        <div className="conversation-shared">
+          {shared.workspaces.map((workspace) => (
+            <section key={workspace.id} aria-label={t('chat.shared.heading', { name: workspace.name })}>
+              <h3><UsersThree size={15} aria-hidden="true" />{t('chat.shared.heading', { name: workspace.name })}</h3>
+              <button type="button" className="conversation-new conversation-new-shared" onClick={() => shared.onNewIn(workspace.id)}>
+                <Plus size={16} aria-hidden="true" />
+                {t('chat.shared.new', { name: workspace.name })}
+              </button>
+              {workspace.chats.length === 0
+                ? <p className="conversation-shared-empty">{t('chat.shared.none')}</p>
+                : (
+                  <ul>
+                    {workspace.chats.map((chat) => {
+                      const title = chat.title || t('chat.shared.untitled');
+                      return (
+                        <li key={chat.id} className={chat.id === activeId ? 'conversation-selected' : ''}>
+                          <button
+                            type="button"
+                            className="conversation-open"
+                            aria-label={t('chat.shared.open', { title })}
+                            onClick={() => shared.onOpenShared(chat.id)}
+                          >
+                            <span className="conversation-title"><ChatCircleText size={16} aria-hidden="true" /><strong>{title}</strong></span>
+                            <span className="conversation-meta">
+                              <span>{t('chat.shared.by', { who: chat.createdBy.split('@')[0] })}</span>
+                              <span>· {t('chat.shared.turns', { n: chat.turns })}</span>
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+            </section>
+          ))}
+        </div>
+      )}
       <p className="conversation-storage-note">{t('ask.history.device')}</p>
     </div>
   );

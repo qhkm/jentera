@@ -238,8 +238,16 @@ appear:
   404 for it. On a team, Activity rows say who asked (`by aisha`), and the
   agent is told who is speaking and that only the owner can authorise.
 
-The founder is the owner; everyone invited is staff. Shared workspaces,
-notification recipients by role and offboarding are the next steps in
+- **Workspaces.** On the Team tab the owner creates a named space and
+  chooses who is in it. In Chat, each workspace a person belongs to lists
+  its shared chats below their own, with who opened each, plus "New chat
+  in <workspace>". Opening a shared chat brings its turns into this
+  browser so it can be continued; every turn of a workspace chat is sent
+  with the workspace, and the chat stays there for life. A badge on the
+  chat says which workspace it is shared with.
+
+The founder is the owner; everyone invited is staff. Notification
+recipients by role and offboarding are the next steps in
 `docs/plans/2026-09-12-team-features.md`.
 
 ## Public SEO and link previews

@@ -1,6 +1,6 @@
 # Team features — what the tenancy model already gives us, and what it does not
 
-Status: **in progress** — steps 0 to 4 shipped 12 September 2026 (see Status at the end). Prepared 12 September 2026 against `main` at b420104.
+Status: **in progress** — steps 0 to 5 built 12 September 2026 (see Status at the end). Prepared 12 September 2026 against `main` at b420104.
 Every table, column, route and check named below was read in the code; the
 production figures come from `stats.sh`. Nothing here changes production by
 being written down.
@@ -237,8 +237,8 @@ Deferred until asked for: a third role, one person in several businesses.
 | 2 — chat sessions and the visibility rule | shipped | bb0b760, migration 034 applied 12 Sep |
 | 3 — invitations, `/join`, Team tab | shipped | f80eee3, 38707bf, migration 035 applied 12 Sep |
 | 4 — speaker to the agent, "by whom" in Activity | shipped | this commit |
-| 5 — workspaces | next | |
-| 6 — recipients by role | pending | |
+| 5 — workspaces | shipped | e074b94 (backend, migration 036 pending on production), app in the following commit |
+| 6 — recipients by role | next | |
 | 7 — offboarding | pending | |
 
 Production on 12 September after step 3: 17 businesses on `free`, 1 on

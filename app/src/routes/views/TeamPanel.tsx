@@ -11,6 +11,7 @@ import { useToast } from '@/components/Toast';
 import { useT } from '@/i18n/I18nProvider';
 import { useRepository } from '@/lib/repo';
 import type { Team } from '@/lib/repo';
+import WorkspacesPanel from './WorkspacesPanel';
 
 export default function TeamPanel() {
   const t = useT();
@@ -138,6 +139,8 @@ export default function TeamPanel() {
           </form>
         )}
       </Card>
+
+      <WorkspacesPanel members={team.members} />
     </div>
   );
 }

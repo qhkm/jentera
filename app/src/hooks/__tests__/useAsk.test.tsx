@@ -469,3 +469,52 @@ describe('useAsk keeps accounts apart on a shared browser', () => {
     expect(localStorage.getItem('aisar-onboarded-v1')).toBe('1');
   });
 });
+
+describe('useAsk and workspaces', () => {
+  const wrap = (repo: Repository) => ({ children }: { children: ReactNode }) => (
+    <SignedInProvider value>
+      <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
+    </SignedInProvider>
+  );
+
+  it('sends every turn of a workspace chat with the workspace, and a personal chat without', async () => {
+    const repo: Repository = new LocalRepository();
+    const asked: AskOptions[] = [];
+    repo.ask = async (_question: string, options?: AskOptions): Promise<AskAnswer> => {
+      asked.push(options ?? {});
+      return { text: 'ok', usedKeys: [], grounded: false };
+    };
+    const { result } = renderHook(() => useAsk(business, { handled: 0, needs: 0 }, (key) => key), { wrapper: wrap(repo) });
+    await waitFor(() => expect(result.current).not.toBeNull());
+    act(() => { result.current!.newSession(undefined, 'ws-1'); });
+    await act(async () => { result.current!.send('Plan the launch'); });
+    act(() => { result.current!.newSession(); });
+    await act(async () => { result.current!.send('Just me'); });
+    expect(asked.map((o) => o.workspaceId)).toEqual(['ws-1', undefined]);
+  });
+
+  it('brings a colleague\'s chat in as the pairs it would have shown, and continues it in its workspace', async () => {
+    const repo: Repository = new LocalRepository();
+    const asked: AskOptions[] = [];
+    repo.ask = async (_q: string, options?: AskOptions): Promise<AskAnswer> => { asked.push(options ?? {}); return { text: 'ok', usedKeys: [], grounded: false }; };
+    const { result } = renderHook(() => useAsk(business, { handled: 0, needs: 0 }, (key) => key), { wrapper: wrap(repo) });
+    await waitFor(() => expect(result.current).not.toBeNull());
+    act(() => {
+      result.current!.importSession({
+        id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', title: 'Draft the campaign brief', workspaceId: 'ws-1',
+        createdBy: 'aisha@example.com', createdAt: '2026-09-12T01:00:00.000Z', lastAt: '2026-09-12T01:05:00.000Z',
+        turns: [
+          { runId: 'r1', question: 'Draft the campaign brief', status: 'completed', requestedBy: 'aisha@example.com', createdAt: '2026-09-12T01:00:00.000Z', text: 'Here is the brief.', artifacts: [] },
+          { runId: 'r2', question: 'Make it shorter', status: 'working', requestedBy: 'owner@example.com', createdAt: '2026-09-12T01:05:00.000Z', text: null, artifacts: [] },
+        ],
+      });
+    });
+    expect(result.current!.activeId).toBe('dddddddd-dddd-4ddd-8ddd-dddddddddddd');
+    expect(result.current!.messages.map((m) => [m.from, m.text])).toEqual([
+      ['you', 'Draft the campaign brief'], ['ai', 'Here is the brief.'], ['you', 'Make it shorter'],
+    ]);
+    expect(result.current!.sessions.find((s) => s.id === 'dddddddd-dddd-4ddd-8ddd-dddddddddddd')?.title).toBe('Draft the campaign brief');
+    await act(async () => { result.current!.send('And add a headline'); });
+    expect(asked[0]).toMatchObject({ sessionId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', workspaceId: 'ws-1' });
+  });
+});

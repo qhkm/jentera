@@ -297,6 +297,61 @@
 .conversation-no-results button {
   margin-top: 12px;
 }
+/* Shared chats: one section per workspace the person is in, below their
+   own chats. The same rows, with who opened the chat where the preview
+   would be, and a quieter "new chat" that says which space it opens in. */
+.conversation-shared {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem 0 0;
+  border-top: 1px solid var(--border-light);
+}
+.conversation-shared section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.conversation-shared h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.conversation-new-shared {
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+.conversation-shared ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.conversation-shared-empty {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.ask-shared-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 .conversation-storage-note {
   flex-shrink: 0;
   padding: 12px 4px 0;

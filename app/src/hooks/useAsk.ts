@@ -22,7 +22,7 @@ import { stripEmoji } from '@/components/Icon';
 import type { Lang } from '@/lib/types';
 import { taggedAgent } from '@/hooks/useMentions';
 import type { Business } from '@/lib/types';
-import type { Artifact, AskAnswer, AskMode, AskProgress, AskProgressEvent, WorkKind } from '@/lib/repo';
+import type { ChatTranscript, Artifact, AskAnswer, AskMode, AskProgress, AskProgressEvent, WorkKind } from '@/lib/repo';
 import { artifactsOf } from '@/lib/artifacts';
 import { trackActivation } from '@/lib/analytics';
 import { isRunId } from '@/lib/task';
@@ -71,6 +71,9 @@ export interface AskSession {
   createdAt: number;
   updatedAt: number;
   messages: AskMessage[];
+  /** Set when the chat was opened inside a workspace: every member of it
+      may read and continue the chat, and each turn is sent with it. */
+  workspaceId?: string;
 }
 
 /* Storage is keyed per account. The earlier single global key meant the next
@@ -229,6 +232,7 @@ function loadSessions(account: string): AskSession[] {
           createdAt: typeof s.createdAt === 'number' ? s.createdAt : 0,
           updatedAt: typeof s.updatedAt === 'number' ? s.updatedAt : 0,
           messages: s.messages.filter(isMessage).slice(-40),
+          ...(typeof s.workspaceId === 'string' ? { workspaceId: s.workspaceId } : {}),
         }));
       if (sessions.length) return sessions.sort(byRecent);
     }
@@ -285,6 +289,8 @@ export function useAsk(
   });
   const activeIdRef = useRef(state.activeId);
   activeIdRef.current = state.activeId;
+  const sessionsRef = useRef(state.sessions);
+  sessionsRef.current = state.sessions;
   /* Deterministic rotation — Math.random would change on every render. */
   const turn = useRef(0);
 
@@ -330,11 +336,42 @@ export function useAsk(
     [business.sug, counts, t],
   );
 
-  const newSession = useCallback((resumeId?: string) => {
+  const newSession = useCallback((resumeId?: string, workspaceId?: string) => {
     const session = freshSession();
     if (resumeId) session.id = resumeId;
+    if (workspaceId) session.workspaceId = workspaceId;
     setState((prev) => ({
       sessions: prev.sessions.some((s) => s.id === session.id) ? prev.sessions : [session, ...prev.sessions].slice(0, MAX_SESSIONS),
+      activeId: session.id,
+    }));
+    return session.id;
+  }, []);
+
+  /* A chat another member opened in a shared workspace, read from the
+     server and brought into this browser so it can be continued here. Each
+     turn becomes the pair the chat would have shown had it been typed here;
+     a turn still running or failed shows its question alone. */
+  const importSession = useCallback((chat: ChatTranscript) => {
+    const messages: AskMessage[] = [];
+    for (const turn of chat.turns) {
+      messages.push({ from: 'you', text: turn.question });
+      if (turn.status === 'completed' && turn.text) {
+        messages.push({
+          from: 'ai', text: turn.text, state: 'done', runId: turn.runId,
+          ...(turn.artifacts.length ? { artifacts: turn.artifacts } : {}),
+        });
+      }
+    }
+    const session: AskSession = {
+      id: chat.id,
+      title: chat.title ?? messages[0]?.text.slice(0, 40) ?? '',
+      createdAt: Date.parse(chat.createdAt) || Date.now(),
+      updatedAt: Date.parse(chat.lastAt) || Date.now(),
+      messages: messages.slice(-40),
+      ...(chat.workspaceId ? { workspaceId: chat.workspaceId } : {}),
+    };
+    setState((prev) => ({
+      sessions: [session, ...prev.sessions.filter((s) => s.id !== session.id)].slice(0, MAX_SESSIONS),
       activeId: session.id,
     }));
     return session.id;
@@ -523,9 +560,11 @@ export function useAsk(
             activeId: prev.activeId,
           };
         });
+        const workspaceId = sessionsRef.current.find((s) => s.id === sessionId)?.workspaceId;
         settlePending(sessionId, pendingId, question, mode, repo.ask(question, {
           mode,
           sessionId,
+          ...(workspaceId ? { workspaceId } : {}),
           responseMode: deep ? 'deep' : 'quick',
           onRunCreated: (runId: string) => {
             if (!isRunId(runId)) return;
@@ -586,6 +625,7 @@ export function useAsk(
     activeId: active?.id ?? '',
     send,
     newSession,
+    importSession,
     openSession,
     deleteSession,
     hasHistory: messages.length > 0,
