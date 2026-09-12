@@ -25,6 +25,7 @@ import { useSignedInRedirect } from "@/hooks/useSignedInRedirect";
 import { JenteraMark } from "@/components/JenteraMark";
 import { DataIcon } from "@/components/Icon";
 import { WorkIllustration } from "@/components/landing/WorkIllustration";
+import { ProductTour } from "@/components/landing/ProductTour";
 import { LandingInstallNudge } from "@/components/InstallNudge";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import {
@@ -400,7 +401,7 @@ export default function Landing() {
                   {HERO.ctaPrimary}
                   <ArrowUpRight size={16} aria-hidden="true" />
                 </Link>
-                <a href="#example" className="lp-text-link">
+                <a href="#product-tour" className="lp-text-link">
                   {HERO.ctaSecondary}
                   <ArrowDown size={15} aria-hidden="true" />
                 </a>
@@ -419,6 +420,7 @@ export default function Landing() {
           </div>
         </section>
 
+        <ProductTour />
         <TrustProof />
 
         <section id="work" className="lp-section lp-container">
