@@ -66,7 +66,7 @@ export function ArtifactPreview({ artifact, onClose }: { artifact: Artifact; onC
       return;
     }
     setClosing(true);
-    window.setTimeout(onClose, 220);
+    window.setTimeout(onClose, 260);
   }, [onClose]);
 
   useEffect(() => {
@@ -156,6 +156,9 @@ export function ArtifactPreview({ artifact, onClose }: { artifact: Artifact; onC
         className="file-preview-dialog card max-h-[92dvh] w-full max-w-3xl gap-0 overflow-hidden rounded-b-none rounded-t-2xl p-0 outline-none sm:max-h-[85vh] sm:rounded-card"
         onClick={(event) => event.stopPropagation()}
       >
+        {/* The grab bar a phone sheet carries; hidden on a desk, where
+            the same dialog sits in the middle of the screen. */}
+        <div className="file-preview-handle" aria-hidden="true" />
         <header className="flex items-center gap-3 border-b border-border px-4 py-3">
           <div className="min-w-0 flex-1">
             <strong className="block truncate text-[14px]">{artifact.name}</strong>

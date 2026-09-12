@@ -812,28 +812,45 @@ button.ask-context-link:hover {
 .ask-approval-note,
 .ask-approval-problem { margin: 0.75rem 0 0; opacity: 0.8; }
 
-/* The file preview: a sheet that rises on a phone and settles on a desk,
-   over a backdrop that fades. Leaving runs the same motion in reverse. */
+/* The file preview. On a phone it is a bottom sheet: it slides up from
+   below the screen edge the way a map's place card does, carries a grab
+   bar, and slides back down to leave. On a desk the same dialog settles
+   into the centre. The backdrop fades either way. */
 .file-preview-backdrop {
-  animation: file-preview-fade 180ms ease-out both;
+  animation: file-preview-fade 200ms ease-out both;
 }
 .file-preview-dialog {
-  animation: file-preview-rise 280ms var(--ease-signature) both;
+  animation: file-preview-slide-up 360ms var(--ease-signature) both;
+  will-change: transform;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.file-preview-handle {
+  flex: none;
+  width: 36px;
+  height: 4px;
+  margin: 8px auto 2px;
+  border-radius: 999px;
+  background: var(--border);
+  opacity: 0.9;
 }
 @media (min-width: 640px) {
   .file-preview-dialog {
     animation-name: file-preview-settle;
+    animation-duration: 240ms;
+    padding-bottom: 0;
   }
+  .file-preview-handle { display: none; }
 }
 .file-preview-backdrop[data-closing] {
-  animation: file-preview-fade 160ms ease-in reverse both;
+  animation: file-preview-fade 200ms ease-in reverse both;
 }
 .file-preview-backdrop[data-closing] .file-preview-dialog {
-  animation: file-preview-rise 200ms ease-in reverse both;
+  animation: file-preview-slide-up 240ms cubic-bezier(0.4, 0, 1, 1) reverse both;
 }
 @media (min-width: 640px) {
   .file-preview-backdrop[data-closing] .file-preview-dialog {
     animation-name: file-preview-settle;
+    animation-duration: 180ms;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -848,11 +865,12 @@ button.ask-context-link:hover {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-@keyframes file-preview-rise {
-  from { opacity: 0; transform: translateY(28px); }
-  to { opacity: 1; transform: none; }
+@keyframes file-preview-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: none; }
 }
 @keyframes file-preview-settle {
   from { opacity: 0; transform: translateY(10px) scale(0.98); }
   to { opacity: 1; transform: none; }
+}
 }
