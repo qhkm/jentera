@@ -46,6 +46,8 @@ describe('the team tab', () => {
     expect(rows[1]).toHaveTextContent('Staff');
     const waiting = screen.getByRole('list', { name: 'Invitations waiting' });
     expect(within(waiting).getByText(/ravi@example.com/)).toBeInTheDocument();
+    /* The one thing "private" does not cover, said where the team is set up. */
+    expect(screen.getByText(/private from colleagues, not from Jentera/)).toBeInTheDocument();
   });
 
   it('lets the owner invite an address and shows it as waiting', async () => {

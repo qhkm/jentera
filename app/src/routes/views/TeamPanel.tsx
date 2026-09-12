@@ -91,6 +91,7 @@ export default function TeamPanel() {
           <div>
             <h3>{t('team.title')}</h3>
             <p className="text-[13px] text-text-secondary">{t('team.intro')}</p>
+            <p className="text-[12px] text-text-muted">{t('team.memoryNote')}</p>
           </div>
         </div>
         <h4 className="m-0 text-[13px] font-medium">{t('team.members')}</h4>

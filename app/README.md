@@ -237,6 +237,9 @@ appear:
   "View task" and is not in Files; the run, trace and file routes answer
   404 for it. On a team, Activity rows say who asked (`by aisha`), and the
   agent is told who is speaking and that only the owner can authorise.
+  Private means private from colleagues, not from Jentera: its memory is
+  per business, so what anyone tells it can inform its work for everyone.
+  The Team tab says so.
 
 - **Workspaces.** On the Team tab the owner creates a named space and
   chooses who is in it. In Chat, each workspace a person belongs to lists
