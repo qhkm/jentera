@@ -1,4 +1,5 @@
 import type postgres from 'postgres';
+import { enqueuePush } from '../push/outbox';
 
 export type NotificationKind =
   | 'routine_completed'
@@ -60,14 +61,25 @@ export async function createRoutineNotification(
     occurrenceId: string;
   },
 ): Promise<void> {
-  await tx`
+  const [inserted] = await tx<{ id: string }[]>`
     insert into notification
       (business_id, recipient_user_id, kind, title, body, source_key,
        run_id, routine_id, occurrence_id)
     values (${businessId}, ${input.recipientUserId}, ${input.kind},
             ${input.title.slice(0, 160)}, ${input.body.slice(0, 500)}, ${input.sourceKey},
             ${input.runId ?? null}, ${input.routineId}, ${input.occurrenceId})
-    on conflict (business_id, recipient_user_id, source_key) do nothing`;
+    on conflict (business_id, recipient_user_id, source_key) do nothing
+    returning id`;
+  /* Every notification also reaches the owner's devices: queued in this
+     same transaction, sent by the cron within the minute (src/push/outbox.ts).
+     A duplicate insert queues nothing. */
+  if (!inserted) return;
+  await enqueuePush(tx, businessId, input.recipientUserId, {
+    title: input.title,
+    body: input.body,
+    url: '/app?view=notifications',
+    tag: `notification:${input.sourceKey}`,
+  });
 }
 
 export async function unreadNotificationCount(
