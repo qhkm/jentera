@@ -119,6 +119,43 @@ describe('task outcome assessment', () => {
     });
   });
 
+  it('tries a classifier call that fails at once a second time, inside the same budget', async () => {
+    const current = await run();
+    let calls = 0;
+    const env = testEnv({ AI: { run: async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('503 model overloaded');
+      return { response: JSON.stringify({ kind: 'conversation', status: 'completed' }) };
+    } } });
+    const verdict = await assessTaskOutcome(env, A, current.id, 'hello', 'Hello!');
+    expect(calls).toBe(2);
+    expect(verdict).toMatchObject({ kind: 'conversation', status: 'completed' });
+    expect(verdict.classification).toBeUndefined();
+  });
+
+  it('does not try again after the budget ran out, and says the clock was the reason', async () => {
+    const current = await run();
+    let calls = 0;
+    const env = testEnv({ AI: { run: () => { calls += 1; return new Promise(() => {}); } } });
+    const verdict = await assessTaskOutcome(env, A, current.id, 'hello', 'Hello!', { budgetMs: 200 });
+    expect(calls).toBe(1);
+    expect(verdict).toMatchObject({ classification: 'uncertain', uncertaintyReason: 'classifier_unavailable', uncertaintyDetail: 'timeout' });
+  });
+
+  it('records the error when both calls fail, and does not retry an answer it cannot parse', async () => {
+    const current = await run();
+    let calls = 0;
+    const failing = testEnv({ AI: { run: async () => { calls += 1; throw new Error('AI unavailable'); } } });
+    const verdict = await assessTaskOutcome(failing, A, current.id, 'hello', 'Hello!');
+    expect(calls).toBe(2);
+    expect(verdict).toMatchObject({ uncertaintyReason: 'classifier_unavailable', uncertaintyDetail: 'error:AI unavailable' });
+    calls = 0;
+    const garbled = testEnv({ AI: { run: async () => { calls += 1; return { response: 'not json' }; } } });
+    const again = await assessTaskOutcome(garbled, A, current.id, 'hello', 'Hello!');
+    expect(calls).toBe(1);
+    expect(again).toMatchObject({ uncertaintyReason: 'classifier_unavailable', uncertaintyDetail: 'unparseable' });
+  });
+
   it('requires user intent and a completion criterion before adding work', () => {
     expect(validateTaskEvidence({ kind: 'work', status: 'needs_input', intentEvidence: 'Schedule a digest',
       completionCriteria: 'Enabled daily schedule' }, 'What can you do?', 'I can schedule a digest.', ''))

@@ -243,6 +243,17 @@ the test run" reached a Chief of Staff who had never seen the digest request
 Growth had just scheduled. The Telegram session is one for life, so the
 window is what lets it re-route once a thread has gone quiet.
 
+The outcome assessor (`task-outcome.ts`) decides whether a finished reply
+was work and what state it left, and the reply waits on it. It has one
+budget, `ASSESSMENT_BUDGET_MS` (5 s), across however many calls it makes: a
+call that errors at once is tried again inside what is left, a call that
+runs out the clock is not, and a well-formed answer it cannot parse is not
+retried. When it gives up, the saved `outcome.observed` says
+`classifier_unavailable` with `uncertaintyDetail` — `timeout`,
+`unparseable`, or `error:<message>` — and a `console.warn` names the run.
+It was unavailable 4 times in the three days to 12 September, before the
+retry; the detail is what tells the next reading which kind it was.
+
 `docs/reply-latency.md` is where reply time and channel parity live: the
 path a message takes, what Telegram and app chat share, dated measurements
 and the levers tried. `worker/scripts/reply-latency.sh` reproduces its

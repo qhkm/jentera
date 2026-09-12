@@ -16,6 +16,8 @@ export interface TaskAssessment {
   effect?: 'external' | 'deliverable';
   classification?: 'uncertain';
   uncertaintyReason?: string;
+  /** Why the classifier was unavailable: 'timeout', 'unparseable', or 'error:<message>'. */
+  uncertaintyDetail?: string;
 }
 
 interface Candidate { id: string; runId: string; objective: string; outcome: string | null; status: string }
@@ -129,7 +131,14 @@ export async function taskAssessmentForRun(tx: postgres.TransactionSql, business
 
 /** Separate from Hermes execution and its streaming text. Bounded, read-only
  * assessment; no model-generated metadata is allowed into an action gateway. */
-export async function assessTaskOutcome(env: Env, businessId: string, runId: string, question: string, answer: string): Promise<TaskAssessment> {
+export async function assessTaskOutcome(
+  env: Env,
+  businessId: string,
+  runId: string,
+  question: string,
+  answer: string,
+  options: { budgetMs?: number } = {},
+): Promise<TaskAssessment> {
   const context = await withTenant(env, businessId, async (tx) => {
     const saved = await taskAssessmentForRun(tx, businessId, runId);
     const candidates = await tx<Candidate[]>`
@@ -148,27 +157,57 @@ export async function assessTaskOutcome(env: Env, businessId: string, runId: str
     return { saved, candidates, events };
   });
   if (context.saved) return context.saved;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const response = await Promise.race([
-      env.AI.run(MODEL, {
-        messages: [
-          { role: 'system', content: INSTRUCTIONS },
-          { role: 'user', content: JSON.stringify({
-            question: question.slice(0, 4000), answer: answer.slice(0, 12000),
-            tasks: context.candidates, evidence: JSON.stringify(context.events).slice(0, 6000),
-          }) },
-        ],
-        max_tokens: 450, temperature: 0,
-      }),
-      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('assessment timeout')), 5000); }),
-    ]) as { response?: unknown };
-    const assessment = parseTaskAssessment(response.response, context.candidates);
-    if (assessment) {
-      return validateTaskEvidence(assessment, question, answer,
-        JSON.stringify(context.events.filter((event) => event.type === 'action.executed')).slice(0, 6000));
+  const messages = [
+    { role: 'system', content: INSTRUCTIONS },
+    { role: 'user', content: JSON.stringify({
+      question: question.slice(0, 4000), answer: answer.slice(0, 12000),
+      tasks: context.candidates, evidence: JSON.stringify(context.events).slice(0, 6000),
+    }) },
+  ];
+  /* One budget for the whole assessment, however many calls it takes: the
+     answer is waiting on this. A call that errors at once — a 5xx, a
+     throttle — is tried again inside what is left; a call that runs out
+     the clock is not, because the second would too. Either way the reply
+     is never held past the budget. */
+  const deadline = Date.now() + (options.budgetMs ?? ASSESSMENT_BUDGET_MS);
+  let detail = 'unknown';
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const remaining = deadline - Date.now();
+    if (remaining < ASSESSMENT_MIN_RETRY_MS && attempt > 1) break;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const response = await Promise.race([
+        env.AI.run(MODEL, { messages, max_tokens: 450, temperature: 0 }),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new AssessmentTimeout()), remaining); }),
+      ]) as { response?: unknown };
+      const assessment = parseTaskAssessment(response.response, context.candidates);
+      if (assessment) {
+        return validateTaskEvidence(assessment, question, answer,
+          JSON.stringify(context.events.filter((event) => event.type === 'action.executed')).slice(0, 6000));
+      }
+      /* A well-formed refusal to classify is not an outage; do not retry it. */
+      detail = 'unparseable';
+      break;
+    } catch (error) {
+      /* Never lose the answer or invent completion when assessment is unavailable. */
+      if (error instanceof AssessmentTimeout) {
+        detail = 'timeout';
+        break;
+      }
+      detail = `error:${error instanceof Error ? error.message.slice(0, 120) : String(error).slice(0, 120)}`;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
     }
-  } catch { /* Never lose the answer or invent completion when assessment is unavailable. */ }
-  finally { if (timer !== undefined) clearTimeout(timer); }
-  return uncertainAssessment('classifier_unavailable');
+  }
+  console.warn(`[assessment] classifier unavailable for run ${runId}: ${detail}`);
+  return { ...uncertainAssessment('classifier_unavailable'), uncertaintyDetail: detail };
+}
+
+/** How long a reply may wait on its assessment, across every attempt. */
+export const ASSESSMENT_BUDGET_MS = 5000;
+/** Below this much budget a second call cannot finish; do not start one. */
+const ASSESSMENT_MIN_RETRY_MS = 1500;
+
+class AssessmentTimeout extends Error {
+  constructor() { super('assessment timeout'); }
 }
