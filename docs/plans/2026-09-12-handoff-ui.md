@@ -1,6 +1,6 @@
 # Visible specialist assignments and delegation
 
-Implemented locally. Not deployed.
+Implemented and deployed, 12 September 2026.
 
 Chat replies and task details include a compact, expandable “Who’s working on
 this” section. English and BM copy distinguish the selected specialist from an
@@ -44,3 +44,13 @@ including real consumer stream-to-event persistence, deduplication, and private
 chat/cross-tenant denial. Backend typechecks and frontend production build pass.
 Mocked-API Chrome checks at 1440px and 390px verified keyboard disclosure, live
 refresh, shared-review exclusion, and no JavaScript errors or horizontal overflow.
+
+Production release: commit `4116ce5`; Worker version
+`1c5f9961-1628-4b02-aaf1-bc2c0dd0dacb`; Pages deployment
+`053a6087.aisar-jentera.pages.dev`. Backend deployed first after its transfer-field
+check passed. Runtime release remains `2026.09.12-3`; no fleet upgrade or migration.
+Both Jentera domains serve `/assets/index--oImJ3gc.js`; all 11 JS/CSS asset hashes
+match the local build. Desktop/mobile anonymous navigation checks passed and the
+coordination endpoint returned 401 without authentication. No authenticated
+production task was created to force a delegation; feature behaviour is covered
+by the local integration and browser tests above. `aisar.ai` was untouched.
