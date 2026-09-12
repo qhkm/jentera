@@ -124,13 +124,14 @@ describe('AskReply: the agent\'s steps', () => {
       startedAt: Date.now() - 2_000,
       steps: ['Searching for today\'s headlines', '🌐 web_extract: "https://www.malaymail.com/"'],
     });
-    await waitFor(() => expect(container.querySelector('.ask-steps')).not.toBeNull());
-    const items = Array.from(container.querySelectorAll('.ask-steps li'));
+    await waitFor(() => expect(container.querySelector('.task-progress')).not.toBeNull());
+    const items = Array.from(container.querySelectorAll('.task-progress-activities li'));
     expect(items.map((li) => li.textContent)).toEqual(
-      expect.arrayContaining([expect.stringContaining('Searching for today'), expect.stringContaining('web_extract')]),
+      expect.arrayContaining([expect.stringContaining('Working through the task'), expect.stringContaining('Reading information')]),
     );
     expect(items.at(-1)?.getAttribute('aria-current')).toBe('step');
     expect(items[0].getAttribute('aria-current')).toBeNull();
+    expect(container.querySelector('.task-progress details')).not.toHaveAttribute('open');
   });
 
   it('keeps the steps as a collapsed receipt under the finished answer', async () => {

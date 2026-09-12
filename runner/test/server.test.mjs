@@ -58,6 +58,7 @@ beforeEach(async () => {
     { event: 'iteration.started', iteration: 12, max_iterations: 20 },
     { event: 'context.compressing', text: 'private prompt must not cross' },
     { event: 'tool.started', tool: 'execute_code', preview: 'import urllib.request' },
+    { event: 'tool.started', tool: 'process', preview: 'submit proc_example "sensitive-login-value"' },
     { event: 'tool.completed', tool: 'execute_code', duration: 1.25, error: false },
     { event: 'message.delta', delta: ' from Hermes' },
     { event: 'message.delta', delta: '\n<thi' },
@@ -482,7 +483,8 @@ test('streams Hermes-visible assistant, tool, and bounded thinking events withou
   assert.match(stream, /"delta":" from Hermes"/);
   assert.match(stream, /"type":"tool.started"/);
   assert.match(stream, /"tool":"execute_code"/);
-  assert.match(stream, /import urllib\.request/);
+  assert.match(stream, /Command arguments hidden/);
+  assert.doesNotMatch(stream, /import urllib\.request|sensitive-login-value|proc_example/);
   assert.match(stream, /"type":"tool.completed"/);
   assert.match(stream, /Safe answer/);
   /* The bounded reasoning lane crosses on purpose: Hermes caps each slice at

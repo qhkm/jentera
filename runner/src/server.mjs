@@ -2085,7 +2085,10 @@ class SafeDeltaStreams {
     if (event?.event === 'tool.started') {
       const tool = safeToolName(event.tool);
       if (!tool) return;
-      const preview = safeToolPreview(event.preview);
+      // Shell/process input may contain a bare OAuth code with no key name
+      // to redact. Never publish those arguments into SSE or durable traces.
+      const preview = /^(?:terminal|process|execute_code|shell|bash)$/i.test(tool)
+        ? '[Command arguments hidden]' : safeToolPreview(event.preview);
       this.emitEvent(stream, {
         type: 'tool.started',
         seq: stream.nextSeq++,
