@@ -5,6 +5,9 @@ Every table, column, route and check named below was read in the code; the
 production figures come from `stats.sh`. Nothing here changes production by
 being written down.
 
+The finished system is described in [`../team-plan.md`](../team-plan.md);
+this file keeps the reasoning and the record of what landed when.
+
 ## The request, as understood
 
 More than one person in a business uses Jentera: the owner invites staff,

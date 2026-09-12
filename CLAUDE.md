@@ -199,7 +199,9 @@ fails on any `role !== 'owner'` that comes back at a call site. The agent
 is told who is typing (`speakerInstructions` in `ask.ts`): a staff request
 is never the owner's word, and what Hermes learns from staff carries their
 name, since its memory is per business. `docs/plans/2026-09-12-team-features.md`
-is the plan and its status.
+is the plan and its status; `docs/team-plan.md` is the reference — roles,
+tables, routes, the visibility rule, joining, offboarding, notifications,
+and how to operate it.
 
 ### Where work runs
 
