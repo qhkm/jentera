@@ -21,6 +21,7 @@ const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
 type Chosen = {
   routinesVersion?: number;
+  teamVersion?: number;
   repo: LocalRepository | RemoteRepository;
   mode: 'local' | 'remote';
   /** Session user id when remote; null for the demo. */
@@ -35,10 +36,18 @@ const SignedInContext = createContext(false);
    keyed by it (Ask history) stays private when accounts share a device. */
 const AccountContext = createContext<string | null>(null);
 const RoutinesContext = createContext(false);
+/* Team is a plan. The flag says the Team tab may show; every team write is
+   checked again by the routes. */
+const TeamContext = createContext(false);
 
 /** Discovery only. Live permissions come from /api/routines on every visit. */
 export function useRoutinesEnabled(): boolean {
   return useContext(RoutinesContext);
+}
+
+/** Discovery only: whether this business is on the Team plan. */
+export function useTeamEnabled(): boolean {
+  return useContext(TeamContext);
 }
 
 /**
@@ -55,18 +64,22 @@ export function SignedInProvider({
   value,
   account = null,
   routinesVersion,
+  teamVersion,
   children,
 }: {
   value: boolean;
   /** The signed-in account's opaque id; omit for the demo. */
   account?: string | null;
   routinesVersion?: number;
+  teamVersion?: number;
   children: ReactNode;
 }) {
   return (
     <SignedInContext.Provider value={value}>
       <AccountContext.Provider value={value ? account : null}>
-        <RoutinesContext.Provider value={value && routinesVersion === 1}>{children}</RoutinesContext.Provider>
+        <RoutinesContext.Provider value={value && routinesVersion === 1}>
+          <TeamContext.Provider value={value && teamVersion === 1}>{children}</TeamContext.Provider>
+        </RoutinesContext.Provider>
       </AccountContext.Provider>
     </SignedInContext.Provider>
   );
@@ -142,6 +155,7 @@ async function choose(): Promise<Chosen> {
     mode: 'remote',
     account: typeof me?.userId === 'string' && me.userId ? me.userId : null,
     routinesVersion: me?.features?.routines?.apiVersion,
+    teamVersion: me?.features?.team?.apiVersion,
   };
 }
 
@@ -173,7 +187,7 @@ export function RepositoryGate({ children }: { children: ReactNode }) {
   }
 
   return (
-    <SignedInProvider value={chosen.mode === 'remote'} account={chosen.account} routinesVersion={chosen.routinesVersion}>
+    <SignedInProvider value={chosen.mode === 'remote'} account={chosen.account} routinesVersion={chosen.routinesVersion} teamVersion={chosen.teamVersion}>
       <RepositoryProvider repository={chosen.repo}>{children}</RepositoryProvider>
     </SignedInProvider>
   );

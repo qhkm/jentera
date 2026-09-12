@@ -19,6 +19,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import Setup from '@/routes/Setup';
 import Onboard from '@/routes/Onboard';
+import { OnboardingStage } from '@/App';
 import { RepositoryProvider } from '@/lib/repo/context';
 import { LocalRepository } from '@/lib/repo/local';
 import { I18nProvider } from '@/i18n/I18nProvider';
@@ -386,5 +387,24 @@ describe('what onboarding writes', () => {
     expect((await repo.load()).channels).toBeNull();
     await repo.setChannels([]);
     expect((await repo.load()).channels).toBeNull();
+  });
+});
+
+describe('an invited person arriving at onboarding', () => {
+  it('is sent to finish joining instead of building a new business', async () => {
+    localStorage.setItem(KEYS.joinToken, 'a'.repeat(64));
+    render(
+      <MemoryRouter initialEntries={['/onboard']}>
+        <RepositoryProvider repository={new LocalRepository()}>
+          <I18nProvider>
+            <Routes>
+              <Route path="/onboard" element={<OnboardingStage />} />
+              <Route path="/join" element={<div data-testid="join">join</div>} />
+            </Routes>
+          </I18nProvider>
+        </RepositoryProvider>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByTestId('join')).toBeInTheDocument();
   });
 });

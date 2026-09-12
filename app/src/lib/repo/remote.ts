@@ -33,6 +33,8 @@ import type {
   RunResult,
   RuntimeOverview,
   Specialist,
+  Team,
+  TeamInvitation,
   Theme,
   TraceEvent,
   WorkQuality,
@@ -51,7 +53,7 @@ export class NotSignedInError extends Error {
 
 /** What /api/me answers with. Only the parts anything here reads. */
 export interface MeResponse {
-  features?: { routines?: { apiVersion?: number } };
+  features?: { routines?: { apiVersion?: number }; team?: { apiVersion?: number } };
   detailLevel?: string;
   /** Opaque account id from the session; scopes per-browser state such as
       Ask history so two accounts sharing a browser never see each other's. */
@@ -493,6 +495,21 @@ export class RemoteRepository implements Repository {
 
   dismissTask = (runId: string) =>
     post(`/api/runs/${encodeURIComponent(runId)}/review`, { decision: 'dismiss' });
+
+  team = () => call<Team>('/api/team');
+
+  inviteTeamMember = async (email: string) =>
+    (await call<{ invitation: TeamInvitation }>('/api/team/invitations', {
+      method: 'POST', body: JSON.stringify({ email }),
+    })).invitation;
+
+  revokeTeamInvitation = (id: string) =>
+    call<void>(`/api/team/invitations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+  acceptInvitation = (token: string) =>
+    call<{ businessName: string }>('/api/team/invitations/accept', {
+      method: 'POST', body: JSON.stringify({ token }),
+    });
 
   rateWork = (workId: string, quality: WorkQuality) =>
     post('/api/runs/quality', { workId, quality });

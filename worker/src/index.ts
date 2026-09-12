@@ -18,6 +18,7 @@ import { handlePush } from './routes/push';
 import { handleArtifacts, RUNTIME_ARTIFACTS_PATH } from './routes/artifacts';
 import { sweepPushOutbox } from './push/outbox';
 import { handleNotifications } from './routes/notifications';
+import { handleTeam } from './routes/team';
 import { dispatchDueRoutines } from './routines/dispatch';
 import { handleConnect } from './routes/connect';
 import { handleRuntime } from './routes/runtime';
@@ -140,6 +141,10 @@ export default {
 
     const notifications = await handleNotifications(request, env, url, headers);
     if (notifications) return notifications;
+
+    /* The team: members and invitations. A plan, not a default. */
+    const team = await handleTeam(request, env, url, headers);
+    if (team) return team;
 
     /* Connections, and the Telegram webhook — the one route here that
        is called by someone other than our own frontend. */

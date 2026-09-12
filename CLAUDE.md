@@ -44,6 +44,7 @@ The full persisted surface. Changing or adding one affects the flow gates, so ca
 | `aisar-approvals` | JSON queue of pending agent actions |
 | `aisar-work-done:{bizType}` | Per-playbook completed work, **string indices** |
 | `aisar-learn:{key}` | Self-improving demo — counts of user picks |
+| `aisar-join-token` | An invitation token waiting for its person to sign in; while present, `/onboard` sends them to `/join` |
 
 ## Adding a playbook
 

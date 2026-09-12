@@ -22,12 +22,15 @@ import {
   Plus,
   Robot,
   ShieldCheck,
+  UsersThree,
   Trash,
 } from '@phosphor-icons/react';
 import { Avatar, Button, Card, Eyebrow, Input, LoadingState, Tag } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
 import { DataIcon } from '@/components/Icon';
 import { Tabs, type TabDef } from '@/components/Tabs';
+import { useTeamEnabled } from '@/lib/repo/gate';
+import TeamPanel from './TeamPanel';
 import { JenteraMark } from '@/components/JenteraMark';
 import PermissionsPanel from './PermissionsPanel';
 import KnowledgePanel from './KnowledgePanel';
@@ -53,7 +56,7 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-export type BizTab = 'profile' | 'knows' | 'handles' | 'connections' | 'permissions';
+export type BizTab = 'profile' | 'knows' | 'handles' | 'connections' | 'permissions' | 'team';
 
 export default function MyBusinessView({
   b,
@@ -67,6 +70,7 @@ export default function MyBusinessView({
   onTabChange?: (tab: BizTab) => void;
 }) {
   const [tab, setTab] = useState<BizTab>(initialTab);
+  const teamEnabled = useTeamEnabled();
   const t = useT();
   const toast = useToast();
   const snap = useSnapshot();
@@ -202,8 +206,15 @@ export default function MyBusinessView({
         label: t('biz.tab.permissions'),
         icon: <ShieldCheck size={17} aria-hidden="true" />,
       },
+      /* Team is a plan: the tab exists only where the routes will accept
+         team writes, so nobody meets a door that will not open. */
+      ...(teamEnabled ? [{
+        id: 'team' as const,
+        label: t('biz.tab.team'),
+        icon: <UsersThree size={17} aria-hidden="true" />,
+      }] : []),
     ],
-    [t, b.connections.length, unconfirmed, conns.mode, conns.real, linked],
+    [t, b.connections.length, unconfirmed, conns.mode, conns.real, linked, teamEnabled],
   );
 
   return (
@@ -290,6 +301,7 @@ export default function MyBusinessView({
         ) : null}
 
         {tab === 'knows' && <KnowledgePanel />}
+        {tab === 'team' && teamEnabled && <TeamPanel />}
 
         {/* ---- Profile ---- */}
         {tab === 'profile' && (

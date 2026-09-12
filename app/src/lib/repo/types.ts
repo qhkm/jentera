@@ -361,6 +361,13 @@ export interface Repository {
   runTrace(runId: string): Promise<TraceEvent[]>;
   runResult(runId: string): Promise<RunResult>;
   confirmTaskReview?(runId: string): Promise<void>;
+  /** The people in this business and the invitations still open. Team plan
+      only; the server says who may manage them. */
+  team?(): Promise<Team>;
+  inviteTeamMember?(email: string): Promise<TeamInvitation>;
+  revokeTeamInvitation?(id: string): Promise<void>;
+  /** Accept an invitation for the signed-in address; answers the business's name. */
+  acceptInvitation?(token: string): Promise<{ businessName: string }>;
   /** Close a task that is waiting on the owner without doing it: it reads
       as cancelled afterwards, never as handled. */
   dismissTask?(runId: string): Promise<void>;
@@ -409,4 +416,30 @@ export interface Repository {
   provisionRuntime(): Promise<void>;
 
   reset(): Promise<void>;
+}
+
+/* ---- The team ---- */
+
+export interface TeamMember {
+  userId: string;
+  email: string;
+  role: 'owner' | 'staff';
+  joinedAt: string;
+  /** This is the signed-in person. */
+  you: boolean;
+}
+
+export interface TeamInvitation {
+  id: string;
+  email: string;
+  role: 'staff';
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface Team {
+  members: TeamMember[];
+  invitations: TeamInvitation[];
+  /** Whether the signed-in person may invite and revoke. */
+  canManage: boolean;
 }

@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router';
+import * as store from '@/lib/storage';
 import { useSnapshot } from '@/lib/repo';
 import { RepositoryGate, useSignedIn } from '@/lib/repo/gate';
 import { I18nProvider } from '@/i18n/I18nProvider';
@@ -8,6 +9,7 @@ import { ActivityProvider } from '@/hooks/useActivity';
 import { isOnboarded, isSetupDone } from '@/lib/business';
 import Landing from '@/routes/Landing';
 import SignIn from '@/routes/SignIn';
+import Join from '@/routes/Join';
 import Connect from '@/routes/Connect';
 import NotFound from '@/routes/NotFound';
 import { PageMetadata } from '@/components/PageMetadata';
@@ -39,8 +41,11 @@ function RequireOnboarded({ children }: { children: ReactElement }) {
 /** Keep each lifecycle URL honest when it is opened directly or restored
     from browser history. Authentication chooses the first destination, but
     these guards remain necessary after state changes inside the SPA. */
-function OnboardingStage() {
+export function OnboardingStage() {
   const snap = useSnapshot();
+  /* An invited person signs in with no business and lands here. Their way
+     in is the invitation waiting in this browser, not a new business. */
+  if (store.get(store.KEYS.joinToken)) return <Navigate to="/join" replace />;
   if (!isOnboarded(snap)) return <Onboard />;
   return <Navigate to={isSetupDone(snap) ? '/app' : '/setup'} replace />;
 }
@@ -106,6 +111,7 @@ export function AppRoutes() {
           <Route path="/" element={<Landing />} />
           <Route path="/connect" element={<Connect />} />
           <Route path="/signin" element={<SignIn />} />
+          <Route path="/join" element={<Join />} />
 
           <Route element={<AppShell />}>
             {/* The no-signup demo. Anonymous on purpose: migrate.ts carries

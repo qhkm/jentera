@@ -33,6 +33,8 @@ export const PERMISSIONS = {
   'routines.manage': ['owner'],
   /** Confirm or dismiss a task the agent left waiting on the owner. */
   'tasks.review': ['owner'],
+  /** Invite people to the business and revoke invitations. */
+  'team.manage': ['owner'],
 } as const satisfies Record<string, readonly ('owner' | 'staff')[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

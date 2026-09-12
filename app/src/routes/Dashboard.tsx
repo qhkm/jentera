@@ -38,7 +38,7 @@ import { useNotifications } from '@/hooks/useNotifications';
 
 export type View = 'home' | 'chat' | 'work' | 'files' | 'routines' | 'notifications' | 'business';
 
-const BUSINESS_TABS: BizTab[] = ['profile', 'knows', 'handles', 'connections', 'permissions'];
+const BUSINESS_TABS: BizTab[] = ['profile', 'knows', 'handles', 'connections', 'permissions', 'team'];
 
 interface NavItem {
   id: View;
