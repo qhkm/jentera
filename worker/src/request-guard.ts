@@ -81,8 +81,8 @@ export async function guardApiRequest(
   url: URL,
   cors: Record<string, string>,
 ): Promise<Response | null> {
-  if (!['GET', 'POST', 'DELETE', 'HEAD'].includes(request.method)) {
-    return response(405, 'method not allowed', cors, { Allow: 'GET, POST, DELETE, HEAD, OPTIONS' });
+  if (!['GET', 'POST', 'PUT', 'DELETE', 'HEAD'].includes(request.method)) {
+    return response(405, 'method not allowed', cors, { Allow: 'GET, POST, PUT, DELETE, HEAD, OPTIONS' });
   }
 
   if (url.pathname.length + url.search.length > 8_192) {

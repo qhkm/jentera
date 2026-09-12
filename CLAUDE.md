@@ -91,13 +91,15 @@ could register against a stranger's address and wait for them to arrive.
 Auth is a magic link: the token is stored SHA-256 hashed, single-use via a
 conditional UPDATE, and exchanged for an HttpOnly/Secure/SameSite=Lax session
 cookie. Because the cookie travels cross-origin, `ALLOWED_ORIGINS` must list
-each origin exactly — a wildcard is rejected by the browser outright. The
-`Access-Control-Allow-Methods` list in `index.ts` must name every method a
-route handles: the browser preflights anything but GET and POST and refuses
-what the list leaves out, so the fetch throws and the route never runs — no
-route test can see that. `PUT` was missing from 12 September's push
-subscription route until the evening, and the notifications switch read
-"not available" on every device; `test/cors.test.ts` now scans the routes.
+each origin exactly — a wildcard is rejected by the browser outright. Two
+lists must name every method a route handles, and neither is visible to a
+route's own tests: `Access-Control-Allow-Methods` in `index.ts`, which the
+browser's preflight enforces before anything but GET or POST leaves it (the
+fetch throws), and the allowlist in `request-guard.ts`, which answers 405
+before dispatch. `PUT` was in neither for the push subscription route until
+the evening of 12 September, so the notifications switch read "not
+available" on every device while curl against the route and the route's
+tests both passed; `test/cors.test.ts` now scans the routes against both.
 
 `/api/auth/request` is rate limited three ways: an edge burst binding
 (5/60s per IP), and Postgres counters of 50/24h per IP and 10/24h per
