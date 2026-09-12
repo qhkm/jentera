@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { FileText } from '@phosphor-icons/react';
 import { ArtifactPreview } from '@/components/ArtifactPreview';
+import { FileExplorer } from '@/components/FileExplorer';
 import { Button, Card, Eyebrow, LoadingState } from '@/components/ui';
-import { useT } from '@/i18n/I18nProvider';
+import { useI18n, useT } from '@/i18n/I18nProvider';
 import { useRepository } from '@/lib/repo';
 import type { Artifact } from '@/lib/repo';
 import { formatBytes } from '@/lib/artifacts';
@@ -14,6 +15,8 @@ import { formatBytes } from '@/lib/artifacts';
  */
 export default function FilesView({ onOpenTask }: { onOpenTask: (runId: string) => void }) {
   const t = useT();
+  const { lang } = useI18n();
+  const [advanced, setAdvanced] = useState(false);
   const repo = useRepository();
   const [files, setFiles] = useState<Artifact[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -34,10 +37,16 @@ export default function FilesView({ onOpenTask }: { onOpenTask: (runId: string) 
         <Eyebrow>{t('files.title')}</Eyebrow>
         <h1 id="files-heading" className="font-pixel text-3xl tracking-tight">{t('files.title')}</h1>
         <p className="text-text-secondary">{t('files.intro')}</p>
+        <button type="button" role="switch" aria-checked={advanced} onClick={() => setAdvanced(!advanced)} className="btn self-start">
+          {lang === 'bm' ? 'Paparan lanjutan' : 'Advanced view'}
+          <span aria-hidden="true" className={advanced ? 'text-brand' : 'text-text-muted'}>{advanced ? (lang === 'bm' ? 'Aktif' : 'On') : (lang === 'bm' ? 'Tidak aktif' : 'Off')}</span>
+        </button>
       </header>
       {failed && <p role="alert" className="text-[var(--color-red-400)]">{t('files.error')}</p>}
       {files === null ? (
         <Card><LoadingState title={t('files.loading')} /></Card>
+      ) : advanced && !failed ? (
+        <FileExplorer files={files} onOpen={setOpen} onOpenTask={onOpenTask} />
       ) : files.length === 0 && !failed ? (
         <Card className="items-start gap-1">
           <strong>{t('files.empty')}</strong>

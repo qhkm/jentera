@@ -27,6 +27,34 @@ beforeEach(() => {
 });
 
 describe('FilesView', () => {
+  it('switches to a read-only explorer with folders, filtering and existing file actions', async () => {
+    const repo: Repository = new LocalRepository();
+    repo.artifactUrl = id => `https://api.test/api/artifacts/${id}`;
+    repo.fetchArtifact = async () => new Blob(['# Plan'], { type: 'text/markdown' });
+    repo.listArtifacts = vi.fn(async () => [
+      { id: 'a1', runId: RUN, name: 'plan.md', contentType: 'text/markdown', size: 123, createdAt: '2026-09-12T01:00:00Z' },
+      { id: 'a2', runId: RUN, name: 'logo.png', contentType: 'image/png', size: 640, createdAt: '2026-09-12T02:00:00Z' },
+    ]);
+    const onOpenTask = mount(repo);
+    const user = userEvent.setup();
+    await screen.findByRole('list', { name: 'Files' });
+    const toggle = screen.getByRole('switch', { name: /Advanced view/ });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText(/Virtual folders/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Documents/ }));
+    expect(screen.queryByRole('button', { name: 'logo.png' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Download' })).toHaveAttribute('href', 'https://api.test/api/artifacts/a1');
+    await user.click(screen.getByRole('button', { name: 'Open task' }));
+    expect(onOpenTask).toHaveBeenCalledWith(RUN);
+    await user.type(screen.getByRole('searchbox'), 'missing');
+    expect(screen.getByRole('status')).toHaveTextContent('No files in this view');
+    await user.clear(screen.getByRole('searchbox'));
+    await user.click(screen.getByRole('button', { name: 'plan.md' }));
+    expect(await screen.findByRole('dialog', { name: 'plan.md' })).toBeInTheDocument();
+  });
+
   it('lists every file Jentera produced, newest first, with a download and the task it came from', async () => {
     const repo: Repository = new LocalRepository();
     repo.artifactUrl = (id: string) => `https://api.test/api/artifacts/${id}`;

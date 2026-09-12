@@ -677,3 +677,19 @@
     margin: 0;
   }
 }
+.file-explorer { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.explorer-layout { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 16px; }
+.explorer-folders { border-right: 1px solid var(--border); padding-right: 12px; }
+.explorer-folder { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 10px; border-radius: 8px; text-align: left; }
+.explorer-folder[aria-current="page"] { color: var(--accent-green); background: var(--bg-card); }
+.explorer-folder-toggle { display: none; }
+.explorer-table { width: 100%; font-size: 13px; border-collapse: collapse; }
+.explorer-table th, .explorer-table td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); }
+.explorer-table th, .explorer-table td:not(:first-child) { color: var(--text-muted); }
+.explorer-table tbody tr:hover { background: var(--bg-card); }
+@media (max-width: 640px) {
+  .explorer-layout { grid-template-columns: minmax(0, 1fr); }
+  .explorer-folder-toggle { display: inline-flex; }
+  .explorer-folders { display: none; border-right: 0; }
+  .explorer-folders.is-open { display: block; }
+}
