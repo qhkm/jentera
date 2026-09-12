@@ -63,6 +63,9 @@
 /setup
   Cache-Control: no-cache, no-store, must-revalidate
   X-Robots-Tag: noindex, nofollow
+/join
+  Cache-Control: no-cache, no-store, must-revalidate
+  X-Robots-Tag: noindex, nofollow
 /setup/*
   Cache-Control: no-cache, no-store, must-revalidate
   X-Robots-Tag: noindex, nofollow

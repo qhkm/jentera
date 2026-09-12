@@ -4,7 +4,7 @@ export const SITE_URL = 'https://jentera.ai';
 export const SOCIAL_IMAGE = `${SITE_URL}/social/jentera-v1.png`;
 export const SOCIAL_ALT = 'Jentera by AISAR. AI staff that works 24/7 for Malaysian businesses.';
 export const INDEXABLE_PATHS = ['/', '/connect'] as const;
-export const PRIVATE_PATHS = ['/signin', '/onboard', '/setup', '/app'] as const;
+export const PRIVATE_PATHS = ['/signin', '/onboard', '/setup', '/app', '/join'] as const;
 
 /** Files whose committed changes materially alter each public page. The build
  * uses their most recent git commit for sitemap lastmod; it never stamps every
@@ -46,6 +46,7 @@ const PAGES: Record<string, Omit<PageSeo, 'canonical' | 'indexable'>> = {
   '/signin': { title: 'Sign in to Jentera', description: 'Sign in to your private Jentera business workspace.' },
   '/onboard': { title: 'Introduce your business — Jentera', description: 'Tell Jentera about your business and the work you need help with.' },
   '/setup': { title: 'Set up your workspace — Jentera', description: 'Review your business details and prepare your private Jentera workspace.' },
+  '/join': { title: 'Join your team on Jentera', description: 'Accept an invitation to work in a business on Jentera.' },
   '/app': { title: 'Your business workspace — Jentera', description: 'Your private Jentera workspace for conversations, work records and business details.' },
 };
 
