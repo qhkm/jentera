@@ -22,7 +22,7 @@ function Harness({ onOpenTask }: { onOpenTask: (runId: string) => void }) {
   return <ActivityView b={b} onOpenTask={onOpenTask} />;
 }
 
-async function mount(activity: Activity) {
+async function mount(activity: Activity, teamVersion?: number) {
   localStorage.setItem('aisar-biz-type', 'restaurant');
   localStorage.setItem('aisar-onboarded-v1', '1');
   localStorage.setItem('aisar-setup-done-v1', '1');
@@ -31,7 +31,7 @@ async function mount(activity: Activity) {
   const onOpenTask = vi.fn();
   render(
     <MemoryRouter>
-      <SignedInProvider value>
+      <SignedInProvider value teamVersion={teamVersion}>
         <RepositoryProvider repository={repo}>
           <I18nProvider>
             <ToastProvider>
@@ -59,5 +59,28 @@ describe('a colleague\'s private chat in Activity', () => {
     await screen.findByText('Their supplier list');
     expect(screen.getByText('My digest')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /View task/ })).toHaveLength(1);
+  });
+});
+
+describe('who asked for each piece of work', () => {
+  const two: Activity = {
+    counters: { handled: 2, needsYou: 0, minutesSaved: 6, thisWeek: 2, connections: 1 },
+    work: [
+      done({ id: 'mine', runId: '11111111-1111-4111-8111-111111111111', objective: 'My digest', requestedBy: 'owner@example.com' }),
+      done({ id: 'theirs', runId: '22222222-2222-4222-8222-222222222222', objective: 'Their supplier list', requestedBy: 'aisha@example.com' }),
+    ],
+  };
+
+  it('is named on a team, by the part of the address before the @', async () => {
+    await mount(two, 1);
+    await screen.findByText('Their supplier list');
+    expect(screen.getByText(/by aisha/)).toBeInTheDocument();
+    expect(screen.getByText(/by owner/)).toBeInTheDocument();
+  });
+
+  it('is not shown to a business of one', async () => {
+    await mount(two);
+    await screen.findByText('Their supplier list');
+    expect(screen.queryByText(/by aisha/)).toBeNull();
   });
 });

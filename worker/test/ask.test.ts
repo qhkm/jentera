@@ -273,6 +273,19 @@ describe('the durable Hermes agent request', () => {
     expect(prepared.instructions).toMatch(/do not expose internal profile names/i);
   });
 
+  it('tells the agent who is speaking, and that only the owner can authorise', () => {
+    const owner = prepareHermesAgent('plan the week', [], [], new Date('2026-09-12T05:00:00.000Z'), undefined,
+      { email: 'owner@example.com', role: 'owner' });
+    expect(owner.instructions).toMatch(/Who is speaking: owner@example.com, the owner of this business/);
+    const staff = prepareHermesAgent('plan the week', [], [], new Date('2026-09-12T05:00:00.000Z'), undefined,
+      { email: 'aisha@example.com', role: 'staff' });
+    expect(staff.instructions).toMatch(/Who is speaking: aisha@example.com, a staff member of this business/);
+    expect(staff.instructions).toMatch(/only the owner can approve/i);
+    expect(staff.instructions).toMatch(/under their name, never as the owner's/i);
+    const nobody = prepareHermesAgent('plan the week', [], [], new Date('2026-09-12T05:00:00.000Z'));
+    expect(nobody.instructions).not.toMatch(/Who is speaking/);
+  });
+
   it('requires live research for current questions and keeps source links in the answer', () => {
     const prepared = prepareHermesAgent(
       "what's latest today in tech?",

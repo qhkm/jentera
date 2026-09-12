@@ -214,6 +214,34 @@ so the finished reply already knows its files.
   digits, dot, dash, underscore). What the runner could not upload is logged
   on the sprite and left out of the reply rather than failing the run.
 
+## Working as a team (plan-gated)
+
+Every account is one person unless the business is on the **Team** plan,
+which an operator sets on the business (`plan = 'team'`, the same way `pro`
+is set). The session endpoint then carries `features.team`, and three things
+appear:
+
+- **Team tab** under My Business. The owner invites an address; the person
+  gets a plain email with a link that works for seven days and for that
+  address only. Members and open invitations are listed for everyone; only
+  the owner can invite or revoke.
+- **`/join`**. The link lands here. Signed out, the token waits in this
+  browser (`aisar-join-token`) while the person signs in through any of the
+  three doors; `/onboard` sends a membershipless person back to `/join`, so
+  an invitee never builds a business of their own by accident. Signed in
+  with the invited address, they become staff and the app reboots into the
+  business. A different signed-in address is told to sign in with the
+  invited one; a dead link drops the token.
+- **Private chats.** A chat belongs to whoever opened it. Activity lists
+  every outcome for the business, but a colleague's private run has no
+  "View task" and is not in Files; the run, trace and file routes answer
+  404 for it. On a team, Activity rows say who asked (`by aisha`), and the
+  agent is told who is speaking and that only the owner can authorise.
+
+The founder is the owner; everyone invited is staff. Shared workspaces,
+notification recipients by role and offboarding are the next steps in
+`docs/plans/2026-09-12-team-features.md`.
+
 ## Public SEO and link previews
 
 `pnpm build` now renders `/` and `/connect` to static HTML from their actual

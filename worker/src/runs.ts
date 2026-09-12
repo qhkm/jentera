@@ -325,6 +325,8 @@ export interface WorkSummary {
   /** Whether the viewer may open this work's run: false for a colleague's
       private chat. The outcome itself is the business's to see. */
   canOpen: boolean;
+  /** The address of the person who asked for it, when a person did. */
+  requestedBy: string | null;
   objective: string;
   outcome: string | null;
   status: string;
@@ -353,6 +355,7 @@ export async function recentWork(
       id: string;
       run_id: string | null;
       can_open: boolean;
+      requested_by: string | null;
       objective: string;
       outcome: string | null;
       status: string;
@@ -368,16 +371,19 @@ export async function recentWork(
   >`select w.id, w.run_id, w.objective, w.outcome, w.status, w.function, w.channel,
            w.subject, w.minutes_saved, w.outcome_quality, w.quality_at, w.occurred_at, w.kind,
            (${viewer}::uuid is null or r.id is null or r.session_id is null
-              or c.created_by = ${viewer}::uuid) as can_open
+              or c.created_by = ${viewer}::uuid) as can_open,
+           u.email as requested_by
       from work_record w
       left join run r on r.id = w.run_id and r.business_id = w.business_id
       left join chat_session c on c.business_id = r.business_id and c.id = r.session_id
+      left join app_user u on u.id = r.requested_by
      where ${kind}::text is null or w.kind = ${kind}::text
      order by w.occurred_at desc limit ${limit}`;
   return rows.map((r) => ({
     id: r.id,
     runId: r.run_id,
     canOpen: r.can_open,
+    requestedBy: r.requested_by,
     objective: r.objective,
     outcome: r.outcome,
     status: r.status,

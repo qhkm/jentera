@@ -106,8 +106,9 @@ describe('a chat and who may read its runs', () => {
   it('lists a colleague\'s private work in Activity as something that cannot be opened', async () => {
     await finishedRun(staff, CHAT);
     await finishedRun(owner, null);
-    const ownerView = await jsonOf<{ work: { canOpen?: boolean }[] }>(await get('/api/runs/activity', cookieOwner));
+    const ownerView = await jsonOf<{ work: { canOpen?: boolean; requestedBy?: string | null }[] }>(await get('/api/runs/activity', cookieOwner));
     expect(ownerView.work.map((w) => w.canOpen)).toEqual([true, false]);
+    expect(ownerView.work.map((w) => w.requestedBy)).toEqual(['owner@example.com', 'staff@example.com']);
     const staffView = await jsonOf<{ work: { canOpen?: boolean }[] }>(await get('/api/runs/activity', cookieStaff));
     expect(staffView.work.map((w) => w.canOpen)).toEqual([true, true]);
   });

@@ -129,6 +129,9 @@ export interface WorkSummary {
       colleague's private chat: the outcome is the business's to see, the
       conversation is not. Absent means yes; the server always sends it. */
   canOpen?: boolean;
+  /** The address of the person who asked for it, when a person did. Shown
+      on a team as the part before the @. */
+  requestedBy?: string | null;
   objective: string;
   outcome: string | null;
   status: string;

@@ -313,12 +313,33 @@ function boundedContext(context: string): string {
     message — put a copy of the whole business into every stored turn: a
     ten-turn chat carried ten copies, paid for on every reply and stale
     from the second one on. */
+/** Who is typing. With more than one person in a business the agent must
+    not take a staff request for the owner's word, and Hermes memory is
+    per business, so a preference learned from staff must carry their
+    name rather than become "the owner's". */
+export interface Speaker {
+  email: string;
+  role: 'owner' | 'staff';
+}
+
+export function speakerInstructions(speaker: Speaker): string {
+  if (speaker.role === 'owner') {
+    return `Who is speaking: ${speaker.email}, the owner of this business. ` +
+      'Save what you learn about this person under their name.';
+  }
+  return `Who is speaking: ${speaker.email}, a staff member of this business, not the owner. ` +
+    "Help them with the business's work as you would the owner, but only the owner can approve or " +
+    'authorise external actions and changes to settings; if something needs approval, say the owner ' +
+    "will be asked. Save what you learn about this person under their name, never as the owner's.";
+}
+
 export function prepareHermesAgent(
   question: string,
   facts: FactRow[],
   work: { objective: string; outcome: string | null }[],
   now = new Date(),
   specialist?: SpecialistDefinition,
+  speaker?: Speaker,
 ): { instructions: string; input: string; usedKeys: string[]; grounded: boolean } {
   const recent = work.length === 0
     ? '(nothing yet)'
@@ -333,6 +354,7 @@ export function prepareHermesAgent(
   return {
     instructions: `${HERMES_AGENT_PROMPT}\n\nCurrent date (UTC): ${now.toISOString().slice(0, 10)}.` +
       `${specialist ? `\n\n${specialistRunInstructions(specialist)}` : ''}` +
+      `${speaker ? `\n\n${speakerInstructions(speaker)}` : ''}` +
       `\n\n${context}`,
     input: question,
     usedKeys: facts.map((fact) => fact.key),

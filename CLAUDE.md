@@ -161,7 +161,24 @@ second half when they arrive; nothing else should restate the rule. With
 one person per business — every business today — nothing is hidden.
 Team features are a plan: `business.plan` is `free | pro | team`
 (migration 033), `/api/me` carries `features.team`, and every team write
-will check it; `docs/plans/2026-09-12-team-features.md` is the plan.
+checks it inside the tenant transaction (402 otherwise). An operator puts a
+business on the plan with one `update business set plan = 'team'` on the
+owner connection; nothing sets it automatically. `src/routes/team.ts` is
+the whole team surface: members and open invitations for any member,
+invite and revoke for the owner (`can(identity, 'team.manage')`), and
+acceptance. An invitation (`invitation`, migration 035) names an address;
+the token travels only in the email and the row keeps its SHA-256, the
+business behind a token is found by `invitation_by_token`, a security
+definer returning ids only, and acceptance is a conditional UPDATE under a
+row lock. Whoever signs in through any door with that verified address may
+accept; an account that already belongs to a business is refused with a
+message, because switching is deferred. Roles are decided in one place,
+`permissions.ts`, where a permission is a row — `permissions.test.ts`
+fails on any `role !== 'owner'` that comes back at a call site. The agent
+is told who is typing (`speakerInstructions` in `ask.ts`): a staff request
+is never the owner's word, and what Hermes learns from staff carries their
+name, since its memory is per business. `docs/plans/2026-09-12-team-features.md`
+is the plan and its status.
 
 ### Where work runs
 

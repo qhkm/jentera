@@ -1,6 +1,6 @@
 # Team features — what the tenancy model already gives us, and what it does not
 
-Status: **assessment**. Prepared 12 September 2026 against `main` at b420104.
+Status: **in progress** — steps 0 to 4 shipped 12 September 2026 (see Status at the end). Prepared 12 September 2026 against `main` at b420104.
 Every table, column, route and check named below was read in the code; the
 production figures come from `stats.sh`. Nothing here changes production by
 being written down.
@@ -198,16 +198,16 @@ Each step lands on its own with tests, in the shape the repo already uses
    `features.team` on `/api/me`, and a `requireTeamPlan(tx)` helper the
    later steps call. No visible change for anyone not on the plan.
 1. Permission helper replacing the 14 owner checks. No visible change.
-2. Server-side chat sessions: migration 033 (`chat_session`,
+2. Server-side chat sessions: migration 034 (`chat_session`,
    `run.session_id`), the app lists and creates chats through the API,
    `visibleRunFilter` on the run, events, trace and artifact routes. With
    one member per business this changes nothing visible except that chat
    history follows the person across devices.
-3. Invitations: migration 034, owner routes, accept-on-sign-in through all
+3. Invitations: migration 035, owner routes, accept-on-sign-in through all
    three entry points, Team tab under My Business, the "you were invited"
    landing.
 4. Speaker identity in the agent instructions; "by Aisha" in Activity.
-5. Workspaces: migration 035, owner routes, "new chat in workspace" in the
+5. Workspaces: migration 036, owner routes, "new chat in workspace" in the
    app, shared visibility through the same filter.
 6. Recipients helper: owners for needs-you and approvals, the requester for
    their own outcomes.
@@ -227,3 +227,20 @@ Deferred until asked for: a third role, one person in several businesses.
   is private. Say if the requester expects otherwise.
 - Do people belong to several businesses? Nothing above prevents it, but
   switching is not built until someone needs it.
+
+## Status
+
+| Step | State | Landed |
+|---|---|---|
+| 0 — `team` plan value, `features.team` | shipped | 688375c, migration 033 applied 12 Sep |
+| 1 — permission table | shipped | 50c7a29 |
+| 2 — chat sessions and the visibility rule | shipped | bb0b760, migration 034 applied 12 Sep |
+| 3 — invitations, `/join`, Team tab | shipped | f80eee3, 38707bf, migration 035 applied 12 Sep |
+| 4 — speaker to the agent, "by whom" in Activity | shipped | this commit |
+| 5 — workspaces | next | |
+| 6 — recipients by role | pending | |
+| 7 — offboarding | pending | |
+
+Production on 12 September after step 3: 17 businesses on `free`, 1 on
+`pro`, none on `team`; no chat rows or invitations yet. The requesting
+business goes on the plan with one `update business set plan = 'team'`.

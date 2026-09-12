@@ -145,6 +145,9 @@ describe('Ask Jentera runtime bridge', () => {
     expect(row.payload.instructions).toContain('Confirmed information about this business:');
     expect(row.payload.instructions).toContain('Recent Jentera work:');
     expect(row.payload.input).toBe('What should I improve?');
+    /* The one thing that differs by channel: who is typing. The agent is
+       told, so a staff request is never mistaken for the owner's word. */
+    expect(row.payload.instructions).toContain('Who is speaking: a@example.com, the owner of this business');
   });
 
   it('routes clear work to this business’s persistent specialist profile', async () => {

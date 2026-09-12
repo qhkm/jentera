@@ -35,6 +35,7 @@ import {
   prepareHermesAgent,
   retrieve,
   retrieveHermesContext,
+  type Speaker,
 } from '../ask';
 import { getRuntime } from '../agent-runtime';
 import {
@@ -235,6 +236,8 @@ export async function handleRuns(
         responseMode,
         ctx,
         inline,
+        /* A membership always has a role; the fallback only satisfies the type. */
+        { email: id.email, role: id.role ?? 'staff' },
       );
     }
 
@@ -521,6 +524,7 @@ async function startDurableAsk(
   requestedMode?: ResponseMode,
   ctx?: BackgroundContext,
   inline?: InlineSliceOptions,
+  speaker?: Speaker,
 ): Promise<Response> {
   if (!env.RUNTIME_QUEUE || !env.AISAR_MODEL_NAME?.trim()) {
     return json({ ok: false, err: 'Jentera agent execution is unavailable' }, { status: 503 }, cors);
@@ -540,7 +544,7 @@ async function startDurableAsk(
     const specialists = await listSpecialists(tx, { enabledOnly: true });
     return { ...context, specialist: await specialistForTurn(tx, businessId, sessionId, question, specialists) };
   });
-  const prepared = prepareHermesAgent(question, facts, work, new Date(), specialist);
+  const prepared = prepareHermesAgent(question, facts, work, new Date(), specialist, speaker);
   /* Quick by default, as on Telegram; the toggle or a typed /deep opts in
      to the research loop. Chat was hard-wired to deep until 2026-09-10 and
      every web message paid for it. */

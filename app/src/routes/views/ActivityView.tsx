@@ -22,6 +22,7 @@ import { OutcomeReceipt, type WorkSignalState } from '@/components/WorkSignal';
 import { ActivityHistory } from '@/components/ActivityHistory';
 import { useToast } from '@/components/Toast';
 import { useMutate, useRefresh, useSnapshot, type WorkQuality } from '@/lib/repo';
+import { useTeamEnabled } from '@/lib/repo/gate';
 import type { Approval, Business, Tone, WorkItem } from '@/lib/types';
 import type { useBusiness } from '@/hooks/useBusiness';
 
@@ -81,6 +82,8 @@ export default function ActivityView({
   const business: Business = b.business;
   const activity = useActivity();
   const detail = useDetailLevel();
+  /* Who asked is worth a word only where more than one person can ask. */
+  const teamEnabled = useTeamEnabled();
   const snap = useSnapshot();
   const refresh = useRefresh();
 
@@ -234,7 +237,8 @@ export default function ActivityView({
                     ? t('work.receipt.channel', { channel: w.channel })
                     : undefined
               }
-              meta={`${new Date(w.occurredAt).toLocaleString()}${w.function ? ` · ${w.function}` : ''}`}
+              meta={`${new Date(w.occurredAt).toLocaleString()}${w.function ? ` · ${w.function}` : ''}${
+                teamEnabled && w.requestedBy ? ` · ${t('activity.by', { who: w.requestedBy.split('@')[0] })}` : ''}`}
               statusLabel={t(workLabel(w.status))}
               statusTone={workTone(w.status)}
               state={workSignal(w.status)}
