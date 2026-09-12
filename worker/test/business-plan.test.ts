@@ -30,7 +30,7 @@ beforeEach(async () => {
 async function me(cookie: string) {
   const { request, url } = req('GET', '/api/me', { cookie });
   const response = await handleSession(request, testEnv(), url, cors);
-  return (await response!.json()) as { features?: { team?: { apiVersion: number }; routines?: unknown } };
+  return (await response!.json()) as { businessId?: string | null; role?: string | null; features?: { team?: { apiVersion: number }; routines?: unknown } };
 }
 
 describe('the team plan', () => {
@@ -47,5 +47,16 @@ describe('the team plan', () => {
     expect((await me(cookies.staff)).features?.team).toEqual({ apiVersion: 1 });
     expect((await me(cookies.free)).features?.team).toBeUndefined();
     expect((await me(cookies.pro)).features?.team).toBeUndefined();
+  });
+});
+
+describe('leaving the team plan', () => {
+  it('drops staff to no business while the owner keeps it, and brings them back when the plan returns', async () => {
+    await asOwner((sql) => sql`update business set plan = 'pro' where id = ${TEAM}`);
+    expect(await me(cookies.staff)).toMatchObject({ businessId: null, role: null });
+    expect(await me(cookies.team)).toMatchObject({ businessId: TEAM, role: 'owner' });
+    expect((await me(cookies.team)).features?.team).toBeUndefined();
+    await asOwner((sql) => sql`update business set plan = 'team' where id = ${TEAM}`);
+    expect(await me(cookies.staff)).toMatchObject({ businessId: TEAM, role: 'staff' });
   });
 });

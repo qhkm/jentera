@@ -134,6 +134,8 @@ beforeEach(async () => {
   env = testEnv();
   await asOwner(async (sql) => {
     await sql`insert into business (id, name, playbook_key) values (${A}, 'Alpha', 'restaurant')`;
+    /* Staff seats count only on the team plan (migration 038). */
+    await sql`update business set plan = 'team'`;
     await sql`insert into business (id, name, playbook_key) values (${B}, 'Beta', 'salon')`;
     const [a] = await sql<{ id: string }[]>`
       insert into app_user (email, email_verified) values ('alice@example.com', true) returning id`;

@@ -511,6 +511,9 @@ export class RemoteRepository implements Repository {
   revokeTeamInvitation = (id: string) =>
     call<void>(`/api/team/invitations/${encodeURIComponent(id)}`, { method: 'DELETE' });
 
+  removeTeamMember = (userId: string) =>
+    call<void>(`/api/team/members/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+
   acceptInvitation = (token: string) =>
     call<{ businessName: string }>('/api/team/invitations/accept', {
       method: 'POST', body: JSON.stringify({ token }),

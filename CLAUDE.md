@@ -183,7 +183,17 @@ business behind a token is found by `invitation_by_token`, a security
 definer returning ids only, and acceptance is a conditional UPDATE under a
 row lock. Whoever signs in through any door with that verified address may
 accept; an account that already belongs to a business is refused with a
-message, because switching is deferred. Roles are decided in one place,
+message, because switching is deferred. A staff seat counts only while the
+business is on the team plan: `verifySession` and `authLandingPath` skip
+staff memberships otherwise, through `business_plan(uuid)`, a security
+definer (migration 038) because `business` is RLS-protected outside a
+tenant transaction — so leaving the plan ends staff access at once and
+returning restores it, memberships untouched. Removing a member
+(`DELETE /api/team/members/:userId`, owner only, never the owner) ends
+everything that lets them in or reaches them in one transaction: the
+membership, their sessions, their devices and pending pushes, their
+workspace seats, any open invitation for their address. Their chats and
+the work they asked for stay as history. Roles are decided in one place,
 `permissions.ts`, where a permission is a row — `permissions.test.ts`
 fails on any `role !== 'owner'` that comes back at a call site. The agent
 is told who is typing (`speakerInstructions` in `ask.ts`): a staff request

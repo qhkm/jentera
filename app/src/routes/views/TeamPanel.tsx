@@ -21,6 +21,7 @@ export default function TeamPanel() {
   const [error, setError] = useState(false);
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!repo.team) return;
@@ -61,6 +62,18 @@ export default function TeamPanel() {
     }
   }
 
+  async function remove(userId: string) {
+    if (!repo.removeTeamMember) return;
+    try {
+      await repo.removeTeamMember(userId);
+      setTeam((prev) => prev ? { ...prev, members: prev.members.filter((m) => m.userId !== userId) } : prev);
+      setRemoving(null);
+      toast(t('team.removed'));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : t('team.error'), 'error');
+    }
+  }
+
   if (error) {
     return (
       <Card role="alert" className="gap-3">
@@ -88,7 +101,19 @@ export default function TeamPanel() {
                 {member.email}
                 {member.you && <span className="ml-2 text-text-muted">· {t('team.you')}</span>}
               </span>
-              <Tag tone={member.role === 'owner' ? 'green' : 'neutral'}>{t(`team.role.${member.role}`)}</Tag>
+              <span className="flex items-center gap-2">
+                <Tag tone={member.role === 'owner' ? 'green' : 'neutral'}>{t(`team.role.${member.role}`)}</Tag>
+                {team.canManage && repo.removeTeamMember && member.role === 'staff' && !member.you && (
+                  removing === member.userId ? (
+                    <span className="flex items-center gap-1">
+                      <Button variant="outline" onClick={() => setRemoving(null)}>{t('workspace.cancel')}</Button>
+                      <Button onClick={() => void remove(member.userId)} aria-label={t('team.remove.confirmLabel', { email: member.email })}>{t('team.remove.confirm')}</Button>
+                    </span>
+                  ) : (
+                    <Button variant="outline" onClick={() => setRemoving(member.userId)} aria-label={t('team.remove.label', { email: member.email })}>{t('team.remove')}</Button>
+                  )
+                )}
+              </span>
             </li>
           ))}
         </ul>

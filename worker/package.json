@@ -31,6 +31,7 @@
     "db:migrate:invitation": "node scripts/apply-invitation.mjs",
     "db:migrate:workspace": "node scripts/apply-workspace.mjs",
     "db:migrate:notification-kinds": "node scripts/apply-notification-kinds.mjs",
+    "db:migrate:team-plan-gate": "node scripts/apply-team-plan-gate.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -75,6 +75,8 @@ beforeEach(async () => {
   await asOwner(async (sql) => {
     await sql`insert into business (id, name, playbook_key, lang)
               values (${A}, 'Alpha', 'restaurant', 'en'), (${B}, 'Beta', 'retail', 'en')`;
+    /* Staff seats count only on the team plan (migration 038). */
+    await sql`update business set plan = 'team' where id = ${A}`;
     const [a] = await sql<{ id: string }[]>`
       insert into app_user (email, email_verified) values ('owner-a@example.com', true) returning id`;
     const [s] = await sql<{ id: string }[]>`
@@ -101,7 +103,7 @@ describe('discovery', () => {
   }
 
   it('advertises routines on /api/me only when the flag is on and the business is allowed', async () => {
-    expect((await me(cookieOwnerA, env)).features).toEqual({ routines: { apiVersion: 1 } });
+    expect((await me(cookieOwnerA, env)).features?.routines).toEqual({ apiVersion: 1 });
     const allowB = testEnv({ ROUTINES_ENABLED: 'true', AISAR_ROUTINES_BUSINESS_IDS: B });
     expect((await me(cookieOwnerA, allowB)).features?.routines).toBeUndefined();
     expect((await me(cookieOwnerB, allowB)).features).toEqual({ routines: { apiVersion: 1 } });

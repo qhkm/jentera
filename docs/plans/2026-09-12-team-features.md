@@ -1,6 +1,6 @@
 # Team features — what the tenancy model already gives us, and what it does not
 
-Status: **in progress** — steps 0 to 6 built 12 September 2026 (see Status at the end). Prepared 12 September 2026 against `main` at b420104.
+Status: **built** — all seven steps built 12 September 2026; migrations 036–038 pending on production (see Status at the end). Prepared 12 September 2026 against `main` at b420104.
 Every table, column, route and check named below was read in the code; the
 production figures come from `stats.sh`. Nothing here changes production by
 being written down.
@@ -219,8 +219,9 @@ Deferred until asked for: a third role, one person in several businesses.
 
 ## Still open
 
-- Downgrade behaviour: staff lose access when the plan leaves `team`
-  (proposed above) — or keep read access? OpenAI removes members.
+- Downgrade behaviour is implemented as proposed: staff lose access when
+  the plan leaves `team`, and return with it. Say so if read access was
+  expected instead.
 
 - Can the owner read a staff member's private chat? Proposed: no. The
   owner sees the outcomes in Activity and every approval; a private chat
@@ -239,7 +240,7 @@ Deferred until asked for: a third role, one person in several businesses.
 | 4 — speaker to the agent, "by whom" in Activity | shipped | this commit |
 | 5 — workspaces | built | e074b94, 43ed31d; migration 036 pending on production |
 | 6 — recipients by role | built | owners other than the asker, for needs-you outcomes and approvals; migration 037 pending on production |
-| 7 — offboarding | next | |
+| 7 — offboarding | built | member removal with sessions, devices, seats and invitations; the plan-downgrade gate at session time (migration 038) |
 
 Production on 12 September after step 3: 17 businesses on `free`, 1 on
 `pro`, none on `team`; no chat rows or invitations yet. The requesting

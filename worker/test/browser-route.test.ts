@@ -13,6 +13,8 @@ beforeEach(async () => {
   await truncateAll();
   const users = await asOwner(async (sql) => {
     await sql`insert into business (id, name, playbook_key, onboarded) values (${A}, 'Alpha', 'restaurant', true)`;
+    /* Staff seats count only on the team plan (migration 038). */
+    await sql`update business set plan = 'team'`;
     const [owner] = await sql<{ id: string }[]>`insert into app_user (email, email_verified) values ('owner@example.com', true) returning id`;
     const [staff] = await sql<{ id: string }[]>`insert into app_user (email, email_verified) values ('staff@example.com', true) returning id`;
     await sql`insert into membership (user_id, business_id, role) values (${owner.id}, ${A}, 'owner'), (${staff.id}, ${A}, 'staff')`;

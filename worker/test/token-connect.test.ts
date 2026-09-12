@@ -11,6 +11,8 @@ const TOKEN = 'a'.repeat(40);
 async function seed() {
   await asOwner(async (sql) => {
     await sql`insert into business (id, name, playbook_key) values (${A}, 'Kedai', 'restaurant')`;
+    /* Staff seats count only on the team plan (migration 038). */
+    await sql`update business set plan = 'team' where id = ${A}`;
     for (const [id, role] of [[OWNER, 'owner'], [STAFF, 'staff']] as const) {
       await sql`insert into app_user (id, email, email_verified)
                 values (${id}, ${`${id}@test`}, true)`;

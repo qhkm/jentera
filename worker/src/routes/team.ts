@@ -205,6 +205,39 @@ export async function handleTeam(
     return json({ ok: true, invitation: invitationJson(result.row) }, { status: 201 }, cors);
   }
 
+  /* ---- offboarding: a staff member leaves the business --------------------
+     Everything that lets them in or reaches them goes in one transaction:
+     the membership, their sessions, their devices, their pending pushes,
+     their workspace seats, and any invitation still open for their address.
+     Their chats and the work they asked for stay as history. */
+  const removeMember = url.pathname.match(/^\/api\/team\/members\/([0-9a-f-]{36})$/i);
+  if (removeMember && request.method === 'DELETE') {
+    if (!can(identity, 'team.manage')) return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+    if (!originAllowed(request, cors)) return json({ ok: false, err: 'origin not allowed' }, { status: 403 }, cors);
+    if (!UUID.test(removeMember[1])) return json({ ok: false, err: 'not found' }, { status: 404 }, cors);
+    const memberId = removeMember[1];
+    const result = await withTenant(env, businessId, async (tx): Promise<Refusal | { status: 200 }> => {
+      const [membership] = await tx<{ owner: boolean; email: string }[]>`
+        select (m.role = 'owner') as owner, u.email from membership m join app_user u on u.id = m.user_id
+         where m.business_id = ${businessId} and m.user_id = ${memberId} for update of m`;
+      if (!membership) return { status: 404, err: 'not found' };
+      if (membership.owner || memberId === identity.userId) {
+        return { status: 409, err: 'The owner cannot be removed from their own business.' };
+      }
+      await tx`delete from membership where business_id = ${businessId} and user_id = ${memberId}`;
+      await tx`update session set revoked_at = now() where user_id = ${memberId} and revoked_at is null`;
+      await tx`delete from push_outbox where business_id = ${businessId} and user_id = ${memberId}`;
+      await tx`delete from push_subscription where business_id = ${businessId} and user_id = ${memberId}`;
+      await tx`delete from workspace_member where business_id = ${businessId} and user_id = ${memberId}`;
+      await tx`update invitation set revoked_at = now()
+                where business_id = ${businessId} and email = ${membership.email.toLowerCase()}
+                  and accepted_at is null and revoked_at is null`;
+      return { status: 200 };
+    });
+    if (result.status !== 200) return json({ ok: false, err: result.err }, { status: result.status }, cors);
+    return json({ ok: true }, {}, cors);
+  }
+
   const revoke = url.pathname.match(/^\/api\/team\/invitations\/([0-9a-f-]{36})$/i);
   if (revoke && request.method === 'DELETE') {
     if (!can(identity, 'team.manage')) return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);

@@ -140,4 +140,29 @@ describe('the team: members and invitations', () => {
     expect((await accept(cookies.solo, forSolo.token!)).status).toBe(409);
     expect(await asOwner((sql) => sql`select 1 from membership where user_id = ${ids.solo} and business_id = ${TEAM}`)).toHaveLength(0);
   });
+
+  it('removes a staff member: their session ends, their devices and workspaces forget them, their invitation dies', async () => {
+    /* A device, a workspace seat and an open re-invitation for the same address, all of which must go. */
+    await asTenant(TEAM, async (tx) => {
+      await tx`insert into push_subscription (business_id, user_id, endpoint, p256dh, auth) values
+        (${TEAM}, ${ids.staff}, 'https://push.example/staff-1', ${'p'.repeat(87)}, ${'a'.repeat(22)})`;
+      await tx`insert into workspace (business_id, name, created_by) values (${TEAM}, 'Marketing', ${ids.owner})`;
+      const [{ id }] = await tx<{ id: string }[]>`select id from workspace where business_id = ${TEAM}`;
+      await tx`insert into workspace_member (business_id, workspace_id, user_id) values (${TEAM}, ${id}, ${ids.staff})`;
+    });
+    expect((await call('DELETE', `/api/team/members/${ids.staff}`, cookies.staff)).status).toBe(403);
+    expect((await call('DELETE', `/api/team/members/${ids.owner}`, cookies.owner)).status).toBe(409);
+    expect((await call('DELETE', `/api/team/members/${ids.new}`, cookies.owner)).status).toBe(404);
+    expect((await call('DELETE', `/api/team/members/${ids.staff}`, cookies.owner)).status).toBe(200);
+
+    const me = req('GET', '/api/me', { cookie: cookies.staff });
+    expect((await handleSession(me.request, env(), me.url, cors))!.status).toBe(401);
+    expect(await asOwner((sql) => sql`select 1 from membership where user_id = ${ids.staff}`)).toHaveLength(0);
+    expect(await asOwner((sql) => sql`select 1 from push_subscription where user_id = ${ids.staff}`)).toHaveLength(0);
+    expect(await asOwner((sql) => sql`select 1 from workspace_member where user_id = ${ids.staff}`)).toHaveLength(0);
+    const listed = await jsonOf<{ members: { email: string }[] }>(await call('GET', '/api/team', cookies.owner));
+    expect(listed.members.map((m) => m.email)).toEqual(['owner@example.com']);
+    /* Invited again afterwards, they come back through the same door. */
+    expect((await invite('staff@example.com')).response.status).toBe(201);
+  });
 });

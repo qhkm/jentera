@@ -251,8 +251,14 @@ appear:
   every owner but the asker gets a notification and a push. A business of
   one receives none of these.
 
-The founder is the owner; everyone invited is staff. Offboarding is the
-next step in `docs/plans/2026-09-12-team-features.md`.
+- **Removing someone.** On the Team tab the owner removes a staff member
+  after a confirm step. Their access ends at once: sessions, devices,
+  workspace seats and any open re-invitation go together. Their chats and
+  the work they asked for stay in Activity as history. If the business
+  leaves the Team plan, staff lose access the same way until it returns.
+
+The founder is the owner; everyone invited is staff. The plan and its
+status live in `docs/plans/2026-09-12-team-features.md`.
 
 On a phone the bottom bar shows Home, Activity and Alerts; everything else
 sits behind **More**, which opens a sheet with the remaining sections and

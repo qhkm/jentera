@@ -372,6 +372,8 @@ export interface Repository {
   team?(): Promise<Team>;
   inviteTeamMember?(email: string): Promise<TeamInvitation>;
   revokeTeamInvitation?(id: string): Promise<void>;
+  /** Remove a staff member: their access ends at once; their work stays as history. */
+  removeTeamMember?(userId: string): Promise<void>;
   /** Accept an invitation for the signed-in address; answers the business's name. */
   acceptInvitation?(token: string): Promise<{ businessName: string }>;
   /** Workspaces this person is in (the owner: all, with `member` saying which). */

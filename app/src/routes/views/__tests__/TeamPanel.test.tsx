@@ -20,7 +20,7 @@ const TEAM: Team = {
   canManage: true,
 };
 
-function mount(team: Team, over: Partial<Pick<Repository, 'inviteTeamMember' | 'revokeTeamInvitation'>> = {}) {
+function mount(team: Team, over: Partial<Pick<Repository, 'inviteTeamMember' | 'revokeTeamInvitation' | 'removeTeamMember'>> = {}) {
   const repo = Object.assign(new LocalRepository(), { team: vi.fn(async () => team) }, over) as Repository;
   render(
     <SignedInProvider value account="owner" teamVersion={1}>
@@ -75,5 +75,17 @@ describe('the team tab', () => {
     await screen.findByRole('list', { name: 'Members' });
     expect(screen.queryByLabelText('Invite by email')).toBeNull();
     expect(screen.queryByRole('button', { name: /Revoke/ })).toBeNull();
+  });
+
+  it('lets the owner remove a staff member after confirming, never the owner', async () => {
+    const removeTeamMember = vi.fn(async () => {});
+    mount(TEAM, { removeTeamMember });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Remove aisha@example.com from the team' }));
+    expect(removeTeamMember).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Confirm removing aisha@example.com' }));
+    expect(removeTeamMember).toHaveBeenCalledWith('u2');
+    await waitFor(() => expect(screen.queryByText('aisha@example.com')).toBeNull());
+    expect(screen.queryByRole('button', { name: /Remove owner@example.com/ })).toBeNull();
   });
 });

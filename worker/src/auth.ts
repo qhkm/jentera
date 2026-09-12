@@ -79,8 +79,13 @@ export type AuthLandingPath = '/onboard' | '/setup' | '/app';
 
 export async function authLandingPath(env: Env, userId: string): Promise<AuthLandingPath> {
   const businessId = await withUser(env, async (sql) => {
+    /* The same rule as verifySession: a staff seat counts only while the
+       business is on the team plan (business_plan is the definer helper,
+       migration 038, because business is RLS-protected out here). */
     const [membership] = await sql<{ business_id: string }[]>`
-      select business_id from membership where user_id = ${userId}
+      select business_id from membership
+       where user_id = ${userId}
+         and (role = 'owner' or public.business_plan(business_id) = 'team')
        order by created_at limit 1`;
     return membership?.business_id ?? null;
   });
@@ -345,6 +350,7 @@ export async function verifySession(env: Env, token: string): Promise<Identity |
         from session s
         join app_user u on u.id = s.user_id
         left join membership m on m.user_id = s.user_id
+         and (m.role = 'owner' or public.business_plan(m.business_id) = 'team')
        where s.id = ${id}
          and s.revoked_at is null
          and s.expires_at > now()
