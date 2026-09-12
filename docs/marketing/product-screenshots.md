@@ -1,6 +1,6 @@
 # Product walkthrough screenshots
 
-Implemented locally, 12 September 2026. Not deployed. Captures live under
+Implemented and deployed, 12 September 2026. Captures live under
 `app/public/images/product-tour/`; the walkthrough appears immediately after the
 homepage hero. The secondary hero link opens it. Existing hero wording is unchanged.
 
@@ -27,3 +27,11 @@ selection and asset-existence coverage. Production build passes. Browser checks 
 is selected, and no horizontal overflow or JavaScript exceptions occur. Fixed
 bottom navigation is excluded from cropped captures so it cannot obscure content.
 No storage keys, API contracts, or cache headers changed.
+
+Production: commit `c2ccd41`, Pages deployment
+`b9c15206.aisar-jentera.pages.dev`, entry asset `/assets/index-AVW07pMa.js`.
+Both `jentera.ai` and `jentera.aisar.ai` serve that build; all eight live PNGs
+match their local SHA-256 hashes. Live Chrome checks at 1440px and 390px passed
+the hero link, all four screenshot selectors, responsive image selection, and
+image decoding without JavaScript errors or horizontal overflow. Backend and
+runtime were not redeployed; `aisar.ai` was not touched.
