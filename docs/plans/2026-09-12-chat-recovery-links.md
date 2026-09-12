@@ -1,6 +1,15 @@
 # Chat result recovery and clickable links
 
-Implemented locally; not deployed. The separate onboarding changes remain pending.
+Deployed with the outcome-led onboarding changes, 12 September 2026.
+
+Release commit `0ba35d8`; worker `521d801f-dea7-4cc7-a961-6b825fcb0c04`
+(thin-page ingestion guard, deployed first); Pages
+`0c794726.aisar-jentera.pages.dev`, entry `/assets/index-CcqyNGKG.js`.
+Final pre-release frontend suite: 530 tests passed; frontend and worker
+typechecks passed, as did 25 focused ingestion tests. No fleet changes.
+Both Jentera domains serve the new entry; all 12 JS/CSS asset hashes match
+the local build. Live Chrome loaded an active root-scoped service worker.
+The separate `aisar.ai` project was untouched.
 
 ## Recovery
 

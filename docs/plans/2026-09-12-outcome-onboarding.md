@@ -1,6 +1,11 @@
 # Outcome-led onboarding
 
-Implemented locally; not deployed.
+Deployed 12 September 2026 in commit `0ba35d8`, alongside chat recovery and
+clickable links. Worker `521d801f-dea7-4cc7-a961-6b825fcb0c04` deployed first;
+Pages `0c794726.aisar-jentera.pages.dev`, entry `/assets/index-CcqyNGKG.js`.
+Final combined frontend suite: 530 passing tests. No production onboarding or
+first job was executed to verify this release; authenticated behaviour was
+checked locally with mocked APIs as described below.
 
 ## Experience
 
