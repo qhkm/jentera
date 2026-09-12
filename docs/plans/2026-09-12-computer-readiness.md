@@ -1,6 +1,6 @@
 # Post-onboarding computer readiness
 
-Implemented locally; not deployed.
+Implemented and deployed, 12 September 2026, including the compact handoff UI.
 
 - Dashboard and post-onboarding chat show the computer's setup/readiness state.
 - Distinguishes missing setup, queued provisioning, readiness on the target release,
@@ -17,7 +17,8 @@ Implemented locally; not deployed.
 ## Verification
 
 - Frontend suite: 69 files, 504 tests passed; production build passed.
-- Runtime route tests: 13 passed; worker typechecks passed.
+- Runtime route tests: 13 passed; full backend suite: 65 files, 770 tests passed;
+  frontend and worker typechecks passed.
 - Mocked desktop/mobile browser checks covered setup, queued, ready, sleeping,
   and error states, plus the post-onboarding chat route.
 - Mobile screenshots checked: no horizontal overflow, message composer visible.
@@ -28,4 +29,12 @@ Implemented locally; not deployed.
 Deploy the worker before the frontend: GET /api/runtime adds canManage and
 setupStatus with private, no-store caching. Older responses fail closed for
 management actions. No migrations, storage-key changes, or runtime fleet changes.
-The separate compact handoff UI edits remain pending in the same worktree.
+Production code commit: `81547f6`. Worker version:
+`f93c9f43-5abc-4074-8dc2-6014fe339adb` (deployed first, transfer-field check passed).
+Pages: `f01be8fb.aisar-jentera.pages.dev`; entry `/assets/index-COaAmBqU.js`.
+API health returned OK; unauthenticated runtime access returned 401.
+Both Jentera domains serve the expected entry and all 11 JS/CSS hashes match
+the local build. Live anonymous navigation at 1440px and 390px passed without
+JavaScript errors or horizontal overflow. Signed-in feature behaviour was
+verified with mocked local API responses, not production customer sessions.
+No runtime fleet change or migration; `aisar.ai` was untouched.

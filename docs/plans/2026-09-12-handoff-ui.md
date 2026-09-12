@@ -2,7 +2,8 @@
 
 Implemented and deployed, 12 September 2026.
 
-Local follow-up (not deployed): the standalone disclosure is now a compact role
+Follow-up deployed with commit `81547f6` at
+`f01be8fb.aisar-jentera.pages.dev`: the standalone disclosure is now a compact role
 chip beside the avatar/name in chat and the result header in task details.
 It opens a viewport-bounded popover without moving reply content. Escape returns
 focus to the trigger; clicking outside dismisses it. Long role names truncate.
