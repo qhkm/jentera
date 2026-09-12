@@ -383,6 +383,26 @@ export async function markRuntimeReady(
   await tx`update business set runtime = 'hermes-sprite' where id = ${businessId}`;
 }
 
+/** The release is real on the sprite but Fly could not snapshot it. Say so
+    honestly: converged on the new release, the previous checkpoint kept as
+    the rollback point, the failure kept in last_error as a warning until a
+    later release checkpoints cleanly. A runtime left in error here re-queued
+    a failing upgrade every fifteen minutes for a fault only Fly can clear. */
+export async function markRuntimeReadyWithoutCheckpoint(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  release: string,
+  problem: string,
+): Promise<void> {
+  const warning = `Checkpoint failed after a healthy bootstrap; rollback point unchanged: ${problem}`;
+  await tx`
+    update agent_runtime
+       set status = 'ready', observed_release = ${release}, last_ready_at = now(),
+           last_error = ${warning.slice(0, 1000)}, updated_at = now()
+     where business_id = ${businessId}`;
+  await tx`update business set runtime = 'hermes-sprite' where id = ${businessId}`;
+}
+
 export async function markRuntimeFailed(
   tx: postgres.TransactionSql,
   businessId: string,

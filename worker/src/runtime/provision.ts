@@ -16,6 +16,7 @@ import {
   getRuntimeSecrets,
   markRuntimeFailed,
   markRuntimeReady,
+  markRuntimeReadyWithoutCheckpoint,
   recordProviderRuntime,
   runtimeName,
   type AgentRuntimeRecord,
@@ -232,16 +233,31 @@ async function bootstrapRuntime(
      boot-tested web-search backend, and that Fly's edge did not forward its
      organization bearer token into the tenant. */
   const readiness = await client.ready();
-  const checkpoint = await provider.checkpoint(
-    awakened,
-    `Jentera runtime ${runtime.desiredRelease}`,
-  );
-  /* Only revoke the prior inference key after the Sprite has attested and a
-     known-good checkpoint containing the replacement exists. */
-  await finalizeRuntimeModelKeyRotation(env, businessId);
-  await withTenant(env, businessId, (tx) =>
-    markRuntimeReady(tx, businessId, runtime.desiredRelease, checkpoint),
-  );
+  /* The checkpoint is the rollback point for this release. When Fly cannot
+     take one — an orphan directory on its side blocked BoxCompute for nine
+     hours on 2026-09-12 while every bootstrap succeeded — the release is
+     still real on the sprite. Record it as converged with the failure kept
+     as a warning, keep the previous checkpoint as the rollback point, and
+     leave the prior inference key unrevoked: a restore to that older
+     checkpoint would bring the old key back, so it must stay valid until a
+     checkpoint that carries the replacement exists. */
+  let checkpoint: string | null = null;
+  let checkpointProblem: string | null = null;
+  try {
+    checkpoint = await provider.checkpoint(awakened, `Jentera runtime ${runtime.desiredRelease}`);
+  } catch (error) {
+    checkpointProblem = error instanceof Error ? error.message : String(error);
+    console.warn(`[provision] checkpoint failed after a healthy bootstrap for ${businessId}: ${checkpointProblem}`);
+  }
+  if (checkpoint) {
+    /* Only revoke the prior inference key after the Sprite has attested and a
+       known-good checkpoint containing the replacement exists. */
+    await finalizeRuntimeModelKeyRotation(env, businessId);
+  }
+  const problem = checkpointProblem;
+  await withTenant(env, businessId, (tx) => checkpoint
+    ? markRuntimeReady(tx, businessId, runtime.desiredRelease, checkpoint)
+    : markRuntimeReadyWithoutCheckpoint(tx, businessId, runtime.desiredRelease, problem ?? 'unknown'));
   const ready = await withTenant(env, businessId, (tx) => getRuntime(tx, businessId));
   if (!ready) throw new Error('runtime disappeared after bootstrap');
   return { ...ready, observedRegion: readiness.region, ...bootstrapReport(bootstrapped.stdout) };

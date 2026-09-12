@@ -207,6 +207,58 @@ describe('provider provisioning', () => {
     expect(business.runtime).toBe('hermes-sprite');
   });
 
+  it('stays converged when the checkpoint fails after a healthy bootstrap, keeping the old rollback point', async () => {
+    /* BoxCompute, 12 September: bootstrap and readiness pass on every
+       attempt, then Fly's checkpoint rename finds an orphan directory. The
+       release is real on the sprite; the control plane must say so rather
+       than re-queue a failing upgrade every fifteen minutes. */
+    const readyz = (release: string) => async () => new Response(JSON.stringify({
+      ok: true, release,
+      runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+      hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
+      toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+      specialistProfiles: { operations: true, customers: true, growth: true, records: true },
+    }));
+    const base = {
+      RUNTIME_BOOTSTRAP_ENABLED: 'true', RUNTIME_BUNDLE_COMMIT: 'a'.repeat(40),
+      AISAR_MODEL_PROVIDER: 'openrouter', AISAR_MODEL_BASE: 'https://router.fmcv.my',
+      AISAR_MODEL_KEY: 'fmcv-control-secret-'.padEnd(48, 's'), AISAR_MODEL_NAME: 'MiniMax-M3',
+    };
+    class OrphanCheckpointProvider extends LocalRuntimeProvider {
+      failCheckpoints = false;
+      created = 0;
+      async writeFile() {}
+      async exec() { return { exitCode: 0, stdout: '{"ok":true}', stderr: '' }; }
+      async checkpoint(runtime: ObservedRuntime) {
+        if (this.failCheckpoints) {
+          throw new Error('Failed to create checkpoint: JuiceFS rename clone: rename checkpoints/v31.in-progress checkpoints/v31: file exists');
+        }
+        this.created += 1;
+        return super.checkpoint(runtime);
+      }
+    }
+    const provider = new OrphanCheckpointProvider();
+    const keys = { provider, runnerKey: 'runner-key-for-alpha'.repeat(2), hermesApiKey: 'hermes-key-for-alpha' };
+    const first = await ensureProviderRuntime(testEnv({ ...base, RUNTIME_RELEASE: '2026.09.11-7' }), A, { ...keys, fetch: readyz('2026.09.11-7') });
+    expect(first).toMatchObject({ status: 'ready', observedRelease: '2026.09.11-7', latestCheckpointId: 'v1', lastError: null });
+
+    provider.failCheckpoints = true;
+    const second = await ensureProviderRuntime(testEnv({ ...base, RUNTIME_RELEASE: '2026.09.12-2' }), A, { ...keys, fetch: readyz('2026.09.12-2') });
+    expect(second.status).toBe('ready');
+    expect(second.observedRelease).toBe('2026.09.12-2');
+    expect(second.latestCheckpointId).toBe('v1');
+    expect(second.lastError).toMatch(/checkpoint failed after a healthy bootstrap/i);
+    expect(second.lastError).toMatch(/file exists/);
+    const [business] = await asOwner((sql) => sql<{ runtime: string }[]>`select runtime from business where id = ${A}`);
+    expect(business.runtime).toBe('hermes-sprite');
+
+    /* The next release that can checkpoint clears the warning. */
+    provider.failCheckpoints = false;
+    const third = await ensureProviderRuntime(testEnv({ ...base, RUNTIME_RELEASE: '2026.09.13-1' }), A, { ...keys, fetch: readyz('2026.09.13-1') });
+    expect(third).toMatchObject({ status: 'ready', observedRelease: '2026.09.13-1', lastError: null });
+    expect(third.latestCheckpointId).not.toBe('v1');
+  });
+
   it('hands candidate model routes to bootstrap and refuses invalid ids', async () => {
     const readyz = async () => new Response(JSON.stringify({
       ok: true,

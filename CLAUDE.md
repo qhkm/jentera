@@ -332,6 +332,20 @@ bootstrap, which is true only of `upgrade-existing-sprite.sh`.
 Anything read at bootstrap still reaches a sprite only by re-bootstrap, so a
 config-only change needs a `RUNTIME_RELEASE` bump to take effect.
 
+A checkpoint that fails after a healthy bootstrap does not block convergence.
+Fly's checkpoint rename can find an orphan directory on its own volume
+(NEOREKA ASIA on 7 September, cleared when Fly rebuilt its checkpoint store;
+BoxCompute from 12 September, 317 attempts in nine hours). The release is
+real on the sprite, so `bootstrapRuntime` records it as converged with the
+failure kept in `last_error` as a warning
+(`markRuntimeReadyWithoutCheckpoint`), keeps the previous checkpoint as the
+rollback point, and leaves the prior inference key unrevoked — a restore to
+that older checkpoint would bring the old key back, so it must stay valid
+until a checkpoint carrying the replacement exists. The next release that
+checkpoints cleanly clears the warning. The API cannot delete such an
+orphan (it has no row for it) and the host path is unreachable from inside
+the sprite; only Fly can remove it.
+
 Nothing is applied to a sprite by hand. A sprite's Hermes checkout and
 runner directory survive re-bootstrap exactly as they are, so a hand-applied
 change is invisible to the next release and a removed one lingers:
