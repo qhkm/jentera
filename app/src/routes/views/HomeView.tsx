@@ -105,7 +105,11 @@ export default function HomeView({
     (connections.rows ?? []).some(
       (row) => row.connector === 'telegram' && row.status !== 'connected',
     );
-  const showTelegramNotice = connections.real && !telegramReady;
+  /* Telegram is optional: the app is the owner chat. The card appears only
+     for a bot the owner has already saved and that still needs something,
+     never as a standing nag to set one up. */
+  const showTelegramNotice = connections.real && !telegramReady &&
+    (Boolean(telegramPairing) || telegramNeedsAttention);
 
   const pending = business.work
     .map((w, i) => ({ w, i }))
@@ -171,32 +175,14 @@ export default function HomeView({
             <div className="flex max-w-[62ch] flex-col gap-1">
               <Eyebrow>{t('home.telegram.eyebrow')}</Eyebrow>
               <h2 className="font-pixel text-lg tracking-tight">
-                {t(
-                  telegramPairing
-                    ? 'home.telegram.pending.title'
-                    : telegramNeedsAttention
-                      ? 'home.telegram.attention.title'
-                      : 'home.telegram.missing.title',
-                )}
+                {t(telegramPairing ? 'home.telegram.pending.title' : 'home.telegram.attention.title')}
               </h2>
               <p className="text-[13px] leading-relaxed text-text-secondary">
-                {t(
-                  telegramPairing
-                    ? 'home.telegram.pending.detail'
-                    : telegramNeedsAttention
-                      ? 'home.telegram.attention.detail'
-                      : 'home.telegram.missing.detail',
-                )}
+                {t(telegramPairing ? 'home.telegram.pending.detail' : 'home.telegram.attention.detail')}
               </p>
             </div>
-            <Tag tone={telegramPairing ? 'amber' : telegramNeedsAttention ? 'red' : 'amber'}>
-              {t(
-                telegramPairing
-                  ? 'home.telegram.pending.tag'
-                  : telegramNeedsAttention
-                    ? 'home.telegram.attention.tag'
-                    : 'home.telegram.missing.tag',
-              )}
+            <Tag tone={telegramPairing ? 'amber' : 'red'}>
+              {t(telegramPairing ? 'home.telegram.pending.tag' : 'home.telegram.attention.tag')}
             </Tag>
           </div>
 
@@ -215,11 +201,7 @@ export default function HomeView({
                 className="px-5 py-2 text-sm"
                 onClick={() => onNavigate('business', 'connections')}
               >
-                {t(
-                  telegramNeedsAttention
-                    ? 'home.telegram.attention.cta'
-                    : 'home.telegram.missing.cta',
-                )}
+                {t('home.telegram.attention.cta')}
               </Button>
             )}
             {telegramPairing ? (

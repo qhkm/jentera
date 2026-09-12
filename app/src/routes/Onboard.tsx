@@ -512,8 +512,9 @@ export default function Onboard() {
     trackActivation('onboarding_completed');
     completedRef.current = true;
     store.remove(store.KEYS.onboardingDraft);
-    /* Telegram is the required private owner channel. Runtime provisioning
-       continues in the background while the owner connects and pairs it. */
+    /* Runtime provisioning continues in the background on the setup
+       screen. The app is the owner chat; Telegram is offered there as an
+       option, not a step. */
     navigate('/setup');
   }
 

@@ -55,6 +55,11 @@ function LiveSetup() {
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
+  /* The bot walkthrough is folded away until asked for: web chat is the
+     owner chat, and five BotFather steps on the setup screen read as a
+     requirement. A bot that is already saved unfolds it, so the Start
+     step is never hidden. */
+  const [showTelegram, setShowTelegram] = useState(false);
 
   const refreshRuntime = useCallback(async () => {
     try {
@@ -114,6 +119,7 @@ function LiveSetup() {
     row.connector === 'telegram' && row.status === 'connected' && row.paired === true);
   const telegramWaitingForStart = (connections.rows ?? []).some((row) =>
     row.connector === 'telegram' && row.status === 'connected' && row.paired !== true);
+  const telegramStarted = (connections.rows ?? []).some((row) => row.connector === 'telegram');
   /* Progress is what has to be true before web chat works: the profile
      and the agent. Telegram is optional, and counting it held an owner who
      skipped it at 67% with nothing left to do. */
@@ -190,13 +196,13 @@ function LiveSetup() {
               ? t('su.live.connected', { n: 1 })
               : telegramWaitingForStart
                 ? t('su.live.startTelegram')
-                : t('su.live.connectTelegram')}
-            state={telegramReady
+                : t('su.live.chatInApp')}
+            state={telegramReady || (!telegramWaitingForStart && runtimeReady)
               ? t('su.state.done')
               : telegramWaitingForStart
                 ? t('su.live.actionRequired')
                 : t('su.state.waiting')}
-            tone={telegramReady ? 'green' : telegramWaitingForStart ? 'amber' : 'neutral'}
+            tone={telegramReady || (!telegramWaitingForStart && runtimeReady) ? 'green' : telegramWaitingForStart ? 'amber' : 'neutral'}
             last
           />
         </Card>
@@ -227,8 +233,19 @@ function LiveSetup() {
               <Button variant="outline" onClick={connections.retry}>{t('loading.retry')}</Button>
             </div>
           </Card>
-        ) : (
+        ) : showTelegram || telegramStarted ? (
           <TelegramConnect rows={connections.rows} setRows={connections.setRows} />
+        ) : (
+          <Card className="gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Eyebrow>{t('su.live.telegramOptional')}</Eyebrow>
+              <Tag>{t('su.live.optional')}</Tag>
+            </div>
+            <p className="text-sm text-text-secondary">{t('su.live.telegramOptionalBody')}</p>
+            <div>
+              <Button variant="outline" onClick={() => setShowTelegram(true)}>{t('su.live.showTelegram')}</Button>
+            </div>
+          </Card>
         )}
 
         <Card className="gap-3">

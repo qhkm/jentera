@@ -135,7 +135,7 @@ describe('signed-in setup', () => {
 
     expect(await screen.findByText('installed and verified')).toBeInTheDocument();
     expect(repo.provisionCalls).toBe(1);
-    expect(screen.getByText(/optional — connect Telegram below/)).toBeInTheDocument();
+    expect(screen.getByText(/chat here in the Jentera app · Telegram optional/)).toBeInTheDocument();
     expect(screen.getByText('Jentera app')).toBeInTheDocument();
     expect(screen.getByText('coming soon')).toBeInTheDocument();
   });
@@ -167,6 +167,17 @@ describe('signed-in setup', () => {
     mount(provisioning);
     await waitFor(() => expect(screen.getByRole('progressbar', { name: 'Setup progress' }))
       .toHaveAttribute('aria-valuenow', '50'));
+  });
+
+  it('keeps the Telegram walkthrough folded away until the owner asks for it', async () => {
+    const repo = new ReadyRepository();
+    await repo.setOnboarded(true);
+    mount(repo);
+
+    await screen.findByText('installed and verified');
+    expect(screen.queryByText('Paste that token below')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Connect Telegram (optional)' }));
+    expect(await screen.findByText('Paste that token below')).toBeInTheDocument();
   });
 
   it('allows the built-in web chat without requiring Telegram', async () => {

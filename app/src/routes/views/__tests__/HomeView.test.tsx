@@ -139,8 +139,6 @@ describe('a business that has genuinely done nothing', () => {
     await screen.findByText('No approvals waiting');
     expect(container.querySelector('.home-stat-handled .font-pixel')).toHaveTextContent('0');
     expect(screen.getByText(/No work recorded for today in the latest activity/i)).toBeInTheDocument();
-    expect(screen.getByText(/connect Telegram to chat with Jentera from your phone/i))
-      .toBeInTheDocument();
   });
 
   it('shows one clear next action instead of making the owner search settings', async () => {
@@ -215,6 +213,14 @@ describe('Telegram readiness', () => {
       'href',
       unpaired.pairingUrl,
     );
+  });
+
+  it('does not nag about Telegram when the owner never set it up', async () => {
+    await mount(true, NOTHING_YET, []);
+
+    await screen.findByText('No approvals waiting');
+    expect(screen.queryByText('Private Telegram chat')).toBeNull();
+    expect(screen.queryByText(/connect Telegram to chat with Jentera from your phone/i)).toBeNull();
   });
 
   it('removes the notice once the private owner chat is paired', async () => {

@@ -483,7 +483,7 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'su.live.agentReady': 'Chief of Staff ready',
     'su.live.settingUp': 'setting up',
     'su.live.body':
-      'Choose how you want to chat with Jentera. Connect Telegram now, or continue with Ask Jentera in this web app.',
+      'Your Chief of Staff is being set up. Chat with Jentera right here in the app as soon as it is ready. Telegram is optional.',
     'su.live.profile': 'Business profile',
     'su.live.profileSaved': 'onboarding answers saved',
     'su.live.agent': 'Chief of Staff',
@@ -493,7 +493,12 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'su.live.provisioning': 'isolated runtime provisioning',
     'su.live.channel': 'Private owner chat',
     'su.live.connected': '{n} connected',
-    'su.live.connectTelegram': 'optional — connect Telegram below',
+    'su.live.chatInApp': 'chat here in the Jentera app · Telegram optional',
+    'su.live.optional': 'optional',
+    'su.live.telegramOptional': 'Also want Jentera on Telegram?',
+    'su.live.telegramOptionalBody':
+      'Connect your own bot to chat with Jentera from Telegram as well. You can do this now, or later under Business → Connections.',
+    'su.live.showTelegram': 'Connect Telegram (optional)',
     'su.live.startTelegram': 'bot saved — open Telegram and press Start below',
     'su.live.actionRequired': 'action required',
     'su.live.retry': 'Retry agent setup',
@@ -615,11 +620,6 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'home.telegram.pending.cta': 'Open Telegram and press Start →',
     'home.telegram.pending.note':
       'Jentera checks automatically after you press Start. You can keep using web chat meanwhile.',
-    'home.telegram.missing.tag': 'recommended',
-    'home.telegram.missing.title': 'Connect Telegram to chat with Jentera from your phone',
-    'home.telegram.missing.detail':
-      'Web chat is ready. Connect Telegram if you also want a private conversation with Jentera on your phone.',
-    'home.telegram.missing.cta': 'Set up Telegram →',
     'home.telegram.attention.tag': 'needs attention',
     'home.telegram.attention.title': 'Telegram needs your attention',
     'home.telegram.attention.detail':
@@ -1292,7 +1292,7 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'su.live.agentReady': 'Ketua Staf sedia',
     'su.live.settingUp': 'sedang disediakan',
     'su.live.body':
-      'Pilih cara anda mahu berbual dengan Jentera. Sambung Telegram sekarang, atau teruskan dengan Tanya Jentera dalam aplikasi web ini.',
+      'Ketua Staf anda sedang disediakan. Berbual dengan Jentera di sini dalam aplikasi sebaik sahaja ia sedia. Telegram adalah pilihan.',
     'su.live.profile': 'Profil perniagaan',
     'su.live.profileSaved': 'jawapan onboarding disimpan',
     'su.live.agent': 'Ketua Staf',
@@ -1302,7 +1302,12 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'su.live.provisioning': 'runtime terasing sedang disediakan',
     'su.live.channel': 'Chat peribadi pemilik',
     'su.live.connected': '{n} disambung',
-    'su.live.connectTelegram': 'pilihan — sambungkan Telegram di bawah',
+    'su.live.chatInApp': 'berbual di sini dalam aplikasi Jentera · Telegram pilihan',
+    'su.live.optional': 'pilihan',
+    'su.live.telegramOptional': 'Mahu Jentera di Telegram juga?',
+    'su.live.telegramOptionalBody':
+      'Sambungkan bot anda sendiri untuk berbual dengan Jentera melalui Telegram juga. Boleh dibuat sekarang, atau kemudian di Perniagaan → Sambungan.',
+    'su.live.showTelegram': 'Sambung Telegram (pilihan)',
     'su.live.startTelegram': 'bot disimpan — buka Telegram dan tekan Start di bawah',
     'su.live.actionRequired': 'tindakan diperlukan',
     'su.live.retry': 'Cuba setup ejen lagi',
@@ -1424,11 +1429,6 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'home.telegram.pending.cta': 'Buka Telegram dan tekan Start →',
     'home.telegram.pending.note':
       'Jentera menyemak secara automatik selepas anda menekan Start. Anda masih boleh menggunakan chat web sementara itu.',
-    'home.telegram.missing.tag': 'disyorkan',
-    'home.telegram.missing.title': 'Sambung Telegram untuk chat dengan Jentera dari telefon anda',
-    'home.telegram.missing.detail':
-      'Chat web sudah sedia. Sambung Telegram jika anda juga mahu berbual secara peribadi dengan Jentera melalui telefon.',
-    'home.telegram.missing.cta': 'Sediakan Telegram →',
     'home.telegram.attention.tag': 'perlu perhatian',
     'home.telegram.attention.title': 'Telegram memerlukan perhatian anda',
     'home.telegram.attention.detail':
