@@ -25,6 +25,7 @@ export default function AgentMemoryPanel() {
   const [memory, setMemory] = useState<AgentMemory | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [forgetting, setForgetting] = useState(false);
 
   const load = useCallback(async () => {
     if (!repo.agentMemory) return;
@@ -40,6 +41,7 @@ export default function AgentMemoryPanel() {
 
   async function forget(profile: string, file: AgentMemoryFile['file'], text: string) {
     if (!repo.forgetAgentMemory) return;
+    setForgetting(true);
     try {
       await repo.forgetAgentMemory({ profile, file, text });
       setConfirming(null);
@@ -52,6 +54,8 @@ export default function AgentMemoryPanel() {
       toast('Forgotten.');
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Could not forget that.', 'error');
+    } finally {
+      setForgetting(false);
     }
   }
 
@@ -97,7 +101,7 @@ export default function AgentMemoryPanel() {
                           {repo.forgetAgentMemory && (confirming === key ? (
                             <span className="flex items-center gap-1">
                               <Button variant="outline" onClick={() => setConfirming(null)}>Keep</Button>
-                              <Button onClick={() => void forget(profile.profile, file.file, entry.text)} aria-label={`Confirm forgetting: ${entry.text.slice(0, 40)}`}>Yes, forget</Button>
+                              <Button disabled={forgetting} onClick={() => void forget(profile.profile, file.file, entry.text)} aria-label={`Confirm forgetting: ${entry.text.slice(0, 40)}`}>Yes, forget</Button>
                             </span>
                           ) : (
                             <Button variant="outline" onClick={() => setConfirming(key)} aria-label={`Forget: ${entry.text.slice(0, 40)}`}>Forget</Button>

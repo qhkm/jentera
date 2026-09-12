@@ -32,6 +32,8 @@ let startBarrier;
 let browserPaused;
 let browserCommands;
 let browserBarrier;
+let ensureBarrier;
+let ensureCalls;
 
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'aisar-runner-'));
@@ -48,6 +50,8 @@ beforeEach(async () => {
   browserPaused = false;
   browserCommands = [];
   browserBarrier = null;
+  ensureBarrier = null;
+  ensureCalls = 0;
   hermesEventsList = [
     { event: 'message.delta', delta: 'Hello' },
     { event: 'reasoning.available', text: 'private chain of thought' },
@@ -122,7 +126,7 @@ beforeEach(async () => {
 
   runnerServer = createRunner({
     businessBrowser: {
-      ensure: async () => {},
+      ensure: async () => { ensureCalls += 1; if (ensureBarrier) await ensureBarrier; },
       isPaused: async () => browserPaused,
       status: async () => ({ enabled: true, paused: browserPaused }),
       command: async (body) => {
@@ -298,6 +302,20 @@ test('persists a starting admission record before asking Hermes to spawn', async
   assert.equal((await starting).status, 202);
   const persisted = JSON.parse(await readFile(join(directory, 'state.json'), 'utf8'));
   assert.equal(persisted.tasks[TASK].hermesRunId, 'run-1');
+});
+
+test('memory deletion cannot overlap admission before the task is persisted', async () => {
+  let release;
+  ensureBarrier = new Promise((resolve) => { release = resolve; });
+  const starting = start(TASK);
+  await waitFor(() => ensureCalls === 1);
+  try {
+    const response = await call('/v1/memory/forget', { method: 'POST',
+      body: JSON.stringify({ profile: 'default', file: 'USER.md', text: 'A note' }) });
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).error, 'runtime_busy');
+  } finally { release(); }
+  assert.equal((await starting).status, 202);
 });
 
 test('disables reasoning for quick business conversation', async () => {

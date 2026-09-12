@@ -74,6 +74,15 @@ test('the endpoints need the runner key', async () => {
   assert.equal(response.status, 401);
 });
 
+test('concurrent deletions preserve both changes to the same file', async () => {
+  const result = await Promise.all([
+    forgetAgentMemory(config, { profile: 'default', file: 'USER.md', text: 'qhkm prefers English replies.' }),
+    forgetAgentMemory(config, { profile: 'default', file: 'USER.md', text: 'favourite colour: teal' }),
+  ]);
+  assert.deepEqual(result, [true, true]);
+  assert.equal(await readFile(join(directory, 'memories', 'USER.md'), 'utf8'), '');
+});
+
 test('forgets exactly one entry, rewriting the file whole, and says so when nothing matched', async () => {
   const response = await call('/v1/memory/forget', {
     method: 'POST', body: JSON.stringify({ profile: 'default', file: 'USER.md', text: 'favourite colour: teal' }),

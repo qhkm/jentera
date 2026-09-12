@@ -667,10 +667,17 @@ export function createRunner(input) {
         try { body = await readJson(req); } catch { return json(res, 400, { error: 'invalid_body' }); }
         const problem = memoryForgetProblem(body);
         if (problem) return json(res, 400, { error: problem });
-        if (await activeTask(config, state, terminations)) return json(res, 409, { error: 'runtime_busy' });
-        const removed = await forgetAgentMemory(config, body);
-        if (!removed) return json(res, 404, { error: 'not_found' });
-        return json(res, 200, { ok: true });
+        // Reserve the same slot as task admission before the first await.
+        if (admitting) return json(res, 409, { error: 'runtime_busy' });
+        admitting = true;
+        try {
+          if (await activeTask(config, state, terminations)) return json(res, 409, { error: 'runtime_busy' });
+          const removed = await forgetAgentMemory(config, body);
+          if (!removed) return json(res, 404, { error: 'not_found' });
+          return json(res, 200, { ok: true });
+        } finally {
+          admitting = false;
+        }
       }
 
       if (url.pathname === '/v1/browser') {
@@ -1459,16 +1466,24 @@ export function memoryForgetProblem(body) {
 
 /** Remove one entry, matched exactly after trimming; the file is rewritten
     whole through a temp file and rename so a reader never sees half of it. */
+const memoryWrites = new Map();
+
 export async function forgetAgentMemory(config, body) {
   const path = `${memoryDir(config, body.profile)}/${body.file}`;
-  const entries = await readMemoryFile(path);
-  const target = body.text.trim();
-  const kept = entries.filter((entry) => entry !== target);
-  if (kept.length === entries.length) return false;
-  const tmp = `${path}.jentera-${process.pid}.tmp`;
-  await writeFile(tmp, kept.length ? `${kept.join(MEMORY_ENTRY_DELIMITER)}\n` : '', { mode: 0o600 });
-  await rename(tmp, path);
-  return true;
+  const previous = memoryWrites.get(path) ?? Promise.resolve();
+  const operation = previous.catch(() => {}).then(async () => {
+    const entries = await readMemoryFile(path);
+    const target = body.text.trim();
+    const kept = entries.filter((entry) => entry !== target);
+    if (kept.length === entries.length) return false;
+    const tmp = `${path}.jentera-${process.pid}.tmp`;
+    await writeFile(tmp, kept.length ? `${kept.join(MEMORY_ENTRY_DELIMITER)}\n` : '', { mode: 0o600 });
+    await rename(tmp, path);
+    return true;
+  });
+  memoryWrites.set(path, operation);
+  try { return await operation; }
+  finally { if (memoryWrites.get(path) === operation) memoryWrites.delete(path); }
 }
 
 async function readJson(req) {
