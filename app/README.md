@@ -214,6 +214,26 @@ so the finished reply already knows its files.
   digits, dot, dash, underscore). What the runner could not upload is logged
   on the sprite and left out of the reply rather than failing the run.
 
+## Knowledge
+
+Under My Business, the Knowledge tab holds what Jentera knows about the
+business: facts, each confirmed or waiting for a glance, with add, confirm,
+forget and a history. Facts arrive three ways:
+
+- **Typed** — confirmed at once.
+- **From your website** — paste an address; Jentera reads the page and
+  suggests what it learned, unconfirmed, with the page as source.
+- **From a document** — upload text, Markdown, CSV, JSON, PDF, Word, Excel
+  or an image; Jentera reads it the same way. The file is not kept, only
+  what was learned from it, with the file name as source.
+
+Below that, **What Jentera has picked up** shows the agent's own notes —
+how this computer behaves, and what it has learned about the people it
+talks to — by specialist, each with a Forget. Owner only. Confirmed facts
+are handed to the agent separately every turn and it is told not to copy
+them into these notes. A runtime still starting, or on an older release,
+reads as not available yet.
+
 ## Working as a team (plan-gated)
 
 Every account is one person unless the business is on the **Team** plan,

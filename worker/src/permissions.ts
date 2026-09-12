@@ -37,6 +37,8 @@ export const PERMISSIONS = {
   'team.manage': ['owner'],
   /** Create workspaces and decide who is in them. */
   'workspaces.manage': ['owner'],
+  /** See and forget what the agent remembers; it holds notes about people. */
+  'agent.memory': ['owner'],
 } as const satisfies Record<string, readonly ('owner' | 'staff')[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

@@ -153,6 +153,26 @@ the tenant before touching the bucket and always answers as an attachment.
 Names are plain (`[A-Za-z0-9][A-Za-z0-9._-]{0,119}`), 20 MB a file, 20 a
 run. The runner half ships in the bundle like any runner change.
 
+Knowledge comes in three ways and is tended in one place, the Knowledge tab.
+A page (`POST /api/runs/ingest`) or an uploaded document
+(`POST /api/runs/ingest/file`: text, Markdown, CSV and JSON read as they
+are up to 1 MiB; PDF, Office documents and images up to 8 MiB through
+Workers AI's `toMarkdown` on the same binding) is read by `extractFacts`,
+and what it finds lands unconfirmed with the page or file name as its
+source; the file itself is not kept. What the agent notes for itself is a
+different store: Hermes keeps two small §-delimited files per profile on
+the sprite, `MEMORY.md` and `USER.md`. The runner exposes them
+(`GET /v1/memory`, `POST /v1/memory/forget`, refused while a task runs
+because Hermes writes them mid-run under its own lock) and the worker
+relays them to the owner alone (`routes/agent-memory.ts`,
+`can(identity, 'agent.memory')`), sanitised to the narrow shape, as "What
+Jentera has picked up" with a Forget on each entry. A runtime on a release
+before the endpoint reads as not available. The agent is also told every
+turn not to copy the business facts it is handed into that memory
+(`prepareHermesAgent`), so the few kilobytes it has stay for what Jentera
+cannot tell it. Private chats are private from people, not from this
+memory; see `docs/team-plan.md`.
+
 A chat is a row, and it decides who may read a run. `chat_session`
 (migration 034) is owned by whoever opened the chat; the app's chat id
 becomes the row's id under `(business_id, id)`, and `run.session_id`

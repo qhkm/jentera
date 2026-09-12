@@ -651,6 +651,28 @@ export function createRunner(input) {
         return json(res, 401, { ok: false, error: 'unauthorized' });
       }
 
+      /* What the agent remembers, per profile: two small §-delimited files,
+         readable as they are. Forgetting an entry rewrites the file without
+         it, atomically, and only while no task is running — Hermes writes
+         memory mid-run under its own lock, which this side cannot take. */
+      if (url.pathname === '/v1/memory') {
+        res.setHeader('Cache-Control', 'no-store');
+        if (req.method !== 'GET') return json(res, 405, { error: 'method_not_allowed' });
+        return json(res, 200, { ok: true, profiles: await readAgentMemory(config) });
+      }
+      if (url.pathname === '/v1/memory/forget') {
+        res.setHeader('Cache-Control', 'no-store');
+        if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' });
+        let body;
+        try { body = await readJson(req); } catch { return json(res, 400, { error: 'invalid_body' }); }
+        const problem = memoryForgetProblem(body);
+        if (problem) return json(res, 400, { error: problem });
+        if (await activeTask(config, state, terminations)) return json(res, 409, { error: 'runtime_busy' });
+        const removed = await forgetAgentMemory(config, body);
+        if (!removed) return json(res, 404, { error: 'not_found' });
+        return json(res, 200, { ok: true });
+      }
+
       if (url.pathname === '/v1/browser') {
         res.setHeader('Cache-Control', 'no-store');
         if (!businessBrowser) return json(res, 503, { ok: false, error: 'browser_unavailable' });
@@ -1085,6 +1107,7 @@ export function configFromEnv(env = process.env) {
     hermesEnvFile: env.AISAR_HERMES_DOTENV ?? '/home/sprite/.hermes/.env',
     hermesConfigFile: env.AISAR_HERMES_CONFIG ?? '/home/sprite/.hermes/config.yaml',
     hermesProfilesDir: env.AISAR_HERMES_PROFILES ?? '/home/sprite/.hermes/profiles',
+    hermesMemoriesDir: env.AISAR_HERMES_MEMORIES ?? '/home/sprite/.hermes/memories',
     port: Number(env.PORT ?? 8080),
     watchdogMs: Number(env.AISAR_RUNNER_WATCHDOG_MS ?? WATCHDOG_INTERVAL_MS),
   };
@@ -1378,6 +1401,74 @@ function modelList(value) {
 function modelId(value) {
   return typeof value === 'string' &&
     /^[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._:~-]+)?$/.test(value);
+}
+
+/* Agent memory: Hermes keeps MEMORY.md (its own notes) and USER.md (about
+   the people it talks to) per profile, entries separated by "\n§\n". The
+   default profile's files sit under hermesMemoriesDir; each specialist's
+   under <hermesProfilesDir>/<profile>/memories. */
+export const MEMORY_FILES = ['MEMORY.md', 'USER.md'];
+const MEMORY_ENTRY_DELIMITER = '\n§\n';
+const MEMORY_PROFILE = /^[a-z][a-z0-9-]{0,47}$/;
+
+function memoryDir(config, profile) {
+  return profile === 'default' ? config.hermesMemoriesDir : `${config.hermesProfilesDir}/${profile}/memories`;
+}
+
+function splitMemoryEntries(content) {
+  return content.split(MEMORY_ENTRY_DELIMITER).map((entry) => entry.trim()).filter(Boolean);
+}
+
+async function readMemoryFile(path) {
+  try {
+    return splitMemoryEntries(await readFile(path, 'utf8'));
+  } catch (error) {
+    if (error?.code === 'ENOENT') return [];
+    throw error;
+  }
+}
+
+export async function readAgentMemory(config) {
+  const profiles = ['default'];
+  try {
+    for (const entry of await readdir(config.hermesProfilesDir, { withFileTypes: true })) {
+      if (entry.isDirectory() && MEMORY_PROFILE.test(entry.name)) profiles.push(entry.name);
+    }
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  const out = [];
+  for (const profile of profiles) {
+    const files = [];
+    for (const file of MEMORY_FILES) {
+      const entries = await readMemoryFile(`${memoryDir(config, profile)}/${file}`);
+      files.push({ file, entries: entries.map((text, index) => ({ index, text })) });
+    }
+    if (files.some((f) => f.entries.length)) out.push({ profile, files });
+  }
+  return out;
+}
+
+export function memoryForgetProblem(body) {
+  if (!body || typeof body !== 'object') return 'invalid_body';
+  if (typeof body.profile !== 'string' || (body.profile !== 'default' && !MEMORY_PROFILE.test(body.profile))) return 'invalid_profile';
+  if (!MEMORY_FILES.includes(body.file)) return 'invalid_file';
+  if (typeof body.text !== 'string' || !body.text.trim() || body.text.length > 4000) return 'invalid_text';
+  return null;
+}
+
+/** Remove one entry, matched exactly after trimming; the file is rewritten
+    whole through a temp file and rename so a reader never sees half of it. */
+export async function forgetAgentMemory(config, body) {
+  const path = `${memoryDir(config, body.profile)}/${body.file}`;
+  const entries = await readMemoryFile(path);
+  const target = body.text.trim();
+  const kept = entries.filter((entry) => entry !== target);
+  if (kept.length === entries.length) return false;
+  const tmp = `${path}.jentera-${process.pid}.tmp`;
+  await writeFile(tmp, kept.length ? `${kept.join(MEMORY_ENTRY_DELIMITER)}\n` : '', { mode: 0o600 });
+  await rename(tmp, path);
+  return true;
 }
 
 async function readJson(req) {
