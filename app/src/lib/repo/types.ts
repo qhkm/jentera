@@ -301,6 +301,8 @@ export interface RuntimeSummary {
 
 export interface RuntimeOverview {
   runtime: RuntimeSummary | null;
+  canManage?: boolean;
+  setupStatus?: string | null;
 }
 
 /** Thrown when a feature needs the server and there is no session. */

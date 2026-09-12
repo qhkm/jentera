@@ -78,6 +78,17 @@
   height: 100%;
   min-height: 0;
 }
+.computer-status { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 12px; padding: 16px; margin-bottom: 20px; border: 1px solid var(--rail); border-radius: 14px; background: var(--bg-card); flex-shrink: 0; }
+.computer-status > svg { flex-shrink: 0; margin-top: 2px; color: var(--text-secondary); }
+.computer-status-copy { flex: 1; min-width: 180px; }
+.computer-status-copy [role="status"] { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; }
+.computer-status-copy [role="status"] > span { color: var(--text-secondary); }
+.computer-status-copy p { margin: 6px 0 0; font-size: 12px; line-height: 1.6; color: var(--text-secondary); }
+.computer-status-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.computer-status-compact { padding: 10px 14px; align-items: center; }
+.workspace-chat .dashboard-content { display: flex; flex-direction: column; }
+.workspace-chat .computer-status { margin: 8px 12px; }
+.workspace-chat .workspace-chat-panel { flex: 1; height: auto; min-height: 0; }
 .chat-workspace {
   display: flex;
   min-width: 0;

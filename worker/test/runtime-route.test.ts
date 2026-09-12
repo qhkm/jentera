@@ -36,11 +36,19 @@ beforeEach(async () => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('runtime provisioning route', () => {
+  it('reports queued setup before a VM exists and gives staff read-only capability', async () => {
+    await asTenant(A, tx => enqueueRuntimeTask(tx, A, { kind: 'provision', dedupeKey: 'setup:pending' }));
+    const response = await call('GET', '/api/runtime', testEnv(), staffCookie);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(await response.json()).toMatchObject({ runtime: null, setupStatus: 'queued', canManage: false });
+  });
   it('shows no runtime without exposing provider identity', async () => {
     const response = await call('GET', '/api/runtime', testEnv(), ownerCookie);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       ok: true,
+      canManage: true,
+      setupStatus: null,
       runtime: null,
       budget: {
         budget: {

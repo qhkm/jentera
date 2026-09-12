@@ -76,6 +76,7 @@ export function AskReply({
       <header>
         <JenteraMark size={25} />
         <strong>{message.agent ?? 'Jentera'}</strong>
+        {isRunId(message.runId) && <TaskCoordination key={message.runId} runId={message.runId!} live={Boolean(message.pendingId)} />}
         {message.state === 'done' && message.kind === 'work' && message.taskStatus === 'completed' && (
           <span className="ask-reply-ready">
             <Check size={12} aria-hidden="true" />
@@ -83,7 +84,6 @@ export function AskReply({
           </span>
         )}
       </header>
-      {isRunId(message.runId) && <TaskCoordination key={message.runId} runId={message.runId!} live={Boolean(message.pendingId)} />}
       {message.pendingId ? (
         /* Waiting on a person, not a machine — so no spinner. Any answer text
            already streamed stays above the card: the agent often says what it

@@ -17,11 +17,20 @@ afterEach(() => vi.useRealTimers());
 describe('recorded role activity', () => {
   it('distinguishes assignment from handoff and opens the disclosure', async () => {
     mount(async () => initial);
-    const summary = await screen.findByText('Who’s working on this');
-    await userEvent.click(summary);
+    const trigger = await screen.findByRole('button', { name: /Who’s working on this/ });
+    expect(screen.queryByRole('region')).toBeNull();
+    trigger.focus();
+    await userEvent.keyboard('{Enter}');
     expect(screen.getByText('Assigned to Operations.')).toBeVisible();
     expect(screen.getByText(/Assignment alone is not a handoff/)).toBeVisible();
     expect(screen.queryByText('Specialist assistance requested')).toBeNull();
+    await userEvent.keyboard('{Escape}');
+    expect(trigger).toHaveFocus();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('region')).toBeNull();
+    await userEvent.click(trigger);
+    await userEvent.click(document.body);
+    expect(screen.queryByRole('region')).toBeNull();
   });
   it('polls live work and stops on unmount without inventing destination names', async () => {
     vi.useFakeTimers();
@@ -31,6 +40,7 @@ describe('recorded role activity', () => {
     ] });
     const view = mount(read, true);
     await act(async () => { await Promise.resolve(); });
+    await act(async () => { screen.getByRole('button', { name: /Who’s working on this/ }).click(); });
     await act(async () => { vi.advanceTimersByTime(5000); });
     expect(screen.getByText('Specialist assistance requested')).toBeInTheDocument();
     expect(screen.getByText('Delegation reported an error')).toBeInTheDocument();
@@ -44,6 +54,7 @@ describe('recorded role activity', () => {
       { id: 1, stage: 'returned', at: '2026-09-12T01:01:00Z' },
     ] });
     mount(read);
+    await userEvent.click(await screen.findByRole('button', { name: /Who’s working on this/ }));
     await userEvent.click(await screen.findByRole('button', { name: /try again/i }));
     await waitFor(() => expect(screen.getByText('Delegation returned to the lead role')).toBeInTheDocument());
     expect(screen.getByText(/not proof the task succeeded/)).toBeInTheDocument();

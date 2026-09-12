@@ -126,20 +126,24 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk, 
       ) : (
         <>
           {result.summaryOnly && <Card><p>{t('task.sharedReviewNote')}</p></Card>}
-          {!reviewOnly && !result.summaryOnly && <TaskCoordination key={runId} runId={runId} live={result.pending} />}
           <div className="task-status-bar" role="status">
             <span><StatusIcon size={21} aria-hidden="true" /><strong>{t(status?.label ?? 'task.unknown')}</strong></span>
             <Tag tone={status?.tone ?? 'neutral'}>{t('task.card.label')}</Tag>
           </div>
           {completed || (result.status === 'completed' && fullText) ? (
             <Card className="task-result">
-              <header><JenteraMark size={28} /><h2>{t(summary || result.summaryOnly ? 'task.summary' : 'task.result')}</h2></header>
+              <header><JenteraMark size={28} /><h2>{t(summary || result.summaryOnly ? 'task.summary' : 'task.result')}</h2>
+                {!reviewOnly && !result.summaryOnly && <TaskCoordination key={runId} runId={runId} live={result.pending} />}
+              </header>
               {outcomeStatus === 'needs_input' && <p>{t('task.needsInputNote')}</p>}
               {outcomeStatus === 'needs_review' && <p>{t('task.needsReviewNote')}</p>}
               <div className="task-result-text">{fullText || summary || t('task.noResult')}</div>
             </Card>
           ) : (
             <Card className="task-result gap-4">
+              {!reviewOnly && !result.summaryOnly && <header><JenteraMark size={28} /><strong>Jentera</strong>
+                <TaskCoordination key={runId} runId={runId} live={result.pending} />
+              </header>}
               <p>{failed
                 ? (typeof result.err === 'string' && result.err) || t(result.status === 'cancelled' ? 'task.cancelledNote' : 'task.failedNote')
                 : t(waiting ? 'task.approvalNote' : outcomeStatus === 'cancelled' ? 'task.cancelledNote' : result.status === 'blocked' ? 'task.blockedNote' : status && result.pending ? 'task.runningNote' : 'task.unknown')}</p>

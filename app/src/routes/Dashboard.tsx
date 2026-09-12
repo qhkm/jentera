@@ -36,6 +36,7 @@ import NotificationsView from './views/NotificationsView';
 import FilesView from './views/FilesView';
 import { BottomNav } from '@/components/BottomNav';
 import { useNotifications } from '@/hooks/useNotifications';
+import { ComputerStatus } from '@/components/ComputerStatus';
 
 export type View = 'home' | 'chat' | 'work' | 'files' | 'routines' | 'notifications' | 'business';
 
@@ -242,6 +243,7 @@ export default function Dashboard() {
         </aside>}
 
         <div className="dashboard-content min-w-0 flex-1">
+          <ComputerStatus onOpenChat={isChat ? undefined : () => go('chat')} onOpenKnowledge={() => go('business', 'knows')} />
           {view === 'home' && <HomeView b={b} connections={connections} onNavigate={go} />}
           {/* Keep the owner conversation mounted while they inspect another
               section. Returning to Ask Jentera must not erase the exchange. */}

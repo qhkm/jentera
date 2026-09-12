@@ -36,18 +36,23 @@ export async function handleRuntime(
   }
 
   if (url.pathname === '/api/runtime' && request.method === 'GET') {
-    const { runtime, budget, observedRegion } = await withTenant(
+    const { runtime, budget, observedRegion, setupStatus } = await withTenant(
       env,
       identity.businessId,
       async (tx) => ({
         runtime: await getRuntime(tx, identity.businessId),
         budget: await runtimeBudgetSnapshot(tx, identity.businessId),
         observedRegion: await getRuntimeRegion(tx, identity.businessId),
+        setupStatus: (await tx<{ status: string }[]>`select status from runtime_task
+          where business_id = ${identity.businessId} and kind = 'provision'
+          order by created_at desc limit 1`)[0]?.status ?? null,
       }),
     );
     const expectedRegion = validRegion(env.RUNTIME_EXPECTED_REGION);
     return json({
       ok: true,
+      canManage: can(identity, 'runtime.manage'),
+      setupStatus,
       runtime: runtime ? {
         status: runtime.status,
         desiredRelease: runtime.desiredRelease,
@@ -61,7 +66,7 @@ export async function handleRuntime(
           : observedRegion === expectedRegion ? 'optimal' : 'different',
       } : null,
       budget,
-    }, {}, cors);
+    }, {}, { ...cors, 'Cache-Control': 'private, no-store' });
   }
 
   if (url.pathname === '/api/runtime/wake' && request.method === 'POST') {
