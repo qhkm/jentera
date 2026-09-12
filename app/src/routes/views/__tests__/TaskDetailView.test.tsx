@@ -45,6 +45,29 @@ describe('exact task details', () => {
     expect(confirmTaskReview).toHaveBeenCalledWith(runId);
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Done'));
   });
+  it('lets the owner mark a task that is waiting on them as done', async () => {
+    const confirmTaskReview = vi.fn(async () => {});
+    const repo = Object.assign(new LocalRepository(), { confirmTaskReview });
+    repo.runResult = vi.fn().mockResolvedValueOnce({ runId, status: 'completed', taskStatus: 'needs_input', pending: false, text: 'Tell me if the digest does not land.' })
+      .mockResolvedValue({ runId, status: 'completed', taskStatus: 'completed', pending: false, text: 'Tell me if the digest does not land.' });
+    mount(repo);
+    const markDone = await screen.findByRole('button', { name: 'Mark as done' });
+    expect(screen.getByRole('status')).toHaveTextContent('Needs you');
+    await userEvent.click(markDone);
+    expect(confirmTaskReview).toHaveBeenCalledWith(runId);
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Done'));
+  });
+  it('lets the owner dismiss a task that is no longer needed', async () => {
+    const dismissTask = vi.fn(async () => {});
+    const repo = Object.assign(new LocalRepository(), { dismissTask });
+    repo.runResult = vi.fn().mockResolvedValueOnce({ runId, status: 'completed', taskStatus: 'needs_input', pending: false, text: 'Which supplier?' })
+      .mockResolvedValue({ runId, status: 'completed', taskStatus: 'cancelled', pending: false, text: 'Which supplier?' });
+    mount(repo);
+    await userEvent.click(await screen.findByRole('button', { name: 'Dismiss task' }));
+    expect(dismissTask).toHaveBeenCalledWith(runId);
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Cancelled'));
+    expect(screen.queryByRole('button', { name: 'Dismiss task' })).not.toBeInTheDocument();
+  });
   it('opens feedback with the result and original conversation, without approving anything', async () => {
     const repo = new LocalRepository();
     repo.runResult = vi.fn(async () => ({ runId, status: 'completed', taskStatus: 'needs_review', sessionId: 'original-chat', pending: false, text: 'Report ready' }));

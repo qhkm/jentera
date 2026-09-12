@@ -87,12 +87,12 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk }
     const excerpt = fullText.length > 300 ? `${fullText.slice(0, 300)}…` : fullText;
     onOpenAsk?.(t('task.feedbackContext', { title: taskTitle }) + '\n\n' + excerpt + '\n\n' + t('task.feedbackPrompt'), result?.sessionId);
   }
-  async function confirmReview() {
-    if (!repo.confirmTaskReview) return;
+  async function settle(decision: 'confirm' | 'dismiss') {
     setReviewBusy(true);
     setReviewError(null);
     try {
-      await repo.confirmTaskReview(runId);
+      if (decision === 'confirm') await repo.confirmTaskReview?.(runId);
+      else await repo.dismissTask?.(runId);
       activity.reload();
       setAttempt((n) => n + 1);
     } catch (e) { setReviewError(e instanceof Error ? e.message : t('task.reviewError')); }
@@ -137,7 +137,7 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk }
             <Card className="task-result gap-4">
               <p>{failed
                 ? (typeof result.err === 'string' && result.err) || t(result.status === 'cancelled' ? 'task.cancelledNote' : 'task.failedNote')
-                : t(waiting ? 'task.approvalNote' : result.status === 'blocked' ? 'task.blockedNote' : status && result.pending ? 'task.runningNote' : 'task.unknown')}</p>
+                : t(waiting ? 'task.approvalNote' : outcomeStatus === 'cancelled' ? 'task.cancelledNote' : result.status === 'blocked' ? 'task.blockedNote' : status && result.pending ? 'task.runningNote' : 'task.unknown')}</p>
               {waiting && !result.approvalId && onBack && <div><Button variant="outline" onClick={onBack}>
                 {t('task.approvalInbox')}<ArrowUpRight size={17} aria-hidden="true" />
               </Button></div>}
@@ -155,8 +155,10 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk }
           {(needsReview || needsInput) && <Card className="gap-3">
             <p>{t(needsReview ? 'task.reviewHelp' : 'task.inputHelp')}</p>
             <div className="flex flex-wrap gap-2">
-              {needsReview && repo.confirmTaskReview && <Button disabled={reviewBusy} onClick={() => void confirmReview()}>{t('task.confirmReview')}</Button>}
-              {onOpenAsk && <Button variant="outline" onClick={continueTask}>{t(needsReview ? 'task.requestChanges' : 'task.provideInput')}</Button>}
+              {needsReview && repo.confirmTaskReview && <Button disabled={reviewBusy} onClick={() => void settle('confirm')}>{t('task.confirmReview')}</Button>}
+              {onOpenAsk && <Button variant={needsReview ? 'outline' : 'primary'} onClick={continueTask}>{t(needsReview ? 'task.requestChanges' : 'task.provideInput')}</Button>}
+              {needsInput && repo.confirmTaskReview && <Button variant="outline" disabled={reviewBusy} onClick={() => void settle('confirm')}>{t('task.markDone')}</Button>}
+              {repo.dismissTask && <Button variant="outline" disabled={reviewBusy} onClick={() => void settle('dismiss')}>{t('task.dismiss')}</Button>}
             </div>
             {reviewError && <p role="alert">{reviewError}</p>}
           </Card>}

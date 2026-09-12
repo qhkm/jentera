@@ -491,6 +491,9 @@ export class RemoteRepository implements Repository {
   confirmTaskReview = (runId: string) =>
     post(`/api/runs/${encodeURIComponent(runId)}/review`, { decision: 'confirm' });
 
+  dismissTask = (runId: string) =>
+    post(`/api/runs/${encodeURIComponent(runId)}/review`, { decision: 'dismiss' });
+
   rateWork = (workId: string, quality: WorkQuality) =>
     post('/api/runs/quality', { workId, quality });
 

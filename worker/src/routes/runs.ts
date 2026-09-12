@@ -331,22 +331,29 @@ export async function handleRuns(
       return json({ ok: false, err: 'origin not allowed' }, { status: 403 }, cors);
     }
     const body = await request.json().catch(() => null) as { decision?: string } | null;
-    if (body?.decision !== 'confirm') return json({ ok: false, err: 'confirm decision required' }, { status: 400 }, cors);
-    const confirmed = await withTenant(env, id.businessId, async (tx) => {
+    const decision = body?.decision;
+    if (decision !== 'confirm' && decision !== 'dismiss') {
+      return json({ ok: false, err: 'decision must be confirm or dismiss' }, { status: 400 }, cors);
+    }
+    /* The owner settles a task the agent left waiting on them: confirming
+       says the work is done and counts it as handled; dismissing says it is
+       no longer wanted and counts it as nothing. Either way it stops asking. */
+    const next = decision === 'confirm' ? 'completed' : 'cancelled';
+    const settled = await withTenant(env, id.businessId, async (tx) => {
       const [run] = await tx<{ status: string }[]>`select status from run
         where id = ${review[1]} and business_id = ${id.businessId} for update`;
       if (run?.status !== 'completed') return false;
-      const rows = await tx`update work_record set status = 'completed', updated_at = now()
+      const rows = await tx`update work_record set status = ${next}, updated_at = now()
         where business_id = ${id.businessId} and run_id = ${review[1]}
-          and kind = 'work' and status = 'needs_review' returning id`;
+          and kind = 'work' and status in ('needs_review', 'needs_input', 'blocked') returning id`;
       if (!rows.length) return false;
       await append(tx, id.businessId, review[1], 'outcome.observed', {
-        assessmentVersion: 1, kind: 'work', status: 'completed',
-        source: 'owner.review', reviewedBy: id.userId,
+        assessmentVersion: 1, kind: 'work', status: next,
+        source: 'owner.review', decision, reviewedBy: id.userId,
       });
       return true;
     });
-    return json({ ok: confirmed, ...(!confirmed ? { err: 'Task is no longer awaiting review. Refresh to check its status.' } : {}) }, { status: confirmed ? 200 : 409 }, cors);
+    return json({ ok: settled, ...(!settled ? { err: 'This task is no longer waiting on you. Refresh to check its status.' } : {}) }, { status: settled ? 200 : 409 }, cors);
   }
 
   const status = url.pathname.match(/^\/api\/runs\/([0-9a-f-]{36})$/i);

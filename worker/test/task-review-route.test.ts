@@ -28,11 +28,16 @@ beforeEach(async () => {
     return run.id;
   });
 });
-async function confirm(session = cookie, origin = 'https://jentera.ai', target = runId) {
-  const request = new Request(`https://api.test/api/runs/${target}/review`, { method: 'POST',
-    headers: { Cookie: session, Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ decision: 'confirm' }) });
+async function review(decision: string, over: { session?: string; origin?: string; target?: string } = {}) {
+  const request = new Request(`https://api.test/api/runs/${over.target ?? runId}/review`, { method: 'POST',
+    headers: { Cookie: over.session ?? cookie, Origin: over.origin ?? 'https://jentera.ai', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision }) });
   return (await handleRuns(request, testEnv(), new URL(request.url), { 'Access-Control-Allow-Origin': 'https://jentera.ai' }))!;
 }
+const confirm = (session?: string, origin?: string, target?: string) => review('confirm', { session, origin, target });
+const waitingOnOwner = (status: string) =>
+  asTenant(business, (tx) => tx`update work_record set status = ${status} where run_id = ${runId}`);
+
 it('confirms reviewed work, updates the counter and records the owner decision', async () => {
   expect((await confirm()).status).toBe(200);
   await asTenant(business, async (tx) => {
@@ -41,17 +46,52 @@ it('confirms reviewed work, updates the counter and records the owner decision',
   });
   expect((await confirm()).status).toBe(409);
 });
-it('rejects staff, foreign origins and unknown runs', async () => {
+it('rejects staff, foreign origins, unknown runs and decisions it does not know', async () => {
   expect((await confirm(staff)).status).toBe(403);
   expect((await confirm(cookie, 'https://other.test')).status).toBe(403);
   expect((await confirm(cookie, undefined, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')).status).toBe(409);
-});
-it('cannot confirm work still waiting for input or execution', async () => {
-  await asTenant(business, (tx) => tx`update work_record set status = 'needs_input' where run_id = ${runId}`);
-  expect((await confirm()).status).toBe(409);
+  expect((await review('maybe')).status).toBe(400);
   await asTenant(business, async (tx) => {
-    await tx`update work_record set status = 'needs_review' where run_id = ${runId}`;
-    await tx`update run set status = 'needs_approval' where id = ${runId}`;
+    expect(await taskAssessmentForRun(tx, business, runId)).toMatchObject({ status: 'needs_review' });
   });
+});
+it('lets the owner mark work that is waiting on them as done', async () => {
+  for (const status of ['needs_input', 'blocked']) {
+    await waitingOnOwner(status);
+    expect((await confirm()).status).toBe(200);
+    await asTenant(business, async (tx) => {
+      expect(await homeCounters(tx)).toMatchObject({ handled: 1, needsYou: 0 });
+      const [record] = await tx<{ status: string }[]>`select status from work_record where run_id = ${runId}`;
+      expect(record.status).toBe('completed');
+    });
+  }
+  await asTenant(business, async (tx) => {
+    expect(await taskAssessmentForRun(tx, business, runId)).toMatchObject({ status: 'completed', source: 'owner.review', decision: 'confirm' });
+  });
+});
+it('lets the owner dismiss work that is no longer needed, which never counts as handled', async () => {
+  for (const status of ['needs_input', 'needs_review', 'blocked']) {
+    await waitingOnOwner(status);
+    expect((await review('dismiss')).status).toBe(200);
+    await asTenant(business, async (tx) => {
+      expect(await homeCounters(tx)).toMatchObject({ handled: 0, needsYou: 0 });
+      const [record] = await tx<{ status: string }[]>`select status from work_record where run_id = ${runId}`;
+      expect(record.status).toBe('cancelled');
+    });
+  }
+  await asTenant(business, async (tx) => {
+    expect(await taskAssessmentForRun(tx, business, runId)).toMatchObject({ status: 'cancelled', source: 'owner.review', decision: 'dismiss' });
+  });
+  /* Settled is settled: a second decision finds nothing waiting. */
+  expect((await review('dismiss')).status).toBe(409);
   expect((await confirm()).status).toBe(409);
+});
+it('cannot confirm or dismiss work whose run is still executing', async () => {
+  await asTenant(business, (tx) => tx`update run set status = 'needs_approval' where id = ${runId}`);
+  expect((await confirm()).status).toBe(409);
+  expect((await review('dismiss')).status).toBe(409);
+  await asTenant(business, async (tx) => {
+    const [record] = await tx<{ status: string }[]>`select status from work_record where run_id = ${runId}`;
+    expect(record.status).toBe('needs_review');
+  });
 });

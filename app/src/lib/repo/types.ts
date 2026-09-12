@@ -357,6 +357,9 @@ export interface Repository {
   runTrace(runId: string): Promise<TraceEvent[]>;
   runResult(runId: string): Promise<RunResult>;
   confirmTaskReview?(runId: string): Promise<void>;
+  /** Close a task that is waiting on the owner without doing it: it reads
+      as cancelled afterwards, never as handled. */
+  dismissTask?(runId: string): Promise<void>;
 
   /** Answer a question from confirmed facts and real work records. */
   ask(question: string, options?: AskOptions): Promise<AskAnswer>;
