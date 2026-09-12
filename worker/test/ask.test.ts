@@ -273,6 +273,12 @@ describe('the durable Hermes agent request', () => {
     expect(prepared.instructions).toMatch(/do not expose internal profile names/i);
   });
 
+  it('tells the agent not to copy the business facts it is handed into its own memory', () => {
+    const prepared = prepareHermesAgent('plan the week', [], [], new Date('2026-09-12T05:00:00.000Z'));
+    expect(prepared.instructions).toMatch(/do not save them to your memory/i);
+    expect(prepared.instructions).toMatch(/only what Jentera cannot tell you/i);
+  });
+
   it('tells the agent who is speaking, and that only the owner can authorise', () => {
     const owner = prepareHermesAgent('plan the week', [], [], new Date('2026-09-12T05:00:00.000Z'), undefined,
       { email: 'owner@example.com', role: 'owner' });

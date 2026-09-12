@@ -349,7 +349,12 @@ export function prepareHermesAgent(
         .join('\n');
   const context = boundedContext(
     `Confirmed information about this business:\n${renderFacts(facts)}\n\n` +
-    `Recent Jentera work:\n${recent}`,
+    `Recent Jentera work:\n${recent}\n\n` +
+    /* Hermes memory is a few kilobytes per profile; business facts copied
+       into it crowd out what only the agent could know, and drift from the
+       confirmed record the owner actually maintains. */
+    'Jentera supplies the confirmed business facts above on every turn; do not save them to your memory. ' +
+    'Save only what Jentera cannot tell you.',
   );
   return {
     instructions: `${HERMES_AGENT_PROMPT}\n\nCurrent date (UTC): ${now.toISOString().slice(0, 10)}.` +
