@@ -839,13 +839,19 @@ async function waitFor(predicate, timeoutMs = 2_000) {
   assert.fail('condition was not met before timeout');
 }
 
-test('hands the files the agent saved for the owner to the worker before the task reads complete', async () => {
+for (const { finalStatus, uploadFails } of [
+  { finalStatus: 'completed', uploadFails: false },
+  { finalStatus: 'failed', uploadFails: false },
+  { finalStatus: 'failed', uploadFails: true },
+]) {
+test(`preserves files on ${finalStatus}, upload failure=${uploadFails}`, async () => {
   const uploads = [];
   const workerServer = createServer(async (req, res) => {
     if (req.method === 'POST' && req.url === '/v1/runtime/artifacts') {
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
       uploads.push({ headers: req.headers, body: Buffer.concat(chunks).toString('utf8') });
+      if (uploadFails) return reply(res, 503, { ok: false });
       return reply(res, 201, { ok: true, artifact: { id: `art-${uploads.length}`, name: req.headers['x-aisar-artifact-name'] } });
     }
     return reply(res, 404, { ok: false });
@@ -886,10 +892,10 @@ test('hands the files the agent saved for the owner to the worker before the tas
     /* The agent saved a deliverable and a scratch file; Hermes then finished. */
     await writeFile(join(dir, 'tech-digest.md'), '# Digest');
     await writeFile(join(dir, '.scratch'), 'no');
-    hermesStatus = 'completed';
+    hermesStatus = finalStatus;
     const body = await (await fetch(`${origin}/v1/tasks/${TASK}`, { headers })).json();
-    assert.equal(body.status, 'completed');
-    assert.deepEqual(body.artifacts, [{ name: 'tech-digest.md', size: 8, contentType: 'text/markdown' }]);
+    assert.equal(body.status, finalStatus);
+    assert.deepEqual(body.artifacts, uploadFails ? [] : [{ name: 'tech-digest.md', size: 8, contentType: 'text/markdown' }]);
     assert.equal(uploads.length, 1);
     assert.equal(uploads[0].headers.authorization, 'Bearer sk-jentera-v1.test.key');
     assert.equal(uploads[0].headers['x-aisar-task-id'], TASK);
@@ -897,9 +903,10 @@ test('hands the files the agent saved for the owner to the worker before the tas
     assert.equal(uploads[0].headers['content-type'], 'text/markdown');
     assert.equal(uploads[0].body, '# Digest');
     /* The folder is cleared, and the frozen snapshot never uploads twice. */
-    await assert.rejects(access(dir));
+    if (uploadFails) assert.equal(await readFile(join(dir, 'tech-digest.md'), 'utf8'), '# Digest');
+    else await assert.rejects(access(dir));
     const again = await (await fetch(`${origin}/v1/tasks/${TASK}`, { headers })).json();
-    assert.equal(again.status, 'completed');
+    assert.equal(again.status, finalStatus);
     assert.deepEqual(again.artifacts, body.artifacts);
     assert.equal(uploads.length, 1);
   } finally {
@@ -907,3 +914,4 @@ test('hands the files the agent saved for the owner to the worker before the tas
     await close(workerServer);
   }
 });
+}

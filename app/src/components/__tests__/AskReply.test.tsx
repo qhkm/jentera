@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { AskReply } from '@/components/AskReply';
 import { ToastProvider } from '@/components/Toast';
@@ -11,9 +11,9 @@ import type { AskMessage } from '@/hooks/useAsk';
 
 const RUN = '11111111-1111-4111-8111-111111111111';
 
-function mount(message: AskMessage) {
+function mount(message: AskMessage, repo = new LocalRepository()) {
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <RepositoryProvider repository={new LocalRepository()}>
+    <RepositoryProvider repository={repo}>
       <I18nProvider>
         <ToastProvider>{children}</ToastProvider>
       </I18nProvider>
@@ -25,6 +25,25 @@ function mount(message: AskMessage) {
 /* Every reply used to become a task card. Conversation reads as a reply;
    only work, by request (deep) or by the server's verdict, gets the card. */
 describe('AskReply: conversation versus work', () => {
+  it('recovers a failed task’s image and displays it inline without opening a dialog', async () => {
+    const file = { id: 'image-1', runId: RUN, name: 'result.png', contentType: 'image/png', size: 8, createdAt: '2026-09-12T01:00:00Z' };
+    const repo = Object.assign(new LocalRepository(), {
+      listArtifacts: vi.fn(async () => [file]),
+      fetchArtifact: vi.fn(async () => new Blob(['png'], { type: 'image/png' })),
+    });
+    const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test-image');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    try {
+      const view = mount({ from: 'ai', text: 'Reply failed', state: 'failed', failedQuestion: 'Generate image', runId: RUN }, repo);
+      expect(await screen.findByRole('img', { name: 'result.png' })).toHaveAttribute('src', 'blob:test-image');
+      expect(repo.listArtifacts).toHaveBeenCalledWith({ runId: RUN });
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(screen.getByRole('alert')).toHaveTextContent('Reply failed');
+      view.unmount();
+      expect(revoke).toHaveBeenCalledWith('blob:test-image');
+    } finally { create.mockRestore(); revoke.mockRestore(); }
+  });
+
   it('shows a plain reply for a quick answer the server called conversation', async () => {
     const { container } = mount({
       from: 'ai', text: 'Yes, Sunday too.', mode: 'work', runId: RUN, state: 'done',

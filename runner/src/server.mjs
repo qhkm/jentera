@@ -1575,8 +1575,9 @@ async function persistObservedStatus(state, saved, result, deps = {}) {
   if (TERMINAL.has(status) && deps.config) {
     /* Files the agent saved for the owner go to the worker now, so the
        first "completed" the control plane sees already carries them. Any
-       other ending just clears the folder. */
-    if (status === 'completed') {
+       failed reply can still have useful outputs. Cancelled/stopped work is
+       not published automatically. */
+    if (status === 'completed' || status === 'failed') {
       const delivered = await deliverOutputs(deps.config, saved.taskId, deps.fetch);
       if (delivered) {
         observed = {
@@ -2594,6 +2595,8 @@ function deliverOutputs(config, taskId, fetchImpl) {
         for (const miss of result.failed ?? []) {
           console.error(`[outputs] task=${taskId} file=${miss.name} not delivered: ${miss.error}`);
         }
+        // Keep the originals if delivery failed, so support can recover them.
+        if (!result.skipped && !result.failed?.length) await discardOutputs(config, taskId);
         return {
           uploaded: result.uploaded ?? [],
           failed: (result.failed ?? []).map((miss) => miss.name),
@@ -2602,7 +2605,6 @@ function deliverOutputs(config, taskId, fetchImpl) {
         console.error(`[outputs] task=${taskId} ${String(error?.message ?? error)}`);
         return null;
       } finally {
-        await discardOutputs(config, taskId);
         deliveringOutputs.delete(taskId);
       }
     })());

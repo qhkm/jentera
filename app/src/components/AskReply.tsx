@@ -11,6 +11,7 @@ import type { AskMessage } from '@/hooks/useAsk';
 import { ChatTaskCard } from '@/components/ChatTaskCard';
 import { isRunId } from '@/lib/task';
 import { TaskCoordination } from './TaskCoordination';
+import { useRepository, type Artifact } from '@/lib/repo';
 
 /** The agent's steps and tool calls as a list: done ones ticked, the
     current one moving with the seconds since the message was sent. */
@@ -45,6 +46,17 @@ export function AskReply({
   const t = useT();
   const toast = useToast();
   const [copied, setCopied] = useState(false);
+  const repo = useRepository();
+  const [recovered, setRecovered] = useState<Artifact[]>([]);
+  useEffect(() => {
+    let live = true;
+    setRecovered([]);
+    if (message.state === 'failed' && message.runId && isRunId(message.runId)) {
+      void repo.listArtifacts?.({ runId: message.runId }).then(files => { if (live) setRecovered(files); }).catch(() => {});
+    }
+    return () => { live = false; };
+  }, [message.runId, message.state, repo]);
+  const files = message.artifacts?.length ? message.artifacts : recovered;
 
   useEffect(() => {
     if (!copied) return;
@@ -128,6 +140,7 @@ export function AskReply({
           <div className="ask-reply-text" role={failed ? 'alert' : undefined}>
             {renderReplyMarkdown(message.text)}
           </div>
+          {files.length > 0 && <ArtifactList artifacts={files} inlineImages label={t('ask.files')} className="mt-3" />}
           {failed && linkedTask ? (
             <p className="task-recovery-note">{t('task.checkBeforeRetry')}</p>
           ) : failed ? (
@@ -137,9 +150,6 @@ export function AskReply({
             </button>
           ) : (
             <>
-              {message.artifacts && message.artifacts.length > 0 && (
-                <ArtifactList artifacts={message.artifacts} label={t('ask.files')} className="mt-3" />
-              )}
               <footer>
               <button type="button" className="ask-inline-action" onClick={() => void copy()}>
                 {copied ? (
