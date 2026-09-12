@@ -1,6 +1,27 @@
 # Team and knowledge review fixes
 
-Implemented locally, 12 September 2026. Not deployed.
+Implemented and deployed, 12 September 2026.
+
+## Production release
+
+- Migration `039_fact_proposals` applied successfully; its column, unique pending
+  index, and forced row-level security verified. Existing fact values unchanged.
+- Runtime release `2026.09.12-3`, bundle
+  `78fb6397cb0dae251e187dffb6834ec0c73d90cc`, release commit `d1f38ef`.
+  The release gate passed. All 13 live runtimes converged and passed runtime.env,
+  authenticated readiness, Hermes patch, and running-service verification.
+- Worker version `4ce16a80-03f9-4fee-aaf4-7ed80a7092b3` deployed through the
+  managed runtime release script. Live health returned 200; state, agent memory,
+  and the new review-summary endpoint returned 401 without authentication.
+- Pages deployment `97c50c92.aisar-jentera.pages.dev` published to `aisar-jentera`.
+  Both `jentera.ai` and `jentera.aisar.ai` serve the exact built entry asset
+  `/assets/index-39P3vTgR.js` on `/`, `/onboard`, `/setup`, and `/app`.
+  Desktop and 390px mobile Chrome checks passed anonymous rendering/navigation
+  without JavaScript exceptions or horizontal overflow. Protected routes redirect
+  to onboarding/sign-in as expected. No authenticated production writes were
+  performed; permission and proposal behaviour is covered by the local tests below.
+- No landing-page messaging, `_headers`, storage keys, or `aisar.ai` deployment
+  changed in this release. The separate mini-app plan was left untouched.
 
 ## Behaviour
 
