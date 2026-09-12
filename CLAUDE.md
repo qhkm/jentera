@@ -346,6 +346,18 @@ checkpoints cleanly clears the warning. The API cannot delete such an
 orphan (it has no row for it) and the host path is unreachable from inside
 the sprite; only Fly can remove it.
 
+The checkpoint id the control plane keeps must be a versioned one, `v64`,
+not `Current`. Fly's list endpoint leads with the live state as an entry
+named `Current`, newer than every real checkpoint, and may carry hourly
+`auto-<epoch>` snapshots; `FlySpriteProvider.checkpoint` reads the newest
+entry after the create stream, and until 12 September it took whatever was
+newest, so all thirteen runtimes recorded `Current` as their rollback point
+while the real checkpoints sat one row down. A restore to `Current` is a
+restore to what the sprite holds now. The provider now keeps only
+`/^v\d+$/` entries and treats a list without one as a failed checkpoint,
+which the tolerance above records as a warning. Rows written before the fix
+still say `Current` until the next release checkpoints them.
+
 Nothing is applied to a sprite by hand. A sprite's Hermes checkout and
 runner directory survive re-bootstrap exactly as they are, so a hand-applied
 change is invisible to the next release and a removed one lingers:

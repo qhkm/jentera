@@ -16,7 +16,15 @@ interface SpriteWire {
 interface CheckpointWire {
   id: string;
   create_time?: string;
+  comment?: string;
+  is_auto?: boolean;
 }
+
+/* A checkpoint we made has a versioned id, v1, v2, ... The list also carries
+   the live state as an entry named Current, newer than everything else, and
+   hourly auto snapshots named auto-<epoch>. Restoring to Current is restoring
+   to whatever the sprite holds right now, which is no rollback at all. */
+const VERSIONED_CHECKPOINT = /^v\d+$/;
 
 export interface FlySpriteProviderOptions {
   token: string;
@@ -101,7 +109,8 @@ export class FlySpriteProvider implements BootstrapRuntimeProvider {
       `/v1/sprites/${encodeURIComponent(runtime.name)}/checkpoints`,
     );
     if (!listed.ok) throw await apiError('list Sprite checkpoints', listed);
-    const checkpoints = (await listed.json()) as CheckpointWire[];
+    const checkpoints = ((await listed.json()) as CheckpointWire[])
+      .filter((entry) => !entry.is_auto && VERSIONED_CHECKPOINT.test(entry.id));
     if (checkpoints.length === 0) throw new Error('Sprite created no checkpoint');
     checkpoints.sort((a, b) => (b.create_time ?? '').localeCompare(a.create_time ?? ''));
     return checkpoints[0].id;

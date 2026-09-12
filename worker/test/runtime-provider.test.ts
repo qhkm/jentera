@@ -109,6 +109,36 @@ describe('FlySpriteProvider', () => {
     expect(await provider.checkpoint(observed('ready'))).toBe('v2');
   });
 
+  it('reads the newest versioned checkpoint, not the active Current entry', async () => {
+    /* The list endpoint leads with the live state as an entry named Current,
+       newer than any real checkpoint, and may carry hourly auto snapshots.
+       Neither is the rollback point we just created. */
+    let calls = 0;
+    const provider = fly(async () => {
+      calls += 1;
+      if (calls === 1) return new Response('{"type":"complete","data":"done"}\n');
+      return Response.json([
+        { id: 'Current', create_time: '2026-09-12T10:10:13Z', is_auto: false },
+        { id: 'auto-1789207813214', create_time: '2026-09-12T10:10:13Z', is_auto: true },
+        { id: 'v30', create_time: '2026-09-11T01:41:40Z', comment: 'Jentera runtime 2026.09.11-7' },
+        { id: 'v29', create_time: '2026-09-10T18:03:27Z', comment: 'Jentera runtime 2026.09.11-7' },
+      ]);
+    });
+    expect(await provider.checkpoint(observed('ready'))).toBe('v30');
+  });
+
+  it('treats a list with no versioned checkpoint as a failed checkpoint', async () => {
+    let calls = 0;
+    const provider = fly(async () => {
+      calls += 1;
+      if (calls === 1) return new Response('{"type":"complete","data":"done"}\n');
+      return Response.json([
+        { id: 'Current', create_time: '2026-09-12T10:10:13Z', is_auto: false },
+      ]);
+    });
+    await expect(provider.checkpoint(observed('ready'))).rejects.toThrow(/created no checkpoint/);
+  });
+
   it('writes bootstrap data only below the Jentera runtime directory', async () => {
     const seen: { url: string; init: RequestInit }[] = [];
     const provider = fly(async (url, init) => {
