@@ -345,6 +345,7 @@
 }
 
 /* My Business: identity first, task shortcuts, then editable details. */
+.business-supporting { color: var(--text-muted); }
 .business-identity {
   display: flex;
   align-items: center;
@@ -371,7 +372,7 @@
   min-width: 0;
 }
 .business-identity-type {
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font-size: 10px;
 }
 .business-identity h2 {
@@ -386,7 +387,7 @@
   align-items: center;
   gap: 5px;
   margin-top: 8px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font-size: 12px;
 }
 .business-identity p > svg {
@@ -508,6 +509,8 @@
 .business-tabs > button[aria-selected='true'] {
   background: rgb(var(--accent-green-rgb) / 0.09);
 }
+.business-tabs > button[aria-selected='false'] { color: var(--text-muted); }
+.business-tabs > button[aria-selected='false']:is(:hover, :focus-visible) { color: var(--text); }
 .theme-light .business-tabs > button[aria-selected='true'] {
   color: #005b41;
 }
@@ -553,7 +556,7 @@
 .business-shortcuts span {
   grid-column: 1 / -1;
   margin-top: -6px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font-size: 11px;
   line-height: 1.6;
 }

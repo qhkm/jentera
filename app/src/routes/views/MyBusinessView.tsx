@@ -222,7 +222,7 @@ export default function MyBusinessView({
     <div className="business-workspace flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <h1 className="font-pixel text-2xl tracking-tight">{t('view.business')}</h1>
-        <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.business.desc')}</p>
+        <p className="business-supporting max-w-[66ch] text-sm">{t('view.business.desc')}</p>
       </header>
 
       <section
@@ -262,7 +262,7 @@ export default function MyBusinessView({
           <section className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
               <h3 className="text-sm font-medium">{t('biz.overview')}</h3>
-              <p className="text-[13px] text-text-secondary">{t('biz.overview.detail')}</p>
+              <p className="business-supporting text-[13px]">{t('biz.overview.detail')}</p>
             </div>
             <div className="business-shortcuts">
               <button type="button" onClick={() => chooseTab('knows')}>
