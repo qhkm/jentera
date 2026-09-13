@@ -16,6 +16,18 @@ Budget estimates conservatively use peak cache-miss prices: $0.30/M input,
 $1.20/M output. They are not the provider's exact invoice (cache hits and
 off-peak calls can cost less). Existing historical gateway model prices remain.
 
+The proxy ledger and diagnostic costs now discount provider-confirmed cache hits
+at the peak $0.006/M input rate. Reservations remain worst-case. Native
+`prompt_cache_hit_tokens` and compatible `prompt_tokens_details.cached_tokens`
+are recorded; invalid cache totals never earn a discount. No response cache is
+introduced. The ephemeral clock follows business context so it does not break
+that reusable prefix; its exact timestamp is retained for reminders.
+
+For canonical DeepSeek tasks, dispatch omits the explicit model override and
+uses the runner's configured Quick/Deep route. This allows existing runtimes
+with the legacy alias to pass admission before proxy alias translation. Other
+providers and explicit noncanonical model requests are unchanged.
+
 References:
 - https://www.deepseek.com/en/news/deepseek-v4-1-flash/
 - https://api-docs.deepseek.com/quick_start/pricing/

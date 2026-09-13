@@ -375,10 +375,13 @@ export function prepareHermesAgent(
     'Save only what Jentera cannot tell you.',
   );
   return {
-    instructions: `${HERMES_AGENT_PROMPT}\n\nCurrent date (UTC): ${now.toISOString().slice(0, 10)}. Current timestamp (UTC): ${now.toISOString()}. Reminder timezone: Asia/Kuala_Lumpur (UTC+8).` +
+    // Stable policy and business context first; the precise clock changes every
+    // request and must not invalidate the reusable prefix before that context.
+    instructions: HERMES_AGENT_PROMPT +
       `${specialist ? `\n\n${specialistRunInstructions(specialist)}` : ''}` +
       `${speaker ? `\n\n${speakerInstructions(speaker)}` : ''}` +
-      `\n\n${context}`,
+      `\n\n${context}` +
+      `\n\nCurrent date (UTC): ${now.toISOString().slice(0, 10)}. Current timestamp (UTC): ${now.toISOString()}. Reminder timezone: Asia/Kuala_Lumpur (UTC+8).`,
     input: question,
     usedKeys: facts.map((fact) => fact.key),
     grounded: facts.length > 0,

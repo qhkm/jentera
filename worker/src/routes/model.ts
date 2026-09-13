@@ -43,7 +43,7 @@ import {
   verifyJenteraKey,
   type JenteraKeyClaims,
 } from '../fmcv-verifier';
-import { modelCostMicrousd } from '../runtime/usage';
+import { cachedPromptTokens, modelUsageCostMicrousd } from '../model-usage';
 import { fetchModelResponse } from '../model-fetch';
 import { runtimeModelBaseAllowed } from '../runtime/execution';
 import { connect, withUser } from '../db';
@@ -436,7 +436,7 @@ function recordUsage(
   if (input === 0 && output === 0) return Promise.resolve();
   let microusd: number;
   try {
-    microusd = modelCostMicrousd(model, input, output);
+    microusd = modelUsageCostMicrousd(model, usage);
   } catch {
     /* Only models with reviewed pricing are metered; an unpriced model
        (misconfiguration) must not break the response path. */
@@ -542,14 +542,11 @@ function recordModelCall(
   const usage = call.usage;
   const promptTokens = usage ? safeToken(usage.prompt_tokens) : null;
   const completionTokens = usage ? safeToken(usage.completion_tokens) : null;
-  const details = usage && typeof usage.prompt_tokens_details === 'object' && usage.prompt_tokens_details
-    ? usage.prompt_tokens_details as Record<string, unknown>
-    : null;
-  const cachedTokens = details ? safeToken(details.cached_tokens) : null;
+  const cachedTokens = usage ? cachedPromptTokens(usage) : null;
   let costMicrousd: number | null = null;
   if (promptTokens !== null && completionTokens !== null) {
     try {
-      costMicrousd = modelCostMicrousd(model, promptTokens, completionTokens);
+      costMicrousd = modelUsageCostMicrousd(model, usage!);
     } catch {
       /* Unpriced model: the shape is still worth recording. */
     }

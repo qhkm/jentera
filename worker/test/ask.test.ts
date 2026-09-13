@@ -49,6 +49,16 @@ beforeEach(async () => {
   });
 });
 
+it('keeps the business prompt prefix stable when only the clock changes', () => {
+  const first = prepareHermesAgent('hi', [], [], new Date('2026-09-13T01:00:00Z'));
+  const second = prepareHermesAgent('hello', [], [], new Date('2026-09-13T01:01:00Z'));
+  const marker = '\n\nCurrent date (UTC):';
+  expect(first.instructions.split(marker)[0]).toBe(second.instructions.split(marker)[0]);
+  expect(first.instructions.indexOf('Confirmed information')).toBeLessThan(first.instructions.indexOf(marker));
+  expect(second.instructions).toContain('2026-09-13T01:01:00.000Z');
+  expect(second.input).toBe('hello');
+});
+
 /** An owner-stated fact is confirmed; an agent guess is not. */
 const stated = (key: string, value: unknown) =>
   asTenant(A, (tx) => recordFact(tx, A, { key, value, source: 'owner', confirmedBy: userId }));
