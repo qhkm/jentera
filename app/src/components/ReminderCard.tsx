@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '@/i18n/I18nProvider';
 import { usePushNotifications } from '@/pwa/push';
-import { ReminderError, reminderRequest, type Reminder, type ReminderDraft } from '@/lib/reminders';
+import { ReminderError, reminderLocalTime, reminderRequest, type Reminder, type ReminderDraft } from '@/lib/reminders';
 
 export function ReminderCard({ draft }: { draft: ReminderDraft }) {
   const { lang } = useI18n();
   const bm = lang === 'bm';
   const push = usePushNotifications();
   const [message, setMessage] = useState(draft.message.slice(0, 500));
-  const [time, setTime] = useState('');
+  const [time, setTime] = useState(() => reminderLocalTime(draft.dueAt));
   const [saved, setSaved] = useState<Reminder | null>(null);
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -27,7 +27,7 @@ export function ReminderCard({ draft }: { draft: ReminderDraft }) {
     if (lock.current) return;
     lock.current = true; setBusy(true); setError('');
     try {
-      const due = new Date(`${time}:00+08:00`);
+      const due = new Date(`${time.length === 16 ? `${time}:00` : time}+08:00`);
       if (!Number.isFinite(due.getTime()) || due.getTime() <= Date.now()) throw new ReminderError(bm ? 'Pilih masa akan datang.' : 'Choose a future date and time.', 400);
       const result = await reminderRequest(draft.id, 'POST', { id: draft.id, message, dueAt: due.toISOString(), timeZone: 'Asia/Kuala_Lumpur' });
       setSaved(result.reminder); setUncertain(false);
@@ -63,7 +63,8 @@ export function ReminderCard({ draft }: { draft: ReminderDraft }) {
     </> : <form className="flex min-w-0 flex-col gap-3" onSubmit={e => { e.preventDefault(); void save(); }}>
       <p className="text-sm text-text-muted">{bm ? 'Sekali sahaja. Semak mesej dan pilih tarikh serta masa. Untuk peringatan berulang, gunakan Rutin.' : 'One-time reminder. Review the message and choose the date and time. For recurring reminders, use Routines.'}</p>
       <label className="flex flex-col gap-1">{bm ? 'Mesej' : 'Message'}<textarea className="w-full rounded-lg border border-border bg-bg-card p-2" value={message} maxLength={500} required disabled={busy || uncertain} onChange={e => setMessage(e.target.value)} /></label>
-      <label className="flex min-w-0 flex-col gap-1">{bm ? 'Tarikh dan masa' : 'Date and time'}<input className="min-w-0 max-w-full rounded-lg border border-border bg-bg-card p-2" type="datetime-local" required value={time} disabled={busy || uncertain} onChange={e => setTime(e.target.value)} /></label>
+      <label className="flex min-w-0 flex-col gap-1">{bm ? 'Tarikh dan masa' : 'Date and time'}<input className="min-w-0 max-w-full rounded-lg border border-border bg-bg-card p-2" type="datetime-local" step="1" required value={time} disabled={busy || uncertain} onChange={e => setTime(e.target.value)} /></label>
+      <p className="text-sm text-text-muted">{bm ? 'Penghantaran: peti masuk notifikasi dan push jika diaktifkan, bukan mesej chat.' : 'Delivery: notification inbox and push when enabled, not a chat message.'}</p>
       <p className="text-sm text-text-muted">Asia/Kuala_Lumpur (UTC+8) · {bm ? 'Disemak setiap minit, bukan penggera saat tepat.' : 'Checked every minute, not an exact-second alarm.'}</p>
       <button className="btn self-start" disabled={busy || uncertain} type="submit">{bm ? 'Sahkan peringatan' : 'Confirm reminder'}</button>
     </form>}

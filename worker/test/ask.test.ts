@@ -301,6 +301,10 @@ describe('the durable Hermes agent request', () => {
     );
 
     expect(prepared.instructions).toContain('Current date (UTC): 2026-08-28');
+    expect(prepared.instructions).toContain('Current timestamp (UTC): 2026-08-28T05:00:00.000Z');
+    expect(prepared.instructions).toContain('fenced code block tagged jentera-reminder');
+    expect(prepared.instructions).toContain('NOT a chat');
+    expect(prepared.instructions).not.toContain('type "remind me ..."');
     expect(prepared.instructions).toMatch(/research it now/i);
     expect(prepared.instructions).toMatch(/@step:/);
     expect(prepared.instructions).toMatch(/one line per step/i);

@@ -1,11 +1,15 @@
 # Personal reminders
 
-Signed-in web/PWA chat recognizes direct English/BM reminder commands and opens a
-confirmation card instead of starting an agent task. The user reviews the message
-and explicitly selects the date/time in Asia/Kuala_Lumpur. Dates in natural-language
-requests are not parsed yet. This flow is one-time only; recurring work remains in
-Routines. Telegram and unrecognized phrasing receive agent guidance to use the app;
-the agent must not claim an internal cron job will send app push.
+All chat wording goes through the normal agent. There is no phrase-matching bypass.
+The agent interprets natural-language dates using a supplied per-turn UTC timestamp
+and emits a structured `jentera-reminder` JSON block in its final response. This is
+a proposal protocol, not a native runtime tool or permission to write a reminder.
+The app validates it and renders an editable confirmation card. The durable run ID
+is the idempotency key; model-supplied IDs are ignored. Null dates remain blank for
+clarification. Relative dates retain seconds; expired dates require correction.
+The raw proposal is retained in the durable reply so reopening a chat can restore
+the card, but hidden in the rendered reply. Telegram has no interactive card;
+confirmation is in the app. One-time only; recurring work remains in Routines.
 
 Confirmed reminders live in Postgres, not browser timers or the agent computer.
 Routines → My personal reminders reads the server's pending list and supports

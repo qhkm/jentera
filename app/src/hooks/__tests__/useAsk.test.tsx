@@ -19,16 +19,16 @@ beforeEach(() => {
 });
 
 describe('useAsk durable answers', () => {
-  it('turns a reminder command into a confirmation card without starting an agent job', async () => {
+  it('sends natural reminder wording to the agent instead of a local phrase shortcut', async () => {
     const repo: Repository = new LocalRepository();
-    repo.ask = vi.fn();
+    repo.ask = vi.fn(async () => ({ text: 'Please confirm the reminder.', usedKeys: [], grounded: false }));
     const wrapper = ({ children }: { children: ReactNode }) => <SignedInProvider value><RepositoryProvider repository={repo}>{children}</RepositoryProvider></SignedInProvider>;
     const { result } = renderHook(() => useAsk(business, { handled: 0, needs: 0 }, key => key), { wrapper });
     await waitFor(() => expect(result.current).not.toBeNull());
-    act(() => result.current.send('remind me to call Ali tomorrow at 9'));
-    expect(repo.ask).not.toHaveBeenCalled();
-    expect(result.current.messages.at(-1)?.reminderDraft?.message).toBe('remind me to call Ali tomorrow at 9');
-    expect(result.current.messages.at(-1)?.text).toContain('Nothing is scheduled until you confirm');
+    await act(async () => result.current.send('send me reminder in 3 min to drink water'));
+    expect(repo.ask).toHaveBeenCalledWith('send me reminder in 3 min to drink water', expect.any(Object));
+    expect(result.current.messages.at(-1)?.reminderDraft).toBeUndefined();
+    expect(result.current.messages.at(-1)?.text).toBe('Please confirm the reminder.');
   });
   it('replaces the matching placeholder when answers finish out of order', async () => {
     const repo: Repository = new LocalRepository();

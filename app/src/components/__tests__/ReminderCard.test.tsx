@@ -14,6 +14,15 @@ beforeEach(() => { vi.clearAllMocks(); vi.spyOn(Date, 'now').mockReturnValue(Dat
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('ReminderCard', () => {
+  it('preserves the model timestamp through confirmation', async () => {
+    request.mockRejectedValueOnce(new ReminderError('Not found', 404));
+    render(<ReminderCard draft={{ id, message: 'Call Ali', dueAt: '2027-01-01T01:03:35.000Z' }} />);
+    expect((await screen.findByLabelText('Date and time') as HTMLInputElement).value).toMatch(/^2027-01-01T09:03:35(?:\.000)?$/);
+    expect(request).toHaveBeenCalledTimes(1);
+    request.mockResolvedValueOnce({ reminder });
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm reminder' }));
+    expect(request).toHaveBeenLastCalledWith(id, 'POST', { id, message: 'Call Ali', dueAt: '2027-01-01T01:03:35.000Z', timeZone: 'Asia/Kuala_Lumpur' });
+  });
   it('does not save until confirmed, shows server receipt and allows cancellation', async () => {
     request.mockRejectedValueOnce(new ReminderError('Not found', 404));
     render(<ReminderCard draft={{ id, message: 'Call Ali' }} />);

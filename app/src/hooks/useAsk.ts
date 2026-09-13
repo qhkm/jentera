@@ -26,7 +26,7 @@ import type { ChatTranscript, Artifact, AskAnswer, AskMode, AskProgress, AskProg
 import { artifactsOf } from '@/lib/artifacts';
 import { trackActivation } from '@/lib/analytics';
 import { isRunId } from '@/lib/task';
-import { isReminderRequest, type ReminderDraft } from '@/lib/reminders';
+import type { ReminderDraft } from '@/lib/reminders';
 
 export interface AskMessage {
   reminderDraft?: ReminderDraft;
@@ -543,16 +543,6 @@ export function useAsk(
          replies below stay for the anonymous demo, which has no
          backend to ask and no facts to ground an answer in. */
       if (grounded) {
-        if (isReminderRequest(question)) {
-          const draft = { id: crypto.randomUUID(), message: question };
-          setState(prev => ({ ...prev, sessions: prev.sessions.map(session => session.id !== sessionId ? session : {
-            ...session, title: session.title || titleFor([{ from: 'you', text: question }]), updatedAt: now,
-            messages: [...session.messages, { from: 'you', text: question }, { from: 'ai',
-              text: lang === 'bm' ? 'Semak butiran di bawah. Belum dijadualkan sehingga anda sahkan.' : 'Review the details below. Nothing is scheduled until you confirm.',
-              reminderDraft: draft, state: 'done' }],
-          }) }));
-          return;
-        }
         trackActivation(mode === 'work' ? 'work_sent' : 'ask_sent');
         const pendingId = crypto.randomUUID();
         setState((prev) => {

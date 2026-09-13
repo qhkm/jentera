@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { RuntimeApprovalCard } from './RuntimeApprovalCard';
 import { ReminderCard } from './ReminderCard';
+import { reminderProposal } from '@/lib/reminders';
 import { renderReplyMarkdown } from '@/lib/reply-markdown';
 import { ArrowUpRight, Check, Copy, Info, WarningCircle } from '@phosphor-icons/react';
 import { JenteraMark } from '@/components/JenteraMark';
@@ -50,6 +51,9 @@ export function AskReply({
   const toast = useToast();
   const [copied, setCopied] = useState(false);
   const repo = useRepository();
+  const proposal = !message.pendingId && message.state !== 'failed' ? reminderProposal(message.text, message.runId) : { text: message.text };
+  const reminderDraft = proposal.draft ?? message.reminderDraft;
+  const displayText = message.pendingId ? message.text.replace(/```jentera-reminder[\s\S]*?(?:```|$)/g, '') : proposal.text;
   const [recovered, setRecovered] = useState<Artifact[]>([]);
   useEffect(() => {
     let live = true;
@@ -69,7 +73,7 @@ export function AskReply({
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(displayWorkspacePaths(message.text));
+      await navigator.clipboard.writeText(displayWorkspacePaths(proposal.text));
       setCopied(true);
       toast(t('ask.reply.copied'));
     } catch {
@@ -99,7 +103,7 @@ export function AskReply({
           </span>
         )}
       </header>
-      {message.reminderDraft && <ReminderCard key={message.reminderDraft.id} draft={message.reminderDraft} />}
+      {reminderDraft && <ReminderCard key={reminderDraft.id} draft={reminderDraft} />}
       {message.pendingId && message.connectionStatus && <p role="status" className="text-sm text-text-secondary">{message.connectionStatus}</p>}
       {message.pendingId ? (
         /* Waiting on a person, not a machine — so no spinner. Any answer text
@@ -109,7 +113,7 @@ export function AskReply({
           ? (
             <>
               {message.text && message.state !== 'needs_approval'
-                ? <div className="ask-reply-text">{renderReplyMarkdown(displayWorkspacePaths(message.text))}</div>
+                ? <div className="ask-reply-text">{renderReplyMarkdown(displayWorkspacePaths(displayText))}</div>
                 : null}
               <RuntimeApprovalCard approvalId={message.approvalId} />
             </>
@@ -118,7 +122,7 @@ export function AskReply({
           ? (
             <>
               <div className="ask-reply-text" aria-live="polite">
-                {renderReplyMarkdown(displayWorkspacePaths(message.text))}
+                {renderReplyMarkdown(displayWorkspacePaths(displayText))}
               </div>
               {message.steps?.length
                 ? <StepsList steps={message.steps} live={Boolean(message.liveStatus)} since={message.startedAt} />
@@ -142,7 +146,7 @@ export function AskReply({
       ) : (
         <>
           <div className="ask-reply-text" role={failed ? 'alert' : undefined}>
-            {renderReplyMarkdown(displayWorkspacePaths(message.text))}
+            {renderReplyMarkdown(displayWorkspacePaths(displayText))}
           </div>
           {files.length > 0 && <ArtifactList artifacts={files} inlineImages label={t('ask.files')} className="mt-3" />}
           {failed && linkedTask ? (

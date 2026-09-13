@@ -1,10 +1,26 @@
-export interface ReminderDraft { id: string; message: string }
+export interface ReminderDraft { id: string; message: string; dueAt?: string }
 export interface Reminder { id: string; message: string; dueAt: string; timeZone: string; status: 'scheduled' | 'sent' | 'cancelled' }
 
-/** Deliberately recognizes direct commands, not discussions about reminders.
- * Dates are reviewed explicitly rather than guessed from ambiguous prose. */
-export function isReminderRequest(text: string): boolean {
-  return /^(?:(?:hey|btw|please|pls|tolong|can you|could you|boleh)\s*[, :]?\s*)*(?:remind me\b|ingatkan (?:saya|aku)\b|(?:set|create|schedule|add|buat|tetapkan)\s+(?:(?:a|an|me a|one|satu)\s+)?(?:reminder|peringatan)\b)/i.test(text.trim());
+/** A proposal is untrusted model output, never authorization to schedule.
+ * Use the durable run ID for replay safety; ignore any model-supplied ID. */
+export function reminderProposal(text: string, runId?: string): { text: string; draft?: ReminderDraft } {
+  const blocks = [...text.matchAll(/```jentera-reminder\s*\n([\s\S]*?)```/g)];
+  if (blocks.length !== 1 || !runId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(runId)) return { text };
+  try {
+    const value: unknown = JSON.parse(blocks[0][1]);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return { text };
+    const data = value as Record<string, unknown>;
+    if (typeof data.message !== 'string' || !data.message.trim() || data.message.length > 500 || data.timeZone !== 'Asia/Kuala_Lumpur') return { text };
+    if (data.dueAt !== null && (typeof data.dueAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(data.dueAt) || !Number.isFinite(Date.parse(data.dueAt)))) return { text };
+    return { text: text.replace(blocks[0][0], '').trim(), draft: { id: runId, message: data.message.trim(), ...(typeof data.dueAt === 'string' ? { dueAt: data.dueAt } : {}) } };
+  } catch { return { text }; }
+}
+
+export function reminderLocalTime(instant?: string): string {
+  if (!instant || !Number.isFinite(Date.parse(instant))) return '';
+  // The supported zone has a fixed UTC+8 offset. Keep seconds so a relative
+  // three-minute request is not rounded down to two minutes by the form.
+  return new Date(Date.parse(instant) + 8 * 3600_000).toISOString().slice(0, 19);
 }
 
 export class ReminderError extends Error {

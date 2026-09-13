@@ -25,6 +25,18 @@ function mount(message: AskMessage, repo = new LocalRepository()) {
 /* Every reply used to become a task card. Conversation reads as a reply;
    only work, by request (deep) or by the server's verdict, gets the card. */
 describe('AskReply: conversation versus work', () => {
+  it('renders a completed model proposal as a prefilled confirmation card', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: false, err: 'Not found' }), { status: 404 }));
+    try {
+      const text = 'Please confirm.\n```jentera-reminder\n' + JSON.stringify({ message: 'Drink water', dueAt: '2027-01-01T01:03:35.000Z', timeZone: 'Asia/Kuala_Lumpur' }) + '\n```';
+      const view = mount({ from: 'ai', text, state: 'done', runId: RUN });
+      expect((await screen.findByLabelText('Date and time') as HTMLInputElement).value).toMatch(/^2027-01-01T09:03:35(?:\.000)?$/);
+      expect(screen.getByLabelText('Message')).toHaveValue('Drink water');
+      expect(view.container.textContent).not.toContain('jentera-reminder');
+      expect(screen.getByText(/not a chat message/)).toBeInTheDocument();
+      expect(fetch.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true);
+    } finally { fetch.mockRestore(); }
+  });
   it('recovers a failed task’s image and displays it inline without opening a dialog', async () => {
     const file = { id: 'image-1', runId: RUN, name: 'result.png', contentType: 'image/png', size: 8, createdAt: '2026-09-12T01:00:00Z' };
     const repo = Object.assign(new LocalRepository(), {
