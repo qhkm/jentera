@@ -1,0 +1,46 @@
+.access-launch {
+  min-height: 100dvh;
+  padding: 28px max(24px, calc((100vw - 1120px) / 2));
+  background: radial-gradient(ellipse at 85% 35%, rgb(0 206 163 / 8%), transparent 55%), var(--color-bg, #171918);
+  color: var(--color-text, #f4f6f5);
+}
+.access-launch__header, .access-launch__logo, .access-launch__card-top { display: flex; align-items: center; justify-content: space-between; }
+.access-launch__logo { gap: 10px; font-size: 22px; font-weight: 650; text-decoration: none; }
+.access-launch__edition, .access-launch__card-top { font-size: 10px; letter-spacing: .16em; color: #a9bdb6; }
+.access-launch__layout { display: grid; grid-template-columns: 1.15fr 1fr; align-items: center; gap: 72px; padding: 100px 0 70px; }
+.access-launch__eyebrow { display: flex; align-items: center; gap: 8px; color: #adcbc0; font-size: 13px; margin-bottom: 24px; }
+.access-launch__eyebrow > span { width: 7px; height: 7px; border-radius: 50%; background: #00cea3; }
+.access-launch h1 { font-size: clamp(44px, 5.5vw, 72px); font-weight: 650; line-height: 1.05; letter-spacing: -.055em; }
+.access-launch h1 span { color: #00cea3; }
+.access-launch__intro { font-size: 24px; line-height: 1.35; margin-top: 28px; letter-spacing: -.025em; }
+.access-launch__description { max-width: 390px; font-size: 16px; line-height: 1.65; color: #afbab5; margin-top: 16px; }
+.access-launch__jobs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 26px; }
+.access-launch__jobs span { border: 1px solid #35423d; border-radius: 999px; padding: 7px 11px; font-size: 12px; color: #bac7c1; }
+.access-launch__panel { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.access-launch__card { border: 1px solid #3a6254; border-radius: 24px; padding: 30px; background: linear-gradient(145deg, #203a30, #1b2420 65%); box-shadow: 0 24px 70px #0003; }
+.access-launch__card-top { border-bottom: 1px solid #ffffff15; padding-bottom: 22px; }
+.access-launch__card-top > span:last-child { font-size: 26px; color: #00cea3; }
+.access-launch h2 { font-size: 34px; font-weight: 600; letter-spacing: -.04em; margin-top: 26px; line-height: 1.15; }
+.access-launch__card-copy { color: #bac9c1; font-size: 15px; line-height: 1.65; margin: 14px 0 24px; }
+.access-launch .input { min-height: 50px; background: #101a16; border: 1px solid #4c6056; border-radius: 10px; color: #f4f6f5; padding: 12px 14px; }
+.access-launch .input::placeholder { color: #93a39a; }
+.access-launch__submit { display: flex; justify-content: space-between; padding: 14px 16px; border-radius: 10px; background: #00cea3; color: #062a20; font-weight: 650; }
+.access-launch__consent { color: #a3b6aa; font-size: 12px; line-height: 1.6; }
+.access-launch__card-footer { border-top: 1px solid #ffffff15; padding-top: 20px; margin-top: 24px; font-size: 12px; line-height: 1.5; color: #adbbb2; }
+.access-launch__card-footer span { color: #00cea3; margin-right: 6px; }
+.access-launch__signin { text-align: center; color: #aebbb4; font-size: 13px; }
+.access-launch__signin span { color: #e2eae6; }
+.access-launch__notice { color: #e2eee7; font-size: 14px; line-height: 1.6; margin-top: 18px; }
+@media (max-width: 767px) {
+  .access-launch { padding: 20px; }
+  .access-launch__layout { grid-template-columns: minmax(0, 1fr); gap: 30px; padding: 44px 0 28px; }
+  .access-launch__eyebrow { margin-bottom: 18px; font-size: 12px; }
+  .access-launch h1 { font-size: clamp(44px, 12vw, 64px); }
+  .access-launch__intro { font-size: 20px; margin-top: 20px; }
+  .access-launch__intro br { display: none; }
+  .access-launch__description { font-size: 14px; margin-top: 12px; }
+  .access-launch__jobs { margin-top: 18px; gap: 6px; }
+  .access-launch__jobs span { font-size: 11px; padding: 6px 9px; }
+  .access-launch__card { padding: 22px; border-radius: 20px; }
+  .access-launch h2 { font-size: 30px; margin-top: 22px; }
+}

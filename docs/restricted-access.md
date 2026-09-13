@@ -38,6 +38,11 @@ list-waitlist
 commit it or send from the app without a separate user request. Waitlist entries
 consent to access updates only; no feedback/discount campaign is sent here.
 
+The trial-code card is hidden on the normal waitlist and access pages. Invite
+recipients can open `/access?invite=1` to redeem; if not signed in, sign in first
+and reopen that link. The URL contains no secret code and does not grant access
+by itself; all server-side redemption checks still apply.
+
 ## Rollout checklist — explicit deployment required
 
 1. Apply migration 041 with `manage-access.mjs migrate` and verify grants.
