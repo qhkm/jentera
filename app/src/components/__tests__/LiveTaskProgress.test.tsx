@@ -12,7 +12,7 @@ describe('honest live progress', () => {
     expect(screen.queryByText('Thinking…')).toBeNull();
     view.rerender(<LiveTaskProgress steps={[]} label="Thinking…" since={now - 90000} lastProgressAt={now} durable />);
     expect(screen.getByText('Thinking…')).toBeVisible();
-    expect(view.container.querySelector('.ask-step-dot')).not.toBeNull();
+    expect(view.container.querySelector('.bubble .typing')).not.toBeNull();
   });
   it('shows a known tool, then reports silence without claiming it stopped', () => {
     vi.useFakeTimers();

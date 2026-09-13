@@ -81,15 +81,15 @@ export function ElapsedSince({ since, separator = true }: { since?: number; sepa
 /** The waiting bubble. With `since` it counts the seconds up next to the
     status, so a slow reply and a dead one look different: the agent's own
     status lines can be seconds apart, and nothing else moved in between. */
-export function TypingBubble({ label, since }: { label: string; since?: number }) {
+export function TypingBubble({ label, since, active = true }: { label: string; since?: number; active?: boolean }) {
   const seconds = useElapsedSeconds(since);
   return (
     <div className="bubble bubble-in flex min-w-0 items-center gap-2.5">
-      <span className="typing" aria-hidden="true">
+      {active ? <span className="typing" aria-hidden="true">
         <i />
         <i />
         <i />
-      </span>
+      </span> : <span className="h-2 w-2 shrink-0 rounded-full bg-text-muted" aria-hidden="true" />}
       <span
         role="status"
         className="min-w-0 text-[13px] font-medium leading-snug text-text-secondary"

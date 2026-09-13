@@ -3,6 +3,7 @@ import { presentTaskSteps } from '@/lib/task-presentation';
 import { useI18n } from '@/i18n/I18nProvider';
 import { Check } from '@phosphor-icons/react';
 import { useDetailLevel } from '@/hooks/useDetailLevel';
+import { TypingBubble } from '@/components/WorkSignal';
 
 function duration(seconds: number) {
   return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
@@ -23,12 +24,13 @@ export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected, l
   const entries = presentTaskSteps(steps, lang, { advanced });
   const quietFor = Math.max(0, Math.floor((now - (lastProgressAt ?? since ?? now)) / 1000));
   const quiet = quietFor >= 60;
+  const hasSteps = entries.length > 0;
   if (!entries.length) entries.push({ label: disconnected
     ? (bm ? 'Menyemak status tugasan' : 'Checking task status')
     : quiet ? (bm ? 'Menunggu kemas kini' : 'Waiting for an update')
     : label || (bm ? 'Menjalankan tugasan' : 'Working on your task'), count: 1 });
   return <div className="min-w-0">
-    <ol className="ask-steps" aria-label="Steps">
+    {!hasSteps ? <TypingBubble label={entries[0].label} since={since} active={!quiet && !disconnected} /> : <ol className="ask-steps" aria-label="Steps">
       {entries.map((entry, i) => {
         const current = i === entries.length - 1;
         return <li key={`${i}-${entry.label}`} aria-current={current ? 'step' : undefined}>
@@ -43,7 +45,7 @@ export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected, l
           </div>
         </li>;
       })}
-    </ol>
+    </ol>}
     {(quiet || disconnected) && <p className="mt-1 text-xs text-text-secondary" role="status">
       {disconnected ? (bm ? 'Menyambung semula… Sedang menyemak hasil yang disimpan.' : 'Reconnecting… Checking the saved result.')
         : (bm ? `Menunggu kemas kini · ${duration(quietFor)} tanpa kemas kini baharu.` : `Waiting for an update · No new progress update for ${duration(quietFor)}.`)}

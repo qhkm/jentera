@@ -32,7 +32,7 @@ describe('AskReply: conversation versus work', () => {
     expect(screen.queryByText(/Thinking/)).toBeNull();
     expect(container.querySelector('.typing')).toBeNull();
     expect(container.querySelector('.ask-step-dot')).toBeNull();
-    expect(container.querySelector('.bubble')).toBeNull();
+    expect(container.querySelector('.bubble.bubble-in')).not.toBeNull();
   });
   it('shows status recovery instead of thinking after a disconnected stream', async () => {
     mount({ from: 'ai', text: 'Partial answer', liveStatus: '💭 Thinking…', state: 'streaming',
@@ -140,8 +140,9 @@ describe('AskReply: the waiting bubble keeps moving', () => {
       pendingId: 'p2', depth: 'quick', startedAt: Date.now() - 3_000,
     });
     await waitFor(() => expect(container.textContent).toContain('💭 Thinking…'));
-    await waitFor(() => expect(container.querySelector('.ask-step-meta')).toHaveTextContent(/[34]s/));
-    await waitFor(() => expect(container.querySelector('.ask-step-meta')).toHaveTextContent(/[45]s/), { timeout: 3_000 });
+    await waitFor(() => expect(container.querySelector('.bubble')).toHaveTextContent(/· [34]s/));
+    expect(container.querySelector('.typing')).not.toBeNull();
+    await waitFor(() => expect(container.querySelector('.bubble')).toHaveTextContent(/· [45]s/), { timeout: 3_000 });
   });
 
   it('shows what the agent is doing under answer text that has already started', async () => {
@@ -152,7 +153,7 @@ describe('AskReply: the waiting bubble keeps moving', () => {
     });
     await waitFor(() => expect(container.textContent).toContain('Let me check that for you.'));
     expect(container.textContent).toContain('🔎 web_search: KL weather now');
-    await waitFor(() => expect(container.querySelector('.ask-step-meta')).toHaveTextContent(/[23]s/));
+    await waitFor(() => expect(container.querySelector('.bubble')).toHaveTextContent(/· [23]s/));
   });
 });
 
