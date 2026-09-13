@@ -72,10 +72,10 @@ function useElapsedSeconds(since?: number): number | null {
 }
 
 /** The seconds since `since`, for a row that is still in progress. */
-export function ElapsedSince({ since }: { since?: number }) {
+export function ElapsedSince({ since, separator = true }: { since?: number; separator?: boolean }) {
   const seconds = useElapsedSeconds(since);
   if (seconds === null || seconds < 1) return null;
-  return <span className="text-text-tertiary tabular-nums"> · {seconds}s</span>;
+  return <span className="text-text-tertiary tabular-nums">{separator ? ' · ' : ''}{seconds}s</span>;
 }
 
 /** The waiting bubble. With `since` it counts the seconds up next to the

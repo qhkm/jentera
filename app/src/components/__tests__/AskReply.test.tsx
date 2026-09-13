@@ -180,6 +180,21 @@ describe('AskReply: the agent\'s steps', () => {
     expect(items[0]).toContain('3');
     expect(items[1]).toContain('oat milk latte PJ');
   });
+
+  it('groups long search details and timing below the step title', async () => {
+    const query = 'Putrajaya news today 13 September 2026 berita terkini Putrajaya hari ini';
+    const { container } = mount({
+      from: 'ai', text: '', mode: 'work', state: 'working', pendingId: 'mobile-search', depth: 'quick',
+      startedAt: Date.now() - 8_000,
+      steps: [`🔍 web_search: "${query}"`, `🔍 web_search: "${query}"`],
+    });
+    await waitFor(() => expect(container.querySelector('.ask-step-content')).not.toBeNull());
+    const content = container.querySelector('.ask-step-content')!;
+    expect(content.querySelector('.ask-step-label')).toHaveTextContent('Searching for information');
+    expect(content.querySelector('.ask-step-subject')).toHaveTextContent(query);
+    expect(content.querySelector('.ask-step-meta .ask-step-count')).toHaveTextContent('2 steps');
+    expect(content.parentElement?.children).toHaveLength(2);
+  });
 });
 
 describe('AskReply: files the agent produced', () => {

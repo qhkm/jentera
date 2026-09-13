@@ -534,10 +534,25 @@ button.ask-context-link:hover {
 .ask-steps li[aria-current="step"] {
   color: var(--text);
 }
-.ask-step-label {
+.ask-step-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.ask-step-subject, .ask-step-meta {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.ask-step-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+.ask-step-meta > * { white-space: nowrap; }
 .ask-step-done {
   flex-shrink: 0;
   margin-top: 3px;

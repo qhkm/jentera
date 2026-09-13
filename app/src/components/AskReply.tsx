@@ -32,12 +32,14 @@ function StepsList({ steps, live, since }: { steps: string[]; live: boolean; sin
             {current
               ? <span className="ask-step-dot" aria-hidden="true" />
               : <Check size={13} aria-hidden="true" className="ask-step-done" />}
-            <span className="ask-step-label">{entry.label}</span>
-            {entry.subject && <span className="ask-step-subject"> · {entry.subject}</span>}
-            {entry.count > 1 && (
-              <span className="ask-step-count"> · {lang === 'bm' ? `${entry.count} langkah` : `${entry.count} steps`}</span>
-            )}
-            {current && <ElapsedSince since={since} />}
+            <div className="ask-step-content">
+              <span className="ask-step-label">{entry.label}</span>
+              {entry.subject && <span className="ask-step-subject">{entry.subject}</span>}
+              {(entry.count > 1 || current) && <div className="ask-step-meta">
+                {entry.count > 1 && <span className="ask-step-count">{lang === 'bm' ? `${entry.count} langkah` : `${entry.count} steps`}</span>}
+                {current && <ElapsedSince since={since} separator={entry.count > 1} />}
+              </div>}
+            </div>
           </li>
         );
       })}
