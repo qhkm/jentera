@@ -160,7 +160,25 @@ describe('AskReply: the agent\'s steps', () => {
     const receipt = container.querySelector('details.ask-reply-steps');
     expect(receipt).not.toBeNull();
     expect(receipt?.querySelector('summary')?.textContent).toContain('3');
-    expect(receipt?.querySelectorAll('li')).toHaveLength(3);
+    /* Three narration lines are one kind of work; the count survives on the line. */
+    const items = receipt?.querySelectorAll('li') ?? [];
+    expect(items).toHaveLength(1);
+    expect(items[0].textContent).toContain('3');
+  });
+
+  it('names the programs behind a run of computer steps, once', async () => {
+    const { container } = mount({
+      from: 'ai', text: 'Working', mode: 'work', state: 'working', pendingId: 'p5', depth: 'quick',
+      startedAt: Date.now() - 2_000,
+      steps: ['💻 terminal: "git"', '💻 terminal: "git"', '💻 terminal: "python3"', '🔍 web_search: "oat milk latte PJ"'],
+    });
+    await waitFor(() => expect(container.querySelector('.ask-steps')).not.toBeNull());
+    const items = Array.from(container.querySelectorAll('.ask-steps li')).map((li) => li.textContent ?? '');
+    expect(items).toHaveLength(2);
+    expect(items[0]).toContain('Working on Jentera’s computer');
+    expect(items[0]).toContain('git, python3');
+    expect(items[0]).toContain('3');
+    expect(items[1]).toContain('oat milk latte PJ');
   });
 });
 

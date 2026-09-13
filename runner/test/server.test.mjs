@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
-import { createRunner, configFromEnv } from '../src/server.mjs';
+import { createRunner, configFromEnv, commandProgram } from '../src/server.mjs';
 
 const BUSINESS = '11111111-1111-4111-8111-111111111111';
 const TASK = '22222222-2222-4222-8222-222222222222';
@@ -59,6 +59,7 @@ beforeEach(async () => {
     { event: 'context.compressing', text: 'private prompt must not cross' },
     { event: 'tool.started', tool: 'execute_code', preview: 'import urllib.request' },
     { event: 'tool.started', tool: 'process', preview: 'submit proc_example "sensitive-login-value"' },
+    { event: 'tool.started', tool: 'terminal', preview: 'TOKEN=private-login-value sudo /usr/bin/git push origin main && rm -rf /tmp/x' },
     { event: 'tool.completed', tool: 'execute_code', duration: 1.25, error: false },
     { event: 'message.delta', delta: ' from Hermes' },
     { event: 'message.delta', delta: '\n<thi' },
@@ -483,8 +484,12 @@ test('streams Hermes-visible assistant, tool, and bounded thinking events withou
   assert.match(stream, /"delta":" from Hermes"/);
   assert.match(stream, /"type":"tool.started"/);
   assert.match(stream, /"tool":"execute_code"/);
-  assert.match(stream, /Command arguments hidden/);
-  assert.doesNotMatch(stream, /import urllib\.request|sensitive-login-value|proc_example/);
+  /* The program is shown, never its arguments: `git`, not the push line;
+     `submit`, not the process id or what was submitted; nothing at all for
+     code, whose first word says nothing safe. */
+  assert.match(stream, /"tool":"terminal","preview":"git"/);
+  assert.match(stream, /"tool":"process","preview":"submit"/);
+  assert.doesNotMatch(stream, /Command arguments hidden|import urllib\.request|sensitive-login-value|proc_example|private-login-value|push origin|rm -rf/);
   assert.match(stream, /"type":"tool.completed"/);
   assert.match(stream, /Safe answer/);
   /* The bounded reasoning lane crosses on purpose: Hermes caps each slice at
@@ -920,3 +925,34 @@ test(`preserves files on ${finalStatus}, upload failure=${uploadFails}`, async (
   }
 });
 }
+
+test('commandProgram keeps the program name and drops everything that could carry a secret', () => {
+  assert.equal(commandProgram('git status'), 'git');
+  assert.equal(commandProgram('/usr/bin/python3 -c "print(1)"'), 'python3');
+  assert.equal(commandProgram('TOKEN=abc curl -H "Authorization: Bearer x" https://example.com'), 'curl');
+  assert.equal(commandProgram('sudo apt install jq'), 'apt');
+  assert.equal(commandProgram('  env FOO=bar nohup ./run.sh &'), 'run.sh');
+  assert.equal(commandProgram('(cd /tmp && ls) | grep x'), 'cd');
+  assert.equal(commandProgram('SECRET=only'), '');
+  assert.equal(commandProgram(''), '');
+  assert.equal(commandProgram('$(curl evil)'), '');
+  assert.equal(commandProgram('a'.repeat(60) + ' x'), '');
+});
+
+test('commandProgram edge cases: operators, heredocs, wrappers, and names that are infrastructure', () => {
+  assert.equal(commandProgram('2>/dev/null git status'), 'git');
+  assert.equal(commandProgram('cat <<EOF\nSECRET=abc\nEOF'), 'cat');
+  assert.equal(commandProgram('\tgit\tstatus\n'), 'git');
+  assert.equal(commandProgram('! grep -q x file'), 'grep');
+  assert.equal(commandProgram('cd /tmp; ./deploy.sh --token=abc'), 'cd');
+  assert.equal(commandProgram('"my program" arg'), '');
+  assert.equal(commandProgram('café --x'), '');
+  assert.equal(commandProgram('poll proc_123'), 'poll');
+  assert.equal(commandProgram(null), '');
+  assert.equal(commandProgram(42), '');
+  /* The runtime and the host are not user-facing names, whatever runs them. */
+  assert.equal(commandProgram('/home/sprite/.hermes/bin/hermes --config x'), '');
+  assert.equal(commandProgram('API=x hermes-agent run'), '');
+  assert.equal(commandProgram('sprite exec ls'), '');
+  assert.equal(commandProgram('flyctl status'), '');
+});

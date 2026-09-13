@@ -30,6 +30,17 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
   prompt within minutes rather than at the next launch. The 4-hour cache
   header the zone puts on `/sw.js` is not a factor: browsers bypass the
   HTTP cache for a service worker's main script on update checks.
+- The steps under a reply are read, not quoted. The runner keeps only the
+  program of a command (`git`, never `git push …`), nothing for code, and
+  the action word for a process; the runtime's and the host's own names are
+  dropped too (`commandProgram` in `runner/src/server.mjs`). The app
+  (`lib/task-presentation.ts`) turns each step into a kind of work with a
+  safe subject — the program, a search, a site's host — folds consecutive
+  steps of one kind into one line with a count, and shows every step only
+  at the advanced level. Narration is never shown verbatim: older traces
+  carried passwords and internal paths. Until 13 September every terminal
+  step read "[Command arguments hidden]" and a task showed the same line
+  eight times.
 - `app/src/lib/data/` is hand-maintained TypeScript. Add a playbook with `scripts/add-playbook.mjs`, which edits `playbooks.ts` directly — don't hand-merge.
 - Controls share `--control-h` / `--control-pad-y`. A `text-*` or `py-*` utility on a `.btn`/`.input` overrides the component and breaks the shared height — this caused three separate visual bugs. Let components own their type and padding.
 - The old static engine wrote work-done indices as **strings**; the app reads either format and writes strings, so existing users' approvals survive the cutover.

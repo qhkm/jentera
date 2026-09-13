@@ -2086,9 +2086,11 @@ class SafeDeltaStreams {
       const tool = safeToolName(event.tool);
       if (!tool) return;
       // Shell/process input may contain a bare OAuth code with no key name
-      // to redact. Never publish those arguments into SSE or durable traces.
-      const preview = /^(?:terminal|process|execute_code|shell|bash)$/i.test(tool)
-        ? '[Command arguments hidden]' : safeToolPreview(event.preview);
+      // to redact. Never publish those arguments into SSE or durable traces:
+      // the program name is enough to read, and code has no safe first word.
+      const preview = /^execute_code$/i.test(tool) ? ''
+        : /^(?:terminal|process|shell|bash)$/i.test(tool) ? commandProgram(event.preview)
+          : safeToolPreview(event.preview);
       this.emitEvent(stream, {
         type: 'tool.started',
         seq: stream.nextSeq++,
@@ -2417,6 +2419,27 @@ function truncateUtf8(value, maxBytes) {
 function safeToolName(value) {
   if (typeof value !== 'string' || !/^[a-zA-Z0-9_.:-]{1,96}$/.test(value)) return '';
   return value;
+}
+
+/**
+ * The program a command runs, and nothing else. `git`, not the push line.
+ * Skips `sudo`/`env`-style wrappers and NAME=value prefixes, where an inline
+ * secret would sit, and refuses anything that is not a plain program name.
+ */
+export function commandProgram(value) {
+  if (typeof value !== 'string') return '';
+  for (const raw of value.trim().split(/\s+/)) {
+    const token = raw.replace(/^[({]+/, '');
+    if (!token) continue;
+    if (/[<>|&;`$!]/.test(token)) continue;             // redirects and operators are not programs
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) continue; // NAME=value, where a secret would sit
+    if (/^(?:sudo|env|nohup|time|exec|command)$/.test(token)) continue;
+    const name = token.slice(token.lastIndexOf('/') + 1);
+    if (!/^[A-Za-z0-9._+-]{1,40}$/.test(name)) return '';
+    // The runtime and the host are implementation details, not activity.
+    return /^(?:hermes(?:-agent)?|sprites?|flyctl|fly|wrangler)$/i.test(name) ? '' : name;
+  }
+  return '';
 }
 
 function safeToolPreview(value) {

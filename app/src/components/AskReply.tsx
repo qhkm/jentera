@@ -9,7 +9,8 @@ import { ElapsedSince, TypingBubble } from '@/components/WorkSignal';
 import { ArtifactList } from '@/components/ArtifactList';
 import { useToast } from '@/components/Toast';
 import { useT, useI18n } from '@/i18n/I18nProvider';
-import { displayTaskStep, displayWorkspacePaths } from '@/lib/task-presentation';
+import { displayWorkspacePaths, presentTaskSteps } from '@/lib/task-presentation';
+import { useDetailLevel } from '@/hooks/useDetailLevel';
 import type { AskMessage } from '@/hooks/useAsk';
 import { ChatTaskCard } from '@/components/ChatTaskCard';
 import { isRunId } from '@/lib/task';
@@ -20,16 +21,22 @@ import { useRepository, type Artifact } from '@/lib/repo';
     current one moving with the seconds since the message was sent. */
 function StepsList({ steps, live, since }: { steps: string[]; live: boolean; since?: number }) {
   const { lang } = useI18n();
+  const { advanced } = useDetailLevel();
+  const entries = presentTaskSteps(steps, lang, { advanced });
   return (
     <ol className="ask-steps" aria-label="Steps">
-      {steps.map((step, index) => {
-        const current = live && index === steps.length - 1;
+      {entries.map((entry, index) => {
+        const current = live && index === entries.length - 1;
         return (
-          <li key={`${index}-${step}`} aria-current={current ? 'step' : undefined}>
+          <li key={`${index}-${entry.label}`} aria-current={current ? 'step' : undefined}>
             {current
               ? <span className="ask-step-dot" aria-hidden="true" />
               : <Check size={13} aria-hidden="true" className="ask-step-done" />}
-            <span className="ask-step-label">{displayTaskStep(step, lang)}</span>
+            <span className="ask-step-label">{entry.label}</span>
+            {entry.subject && <span className="ask-step-subject"> · {entry.subject}</span>}
+            {entry.count > 1 && (
+              <span className="ask-step-count"> · {lang === 'bm' ? `${entry.count} langkah` : `${entry.count} steps`}</span>
+            )}
             {current && <ElapsedSince since={since} />}
           </li>
         );
