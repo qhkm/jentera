@@ -110,6 +110,20 @@ lookup before it, and a return visit never sends. The routes hand the send
 to `ctx.waitUntil` behind the response (`signup-notice.ts`), so Resend
 being slow or down cannot delay or fail a sign-in.
 
+Cloudflare Turnstile stands in front of the link request, the password
+signup and the password login (`turnstile.ts` on both sides). The page
+renders a widget only when the build carries `VITE_TURNSTILE_SITE_KEY`
+(`app/.env.production`) and sends its token as `turnstileToken`; the
+worker checks it against `TURNSTILE_SECRET` only when that secret is set,
+refusing a missing or rejected token with 400 and code `TURNSTILE`, and
+admitting the request when Cloudflare's checker itself cannot be reached,
+because the rate limits below still hold. Order matters when turning it
+on: ship the app with the site key first, then set the secret — the other
+way round every door refuses until the app catches up. Google sign-in is
+not behind it: Google already stands in front of that door.
+`test/turnstile.test.ts` and the sign-in page tests cover both halves with
+a fake checker.
+
 `/api/auth/request` is rate limited three ways: an edge burst binding
 (5/60s per IP), and Postgres counters of 50/24h per IP and 10/24h per
 address. IP limits answer 429; the per-address one answers 204, because

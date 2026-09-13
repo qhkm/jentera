@@ -18,7 +18,7 @@ import {
   signUpWithPassword,
 } from '../auth';
 import { sendMagicLink } from '../email';
-import { checkAuthRate, checkLoginBurst } from '../ratelimit';
+import { checkAuthRate, checkLoginBurst, clientIp } from '../ratelimit';
 import { DUMMY_HASH, hashPassword, passwordProblem, verifyPassword } from '../password';
 import {
   authorizeUrl,
@@ -28,6 +28,7 @@ import {
   s256,
 } from '../oauth';
 import { notifySignup, type SignupDoor } from '../signup-notice';
+import { verifyTurnstile } from '../turnstile';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -73,11 +74,27 @@ export async function handleSession(
     if (deps.ctx) deps.ctx.waitUntil(notice);
     else await notice;
   };
+  /* The human check in front of the link, signup and password doors.
+     Answers the refusal to send, or null to carry on. */
+  const refusedAsBot = async (token: unknown): Promise<Response | null> => {
+    const verdict = await verifyTurnstile(env, token, clientIp(request));
+    if (verdict === 'missing' || verdict === 'rejected') {
+      return json(
+        { ok: false, err: 'Please complete the security check and try again.', code: 'TURNSTILE' },
+        { status: 400 },
+        cors,
+      );
+    }
+    if (verdict === 'unavailable') console.warn('[turnstile] siteverify unavailable; request admitted');
+    return null;
+  };
 
   /* ---- request a link ---------------------------------------------- */
   if (url.pathname === '/api/auth/request' && request.method === 'POST') {
-    const { email } = (await request.json().catch(() => ({}))) as { email?: string };
-    const addr = (email ?? '').trim().toLowerCase();
+    const body = (await request.json().catch(() => ({}))) as { email?: string; turnstileToken?: unknown };
+    const addr = (body.email ?? '').trim().toLowerCase();
+    const refused = await refusedAsBot(body.turnstileToken);
+    if (refused) return refused;
 
     /* 204 for a malformed or unknown address, always. Any other
        answer turns this into an account-existence oracle.
@@ -141,6 +158,7 @@ export async function handleSession(
     const body = (await request.json().catch(() => ({}))) as {
       email?: string;
       password?: string;
+      turnstileToken?: unknown;
     };
     const addr = (body.email ?? '').trim().toLowerCase();
     const problem = passwordProblem(body.password);
@@ -148,6 +166,8 @@ export async function handleSession(
     /* Password shape is the caller's own mistake and safe to report.
        Anything about the ADDRESS is not — see below. */
     if (problem) return json({ ok: false, err: problem }, { status: 400 }, cors);
+    const refused = await refusedAsBot(body.turnstileToken);
+    if (refused) return refused;
     if (!EMAIL.test(addr)) return json({ ok: false, err: 'invalid email' }, { status: 400 }, cors);
 
     const verdict = await checkAuthRate(env, request, addr);
@@ -183,6 +203,7 @@ export async function handleSession(
     const body = (await request.json().catch(() => ({}))) as {
       email?: string;
       password?: string;
+      turnstileToken?: unknown;
     };
     const addr = (body.email ?? '').trim().toLowerCase();
     const password = typeof body.password === 'string' ? body.password : '';
@@ -190,6 +211,8 @@ export async function handleSession(
     if (!EMAIL.test(addr) || !password) {
       return json({ ok: false, err: 'invalid credentials' }, { status: 401 }, cors);
     }
+    const refused = await refusedAsBot(body.turnstileToken);
+    if (refused) return refused;
 
     if (!(await checkLoginBurst(env, request, addr))) {
       return new Response(null, { status: 429, headers: { ...cors, 'Retry-After': '60' } });

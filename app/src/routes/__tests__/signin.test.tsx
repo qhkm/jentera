@@ -128,3 +128,70 @@ describe('a signed-in visitor on the sign-in page', () => {
     expect(screen.queryByRole('heading', { name: 'Workspace' })).toBeNull();
   });
 });
+
+describe('the human check', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  function fakeTurnstile(token: string | null) {
+    const turnstile = {
+      render: vi.fn((_el: HTMLElement, opts: { callback: (t: string) => void }) => {
+        if (token) opts.callback(token);
+        return 'widget-1';
+      }),
+      reset: vi.fn(),
+      remove: vi.fn(),
+    };
+    vi.stubGlobal('turnstile', turnstile);
+    return turnstile;
+  }
+
+  it('sends the widget token with a link request and resets the widget afterwards', async () => {
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'site-key');
+    const turnstile = fakeTurnstile('tok-1');
+    const request = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', request);
+    const user = userEvent.setup();
+    mount();
+
+    await waitFor(() => expect(turnstile.render).toHaveBeenCalled());
+    expect(turnstile.render.mock.calls[0][1]).toMatchObject({ sitekey: 'site-key' });
+
+    await user.type(screen.getByLabelText('Email address'), 'owner@example.com');
+    await user.click(screen.getByRole('button', { name: /email me a link/i }));
+
+    await waitFor(() => expect(request).toHaveBeenCalled());
+    const body = JSON.parse(String((request.mock.calls[0][1] as RequestInit).body));
+    expect(body).toEqual({ email: 'owner@example.com', turnstileToken: 'tok-1' });
+    await waitFor(() => expect(turnstile.reset).toHaveBeenCalledWith('widget-1'));
+  });
+
+  it('explains a refused check instead of a generic failure', async () => {
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'site-key');
+    fakeTurnstile('tok-1');
+    const request = vi.fn().mockResolvedValue(
+      Response.json({ ok: false, err: 'Please complete the security check and try again.', code: 'TURNSTILE' }, { status: 400 }),
+    );
+    vi.stubGlobal('fetch', request);
+    const user = userEvent.setup();
+    mount();
+    await user.type(screen.getByLabelText('Email address'), 'owner@example.com');
+    await user.click(screen.getByRole('button', { name: /email me a link/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('security check');
+  });
+
+  it('is absent without a site key, and sends no token', async () => {
+    const turnstile = fakeTurnstile('tok-1');
+    const request = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', request);
+    const user = userEvent.setup();
+    mount();
+    await user.type(screen.getByLabelText('Email address'), 'owner@example.com');
+    await user.click(screen.getByRole('button', { name: /email me a link/i }));
+    await waitFor(() => expect(request).toHaveBeenCalled());
+    expect(turnstile.render).not.toHaveBeenCalled();
+    expect(JSON.parse(String((request.mock.calls[0][1] as RequestInit).body))).toEqual({ email: 'owner@example.com' });
+  });
+});

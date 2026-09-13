@@ -22,6 +22,7 @@ import {
 } from "@phosphor-icons/react";
 import { Link, useSearchParams } from "react-router";
 import { trackActivation } from "@/lib/analytics";
+import { useTurnstile } from "@/lib/turnstile";
 import { JenteraMark } from "@/components/JenteraMark";
 
 const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
@@ -56,6 +57,7 @@ export default function SignIn() {
   const [sent, setSent] = useState<"link" | "verify" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const captcha = useTurnstile();
   const emailInput = useRef<HTMLInputElement>(null);
   const confirmationHeading = useRef<HTMLHeadingElement>(null);
   const restoreEmailFocus = useRef(false);
@@ -88,13 +90,18 @@ export default function SignIn() {
     setBusy("password");
     setError(null);
     try {
+      const turnstileToken = await captcha.getToken();
       const res = await fetch(
         `${API}/api/auth/${mode === "signup" ? "signup" : "login"}`,
         {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
+          body: JSON.stringify({
+            email,
+            password,
+            ...(turnstileToken ? { turnstileToken } : {}),
+          }),
         },
       );
 
@@ -131,6 +138,7 @@ export default function SignIn() {
     } catch {
       setError("Could not reach Jentera. Check your connection.");
     } finally {
+      captcha.reset();
       setBusy(null);
     }
   }
@@ -142,17 +150,28 @@ export default function SignIn() {
     try {
       /* The same success response is shown whether or not an account
          exists. Transport failures still need an honest retry state. */
+      const turnstileToken = await captcha.getToken();
       const response = await fetch(`${API}/api/auth/request`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({
+          email,
+          ...(turnstileToken ? { turnstileToken } : {}),
+        }),
       });
       if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as {
+          err?: string;
+          code?: string;
+        };
         setError(
           response.status === 429
             ? "Too many attempts. Wait a minute and try again."
-            : "Could not send your sign-in link. Please try again.",
+            : body.code === "TURNSTILE"
+              ? (body.err ??
+                "Please complete the security check and try again.")
+              : "Could not send your sign-in link. Please try again.",
         );
         return;
       }
@@ -160,6 +179,7 @@ export default function SignIn() {
     } catch {
       setError("Could not reach Jentera. Check your connection and try again.");
     } finally {
+      captcha.reset();
       setBusy(null);
     }
   }
@@ -344,6 +364,10 @@ export default function SignIn() {
                   )}
                 </button>
               </div>
+
+              {captcha.enabled ? (
+                <div ref={captcha.attach} className="turnstile mt-4" />
+              ) : null}
 
               {error ? (
                 <p role="alert" className="mt-3 text-sm opacity-80">

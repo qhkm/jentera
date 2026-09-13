@@ -140,6 +140,11 @@ export interface Env {
   /** Where a plain-text notice goes each time a new account is made,
       through any door. Unset: nobody is told. A var, not a secret. */
   SIGNUP_NOTICE_TO?: string;
+  /** Cloudflare Turnstile secret for the link, signup and password-login
+      doors. Set with `wrangler secret put TURNSTILE_SECRET`. Unset: the
+      check is skipped, which is how tests and local runs work. Set it only
+      after the app ships with its site key, or every door refuses. */
+  TURNSTILE_SECRET?: string;
   /** How long any dispatch keeps the Sprite held active past the dispatch
       (hours) — all plans since 2026-09-01 (launch posture). Refreshed on
       every dispatch; a silent business releases itself after this window.
