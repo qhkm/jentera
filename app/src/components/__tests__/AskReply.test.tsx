@@ -143,7 +143,7 @@ describe('AskReply: the waiting bubble keeps moving', () => {
 describe('AskReply: the agent\'s steps', () => {
   it('keeps login values in older command traces hidden after restoring the list', async () => {
     const { container } = mount({ from: 'ai', text: 'Working', pendingId: 'p', state: 'working', steps: ['process: "submit proc_old private-login-value"'] });
-    await waitFor(() => expect(container.querySelector('span[role="status"]')).toHaveTextContent('Checking task progress'));
+    expect(await screen.findByText('Checking task progress')).toBeInTheDocument();
     expect(container.textContent).not.toContain('private-login-value');
     expect(container.querySelector('.task-progress')).toBeNull();
   });
@@ -157,13 +157,13 @@ describe('AskReply: the agent\'s steps', () => {
       startedAt: Date.now() - 2_000,
       steps: ['Searching for today\'s headlines', '🌐 web_extract: "https://www.malaymail.com/"'],
     });
-    await waitFor(() => expect(container.querySelector('details')).not.toBeNull());
-    const items = Array.from(container.querySelectorAll('details li'));
+    await waitFor(() => expect(container.querySelector('.ask-steps')).not.toBeNull());
+    const items = Array.from(container.querySelectorAll('.ask-steps li'));
     expect(items.map((li) => li.textContent)).toEqual(
       expect.arrayContaining([expect.stringContaining('Working through the task'), expect.stringContaining('Reading information')]),
     );
-    expect(container.querySelector('span[role="status"]')).toHaveTextContent('Reading information');
-    expect(container.querySelector('details')).not.toHaveAttribute('open');
+    expect(items.at(-1)?.getAttribute('aria-current')).toBe('step');
+    expect(container.querySelector('details')).toBeNull();
   });
 
   it('keeps the steps as a collapsed receipt under the finished answer', async () => {
@@ -187,13 +187,13 @@ describe('AskReply: the agent\'s steps', () => {
       startedAt: Date.now() - 2_000,
       steps: ['💻 terminal: "git"', '💻 terminal: "git"', '💻 terminal: "python3"', '🔍 web_search: "oat milk latte PJ"'],
     });
-    await waitFor(() => expect(container.querySelector('details')).not.toBeNull());
-    const items = Array.from(container.querySelectorAll('details li')).map((li) => li.textContent ?? '');
-    expect(items).toHaveLength(4);
+    await waitFor(() => expect(container.querySelector('.ask-steps')).not.toBeNull());
+    const items = Array.from(container.querySelectorAll('.ask-steps li')).map((li) => li.textContent ?? '');
+    expect(items).toHaveLength(2);
     expect(items[0]).toContain('Working on Jentera’s computer');
-    expect(items[0]).toContain('git');
-    expect(items[2]).toContain('python3');
-    expect(items[3]).toContain('oat milk latte PJ');
+    expect(items[0]).toContain('git, python3');
+    expect(items[0]).toContain('3');
+    expect(items[1]).toContain('oat milk latte PJ');
   });
 
   it('groups long search details and timing below the step title', async () => {
@@ -203,10 +203,11 @@ describe('AskReply: the agent\'s steps', () => {
       startedAt: Date.now() - 8_000,
       steps: [`🔍 web_search: "${query}"`, `🔍 web_search: "${query}"`],
     });
-    await waitFor(() => expect(container.querySelector('span[role="status"]')).toHaveTextContent('Searching for information'));
-    expect(container.querySelector('details')).not.toHaveAttribute('open');
-    expect(container.querySelector('details')).toHaveTextContent(query);
-    expect(container.querySelector('summary')).toHaveTextContent('2 steps');
+    await waitFor(() => expect(container.querySelector('.ask-step-content')).not.toBeNull());
+    const content = container.querySelector('.ask-step-content')!;
+    expect(content.querySelector('.ask-step-label')).toHaveTextContent('Searching for information');
+    expect(content.querySelector('.ask-step-subject')).toHaveTextContent(query);
+    expect(content.querySelector('.ask-step-meta .ask-step-count')).toHaveTextContent('2 steps');
   });
 });
 

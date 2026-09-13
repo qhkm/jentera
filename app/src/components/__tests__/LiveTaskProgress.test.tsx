@@ -2,6 +2,7 @@ import { render, screen, act } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LiveTaskProgress } from '../LiveTaskProgress';
 vi.mock('@/i18n/I18nProvider', () => ({ useI18n: () => ({ lang: 'en' }) }));
+vi.mock('@/hooks/useDetailLevel', () => ({ useDetailLevel: () => ({ advanced: false }) }));
 
 afterEach(() => vi.useRealTimers());
 describe('honest live progress', () => {
@@ -10,8 +11,10 @@ describe('honest live progress', () => {
     vi.setSystemTime(new Date('2026-09-13T10:00:00Z'));
     const now = Date.now();
     const view = render(<LiveTaskProgress steps={['💻 terminal: "codex"']} since={now} lastProgressAt={now} durable />);
-    expect(screen.getByRole('status')).toHaveTextContent('Working with Codex');
-    expect(view.container.querySelector('details')).not.toHaveAttribute('open');
+    expect(screen.getByText('codex')).toBeVisible();
+    expect(view.container.querySelector('details')).toBeNull();
+    expect(view.container.firstElementChild).not.toHaveClass('border');
+    expect(view.container.querySelector('.ask-step-dot')).not.toBeNull();
     act(() => { vi.advanceTimersByTime(78000); });
     expect(screen.getByRole('status')).toHaveTextContent('Waiting for an update');
     expect(screen.getByText(/No new progress update for 1m 18s/)).toBeVisible();
