@@ -91,8 +91,8 @@ export function Shell({
   return (
     <div className={`min-h-dvh bg-bg text-text ${className}`}>
       <header className="relative sticky top-0 z-30 border-b border-rail bg-bg/80 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-[1250px] items-center justify-between gap-3 px-4 sm:px-6">
-          <div className="flex items-center gap-3">
+        <div className={`shell-header-row mx-auto flex h-16 max-w-[1250px] items-center justify-between gap-3 px-4 sm:px-6${navigation ? ' shell-header-with-navigation' : ''}`}>
+          <div className="shell-header-brand flex items-center gap-3">
             {onMenu ? (
               <button
                 type="button"
@@ -113,7 +113,7 @@ export function Shell({
 
           {navigation ? <div className="shell-mode-navigation">{navigation}</div> : null}
 
-          <div className="flex items-center gap-3">
+          <div className="shell-header-controls flex items-center gap-3">
             {actions ? <div className="hidden items-center gap-2 md:flex">{actions}</div> : null}
             {accountAccessory}
             <AccountMenu

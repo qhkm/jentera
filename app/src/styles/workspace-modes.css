@@ -527,3 +527,36 @@
     min-width: 0;
   }
 }
+
+/* Equal side tracks center the mode switch on the viewport, not in the
+   unequal space between the logo and the computer/account controls. */
+@media (min-width: 381px) and (max-width: 767px) {
+  .workspace-shell > header > .shell-header-with-navigation {
+    display: grid;
+    grid-template-columns: minmax(84px, 1fr) auto minmax(84px, 1fr);
+    gap: 4px;
+    padding-inline: 12px;
+  }
+  .workspace-shell .shell-mode-navigation { position: static; transform: none; margin: 0; }
+  .workspace-shell .shell-header-brand { justify-self: start; }
+  .workspace-shell .shell-header-controls { justify-self: end; gap: 4px; }
+  .workspace-shell .account-menu-caret { display: none; }
+  .workspace-shell .account-menu-trigger { min-width: 44px; padding-inline: 4px; }
+  .workspace-shell .jentera-wordmark { display: none; }
+  .workspace-shell .workspace-mode-switch { max-width: calc(100vw - 200px); }
+  .workspace-shell .workspace-mode-switch > button { min-width: 0; white-space: normal; line-height: 1.25; }
+  .workspace-shell .workspace-mode-label { min-width: 0; overflow-wrap: anywhere; }
+}
+@media (max-width: 380px) {
+  .workspace-shell > header > .shell-header-with-navigation {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 8px;
+    height: auto;
+    padding-block: 6px;
+  }
+  .workspace-shell .shell-header-brand { grid-column: 1; grid-row: 1; }
+  .workspace-shell .shell-header-controls { grid-column: 2; grid-row: 1; justify-self: end; }
+  .workspace-shell .shell-mode-navigation { grid-column: 1 / -1; grid-row: 2; position: static; transform: none; margin: 0; justify-self: center; }
+  .workspace-shell .workspace-mode-switch > button { white-space: nowrap; }
+}
