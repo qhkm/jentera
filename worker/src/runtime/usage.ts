@@ -279,6 +279,8 @@ function budget(row: BudgetRow): RuntimeBudget {
 
 /** Prices are micro-USD per 100 tokens for the pinned model routes. */
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  // Direct V4.1 Flash: conservative peak/cache-miss budget estimate.
+  'deepseek-flash': { input: 30, output: 120 },
   // DeepSeek V4 Flash: $0.06/M in, $0.12/M out
   'deepseek/deepseek-v4-flash-0731': { input: 6, output: 12 },
   'deepseek/deepseek-v4-flash-20260731': { input: 6, output: 12 },

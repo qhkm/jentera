@@ -80,6 +80,27 @@ beforeEach(async () => {
   await truncateAll();
 });
 
+it('forwards legacy runtime requests directly to DeepSeek with canonical pricing', async () => {
+  const { fetcher, seen } = stubUpstream(200, {
+    choices: [{ message: { content: 'OK' } }],
+    usage: { prompt_tokens: 1000, completion_tokens: 100 },
+  });
+  const writes: Promise<unknown>[] = [];
+  const response = await callModel('POST', `${RUNTIME_PROXY_PATH}/chat/completions`,
+    proxyEnv({ AISAR_MODEL_BASE: 'https://api.deepseek.com', DEEPSEEK_API_KEY: 'direct-test-key' }), {
+      token: await derivedKey(),
+      body: { model: 'deepseek-v4-flash', messages: [{ role: 'user', content: 'hi' }], reasoning: { enabled: false } },
+      options: { upstreamFetch: fetcher, waitUntil: promise => { writes.push(promise); } },
+    });
+  expect(response.status).toBe(200);
+  await response.text();
+  await Promise.all(writes);
+  expect(seen[0].url).toBe('https://api.deepseek.com/v1/chat/completions');
+  expect(new Headers(seen[0].init.headers).get('Authorization')).toBe('Bearer direct-test-key');
+  expect(JSON.parse(String(seen[0].init.body))).toMatchObject({ model: 'deepseek-flash', thinking: { type: 'disabled' } });
+  expect(await ledgerMicrousd()).toBe(420);
+});
+
 describe('worker-native jentera credential verification', () => {
   it('verifies a derived credential and rejects tampered or foreign ones', async () => {
     const key = await derivedKey();

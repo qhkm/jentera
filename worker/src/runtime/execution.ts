@@ -1,6 +1,7 @@
 import type { Env } from '../env';
 import type { AgentRuntimeRecord } from '../agent-runtime';
 import { RUNTIME_PROXY_PATH } from '../fmcv-verifier';
+import { modelUpstreamCredential } from '../model-upstream';
 
 /** Global emergency brake. Tenant authority comes from its ready runtime row. */
 export function runtimeExecutionEnabled(env: Env): boolean {
@@ -18,6 +19,7 @@ export function runtimeReady(runtime: AgentRuntimeRecord | null): runtime is Age
 const ALLOWED_MODEL_BASES = new Set([
   'https://openrouter.ai/api/v1',
   'https://router.fmcv.my',
+  'https://api.deepseek.com',
 ]);
 
 export function runtimeModelBaseAllowed(value: string | undefined): boolean {
@@ -85,7 +87,7 @@ export function runtimeProvisioningProblem(env: Env): string | null {
     if ((env.AISAR_MODEL_KEY?.trim() ?? '').length < 32) {
       return 'model control secret is not configured';
     }
-    if (!env.FMCV_UPSTREAM_KEY?.trim()) {
+    if (!modelUpstreamCredential(env)) {
       return 'model upstream credential is not configured';
     }
   } else if (!env.AISAR_OPENROUTER_MANAGEMENT_KEY?.trim()) {

@@ -32,6 +32,7 @@
 import type { Env } from '../env';
 import { businessHasAccess, restrictedAccess } from '../access';
 import { prepareModelPayload, readModelBody } from '../model-payload';
+import { modelUpstreamCredential, prepareUpstreamPayload } from '../model-upstream';
 import {
   JenteraKeyError,
   JenteraKeyUnavailableError,
@@ -122,7 +123,7 @@ export async function handleModelProxy(
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return jsonError(400, 'model request body must be an object', headers);
   const prepared = prepareModelPayload(parsed);
-  parsed = prepared.body;
+  parsed = prepareUpstreamPayload(env, prepared.body);
   if (typeof parsed.model !== 'string' || !parsed.model) {
     return jsonError(400, 'model request body has no model', headers);
   }
@@ -140,7 +141,7 @@ export async function handleModelProxy(
     }
   }
 
-  const upstreamCredential = env.FMCV_UPSTREAM_KEY?.trim() ?? '';
+  const upstreamCredential = modelUpstreamCredential(env);
   if (!upstreamCredential || !runtimeModelBaseAllowed(env.AISAR_MODEL_BASE)) {
     return jsonError(503, 'model upstream is not configured', headers);
   }
@@ -283,7 +284,7 @@ async function relayRaw(
   headers: Record<string, string>,
   options: ModelProxyOptions,
 ): Promise<Response | null> {
-  const upstreamCredential = env.FMCV_UPSTREAM_KEY?.trim() ?? '';
+  const upstreamCredential = modelUpstreamCredential(env);
   if (!upstreamCredential || !runtimeModelBaseAllowed(env.AISAR_MODEL_BASE)) {
     return jsonError(503, 'model upstream is not configured', headers);
   }

@@ -83,6 +83,8 @@ export interface Env {
       upstream ever sees from this Worker. For the reviewed FMCV upstream
       this is the FMCV master key pinned at B3 control-secret rotation. */
   FMCV_UPSTREAM_KEY?: string;
+  /** Direct DeepSeek credential, held only by the model proxy. */
+  DEEPSEEK_API_KEY?: string;
   /** Origin of the self-hosted Firecrawl that backs Hermes's `web_extract`.
       Without it the pinned `ddgs` backend is search-only and cannot read a
       page at all — it answers "DuckDuckGo (ddgs) is a search-only backend
