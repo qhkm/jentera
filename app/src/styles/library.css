@@ -1,0 +1,29 @@
+.library-view { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.library-view h1 { font-size: clamp(26px, 4vw, 36px); font-weight: 600; }
+.library-view h2 { font-size: 22px; font-weight: 600; }
+.library-view header p, .library-description { color: var(--color-text-muted); margin-top: 8px; }
+.library-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 4px; gap: 4px; border: 1px solid var(--color-rail); border-radius: 14px; }
+.library-tabs a { display: flex; align-items: center; justify-content: center; min-height: 44px; border-radius: 10px; font-size: 14px; }
+.library-tabs a[aria-current] { background: color-mix(in srgb, var(--color-brand) 14%, transparent); color: var(--color-brand); }
+.library-tabs a:focus-visible, .library-card summary:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
+.library-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; margin-top: 16px; }
+.library-card { min-width: 0; padding: 20px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; overflow-wrap: anywhere; }
+.library-card h3 { font-size: 18px; font-weight: 600; }
+.library-card p { color: var(--color-text-muted); font-size: 14px; line-height: 1.6; }
+.library-status { font-size: 12px; color: var(--color-text-muted); }
+.library-status.available { color: var(--color-brand); }
+.library-card details { width: 100%; font-size: 14px; }
+.library-card summary { cursor: pointer; min-height: 44px; display: list-item; padding-top: 10px; }
+.library-card details h4 { margin: 12px 0 8px; font-weight: 600; }
+.library-card .routine-link { min-height: 44px; margin-top: auto; }
+@media (max-width: 639px) {
+  .library-view { gap: 16px; }
+  .library-card { padding: 16px; gap: 8px; }
+  .library-view .routine-section-heading { align-items: flex-start; }
+  .library-view .automation-playbook-card, .library-view .automation-playbook-detail { padding: 16px; }
+  .library-view .automation-playbook-detail { overflow-wrap: anywhere; min-width: 0; }
+  .library-view .routine-link { min-height: 44px; }
+  .library-view .input { width: 100%; min-width: 0; font-size: 16px; }
+  .library-view .routine-checkbox { align-items: flex-start; }
+  .library-view .routine-checkbox input { flex-shrink: 0; margin-top: 4px; }
+}

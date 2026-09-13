@@ -107,3 +107,15 @@
   .routine-fields { grid-template-columns: 1fr; }
   .routine-actions .btn { white-space: normal; text-align: center; }
 }
+.automation-playbooks { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.automation-playbook-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 12px; }
+.automation-playbook-card { text-align: left; align-items: flex-start; gap: 10px; border-top: 2px solid rgb(var(--accent-green-rgb) / .4); }
+.automation-playbook-card > span:not(.routine-link), .automation-playbooks small { color: var(--text-secondary); font-size: 13px; }
+.automation-playbook-card:focus-visible { outline: 2px solid var(--accent-green); outline-offset: 3px; }
+.automation-playbook-detail { gap: 12px; }
+.automation-playbook-detail h3 { font-size: 20px; }
+.automation-playbook-detail h4 { margin-top: 8px; font-weight: 600; }
+.automation-playbook-detail ol { list-style: decimal; padding-left: 22px; }
+.automation-playbook-detail li { margin: 6px 0; }
+.automation-playbook-detail form { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
+.automation-playbook-detail form > button { align-self: flex-start; }

@@ -34,11 +34,13 @@ import { isRunId } from '@/lib/task';
 import RoutinesView from './views/RoutinesView';
 import NotificationsView from './views/NotificationsView';
 import FilesView from './views/FilesView';
+import LibraryView from './views/LibraryView';
+import type { RoutineConfig } from '@/lib/routines/types';
 import { BottomNav } from '@/components/BottomNav';
 import { useNotifications } from '@/hooks/useNotifications';
 import { ComputerStatus } from '@/components/ComputerStatus';
 
-export type View = 'home' | 'chat' | 'work' | 'files' | 'routines' | 'notifications' | 'business';
+export type View = 'home' | 'chat' | 'work' | 'files' | 'library' | 'routines' | 'notifications' | 'business';
 
 const BUSINESS_TABS: BizTab[] = ['profile', 'knows', 'handles', 'connections', 'permissions', 'team'];
 
@@ -51,6 +53,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { id: 'home', labelKey: 'nav.home', icon: 'home' },
   { id: 'work', labelKey: 'nav.work', icon: 'activity' },
+  { id: 'library', labelKey: 'nav.library', icon: 'library' },
   { id: 'files', labelKey: 'nav.files', icon: 'files' },
   { id: 'notifications', labelKey: 'notifications.title', icon: 'notifications' },
   { id: 'business', labelKey: 'nav.business', icon: 'business' },
@@ -61,7 +64,7 @@ export default function Dashboard() {
   const repository = useRepository();
   const routinesEnabled = useRoutinesEnabled() && !!repository.routines;
   const nav: NavItem[] = routinesEnabled
-    ? [...NAV.slice(0, 2), { id: 'routines', labelKey: 'routines.title', icon: 'routines' }, ...NAV.slice(2)]
+    ? [...NAV.slice(0, 3), { id: 'routines', labelKey: 'routines.title', icon: 'routines' }, ...NAV.slice(3)]
     : NAV;
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedView = searchParams.get('view');
@@ -75,6 +78,7 @@ export default function Dashboard() {
   const focusedRunId = view === 'work' ? focusedReviewId ?? searchParams.get('run') : null;
   const [taskContext, setTaskContext] = useState<{ runId: string; title?: string } | null>(null);
   const [taskDraft, setTaskDraft] = useState<{ text: string; key: number; sessionId?: string } | null>(null);
+  const [playbookDraft, setPlaybookDraft] = useState<RoutineConfig | null>(null);
   const focusedRoutineId = view === 'routines' ? searchParams.get('routine') : null;
   const lastDashboard = useRef<{ view: Exclude<View, 'chat'>; tab: BizTab; runId: string | null; routineId: string | null; reviewId: string | null }>({ view: 'home', tab: 'profile', runId: null, routineId: null, reviewId: null });
   const trackedOpen = useRef(false);
@@ -276,6 +280,9 @@ export default function Dashboard() {
             onCloseTask={() => go('work')}
           />}
           {view === 'files' && <FilesView onOpenTask={(runId) => openTask(runId)} />}
+          {view === 'library' && <LibraryView canSchedule={routinesEnabled} connections={connections} onUse={config => {
+            setPlaybookDraft(config); go('routines');
+          }} />}
           {view === 'notifications' && <NotificationsView
             state={notifications}
             onOpenTask={openTask}
@@ -292,6 +299,8 @@ export default function Dashboard() {
           )}
           {routinesEnabled && repository.routines && <div hidden={view !== 'routines'} className={view === 'routines' ? '' : 'hidden'}>
             <RoutinesView api={repository.routines} active={view === 'routines'}
+              playbookDraft={playbookDraft} onDraftConsumed={() => setPlaybookDraft(null)}
+              onBrowseLibrary={() => go('library')}
               selectedId={view === 'routines' ? focusedRoutineId : lastDashboard.current.routineId}
               onSelect={(id) => go('routines', undefined, null, id)} onOpenTask={openTask} />
           </div>}

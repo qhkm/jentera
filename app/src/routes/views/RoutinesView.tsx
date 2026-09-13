@@ -5,6 +5,7 @@ import { Button, LoadingState } from '@/components/ui';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useRoutines } from '@/hooks/useRoutines';
 import { RemindersPanel } from '@/components/RemindersPanel';
+import { AutomationPlaybooks } from '@/components/AutomationPlaybooks';
 import { RoutineError } from '@/lib/routines/api';
 import { occurrenceReason, occurrenceStatus, routineDate, scheduleLabel, starterSchedule } from '@/lib/routines/format';
 import {
@@ -117,15 +118,19 @@ function RoutineEditor({ editor, onChange, onReview, onCancel }: {
 
 /** Kept mounted across workspace navigation so an ambiguous write retains its
  * idempotency key. There are no persisted drafts, browser schedules or fake runs. */
-export default function RoutinesView({ api, active, selectedId, onSelect, onOpenTask }: {
+export default function RoutinesView({ api, active, selectedId, onSelect, onOpenTask, onBrowseLibrary, playbookDraft, onDraftConsumed }: {
   api: RoutinesApi; active: boolean; selectedId: string | null;
   onSelect: (id: string | null) => void; onOpenTask: (id: string) => void;
+  onBrowseLibrary?: () => void;
+  playbookDraft?: RoutineConfig | null;
+  onDraftConsumed?: () => void;
 }) {
   const { t, lang } = useI18n();
   const state = useRoutines(api, active, selectedId);
   const latest = useRef({ active, refresh: state.refresh, onSelect });
   latest.current = { active, refresh: state.refresh, onSelect };
   const [adding, setAdding] = useState(false);
+  const [library, setLibrary] = useState(false);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -143,6 +148,13 @@ export default function RoutinesView({ api, active, selectedId, onSelect, onOpen
   const detail = state.detail?.routine;
   const detailReady = !!detail && !state.detailLoading && !state.detailError && knownRoutine(detail);
   const busy = pending?.phase === 'sending';
+
+  useEffect(() => {
+    if (!active || !playbookDraft || !canAdd || pending || editor) return;
+    setEditor({ config: playbookDraft, paused: true });
+    setLibrary(false); setAdding(true); setNotice(null);
+    onDraftConsumed?.();
+  }, [active, playbookDraft, canAdd, pending, editor, onDraftConsumed]);
 
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
@@ -230,10 +242,19 @@ export default function RoutinesView({ api, active, selectedId, onSelect, onOpen
     <header className="routine-page-heading">
       <div><h1 id="routines-title" ref={heading} tabIndex={-1}>{t('routines.title')}</h1><p>{t('routines.intro')}</p></div>
       <div className="routine-actions">
+        {!editor && !pending && <Button type="button" variant="outline" onClick={() => { if (onBrowseLibrary) onBrowseLibrary(); else { setLibrary(true); setAdding(false); } }}>Automation Playbooks</Button>}
         <Button type="button" variant="ghost" aria-label={t('routines.refresh')} disabled={state.loading || busy} onClick={() => void state.refresh()}><ArrowClockwise size={19} aria-hidden="true" /></Button>
         {!editor && !pending && !adding && canAdd && !!state.data?.routines.length && <Button type="button" onClick={() => { setAdding(true); setNotice(null); }}><Plus size={18} aria-hidden="true" />{t('routines.add')}</Button>}
       </div>
     </header>
+    {playbookDraft && (editor || pending || (readsReady && !canAdd)) && <div className="routine-notice" role="status">
+      <p>Your playbook is ready to configure. {editor || pending ? 'Finish or cancel the current routine edit first.' : 'Scheduling permission or an available routine slot is required.'}</p>
+      <Button type="button" variant="ghost" onClick={onDraftConsumed}>Discard playbook draft</Button>
+    </div>}
+    {library && !editor && !pending && <AutomationPlaybooks canUse={Boolean(canAdd)} onClose={() => setLibrary(false)} onUse={config => {
+      if (!canAdd) return;
+      setEditor({ config, paused: true }); setLibrary(false); setAdding(true); setNotice(null);
+    }} />}
 
     {notice && !state.loading && !state.error && !state.detailError && !state.detailLoading && <p role="status" className="routine-notice">{t(notice)}</p>}
     {state.error ? <div className="routine-notice" role="alert"><p>{t(errorKey(state.error, true))}</p>
@@ -278,7 +299,7 @@ export default function RoutinesView({ api, active, selectedId, onSelect, onOpen
     </fieldset>}
     {showEditor && !canSchedule && <Button variant="ghost" type="button" onClick={cancel}>{t('routines.cancel')}</Button>}
 
-    {!pending && !editor && (adding || (readsReady && !selectedId && state.data!.routines.length === 0)) && <section className="routine-starters" aria-labelledby="routine-starters-title">
+    {!library && !pending && !editor && (adding || (readsReady && !selectedId && state.data!.routines.length === 0)) && <section className="routine-starters" aria-labelledby="routine-starters-title">
       <div className="routine-section-heading"><div><h2 id="routine-starters-title">{t('routines.empty')}</h2><p>{t(canManage ? 'routines.empty.detail' : 'routines.empty.readonly')}</p></div>
         {adding && <Button variant="ghost" type="button" onClick={cancel}>{t('routines.cancel')}</Button>}
       </div>
@@ -292,7 +313,7 @@ export default function RoutinesView({ api, active, selectedId, onSelect, onOpen
       })}</div>}
     </section>}
 
-    {!editor && !adding && state.data && !state.error && <>
+    {!library && !editor && !adding && state.data && !state.error && <>
       {!selectedId && <div className="routine-list" aria-busy={state.loading}>
         {state.data.routines.map((routine) => {
           const Icon = JOB_ICONS[routine.task.kind];

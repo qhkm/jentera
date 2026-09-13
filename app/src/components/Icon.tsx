@@ -73,6 +73,7 @@ import {
 
 const CHROME = {
   home: House,
+  library: Books,
   routines: ArrowsClockwise,
   chat: ChatCircle,
   activity: Lightning,

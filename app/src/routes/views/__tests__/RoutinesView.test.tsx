@@ -10,6 +10,7 @@ import { RoutineError } from '@/lib/routines/api';
 import type { Routine, RoutineAction, RoutineList, RoutineWriteResult, RoutinesApi } from '@/lib/routines/types';
 import { ROUTINE_ID, RUN_ID, historyFixture, listFixture, occurrenceFixture, routineFixture } from '@/lib/routines/__tests__/fixtures';
 import RoutinesView from '../RoutinesView';
+import { AUTOMATION_PLAYBOOKS, playbookConfig } from '@/lib/routines/playbooks';
 
 beforeEach(() => localStorage.clear());
 afterEach(() => vi.unstubAllGlobals());
@@ -70,6 +71,47 @@ async function startCreate(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('routine creation and confirmation', () => {
+  it('accepts a library draft after capability loading and keeps it paused', async () => {
+    const { api } = fixture();
+    const consumed = vi.fn();
+    render(<MemoryRouter><RepositoryProvider repository={new LocalRepository()}><I18nProvider>
+      <RoutinesView api={api} active selectedId={null} onSelect={vi.fn()} onOpenTask={vi.fn()}
+        playbookDraft={playbookConfig(AUTOMATION_PLAYBOOKS[0], '')} onDraftConsumed={consumed} />
+    </I18nProvider></RepositoryProvider></MemoryRouter>);
+    expect(await screen.findByDisplayValue('Daily business brief')).toBeVisible();
+    expect(screen.getByRole('checkbox')).toBeChecked();
+    expect(consumed).toHaveBeenCalledTimes(1);
+    expect(api.execute).not.toHaveBeenCalled();
+  });
+  it('guides a playbook into a paused routine without saving during discovery', async () => {
+    const { api } = fixture();
+    const { user } = await mount(api);
+    await user.click(screen.getByRole('button', { name: 'Automation Playbooks' }));
+    await user.click(screen.getByRole('button', { name: /Industry research brief/ }));
+    expect(screen.getByRole('heading', { name: 'Skills used' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Manage connections/ })).toHaveAttribute('href', '/app?view=business&tab=connections');
+    expect(screen.getByRole('button', { name: 'Choose schedule' })).toBeDisabled();
+    await user.type(screen.getByLabelText('What should this focus on?'), 'Malaysian coffee industry updates');
+    await user.click(screen.getByRole('checkbox', { name: /I have reviewed/ }));
+    await user.click(screen.getByRole('button', { name: 'Choose schedule' }));
+    expect(api.execute).not.toHaveBeenCalled();
+    expect(screen.getByRole('checkbox')).toBeChecked();
+    await user.click(screen.getByRole('button', { name: 'Review schedule' }));
+    expect(api.execute).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Save paused routine' }));
+    await screen.findByRole('heading', { name: 'Run history' });
+    expect(api.execute).toHaveBeenCalledOnce();
+    expect(api.execute.mock.calls[0][0]).toMatchObject({ kind: 'create', body: { enabled: false, name: 'Industry research brief', task: { kind: 'agent_task', prompt: expect.stringContaining('Malaysian coffee industry updates') } } });
+  });
+  it('does not offer activation for connector-dependent templates', async () => {
+    const { api } = fixture();
+    const { user } = await mount(api);
+    await user.click(screen.getByRole('button', { name: 'Automation Playbooks' }));
+    await user.click(screen.getByRole('button', { name: /Lead follow-up/ }));
+    expect(screen.getByText('Gmail — integration not available yet')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Choose schedule' })).not.toBeInTheDocument();
+    expect(api.execute).not.toHaveBeenCalled();
+  });
   it('reviews before creating and reads the authoritative record after saving', async () => {
     const { api } = fixture();
     const { user } = await mount(api);
