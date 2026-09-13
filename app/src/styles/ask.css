@@ -569,6 +569,44 @@ button.ask-context-link:hover {
 }
 .ask-active-shimmer { color: var(--text-secondary); }
 .ask-step-history { margin-top: 8px; }
+.ask-activity-list { gap: 14px; margin: 6px 0 4px; }
+.ask-activity-icon { flex-shrink: 0; margin-top: 3px; color: var(--text-secondary); }
+.ask-activity-heading { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.ask-activity-heading .ask-step-label { font-size: 12px; line-height: 1.5; }
+.ask-activity-count {
+  flex-shrink: 0;
+  border-radius: 5px;
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  background: rgb(var(--border-ink) / 0.06);
+}
+.ask-activity-detail { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.ask-activity-subject {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 20px;
+}
+.ask-activity-subject.is-expanded { white-space: normal; overflow-wrap: anywhere; }
+.ask-activity-expand {
+  flex-shrink: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 11px;
+  min-height: 32px;
+  margin-top: -6px;
+  padding: 6px 2px;
+  cursor: pointer;
+}
+.ask-activity-expand:hover { color: var(--accent-green); }
+.ask-activity-expand:focus-visible { outline: 2px solid var(--accent-green); outline-offset: 2px; border-radius: 3px; }
 .ask-step-history summary {
   cursor: pointer;
   color: var(--text-secondary);

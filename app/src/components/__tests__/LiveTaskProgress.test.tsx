@@ -6,6 +6,17 @@ vi.mock('@/hooks/useDetailLevel', () => ({ useDetailLevel: () => ({ advanced: fa
 
 afterEach(() => vi.useRealTimers());
 describe('honest live progress', () => {
+  it('uses compact grouped rows and an inline expansion without nested disclosures', () => {
+    const view = render(<LiveTaskProgress steps={[
+      `web_search: "${'first query '.repeat(8)}"`,
+      `web_search: "${'second query '.repeat(8)}"`,
+    ]} durable />);
+    fireEvent.click(screen.getByText('View activity · 2'));
+    expect(screen.getByLabelText('2 steps')).toHaveTextContent('×2');
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true');
+    expect(view.container.querySelectorAll('details')).toHaveLength(1);
+  });
   it('keeps task purpose over tool details but lets connection status override it', () => {
     const props = { steps: ['terminal: "python3"'], taskLabel: 'Checking your token usage', since: Date.now(), durable: true };
     const view = render(<LiveTaskProgress {...props} />);

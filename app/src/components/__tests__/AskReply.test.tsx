@@ -25,6 +25,14 @@ function mount(message: AskMessage, repo = new LocalRepository()) {
 /* Every reply used to become a task card. Conversation reads as a reply;
    only work, by request (deep) or by the server's verdict, gets the card. */
 describe('AskReply: conversation versus work', () => {
+  it.each(['done', 'streaming'] as const)('hides internal markers in %s replies', async state => {
+    const view = mount({ from: 'ai', text: '@step: Susun ringkasan dan sumber\n\nSiap boss.', state,
+      ...(state === 'streaming' ? { pendingId: 'p1' } : {}) });
+    await screen.findByText('Siap boss.');
+    expect(view.container.querySelector('.ask-reply-text')).toHaveTextContent('Siap boss.');
+    expect(view.container.querySelector('.ask-reply-text')).not.toHaveTextContent('@step');
+    expect(view.container.querySelector('.ask-reply-text')).not.toHaveTextContent('Susun ringkasan');
+  });
   it('does not claim thinking when a no-step reply has been silent for minutes', async () => {
     const { container } = mount({ from: 'ai', text: '💭 Thinking…', state: 'working',
       pendingId: 'p1', startedAt: Date.now() - 195000, lastProgressAt: Date.now() - 195000 });

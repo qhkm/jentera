@@ -594,7 +594,7 @@ export class RemoteRepository implements Repository {
   reset = () => post('/api/state/reset');
 }
 
-async function pollAsk(runId: string, onProgress?: (event: AskProgressEvent) => void, deadline = Date.now() + 16 * 60 * 1_000): Promise<AskAnswer> {
+async function pollAsk(runId: string, onProgress?: (event: AskProgressEvent) => void, deadline = Date.now() + 16 * 60 * 1_000, onPending?: () => void): Promise<AskAnswer> {
   const started = Date.now();
   let reportedHealthy = false;
   let first = true;
@@ -621,6 +621,7 @@ async function pollAsk(runId: string, onProgress?: (event: AskProgressEvent) => 
     if (failures || (!reportedHealthy && state.pending)) onProgress?.({ type: 'reconnecting', detail: 'recovered' });
     reportedHealthy = true;
     failures = 0;
+    if (state.pending) onPending?.();
     if (!state.pending && state.status === 'completed') return state;
     if (!state.pending && state.status) {
       throw new Error(state.err ?? 'Jentera could not complete that answer.');
@@ -639,6 +640,52 @@ async function streamAsk(
   return new Promise<AskAnswer>((resolve, reject) => {
     let socket: WebSocket;
     let handedOff = false;
+    let recoverySocket: WebSocket | undefined;
+    let nextReconnectAt = 0;
+    let reconnectAttempts = 0;
+    let lastSeq = 0;
+    let settled = false;
+    const restoreLiveUpdates = () => {
+      if (settled || recoverySocket || Date.now() < nextReconnectAt || reconnectAttempts >= 8) return;
+      reconnectAttempts++;
+      nextReconnectAt = Date.now() + Math.min(30_000, 1500 * 2 ** (reconnectAttempts - 1));
+      try {
+        const next = new WebSocket(websocketUrl(`/api/runs/${encodeURIComponent(runId)}/events`));
+        recoverySocket = next;
+        const handshake = globalThis.setTimeout(() => lost(), 10_000);
+        const lost = () => {
+          globalThis.clearTimeout(handshake);
+          if (recoverySocket !== next) return;
+          recoverySocket = undefined;
+          try { next.close(); } catch { /* Already closed. */ }
+        };
+        next.onopen = () => globalThis.clearTimeout(handshake);
+        next.onerror = lost;
+        next.onclose = lost;
+        next.onmessage = message => {
+          if (settled || recoverySocket !== next) return;
+          globalThis.clearTimeout(handshake);
+          forwardProgress(message.data);
+        };
+      } catch { recoverySocket = undefined; }
+    };
+    const forwardProgress = (data: unknown) => {
+      let event: { version?: unknown; seq?: unknown; type?: unknown; detail?: unknown; text?: unknown; approvalId?: unknown; kind?: unknown };
+      try { event = JSON.parse(String(data)); } catch { return; }
+      if (!event || event.version !== 1 || typeof event.type !== 'string') return;
+      // Lifecycle events replay on subscription; answer deltas are live-only.
+      if (typeof event.seq === 'number' && event.seq > 0) {
+        if (event.seq <= lastSeq) return;
+        lastSeq = event.seq;
+      }
+      if (isProgressEventType(event.type)) onProgress({
+        type: event.type,
+        ...(typeof event.detail === 'string' ? { detail: event.detail } : {}),
+        ...(typeof event.text === 'string' ? { text: event.text } : {}),
+        ...(typeof event.approvalId === 'string' ? { approvalId: event.approvalId } : {}),
+        ...(event.kind === 'stage' || event.kind === 'step' || event.kind === 'tool' ? { kind: event.kind } : {}),
+      });
+    };
     const finishFromDurableState = (recovering = true) => {
       if (handedOff) return;
       handedOff = true;
@@ -649,7 +696,12 @@ async function streamAsk(
       } catch {
         /* The handshake may have failed before a socket opened. */
       }
-      void pollAsk(runId, onProgress, deadline).then(resolve, reject);
+      void pollAsk(runId, onProgress, deadline, recovering ? restoreLiveUpdates : undefined).then(resolve, reject).finally(() => {
+        settled = true;
+        const current = recoverySocket;
+        recoverySocket = undefined;
+        try { current?.close(); } catch { /* Already closed. */ }
+      });
     };
     const timeout = globalThis.setTimeout(finishFromDurableState, 16 * 60 * 1_000);
 
@@ -663,7 +715,7 @@ async function streamAsk(
     socket.onmessage = (message) => {
       if (handedOff) return;
       let event: {
-        version?: unknown; type?: unknown; detail?: unknown; text?: unknown;
+        version?: unknown; seq?: unknown; type?: unknown; detail?: unknown; text?: unknown;
         approvalId?: unknown; kind?: unknown;
       };
       try {
@@ -672,6 +724,7 @@ async function streamAsk(
         return;
       }
       if (event.version !== 1 || typeof event.type !== 'string') return;
+      if (typeof event.seq === 'number' && event.seq > 0) lastSeq = Math.max(lastSeq, event.seq);
       if (isProgressEventType(event.type)) {
         onProgress({
           type: event.type,

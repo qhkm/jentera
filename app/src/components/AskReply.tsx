@@ -63,7 +63,9 @@ export function AskReply({
   const repo = useRepository();
   const proposal = !message.pendingId && message.state !== 'failed' ? reminderProposal(message.text, message.runId) : { text: message.text };
   const reminderDraft = proposal.draft ?? message.reminderDraft;
-  const displayText = message.pendingId ? message.text.replace(/```jentera-reminder[\s\S]*?(?:```|$)/g, '') : proposal.text;
+  // Also clean saved replies produced before the server-side marker fix.
+  const displayText = (message.pendingId ? message.text.replace(/```jentera-reminder[\s\S]*?(?:```|$)/g, '') : proposal.text)
+    .replace(/(?:^|\n)\s*(?:[-*•>]\s*)?(?:\*\*|\*)?\s*@step:[*_]{0,2}[^\n]*/gi, '');
   const [recovered, setRecovered] = useState<Artifact[]>([]);
   const [filesChecked, setFilesChecked] = useState(false);
   const imageNames = [...new Set(Array.from(displayText.matchAll(/\boutputs\/([A-Za-z0-9][A-Za-z0-9._-]{0,119}\.(?:png|jpe?g|webp|gif))\b/gi), match => match[1]))];
@@ -98,7 +100,7 @@ export function AskReply({
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(displayWorkspacePaths(proposal.text));
+      await navigator.clipboard.writeText(displayWorkspacePaths(displayText));
       setCopied(true);
       toast(t('ask.reply.copied'));
     } catch {

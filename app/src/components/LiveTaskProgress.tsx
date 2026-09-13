@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { Code, FileText, MagnifyingGlass, ListBullets } from '@phosphor-icons/react';
+import type { StepEntry } from '@/lib/task-presentation';
 import { presentTaskSteps, safeTaskProgressLabel } from '@/lib/task-presentation';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useDetailLevel } from '@/hooks/useDetailLevel';
@@ -6,6 +8,40 @@ import { TypingBubble } from '@/components/WorkSignal';
 
 function duration(seconds: number) {
   return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+function ActivityRow({ entry, bm }: { entry: StepEntry; bm: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const detail = useRef<HTMLSpanElement>(null);
+  const detailId = useId();
+  useEffect(() => {
+    const element = detail.current;
+    if (!element || expanded) return;
+    const measure = () => setOverflows(element.scrollWidth > element.clientWidth);
+    measure();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    observer?.observe(element);
+    return () => observer?.disconnect();
+  }, [entry.subject, expanded]);
+  const Icon = /Searching|research|Mencari|penyelidikan/i.test(entry.label) ? MagnifyingGlass
+    : /Reading|file|Membaca|fail/i.test(entry.label) ? FileText
+      : /command|code|arahan|kod/i.test(entry.label) ? Code : ListBullets;
+  return <li className="ask-activity-row">
+    <Icon size={15} className="ask-activity-icon" aria-hidden="true" />
+    <div className="ask-step-content">
+      <div className="ask-activity-heading">
+        <span className="ask-step-label">{entry.label}</span>
+        {entry.count > 1 && <span className="ask-activity-count" aria-label={`${entry.count} ${bm ? 'langkah' : 'steps'}`}>×{entry.count}</span>}
+      </div>
+      {entry.subject && <div className="ask-activity-detail">
+        <span ref={detail} id={detailId} className={`ask-step-subject ask-activity-subject${expanded ? ' is-expanded' : ''}`}>{entry.subject}</span>
+        {(overflows || entry.subject.length > 80) && <button type="button" className="ask-activity-expand" aria-expanded={expanded} aria-controls={detailId} onClick={() => setExpanded(value => !value)}>
+          {expanded ? (bm ? 'Ringkaskan' : 'Show less') : (bm ? 'Lihat lagi' : 'Show more')}
+        </button>}
+      </div>}
+    </div>
+  </li>;
 }
 
 /** One current label and one flat history. Transport recovery is not activity. */
@@ -45,14 +81,8 @@ export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected, c
     </p>}
     {history.length > 0 && <details className="ask-step-history">
       <summary>{bm ? 'Lihat aktiviti' : 'View activity'} · {steps.length}</summary>
-      <ol className="ask-steps" aria-label={bm ? 'Aktiviti direkodkan' : 'Recorded activity'}>
-        {history.map((entry, i) => <li key={`${i}-${entry.label}`}>
-          <div className="ask-step-content">
-            <span className="ask-step-label">{entry.label}</span>
-            {entry.subject && <span className="ask-step-subject">{entry.subject}</span>}
-            {entry.count > 1 && <span className="ask-step-meta">{entry.count} {bm ? 'langkah' : 'steps'}</span>}
-          </div>
-        </li>)}
+      <ol className="ask-steps ask-activity-list" aria-label={bm ? 'Aktiviti direkodkan' : 'Recorded activity'}>
+        {history.map((entry, i) => <ActivityRow key={`${i}-${entry.label}`} entry={entry} bm={bm} />)}
       </ol>
     </details>}
   </div>;

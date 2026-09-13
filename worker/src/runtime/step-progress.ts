@@ -39,12 +39,12 @@
    look like in the wild should be consumed here so raw narration can
    never reach the answer bubble. */
 export const STEP_LINE =
-  /^\s*(?:[-*•>]\s*)?(?:\*\*|\*)?\s*@step:[*_]{0,2}\s*/;
+  /^\s*(?:[-*•>]\s*)?(?:\*\*|\*)?\s*@step:[*_]{0,2}\s*/i;
 
 /* Whole-line matchers for defensive stripping (blank line + mixed
    `@step:` fragments should not survive either). */
 export const STEP_STRIP_RE =
-  /(?:^|\n)\s*(?:[-*•>]\s*)?(?:\*\*|\*)?\s*@step:[*_]{0,2}[^\n]*/g;
+  /(?:^|\n)\s*(?:[-*•>]\s*)?(?:\*\*|\*)?\s*@step:[*_]{0,2}[^\n]*/gi;
 
 const STEP_LABEL_LIMIT = 90;
 const STEP_BUDGET_DEFAULT = 8 * 1024;
@@ -110,7 +110,7 @@ export function createStepProgressExtractor(
         const line = buffer.slice(0, nl);
         buffer = buffer.slice(nl + 1);
         const taken = takeLine(line);
-        if (taken.steps.length > 0) {
+        if (STEP_LINE.test(line)) {
           steps.push(...taken.steps);
         } else {
           rest += `${line}\n`;

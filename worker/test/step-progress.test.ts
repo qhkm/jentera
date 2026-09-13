@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { createStepProgressExtractor, STEP_STRIP_RE } from '../src/runtime/step-progress';
+import { answerText } from '../src/runtime/answer-text';
 
 describe('step progress extractor', () => {
+  it('cleans durable answers and drops empty or over-budget narration', () => {
+    const text = '@step: Susun ringkasan dan sumber\n\nSiap boss.';
+    expect(answerText(text)).toBe('Siap boss.');
+    expect(answerText({ text })).toBe('Siap boss.');
+    const extractor = createStepProgressExtractor(0);
+    expect(extractor.push('@step: ignored\n@STEP: \nAnswer').rest).toBe('Answer');
+  });
   it('splits a complete @step line out of the answer stream', () => {
     const extractor = createStepProgressExtractor();
     const first = extractor.push('@step: Checking the docs…\n');

@@ -188,8 +188,14 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
     expect(progress).toHaveBeenLastCalledWith({ type: 'reconnecting', detail: 'recovered' });
     sockets[0].message({ version: 1, type: 'delta', text: 'stale output' });
     expect(progress).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'delta' }));
+    expect(sockets).toHaveLength(2);
+    sockets[1].message({ version: 1, type: 'delta', text: 'Fresh answer after reconnect' });
+    expect(progress).toHaveBeenLastCalledWith({ type: 'delta', text: 'Fresh answer after reconnect' });
     await vi.advanceTimersByTimeAsync(2000);
     await expect(result).resolves.toMatchObject(ANSWER);
+    progress.mockClear();
+    sockets[1].message({ version: 1, type: 'delta', text: 'too late' });
+    expect(progress).not.toHaveBeenCalled();
     expect(fetch.mock.calls.every(call => call[1]?.method !== 'POST')).toBe(true);
   });
 
