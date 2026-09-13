@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { asOwner, testEnv, truncateAll } from './harness';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asOwner, testEnv, truncateAll, fetchFake } from './harness';
 import { accessForEmail, businessHasAccess, grantActive, TRIAL_HOURS } from '../src/access';
 import { issueLoginToken, consumeLoginToken, verifySession, verifyIdentitySession, hashToken, authLandingPath } from '../src/auth';
 import { handleAccess } from '../src/routes/access';
@@ -102,5 +102,30 @@ describe('restricted access with real Postgres', () => {
     }
     expect(await asOwner(sql => sql`select email from waitlist_entry`)).toHaveLength(1);
     expect(await asOwner(sql => sql`select id from app_user`)).toHaveLength(0);
+  });
+  it('notifies only the admin once for a new waitlist address', async () => {
+    const fetch = fetchFake(async () => Response.json({ id: 'mail-1' }));
+    vi.stubGlobal('fetch', fetch);
+    try {
+      const url = new URL('http://localhost:8787/api/waitlist');
+      const pending: Promise<unknown>[] = [];
+      for (let i = 0; i < 2; i++) {
+        const response = await handleAccess(new Request(url, { method: 'POST', headers: { Origin: 'http://localhost:5173' }, body: JSON.stringify({ email: 'Waiting@example.com' }) }), testEnv({ SIGNUP_NOTICE_TO: 'qhkmdev90@gmail.com', RESEND_API_KEY: 'test-key' }), url, {}, { waitUntil: promise => { pending.push(promise); } });
+        expect(response!.status).toBe(202);
+      }
+      await Promise.all(pending);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({ to: ['qhkmdev90@gmail.com'], subject: 'New Jentera waitlist signup: waiting@example.com' });
+      expect(pending).toHaveLength(1);
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it('keeps the waitlist entry when the admin email fails', async () => {
+    vi.stubGlobal('fetch', fetchFake(async () => { throw new Error('Mail unavailable'); }));
+    try {
+      const url = new URL('http://localhost:8787/api/waitlist');
+      const response = await handleAccess(new Request(url, { method: 'POST', headers: { Origin: 'http://localhost:5173' }, body: JSON.stringify({ email: 'waiting@example.com' }) }), testEnv({ SIGNUP_NOTICE_TO: 'qhkmdev90@gmail.com', RESEND_API_KEY: 'test-key' }), url, {});
+      expect(response!.status).toBe(202);
+      expect(await asOwner(sql => sql`select email from waitlist_entry`)).toHaveLength(1);
+    } finally { vi.unstubAllGlobals(); }
   });
 });

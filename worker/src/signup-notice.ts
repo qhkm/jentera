@@ -12,6 +12,22 @@ import { sendNotice } from './email';
 
 export type SignupDoor = 'magic-link' | 'password' | 'google';
 
+/** Admin only; an unverified waitlist submission is not a new account. */
+export async function notifyWaitlist(env: Env, email: string, at: Date): Promise<boolean> {
+  const to = env.SIGNUP_NOTICE_TO?.trim();
+  if (!to) return false;
+  try {
+    return await sendNotice(env, to, `New Jentera waitlist signup: ${email}`, [
+      `${email} joined the Jentera waitlist (address not verified).`,
+      malaysiaTime(at),
+      'No account or platform access was created. No email was sent to this person.',
+    ].join('\n'));
+  } catch {
+    console.error('[waitlist-notice] admin notification failed');
+    return false;
+  }
+}
+
 const DOOR: Record<SignupDoor, string> = {
   'magic-link': 'a magic link',
   password: 'a password',

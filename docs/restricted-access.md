@@ -38,6 +38,12 @@ list-waitlist
 commit it or send from the app without a separate user request. Waitlist entries
 consent to access updates only; no feedback/discount campaign is sent here.
 
+New waitlist entries send an admin-only notification to `SIGNUP_NOTICE_TO`
+(production: `qhkmdev90@gmail.com`), using Resend in `waitUntil`. Duplicate
+submissions do not send again. The visitor receives no email. Delivery is
+best-effort, like signup notices: mail failures do not undo the entry and are
+logged, not retried. Existing entries are not emailed retroactively.
+
 The trial-code card is hidden on the normal waitlist and access pages. Invite
 recipients can open `/access?invite=1` to redeem; if not signed in, sign in first
 and reopen that link. The URL contains no secret code and does not grant access

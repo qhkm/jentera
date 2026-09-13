@@ -115,7 +115,7 @@ export default {
 
     const guarded = await guardApiRequest(request, env, url, headers);
     if (guarded) return guarded;
-    const access = await handleAccess(request, env, url, headers);
+    const access = await handleAccess(request, env, url, headers, ctx);
     if (access) return access;
 
     /* Sign-in, session and identity. Returns null when the path is not

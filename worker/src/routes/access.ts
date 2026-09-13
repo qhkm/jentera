@@ -4,8 +4,9 @@ import { authLandingPath, hashToken, readCookie, verifyIdentitySession } from '.
 import { withUser } from '../db';
 import { checkAuthRate, clientIp } from '../ratelimit';
 import { verifyTurnstile } from '../turnstile';
+import { notifyWaitlist } from '../signup-notice';
 
-export async function handleAccess(request: Request, env: Env, url: URL, cors: Record<string, string>): Promise<Response | null> {
+export async function handleAccess(request: Request, env: Env, url: URL, cors: Record<string, string>, ctx?: Pick<ExecutionContext, 'waitUntil'>): Promise<Response | null> {
   if (!['/api/access', '/api/access/redeem', '/api/waitlist'].includes(url.pathname)) return null;
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
   if (request.method === 'POST' && !(env.ALLOWED_ORIGINS ?? '').split(',').map(value => value.trim()).includes(request.headers.get('Origin') ?? '')) {
@@ -19,7 +20,14 @@ export async function handleAccess(request: Request, env: Env, url: URL, cors: R
     if (bot !== 'ok') return json({ err: 'Please complete the security check and try again.' }, 400);
     const rate = await checkAuthRate(env, request, email);
     if (rate === 'throttled-ip') return json({ err: 'Please try again later.' }, 429);
-    if (rate === 'ok') await withUser(env, sql => sql`insert into waitlist_entry (email) values (${email}) on conflict do nothing`);
+    if (rate === 'ok') {
+      const [entry] = await withUser(env, sql => sql<{ created_at: Date }[]>`insert into waitlist_entry (email) values (${email}) on conflict do nothing returning created_at`);
+      if (entry) {
+        const notice = notifyWaitlist(env, email, new Date(entry.created_at));
+        if (ctx) ctx.waitUntil(notice);
+        else await notice;
+      }
+    }
     return json({ ok: true }, 202);
   }
   const token = readCookie(request);
