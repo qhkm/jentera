@@ -118,6 +118,28 @@ async function call(method: string, path: string, cookie?: string) {
 }
 
 describe('artifacts: files the agent hands the owner', () => {
+  it('recovers earlier attachments only inside the same visible chat', async () => {
+    await upload('cat.png', 'image-bytes', { contentType: 'image/png' });
+    const chat = crypto.randomUUID();
+    const otherChat = crypto.randomUUID();
+    const followup = crypto.randomUUID();
+    const unrelated = crypto.randomUUID();
+    await asOwner(async sql => {
+      const [user] = await sql`select id from app_user where email = 'a@example.com'`;
+      await sql`insert into chat_session (id,business_id,created_by,title) values (${chat},${A},${user.id},'Images'),(${otherChat},${A},${user.id},'Other')`;
+      await sql`update run set session_id=${chat} where id=${runId}`;
+      await sql`insert into run (id,business_id,kind,trigger_shape,runtime,model,session_id) values
+        (${followup},${A},'ask','owner.ask','hermes-sprite','deepseek',${chat}),
+        (${unrelated},${A},'ask','owner.ask','hermes-sprite','deepseek',${otherChat})`;
+    });
+    const related = await jsonOf<{artifacts: {name: string}[]}>(await call('GET', `/api/artifacts?relatedRunId=${followup}`, cookieA));
+    expect(related.artifacts.map(file => file.name)).toEqual(['cat.png']);
+    for (const [id, cookie] of [[unrelated,cookieA],[followup,cookieB],[crypto.randomUUID(),cookieA]]) {
+      const result = await jsonOf<{artifacts: unknown[]}>(await call('GET', `/api/artifacts?relatedRunId=${id}`, cookie));
+      expect(result.artifacts).toEqual([]);
+    }
+    expect((await call('GET', '/api/artifacts?relatedRunId=bad', cookieA)).status).toBe(400);
+  });
   it('stores a file the runner uploads for a task, under the tenant, keyed to the run', async () => {
     const response = await upload('tech-digest.md', '# Digest\n\nThree things.');
     expect(response.status).toBe(201);

@@ -25,6 +25,21 @@ function mount(message: AskMessage, repo = new LocalRepository()) {
 /* Every reply used to become a task card. Conversation reads as a reply;
    only work, by request (deep) or by the server's verdict, gets the card. */
 describe('AskReply: conversation versus work', () => {
+  it('recovers referenced images from this chat and identifies missing deliveries', async () => {
+    const repo = new LocalRepository();
+    const file = { id: 'cat-file', runId: RUN, name: 'cute-cat.png', contentType: 'image/png', size: 10, createdAt: new Date().toISOString() };
+    const list = vi.spyOn(repo, 'listArtifacts').mockResolvedValueOnce([]).mockResolvedValueOnce([file]);
+    repo.fetchArtifact = async () => new Blob(['png'], { type: 'image/png' });
+    const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:recovered-cat');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    try {
+      const view = mount({ from: 'ai', text: 'Both attached: outputs/cute-cat.png and outputs/codex-cat.png', state: 'done', runId: RUN }, repo);
+      expect(await screen.findByRole('img', { name: 'cute-cat.png' })).toHaveAttribute('src', 'blob:recovered-cat');
+      expect(screen.getByText(/Some images weren’t attached: codex-cat.png/)).toBeVisible();
+      expect(list).toHaveBeenCalledWith({ relatedRunId: RUN, limit: 200 });
+      view.unmount();
+    } finally { create.mockRestore(); revoke.mockRestore(); }
+  });
   it('renders a completed model proposal as a prefilled confirmation card', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: false, err: 'Not found' }), { status: 404 }));
     try {

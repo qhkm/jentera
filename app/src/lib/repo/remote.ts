@@ -506,9 +506,10 @@ export class RemoteRepository implements Repository {
 
   /* Files the agent produced. The download is a plain link to the API:
      a top-level GET across sites still carries the Lax session cookie. */
-  listArtifacts = async (options: { runId?: string; limit?: number } = {}): Promise<Artifact[]> => {
+  listArtifacts = async (options: { runId?: string; relatedRunId?: string; limit?: number } = {}): Promise<Artifact[]> => {
     const params = new URLSearchParams();
     if (options.runId) params.set('runId', options.runId);
+    if (options.relatedRunId) params.set('relatedRunId', options.relatedRunId);
     if (options.limit) params.set('limit', String(options.limit));
     const query = params.toString();
     const { artifacts } = await call<{ artifacts?: unknown }>(`/api/artifacts${query ? `?${query}` : ''}`);

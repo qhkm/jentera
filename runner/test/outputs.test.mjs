@@ -36,6 +36,9 @@ test('the instruction tells the model where a file for the owner goes, and not t
   assert.match(text, /outputs\/<filename>/);
   assert.match(text, /relative display path, not a new filesystem directory/);
   assert.match(text, /do not misrepresent capabilities/);
+  assert.match(text, /copy the actual image bytes into this task's output folder/);
+  assert.match(text, /A filename in your reply does not upload a file/);
+  assert.match(text, /Never regenerate unless requested/);
 });
 
 test('content types come from the extension, with opaque bytes as the fallback', () => {

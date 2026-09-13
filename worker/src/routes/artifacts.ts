@@ -111,10 +111,12 @@ export async function handleArtifacts(
     const identity = await resolveTenant(env, request);
     if (!hasBusiness(identity)) return json({ ok: false, err: 'unauthorized' }, { status: 401 }, cors);
     const runIdParam = url.searchParams.get('runId');
+    const relatedRunId = url.searchParams.get('relatedRunId');
+    if (relatedRunId && !UUID.test(relatedRunId)) return json({ ok: false, err: 'relatedRunId must be a run id' }, { status: 400 }, cors);
     if (runIdParam && !UUID.test(runIdParam)) return json({ ok: false, err: 'runId must be a run id' }, { status: 400 }, cors);
     const limit = Number(url.searchParams.get('limit') ?? 50);
     const rows = await withTenant(env, identity.businessId, (tx) => listArtifacts(tx, identity.businessId, {
-      runId: runIdParam, limit: Number.isFinite(limit) ? limit : 50, viewer: identity.userId,
+      runId: runIdParam, relatedRunId, limit: Number.isFinite(limit) ? limit : 50, viewer: identity.userId,
     }));
     return json({ ok: true, artifacts: rows.map(artifactJson) }, {}, { ...cors, 'Cache-Control': 'private, no-store' });
   }

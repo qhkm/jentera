@@ -19,6 +19,8 @@ describe('RemoteRepository files', () => {
     expect(String(fetch.mock.calls[0][0])).toBe('/api/artifacts?runId=r1');
     await expect(repo.listArtifacts({ limit: 20 })).resolves.toEqual([artifact]);
     expect(String(fetch.mock.calls[1][0])).toBe('/api/artifacts?limit=20');
+    await expect(repo.listArtifacts({ relatedRunId: 'r2', limit: 200 })).resolves.toEqual([artifact]);
+    expect(String(fetch.mock.calls[2][0])).toBe('/api/artifacts?relatedRunId=r2&limit=200');
   });
 
   it('points a download at the API, where the session cookie travels with the click', () => {

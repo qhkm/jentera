@@ -64,15 +64,30 @@ export function AskReply({
   const reminderDraft = proposal.draft ?? message.reminderDraft;
   const displayText = message.pendingId ? message.text.replace(/```jentera-reminder[\s\S]*?(?:```|$)/g, '') : proposal.text;
   const [recovered, setRecovered] = useState<Artifact[]>([]);
+  const [filesChecked, setFilesChecked] = useState(false);
+  const imageNames = [...new Set(Array.from(displayText.matchAll(/\boutputs\/([A-Za-z0-9][A-Za-z0-9._-]{0,119}\.(?:png|jpe?g|webp|gif))\b/gi), match => match[1]))];
+  const imageKey = JSON.stringify(imageNames);
   useEffect(() => {
     let live = true;
     setRecovered([]);
-    if (message.state === 'failed' && message.runId && isRunId(message.runId)) {
-      void repo.listArtifacts?.({ runId: message.runId }).then(files => { if (live) setRecovered(files); }).catch(() => {});
+    setFilesChecked(false);
+    if (!message.pendingId && (message.state === 'failed' || (message.state === 'done' && imageKey !== '[]')) && message.runId && isRunId(message.runId) && repo.listArtifacts) {
+      const names: string[] = JSON.parse(imageKey);
+      void Promise.all([
+        repo.listArtifacts({ runId: message.runId }),
+        names.length ? repo.listArtifacts({ relatedRunId: message.runId, limit: 200 }) : Promise.resolve([]),
+      ]).then(([current, earlier]) => {
+        const files = [...current];
+        for (const file of earlier) {
+          if (names.includes(file.name) && !files.some(existing => existing.name === file.name)) files.push(file);
+        }
+        if (live) { setRecovered(files); setFilesChecked(true); }
+      }).catch(() => {});
     }
     return () => { live = false; };
-  }, [message.runId, message.state, repo]);
-  const files = message.artifacts?.length ? message.artifacts : recovered;
+  }, [message.runId, message.state, message.pendingId, imageKey, repo]);
+  const files = [...(message.artifacts ?? []), ...recovered.filter(file => !message.artifacts?.some(existing => existing.id === file.id || existing.name === file.name))];
+  const missingImages = filesChecked ? imageNames.filter(name => !files.some(file => file.name === name)) : [];
 
   useEffect(() => {
     if (!copied) return;
@@ -158,6 +173,7 @@ export function AskReply({
             {renderReplyMarkdown(displayWorkspacePaths(displayText))}
           </div>
           {files.length > 0 && <ArtifactList artifacts={files} inlineImages label={t('ask.files')} className="mt-3" />}
+          {missingImages.length > 0 && <p className="task-recovery-note" role="status">Some images weren’t attached: {missingImages.join(', ')}. Ask Jentera to attach them again.</p>}
           {failed && linkedTask ? (
             <p className="task-recovery-note">{t('task.checkBeforeRetry')}</p>
           ) : failed ? (

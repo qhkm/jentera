@@ -104,10 +104,11 @@ export async function countArtifactsForRun(
 export async function listArtifacts(
   tx: postgres.TransactionSql,
   businessId: string,
-  options: { runId?: string | null; limit?: number; viewer?: string } = {},
+  options: { runId?: string | null; relatedRunId?: string | null; limit?: number; viewer?: string } = {},
 ): Promise<ArtifactRow[]> {
   const limit = Math.max(1, Math.min(options.limit ?? 50, 200));
   const runId = options.runId ?? null;
+  const relatedRunId = options.relatedRunId ?? null;
   /* Files follow their run: a colleague's private chat keeps its files
      out of this person's list (chat-sessions.ts states the rule). */
   const viewer = options.viewer ?? null;
@@ -118,6 +119,12 @@ export async function listArtifacts(
       left join chat_session c on c.business_id = r.business_id and c.id = r.session_id
      where a.business_id = ${businessId}
        and (${runId}::uuid is null or a.run_id = ${runId}::uuid)
+       and (${relatedRunId}::uuid is null or exists (
+         select 1 from run target
+          where target.id = ${relatedRunId}::uuid and target.business_id = a.business_id
+            and target.session_id is not null and target.session_id = r.session_id
+            and r.created_at <= target.created_at
+       ))
        and ${visibleRunPredicate(tx, viewer)}
      order by a.created_at desc, a.id desc limit ${limit}`;
 }

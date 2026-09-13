@@ -429,7 +429,7 @@ export interface Repository {
   deletePushSubscription?(endpoint: string): Promise<void>;
 
   /** Files the agent produced, newest first; remote only. */
-  listArtifacts?(options?: { runId?: string; limit?: number }): Promise<Artifact[]>;
+  listArtifacts?(options?: { runId?: string; relatedRunId?: string; limit?: number }): Promise<Artifact[]>;
   /** Where a file downloads from; the session cookie travels with the click. */
   artifactUrl?(id: string): string;
   /** The file's bytes, for showing it in place. */
