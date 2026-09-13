@@ -7,6 +7,7 @@ import { ArrowUpRight, Check, Copy, Info, WarningCircle } from '@phosphor-icons/
 import { JenteraMark } from '@/components/JenteraMark';
 import { ElapsedSince, TypingBubble } from '@/components/WorkSignal';
 import { ArtifactList } from '@/components/ArtifactList';
+import { LiveTaskProgress } from '@/components/LiveTaskProgress';
 import { useToast } from '@/components/Toast';
 import { useT, useI18n } from '@/i18n/I18nProvider';
 import { displayWorkspacePaths, presentTaskSteps } from '@/lib/task-presentation';
@@ -149,7 +150,7 @@ export function AskReply({
                 {renderReplyMarkdown(displayWorkspacePaths(displayText))}
               </div>
               {message.steps?.length
-                ? <StepsList steps={message.steps} live={Boolean(message.liveStatus)} since={message.startedAt} />
+                ? <LiveTaskProgress steps={message.steps} since={message.startedAt} lastProgressAt={message.lastProgressAt} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
                 : message.liveStatus && (
                   <div className="mt-2">
                     <TypingBubble label={message.liveStatus} since={message.startedAt} />
@@ -163,7 +164,7 @@ export function AskReply({
               ? (
                 <>
                   <p className="sr-only" role="status">{message.text}</p>
-                  <StepsList steps={message.steps} live since={message.startedAt} />
+                  <LiveTaskProgress steps={message.steps} since={message.startedAt} lastProgressAt={message.lastProgressAt} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
                 </>
               )
               : <TypingBubble label={message.text} since={message.startedAt} />

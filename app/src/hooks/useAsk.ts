@@ -38,6 +38,8 @@ export interface AskMessage {
   pendingId?: string;
   /** When the question was sent; the waiting bubble counts up from it. */
   startedAt?: number;
+  /** Receipt time of real progress, not a timer pretending the worker is alive. */
+  lastProgressAt?: number;
   /** What the agent is doing while answer text is already on screen (a tool
       mid-answer); cleared by the next piece of text. */
   liveStatus?: string;
@@ -134,6 +136,7 @@ function applyProgress(message: AskMessage, event: AskProgressEvent, t: Translat
   if (event.type === 'reconnecting') return {
     ...message, connectionStatus: t(event.detail === 'recovered' ? 'ask.checkingResult' : 'ask.reconnecting'),
   };
+  message = { ...message, lastProgressAt: Date.now(), connectionStatus: undefined };
   /* The agent's own steps and tool calls read as a list; a
      repeated line is the same step, not a new one. */
   if (event.type === 'status' && (event.kind === 'step' || event.kind === 'tool')) {
