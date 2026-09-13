@@ -23,6 +23,7 @@ import { lazy, Suspense, type ReactElement } from 'react';
 const Onboard = lazy(() => import('@/routes/Onboard'));
 const Setup = lazy(() => import('@/routes/Setup'));
 const Dashboard = lazy(() => import('@/routes/Dashboard'));
+const LaunchAdmin = lazy(() => import('@/routes/LaunchAdmin'));
 
 function RouteLoading() {
   return <PageLoading title="Loading your page…" />;
@@ -114,6 +115,7 @@ export function AppRoutes() {
           <Route path="/signin" element={<SignIn />} />
           <Route path="/waitlist" element={<Access />} />
           <Route path="/access" element={<Access />} />
+          <Route path="/admin/launch" element={<LaunchAdmin />} />
           <Route path="/join" element={<Join />} />
 
           <Route element={<AppShell />}>

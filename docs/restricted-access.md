@@ -23,6 +23,15 @@ Policy when `ACCESS_MODE=waitlist`:
 
 ## Operator commands
 
+The private `/admin/launch` page is available only to the verified
+`qhkmdev90@gmail.com` account. It lists waitlist/invitation recipients in pages
+of 25, shows trial redemption and current grants, and can create email-bound
+codes. Codes appear once and are not saved in browser storage; copy them for
+manual delivery. No invitation email is sent. The first-completed-request
+metric is a completed chat run after redemption, not proof of a useful business
+outcome; only completion timestamps are shown, never chat contents. Paid grants
+and revocation remain operator commands below.
+
 Set `AISAR_NEON_OWNER_URL` securely (the script checks the reviewed production
 database). From `worker/`, use `node scripts/manage-access.mjs` with:
 

@@ -12,6 +12,7 @@ const ROUTINES_CRON = '* * * * *';
 
 import { handleSession } from './routes/session';
 import { handleAccess } from './routes/access';
+import { handleLaunchAdmin } from './routes/launch-admin';
 import { handleRepo } from './routes/repo';
 import { handleRuns } from './routes/runs';
 import { handleRoutines } from './routes/routines';
@@ -115,6 +116,8 @@ export default {
 
     const guarded = await guardApiRequest(request, env, url, headers);
     if (guarded) return guarded;
+    const launchAdmin = await handleLaunchAdmin(request, env, url, headers);
+    if (launchAdmin) return launchAdmin;
     const access = await handleAccess(request, env, url, headers, ctx);
     if (access) return access;
 

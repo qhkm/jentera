@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createServer } from 'vite';
@@ -16,7 +16,9 @@ try {
     const html = template.replace('<!--seo-head-->', () => seoHead(path)).replace('<div id="root"></div>', () => publicPage
       ? `<div id="root" data-prerendered="${path}">${renderPublic(path)}</div>` : '<div id="root"></div>');
     if (publicPage && (!html.includes('<h1') || html.includes('The server did not finish this Suspense boundary'))) throw new Error(`Incomplete public render: ${path}`);
-    await writeFile(new URL(path === '/' ? 'index.html' : `${path.slice(1)}.html`, dist), html);
+    const output = new URL(path === '/' ? 'index.html' : `${path.slice(1)}.html`, dist);
+    await mkdir(new URL('.', output), { recursive: true });
+    await writeFile(output, html);
     console.log(`Static HTML: ${path} (${publicPage && path !== '/404' ? 'indexable' : 'noindex'})`);
   }
   // Allow crawling so bots can read the noindex on private/unknown routes.
