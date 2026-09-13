@@ -68,6 +68,7 @@ export function useTurnstile() {
       if (!live || !api || !container.isConnected) return;
       widget.current = api.render(container, {
         sitekey: siteKey,
+        action: 'signin',
         appearance: 'interaction-only',
         callback: (value: string) => settle(value),
         'expired-callback': () => { token.current = null; },

@@ -20,6 +20,25 @@ type Fetcher = (input: string, init?: RequestInit) => Response | Promise<Respons
 
 /** Cloudflare caps tokens well under this; anything longer is not one. */
 const TOKEN_MAX = 2048;
+/** The widget on the sign-in page is rendered with this action, and a
+    token minted for any other is not from that page. */
+export const TURNSTILE_ACTION = 'signin';
+/** Cloudflare answers within this or the request is admitted unchecked. */
+const SITEVERIFY_TIMEOUT_MS = 10_000;
+
+/** The hostnames a token may have been minted on: the same list the
+    browser is allowed to call us from, so one setting names both. */
+function allowedHostnames(env: Env): Set<string> {
+  const hosts = new Set<string>();
+  for (const origin of (env.ALLOWED_ORIGINS ?? '').split(',')) {
+    try {
+      hosts.add(new URL(origin.trim()).hostname);
+    } catch {
+      /* A malformed entry allows nothing. */
+    }
+  }
+  return hosts;
+}
 
 export function turnstileConfigured(env: Env): boolean {
   return Boolean(env.TURNSTILE_SECRET?.trim());
@@ -41,11 +60,18 @@ export async function verifyTurnstile(
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form.toString(),
+      signal: AbortSignal.timeout(SITEVERIFY_TIMEOUT_MS),
     });
     if (!res.ok) return 'unavailable';
-    const verdict = (await res.json().catch(() => null)) as { success?: unknown } | null;
+    const verdict = (await res.json().catch(() => null)) as
+      { success?: unknown; action?: unknown; hostname?: unknown } | null;
     if (!verdict || typeof verdict.success !== 'boolean') return 'unavailable';
-    return verdict.success ? 'ok' : 'rejected';
+    if (!verdict.success) return 'rejected';
+    /* A real token, but was it made on our page? One widget can be
+       embedded on any hostname it lists, under any action. */
+    if (verdict.action !== TURNSTILE_ACTION) return 'rejected';
+    if (typeof verdict.hostname !== 'string' || !allowedHostnames(env).has(verdict.hostname)) return 'rejected';
+    return 'ok';
   } catch {
     return 'unavailable';
   }

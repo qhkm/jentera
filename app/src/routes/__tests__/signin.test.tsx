@@ -157,7 +157,7 @@ describe('the human check', () => {
     mount();
 
     await waitFor(() => expect(turnstile.render).toHaveBeenCalled());
-    expect(turnstile.render.mock.calls[0][1]).toMatchObject({ sitekey: 'site-key' });
+    expect(turnstile.render.mock.calls[0][1]).toMatchObject({ sitekey: 'site-key', action: 'signin' });
 
     await user.type(screen.getByLabelText('Email address'), 'owner@example.com');
     await user.click(screen.getByRole('button', { name: /email me a link/i }));

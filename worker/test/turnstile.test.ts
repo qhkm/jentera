@@ -10,13 +10,22 @@ import { SITEVERIFY, verifyTurnstile } from '../src/turnstile';
 const cors = { 'Access-Control-Allow-Origin': 'https://jentera.ai' };
 
 function env(over: Record<string, unknown> = {}) {
-  return testEnv({ RESEND_API_KEY: 'resend-test-key', APP_ORIGIN: 'https://jentera.ai', TURNSTILE_SECRET: 'ts-secret', ...over });
+  return testEnv({
+    RESEND_API_KEY: 'resend-test-key',
+    APP_ORIGIN: 'https://jentera.ai',
+    ALLOWED_ORIGINS: 'http://localhost:5173,https://jentera.ai',
+    TURNSTILE_SECRET: 'ts-secret',
+    ...over,
+  });
 }
 
-/** Resend answers ok; siteverify answers whatever `success` says. */
-function outbound(success: boolean) {
+/** Resend answers ok; siteverify answers whatever `success` says, for a
+    token minted on our own page unless `minted` says otherwise. */
+function outbound(success: boolean, minted: { action?: string; hostname?: string } = {}) {
   return fetchFake(async (input) =>
-    String(input) === SITEVERIFY ? Response.json({ success }) : Response.json({ id: 'email-id' }));
+    String(input) === SITEVERIFY
+      ? Response.json({ success, action: minted.action ?? 'signin', hostname: minted.hostname ?? 'jentera.ai' })
+      : Response.json({ id: 'email-id' }));
 }
 
 function post(path: string, body: Record<string, unknown>) {
@@ -56,6 +65,22 @@ describe('verifyTurnstile', () => {
     expect(form.get('remoteip')).toBe('203.0.113.9');
 
     expect(await verifyTurnstile(env(), 'tok-2', '203.0.113.9', outbound(false))).toBe('rejected');
+  });
+
+  it('rejects a real token minted for another action or another site', async () => {
+    /* One widget can be embedded anywhere its hostnames allow, and a
+       token is a token. The verdict says where it was made; a token from
+       a page on another host, or from a different action, is not ours. */
+    expect(await verifyTurnstile(env(), 'tok-4', '203.0.113.9', outbound(true, { action: 'contact' }))).toBe('rejected');
+    expect(await verifyTurnstile(env(), 'tok-5', '203.0.113.9', outbound(true, { hostname: 'evil.example' }))).toBe('rejected');
+    expect(await verifyTurnstile(env(), 'tok-6', '203.0.113.9', outbound(true, { hostname: 'localhost' }))).toBe('ok');
+  });
+
+  it('asks Cloudflare with a ten-second limit', async () => {
+    const fetchMock = outbound(true);
+    await verifyTurnstile(env(), 'tok-7', '203.0.113.9', fetchMock);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it('lets a request through when Cloudflare itself cannot be reached', async () => {
