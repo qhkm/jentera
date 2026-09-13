@@ -17,7 +17,7 @@ import { useRepository } from '@/lib/repo';
 import type { ConnectionsState } from '@/hooks/useConnections';
 import { useT } from '@/i18n/I18nProvider';
 
-export default function TokenConnect({ rows, setRows }: Pick<ConnectionsState, 'rows' | 'setRows'>) {
+export default function TokenConnect({ rows, setRows, connector }: Pick<ConnectionsState, 'rows' | 'setRows'> & { connector?: string }) {
   const repo = useRepository();
   const t = useT();
   const [catalogue, setCatalogue] = useState<{ connector: string; label: string }[]>([]);
@@ -31,14 +31,15 @@ export default function TokenConnect({ rows, setRows }: Pick<ConnectionsState, '
     repo.tokenConnectors()
       .then((list) => {
         if (cancelled) return;
-        setCatalogue(list);
-        setChosen((current) => current || list[0]?.connector || '');
+        const available = connector ? list.filter(item => item.connector === connector) : list;
+        setCatalogue(available);
+        setChosen((current) => available.some(item => item.connector === current) ? current : available[0]?.connector || '');
       })
       /* Nothing to offer is a normal state, not an error to report: the
          local repository has no provider to verify against. */
       .catch(() => { if (!cancelled) setCatalogue([]); });
     return () => { cancelled = true; };
-  }, [repo]);
+  }, [repo, connector]);
 
   if (!catalogue.length) return null;
 

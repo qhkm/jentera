@@ -16,7 +16,33 @@
 .library-card summary { cursor: pointer; min-height: 44px; display: list-item; padding-top: 10px; }
 .library-card details h4 { margin: 12px 0 8px; font-weight: 600; }
 .library-card .routine-link { min-height: 44px; margin-top: auto; }
+.connector-options { margin-top: 16px; }
+.connector-search { display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.connector-search input { width: 100%; min-width: 0; font-size: 16px; }
+.connector-list { list-style: none; padding: 0; margin: 16px 0 0; border: 1px solid var(--color-rail); border-radius: 16px; overflow: hidden; }
+.connector-list > li + li { border-top: 1px solid var(--color-rail); }
+.connector-option-row { display: flex; align-items: center; gap: 12px; padding: 14px; min-width: 0; }
+.connector-option-icon { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; color: var(--color-brand); }
+.connector-option-info { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.connector-option-info h3 { font-size: 14px; font-weight: 600; }
+.connector-option-info span, .connector-unavailable { font-size: 12px; color: var(--color-text-muted); }
+.connector-option-info .text-brand { color: var(--color-brand); }
+.connector-option-row .btn { min-height: 44px; flex-shrink: 0; padding: 8px 12px; font-size: 13px; }
+.connector-unavailable { flex-shrink: 0; }
+.connector-inline-setup { padding: 0 12px 12px; overflow-wrap: anywhere; }
+.connector-inline-setup .input { min-width: 0; max-width: 100%; }
+.connector-inline-setup > .card { padding: 16px; }
 @media (max-width: 639px) {
+  .connector-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; border: 0; border-radius: 0; overflow: visible; }
+  .connector-list > li { min-width: 0; border: 1px solid var(--color-rail); border-radius: 14px; background: var(--bg-card); }
+  .connector-option-row { height: 100%; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px; }
+  .connector-option-icon { width: 32px; height: 32px; }
+  .connector-option-info { width: 100%; }
+  .connector-option-row .btn { width: 100%; margin-top: 4px; }
+  .connector-unavailable { display: none; }
+  .connector-list > .connector-option-open { grid-column: 1 / -1; }
+  .connector-option-open .connector-option-row { height: auto; flex-direction: row; align-items: center; }
+  .connector-option-open .connector-option-row .btn { width: auto; margin-top: 0; }
   .library-view { gap: 16px; }
   .library-card { padding: 16px; gap: 8px; }
   .library-view .routine-section-heading { align-items: flex-start; }

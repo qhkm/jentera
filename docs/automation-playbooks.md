@@ -4,8 +4,11 @@ Dashboard → Library → Playbooks opens a read-only catalog and guided draft f
 Library is directly available in the mobile bottom bar; Routines is under More.
 The three equal-width Library links fit on mobile without horizontal scrolling.
 Skills lists bundled instructions and the playbooks that use them. Connectors
-shows availability and the shared live Telegram status, linking to My Business
-for account access management. Library tabs have shareable query-string URLs.
+is a searchable list of catalog apps plus server-advertised token connectors.
+Connect/Manage opens the existing Telegram or selected token setup inline;
+opening setup never connects automatically. Unsupported catalog entries have
+no connect action. Shared connection rows keep status consistent with My Business.
+Library tabs have shareable query-string URLs.
 It shows job steps, included skill instructions, connection requirements, business
 brief and intended approval boundaries before handing off to the existing routine
 editor. The user reviews the schedule and explicitly confirms the write. New

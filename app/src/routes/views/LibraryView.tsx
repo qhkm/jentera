@@ -1,5 +1,6 @@
 import { Link, useSearchParams } from 'react-router';
 import { AutomationPlaybooks } from '@/components/AutomationPlaybooks';
+import { ConnectorOptions } from '@/components/ConnectorOptions';
 import { AUTOMATION_PLAYBOOKS } from '@/lib/routines/playbooks';
 import type { RoutineConfig } from '@/lib/routines/types';
 import type { ConnectionsState } from '@/hooks/useConnections';
@@ -16,12 +17,6 @@ export default function LibraryView({ canSchedule, onUse, connections }: {
 }) {
   const [params, setParams] = useSearchParams();
   const tab = tabs.find(value => value === params.get('tab')) ?? 'playbooks';
-  const telegram = connections.rows?.find(row => row.connector === 'telegram');
-  const telegramStatus = connections.mode === 'pending' ? 'Checking connection…'
-    : connections.mode === 'error' ? 'Connection status unavailable'
-    : connections.mode === 'demo' ? 'Sign in to connect'
-    : telegram?.status === 'connected' ? telegram.paired ? 'Connected' : 'Finish pairing'
-    : 'Not connected';
   return <section className="library-view" aria-labelledby="library-title">
     <header><h1 id="library-title">Library</h1><p>Discover what Jentera can do. Your scheduled work stays in Routines.</p></header>
     <nav className="library-tabs" aria-label="Library sections">
@@ -44,13 +39,8 @@ export default function LibraryView({ canSchedule, onUse, connections }: {
       })}</div>
     </section>}
     {tab === 'connectors' && <section aria-labelledby="connectors-title">
-      <h2 id="connectors-title">Connectors</h2><p className="library-description">Apps Jentera can work with. Account access and permissions stay in My Business.</p>
-      <div className="library-grid">
-        <article className="library-card card"><span className="library-status available">Available</span><h3>Telegram</h3><p>Connect your private chat to Jentera.</p><p role="status">{telegramStatus}</p>
-          {connections.mode === 'error' && <button type="button" className="routine-link" onClick={connections.retry}>Retry status check</button>}
-          <Link className="routine-link" to="/app?view=business&tab=connections">Manage Telegram →</Link></article>
-        {['Gmail', 'CRM', 'Accounting app'].map(name => <article className="library-card card" key={name}><span className="library-status">Not available yet</span><h3>{name}</h3><p>This integration is not implemented yet. Playbooks that need it cannot be enabled.</p></article>)}
-      </div>
+      <h2 id="connectors-title">Connectors</h2><p className="library-description">Choose an app to connect. Only supported integrations can be connected; you stay in control of access.</p>
+      <ConnectorOptions connections={connections} />
     </section>}
   </section>;
 }
