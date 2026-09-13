@@ -107,6 +107,19 @@
 .computer-status-popover > svg { display: none; }
 .computer-status-popover .computer-status-actions:not(:empty) { margin-top: 12px; }
 @media (max-width: 767px) {
+  /* Chat's setup banner must not compete with the conversation for height.
+     Full guidance/actions remain in the computer icon's disclosure. */
+  section.computer-status-setup { flex-wrap: nowrap; gap: 10px; padding: 12px 14px; }
+  section.computer-status-setup .computer-status-copy { min-width: 0; width: 100%; }
+  section.computer-status-setup .computer-status-copy > p,
+  section.computer-status-setup .computer-status-actions,
+  section.computer-status-setup .computer-setup-progress small { display: none; }
+  section.computer-status-setup .computer-status-copy [role="status"] { gap: 2px 8px; font-size: 12px; }
+  section.computer-status-setup .computer-setup-progress { margin-top: 7px; max-width: none; }
+  section.computer-status-setup .computer-setup-stage { gap: 8px; }
+  section.computer-status-setup .computer-setup-stage strong { font-weight: 500; }
+  section.computer-status-setup .computer-setup-stage span { flex-shrink: 0; }
+  section.computer-status-setup .computer-setup-progress p { margin-top: 5px; line-height: 1.4; }
   .computer-status-header-slot { display: block; }
   .computer-status-mobile-hidden { display: none; }
   .workspace-shell .shell-mode-navigation { position: static; transform: none; margin-left: auto; }
