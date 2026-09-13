@@ -18,14 +18,13 @@ invitations.
 | Restore path | `provider.restore` has never run in production, and until 51c844b (12 Sep) the stored id was Fly's `Current` pseudo-entry, so a restore would have gone to the last hourly snapshot | On the poc sprite, restore to a real `vN` id and watch the runner come back on the expected release |
 | Web push on a real device | Until the evening of 12 Sep the API refused the switch's PUT twice over (CORS preflight, then the pre-route guard), so no device has ever subscribed; `push_subscription` is empty | Turn "Notifications on this device" on from a phone or desktop; the welcome push arrives; one row in `push_subscription` |
 | Turnstile on the sign-in doors | Live since 13 Sep: site key in the app build, secret on the worker; a bare link request answers 400 `TURNSTILE` | A real signup from a fresh browser passes the check and lands in the signup notice; the worker logs no `[turnstile]` warnings for a day |
-| Signup notice | Shipped 13 Sep: one email to `SIGNUP_NOTICE_TO` per new account, any door; nothing real has signed up since | The next signup lands in qhkmdev90@gmail.com with door, verified state, MYT time and the account count. To force one now, sign up with a `+alias` of your own address and delete the row afterwards |
+| Signup notice | Shipped 13 Sep 10:27 MYT; two real accounts followed at 11:28 and 12:03 | Owner confirms two emails in qhkmdev90@gmail.com with door, verified state, MYT time and the account count |
 | Document upload | `POST /api/runs/ingest/file` shipped 12 Sep; the release was verified as served, the upload itself may not have been tried live | Upload one PDF and one CSV on production; facts land unconfirmed with the file name as source |
 
 ## Next runtime release must carry
 
 | Item | Why | Done when |
 |---|---|---|
-| Real checkpoint ids on all 13 rows | Rows written before 51c844b say `latest_checkpoint_id = 'Current'`; the next clean checkpoint overwrites them | `select latest_checkpoint_id, count(*) from agent_runtime group by 1` shows only `v<number>` |
 | Hermes local cron removal on Kitakod's sprite | A one-off cleanup; sprites never own a local cron. Only the bundle makes it permanent | The release's bootstrap removes it; `fleet-exec.sh` finds none |
 | BoxCompute warning cleared | `last_error` holds the checkpoint warning while Fly's orphan `v31` exists | After Fly clears the directory, the next release checkpoints cleanly: `last_error` null, a real id |
 
@@ -71,4 +70,4 @@ Decided on 12 September to wait for a request before building. Reasoning in
 
 ## Closed
 
-_(none yet; move items here with date and commit)_
+- 13 Sep — Real checkpoint ids on 12 of 13 rows, written by release 2026.09.13-4 (fix 51c844b). BoxCompute alone still says `Current`, and will until Fly clears its orphan `v31`.
