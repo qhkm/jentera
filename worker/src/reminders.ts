@@ -1,5 +1,6 @@
 import { connect, withTenant } from './db';
 import type { Env } from './env';
+import { businessHasAccess } from './access';
 import { hasBusiness, resolveTenant } from './tenancy';
 import { createNotification } from './notifications/store';
 import { pushConfigured } from './push/send';
@@ -71,6 +72,7 @@ export async function dispatchDueReminders(env: Env, now = new Date()) {
   let delivered = 0;
   for (const target of targets) {
     try {
+      if (!(await businessHasAccess(env, target.business_id))) continue;
       await withTenant(env, target.business_id, async tx => {
         const [row] = await tx<ReminderRow[]>`select * from reminder where id = ${target.reminder_id} and status = 'scheduled'
           and due_at <= ${now.toISOString()} for update skip locked`;

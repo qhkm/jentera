@@ -20,7 +20,7 @@ import {
   EyeSlash,
   ShieldCheck,
 } from "@phosphor-icons/react";
-import { Link, useSearchParams } from "react-router";
+import { Link, Navigate, useSearchParams } from "react-router";
 import { trackActivation } from "@/lib/analytics";
 import { useTurnstile } from "@/lib/turnstile";
 import { JenteraMark } from "@/components/JenteraMark";
@@ -183,6 +183,8 @@ export default function SignIn() {
       setBusy(null);
     }
   }
+
+  if (mode === 'signup' && import.meta.env.VITE_ACCESS_MODE === 'waitlist') return <Navigate to="/waitlist" replace />;
 
   return (
     <div className="marketing-page auth-entrance min-h-dvh bg-bg text-text">

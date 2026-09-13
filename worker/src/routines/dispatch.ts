@@ -13,6 +13,7 @@
  */
 import { connect, withTenant } from '../db';
 import type { Env } from '../env';
+import { businessHasAccess } from '../access';
 import { routinesEnabledFor } from './gating';
 import { executeOccurrence } from './execute';
 import { drainRuntimeTaskOutbox } from '../runtime/consumer';
@@ -57,6 +58,7 @@ export async function dispatchDueRoutines(env: Env, now = new Date()): Promise<D
   for (const target of targets) {
     if (!routinesEnabledFor(env, target.business_id)) continue;
     try {
+      if (!(await businessHasAccess(env, target.business_id))) continue;
       const result = await withTenant(env, target.business_id, (tx) => admit(env, tx, target, now));
       if (result.outcome === 'admitted') summary.admitted += 1;
       else if (result.outcome === 'skipped') summary.skipped += 1;

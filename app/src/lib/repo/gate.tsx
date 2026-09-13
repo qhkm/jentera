@@ -117,6 +117,13 @@ async function choose(): Promise<Chosen> {
   let me: MeResponse | null = null;
   try {
     const res = await fetch(`${API}/api/me`, { credentials: 'include' });
+    if (res.status === 403) {
+      const body = await res.clone().json().catch(() => null);
+      if (body?.code === 'ACCESS_REQUIRED') {
+        window.location.replace('/access');
+        return new Promise<Chosen>(() => {});
+      }
+    }
     signedIn = res.ok;
     if (res.ok) me = (await res.json().catch(() => null)) as MeResponse | null;
   } catch {

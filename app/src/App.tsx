@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router';
+import Access from './routes/Access';
 import * as store from '@/lib/storage';
 import { useSnapshot } from '@/lib/repo';
 import { RepositoryGate, useSignedIn } from '@/lib/repo/gate';
@@ -111,6 +112,8 @@ export function AppRoutes() {
           <Route path="/" element={<Landing />} />
           <Route path="/connect" element={<Connect />} />
           <Route path="/signin" element={<SignIn />} />
+          <Route path="/waitlist" element={<Access />} />
+          <Route path="/access" element={<Access />} />
           <Route path="/join" element={<Join />} />
 
           <Route element={<AppShell />}>

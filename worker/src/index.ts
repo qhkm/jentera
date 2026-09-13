@@ -11,6 +11,7 @@
 const ROUTINES_CRON = '* * * * *';
 
 import { handleSession } from './routes/session';
+import { handleAccess } from './routes/access';
 import { handleRepo } from './routes/repo';
 import { handleRuns } from './routes/runs';
 import { handleRoutines } from './routes/routines';
@@ -114,6 +115,8 @@ export default {
 
     const guarded = await guardApiRequest(request, env, url, headers);
     if (guarded) return guarded;
+    const access = await handleAccess(request, env, url, headers);
+    if (access) return access;
 
     /* Sign-in, session and identity. Returns null when the path is not
        one of these, so the tool-contract routes below still run. */

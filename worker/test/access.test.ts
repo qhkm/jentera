@@ -1,0 +1,106 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import { asOwner, testEnv, truncateAll } from './harness';
+import { accessForEmail, businessHasAccess, grantActive, TRIAL_HOURS } from '../src/access';
+import { issueLoginToken, consumeLoginToken, verifySession, verifyIdentitySession, hashToken, authLandingPath } from '../src/auth';
+import { handleAccess } from '../src/routes/access';
+import { handleSession } from '../src/routes/session';
+
+const env = () => testEnv({ ACCESS_MODE: 'waitlist' });
+async function identity(email: string) {
+  const issued = await issueLoginToken(env(), email);
+  return (await consumeLoginToken(env(), issued.token!))!;
+}
+async function invite(code: string, email: string) {
+  const hash = await hashToken(code);
+  await asOwner(sql => sql`insert into trial_invite (token_hash, email, expires_at) values (${hash}, ${email}, now() + interval '7 days')`);
+}
+async function redeem(token: string, code: string) {
+  const url = new URL('http://localhost:8787/api/access/redeem');
+  return handleAccess(new Request(url, { method: 'POST', headers: { Origin: 'http://localhost:5173', Cookie: `aisar_session=${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) }), env(), url, {});
+}
+beforeEach(async () => {
+  await truncateAll();
+  await asOwner(sql => sql`truncate platform_access, trial_invite, trial_redemption, waitlist_entry cascade`);
+});
+describe('restricted access with real Postgres', () => {
+  it('uses exactly 72 hours and rejects expired/revoked grants', () => {
+    expect(TRIAL_HOURS).toBe(72);
+    expect(grantActive(undefined)).toBe(false);
+    expect(grantActive({ expires_at: new Date(100), revoked_at: null }, 100)).toBe(false);
+    expect(grantActive({ expires_at: null, revoked_at: new Date() })).toBe(false);
+  });
+  it('blocks old sessions while preserving identity, and allows the verified owner', async () => {
+    const free = await identity('free@example.com');
+    expect(await verifyIdentitySession(env(), free.token)).not.toBeNull();
+    expect(await verifySession(env(), free.token)).toBeNull();
+    expect(await authLandingPath(env(), free.userId)).toBe('/access');
+    const owner = await identity('qhkmdev90@gmail.com');
+    expect(await verifySession(env(), owner.token)).not.toBeNull();
+    expect((await accessForEmail(env(), 'qhkmdev90+other@gmail.com')).allowed).toBe(false);
+  });
+  it('redeems atomically once and expires 72 hours later without resetting', async () => {
+    const person = await identity('trial@example.com');
+    const code = 'a'.repeat(32);
+    await invite(code, person.email);
+    const results = await Promise.all([redeem(person.token, code), redeem(person.token, code)]);
+    expect(results.map(result => result!.status).sort()).toEqual([200, 400]);
+    expect(await verifySession(env(), person.token)).not.toBeNull();
+    await asOwner(async sql => {
+      const [row] = await sql`select extract(epoch from (expires_at - started_at)) as seconds from trial_redemption where user_id = ${person.userId}`;
+      expect(Number(row.seconds)).toBe(72 * 3600);
+      await sql`update platform_access set expires_at = now() - interval '1 second' where email = ${person.email}`;
+    });
+    expect(await verifySession(env(), person.token)).toBeNull();
+    await invite('b'.repeat(32), person.email);
+    expect((await redeem(person.token, 'b'.repeat(32)))!.status).toBe(400);
+  });
+  it('does not let a different verified address consume an email-bound invite', async () => {
+    const person = await identity('wrong@example.com');
+    await invite('c'.repeat(32), 'recipient@example.com');
+    expect((await redeem(person.token, 'c'.repeat(32)))!.status).toBe(400);
+    const recipient = await identity('recipient@example.com');
+    expect((await redeem(recipient.token, 'c'.repeat(32)))!.status).toBe(200);
+  });
+  it('closes password signup without inserting an account', async () => {
+    const url = new URL('http://localhost:8787/api/auth/signup');
+    const response = await handleSession(new Request(url, { method: 'POST', body: JSON.stringify({ email: 'new@example.com', password: 'safe password' }) }), env(), url, {});
+    expect(response!.status).toBe(403);
+    expect(await asOwner(sql => sql`select id from app_user where email = 'new@example.com'`)).toHaveLength(0);
+  });
+  it('requires an explicit paid grant, and respects revocation', async () => {
+    const person = await identity('paid@example.com');
+    await asOwner(sql => sql`insert into platform_access (email, kind, expires_at) values (${person.email}, 'paid', now() + interval '1 day')`);
+    expect(await verifySession(env(), person.token)).not.toBeNull();
+    await asOwner(sql => sql`update platform_access set revoked_at = now() where email = ${person.email}`);
+    expect(await verifySession(env(), person.token)).toBeNull();
+  });
+  it('does not grant background work merely because a business is on pro', async () => {
+    const person = await identity('pro@example.com');
+    const business = '11111111-1111-4111-8111-111111111111';
+    await asOwner(async sql => {
+      await sql`insert into business (id, name, playbook_key, plan) values (${business}, 'Pro business', 'restaurant', 'pro')`;
+      await sql`insert into membership (business_id, user_id, role) values (${business}, ${person.userId}, 'owner')`;
+    });
+    expect(await businessHasAccess(env(), business)).toBe(false);
+    await asOwner(sql => sql`insert into platform_access (email, kind, expires_at) values (${person.email}, 'paid', now() + interval '1 day')`);
+    expect(await businessHasAccess(env(), business)).toBe(true);
+  });
+  it('rejects expired invitations and cross-origin redemption', async () => {
+    const person = await identity('expiry@example.com');
+    await invite('d'.repeat(32), person.email);
+    await asOwner(sql => sql`update trial_invite set expires_at = now() - interval '1 second'`);
+    expect((await redeem(person.token, 'd'.repeat(32)))!.status).toBe(400);
+    const url = new URL('http://localhost:8787/api/access/redeem');
+    const response = await handleAccess(new Request(url, { method: 'POST', headers: { Origin: 'https://evil.test', Cookie: `aisar_session=${person.token}` }, body: JSON.stringify({ code: 'd'.repeat(32) }) }), env(), url, {});
+    expect(response!.status).toBe(403);
+  });
+  it('deduplicates waitlist submissions without creating users', async () => {
+    const url = new URL('http://localhost:8787/api/waitlist');
+    for (let i = 0; i < 2; i++) {
+      const response = await handleAccess(new Request(url, { method: 'POST', headers: { Origin: 'http://localhost:5173' }, body: JSON.stringify({ email: 'Waiting@example.com' }) }), env(), url, {});
+      expect(response!.status).toBe(202);
+    }
+    expect(await asOwner(sql => sql`select email from waitlist_entry`)).toHaveLength(1);
+    expect(await asOwner(sql => sql`select id from app_user`)).toHaveLength(0);
+  });
+});

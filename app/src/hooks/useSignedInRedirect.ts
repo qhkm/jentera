@@ -16,7 +16,11 @@ export function useSignedInRedirect(to = '/app'): void {
     if (!api) return;
     const controller = new AbortController();
     void fetch(`${api}/api/me`, { credentials: 'include', signal: controller.signal })
-      .then((res) => {
+      .then(async (res) => {
+        if (res.status === 403 && !controller.signal.aborted) {
+          const body = await res.json().catch(() => null);
+          if (body?.code === 'ACCESS_REQUIRED') navigate('/access', { replace: true });
+        }
         if (res.ok && !controller.signal.aborted) navigate(to, { replace: true });
       })
       .catch(() => {

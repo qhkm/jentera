@@ -28,6 +28,8 @@ import {
   s256,
 } from '../oauth';
 import { notifySignup, type SignupDoor } from '../signup-notice';
+import { accessForEmail, restrictedAccess } from '../access';
+import { verifyIdentitySession } from '../auth';
 import { verifyTurnstile } from '../turnstile';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
@@ -155,6 +157,7 @@ export async function handleSession(
   /* ---- password: sign up --------------------------------------------- */
 
   if (url.pathname === '/api/auth/signup' && request.method === 'POST') {
+    if (restrictedAccess(env)) return json({ ok: false, code: 'WAITLIST', err: 'Public signup is closed. Join the waitlist or sign in to redeem an invite code.' }, { status: 403 }, cors);
     const body = (await request.json().catch(() => ({}))) as {
       email?: string;
       password?: string;
@@ -351,7 +354,8 @@ export async function handleSession(
   /* ---- who am I ------------------------------------------------------ */
   if (url.pathname === '/api/me' && request.method === 'GET') {
     const token = readCookie(request);
-    const identity = token ? await verifySession(env, token) : null;
+    const identity = token ? await verifyIdentitySession(env, token) : null;
+    if (identity && !(await accessForEmail(env, identity.email)).allowed) return json({ ok: false, code: 'ACCESS_REQUIRED', next: '/access' }, { status: 403 }, cors);
     if (!identity) return json({ ok: false, err: 'not signed in' }, { status: 401 }, cors);
     /* Capability discovery: the frontend shows Routines, and the Team tab,
        only when this says so, and the routes enforce the same answer on

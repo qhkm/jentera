@@ -9,6 +9,7 @@
 import type postgres from 'postgres';
 import type { Env } from './env';
 import { withTenant, withUser } from './db';
+import { accessForEmail, restrictedAccess } from './access';
 
 /** 15 minutes. Long enough to walk to a laptop, short enough to matter. */
 const LINK_TTL_MS = 15 * 60 * 1000;
@@ -80,9 +81,16 @@ export interface Session {
  * durably starts its Hermes runtime. Existing members resume the first
  * unfinished stage instead of relying on a later client-side bounce.
  */
-export type AuthLandingPath = '/onboard' | '/setup' | '/app';
+export type AuthLandingPath = '/onboard' | '/setup' | '/app' | '/access';
 
 export async function authLandingPath(env: Env, userId: string): Promise<AuthLandingPath> {
+  if (restrictedAccess(env)) {
+    const email = await withUser(env, async sql => {
+      const [user] = await sql<{ email: string }[]>`select email from app_user where id = ${userId} and email_verified = true`;
+      return user?.email;
+    });
+    if (!email || !(await accessForEmail(env, email)).allowed) return '/access';
+  }
   const businessId = await withUser(env, async (sql) => {
     /* The same rule as verifySession: a staff seat counts only while the
        business is on the team plan (business_plan is the definer helper,
@@ -347,6 +355,13 @@ export interface Identity {
 
 /** Resolve a session cookie to an identity, or null. */
 export async function verifySession(env: Env, token: string): Promise<Identity | null> {
+  const identity = await verifyIdentitySession(env, token);
+  if (identity && !(await accessForEmail(env, identity.email)).allowed) return null;
+  return identity;
+}
+
+/** Authentication only, for the access page and code redemption; never product routes. */
+export async function verifyIdentitySession(env: Env, token: string): Promise<Identity | null> {
   const id = await hashToken(token);
   return withUser(env, async (sql) => {
     const rows = await sql<
@@ -366,6 +381,7 @@ export async function verifySession(env: Env, token: string): Promise<Identity |
        where s.id = ${id}
          and s.revoked_at is null
          and s.expires_at > now()
+         and (${!restrictedAccess(env)} or u.email_verified = true)
        order by case m.role when 'owner' then 0 when 'staff' then 1 else 2 end,
                 m.business_id
        limit 1

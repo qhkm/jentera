@@ -30,6 +30,7 @@
    ============================================================ */
 
 import type { Env } from '../env';
+import { businessHasAccess, restrictedAccess } from '../access';
 import { prepareModelPayload, readModelBody } from '../model-payload';
 import {
   JenteraKeyError,
@@ -43,7 +44,7 @@ import {
 } from '../fmcv-verifier';
 import { modelCostMicrousd } from '../runtime/usage';
 import { runtimeModelBaseAllowed } from '../runtime/execution';
-import { connect } from '../db';
+import { connect, withUser } from '../db';
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_IMAGE_BODY_BYTES = 8 * 1024 * 1024;
@@ -99,6 +100,13 @@ export async function handleModelProxy(
   /* Admission: the signed ceiling inside the credential, checked against
      the spend ledger. Read-before-write, so concurrent completions can
      overshoot by the cost of in-flight requests; bounded and acceptable. */
+  if (restrictedAccess(env)) {
+    const businessId = await withUser(env, async sql => {
+      const [row] = await sql<{ business_id: string | null }[]>`select public.runtime_business_for_rider(${claims.rid}) as business_id`;
+      return row?.business_id;
+    });
+    if (!businessId || !(await businessHasAccess(env, businessId))) return jsonError(403, 'Platform access required', headers);
+  }
   const budget = await riderBudgetStatus(env, claims.rid, new Date());
   if (!budget.allowed) {
     return jsonError(429, 'monthly model budget exhausted', headers, 429, 'budget_exceeded');

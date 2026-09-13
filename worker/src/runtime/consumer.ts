@@ -7,6 +7,7 @@
    ============================================================ */
 
 import type { Env } from '../env';
+import { businessHasAccess } from '../access';
 import { assessTaskOutcome, assessmentAnswer, taskAssessmentForRun } from '../task-outcome';
 import { connect, withTenant } from '../db';
 import { ensureProviderRuntime } from './provision';
@@ -520,6 +521,7 @@ export async function handleRuntimeQueueMessage(
 ): Promise<RuntimeQueueMessageResult> {
   if (message.version === 1) return handleRuntimeMessage(env, message, options);
   if (!validTelegramIntake(message)) return { action: 'ack', reason: 'missing' };
+  if (!(await businessHasAccess(env, message.businessId))) return { action: 'ack', reason: 'missing' };
   telegramLatency('queue_received', message.requestedAtMs);
 
   const dedupeKey = `telegram:${message.connectionId}:${message.incoming.chatId}:` +
@@ -883,6 +885,7 @@ export async function handleRuntimeMessage(
   if (message.version !== 1 || !uuid(message.businessId) || !uuid(message.taskId)) {
     return { action: 'ack', reason: 'missing' };
   }
+  if (!(await businessHasAccess(env, message.businessId))) return { action: 'ack', reason: 'missing' };
 
   const leaseToken = options.preleased?.leaseToken ?? crypto.randomUUID();
   const leaseStartedAt = Date.now();

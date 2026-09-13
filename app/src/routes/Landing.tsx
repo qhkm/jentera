@@ -397,8 +397,8 @@ export default function Landing() {
               </h1>
               <p className="lp-hero-description">{HERO.detail}</p>
               <div className="lp-actions">
-                <Link to="/signin?mode=signup" className="btn btn-primary">
-                  {HERO.ctaPrimary}
+                <Link to={import.meta.env.VITE_ACCESS_MODE === 'waitlist' ? '/waitlist' : '/signin?mode=signup'} className="btn btn-primary">
+                  {import.meta.env.VITE_ACCESS_MODE === 'waitlist' ? 'Join waitlist' : HERO.ctaPrimary}
                   <ArrowUpRight size={16} aria-hidden="true" />
                 </Link>
                 <a href="#product-tour" className="lp-text-link">
@@ -651,8 +651,8 @@ export default function Landing() {
               <br />
               <span>Less time on the admin.</span>
             </h2>
-            <Link to="/signin?mode=signup" className="btn btn-primary">
-              Set up Jentera <ArrowUpRight size={16} aria-hidden="true" />
+            <Link to={import.meta.env.VITE_ACCESS_MODE === 'waitlist' ? '/waitlist' : '/signin?mode=signup'} className="btn btn-primary">
+              {import.meta.env.VITE_ACCESS_MODE === 'waitlist' ? 'Join waitlist' : 'Set up Jentera'} <ArrowUpRight size={16} aria-hidden="true" />
             </Link>
             <p>Start with one job that keeps taking up your time.</p>
           </div>

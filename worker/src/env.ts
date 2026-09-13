@@ -1,4 +1,6 @@
 export interface Env {
+  /** Enable only after migration 041 and confirmed paid grants are installed. */
+  ACCESS_MODE?: 'open' | 'waitlist';
   /** Postgres on Neon, pooled through Hyperdrive. */
   HYPERDRIVE: Hyperdrive;
   /** Comma-separated list of origins permitted to call this API. */
