@@ -1119,6 +1119,14 @@ describe('sprite keepalive hold', () => {
 });
 
 describe('per-run deadline by response mode', () => {
+  it('uses the installed route for direct DeepSeek while retaining canonical task pricing', async () => {
+    const body = await dispatchBody(testEnv({
+      RUNTIME_RELEASE: '2026.09.01-3', AISAR_MODEL_NAME: 'deepseek-flash',
+      AISAR_MODEL_BASE: 'https://api.deepseek.com',
+    }), { input: 'hello', model: 'deepseek-flash', responseMode: 'deep' });
+    expect(body).not.toHaveProperty('model');
+    expect(body.responseMode).toBe('deep');
+  });
   const env = () => testEnv({ RUNTIME_RELEASE: '2026.09.01-3', AISAR_MODEL_NAME: 'MiniMax-M3' });
 
   /* On 2026-09-03 a two-word Telegram follow-up ran on the sprite for

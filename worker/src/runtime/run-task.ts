@@ -22,6 +22,7 @@ import { append } from '../runs';
 import type { ResponseMode } from './response-mode';
 import { modelForResponseMode } from './response-mode';
 import { specialistProfileValid, type SpecialistProfile } from '../specialists';
+import { isDirectDeepSeek } from '../model-upstream';
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped', 'expired']);
 
@@ -233,7 +234,11 @@ export async function dispatchRuntimeRun(
     instructions: payload.instructions,
     profile: payload.profile,
     responseMode: payload.responseMode,
-    model,
+    // Existing runners admit only their bootstrapped model names. Let their
+    // Quick/Deep default select that route; the proxy maps its legacy DeepSeek
+    // alias to the canonical model. New runners already default to canonical.
+    // Keep the canonical `model` above for reservation/accounting.
+    model: isDirectDeepSeek(env) && model === 'deepseek-flash' ? undefined : model,
     toolGrant,
     /* Absolute deadline derived from the persisted reservation start, so a
        retry reuses the same value instead of refreshing it (runner contract:
