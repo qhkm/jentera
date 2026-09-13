@@ -70,6 +70,7 @@ Decided on 12 September to wait for a request before building. Reasoning in
 
 ## Closed
 
+- 13 Sep — Step messages under a reply read again: the runner keeps the program of a command, the app folds runs of one kind into one line with a count and shows every step at the advanced level (ca66bbd, runtime 2026.09.13-5). Arguments stay hidden.
 - 13 Sep — Installed app now looks for a release on every return to the foreground and hourly while open (`pwa/update-checks.ts`); the prompt still waits for a tap.
 - 13 Sep — Service worker cache header on jentera.ai: dropped, not fixed. Only `/sw.js` gets the zone's `max-age=14400`; HTML, manifest and offline page keep their `no-cache`, old deployments' assets still resolve, and browsers bypass the HTTP cache for a service worker's main script on every update check (`updateViaCache` defaults to `imports`). The header changes nothing a user can see. What delays a phone is the update prompt (`registerType: 'prompt'`) and the check cadence, not the cache.
 - 13 Sep — Real checkpoint ids on 12 of 13 rows, written by release 2026.09.13-4 (fix 51c844b). BoxCompute alone still says `Current`, and will until Fly clears its orphan `v31`.

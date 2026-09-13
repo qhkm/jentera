@@ -55,6 +55,7 @@ function programOf(command: string): string | undefined {
     const token = raw.replace(/^[({]+/, '');
     if (!token) continue;
     if (/[<>|&;`$!]/.test(token)) continue;
+    if (token.startsWith('-')) continue;                 // a flag of a skipped wrapper, never a program
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) continue;
     if (/^(?:sudo|env|nohup|time|exec|command)$/.test(token)) continue;
     const name = token.slice(token.lastIndexOf('/') + 1);

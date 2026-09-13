@@ -80,6 +80,15 @@ describe('the steps under a reply', () => {
     expect(JSON.stringify(entries)).not.toMatch(/token=abc|\/home\/sprite|hermes|Hermes|sprite exec/);
   });
 
+  it('never takes a flag for a program', () => {
+    const subjects = presentTaskSteps([
+      '💻 terminal: "command -v codex"',
+      '💻 terminal: "sudo -n true"',
+      '💻 terminal: "-v"',
+    ], 'en', { advanced: true }).map((e) => e.subject);
+    expect(subjects).toEqual(['codex', 'true', undefined]);
+  });
+
   it('bounds what one line can carry', () => {
     const programs = ['a', 'b', 'c', 'd', 'e', 'f'].map((p) => `💻 terminal: "${p}"`);
     expect(presentTaskSteps(programs, 'en', { advanced: false })).toEqual([{ label: 'Working on Jentera’s computer', subject: 'a, b, c, d', count: 6 }]);

@@ -955,4 +955,10 @@ test('commandProgram edge cases: operators, heredocs, wrappers, and names that a
   assert.equal(commandProgram('API=x hermes-agent run'), '');
   assert.equal(commandProgram('sprite exec ls'), '');
   assert.equal(commandProgram('flyctl status'), '');
+  /* Seen in production the hour this shipped: `command -v codex` read as "-v". */
+  assert.equal(commandProgram('command -v codex'), 'codex');
+  assert.equal(commandProgram('sudo -n true'), 'true');
+  assert.equal(commandProgram('env -i PATH=/usr/bin ls'), 'ls');
+  assert.equal(commandProgram('-v'), '');
+  assert.equal(commandProgram('--help'), '');
 });
