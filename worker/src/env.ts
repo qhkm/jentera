@@ -137,6 +137,9 @@ export interface Env {
   /** Override the sender, e.g. for a staging origin. Must be a domain
       verified in Resend, and should match APP_ORIGIN. */
   MAGIC_FROM?: string;
+  /** Where a plain-text notice goes each time a new account is made,
+      through any door. Unset: nobody is told. A var, not a secret. */
+  SIGNUP_NOTICE_TO?: string;
   /** How long any dispatch keeps the Sprite held active past the dispatch
       (hours) — all plans since 2026-09-01 (launch posture). Refreshed on
       every dispatch; a silent business releases itself after this window.

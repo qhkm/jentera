@@ -27,7 +27,7 @@ beforeEach(async () => {
    connection rather than an Env precisely so this suite can run the
    same SQL production runs. */
 async function googleClaims(email: string, subject: string, name: string | null) {
-  return asApp((sql) => claimGoogleIdentity(sql, { email, subject, name }));
+  return asApp((sql) => claimGoogleIdentity(sql, { email, subject, name })).then((r) => r.userId);
 }
 
 describe('password hashing', () => {
@@ -214,6 +214,34 @@ describe('account linking', () => {
     );
     expect(row.password_hash).toBe(original);
     expect(row.email_verified).toBe(true);
+  });
+});
+
+describe('a new account announces itself', () => {
+  /* The signup notice needs to know whether a sign-in made an account
+     or returned to one, and all three doors are upserts. The signal is
+     read off the same statement, not guessed from a prior lookup. */
+  it('a magic link reports creation once, then returning', async () => {
+    const env = testEnv();
+    const first = await issueLoginToken(env, 'fresh@example.com');
+    expect((await consumeLoginToken(env, first.token!))?.created).toBe(true);
+
+    const again = await issueLoginToken(env, 'fresh@example.com');
+    expect((await consumeLoginToken(env, again.token!))?.created).toBe(false);
+  });
+
+  it('Google reports creation once, and never for an address that already had an account', async () => {
+    const claim = (email: string, subject: string) =>
+      asApp((sql) => claimGoogleIdentity(sql, { email, subject, name: null }));
+
+    expect((await claim('brand-new@example.com', 'sub-new')).created).toBe(true);
+    expect((await claim('brand-new@example.com', 'sub-new')).created).toBe(false);
+
+    await asOwner(
+      (sql) => sql`insert into app_user (email, password_hash, email_verified)
+                   values ('signed-up@example.com', ${DUMMY_HASH}, false)`,
+    );
+    expect((await claim('signed-up@example.com', 'sub-claim')).created).toBe(false);
   });
 });
 

@@ -27,6 +27,7 @@ import {
   randomUrlSafe,
   s256,
 } from '../oauth';
+import { notifySignup, type SignupDoor } from '../signup-notice';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -63,7 +64,16 @@ export async function handleSession(
   env: Env,
   url: URL,
   cors: Record<string, string>,
+  deps: { ctx?: ExecutionContext } = {},
 ): Promise<Response | null> {
+  /* The operator's notice rides behind the response when a context is
+     there to carry it, and is awaited only where there is none (tests). */
+  const announce = async (email: string, door: SignupDoor) => {
+    const notice = notifySignup(env, { email, door });
+    if (deps.ctx) deps.ctx.waitUntil(notice);
+    else await notice;
+  };
+
   /* ---- request a link ---------------------------------------------- */
   if (url.pathname === '/api/auth/request' && request.method === 'POST') {
     const { email } = (await request.json().catch(() => ({}))) as { email?: string };
@@ -114,6 +124,7 @@ export async function handleSession(
         headers: { Location: `${env.APP_ORIGIN}/signin?error=expired` },
       });
     }
+    if (session.created) await announce(session.email, 'magic-link');
 
     return new Response(null, {
       status: 302,
@@ -146,6 +157,7 @@ export async function handleSession(
 
     if (verdict === 'ok') {
       const outcome = await signUpWithPassword(env, addr, await hashPassword(body.password!));
+      if (outcome === 'created') await announce(addr, 'password');
       /* Either way a link goes to the address, and either way the
          answer below is the same. On 'created' the link verifies the
          new account; on 'exists' it is an ordinary sign-in link for
@@ -302,6 +314,7 @@ export async function handleSession(
     if (!profile.emailVerified) return fail('google-unverified');
 
     const session = await signInWithGoogle(env, profile);
+    if (session.created) await announce(profile.email, 'google');
     return new Response(null, {
       status: 302,
       headers: [

@@ -101,6 +101,15 @@ the evening of 12 September, so the notifications switch read "not
 available" on every device while curl against the route and the route's
 tests both passed; `test/cors.test.ts` now scans the routes against both.
 
+Every new account sends one plain-text notice to `SIGNUP_NOTICE_TO` (a
+var in `wrangler.toml`; unset means nobody is told): the address, which
+door, whether the address is verified yet, the time in Malaysia and the
+running account count. All three doors are upserts, so `Session.created`
+is read off the same statement (`xmax = 0`) rather than guessed from a
+lookup before it, and a return visit never sends. The routes hand the send
+to `ctx.waitUntil` behind the response (`signup-notice.ts`), so Resend
+being slow or down cannot delay or fail a sign-in.
+
 `/api/auth/request` is rate limited three ways: an edge burst binding
 (5/60s per IP), and Postgres counters of 50/24h per IP and 10/24h per
 address. IP limits answer 429; the per-address one answers 204, because

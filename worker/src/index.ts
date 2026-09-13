@@ -117,7 +117,7 @@ export default {
 
     /* Sign-in, session and identity. Returns null when the path is not
        one of these, so the tool-contract routes below still run. */
-    const session = await handleSession(request, env, url, headers);
+    const session = await handleSession(request, env, url, headers, { ctx });
     if (session) return session;
 
     const events = await handleEvents(request, env, url, headers);

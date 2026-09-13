@@ -65,7 +65,12 @@ export async function issueLoginToken(env: Env, email: string): Promise<IssueRes
 export interface Session {
   token: string;
   userId: string;
+  email: string;
   expiresAt: Date;
+  /** True when this sign-in made the account rather than returning to
+      it. All three doors are upserts; the flag is read off the same
+      statement (`xmax = 0`), never guessed from a lookup before it. */
+  created: boolean;
 }
 
 /**
@@ -135,7 +140,7 @@ export async function consumeLoginToken(env: Env, token: string): Promise<Sessio
        signed up on this address, which is not necessarily the person who
        just proved they own it. Verifying the address must not activate
        that password. A verified owner keeps theirs. */
-    const [user] = await sql<{ id: string }[]>`
+    const [user] = await sql<{ id: string; created: boolean }[]>`
       insert into app_user (email, last_seen_at, email_verified)
       values (${email}, now(), true)
       on conflict (email) do update
@@ -144,10 +149,10 @@ export async function consumeLoginToken(env: Env, token: string): Promise<Sessio
             password_hash = case when app_user.email_verified
                                  then app_user.password_hash
                                  else null end
-      returning id
+      returning id, (xmax = 0) as created
     `;
 
-    return startSession(sql, user.id);
+    return startSession(sql, user.id, email, user.created);
   });
 }
 
@@ -158,14 +163,19 @@ export async function consumeLoginToken(env: Env, token: string): Promise<Sessio
  * produce sessions with identical lifetime and storage. Only hashes
  * are written; the returned token exists nowhere but the cookie.
  */
-async function startSession(sql: postgres.Sql, userId: string): Promise<Session> {
+async function startSession(
+  sql: postgres.Sql,
+  userId: string,
+  email: string,
+  created = false,
+): Promise<Session> {
   const sessionToken = mintToken();
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
   await sql`
     insert into session (id, user_id, expires_at)
     values (${await hashToken(sessionToken)}, ${userId}, ${expiresAt})
   `;
-  return { token: sessionToken, userId, expiresAt };
+  return { token: sessionToken, userId, email, expiresAt, created };
 }
 
 /* ---------- password ------------------------------------------------ */
@@ -232,7 +242,7 @@ export async function loginWithPassword(
     if (!user.email_verified) return 'unverified';
 
     await sql`update app_user set last_seen_at = now() where id = ${user.id}`;
-    return startSession(sql, user.id);
+    return startSession(sql, user.id, email);
   });
 }
 
@@ -265,8 +275,8 @@ export async function signInWithGoogle(
   profile: { subject: string; email: string; name: string | null },
 ): Promise<Session> {
   return withUser(env, async (sql) => {
-    const userId = await claimGoogleIdentity(sql, profile);
-    return startSession(sql, userId);
+    const { userId, created } = await claimGoogleIdentity(sql, profile);
+    return startSession(sql, userId, profile.email, created);
   });
 }
 
@@ -282,7 +292,7 @@ export async function signInWithGoogle(
 export async function claimGoogleIdentity(
   sql: postgres.Sql,
   profile: { subject: string; email: string; name: string | null },
-): Promise<string> {
+): Promise<{ userId: string; created: boolean }> {
   {
     const [linked] = await sql<{ user_id: string }[]>`
       select user_id from oauth_identity
@@ -290,11 +300,12 @@ export async function claimGoogleIdentity(
     `;
 
     let userId: string;
+    let created = false;
     if (linked) {
       userId = linked.user_id;
       await sql`update app_user set last_seen_at = now() where id = ${userId}`;
     } else {
-      const [user] = await sql<{ id: string; email_verified: boolean }[]>`
+      const [user] = await sql<{ id: string; email_verified: boolean; created: boolean }[]>`
         insert into app_user (email, name, last_seen_at, email_verified)
         values (${profile.email}, ${profile.name}, now(), true)
         on conflict (email) do update
@@ -308,9 +319,10 @@ export async function claimGoogleIdentity(
                                    then app_user.password_hash
                                    else null end,
               name = coalesce(app_user.name, excluded.name)
-        returning id, email_verified
+        returning id, email_verified, (xmax = 0) as created
       `;
       userId = user.id;
+      created = user.created;
       await sql`
         insert into oauth_identity (provider, subject, user_id, email)
         values ('google', ${profile.subject}, ${userId}, ${profile.email})
@@ -318,7 +330,7 @@ export async function claimGoogleIdentity(
       `;
     }
 
-    return userId;
+    return { userId, created };
   }
 }
 
