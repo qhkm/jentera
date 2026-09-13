@@ -177,10 +177,10 @@ describe('AskReply: the agent\'s steps', () => {
     await waitFor(() => expect(container.querySelector('.ask-steps')).not.toBeNull());
     const items = Array.from(container.querySelectorAll('.ask-steps li'));
     expect(items.map((li) => li.textContent)).toEqual(
-      expect.arrayContaining([expect.stringContaining('Working through the task'), expect.stringContaining('Reading information')]),
+      expect.arrayContaining([expect.stringContaining('Continuing the task'), expect.stringContaining('Reading information')]),
     );
     expect(items.at(-1)?.getAttribute('aria-current')).toBe('step');
-    expect(container.querySelector('details')).toBeNull();
+    expect(container.querySelector('details')).not.toHaveAttribute('open');
   });
 
   it('keeps the steps as a collapsed receipt under the finished answer', async () => {
@@ -221,10 +221,11 @@ describe('AskReply: the agent\'s steps', () => {
       steps: [`🔍 web_search: "${query}"`, `🔍 web_search: "${query}"`],
     });
     await waitFor(() => expect(container.querySelector('.ask-step-content')).not.toBeNull());
-    const content = container.querySelector('.ask-step-content')!;
+    const content = container.querySelector('[aria-current="step"] .ask-step-content')!;
     expect(content.querySelector('.ask-step-label')).toHaveTextContent('Searching for information');
     expect(content.querySelector('.ask-step-subject')).toHaveTextContent(query);
-    expect(content.querySelector('.ask-step-meta .ask-step-count')).toHaveTextContent('2 steps');
+    expect(container.querySelector('summary')).toHaveTextContent('1 step completed');
+    expect(content.querySelector('.ask-step-meta')).toHaveTextContent('8s');
   });
 });
 

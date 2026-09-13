@@ -567,13 +567,42 @@ button.ask-context-link:hover {
   background: var(--accent-green);
   animation: ask-step-pulse 1.2s ease-in-out infinite;
 }
+.ask-active-shimmer { color: var(--text-secondary); }
+.ask-step-history { margin-top: 8px; }
+.ask-step-history summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 8px 0;
+  min-height: 36px;
+}
+.ask-step-history summary:focus-visible {
+  outline: 2px solid var(--accent-green);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  @supports (background-clip: text) {
+    .ask-active-shimmer {
+      background: linear-gradient(105deg, var(--text-secondary) 35%, var(--text) 48%, var(--accent-green) 52%, var(--text-secondary) 65%);
+      background-size: 250% 100%;
+      background-clip: text;
+      color: transparent;
+      animation: ask-text-shimmer 2.8s linear infinite;
+    }
+  }
+}
+@keyframes ask-text-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
 @media (prefers-reduced-motion: reduce) {
   .ask-step-dot {
     animation: none;
   }
 }
 @keyframes ask-step-pulse {
-  0%, 100% { opacity: 0.35; }
+  0%, 100% { opacity: 0.75; }
   50% { opacity: 1; }
 }
 .ask-reply-steps .ask-steps {

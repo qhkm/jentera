@@ -92,7 +92,7 @@ export function TypingBubble({ label, since, active = true }: { label: string; s
       </span> : <span className="h-2 w-2 shrink-0 rounded-full bg-text-muted" aria-hidden="true" />}
       <span
         role="status"
-        className="min-w-0 text-[13px] font-medium leading-snug text-text-secondary"
+        className={`min-w-0 text-[13px] font-medium leading-snug text-text-secondary${active ? ' ask-active-shimmer' : ''}`}
       >
         {label}
         {seconds !== null && seconds >= 1 ? (

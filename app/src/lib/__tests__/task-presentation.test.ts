@@ -55,15 +55,15 @@ describe('the steps under a reply', () => {
 
   it('treats narration as work, folded, with nothing quoted from it', () => {
     const entries = presentTaskSteps(['Searching for headlines', 'Hermes on Sprite: token=private-code', 'Summarising'], 'en', { advanced: false });
-    expect(entries).toEqual([{ label: 'Working through the task', subject: undefined, count: 3 }]);
+    expect(entries).toEqual([{ label: 'Continuing the task', subject: undefined, count: 3 }]);
   });
 
   it('handles the bare, empty and odd shapes a trace can hold', () => {
     expect(presentTaskSteps([], 'en', { advanced: false })).toEqual([]);
     expect(presentTaskSteps(['🔍 web_search...'], 'en', { advanced: false })).toEqual([{ label: 'Searching for information', subject: undefined, count: 1 }]);
-    expect(presentTaskSteps(['terminal: "ls /home/sprite/.hermes"'], 'en', { advanced: false })).toEqual([{ label: 'Working on Jentera’s computer', subject: 'ls', count: 1 }]);
+    expect(presentTaskSteps(['terminal: "ls /home/sprite/.hermes"'], 'en', { advanced: false })).toEqual([{ label: 'Checking files and settings', subject: 'ls', count: 1 }]);
     expect(presentTaskSteps(['🌐 web_extract: "not a url"'], 'en', { advanced: false })[0].subject).toBeUndefined();
-    expect(presentTaskSteps(['   '], 'en', { advanced: false })).toEqual([{ label: 'Working through the task', subject: undefined, count: 1 }]);
+    expect(presentTaskSteps(['   '], 'en', { advanced: false })).toEqual([{ label: 'Continuing the task', subject: undefined, count: 1 }]);
   });
 
   it('keeps query strings, internal paths and runtime names out of subjects', () => {

@@ -21,7 +21,9 @@ export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected, l
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
-  const entries = presentTaskSteps(steps, lang, { advanced });
+  const completed = presentTaskSteps(steps.slice(0, -1), lang, { advanced });
+  const latest = presentTaskSteps(steps, lang, { advanced: true }).at(-1);
+  const entries = latest ? [latest] : [];
   const quietFor = Math.max(0, Math.floor((now - (lastProgressAt ?? since ?? now)) / 1000));
   const quiet = quietFor >= 60;
   const hasSteps = entries.length > 0;
@@ -30,13 +32,26 @@ export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected, l
     : quiet ? (bm ? 'Menunggu kemas kini' : 'Waiting for an update')
     : label || (bm ? 'Menjalankan tugasan' : 'Working on your task'), count: 1 });
   return <div className="min-w-0">
+    {completed.length > 0 && <details className="ask-step-history">
+      <summary>{steps.length - 1} {bm ? 'langkah selesai' : `step${steps.length === 2 ? '' : 's'} completed`}</summary>
+      <ol className="ask-steps" aria-label={bm ? 'Langkah selesai' : 'Completed steps'}>
+        {completed.map((entry, i) => <li key={`${i}-${entry.label}`}>
+          <Check size={13} aria-hidden="true" className="ask-step-done" />
+          <div className="ask-step-content">
+            <span className="ask-step-label">{entry.label}</span>
+            {entry.subject && <span className="ask-step-subject">{entry.subject}</span>}
+            {entry.count > 1 && <span className="ask-step-meta">{entry.count} {bm ? 'langkah' : 'steps'}</span>}
+          </div>
+        </li>)}
+      </ol>
+    </details>}
     {!hasSteps ? <TypingBubble label={entries[0].label} since={since} active={!quiet && !disconnected} /> : <ol className="ask-steps" aria-label="Steps">
       {entries.map((entry, i) => {
         const current = i === entries.length - 1;
         return <li key={`${i}-${entry.label}`} aria-current={current ? 'step' : undefined}>
           {current ? <span className={quiet || disconnected ? 'mt-2 h-2 w-2 shrink-0 rounded-full bg-text-muted' : 'ask-step-dot'} aria-hidden="true" /> : <Check size={13} aria-hidden="true" className="ask-step-done" />}
           <div className="ask-step-content">
-            <span className="ask-step-label">{entry.label}</span>
+            <span className={`ask-step-label${current && !quiet && !disconnected ? ' ask-active-shimmer' : ''}`}>{entry.label}</span>
             {entry.subject && <span className="ask-step-subject">{entry.subject}</span>}
             {(entry.count > 1 || current) && <div className="ask-step-meta">
               {entry.count > 1 && <span className="ask-step-count">{entry.count} {bm ? 'langkah' : 'steps'}</span>}

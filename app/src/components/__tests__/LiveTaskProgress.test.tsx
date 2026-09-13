@@ -1,4 +1,4 @@
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LiveTaskProgress } from '../LiveTaskProgress';
 vi.mock('@/i18n/I18nProvider', () => ({ useI18n: () => ({ lang: 'en' }) }));
@@ -6,6 +6,20 @@ vi.mock('@/hooks/useDetailLevel', () => ({ useDetailLevel: () => ({ advanced: fa
 
 afterEach(() => vi.useRealTimers());
 describe('honest live progress', () => {
+  it('collapses previous steps and shimmers only the current action', () => {
+    const props = { steps: ['🔍 web_search: "cache"', '🌐 web_extract: "https://example.com"', 'private narration'], since: Date.now(), durable: true };
+    const view = render(<LiveTaskProgress {...props} />);
+    const history = view.container.querySelector('details')!;
+    expect(history).not.toHaveAttribute('open');
+    expect(screen.getByText('2 steps completed')).toBeVisible();
+    expect(screen.getByText('Continuing research')).toBeVisible();
+    expect(view.container.querySelectorAll('.ask-active-shimmer')).toHaveLength(1);
+    expect(screen.queryByText('private narration')).toBeNull();
+    fireEvent.click(screen.getByText('2 steps completed'));
+    expect(history).toHaveAttribute('open');
+    view.rerender(<LiveTaskProgress {...props} disconnected />);
+    expect(view.container.querySelector('.ask-active-shimmer')).toBeNull();
+  });
   it('resumes the live label only after fresh progress arrives', () => {
     const now = Date.now();
     const view = render(<LiveTaskProgress steps={[]} label="Thinking…" since={now - 90000} lastProgressAt={now - 90000} durable />);

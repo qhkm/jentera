@@ -27,7 +27,7 @@ export interface StepEntry {
 
 type Kind =
   | 'search' | 'read' | 'image' | 'process' | 'computer' | 'schedule'
-  | 'memory' | 'create' | 'delegate' | 'file' | 'context' | 'work';
+  | 'memory' | 'create' | 'delegate' | 'file' | 'context' | 'work' | 'research' | 'inspect';
 
 const LABELS: Record<Kind, { en: string; bm: string }> = {
   search: { en: 'Searching for information', bm: 'Mencari maklumat' },
@@ -41,7 +41,9 @@ const LABELS: Record<Kind, { en: string; bm: string }> = {
   delegate: { en: 'Handing part of the task to a specialist', bm: 'Menyerahkan sebahagian tugasan kepada pakar' },
   file: { en: 'Working on a file', bm: 'Mengusahakan fail' },
   context: { en: 'Preparing conversation context', bm: 'Menyediakan konteks perbualan' },
-  work: { en: 'Working through the task', bm: 'Menjalankan tugasan' },
+  work: { en: 'Continuing the task', bm: 'Meneruskan tugasan' },
+  research: { en: 'Continuing research', bm: 'Meneruskan penyelidikan' },
+  inspect: { en: 'Checking files and settings', bm: 'Menyemak fail dan tetapan' },
 };
 
 const MAX_SUBJECTS = 4;
@@ -95,7 +97,10 @@ function classify(step: string): { kind: Kind; subject?: string } {
   if (tool === 'vision_analyze') return { kind: 'image' };
   if (tool === 'process') return { kind: 'process' };
   if (tool === 'execute_code') return { kind: 'computer' };
-  if (/^(?:terminal|shell|bash)$/.test(tool)) return { kind: 'computer', subject: programOf(preview) };
+  if (/^(?:terminal|shell|bash)$/.test(tool)) {
+    const program = programOf(preview);
+    return { kind: program && /^(?:ls|cat|head|tail|stat|find|rg|grep)$/.test(program) ? 'inspect' : 'computer', subject: program };
+  }
   if (tool === 'cronjob') return { kind: 'schedule' };
   if (tool === 'memory') return { kind: 'memory' };
   if (tool === 'image_generate' || tool.startsWith('bfl_')) return { kind: 'create' };
@@ -112,8 +117,14 @@ export function presentTaskSteps(
   options: { advanced: boolean },
 ): StepEntry[] {
   const entries: (StepEntry & { subjects: string[] })[] = [];
+  let researching = false;
   for (const step of steps) {
-    const { kind, subject } = classify(step);
+    let { kind, subject } = classify(step);
+    // Infer only the broad ongoing activity from observed tools, never quote
+    // narration or invent a phase such as comparing/preparing recommendations.
+    if (kind === 'work' && researching) kind = 'research';
+    if (kind === 'search' || kind === 'read') researching = true;
+    else if (kind !== 'research' && kind !== 'work' && kind !== 'process') researching = false;
     const label = LABELS[kind][lang];
     const last = entries.at(-1);
     if (!options.advanced && last && last.label === label) {
