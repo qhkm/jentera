@@ -1,5 +1,11 @@
 export const onboardingCopy = {
   en: {
+    learning: 'Building your business picture', readyToReview: 'Your business is taking shape.',
+    selectedDetails: 'details selected', previewNote: 'Based on the details selected below. Nothing is confirmed yet.',
+    sourceWaiting: 'Waiting', sourceReading: 'Reading', sourceRead: 'Read', sourceFailed: 'Could not read',
+    draftReady: 'Your first draft is here.', responseReady: 'Here’s Jentera’s response.', contentOutcome: '3 editable posts and a one-week plan',
+    replyOutcome: 'A reusable reply you can personalise', checklistOutcome: 'A step-by-step checklist for your work',
+    workshopOutcome: 'A follow-up message ready for your review',
     steps: ['Introduce your business', 'Review what I found', 'Your first useful job'],
     title: 'Where can I learn about your business?',
     intro: 'Give me a page, a document, or a few sentences. I’ll turn it into business details you can check.',
@@ -29,6 +35,12 @@ export const onboardingCopy = {
     workshopPrompt: 'Draft a follow-up message for workshop participants, with placeholders for the workshop name, resources and feedback link.',
   },
   bm: {
+    learning: 'Mengenali bisnes anda', readyToReview: 'Gambaran bisnes anda mula terbentuk.',
+    selectedDetails: 'butiran dipilih', previewNote: 'Berdasarkan butiran yang dipilih di bawah. Belum ada yang disahkan.',
+    sourceWaiting: 'Menunggu', sourceReading: 'Membaca', sourceRead: 'Dibaca', sourceFailed: 'Tidak dapat dibaca',
+    draftReady: 'Draf pertama anda sudah tersedia.', responseReady: 'Ini jawapan Jentera.', contentOutcome: '3 hantaran boleh sunting dan pelan seminggu',
+    replyOutcome: 'Balasan boleh guna semula dan disesuaikan', checklistOutcome: 'Senarai semak langkah demi langkah',
+    workshopOutcome: 'Mesej susulan untuk semakan anda',
     steps: ['Kenalkan bisnes anda', 'Semak yang saya temui', 'Tugasan pertama anda'],
     title: 'Di mana saya boleh belajar tentang bisnes anda?',
     intro: 'Beri satu halaman, dokumen, atau beberapa ayat. Saya akan susun butiran bisnes untuk anda semak.',

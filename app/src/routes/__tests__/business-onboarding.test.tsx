@@ -37,8 +37,11 @@ describe('real business onboarding', () => {
     mount(repo);
     const input = await screen.findByRole('textbox', { name: 'Business name' });
     expect(screen.getAllByRole('link', { name: 'https://example.com/' })).toHaveLength(2);
+    expect(screen.getByRole('region', { name: 'Your business is taking shape.' })).toHaveTextContent('Wrong name');
     await userEvent.clear(input); await userEvent.type(input, 'Correct Business');
     await userEvent.click(screen.getByRole('checkbox', { name: 'About your business' }));
+    expect(screen.getByRole('region', { name: 'Your business is taking shape.' })).not.toHaveTextContent('Unwanted claim');
+    expect(screen.getByRole('region', { name: 'Your business is taking shape.' })).toHaveTextContent('Correct Business');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm details & prepare Jentera' }));
     await waitFor(async () => expect((await repo.load()).onboarded).toBe(true));
     const snap = await repo.load();
@@ -91,12 +94,13 @@ describe('the first useful job', () => {
     const repo = new LocalRepository();
     await repo.setFact({ key: 'business.about', value: 'We run workshops.', source: 'owner' });
     await repo.confirmFact('business.about');
-    repo.ask = vi.fn().mockResolvedValue({ runId: '11111111-1111-4111-8111-111111111111', text: 'Draft ready', usedKeys: [], grounded: true });
+    repo.ask = vi.fn().mockResolvedValue({ runId: '11111111-1111-4111-8111-111111111111', taskStatus: 'completed', text: 'Draft ready', usedKeys: [], grounded: true });
     mount(repo, true);
     await userEvent.click(await screen.findByRole('button', { name: /A workshop follow-up/ }));
     expect(repo.ask).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('button', { name: 'Create this draft' }));
     expect(await screen.findByRole('button', { name: 'View your work' })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Your first draft is here.' })).toHaveTextContent('Draft ready');
     expect(repo.ask).toHaveBeenCalledWith(expect.stringContaining('Draft only: do not send'), expect.objectContaining({ mode: 'work', requestId: expect.any(String) }));
   });
 });

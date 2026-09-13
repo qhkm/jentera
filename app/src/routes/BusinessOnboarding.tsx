@@ -27,6 +27,7 @@ export default function BusinessOnboarding() {
   const [findings, setFindings] = useState<Finding[]>(() => snap.facts.filter(f => !f.confirmed && typeof f.value === 'string').map(f => ({ key: f.key, value: String(f.value), original: String(f.value), source: f.sourceRef || c.manual, selected: true })));
   const [review, setReview] = useState(findings.length > 0);
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
+  const [sources, setSources] = useState<{ source: string; state: 'sourceWaiting' | 'sourceReading' | 'sourceRead' | 'sourceFailed' }[]>([]);
   const lock = useRef(false); const mounted = useRef(true);
   const heading = useRef<HTMLHeadingElement>(null);
   const fieldLabel = (key: string) => c.fields[key] ?? key.replaceAll('.', ' · ');
@@ -41,7 +42,7 @@ export default function BusinessOnboarding() {
 
   async function read() {
     if (lock.current) return;
-    setError('');
+    setError(''); setSources([]);
     if ((mode === 'website' && !url.trim() && !social.trim()) || (mode === 'upload' && !file) || (mode === 'describe' && !about.trim())) { setError(c.missing); return; }
     lock.current = true; setBusy(true);
     try {
@@ -51,9 +52,11 @@ export default function BusinessOnboarding() {
         if (name.trim()) next.unshift({ key: 'business.name', value: name.trim(), original: '', source: c.manual, selected: true });
       } else {
         const sources = mode === 'upload' ? [file!.name] : [...new Set([url, social].map(s => s.trim()).filter(Boolean).map(s => /^https?:\/\//i.test(s) ? s : `https://${s}`))];
+        if (mounted.current) setSources(sources.map(source => ({ source, state: 'sourceWaiting' })));
         const found = new Map<string, Finding>();
         const failures: string[] = [];
         for (const source of sources) {
+          if (mounted.current) setSources(current => current.map(item => item.source === source ? { ...item, state: 'sourceReading' } : item));
           try {
             let result: IngestResult;
             if (mode === 'upload') {
@@ -62,7 +65,11 @@ export default function BusinessOnboarding() {
             } else result = await repo.ingest(source);
             if (!result.facts || !result.suggestions?.length) throw new Error(c.empty);
             for (const f of result.suggestions) found.set(f.key, { ...f, original: f.value, source, selected: true });
-          } catch (e) { failures.push(`${source}: ${e instanceof Error ? e.message : c.failed}`); }
+            if (mounted.current) setSources(current => current.map(item => item.source === source ? { ...item, state: 'sourceRead' } : item));
+          } catch (e) {
+            failures.push(`${source}: ${e instanceof Error ? e.message : c.failed}`);
+            if (mounted.current) setSources(current => current.map(item => item.source === source ? { ...item, state: 'sourceFailed' } : item));
+          }
         }
         next = [...found.values()];
         if (!next.length) throw new Error(failures.join('\n') || c.empty);
@@ -108,9 +115,19 @@ export default function BusinessOnboarding() {
         {mode === 'upload' && <><label>{c.upload}<input type="file" disabled={busy} accept=".pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.json,.png,.jpg,.jpeg,.webp" onChange={e => setFile(e.target.files?.[0] ?? null)} /></label><p>{c.fileNote}</p></>}
         {mode === 'describe' && <><label>{c.name}<Input value={name} disabled={busy} onChange={e => setName(e.target.value)} /></label><label>{c.about}<textarea value={about} disabled={busy} maxLength={12000} onChange={e => setAbout(e.target.value)} /></label></>}
         <Button disabled={busy} onClick={() => void read()}>{busy ? c.reading : c.read}</Button>
-        {busy && <p role="status">{c.reading}</p>}
+        {busy && sources.length > 0 && <div className="onboarding-learning" role="status">
+          <strong>{c.learning}</strong>
+          <ul>{sources.map(item => <li key={item.source}><span>{item.source}</span><span>{c[item.state]}</span></li>)}</ul>
+        </div>}
       </section>
     </> : <>
+      <section className="onboarding-business-preview" aria-label={c.readyToReview}>
+        <span className="eyebrow">{c.readyToReview}</span>
+        {findings.find(f => f.key === 'business.name' && f.selected)?.value.trim() && <h2>{findings.find(f => f.key === 'business.name' && f.selected)?.value}</h2>}
+        {findings.find(f => f.key === 'business.about' && f.selected)?.value.trim() && <p className="onboarding-business-about">{findings.find(f => f.key === 'business.about' && f.selected)?.value}</p>}
+        <strong>{findings.filter(f => f.selected && f.value.trim()).length} {c.selectedDetails}</strong>
+        <small>{c.previewNote}</small>
+      </section>
       <div className="onboarding-findings">{findings.map((f, i) => <article key={f.key} className="onboarding-finding">
         <label className="onboarding-finding-label"><input type="checkbox" checked={f.selected} disabled={busy} onChange={e => setFindings(current => current.map((item, index) => index === i ? { ...item, selected: e.target.checked } : item))} />{fieldLabel(f.key)}</label>
         <textarea aria-label={fieldLabel(f.key)} value={f.value} disabled={busy} onChange={e => setFindings(current => current.map((item, index) => index === i ? { ...item, value: e.target.value } : item))} />
