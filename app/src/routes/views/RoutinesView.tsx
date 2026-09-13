@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowUpRight, Bell, CalendarBlank, Clock, FileText, Pause, P
 import { Button, LoadingState } from '@/components/ui';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useRoutines } from '@/hooks/useRoutines';
+import { RemindersPanel } from '@/components/RemindersPanel';
 import { RoutineError } from '@/lib/routines/api';
 import { occurrenceReason, occurrenceStatus, routineDate, scheduleLabel, starterSchedule } from '@/lib/routines/format';
 import {
@@ -225,6 +226,7 @@ export default function RoutinesView({ api, active, selectedId, onSelect, onOpen
   const unavailable = caps && (!caps.canSchedule || !caps.timeZones.includes(ROUTINE_ZONE));
 
   return <section className="routines-view" aria-labelledby="routines-title">
+    <RemindersPanel active={active} />
     <header className="routine-page-heading">
       <div><h1 id="routines-title" ref={heading} tabIndex={-1}>{t('routines.title')}</h1><p>{t('routines.intro')}</p></div>
       <div className="routine-actions">

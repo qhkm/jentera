@@ -2,6 +2,7 @@ import type postgres from 'postgres';
 import { enqueuePush } from '../push/outbox';
 
 export type NotificationKind =
+  | 'reminder_due'
   | 'routine_completed'
   | 'routine_failed'
   | 'routine_skipped'

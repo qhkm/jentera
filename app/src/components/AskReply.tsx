@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { RuntimeApprovalCard } from './RuntimeApprovalCard';
+import { ReminderCard } from './ReminderCard';
 import { renderReplyMarkdown } from '@/lib/reply-markdown';
 import { ArrowUpRight, Check, Copy, Info, WarningCircle } from '@phosphor-icons/react';
 import { JenteraMark } from '@/components/JenteraMark';
@@ -98,6 +99,7 @@ export function AskReply({
           </span>
         )}
       </header>
+      {message.reminderDraft && <ReminderCard key={message.reminderDraft.id} draft={message.reminderDraft} />}
       {message.pendingId && message.connectionStatus && <p role="status" className="text-sm text-text-secondary">{message.connectionStatus}</p>}
       {message.pendingId ? (
         /* Waiting on a person, not a machine — so no spinner. Any answer text

@@ -14,6 +14,7 @@ import { handleSession } from './routes/session';
 import { handleRepo } from './routes/repo';
 import { handleRuns } from './routes/runs';
 import { handleRoutines } from './routes/routines';
+import { handleReminders, dispatchDueReminders } from './reminders';
 import { handlePush } from './routes/push';
 import { handleArtifacts, RUNTIME_ARTIFACTS_PATH } from './routes/artifacts';
 import { sweepPushOutbox } from './push/outbox';
@@ -139,6 +140,8 @@ export default {
     const artifacts = await handleArtifacts(request, env, url, headers);
     if (artifacts) return artifacts;
     /* Routines: owner-scheduled deterministic jobs, behind a flag. */
+    const reminders = await handleReminders(request, env, url, headers);
+    if (reminders) return reminders;
     const routines = await handleRoutines(request, env, url, headers);
     if (routines) return routines;
 
@@ -197,6 +200,8 @@ export default {
         console.error(`[routines] ${String(err)}`);
       }
       /* Notifications queued for the owner's devices go out on the same tick. */
+      try { await dispatchDueReminders(env); }
+      catch (err) { console.error(`[reminders] ${String(err)}`); }
       try {
         const pushed = await sweepPushOutbox(env);
         if (pushed.delivered || pushed.retried || pushed.gaveUp) {

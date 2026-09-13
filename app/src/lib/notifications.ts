@@ -1,6 +1,7 @@
 import { isRunId } from '@/lib/task';
 
 export type NotificationKind =
+  | 'reminder_due'
   | 'routine_completed'
   | 'routine_failed'
   | 'routine_skipped'
@@ -33,7 +34,7 @@ const object = (value: unknown): value is Record<string, unknown> =>
 function notification(value: unknown): value is AppNotification {
   if (!object(value)) return false;
   return isRunId(value.id) && typeof value.kind === 'string' &&
-    ['routine_completed', 'routine_failed', 'routine_skipped', 'routine_needs_approval', 'work_needs_you', 'approval_requested'].includes(value.kind) &&
+    ['reminder_due', 'routine_completed', 'routine_failed', 'routine_skipped', 'routine_needs_approval', 'work_needs_you', 'approval_requested'].includes(value.kind) &&
     typeof value.title === 'string' && typeof value.body === 'string' &&
     (value.runId === null || isRunId(value.runId)) &&
     (value.routineId === null || isRunId(value.routineId)) &&

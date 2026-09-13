@@ -19,6 +19,17 @@ beforeEach(() => {
 });
 
 describe('useAsk durable answers', () => {
+  it('turns a reminder command into a confirmation card without starting an agent job', async () => {
+    const repo: Repository = new LocalRepository();
+    repo.ask = vi.fn();
+    const wrapper = ({ children }: { children: ReactNode }) => <SignedInProvider value><RepositoryProvider repository={repo}>{children}</RepositoryProvider></SignedInProvider>;
+    const { result } = renderHook(() => useAsk(business, { handled: 0, needs: 0 }, key => key), { wrapper });
+    await waitFor(() => expect(result.current).not.toBeNull());
+    act(() => result.current.send('remind me to call Ali tomorrow at 9'));
+    expect(repo.ask).not.toHaveBeenCalled();
+    expect(result.current.messages.at(-1)?.reminderDraft?.message).toBe('remind me to call Ali tomorrow at 9');
+    expect(result.current.messages.at(-1)?.text).toContain('Nothing is scheduled until you confirm');
+  });
   it('replaces the matching placeholder when answers finish out of order', async () => {
     const repo: Repository = new LocalRepository();
     const pending = new Map<string, (answer: AskAnswer) => void>();
