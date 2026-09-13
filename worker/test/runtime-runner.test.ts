@@ -521,10 +521,12 @@ describe('durable Hermes run delivery', () => {
     expect(state).toEqual({
       task_status: 'completed',
       remote_run_id: 'run-active',
-      remote_status: 'cancelled',
+      remote_status: 'stopped',
       usage_status: 'cancelled',
-      input_tokens: '0',
-      output_tokens: '0',
+      // No usage was returned: retain the reservation for reconciliation,
+      // rather than inventing a zero-cost run.
+      input_tokens: '100000',
+      output_tokens: '25000',
     });
   });
 

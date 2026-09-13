@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { deriveJenteraRuntimeCredential } from '../src/runtime/openrouter-keys';
 import {
   JenteraKeyUnavailableError,
@@ -338,6 +338,54 @@ describe('model proxy route', () => {
         },
       });
     expect(response.status).toBe(502);
+  });
+
+  it.each(['connection', 'http', 'body', 'stream', 'cancel'])('records exactly one diagnostic for a %s failure without fabricated usage', async (failure) => {
+    const writes: Promise<unknown>[] = [];
+    const streamed = failure === 'stream' || failure === 'cancel';
+    const upstream: typeof fetch = async () => {
+      if (failure === 'connection') throw new Error('private upstream detail');
+      if (failure === 'http') return new Response('unavailable', { status: 524 });
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) { if (failure !== 'cancel') controller.error(new Error('private body detail')); },
+      });
+      return new Response(body, { headers: { 'Content-Type': streamed ? 'text/event-stream' : 'application/json' } });
+    };
+    const response = await callModel('POST', `${RUNTIME_PROXY_PATH}/chat/completions`, proxyEnv(), {
+      token: await derivedKey(), body: { model: 'MiniMax-M3', messages: [], stream: streamed },
+      options: { upstreamFetch: upstream, waitUntil: (promise) => { writes.push(promise); } },
+    });
+    if (failure === 'stream') await expect(response.text()).rejects.toThrow();
+    else if (failure === 'cancel') await response.body!.cancel();
+    else {
+      expect(response.status).toBe(failure === 'http' ? 524 : 502);
+      expect(await response.text()).not.toContain('private');
+    }
+    // Cancellation propagates through the metering transform asynchronously.
+    await new Promise(resolve => setTimeout(resolve, 20));
+    await Promise.all(writes);
+    const [row, ...others] = await asOwner(sql => sql`
+      select upstream_status, usage_seen, prompt_tokens, completion_tokens
+        from model_call where rider_id=${RID}`);
+    expect(others).toHaveLength(0);
+    expect(Number(row.upstream_status)).toBe(failure === 'http' ? 524 : failure === 'cancel' ? 499 : 502);
+    expect(row.usage_seen).toBe(false);
+    expect(row.prompt_tokens).toBeNull();
+    expect(row.completion_tokens).toBeNull();
+  });
+
+  it('bounds a stalled upstream call to one minute rather than five', async () => {
+    const timeout = vi.spyOn(globalThis, 'setTimeout');
+    const { fetcher, seen } = stubUpstream();
+    try {
+      const response = await callModel('POST', `${RUNTIME_PROXY_PATH}/chat/completions`, proxyEnv(), {
+        token: await derivedKey(), body: { model: 'MiniMax-M3', messages: [] },
+        options: { upstreamFetch: fetcher },
+      });
+      expect(response.status).toBe(200);
+      expect(timeout).toHaveBeenCalledWith(expect.any(Function), 60000);
+      expect(seen[0].init.signal?.aborted).toBe(false);
+    } finally { timeout.mockRestore(); }
   });
 
   it('passes through upstream error responses with their status', async () => {

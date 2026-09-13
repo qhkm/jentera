@@ -20,7 +20,10 @@ describe('what the owner is told when a run fails', () => {
     expect(classifyRunFailure('HTTP 429: Too Many Requests')).toBe('provider_quota');
     expect(classifyRunFailure("This model's maximum context length is 128000 tokens")).toBe('context_limit');
     expect(classifyRunFailure('HTTP 503: Service Unavailable')).toBe('provider_unavailable');
-    expect(classifyRunFailure('fetch failed: connection timed out')).toBe('provider_unavailable');
+    expect(classifyRunFailure('fetch failed: connection timed out')).toBe('timeout');
+    expect(classifyRunFailure('run deadline exceeded')).toBe('timeout');
+    expect(classifyRunFailure('Runtime task exceeded its time limit.')).toBe('timeout');
+    expect(classifyRunFailure('error code: 524')).toBe('timeout');
     expect(classifyRunFailure('HTTP 401: Missing Authentication header')).toBe('model_auth');
     expect(classifyRunFailure('run vanished (Hermes returned not_found)')).toBe('generic');
     expect(classifyRunFailure('')).toBe('generic');

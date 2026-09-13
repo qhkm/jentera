@@ -9,8 +9,8 @@ function duration(seconds: number) {
 }
 
 /** Elapsed time is not a heartbeat. Quiet work is explicitly unconfirmed. */
-export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected }: {
-  steps: string[]; since?: number; lastProgressAt?: number; disconnected?: boolean; durable: boolean;
+export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected, label }: {
+  steps: string[]; since?: number; lastProgressAt?: number; disconnected?: boolean; durable: boolean; label?: string;
 }) {
   const { lang } = useI18n();
   const bm = lang === 'bm';
@@ -21,9 +21,12 @@ export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected }:
     return () => window.clearInterval(timer);
   }, []);
   const entries = presentTaskSteps(steps, lang, { advanced });
-  if (!entries.length) entries.push({ label: bm ? 'Menjalankan tugasan' : 'Working on your task', count: 1 });
   const quietFor = Math.max(0, Math.floor((now - (lastProgressAt ?? since ?? now)) / 1000));
   const quiet = quietFor >= 60;
+  if (!entries.length) entries.push({ label: disconnected
+    ? (bm ? 'Menyemak status tugasan' : 'Checking task status')
+    : quiet ? (bm ? 'Menunggu kemas kini' : 'Waiting for an update')
+    : label || (bm ? 'Menjalankan tugasan' : 'Working on your task'), count: 1 });
   return <div className="min-w-0">
     <ol className="ask-steps" aria-label="Steps">
       {entries.map((entry, i) => {

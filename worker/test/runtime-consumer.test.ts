@@ -41,6 +41,54 @@ afterEach(() => {
 });
 
 describe('the runtime queue consumer', () => {
+  it.each(['expired', 'lost-stream', 'saved-expiry'])('finalizes %s without blocking or duplicating queued work', async (scenario) => {
+    const env = testEnv({ RUNTIME_RELEASE: '2026.09.01-3', AISAR_DEEP_MODEL_NAME: 'deepseek-v4-flash', RUNTIME_QUEUE: { send: vi.fn(async () => {}) } });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, { provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64) });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'deepseek-v4-flash',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `expired:${run.id}`,
+      payload: { input: 'research', responseMode: 'quick', model: 'deepseek-v4-flash' },
+    }));
+    const next = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', dedupeKey: 'after-expired', payload: { input: 'next question' },
+    }));
+    if (scenario === 'saved-expiry') await asOwner((sql) => sql`
+      update runtime_task set remote_run_id='expired-remote', remote_status='expired',
+        dispatch_phase='remotely_running' where id=${task.id}`);
+    let fetchCalls = 0;
+    const runnerFetch: typeof fetch = async (input) => {
+      fetchCalls += 1;
+      if (scenario === 'saved-expiry') throw new Error('computer unavailable');
+      const url = String(input);
+      if (url.endsWith('/readyz')) return jsonResponse({
+        ok: true, release: '2026.09.01-3',
+        runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+        hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
+        toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+      });
+      if (url.endsWith('/v1/tasks')) return jsonResponse({ ok: true, hermesRunId: 'expired-remote', status: 'expired' });
+      if (url.endsWith('/events') && scenario === 'lost-stream') throw new Error('stream disconnected');
+      if (url.endsWith('/events')) return new Response('data: {"type":"done"}\n\n', {
+        headers: { 'Content-Type': 'text/event-stream' },
+      });
+      return jsonResponse({ ok: true, status: 'expired', error: 'run deadline exceeded', usage: { input_tokens: 0, output_tokens: 0 } });
+    };
+    const result = await handleRuntimeMessage(env, { version: 1, businessId: A, taskId: task.id }, { provider, fetch: runnerFetch });
+    expect(result).toEqual({ action: 'ack', reason: 'completed' });
+    const [saved] = await asOwner((sql) => sql<{ status: string; remote_status: string; run_status: string }[]>`
+      select t.status,t.remote_status,r.status as run_status from runtime_task t join run r on r.id=t.run_id where t.id=${task.id}`);
+    expect(saved).toEqual({ status: 'completed', remote_status: 'expired', run_status: 'failed' });
+    expect(await asTenant(A, (tx) => nextWaitingRuntimeTaskId(tx, A))).toBe(next.id);
+    if (scenario === 'saved-expiry') expect(fetchCalls).toBe(0);
+    const beforeDuplicate = fetchCalls;
+    expect(await handleRuntimeMessage(env, { version: 1, businessId: A, taskId: task.id }, { provider, fetch: runnerFetch }))
+      .toEqual({ action: 'ack', reason: 'already_done' });
+    expect(fetchCalls).toBe(beforeDuplicate);
+  });
   it('keeps a failed Queue publish in the transactional outbox for retry', async () => {
     const unavailable = testEnv({
       RUNTIME_QUEUE: { send: vi.fn(async () => { throw new Error('queue offline'); }) },
@@ -99,7 +147,7 @@ describe('the runtime queue consumer', () => {
     expect(wakes).toBe('1');
   });
 
-  it('retries an unconfirmed stop and surfaces failed-to-cancel after the retry budget', async () => {
+  it.each(['unavailable', 'running', 'expiring', 'missing-status'])('retries an unconfirmed stop (%s) and surfaces failed-to-cancel after the retry budget', async (stopState) => {
     const env = testEnv({ RUNTIME_RELEASE: '2026.09.01-3' });
     const provider = new LocalRuntimeProvider();
     await ensureProviderRuntime(env, A, {
@@ -114,8 +162,12 @@ describe('the runtime queue consumer', () => {
       connector: 'telegram', method: 'bot_token', externalId: '123456789',
       displayName: '@cancel_bot', secret: '123456789:AAtoken', connectedBy: owner.id,
     }));
+    const cancelRun = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'deepseek-v4-flash',
+    }));
     const target = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
       kind: 'run',
+      runId: cancelRun.id,
       dedupeKey: 'cancel:target',
       payload: {
         input: 'keep working',
@@ -140,8 +192,9 @@ describe('the runtime queue consumer', () => {
     }));
     const telegram = fetchFake(async () => jsonResponse({ ok: true, result: { message_id: 88 } }));
     vi.stubGlobal('fetch', telegram);
-    const stopUnavailable: typeof fetch = async () =>
-      jsonResponse({ error: 'runner unavailable' }, 503);
+    const stopUnavailable: typeof fetch = async () => stopState === 'unavailable'
+      ? jsonResponse({ error: 'runner unavailable' }, 503)
+      : jsonResponse({ ok: true, ...(stopState === 'missing-status' ? {} : { status: stopState }) });
     const message = { version: 1 as const, businessId: A, taskId: control.id };
 
     const retryDelays: number[] = [];
@@ -169,6 +222,10 @@ describe('the runtime queue consumer', () => {
     expect(state).toEqual({
       status: 'cancel_requested', cancel_state: 'failed', usage_status: 'reserved',
     });
+    const [cancelState] = await asOwner(sql => sql`
+      select r.status, w.outcome from run r join work_record w on w.run_id=r.id where r.id=${cancelRun.id}`);
+    expect(cancelState.status).toBe('failed');
+    expect(cancelState.outcome).toContain('may still be running');
     const notices = telegram.mock.calls.filter(([input, init]) => {
       if (!String(input).includes('/sendMessage')) return false;
       const body = JSON.parse(String(init?.body)) as { text?: string };
@@ -892,7 +949,8 @@ describe('the runtime queue consumer', () => {
           update runtime_task set available_at = now() where id = ${task.id}`);
       }
     }
-    expect(statusPolls).toBe(3);
+    // Delivery retries use the durable result without waking/restarting work.
+    expect(statusPolls).toBe(1);
     expect(answerAttempts).toBe(3);
     expect(notices).toBe(1);
     expect(telegramFloodDelaySeconds(5_000)).toBe(3_600);

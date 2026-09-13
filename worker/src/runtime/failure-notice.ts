@@ -24,9 +24,15 @@ export type FailureKind =
   | 'payload_limit'
   | 'provider_unavailable'
   | 'model_auth'
+  | 'timeout'
+  | 'stop_unconfirmed'
   | 'generic';
 
 export const FAILURE_NOTICES: Record<Exclude<FailureKind, 'capped'>, string> = {
+  stop_unconfirmed:
+    '⚠️ Jentera could not confirm that this task stopped. It may still be running. Check the task before trying again.',
+  timeout:
+    '⚠️ This reply timed out before it could finish. Please try again. Any saved files remain available.',
   payload_limit:
     '⚠️ The image or conversation data was too large to send to the AI model. Try a smaller image or start a new chat. Any saved files remain available.',
   provider_quota:
@@ -58,11 +64,13 @@ const MODEL_AUTH = /http\s*401|http\s*403|missing authentication|invalid api key
 export function classifyRunFailure(detail: unknown): FailureKind {
   const text = typeof detail === 'string' ? detail : detail == null ? '' : JSON.stringify(detail);
   if (!text) return 'generic';
+  if (/could not confirm.{0,60}stop|cancellation.{0,30}not confirmed/i.test(text)) return 'stop_unconfirmed';
   if (CAPPED.test(text)) return 'capped';
   if (/payload too large|model request body.*(?:too large|limit)|model context is too large/i.test(text)) return 'payload_limit';
   if (CONTEXT_LIMIT.test(text)) return 'context_limit';
   if (PROVIDER_QUOTA.test(text)) return 'provider_quota';
   if (MODEL_AUTH.test(text)) return 'model_auth';
+  if (/timed? ?out|timeout|deadline exceeded|exceeded (?:its |the )?time limit|(?:http|code:)\s*524/i.test(text)) return 'timeout';
   if (PROVIDER_UNAVAILABLE.test(text)) return 'provider_unavailable';
   return 'generic';
 }

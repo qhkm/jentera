@@ -5,7 +5,7 @@ import { reminderProposal } from '@/lib/reminders';
 import { renderReplyMarkdown } from '@/lib/reply-markdown';
 import { ArrowUpRight, Check, Copy, Info, WarningCircle } from '@phosphor-icons/react';
 import { JenteraMark } from '@/components/JenteraMark';
-import { ElapsedSince, TypingBubble } from '@/components/WorkSignal';
+import { ElapsedSince } from '@/components/WorkSignal';
 import { ArtifactList } from '@/components/ArtifactList';
 import { LiveTaskProgress } from '@/components/LiveTaskProgress';
 import { useToast } from '@/components/Toast';
@@ -151,9 +151,9 @@ export function AskReply({
               </div>
               {message.steps?.length
                 ? <LiveTaskProgress steps={message.steps} since={message.startedAt} lastProgressAt={message.lastProgressAt} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
-                : message.liveStatus && (
+                : (
                   <div className="mt-2">
-                    <TypingBubble label={message.liveStatus} since={message.startedAt} />
+                    <LiveTaskProgress steps={[]} label={message.liveStatus} since={message.startedAt} lastProgressAt={message.lastProgressAt} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
                   </div>
                 )}
             </>
@@ -167,7 +167,7 @@ export function AskReply({
                   <LiveTaskProgress steps={message.steps} since={message.startedAt} lastProgressAt={message.lastProgressAt} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
                 </>
               )
-              : <TypingBubble label={message.text} since={message.startedAt} />
+              : <LiveTaskProgress steps={[]} label={message.text} since={message.startedAt} lastProgressAt={message.lastProgressAt} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
       ) : (
         <>
           <div className="ask-reply-text" role={failed ? 'alert' : undefined}>

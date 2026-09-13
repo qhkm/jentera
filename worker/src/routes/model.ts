@@ -43,13 +43,13 @@ import {
   type JenteraKeyClaims,
 } from '../fmcv-verifier';
 import { modelCostMicrousd } from '../runtime/usage';
+import { fetchModelResponse } from '../model-fetch';
 import { runtimeModelBaseAllowed } from '../runtime/execution';
 import { connect, withUser } from '../db';
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_IMAGE_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_RELAY_BODY_BYTES = 8 * 1024 * 1024;
-const UPSTREAM_TIMEOUT_MS = 5 * 60 * 1000;
 /** 1 USD-cent = 10,000 micro-USD. */
 
 export interface ModelProxyOptions {
@@ -161,9 +161,21 @@ export async function handleModelProxy(
     else void promise;
   };
 
+  let recorded = false;
+  let meteredStream = false;
+  let observedStatus: number | undefined;
+  let observedUsage: Record<string, unknown> | null = null;
+  const recordCall = (status: number, usage = observedUsage) => {
+    if (recorded) return;
+    recorded = true;
+    keepAlive(recordModelCall(env, claims, String(parsed.model), shape, {
+      streamed: wantsStream, usage, upstreamStatus: status, latencyMs: Date.now() - startedAt,
+    }));
+  };
+
   let upstreamResponse: Response;
   try {
-    upstreamResponse = await fetcher(upstream, {
+    upstreamResponse = await fetchModelResponse(fetcher, upstream, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${upstreamCredential}`,
@@ -172,23 +184,33 @@ export async function handleModelProxy(
         'User-Agent': 'Jentera-Model-Proxy/1',
       },
       body: outboundBody,
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      signal: request.signal,
+    }, (end) => {
+      // Transport failures have no usable HTTP response: 502; caller cancel:
+      // 499. Never store exception text, credentials, or request contents.
+      if (end !== 'completed') recordCall(end === 'cancelled' ? 499 : 502);
+      else if (wantsStream && !meteredStream && observedStatus !== undefined) recordCall(observedStatus);
     });
   } catch {
+    recordCall(502);
     return jsonError(502, 'model upstream is unreachable', headers);
   }
 
   const contentType = upstreamResponse.headers.get('content-type') ?? '';
+  observedStatus = upstreamResponse.status;
+  if (wantsStream && !upstreamResponse.body) recordCall(upstreamResponse.status);
   if (!upstreamResponse.ok) {
+    recordCall(upstreamResponse.status);
     return relayResponse(upstreamResponse, headers);
   }
   if (wantsStream) {
     const body = upstreamResponse.body;
     if (body && !upstreamResponse.headers.get('content-encoding')
         && contentType.includes('text/event-stream')) {
+      meteredStream = true;
       const metered = body.pipeThrough(meteringStream(
         claims, String(parsed.model), env, options.waitUntil,
-        { shape, startedAt, upstreamStatus: upstreamResponse.status },
+        { onUsage: (usage) => { observedUsage = usage; }, onComplete: () => recordCall(upstreamResponse.status) },
       ));
       return new Response(metered, {
         status: upstreamResponse.status,
@@ -201,8 +223,14 @@ export async function handleModelProxy(
     });
   }
 
-  const text = await upstreamResponse.text();
+  let text: string;
+  try { text = await upstreamResponse.text(); }
+  catch {
+    recordCall(502);
+    return jsonError(502, 'model response was interrupted; please try again', headers);
+  }
   if (text.length > MAX_RELAY_BODY_BYTES) {
+    recordCall(502);
     return jsonError(502, 'model response is too large', headers);
   }
   let usage: Record<string, unknown> | null = null;
@@ -218,12 +246,7 @@ export async function handleModelProxy(
   }
   /* Recorded whether or not the body carried usage: a non-streaming reply
      without it is exactly the gap this table exists to size. */
-  keepAlive(recordModelCall(env, claims, String(parsed.model), shape, {
-    streamed: false,
-    usage,
-    upstreamStatus: upstreamResponse.status,
-    latencyMs: Date.now() - startedAt,
-  }));
+  recordCall(upstreamResponse.status, usage);
   return new Response(text, {
     status: upstreamResponse.status,
     headers: { ...headers, ...relayHeaders(upstreamResponse.headers) },
@@ -267,14 +290,14 @@ async function relayRaw(
   const fetcher = options.upstreamFetch ?? ((input, init) => globalThis.fetch(input, init));
   let upstreamResponse: Response;
   try {
-    upstreamResponse = await fetcher(upstreamUrl(env, tail), {
+    upstreamResponse = await fetchModelResponse(fetcher, upstreamUrl(env, tail), {
       method: 'GET',
+      signal: request.signal,
       headers: {
         Authorization: `Bearer ${upstreamCredential}`,
         Accept: 'application/json',
         'User-Agent': 'Jentera-Model-Proxy/1',
       },
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
   } catch {
     return jsonError(502, 'model upstream is unreachable', headers);
@@ -309,12 +332,11 @@ function meteringStream(
   model: string,
   env: Env,
   waitUntil?: (promise: Promise<unknown>) => void,
-  accounting?: { shape: PromptShape; startedAt: number; upstreamStatus: number },
+  accounting?: { onUsage: (usage: Record<string, unknown>) => void; onComplete: () => void },
 ): TransformStream<Uint8Array, Uint8Array> {
   const decoder = new TextDecoder();
   let buffer = '';
   let metered = false;
-  let seen: Record<string, unknown> | null = null;
   const keepAlive = (promise: Promise<unknown>): void => {
     if (waitUntil) waitUntil(promise);
     else void promise;
@@ -326,7 +348,7 @@ function meteringStream(
         const usage = extractUsage(buffer);
         if (usage) {
           metered = true;
-          seen = usage;
+          accounting?.onUsage(usage);
           keepAlive(recordUsage(claims, model, usage, env));
         }
       }
@@ -341,12 +363,7 @@ function meteringStream(
        the size of the metering gap. */
     flush() {
       if (!accounting) return;
-      keepAlive(recordModelCall(env, claims, model, accounting.shape, {
-        streamed: true,
-        usage: seen,
-        upstreamStatus: accounting.upstreamStatus,
-        latencyMs: Date.now() - accounting.startedAt,
-      }));
+      accounting.onComplete();
     },
   });
 }

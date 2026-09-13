@@ -25,6 +25,22 @@ function mount(message: AskMessage, repo = new LocalRepository()) {
 /* Every reply used to become a task card. Conversation reads as a reply;
    only work, by request (deep) or by the server's verdict, gets the card. */
 describe('AskReply: conversation versus work', () => {
+  it('does not claim thinking when a no-step reply has been silent for minutes', async () => {
+    const { container } = mount({ from: 'ai', text: '💭 Thinking…', state: 'working',
+      pendingId: 'p1', startedAt: Date.now() - 195000, lastProgressAt: Date.now() - 195000 });
+    expect(await screen.findByText(/No new progress update/)).toBeVisible();
+    expect(screen.queryByText(/Thinking/)).toBeNull();
+    expect(container.querySelector('.typing')).toBeNull();
+    expect(container.querySelector('.ask-step-dot')).toBeNull();
+    expect(container.querySelector('.bubble')).toBeNull();
+  });
+  it('shows status recovery instead of thinking after a disconnected stream', async () => {
+    mount({ from: 'ai', text: 'Partial answer', liveStatus: '💭 Thinking…', state: 'streaming',
+      pendingId: 'p1', startedAt: Date.now() - 195000, connectionStatus: 'Connection restored. Checking your task’s result…' });
+    expect(await screen.findByText('Checking task status')).toBeVisible();
+    expect(screen.queryByText(/Thinking/)).toBeNull();
+    expect(screen.getByText('Partial answer')).toBeVisible();
+  });
   it('recovers referenced images from this chat and identifies missing deliveries', async () => {
     const repo = new LocalRepository();
     const file = { id: 'cat-file', runId: RUN, name: 'cute-cat.png', contentType: 'image/png', size: 10, createdAt: new Date().toISOString() };
@@ -124,8 +140,8 @@ describe('AskReply: the waiting bubble keeps moving', () => {
       pendingId: 'p2', depth: 'quick', startedAt: Date.now() - 3_000,
     });
     await waitFor(() => expect(container.textContent).toContain('💭 Thinking…'));
-    await waitFor(() => expect(container.textContent).toMatch(/· [34]s/));
-    await waitFor(() => expect(container.textContent).toMatch(/· [45]s/), { timeout: 3_000 });
+    await waitFor(() => expect(container.querySelector('.ask-step-meta')).toHaveTextContent(/[34]s/));
+    await waitFor(() => expect(container.querySelector('.ask-step-meta')).toHaveTextContent(/[45]s/), { timeout: 3_000 });
   });
 
   it('shows what the agent is doing under answer text that has already started', async () => {
@@ -136,7 +152,7 @@ describe('AskReply: the waiting bubble keeps moving', () => {
     });
     await waitFor(() => expect(container.textContent).toContain('Let me check that for you.'));
     expect(container.textContent).toContain('🔎 web_search: KL weather now');
-    await waitFor(() => expect(container.textContent).toMatch(/· [23]s/));
+    await waitFor(() => expect(container.querySelector('.ask-step-meta')).toHaveTextContent(/[23]s/));
   });
 });
 

@@ -57,6 +57,7 @@ import {
   decideRuntimeTaskApproval,
   measuredUsageOf,
   stopRuntimeTask,
+  stoppedRunOutcome,
   type RunPayload,
 } from './run-task';
 import { finalizeRuntimeUsage, runtimeUsageDeadline, RuntimeBudgetExceeded } from './usage';
@@ -1098,7 +1099,7 @@ export async function handleRuntimeMessage(
             message.businessId,
             payload.targetTaskId as string,
             typeof stopped.status === 'string' &&
-              ['cancelled', 'stopped', 'completed', 'failed'].includes(stopped.status)
+              ['cancelled', 'stopped', 'completed', 'failed', 'expired'].includes(stopped.status)
               ? stopped.status
               : 'stopped',
           );
@@ -1481,16 +1482,8 @@ export async function handleRuntimeMessage(
             if (Date.now() >= absoluteDeadline.getTime()) {
               const stopped = await stopRuntimeTask(
                 env, message.businessId, message.taskId, options.fetch,
-              ).catch(() => null);
-              outcome = {
-                state: 'terminal',
-                remoteRunId: lease.task.remoteRunId,
-                remoteStatus: 'cancelled',
-                result: { error: 'runtime task exceeded its time limit' },
-                summary: 'Runtime task exceeded its time limit.',
-                payload: lease.task.payload as RunPayload,
-                usage: stopped ? measuredUsageOf(stopped) ?? undefined : undefined,
-              };
+              );
+              outcome = stoppedRunOutcome(stopped, lease.task.remoteRunId, lease.task.payload as RunPayload);
             } else {
               const deferred = await withTenant(env, message.businessId, (tx) =>
                 deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
@@ -2012,6 +2005,18 @@ export async function handleRuntimeMessage(
               targetTaskId,
               failureReason,
             );
+            if (failedCancelTarget?.runId) {
+              // Failure to confirm is NOT cancellation. Keep the runtime task
+              // and usage unresolved, but stop the chat's indefinite spinner.
+              await finishRun(tx, message.businessId, failedCancelTarget.runId, 'failed', {
+                runtimeTaskId: failedCancelTarget.id, reason: 'stop_unconfirmed',
+              });
+              await recordWork(tx, message.businessId, {
+                runId: failedCancelTarget.runId, objective: 'Check task cancellation',
+                outcome: failureNotice('Could not confirm that the task stopped'),
+                status: 'failed', kind: 'work', function: 'assistant', channel: 'runtime', risk: 'low',
+              });
+            }
           }
         }
         if (executionTask) {
@@ -2073,13 +2078,15 @@ export async function handleRuntimeMessage(
       if (!exhausted) {
         return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
       }
-      if (failedCancelTarget) {
+      const cancelFailure = failedCancelTarget as RuntimeTask | null;
+      if (cancelFailure) {
         await notifyTelegramCancelFailure(
           env,
           message.businessId,
-          failedCancelTarget,
+          cancelFailure,
           options.telegramToken,
         );
+        if (cancelFailure.runId) await publishRunProgressSafely(env, message.businessId, cancelFailure.runId, 'failed');
       }
       /* Terminal — tidy the working bubble so the chat never sits on a
          frozen "⏳ Working…" (the old draft lane at least expired). When the

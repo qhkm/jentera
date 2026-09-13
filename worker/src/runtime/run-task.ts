@@ -23,7 +23,22 @@ import type { ResponseMode } from './response-mode';
 import { modelForResponseMode } from './response-mode';
 import { specialistProfileValid, type SpecialistProfile } from '../specialists';
 
-const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped']);
+const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped', 'expired']);
+
+/** A successful HTTP stop request is not confirmation that execution ended. */
+export function confirmedStop(response: RunnerTaskResponse | null): RunnerTaskResponse {
+  if (!response || !TERMINAL.has(boundedStatus(response.status))) {
+    throw new Error('Could not confirm that the task stopped; it may still be running');
+  }
+  return response;
+}
+
+export function stoppedRunOutcome(response: RunnerTaskResponse | null, remoteRunId: string, payload: RunPayload): RuntimeRunOutcome {
+  const stopped = confirmedStop(response);
+  return { state: 'terminal', remoteRunId, remoteStatus: boundedStatus(stopped.status),
+    result: boundedResult(stopped), summary: summaryOf(stopped), payload,
+    usage: measuredUsageOf(stopped) ?? undefined };
+}
 
 /** Every dispatch holds the Sprite active this long past the dispatch.
     Each dispatch refreshes the window, so a messaging business stays
@@ -125,6 +140,14 @@ export async function dispatchRuntimeRun(
   const dispatchStartedAt = Date.now();
   const stage = (name: string) => options.onStage?.(name, Date.now() - dispatchStartedAt);
   const payload = runPayload(task.payload);
+  // Delivery can retry after the computer disappears. Durable terminal truth
+  // must not require readiness or restart the original work.
+  const persisted = persistedTerminalOutcome(task, payload);
+  if (persisted) return persisted;
+  if (task.remoteRunId && task.remoteStatus === 'expired') {
+    return { state: 'terminal', remoteRunId: task.remoteRunId, remoteStatus: 'expired',
+      result: { error: 'run deadline exceeded' }, summary: 'Run deadline exceeded.', payload };
+  }
   const model = payload.model ??
     modelForResponseMode(env, payload.responseMode ?? 'deep', task.businessId);
   const { runtime, secrets, reservation, keepaliveUntil } = await withTenant(
@@ -194,16 +217,7 @@ export async function dispatchRuntimeRun(
     if (!task.remoteRunId) {
       throw new Error('runtime task exceeded its time limit before Hermes started');
     }
-    await client.stop(task.id).catch(() => {});
-    return {
-      state: 'terminal',
-      remoteRunId: task.remoteRunId,
-      remoteStatus: 'cancelled',
-      result: { error: 'runtime task exceeded its time limit' },
-      summary: 'Runtime task exceeded its time limit.',
-      payload,
-      usage: { inputTokens: 0, outputTokens: 0 },
-    };
+    return stoppedRunOutcome(await client.stop(task.id), task.remoteRunId, payload);
   }
   const toolGrant = await issueFullToolsGrant(
     secrets.runnerKey,
@@ -280,24 +294,17 @@ export async function dispatchRuntimeRun(
   const cancelled = await withTenant(env, task.businessId, (tx) =>
     runtimeTaskIsCancelled(tx, task.businessId, task.id));
   if (cancelled) {
-    await client.stop(task.id).catch(() => {});
-    await streamResult;
-    return {
-      state: 'terminal',
-      remoteRunId,
-      remoteStatus: 'cancelled',
-      result: { error: 'runtime task was cancelled' },
-      summary: 'Runtime task was cancelled.',
-      payload,
-      usage: { inputTokens: 0, outputTokens: 0 },
-    };
+    // The stream promise already handles rejection; do not wait indefinitely
+    // for its EOF after a confirmed stop (or a failed stop attempt).
+    return stoppedRunOutcome(await client.stop(task.id), remoteRunId, payload);
   }
 
+  let streamError: unknown;
   if (streamResult) {
     const streamed = await streamResult;
-    if (!streamed.ok) throw streamed.error;
+    if (!streamed.ok) streamError = streamed.error;
     stage('stream_finished');
-    if (streamed.approval) {
+    if (streamed.ok && streamed.approval) {
       return {
         state: 'approval',
         remoteRunId,
@@ -323,6 +330,9 @@ export async function dispatchRuntimeRun(
   stage('status_loaded');
   const remoteStatus = boundedStatus(current.status);
   if (!TERMINAL.has(remoteStatus)) {
+    // A lost presentation stream does not mean the task failed. Check terminal
+    // truth first, and retry the transport only if work remains active.
+    if (streamError) throw streamError;
     return { state: 'pending', remoteRunId, remoteStatus };
   }
   return {
@@ -360,7 +370,7 @@ export async function stopRuntimeTask(
     edgeToken: runtime.provider === 'fly-sprite' ? env.SPRITES_TOKEN : undefined,
     fetch: fetcher,
   });
-  return client.stop(taskId);
+  return confirmedStop(await client.stop(taskId));
 }
 
 export async function decideRuntimeTaskApproval(
