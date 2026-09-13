@@ -67,7 +67,7 @@ export interface BootstrapRuntimeProvider extends RuntimeProvider {
     runtime: ObservedRuntime,
     command: string,
     args?: string[],
-    options?: { env?: string[]; dir?: string },
+    options?: { env?: string[]; dir?: string; onOutput?: (text: string) => Promise<void> },
   ): Promise<RuntimeExecResult>;
 }
 

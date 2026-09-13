@@ -190,6 +190,20 @@ describe('FlySpriteProvider', () => {
     expect(header(seen[0].init, 'Upgrade')).toBeNull();
   });
 
+  it('reports bootstrap output before the process exits', async () => {
+    let end: (() => void) | undefined;
+    const provider = fly(async () => new Response(new ReadableStream<Uint8Array>({ start(controller) {
+      controller.enqueue(new TextEncoder().encode('\u0001JENTERA_SETUP_STAGE:install\n'));
+      end = () => { controller.enqueue(new Uint8Array([3, 0])); controller.close(); };
+    } })));
+    const chunks: string[] = [];
+    const result = await provider.exec(observed('cold'), '/home/sprite/aisar/runner/bootstrap-runtime.sh', [], {
+      onOutput: async text => { chunks.push(text); end?.(); end = undefined; },
+    });
+    expect(chunks.join('')).toContain('JENTERA_SETUP_STAGE:install');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('refuses an incomplete or failed HTTP exec stream', async () => {
     const incomplete = fly(async () => new Response(new Uint8Array([1, 111, 107])));
     await expect(incomplete.exec(

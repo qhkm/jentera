@@ -6,6 +6,7 @@ import { useRepository, type RuntimeOverview } from '@/lib/repo';
 import { useSignedIn } from '@/lib/repo/gate';
 import { useT } from '@/i18n/I18nProvider';
 import { computerStatus } from '@/lib/computer-status';
+import { ComputerSetupProgress } from './ComputerSetupProgress';
 
 export function ComputerStatus({ onOpenChat, onOpenKnowledge, mobileTarget }: {
   onOpenChat?: () => void; onOpenKnowledge: () => void;
@@ -60,11 +61,13 @@ export function ComputerStatus({ onOpenChat, onOpenKnowledge, mobileTarget }: {
   const compact = ['ready', 'asleep', 'busy'].includes(state);
   const manage = data?.canManage === true;
   const mobileQuiet = ['ready', 'asleep', 'busy', 'checking', 'waking', 'updating'].includes(state);
+  const settingUp = ['settingUp', 'updating'].includes(state);
   const content = <>
       <Desktop size={18} aria-hidden="true" />
       <div className="computer-status-copy">
         <div role="status"><span>{t('computer.title')}</span><strong>{t(`computer.${state}`)}</strong></div>
         {!compact && <p>{t(`computer.${state}.detail`)}</p>}
+        {settingUp && data?.setupProgress && <ComputerSetupProgress progress={data.setupProgress} />}
         {!compact && !manage && ['missing', 'attention'].includes(state) && <p>{t('computer.owner')}</p>}
       </div>
       <div className="computer-status-actions">
@@ -77,7 +80,7 @@ export function ComputerStatus({ onOpenChat, onOpenKnowledge, mobileTarget }: {
       </div>
   </>;
   return <>
-    <section className={`computer-status ${compact ? 'computer-status-compact' : ''} ${mobileTarget && mobileQuiet ? 'computer-status-mobile-hidden' : ''}`} aria-label={t('computer.title')}>
+    <section className={`computer-status ${settingUp ? 'computer-status-setup' : ''} ${compact ? 'computer-status-compact' : ''} ${mobileTarget && mobileQuiet ? 'computer-status-mobile-hidden' : ''}`} aria-label={t('computer.title')}>
       {content}
     </section>
     {mobileTarget && createPortal(<div ref={disclosure} className="computer-status-disclosure">
@@ -86,7 +89,7 @@ export function ComputerStatus({ onOpenChat, onOpenKnowledge, mobileTarget }: {
         aria-expanded={open} aria-controls={open ? panelId : undefined} onClick={() => setOpen(value => !value)}>
         <Desktop size={18} aria-hidden="true" /><span className="computer-status-dot" aria-hidden="true" />
       </button>
-      {open && <div id={panelId} className="computer-status-popover" role="region" aria-label={t('computer.title')}>
+      {open && <div id={panelId} className={`computer-status-popover ${settingUp ? 'computer-status-setup' : ''}`} role="region" aria-label={t('computer.title')}>
         {content}
       </div>}
     </div>, mobileTarget)}

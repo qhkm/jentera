@@ -26,6 +26,7 @@ import { runtimeFacingModelBase, runtimeFacingModelBaseAllowed } from './executi
 import { canBootstrap, type BootstrapRuntimeProvider, type RuntimeProvider } from './provider';
 import { finalizeRuntimeModelKeyRotation, runtimeModelKey } from './openrouter-keys';
 import { RunnerClient } from './runner-client';
+import { setupStageReporter, type SetupStage } from './setup-progress';
 
 export interface ProvisionOptions {
   provider?: RuntimeProvider;
@@ -153,6 +154,20 @@ async function bootstrapRuntime(
   }
   const candidates = candidateModelNames(env);
   if (!runtime.providerId || !runtime.providerUrl) throw new Error('provider runtime is incomplete');
+  const progressTask = await withTenant(env, businessId, async tx => (await tx<{ id: string; lease_token: string }[]>`
+    select id, lease_token from runtime_task where business_id = ${businessId}
+      and status = 'leased' and kind in ('provision','upgrade','reconcile') limit 1`)[0]);
+  const report = async (stage: SetupStage) => {
+    if (!progressTask) return;
+    // A stale bootstrap must never overwrite a later attempt's progress.
+    try {
+      await withTenant(env, businessId, tx => tx`update runtime_task
+        set result = coalesce(result, '{}'::jsonb) || jsonb_build_object('setupProgress',
+          jsonb_build_object('stage', ${stage}::text, 'updatedAt', now()))
+        where id = ${progressTask.id} and status = 'leased' and lease_token = ${progressTask.lease_token}`);
+    } catch { console.warn('[setup-progress] could not persist stage'); }
+  };
+  await report('downloads');
 
   const modelKey = await runtimeModelKey(env, businessId, runtime.providerName);
 
@@ -219,7 +234,7 @@ async function bootstrapRuntime(
     observed,
     '/home/sprite/aisar/runner/bootstrap-runtime.sh',
     ['/home/sprite/aisar/bootstrap.env.in'],
-    { env: ['AISAR_BOOTSTRAP_CONTROL_PLANE=1'] },
+    { env: ['AISAR_BOOTSTRAP_CONTROL_PLANE=1'], onOutput: setupStageReporter(report) },
   );
   const awakened = await provider.wake(observed);
   const client = new RunnerClient({
@@ -233,6 +248,7 @@ async function bootstrapRuntime(
      boot-tested web-search backend, and that Fly's edge did not forward its
      organization bearer token into the tenant. */
   const readiness = await client.ready();
+  await report('checkpoint');
   /* The checkpoint is the rollback point for this release. When Fly cannot
      take one — an orphan directory on its side blocked BoxCompute for nine
      hours on 2026-09-12 while every bootstrap succeeded — the release is

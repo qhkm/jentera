@@ -84,6 +84,16 @@
 .computer-status-copy [role="status"] { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; }
 .computer-status-copy [role="status"] > span { color: var(--text-secondary); }
 .computer-status-copy p { margin: 6px 0 0; font-size: 12px; line-height: 1.6; color: var(--text-secondary); }
+.computer-status-setup { background: linear-gradient(120deg, rgb(var(--accent-green-rgb) / .12), transparent 85%), var(--bg-card); border-color: rgb(var(--accent-green-rgb) / .35); box-shadow: inset 3px 0 0 rgb(var(--accent-green-rgb) / .65); }
+.computer-status-setup > svg { color: var(--accent-green); }
+.computer-setup-progress { margin-top: 12px; max-width: 460px; }
+.computer-setup-stage { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 12px; }
+.computer-setup-stage span { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.computer-setup-progress progress { display: block; appearance: none; width: 100%; height: 5px; margin-top: 8px; border: 0; border-radius: 8px; overflow: hidden; background: var(--rail); accent-color: var(--accent-green); }
+.computer-setup-progress progress::-webkit-progress-bar { background: var(--rail); }
+.computer-setup-progress progress::-webkit-progress-value { background: var(--accent-green); border-radius: 8px; }
+.computer-setup-progress progress::-moz-progress-bar { background: var(--accent-green); }
+.computer-setup-progress small { display: block; margin-top: 3px; color: var(--text-muted); font-size: 10px; }
 .computer-status-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .computer-status-compact { padding: 10px 14px; align-items: center; }
 .computer-status-header-slot { display: none; }

@@ -36,7 +36,7 @@ export async function handleRuntime(
   }
 
   if (url.pathname === '/api/runtime' && request.method === 'GET') {
-    const { runtime, budget, observedRegion, setupStatus } = await withTenant(
+    const { runtime, budget, observedRegion, setupStatus, setupProgress } = await withTenant(
       env,
       identity.businessId,
       async (tx) => ({
@@ -46,6 +46,13 @@ export async function handleRuntime(
         setupStatus: (await tx<{ status: string }[]>`select status from runtime_task
           where business_id = ${identity.businessId} and kind = 'provision'
           order by created_at desc limit 1`)[0]?.status ?? null,
+        setupProgress: (await tx`select
+          coalesce(result->'setupProgress'->>'stage', 'preparing') as stage,
+          created_at as "startedAt",
+          coalesce(result->'setupProgress'->>'updatedAt', created_at::text) as "updatedAt"
+          from runtime_task where business_id = ${identity.businessId}
+            and kind in ('provision','upgrade','reconcile') and status in ('queued','leased')
+          order by (status = 'leased') desc, created_at desc limit 1`)[0] ?? null,
       }),
     );
     const expectedRegion = validRegion(env.RUNTIME_EXPECTED_REGION);
@@ -53,6 +60,7 @@ export async function handleRuntime(
       ok: true,
       canManage: can(identity, 'runtime.manage'),
       setupStatus,
+      setupProgress,
       runtime: runtime ? {
         status: runtime.status,
         desiredRelease: runtime.desiredRelease,

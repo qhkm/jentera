@@ -16,6 +16,8 @@ import TelegramConnect from '@/routes/views/TelegramConnect';
 import { useT } from '@/i18n/I18nProvider';
 import { FirstJob } from '@/components/FirstJob';
 import { computerStatus } from '@/lib/computer-status';
+import { ComputerSetupProgress } from '@/components/ComputerSetupProgress';
+import type { RuntimeOverview } from '@/lib/repo';
 
 type Status = 'pending' | 'running' | 'waiting' | 'done';
 
@@ -51,6 +53,7 @@ function LiveSetup() {
   const mutate = useMutate();
   const connections = useConnections();
   const [runtime, setRuntime] = useState<RuntimeSummary | null>(null);
+  const [setupProgress, setSetupProgress] = useState<RuntimeOverview['setupProgress']>(null);
   const [runtimeLoaded, setRuntimeLoaded] = useState(false);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [finishing, setFinishing] = useState(false);
@@ -65,6 +68,7 @@ function LiveSetup() {
     try {
       const current = await repo.runtimeStatus();
       setRuntime(current.runtime);
+      setSetupProgress(current.setupProgress);
       setRuntimeLoaded(true);
       if (current.runtime?.lastError) setRuntimeError(current.runtime.lastError);
       else if (current.runtime) setRuntimeError(null);
@@ -172,7 +176,7 @@ function LiveSetup() {
         </div>
 
         {!runtimeReady && !runtimeError ? (
-          <RuntimePreparing stage={runtimeStage} />
+          setupProgress ? <div className="computer-status computer-status-setup"><ComputerSetupProgress progress={setupProgress} /></div> : <RuntimePreparing stage={runtimeStage} />
         ) : null}
 
         <Card className="gap-0 p-0">

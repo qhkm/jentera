@@ -305,6 +305,7 @@ export interface RuntimeOverview {
   runtime: RuntimeSummary | null;
   canManage?: boolean;
   setupStatus?: string | null;
+  setupProgress?: { stage: string; startedAt: string; updatedAt: string } | null;
 }
 
 /** Thrown when a feature needs the server and there is no session. */

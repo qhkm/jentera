@@ -44,7 +44,14 @@ stage_timings=''
 stage_done() {
   stage_timings+="${stage_timings:+,}\"$1\":$((SECONDS - stage_started))"
   stage_started=$SECONDS
+  case "$1" in
+    install) echo 'JENTERA_SETUP_STAGE:npm' ;;
+    npm) echo 'JENTERA_SETUP_STAGE:browser' ;;
+    playwright) echo 'JENTERA_SETUP_STAGE:configure' ;;
+    configure) echo 'JENTERA_SETUP_STAGE:checks' ;;
+  esac
 }
+echo 'JENTERA_SETUP_STAGE:install'
 while IFS='=' read -r name value; do
   [[ -z "$name" ]] && continue
   [[ "$value" =~ ^[A-Za-z0-9+/]*={0,2}$ ]] || {

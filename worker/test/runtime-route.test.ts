@@ -49,6 +49,7 @@ describe('runtime provisioning route', () => {
       ok: true,
       canManage: true,
       setupStatus: null,
+      setupProgress: null,
       runtime: null,
       budget: {
         budget: {

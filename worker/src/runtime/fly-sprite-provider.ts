@@ -160,7 +160,7 @@ export class FlySpriteProvider implements BootstrapRuntimeProvider {
     runtime: ObservedRuntime,
     command: string,
     args: string[] = [],
-    options: { env?: string[]; dir?: string } = {},
+    options: { env?: string[]; dir?: string; onOutput?: (text: string) => Promise<void> } = {},
   ): Promise<RuntimeExecResult> {
     if (command !== '/home/sprite/aisar/runner/bootstrap-runtime.sh' && command !== '/bin/bash') {
       throw new Error('runtime bootstrap command is not allowed');
@@ -181,7 +181,7 @@ export class FlySpriteProvider implements BootstrapRuntimeProvider {
     if (!response.ok) {
       throw await apiError('exec Sprite bootstrap', response);
     }
-    return readHttpExec(response);
+    return readHttpExec(response, options.onOutput);
   }
 
   private async get(name: string, allowMissing: boolean): Promise<ObservedRuntime | null> {
@@ -277,7 +277,7 @@ async function assertStreamSucceeded(res: Response): Promise<void> {
   if (failed) throw new Error(redactSecrets(failed.error ?? failed.data ?? 'Sprite operation failed'));
 }
 
-async function readHttpExec(response: Response): Promise<RuntimeExecResult> {
+async function readHttpExec(response: Response, onOutput?: (text: string) => Promise<void>): Promise<RuntimeExecResult> {
   /* HTTP exec is the provider-supported escape hatch for environments such as
      Workers that cannot keep a long-lived outbound WebSocket attached. The
      response ends with the two-byte exit frame: stream 3, then exit code.
@@ -285,13 +285,29 @@ async function readHttpExec(response: Response): Promise<RuntimeExecResult> {
      The current protocol does not length-prefix output frames, so intermediaries
      may coalesce them. Bootstrap output is diagnostic only; correctness comes
      from the terminal exit frame and subsequent authenticated readiness probe. */
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('Sprite bootstrap HTTP stream has no body');
+  let bytes = new Uint8Array(0);
+  let firstStream: number | undefined;
+  const decoder = new TextDecoder();
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (firstStream === undefined && value.length) firstStream = value[0];
+      const joined = new Uint8Array(bytes.length + value.length);
+      joined.set(bytes); joined.set(value, bytes.length);
+      bytes = joined.slice(-128 * 1024 - 2);
+      if (onOutput) await onOutput(decoder.decode(value, { stream: true }));
+    }
+    if (onOutput) await onOutput(decoder.decode());
+  } finally { reader.releaseLock(); }
   if (bytes.length < 2 || bytes[bytes.length - 2] !== 3) {
     throw new Error('Sprite bootstrap HTTP stream ended without an exit frame');
   }
   const exitCode = bytes[bytes.length - 1];
   const output = bytes.subarray(0, -2);
-  const stream = output[0];
+  const stream = firstStream;
   const detail = new TextDecoder()
     .decode(stream === 1 || stream === 2 ? output.subarray(1) : output)
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '')
