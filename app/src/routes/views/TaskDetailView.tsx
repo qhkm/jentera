@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { taskDisplayTitle } from '@/lib/task';
 import { ArtifactList } from '@/components/ArtifactList';
 import { ArrowLeft, ArrowUpRight, ChatCircle, CheckCircle, Clock, WarningCircle } from '@phosphor-icons/react';
 import { Button, Card, Eyebrow, LoadingState, Tag } from '@/components/ui';
@@ -86,7 +87,7 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk, 
   const needsReview = outcomeStatus === 'needs_review';
   const needsInput = outcomeStatus === 'needs_input' || outcomeStatus === 'blocked';
   function continueTask() {
-    const taskTitle = (work?.objective || title || runId).slice(0, 120);
+    const taskTitle = taskDisplayTitle(work?.objective || title || runId);
     const excerpt = fullText.length > 300 ? `${fullText.slice(0, 300)}…` : fullText;
     onOpenAsk?.(t('task.feedbackContext', { title: taskTitle }) + '\n\n' + excerpt + '\n\n' + t('task.feedbackPrompt'), result?.sessionId);
   }
@@ -113,7 +114,7 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk, 
       </nav>
       <header className="task-detail-heading">
         <Eyebrow>{t('task.title')}</Eyebrow>
-        <h1 id="task-heading" tabIndex={-1} ref={heading}>{result ? result.objective || work?.objective || title || t('task.title') : t('task.title')}</h1>
+        <h1 id="task-heading" tabIndex={-1} ref={heading}>{result ? taskDisplayTitle(result.objective || work?.objective || title || t('task.title')) : t('task.title')}</h1>
       </header>
       {error ? (
         <Card className="gap-4" role="alert">

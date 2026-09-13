@@ -55,6 +55,7 @@ import { listSpecialists, specialistForTurn } from '../specialists';
 import { runCoordination } from '../coordination';
 import { ensureChatSession, isChatSessionId, isWorkspaceMember, runVisibleTo } from '../chat-sessions';
 import { answerText } from '../runtime/answer-text';
+import { taskTitle } from '../task-title';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -393,7 +394,7 @@ export async function handleRuns(
       await withTenant(env, id.businessId, async (tx) => {
         await recordWork(tx, id.businessId, {
           runId: run.id,
-          objective: question,
+          objective: taskTitle(question),
           outcome: result.text.slice(0, 500),
           status: 'completed',
           function: 'ask',
@@ -739,7 +740,7 @@ async function startDurableAsk(
         instructions: prepared.instructions,
         ...(specialist ? { profile: specialist.profile, profileName: specialist.name } : {}),
         sessionId: sessionId ?? run.id,
-        objective: question,
+        objective: taskTitle(question),
         function: 'ask',
         channel: 'app',
         factKeys: prepared.usedKeys,

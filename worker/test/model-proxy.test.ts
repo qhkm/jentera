@@ -5,6 +5,7 @@ import {
   RUNTIME_PROXY_PATH,
   recordRiderSpend,
   riderMonthKey,
+  riderBudgetStatus,
   verifyJenteraKey,
 } from '../src/fmcv-verifier';
 import type { ModelProxyOptions } from '../src/routes/model';
@@ -126,6 +127,17 @@ describe('worker-native jentera credential verification', () => {
 });
 
 describe('model proxy route', () => {
+  it('uses the server-owned budget only for the matching rider', async () => {
+    const business = '11111111-1111-4111-8111-111111111111';
+    await asOwner(async sql => {
+      await sql`insert into business (id,name,playbook_key) values (${business},'Admin','restaurant')`;
+      await sql`insert into agent_runtime (business_id,provider,provider_name,desired_release)
+        values (${business},'fly-sprite',${RID},'test')`;
+      await sql`insert into runtime_budget (business_id,monthly_cost_microusd) values (${business},50000000)`;
+    });
+    expect((await riderBudgetStatus(proxyEnv(), RID)).limitMicrousd).toBe(50_000_000);
+    expect((await riderBudgetStatus(proxyEnv(), 'aisar-b-ffffffffffffffffffff')).limitMicrousd).toBe(5_000_000);
+  });
   it('answers 401 for missing, malformed, or tampered credentials', async () => {
     const env = proxyEnv();
 

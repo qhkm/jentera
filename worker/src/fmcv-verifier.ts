@@ -31,7 +31,7 @@ export const RUNTIME_KEY_CONTEXT = 'jentera-runtime-key:v1';
 /** Path on this Worker that proxies model calls to the upstream gateway. */
 export const RUNTIME_PROXY_PATH = '/v1/model';
 
-/** The only reviewed per-rider ceiling, embedded in every v1 token. */
+/** Default ceiling embedded in v1 tokens; server-owned budgets may override it. */
 export const RUNTIME_MODEL_CEILING_LIMIT_USD = 5;
 
 const TOKEN_PREFIX = 'sk-jentera-v1';
@@ -121,7 +121,29 @@ export async function riderBudgetStatus(
   now = new Date(),
 ): Promise<RiderBudgetStatus> {
   const month = riderMonthKey(now);
-  const limitMicrousd = RUNTIME_MODEL_CEILING_LIMIT_USD * MICROUSD_PER_USD;
+  let limitMicrousd = RUNTIME_MODEL_CEILING_LIMIT_USD * MICROUSD_PER_USD;
+  // Only the server-owned tenant budget can override the default. Never trust
+  // a caller-supplied business id or modify the signed credential contract.
+  const sql = connect(env);
+  try {
+    const [identity] = await sql<{ business_id: string | null }[]>`
+      select public.runtime_business_for_rider(${riderId}) as business_id`;
+    if (identity?.business_id) {
+      const configured = await sql.begin(async tx => {
+        await tx`select set_config('app.business_id', ${identity.business_id!}, true)`;
+        const [row] = await tx<{ cap: string }[]>`select monthly_cost_microusd::text as cap
+          from runtime_budget where business_id = ${identity.business_id!}`;
+        return row?.cap;
+      });
+      if (configured !== undefined) {
+        const cap = Number(configured);
+        if (!Number.isSafeInteger(cap) || cap < 0) throw new Error('Invalid model budget');
+        limitMicrousd = cap;
+      }
+    }
+  } finally {
+    await sql.end({ timeout: 1 });
+  }
   const spendMicrousd = await riderMonthSpend(env, riderId, month);
   return { month, spendMicrousd, limitMicrousd, allowed: spendMicrousd < limitMicrousd };
 }
