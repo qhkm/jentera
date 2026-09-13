@@ -23,6 +23,13 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
 
 `app/README.md` has the detail. The parts worth knowing here:
 
+- The installed app updates on a prompt (`registerType: 'prompt'`), never
+  mid-reply. A browser only looks for a new service worker on navigation
+  and at most daily on its own, so `pwa/update-checks.ts` asks on every
+  return to the foreground and hourly while open; a release then shows its
+  prompt within minutes rather than at the next launch. The 4-hour cache
+  header the zone puts on `/sw.js` is not a factor: browsers bypass the
+  HTTP cache for a service worker's main script on update checks.
 - `app/src/lib/data/` is hand-maintained TypeScript. Add a playbook with `scripts/add-playbook.mjs`, which edits `playbooks.ts` directly — don't hand-merge.
 - Controls share `--control-h` / `--control-pad-y`. A `text-*` or `py-*` utility on a `.btn`/`.input` overrides the component and breaks the shared height — this caused three separate visual bugs. Let components own their type and padding.
 - The old static engine wrote work-done indices as **strings**; the app reads either format and writes strings, so existing users' approvals survive the cutover.

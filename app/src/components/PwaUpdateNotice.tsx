@@ -1,14 +1,24 @@
 import { ArrowsClockwise } from '@phosphor-icons/react';
+import { useEffect, useRef } from 'react';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useRegisterSW } from '@/pwa/register';
+import { startUpdateChecks } from '@/pwa/update-checks';
 
 /** Registers the service worker and, when a newer Jentera has been fetched
-    in the background, offers a reload instead of forcing one mid-reply. */
+    in the background, offers a reload instead of forcing one mid-reply.
+    Between launches it keeps looking: on every return to the foreground
+    and once an hour while open. */
 export function PwaUpdateNotice() {
   const { t } = useI18n();
+  const stopChecks = useRef<(() => void) | null>(null);
   const { needRefresh: [needRefresh, setNeedRefresh], updateServiceWorker } = useRegisterSW({
+    onRegisteredSW(_url, registration) {
+      stopChecks.current?.();
+      stopChecks.current = registration ? startUpdateChecks(registration) : null;
+    },
     onRegisterError() { /* No worker, no install; the app is unaffected. */ },
   });
+  useEffect(() => () => stopChecks.current?.(), []);
   if (!needRefresh) return null;
   return (
     <div
