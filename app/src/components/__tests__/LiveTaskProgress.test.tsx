@@ -6,6 +6,17 @@ vi.mock('@/hooks/useDetailLevel', () => ({ useDetailLevel: () => ({ advanced: fa
 
 afterEach(() => vi.useRealTimers());
 describe('honest live progress', () => {
+  it('keeps task purpose over tool details but lets connection status override it', () => {
+    const props = { steps: ['terminal: "python3"'], taskLabel: 'Checking your token usage', since: Date.now(), durable: true };
+    const view = render(<LiveTaskProgress {...props} />);
+    expect(screen.getByText('Checking your token usage')).toBeVisible();
+    expect(screen.getByText('Technical details')).toBeVisible();
+    expect(view.container.querySelector('details')).not.toHaveAttribute('open');
+    view.rerender(<LiveTaskProgress {...props} disconnected />);
+    expect(screen.queryByText('Checking your token usage')).toBeNull();
+    expect(screen.getByText('Checking task status')).toBeVisible();
+    expect(view.container.querySelector('.ask-active-shimmer')).toBeNull();
+  });
   it('collapses previous steps and shimmers only the current action', () => {
     const props = { steps: ['🔍 web_search: "cache"', '🌐 web_extract: "https://example.com"', 'private narration'], since: Date.now(), durable: true };
     const view = render(<LiveTaskProgress {...props} />);

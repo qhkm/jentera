@@ -207,7 +207,7 @@ describe('AskReply: the agent\'s steps', () => {
     await waitFor(() => expect(container.querySelector('.ask-steps')).not.toBeNull());
     const items = Array.from(container.querySelectorAll('.ask-steps li')).map((li) => li.textContent ?? '');
     expect(items).toHaveLength(2);
-    expect(items[0]).toContain('Working on Jentera’s computer');
+    expect(items[0]).toContain('Running a command');
     expect(items[0]).toContain('git, python3');
     expect(items[0]).toContain('3');
     expect(items[1]).toContain('oat milk latte PJ');

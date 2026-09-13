@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { presentTaskSteps } from '@/lib/task-presentation';
+import { presentTaskSteps, safeTaskProgressLabel } from '@/lib/task-presentation';
 import { useI18n } from '@/i18n/I18nProvider';
 import { Check } from '@phosphor-icons/react';
 import { useDetailLevel } from '@/hooks/useDetailLevel';
@@ -10,8 +10,8 @@ function duration(seconds: number) {
 }
 
 /** Elapsed time is not a heartbeat. Quiet work is explicitly unconfirmed. */
-export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected, label }: {
-  steps: string[]; since?: number; lastProgressAt?: number; disconnected?: boolean; durable: boolean; label?: string;
+export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected, label, taskLabel }: {
+  steps: string[]; since?: number; lastProgressAt?: number; disconnected?: boolean; durable: boolean; label?: string; taskLabel?: string;
 }) {
   const { lang } = useI18n();
   const bm = lang === 'bm';
@@ -26,6 +26,7 @@ export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected, l
   const entries = latest ? [latest] : [];
   const quietFor = Math.max(0, Math.floor((now - (lastProgressAt ?? since ?? now)) / 1000));
   const quiet = quietFor >= 60;
+  const purpose = !quiet && !disconnected ? safeTaskProgressLabel(taskLabel) : undefined;
   const hasSteps = entries.length > 0;
   if (!entries.length) entries.push({ label: disconnected
     ? (bm ? 'Menyemak status tugasan' : 'Checking task status')
@@ -51,8 +52,9 @@ export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected, l
         return <li key={`${i}-${entry.label}`} aria-current={current ? 'step' : undefined}>
           {current ? <span className={quiet || disconnected ? 'mt-2 h-2 w-2 shrink-0 rounded-full bg-text-muted' : 'ask-step-dot'} aria-hidden="true" /> : <Check size={13} aria-hidden="true" className="ask-step-done" />}
           <div className="ask-step-content">
-            <span className={`ask-step-label${current && !quiet && !disconnected ? ' ask-active-shimmer' : ''}`}>{entry.label}</span>
-            {entry.subject && <span className="ask-step-subject">{entry.subject}</span>}
+            <span className={`ask-step-label${current && !quiet && !disconnected ? ' ask-active-shimmer' : ''}`}>{disconnected ? (bm ? 'Menyemak status tugasan' : 'Checking task status') : quiet ? (bm ? 'Menunggu kemas kini' : 'Waiting for an update') : purpose || entry.label}</span>
+            {purpose ? <details className="ask-step-history"><summary>{bm ? 'Butiran teknikal' : 'Technical details'}</summary><span className="ask-step-subject">{entry.label}{entry.subject ? ` · ${entry.subject}` : ''}</span></details>
+              : entry.subject && <span className="ask-step-subject">{entry.subject}</span>}
             {(entry.count > 1 || current) && <div className="ask-step-meta">
               {entry.count > 1 && <span className="ask-step-count">{entry.count} {bm ? 'langkah' : 'steps'}</span>}
               {current && since !== undefined && <span className="text-text-tertiary tabular-nums">{entry.count > 1 ? ' · ' : ''}{duration(Math.max(0, Math.floor((now - since) / 1000)))}</span>}

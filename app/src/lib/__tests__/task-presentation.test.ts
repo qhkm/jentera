@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { displayWorkspacePaths, presentTaskSteps } from '@/lib/task-presentation';
+import { displayWorkspacePaths, presentTaskSteps, safeTaskProgressLabel } from '@/lib/task-presentation';
+
+it('accepts bounded public task labels but rejects technical details and outcome claims', () => {
+  expect(safeTaskProgressLabel('Comparing the documented options')).toBe('Comparing the documented options');
+  expect(safeTaskProgressLabel('Menyemak penggunaan token')).toBe('Menyemak penggunaan token');
+  for (const label of ['Done', 'Approved', 'Reading /home/private', 'Checking token=secret', 'Reading https://example.com', 'Checking user@example.com', 'Checking ' + 'x'.repeat(100)]) {
+    expect(safeTaskProgressLabel(label)).toBeUndefined();
+  }
+});
 
 describe('user-facing runtime presentation', () => {
   it('shows verified output locations as relative paths without inventing a filesystem mount', () => {
@@ -24,7 +32,7 @@ describe('the steps under a reply', () => {
 
   it('folds consecutive steps of one kind into one line that names the programs', () => {
     expect(presentTaskSteps(computer, 'en', { advanced: false })).toEqual([
-      { label: 'Working on Jentera’s computer', subject: 'git, python3', count: 3 },
+      { label: 'Running a command', subject: 'git, python3', count: 3 },
       { label: 'Searching for information', subject: 'oat milk latte PJ Damansara', count: 1 },
       { label: 'Reading information', subject: 'www.malaymail.com', count: 1 },
     ]);
@@ -39,7 +47,7 @@ describe('the steps under a reply', () => {
 
   it('shows only the program of an older raw command, never its arguments', () => {
     const [entry] = presentTaskSteps(['💻 terminal: "TOKEN=abc curl -H \\"Authorization: Bearer x\\" https://example.com/login"'], 'en', { advanced: true });
-    expect(entry).toEqual({ label: 'Working on Jentera’s computer', subject: 'curl', count: 1 });
+    expect(entry).toEqual({ label: 'Running a command', subject: 'curl', count: 1 });
   });
 
   it('names nothing for a hidden or code step, and keeps login values out of process steps', () => {
@@ -91,7 +99,7 @@ describe('the steps under a reply', () => {
 
   it('bounds what one line can carry', () => {
     const programs = ['a', 'b', 'c', 'd', 'e', 'f'].map((p) => `💻 terminal: "${p}"`);
-    expect(presentTaskSteps(programs, 'en', { advanced: false })).toEqual([{ label: 'Working on Jentera’s computer', subject: 'a, b, c, d', count: 6 }]);
+    expect(presentTaskSteps(programs, 'en', { advanced: false })).toEqual([{ label: 'Running a command', subject: 'a, b, c, d', count: 6 }]);
     const long = presentTaskSteps([`🔍 web_search: "${'x'.repeat(200)}"`], 'en', { advanced: false });
     expect(long[0].subject?.length).toBe(80);
     const twoQueries = presentTaskSteps(['🔍 web_search: "kopi"', '🔍 web_search: "kopi"', '🔍 web_search: "teh"'], 'en', { advanced: false });
@@ -100,6 +108,6 @@ describe('the steps under a reply', () => {
 
   it('speaks Malay too', () => {
     expect(presentTaskSteps(['💻 terminal: "git"', '🔍 web_search: "kopi"'], 'bm', { advanced: false }).map((e) => e.label))
-      .toEqual(['Menjalankan tugasan pada komputer Jentera', 'Mencari maklumat']);
+      .toEqual(['Menjalankan arahan', 'Mencari maklumat']);
   });
 });

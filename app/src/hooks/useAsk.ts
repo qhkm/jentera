@@ -27,6 +27,7 @@ import { artifactsOf } from '@/lib/artifacts';
 import { trackActivation } from '@/lib/analytics';
 import { isRunId } from '@/lib/task';
 import type { ReminderDraft } from '@/lib/reminders';
+import { safeTaskProgressLabel } from '@/lib/task-presentation';
 
 export interface AskMessage {
   reminderDraft?: ReminderDraft;
@@ -43,6 +44,8 @@ export interface AskMessage {
   /** What the agent is doing while answer text is already on screen (a tool
       mid-answer); cleared by the next piece of text. */
   liveStatus?: string;
+  /** Public task purpose from explicit step events, never private thinking. */
+  taskProgressLabel?: string;
   /** Client-side result recovery, separate from the agent's progress. */
   connectionStatus?: string;
   /** The agent's own steps and tool calls, in order, kept with the reply. */
@@ -137,6 +140,12 @@ function applyProgress(message: AskMessage, event: AskProgressEvent, t: Translat
     ...message, connectionStatus: t(event.detail === 'recovered' ? 'ask.checkingResult' : 'ask.reconnecting'),
   };
   message = { ...message, lastProgressAt: Date.now(), connectionStatus: undefined };
+  if (event.type === 'status' && event.kind === 'step') {
+    message.taskProgressLabel = safeTaskProgressLabel(event.detail);
+  }
+  if (['queued', 'waking', 'retrying', 'needs_approval'].includes(event.type)) {
+    message.taskProgressLabel = undefined;
+  }
   /* The agent's own steps and tool calls read as a list; a
      repeated line is the same step, not a new one. */
   if (event.type === 'status' && (event.kind === 'step' || event.kind === 'tool')) {

@@ -250,6 +250,7 @@ describe('useAsk durable answers', () => {
     act(() => options?.onProgress?.({ type: 'status', detail: 'Checking the calendar', kind: 'step' }));
     act(() => options?.onProgress?.({ type: 'status', detail: '🔎 web_search: "opening hours"', kind: 'tool' }));
     expect(result.current!.messages[1].steps).toEqual(['Checking the calendar', '🔎 web_search: "opening hours"']);
+    expect(result.current!.messages[1].taskProgressLabel).toBe('Checking the calendar');
     // Stripped thinking blocks and step lines leave their newlines behind
     // between tool calls; the reply keeps whitespace, so a run of them was a
     // tall empty gap mid-answer. Runs collapse to one blank line.

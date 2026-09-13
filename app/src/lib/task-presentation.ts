@@ -25,9 +25,19 @@ export interface StepEntry {
   count: number;
 }
 
+/** Only explicit progress events may supply a label. Reject technical/private
+ * material and outcome claims; execution events alone own task status. */
+export function safeTaskProgressLabel(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const label = value.trim().replace(/\s+/g, ' ');
+  if (!label || label.length > 100 || /[<>`{}\[\]@=\\/]|https?:|\b(?:password|token|secret|credential|api.?key|hermes|sprite)\s*[:=]/i.test(label)) return undefined;
+  if (!/^(?:Checking|Reading|Researching|Comparing|Preparing|Drafting|Creating|Generating|Installing|Updating|Organizing|Organising|Reviewing|Finding|Searching|Testing|Connecting|Continuing|Menyemak|Membaca|Mengkaji|Membandingkan|Menyediakan|Mencipta|Menjana|Memasang|Mengemas kini|Menyusun|Mencari|Menguji|Menyambung|Meneruskan)\b/i.test(label)) return undefined;
+  return label;
+}
+
 type Kind =
   | 'search' | 'read' | 'image' | 'process' | 'computer' | 'schedule'
-  | 'memory' | 'create' | 'delegate' | 'file' | 'context' | 'work' | 'research' | 'inspect';
+  | 'memory' | 'create' | 'delegate' | 'file' | 'context' | 'work' | 'research' | 'inspect' | 'command' | 'code';
 
 const LABELS: Record<Kind, { en: string; bm: string }> = {
   search: { en: 'Searching for information', bm: 'Mencari maklumat' },
@@ -35,6 +45,8 @@ const LABELS: Record<Kind, { en: string; bm: string }> = {
   image: { en: 'Checking an image', bm: 'Memeriksa imej' },
   process: { en: 'Checking task progress', bm: 'Menyemak kemajuan tugasan' },
   computer: { en: 'Working on Jentera’s computer', bm: 'Menjalankan tugasan pada komputer Jentera' },
+  command: { en: 'Running a command', bm: 'Menjalankan arahan' },
+  code: { en: 'Running code', bm: 'Menjalankan kod' },
   schedule: { en: 'Setting a schedule', bm: 'Menetapkan jadual' },
   memory: { en: 'Noting something down', bm: 'Mencatat sesuatu' },
   create: { en: 'Creating an image', bm: 'Mencipta imej' },
@@ -96,10 +108,10 @@ function classify(step: string): { kind: Kind; subject?: string } {
   if (/search/.test(tool)) return { kind: 'search' };
   if (tool === 'vision_analyze') return { kind: 'image' };
   if (tool === 'process') return { kind: 'process' };
-  if (tool === 'execute_code') return { kind: 'computer' };
+  if (tool === 'execute_code') return { kind: 'code' };
   if (/^(?:terminal|shell|bash)$/.test(tool)) {
     const program = programOf(preview);
-    return { kind: program && /^(?:ls|cat|head|tail|stat|find|rg|grep)$/.test(program) ? 'inspect' : 'computer', subject: program };
+    return { kind: program && /^(?:ls|cat|head|tail|stat|find|rg|grep)$/.test(program) ? 'inspect' : 'command', subject: program };
   }
   if (tool === 'cronjob') return { kind: 'schedule' };
   if (tool === 'memory') return { kind: 'memory' };

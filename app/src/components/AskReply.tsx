@@ -150,7 +150,7 @@ export function AskReply({
                 {renderReplyMarkdown(displayWorkspacePaths(displayText))}
               </div>
               {message.steps?.length
-                ? <LiveTaskProgress steps={message.steps} since={message.startedAt} lastProgressAt={message.lastProgressAt} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
+                ? <LiveTaskProgress taskLabel={message.taskProgressLabel} steps={message.steps} since={message.startedAt} lastProgressAt={message.lastProgressAt} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
                 : (
                   <div className="mt-2">
                     <LiveTaskProgress steps={[]} label={message.liveStatus} since={message.startedAt} lastProgressAt={message.lastProgressAt} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
@@ -164,7 +164,7 @@ export function AskReply({
               ? (
                 <>
                   <p className="sr-only" role="status">{message.text}</p>
-                  <LiveTaskProgress steps={message.steps} since={message.startedAt} lastProgressAt={message.lastProgressAt} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
+                  <LiveTaskProgress taskLabel={message.taskProgressLabel} steps={message.steps} since={message.startedAt} lastProgressAt={message.lastProgressAt} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
                 </>
               )
               : <LiveTaskProgress steps={[]} label={message.text} since={message.startedAt} lastProgressAt={message.lastProgressAt} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
