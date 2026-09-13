@@ -425,7 +425,7 @@
   .typing { display: inline-flex; gap: 4px; align-items: center; }
   .typing i {
     width: 5px; height: 5px; border-radius: 50%;
-    background: var(--text-muted);
+    background: var(--accent-green);
     animation: typing-bounce 1.1s infinite ease-in-out;
   }
   .typing i:nth-child(2) { animation-delay: 0.15s; }
