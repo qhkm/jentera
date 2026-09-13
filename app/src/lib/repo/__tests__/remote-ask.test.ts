@@ -172,6 +172,27 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
     expect(fetch.mock.calls.every(call => call[1]?.method !== 'POST')).toBe(true);
   });
 
+  it('reports healthy polling and ignores late socket progress after handoff', async () => {
+    vi.useFakeTimers();
+    const fetch = vi.fn().mockResolvedValueOnce(response({ pending: true, status: 'working' }))
+      .mockResolvedValueOnce(response({ ...ANSWER, pending: false, status: 'completed' }));
+    vi.stubGlobal('fetch', fetch);
+    const sockets: FakeWebSocket[] = [];
+    vi.stubGlobal('WebSocket', class extends FakeWebSocket {
+      constructor(url: string) { super(url); sockets.push(this); }
+    });
+    const progress = vi.fn();
+    const result = new RemoteRepository().resumeAsk(ANSWER.runId, { onProgress: progress });
+    sockets[0].onclose?.();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(progress).toHaveBeenLastCalledWith({ type: 'reconnecting', detail: 'recovered' });
+    sockets[0].message({ version: 1, type: 'delta', text: 'stale output' });
+    expect(progress).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'delta' }));
+    await vi.advanceTimersByTimeAsync(2000);
+    await expect(result).resolves.toMatchObject(ANSWER);
+    expect(fetch.mock.calls.every(call => call[1]?.method !== 'POST')).toBe(true);
+  });
+
   it('reattaches to a run by its id and returns the durable answer', async () => {
     /* After a reload the page has a run id and nothing else; the same
        socket and durable poll finish it as if the tab never went away. */

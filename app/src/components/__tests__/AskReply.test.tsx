@@ -37,7 +37,9 @@ describe('AskReply: conversation versus work', () => {
   it('shows status recovery instead of thinking after a disconnected stream', async () => {
     mount({ from: 'ai', text: 'Partial answer', liveStatus: '💭 Thinking…', state: 'streaming',
       pendingId: 'p1', startedAt: Date.now() - 195000, connectionStatus: 'Connection restored. Checking your task’s result…' });
-    expect(await screen.findByText('Checking task status')).toBeVisible();
+    expect(await screen.findByText('Connection restored. Checking your task’s result…')).toBeVisible();
+    expect(screen.getAllByText('Connection restored. Checking your task’s result…')).toHaveLength(1);
+    expect(screen.queryByText(/Reconnecting/)).toBeNull();
     expect(screen.queryByText(/Thinking/)).toBeNull();
     expect(screen.getByText('Partial answer')).toBeVisible();
   });
@@ -160,7 +162,7 @@ describe('AskReply: the waiting bubble keeps moving', () => {
 describe('AskReply: the agent\'s steps', () => {
   it('keeps login values in older command traces hidden after restoring the list', async () => {
     const { container } = mount({ from: 'ai', text: 'Working', pendingId: 'p', state: 'working', steps: ['process: "submit proc_old private-login-value"'] });
-    expect(await screen.findByText('Checking task progress')).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector('article [role="status"]')).toHaveTextContent('Checking task progress'));
     expect(container.textContent).not.toContain('private-login-value');
     expect(container.querySelector('.task-progress')).toBeNull();
   });
@@ -179,7 +181,7 @@ describe('AskReply: the agent\'s steps', () => {
     expect(items.map((li) => li.textContent)).toEqual(
       expect.arrayContaining([expect.stringContaining('Continuing the task'), expect.stringContaining('Reading information')]),
     );
-    expect(items.at(-1)?.getAttribute('aria-current')).toBe('step');
+    expect(container.querySelector('article [role="status"]')).toHaveTextContent('Reading information');
     expect(container.querySelector('details')).not.toHaveAttribute('open');
   });
 
@@ -221,10 +223,10 @@ describe('AskReply: the agent\'s steps', () => {
       steps: [`🔍 web_search: "${query}"`, `🔍 web_search: "${query}"`],
     });
     await waitFor(() => expect(container.querySelector('.ask-step-content')).not.toBeNull());
-    const content = container.querySelector('[aria-current="step"] .ask-step-content')!;
+    const content = container.querySelector('.ask-step-content')!;
     expect(content.querySelector('.ask-step-label')).toHaveTextContent('Searching for information');
-    expect(content.querySelector('.ask-step-subject')).toHaveTextContent(query);
-    expect(container.querySelector('summary')).toHaveTextContent('1 step completed');
+    expect(container.querySelector('details .ask-step-subject')).toHaveTextContent(query);
+    expect(container.querySelector('summary')).toHaveTextContent('View activity · 2');
     expect(content.querySelector('.ask-step-meta')).toHaveTextContent('8s');
   });
 });

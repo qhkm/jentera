@@ -594,9 +594,9 @@ export class RemoteRepository implements Repository {
   reset = () => post('/api/state/reset');
 }
 
-async function pollAsk(runId: string, onProgress?: (event: AskProgressEvent) => void): Promise<AskAnswer> {
+async function pollAsk(runId: string, onProgress?: (event: AskProgressEvent) => void, deadline = Date.now() + 16 * 60 * 1_000): Promise<AskAnswer> {
   const started = Date.now();
-  const deadline = started + 16 * 60 * 1_000;
+  let reportedHealthy = false;
   let first = true;
   let failures = 0;
   while (Date.now() < deadline) {
@@ -618,7 +618,8 @@ async function pollAsk(runId: string, onProgress?: (event: AskProgressEvent) => 
       if (failures === 1) onProgress?.({ type: 'reconnecting' });
       continue;
     }
-    if (failures) onProgress?.({ type: 'reconnecting', detail: 'recovered' });
+    if (failures || (!reportedHealthy && state.pending)) onProgress?.({ type: 'reconnecting', detail: 'recovered' });
+    reportedHealthy = true;
     failures = 0;
     if (!state.pending && state.status === 'completed') return state;
     if (!state.pending && state.status) {
@@ -633,20 +634,22 @@ async function streamAsk(
   onProgress: (event: AskProgressEvent) => void,
 ): Promise<AskAnswer> {
   if (typeof WebSocket === 'undefined') return pollAsk(runId, onProgress);
+  const deadline = Date.now() + 16 * 60 * 1_000;
 
   return new Promise<AskAnswer>((resolve, reject) => {
     let socket: WebSocket;
     let handedOff = false;
-    const finishFromDurableState = () => {
+    const finishFromDurableState = (recovering = true) => {
       if (handedOff) return;
       handedOff = true;
+      if (recovering) onProgress({ type: 'reconnecting' });
       globalThis.clearTimeout(timeout);
       try {
         socket.close(1000, 'switching to durable result');
       } catch {
         /* The handshake may have failed before a socket opened. */
       }
-      void pollAsk(runId, onProgress).then(resolve, reject);
+      void pollAsk(runId, onProgress, deadline).then(resolve, reject);
     };
     const timeout = globalThis.setTimeout(finishFromDurableState, 16 * 60 * 1_000);
 
@@ -658,6 +661,7 @@ async function streamAsk(
     }
 
     socket.onmessage = (message) => {
+      if (handedOff) return;
       let event: {
         version?: unknown; type?: unknown; detail?: unknown; text?: unknown;
         approvalId?: unknown; kind?: unknown;
@@ -677,10 +681,10 @@ async function streamAsk(
           ...(event.kind === 'stage' || event.kind === 'step' || event.kind === 'tool' ? { kind: event.kind } : {}),
         });
       }
-      if (['completed', 'failed', 'cancelled'].includes(event.type)) finishFromDurableState();
+      if (['completed', 'failed', 'cancelled'].includes(event.type)) finishFromDurableState(false);
     };
-    socket.onerror = finishFromDurableState;
-    socket.onclose = finishFromDurableState;
+    socket.onerror = () => finishFromDurableState();
+    socket.onclose = () => finishFromDurableState();
   });
 }
 

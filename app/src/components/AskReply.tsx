@@ -129,7 +129,6 @@ export function AskReply({
         )}
       </header>
       {reminderDraft && <ReminderCard key={reminderDraft.id} draft={reminderDraft} />}
-      {message.pendingId && message.connectionStatus && <p role="status" className="text-sm text-text-secondary">{message.connectionStatus}</p>}
       {message.pendingId ? (
         /* Waiting on a person, not a machine — so no spinner. Any answer text
            already streamed stays above the card: the agent often says what it
@@ -150,10 +149,10 @@ export function AskReply({
                 {renderReplyMarkdown(displayWorkspacePaths(displayText))}
               </div>
               {message.steps?.length
-                ? <LiveTaskProgress taskLabel={message.taskProgressLabel} steps={message.steps} since={message.startedAt} lastProgressAt={message.lastProgressAt} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
+                ? <LiveTaskProgress taskLabel={message.taskProgressLabel} steps={message.steps} since={message.startedAt} lastProgressAt={message.lastProgressAt} connectionLabel={message.connectionStatus} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
                 : (
                   <div className="mt-2">
-                    <LiveTaskProgress steps={[]} label={message.liveStatus} since={message.startedAt} lastProgressAt={message.lastProgressAt} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
+                    <LiveTaskProgress steps={[]} label={message.liveStatus} since={message.startedAt} lastProgressAt={message.lastProgressAt} connectionLabel={message.connectionStatus} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
                   </div>
                 )}
             </>
@@ -163,11 +162,10 @@ export function AskReply({
             : message.steps?.length
               ? (
                 <>
-                  <p className="sr-only" role="status">{message.text}</p>
-                  <LiveTaskProgress taskLabel={message.taskProgressLabel} steps={message.steps} since={message.startedAt} lastProgressAt={message.lastProgressAt} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
+                  <LiveTaskProgress taskLabel={message.taskProgressLabel} steps={message.steps} since={message.startedAt} lastProgressAt={message.lastProgressAt} connectionLabel={message.connectionStatus} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
                 </>
               )
-              : <LiveTaskProgress steps={[]} label={message.text} since={message.startedAt} lastProgressAt={message.lastProgressAt} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
+              : <LiveTaskProgress steps={[]} label={message.text} since={message.startedAt} lastProgressAt={message.lastProgressAt} connectionLabel={message.connectionStatus} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
       ) : (
         <>
           <div className="ask-reply-text" role={failed ? 'alert' : undefined}>

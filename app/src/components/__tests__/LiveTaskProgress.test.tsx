@@ -10,11 +10,12 @@ describe('honest live progress', () => {
     const props = { steps: ['terminal: "python3"'], taskLabel: 'Checking your token usage', since: Date.now(), durable: true };
     const view = render(<LiveTaskProgress {...props} />);
     expect(screen.getByText('Checking your token usage')).toBeVisible();
-    expect(screen.getByText('Technical details')).toBeVisible();
+    expect(screen.getByText('View activity · 1')).toBeVisible();
+    expect(view.container.querySelectorAll('details')).toHaveLength(1);
     expect(view.container.querySelector('details')).not.toHaveAttribute('open');
     view.rerender(<LiveTaskProgress {...props} disconnected />);
     expect(screen.queryByText('Checking your token usage')).toBeNull();
-    expect(screen.getByText('Checking task status')).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('Reconnecting');
     expect(view.container.querySelector('.ask-active-shimmer')).toBeNull();
   });
   it('collapses previous steps and shimmers only the current action', () => {
@@ -22,11 +23,11 @@ describe('honest live progress', () => {
     const view = render(<LiveTaskProgress {...props} />);
     const history = view.container.querySelector('details')!;
     expect(history).not.toHaveAttribute('open');
-    expect(screen.getByText('2 steps completed')).toBeVisible();
-    expect(screen.getByText('Continuing research')).toBeVisible();
+    expect(screen.getByText('View activity · 3')).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('Continuing research');
     expect(view.container.querySelectorAll('.ask-active-shimmer')).toHaveLength(1);
     expect(screen.queryByText('private narration')).toBeNull();
-    fireEvent.click(screen.getByText('2 steps completed'));
+    fireEvent.click(screen.getByText('View activity · 3'));
     expect(history).toHaveAttribute('open');
     view.rerender(<LiveTaskProgress {...props} disconnected />);
     expect(view.container.querySelector('.ask-active-shimmer')).toBeNull();
@@ -44,8 +45,9 @@ describe('honest live progress', () => {
     vi.setSystemTime(new Date('2026-09-13T10:00:00Z'));
     const now = Date.now();
     const view = render(<LiveTaskProgress steps={['💻 terminal: "codex"']} since={now} lastProgressAt={now} durable />);
+    expect(screen.getByText('codex')).not.toBeVisible();
+    fireEvent.click(screen.getByText('View activity · 1'));
     expect(screen.getByText('codex')).toBeVisible();
-    expect(view.container.querySelector('details')).toBeNull();
     expect(view.container.firstElementChild).not.toHaveClass('border');
     expect(view.container.querySelector('.ask-step-dot')).not.toBeNull();
     act(() => { vi.advanceTimersByTime(78000); });
