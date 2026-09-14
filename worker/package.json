@@ -33,6 +33,7 @@
     "db:migrate:notification-kinds": "node scripts/apply-notification-kinds.mjs",
     "db:migrate:team-plan-gate": "node scripts/apply-team-plan-gate.mjs",
     "db:migrate:fact-proposals": "node scripts/apply-fact-proposals.mjs",
+    "db:migrate:activation-milestone": "node scripts/apply-activation-milestone.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

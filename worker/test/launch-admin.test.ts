@@ -70,4 +70,35 @@ describe('launch admin', () => {
     expect(JSON.stringify(body)).not.toContain('Private title');
     expect((await call(admin,{email:'visitor@example.com'})).status).toBe(409);
   });
+
+  it('reports durable launch milestones without claiming a push was seen', async () => {
+    const business = crypto.randomUUID(), chat = crypto.randomUUID(), hash = 'b'.repeat(64);
+    const run = crypto.randomUUID(), reminder = crypto.randomUUID();
+    await asOwner(async sql => {
+      const [user] = await sql`select id from app_user where email='visitor@example.com'`;
+      await sql`insert into business (id,name,playbook_key,onboarded) values (${business},'Test','generic',true)`;
+      await sql`insert into membership (user_id,business_id,role) values (${user.id},${business},'owner')`;
+      await sql`insert into trial_invite (token_hash,email,expires_at,redeemed_by,redeemed_at) values (${hash},'visitor@example.com',now()+interval '7 days',${user.id},now()-interval '1 hour')`;
+      await sql`insert into trial_redemption (user_id,token_hash,started_at,expires_at) values (${user.id},${hash},now()-interval '1 hour',now()+interval '71 hours')`;
+      await sql`insert into platform_access (email,kind,expires_at) values ('visitor@example.com','trial',now()+interval '71 hours')`;
+      await sql`insert into runtime_task (business_id,kind,status,dedupe_key) values (${business},'provision','completed','launch-test')`;
+      await sql`insert into agent_runtime (business_id,provider,provider_name,status,desired_release,last_ready_at) values (${business},'local','launch-test','ready','test',now())`;
+      await sql`insert into activation_milestone (business_id,user_id,kind) values (${business},${user.id},'installed_app_opened')`;
+      await sql`insert into push_subscription (business_id,user_id,endpoint,p256dh,auth,last_used_at) values (${business},${user.id},'https://push.example/device',${'B'.repeat(87)},${'a'.repeat(22)},now())`;
+      await sql`insert into chat_session (id,business_id,created_by,title) values (${chat},${business},${user.id},'Private title')`;
+      await sql`insert into run (id,business_id,kind,trigger_shape,runtime,model,session_id,status,ended_at) values (${run},${business},'ask','owner.ask','hermes-sprite','deepseek',${chat},'completed',now())`;
+      await sql`insert into reminder (id,business_id,user_id,message,due_at,time_zone,status) values (${reminder},${business},${user.id},'Private reminder',now()-interval '1 minute','Asia/Kuala_Lumpur','sent')`;
+      const [notice] = await sql`insert into notification (business_id,recipient_user_id,kind,title,body,source_key) values (${business},${user.id},'reminder_due','Reminder','Private reminder',${`reminder:${reminder}`}) returning created_at`;
+      await sql`insert into push_outbox (business_id,user_id,title,body,url,tag,delivered_at,created_at) values (${business},${user.id},'Reminder','Private reminder','/app',${`notification:reminder:${reminder}`},now(),${notice.created_at})`;
+      await sql`update push_subscription set last_used_at=now() where business_id=${business} and user_id=${user.id}`;
+    });
+    const body = await (await call(admin)).json() as { rows: Array<Record<string, string | null>> };
+    const row = body.rows.find(item => item.email === 'visitor@example.com')!;
+    expect(row).toMatchObject({ lastPushIssue: null });
+    for (const key of ['onboardingCompletedAt','computerReadyAt','installedAppOpenedAt','pushEnabledAt','lastPushAcceptedAt','firstCompletedRequest','firstReminderScheduledAt','firstReminderDeliveredAt','firstReminderPushAcceptedAt']) {
+      expect(row[key], key).not.toBeNull();
+    }
+    expect(JSON.stringify(body)).not.toContain('Private reminder');
+    expect(JSON.stringify(body)).not.toContain('Private title');
+  });
 });

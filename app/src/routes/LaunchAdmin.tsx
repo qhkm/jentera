@@ -3,9 +3,28 @@ import { Link } from 'react-router';
 import { JenteraMark } from '@/components/JenteraMark';
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
-type Person = { email: string; joined_at: string | null; invited_at: string | null; redeemed_at: string | null; trial_expires_at: string | null; access_kind: string | null; access_expires_at: string | null; revoked_at: string | null; firstCompletedRequest: string | null };
+type Person = {
+  email: string;
+  joined_at: string | null;
+  invited_at: string | null;
+  redeemed_at: string | null;
+  trial_expires_at: string | null;
+  access_kind: string | null;
+  access_expires_at: string | null;
+  revoked_at: string | null;
+  onboardingCompletedAt: string | null;
+  computerReadyAt: string | null;
+  installedAppOpenedAt: string | null;
+  pushEnabledAt: string | null;
+  lastPushAcceptedAt: string | null;
+  firstCompletedRequest: string | null;
+  firstReminderScheduledAt: string | null;
+  firstReminderDeliveredAt: string | null;
+  firstReminderPushAcceptedAt: string | null;
+  lastPushIssue: string | null;
+};
 type Launch = { totals: { waitlist: number; invited: number; redeemed: number; active: number }; rows: Person[]; hasMore: boolean };
-const date = (value: string | null) => value ? new Date(value).toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', dateStyle: 'medium', timeStyle: 'short' }) : '—';
+const date = (value?: string | null) => value ? new Date(value).toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', dateStyle: 'medium', timeStyle: 'short' }) : '—';
 
 export default function LaunchAdmin() {
   const [data, setData] = useState<Launch | null>(null);
@@ -17,6 +36,16 @@ export default function LaunchAdmin() {
   const [denied, setDenied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const activation = data ? [
+    ['Trial claimed', data.rows.filter(person => person.redeemed_at).length],
+    ['Onboarding done', data.rows.filter(person => person.onboardingCompletedAt).length],
+    ['Computer ready', data.rows.filter(person => person.computerReadyAt).length],
+    ['Installed app opened', data.rows.filter(person => person.installedAppOpenedAt).length],
+    ['Push enabled', data.rows.filter(person => person.pushEnabledAt).length],
+    ['First task done', data.rows.filter(person => person.firstCompletedRequest).length],
+    ['Reminder scheduled', data.rows.filter(person => person.firstReminderScheduledAt).length],
+    ['Reminder push accepted', data.rows.filter(person => person.firstReminderPushAcceptedAt).length],
+  ] as const : [];
   useEffect(() => {
     const controller = new AbortController();
     setData(null); setError('');
@@ -44,6 +73,10 @@ export default function LaunchAdmin() {
     {denied ? <p className="mt-6" role="alert">This page is available only to the launch administrator. <Link to="/signin" className="text-brand">Sign in</Link></p> : <>
       <p className="mt-2 text-sm text-text-secondary">Waitlist, invitations and trial activation. Dates are in Malaysia time.</p>
       {data && <div className="my-6 grid grid-cols-2 gap-3 sm:grid-cols-4">{Object.entries(data.totals).map(([label, count]) => <div className="rounded-xl border border-border p-4" key={label}><strong className="block text-2xl text-brand">{count}</strong><span className="text-sm capitalize text-text-secondary">{label === 'active' ? 'Active trials' : label === 'invited' ? 'People with codes' : label}</span></div>)}</div>}
+      {data && <section className="my-6" aria-labelledby="activation-funnel-title">
+        <div className="mb-3"><h2 id="activation-funnel-title" className="text-lg font-medium">Activation funnel</h2><p className="mt-1 text-xs text-text-muted">People on this page. Green means the server observed the milestone—not that somebody merely clicked a button. Installed-app opens respect browser privacy opt-outs and may be undercounted.</p></div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{activation.map(([label, count]) => <div className="rounded-xl bg-bg-card p-3" key={label}><strong className="block text-xl text-brand">{count}</strong><span className="text-xs text-text-secondary">{label}</span></div>)}</div>
+      </section>}
       {data && <form onSubmit={event => void create(event)} className="my-6 grid gap-3 rounded-xl border border-border p-4">
         <h2 className="text-lg font-medium">Create a trial invitation</h2><p className="text-sm text-text-secondary">Email-bound. Redeem within 7 days; trial lasts 3 days from redemption. This does not send an email or grant paid access.</p>
         <label className="grid gap-2 text-sm">Recipient email<input className="input w-full" type="email" required maxLength={320} value={email} onChange={e => setEmail(e.target.value)} disabled={busy} /></label>
@@ -60,17 +93,35 @@ export default function LaunchAdmin() {
       <div className="my-4 flex items-center justify-between"><h2 className="text-lg font-medium">People</h2><button className="btn" onClick={() => setRefresh(value => value + 1)}>Refresh</button></div>
       {!data && !error && <p role="status">Loading launch data…</p>}
       {data?.rows.length === 0 && <p className="py-6 text-text-secondary">No waitlist signups or invitations yet.</p>}
-      <div className="grid gap-3">{data?.rows.map(person => <article key={person.email} className="rounded-xl border border-border p-4">
+      <div className="grid gap-3">{data?.rows.map(person => {
+        const journey = [
+          ['Claimed invite', person.redeemed_at],
+          ['Finished onboarding', person.onboardingCompletedAt],
+          ['Computer ready', person.computerReadyAt],
+          ['Opened installed app', person.installedAppOpenedAt],
+          ['Enabled push', person.pushEnabledAt],
+          ['Completed first task', person.firstCompletedRequest],
+          ['Scheduled reminder', person.firstReminderScheduledAt],
+          ['Reminder reached inbox', person.firstReminderDeliveredAt],
+          ['Reminder accepted by push service', person.firstReminderPushAcceptedAt],
+        ] as const;
+        return <article key={person.email} className="rounded-xl border border-border p-4">
         <h3 className="break-all font-medium">{person.email}</h3>
         <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">{[
           ['Joined waitlist', date(person.joined_at)], ['Last code created', date(person.invited_at)],
           ['Trial redeemed', date(person.redeemed_at)], ['Trial ends', date(person.trial_expires_at)],
-          ['First completed request', date(person.firstCompletedRequest)],
           ['Access', person.revoked_at ? 'Revoked' : person.access_kind && (!person.access_expires_at || Date.parse(person.access_expires_at) > Date.now()) ? person.access_kind : 'No active grant'],
         ].map(([label, value]) => <div key={label}><dt className="text-text-muted">{label}</dt><dd>{value}</dd></div>)}</dl>
+        <h4 className="mt-4 text-sm font-medium">Journey</h4>
+        <ol className="mt-2 grid gap-2 sm:grid-cols-2">{journey.map(([label, value]) => <li className="flex min-w-0 gap-2 rounded-lg bg-bg-card px-3 py-2" key={label}>
+          <span className={`mt-1.5 size-2 shrink-0 rounded-full ${value ? 'bg-brand' : 'bg-text-muted/30'}`} aria-hidden="true" />
+          <span className="min-w-0"><strong className="block text-sm font-normal">{label}</strong><span className="block text-xs text-text-muted">{date(value)}</span></span>
+        </li>)}</ol>
+        {person.lastPushAcceptedAt && <p className="mt-3 text-xs text-text-muted">Last push accepted by a device service: {date(person.lastPushAcceptedAt)}</p>}
+        {person.lastPushIssue && <p className="mt-2 rounded-lg border border-danger/40 px-3 py-2 text-xs text-danger">Latest push retry issue: {person.lastPushIssue}</p>}
         <button className="btn mt-3" disabled={!!person.redeemed_at} onClick={() => { setEmail(person.email); window.scrollTo({ top: 0, behavior: 'instant' }); }}>Prepare invitation</button>
-      </article>)}</div>
-      <p className="my-4 text-xs text-text-muted">“First completed request” means a chat request finished after trial redemption—not a verified business outcome. Creating a code does not mean an invitation was sent.</p>
+      </article>})}</div>
+      <p className="my-4 text-xs text-text-muted">“First task done” means a chat request finished after trial redemption—not a verified business outcome. “Push accepted” means the device’s push service accepted delivery; browsers provide no proof that a person saw it. Creating a code does not mean an invitation was sent.</p>
       {data && <nav className="flex justify-between gap-3" aria-label="People pages"><button className="btn" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 25))}>Previous</button><button className="btn" disabled={!data.hasMore} onClick={() => setOffset(offset + 25)}>Next</button></nav>}
     </>}
     {error && <p className="mt-4" role="alert">{error}</p>}

@@ -20,7 +20,8 @@ export type ActivationEvent =
   | 'work_sent'
   | 'work_completed'
   | 'telegram_connect_started'
-  | 'telegram_connected';
+  | 'telegram_connected'
+  | 'installed_app_opened';
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 const STORAGE_KEY = 'jentera-activation-session-v1';

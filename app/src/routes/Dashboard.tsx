@@ -39,6 +39,7 @@ import type { RoutineConfig } from '@/lib/routines/types';
 import { BottomNav } from '@/components/BottomNav';
 import { useNotifications } from '@/hooks/useNotifications';
 import { ComputerStatus } from '@/components/ComputerStatus';
+import { isPwaStandalone } from '@/pwa/install';
 
 export type View = 'home' | 'chat' | 'work' | 'files' | 'library' | 'routines' | 'notifications' | 'business';
 
@@ -125,6 +126,7 @@ export default function Dashboard() {
     if (trackedOpen.current) return;
     trackedOpen.current = true;
     trackActivation('dashboard_opened');
+    if (isPwaStandalone()) trackActivation('installed_app_opened');
   }, []);
 
   useEffect(() => {

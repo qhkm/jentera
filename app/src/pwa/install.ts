@@ -33,7 +33,7 @@ function subscribe(listener: () => void) {
 }
 
 /** Running from the home screen already, on any platform. */
-function isStandalone(): boolean {
+export function isPwaStandalone(): boolean {
   if (typeof window === 'undefined') return false;
   if (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) return true;
   return (navigator as Navigator & { standalone?: boolean }).standalone === true;
@@ -54,7 +54,7 @@ function isIos(): boolean {
  */
 export function usePwaInstall() {
   const prompt = useSyncExternalStore(subscribe, () => deferred, () => null);
-  const standalone = isStandalone();
+  const standalone = isPwaStandalone();
   const canPrompt = prompt !== null && !standalone;
   const iosHint = !canPrompt && !standalone && isIos();
 

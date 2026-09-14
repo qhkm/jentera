@@ -26,4 +26,21 @@ describe('launch admin page', () => {
     expect(screen.queryByText('private-code')).not.toBeInTheDocument();
     expect(localStorage.getItem('private-code')).toBeNull();
   });
+  it('shows observed activation stages and keeps missing stages visibly incomplete', async () => {
+    const instant = '2026-09-14T10:00:00.000Z';
+    const person = {
+      email: 'trial@example.com', joined_at: null, invited_at: instant, redeemed_at: instant,
+      trial_expires_at: instant, access_kind: 'trial', access_expires_at: instant, revoked_at: null,
+      onboardingCompletedAt: instant, computerReadyAt: instant, installedAppOpenedAt: instant,
+      pushEnabledAt: instant, lastPushAcceptedAt: instant, firstCompletedRequest: instant,
+      firstReminderScheduledAt: instant, firstReminderDeliveredAt: instant,
+      firstReminderPushAcceptedAt: null, lastPushIssue: null,
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ totals: { waitlist: 0, invited: 1, redeemed: 1, active: 1 }, rows: [person], hasMore: false })));
+    render(<MemoryRouter><LaunchAdmin /></MemoryRouter>);
+    expect(await screen.findByRole('heading', { name: 'Activation funnel' })).toBeVisible();
+    expect(screen.getByText('Opened installed app')).toBeVisible();
+    expect(screen.getByText('Reminder accepted by push service')).toBeVisible();
+    expect(screen.getByText(/browsers provide no proof that a person saw it/i)).toBeVisible();
+  });
 });

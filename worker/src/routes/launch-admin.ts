@@ -57,15 +57,58 @@ export async function handleLaunchAdmin(request: Request, env: Env, url: URL, co
   });
   const rows = [];
   for (const row of data.rows.slice(0, 25)) {
-    let firstCompletedRequest: Date | null = null;
-    if (row.business_id && row.redeemed_at) firstCompletedRequest = await withTenant(env, row.business_id, async tx => {
-      const [result] = await tx`select min(r.ended_at) as completed_at from run r join chat_session c on c.id=r.session_id and c.business_id=r.business_id
-        where r.business_id=${row.business_id} and c.created_by=${row.user_id} and r.trigger_shape='owner.ask'
-        and r.status='completed' and r.created_at>=${row.redeemed_at}`;
-      return result?.completed_at ?? null;
+    let milestones = {
+      onboardingCompletedAt: null as Date | null,
+      computerReadyAt: null as Date | null,
+      installedAppOpenedAt: null as Date | null,
+      pushEnabledAt: null as Date | null,
+      lastPushAcceptedAt: null as Date | null,
+      firstCompletedRequest: null as Date | null,
+      firstReminderScheduledAt: null as Date | null,
+      firstReminderDeliveredAt: null as Date | null,
+      firstReminderPushAcceptedAt: null as Date | null,
+      lastPushIssue: null as string | null,
+    };
+    if (row.business_id && row.user_id) milestones = await withTenant(env, row.business_id, async tx => {
+      const [result] = await tx<(typeof milestones)[]>`
+        select
+          (select min(created_at) from runtime_task
+            where business_id=${row.business_id} and kind='provision') as "onboardingCompletedAt",
+          (select last_ready_at from agent_runtime
+            where business_id=${row.business_id} and deleted_at is null) as "computerReadyAt",
+          (select min(first_seen_at) from activation_milestone
+            where business_id=${row.business_id} and user_id=${row.user_id}
+              and kind='installed_app_opened') as "installedAppOpenedAt",
+          (select min(created_at) from push_subscription
+            where business_id=${row.business_id} and user_id=${row.user_id}) as "pushEnabledAt",
+          (select max(last_used_at) from push_subscription
+            where business_id=${row.business_id} and user_id=${row.user_id}) as "lastPushAcceptedAt",
+          (select min(r.ended_at) from run r
+            join chat_session c on c.id=r.session_id and c.business_id=r.business_id
+            where r.business_id=${row.business_id} and c.created_by=${row.user_id}
+              and r.trigger_shape='owner.ask' and r.status='completed'
+              and (${row.redeemed_at}::timestamptz is null or r.created_at>=${row.redeemed_at})) as "firstCompletedRequest",
+          (select min(created_at) from reminder
+            where business_id=${row.business_id} and user_id=${row.user_id}) as "firstReminderScheduledAt",
+          (select min(created_at) from notification
+            where business_id=${row.business_id} and recipient_user_id=${row.user_id}
+              and kind='reminder_due') as "firstReminderDeliveredAt",
+          (select min(o.delivered_at) from push_outbox o
+            join notification n on n.business_id=o.business_id
+              and n.recipient_user_id=o.user_id and o.tag='notification:' || n.source_key
+            where o.business_id=${row.business_id} and o.user_id=${row.user_id}
+              and n.kind='reminder_due' and o.delivered_at is not null
+              and exists (select 1 from push_subscription p
+                where p.business_id=o.business_id and p.user_id=o.user_id
+                  and p.last_used_at>=o.created_at
+                  and p.last_used_at<=o.delivered_at+interval '1 minute')) as "firstReminderPushAcceptedAt",
+          (select last_error from push_outbox
+            where business_id=${row.business_id} and user_id=${row.user_id} and last_error is not null
+            order by created_at desc limit 1) as "lastPushIssue"`;
+      return result ?? milestones;
     });
     const { user_id, business_id, ...publicRow } = row;
-    rows.push({ ...publicRow, firstCompletedRequest });
+    rows.push({ ...publicRow, ...milestones });
   }
   return json({ totals: data.totals, rows, hasMore: data.rows.length > 25 });
 }
