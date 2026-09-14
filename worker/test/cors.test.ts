@@ -1,4 +1,5 @@
 import { readdir, readFile } from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 async function corsMethods(): Promise<string[]> {
@@ -69,11 +70,34 @@ async function corsAllowHeaders(): Promise<string[]> {
   return match[1].split(',').map((name) => name.trim().toLowerCase());
 }
 
-/** Every custom request header the client sends, by name. */
+/** Every .ts/.tsx file under a directory, recursively. Skips node_modules —
+    there is none under app/src today, but the walk must not go looking. */
+async function sourceFiles(dir: URL): Promise<URL[]> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const files: URL[] = [];
+  for (const entry of entries as Dirent[]) {
+    if (entry.name === 'node_modules') continue;
+    const child = new URL(`${entry.name}${entry.isDirectory() ? '/' : ''}`, dir);
+    if (entry.isDirectory()) files.push(...await sourceFiles(child));
+    else if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) files.push(child);
+  }
+  return files;
+}
+
+/** Every custom request header sent by a fetch( anywhere under app/src, by
+    name. A route can only add its own X- header from whichever file ends up
+    owning that feature — not necessarily remote.ts — so this has to see the
+    whole app, the way routeMethods() reads a whole directory of routes
+    rather than one named file. */
 async function clientHeaders(): Promise<string[]> {
-  const source = await readFile(
-    new URL('../../app/src/lib/repo/remote.ts', import.meta.url), 'utf8');
-  return [...new Set([...source.matchAll(/'(X-[A-Za-z0-9-]+)':/g)].map((m) => m[1]))];
+  const dir = new URL('../../app/src/', import.meta.url);
+  const headers = new Set<string>();
+  for (const file of await sourceFiles(dir)) {
+    const source = await readFile(file, 'utf8');
+    for (const [, name] of source.matchAll(/'(X-[A-Za-z0-9-]+)':/g)) headers.add(name);
+  }
+  if (headers.size === 0) throw new Error('app/src no longer sends any X- request header — the scan probably broke');
+  return [...headers];
 }
 
 /* A custom request header has to be named in the CORS answer or the
