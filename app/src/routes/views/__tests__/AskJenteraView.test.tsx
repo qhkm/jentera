@@ -49,6 +49,20 @@ async function mount(children: ReactNode = <Harness />, repo = new LocalReposito
 }
 
 describe('compose-first Ask Jentera', () => {
+  it('shows an accuracy disclaimer associated with the composer', async () => {
+    await mount();
+    const input = await screen.findByRole('textbox');
+    const disclaimer = screen.getByText('Jentera can make mistakes. Verify important information before acting.');
+    expect(disclaimer).toBeVisible();
+    expect(disclaimer.closest('p')).toHaveClass('ask-ai-disclaimer');
+    expect(input).toHaveAttribute('aria-describedby', disclaimer.closest('p')!.id);
+  });
+  it('shows the disclaimer in Bahasa Malaysia', async () => {
+    const repo = new LocalRepository();
+    await repo.setLang('bm');
+    await mount(<Harness />, repo);
+    expect(await screen.findByText('Jentera boleh tersilap. Semak maklumat penting sebelum bertindak.')).toBeVisible();
+  });
   it('prepares a task without sending and keeps drafts with their own chats', async () => {
     const user = userEvent.setup();
     const repo = new LocalRepository();
@@ -82,6 +96,7 @@ describe('compose-first Ask Jentera', () => {
     await user.type(input, 'Prepare a reply');
     await user.keyboard('{Meta>}{Enter}{/Meta}');
     await waitFor(() => expect(repo.ask).toHaveBeenCalledOnce());
+    expect(screen.getByText('Jentera can make mistakes. Verify important information before acting.')).toBeVisible();
     const send = screen.getByRole('button', { name: 'Send message' });
     expect(send).toBeDisabled();
     await user.type(input, 'Make it suitable for a quotation');

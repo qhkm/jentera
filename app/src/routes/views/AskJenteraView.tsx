@@ -391,10 +391,11 @@ export default function AskJenteraView({
               </div>
             </div>
           </form>
-          <p className="ask-writing-hint" id={hintId}>
-            {t(
+          <p className="ask-writing-hint ask-ai-disclaimer" id={hintId}>
+            <span>{t('ask.studio.disclaimer')}</span>
+            <span className="sr-only">{' '}{t(
               busy ? 'ask.studio.busy' : compact ? 'ask.studio.mobileHint' : 'ask.studio.keyboard',
-            )}
+            )}</span>
           </p>
         </div>
 
