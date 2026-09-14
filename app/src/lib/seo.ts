@@ -3,7 +3,7 @@
 export const SITE_URL = 'https://jentera.ai';
 export const SOCIAL_IMAGE = `${SITE_URL}/social/jentera-v1.png`;
 export const SOCIAL_ALT = 'Jentera by AISAR. AI staff that works 24/7 for Malaysian businesses.';
-export const INDEXABLE_PATHS = ['/', '/connect'] as const;
+export const INDEXABLE_PATHS = ['/', '/connect', '/privacy'] as const;
 export const PRIVATE_PATHS = ['/signin', '/onboard', '/setup', '/app', '/join', '/access', '/waitlist', '/admin/launch'] as const;
 
 /** Files whose committed changes materially alter each public page. The build
@@ -23,6 +23,12 @@ export const INDEXABLE_PAGE_SOURCES: Record<(typeof INDEXABLE_PATHS)[number], re
     'app/src/lib/live-connectors.ts',
     'app/src/components/landing/LandingChrome.tsx',
     'app/src/styles/connect.css',
+    'app/src/lib/seo.ts',
+  ],
+  '/privacy': [
+    'app/src/routes/Privacy.tsx',
+    'app/src/components/landing/LandingChrome.tsx',
+    'app/src/styles/privacy.css',
     'app/src/lib/seo.ts',
   ],
 };
@@ -45,6 +51,10 @@ const PAGES: Record<string, Omit<PageSeo, 'canonical' | 'indexable'>> = {
   '/connect': {
     title: 'Jentera connections — The tools your business uses',
     description: 'Start with the Jentera web workspace and private Telegram chat. See which business connections are available now and which are still planned.',
+  },
+  '/privacy': {
+    title: 'Privacy notice — Jentera',
+    description: 'How Kitakod Ventures collects, uses, discloses, stores and protects personal data when you use Jentera.',
   },
   '/signin': { title: 'Sign in to Jentera', description: 'Sign in to your private Jentera business workspace.' },
   '/onboard': { title: 'Introduce your business — Jentera', description: 'Tell Jentera about your business and the work you need help with.' },

@@ -189,7 +189,11 @@ export function LandingFooter({ tagline = FOOTER.tagline }: { tagline?: string }
             aria-label="Company links"
             className="flex flex-wrap items-center gap-6 text-sm text-text-secondary"
           >
-            {FOOTER.links.map((l) => (
+            {FOOTER.links.map((l) => l.href.startsWith('/') ? (
+              <Link key={l.href} className="transition-colors hover:text-text" to={l.href}>
+                {l.label}
+              </Link>
+            ) : (
               <a
                 key={l.href}
                 className="transition-colors hover:text-text"

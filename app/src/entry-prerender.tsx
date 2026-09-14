@@ -6,6 +6,6 @@ export { seoHead, escapeXml, INDEXABLE_PATHS, INDEXABLE_PAGE_SOURCES, PRIVATE_PA
 
 /** Public pages only. Never render an authenticated provider at build time. */
 export function renderPublic(path: string): string {
-  if (!['/', '/connect', '/404'].includes(path)) throw new Error('Cannot prerender a private route');
+  if (!['/', '/connect', '/privacy', '/404'].includes(path)) throw new Error('Cannot prerender a private route');
   return renderToString(<StrictMode><StaticRouter location={path}><AppRoutes /></StaticRouter></StrictMode>);
 }

@@ -39,6 +39,8 @@
   Cache-Control: no-cache, no-store, must-revalidate
 /connect
   Cache-Control: no-cache, no-store, must-revalidate
+/privacy
+  Cache-Control: no-cache, no-store, must-revalidate
 
 # Duplicate noindex in the response as well as each static private shell.
 # Query strings do not change the path match; no private data is prerendered.

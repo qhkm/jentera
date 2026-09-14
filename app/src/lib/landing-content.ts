@@ -243,6 +243,7 @@ export const FOOTER = {
   tagline: "Built by AISAR for Malaysian businesses.",
   email: "hello@kitakodventures.com",
   links: [
+    { href: "/privacy", label: "Privacy" },
     { href: "https://aisar.ai", label: "AISAR ↗" },
     { href: "https://github.com/qhkm", label: "Open source ↗" },
     { href: "https://x.com/qhkmdev9", label: "Updates ↗" },

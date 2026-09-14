@@ -84,6 +84,7 @@ describe('public SEO and social previews', () => {
     expect(landing).toContain('href="/connect"');
     expect(landing).toContain('<h1');
     expect(renderPublic('/connect')).toContain('MyInvois submission and e-invoicing are not currently available');
+    expect(renderPublic('/privacy')).toContain('Privacy notice');
     expect(renderPublic('/404')).toContain('Page not found');
     expect(() => renderPublic('/app')).toThrow('Cannot prerender a private route');
     expect(fetch).not.toHaveBeenCalled();

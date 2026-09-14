@@ -13,6 +13,7 @@ import SignIn from '@/routes/SignIn';
 import Join from '@/routes/Join';
 import Connect from '@/routes/Connect';
 import NotFound from '@/routes/NotFound';
+import Privacy from '@/routes/Privacy';
 import { PageMetadata } from '@/components/PageMetadata';
 import { PageLoading } from '@/components/ui';
 import { lazy, Suspense, type ReactElement } from 'react';
@@ -112,6 +113,7 @@ export function AppRoutes() {
           {/* Public, and free of any provider dependency. */}
           <Route path="/" element={<Landing />} />
           <Route path="/connect" element={<Connect />} />
+          <Route path="/privacy" element={<Privacy />} />
           <Route path="/signin" element={<SignIn />} />
           <Route path="/waitlist" element={<Access />} />
           <Route path="/access" element={<Access />} />
