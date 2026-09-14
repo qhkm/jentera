@@ -13,6 +13,8 @@ export function ComputerPreview({ runId }: { runId: string }) {
   const [failure, setFailure] = useState('');
   const [retry, setRetry] = useState(0);
   const [connection, setConnection] = useState('Connecting to browser…');
+  const [transportError, setTransportError] = useState(false);
+  const [displayError, setDisplayError] = useState(false);
   useEffect(() => {
     if (!open) { setFrame(null); return; }
     let cancelled = false;
@@ -23,6 +25,10 @@ export function ComputerPreview({ runId }: { runId: string }) {
     let failures = 0;
     setFailure('');
     setFrame(null);
+    setTransportError(false);
+    setDisplayError(false);
+    setConnection(document.hidden || navigator.onLine === false
+      ? 'Preview paused while this window is hidden or offline.' : 'Connecting to browser…');
     const hide = () => {
       generation++; flight?.abort(); setFrame(null);
       setConnection('Preview paused while this window is hidden or offline.');
@@ -50,7 +56,9 @@ export function ComputerPreview({ runId }: { runId: string }) {
               clearTimeout(timeout);
               timeout = setTimeout(() => controller.abort(), 12000);
               failures = 0;
-              setFrame(previous => next.previewStatus === 'waiting' ? previous : next);
+              setTransportError(false);
+              setDisplayError(false);
+              setFrame(previous => next.previewStatus === 'waiting' && previous?.previewStatus === 'ready' ? previous : next);
               setConnection(previous => next.previewStatus === 'ready' ? 'Live · read-only'
                 : next.previewStatus === 'waiting' ? previous : 'Waiting for browser activity…');
               finished = next.previewStatus === 'inactive';
@@ -60,6 +68,8 @@ export function ComputerPreview({ runId }: { runId: string }) {
           } else {
             const next = await repo.businessBrowser({ action: 'preview', runId, controlId: crypto.randomUUID() }, flight.signal);
             if (!cancelled && current === generation && !document.hidden) {
+              setTransportError(false);
+              setDisplayError(false);
               setFrame(controller.signal.aborted ? { previewStatus: 'unavailable' } : next);
               finished = next.previewStatus === 'inactive';
               if (controller.signal.aborted || !next.previewStatus || next.previewStatus === 'unavailable') failures++;
@@ -69,6 +79,7 @@ export function ComputerPreview({ runId }: { runId: string }) {
         } catch (error) {
           if (!cancelled && current === generation && !document.hidden) {
             setConnection('Reconnecting · last captured frame');
+            setTransportError(true);
             setFrame(previous => previous?.previewStatus === 'ready' ? previous : { previewStatus: 'unavailable' });
             failures++;
             const status = error && typeof error === 'object' && 'status' in error ? error.status : undefined;
@@ -97,16 +108,19 @@ export function ComputerPreview({ runId }: { runId: string }) {
     {open && <div id={id} className={`computer-preview-panel${expanded ? ' is-expanded' : ''}`}>
       <p>Read-only browser preview · visible only to the owner. Sensitive pages are hidden where detected; detection is not guaranteed.</p>
       {image ? <>
-        <button type="button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} aria-label={expanded ? 'Shrink browser snapshot' : 'Expand browser snapshot'}>
-          <img src={`data:image/jpeg;base64,${frame.image}`} alt="Browser snapshot from this task" onError={() => { setFrame({ previewStatus: 'unavailable' }); }} />
+        <button type="button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} aria-label={expanded ? 'Shrink browser preview' : 'Expand browser preview'}>
+          <img src={`data:image/jpeg;base64,${frame.image}`} alt="Browser view from this task" onError={() => { setDisplayError(true); setFrame({ previewStatus: 'unavailable' }); }} />
         </button>
         <p role="status">{failure || connection} · Captured at {new Date(frame.capturedAt!).toLocaleTimeString()}</p>
-      </> : <p role="status">{failure || (!frame ? 'Checking for a browser snapshot…'
-        : frame.previewStatus === 'private' || frame.previewStatus === 'paused' ? 'Preview paused for privacy or owner control.'
+      </> : <p role="status">{failure || (!frame ? connection
+        : frame.previewStatus === 'private' ? 'Preview hidden by the privacy filter. It will resume when the page passes the safety checks.'
+          : frame.previewStatus === 'paused' ? 'Preview paused because the browser is under owner control. Hand control back to resume.'
           : frame.previewStatus === 'inactive' ? 'Browser work has ended. Jentera may still be preparing the final reply.'
             : frame.previewStatus === 'loading' ? 'Waiting for the task’s browser to become available…'
-              : frame.previewStatus === 'waiting' ? 'Another capture or browser action is in progress. Retrying shortly…'
-                : 'The browser snapshot could not be captured. Retrying without interrupting the task.')}</p>}
+              : frame.previewStatus === 'waiting' ? 'Connected. Waiting for the browser view…'
+                : displayError ? 'The browser view could not be displayed. Waiting for the next frame…'
+                  : transportError ? 'Preview connection interrupted. Reconnecting without stopping the task…'
+                    : 'The live browser feed is unavailable. Retrying without stopping the task…')}</p>}
       {failure && <button type="button" className="ask-inline-action" onClick={() => setRetry(n => n + 1)}>Retry preview</button>}
     </div>}
   </div>;

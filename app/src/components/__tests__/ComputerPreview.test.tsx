@@ -7,6 +7,40 @@ vi.mock('@/lib/repo', () => ({ useRepository: () => repo }));
 const repo: { businessBrowser: typeof preview; watchBrowser?: (runId: string, callback: (frame: BusinessBrowserState) => void, signal: AbortSignal) => Promise<void> } = { businessBrowser: preview };
 afterEach(() => { vi.useRealTimers(); preview.mockReset(); delete repo.watchBrowser; });
 describe('computer preview', () => {
+  it.each([
+    ['paused', 'under owner control'],
+    ['private', 'privacy filter'],
+    ['waiting', 'Connected. Waiting'],
+    ['loading', 'Waiting for the task'],
+    ['unavailable', 'live browser feed is unavailable'],
+  ] as const)('explains %s without obsolete snapshot wording', async (previewStatus, message) => {
+    preview.mockResolvedValue({ previewStatus });
+    render(<ComputerPreview runId="status" />);
+    fireEvent.click(screen.getByRole('button'));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(message));
+    expect(screen.queryByText(/snapshot/i)).toBeNull();
+  });
+  it('distinguishes transport failure from a missing browser feed', async () => {
+    preview.mockRejectedValue(new Error('private server detail'));
+    render(<ComputerPreview runId="network" />);
+    fireEvent.click(screen.getByRole('button'));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Preview connection interrupted'));
+    expect(screen.queryByText('private server detail')).toBeNull();
+  });
+  it('shows waiting after privacy clears, rather than leaving an obsolete privacy warning', async () => {
+    let send!: (frame: BusinessBrowserState) => void;
+    repo.watchBrowser = async (_id, callback, signal) => {
+      send = callback;
+      await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true }));
+    };
+    render(<ComputerPreview runId="privacy" />);
+    fireEvent.click(screen.getByRole('button'));
+    await act(async () => send({ previewStatus: 'private' }));
+    expect(screen.getByRole('status')).toHaveTextContent('privacy filter');
+    await act(async () => send({ previewStatus: 'waiting' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Connected. Waiting');
+    expect(screen.queryByRole('img')).toBeNull();
+  });
   it('renews the preview after startup waiting and then receives a frame', async () => {
     vi.useFakeTimers();
     repo.watchBrowser = vi.fn()
@@ -69,7 +103,7 @@ describe('computer preview', () => {
     preview.mockResolvedValue({ previewStatus: 'private', image: 'sensitive' });
     render(<ComputerPreview runId="run-2" />);
     fireEvent.click(screen.getByRole('button'));
-    expect(await screen.findByText('Preview paused for privacy or owner control.')).toBeVisible();
+    expect(await screen.findByText(/Preview hidden by the privacy filter/)).toBeVisible();
     expect(screen.queryByRole('img')).toBeNull();
   });
   it('aborts an in-flight snapshot on collapse and ignores its late response', async () => {
