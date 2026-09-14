@@ -5,9 +5,9 @@
 #                                          edge, and this device to a sprite
 #   browser-latency.sh db [n]              the two Neon round trips every input
 #                                          event pays, timed n times (default 20)
-#   browser-latency.sh sprite [sprite]     runner and Chrome cost with the
-#                                          network removed: local calls inside
-#                                          the sprite itself
+#   browser-latency.sh sprite [sprite]     the runner's own HTTP floor, network
+#                                          removed: local status calls inside the
+#                                          sprite. Not Chrome — see its section.
 #   browser-latency.sh frames [run-id]     observed frame cadence on a live
 #                                          preview stream (needs a session)
 #
@@ -108,7 +108,7 @@ case "$CMD" in
 
   sprite)
     SPRITE="${ARG:-$DEFAULT_SPRITE}"
-    echo "== runner + Chrome, network removed: 10 local status calls inside $SPRITE"
+    echo "== runner HTTP floor, network removed: 10 local status calls inside $SPRITE"
     # The key is read from the live runner process and used only as a header.
     # It is never printed: this output is pasted into issues and commits.
     sprite exec -o aisar -s "$SPRITE" -- bash -c '
@@ -123,8 +123,11 @@ case "$CMD" in
       done
     ' < /dev/null | median | awk '{printf "   median: %.0f ms\n", $1*1000}'
     echo
-    echo "This is the floor the sprite itself imposes: everything above it in the"
-    echo "budget is network and worker work."
+    echo "This is the runner's own overhead and nothing more. status() returns"
+    echo "in-memory state (business-browser.mjs:159) and never reaches CDP, so Chrome's"
+    echo "apply-and-render cost is NOT in this number. Measuring that needs a real"
+    echo "command against a held control lease, which means a live owner session and a"
+    echo "production browser: use frames, and drive it yourself."
     ;;
 
   frames)
