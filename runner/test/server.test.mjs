@@ -132,6 +132,7 @@ beforeEach(async () => {
       ensure: async () => { ensureCalls += 1; if (ensureBarrier) await ensureBarrier; },
       isPaused: async () => browserPaused,
       status: async () => ({ enabled: true, paused: browserPaused }),
+      preview: async () => ({ previewStatus: 'ready', image: 'frame', capturedAt: 1000 }),
       command: async (body) => {
         browserCommands.push(body);
         if (browserBarrier) await browserBarrier;
@@ -699,9 +700,13 @@ test('a deadline during admission waits for the Hermes run identity before relea
 });
 
 test('a run completed before its deadline is preserved without a stop', async () => {
-  await start(TASK, { deadlineAt: Date.now() + 100 });
+  // Completion is observable as soon as the mock run is admitted. The old
+  // fixture changed it only after a network round trip against a 100ms
+  // deadline, accidentally testing a genuinely late completion under load.
   hermesStatus = 'completed';
-  await new Promise((resolve) => setTimeout(resolve, 120));
+  const deadlineAt = Date.now() + 1000;
+  assert.equal((await start(TASK, { deadlineAt })).status, 202);
+  await new Promise((resolve) => setTimeout(resolve, Math.max(0, deadlineAt - Date.now()) + 50));
 
   const completed = await (await call(`/v1/tasks/${TASK}`)).json();
   assert.equal(completed.status, 'completed');
@@ -774,6 +779,20 @@ const start = (taskId, overrides = {}) => call('/v1/tasks', {
     toolGrant: grant(taskId),
     ...overrides,
   }),
+});
+
+test('browser preview is bound to the active task without taking control', async () => {
+  const preview = (taskId, businessId = BUSINESS) => call('/v1/browser', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'preview', taskId, businessId }),
+  });
+  assert.equal((await preview(TASK, TASK_2)).status, 403);
+  assert.equal((await (await preview(TASK)).json()).previewStatus, 'inactive');
+  await start(TASK);
+  assert.equal((await (await preview(TASK_2)).json()).previewStatus, 'inactive');
+  assert.equal((await (await preview(TASK)).json()).previewStatus, 'ready');
+  assert.equal(browserPaused, false);
+  assert.equal(browserCommands.length, 0);
 });
 
 test('browser control authenticates, checks business and excludes agent admission', async () => {

@@ -90,7 +90,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     throw new TemporaryConnectionError('Could not reach Jentera. Check your connection.');
   }
 
-  if (res.status === 401) throw new NotSignedInError();
+  if (res.status === 401) throw Object.assign(new NotSignedInError(), { status: 401 });
 
   if (res.status === 204) return undefined as T;
 
@@ -99,7 +99,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   if (res.status === 404 && body.code === 'NO_BUSINESS') throw new NoBusinessError();
   if (!res.ok || body.ok === false) {
     const ErrorType = res.status === 408 || res.status === 429 || res.status >= 500 ? TemporaryConnectionError : Error;
-    throw new ErrorType(String(body.err ?? `${res.status} ${res.statusText}`));
+    throw Object.assign(new ErrorType(String(body.err ?? `${res.status} ${res.statusText}`)), { status: res.status });
   }
   return body as T;
 }
@@ -225,8 +225,8 @@ export class RemoteRepository implements Repository {
   }
 
   setBizType = (key: string) => post('/api/state/biz-type', { key });
-  businessBrowser(command?: BrowserCommand): Promise<BusinessBrowserState> {
-    return call('/api/browser', command ? { method: 'POST', body: JSON.stringify(command) } : {});
+  businessBrowser(command?: BrowserCommand, signal?: AbortSignal): Promise<BusinessBrowserState> {
+    return call('/api/browser', { ...(command ? { method: 'POST', body: JSON.stringify(command) } : {}), signal });
   }
   setBizProfile = (p: { name?: string; loc?: string }) => post('/api/state/biz-profile', p);
   completeOnboarding = (input: OnboardingCompletion) =>

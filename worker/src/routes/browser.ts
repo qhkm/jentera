@@ -4,7 +4,7 @@ import { getRuntimeAccess } from '../agent-runtime';
 import { hasBusiness, resolveTenant } from '../tenancy';
 import { can } from '../permissions';
 
-const ACTIONS = new Set(['claim', 'release', 'frame', 'navigate', 'click', 'text', 'key', 'scroll', 'tab']);
+const ACTIONS = new Set(['claim', 'release', 'frame', 'navigate', 'click', 'text', 'key', 'scroll', 'tab', 'preview']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MESSAGES: Record<string, string> = {
   runtime_busy: 'Jentera is still working. Let the current task finish, then take control.',
@@ -40,6 +40,15 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
       const body = JSON.parse(raw);
       if (!body || !ACTIONS.has(body.action) || !UUID.test(body.controlId ?? '')) return json({ err: 'invalid command' }, 400);
       command = { action: body.action, controlId: body.controlId, ownerId: identity.userId, businessId: identity.businessId };
+      if (body.action === 'preview') {
+        if (!UUID.test(body.runId ?? '')) return json({ err: 'invalid run' }, 400);
+        const tasks = await withTenant(env, identity.businessId, tx => tx`
+          select id from runtime_task where business_id = ${identity.businessId}
+          and run_id = ${body.runId} and status not in ('completed', 'failed', 'cancelled')
+          order by created_at desc limit 1`);
+        if (!tasks.length) return json({ previewStatus: 'inactive' });
+        command.taskId = tasks[0].id;
+      }
       for (const field of ['url', 'x', 'y', 'text', 'key', 'deltaY', 'index']) {
         if (body[field] !== undefined) command[field] = body[field];
       }
@@ -54,7 +63,7 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
     if (endpoint.protocol !== 'https:') return json({ err: 'Business browser is unavailable.' }, 503);
     stage = 'connect';
     const upstream = await fetch(endpoint, {
-      method: request.method, redirect: 'error', signal: AbortSignal.timeout(25000),
+      method: request.method, redirect: 'error', signal: AbortSignal.timeout(command?.action === 'preview' ? 8000 : 25000),
       headers: { 'X-Aisar-Runner-Key': secrets.runnerKey, Authorization: `Bearer ${env.SPRITES_TOKEN}`,
         'Content-Type': 'application/json' },
       ...(command ? { body: JSON.stringify(command) } : {}),
@@ -71,7 +80,8 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
     // upstream headers, Set-Cookie, server errors or arbitrary proxy content.
     stage = 'decode';
     const body = await upstream.json() as Record<string, unknown>;
-    return json(Object.fromEntries(['enabled', 'paused', 'controlled', 'expiresAt', 'image', 'width', 'height', 'tabs', 'ok']
+    if (command?.action === 'preview') return json(previewResponse(body));
+    return json(Object.fromEntries(['enabled', 'paused', 'controlled', 'expiresAt', 'image', 'width', 'height', 'tabs', 'ok', 'previewStatus', 'capturedAt']
       .filter((key) => body[key] !== undefined).map((key) => [key, body[key]])));
   } catch (error) {
     // Never log exception messages, request bodies, URLs, controller IDs,
@@ -81,4 +91,17 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
     console.warn('[business-browser]', JSON.stringify({ stage, name, action: command?.action ?? 'status' }));
     return json({ err: 'Business browser is unavailable. Try again shortly.' }, 503);
   }
+}
+
+/** Preview DTO is narrower than the owner-control DTO; blocked or malformed
+ * frames must never carry incidental upstream image/tab fields. */
+export function previewResponse(body: Record<string, unknown> | null): Record<string, unknown> {
+  const status = body?.previewStatus;
+  if (status !== 'ready') return { previewStatus: ['inactive', 'paused', 'private', 'waiting'].includes(String(status)) ? status : 'unavailable' };
+  if (typeof body?.image !== 'string' || body.image.length < 4 || body.image.length > 670000 ||
+      !/^[A-Za-z0-9+/]+={0,2}$/.test(body.image) || typeof body.capturedAt !== 'number' ||
+      !Number.isFinite(body.capturedAt) || Math.abs(Date.now() - body.capturedAt) > 30000) {
+    return { previewStatus: 'unavailable' };
+  }
+  return { previewStatus: 'ready', image: body.image, capturedAt: body.capturedAt };
 }

@@ -688,6 +688,14 @@ export function createRunner(input) {
           if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' });
           const body = await readJson(req);
           if (body.businessId !== config.businessId) return json(res, 403, { error: 'wrong_business' });
+          if (body.action === 'preview') {
+            const active = await activeTask(config, state, terminations);
+            if (!active || active.taskId !== body.taskId) return json(res, 200, { previewStatus: 'inactive' });
+            const frame = await businessBrowser.preview();
+            const stillActive = await activeTask(config, state, terminations);
+            if (!stillActive || stillActive.taskId !== body.taskId) return json(res, 200, { previewStatus: 'inactive' });
+            return json(res, 200, frame);
+          }
           // Use the same admission guard as task start: neither side can
           // acquire the browser while the other is entering its async work.
           if (admitting) return json(res, 409, { error: 'runtime_busy' });

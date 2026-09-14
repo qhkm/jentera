@@ -209,6 +209,7 @@ export interface AskAnswer {
 }
 
 export type BrowserCommand = { controlId: string } & (
+  | { action: 'preview'; runId: string }
   | { action: 'claim' | 'release' | 'frame' }
   | { action: 'navigate'; url: string }
   | { action: 'click'; x: number; y: number }
@@ -218,6 +219,8 @@ export type BrowserCommand = { controlId: string } & (
   | { action: 'tab'; index: number }
 );
 export interface BusinessBrowserState {
+  previewStatus?: 'ready' | 'inactive' | 'paused' | 'private' | 'unavailable' | 'waiting';
+  capturedAt?: number;
   enabled?: boolean;
   paused?: boolean;
   controlled?: boolean;
@@ -451,7 +454,7 @@ export interface Repository {
 
   /** Owner-safe runtime state; provider ids, URLs and credentials are never returned. */
   runtimeStatus(): Promise<RuntimeOverview>;
-  businessBrowser(command?: BrowserCommand): Promise<BusinessBrowserState>;
+  businessBrowser(command?: BrowserCommand, signal?: AbortSignal): Promise<BusinessBrowserState>;
   /** Idempotently create or re-signal this business's provisioning task. */
   provisionRuntime(): Promise<void>;
 

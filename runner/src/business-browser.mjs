@@ -43,6 +43,9 @@ export function createBusinessBrowser(config, deps = {}) {
   let context = null;
   let selected = null;
   let launching = null;
+  let previewing = false;
+  let lastPreview = -Infinity;
+  let controlRevision = 0;
   const loaded = (async () => {
     try {
       const saved = JSON.parse(await fs.readFile(config.stateFile, 'utf8'));
@@ -100,6 +103,7 @@ export function createBusinessBrowser(config, deps = {}) {
     if (problem) throw new BrowserProblem(400, problem);
     await loaded;
     if (busy) throw new BrowserProblem(409, 'browser_busy');
+    controlRevision++;
     busy = true;
     try {
       if (body.action === 'claim') {
@@ -141,5 +145,46 @@ export function createBusinessBrowser(config, deps = {}) {
       };
     } finally { busy = false; }
   }
-  return { ensure, status, isPaused, command };
+  async function preview() {
+    await loaded;
+    if (paused || lease && lease.expiresAt > now()) return { previewStatus: 'paused' };
+    if (!context) return { previewStatus: 'unavailable' };
+    if (busy || previewing || now() - lastPreview < 5000) return { previewStatus: 'waiting' };
+    previewing = true;
+    lastPreview = now();
+    try {
+      const pages = context.pages().filter(p => !p.isClosed());
+      const page = selected && !selected.isClosed() ? selected : pages.at(-1);
+      if (!page) return { previewStatus: 'unavailable' };
+      const revision = controlRevision;
+      const safe = async () => {
+        const url = new URL(page.url());
+        if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash ||
+            /login|signin|sign-in|auth|checkout|payment|billing|account|password|token/i.test(url.href)) return false;
+        // Fail closed for forms, embedded frames and editable content. These
+        // checks reduce exposure, but are not a guarantee of public content.
+        let timer;
+        try {
+          return await Promise.race([
+            page.evaluate(() => !document.querySelector('input, textarea, select, iframe, frame, [contenteditable="true"], [autocomplete]')),
+            new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('privacy_check_timeout')), 1000); }),
+          ]);
+        } finally { clearTimeout(timer); }
+      };
+      const before = page.url();
+      if (!await safe()) return { previewStatus: 'private' };
+      const bytes = await page.screenshot({ type: 'jpeg', quality: 45, timeout: 3000 });
+      if (!await safe()) return { previewStatus: 'private' };
+      const currentPages = context.pages().filter(p => !p.isClosed());
+      const currentPage = selected && !selected.isClosed() ? selected : currentPages.at(-1);
+      // Recheck after the asynchronous privacy check too. A claim/release
+      // cycle or tab change during capture invalidates the whole frame.
+      if (paused || busy || controlRevision !== revision || page.isClosed() ||
+          currentPage !== page || page.url() !== before) return { previewStatus: 'private' };
+      if (bytes.length > 500000) return { previewStatus: 'unavailable' };
+      return { previewStatus: 'ready', image: bytes.toString('base64'), capturedAt: now() };
+    } catch { return { previewStatus: 'unavailable' }; }
+    finally { previewing = false; }
+  }
+  return { ensure, status, isPaused, command, preview };
 }

@@ -39,10 +39,78 @@ function fixture() {
     },
   };
   const config = { stateFile: '/private/control.json', profileDir: '/private/profile' };
-  return { browser: createBusinessBrowser(config, deps), files, typed,
+  return { browser: createBusinessBrowser(config, deps), files, typed, page,
     advance: (ms) => { clock += ms; }, launches: () => launches,
     restart: () => createBusinessBrowser(config, deps) };
 }
+
+test('preview never launches or claims a browser and blocks private URLs', async () => {
+  const f = fixture();
+  assert.equal((await f.browser.preview()).previewStatus, 'unavailable');
+  assert.equal(f.launches(), 0);
+  await f.browser.ensure();
+  assert.equal((await f.browser.preview()).previewStatus, 'private');
+  assert.equal(await f.browser.isPaused(), false);
+});
+
+test('preview returns ephemeral frames only after both privacy checks and throttles', async () => {
+  const f = fixture();
+  f.page.url = () => 'https://example.com/docs';
+  let checks = 0;
+  f.page.evaluate = async () => { checks++; return true; };
+  await f.browser.ensure();
+  const frame = await f.browser.preview();
+  assert.equal(frame.previewStatus, 'ready');
+  assert.equal(frame.capturedAt, 1000);
+  assert.equal(checks, 2);
+  assert.equal((await f.browser.preview()).previewStatus, 'waiting');
+  assert.equal(f.files.size, 0);
+  f.advance(8000);
+  f.page.evaluate = async () => false;
+  assert.equal((await f.browser.preview()).image, undefined);
+});
+
+test('preview discards navigated frames and stops during owner takeover', async () => {
+  const f = fixture();
+  f.page.url = () => 'https://example.com/docs';
+  f.page.evaluate = async () => true;
+  f.page.screenshot = async () => { f.page.url = () => 'https://example.com/checkout'; return Buffer.from('secret'); };
+  await f.browser.ensure();
+  assert.equal((await f.browser.preview()).previewStatus, 'private');
+  await f.browser.command(command('claim'));
+  assert.equal((await f.browser.preview()).previewStatus, 'paused');
+});
+
+test('overlapping viewers do not duplicate capture; a claim/release invalidates the in-flight image', async () => {
+  const f = fixture();
+  f.page.url = () => 'https://example.com/docs';
+  f.page.evaluate = async () => true;
+  let release;
+  let began;
+  const started = new Promise(r => { began = r; });
+  f.page.screenshot = () => { began(); return new Promise(r => { release = r; }); };
+  await f.browser.ensure();
+  const first = f.browser.preview();
+  await started;
+  assert.equal((await f.browser.preview()).previewStatus, 'waiting');
+  await f.browser.command(command('claim'));
+  await f.browser.command(command('release'));
+  release(Buffer.from('old-screen'));
+  assert.equal((await first).previewStatus, 'private');
+  assert.equal(await f.browser.isPaused(), false);
+});
+
+test('failed privacy checks release capture lock and never expose error details', async () => {
+  const f = fixture();
+  f.page.url = () => 'https://example.com/docs';
+  f.page.evaluate = async () => { throw new Error('private page details'); };
+  await f.browser.ensure();
+  assert.deepEqual(await f.browser.preview(), { previewStatus: 'unavailable' });
+  f.advance(8000);
+  f.page.evaluate = async () => true;
+  assert.equal((await f.browser.preview()).previewStatus, 'ready');
+  assert.equal(await f.browser.isPaused(), false);
+});
 
 test('rejects unsafe URLs, arbitrary keyboard shortcuts, scripts and malformed inputs', () => {
   for (const url of ['file:///etc/passwd', 'javascript:alert(1)', 'http://example.com',

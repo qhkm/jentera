@@ -1,9 +1,20 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
-import { handleBrowser } from '../src/routes/browser';
+import { handleBrowser, previewResponse } from '../src/routes/browser';
 import { ensureProviderRuntime, LocalRuntimeProvider } from '../src/runtime';
 import { asOwner, fetchFake, req, signIn, testEnv, truncateAll } from './harness';
 
 const A = '11111111-1111-4111-8111-111111111111';
+it('drops blocked, stale and malformed preview images without relaying extra fields', () => {
+  expect(previewResponse({ previewStatus: 'private', image: 'secret' })).toEqual({ previewStatus: 'private' });
+  expect(previewResponse(null)).toEqual({ previewStatus: 'unavailable' });
+  for (const image of ['', '<script>', 'a'.repeat(670001)]) {
+    expect(previewResponse({ previewStatus: 'ready', image, capturedAt: Date.now() }).previewStatus).toBe('unavailable');
+  }
+  expect(previewResponse({ previewStatus: 'ready', image: 'YWJj', capturedAt: 1000 }).previewStatus).toBe('unavailable');
+  const capturedAt = Date.now();
+  expect(previewResponse({ previewStatus: 'ready', image: 'YWJj', capturedAt, tabs: ['private'], secret: 'hidden' }))
+    .toEqual({ previewStatus: 'ready', image: 'YWJj', capturedAt });
+});
 const CONTROL = '22222222-2222-4222-8222-222222222222';
 const env = testEnv({ SPRITES_TOKEN: 'sprite-secret', RUNTIME_RELEASE: '2026.09.11-3' });
 let ownerId: string;
@@ -68,4 +79,17 @@ it('redacts arbitrary upstream errors and preserves safe conflict messages', asy
   expect(await failed.text()).not.toContain('password-secret');
   upstream.mockImplementation(async () => new Response(JSON.stringify({ error: 'runtime_busy' }), { status: 409 }));
   expect((await call(ownerCookie)).status).toBe(409);
+});
+
+it('preview rejects staff, invalid runs and cross-origin requests without fetching screens', async () => {
+  const upstream = fetchFake(async () => new Response('{}'));
+  vi.stubGlobal('fetch', upstream);
+  const body = { action: 'preview', controlId: CONTROL, runId: CONTROL };
+  expect((await call(staffCookie, body)).status).toBe(403);
+  expect((await call(ownerCookie, body, 'https://evil.test')).status).toBe(403);
+  expect((await call(ownerCookie, { ...body, runId: '../private' })).status).toBe(400);
+  const missing = await call(ownerCookie, body);
+  expect(await missing.json()).toEqual({ previewStatus: 'inactive' });
+  expect(missing.headers.get('Cache-Control')).toContain('no-store');
+  expect(upstream).not.toHaveBeenCalled();
 });

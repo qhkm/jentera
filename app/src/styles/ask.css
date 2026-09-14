@@ -248,6 +248,25 @@ button.ask-context-link:hover {
   line-height: 1.6;
   text-align: center;
 }
+.computer-preview { margin-top: 12px; }
+.computer-preview-panel { max-width: 480px; margin-top: 8px; }
+.computer-preview-panel img { display: block; width: 100%; height: auto; border-radius: 10px; }
+.computer-preview-panel p { color: var(--text-secondary); font-size: 11px; line-height: 1.5; margin: 6px 0; }
+.computer-preview-panel.is-expanded { max-width: 100%; }
+.ask-writing-hint.ask-ai-disclaimer {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+  margin-top: 7px;
+}
+@media (max-width: 767px) {
+  .dashboard-shell p.ask-writing-hint.ask-ai-disclaimer {
+    font-size: 0.625rem;
+    line-height: 1.4;
+    margin-top: 5px;
+    text-wrap: pretty;
+  }
+}
 .ask-studio-starters {
   display: flex;
   justify-content: center;

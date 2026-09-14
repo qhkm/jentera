@@ -8,6 +8,7 @@ import { JenteraMark } from '@/components/JenteraMark';
 import { ElapsedSince } from '@/components/WorkSignal';
 import { ArtifactList } from '@/components/ArtifactList';
 import { LiveTaskProgress } from '@/components/LiveTaskProgress';
+import { ComputerPreview } from '@/components/ComputerPreview';
 import { useToast } from '@/components/Toast';
 import { useT, useI18n } from '@/i18n/I18nProvider';
 import { displayWorkspacePaths, presentTaskSteps } from '@/lib/task-presentation';
@@ -232,6 +233,7 @@ export function AskReply({
           )}
         </>
       )}
+      {message.pendingId && message.state !== 'needs_approval' && isRunId(message.runId) && <ComputerPreview key={message.runId} runId={message.runId!} />}
       {linkedTask && (
         <ChatTaskCard message={message} onOpen={() => onOpenActivity?.(message.runId, message.taskTitle)} />
       )}
