@@ -57,6 +57,8 @@ import { ensureChatSession, isChatSessionId, isWorkspaceMember, runVisibleTo } f
 import { answerText } from '../runtime/answer-text';
 import { taskTitle } from '../task-title';
 
+export const INGEST_FILE_PATH = '/api/runs/ingest/file';
+
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
     ...init,
@@ -80,7 +82,7 @@ export async function handleRuns(
     return json({ ok: false, err: 'no business', code: 'NO_BUSINESS' }, { status: 404 }, cors);
   }
   const id = identity;
-  if (request.method === 'POST' && ['/api/runs/ingest', '/api/runs/ingest/file'].includes(url.pathname)
+  if (request.method === 'POST' && ['/api/runs/ingest', INGEST_FILE_PATH].includes(url.pathname)
     && !can(id, 'knowledge.manage')) {
     return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
   }
@@ -93,7 +95,7 @@ export async function handleRuns(
      Workers AI's Markdown conversion first, and the facts found land
      unconfirmed with the file name as their source. The file itself is not
      kept — only what was learned from it. */
-  if (url.pathname === '/api/runs/ingest/file' && request.method === 'POST') {
+  if (url.pathname === INGEST_FILE_PATH && request.method === 'POST') {
     const name = (request.headers.get('X-Aisar-File-Name') ?? '').trim();
     if (!UPLOAD_NAME.test(name)) return json({ ok: false, err: 'a file name is required' }, { status: 400 }, cors);
     const declaredType = (request.headers.get('Content-Type') ?? '').split(';')[0].trim().toLowerCase();

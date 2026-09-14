@@ -1,10 +1,24 @@
 import { readCookie } from './auth';
 import type { Env } from './env';
 import { clientIp } from './ratelimit';
+import { INGEST_FILE_PATH } from './routes/runs';
 
 /** API payloads in this product are small JSON commands. Files belong in
     object storage, not in a Worker request that will be buffered and parsed. */
 export const MAX_API_BODY_BYTES = 128 * 1024;
+
+/** The one exception: a document the owner uploads to be read. The route
+    (routes/runs.ts) enforces the same ceiling again and decides what kinds
+    of file are allowed; this only stops the guard from refusing a body the
+    route would have accepted. Runner artifact uploads do not appear here
+    because index.ts dispatches them above the guard. */
+export const MAX_UPLOAD_BODY_BYTES = 8 * 1024 * 1024;
+
+function bodyCapFor(method: string, pathname: string): number {
+  return method === 'POST' && pathname === INGEST_FILE_PATH
+    ? MAX_UPLOAD_BODY_BYTES
+    : MAX_API_BODY_BYTES;
+}
 
 const text = new TextEncoder();
 
@@ -89,10 +103,11 @@ export async function guardApiRequest(
     return response(414, 'request target too long', cors);
   }
 
+  const cap = bodyCapFor(request.method, url.pathname);
   const declaredLength = request.headers.get('Content-Length');
   if (declaredLength !== null) {
     const length = Number(declaredLength);
-    if (!Number.isFinite(length) || length < 0 || length > MAX_API_BODY_BYTES) {
+    if (!Number.isFinite(length) || length < 0 || length > cap) {
       return response(413, 'request body too large', cors);
     }
   } else if (request.body !== null) {
@@ -111,11 +126,19 @@ export async function guardApiRequest(
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-        total += value.byteLength;
-        if (total > MAX_API_BODY_BYTES) break;
+        if (value) {
+          total += value.byteLength;
+          if (total > cap) break;
+        }
       }
-      await reader.cancel().catch(() => {});
-      if (total > MAX_API_BODY_BYTES) {
+      if (total > cap) {
+        /* This is a hard rejection: the request never reaches a route.
+           Do not await cancel on the clone/tee'd body — one branch partially
+           read, the other never consumed, causes the cancel to hang forever
+           (observed under Node/undici; workerd behavior is unverified).
+           Release the reader without blocking; the cancellation is best-effort
+           cleanup of a clone nobody else will read. */
+        reader.cancel().catch(() => {});
         return response(413, 'request body too large', cors);
       }
     } catch {
