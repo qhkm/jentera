@@ -133,11 +133,12 @@ export async function guardApiRequest(
       }
       if (total > cap) {
         /* This is a hard rejection: the request never reaches a route.
-           Do not await cancel on the clone/tee'd body — one branch partially
-           read, the other never consumed, causes the cancel to hang forever
-           (observed under Node/undici; workerd behavior is unverified).
-           Release the reader without blocking; the cancellation is best-effort
-           cleanup of a clone nobody else will read. */
+           Do not await cancel on the clone/tee'd body — under Node/undici
+           (as in this test suite), cancelling a partially-read clone never
+           settles, which caused a 30-second hang. Under workerd the same
+           cancel settles immediately (measured September 2026), so the
+           non-awaited cancel is a test-environment defence, not a production
+           fix. Release the reader without blocking. */
         reader.cancel().catch(() => {});
         return response(413, 'request body too large', cors);
       }
