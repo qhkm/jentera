@@ -1,19 +1,21 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { DeviceMobile } from '@phosphor-icons/react';
+import { BellRinging, DeviceMobile } from '@phosphor-icons/react';
 import { Button } from '@/components/ui';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useSignedIn } from '@/lib/repo/gate';
 import { usePwaInstall } from '@/pwa/install';
+import { usePushNotifications, type EnableOutcome } from '@/pwa/push';
 
 /** When the owner last said "not now"; every nudge stays quiet for a month. */
 export const INSTALL_NUDGE_KEY = 'jentera-install-nudge-v1';
+export const NOTIFICATION_NUDGE_KEY = 'jentera-notification-nudge-v1';
 const QUIET_MS = 30 * 24 * 60 * 60 * 1000;
 /* Not on first paint: someone who just arrived is reading, not deciding. */
 const DEFAULT_DELAY_MS = 6_000;
 
-function dismissedRecently(): boolean {
+function dismissedRecently(key = INSTALL_NUDGE_KEY): boolean {
   try {
-    const at = Number(localStorage.getItem(INSTALL_NUDGE_KEY));
+    const at = Number(localStorage.getItem(key));
     return Number.isFinite(at) && at > 0 && Date.now() - at < QUIET_MS;
   } catch {
     return false;
@@ -100,23 +102,109 @@ export function InstallNudgeCard({ copy, mode, onInstall, onDismiss, className =
 export function InstallNudge({ delayMs = DEFAULT_DELAY_MS }: { delayMs?: number }) {
   const { t } = useI18n();
   const nudge = useInstallNudge({ delayMs, requireSignedIn: true });
-  if (!nudge.visible || !nudge.mode) return null;
+  const notifications = useNotificationNudge({ delayMs });
+  if ((!nudge.visible || !nudge.mode) && !notifications.visible) return null;
   return (
     <div className="mx-auto max-w-[1250px] px-4 pt-4 lg:px-6">
-      <InstallNudgeCard
-        mode={nudge.mode}
-        onInstall={() => void nudge.installNow()}
-        onDismiss={nudge.dismiss}
-        copy={{
-          title: t('pwa.nudge.title'),
-          body: t('pwa.nudge.body'),
-          iosBody: t('pwa.nudge.ios'),
-          install: t('pwa.nudge.install'),
-          later: t('pwa.nudge.later'),
-          gotIt: t('pwa.nudge.gotIt'),
-        }}
-      />
+      {nudge.visible && nudge.mode ? (
+        <InstallNudgeCard
+          mode={nudge.mode}
+          onInstall={() => void nudge.installNow()}
+          onDismiss={nudge.dismiss}
+          copy={{
+            title: t('pwa.nudge.title'),
+            body: t('pwa.nudge.body'),
+            iosBody: t('pwa.nudge.ios'),
+            install: t('pwa.nudge.install'),
+            later: t('pwa.nudge.later'),
+            gotIt: t('pwa.nudge.gotIt'),
+          }}
+        />
+      ) : notifications.visible ? (
+        <NotificationNudgeCard
+          state={notifications.state}
+          busy={notifications.busy}
+          outcome={notifications.outcome}
+          onEnable={() => void notifications.enableNow()}
+          onDismiss={notifications.dismiss}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function useNotificationNudge({ delayMs = DEFAULT_DELAY_MS } = {}) {
+  const signedIn = useSignedIn();
+  const install = usePwaInstall();
+  const push = usePushNotifications();
+  const [settled, setSettled] = useState(delayMs === 0);
+  const [dismissed, setDismissed] = useState(() => dismissedRecently(NOTIFICATION_NUDGE_KEY));
+  const [outcome, setOutcome] = useState<EnableOutcome | null>(null);
+
+  useEffect(() => {
+    if (settled) return;
+    const timer = window.setTimeout(() => setSettled(true), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs, settled]);
+
+  function dismiss() {
+    try {
+      localStorage.setItem(NOTIFICATION_NUDGE_KEY, String(Date.now()));
+    } catch {
+      /* Private mode may show the reminder again on the next visit. */
+    }
+    setDismissed(true);
+  }
+
+  async function enableNow() {
+    setOutcome(null);
+    const result = await push.enable();
+    if (result !== 'busy') setOutcome(result);
+  }
+
+  return {
+    visible: settled && signedIn && install.standalone && !dismissed && push.state !== 'on' && push.state !== 'unsupported',
+    state: push.state,
+    busy: push.busy,
+    outcome,
+    enableNow,
+    dismiss,
+  };
+}
+
+function NotificationNudgeCard({ state, busy, outcome, onEnable, onDismiss }: {
+  state: ReturnType<typeof usePushNotifications>['state'];
+  busy: boolean;
+  outcome: EnableOutcome | null;
+  onEnable: () => void;
+  onDismiss: () => void;
+}): ReactNode {
+  const { t } = useI18n();
+  const denied = state === 'denied';
+  const checking = state === 'checking';
+  const noticeKey = outcome && outcome !== 'on' && outcome !== 'busy'
+    ? outcome === 'denied' ? 'pwa.push.deniedHint' : `pwa.push.${outcome}`
+    : null;
+
+  return (
+    <section className="card flex-row flex-wrap items-center gap-3 px-4 py-3" aria-label={t('pwa.nudge.notificationsTitle')}>
+      <BellRinging size={22} weight="duotone" aria-hidden="true" className="shrink-0 text-brand" />
+      <div className="min-w-0 flex-1 basis-56">
+        <strong className="block text-[14px]">{t('pwa.nudge.notificationsTitle')}</strong>
+        <p className="m-0 text-[13px] text-text-secondary">
+          {denied ? t('pwa.push.deniedHint') : t('pwa.nudge.notificationsBody')}
+        </p>
+        {noticeKey && !denied ? <p className="mb-0 mt-1 text-xs text-text-muted">{t(noticeKey)}</p> : null}
+      </div>
+      <div className="ml-auto flex items-center gap-2">
+        {!denied ? (
+          <Button onClick={onEnable} disabled={busy || checking} aria-busy={busy || checking || undefined}>
+            {t(busy ? 'pwa.push.enabling' : checking ? 'pwa.push.checking' : 'pwa.nudge.enableNotifications')}
+          </Button>
+        ) : null}
+        <Button variant="outline" onClick={onDismiss}>{t('pwa.nudge.later')}</Button>
+      </div>
+    </section>
   );
 }
 
