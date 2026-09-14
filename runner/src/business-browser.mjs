@@ -55,6 +55,17 @@ export function createBusinessBrowser(config, deps = {}) {
     }
   })();
 
+  function observeContext(ctx) {
+    const track = page => {
+      page.on?.('framenavigated', frame => {
+        if (frame === page.mainFrame()) selected = page;
+      });
+    };
+    ctx.pages().forEach(track);
+    ctx.on('page', page => { selected = page; track(page); });
+    ctx.on('close', () => { if (context === ctx) { context = null; selected = null; } });
+  }
+
   async function persist(value) {
     await fs.mkdir(dirname(config.stateFile), { recursive: true, mode: 0o700 });
     await fs.writeFile(`${config.stateFile}.next`, JSON.stringify({ paused: value }), { mode: 0o600 });
@@ -84,7 +95,7 @@ export function createBusinessBrowser(config, deps = {}) {
       if (!context) throw new BrowserProblem(503, 'browser_unavailable');
       if (!context.pages().length) await context.newPage();
       context.setDefaultTimeout(5000);
-      context.on('page', (page) => { selected = page; });
+      observeContext(context);
       return context;
     })();
     try { return await launching; } finally { launching = null; }
@@ -145,17 +156,28 @@ export function createBusinessBrowser(config, deps = {}) {
       };
     } finally { busy = false; }
   }
-  async function preview() {
+  async function preview({ streaming = false } = {}) {
     await loaded;
     if (paused || lease && lease.expiresAt > now()) return { previewStatus: 'paused' };
-    if (!context) return { previewStatus: 'unavailable' };
-    if (busy || previewing || now() - lastPreview < 5000) return { previewStatus: 'waiting' };
+    if (busy || previewing || now() - lastPreview < (streaming ? 1000 : 5000)) return { previewStatus: 'waiting' };
     previewing = true;
     lastPreview = now();
     try {
+      if (!context || !context.pages().some(p => !p.isClosed())) {
+        // A runner restart/cold wake loses its in-memory CDP connection.
+        // Attach only: preview must never launch a browser or claim control.
+        try {
+          const chromium = deps.chromium ?? (await import(config.playwrightEntry)).chromium;
+          const browser = await chromium.connectOverCDP('http://127.0.0.1:9222', { timeout: 1500 });
+          context = browser.contexts()[0];
+          selected = null;
+          if (context) observeContext(context);
+        } catch { return { previewStatus: 'loading' }; }
+      }
+      if (!context) return { previewStatus: 'loading' };
       const pages = context.pages().filter(p => !p.isClosed());
       const page = selected && !selected.isClosed() ? selected : pages.at(-1);
-      if (!page) return { previewStatus: 'unavailable' };
+      if (!page || page.url() === 'about:blank') return { previewStatus: 'loading' };
       const revision = controlRevision;
       const safe = async () => {
         const url = new URL(page.url());

@@ -219,7 +219,7 @@ export type BrowserCommand = { controlId: string } & (
   | { action: 'tab'; index: number }
 );
 export interface BusinessBrowserState {
-  previewStatus?: 'ready' | 'inactive' | 'paused' | 'private' | 'unavailable' | 'waiting';
+  previewStatus?: 'ready' | 'inactive' | 'paused' | 'private' | 'unavailable' | 'waiting' | 'loading';
   capturedAt?: number;
   enabled?: boolean;
   paused?: boolean;
@@ -455,6 +455,7 @@ export interface Repository {
   /** Owner-safe runtime state; provider ids, URLs and credentials are never returned. */
   runtimeStatus(): Promise<RuntimeOverview>;
   businessBrowser(command?: BrowserCommand, signal?: AbortSignal): Promise<BusinessBrowserState>;
+  watchBrowser?(runId: string, onFrame: (frame: BusinessBrowserState) => void, signal: AbortSignal): Promise<void>;
   /** Idempotently create or re-signal this business's provisioning task. */
   provisionRuntime(): Promise<void>;
 

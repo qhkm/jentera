@@ -13,6 +13,7 @@ import { createServer, request as httpRequest } from 'node:http';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createBusinessBrowser, BrowserProblem } from './business-browser.mjs';
+import { serveBrowserPreview } from './browser-preview-stream.mjs';
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped', 'expired']);
 const BODY_LIMIT = 64 * 1024;
@@ -688,7 +689,11 @@ export function createRunner(input) {
           if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' });
           const body = await readJson(req);
           if (body.businessId !== config.businessId) return json(res, 403, { error: 'wrong_business' });
-          if (body.action === 'preview') {
+          if (body.action === 'preview' || body.action === 'preview-stream') {
+            if (body.action === 'preview-stream') return await serveBrowserPreview(res, businessBrowser, async () => {
+              const active = await activeTask(config, state, terminations);
+              return Boolean(active && active.taskId === body.taskId);
+            });
             const active = await activeTask(config, state, terminations);
             if (!active || active.taskId !== body.taskId) return json(res, 200, { previewStatus: 'inactive' });
             const frame = await businessBrowser.preview();

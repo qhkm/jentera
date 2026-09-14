@@ -70,6 +70,8 @@ fi
 sprite exec -o "$sprite_org" -s "$sprite_name" -- mkdir -p /home/sprite/aisar/runner
 sprite file push -o "$sprite_org" -s "$sprite_name" -p \
   runner/src/server.mjs \
+  runner/src/business-browser.mjs \
+  runner/src/browser-preview-stream.mjs \
   runner/bin/browser-smoke.mjs \
   runner/bin/model-smoke.py \
   runner/bin/web-search-smoke.py \

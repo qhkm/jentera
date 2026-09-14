@@ -4,7 +4,7 @@ import { getRuntimeAccess } from '../agent-runtime';
 import { hasBusiness, resolveTenant } from '../tenancy';
 import { can } from '../permissions';
 
-const ACTIONS = new Set(['claim', 'release', 'frame', 'navigate', 'click', 'text', 'key', 'scroll', 'tab', 'preview']);
+const ACTIONS = new Set(['claim', 'release', 'frame', 'navigate', 'click', 'text', 'key', 'scroll', 'tab', 'preview', 'preview-stream']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MESSAGES: Record<string, string> = {
   runtime_busy: 'Jentera is still working. Let the current task finish, then take control.',
@@ -40,7 +40,7 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
       const body = JSON.parse(raw);
       if (!body || !ACTIONS.has(body.action) || !UUID.test(body.controlId ?? '')) return json({ err: 'invalid command' }, 400);
       command = { action: body.action, controlId: body.controlId, ownerId: identity.userId, businessId: identity.businessId };
-      if (body.action === 'preview') {
+      if (body.action === 'preview' || body.action === 'preview-stream') {
         if (!UUID.test(body.runId ?? '')) return json({ err: 'invalid run' }, 400);
         const tasks = await withTenant(env, identity.businessId, tx => tx`
           select id from runtime_task where business_id = ${identity.businessId}
@@ -63,7 +63,7 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
     if (endpoint.protocol !== 'https:') return json({ err: 'Business browser is unavailable.' }, 503);
     stage = 'connect';
     const upstream = await fetch(endpoint, {
-      method: request.method, redirect: 'error', signal: AbortSignal.timeout(command?.action === 'preview' ? 8000 : 25000),
+      method: request.method, redirect: 'error', signal: AbortSignal.any([request.signal, AbortSignal.timeout(command?.action === 'preview-stream' ? 55000 : command?.action === 'preview' ? 8000 : 25000)]),
       headers: { 'X-Aisar-Runner-Key': secrets.runnerKey, Authorization: `Bearer ${env.SPRITES_TOKEN}`,
         'Content-Type': 'application/json' },
       ...(command ? { body: JSON.stringify(command) } : {}),
@@ -79,6 +79,15 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
     // The private runner returns only its narrow browser DTO. Do not relay
     // upstream headers, Set-Cookie, server errors or arbitrary proxy content.
     stage = 'decode';
+    if (command?.action === 'preview-stream') {
+      if (!upstream.body || !upstream.headers.get('Content-Type')?.includes('application/x-ndjson')) {
+        await upstream.body?.cancel();
+        return json({ err: 'Browser stream is unavailable.' }, 503);
+      }
+      return new Response(sanitizePreviewStream(upstream.body), {
+        headers: { ...headers, 'Content-Type': 'application/x-ndjson' },
+      });
+    }
     const body = await upstream.json() as Record<string, unknown>;
     if (command?.action === 'preview') return json(previewResponse(body));
     return json(Object.fromEntries(['enabled', 'paused', 'controlled', 'expiresAt', 'image', 'width', 'height', 'tabs', 'ok', 'previewStatus', 'capturedAt']
@@ -93,11 +102,32 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
   }
 }
 
+/** Bound framing and revalidate every image. Never relay arbitrary runtime data. */
+export function sanitizePreviewStream(body: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+  let buffer = '';
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  return body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      buffer += decoder.decode(chunk, { stream: true });
+      let end: number;
+      while ((end = buffer.indexOf('\n')) >= 0) {
+        if (end > 671000) throw new Error('Invalid preview frame');
+        const line = buffer.slice(0, end);
+        buffer = buffer.slice(end + 1);
+        controller.enqueue(encoder.encode(`${JSON.stringify(previewResponse(JSON.parse(line)))}\n`));
+      }
+      if (buffer.length > 671000) throw new Error('Invalid preview frame');
+    },
+    flush() { if (buffer.trim()) throw new Error('Incomplete preview frame'); },
+  }));
+}
+
 /** Preview DTO is narrower than the owner-control DTO; blocked or malformed
  * frames must never carry incidental upstream image/tab fields. */
 export function previewResponse(body: Record<string, unknown> | null): Record<string, unknown> {
   const status = body?.previewStatus;
-  if (status !== 'ready') return { previewStatus: ['inactive', 'paused', 'private', 'waiting'].includes(String(status)) ? status : 'unavailable' };
+  if (status !== 'ready') return { previewStatus: ['inactive', 'paused', 'private', 'waiting', 'loading'].includes(String(status)) ? status : 'unavailable' };
   if (typeof body?.image !== 'string' || body.image.length < 4 || body.image.length > 670000 ||
       !/^[A-Za-z0-9+/]+={0,2}$/.test(body.image) || typeof body.capturedAt !== 'number' ||
       !Number.isFinite(body.capturedAt) || Math.abs(Date.now() - body.capturedAt) > 30000) {

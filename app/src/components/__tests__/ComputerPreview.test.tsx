@@ -1,11 +1,45 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { ComputerPreview } from '../ComputerPreview';
+import type { BusinessBrowserState } from '@/lib/repo/types';
 const { preview } = vi.hoisted(() => ({ preview: vi.fn() }));
 vi.mock('@/lib/repo', () => ({ useRepository: () => repo }));
-const repo = { businessBrowser: preview };
-afterEach(() => { vi.useRealTimers(); preview.mockReset(); });
+const repo: { businessBrowser: typeof preview; watchBrowser?: (runId: string, callback: (frame: BusinessBrowserState) => void, signal: AbortSignal) => Promise<void> } = { businessBrowser: preview };
+afterEach(() => { vi.useRealTimers(); preview.mockReset(); delete repo.watchBrowser; });
 describe('computer preview', () => {
+  it('streams multiple frames without polling and removes frames on privacy transitions', async () => {
+    let send!: (frame: BusinessBrowserState) => void;
+    let signal!: AbortSignal;
+    repo.watchBrowser = vi.fn(async (_id, callback, abort) => {
+      send = callback; signal = abort;
+      await new Promise<void>(resolve => abort.addEventListener('abort', () => resolve(), { once: true }));
+    });
+    render(<ComputerPreview runId="live" />);
+    fireEvent.click(screen.getByRole('button'));
+    await act(async () => send({ previewStatus: 'ready', image: 'YWJj', capturedAt: Date.now() }));
+    expect(screen.getByRole('img')).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('Live');
+    await act(async () => send({ previewStatus: 'private', image: 'secret' }));
+    expect(screen.queryByRole('img')).toBeNull();
+    expect(preview).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Hide computer preview' }));
+    expect(signal.aborted).toBe(true);
+    await act(async () => send({ previewStatus: 'ready', image: 'late', capturedAt: Date.now() }));
+    expect(screen.queryByRole('img')).toBeNull();
+  });
+  it('keeps the last frame explicitly stale during reconnect then clears it on access denial', async () => {
+    vi.useFakeTimers();
+    repo.watchBrowser = vi.fn()
+      .mockImplementationOnce(async (_id, callback) => { callback({ previewStatus: 'ready', image: 'YWJj', capturedAt: Date.now() }); throw new Error('offline'); })
+      .mockRejectedValueOnce(Object.assign(new Error('internal'), { status: 403 }));
+    render(<ComputerPreview runId="live" />);
+    await act(async () => fireEvent.click(screen.getByRole('button')));
+    expect(screen.getByRole('img')).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('Reconnecting');
+    await act(async () => vi.advanceTimersByTimeAsync(2000));
+    expect(screen.queryByRole('img')).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('owner access');
+  });
   it('does not fetch until opened, shows timestamp, and clears on collapse', async () => {
     preview.mockResolvedValue({ previewStatus: 'ready', image: 'YWJj', capturedAt: 1000 });
     render(<ComputerPreview runId="run-1" />);

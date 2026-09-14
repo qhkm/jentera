@@ -1,7 +1,9 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { handleBrowser, previewResponse } from '../src/routes/browser';
 import { ensureProviderRuntime, LocalRuntimeProvider } from '../src/runtime';
-import { asOwner, fetchFake, req, signIn, testEnv, truncateAll } from './harness';
+import { asOwner, asTenant, fetchFake, req, signIn, testEnv, truncateAll } from './harness';
+import { startRun } from '../src/runs';
+import { enqueueRuntimeTask } from '../src/runtime/tasks';
 
 const A = '11111111-1111-4111-8111-111111111111';
 it('drops blocked, stale and malformed preview images without relaying extra fields', () => {
@@ -92,4 +94,25 @@ it('preview rejects staff, invalid runs and cross-origin requests without fetchi
   expect(await missing.json()).toEqual({ previewStatus: 'inactive' });
   expect(missing.headers.get('Cache-Control')).toContain('no-store');
   expect(upstream).not.toHaveBeenCalled();
+});
+
+it.each(['preview', 'preview-stream'])('delivers %s through the owner route using the server-resolved task id', async action => {
+  const run = await asTenant(A, tx => startRun(tx, A, {
+    kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'deepseek-flash',
+  }));
+  const task = await asTenant(A, tx => enqueueRuntimeTask(tx, A, {
+    kind: 'run', runId: run.id, dedupeKey: `preview:${run.id}`, payload: { input: 'Browse example.com' },
+  }));
+  const capturedAt = Date.now();
+  const upstream = fetchFake(async () => new Response(JSON.stringify({
+    previewStatus: 'ready', image: 'YWJj', capturedAt, tabs: ['private'],
+  }) + (action === 'preview-stream' ? '\n' : ''), { headers: { 'Content-Type': action === 'preview-stream' ? 'application/x-ndjson' : 'application/json' } }));
+  vi.stubGlobal('fetch', upstream);
+  const response = await call(ownerCookie, { action, runId: run.id, controlId: CONTROL, taskId: CONTROL });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ previewStatus: 'ready', image: 'YWJj', capturedAt });
+  const command = JSON.parse(String(upstream.mock.calls[0][1]?.body));
+  expect(command.taskId).toBe(task.id);
+  expect(command.businessId).toBe(A);
+  expect(response.headers.get('Cache-Control')).toContain('no-store');
 });

@@ -228,6 +228,41 @@ export class RemoteRepository implements Repository {
   businessBrowser(command?: BrowserCommand, signal?: AbortSignal): Promise<BusinessBrowserState> {
     return call('/api/browser', { ...(command ? { method: 'POST', body: JSON.stringify(command) } : {}), signal });
   }
+  async watchBrowser(runId: string, onFrame: (frame: BusinessBrowserState) => void, signal: AbortSignal): Promise<void> {
+    const response = await fetch(`${BASE}/api/browser`, {
+      method: 'POST', credentials: 'include', signal,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'preview-stream', runId, controlId: crypto.randomUUID() }),
+    });
+    if (!response.ok) throw Object.assign(new Error('Preview connection failed'), { status: response.status });
+    // Inactive tasks return JSON before a runtime connection is opened.
+    if (response.headers.get('Content-Type')?.includes('application/json')) {
+      const frame = await response.json() as BusinessBrowserState;
+      if (frame.previewStatus !== 'inactive') throw new Error('Invalid preview response');
+      onFrame(frame);
+      return;
+    }
+    if (!response.body || !response.headers.get('Content-Type')?.includes('application/x-ndjson')) throw new Error('Missing preview stream');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      while (!signal.aborted) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let end: number;
+        while ((end = buffer.indexOf('\n')) >= 0) {
+          if (end > 671000) throw new Error('Invalid preview frame');
+          const frame = JSON.parse(buffer.slice(0, end)) as BusinessBrowserState;
+          buffer = buffer.slice(end + 1);
+          if (!signal.aborted) onFrame(frame);
+        }
+        if (buffer.length > 671000) throw new Error('Invalid preview frame');
+      }
+      if (buffer.trim()) throw new Error('Incomplete preview frame');
+    } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+  }
   setBizProfile = (p: { name?: string; loc?: string }) => post('/api/state/biz-profile', p);
   completeOnboarding = (input: OnboardingCompletion) =>
     post('/api/state/onboarding/complete', input);

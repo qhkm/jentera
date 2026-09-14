@@ -39,16 +39,17 @@ function fixture() {
     },
   };
   const config = { stateFile: '/private/control.json', profileDir: '/private/profile' };
-  return { browser: createBusinessBrowser(config, deps), files, typed, page,
+  return { browser: createBusinessBrowser(config, deps), files, typed, page, context, chromium: deps.chromium,
     advance: (ms) => { clock += ms; }, launches: () => launches,
     restart: () => createBusinessBrowser(config, deps) };
 }
 
 test('preview never launches or claims a browser and blocks private URLs', async () => {
   const f = fixture();
-  assert.equal((await f.browser.preview()).previewStatus, 'unavailable');
+  assert.equal((await f.browser.preview()).previewStatus, 'loading');
   assert.equal(f.launches(), 0);
   await f.browser.ensure();
+  f.advance(5000);
   assert.equal((await f.browser.preview()).previewStatus, 'private');
   assert.equal(await f.browser.isPaused(), false);
 });
@@ -68,6 +69,17 @@ test('preview returns ephemeral frames only after both privacy checks and thrott
   f.advance(8000);
   f.page.evaluate = async () => false;
   assert.equal((await f.browser.preview()).image, undefined);
+});
+
+test('preview reconnects to an existing browser without launching or writing control state', async () => {
+  const f = fixture();
+  f.chromium.connectOverCDP = async () => ({ contexts: () => [f.context] });
+  f.page.url = () => 'https://example.com/docs';
+  f.page.evaluate = async () => true;
+  assert.equal((await f.browser.preview()).previewStatus, 'ready');
+  assert.equal(f.launches(), 0);
+  assert.equal(f.files.size, 0);
+  assert.equal(await f.browser.isPaused(), false);
 });
 
 test('preview discards navigated frames and stops during owner takeover', async () => {

@@ -206,6 +206,7 @@ async function bootstrapRuntime(
   const assets = [
     'runner/src/server.mjs',
     'runner/src/business-browser.mjs',
+    'runner/src/browser-preview-stream.mjs',
     'runner/bin/browser-smoke.mjs',
     'runner/bin/model-smoke.py',
     'runner/bin/web-search-smoke.py',
