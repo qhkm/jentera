@@ -60,7 +60,7 @@ export function ComputerStatus({ onOpenChat, onOpenKnowledge, mobileTarget }: {
   const state = error ? 'unknown' : data ? computerStatus(data) : 'checking';
   const compact = ['ready', 'asleep', 'busy'].includes(state);
   const manage = data?.canManage === true;
-  const mobileQuiet = ['ready', 'asleep', 'busy', 'checking', 'waking', 'updating'].includes(state);
+  const headerOnly = ['ready', 'asleep', 'busy', 'checking', 'waking', 'updating'].includes(state);
   const settingUp = ['settingUp', 'updating'].includes(state);
   const content = <>
       <Desktop size={18} aria-hidden="true" />
@@ -80,7 +80,7 @@ export function ComputerStatus({ onOpenChat, onOpenKnowledge, mobileTarget }: {
       </div>
   </>;
   return <>
-    <section className={`computer-status ${settingUp ? 'computer-status-setup' : ''} ${compact ? 'computer-status-compact' : ''} ${mobileTarget && mobileQuiet ? 'computer-status-mobile-hidden' : ''}`} aria-label={t('computer.title')}>
+    <section className={`computer-status ${settingUp ? 'computer-status-setup' : ''} ${compact ? 'computer-status-compact' : ''} ${mobileTarget && headerOnly ? 'computer-status-header-hidden' : ''}`} aria-label={t('computer.title')}>
       {content}
     </section>
     {mobileTarget && createPortal(<div ref={disclosure} className="computer-status-disclosure">

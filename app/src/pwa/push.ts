@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRepository } from '@/lib/repo';
 import type { PushSubscriptionJson, Repository } from '@/lib/repo';
 
-export type PushState = 'unsupported' | 'checking' | 'off' | 'on' | 'denied';
+export type PushState = 'unsupported' | 'checking' | 'unknown' | 'off' | 'on' | 'denied';
 export type EnableOutcome = 'on' | 'denied' | 'unavailable' | 'failed' | 'dismissed' | 'permission' | 'worker' | 'network' | 'browser' | 'save' | 'signin' | 'busy';
 
 async function readyWorker(): Promise<ServiceWorkerRegistration> {
@@ -32,7 +32,15 @@ function applicationServerKey(key: string): Uint8Array<ArrayBuffer> {
 
 async function currentSubscription(): Promise<PushSubscription | null> {
   const registration = await readyWorker();
-  return registration.pushManager.getSubscription();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      registration.pushManager.getSubscription(),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Push status unavailable')), 10_000); }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Drop this browser's subscription on the server and in the browser.
@@ -60,24 +68,60 @@ export function usePushNotifications() {
   const repo = useRepository();
   const [state, setState] = useState<PushState>(() => (pushSupported() ? 'checking' : 'unsupported'));
   const working = useRef(false);
+  const revision = useRef(0);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!pushSupported()) return;
     let live = true;
-    currentSubscription()
-      .then((subscription) => {
-        if (!live || working.current) return;
-        setState(subscription ? 'on' : Notification.permission === 'denied' ? 'denied' : 'off');
-      })
-      .catch(() => { if (live) setState('off'); });
-    return () => { live = false; };
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let inFlight = false;
+    let pending = false;
+    const check = async (canRetry = true) => {
+      if (!live || working.current) return;
+      if (inFlight) { pending = true; return; }
+      clearTimeout(retry);
+      inFlight = true;
+      const version = revision.current;
+      try {
+        const subscription = await currentSubscription();
+        if (!live || working.current || version !== revision.current) return;
+        setState(Notification.permission === 'denied' ? 'denied' : subscription ? 'on' : 'off');
+      } catch {
+        if (!live || working.current || version !== revision.current) return;
+        // A worker replacement or offline browser is not an opt-out.
+        setState(previous => previous === 'checking' ? 'unknown' : previous);
+        if (canRetry) retry = setTimeout(() => { void check(false); }, 1500);
+      } finally {
+        inFlight = false;
+        if (pending && live) { pending = false; void check(); }
+      }
+    };
+    const refresh = () => { void check(); };
+    const visible = () => { if (document.visibilityState === 'visible') refresh(); };
+    const worker = navigator.serviceWorker;
+    worker.addEventListener?.('controllerchange', refresh);
+    window.addEventListener('focus', refresh);
+    window.addEventListener('online', refresh);
+    window.addEventListener('pageshow', refresh);
+    document.addEventListener('visibilitychange', visible);
+    refresh();
+    return () => {
+      live = false;
+      clearTimeout(retry);
+      worker.removeEventListener?.('controllerchange', refresh);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('online', refresh);
+      window.removeEventListener('pageshow', refresh);
+      document.removeEventListener('visibilitychange', visible);
+    };
   }, []);
 
   const enable = useCallback(async (): Promise<EnableOutcome> => {
     if (working.current) return 'busy';
     if (!pushSupported() || !repo.savePushSubscription || !repo.pushPublicKey) return 'unavailable';
     working.current = true;
+    revision.current++;
     setBusy(true);
     let stage: EnableOutcome = 'permission';
     try {
@@ -138,8 +182,17 @@ export function usePushNotifications() {
   }, [repo]);
 
   const disable = useCallback(async () => {
-    await disablePush(repo);
-    setState('off');
+    if (working.current) return;
+    working.current = true;
+    revision.current++;
+    setBusy(true);
+    try {
+      await disablePush(repo);
+      setState('off');
+    } finally {
+      working.current = false;
+      setBusy(false);
+    }
   }, [repo]);
 
   return { state, busy, enable, disable };

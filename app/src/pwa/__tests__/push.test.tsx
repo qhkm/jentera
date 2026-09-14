@@ -24,7 +24,7 @@ function browser({ existing = null as ReturnType<typeof fakeSubscription> | null
     subscribe: vi.fn(async () => { current = fakeSubscription(`https://push.example/${++n}`); return current; }),
   };
   const registration = { pushManager };
-  vi.stubGlobal('navigator', { ...navigator, serviceWorker: { ready: Promise.resolve(registration) } });
+  vi.stubGlobal('navigator', { ...navigator, serviceWorker: Object.assign(new EventTarget(), { ready: Promise.resolve(registration) }) });
   vi.stubGlobal('PushManager', function PushManager() {});
   vi.stubGlobal('Notification', { permission, requestPermission: vi.fn(async () => 'granted') });
   return pushManager;
@@ -45,6 +45,90 @@ const wrapper = (repo: Repository) => ({ children }: { children: ReactNode }) =>
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('usePushNotifications', () => {
+  it('restores existing push after an update-time failure without subscribing again', async () => {
+    const existing = fakeSubscription('https://push.example/existing');
+    const manager = browser({ existing, permission: 'granted' });
+    manager.getSubscription.mockRejectedValueOnce(new Error('worker replacing'));
+    const { result } = renderHook(() => usePushNotifications(), { wrapper: wrapper(repoWith()) });
+    await waitFor(() => expect(result.current.state).toBe('unknown'));
+    act(() => navigator.serviceWorker.dispatchEvent(new Event('controllerchange')));
+    await waitFor(() => expect(result.current.state).toBe('on'));
+    expect(manager.subscribe).not.toHaveBeenCalled();
+    expect(existing.unsubscribe).not.toHaveBeenCalled();
+    expect(Notification.requestPermission).not.toHaveBeenCalled();
+  });
+
+  it('keeps confirmed on state during temporary lookup failures and recovers online', async () => {
+    const manager = browser({ existing: fakeSubscription('https://push.example/existing'), permission: 'granted' });
+    const { result } = renderHook(() => usePushNotifications(), { wrapper: wrapper(repoWith()) });
+    await waitFor(() => expect(result.current.state).toBe('on'));
+    manager.getSubscription.mockRejectedValueOnce(new Error('temporarily unavailable'));
+    await act(async () => window.dispatchEvent(new Event('focus')));
+    expect(result.current.state).toBe('on');
+    await act(async () => window.dispatchEvent(new Event('online')));
+    expect(result.current.state).toBe('on');
+    expect(manager.getSubscription).toHaveBeenCalledTimes(3);
+  });
+
+  it('automatically retries a transient initial failure once', async () => {
+    vi.useFakeTimers();
+    const manager = browser({ existing: fakeSubscription('https://push.example/existing') });
+    manager.getSubscription.mockRejectedValueOnce(new Error('updating'));
+    const { result } = renderHook(() => usePushNotifications(), { wrapper: wrapper(repoWith()) });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(result.current.state).toBe('unknown');
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+    expect(result.current.state).toBe('on');
+    expect(manager.getSubscription).toHaveBeenCalledTimes(2);
+  });
+
+  it('bounds repeated failures and removes listeners and retries on unmount', async () => {
+    vi.useFakeTimers();
+    const manager = browser();
+    manager.getSubscription.mockRejectedValue(new Error('offline'));
+    const { result, unmount } = renderHook(() => usePushNotifications(), { wrapper: wrapper(repoWith()) });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(result.current.state).toBe('unknown');
+    expect(manager.getSubscription).toHaveBeenCalledTimes(2);
+    unmount();
+    window.dispatchEvent(new Event('focus'));
+    navigator.serviceWorker.dispatchEvent(new Event('controllerchange'));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(manager.getSubscription).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not silently enable a missing subscription even with granted permission', async () => {
+    const manager = browser({ permission: 'granted' });
+    const { result } = renderHook(() => usePushNotifications(), { wrapper: wrapper(repoWith()) });
+    await waitFor(() => expect(result.current.state).toBe('off'));
+    await act(async () => navigator.serviceWorker.dispatchEvent(new Event('controllerchange')));
+    expect(result.current.state).toBe('off');
+    expect(manager.subscribe).not.toHaveBeenCalled();
+  });
+
+  it('detects revoked browser permission when returning to the app', async () => {
+    browser({ existing: fakeSubscription('https://push.example/existing'), permission: 'granted' });
+    const { result } = renderHook(() => usePushNotifications(), { wrapper: wrapper(repoWith()) });
+    await waitFor(() => expect(result.current.state).toBe('on'));
+    vi.stubGlobal('Notification', { permission: 'denied', requestPermission: vi.fn() });
+    await act(async () => window.dispatchEvent(new Event('pageshow')));
+    expect(result.current.state).toBe('denied');
+  });
+
+  it('does not let an old status check overwrite a completed disable', async () => {
+    const existing = fakeSubscription('https://push.example/existing');
+    const manager = browser({ existing, permission: 'granted' });
+    const { result } = renderHook(() => usePushNotifications(), { wrapper: wrapper(repoWith()) });
+    await waitFor(() => expect(result.current.state).toBe('on'));
+    let finish!: (value: typeof existing) => void;
+    manager.getSubscription.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await act(async () => window.dispatchEvent(new Event('focus')));
+    await act(async () => result.current.disable());
+    await act(async () => finish(existing));
+    expect(result.current.state).toBe('off');
+  });
+
   it.each([
     ['permission', 'permission'], ['key', 'network'], ['subscribe', 'browser'], ['save', 'save'], ['auth', 'signin'],
   ])('reports %s failures without leaking raw errors', async (stage, expected) => {

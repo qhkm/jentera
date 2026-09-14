@@ -232,7 +232,7 @@ export function AccountMenu({
                   <BellRinging size={18} weight="duotone" aria-hidden="true" />
                   <span>{t('pwa.push')}</span>
                   <span className="account-menu-value">
-                    {t(push.busy ? 'pwa.push.enabling' : push.state === 'on' ? 'pwa.push.on' : push.state === 'denied' ? 'pwa.push.blocked' : 'pwa.push.off')}
+                    {t(push.busy ? 'pwa.push.enabling' : push.state === 'checking' ? 'pwa.push.checking' : push.state === 'unknown' ? 'pwa.push.unknown' : push.state === 'on' ? 'pwa.push.on' : push.state === 'denied' ? 'pwa.push.blocked' : 'pwa.push.off')}
                   </span>
                 </button>
                 {pushNotice ? <p id={`${id}-push-notice`} className="px-3 py-2 text-xs text-text-muted">{t(pushNotice)}</p> : null}

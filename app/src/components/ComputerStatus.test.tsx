@@ -17,14 +17,14 @@ function mount(read: () => Promise<RuntimeOverview>, signedIn = true, onOpenChat
 }
 afterEach(() => vi.useRealTimers());
 describe('computer readiness', () => {
-  it('shares one status poll with the mobile header and supports disclosure dismissal', async () => {
+  it('shares one status poll with the header on every screen size and supports disclosure dismissal', async () => {
     const target = document.createElement('div'); document.body.append(target);
     const read = vi.fn().mockResolvedValue({ runtime: ready });
     const view = mount(read, true, vi.fn(), target);
     try {
       const user = userEvent.setup();
       const button = await screen.findByRole('button', { name: 'Jentera’s computer · Ready for work' });
-      expect(view.container.querySelector('.computer-status')).toHaveClass('computer-status-mobile-hidden');
+      expect(view.container.querySelector('.computer-status')).toHaveClass('computer-status-header-hidden');
       await user.click(button);
       expect(button).toHaveAttribute('aria-expanded', 'true');
       await user.keyboard('{Escape}');
