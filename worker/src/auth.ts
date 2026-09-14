@@ -15,6 +15,8 @@ import { accessForEmail, restrictedAccess } from './access';
 const LINK_TTL_MS = 15 * 60 * 1000;
 /** 30 days. */
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/** One minute. The app is already waiting for this browser hand-off. */
+const NATIVE_CODE_TTL_MS = 60 * 1000;
 /** Outstanding unconsumed links per address before we quietly stop sending. */
 const MAX_OUTSTANDING = 3;
 
@@ -172,7 +174,7 @@ export async function consumeLoginToken(env: Env, token: string): Promise<Sessio
  * are written; the returned token exists nowhere but the cookie.
  */
 async function startSession(
-  sql: postgres.Sql,
+  sql: postgres.Sql | postgres.TransactionSql,
   userId: string,
   email: string,
   created = false,
@@ -184,6 +186,102 @@ async function startSession(
     values (${await hashToken(sessionToken)}, ${userId}, ${expiresAt})
   `;
   return { token: sessionToken, userId, email, expiresAt, created };
+}
+
+/**
+ * Turn a live browser session into a one-time, PKCE-bound native code.
+ *
+ * verifyIdentitySession establishes the user and accessForEmail enforces the
+ * launch gate. The INSERT ... SELECT then rechecks that the exact source
+ * session is still live and the address verified, closing the revocation
+ * race between those checks and the write.
+ */
+export async function issueNativeCode(
+  env: Env,
+  sessionToken: string,
+  input: { state: string; codeChallenge: string },
+): Promise<string | null> {
+  const identity = await verifyIdentitySession(env, sessionToken);
+  if (!identity || !(await accessForEmail(env, identity.email)).allowed) return null;
+
+  const code = mintToken();
+  const codeId = await hashToken(code);
+  const sessionId = await hashToken(sessionToken);
+  const expiresAt = new Date(Date.now() + NATIVE_CODE_TTL_MS);
+  return withUser(env, async (sql) => {
+    const rows = await sql<{ id: string }[]>`
+      insert into native_auth_code (
+        id, user_id, session_id, code_challenge, state, expires_at
+      )
+      select ${codeId}, s.user_id, s.id, ${input.codeChallenge}, ${input.state}, ${expiresAt}
+        from session s
+        join app_user u on u.id = s.user_id
+       where s.id = ${sessionId}
+         and s.user_id = ${identity.userId}
+         and s.revoked_at is null
+         and s.expires_at > now()
+         and u.email_verified = true
+      returning id`;
+    return rows.length === 1 ? code : null;
+  });
+}
+
+/** PKCE S256: base64url(SHA-256(verifier)), without padding. */
+async function nativeCodeChallenge(verifier: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(verifier),
+  );
+  return base64url(new Uint8Array(digest));
+}
+
+/**
+ * Spend a native code and mint a separate session for the phone.
+ *
+ * The conditional UPDATE is the single-use lock. A bad state or verifier
+ * deliberately consumes the code: an intercepted callback gets one guess,
+ * while a successful exchange and its new session commit atomically.
+ */
+export async function redeemNativeCode(
+  env: Env,
+  input: { code: string; state: string; codeVerifier: string },
+): Promise<Session | null> {
+  const codeId = await hashToken(input.code);
+  const challenge = await nativeCodeChallenge(input.codeVerifier);
+  return withUser(env, async (sql) => {
+    const result = await sql.begin(async (tx) => {
+      const rows = await tx<{
+        user_id: string;
+        session_id: string;
+        code_challenge: string;
+        state: string;
+      }[]>`
+        update native_auth_code
+           set consumed_at = now()
+         where id = ${codeId}
+           and consumed_at is null
+           and expires_at > now()
+        returning user_id, session_id, code_challenge, state`;
+      if (rows.length !== 1) return null;
+
+      const code = rows[0];
+      if (code.state !== input.state || code.code_challenge !== challenge) return null;
+
+      const [source] = await tx<{ email: string }[]>`
+        select u.email
+          from session s
+          join app_user u on u.id = s.user_id
+         where s.id = ${code.session_id}
+           and s.user_id = ${code.user_id}
+           and s.revoked_at is null
+           and s.expires_at > now()
+           and u.email_verified = true`;
+      if (!source) return null;
+
+      return startSession(tx, code.user_id, source.email);
+    });
+    return result as Session | null;
+  });
 }
 
 /* ---------- password ------------------------------------------------ */

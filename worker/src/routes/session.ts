@@ -7,7 +7,10 @@ import {
   clearedCookie,
   consumeLoginToken,
   issueLoginToken,
+  issueNativeCode,
+  readCookie,
   readSessionToken,
+  redeemNativeCode,
   revokeSession,
   sessionCookie,
   verifySession,
@@ -19,7 +22,7 @@ import {
   signUpWithPassword,
 } from '../auth';
 import { sendMagicLink } from '../email';
-import { checkAuthRate, checkLoginBurst, clientIp } from '../ratelimit';
+import { checkAuthRate, checkLoginBurst, checkNativeAuthBurst, clientIp } from '../ratelimit';
 import { DUMMY_HASH, hashPassword, passwordProblem, verifyPassword } from '../password';
 import {
   authorizeUrl,
@@ -91,6 +94,108 @@ export async function handleSession(
     if (verdict === 'unavailable') console.warn('[turnstile] siteverify unavailable; request admitted');
     return null;
   };
+
+  const trustedOrigin = () => (env.ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .includes(request.headers.get('Origin') ?? '');
+
+  /* ---- hand a browser session to the native app -------------------- */
+  if (url.pathname === '/api/auth/native/code' && request.method === 'POST') {
+    /* This converts an HttpOnly cookie into an exportable credential. An
+       exact Origin check is therefore part of authentication, not CORS
+       decoration. A bearer cannot mint another bearer through this route. */
+    if (!trustedOrigin()) {
+      return json(
+        { ok: false, err: 'Untrusted request origin.' },
+        { status: 403, headers: { 'Cache-Control': 'no-store' } },
+        cors,
+      );
+    }
+    const token = readCookie(request);
+    if (!token) {
+      return json(
+        { ok: false, err: 'not signed in' },
+        { status: 401, headers: { 'Cache-Control': 'no-store' } },
+        cors,
+      );
+    }
+    const body = (await request.json().catch(() => ({})) ?? {}) as {
+      state?: unknown;
+      codeChallenge?: unknown;
+    };
+    const state = typeof body.state === 'string' ? body.state : '';
+    const codeChallenge = typeof body.codeChallenge === 'string' ? body.codeChallenge : '';
+    if (!/^[A-Za-z0-9._~-]{16,128}$/.test(state) ||
+        !/^[A-Za-z0-9._~-]{43,128}$/.test(codeChallenge)) {
+      return json(
+        { ok: false, err: 'state and codeChallenge are required' },
+        { status: 400, headers: { 'Cache-Control': 'no-store' } },
+        cors,
+      );
+    }
+    const code = await issueNativeCode(env, token, { state, codeChallenge });
+    if (!code) {
+      return json(
+        { ok: false, err: 'not signed in' },
+        { status: 401, headers: { 'Cache-Control': 'no-store' } },
+        cors,
+      );
+    }
+    return json(
+      { ok: true, code },
+      { headers: { 'Cache-Control': 'no-store' } },
+      cors,
+    );
+  }
+
+  /* ---- exchange the one-time code for a separate phone session ----- */
+  if (url.pathname === '/api/auth/native/token' && request.method === 'POST') {
+    if (!trustedOrigin()) {
+      return json(
+        { ok: false, err: 'Untrusted request origin.' },
+        { status: 403, headers: { 'Cache-Control': 'no-store' } },
+        cors,
+      );
+    }
+    if (!(await checkNativeAuthBurst(env, request))) {
+      return new Response(null, {
+        status: 429,
+        headers: { ...cors, 'Cache-Control': 'no-store', 'Retry-After': '60' },
+      });
+    }
+    const body = (await request.json().catch(() => ({})) ?? {}) as {
+      code?: unknown;
+      state?: unknown;
+      codeVerifier?: unknown;
+    };
+    const code = typeof body.code === 'string' ? body.code : '';
+    const state = typeof body.state === 'string' ? body.state : '';
+    const codeVerifier = typeof body.codeVerifier === 'string' ? body.codeVerifier : '';
+    if (!/^[A-Za-z0-9_-]{43}$/.test(code) ||
+        !/^[A-Za-z0-9._~-]{16,128}$/.test(state) ||
+        !/^[A-Za-z0-9._~-]{43,128}$/.test(codeVerifier)) {
+      return json(
+        { ok: false, err: 'code, state and codeVerifier are required' },
+        { status: 400, headers: { 'Cache-Control': 'no-store' } },
+        cors,
+      );
+    }
+    const session = await redeemNativeCode(env, { code, state, codeVerifier });
+    if (!session) {
+      return json(
+        { ok: false, err: 'that code is not valid' },
+        { status: 400, headers: { 'Cache-Control': 'no-store' } },
+        cors,
+      );
+    }
+    return json(
+      { ok: true, token: session.token, expiresAt: session.expiresAt.toISOString() },
+      { headers: { 'Cache-Control': 'no-store' } },
+      cors,
+    );
+  }
 
   /* ---- request a link ---------------------------------------------- */
   if (url.pathname === '/api/auth/request' && request.method === 'POST') {

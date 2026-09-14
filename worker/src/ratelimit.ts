@@ -163,3 +163,15 @@ export async function checkLoginBurst(
   ]);
   return byIp.success && byEmail.success;
 }
+
+/** The native code exchange has no email until after its database lookup.
+    Keep a dedicated per-IP edge brake so guesses cost no database work. */
+export async function checkNativeAuthBurst(
+  env: Env,
+  request: Request,
+): Promise<boolean> {
+  const verdict = await env.AUTH_BURST.limit({
+    key: `native-token-ip:${clientIp(request)}`,
+  });
+  return verdict.success;
+}
