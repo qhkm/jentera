@@ -285,9 +285,26 @@ export async function handleSession(
   if (url.pathname === '/api/auth/google' && (request.method === 'GET' || request.method === 'POST')) {
     let inviteCode = '';
     if (request.method === 'POST') {
-      if (!env.ALLOWED_ORIGINS.split(',').map(value => value.trim()).includes(request.headers.get('Origin') ?? '')) return badRequest(cors, 'Untrusted request origin.');
       const form = await request.formData().catch(() => null);
       inviteCode = trialCode(form?.get('inviteCode'));
+      if (!env.ALLOWED_ORIGINS.split(',').map(value => value.trim()).includes(request.headers.get('Origin') ?? '')) {
+        /* Invite links are sometimes opened inside a preview or an in-app
+           browser whose form navigation has an opaque origin. Do not weaken
+           the OAuth origin check. Move the user to our canonical sign-in
+           origin instead, carrying only a syntactically valid code in the
+           fragment so it stays out of request logs and referrers. */
+        const location = inviteCode
+          ? `${env.APP_ORIGIN}/signin#code=${encodeURIComponent(inviteCode)}`
+          : `${env.APP_ORIGIN}/signin`;
+        return new Response(null, {
+          status: 303,
+          headers: {
+            Location: location,
+            'Cache-Control': 'no-store',
+            'Referrer-Policy': 'no-referrer',
+          },
+        });
+      }
     }
     /* This route is reached by a browser NAVIGATION, not by fetch, so
        an error body renders as raw JSON on a blank page. Bounce back to
