@@ -1165,3 +1165,53 @@
     font-size: 32px;
   }
 }
+/* One launch plan: stacked on phones, with explicit offer terms. */
+.lp-steps.lp-difference-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.lp-difference-closing { margin-top: 28px; max-width: 640px; color: var(--text-secondary); line-height: 1.6; }
+@media (max-width: 700px) { .lp-steps.lp-difference-grid { grid-template-columns: minmax(0, 1fr); } }
+.lp-job-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.lp-job-grid .lp-work-row { display: flex; flex-direction: column; align-items: stretch; gap: 16px; padding: 24px; border: 1px solid var(--ov-line-2); border-radius: 20px; min-width: 0; }
+.lp-job-grid .lp-work-title h3 { font-size: 24px; }
+.lp-job-grid .lp-work-description { max-width: none; }
+.lp-job-example { margin-top: auto; font-size: 13px; line-height: 1.6; color: var(--accent-green); }
+.lp-control-screen { margin: 0; min-width: 0; justify-self: center; max-width: 366px; }
+.lp-control-screen img { width: 100%; height: auto; border: 1px solid var(--ov-line-2); border-radius: 16px; }
+.lp-control-screen figcaption { margin-top: 10px; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+@media (max-width: 700px) { .lp-job-grid { grid-template-columns: minmax(0, 1fr); } }
+.lp-pricing {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 48px;
+  align-items: start;
+  scroll-margin-top: 100px;
+}
+.lp-launch-plan {
+  min-width: 0;
+  padding: 32px;
+  border: 1px solid var(--accent-green);
+  border-radius: 24px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent-green) 12%, transparent), transparent 65%);
+}
+.lp-launch-badge {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--accent-green) 14%, transparent);
+  color: var(--accent-green);
+  font-size: 12px;
+  font-weight: 600;
+}
+.lp-launch-plan h3 { margin: 22px 0 8px; font-size: 24px; }
+.lp-launch-price { display: flex; align-items: baseline; gap: 8px; margin: 0 0 12px; }
+.lp-launch-price span:first-child { font-size: clamp(44px, 7vw, 64px); font-weight: 650; line-height: 1.1; letter-spacing: -2px; }
+.lp-launch-price span:last-child { color: var(--text-secondary); }
+.lp-launch-plan ul { display: grid; gap: 14px; margin: 28px 0; padding: 0; list-style: none; }
+.lp-launch-plan li { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.5; }
+.lp-launch-plan li svg { flex-shrink: 0; margin-top: 2px; color: var(--accent-green); }
+.lp-launch-plan .btn { width: 100%; }
+.lp-launch-note { text-align: center; font-size: 12px; margin-top: 12px; color: var(--text-secondary); }
+.lp-launch-terms { font-size: 12px; line-height: 1.6; margin-top: 20px; color: var(--text-secondary); }
+@media (max-width: 700px) {
+  .lp-pricing { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .lp-launch-plan { padding: 24px 20px; }
+}

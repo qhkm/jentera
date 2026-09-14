@@ -14,6 +14,23 @@ function mount() {
 }
 
 describe("Jentera landing experience", () => {
+  it("presents launch pricing without implying a paid reservation or lifetime rate", () => {
+    mount();
+    const pricing = screen.getByRole("region", { name: /your ai staff.*special launch price/i });
+    expect(within(pricing).getByText("RM99")).toBeVisible();
+    expect(within(pricing).getByText("/month")).toBeVisible();
+    expect(within(pricing).getByText("One computer task at a time")).toBeVisible();
+    expect(within(pricing).getByRole("link", { name: /notify me at launch/i })).toHaveAttribute("href", "/waitlist");
+    expect(pricing).toHaveTextContent("Free to join. No payment today.");
+    expect(pricing).toHaveTextContent("Launching 16 September 2026");
+    expect(pricing).toHaveTextContent("Purchases are not open yet.");
+    expect(pricing.querySelector('time')).toHaveAttribute('dateTime', '2026-09-16');
+    expect(within(pricing).getAllByRole('link')).toHaveLength(1);
+    expect(pricing).toHaveTextContent("Joining the waitlist does not reserve this price.");
+    expect(pricing).toHaveTextContent("renewal pricing");
+    expect(screen.getByRole("link", { name: "Pricing" })).toHaveAttribute("href", "/#pricing");
+  });
+
   it("invites a phone visitor to install once the page has settled", async () => {
     vi.useFakeTimers();
     try {
@@ -37,16 +54,12 @@ describe("Jentera landing experience", () => {
       "AI staff that works 24/7 for 🇲🇾 Malaysian businesses.",
     );
     const proof = screen.getByRole("region", {
-      name: /the work moves.*you stay in control/i,
+      name: /your business knowledge.*your approval/i,
     });
-    expect(within(proof).getByText("Private workspace")).toBeVisible();
+    expect(within(proof).getByText("Confirmed business knowledge")).toBeVisible();
     expect(within(proof).getByText("Approval when it matters")).toBeVisible();
     expect(within(proof).getByText("A clear activity history")).toBeVisible();
-    expect(within(proof).getByLabelText("Illustrative Jentera workflow")).toBeVisible();
-    expect(proof.querySelector(".lp-proof-art img")).toHaveAttribute(
-      "srcSet",
-      expect.stringContaining("jentera-malaysian-business-poster-v1-1536.webp"),
-    );
+    expect(within(proof).getByRole('img')).toHaveAttribute('src', '/images/product-tour/knowledge-mobile-v1.png');
     for (const link of screen.getAllByRole("link", {
       name: /meet jentera|set up jentera/i,
     })) {
@@ -58,8 +71,36 @@ describe("Jentera landing experience", () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: /try the setup without an account/i }),
-    ).toHaveAttribute("href", "/onboard");
+      screen.getByRole("link", { name: /see supported connections/i }),
+    ).toHaveAttribute("href", "/connect");
+  });
+
+  it('moves from demonstration to mechanism, jobs, control and pricing without duplicate positioning sections', () => {
+    const { container } = mount();
+    const ids = [...container.querySelectorAll('main > section[id]')].map(section => section.id);
+    expect(ids).toEqual(['product-tour', 'how', 'work', 'control', 'pricing', 'questions']);
+    expect(container.querySelector('.lp-job-grid')?.children).toHaveLength(8);
+    for (const title of ['Keep enquiries moving.', 'Turn content into a publishing routine.', 'Move from enquiry to quotation.', 'Bring important emails to you.']) {
+      expect(screen.getByRole('heading', { name: title })).toBeVisible();
+    }
+    expect(container.querySelector('#work')).toHaveTextContent('not one-click integrations');
+    expect(container.querySelector('#work')).toHaveTextContent('Review customer-facing messages and financial documents before sending.');
+    expect(screen.getByRole('heading', { name: /give it a job.*not another prompt/i })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Watch supplier prices.' })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Plan your next week of content.' })).not.toBeInTheDocument();
+    expect(container.querySelector('.lp-trades-section')).toBeNull();
+    expect(container.querySelector('.lp-local-section')).toBeNull();
+    expect(container.querySelector('#aisar')).toBeNull();
+  });
+
+  it('explains managed setup without promising universal software or subscription compatibility', () => {
+    mount();
+    const section = screen.getByRole('region', { name: /AI staff.*without the server setup/i });
+    expect(section).toHaveTextContent('No VPS to rent.');
+    expect(within(section).getAllByRole('article')).toHaveLength(4);
+    expect(section).toHaveTextContent('Install compatible software');
+    expect(section).toHaveTextContent('Start with Jentera AI');
+    expect(section).toHaveTextContent('not every subscription includes API access');
   });
 
   it("switches examples and restores keyboard focus when returning from a draft", async () => {

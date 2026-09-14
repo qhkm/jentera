@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import {
   ArrowDown,
-  ArrowRight,
   ArrowUpRight,
   Check,
   ChatCircle,
@@ -23,8 +22,6 @@ import {
 import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { useSignedInRedirect } from "@/hooks/useSignedInRedirect";
 import { JenteraMark } from "@/components/JenteraMark";
-import { DataIcon } from "@/components/Icon";
-import { WorkIllustration } from "@/components/landing/WorkIllustration";
 import { ProductTour } from "@/components/landing/ProductTour";
 import { LandingInstallNudge } from "@/components/InstallNudge";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
@@ -33,8 +30,6 @@ import {
   EVERYDAY_WORK,
   FAQS,
   HERO,
-  SETUP_STEPS,
-  TRADE_TYPES,
 } from "@/lib/landing-content";
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
@@ -220,8 +215,8 @@ function BusinessPreview() {
 const TRUST_SIGNALS = [
   {
     icon: LockSimple,
-    title: "Private workspace",
-    body: "Your business data is scoped to your account.",
+    title: "Confirmed business knowledge",
+    body: "Review and correct the details Jentera uses. Your business data is scoped to your account.",
   },
   {
     icon: ShieldCheck,
@@ -240,29 +235,18 @@ function TrustProof() {
     <section id="control" className="lp-proof-section" aria-labelledby="proof-heading">
       <div className="lp-container">
         <div className="lp-proof-shell">
-          <div className="lp-proof-art" aria-hidden="true">
-            <img
-              src="/images/jentera-malaysian-business-poster-v1-768.webp"
-              srcSet="/images/jentera-malaysian-business-poster-v1-768.webp 768w, /images/jentera-malaysian-business-poster-v1-1536.webp 1536w"
-              sizes="(max-width: 800px) 100vw, 520px"
-              width="1536"
-              height="1024"
-              loading="lazy"
-              decoding="async"
-              alt=""
-            />
-          </div>
+          <figure className="lp-control-screen">
+            <img src="/images/product-tour/knowledge-mobile-v1.png" width="366" height="543" loading="lazy" alt="Demo business knowledge showing confirmed details and a suggested update for review." />
+            <figcaption>Actual product screen · fictional business details</figcaption>
+          </figure>
 
           <div className="lp-proof-copy">
-            <Eyebrow>Built for owner control</Eyebrow>
+            <Eyebrow>Your knowledge and your decisions</Eyebrow>
             <h2 id="proof-heading">
-              The work moves.
-              <br />
-              <span>You stay in control.</span>
+              Your business knowledge.<br /><span>Your approval.</span>
             </h2>
             <p>
-              Jentera shows what it handled, pauses when your input is needed,
-              and keeps the outcome in one place.
+              Review the business details Jentera uses, inspect important actions before approving them, and check the outcome. AI can make mistakes; verify important information.
             </p>
             <ul className="lp-trust-signals">
               {TRUST_SIGNALS.map(({ icon: SignalIcon, title, body }) => (
@@ -279,69 +263,7 @@ function TrustProof() {
             </ul>
           </div>
 
-          <div className="lp-proof-demo" aria-label="Illustrative Jentera workflow">
-            <header>
-              <span className="lp-proof-demo-brand">
-                <JenteraMark size={28} />
-                <span>
-                  <small>Illustrative workflow</small>
-                  <strong>Friday supplier brief</strong>
-                </span>
-              </span>
-              <span className="tag tag-green">Scheduled</span>
-            </header>
 
-            <div className="lp-proof-request">
-              <span>You asked</span>
-              <p>
-                Every Friday, review the supplier pages I share and prepare a
-                short price-change brief.
-              </p>
-            </div>
-
-            <ol className="lp-proof-timeline">
-              <li>
-                <span className="lp-proof-step is-done">
-                  <Check size={13} aria-hidden="true" />
-                </span>
-                <span>
-                  <small>8:00 AM</small>
-                  <strong>Scheduled task started</strong>
-                </span>
-              </li>
-              <li>
-                <span className="lp-proof-step is-done">
-                  <Check size={13} aria-hidden="true" />
-                </span>
-                <span>
-                  <small>8:02 AM</small>
-                  <strong>Supplier pages reviewed</strong>
-                </span>
-              </li>
-              <li>
-                <span className="lp-proof-step">
-                  <FileText size={13} aria-hidden="true" />
-                </span>
-                <span>
-                  <small>8:03 AM</small>
-                  <strong>Price-change brief prepared</strong>
-                </span>
-              </li>
-            </ol>
-
-            <div className="lp-proof-review">
-              <span>Needs your attention</span>
-              <p>Choose which supplier change should go into next week’s plan.</p>
-              <span className="lp-proof-review-action">
-                Review result <ArrowUpRight size={15} aria-hidden="true" />
-              </span>
-            </div>
-
-            <footer>
-              <FileText size={14} aria-hidden="true" /> Saved to Activity with
-              its status and result.
-            </footer>
-          </div>
         </div>
       </div>
     </section>
@@ -421,22 +343,39 @@ export default function Landing() {
         </section>
 
         <ProductTour />
-        <TrustProof />
+
+        <section id="how" className="lp-how-section" aria-labelledby="computer-heading">
+          <div className="lp-container lp-section">
+            <div className="lp-section-heading">
+              <Eyebrow>The workspace behind your AI staff</Eyebrow>
+              <h2 id="computer-heading">AI staff.<br /><span className="text-brand">Without the server setup.</span></h2>
+              <p>No VPS to rent. No hours spent configuring a server. Sign in, add your business details and give Jentera a job. We handle the computer setup behind the scenes.</p>
+            </div>
+            <div className="lp-steps lp-difference-grid">
+              <article><span className="lp-step-number">01 / YOUR COMPUTER</span><h3>Its own computer.</h3><p>A dedicated cloud computer for files, browser work and running tasks. You don’t need to keep your own laptop open.</p></article>
+              <article><span className="lp-step-number">02 / YOUR TOOLS</span><h3>More than a chat window.</h3><p>Install compatible software on Jentera’s computer and use supported websites. Some tools need a licence, sign-in or your approval.</p></article>
+              <article><span className="lp-step-number">03 / YOUR AI</span><h3>AI included. Connections optional.</h3><p>Start with Jentera AI, or connect supported AI tools and accounts. Compatibility and provider terms apply—not every subscription includes API access.</p></article>
+              <article><span className="lp-step-number">04 / YOUR BUSINESS</span><h3>A workspace that keeps the context.</h3><p>Keep confirmed business details, files and routines together. Set up repeatable work without starting from an empty chat every time.</p></article>
+            </div>
+            <p className="lp-difference-closing">You focus on the business. Jentera handles the workspace your AI works in.</p>
+            <Link to="/connect" className="lp-text-link lp-try-link">See supported connections <ArrowUpRight size={16} aria-hidden="true" /></Link>
+          </div>
+        </section>
 
         <section id="work" className="lp-section lp-container">
           <div className="lp-section-heading">
-            <Eyebrow>For the work that keeps coming back</Eyebrow>
+            <Eyebrow>Work that keeps running</Eyebrow>
             <h2>
-              Less time on admin.
-              <br />
-              <span className="text-brand">More time for the business.</span>
+              Give it a job.<br /><span className="text-brand">Not another prompt.</span>
             </h2>
             <p>
-              Give Jentera the enquiries, follow-ups, and paperwork that keep
-              landing on your desk.
+              From following up enquiries to preparing invoices, build a routine around the work your business repeats. Give Jentera the instructions, sources and schedule—not the same prompt every day.
+            </p>
+            <p>
+              These are workflows to configure, not one-click integrations. Connected apps, compatible software and permissions are required where applicable. Review customer-facing messages and financial documents before sending.
             </p>
           </div>
-          <div className="lp-work-list">
+          <div className="lp-job-grid">
             {EVERYDAY_WORK.map((work) => {
               const Glyph = WORK_ICONS[work.icon];
               return (
@@ -455,160 +394,39 @@ export default function Landing() {
                   <div className="lp-work-description">
                     <p>{work.body}</p>
                   </div>
-                  <WorkIllustration kind={work.icon} />
+                  <p className="lp-job-example">{work.example}</p>
                 </article>
               );
             })}
           </div>
         </section>
 
-        <section id="how" className="lp-how-section">
-          <div className="lp-container lp-section">
-            <div className="lp-section-heading lp-heading-split">
-              <div>
-                <Eyebrow>Simple to get started</Eyebrow>
-                <h2>
-                  Tell us about the business.
-                  <br />
-                  <span className="text-brand">Give Jentera a job.</span>
-                </h2>
-              </div>
-              <p>
-                Start with the business you already know.
-                <br />
-                Jentera handles the setup behind the scenes.
-              </p>
-            </div>
-            <div className="lp-steps">
-              {SETUP_STEPS.map((step) => (
-                <article key={step.number}>
-                  <span className="lp-step-number">
-                    {step.number}
-                    <ArrowRight size={18} aria-hidden="true" />
-                  </span>
-                  <h3>{step.title}</h3>
-                  <p>{step.body}</p>
-                </article>
-              ))}
-            </div>
-            <Link to="/onboard" className="lp-text-link lp-try-link">
-              Try the setup without an account{" "}
-              <ArrowUpRight size={16} aria-hidden="true" />
-            </Link>
-          </div>
-        </section>
+        <TrustProof />
 
-        <section className="lp-container lp-section lp-local-section">
+        <section id="pricing" className="lp-container lp-section lp-pricing" aria-labelledby="launch-pricing-title">
           <div className="lp-section-heading">
-            <Eyebrow>Why here is different</Eyebrow>
-            <h2>
-              Built for the way business
-              <br />
-              works here.
-            </h2>
-            <p>
-              The late-night enquiry. The family helping behind the counter. The
-              order details scattered across chats. We’re building around the
-              way businesses here already work.
-            </p>
-            <Link to="/connect" className="lp-text-link">
-              See what connects today{" "}
-              <ArrowUpRight size={16} aria-hidden="true" />
-            </Link>
+            <Eyebrow>Launch-only offer</Eyebrow>
+            <h2 id="launch-pricing-title">Your AI staff.<br /><span className="text-brand">A special launch price.</span></h2>
+            <p>Officially launching on <time dateTime="2026-09-16">16 September 2026</time>. Less everyday admin. More time for your business.</p>
           </div>
-          <div className="lp-local-details">
-            <article>
-              <span className="lp-local-index">01 / THE WAY YOU TALK</span>
-              <h3>Start with a conversation.</h3>
-              <p>
-                Work with Jentera on the web or in your private Telegram chat.
-                WhatsApp is part of our direction, because that’s where so much
-                business happens.
-              </p>
-              <span className="lp-availability">
-                <span className="lp-status-dot" /> Web + private Telegram
-                available
-              </span>
-            </article>
-            <article>
-              <span className="lp-local-index">02 / THE WAY YOU WORK</span>
-              <h3>Your business comes first.</h3>
-              <p>
-                Your menu, your services, your opening hours. Jentera works from
-                the details you confirm, in a workspace private to your
-                business.
-              </p>
-            </article>
-            <article>
-              <span className="lp-local-index">03 / THE WAY WE BUILD</span>
-              <h3>Made for smaller teams.</h3>
-              <p>
-                A five-person business deserves useful AI too. We build the
-                technology behind Jentera to make everyday help practical for
-                smaller teams.
-              </p>
-            </article>
-          </div>
-        </section>
-
-        <section className="lp-trades-section">
-          <div className="lp-container lp-section">
-            <div className="lp-section-heading lp-heading-split">
-              <div>
-                <Eyebrow>Made for businesses here</Eyebrow>
-                <h2>
-                  Built around the work
-                  <br />
-                  <span className="text-brand">you already do.</span>
-                </h2>
-              </div>
-              <p>
-                From the first order to the last appointment. Jentera starts
-                with your trade and the way your business already runs.
-              </p>
-            </div>
-            <ul
-              className="lp-trade-grid"
-              aria-label="Businesses Jentera is designed for"
-            >
-              {TRADE_TYPES.map(([symbol, name]) => (
-                <li key={name}>
-                  <DataIcon emoji={symbol} size={20} />
-                  {name}
-                </li>
-              ))}
+          <div className="lp-launch-plan">
+            <span className="lp-launch-badge">Launching 16 September 2026</span>
+            <h3>Jentera</h3>
+            <p className="lp-launch-price"><span>RM99</span><span>/month</span></p>
+            <p>AI staff for the business you already run.</p>
+            <ul aria-label="Launch plan inclusions">
+              {[
+                'Jentera AI included — no separate AI subscription needed',
+                'AI staff roles for everyday business work',
+                'A dedicated computer',
+                'Ready-made playbooks and scheduled routines',
+                'One computer task at a time',
+                'Approvals and activity history',
+              ].map((feature) => <li key={feature}><Check size={18} aria-hidden="true" /><span>{feature}</span></li>)}
             </ul>
-          </div>
-        </section>
-
-        <section id="aisar" className="lp-about-section">
-          <div className="lp-container lp-about-layout">
-            <div>
-              <Eyebrow>Built by AISAR</Eyebrow>
-              <h2>
-                Good technology should work
-                <br />
-                for a small business too.
-              </h2>
-            </div>
-            <div>
-              <p>
-                AISAR builds AI agents that run Southeast Asian businesses.
-                Jentera is how you put that work to use in yours.
-              </p>
-              <p>
-                One product to learn your business, help with the daily work,
-                and give you room to focus on what comes next.
-              </p>
-              <a
-                href="https://aisar.ai"
-                className="lp-text-link"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Meet AISAR <ArrowUpRight size={16} aria-hidden="true" />
-              </a>
-            </div>
+            <Link to="/waitlist" className="btn btn-primary">Notify me at launch <ArrowUpRight size={16} aria-hidden="true" /></Link>
+            <p className="lp-launch-note">Purchases are not open yet. Free to join. No payment today.</p>
+            <p className="lp-launch-terms">Standard AI usage included; fair-use limits apply. Offer end date, promotional duration, renewal pricing and usage limits will be published before subscriptions open. Joining the waitlist does not reserve this price.</p>
           </div>
         </section>
 

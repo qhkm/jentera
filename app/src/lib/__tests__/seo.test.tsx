@@ -80,7 +80,7 @@ describe('public SEO and social previews', () => {
   it('provides meaningful public HTML without running an API request', () => {
     const fetch = vi.fn(() => { throw new Error('No network in prerender'); }); vi.stubGlobal('fetch', fetch);
     const landing = renderPublic('/');
-    expect(landing).toContain('You already built the business.');
+    expect(landing).toContain('AI staff that works');
     expect(landing).toContain('href="/connect"');
     expect(landing).toContain('<h1');
     expect(renderPublic('/connect')).toContain('MyInvois submission and e-invoicing are not currently available');

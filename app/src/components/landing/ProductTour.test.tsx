@@ -12,7 +12,7 @@ describe('product screenshots', () => {
     const tour = screen.getByRole('region', { name: 'From a job to a result.' });
     expect(within(tour).getByText(/not customer results/)).toBeVisible();
     const buttons = within(tour).getAllByRole('button');
-    expect(buttons).toHaveLength(4);
+    expect(buttons).toHaveLength(3);
     for (const button of buttons) {
       button.focus();
       await user.keyboard('{Enter}');

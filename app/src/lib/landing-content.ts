@@ -3,7 +3,7 @@
    and planned connections are never presented as available features. */
 
 export const HERO = {
-  eyebrow: "Introducing Jentera · Built for business here",
+  eyebrow: "Launching 16 September 2026 · Built for Malaysian businesses",
   headline: {
     lead: "AI staff that works 24/7",
     preposition: "for",
@@ -12,7 +12,7 @@ export const HERO = {
     audience: "businesses.",
   },
   detail:
-    "You already built the business. Jentera helps with the enquiries, follow-ups, paperwork, and everyday jobs that take up your time.",
+    "Give Jentera a job. It uses a dedicated computer to research, prepare files and handle everyday tasks—with your business knowledge and approval controls.",
   ctaPrimary: "Meet Jentera",
   ctaSecondary: "See how it helps",
 };
@@ -90,34 +90,66 @@ export const EVERYDAY_WORK = [
   {
     number: "01",
     icon: "chat",
-    kicker: "Enquiries",
-    title: "Replies ready when you need them.",
-    body: "Opening hours, menu questions, and booking enquiries, in Bahasa and English. Jentera prepares a reply using the details you confirm.",
-    example: "“Draft a reply about tomorrow’s opening hours.”",
+    kicker: "Enquiries and follow-ups",
+    title: "Keep enquiries moving.",
+    body: "Build a routine around a connected inbox: check new enquiries against your business knowledge, prepare replies and flag leads that need a follow-up. Review before sending.",
+    example: "“Check new enquiries each morning and queue replies for my approval.”",
   },
   {
     number: "02",
     icon: "document",
-    kicker: "Follow-ups",
-    title: "Keep every job moving.",
-    body: "Quotes, no-shows, and invoices. Jentera helps you prepare the next step, ready for you to send or approve.",
-    example: "“Prepare a follow-up for this catering quote.”",
+    kicker: "Social media operations",
+    title: "Turn content into a publishing routine.",
+    body: "Use the performance reports you provide to plan the next batch of posts. Review the content, then schedule publishing through supported connections.",
+    example: "“Review last week’s results and prepare next week’s posts for approval.”",
   },
   {
     number: "03",
-    icon: "search",
-    kicker: "Operations",
-    title: "Know what needs attention.",
-    body: "Turn the orders, stock notes, and figures you share into clear checklists and weekly summaries.",
-    example: "“Turn these order notes into a weekly summary.”",
+    icon: "document",
+    kicker: "Quotes and invoices",
+    title: "Move from enquiry to quotation.",
+    body: "Read client requirements, use your confirmed price list and prepare a quotation file. With a supported sending connection, send it after approval and record the follow-up date.",
+    example: "“Prepare a quote from this enquiry and flag any missing details before sending.”",
   },
   {
     number: "04",
+    icon: "chat",
+    kicker: "Inbox triage",
+    title: "Bring important emails to you.",
+    body: "Set up checks for a connected mailbox, separate routine messages from items needing attention and prepare a summary with suggested replies for your review.",
+    example: "“Every weekday, summarise important emails and draft replies without sending.”",
+  },
+  {
+    number: "05",
+    icon: "chat",
+    kicker: "Scheduled monitoring",
+    title: "Watch supplier prices.",
+    body: "Set up a routine to check the supplier pages you specify, compare them with saved prices and prepare a change report.",
+    example: "“Check these supplier pages every Friday and flag price changes.”",
+  },
+  {
+    number: "06",
+    icon: "document",
+    kicker: "Files and records",
+    title: "Keep your working files updated.",
+    body: "Collect information from accessible sources and update a report or spreadsheet in your workspace. External records require supported access and any necessary approval.",
+    example: "“Read these order files and update my order tracker.”",
+  },
+  {
+    number: "07",
+    icon: "search",
+    kicker: "Daily checks",
+    title: "Check what needs your attention.",
+    body: "Schedule a review of the sources you make available. Return to a saved report of changes and items to check, without starting a new chat each morning.",
+    example: "“Every morning, review this stock file and flag items below my minimum.”",
+  },
+  {
+    number: "08",
     icon: "shield",
-    kicker: "Human approvals",
-    title: "You decide what goes out.",
-    body: "Jentera can prepare the routine work. Anything that spends money or reaches outside your business waits for your decision.",
-    example: "Important actions need your approval.",
+    kicker: "Repeatable routines",
+    title: "Put your SOP to work.",
+    body: "Set up a routine around your instructions: read the inputs, follow the checks and save the output. Review the results and anything that needs a decision.",
+    example: "“Run this weekly reporting checklist and save the report for my review.”",
   },
 ] as const;
 
@@ -163,6 +195,11 @@ export const TRADE_TYPES = [
 
 export const FAQS = [
   {
+    question: "How does the launch offer work?",
+    answer:
+      "Jentera officially launches on 16 September 2026. Our special launch offer is RM99/month. Purchases are not open yet; you can join the waitlist for launch updates. Joining is free and does not start a subscription or guarantee the promotional price. We’ll publish the offer end date, promotional duration, renewal pricing and fair-use details before you subscribe.",
+  },
+  {
     question: "Is Jentera for a business like mine?",
     answer:
       "Jentera is built for small businesses and solopreneurs who already trade: shops, cafés, clinics, caterers, and service businesses. Start with a specific piece of everyday work, such as drafting replies, preparing a checklist, or researching a supplier.",
@@ -198,11 +235,12 @@ export const NAV_LINKS = [
   { href: "/#work", label: "What it does" },
   { href: "/#how", label: "How it works" },
   { href: "/connect", label: "Connections" },
-  { href: "/#aisar", label: "About AISAR" },
+  { href: "/#pricing", label: "Pricing" },
+  { href: "/#control", label: "Your control" },
 ];
 
 export const FOOTER = {
-  tagline: "AI agents for the business you already run.",
+  tagline: "Built by AISAR for Malaysian businesses.",
   email: "hello@kitakodventures.com",
   links: [
     { href: "https://aisar.ai", label: "AISAR ↗" },

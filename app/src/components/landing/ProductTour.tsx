@@ -11,9 +11,6 @@ const SCREENS = [
   { id: 'approval', desktopHeight: 228, mobileHeight: 249, label: 'Stay in control', title: 'A clear decision before the next step.',
     description: 'When a task needs permission, inspect the proposed action and choose whether Jentera should proceed.',
     alt: 'A Jentera approval card showing a proposed command to prepare a supplier follow-up, with allow and deny controls.' },
-  { id: 'knowledge', desktopHeight: 439, mobileHeight: 543, label: 'Teach your business', title: 'Your confirmed details stay the source of truth.',
-    description: 'Review what Jentera learns. Accept a suggested update or discard it while keeping the current confirmed value.',
-    alt: 'Business knowledge with confirmed opening hours and a suggested price update beside the current RM 100 value.' },
 ] as const;
 
 export function ProductTour() {
@@ -25,7 +22,7 @@ export function ProductTour() {
       <div className="lp-section-heading">
         <span className="lp-eyebrow">Inside Jentera</span>
         <h2 id="product-tour-heading">From a job to a result.</h2>
-        <p>A closer look at the workspace you’ll use. Actual product screens, with fictional demo content—not customer results.</p>
+        <p>Start with a supplier comparison: review the prepared file, follow task status and inspect an approval. Actual product screens with fictional demo content—not customer results.</p>
       </div>
       <div className="lp-tour-choices" role="group" aria-label="Choose a product screenshot">
         {SCREENS.map((item, index) => (
