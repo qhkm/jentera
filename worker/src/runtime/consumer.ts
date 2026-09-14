@@ -9,6 +9,9 @@
 import type { Env } from '../env';
 import { businessHasAccess } from '../access';
 import { assessTaskOutcome, assessmentAnswer, taskAssessmentForRun } from '../task-outcome';
+import { guardAnswer } from '../answer-guardrails';
+import { reviewSources } from '../source-review';
+import { createAnswerStreamGate, heldProgressLabel } from '../answer-stream-policy';
 import { connect, withTenant } from '../db';
 import { ensureProviderRuntime } from './provision';
 import type { RuntimeProvider } from './provider';
@@ -75,6 +78,7 @@ import {
   editMessageReplyMarkup,
   editMessageText,
   hermesToolLine,
+  telegramToolProgress,
   sendHermesMessage,
   sendMessage,
   sendTyping,
@@ -1248,6 +1252,9 @@ export async function handleRuntimeMessage(
             );
           }
         }
+        const streamPayload = lease.task.payload as RunPayload;
+        const answerGate = createAnswerStreamGate(
+          streamPayload.telegram?.question ?? streamPayload.objective ?? '', (lease.task.streamSeq ?? 0) > 0);
         const liveStream = await telegramLiveStream(
           env,
           lease.task,
@@ -1269,7 +1276,6 @@ export async function handleRuntimeMessage(
             bubbleId: liveStream?.id ?? null,
           });
         }
-        const toolShown = new Set<string>();
         /* The web chat subscribes to the run stream; give it the same live
            view the Telegram bubble gets, whichever channel asked. */
         const web = lease.task.runId
@@ -1339,14 +1345,14 @@ export async function handleRuntimeMessage(
             afterSeq: streamSeq,
             onStreamSeq: (seq) => { streamSeq = Math.max(streamSeq, seq); },
             onDelta: (liveStream || web)
-              ? async (delta) => {
+              ? async (delta) => answerGate.forward(delta, async text => {
                   if (!firstVisibleDelta && delta.trim()) {
                     firstVisibleDelta = true;
                     latency('first_visible_delta');
                   }
-                  web?.delta(delta);
-                  await liveStream?.push(delta);
-                }
+                  web?.delta(text);
+                  await liveStream?.push(text);
+                })
               : undefined,
             onToolEvent: (liveStream || web)
               ? async (event) => {
@@ -1360,6 +1366,7 @@ export async function handleRuntimeMessage(
                       .catch(() => undefined);
                   }
                   if (event.type === 'tool.started') {
+                    answerGate.toolStarted();
                     currentActivity = statusLine(event.tool).replace(/_/g, ' ');
                     const toolLine = hermesToolLine(event.tool, event.preview);
                     /* On the durable trace, so completion (maybe a later
@@ -1372,14 +1379,13 @@ export async function handleRuntimeMessage(
                         .catch(() => undefined);
                     }
                     await web?.status(toolLine, 'tool');
-                    if (liveStream && !toolShown.has(event.tool)) {
-                      toolShown.add(event.tool);
+                    if (liveStream) {
                       await liveStream.showTool(event.tool, event.preview);
                     }
                     /* Mirror the tool into the working bubble while no answer
                        text exists yet, so the bubble itself stays alive. */
                     if (!currentStep && !firstVisibleDelta) {
-                      currentStep = toolLine;
+                      currentStep = liveStream ? telegramToolProgress(event.tool) : toolLine;
                       currentStepIsTool = true;
                       await liveStream?.setStatus(timedStatus());
                     }
@@ -1426,7 +1432,7 @@ export async function handleRuntimeMessage(
               ? async (label) => {
                   /* The web keeps every step as a list item, in either mode;
                      the Telegram label below stays quiet for quick replies. */
-                  const step = statusLine(label);
+                  const step = answerGate.reason ? heldProgressLabel(statusLine(label)) : statusLine(label);
                   await web?.status(step, 'step');
                   /* And on the run's trace, so the receipt outlives this
                      socket: a reload or another device reads it back. */
@@ -1437,9 +1443,14 @@ export async function handleRuntimeMessage(
                       .catch(() => undefined);
                   }
                   if (quickReply) return;
-                  currentStep = statusLine(label);
+                  // Do not replace useful Telegram tool narration with the
+                  // web's generic held-answer label. Answer gating is shared;
+                  // channel presentation is not.
+                  if (liveStream && answerGate.reason) return;
+                  currentStep = step;
                   currentStepIsTool = false;
                   currentActivity = currentStep;
+                  await liveStream?.showProgress(step);
                   if (!firstVisibleDelta) {
                     await web?.status(timedStatus());
                     await liveStream?.setStatus(timedStatus());
@@ -1448,21 +1459,19 @@ export async function handleRuntimeMessage(
               : undefined,
             onThinking: (liveStream || web)
               ? async (text) => {
-                  /* Live reasoning: the runner forwards the model's actual CoT as
-                     a bounded `thinking` lane. The web chat shows it whatever the
-                     mode; the Telegram bubble renders it like `@step:` narration
-                     on deep work only. Both drop it the moment the first answer
-                     delta lands, and it never enters the durable answer lane
-                     (the runner keeps it out of `output`). */
-                  if (firstVisibleDelta) return;
+                  /* Preserve the existing web lane here. Telegram progress is
+                     explicit phase narration or execution events, never raw
+                     reasoning, including through the elapsed-status timer. */
+                  if (firstVisibleDelta || answerGate.reason) return;
                   const thinking = sanitiseThinking(text);
                   if (!thinking) return;
                   await web?.thinking(thinking);
-                  if (quickReply) return;
+                  if (quickReply || liveStream) return;
                   currentStep = thinking;
                   currentStepIsTool = false;
                   currentActivity = 'thinking';
-                  await liveStream?.setStatus(timedStatus());
+                  // Private reasoning is not conversational progress. Telegram
+                  // receives explicit phase narration and execution events only.
                 }
               : undefined,
             onStage: (stage, elapsedMs) => {
@@ -1684,11 +1693,21 @@ export async function handleRuntimeMessage(
         }
 
         const successful = outcome.remoteStatus === 'completed';
-        const assessment = lease.task.runId ? await assessTaskOutcome(
+        const reviewQuestion = outcome.payload.telegram?.question ?? outcome.payload.objective ?? '';
+        const [assessment, sourceReview] = await Promise.all([lease.task.runId ? assessTaskOutcome(
           env, message.businessId, lease.task.runId,
           outcome.payload.telegram?.question ?? outcome.payload.input,
           assessmentAnswer(outcome.result),
-        ) : null;
+        ) : Promise.resolve(null), successful ? reviewSources(env, reviewQuestion, assessmentAnswer(outcome.result))
+          : Promise.resolve({ status: 'not_applicable' as const, sources: 0 })]);
+        // Persist and deliver the same caution across chat, task detail and Telegram.
+        // Source review runs in parallel with assessment, with a fixed timeout.
+        const guardedAnswer = successful ? guardAnswer(outcome.result,
+          reviewQuestion, assessment, sourceReview) : null;
+        if (guardedAnswer) {
+          outcome.result = guardedAnswer.result;
+          if (guardedAnswer.warnings.length) outcome.summary = assessmentAnswer(outcome.result).slice(0, 500);
+        }
         const terminal = await withTenant(env, message.businessId, async (tx) => {
           const saved = await recordRuntimeTaskTerminalOutcome(
             tx,
@@ -1705,6 +1724,11 @@ export async function handleRuntimeMessage(
             },
           );
           if (!saved) return { saved: false, deliveryClaimed: false };
+          if (guardedAnswer && (guardedAnswer.warnings.length || sourceReview.status !== 'not_applicable' || answerGate.reason) && lease.task.runId) {
+            await append(tx, message.businessId, lease.task.runId, 'answer.guardrail', {
+              version: 1, warnings: guardedAnswer.warnings, sourceReview, streamHoldReason: answerGate.reason,
+            });
+          }
           if (assessment && lease.task.runId && !await taskAssessmentForRun(tx, message.businessId, lease.task.runId)) {
             await append(tx, message.businessId, lease.task.runId, 'outcome.observed', {
               ...assessment, assessmentVersion: 1,
@@ -1755,7 +1779,7 @@ export async function handleRuntimeMessage(
               },
               finalDurableText(
                 outcome.result,
-                outcome.payload.responseMode === 'quick' ? undefined : outcome.reasoning,
+                outcome.payload.responseMode === 'quick' || answerGate.reason ? undefined : outcome.reasoning,
               ),
               outcome.payload.factKeys ?? [],
               'automatic',

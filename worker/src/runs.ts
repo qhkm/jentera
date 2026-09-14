@@ -52,6 +52,7 @@ export const EVENTS = [
   /* One of the agent's own `@step:` lines, as shown. Narration, not proof
      of anything: `runSteps` reads these back for the chat's receipt. */
   'agent.step',
+  'answer.guardrail',
 ] as const;
 export type RunEventType = (typeof EVENTS)[number];
 

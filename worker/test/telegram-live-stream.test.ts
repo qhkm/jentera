@@ -12,7 +12,7 @@
    ============================================================ */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { editMessageText, TelegramLiveStream } from '../src/connectors/telegram';
+import { editMessageText, TelegramLiveStream, telegramToolProgress } from '../src/connectors/telegram';
 
 const TOKEN = '123456789:AAtoken';
 const CHAT = 42;
@@ -61,6 +61,30 @@ beforeEach(() => {
 });
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe('Telegram conversational progress', () => {
+  it('replaces raw commands with phase updates and suppresses consecutive repeats', async () => {
+    const live = new TelegramLiveStream(TOKEN, CHAT);
+    await live.showTool('terminal', 'secret login submission');
+    await live.showTool('terminal', 'mkdir /private/path');
+    await live.showTool('web_search', 'private customer query');
+    await live.showTool('terminal', 'another command');
+    const messages = vi.mocked(fetch).mock.calls
+      .filter(([url]) => String(url).includes('/sendMessage'))
+      .map(([, init]) => JSON.parse(String(init?.body)).text);
+    expect(messages).toEqual([telegramToolProgress('terminal'), telegramToolProgress('web_search'), telegramToolProgress('terminal')]);
+    expect(messages.join(' ')).not.toMatch(/secret|private|mkdir|terminal:/);
+  });
+
+  it('bounds phase messages and stops them after final-message handoff', async () => {
+    const live = new TelegramLiveStream(TOKEN, CHAT);
+    for (let i = 0; i < 20; i++) await live.showTool(i % 2 ? 'web_search' : 'read_file');
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/sendMessage'))).toHaveLength(12);
+    live.handoffMessageId();
+    await live.showTool('write_file');
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/sendMessage'))).toHaveLength(12);
+  });
+});
 
 describe('TelegramLiveStream reattach to the webhook bubble', () => {
   it('reports the first Telegram-accepted answer edit exactly once', async () => {

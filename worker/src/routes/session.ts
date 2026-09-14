@@ -1,4 +1,5 @@
 import { routinesEnabledFor } from '../routines/gating';
+import { openTrial, sealTrial, trialCode, trialLanding } from '../trial-auth';
 import type { Env } from '../env';
 import { withTenant } from '../db';
 import { getBusinessPlan } from '../agent-runtime';
@@ -93,7 +94,7 @@ export async function handleSession(
 
   /* ---- request a link ---------------------------------------------- */
   if (url.pathname === '/api/auth/request' && request.method === 'POST') {
-    const body = (await request.json().catch(() => ({}))) as { email?: string; turnstileToken?: unknown };
+    const body = (await request.json().catch(() => ({}))) as { email?: string; turnstileToken?: unknown; inviteCode?: unknown };
     const addr = (body.email ?? '').trim().toLowerCase();
     const refused = await refusedAsBot(body.turnstileToken);
     if (refused) return refused;
@@ -122,7 +123,8 @@ export async function handleSession(
       if (verdict === 'ok') {
         const { token } = await issueLoginToken(env, addr);
         if (token) {
-          const link = `${env.APP_ORIGIN}/api/auth/consume?token=${encodeURIComponent(token)}`;
+          const carry = await sealTrial(env, body.inviteCode, `email:${token}`);
+          const link = `${env.APP_ORIGIN}/api/auth/consume?token=${encodeURIComponent(token)}${carry ? `&invite=${carry}` : ''}`;
           await sendMagicLink(env, addr, link);
         }
       }
@@ -144,11 +146,12 @@ export async function handleSession(
       });
     }
     if (session.created) await announce(session.email, 'magic-link');
+    const invite = await openTrial(env, url.searchParams.get('invite'), `email:${token}`);
 
     return new Response(null, {
       status: 302,
       headers: {
-        Location: `${env.APP_ORIGIN}${await authLandingPath(env, session.userId)}`,
+        Location: `${env.APP_ORIGIN}${trialLanding(invite, await authLandingPath(env, session.userId))}`,
         'Set-Cookie': sessionCookie(session.token, session.expiresAt),
       },
     });
@@ -207,6 +210,7 @@ export async function handleSession(
       email?: string;
       password?: string;
       turnstileToken?: unknown;
+      inviteCode?: unknown;
     };
     const addr = (body.email ?? '').trim().toLowerCase();
     const password = typeof body.password === 'string' ? body.password : '';
@@ -238,7 +242,7 @@ export async function handleSession(
     }
 
     return json(
-      { ok: true, next: await authLandingPath(env, result.userId) },
+      { ok: true, next: trialLanding(trialCode(body.inviteCode), await authLandingPath(env, result.userId)) },
       { headers: { 'Set-Cookie': sessionCookie(result.token, result.expiresAt) } },
       cors,
     );
@@ -278,7 +282,13 @@ export async function handleSession(
 
   /* ---- google: start -------------------------------------------------- */
 
-  if (url.pathname === '/api/auth/google' && request.method === 'GET') {
+  if (url.pathname === '/api/auth/google' && (request.method === 'GET' || request.method === 'POST')) {
+    let inviteCode = '';
+    if (request.method === 'POST') {
+      if (!env.ALLOWED_ORIGINS.split(',').map(value => value.trim()).includes(request.headers.get('Origin') ?? '')) return badRequest(cors, 'Untrusted request origin.');
+      const form = await request.formData().catch(() => null);
+      inviteCode = trialCode(form?.get('inviteCode'));
+    }
     /* This route is reached by a browser NAVIGATION, not by fetch, so
        an error body renders as raw JSON on a blank page. Bounce back to
        the sign-in screen instead and let it explain in words — the same
@@ -291,6 +301,7 @@ export async function handleSession(
     }
     const state = randomUrlSafe();
     const verifier = randomUrlSafe();
+    const carry = await sealTrial(env, inviteCode, `google:${state}`);
 
     /* state and verifier ride back in a cookie rather than a server
        table: the callback is the same browser, and this keeps the flow
@@ -300,7 +311,7 @@ export async function handleSession(
       status: 302,
       headers: {
         Location: authorizeUrl(env, { state, codeChallenge: await s256(verifier) }),
-        'Set-Cookie': `${OAUTH_COOKIE}=${state}.${verifier}; HttpOnly; Secure; SameSite=Lax; Path=/api/auth; Max-Age=600`,
+        'Set-Cookie': `${OAUTH_COOKIE}=${state}.${verifier}${carry ? `.${carry}` : ''}; HttpOnly; Secure; SameSite=Lax; Path=/api/auth; Max-Age=600`,
       },
     });
   }
@@ -322,7 +333,7 @@ export async function handleSession(
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state');
     const stash = readNamedCookie(request, OAUTH_COOKIE);
-    const [wantState, verifier] = (stash ?? '').split('.');
+    const [wantState, verifier, carry] = (stash ?? '').split('.');
 
     /* The CSRF check. Without it an attacker can hand a victim a
        callback URL carrying the ATTACKER's code, silently signing the
@@ -340,11 +351,12 @@ export async function handleSession(
     if (!profile.emailVerified) return fail('google-unverified');
 
     const session = await signInWithGoogle(env, profile);
+    const invite = await openTrial(env, carry ?? null, `google:${state}`);
     if (session.created) await announce(profile.email, 'google');
     return new Response(null, {
       status: 302,
       headers: [
-        ['Location', `${env.APP_ORIGIN}${await authLandingPath(env, session.userId)}`],
+        ['Location', `${env.APP_ORIGIN}${trialLanding(invite, await authLandingPath(env, session.userId))}`],
         ['Set-Cookie', sessionCookie(session.token, session.expiresAt)],
         ['Set-Cookie', `${OAUTH_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/api/auth; Max-Age=0`],
       ],

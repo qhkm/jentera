@@ -297,6 +297,8 @@ export class TelegramLiveStream {
   private statusTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingStatus: string | undefined;
   private firstTextPublished = false;
+  private lastProgress = '';
+  private progressCount = 0;
 
   constructor(
     private readonly token: string,
@@ -386,12 +388,18 @@ export class TelegramLiveStream {
     await this.publish();
   }
 
-  /** Native Hermes shows a persistent progress bubble when a tool starts.
-      The API-server stream carries only its name and bounded preview—never
-      full arguments or tool output—so this mirrors that visible event lane. */
+  /** Telegram has conversational phase messages, not the web's tool trace.
+      Never forward command arguments, private reasoning or claimed results. */
   async showTool(tool: string, preview?: string): Promise<void> {
+    await this.showProgress(telegramToolProgress(tool));
+  }
+
+  async showProgress(text: string): Promise<void> {
+    if (!this.available || !text || text === this.lastProgress || this.progressCount >= 12) return;
+    this.lastProgress = text;
+    this.progressCount += 1;
     try {
-      await sendMessage(this.token, this.chatId, hermesToolLine(tool, preview));
+      await sendMessage(this.token, this.chatId, text);
       await this.pulseTyping(true);
     } catch {
       /* Progress chrome is cosmetic. The model run and final reply continue. */
@@ -485,6 +493,21 @@ export class TelegramLiveStream {
       this.available = false;
     }
   }
+}
+
+/** Event-grounded narration: describes an attempt, never unverified success. */
+export function telegramToolProgress(tool: string): string {
+  if (tool === 'web_search') return 'I’m searching for relevant information.';
+  if (tool === 'web_extract' || tool.startsWith('browser_')) return 'I’m checking the page and reading the relevant details.';
+  if (tool === 'terminal' || tool === 'execute_code') return 'I’m running the next check on the computer. I’ll let you know what I find.';
+  if (tool === 'process') return 'I’m checking on the running process.';
+  if (tool === 'read_file' || tool === 'search_files') return 'I’m checking the files for the information we need.';
+  if (tool === 'write_file' || tool === 'patch') return 'I’m preparing the file changes.';
+  if (tool === 'image_generate' || tool.startsWith('bfl_')) return 'I’m starting the image generation. This can take a little while.';
+  if (tool === 'delegate_task') return 'I’m bringing in another specialist to help with this part.';
+  if (tool === 'cronjob') return 'I’m working on the scheduled task and will check its status.';
+  if (tool === 'memory') return 'I’m working with the saved context for this task.';
+  return 'I’m working on the next part of your request.';
 }
 
 export function hermesToolLine(tool: string, preview?: string): string {

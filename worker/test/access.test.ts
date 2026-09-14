@@ -10,7 +10,7 @@ async function identity(email: string) {
   const issued = await issueLoginToken(env(), email);
   return (await consumeLoginToken(env(), issued.token!))!;
 }
-async function invite(code: string, email: string) {
+async function invite(code: string, email: string | null) {
   const hash = await hashToken(code);
   await asOwner(sql => sql`insert into trial_invite (token_hash, email, expires_at) values (${hash}, ${email}, now() + interval '7 days')`);
 }
@@ -23,6 +23,26 @@ beforeEach(async () => {
   await asOwner(sql => sql`truncate platform_access, trial_invite, trial_redemption, waitlist_entry cascade`);
 });
 describe('restricted access with real Postgres', () => {
+  it('lets only one account claim an email-free invitation, even concurrently', async () => {
+    const first = await identity('first@example.com');
+    const second = await identity('second@example.com');
+    const code = 'e'.repeat(48);
+    await invite(code, null);
+    const results = await Promise.all([redeem(first.token, code), redeem(second.token, code)]);
+    expect(results.map(r => r!.status).sort()).toEqual([200, 400]);
+    const grants = await asOwner(sql => sql`select expires_at from platform_access where kind='trial'`);
+    expect(grants).toHaveLength(1);
+    expect(new Date(grants[0].expires_at).getTime() - Date.now()).toBeGreaterThan(71.9 * 3600000);
+    expect(await asOwner(sql => sql`select * from trial_redemption`)).toHaveLength(1);
+  });
+  it('rejects expired and revoked email-free invitations', async () => {
+    const person = await identity('recipient@example.com');
+    await invite('f'.repeat(48), null);
+    await asOwner(sql => sql`update trial_invite set revoked_at=now()`);
+    expect((await redeem(person.token, 'f'.repeat(48)))!.status).toBe(400);
+    await asOwner(sql => sql`update trial_invite set revoked_at=null,expires_at=now()-interval '1 second'`);
+    expect((await redeem(person.token, 'f'.repeat(48)))!.status).toBe(400);
+  });
   it('uses exactly 72 hours and rejects expired/revoked grants', () => {
     expect(TRIAL_HOURS).toBe(72);
     expect(grantActive(undefined)).toBe(false);
