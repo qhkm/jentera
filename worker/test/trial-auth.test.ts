@@ -41,20 +41,21 @@ describe('invitation authentication carry-through', () => {
     expect(response.headers.get('Location')).toBe(`${env().APP_ORIGIN}/access?invite=1#code=${code}`);
     expect(await asOwner(sql => sql`select * from trial_redemption`)).toHaveLength(0);
   });
-  it('moves cross-origin Google invite forms to canonical sign-in without losing the code', async () => {
+  it('starts state-bound Google OAuth from an opaque-origin invite browser', async () => {
     const url = new URL('http://localhost:8787/api/auth/google');
-    const result = (await handleSession(new Request(url, { method: 'POST', headers: { Origin: 'https://evil.test' }, body: new URLSearchParams({ inviteCode: code }) }), env(), url, {}))!;
-    expect(result.status).toBe(303);
-    expect(result.headers.get('Location')).toBe(`${env().APP_ORIGIN}/signin#code=${code}`);
-    expect(result.headers.get('Cache-Control')).toBe('no-store');
-    expect(result.headers.get('Set-Cookie')).toBeNull();
+    const result = (await handleSession(new Request(url, { method: 'POST', headers: { Origin: 'null' }, body: new URLSearchParams({ inviteCode: code }) }), env(), url, {}))!;
+    expect(result.status).toBe(302);
+    expect(result.headers.get('Location')).toMatch(/^https:\/\/accounts\.google\.com\//);
+    expect(result.headers.get('Set-Cookie')).toContain('HttpOnly');
+    expect(result.headers.get('Set-Cookie')).not.toContain(code);
   });
   it('does not reflect an invalid cross-origin invite value', async () => {
     const url = new URL('http://localhost:8787/api/auth/google');
     const result = (await handleSession(new Request(url, { method: 'POST', headers: { Origin: 'null' }, body: new URLSearchParams({ inviteCode: 'https://evil.test/#secret' }) }), env(), url, {}))!;
-    expect(result.status).toBe(303);
-    expect(result.headers.get('Location')).toBe(`${env().APP_ORIGIN}/signin`);
+    expect(result.status).toBe(302);
+    expect(result.headers.get('Location')).toMatch(/^https:\/\/accounts\.google\.com\//);
     expect(result.headers.get('Location')).not.toContain('evil');
+    expect(result.headers.get('Set-Cookie')).not.toContain('evil');
   });
   it('restores an email invite in another browser and rejects login-link replay', async () => {
     const { token } = await issueLoginToken(env(), 'email-invite@example.com');

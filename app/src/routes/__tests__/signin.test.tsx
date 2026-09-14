@@ -20,14 +20,13 @@ describe('sign-in experience', () => {
   it('posts the invitation to Google sign-in without putting it in a query string or localStorage', async () => {
     const code = 'a'.repeat(48);
     window.history.replaceState(null, '', `/signin#code=${code}`);
-    let submitted: HTMLFormElement | undefined;
-    vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (this: HTMLFormElement) { submitted = this; });
     mount();
     expect(screen.getByRole('status')).toHaveTextContent('Your exclusive invitation will continue');
-    await userEvent.setup().click(screen.getByRole('link', { name: /continue with google/i }));
-    expect(submitted?.method).toBe('post');
-    expect(submitted?.action).toMatch(/\/api\/auth\/google$/);
-    expect(new FormData(submitted).get('inviteCode')).toBe(code);
+    const submit = screen.getByRole('button', { name: /continue with google/i });
+    const form = submit.closest('form')!;
+    expect(form.method).toBe('post');
+    expect(form.action).toMatch(/\/api\/auth\/google$/);
+    expect(new FormData(form).get('inviteCode')).toBe(code);
     expect(localStorage.getItem('jentera.pending-trial-invite.v1')).toBeNull();
   });
   it('includes the invitation when requesting an email sign-in link', async () => {

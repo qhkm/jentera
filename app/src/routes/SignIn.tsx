@@ -278,28 +278,18 @@ export default function SignIn() {
             ) : null}
             {inviteCode && <p role="status" className="mt-3 text-sm text-brand">Your exclusive invitation will continue after sign-in. Your trial starts only when you confirm.</p>}
 
-            <a
-              className="btn btn-outline mt-6 flex w-full items-center justify-center gap-2"
-              href={`${API}/api/auth/google`}
-              aria-disabled={Boolean(busy)}
-              onClick={(event) => {
-                if (busy) {
-                  event.preventDefault();
-                  return;
-                }
+            <form method={inviteCode ? 'post' : 'get'} action={`${API}/api/auth/google`} className="mt-6">
+              {inviteCode ? <input type="hidden" name="inviteCode" value={inviteCode} /> : null}
+              <button
+                type="submit"
+                className="btn btn-outline flex w-full items-center justify-center gap-2"
+                disabled={Boolean(busy)}
+                onClick={() => {
                 trackActivation(
                   mode === "signup" ? "signup_started" : "signin_started",
                 );
-                if (inviteCode) {
-                  event.preventDefault();
-                  const form = document.createElement('form');
-                  form.method = 'POST'; form.action = `${API}/api/auth/google`;
-                  const field = document.createElement('input');
-                  field.type = 'hidden'; field.name = 'inviteCode'; field.value = inviteCode;
-                  form.append(field); document.body.append(form); form.submit(); form.remove();
-                }
               }}
-            >
+              >
               {/* Inline rather than a remote asset: the page must not
                 depend on Google being reachable to render its own
                 sign-in button. */}
@@ -326,8 +316,9 @@ export default function SignIn() {
                   d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.94l3.01 2.34C4.68 5.16 6.66 3.58 9 3.58Z"
                 />
               </svg>
-              Continue with Google
-            </a>
+                Continue with Google
+              </button>
+            </form>
 
             <div className="mt-6 flex items-center gap-3 text-xs text-text-secondary">
               <span className="h-px flex-1 bg-rail" />

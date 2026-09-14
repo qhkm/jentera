@@ -287,24 +287,10 @@ export async function handleSession(
     if (request.method === 'POST') {
       const form = await request.formData().catch(() => null);
       inviteCode = trialCode(form?.get('inviteCode'));
-      if (!env.ALLOWED_ORIGINS.split(',').map(value => value.trim()).includes(request.headers.get('Origin') ?? '')) {
-        /* Invite links are sometimes opened inside a preview or an in-app
-           browser whose form navigation has an opaque origin. Do not weaken
-           the OAuth origin check. Move the user to our canonical sign-in
-           origin instead, carrying only a syntactically valid code in the
-           fragment so it stays out of request logs and referrers. */
-        const location = inviteCode
-          ? `${env.APP_ORIGIN}/signin#code=${encodeURIComponent(inviteCode)}`
-          : `${env.APP_ORIGIN}/signin`;
-        return new Response(null, {
-          status: 303,
-          headers: {
-            Location: location,
-            'Cache-Control': 'no-store',
-            'Referrer-Policy': 'no-referrer',
-          },
-        });
-      }
+      /* This is a top-level OAuth navigation, like the GET route above—not
+         an authenticated mutation. OAuth state + PKCE protect the callback,
+         and carrying an invite never redeems it. Do not origin-gate the POST:
+         in-app browsers can report an opaque Origin and strand a real invite. */
     }
     /* This route is reached by a browser NAVIGATION, not by fetch, so
        an error body renders as raw JSON on a blank page. Bounce back to
