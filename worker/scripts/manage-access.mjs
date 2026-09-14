@@ -13,24 +13,38 @@ if (!['postgres:', 'postgresql:'].includes(target.protocol) ||
 }
 const [command, address, until, reference] = process.argv.slice(2);
 const email = address?.trim().toLowerCase();
-if (!['migrate', 'invite', 'grant-paid', 'revoke', 'list-waitlist'].includes(command)) throw new Error('Use migrate | invite EMAIL | grant-paid EMAIL UNTIL_ISO PAYMENT_REFERENCE | revoke EMAIL | list-waitlist');
+const sharedClaims = command === 'invite-link' ? Number(address) : null;
+if (!['migrate', 'invite', 'invite-link', 'grant-paid', 'revoke', 'list-waitlist'].includes(command)) throw new Error('Use migrate | invite EMAIL | invite-link MAX_CLAIMS | grant-paid EMAIL UNTIL_ISO PAYMENT_REFERENCE | revoke EMAIL | list-waitlist');
 if (['invite', 'grant-paid', 'revoke'].includes(command) && (!email || email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new Error('A valid email is required');
+if (command === 'invite-link' && (!Number.isInteger(sharedClaims) || sharedClaims < 1 || sharedClaims > 100)) throw new Error('MAX_CLAIMS must be an integer from 1 to 100');
 if (command === 'grant-paid' && (!until || !Number.isFinite(Date.parse(until)) || Date.parse(until) <= Date.now() || !reference)) throw new Error('A future paid-through date and verified payment reference are required');
 const sql = postgres(connection, { max: 1, fetch_types: false, ssl: 'require' });
 try {
   if (command === 'migrate') {
-    const migration = await readFile(new URL('../migrations/041_access_gate.sql', import.meta.url), 'utf8');
+    const migrations = await Promise.all(['041_access_gate.sql', '042_shared_trial_invites.sql']
+      .map(file => readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8')));
     await sql.begin(async tx => {
-      await tx.unsafe(migration);
+      for (const migration of migrations) await tx.unsafe(migration);
       const [result] = await tx`select has_table_privilege('aisar_app', 'platform_access', 'select,insert,update') and has_table_privilege('aisar_app', 'trial_invite', 'select,update') and has_table_privilege('aisar_app', 'trial_redemption', 'select,insert') and has_table_privilege('aisar_app', 'waitlist_entry', 'select,insert') as ok`;
       if (!result.ok) throw new Error('Access migration permission check failed');
     });
-    console.log('Migration 041 applied and verified. Access policy is not enabled by migration.');
+    console.log('Access migrations applied and verified. Access policy is not enabled by migration.');
   } else if (command === 'invite') {
     const code = randomBytes(24).toString('base64url');
     const hash = createHash('sha256').update(code).digest('hex');
     await sql`insert into trial_invite (token_hash, email, expires_at) values (${hash}, ${email}, now() + interval '7 days')`;
     console.log(JSON.stringify({ email, code, redeemWithinDays: 7, trialHoursAfterRedemption: 72 }));
+  } else if (command === 'invite-link') {
+    const code = randomBytes(24).toString('base64url');
+    const hash = createHash('sha256').update(code).digest('hex');
+    await sql`insert into trial_invite (token_hash, email, expires_at, max_claims)
+      values (${hash}, null, now() + interval '7 days', ${sharedClaims})`;
+    console.log(JSON.stringify({
+      url: `https://jentera.ai/access?invite=1#code=${code}`,
+      maxClaims: sharedClaims,
+      redeemWithinDays: 7,
+      trialHoursAfterRedemption: 72,
+    }));
   } else if (command === 'grant-paid') {
     await sql`insert into platform_access (email, kind, expires_at, note) values (${email}, 'paid', ${new Date(until).toISOString()}, ${reference})
       on conflict (email) do update set kind = 'paid', expires_at = excluded.expires_at, revoked_at = null, note = excluded.note`;

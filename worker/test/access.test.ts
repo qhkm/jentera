@@ -10,9 +10,9 @@ async function identity(email: string) {
   const issued = await issueLoginToken(env(), email);
   return (await consumeLoginToken(env(), issued.token!))!;
 }
-async function invite(code: string, email: string | null) {
+async function invite(code: string, email: string | null, maxClaims = 1) {
   const hash = await hashToken(code);
-  await asOwner(sql => sql`insert into trial_invite (token_hash, email, expires_at) values (${hash}, ${email}, now() + interval '7 days')`);
+  await asOwner(sql => sql`insert into trial_invite (token_hash, email, expires_at, max_claims) values (${hash}, ${email}, now() + interval '7 days', ${maxClaims})`);
 }
 async function redeem(token: string, code: string) {
   const url = new URL('http://localhost:8787/api/access/redeem');
@@ -34,6 +34,16 @@ describe('restricted access with real Postgres', () => {
     expect(grants).toHaveLength(1);
     expect(new Date(grants[0].expires_at).getTime() - Date.now()).toBeGreaterThan(71.9 * 3600000);
     expect(await asOwner(sql => sql`select * from trial_redemption`)).toHaveLength(1);
+  });
+  it('atomically caps a shared invitation at its configured claim limit', async () => {
+    const people = await Promise.all(['one', 'two', 'three', 'four'].map(name => identity(`${name}@example.com`)));
+    const code = 'g'.repeat(48);
+    await invite(code, null, 3);
+    const results = await Promise.all(people.map(person => redeem(person.token, code)));
+    expect(results.map(result => result!.status).sort()).toEqual([200, 200, 200, 400]);
+    const [inviteRow] = await asOwner(sql => sql`select claim_count,max_claims from trial_invite`);
+    expect(inviteRow).toMatchObject({ claim_count: 3, max_claims: 3 });
+    expect(await asOwner(sql => sql`select token_hash from trial_redemption`)).toHaveLength(3);
   });
   it('rejects expired and revoked email-free invitations', async () => {
     const person = await identity('recipient@example.com');

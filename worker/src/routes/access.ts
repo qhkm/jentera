@@ -50,8 +50,11 @@ export async function handleAccess(request: Request, env: Env, url: URL, cors: R
     if (previous) return false;
     const [grant] = await tx`select kind, revoked_at from platform_access where email = ${identity.email.toLowerCase()} for update`;
     if (grant && (grant.kind === 'paid' || grant.revoked_at)) return false;
-    const [invite] = await tx`update trial_invite set redeemed_by = ${identity.userId}, redeemed_at = now()
-      where token_hash = ${hash} and redeemed_at is null and revoked_at is null and expires_at > now()
+    const [invite] = await tx`update trial_invite
+      set claim_count = claim_count + 1,
+          redeemed_by = coalesce(redeemed_by, ${identity.userId}),
+          redeemed_at = coalesce(redeemed_at, now())
+      where token_hash = ${hash} and claim_count < max_claims and revoked_at is null and expires_at > now()
       and (email is null or email = ${identity.email.toLowerCase()}) returning token_hash`;
     if (!invite) return false;
     await tx`insert into trial_redemption (user_id, token_hash, expires_at) values (${identity.userId}, ${hash}, now() + ${TRIAL_HOURS} * interval '1 hour')`;

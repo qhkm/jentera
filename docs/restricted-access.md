@@ -11,7 +11,8 @@ Policy when `ACCESS_MODE=waitlist`:
 - Paid access is an explicit, expiring operator grant after payment verification;
   business `pro`/`team` flags are not payment evidence. No checkout/webhook added.
 - All other accounts, including existing free accounts, are restricted.
-- Invite codes are email-bound, single-use, redeemable within seven days. A trial
+- Recipient codes are email-bound and single-use. Shared private links have an
+  explicit claim limit from 1–100. Both are redeemable within seven days. A trial
   lasts exactly 72 hours from authenticated redemption. A user gets one trial;
   another code cannot extend/reset it. Only hashes are stored. No code in URLs.
 - Public password signup closes. Google and email links can establish a verified
@@ -38,12 +39,14 @@ database). From `worker/`, use `node scripts/manage-access.mjs` with:
 ```
 migrate
 invite recipient@example.com
+invite-link 10
 grant-paid customer@example.com 2026-10-13T00:00:00Z payment-reference
 revoke customer@example.com
 list-waitlist
 ```
 
-`invite` prints the secret code once. Deliver privately; do not paste into logs,
+`invite` prints the secret code once; `invite-link` prints a fragment-based URL
+with the requested claim cap. Deliver privately; do not paste either into logs,
 commit it or send from the app without a separate user request. Waitlist entries
 consent to access updates only; no feedback/discount campaign is sent here.
 

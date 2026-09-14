@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSignedInRedirect } from "@/hooks/useSignedInRedirect";
 import { clearAskStorage } from "@/hooks/useAsk";
+import { pendingTrialInvite } from '@/lib/trial-link';
 import {
   ArrowUpRight,
   EnvelopeSimple,
@@ -44,9 +45,10 @@ const ERRORS: Record<string, string> = {
 };
 
 export default function SignIn() {
+  const [inviteCode] = useState(pendingTrialInvite);
   /* Already signed in: the workspace, not the form. A 401 leaves the form
      alone, so a magic link or a fresh sign-in still works. */
-  useSignedInRedirect("/app");
+  useSignedInRedirect('/app', inviteCode ? `/access?invite=1#code=${encodeURIComponent(inviteCode)}` : '/access');
   const [params, setParams] = useSearchParams();
   const [mode, setMode] = useState<Mode>(() =>
     params.get("mode") === "signup" ? "signup" : "signin",
@@ -100,6 +102,7 @@ export default function SignIn() {
           body: JSON.stringify({
             email,
             password,
+            ...(inviteCode ? { inviteCode } : {}),
             ...(turnstileToken ? { turnstileToken } : {}),
           }),
         },
@@ -122,7 +125,8 @@ export default function SignIn() {
         // Full reload, not a client-side navigate: RepositoryGate reads
         // the session once at startup, so the app has to boot again to
         // pick up the cookie that was just set.
-        window.location.href = ["/onboard", "/setup", "/app"].includes(
+        const inviteReturn = typeof body.next === 'string' && /^\/access\?invite=1#code=[A-Za-z0-9_-]{32,100}$/.test(body.next);
+        window.location.href = inviteReturn ? String(body.next) : ["/onboard", "/setup", "/app", "/access"].includes(
           String(body.next),
         )
           ? String(body.next)
@@ -157,6 +161,7 @@ export default function SignIn() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email,
+          ...(inviteCode ? { inviteCode } : {}),
           ...(turnstileToken ? { turnstileToken } : {}),
         }),
       });
@@ -271,6 +276,7 @@ export default function SignIn() {
                 {urlError}
               </p>
             ) : null}
+            {inviteCode && <p role="status" className="mt-3 text-sm text-brand">Your exclusive invitation will continue after sign-in. Your trial starts only when you confirm.</p>}
 
             <a
               className="btn btn-outline mt-6 flex w-full items-center justify-center gap-2"
@@ -284,6 +290,14 @@ export default function SignIn() {
                 trackActivation(
                   mode === "signup" ? "signup_started" : "signin_started",
                 );
+                if (inviteCode) {
+                  event.preventDefault();
+                  const form = document.createElement('form');
+                  form.method = 'POST'; form.action = `${API}/api/auth/google`;
+                  const field = document.createElement('input');
+                  field.type = 'hidden'; field.name = 'inviteCode'; field.value = inviteCode;
+                  form.append(field); document.body.append(form); form.submit(); form.remove();
+                }
               }}
             >
               {/* Inline rather than a remote asset: the page must not

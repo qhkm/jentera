@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router';
  * in the background, and only a 2xx from /api/me moves the visitor. A 401,
  * a network error, or the demo (no API configured) leave the page alone.
  */
-export function useSignedInRedirect(to = '/app'): void {
+export function useSignedInRedirect(to = '/app', restrictedTo = '/access'): void {
   const navigate = useNavigate();
   useEffect(() => {
     const api = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
@@ -19,7 +19,7 @@ export function useSignedInRedirect(to = '/app'): void {
       .then(async (res) => {
         if (res.status === 403 && !controller.signal.aborted) {
           const body = await res.json().catch(() => null);
-          if (body?.code === 'ACCESS_REQUIRED') navigate('/access', { replace: true });
+          if (body?.code === 'ACCESS_REQUIRED') navigate(restrictedTo, { replace: true });
         }
         if (res.ok && !controller.signal.aborted) navigate(to, { replace: true });
       })
@@ -27,5 +27,5 @@ export function useSignedInRedirect(to = '/app'): void {
         /* Signed out, offline, or unmounted: stay where we are. */
       });
     return () => controller.abort();
-  }, [navigate, to]);
+  }, [navigate, to, restrictedTo]);
 }

@@ -2,16 +2,18 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { JenteraMark } from '@/components/JenteraMark';
 import { useTurnstile } from '@/lib/turnstile';
+import { pendingTrialInvite, clearTrialInvite } from '@/lib/trial-link';
 import '@/styles/access.css';
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 export default function Access() {
   const [searchParams] = useSearchParams();
-  const showTrialCode = searchParams.get('invite') === '1';
+  const [linkCode] = useState(pendingTrialInvite);
+  const showTrialCode = searchParams.get('invite') === '1' || Boolean(linkCode);
   const [signedIn, setSignedIn] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState(linkCode);
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [joined, setJoined] = useState(false);
@@ -22,7 +24,7 @@ export default function Access() {
     fetch(`${API}/api/access`, { credentials: 'include', signal: controller.signal }).then(async res => {
       if (!res.ok) throw new Error('Could not check access. Please refresh and try again.');
       const body = await res.json();
-      if (body.access?.allowed) { window.location.replace('/app'); return; }
+      if (body.access?.allowed) { clearTrialInvite(); window.location.replace('/app'); return; }
       setSignedIn(body.signedIn === true); setLoaded(true);
     }).catch(error => { if (!controller.signal.aborted) setNotice(error.message); });
     return () => controller.abort();
@@ -33,7 +35,7 @@ export default function Access() {
     try {
       const res = await fetch(`${API}/api/auth/logout`, { method: 'POST', credentials: 'include' });
       if (!res.ok) throw new Error('Could not log out. Please try again.');
-      setSignedIn(false); setCode('');
+      clearTrialInvite(); setSignedIn(false); setCode('');
     } catch {
       setNotice('Could not log out. Please try again.');
     } finally { setLoggingOut(false); }
@@ -49,7 +51,7 @@ export default function Access() {
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.err ?? 'Could not complete that request.');
-      if (kind === 'redeem') { setCode(''); window.location.assign(['/app', '/onboard', '/setup', '/access'].includes(body.next) ? body.next : '/access'); }
+      if (kind === 'redeem') { clearTrialInvite(); setCode(''); window.location.assign(['/app', '/onboard', '/setup', '/access'].includes(body.next) ? body.next : '/access'); }
       else { setJoined(true); setNotice('You’re on the list. We’ll email you when your invitation is ready.'); }
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Please try again.'); }
     finally { setBusy(false); if (kind === 'waitlist') captcha.reset(); }
@@ -65,7 +67,7 @@ export default function Access() {
       <div className="access-launch__jobs" aria-label="Example jobs"><span>Follow up leads</span><span>Prepare reports</span><span>Handle admin</span></div>
     </section>
     <div className="access-launch__panel">
-    <section className="access-launch__card" aria-labelledby="access-title">
+    {!linkCode && <section className="access-launch__card" aria-labelledby="access-title">
       <div className="access-launch__card-top"><span>YOUR NEXT CHAPTER</span><span aria-hidden="true">↗</span></div>
       <h2 id="access-title">{joined ? 'You’re on the list.' : 'Get in early.'}</h2>
       <p className="access-launch__card-copy">{joined ? 'Thanks for joining the Jentera waitlist. We’ll let you know when your batch opens.' : 'We’re opening Jentera in small batches. Join the waitlist to be among the first to put AI staff to work for your business.'}</p>
@@ -77,13 +79,15 @@ export default function Access() {
     </form>}
     {notice && <p role="status" className="access-launch__notice">{notice}</p>}
     <div className="access-launch__card-footer"><span aria-hidden="true">✦</span> Built for the businesses building tomorrow.</div>
-    </section>
+    </section>}
     {signedIn && <p className="text-sm text-text-secondary">Your account and business data are kept safe. Access is currently paused unless you have an active paid grant or trial.</p>}
-    {showTrialCode && <section className="card flex flex-col gap-3 p-5"><h2 className="text-lg font-semibold">Have a trial code?</h2><p className="text-sm text-text-secondary">Invited trials last 3 days from redemption. Each code works once, and each account can use one trial.</p>
+    {showTrialCode && <section className="card flex flex-col gap-3 p-5"><h2 className="text-lg font-semibold">{linkCode ? 'You’re invited to try Jentera.' : 'Have a trial code?'}</h2><p className="text-sm text-text-secondary">Invited trials last 3 days from redemption. Every account can use one trial, and invitations close when their claim limit is reached.</p>
+      {linkCode && <p className="text-sm text-text-secondary">New here? Use Google on the sign-in page to create your account. Existing users can sign in normally. Then start your trial. If sign-in opens another browser, reopen this invitation there.</p>}
+      {linkCode && notice && <p role="status">{notice}</p>}
       {signedIn ? <form className="flex flex-col gap-3" onSubmit={event => { event.preventDefault(); void submit('redeem'); }}>
-        <label className="flex flex-col gap-2">Invite code<input className="input w-full text-base" required maxLength={100} autoComplete="off" spellCheck={false} value={code} onChange={event => setCode(event.target.value)} /></label>
+        {!linkCode && <label className="flex flex-col gap-2">Invite code<input className="input w-full text-base" required maxLength={100} autoComplete="off" spellCheck={false} value={code} onChange={event => setCode(event.target.value)} /></label>}
         <button className="btn btn-outline min-h-11" disabled={busy || !code.trim()}>Start my 3-day trial</button>
-      </form> : <Link className="btn btn-outline min-h-11" to="/signin">Sign in to redeem your code</Link>}
+      </form> : <Link className="btn btn-outline min-h-11" to={linkCode ? `/signin#code=${encodeURIComponent(linkCode)}` : '/signin'}>Sign in to start your trial</Link>}
     </section>}
     {!signedIn && <Link to="/signin" className="access-launch__signin">Already have access? <span>Sign in →</span></Link>}
     {signedIn && <button type="button" className="access-launch__signin min-h-11" disabled={loggingOut || busy} onClick={() => void logout()}>{loggingOut ? 'Logging out…' : 'Log out'}</button>}

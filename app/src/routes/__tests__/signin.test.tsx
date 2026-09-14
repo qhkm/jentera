@@ -6,7 +6,7 @@ import SignIn from '@/routes/SignIn';
 
 vi.mock('@/lib/analytics', () => ({ trackActivation: vi.fn() }));
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); window.history.replaceState(null, '', '/'); });
 
 function mount(path = '/signin') {
   return render(
@@ -17,6 +17,30 @@ function mount(path = '/signin') {
 }
 
 describe('sign-in experience', () => {
+  it('posts the invitation to Google sign-in without putting it in a query string or localStorage', async () => {
+    const code = 'a'.repeat(48);
+    window.history.replaceState(null, '', `/signin#code=${code}`);
+    let submitted: HTMLFormElement | undefined;
+    vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (this: HTMLFormElement) { submitted = this; });
+    mount();
+    expect(screen.getByRole('status')).toHaveTextContent('Your exclusive invitation will continue');
+    await userEvent.setup().click(screen.getByRole('link', { name: /continue with google/i }));
+    expect(submitted?.method).toBe('post');
+    expect(submitted?.action).toMatch(/\/api\/auth\/google$/);
+    expect(new FormData(submitted).get('inviteCode')).toBe(code);
+    expect(localStorage.getItem('jentera.pending-trial-invite.v1')).toBeNull();
+  });
+  it('includes the invitation when requesting an email sign-in link', async () => {
+    const code = 'b'.repeat(48);
+    window.history.replaceState(null, '', `/signin#code=${code}`);
+    const request = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', request);
+    mount();
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Email address'), 'owner@example.com');
+    await user.click(screen.getByRole('button', { name: /email me a link/i }));
+    expect(JSON.parse(request.mock.calls[0][1].body)).toMatchObject({ inviteCode: code });
+  });
   it('labels fields and lets an owner inspect their password', async () => {
     const user = userEvent.setup();
     mount();
