@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { guardApiRequest, MAX_API_BODY_BYTES, MAX_UPLOAD_BODY_BYTES } from '../src/request-guard';
-import { INGEST_FILE_PATH } from '../src/routes/runs';
+import { INGEST_FILE_PATH, UPLOAD_DOCUMENT_LIMIT } from '../src/routes/runs';
 import { testEnv } from './harness';
 
 const INGEST = `https://api.test${INGEST_FILE_PATH}`;
@@ -28,6 +28,10 @@ async function guard(request: Request): Promise<Response | null> {
    a flat 128 KiB cap until 14 September and could never be reached; the
    route's tests could not see it because they call the handler directly. */
 describe('the pre-route body cap', () => {
+  it('never caps below the route own ceiling', () => {
+    expect(MAX_UPLOAD_BODY_BYTES).toBeGreaterThanOrEqual(UPLOAD_DOCUMENT_LIMIT);
+  });
+
   it('lets a document through to the upload route', async () => {
     expect(await guard(upload(INGEST, 1024 * 1024))).toBeNull();
   });

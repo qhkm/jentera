@@ -1,18 +1,22 @@
 import { readCookie } from './auth';
 import type { Env } from './env';
 import { clientIp } from './ratelimit';
-import { INGEST_FILE_PATH } from './routes/runs';
+import { INGEST_FILE_PATH, UPLOAD_DOCUMENT_LIMIT } from './routes/runs';
 
 /** API payloads in this product are small JSON commands. Files belong in
     object storage, not in a Worker request that will be buffered and parsed. */
 export const MAX_API_BODY_BYTES = 128 * 1024;
 
-/** The one exception: a document the owner uploads to be read. The route
-    (routes/runs.ts) enforces the same ceiling again and decides what kinds
-    of file are allowed; this only stops the guard from refusing a body the
-    route would have accepted. Runner artifact uploads do not appear here
-    because index.ts dispatches them above the guard. */
-export const MAX_UPLOAD_BODY_BYTES = 8 * 1024 * 1024;
+/** The one exception: a document the owner uploads to be read. Derived from
+    the route's own ceiling (routes/runs.ts), not restated, so the two can
+    never drift apart the way they did until 14 September: the guard must
+    never refuse a body the route would accept, or the route's limit is
+    unreachable no matter what it is set to. The 64 KiB of headroom exists
+    so the guard practically never trips first — the route still enforces
+    the same ceiling and returns its own, more specific message ("a file is
+    at most N bytes") instead of the guard's generic "request body too
+    large". */
+export const MAX_UPLOAD_BODY_BYTES = UPLOAD_DOCUMENT_LIMIT + 64 * 1024;
 
 function bodyCapFor(method: string, pathname: string): number {
   return method === 'POST' && pathname === INGEST_FILE_PATH
