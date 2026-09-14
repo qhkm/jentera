@@ -66,7 +66,11 @@ function cors(env: Env, origin: string | null): Record<string, string> {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    /* X-Aisar-File-Name carries the uploaded document's name on
+       /api/runs/ingest/file. A custom request header must be named here or
+       the preflight refuses the request; test/cors.test.ts scans the client
+       for these so the next one cannot be forgotten. */
+    'Access-Control-Allow-Headers': 'Content-Type,X-Aisar-File-Name',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
   };

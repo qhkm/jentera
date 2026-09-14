@@ -61,3 +61,31 @@ describe('a method a route handles', () => {
     expect(leftOut(routes, guard.allowHeader)).toEqual([]);
   });
 });
+
+async function corsAllowHeaders(): Promise<string[]> {
+  const source = await readFile(new URL('../src/index.ts', import.meta.url), 'utf8');
+  const match = source.match(/'Access-Control-Allow-Headers':\s*'([A-Za-z0-9,\- ]+)'/);
+  if (!match) throw new Error('index.ts no longer states Access-Control-Allow-Headers');
+  return match[1].split(',').map((name) => name.trim().toLowerCase());
+}
+
+/** Every custom request header the client sends, by name. */
+async function clientHeaders(): Promise<string[]> {
+  const source = await readFile(
+    new URL('../../app/src/lib/repo/remote.ts', import.meta.url), 'utf8');
+  return [...new Set([...source.matchAll(/'(X-[A-Za-z0-9-]+)':/g)].map((m) => m[1]))];
+}
+
+/* A custom request header has to be named in the CORS answer or the
+   browser's preflight refuses the request outright, and no test of the
+   route can see it: curl sends the header happily and the route's own
+   tests call the handler directly. X-Aisar-File-Name was missing from
+   13 September, so document upload had never once worked from
+   jentera.ai while its route tests passed. */
+describe('a custom request header the client sends', () => {
+  it('is named in the CORS preflight answer', async () => {
+    const allowed = await corsAllowHeaders();
+    const missing = (await clientHeaders()).filter((name) => !allowed.includes(name.toLowerCase()));
+    expect(missing).toEqual([]);
+  });
+});
