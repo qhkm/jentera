@@ -219,7 +219,7 @@ export type BrowserCommand = { controlId: string } & (
   | { action: 'tab'; index: number }
 );
 export interface BusinessBrowserState {
-  previewStatus?: 'ready' | 'inactive' | 'paused' | 'private' | 'unavailable' | 'waiting' | 'loading';
+  previewStatus?: 'ready' | 'inactive' | 'paused' | 'private' | 'unavailable' | 'waiting' | 'loading' | 'navigating';
   capturedAt?: number;
   enabled?: boolean;
   paused?: boolean;

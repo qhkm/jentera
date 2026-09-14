@@ -123,17 +123,19 @@ test('screencast invalidates buffered frames when navigation starts', async () =
   session.emit('Page.screencastFrame', { data: 'old', sessionId: 1 });
   session.emit('Page.frameStartedLoading', {});
   f.advance(110);
-  assert.equal((await f.browser.preview({ streaming: true })).previewStatus, 'waiting');
+  assert.equal((await f.browser.preview({ streaming: true })).previewStatus, 'navigating');
   await f.browser.stopScreencast();
   assert.equal(session.listenerCount('Page.frameStartedLoading'), 0);
 });
 
-test('preview discards navigated frames and stops during owner takeover', async () => {
+test('preview discards navigated frames before applying privacy checks to the new page', async () => {
   const f = fixture();
   f.page.url = () => 'https://example.com/docs';
   f.page.evaluate = async () => true;
   f.page.screenshot = async () => { f.page.url = () => 'https://example.com/checkout'; return Buffer.from('secret'); };
   await f.browser.ensure();
+  assert.equal((await f.browser.preview()).previewStatus, 'navigating');
+  f.advance(5000);
   assert.equal((await f.browser.preview()).previewStatus, 'private');
   await f.browser.command(command('claim'));
   assert.equal((await f.browser.preview()).previewStatus, 'paused');
@@ -154,8 +156,20 @@ test('overlapping viewers do not duplicate capture; a claim/release invalidates 
   await f.browser.command(command('claim'));
   await f.browser.command(command('release'));
   release(Buffer.from('old-screen'));
-  assert.equal((await first).previewStatus, 'private');
+  assert.equal((await first).previewStatus, 'waiting');
   assert.equal(await f.browser.isPaused(), false);
+});
+
+test('safe navigation during a capture is not reported as a privacy block', async () => {
+  const f = fixture();
+  f.page.url = () => 'https://example.com/docs';
+  f.page.evaluate = async () => true;
+  f.page.screenshot = async () => {
+    f.page.url = () => 'https://example.com/next';
+    return Buffer.from('obsolete-screen');
+  };
+  await f.browser.ensure();
+  assert.deepEqual(await f.browser.preview(), { previewStatus: 'navigating' });
 });
 
 test('failed privacy checks release capture lock and never expose error details', async () => {

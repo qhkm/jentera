@@ -8,6 +8,7 @@ import { enqueueRuntimeTask } from '../src/runtime/tasks';
 const A = '11111111-1111-4111-8111-111111111111';
 it('drops blocked, stale and malformed preview images without relaying extra fields', () => {
   expect(previewResponse({ previewStatus: 'private', image: 'secret' })).toEqual({ previewStatus: 'private' });
+  expect(previewResponse({ previewStatus: 'navigating', image: 'obsolete' })).toEqual({ previewStatus: 'navigating' });
   expect(previewResponse(null)).toEqual({ previewStatus: 'unavailable' });
   for (const image of ['', '<script>', 'a'.repeat(670001)]) {
     expect(previewResponse({ previewStatus: 'ready', image, capturedAt: Date.now() }).previewStatus).toBe('unavailable');

@@ -137,7 +137,7 @@ export function previewResponse(body: Record<string, unknown> | null, taskPendin
   // No currently admitted task is not proof of completion: the queue may
   // still be starting/recovering it. EOF renews the lease and rechecks the DB.
   if (taskPending && status === 'inactive') return { previewStatus: 'loading' };
-  if (status !== 'ready') return { previewStatus: ['inactive', 'paused', 'private', 'waiting', 'loading'].includes(String(status)) ? status : 'unavailable' };
+  if (status !== 'ready') return { previewStatus: ['inactive', 'paused', 'private', 'waiting', 'loading', 'navigating'].includes(String(status)) ? status : 'unavailable' };
   if (typeof body?.image !== 'string' || body.image.length < 4 || body.image.length > 670000 ||
       !/^[A-Za-z0-9+/]+={0,2}$/.test(body.image) || typeof body.capturedAt !== 'number' ||
       !Number.isFinite(body.capturedAt) || Math.abs(Date.now() - body.capturedAt) > 30000) {

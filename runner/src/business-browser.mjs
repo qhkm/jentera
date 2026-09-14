@@ -76,12 +76,13 @@ export function createBusinessBrowser(config, deps = {}) {
       });
       let session;
       try { session = await bounded(opening); } catch (error) { expired = true; throw error; }
-      const current = { session, page, frame: null, revision: 0 };
-      current.invalidate = () => { current.revision++; current.frame = null; };
+      const current = { session, page, frame: null, revision: 0, navigating: false };
+      current.invalidate = () => { current.revision++; current.frame = null; current.navigating = true; };
       current.receive = event => {
         // Latest-frame-only buffer; acknowledgement never waits on a viewer.
         if (cast === current && typeof event.data === 'string' && event.data.length <= 670000) {
           current.frame = { image: event.data, capturedAt: now(), revision: current.revision, url: page.url() };
+          current.navigating = false;
         }
         void session.send('Page.screencastFrameAck', { sessionId: event.sessionId }).catch(() => {});
       };
@@ -96,7 +97,7 @@ export function createBusinessBrowser(config, deps = {}) {
     }
     const frame = cast.frame;
     cast.frame = null;
-    return frame;
+    return frame ?? (cast.navigating ? { navigating: true } : null);
   }
   const loaded = (async () => {
     try {
@@ -248,18 +249,25 @@ export function createBusinessBrowser(config, deps = {}) {
       const before = page.url();
       if (!await safe()) { await stopScreencast(); return { previewStatus: 'private' }; }
       const frame = streaming ? await screencastFrame(page) : null;
+      if (streaming && frame?.navigating) return { previewStatus: 'navigating' };
       if (streaming && !frame) return { previewStatus: 'waiting' };
       const bytes = streaming ? null : await page.screenshot({ type: 'jpeg', quality: 45, timeout: 3000 });
+      const interrupted = () => {
+        if (paused || lease && lease.expiresAt > now()) return 'paused';
+        if (busy || controlRevision !== revision) return 'waiting';
+        const currentPages = context.pages().filter(p => !p.isClosed());
+        const currentPage = selected && !selected.isClosed() ? selected : currentPages.at(-1);
+        if (page.isClosed() || currentPage !== page || page.url() !== before || (streaming &&
+            (!cast || cast.page !== page || frame.revision !== cast.revision || frame.url !== before))) return 'navigating';
+        return null;
+      };
+      // A tab or URL change invalidates the captured bytes, but is not a
+      // privacy failure by itself. The next iteration evaluates the new page.
+      let interruption = interrupted();
+      if (interruption) { await stopScreencast(); return { previewStatus: interruption }; }
       if (!await safe()) { await stopScreencast(); return { previewStatus: 'private' }; }
-      const currentPages = context.pages().filter(p => !p.isClosed());
-      const currentPage = selected && !selected.isClosed() ? selected : currentPages.at(-1);
-      // Recheck after the asynchronous privacy check too. A claim/release
-      // cycle or tab change during capture invalidates the whole frame.
-      if (paused || busy || controlRevision !== revision || page.isClosed() ||
-          currentPage !== page || page.url() !== before || (streaming &&
-          (!cast || cast.page !== page || frame.revision !== cast.revision || frame.url !== before))) {
-        await stopScreencast(); return { previewStatus: 'private' };
-      }
+      interruption = interrupted();
+      if (interruption) { await stopScreencast(); return { previewStatus: interruption }; }
       if (bytes && bytes.length > 500000) return { previewStatus: 'unavailable' };
       return { previewStatus: 'ready', image: streaming ? frame.image : bytes.toString('base64'), capturedAt: streaming ? frame.capturedAt : now() };
     } catch { await stopScreencast(); return { previewStatus: 'unavailable' }; }

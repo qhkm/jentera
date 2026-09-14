@@ -58,9 +58,10 @@ export function ComputerPreview({ runId }: { runId: string }) {
               failures = 0;
               setTransportError(false);
               setDisplayError(false);
-              setFrame(previous => next.previewStatus === 'waiting' && previous?.previewStatus === 'ready' ? previous : next);
+              setFrame(previous => ['waiting', 'navigating'].includes(next.previewStatus ?? '') && previous?.previewStatus === 'ready' ? previous : next);
               setConnection(previous => next.previewStatus === 'ready' ? 'Live · read-only'
-                : next.previewStatus === 'waiting' ? previous : 'Waiting for browser activity…');
+                : next.previewStatus === 'navigating' ? 'Navigating · last safe frame'
+                  : next.previewStatus === 'waiting' ? previous : 'Waiting for browser activity…');
               finished = next.previewStatus === 'inactive';
             }, controller.signal);
             if (!received || controller.signal.aborted) throw new Error('Preview interrupted');
@@ -70,7 +71,11 @@ export function ComputerPreview({ runId }: { runId: string }) {
             if (!cancelled && current === generation && !document.hidden) {
               setTransportError(false);
               setDisplayError(false);
-              setFrame(controller.signal.aborted ? { previewStatus: 'unavailable' } : next);
+              const delivered = controller.signal.aborted ? { previewStatus: 'unavailable' as const } : next;
+              setFrame(previous => ['waiting', 'navigating'].includes(delivered.previewStatus ?? '') && previous?.previewStatus === 'ready' ? previous : delivered);
+              setConnection(previous => delivered.previewStatus === 'ready' ? 'Live · read-only'
+                : delivered.previewStatus === 'navigating' ? 'Navigating · last safe frame'
+                  : delivered.previewStatus === 'waiting' ? previous : 'Waiting for browser activity…');
               finished = next.previewStatus === 'inactive';
               if (controller.signal.aborted || !next.previewStatus || next.previewStatus === 'unavailable') failures++;
               else failures = 0;
@@ -117,6 +122,7 @@ export function ComputerPreview({ runId }: { runId: string }) {
           : frame.previewStatus === 'paused' ? 'Preview paused because the browser is under owner control. Hand control back to resume.'
           : frame.previewStatus === 'inactive' ? 'Browser work has ended. Jentera may still be preparing the final reply.'
             : frame.previewStatus === 'loading' ? 'Waiting for the task’s browser to become available…'
+              : frame.previewStatus === 'navigating' ? 'The browser is navigating. Preview will resume on the next safe page…'
               : frame.previewStatus === 'waiting' ? 'Connected. Waiting for the browser view…'
                 : displayError ? 'The browser view could not be displayed. Waiting for the next frame…'
                   : transportError ? 'Preview connection interrupted. Reconnecting without stopping the task…'

@@ -10,6 +10,7 @@ describe('computer preview', () => {
   it.each([
     ['paused', 'under owner control'],
     ['private', 'privacy filter'],
+    ['navigating', 'browser is navigating'],
     ['waiting', 'Connected. Waiting'],
     ['loading', 'Waiting for the task'],
     ['unavailable', 'live browser feed is unavailable'],
@@ -75,6 +76,22 @@ describe('computer preview', () => {
     expect(signal.aborted).toBe(true);
     await act(async () => send({ previewStatus: 'ready', image: 'late', capturedAt: Date.now() }));
     expect(screen.queryByRole('img')).toBeNull();
+  });
+  it('keeps the last safe frame while navigating and replaces it with the next frame', async () => {
+    let send!: (frame: BusinessBrowserState) => void;
+    repo.watchBrowser = async (_id, callback, signal) => {
+      send = callback;
+      await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true }));
+    };
+    render(<ComputerPreview runId="navigation" />);
+    fireEvent.click(screen.getByRole('button'));
+    await act(async () => send({ previewStatus: 'ready', image: 'b2xk', capturedAt: 1000 }));
+    expect(screen.getByRole('img')).toHaveAttribute('src', 'data:image/jpeg;base64,b2xk');
+    await act(async () => send({ previewStatus: 'navigating' }));
+    expect(screen.getByRole('img')).toHaveAttribute('src', 'data:image/jpeg;base64,b2xk');
+    expect(screen.getByRole('status')).toHaveTextContent('Navigating · last safe frame');
+    await act(async () => send({ previewStatus: 'ready', image: 'bmV3', capturedAt: 2000 }));
+    expect(screen.getByRole('img')).toHaveAttribute('src', 'data:image/jpeg;base64,bmV3');
   });
   it('keeps the last frame explicitly stale during reconnect then clears it on access denial', async () => {
     vi.useFakeTimers();

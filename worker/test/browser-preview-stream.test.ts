@@ -7,9 +7,9 @@ function source(parts: string[]) {
 it('handles split frames and strips private and incidental fields', async () => {
   const capturedAt = Date.now();
   const raw = JSON.stringify({ previewStatus: 'ready', image: 'YWJj', capturedAt, secret: 'no' });
-  const result = await new Response(sanitizePreviewStream(source([raw.slice(0, 10), raw.slice(10) + '\n', '{"previewStatus":"private","image":"secret"}\n']))).text();
+  const result = await new Response(sanitizePreviewStream(source([raw.slice(0, 10), raw.slice(10) + '\n', '{"previewStatus":"navigating","image":"obsolete"}\n', '{"previewStatus":"private","image":"secret"}\n']))).text();
   expect(result.trim().split('\n').map(line => JSON.parse(line))).toEqual([
-    { previewStatus: 'ready', image: 'YWJj', capturedAt }, { previewStatus: 'private' },
+    { previewStatus: 'ready', image: 'YWJj', capturedAt }, { previewStatus: 'navigating' }, { previewStatus: 'private' },
   ]);
 });
 it('rejects oversized, malformed and truncated frame streams', async () => {
