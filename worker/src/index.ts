@@ -70,7 +70,7 @@ function cors(env: Env, origin: string | null): Record<string, string> {
        /api/runs/ingest/file. A custom request header must be named here or
        the preflight refuses the request; test/cors.test.ts scans the client
        for these so the next one cannot be forgotten. */
-    'Access-Control-Allow-Headers': 'Content-Type,X-Aisar-File-Name',
+    'Access-Control-Allow-Headers': 'Content-Type,X-Aisar-File-Name,Authorization',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
   };

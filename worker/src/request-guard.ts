@@ -1,4 +1,4 @@
-import { readCookie } from './auth';
+import { readSessionToken } from './auth';
 import type { Env } from './env';
 import { clientIp } from './ratelimit';
 import { INGEST_FILE_PATH, UPLOAD_DOCUMENT_LIMIT } from './routes/runs';
@@ -81,7 +81,7 @@ function requestIdentity(request: Request, url: URL): string {
   /* A session token is stable across NAT changes and avoids making an office
      share one quota. It is only a rate-limit key here; authentication still
      happens in the route and no unverified claim is trusted. */
-  const session = readCookie(request);
+  const session = readSessionToken(request);
   if (session) return `session:${session}`;
   return `ip:${clientIp(request)}`;
 }

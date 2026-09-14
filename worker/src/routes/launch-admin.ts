@@ -1,13 +1,13 @@
 import type { Env } from '../env';
 import { ACCESS_OWNER } from '../access';
-import { hashToken, readCookie, verifyIdentitySession } from '../auth';
+import { hashToken, readSessionToken, verifyIdentitySession } from '../auth';
 import { withUser, withTenant } from '../db';
 
 /** A platform-admin surface, never enabled by a tenant's owner role or plan. */
 export async function handleLaunchAdmin(request: Request, env: Env, url: URL, cors: Record<string, string>): Promise<Response | null> {
   if (!url.pathname.startsWith('/api/admin/launch')) return null;
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
-  const token = readCookie(request);
+  const token = readSessionToken(request);
   const identity = token ? await verifyIdentitySession(env, token) : null;
   if (!identity || identity.email.toLowerCase() !== ACCESS_OWNER) return json({ err: 'Not found.' }, 404);
   const verified = await withUser(env, async sql => {

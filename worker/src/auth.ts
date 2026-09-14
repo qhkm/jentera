@@ -432,6 +432,21 @@ export function readCookie(request: Request): string | null {
   return null;
 }
 
+/**
+ * The session token a request carries, from either supported transport.
+ *
+ * Header before cookie, deliberately: the native app's WebView shares
+ * Android's system cookie jar, so a stale cookie from a previous sign-in
+ * must not shadow the bearer the app actually holds. Browser requests keep
+ * using the HttpOnly cookie unchanged.
+ */
+export function readSessionToken(request: Request): string | null {
+  const authorization = request.headers.get('Authorization') ?? '';
+  const bearer = /^Bearer\s+(\S+)$/i.exec(authorization);
+  if (bearer) return bearer[1];
+  return readCookie(request);
+}
+
 /** Change how much detail this person wants to see. */
 export async function setDetailLevel(
   env: Env,

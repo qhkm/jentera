@@ -112,4 +112,8 @@ describe('a custom request header the client sends', () => {
     const missing = (await clientHeaders()).filter((name) => !allowed.includes(name.toLowerCase()));
     expect(missing).toEqual([]);
   });
+
+  it('names Authorization, which the native app sends', async () => {
+    expect(await corsAllowHeaders()).toContain('authorization');
+  });
 });

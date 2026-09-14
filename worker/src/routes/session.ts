@@ -7,7 +7,7 @@ import {
   clearedCookie,
   consumeLoginToken,
   issueLoginToken,
-  readCookie,
+  readSessionToken,
   revokeSession,
   sessionCookie,
   verifySession,
@@ -251,7 +251,7 @@ export async function handleSession(
   /* ---- how much detail to show ---------------------------------------- */
 
   if (url.pathname === '/api/me/detail-level' && request.method === 'POST') {
-    const token = readCookie(request);
+    const token = readSessionToken(request);
     const identity = token ? await verifySession(env, token) : null;
     if (!identity) return json({ ok: false, err: 'not signed in' }, { status: 401 }, cors);
 
@@ -266,7 +266,7 @@ export async function handleSession(
   /* ---- password: set one on the signed-in account --------------------- */
 
   if (url.pathname === '/api/auth/password' && request.method === 'POST') {
-    const token = readCookie(request);
+    const token = readSessionToken(request);
     const identity = token ? await verifySession(env, token) : null;
     if (!identity) return json({ ok: false, err: 'not signed in' }, { status: 401 }, cors);
 
@@ -368,7 +368,7 @@ export async function handleSession(
 
   /* ---- who am I ------------------------------------------------------ */
   if (url.pathname === '/api/me' && request.method === 'GET') {
-    const token = readCookie(request);
+    const token = readSessionToken(request);
     const identity = token ? await verifyIdentitySession(env, token) : null;
     if (identity && !(await accessForEmail(env, identity.email)).allowed) return json({ ok: false, code: 'ACCESS_REQUIRED', next: '/access' }, { status: 403 }, cors);
     if (!identity) return json({ ok: false, err: 'not signed in' }, { status: 401 }, cors);
@@ -389,7 +389,7 @@ export async function handleSession(
 
   /* ---- sign out ------------------------------------------------------ */
   if (url.pathname === '/api/auth/logout' && request.method === 'POST') {
-    const token = readCookie(request);
+    const token = readSessionToken(request);
     if (token) await revokeSession(env, token);
     return new Response(null, {
       status: 204,

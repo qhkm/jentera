@@ -1,6 +1,6 @@
 import type { Env } from '../env';
 import { accessForEmail, restrictedAccess, TRIAL_HOURS } from '../access';
-import { authLandingPath, hashToken, readCookie, verifyIdentitySession } from '../auth';
+import { authLandingPath, hashToken, readSessionToken, verifyIdentitySession } from '../auth';
 import { withUser } from '../db';
 import { checkAuthRate, clientIp } from '../ratelimit';
 import { verifyTurnstile } from '../turnstile';
@@ -30,7 +30,7 @@ export async function handleAccess(request: Request, env: Env, url: URL, cors: R
     }
     return json({ ok: true }, 202);
   }
-  const token = readCookie(request);
+  const token = readSessionToken(request);
   const identity = token ? await verifyIdentitySession(env, token) : null;
   if (request.method === 'GET' && url.pathname === '/api/access') {
     return json({ restricted: restrictedAccess(env), signedIn: !!identity, access: identity ? await accessForEmail(env, identity.email) : null });

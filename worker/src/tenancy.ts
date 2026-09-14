@@ -9,7 +9,7 @@
    ============================================================ */
 
 import type { Env } from './env';
-import { readCookie, verifySession, type Identity } from './auth';
+import { readSessionToken, verifySession, type Identity } from './auth';
 
 export type { Identity };
 
@@ -22,7 +22,7 @@ export type { Identity };
  * table here would return nothing and lock everyone out.
  */
 export async function resolveTenant(env: Env, request: Request): Promise<Identity | null> {
-  const token = readCookie(request);
+  const token = readSessionToken(request);
   if (!token) return null;
   return verifySession(env, token);
 }
