@@ -63,7 +63,9 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
     if (endpoint.protocol !== 'https:') return json({ err: 'Business browser is unavailable.' }, 503);
     stage = 'connect';
     const upstream = await fetch(endpoint, {
-      method: request.method, redirect: 'error', signal: AbortSignal.any([request.signal, AbortSignal.timeout(command?.action === 'preview-stream' ? 55000 : command?.action === 'preview' ? 8000 : 25000)]),
+      // workerd supports follow/manual, not Node's redirect:'error'. Manual
+      // leaves 3xx responses for the !ok rejection below without forwarding keys.
+      method: request.method, redirect: 'manual', signal: AbortSignal.any([request.signal, AbortSignal.timeout(command?.action === 'preview-stream' ? 55000 : command?.action === 'preview' ? 8000 : 25000)]),
       headers: { 'X-Aisar-Runner-Key': secrets.runnerKey, Authorization: `Bearer ${env.SPRITES_TOKEN}`,
         'Content-Type': 'application/json' },
       ...(command ? { body: JSON.stringify(command) } : {}),

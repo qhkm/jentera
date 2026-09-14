@@ -70,7 +70,7 @@ it('binds the target and controller to the signed-in business, never customer in
   expect(String(target)).toBe('https://alpha.sprites.app/v1/browser');
   expect(JSON.parse(String(init?.body))).toEqual({ action: 'claim', controlId: CONTROL, ownerId, businessId: A });
   expect(init?.headers).toMatchObject({ 'X-Aisar-Runner-Key': 'runner-secret', Authorization: 'Bearer sprite-secret' });
-  expect(init?.redirect).toBe('error');
+  expect(init?.redirect).toBe('manual');
 });
 
 it('redacts arbitrary upstream errors and preserves safe conflict messages', async () => {
@@ -113,6 +113,17 @@ it.each(['preview', 'preview-stream'])('delivers %s through the owner route usin
   expect(await response.json()).toEqual({ previewStatus: 'ready', image: 'YWJj', capturedAt });
   const command = JSON.parse(String(upstream.mock.calls[0][1]?.body));
   expect(command.taskId).toBe(task.id);
+  expect(upstream.mock.calls[0][1]?.redirect).toBe('manual');
   expect(command.businessId).toBe(A);
   expect(response.headers.get('Cache-Control')).toContain('no-store');
+});
+
+it('rejects upstream redirects without following them or exposing their destination', async () => {
+  const upstream = fetchFake(async () => new Response(null, { status: 302, headers: { Location: 'https://untrusted.test/private' } }));
+  vi.stubGlobal('fetch', upstream);
+  const response = await call(ownerCookie, { action: 'claim', controlId: CONTROL });
+  expect(response.status).toBe(503);
+  expect(upstream).toHaveBeenCalledTimes(1);
+  expect(upstream.mock.calls[0][1]?.redirect).toBe('manual');
+  expect(await response.text()).not.toContain('untrusted');
 });
