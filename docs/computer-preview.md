@@ -15,6 +15,11 @@ The runner observes new tabs and main-frame navigation to follow browser work.
 
 Viewer leases last 45 seconds, then reconnect through fresh owner/tenant/run
 authorization. The Worker has a 55-second upper bound and sanitizes every frame.
+Only a terminal database task (or a missing/terminal run without a task) ends
+the preview. While the task is queued or leased, a runner `inactive` result
+means waiting for admission/recovery, not completion. Stream EOF renews the
+connection and checks database state again. Preview lookup selects only `run`
+tasks, so maintenance tasks cannot become the browser-view target.
 The client aborts after 12 seconds without a frame/status. It backs off and
 offers explicit retry after three transport failures. A runtime permits one
 viewer at a time; backpressure prevents screenshot queues. Closing a viewer

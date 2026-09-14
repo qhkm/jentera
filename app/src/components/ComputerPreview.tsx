@@ -102,7 +102,7 @@ export function ComputerPreview({ runId }: { runId: string }) {
         <p role="status">{failure || connection} · Captured at {new Date(frame.capturedAt!).toLocaleTimeString()}</p>
       </> : <p role="status">{failure || (!frame ? 'Checking for a browser snapshot…'
         : frame.previewStatus === 'private' || frame.previewStatus === 'paused' ? 'Preview paused for privacy or owner control.'
-          : frame.previewStatus === 'inactive' ? 'This task is no longer active.'
+          : frame.previewStatus === 'inactive' ? 'Browser work has ended. Jentera may still be preparing the final reply.'
             : frame.previewStatus === 'loading' ? 'Waiting for the task’s browser to become available…'
               : frame.previewStatus === 'waiting' ? 'Another capture or browser action is in progress. Retrying shortly…'
                 : 'The browser snapshot could not be captured. Retrying without interrupting the task.')}</p>}

@@ -43,10 +43,15 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
       if (body.action === 'preview' || body.action === 'preview-stream') {
         if (!UUID.test(body.runId ?? '')) return json({ err: 'invalid run' }, 400);
         const tasks = await withTenant(env, identity.businessId, tx => tx`
-          select id from runtime_task where business_id = ${identity.businessId}
-          and run_id = ${body.runId} and status not in ('completed', 'failed', 'cancelled')
+          select id, status from runtime_task where business_id = ${identity.businessId}
+          and run_id = ${body.runId} and kind = 'run'
           order by created_at desc limit 1`);
-        if (!tasks.length) return json({ previewStatus: 'inactive' });
+        if (!tasks.length) {
+          const runs = await withTenant(env, identity.businessId, tx => tx`
+            select status from run where business_id = ${identity.businessId} and id = ${body.runId}`);
+          return json({ previewStatus: runs.length && !['completed', 'failed', 'cancelled'].includes(runs[0].status) ? 'loading' : 'inactive' });
+        }
+        if (['completed', 'failed', 'cancelled', 'exhausted'].includes(tasks[0].status)) return json({ previewStatus: 'inactive' });
         command.taskId = tasks[0].id;
       }
       for (const field of ['url', 'x', 'y', 'text', 'key', 'deltaY', 'index']) {
@@ -86,12 +91,12 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
         await upstream.body?.cancel();
         return json({ err: 'Browser stream is unavailable.' }, 503);
       }
-      return new Response(sanitizePreviewStream(upstream.body), {
+      return new Response(sanitizePreviewStream(upstream.body, true), {
         headers: { ...headers, 'Content-Type': 'application/x-ndjson' },
       });
     }
     const body = await upstream.json() as Record<string, unknown>;
-    if (command?.action === 'preview') return json(previewResponse(body));
+    if (command?.action === 'preview') return json(previewResponse(body, true));
     return json(Object.fromEntries(['enabled', 'paused', 'controlled', 'expiresAt', 'image', 'width', 'height', 'tabs', 'ok', 'previewStatus', 'capturedAt']
       .filter((key) => body[key] !== undefined).map((key) => [key, body[key]])));
   } catch (error) {
@@ -105,7 +110,7 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
 }
 
 /** Bound framing and revalidate every image. Never relay arbitrary runtime data. */
-export function sanitizePreviewStream(body: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+export function sanitizePreviewStream(body: ReadableStream<Uint8Array>, taskPending = false): ReadableStream<Uint8Array> {
   let buffer = '';
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -117,7 +122,7 @@ export function sanitizePreviewStream(body: ReadableStream<Uint8Array>): Readabl
         if (end > 671000) throw new Error('Invalid preview frame');
         const line = buffer.slice(0, end);
         buffer = buffer.slice(end + 1);
-        controller.enqueue(encoder.encode(`${JSON.stringify(previewResponse(JSON.parse(line)))}\n`));
+        controller.enqueue(encoder.encode(`${JSON.stringify(previewResponse(JSON.parse(line), taskPending))}\n`));
       }
       if (buffer.length > 671000) throw new Error('Invalid preview frame');
     },
@@ -127,8 +132,11 @@ export function sanitizePreviewStream(body: ReadableStream<Uint8Array>): Readabl
 
 /** Preview DTO is narrower than the owner-control DTO; blocked or malformed
  * frames must never carry incidental upstream image/tab fields. */
-export function previewResponse(body: Record<string, unknown> | null): Record<string, unknown> {
+export function previewResponse(body: Record<string, unknown> | null, taskPending = false): Record<string, unknown> {
   const status = body?.previewStatus;
+  // No currently admitted task is not proof of completion: the queue may
+  // still be starting/recovering it. EOF renews the lease and rechecks the DB.
+  if (taskPending && status === 'inactive') return { previewStatus: 'loading' };
   if (status !== 'ready') return { previewStatus: ['inactive', 'paused', 'private', 'waiting', 'loading'].includes(String(status)) ? status : 'unavailable' };
   if (typeof body?.image !== 'string' || body.image.length < 4 || body.image.length > 670000 ||
       !/^[A-Za-z0-9+/]+={0,2}$/.test(body.image) || typeof body.capturedAt !== 'number' ||

@@ -127,3 +127,24 @@ it('rejects upstream redirects without following them or exposing their destinat
   expect(upstream.mock.calls[0][1]?.redirect).toBe('manual');
   expect(await response.text()).not.toContain('untrusted');
 });
+
+it('waits for a queued run before its runtime task exists', async () => {
+  const run = await asTenant(A, tx => startRun(tx, A, { kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'test' }));
+  const upstream = fetchFake(async () => new Response('{}'));
+  vi.stubGlobal('fetch', upstream);
+  const response = await call(ownerCookie, { action: 'preview-stream', runId: run.id, controlId: CONTROL });
+  expect(await response.json()).toEqual({ previewStatus: 'loading' });
+  expect(upstream).not.toHaveBeenCalled();
+});
+
+it.each(['preview', 'preview-stream'])('%s retries a not-yet-admitted task and stops only after DB completion', async action => {
+  const run = await asTenant(A, tx => startRun(tx, A, { kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'test' }));
+  const task = await asTenant(A, tx => enqueueRuntimeTask(tx, A, { kind: 'run', runId: run.id, dedupeKey: `race:${run.id}`, payload: { input: 'Browse' } }));
+  const upstream = fetchFake(async () => new Response('{"previewStatus":"inactive"}\n', { headers: { 'Content-Type': action === 'preview-stream' ? 'application/x-ndjson' : 'application/json' } }));
+  vi.stubGlobal('fetch', upstream);
+  const body = { action, runId: run.id, controlId: CONTROL };
+  expect(await (await call(ownerCookie, body)).json()).toEqual({ previewStatus: 'loading' });
+  await asTenant(A, tx => tx`update runtime_task set status = 'completed' where id = ${task.id}`);
+  expect(await (await call(ownerCookie, body)).json()).toEqual({ previewStatus: 'inactive' });
+  expect(upstream).toHaveBeenCalledTimes(1);
+});

@@ -238,7 +238,7 @@ export class RemoteRepository implements Repository {
     // Inactive tasks return JSON before a runtime connection is opened.
     if (response.headers.get('Content-Type')?.includes('application/json')) {
       const frame = await response.json() as BusinessBrowserState;
-      if (frame.previewStatus !== 'inactive') throw new Error('Invalid preview response');
+      if (frame.previewStatus !== 'inactive' && frame.previewStatus !== 'loading') throw new Error('Invalid preview response');
       onFrame(frame);
       return;
     }

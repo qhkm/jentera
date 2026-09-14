@@ -7,6 +7,21 @@ vi.mock('@/lib/repo', () => ({ useRepository: () => repo }));
 const repo: { businessBrowser: typeof preview; watchBrowser?: (runId: string, callback: (frame: BusinessBrowserState) => void, signal: AbortSignal) => Promise<void> } = { businessBrowser: preview };
 afterEach(() => { vi.useRealTimers(); preview.mockReset(); delete repo.watchBrowser; });
 describe('computer preview', () => {
+  it('renews the preview after startup waiting and then receives a frame', async () => {
+    vi.useFakeTimers();
+    repo.watchBrowser = vi.fn()
+      .mockImplementationOnce(async (_id, callback) => callback({ previewStatus: 'loading' }))
+      .mockImplementationOnce(async (_id, callback, signal) => {
+        callback({ previewStatus: 'ready', image: 'YWJj', capturedAt: Date.now() });
+        await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true }));
+      });
+    render(<ComputerPreview runId="starting" />);
+    await act(async () => fireEvent.click(screen.getByRole('button')));
+    expect(screen.getByRole('status')).toHaveTextContent('Waiting');
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(screen.getByRole('img')).toBeVisible();
+    expect(repo.watchBrowser).toHaveBeenCalledTimes(2);
+  });
   it('streams multiple frames without polling and removes frames on privacy transitions', async () => {
     let send!: (frame: BusinessBrowserState) => void;
     let signal!: AbortSignal;
@@ -75,7 +90,7 @@ describe('computer preview', () => {
     await act(async () => fireEvent.click(screen.getByRole('button')));
     await act(async () => vi.advanceTimersByTimeAsync(30000));
     expect(preview).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('status')).toHaveTextContent('no longer active');
+    expect(screen.getByRole('status')).toHaveTextContent('Browser work has ended');
   });
   it('stops on access errors without displaying server error details', async () => {
     vi.useFakeTimers();
