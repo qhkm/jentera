@@ -691,8 +691,12 @@ export function createRunner(input) {
           if (body.businessId !== config.businessId) return json(res, 403, { error: 'wrong_business' });
           if (body.action === 'preview' || body.action === 'preview-stream') {
             if (body.action === 'preview-stream') return await serveBrowserPreview(res, businessBrowser, async () => {
-              const active = await activeTask(config, state, terminations);
-              return Boolean(active && active.taskId === body.taskId);
+              // Read the exact admitted task, not an admission scan which
+              // polls Hermes and can perform lifecycle mutations per frame.
+              const active = uuid(body.taskId) ? await state.get(body.taskId) : null;
+              return Boolean(active && !TERMINAL.has(active.status) && !savedTerminalStatus(active) &&
+                !['quarantined', 'expiring'].includes(active.status) &&
+                !(typeof active.deadlineAt === 'number' && Date.now() >= active.deadlineAt));
             });
             const active = await activeTask(config, state, terminations);
             if (!active || active.taskId !== body.taskId) return json(res, 200, { previewStatus: 'inactive' });

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { EventEmitter } from 'node:events';
 import { createBusinessBrowser, browserCommandProblem } from '../src/business-browser.mjs';
 
 const ownerId = '11111111-1111-4111-8111-111111111111';
@@ -80,6 +81,51 @@ test('preview reconnects to an existing browser without launching or writing con
   assert.equal(f.launches(), 0);
   assert.equal(f.files.size, 0);
   assert.equal(await f.browser.isPaused(), false);
+});
+
+test('screencast keeps only the latest frame, acknowledges input and detaches on privacy', async () => {
+  const f = fixture();
+  f.page.url = () => 'https://example.com/docs';
+  f.page.evaluate = async () => true;
+  f.page.screenshot = async () => { throw new Error('must not screenshot'); };
+  const session = new EventEmitter();
+  const commands = [];
+  let detached = 0;
+  session.send = async (name, args) => { commands.push({ name, args }); };
+  session.detach = async () => { detached++; };
+  f.context.newCDPSession = async () => session;
+  await f.browser.ensure();
+  assert.equal((await f.browser.preview({ streaming: true })).previewStatus, 'waiting');
+  for (const data of ['YWJj', 'ZGVm']) session.emit('Page.screencastFrame', { data, sessionId: 1 });
+  f.advance(110);
+  assert.equal((await f.browser.preview({ streaming: true })).image, 'ZGVm');
+  assert.equal(commands.filter(c => c.name === 'Page.screencastFrameAck').length, 2);
+  f.advance(110);
+  assert.equal((await f.browser.preview({ streaming: true })).previewStatus, 'waiting');
+  f.page.evaluate = async () => false;
+  session.emit('Page.screencastFrame', { data: 'private', sessionId: 1 });
+  f.advance(110);
+  assert.equal((await f.browser.preview({ streaming: true })).previewStatus, 'private');
+  assert.equal(detached, 1);
+  assert.equal(session.listenerCount('Page.screencastFrame'), 0);
+});
+
+test('screencast invalidates buffered frames when navigation starts', async () => {
+  const f = fixture();
+  f.page.url = () => 'https://example.com/docs';
+  f.page.evaluate = async () => true;
+  const session = new EventEmitter();
+  session.send = async () => {};
+  session.detach = async () => {};
+  f.context.newCDPSession = async () => session;
+  await f.browser.ensure();
+  await f.browser.preview({ streaming: true });
+  session.emit('Page.screencastFrame', { data: 'old', sessionId: 1 });
+  session.emit('Page.frameStartedLoading', {});
+  f.advance(110);
+  assert.equal((await f.browser.preview({ streaming: true })).previewStatus, 'waiting');
+  await f.browser.stopScreencast();
+  assert.equal(session.listenerCount('Page.frameStartedLoading'), 0);
 });
 
 test('preview discards navigated frames and stops during owner takeover', async () => {

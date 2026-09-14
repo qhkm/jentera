@@ -28,6 +28,7 @@ test('real browser streams changing JPEG frames and suppresses a login page over
     } });
     await browser.ensure();
     const page = context.pages()[0];
+    page.screenshot = async () => { throw new Error('Live preview must use screencast events, not screenshots'); };
     await page.goto('https://preview.test/docs');
     server = createServer((_req, res) => void serveBrowserPreview(res, browser, () => active));
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -35,7 +36,7 @@ test('real browser streams changing JPEG frames and suppresses a login page over
     reader = response.body.getReader();
     let buffer = '';
     const decoder = new TextDecoder();
-    async function next() {
+    async function nextRaw() {
       while (!buffer.includes('\n')) {
         const { value, done } = await reader.read();
         assert.equal(done, false);
@@ -46,6 +47,12 @@ test('real browser streams changing JPEG frames and suppresses a login page over
       buffer = buffer.slice(end + 1);
       return frame;
     }
+    async function next() {
+      for (;;) {
+        const frame = await nextRaw();
+        if (frame.previewStatus !== 'waiting') return frame;
+      }
+    }
     const first = await next();
     assert.equal(first.previewStatus, 'ready');
     assert.ok(Buffer.from(first.image, 'base64').length > 1000);
@@ -53,6 +60,11 @@ test('real browser streams changing JPEG frames and suppresses a login page over
     const second = await next();
     assert.equal(second.previewStatus, 'ready');
     assert.notEqual(second.image, first.image);
+    await page.evaluate(() => { let count = 0; setInterval(() => { document.querySelector('h1').textContent = `Animation ${++count}`; }, 40); });
+    const started = Date.now();
+    const images = new Set();
+    while (images.size < 5) images.add((await next()).image);
+    assert.ok(Date.now() - started < 4000, 'screencast delivers multiple changed frames without one-second screenshot polling');
     await page.goto('https://preview.test/login');
     assert.deepEqual(await next(), { previewStatus: 'private' });
     active = false;

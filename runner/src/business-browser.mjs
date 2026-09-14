@@ -46,6 +46,58 @@ export function createBusinessBrowser(config, deps = {}) {
   let previewing = false;
   let lastPreview = -Infinity;
   let controlRevision = 0;
+  let cast = null;
+  async function bounded(operation) {
+    let timer;
+    try {
+      return await Promise.race([operation, new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('preview_timeout')), 1500);
+      })]);
+    } finally { clearTimeout(timer); }
+  }
+  async function stopScreencast() {
+    const previous = cast;
+    cast = null;
+    if (!previous) return;
+    previous.frame = null;
+    previous.session.off('Page.screencastFrame', previous.receive);
+    previous.session.off('Page.frameStartedLoading', previous.invalidate);
+    previous.session.off('Page.frameNavigated', previous.invalidate);
+    // Detaching stops this viewer only, never the browser or agent.
+    await bounded(previous.session.detach()).catch(() => {});
+  }
+  async function screencastFrame(page) {
+    if (cast?.page !== page) {
+      await stopScreencast();
+      let expired = false;
+      const opening = context.newCDPSession(page).then(session => {
+        if (expired) { void session.detach().catch(() => {}); throw new Error('preview_expired'); }
+        return session;
+      });
+      let session;
+      try { session = await bounded(opening); } catch (error) { expired = true; throw error; }
+      const current = { session, page, frame: null, revision: 0 };
+      current.invalidate = () => { current.revision++; current.frame = null; };
+      current.receive = event => {
+        // Latest-frame-only buffer; acknowledgement never waits on a viewer.
+        if (cast === current && typeof event.data === 'string' && event.data.length <= 670000) {
+          current.frame = { image: event.data, capturedAt: now(), revision: current.revision, url: page.url() };
+        }
+        void session.send('Page.screencastFrameAck', { sessionId: event.sessionId }).catch(() => {});
+      };
+      cast = current;
+      session.on('Page.screencastFrame', current.receive);
+      session.on('Page.frameStartedLoading', current.invalidate);
+      session.on('Page.frameNavigated', current.invalidate);
+      try {
+        await bounded(session.send('Page.enable'));
+        await bounded(session.send('Page.startScreencast', { format: 'jpeg', quality: 45, maxWidth: 1280, maxHeight: 800, everyNthFrame: 1 }));
+      } catch (error) { await stopScreencast(); throw error; }
+    }
+    const frame = cast.frame;
+    cast.frame = null;
+    return frame;
+  }
   const loaded = (async () => {
     try {
       const saved = JSON.parse(await fs.readFile(config.stateFile, 'utf8'));
@@ -158,8 +210,8 @@ export function createBusinessBrowser(config, deps = {}) {
   }
   async function preview({ streaming = false } = {}) {
     await loaded;
-    if (paused || lease && lease.expiresAt > now()) return { previewStatus: 'paused' };
-    if (busy || previewing || now() - lastPreview < (streaming ? 1000 : 5000)) return { previewStatus: 'waiting' };
+    if (paused || lease && lease.expiresAt > now()) { await stopScreencast(); return { previewStatus: 'paused' }; }
+    if (busy || previewing || now() - lastPreview < (streaming ? 100 : 5000)) return { previewStatus: 'waiting' };
     previewing = true;
     lastPreview = now();
     try {
@@ -177,7 +229,7 @@ export function createBusinessBrowser(config, deps = {}) {
       if (!context) return { previewStatus: 'loading' };
       const pages = context.pages().filter(p => !p.isClosed());
       const page = selected && !selected.isClosed() ? selected : pages.at(-1);
-      if (!page || page.url() === 'about:blank') return { previewStatus: 'loading' };
+      if (!page || page.url() === 'about:blank') { await stopScreencast(); return { previewStatus: 'loading' }; }
       const revision = controlRevision;
       const safe = async () => {
         const url = new URL(page.url());
@@ -194,19 +246,24 @@ export function createBusinessBrowser(config, deps = {}) {
         } finally { clearTimeout(timer); }
       };
       const before = page.url();
-      if (!await safe()) return { previewStatus: 'private' };
-      const bytes = await page.screenshot({ type: 'jpeg', quality: 45, timeout: 3000 });
-      if (!await safe()) return { previewStatus: 'private' };
+      if (!await safe()) { await stopScreencast(); return { previewStatus: 'private' }; }
+      const frame = streaming ? await screencastFrame(page) : null;
+      if (streaming && !frame) return { previewStatus: 'waiting' };
+      const bytes = streaming ? null : await page.screenshot({ type: 'jpeg', quality: 45, timeout: 3000 });
+      if (!await safe()) { await stopScreencast(); return { previewStatus: 'private' }; }
       const currentPages = context.pages().filter(p => !p.isClosed());
       const currentPage = selected && !selected.isClosed() ? selected : currentPages.at(-1);
       // Recheck after the asynchronous privacy check too. A claim/release
       // cycle or tab change during capture invalidates the whole frame.
       if (paused || busy || controlRevision !== revision || page.isClosed() ||
-          currentPage !== page || page.url() !== before) return { previewStatus: 'private' };
-      if (bytes.length > 500000) return { previewStatus: 'unavailable' };
-      return { previewStatus: 'ready', image: bytes.toString('base64'), capturedAt: now() };
-    } catch { return { previewStatus: 'unavailable' }; }
+          currentPage !== page || page.url() !== before || (streaming &&
+          (!cast || cast.page !== page || frame.revision !== cast.revision || frame.url !== before))) {
+        await stopScreencast(); return { previewStatus: 'private' };
+      }
+      if (bytes && bytes.length > 500000) return { previewStatus: 'unavailable' };
+      return { previewStatus: 'ready', image: streaming ? frame.image : bytes.toString('base64'), capturedAt: streaming ? frame.capturedAt : now() };
+    } catch { await stopScreencast(); return { previewStatus: 'unavailable' }; }
     finally { previewing = false; }
   }
-  return { ensure, status, isPaused, command, preview };
+  return { ensure, status, isPaused, command, preview, stopScreencast };
 }

@@ -8,9 +8,16 @@ claims control, starts a browser, changes viewport, or writes image files.
 
 Frames are opt-in, memory-only and `private, no-store`. The remote repository
 opens a streamed POST (NDJSON), independently of the chat transport. The runner
-samples validated JPEG frames with a one-second minimum capture gap, rather
-than the UI making a new HTTP screenshot request every eight seconds. This is
-a low-frame-rate browser feed, not a 30fps video or desktop/VNC implementation.
+uses Chrome's `Page.startScreencast` events, not repeated screenshot calls.
+One latest frame is held in memory and frames are acknowledged immediately;
+slow viewers do not accumulate a playback backlog. Output is capped at roughly
+10fps (100ms minimum gap, plus privacy checks and transport time). Actual frame
+rate depends on page changes and load; this is not a guaranteed 30fps video or
+desktop/VNC implementation. Static pages send status heartbeats every 5s.
+The viewer CDP session detaches on privacy suppression, page changes, stream
+closure and lease expiry. Navigation invalidates buffered frames. CDP startup
+and cleanup operations are bounded to 1.5s each. The one-shot endpoint still
+uses screenshots, but is not the remote live-view path.
 The runner observes new tabs and main-frame navigation to follow browser work.
 
 Viewer leases last 45 seconds, then reconnect through fresh owner/tenant/run

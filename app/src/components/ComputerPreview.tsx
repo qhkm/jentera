@@ -51,7 +51,8 @@ export function ComputerPreview({ runId }: { runId: string }) {
               timeout = setTimeout(() => controller.abort(), 12000);
               failures = 0;
               setFrame(previous => next.previewStatus === 'waiting' ? previous : next);
-              setConnection(next.previewStatus === 'ready' ? 'Live · read-only' : 'Waiting for browser activity…');
+              setConnection(previous => next.previewStatus === 'ready' ? 'Live · read-only'
+                : next.previewStatus === 'waiting' ? previous : 'Waiting for browser activity…');
               finished = next.previewStatus === 'inactive';
             }, controller.signal);
             if (!received || controller.signal.aborted) throw new Error('Preview interrupted');
