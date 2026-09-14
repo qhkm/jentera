@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { admitPaidAgentRun, guardApiRequest, MAX_API_BODY_BYTES } from '../src/request-guard';
+import { INGEST_FILE_PATH } from '../src/routes/runs';
 import { testEnv } from './harness';
 
 const cors = { 'Access-Control-Allow-Origin': 'https://jentera.ai' };
@@ -217,6 +218,25 @@ describe('pre-route API request guard', () => {
       },
     });
     const req = request('/api/runs/ingest', { method: 'POST' });
+    expect(await guardApiRequest(req, env, new URL(req.url), cors)).toBeNull();
+    expect(admissions).toBe(2);
+  });
+
+  /* The file-upload sibling of /api/runs/ingest spends the same
+     Workers AI tokens (toMarkdown, then fact extraction) and must sit
+     behind the same brake, not the generic 120/60s API_BURST — it fell
+     through to that default until 14 September. */
+  it('puts document upload behind the paid-work brake', async () => {
+    let admissions = 0;
+    const env = testEnv({
+      AGENT_RUN_BURST: {
+        limit: async () => {
+          admissions += 1;
+          return { success: true };
+        },
+      },
+    });
+    const req = request(INGEST_FILE_PATH, { method: 'POST' });
     expect(await guardApiRequest(req, env, new URL(req.url), cors)).toBeNull();
     expect(admissions).toBe(2);
   });
