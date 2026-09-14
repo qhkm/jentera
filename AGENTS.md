@@ -10,6 +10,7 @@ This repository is a Vite + React app deployed to Cloudflare Pages.
 - `_next/static/` stores exported CSS and font assets from the upstream build this design system was reverse-engineered from; not loaded by the app.
 - `_headers` defines Cloudflare cache behavior: immutable for hashed assets, no-cache for everything else.
 - `worker/` is the deployed backend (Neon via Hyperdrive, magic-link auth, RLS per tenant); the app can call it via `VITE_API_URL`, and runs on localStorage without it. Rate limited at the auth endpoint; no webhook verification, no server-side tests yet.
+- `mobile/` is the Capacitor shell for iOS and Android. It packages a frozen `app/dist`; run `pnpm sync` there after every web-layer change intended for a native build. The generated native projects are committed, while copied web assets and generated Capacitor config are ignored.
 - `PRODUCT_VISION.md` defines the target customer, positioning, language, and product principles.
 - `TECHNICAL_ARCHITECTURE.md` defines the managed-agent boundary, backend components, safety model, and MVP sequence.
 
@@ -28,6 +29,8 @@ pnpm build        # tsc -b && vite build
 Before committing, visit `/`, `/onboard`, `/setup`, and `/app`; check browser-console errors, mobile layout, navigation, and local-storage-driven flows.
 
 Use `./deploy.sh "type: concise description"` from the repository root only when intentionally releasing: it builds `app/` and publishes to the `aisar-jentera` Pages project, live at `jentera.ai` and `jentera.aisar.ai`. The apex `aisar.ai` is a separate project and is only published with `AISAR_PAGES_PROJECT=aisar ./deploy.sh "msg"`.
+
+For the native shell, run `pnpm install`, `pnpm sync`, and `pnpm typecheck` from `mobile/`. Full iOS and Android builds additionally require Xcode and the Android SDK. Never add a production `server.url`; the store binary must carry the built app rather than loading jentera.ai inside a privileged WebView.
 
 ## Coding Style & Naming Conventions
 

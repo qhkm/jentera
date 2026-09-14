@@ -1,4 +1,5 @@
 import { useRegisterSW } from '@/pwa/register';
+import { isNative } from '@/lib/native';
 
 function ClientRegistration() {
   useRegisterSW({ onRegisterError() { /* No worker, no install; the page is unaffected. */ } });
@@ -9,5 +10,5 @@ function ClientRegistration() {
     a browser judging installability finds one. Renders nothing, and
     nothing at all at build time. */
 export function ServiceWorkerRegistration() {
-  return typeof window === 'undefined' ? null : <ClientRegistration />;
+  return typeof window === 'undefined' || isNative() ? null : <ClientRegistration />;
 }

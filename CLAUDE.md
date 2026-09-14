@@ -46,6 +46,34 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
 - The old static engine wrote work-done indices as **strings**; the app reads either format and writes strings, so existing users' approvals survive the cutover.
 - **Playbook figures are for the anonymous demo only.** Every playbook carries plausible counters, work items and customer conversations; they are the same for every business of a type and move for nobody. Shown to a signed-in owner they are lies, and they were shipped as lies three times: a "4 connections" badge for an account with one, a dashboard that read 82% handled, and an inbox naming customers who do not exist. `useActivity` answers `real` / `pending` / `demo` — branch on `demo` before borrowing anything, and treat `pending` as the real layout with nothing in it. A boolean is what caused this: "not real yet" and "show the demo" are different answers.
 
+## Native shell (`mobile/`)
+
+The iOS and Android apps are one Capacitor project with app id
+`ai.jentera.app`. `mobile/capacitor.config.ts` points at `../app/dist`, and
+`pnpm sync` in `mobile/` always rebuilds the web app before copying it into the
+native projects. There is deliberately no production `server.url`: loading the
+live site inside a privileged WebView would create both review and XSS risk.
+
+The bundled origins are `capacitor://app.jentera.ai` on iOS and
+`https://app.jentera.ai` on Android. `app/src/lib/native/` is the only platform
+boundary; keep PWA installation, web push and service-worker updates inert
+natively. Until native bearer auth lands, native-only feature calls fail loudly
+instead of falling back to the cross-site session cookie, which the WebView
+cannot use safely.
+
+```bash
+cd mobile
+pnpm install
+pnpm sync
+pnpm typecheck
+pnpm exec cap doctor
+```
+
+The generated `ios/` and `android/` projects are source and stay committed.
+Their copied web assets, generated Capacitor JSON and local build state remain
+ignored. Full device builds require Xcode and the Android SDK; neither is
+implied by a successful `cap sync`.
+
 ## localStorage keys
 
 The full persisted surface. Changing or adding one affects the flow gates, so call it out in the commit.

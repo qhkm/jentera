@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
@@ -25,6 +25,10 @@ vi.mock('@/pwa/register', () => ({
   }),
 }));
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe('PwaUpdateNotice', () => {
   it('offers a reload when a newer Jentera has been installed in the background', async () => {
     localStorage.setItem('aisar-lang', 'en');
@@ -41,5 +45,11 @@ describe('PwaUpdateNotice', () => {
     render(wrap(<PwaUpdateNotice />));
     await user.click(await screen.findByRole('button', { name: 'Later' }));
     expect(setNeedRefresh).toHaveBeenCalledWith(false);
+  });
+
+  it('stays inert inside the native shell', () => {
+    vi.stubGlobal('Capacitor', { isNativePlatform: () => true, getPlatform: () => 'ios' });
+    render(wrap(<PwaUpdateNotice />));
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 });

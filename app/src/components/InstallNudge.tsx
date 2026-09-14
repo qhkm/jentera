@@ -5,6 +5,7 @@ import { useI18n } from '@/i18n/I18nProvider';
 import { useSignedIn } from '@/lib/repo/gate';
 import { usePwaInstall } from '@/pwa/install';
 import { usePushNotifications, type EnableOutcome } from '@/pwa/push';
+import { isNative } from '@/lib/native';
 
 /** When the owner last said "not now"; every nudge stays quiet for a month. */
 export const INSTALL_NUDGE_KEY = 'jentera-install-nudge-v1';
@@ -41,7 +42,7 @@ export function useInstallNudge({ delayMs = DEFAULT_DELAY_MS, requireSignedIn = 
   }, [delayMs, settled]);
 
   const mode = install.canPrompt ? 'prompt' as const : install.iosHint ? 'ios' as const : null;
-  const visible = settled && !dismissed && !install.standalone && mode !== null && (signedIn || !requireSignedIn);
+  const visible = !isNative() && settled && !dismissed && !install.standalone && mode !== null && (signedIn || !requireSignedIn);
 
   function dismiss() {
     try {
@@ -163,7 +164,7 @@ function useNotificationNudge({ delayMs = DEFAULT_DELAY_MS } = {}) {
   }
 
   return {
-    visible: settled && signedIn && install.standalone && !dismissed && push.state !== 'on' && push.state !== 'unsupported',
+    visible: !isNative() && settled && signedIn && install.standalone && !dismissed && push.state !== 'on' && push.state !== 'unsupported',
     state: push.state,
     busy: push.busy,
     outcome,

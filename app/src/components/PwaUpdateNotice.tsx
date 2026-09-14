@@ -3,12 +3,13 @@ import { useEffect, useRef } from 'react';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useRegisterSW } from '@/pwa/register';
 import { startUpdateChecks } from '@/pwa/update-checks';
+import { isNative } from '@/lib/native';
 
 /** Registers the service worker and, when a newer Jentera has been fetched
     in the background, offers a reload instead of forcing one mid-reply.
     Between launches it keeps looking: on every return to the foreground
     and once an hour while open. */
-export function PwaUpdateNotice() {
+function WebPwaUpdateNotice() {
   const { t } = useI18n();
   const stopChecks = useRef<(() => void) | null>(null);
   const { needRefresh: [needRefresh, setNeedRefresh], updateServiceWorker } = useRegisterSW({
@@ -35,4 +36,10 @@ export function PwaUpdateNotice() {
       </button>
     </div>
   );
+}
+
+/** A Capacitor binary is updated through its store version gate, never by a
+    web service worker that could leave its frozen bundle in a split state. */
+export function PwaUpdateNotice() {
+  return isNative() ? null : <WebPwaUpdateNotice />;
 }

@@ -127,4 +127,12 @@ describe('LandingInstallNudge, for visitors on the marketing page', () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
     expect(screen.queryByRole('region', { name: /get jentera/i })).not.toBeInTheDocument();
   });
+
+  it('does not offer to install the PWA from inside the native app', async () => {
+    vi.stubGlobal('Capacitor', { isNativePlatform: () => true, getPlatform: () => 'android' });
+    act(() => { window.dispatchEvent(installPrompt()); });
+    render(<LandingInstallNudge delayMs={0} />);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(screen.queryByRole('region', { name: /get jentera/i })).not.toBeInTheDocument();
+  });
 });
