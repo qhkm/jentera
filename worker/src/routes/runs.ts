@@ -808,11 +808,13 @@ async function startDurableAsk(
     const specialists = await listSpecialists(tx, { enabledOnly: true });
     return { ...context, specialist: await specialistForTurn(tx, businessId, sessionId, question, specialists) };
   });
-  const prepared = prepareHermesAgent(agentQuestion, facts, work, new Date(), specialist, speaker);
   /* Quick by default, as on Telegram; a typed /deep or /research opts in
      to the research loop. Chat was hard-wired to deep until 2026-09-10 and
      every web message paid for it. */
   const responseMode = requestedMode ?? responseModeFor(question);
+  const prepared = prepareHermesAgent(
+    agentQuestion, facts, work, new Date(), specialist, speaker, responseMode,
+  );
   const model = modelForResponseMode(env, responseMode, businessId);
   const dedupeKey = `ask:${requestId}`;
   const created = await withTenant(env, businessId, async (tx) => {

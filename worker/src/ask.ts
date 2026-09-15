@@ -23,6 +23,7 @@ import {
   RUNNER_INPUT_MAX,
   RUNNER_INSTRUCTIONS_MAX,
 } from './runtime/runner-client';
+import type { ResponseMode } from './runtime/response-mode';
 
 export interface Answer {
   text: string;
@@ -294,6 +295,16 @@ Rules:
   Avoid tables in Telegram.
 - Be concise for simple questions and thorough when the user asks for research.`;
 
+const QUICK_TURN_PROMPT = `Quick response contract:
+- Use no tools when the request can be answered accurately from the supplied business information
+  or the existing conversation.
+- When current information is required, begin with one focused search and inspect no more than
+  two relevant authoritative sources unless they conflict or are unavailable.
+- Do not create scratch files, run code, use the terminal, or delegate merely to prepare an answer.
+  Use those capabilities only when the user explicitly asks for that work or accuracy requires it.
+- Stop as soon as you have enough evidence and answer concisely. Quick means efficient, not less
+  truthful: never skip verification, an approval, or a required action check.`;
+
 /**
  * Where a fact came from, in words the model can repeat verbatim.
  *
@@ -407,6 +418,7 @@ export function prepareHermesAgent(
   now = new Date(),
   specialist?: SpecialistDefinition,
   speaker?: Speaker,
+  responseMode?: ResponseMode,
 ): { instructions: string; input: string; usedKeys: string[]; grounded: boolean } {
   const recent = work.length === 0
     ? '(nothing yet)'
@@ -419,6 +431,7 @@ export function prepareHermesAgent(
   const preamble = HERMES_AGENT_PROMPT +
     `${specialist ? `\n\n${specialistRunInstructions(specialist)}` : ''}` +
     `${speaker ? `\n\n${speakerInstructions(speaker)}` : ''}` +
+    `${responseMode === 'quick' ? `\n\n${QUICK_TURN_PROMPT}` : ''}` +
     '\n\n';
   const clock =
     `\n\nCurrent date (UTC): ${now.toISOString().slice(0, 10)}. Current timestamp (UTC): ${now.toISOString()}. Reminder timezone: Asia/Kuala_Lumpur (UTC+8).`;

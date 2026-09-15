@@ -28,11 +28,18 @@ export function createAnswerStreamGate(question: string, resumed = false) {
 }
 
 /** While held, don't let a reasoning or @step lane become an answer bypass. */
-export function heldProgressLabel(label: string): string {
+export function heldProgressLabel(label: string, reason?: StreamHoldReason | null): string {
   const labels = new Set(['Checking the sources', 'Checking task status', 'Reading information',
     'Searching for information', 'Comparing sources', 'Reviewing the result', 'Preparing the answer',
     'Menyemak sumber', 'Menyemak status tugasan', 'Membaca maklumat', 'Mencari maklumat',
     'Membandingkan sumber', 'Menyemak hasil', 'Menyediakan jawapan']);
-  return labels.has(label) ? label : /^(Menyemak|Membaca|Mencari|Membandingkan|Menyediakan)/i.test(label)
-    ? 'Menyemak status tugasan' : 'Checking the task';
+  if (labels.has(label)) return label;
+  const bm = /^(Menyemak|Membaca|Mencari|Membandingkan|Menyediakan)/i.test(label);
+  if (reason === 'current_information') return bm ? 'Menyemak sumber semasa' : 'Checking current sources';
+  if (reason === 'high_stakes') return bm ? 'Menyemak butiran penting' : 'Checking important details';
+  if (reason === 'action') return bm ? 'Menyemak tindakan diminta' : 'Checking the requested action';
+  if (reason === 'ambiguous_followup') return bm ? 'Menyemak perkara untuk diteruskan' : 'Checking what to continue';
+  if (reason === 'resumed_run') return bm ? 'Menyemak kemajuan tugasan' : 'Checking task progress';
+  if (reason === 'tool_used') return bm ? 'Meneruskan tugasan' : 'Continuing the task';
+  return bm ? 'Menyemak status tugasan' : 'Checking the task';
 }

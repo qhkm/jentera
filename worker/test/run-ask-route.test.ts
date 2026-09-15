@@ -680,9 +680,17 @@ describe('response mode from the web chat', () => {
     });
     if (response.status !== 202) return { status: response.status };
     const { runId } = await response.json() as { runId: string };
-    const [row] = await asOwner((sql) => sql<{ model: string; payload: { responseMode?: string } }[]>`
+    const [row] = await asOwner((sql) => sql<{
+      model: string;
+      payload: { responseMode?: string; instructions?: string };
+    }[]>`
       select r.model, t.payload from run r join runtime_task t on t.run_id = r.id where r.id = ${runId}`);
-    return { status: 202, model: row.model, responseMode: row.payload.responseMode };
+    return {
+      status: 202,
+      model: row.model,
+      responseMode: row.payload.responseMode,
+      quickContract: row.payload.instructions?.includes('Quick response contract') ?? false,
+    };
   }
 
   /* Chat was hard-wired to deep, so every web message paid the research
@@ -690,17 +698,17 @@ describe('response mode from the web chat', () => {
      2026-09-10, with the same explicit escape hatches. */
   it('is quick by default', async () => {
     expect(await modelFor({ question: 'Are we open on Sunday?' })).toEqual({
-      status: 202, model: 'quick-model', responseMode: 'quick',
+      status: 202, model: 'quick-model', responseMode: 'quick', quickContract: true,
     });
   });
   it('goes deep when the toggle asks for it', async () => {
     expect(await modelFor({ question: 'Compare our suppliers', responseMode: 'deep' })).toEqual({
-      status: 202, model: 'deep-model', responseMode: 'deep',
+      status: 202, model: 'deep-model', responseMode: 'deep', quickContract: false,
     });
   });
   it('honours /deep typed into the message, like Telegram', async () => {
     expect(await modelFor({ question: '/deep compare our suppliers' })).toEqual({
-      status: 202, model: 'deep-model', responseMode: 'deep',
+      status: 202, model: 'deep-model', responseMode: 'deep', quickContract: false,
     });
   });
   it('rejects an unknown response mode', async () => {

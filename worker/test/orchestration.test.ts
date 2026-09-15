@@ -1085,6 +1085,7 @@ describe('the Telegram webhook runs the first slice itself', () => {
       provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
     });
     await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.28-4', 'v1'));
+    const starts: { responseMode?: string; instructions?: string }[] = [];
     const fetcher: typeof fetch = async (input, init) => {
       const url = String(input);
       if (url.endsWith('/readyz')) {
@@ -1097,6 +1098,7 @@ describe('the Telegram webhook runs the first slice itself', () => {
         });
       }
       if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        starts.push(JSON.parse(String(init.body)) as { responseMode?: string; instructions?: string });
         return runnerResponse({ ok: true, hermesRunId: 'inline-telegram-1', status: 'started' }, 202);
       }
       if (url.endsWith('/events')) {
@@ -1125,6 +1127,9 @@ describe('the Telegram webhook runs the first slice itself', () => {
     await Promise.all(background);
 
     expect((await runRow()).status).toBe('completed');
+    expect(starts).toHaveLength(1);
+    expect(starts[0].responseMode).toBe('quick');
+    expect(starts[0].instructions).toContain('Quick response contract');
     expect(edits).toContainEqual({ chatId: 42, messageId: 99, text: 'Yes, we are open on Sunday.' });
     expect(queued).toHaveLength(1);
     expect(queued[0]).toMatchObject({

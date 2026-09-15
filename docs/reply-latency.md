@@ -157,6 +157,30 @@ MiniMax-M3, from four runs on the evening of 2026-09-05 that took 2.5 to
 4.5 hours each with no approval involved, before the runner-side deadline
 existed. Nothing since 2026-09-06 has run longer than 11 minutes.
 
+## Measurements, 2026-09-16: startup is short, Quick tool use is not
+
+Fresh production measurements over the preceding two days showed 31 completed
+app-agent replies. The wait from `work.requested` to `work.started` was 2.5 s
+at p50 and 3.9 s at p90, while agent/model time was 31.5 s at p50 and 79.7 s
+at p90. Total reply time was 37 s at p50 and 94 s at p90. The reported
+"30 seconds to start thinking" was therefore not a 30-second dispatch delay:
+the agent had started, but a current-information or action safety gate held
+unreviewed answer text while the UI showed the overly broad "Checking the
+task" label.
+
+The same window contained 32 completed ask runs averaging 3.1 tool starts,
+with a maximum of 14; terminal was started 51 times. Quick mode now carries a
+request-scoped efficiency contract: answer without tools when existing
+business context is enough; for current information, begin with one focused
+search and inspect at most two relevant authoritative sources unless evidence
+conflicts; and do not create scratch files, run code, use terminal, or delegate
+merely to prepare an answer. Deep mode is unchanged. Safety-held progress now
+names the reason (for example "Checking current sources" or "Checking the
+requested action") instead of collapsing every safe label to "Checking the
+task". Re-run `reply-latency.sh db 2` and compare tool starts after enough new
+Quick turns have completed; this change has no claimed latency win until that
+measurement exists.
+
 ## Levers
 
 Done:

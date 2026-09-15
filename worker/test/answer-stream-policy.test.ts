@@ -53,6 +53,10 @@ describe('EN/BM high-risk streaming regression set', () => {
     expect(heldProgressLabel('Menyemak sumber')).toBe('Menyemak sumber');
     expect(heldProgressLabel('Sent successfully')).toBe('Checking the task');
     expect(heldProgressLabel('Checking price is $100')).toBe('Checking the task');
+    expect(heldProgressLabel('API says 57', 'current_information')).toBe('Checking current sources');
+    expect(heldProgressLabel('Sent successfully', 'action')).toBe('Checking the requested action');
+    expect(heldProgressLabel('Harga ialah RM100', 'high_stakes')).toBe('Checking important details');
+    expect(heldProgressLabel('Menyemak harga RM100', 'high_stakes')).toBe('Menyemak butiran penting');
   });
   it('warns on unsourced high-stakes answers in both languages', () => {
     expect(guardAnswer('Take ten tablets.', 'What medicine dosage?', null).warnings).toContain('missing_current_sources');

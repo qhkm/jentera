@@ -336,6 +336,21 @@ describe('the durable Hermes agent request', () => {
     expect(prepared.input).toBe("what's latest today in tech?");
   });
 
+  it('gives Quick turns a bounded tool-efficiency contract', () => {
+    const quick = prepareHermesAgent(
+      'how bad is the haze today?', [], [], new Date('2026-09-16T01:00:00.000Z'),
+      undefined, undefined, 'quick',
+    );
+    const deep = prepareHermesAgent(
+      '/research compare the haze reports', [], [], new Date('2026-09-16T01:00:00.000Z'),
+      undefined, undefined, 'deep',
+    );
+    expect(quick.instructions).toMatch(/Quick response contract/);
+    expect(quick.instructions).toMatch(/one focused search/i);
+    expect(quick.instructions).toMatch(/Do not create scratch files, run code, use the terminal/i);
+    expect(deep.instructions).not.toMatch(/Quick response contract/);
+  });
+
   it('carries confirmed business context without restricting the agent to it', () => {
     const prepared = prepareHermesAgent(
       'compare our opening hours with the event schedule online',

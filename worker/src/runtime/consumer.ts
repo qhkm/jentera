@@ -621,6 +621,8 @@ export async function handleRuntimeQueueMessage(
         work,
         new Date(),
         specialist,
+        undefined,
+        responseMode,
       );
       telegramLatency('admission_context_ready', message.requestedAtMs);
       const run = await startRun(tx, message.businessId, {
@@ -1486,7 +1488,9 @@ export async function handleRuntimeMessage(
               ? async (label) => {
                   /* The web keeps every step as a list item, in either mode;
                      the Telegram label below stays quiet for quick replies. */
-                  const step = answerGate.reason ? heldProgressLabel(statusLine(label)) : statusLine(label);
+                  const step = answerGate.reason
+                    ? heldProgressLabel(statusLine(label), answerGate.reason)
+                    : statusLine(label);
                   await web?.status(step, 'step');
                   /* And on the run's trace, so the receipt outlives this
                      socket: a reload or another device reads it back. */
