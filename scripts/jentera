@@ -66,11 +66,18 @@ check_tree() {
 
   local branch
   branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
-  [[ "$branch" == "main" ]] && green "  on main" || warn "  on branch $branch, not main"
+  if [[ "$branch" == "main" ]]; then green "  on main"; else warn "  on branch $branch, not main"; fi
 
   local ahead
   ahead="$(git -C "$ROOT" log --oneline @{u}..HEAD 2>/dev/null | wc -l | tr -d ' ')"
-  [[ "${ahead:-0}" -gt 0 ]] && warn "  $ahead commit(s) not pushed — history will not match what is live"
+  # if/fi, not `[[ ]] && warn`: under `set -e` a false test as the last
+  # statement of a function makes the function return non-zero and kills the
+  # script. That silently truncated `status` the moment everything was pushed.
+  if [[ "${ahead:-0}" -gt 0 ]]; then
+    warn "  $ahead commit(s) not pushed — history will not match what is live"
+  else
+    green "  pushed"
+  fi
 }
 
 # Every `create table` in migrations/ must exist in production. Nothing else
