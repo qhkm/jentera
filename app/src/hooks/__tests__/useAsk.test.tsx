@@ -12,6 +12,8 @@ const business = {
   sug: { t: 'Follow up', d: 'Reply to customers' },
   team: [],
 } as unknown as Business;
+const counts = { handled: 0, needs: 0 };
+const translate = (key: string) => key;
 
 beforeEach(() => {
   localStorage.clear();
@@ -146,7 +148,7 @@ describe('useAsk durable answers', () => {
       </SignedInProvider>
     );
     const { result } = renderHook(
-      () => useAsk(business, { handled: 0, needs: 0 }, (key) => key),
+      () => useAsk(business, counts, translate),
       { wrapper },
     );
     await waitFor(() => expect(result.current).not.toBeNull());

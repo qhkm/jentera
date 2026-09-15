@@ -8,11 +8,14 @@ import {
   BookOpenText,
   ChatCircleText,
   ClipboardText,
+  Globe,
   ListChecks,
   LockSimple,
   Notepad,
+  Paperclip,
   Plus,
   UsersThree,
+  X,
 } from '@phosphor-icons/react';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useRepository } from '@/lib/repo';
@@ -30,6 +33,7 @@ import { AskReply } from '@/components/AskReply';
 import { useTeamEnabled, useSignedIn } from '@/lib/repo/gate';
 import { useSnapshot, type AskMode } from '@/lib/repo';
 import type { Business } from '@/lib/types';
+import { formatBytes } from '@/lib/artifacts';
 
 const STARTERS = [
   { key: 'reply', icon: ChatCircleText },
@@ -37,6 +41,10 @@ const STARTERS = [
   { key: 'notes', icon: Notepad },
   { key: 'update', icon: ClipboardText },
 ] as const;
+
+const CHAT_FILE_ACCEPT = '.txt,.md,.csv,.json,.pdf,.docx,.xlsx,.pptx,.html,.png,.jpg,.jpeg,.webp';
+const CHAT_FILE_LIMIT = 8 * 1024 * 1024;
+const CHAT_TEXT_FILE_LIMIT = 1024 * 1024;
 
 export default function AskJenteraView({
   business,
@@ -70,15 +78,15 @@ export default function AskJenteraView({
   /* Shared chats exist only on the team plan; the hook reads nothing otherwise. */
   const teamEnabled = useTeamEnabled();
   const sharedChats = useSharedChats(teamEnabled);
-  const repoForShared = useRepository();
+  const repo = useRepository();
   const openShared = useCallback(async (chatId: string) => {
-    if (!repoForShared.chat) return;
+    if (!repo.chat) return;
     try {
-      ask.importSession(await repoForShared.chat(chatId));
+      ask.importSession(await repo.chat(chatId));
     } catch {
       /* The list will show it again; nothing to do here. */
     }
-  }, [repoForShared, ask]);
+  }, [repo, ask]);
   const shared = teamEnabled && sharedChats.workspaces.length > 0 ? {
     workspaces: sharedChats.workspaces,
     loading: sharedChats.loading,
@@ -88,8 +96,13 @@ export default function AskJenteraView({
   const activeWorkspace = sharedChats.workspaces.find((w) => w.id === ask.sessions.find((s) => s.id === ask.activeId)?.workspaceId);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const draft = drafts[ask.activeId] ?? '';
+  const [attachments, setAttachments] = useState<Record<string, File | undefined>>({});
+  const attachment = attachments[ask.activeId];
+  const [attachmentError, setAttachmentError] = useState('');
   const signedIn = useSignedIn();
+  const [browserPaused, setBrowserPaused] = useState(false);
   const composer = useRef<HTMLTextAreaElement>(null);
+  const filePicker = useRef<HTMLInputElement>(null);
   const consumedDraft = useRef<number | null>(null);
   useEffect(() => {
     if (!active || !taskDraft || consumedDraft.current === taskDraft.key) return;
@@ -102,6 +115,7 @@ export default function AskJenteraView({
   const scroll = useConversationScroll(ask.messages, ask.activeId, active);
   const mentionId = useId();
   const hintId = useId();
+  const browserPausedId = useId();
   const busy = ask.messages.some((message) => Boolean(message.pendingId));
   const confirmed = snapshot.facts.filter(hasConfirmedValue).length;
   const recent = ask.sessions
@@ -110,8 +124,20 @@ export default function AskJenteraView({
   const canRefine =
     !busy && ask.messages.at(-1)?.from === 'ai' && !ask.messages.at(-1)?.failedQuestion;
 
+  useEffect(() => setAttachmentError(''), [ask.activeId]);
+
   function setDraft(value: string) {
     setDrafts((current) => ({ ...current, [ask.activeId]: value }));
+  }
+
+  function setAttachment(file?: File) {
+    setAttachmentError('');
+    const textLike = file && /\.(?:txt|md|csv|json)$/i.test(file.name);
+    if (file && file.size > (textLike ? CHAT_TEXT_FILE_LIMIT : CHAT_FILE_LIMIT)) {
+      setAttachmentError(t('ask.attachment.tooLarge'));
+      return;
+    }
+    setAttachments((current) => ({ ...current, [ask.activeId]: file }));
   }
 
   // One composer stays mounted: typing, selection and per-chat drafts survive layout changes.
@@ -127,6 +153,37 @@ export default function AskJenteraView({
   useEffect(() => {
     mentions.close();
   }, [ask.activeId, mentions.close]);
+
+  /* Closing owner control deliberately leaves the business browser paused.
+     Check as Chat becomes active, and again when this window regains focus,
+     so a hand-back in the Connections screen or another tab is reflected
+     before the next message is sent. Do not poll: a status request wakes a
+     sleeping business computer. */
+  useEffect(() => {
+    if (!active || !signedIn) {
+      if (!signedIn) setBrowserPaused(false);
+      return;
+    }
+    let cancelled = false;
+    const refresh = () => {
+      void repo.businessBrowser().then((state) => {
+        if (!cancelled) setBrowserPaused(state.paused === true);
+      }).catch(() => {
+        /* Runtime availability is surfaced by the normal send path. Keep the
+           last known pause state rather than turning a failed check into an
+           incorrect "ready" signal. */
+      });
+    };
+    const onVisibility = () => { if (!document.hidden) refresh(); };
+    refresh();
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [active, signedIn, repo]);
 
   function prepare(text: string) {
     setDraft(text);
@@ -151,11 +208,13 @@ export default function AskJenteraView({
   }
 
   function submit(text = draft, mode: AskMode = 'work') {
-    const body = text.trim();
-    if (!body || busy) return;
+    const body = text.trim() || (attachment ? t('ask.attachment.defaultPrompt') : '');
+    if (!body || busy || browserPaused) return;
     scroll.jumpToLatest();
-    ask.send(body, mode);
+    ask.send(body, mode, attachment);
     setDraft('');
+    setAttachment(undefined);
+    if (filePicker.current) filePicker.current.value = '';
     mentions.close();
     if (compact) composer.current?.blur();
     else composer.current?.focus();
@@ -208,14 +267,25 @@ export default function AskJenteraView({
                   <div className="ask-owner-message" key={`${ask.activeId}-${index}`}>
                     <span>{t('ask.you')}</span>
                     <p>{message.text}</p>
+                    {message.inputFiles?.map((file) => (
+                      <span className="ask-owner-attachment" key={file.name}>
+                        <Paperclip size={13} aria-hidden="true" />
+                        {file.name}
+                      </span>
+                    ))}
                   </div>
                 ) : (
                   <AskReply
                     key={`${ask.activeId}-${index}`}
                     message={message}
-                    onRetry={() =>
-                      submit(message.failedQuestion ?? '', message.failedMode ?? 'work')
-                    }
+                    onRetry={() => {
+                      if (message.inputFiles?.length) {
+                        setDraft(message.failedQuestion ?? '');
+                        filePicker.current?.click();
+                      } else {
+                        submit(message.failedQuestion ?? '', message.failedMode ?? 'work');
+                      }
+                    }}
                     onOpenActivity={onOpenActivity}
                   />
                 ),
@@ -261,6 +331,22 @@ export default function AskJenteraView({
             </div>
           )}
 
+          {browserPaused && (
+            <div className="ask-browser-paused" id={browserPausedId} role="status">
+              <Globe size={20} weight="duotone" aria-hidden="true" />
+              <div>
+                <strong>{t('ask.browserPaused.title')}</strong>
+                <p>{t('ask.browserPaused.detail')}</p>
+              </div>
+              {onOpenConnections && (
+                <button type="button" onClick={onOpenConnections}>
+                  {t('ask.browserPaused.action')}
+                  <ArrowRight size={13} aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          )}
+
           <form
             className="ask-writing-pad"
             onSubmit={(event) => {
@@ -268,6 +354,14 @@ export default function AskJenteraView({
               submit();
             }}
           >
+            <input
+              ref={filePicker}
+              className="ask-file-input"
+              type="file"
+              accept={CHAT_FILE_ACCEPT}
+              aria-label={t('ask.attachment.choose')}
+              onChange={(event) => setAttachment(event.target.files?.[0])}
+            />
             {mentions.open && (
               <ul
                 id={mentionId}
@@ -297,6 +391,26 @@ export default function AskJenteraView({
                 ))}
               </ul>
             )}
+            {attachment && (
+              <div className="ask-selected-file" role="status">
+                <Paperclip size={18} aria-hidden="true" />
+                <span>
+                  <strong>{attachment.name}</strong>
+                  <small>{formatBytes(attachment.size)}</small>
+                </span>
+                <button
+                  type="button"
+                  aria-label={t('ask.attachment.remove', { name: attachment.name })}
+                  onClick={() => {
+                    setAttachment(undefined);
+                    if (filePicker.current) filePicker.current.value = '';
+                  }}
+                >
+                  <X size={15} aria-hidden="true" />
+                </button>
+              </div>
+            )}
+            {attachmentError && <p className="ask-attachment-error" role="alert">{attachmentError}</p>}
             <textarea
               ref={composer}
               rows={ask.hasHistory ? 1 : 3}
@@ -344,7 +458,7 @@ export default function AskJenteraView({
               aria-controls={mentions.open ? mentionId : undefined}
               aria-autocomplete="list"
               aria-label={t('ask.studio.placeholder')}
-              aria-describedby={hintId}
+              aria-describedby={browserPaused ? `${hintId} ${browserPausedId}` : hintId}
               placeholder={t(
                 ask.hasHistory
                   ? 'ask.studio.followup'
@@ -354,36 +468,59 @@ export default function AskJenteraView({
               )}
             />
             <div className="ask-writing-footer">
-              {onOpenKnowledge ? (
-                <button type="button" className="ask-context-link" onClick={onOpenKnowledge}>
-                  <BookOpenText size={15} aria-hidden="true" />
-                  <span>
-                    {t(confirmed ? 'ask.studio.knowledge' : 'ask.studio.teach', { n: confirmed })}
-                  </span>
+              <div className="ask-writing-tools">
+                <button
+                  type="button"
+                  className="ask-attach-button"
+                  onClick={() => filePicker.current?.click()}
+                >
+                  <Paperclip size={15} aria-hidden="true" />
+                  <span>{t(attachment ? 'ask.attachment.replace' : 'ask.attachment.add')}</span>
                 </button>
-              ) : (
-                <span className="ask-context-link">
-                  <LockSimple size={14} aria-hidden="true" />
-                  {t('ask.private')}
-                </span>
-              )}
+                {onOpenKnowledge ? (
+                  <button type="button" className="ask-context-link" onClick={onOpenKnowledge}>
+                    <BookOpenText size={15} aria-hidden="true" />
+                    <span>
+                      {t(confirmed ? 'ask.studio.knowledge' : 'ask.studio.teach', { n: confirmed })}
+                    </span>
+                  </button>
+                ) : (
+                  <span className="ask-context-link">
+                    <LockSimple size={14} aria-hidden="true" />
+                    {t('ask.private')}
+                  </span>
+                )}
+              </div>
               {/* Grouped with send, because it changes what send does. Left
                   as a third child of a space-between row it was stranded in
                   the middle of the composer, reading as a stray label. */}
               <div className="ask-writing-actions">
-                <button
-                  type="button"
-                  className="ask-depth-toggle"
-                  aria-pressed={ask.deep}
-                  title={t('ask.deep.hint')}
-                  onClick={() => ask.setDeep(!ask.deep)}
-                >
-                  {t('ask.deep')}
-                </button>
+                <div className="ask-mode-picker" role="group" aria-label={t('ask.mode.label')}>
+                  <button
+                    type="button"
+                    className="ask-mode-option"
+                    aria-pressed={!ask.deep}
+                    title={t('ask.mode.quick.hint')}
+                    disabled={busy}
+                    onClick={() => ask.setDeep(false)}
+                  >
+                    {t('ask.mode.quick')}
+                  </button>
+                  <button
+                    type="button"
+                    className="ask-mode-option"
+                    aria-pressed={ask.deep}
+                    title={t('ask.mode.research.hint')}
+                    disabled={busy}
+                    onClick={() => ask.setDeep(true)}
+                  >
+                    {t('ask.mode.research')}
+                  </button>
+                </div>
                 <button
                   type="submit"
                   className="ask-studio-send"
-                  disabled={!draft.trim() || busy}
+                  disabled={(!draft.trim() && !attachment) || busy || browserPaused}
                   aria-label={t('ask.studio.send')}
                 >
                   <ArrowUp size={20} weight="bold" aria-hidden="true" />

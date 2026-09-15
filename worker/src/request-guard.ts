@@ -1,13 +1,13 @@
 import { readSessionToken } from './auth';
 import type { Env } from './env';
 import { clientIp } from './ratelimit';
-import { INGEST_FILE_PATH, UPLOAD_DOCUMENT_LIMIT } from './routes/runs';
+import { ASK_FILE_PATH, INGEST_FILE_PATH, UPLOAD_DOCUMENT_LIMIT } from './routes/runs';
 
-/** API payloads in this product are small JSON commands. Files belong in
-    object storage, not in a Worker request that will be buffered and parsed. */
+/** API payloads are small JSON commands except on the two explicitly bounded
+    file routes below. */
 export const MAX_API_BODY_BYTES = 128 * 1024;
 
-/** The one exception: a document the owner uploads to be read. Derived from
+/** The exceptions: documents uploaded to Knowledge or attached to chat. Derived from
     the route's own ceiling (routes/runs.ts), not restated, so the two can
     never drift apart the way they did until 14 September: the guard must
     never refuse a body the route would accept, or the route's limit is
@@ -19,7 +19,7 @@ export const MAX_API_BODY_BYTES = 128 * 1024;
 export const MAX_UPLOAD_BODY_BYTES = UPLOAD_DOCUMENT_LIMIT + 64 * 1024;
 
 function bodyCapFor(method: string, pathname: string): number {
-  return method === 'POST' && pathname === INGEST_FILE_PATH
+  return method === 'POST' && [INGEST_FILE_PATH, ASK_FILE_PATH].includes(pathname)
     ? MAX_UPLOAD_BODY_BYTES
     : MAX_API_BODY_BYTES;
 }
@@ -155,7 +155,7 @@ export async function guardApiRequest(
   const identity = requestIdentity(request, url);
   const runtimeMutation = isRuntimeMutation(request.method, url.pathname);
   const agentRun = request.method === 'POST' && (
-    ['/api/runs/ask', '/api/runs/ingest', INGEST_FILE_PATH].includes(url.pathname) ||
+    ['/api/runs/ask', ASK_FILE_PATH, '/api/runs/ingest', INGEST_FILE_PATH].includes(url.pathname) ||
     /* An approval decision resumes a paid agent run, which is what this
        brake is for. It must not share the 3/60s runtime-mutation bucket:
        an owner who denies one approval and approves the next would be

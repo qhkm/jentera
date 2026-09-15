@@ -136,6 +136,47 @@
   position: relative;
   flex-shrink: 0;
 }
+.ask-browser-paused {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 10px;
+  padding: 11px 12px;
+  border: 1px solid rgb(252 187 0 / 0.32);
+  border-radius: 12px;
+  color: var(--text-secondary);
+  background: rgb(252 187 0 / 0.08);
+}
+.ask-browser-paused > svg {
+  color: var(--color-amber-500);
+}
+.ask-browser-paused strong {
+  display: block;
+  color: var(--text);
+  font-size: 12px;
+}
+.ask-browser-paused p {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.ask-browser-paused button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid rgb(252 187 0 / 0.38);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--bg-card);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.ask-browser-paused button:hover {
+  border-color: var(--color-amber-500);
+}
 .ask-writing-pad {
   position: relative;
   padding: 18px 18px 12px;
@@ -147,6 +188,63 @@
 .ask-writing-pad:focus-within {
   border-color: var(--accent-green);
   box-shadow: 0 0 0 3px rgb(var(--accent-green-rgb) / 0.06);
+}
+.ask-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.ask-selected-file {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 12px;
+  padding: 9px 10px;
+  border: 1px solid rgb(var(--accent-green-rgb) / 0.28);
+  border-radius: 11px;
+  background: rgb(var(--accent-green-rgb) / 0.06);
+  color: var(--accent-green);
+}
+.ask-selected-file > span {
+  min-width: 0;
+}
+.ask-selected-file strong,
+.ask-selected-file small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ask-selected-file strong {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+}
+.ask-selected-file small {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 9px;
+}
+.ask-selected-file button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  color: var(--text-secondary);
+}
+.ask-selected-file button:hover {
+  background: var(--workspace-control-hover);
+  color: var(--text);
+}
+.ask-attachment-error {
+  margin-bottom: 8px;
+  color: var(--color-red-500);
+  font-size: 10px;
 }
 .ask-writing-pad textarea {
   display: block;
@@ -180,27 +278,58 @@
   gap: 10px;
   flex-shrink: 0;
 }
-/* It carried no rule at all: the class was on the element and styled nothing,
-   so a control with aria-pressed rendered as muted 11px text and its entire
-   on-state was a tick appended to the word. */
-.ask-depth-toggle {
+.ask-writing-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.ask-attach-button {
   display: inline-flex;
   align-items: center;
-  min-height: 34px;
-  padding: 0 12px;
-  border: 1px solid var(--rail);
-  border-radius: 10px;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 9px;
+  border-radius: 999px;
   color: var(--text-secondary);
-  font-size: 11px;
+  background: var(--workspace-control);
+  font-size: 10px;
   white-space: nowrap;
 }
-.ask-depth-toggle:hover {
-  border-color: rgb(var(--accent-green-rgb) / 0.35);
+.ask-attach-button:hover {
+  background: var(--workspace-control-hover);
   color: var(--text);
 }
-.ask-depth-toggle[aria-pressed='true'] {
-  border-color: rgb(var(--accent-green-rgb) / 0.4);
-  background: rgb(var(--accent-green-rgb) / 0.08);
+.ask-attach-button > svg {
+  color: var(--accent-green);
+}
+.ask-mode-picker {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 36px;
+  padding: 3px;
+  border: 1px solid var(--rail);
+  border-radius: 999px;
+  background: var(--workspace-control);
+}
+.ask-mode-option {
+  min-height: 28px;
+  padding: 0 9px;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.ask-mode-option:hover {
+  color: var(--text);
+}
+.ask-mode-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.ask-mode-option[aria-pressed='true'] {
+  background: rgb(var(--accent-green-rgb) / var(--accent-fill-alpha));
   color: var(--accent-green);
 }
 .ask-context-link {
@@ -393,6 +522,20 @@ button.ask-context-link:hover {
   line-height: 1.7;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.ask-owner-message > .ask-owner-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 90%;
+  padding: 6px 9px;
+  border: 1px solid var(--rail);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: var(--workspace-control);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ask-reply {
   min-width: 0;
@@ -832,6 +975,13 @@ button.ask-context-link:hover {
     padding: 14px 14px 10px;
     border-radius: 15px;
   }
+  .ask-browser-paused {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .ask-browser-paused button {
+    grid-column: 2;
+    justify-self: start;
+  }
   .ask-writing-pad textarea {
     font-size: 16px;
     min-height: 76px;
@@ -841,8 +991,18 @@ button.ask-context-link:hover {
     gap: 6px;
   }
   .ask-writing-footer {
+    flex-wrap: wrap;
     gap: 8px;
     margin-top: 6px;
+  }
+  .ask-writing-tools {
+    flex-basis: 100%;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .ask-writing-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
   .ask-studio-starters {
     display: grid;

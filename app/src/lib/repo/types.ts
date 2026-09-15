@@ -122,6 +122,9 @@ export interface AskOptions {
   onProgress?: (event: AskProgressEvent) => void;
   /** Quick is the default, as on Telegram; deep opts into the research loop. */
   responseMode?: 'quick' | 'deep';
+  /** One transient file supplied with this turn. The server converts it to
+      bounded text for the agent and does not retain the original bytes. */
+  attachment?: File;
   /** Open this chat inside a workspace, so every member may read it. Only
       the first turn decides; later turns leave the chat where it is. */
   workspaceId?: string;

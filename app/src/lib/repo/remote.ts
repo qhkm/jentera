@@ -90,12 +90,13 @@ async function sessionFetch(input: RequestInfo | URL, init: RequestInit = {}): P
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
+    const multipart = typeof FormData !== 'undefined' && init?.body instanceof FormData;
     res = await sessionFetch(`${BASE}${path}`, {
       ...init,
       // The session is an HttpOnly cookie; without this it is not sent
       // cross-origin and every request looks unauthenticated.
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+      headers: multipart ? init?.headers : { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
     });
   } catch {
     // fetch rejects only on network failure, never on a 4xx/5xx.
@@ -412,21 +413,30 @@ export class RemoteRepository implements Repository {
 
   async ask(question: string, options: AskOptions = {}): Promise<AskAnswer> {
     const requestId = options.requestId ?? crypto.randomUUID();
-    const start = () => call<AskAnswer & {
-      pending?: boolean;
-      status?: string;
-      runId?: string;
-    }>('/api/runs/ask', {
-      method: 'POST',
-      body: JSON.stringify({
+    const start = () => {
+      const payload = {
         question,
         requestId,
         mode: options.mode ?? 'work',
         ...(options.sessionId ? { sessionId: options.sessionId } : {}),
         ...(options.workspaceId ? { workspaceId: options.workspaceId } : {}),
         ...(options.responseMode ? { responseMode: options.responseMode } : {}),
-      }),
-    });
+      };
+      let path = '/api/runs/ask';
+      let body: BodyInit = JSON.stringify(payload);
+      if (options.attachment) {
+        const form = new FormData();
+        for (const [key, value] of Object.entries(payload)) form.set(key, String(value));
+        form.set('file', options.attachment, options.attachment.name);
+        path = '/api/runs/ask/file';
+        body = form;
+      }
+      return call<AskAnswer & {
+        pending?: boolean;
+        status?: string;
+        runId?: string;
+      }>(path, { method: 'POST', body });
+    };
     let begun;
     try {
       begun = await start();

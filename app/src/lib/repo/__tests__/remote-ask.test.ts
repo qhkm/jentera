@@ -32,6 +32,28 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
     expect(sent).not.toHaveProperty('businessId');
   });
 
+  it('sends an attached file and the chat controls as one multipart request', async () => {
+    const fetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response(ANSWER));
+    vi.stubGlobal('fetch', fetch);
+    const file = new File(['sales'], 'sales.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+
+    await expect(new RemoteRepository().ask('Check the totals', {
+      attachment: file,
+      sessionId: 'chat-1',
+      responseMode: 'quick',
+    })).resolves.toEqual(ANSWER);
+
+    expect(String(fetch.mock.calls[0][0])).toBe('/api/runs/ask/file');
+    expect(new Headers(fetch.mock.calls[0][1]?.headers).has('Content-Type')).toBe(false);
+    const form = fetch.mock.calls[0][1]?.body as FormData;
+    expect(form.get('question')).toBe('Check the totals');
+    expect(form.get('sessionId')).toBe('chat-1');
+    expect(form.get('responseMode')).toBe('quick');
+    expect((form.get('file') as File).name).toBe('sales.xlsx');
+  });
+
   it('polls a durable run and returns its completed answer', async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(response({ ok: true, pending: true, status: 'queued', runId: ANSWER.runId }, 202))

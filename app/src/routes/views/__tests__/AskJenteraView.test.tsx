@@ -22,9 +22,14 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function Harness() {
+function Harness({ onOpenConnections }: { onOpenConnections?: () => void } = {}) {
   const { business } = useBusiness();
-  return <AskJenteraView business={business} handled={0} needs={0} />;
+  return <AskJenteraView
+    business={business}
+    handled={0}
+    needs={0}
+    onOpenConnections={onOpenConnections}
+  />;
 }
 
 async function mount(children: ReactNode = <Harness />, repo = new LocalRepository()) {
@@ -49,6 +54,60 @@ async function mount(children: ReactNode = <Harness />, repo = new LocalReposito
 }
 
 describe('compose-first Ask Jentera', () => {
+  it('attaches an Excel file to a question and can send the file on its own', async () => {
+    const user = userEvent.setup();
+    const repo = new LocalRepository();
+    repo.ask = vi.fn().mockResolvedValue({ text: 'The totals do not match.', grounded: false, usedKeys: [] });
+    await mount(<Harness />, repo);
+    const file = new File(['workbook'], 'sales.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+
+    await user.upload(await screen.findByLabelText('Choose a file for Jentera'), file);
+    expect(screen.getByText('sales.xlsx')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Replace file' })).toBeVisible();
+    const send = screen.getByRole('button', { name: 'Send message' });
+    expect(send).toBeEnabled();
+    await user.click(send);
+
+    await waitFor(() => expect(repo.ask).toHaveBeenCalledWith(
+      'Review this file and tell me what stands out.',
+      expect.objectContaining({ attachment: file, responseMode: 'quick' }),
+    ));
+    expect(screen.getByText('sales.xlsx')).toBeVisible();
+  });
+  it('shows Quick and Research as explicit answer modes', async () => {
+    const user = userEvent.setup();
+    await mount();
+    const modes = await screen.findByRole('group', { name: 'Answer mode' });
+    const quick = within(modes).getByRole('button', { name: 'Quick' });
+    const research = within(modes).getByRole('button', { name: 'Research' });
+    expect(quick).toHaveAttribute('aria-pressed', 'true');
+    expect(research).toHaveAttribute('aria-pressed', 'false');
+    expect(research).toHaveAttribute('title', 'A more thorough answer that may take several minutes.');
+    await user.click(research);
+    expect(quick).toHaveAttribute('aria-pressed', 'false');
+    expect(research).toHaveAttribute('aria-pressed', 'true');
+  });
+  it('explains owner browser control, blocks sending, and links to the hand-back control', async () => {
+    const user = userEvent.setup();
+    const repo = new LocalRepository();
+    const openConnections = vi.fn();
+    repo.businessBrowser = vi.fn().mockResolvedValue({ enabled: true, paused: true });
+    repo.ask = vi.fn().mockResolvedValue({ text: 'Should not send.', grounded: false, usedKeys: [] });
+    await mount(<Harness onOpenConnections={openConnections} />, repo);
+
+    expect(await screen.findByText('Jentera is paused')).toBeVisible();
+    expect(screen.getByText(/Business Browser is still under owner control/)).toBeVisible();
+    const input = screen.getByRole('textbox');
+    await user.type(input, 'Prepare a reply');
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+    expect(repo.ask).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Open Business Browser' }));
+    expect(openConnections).toHaveBeenCalledOnce();
+  });
   it('shows an accuracy disclaimer associated with the composer', async () => {
     await mount();
     const input = await screen.findByRole('textbox');

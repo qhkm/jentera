@@ -52,6 +52,9 @@ export interface AskMessage {
   steps?: string[];
   /** Files the agent produced for the owner, offered as downloads. */
   artifacts?: Artifact[];
+  /** Files the owner supplied with this turn. Only display metadata is kept;
+      the browser never stores the original bytes in chat history. */
+  inputFiles?: { name: string; contentType: string; size: number }[];
   /** The request that failed, retained so the UI can offer a real retry. */
   failedQuestion?: string;
   failedMode?: AskMode;
@@ -503,6 +506,7 @@ export function useAsk(
                     state: 'failed' as const,
                     mode,
                     steps: message.steps,
+                    inputFiles: message.inputFiles,
                   }
                 : message),
           }, ...prev.sessions.slice(index + 1)],
@@ -544,11 +548,14 @@ export function useAsk(
   }, [persisted, repo, patchPending, settlePending, t]);
 
   const send = useCallback(
-    (raw: string, mode: AskMode = 'work') => {
+    (raw: string, mode: AskMode = 'work', attachment?: File) => {
       const question = raw.trim();
       if (!question) return;
       const sessionId = activeIdRef.current;
       const now = Date.now();
+      const inputFiles = attachment
+        ? [{ name: attachment.name, contentType: attachment.type || 'application/octet-stream', size: attachment.size }]
+        : undefined;
 
       /* Signed in: the server answers from confirmed facts and real
          work records, and says so when it does not know. The canned
@@ -567,10 +574,10 @@ export function useAsk(
             updatedAt: now,
             messages: [
               ...session.messages,
-              { from: 'you', text: question },
+              { from: 'you', text: question, inputFiles },
               {
                 from: 'ai', text: t('ask.working'), pendingId, state: 'sending', mode,
-                depth: deep ? 'deep' : 'quick', startedAt: now,
+                depth: deep ? 'deep' : 'quick', startedAt: now, inputFiles,
               },
             ],
           };
@@ -585,6 +592,7 @@ export function useAsk(
           sessionId,
           ...(workspaceId ? { workspaceId } : {}),
           responseMode: deep ? 'deep' : 'quick',
+          ...(attachment ? { attachment } : {}),
           onRunCreated: (runId: string) => {
             if (!isRunId(runId)) return;
             patchPending(sessionId, pendingId, (message) => ({ ...message, runId, taskTitle: question }));
@@ -631,7 +639,7 @@ export function useAsk(
         };
       });
     },
-    [answer, business.team, lang, grounded, repo, patchPending, settlePending, t],
+    [answer, business.team, deep, lang, grounded, repo, patchPending, settlePending, t],
   );
 
   const active = state.sessions.find((s) => s.id === state.activeId) ?? state.sessions[0];

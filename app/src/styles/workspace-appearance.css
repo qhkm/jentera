@@ -142,21 +142,17 @@
 }
 
 /* Carry the same treatment into the conversation and its suggestions. */
-.dashboard-shell :is(.conversation-new, .ask-studio-new, .ask-depth-toggle, .ask-studio-starters > button, .ask-refinements > button) {
+.dashboard-shell :is(.conversation-new, .ask-studio-new, .ask-studio-starters > button, .ask-refinements > button) {
   border-color: transparent;
   border-radius: 999px;
   background: var(--workspace-control);
   color: var(--text-secondary);
   transition: background var(--dur-fast), color var(--dur-fast);
 }
-.dashboard-shell :is(.conversation-new, .ask-studio-new, .ask-depth-toggle, .ask-studio-starters > button, .ask-refinements > button):hover:not(:disabled) {
+.dashboard-shell :is(.conversation-new, .ask-studio-new, .ask-studio-starters > button, .ask-refinements > button):hover:not(:disabled) {
   border-color: transparent;
   background: var(--workspace-control-hover);
   color: var(--text);
-}
-.dashboard-shell .ask-depth-toggle[aria-pressed='true'] {
-  background: rgb(var(--accent-green-rgb) / var(--accent-fill-alpha));
-  color: var(--accent-green);
 }
 .dashboard-shell .ask-writing-pad {
   border-color: var(--rail);

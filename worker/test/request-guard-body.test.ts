@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { guardApiRequest, MAX_API_BODY_BYTES, MAX_UPLOAD_BODY_BYTES } from '../src/request-guard';
-import { INGEST_FILE_PATH, UPLOAD_DOCUMENT_LIMIT } from '../src/routes/runs';
+import { ASK_FILE_PATH, INGEST_FILE_PATH, UPLOAD_DOCUMENT_LIMIT } from '../src/routes/runs';
 import { testEnv } from './harness';
 
 const INGEST = `https://api.test${INGEST_FILE_PATH}`;
 const ASK = 'https://api.test/api/runs/ask';
+const ASK_FILE = `https://api.test${ASK_FILE_PATH}`;
 
 function upload(url: string, bytes: number, declareLength = true): Request {
   const body = new Uint8Array(bytes);
@@ -34,6 +35,7 @@ describe('the pre-route body cap', () => {
 
   it('lets a document through to the upload route', async () => {
     expect(await guard(upload(INGEST, 1024 * 1024))).toBeNull();
+    expect(await guard(upload(ASK_FILE, 1024 * 1024))).toBeNull();
   });
 
   it('still refuses a document past the upload route own limit', async () => {
