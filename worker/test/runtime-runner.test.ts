@@ -383,7 +383,15 @@ describe('durable Hermes run delivery', () => {
     expect(state).toEqual({ status: 'queued', attempt: 0, lease_token: null });
   });
 
-  it('retries instead of cancelling when the reservation expires before Hermes starts', async () => {
+  /* This used to assert the opposite: that a reservation older than the run
+     budget meant the runner was never called. That rule is what made the
+     14-15 September outage permanent — a slow first attempt spent the shared
+     clock, and every retry then failed before dispatch, so a task exhausted
+     having never once tried. An unstarted run is bounded by how stale the
+     request is (INTAKE_TTL_MS), not by the budget for an answer that has not
+     begun. Inside the TTL it dispatches with a fresh budget; past it, it stops
+     and says so. */
+  it('still dispatches an unstarted run whose reservation is older than the budget', async () => {
     const env = testEnv({
       RUNTIME_RELEASE: '2026.08.27-1',
       AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
@@ -427,27 +435,30 @@ describe('durable Hermes run delivery', () => {
       return response({ error: 'not found' }, 404);
     };
 
-    await expect(handleRuntimeMessage(
+    await handleRuntimeMessage(
       env,
       { version: 1, businessId: A, taskId: task.id },
       { provider, fetch: fetcher },
-    )).resolves.toEqual({
-      action: 'requeue',
-      delaySeconds: 30,
-      reason: 'runtime task exceeded its time limit before Hermes started',
-    });
+    );
+    /* The point of the fix: it reached the runner. */
+    expect(starts).toBe(1);
+
+    /* And past the intake TTL it gives up without touching the runner, with a
+       reason the owner can read rather than a fifth silent retry. */
+    starts = 0;
+    await asOwner((sql) => sql`
+      update runtime_usage set started_at = now() - interval '11 minutes'
+       where runtime_task_id = ${task.id}`);
+    await asOwner((sql) => sql`
+      update runtime_task set status = 'queued', lease_token = null, available_at = now()
+       where id = ${task.id}`);
+    const stale = await handleRuntimeMessage(
+      env,
+      { version: 1, businessId: A, taskId: task.id },
+      { provider, fetch: fetcher },
+    );
     expect(starts).toBe(0);
-    const [state] = await asOwner((sql) => sql<{
-      status: string; attempt: number; remote_run_id: string | null; remote_status: string | null;
-    }[]>`
-      select status, attempt, remote_run_id, remote_status
-        from runtime_task where id = ${task.id}`);
-    expect(state).toEqual({
-      status: 'failed', attempt: 1, remote_run_id: null, remote_status: null,
-    });
-    const events = await asOwner((sql) => sql<{ type: string }[]>`
-      select type from run_event where run_id = ${run.id} order by seq`);
-    expect(events.map((event) => event.type)).toEqual(['work.requested']);
+    expect(JSON.stringify(stale)).toContain('waited too long');
   });
 
   it('still cancels an active Hermes run after its run-time limit', async () => {

@@ -58,6 +58,12 @@ const KEEPALIVE_GRACE_HOURS_DEFAULT = 24;
     two-word follow-up ran for 7 h 15 min before any limit applied. */
 export const QUICK_RUN_CAP_SECONDS = 300;
 
+/* How stale an unstarted request may be before answering it is pointless.
+   Ten minutes is far past any honest wake — a cold sprite bootstraps in about
+   200 seconds — and well short of the point where a reply would surprise
+   whoever asked. */
+export const INTAKE_TTL_MS = 10 * 60 * 1_000;
+
 function runSecondsFor(mode: ResponseMode | undefined, budgetSeconds: number): number {
   return mode === 'quick' ? Math.min(budgetSeconds, QUICK_RUN_CAP_SECONDS) : budgetSeconds;
 }
@@ -223,15 +229,31 @@ export async function dispatchRuntimeRun(
   stage('runner_ready');
   const runSeconds = runSecondsFor(payload.responseMode, reservation.maxRunSeconds);
   const elapsedMs = Date.now() - reservation.startedAt.getTime();
-  if (elapsedMs > runSeconds * 1_000) {
-    if (!task.remoteRunId) {
-      console.warn('[runtime-dispatch]', JSON.stringify({
-        stage: 'budget_spent_before_start', task: task.id, attempt: task.attempt,
-        elapsedMs, runSeconds, readyMs, responseMode: payload.responseMode ?? 'default',
-      }));
-      throw new Error('runtime task exceeded its time limit before Hermes started');
-    }
+
+  /* A run that Hermes accepted is on its own clock: reservation.startedAt was
+     reset to the accept (markRuntimeUsageStarted), so this really is the run
+     overrunning its budget and the right answer is to stop it. */
+  if (task.remoteRunId && elapsedMs > runSeconds * 1_000) {
     return stoppedRunOutcome(await client.stop(task.id), task.remoteRunId, payload);
+  }
+
+  /* A run that has NOT started is a different question, and conflating the two
+     is what turned a slow first attempt into a permanent outage on 14-15
+     September. The guard here used to compare wall time since intake against
+     the run budget, so once attempt 1 was slow — a cold sprite, a refused
+     admission — every later attempt failed this line in milliseconds without
+     ever calling the runner, and the task exhausted having never tried.
+     Retries were dead on arrival by construction.
+
+     What waiting should bound is how stale a request may be before answering
+     it is pointless, not how long the answer may take. Past the TTL we stop
+     and say so; inside it, each attempt gets a full budget of its own. */
+  if (!task.remoteRunId && elapsedMs > INTAKE_TTL_MS) {
+    console.warn('[runtime-dispatch]', JSON.stringify({
+      stage: 'intake_ttl_expired', task: task.id, attempt: task.attempt,
+      elapsedMs, runSeconds, readyMs, responseMode: payload.responseMode ?? 'default',
+    }));
+    throw new Error('this request waited too long to start and was not sent');
   }
   const toolGrant = await issueFullToolsGrant(
     secrets.runnerKey,
@@ -263,7 +285,12 @@ export async function dispatchRuntimeRun(
        retry reuses the same value instead of refreshing it (runner contract:
        FIX:FINDINGS B5). The pre-start guard above guarantees it is still in
        the future at this point. */
-    deadlineAt: reservation.startedAt.getTime() + runSeconds * 1_000,
+    /* Per attempt, from now. It used to be reservation.startedAt + runSeconds,
+       so a retry inherited whatever the first attempt had already spent — the
+       17:08 MYT run on 15 September was handed 23 seconds of a 300-second
+       budget and only survived because it answered in five. The runner ignores
+       this on a duplicate, so a genuine resume keeps the original deadline. */
+    deadlineAt: Date.now() + runSeconds * 1_000,
       ...(keepaliveUntil ? { keepaliveUntil } : {}),
     });
   } catch (error) {
