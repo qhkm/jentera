@@ -41,6 +41,7 @@ import {
   retryRuntimeTask,
   runtimeQueuePosition,
   runtimeTaskByDedupeKey,
+  runtimeTaskKind,
   runtimeApprovalFromTask,
   type LeaseResult,
   type RuntimeTask,
@@ -115,6 +116,21 @@ const LIFECYCLE_TASK_KINDS = new Set<RuntimeTaskKind>([
   'upgrade',
   'provision',
   'reconcile',
+]);
+/** Housekeeping on a machine we are already running, as opposed to work a
+    business asked for. The distinction matters at the access gate: whether an
+    owner is admitted decides whose questions Jentera answers, and it was
+    deciding whether their sprite could be patched too.
+
+    `provision` is deliberately not here. It spends money standing a new sprite
+    up for a business we have not admitted, so it stays behind the gate. The
+    rest act on a runtime that already exists and already costs us: upgrading
+    it, reconciling it, or tearing it down are all cheaper than leaving it
+    where it is. */
+const MAINTENANCE_TASK_KINDS = new Set<RuntimeTaskKind>([
+  'upgrade',
+  'reconcile',
+  'delete',
 ]);
 const BUSY_RETRY_SECONDS = 2;
 /** A slot busy with another task frees itself in seconds. A browser paused for
@@ -901,7 +917,26 @@ export async function handleRuntimeMessage(
   if (message.version !== 1 || !uuid(message.businessId) || !uuid(message.taskId)) {
     return { action: 'ack', reason: 'missing' };
   }
-  if (!(await businessHasAccess(env, message.businessId))) return { action: 'ack', reason: 'missing' };
+  if (!(await businessHasAccess(env, message.businessId))) {
+    /* Only the refused path pays for this lookup, so the ordinary message is
+       not slowed by it — and out here every tenant transaction costs seconds. */
+    const kind = await withTenant(env, message.businessId, (tx) =>
+      runtimeTaskKind(tx, message.businessId, message.taskId));
+    if (!kind || !MAINTENANCE_TASK_KINDS.has(kind)) {
+      /* Said out loud from now on. This dropped the message while leaving the
+         row queued, so the work neither ran nor failed nor showed up anywhere:
+         fifteen of seventeen runtimes went five releases without an upgrade,
+         their rows piling up one per sprite per release, and the only symptom
+         was a fleet that would not converge. */
+      console.warn('[runtime-access] task dropped, business is not admitted', JSON.stringify({
+        business: message.businessId, task: message.taskId, kind: kind ?? 'unknown',
+      }));
+      return { action: 'ack', reason: 'missing' };
+    }
+    console.warn('[runtime-access] maintenance admitted for a business that is not', JSON.stringify({
+      business: message.businessId, task: message.taskId, kind,
+    }));
+  }
 
   const leaseToken = options.preleased?.leaseToken ?? crypto.randomUUID();
   const leaseStartedAt = Date.now();

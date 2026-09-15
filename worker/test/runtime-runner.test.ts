@@ -445,6 +445,48 @@ describe('durable Hermes run delivery', () => {
     expect(state).toEqual({ status: 'queued', attempt: 0, lease_token: null });
   });
 
+  /* The access gate decides whose questions Jentera answers. It was deciding
+     whether their sprite could be patched as well: an upgrade for a business
+     off the waitlist was acked as missing and the row left queued, so fifteen
+     of seventeen runtimes could not be upgraded at all and sat on a release
+     from two days earlier while the pin moved twice. A machine we are already
+     running has to stay patchable, whoever it belongs to. */
+  it('upgrades a sprite for a business that is not admitted, and still refuses its work', async () => {
+    const env = testEnv({
+      ACCESS_MODE: 'waitlist',
+      RUNTIME_RELEASE: '2026.08.27-1',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.27-1', 'v1'));
+
+    // Nobody here holds a platform_access grant.
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: env.AISAR_MODEL_NAME,
+    }));
+    const asked = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `run:${run.id}`, payload: { input: 'hello' },
+    }));
+    await expect(handleRuntimeMessage(
+      env, { version: 1, businessId: A, taskId: asked.id }, { provider },
+    )).resolves.toEqual({ action: 'ack', reason: 'missing' });
+
+    const upgrade = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'upgrade', runId: null, dedupeKey: 'upgrade:2026.08.27-2', payload: {},
+    }));
+    const outcome = await handleRuntimeMessage(
+      env, { version: 1, businessId: A, taskId: upgrade.id }, { provider },
+    );
+    expect(outcome).not.toEqual({ action: 'ack', reason: 'missing' });
+    // It was actually picked up, not merely allowed past the gate.
+    const [state] = await asOwner((sql) => sql<{ status: string; attempt: number }[]>`
+      select status, attempt from runtime_task where id = ${upgrade.id}`);
+    expect(state.status).not.toBe('queued');
+  });
+
   /* A defer does not spend an attempt, so waiting on a person had no end: the
      pause is durable and outlives the session that set it, and an owner who
      closed the tab left the question deferring every thirty seconds for ever

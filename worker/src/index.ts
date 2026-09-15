@@ -309,7 +309,19 @@ export default {
         const result = await handleQueueMessagePlaced(env, message.body);
         const queueId = runtimeQueueMessageId(message.body);
         if (!result.placed) console.warn(`[runtime-queue] task=${queueId} ran unplaced`);
-        if (result.action === 'ack') message.ack();
+        if (result.action === 'ack') {
+          /* A requeue says so and a retry says so; an ack said nothing — and
+             three of its four reasons are work vanishing rather than work
+             finishing. That silence is how fifteen runtimes went five releases
+             without an upgrade with no line anywhere to show for it. */
+          if (result.reason !== 'completed') {
+            console.warn(
+              `[runtime-queue] task=${queueId} action=ack ` +
+              `reason=${logValue(result.reason)}`,
+            );
+          }
+          message.ack();
+        }
         else if (result.action === 'requeue') {
           console.warn(
             `[runtime-queue] task=${queueId} action=requeue ` +

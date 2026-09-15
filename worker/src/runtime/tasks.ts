@@ -233,6 +233,18 @@ export async function runtimeTaskByDedupeKey(
   return row ? task(row) : null;
 }
 
+/** Just the kind, for a decision taken before the task is leased. */
+export async function runtimeTaskKind(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+): Promise<RuntimeTaskKind | null> {
+  const [row] = await tx<{ kind: RuntimeTaskKind }[]>`
+    select kind from runtime_task
+     where id = ${taskId} and business_id = ${businessId}`;
+  return row?.kind ?? null;
+}
+
 export async function runtimeTaskForRun(
   tx: postgres.TransactionSql,
   businessId: string,
