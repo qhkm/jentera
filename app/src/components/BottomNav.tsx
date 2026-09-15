@@ -67,7 +67,11 @@ export function BottomNav<T extends string>({ items, current, onGo, onChat, labe
     >
       {primary.slice(0, 2).map(button)}
       {onChat && (
-        <button type="button" className="bottom-nav-chat" onClick={onChat}>
+        <button
+          type="button"
+          className="bottom-nav-chat relative flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px] transition-colors text-brand"
+          onClick={onChat}
+        >
           <span className="bottom-nav-chat-icon">
             <ChatCircleText size={19} aria-hidden="true" />
           </span>

@@ -59,18 +59,6 @@
 .routine-footer { display: flex; gap: 10px; padding-top: 6px; }
 .routine-footer svg { margin-top: 5px; flex-shrink: 0; }
 .dashboard-bottom-nav > button { min-width: 0; }
-.bottom-nav-chat {
-  position: relative;
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 10px 0;
-  color: var(--accent-green);
-  font-size: 10px;
-  font-weight: 500;
-}
 .bottom-nav-chat-icon {
   position: relative;
   isolation: isolate;
@@ -83,7 +71,7 @@
 .bottom-nav-chat-icon::before {
   content: '';
   position: absolute;
-  inset: -7px;
+  inset: -3px;
   z-index: -1;
   border-radius: 50%;
   background: rgb(var(--accent-green-rgb) / 0.12);
