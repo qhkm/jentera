@@ -201,7 +201,15 @@ export async function dispatchRuntimeRun(
     expectedRelease: runtime.desiredRelease,
     fetch: options.fetch,
   });
+  /* [runtime-dispatch] Temporary instrumentation, 15 September 2026. Every
+     task since 19:18 MYT on 14 September has failed with "exceeded its time
+     limit before Hermes started" while every layer probes healthy from the
+     sprite side, so the missing view is what this call actually does. Fixed
+     labels and timings only — never the input, the instructions, the grant or
+     any credential. Remove once the cause is known. */
+  const readyStartedAt = Date.now();
   const readiness = await client.ready();
+  const readyMs = Date.now() - readyStartedAt;
   if (payload.profile && !readiness.specialistProfiles.includes(payload.profile)) {
     throw new Error('business specialist profile has not reached the runtime yet');
   }
@@ -214,8 +222,13 @@ export async function dispatchRuntimeRun(
   }
   stage('runner_ready');
   const runSeconds = runSecondsFor(payload.responseMode, reservation.maxRunSeconds);
-  if (Date.now() - reservation.startedAt.getTime() > runSeconds * 1_000) {
+  const elapsedMs = Date.now() - reservation.startedAt.getTime();
+  if (elapsedMs > runSeconds * 1_000) {
     if (!task.remoteRunId) {
+      console.warn('[runtime-dispatch]', JSON.stringify({
+        stage: 'budget_spent_before_start', task: task.id, attempt: task.attempt,
+        elapsedMs, runSeconds, readyMs, responseMode: payload.responseMode ?? 'default',
+      }));
       throw new Error('runtime task exceeded its time limit before Hermes started');
     }
     return stoppedRunOutcome(await client.stop(task.id), task.remoteRunId, payload);
@@ -225,7 +238,13 @@ export async function dispatchRuntimeRun(
     task.businessId,
     task.id,
   );
-  const started = await client.start({
+  const startBeganAt = Date.now();
+  console.warn('[runtime-dispatch]', JSON.stringify({
+    stage: 'starting', task: task.id, attempt: task.attempt, elapsedMs, readyMs, runSeconds,
+  }));
+  let started;
+  try {
+    started = await client.start({
     businessId: task.businessId,
     taskId: task.id,
     leaseToken,
@@ -245,8 +264,23 @@ export async function dispatchRuntimeRun(
        FIX:FINDINGS B5). The pre-start guard above guarantees it is still in
        the future at this point. */
     deadlineAt: reservation.startedAt.getTime() + runSeconds * 1_000,
-    ...(keepaliveUntil ? { keepaliveUntil } : {}),
-  });
+      ...(keepaliveUntil ? { keepaliveUntil } : {}),
+    });
+  } catch (error) {
+    /* The name and a bounded message: a runner error can carry a status line
+       but never page content, and this must not become a leak. */
+    console.warn('[runtime-dispatch]', JSON.stringify({
+      stage: 'start_threw', task: task.id, attempt: task.attempt,
+      afterMs: Date.now() - startBeganAt, elapsedMs, readyMs,
+      name: error instanceof Error ? error.name : 'Error',
+      message: error instanceof Error ? error.message.slice(0, 120) : '',
+    }));
+    throw error;
+  }
+  console.warn('[runtime-dispatch]', JSON.stringify({
+    stage: 'started', task: task.id, attempt: task.attempt,
+    startMs: Date.now() - startBeganAt, hermesRunId: Boolean(started.hermesRunId),
+  }));
   stage('hermes_started');
   const remoteRunId = started.hermesRunId;
   if (!remoteRunId) throw new Error('runner returned no Hermes run id');
