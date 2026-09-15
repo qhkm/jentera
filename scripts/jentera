@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+# jentera — one entry point for the three deploys, and the checks that refuse.
+#
+#   jentera deploy app [message]     build app/ and publish to Pages (deploy.sh)
+#   jentera deploy worker            wrangler deploy from worker/
+#   jentera deploy runtime -m "why"  pin a bundle and converge the fleet
+#   jentera status                   what is live, what is pending, nothing else
+#
+# Add --dry-run to any deploy to run every check and stop before shipping.
+# Add --force to ship past a refusal you have read and understood.
+#
+# This is a dispatcher, not a replacement. deploy.sh verifies the served assets
+# are real files rather than the SPA fallback; check-transfer-fields.mjs blocks
+# a provision field that has outrun its pinned bundle; ship-runtime.sh runs the
+# release gate and waits for convergence. All of that still happens. What this
+# adds is the set of preconditions nobody was checking, each of which has cost
+# a real incident:
+#
+#   - deploying a checkout carrying another session's uncommitted work
+#   - deploying a HEAD that would open a route meant to stay shut
+#   - a migration written, committed, and never applied to production
+#   - a page committed and, for hours, never deployed at all
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CURL=/usr/bin/curl   # rtk rewrites curl output into a schema; these need bytes
+DRY=0
+FORCE=0
+ARGS=()
+for a in "$@"; do
+  case "$a" in
+    --dry-run) DRY=1 ;;
+    --force)   FORCE=1 ;;
+    *)         ARGS+=("$a") ;;
+  esac
+done
+set -- "${ARGS[@]:-}"
+
+CMD="${1:-help}"
+TARGET="${2:-}"
+
+red()   { printf '\033[31m%s\033[0m\n' "$*"; }
+green() { printf '\033[32m%s\033[0m\n' "$*"; }
+warn()  { printf '\033[33m%s\033[0m\n' "$*"; }
+
+REFUSALS=0
+refuse() {
+  REFUSALS=$((REFUSALS + 1))
+  red "  REFUSE: $*"
+}
+
+# ---------------------------------------------------------------- checks ----
+
+check_tree() {
+  echo "== working tree"
+  local dirty
+  dirty="$(git -C "$ROOT" status --porcelain)"
+  if [[ -n "$dirty" ]]; then
+    # A deploy ships the working directory, not HEAD. Another session's
+    # half-finished work is the thing most likely to be sitting here.
+    refuse "uncommitted changes would ship with this deploy:"
+    printf '%s\n' "$dirty" | sed 's/^/          /' | head -20
+  else
+    green "  clean"
+  fi
+
+  local branch
+  branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
+  [[ "$branch" == "main" ]] && green "  on main" || warn "  on branch $branch, not main"
+
+  local ahead
+  ahead="$(git -C "$ROOT" log --oneline @{u}..HEAD 2>/dev/null | wc -l | tr -d ' ')"
+  [[ "${ahead:-0}" -gt 0 ]] && warn "  $ahead commit(s) not pushed — history will not match what is live"
+}
+
+# Every `create table` in migrations/ must exist in production. Nothing else
+# tracks whether a migration was applied: the test harness replays the whole
+# directory, so a file can be correct, committed, and never run against Neon.
+check_migrations() {
+  echo "== migrations applied to production"
+  local wanted found missing
+  # Strips an optional `public.` qualifier so a schema-qualified create does
+  # not look like a table called "public". Only covers CREATE TABLE: a
+  # migration that merely ALTERs — 046 adds session.kind — is invisible here.
+  wanted="$(grep -rhoE 'create table if not exists (public\.)?[a-z_]+' "$ROOT"/worker/migrations/*.sql \
+            | sed -E 's/.*create table if not exists (public\.)?//' | sort -u)"
+  if ! found="$("$ROOT"/worker/scripts/stats.sh sql \
+      "select table_name from information_schema.tables where table_schema = 'public'" 2>/dev/null \
+      | tr -d ' |' | sort -u)"; then
+    warn "  could not reach the database; skipping"
+    return
+  fi
+  missing="$(comm -23 <(echo "$wanted") <(echo "$found") || true)"
+  if [[ -n "$missing" ]]; then
+    refuse "migration files exist for tables production does not have:"
+    printf '%s\n' "$missing" | sed 's/^/          /'
+    echo "          apply them before deploying code that reads them"
+  else
+    green "  every migrated table exists"
+  fi
+}
+
+# Print the flags rather than judge them: the point is that you see what you
+# are about to ship while you still have the chance not to.
+check_flags() {
+  echo "== flags in wrangler.toml"
+  grep -E '^[A-Z_]+ *= *"(true|false|open|waitlist)"' "$ROOT/worker/wrangler.toml" \
+    | sed 's/^/  /'
+  if grep -q 'NATIVE_AUTH_ENABLED = "true"' "$ROOT/worker/wrangler.toml"; then
+    if ! $CURL -fsS -m 10 -o /dev/null "https://jentera.ai/.well-known/assetlinks.json" 2>/dev/null; then
+      refuse "NATIVE_AUTH_ENABLED is true but jentera.ai serves no assetlinks.json"
+      echo "          the callback is still a scheme any installed app can claim"
+    fi
+  fi
+}
+
+check_live() {
+  echo "== live now"
+  printf '  jentera.ai/privacy   %s\n' "$($CURL -s -o /dev/null -m 10 -w '%{http_code}' https://jentera.ai/privacy)"
+  printf '  api native mint      %s (404 expected while the flag is off)\n' \
+    "$($CURL -s -o /dev/null -m 10 -X POST -w '%{http_code}' \
+       -H 'Origin: https://jentera.ai' -H 'Content-Type: application/json' \
+       -d '{}' https://api.jentera.ai/api/auth/native/code)"
+}
+
+gate() {
+  echo
+  if [[ "$REFUSALS" -gt 0 ]]; then
+    if [[ "$FORCE" -eq 1 ]]; then
+      warn "$REFUSALS refusal(s) overridden with --force"
+    else
+      red "$REFUSALS refusal(s). Fix them, or re-run with --force if you have read each one."
+      exit 1
+    fi
+  fi
+  if [[ "$DRY" -eq 1 ]]; then
+    green "dry run: every check ran, nothing shipped"
+    exit 0
+  fi
+}
+
+# --------------------------------------------------------------- targets ----
+
+case "$CMD" in
+  status)
+    check_tree; check_migrations; check_flags; check_live
+    ;;
+
+  deploy)
+    case "$TARGET" in
+      app)
+        check_tree; check_live; gate
+        # deploy.sh ships the working directory and verifies the served hash.
+        "$ROOT/deploy.sh" "${3:-deploy from jentera dispatcher}"
+        ;;
+      worker)
+        check_tree; check_migrations; check_flags; gate
+        echo "== worker changes since the last five commits touching worker/"
+        git -C "$ROOT" log --oneline -5 -- worker/ | sed 's/^/  /'
+        ( cd "$ROOT/worker" && pnpm run deploy )
+        ;;
+      runtime)
+        check_tree; check_migrations; gate
+        # ship-runtime.sh owns the pin, the release gate, convergence and
+        # fleet-verify. Do not reimplement any of it here.
+        shift 2 || true
+        "$ROOT/worker/scripts/ship-runtime.sh" "$@"
+        ;;
+      *)
+        red "unknown deploy target: ${TARGET:-none}"
+        echo "  app | worker | runtime"
+        exit 1
+        ;;
+    esac
+    ;;
+
+  *)
+    sed -n '2,12p' "$0"
+    ;;
+esac
