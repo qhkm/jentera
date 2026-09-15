@@ -50,6 +50,7 @@ describe('runtime provisioning route', () => {
       canManage: true,
       setupStatus: null,
       setupProgress: null,
+      activeWork: null,
       runtime: null,
       budget: {
         budget: {
@@ -62,6 +63,42 @@ describe('runtime provisioning route', () => {
         usage: { inputTokens: 0, outputTokens: 0, runtimeMs: 0, costMicrousd: 0 },
       },
     });
+  });
+
+  it('shows the viewer their active task without exposing a colleague private chat', async () => {
+    const ownerRun = await asTenant(A, async (tx) => {
+      const run = await startRun(tx, A, {
+        kind: 'ask',
+        triggerShape: 'owner.ask',
+        triggerRef: { question: 'Prepare tomorrow’s supplier comparison' },
+        requestedBy: ownerId,
+        runtime: 'hermes-sprite',
+        model: 'MiniMax-M3',
+      });
+      await enqueueRuntimeTask(tx, A, {
+        kind: 'run',
+        runId: run.id,
+        dedupeKey: `run:${run.id}`,
+        payload: { objective: 'Prepare tomorrow’s supplier comparison' },
+      });
+      return run;
+    });
+
+    const owner = await jsonOf<{ activeWork: {
+      count: number; runId: string; objective: string; status: string; startedAt: string;
+    } | null }>(await call('GET', '/api/runtime', testEnv(), ownerCookie));
+    expect(owner.activeWork).toMatchObject({
+      count: 1,
+      runId: ownerRun.id,
+      objective: 'Prepare tomorrow’s supplier comparison',
+      status: 'queued',
+    });
+    expect(owner.activeWork?.startedAt).toBeTruthy();
+
+    const staff = await jsonOf<{ activeWork: unknown }>(
+      await call('GET', '/api/runtime', testEnv(), staffCookie),
+    );
+    expect(staff.activeWork).toBeNull();
   });
 
   it('shows the latest attested Sprite region and a non-blocking placement warning', async () => {

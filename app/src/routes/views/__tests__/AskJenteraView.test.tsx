@@ -72,22 +72,17 @@ describe('compose-first Ask Jentera', () => {
 
     await waitFor(() => expect(repo.ask).toHaveBeenCalledWith(
       'Review this file and tell me what stands out.',
-      expect.objectContaining({ attachment: file, responseMode: 'quick' }),
+      expect.objectContaining({ attachment: file, mode: 'work' }),
     ));
+    expect(vi.mocked(repo.ask).mock.calls[0]?.[1]).not.toHaveProperty('responseMode');
     expect(screen.getByText('sales.xlsx')).toBeVisible();
   });
-  it('shows Quick and Research as explicit answer modes', async () => {
-    const user = userEvent.setup();
+  it('routes the request automatically instead of asking the user to choose an answer mode', async () => {
     await mount();
-    const modes = await screen.findByRole('group', { name: 'Answer mode' });
-    const quick = within(modes).getByRole('button', { name: 'Quick' });
-    const research = within(modes).getByRole('button', { name: 'Research' });
-    expect(quick).toHaveAttribute('aria-pressed', 'true');
-    expect(research).toHaveAttribute('aria-pressed', 'false');
-    expect(research).toHaveAttribute('title', 'A more thorough answer that may take several minutes.');
-    await user.click(research);
-    expect(quick).toHaveAttribute('aria-pressed', 'false');
-    expect(research).toHaveAttribute('aria-pressed', 'true');
+    expect(await screen.findByRole('textbox')).toBeVisible();
+    expect(screen.queryByRole('group', { name: 'Answer mode' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Quick' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Research' })).toBeNull();
   });
   it('explains owner browser control, blocks sending, and links to the hand-back control', async () => {
     const user = userEvent.setup();
@@ -140,14 +135,14 @@ describe('compose-first Ask Jentera', () => {
     expect(input).toHaveValue(draft);
   });
 
-  it('allows a follow-up draft while work is pending, without sending it prematurely', async () => {
+  it('accepts another message while earlier work is still pending', async () => {
     const user = userEvent.setup();
     const repo = new LocalRepository();
-    let finish!: (answer: AskAnswer) => void;
+    const finishes: Array<(answer: AskAnswer) => void> = [];
     repo.ask = vi.fn(
       () =>
         new Promise<AskAnswer>((resolve) => {
-          finish = resolve;
+          finishes.push(resolve);
         }),
     );
     await mount(<Harness />, repo);
@@ -156,24 +151,26 @@ describe('compose-first Ask Jentera', () => {
     await user.keyboard('{Meta>}{Enter}{/Meta}');
     await waitFor(() => expect(repo.ask).toHaveBeenCalledOnce());
     expect(screen.getByText('Jentera can make mistakes. Verify important information before acting.')).toBeVisible();
-    const send = screen.getByRole('button', { name: 'Send message' });
-    expect(send).toBeDisabled();
     await user.type(input, 'Make it suitable for a quotation');
     await user.keyboard('{Meta>}{Enter}{/Meta}');
-    expect(repo.ask).toHaveBeenCalledOnce();
-    expect(input).toHaveValue('Make it suitable for a quotation');
+    expect(repo.ask).toHaveBeenCalledTimes(2);
+    expect(input).toHaveValue('');
     await act(async () =>
-      finish({
+      finishes[0]({
         text: 'Here is the draft.\n\nPlease review the delivery date.',
         grounded: false,
         usedKeys: [],
       }),
     );
     expect(await screen.findByRole('button', { name: 'Copy reply' })).toBeInTheDocument();
-    expect(send).toBeEnabled();
-    expect(input).toHaveValue('Make it suitable for a quotation');
+    await act(async () =>
+      finishes[1]({
+        text: 'I made it suitable for a quotation.',
+        grounded: false,
+        usedKeys: [],
+      }),
+    );
     await user.click(screen.getByRole('button', { name: 'Make it shorter' }));
-    expect(repo.ask).toHaveBeenCalledOnce();
     expect(input).toHaveValue('Make your last answer shorter, keeping the important details.');
   });
 

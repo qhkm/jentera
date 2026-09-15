@@ -251,7 +251,7 @@ export default function Dashboard() {
         </aside>}
 
         <div className="dashboard-content min-w-0 flex-1">
-          <ComputerStatus mobileTarget={computerStatusTarget} onOpenChat={isChat ? undefined : () => go('chat')} onOpenKnowledge={() => go('business', 'knows')} />
+          <ComputerStatus mobileTarget={computerStatusTarget} onOpenChat={isChat ? undefined : () => go('chat')} onOpenKnowledge={() => go('business', 'knows')} onOpenActivity={openTask} />
           {view === 'home' && <HomeView b={b} connections={connections} onNavigate={go} />}
           {/* Keep the owner conversation mounted while they inspect another
               section. Returning to Ask Jentera must not erase the exchange. */}

@@ -47,7 +47,7 @@ describe('useAsk durable answers', () => {
     );
     const { result } = renderHook(
       () => useAsk(business, { handled: 0, needs: 0 }, (key) =>
-        key === 'ask.thinking' ? 'Thinking…' : key),
+        key === 'ask.accepted' ? 'Starting…' : key),
       { wrapper },
     );
     await waitFor(() => expect(result.current).not.toBeNull());
@@ -57,14 +57,14 @@ describe('useAsk durable answers', () => {
       result.current!.send('second');
     });
     expect(result.current!.messages.map((message) => message.text)).toEqual([
-      'first', 'Thinking…', 'second', 'Thinking…',
+      'first', 'Starting…', 'second', 'Starting…',
     ]);
 
     await act(async () => {
       pending.get('second')?.({ text: 'second answer', usedKeys: [], grounded: false });
     });
     expect(result.current!.messages.map((message) => message.text)).toEqual([
-      'first', 'Thinking…', 'second', 'second answer',
+      'first', 'Starting…', 'second', 'second answer',
     ]);
 
     await act(async () => {
@@ -135,7 +135,7 @@ describe('useAsk durable answers', () => {
     expect(warmAgent).toHaveBeenCalledTimes(1);
   });
 
-  it('asks for a quick reply by default and a deep one only when toggled', async () => {
+  it('automatically routes business questions and explicit research without a mode picker', async () => {
     const repo: Repository = new LocalRepository();
     const seen: AskOptions[] = [];
     repo.ask = (_question: string, next?: AskOptions): Promise<AskAnswer> => {
@@ -152,13 +152,13 @@ describe('useAsk durable answers', () => {
       { wrapper },
     );
     await waitFor(() => expect(result.current).not.toBeNull());
-    await act(async () => { result.current!.send('are we open?', 'work'); });
-    expect(seen[0]?.responseMode).toBe('quick');
-    expect(result.current!.messages[1]).toMatchObject({ depth: 'quick' });
-    act(() => result.current!.setDeep(true));
-    expect(result.current!.deep).toBe(true);
-    await act(async () => { result.current!.send('compare suppliers', 'work'); });
-    expect(seen[1]?.responseMode).toBe('deep');
+    await act(async () => { result.current!.send('are we open?'); });
+    expect(seen[0]).toMatchObject({ mode: 'ask' });
+    expect(seen[0]).not.toHaveProperty('responseMode');
+    expect(result.current!.messages[1]).toMatchObject({ depth: 'quick', mode: 'ask' });
+    await act(async () => { result.current!.send('/research compare suppliers'); });
+    expect(seen[1]).toMatchObject({ mode: 'work' });
+    expect(seen[1]).not.toHaveProperty('responseMode');
     expect(result.current!.messages[1]).toMatchObject({ state: 'done', kind: 'conversation' });
     expect(result.current!.messages[3]).toMatchObject({ depth: 'deep' });
   });

@@ -31,7 +31,6 @@ import { INLINE_SAFETY_NET_SECONDS, runInlineSlice } from '../runtime/inline-sli
 import type { BackgroundContext, InlineSliceOptions } from '../runtime/inline-slice';
 import {
   boundedAgentInput,
-  prepareAsk,
   prepareHermesAgent,
   retrieve,
   retrieveHermesContext,
@@ -457,6 +456,7 @@ export async function handleRuns(
           objective: taskTitle(question),
           outcome: result.text.slice(0, 500),
           status: 'completed',
+          kind: 'conversation',
           function: 'ask',
           channel: 'app',
           risk: 'low',
@@ -466,7 +466,13 @@ export async function handleRuns(
         });
         await finishRun(tx, id.businessId, run.id, 'completed', { grounded: result.grounded });
       });
-      return json({ ok: true, runId: run.id, ...result }, {}, cors);
+      return json({
+        ok: true,
+        runId: run.id,
+        kind: 'conversation',
+        taskStatus: 'completed',
+        ...result,
+      }, {}, cors);
     } catch (e) {
       const message = e instanceof Error ? e.message : 'could not answer that';
       await withTenant(env, id.businessId, (tx) =>
@@ -769,7 +775,7 @@ async function startDurableAsk(
     return { ...context, specialist: await specialistForTurn(tx, businessId, sessionId, question, specialists) };
   });
   const prepared = prepareHermesAgent(agentQuestion, facts, work, new Date(), specialist, speaker);
-  /* Quick by default, as on Telegram; the toggle or a typed /deep opts in
+  /* Quick by default, as on Telegram; a typed /deep or /research opts in
      to the research loop. Chat was hard-wired to deep until 2026-09-10 and
      every web message paid for it. */
   const responseMode = requestedMode ?? responseModeFor(question);

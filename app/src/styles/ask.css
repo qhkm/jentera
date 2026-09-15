@@ -303,35 +303,6 @@
 .ask-attach-button > svg {
   color: var(--accent-green);
 }
-.ask-mode-picker {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  min-height: 36px;
-  padding: 3px;
-  border: 1px solid var(--rail);
-  border-radius: 999px;
-  background: var(--workspace-control);
-}
-.ask-mode-option {
-  min-height: 28px;
-  padding: 0 9px;
-  border-radius: 999px;
-  color: var(--text-secondary);
-  font-size: 10px;
-  white-space: nowrap;
-}
-.ask-mode-option:hover {
-  color: var(--text);
-}
-.ask-mode-option:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-.ask-mode-option[aria-pressed='true'] {
-  background: rgb(var(--accent-green-rgb) / var(--accent-fill-alpha));
-  color: var(--accent-green);
-}
 .ask-context-link {
   display: inline-flex;
   align-items: center;
@@ -1022,10 +993,6 @@ button.ask-context-link:hover {
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
-  }
-  .ask-mode-option {
-    min-height: 38px;
-    padding-inline: 7px;
   }
   .ask-studio-send {
     width: 44px;

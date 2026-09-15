@@ -79,11 +79,13 @@
   min-height: 0;
 }
 .computer-status { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 12px; padding: 16px; margin-bottom: 20px; border: 1px solid var(--rail); border-radius: 14px; background: var(--bg-card); flex-shrink: 0; }
-.computer-status > svg { flex-shrink: 0; margin-top: 2px; color: var(--text-secondary); }
+.computer-status > :is(svg, .jentera-mark) { flex-shrink: 0; margin-top: 2px; color: var(--text-secondary); }
 .computer-status-copy { flex: 1; min-width: 180px; }
 .computer-status-copy [role="status"] { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; }
 .computer-status-copy [role="status"] > span { color: var(--text-secondary); }
 .computer-status-copy p { margin: 6px 0 0; font-size: 12px; line-height: 1.6; color: var(--text-secondary); }
+.computer-status-objective { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; color: var(--text) !important; font-weight: 550; }
+.computer-status-active { border-color: rgb(var(--accent-green-rgb) / .32); background: linear-gradient(120deg, rgb(var(--accent-green-rgb) / .08), transparent 75%), var(--bg-card); }
 .computer-status-setup { background: linear-gradient(120deg, rgb(var(--accent-green-rgb) / .12), transparent 85%), var(--bg-card); border-color: rgb(var(--accent-green-rgb) / .35); box-shadow: inset 3px 0 0 rgb(var(--accent-green-rgb) / .65); }
 .computer-status-setup > svg { color: var(--accent-green); }
 .computer-setup-progress { margin-top: 12px; max-width: 460px; }
@@ -100,12 +102,13 @@
 .computer-status-header-hidden { display: none; }
 .computer-status-disclosure { position: relative; }
 .computer-status-trigger { position: relative; display: grid; place-items: center; width: 36px; height: 40px; color: var(--text-secondary); border-radius: 10px; }
+.computer-status-trigger .jentera-mark { width: 22px; height: 22px; }
 .computer-status-trigger:focus-visible { outline: 2px solid var(--accent-green); }
 .computer-status-dot { position: absolute; right: 5px; bottom: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
-.computer-status-trigger:is([data-state="ready"], [data-state="busy"]) .computer-status-dot { background: var(--accent-green); }
-.computer-status-trigger:is([data-state="attention"], [data-state="missing"], [data-state="unknown"], [data-state="unavailable"]) .computer-status-dot { background: var(--color-amber-500, #d99b26); }
+.computer-status-trigger:is([data-state="ready"], [data-state="busy"], [data-state="working"], [data-state="queued"]) .computer-status-dot { background: var(--accent-green); }
+.computer-status-trigger:is([data-state="attention"], [data-state="missing"], [data-state="unknown"], [data-state="unavailable"], [data-state="needs_approval"]) .computer-status-dot { background: var(--color-amber-500, #d99b26); }
 .computer-status-popover { position: fixed; top: 64px; right: 12px; width: min(340px, calc(100vw - 24px)); max-height: calc(100dvh - 80px); overflow-y: auto; padding: 16px; border: 1px solid var(--rail); border-radius: 14px; background: var(--bg-card); box-shadow: 0 12px 32px rgb(0 0 0 / 0.18); z-index: 100; }
-.computer-status-popover > svg { display: none; }
+.computer-status-popover > :is(svg, .jentera-mark) { display: none; }
 .computer-status-popover .computer-status-actions:not(:empty) { margin-top: 12px; }
 @media (max-width: 767px) {
   /* Chat's setup banner must not compete with the conversation for height.

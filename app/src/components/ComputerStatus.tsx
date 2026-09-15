@@ -7,9 +7,11 @@ import { useSignedIn } from '@/lib/repo/gate';
 import { useT } from '@/i18n/I18nProvider';
 import { computerStatus } from '@/lib/computer-status';
 import { ComputerSetupProgress } from './ComputerSetupProgress';
+import { JenteraMark } from './JenteraMark';
 
-export function ComputerStatus({ onOpenChat, onOpenKnowledge, mobileTarget }: {
+export function ComputerStatus({ onOpenChat, onOpenKnowledge, onOpenActivity, mobileTarget }: {
   onOpenChat?: () => void; onOpenKnowledge: () => void;
+  onOpenActivity?: (runId?: string, title?: string) => void;
   mobileTarget?: HTMLElement | null;
 }) {
   const repo = useRepository();
@@ -47,49 +49,72 @@ export function ComputerStatus({ onOpenChat, onOpenKnowledge, mobileTarget }: {
         const next = await repo.runtimeStatus();
         if (!active) return;
         setData(next); setError(false);
-        delay = ['ready', 'asleep', 'busy'].includes(computerStatus(next)) ? 30000 : 3000;
+        delay = next.activeWork ? 5000
+          : ['ready', 'asleep', 'busy'].includes(computerStatus(next)) ? 30000 : 3000;
       } catch { if (active) { setData(null); setError(true); } }
       if (active) timer = setTimeout(() => { if (!document.hidden) void read(); }, delay);
     }
     const resume = () => { if (!document.hidden) setRefresh(n => n + 1); };
     void read();
     document.addEventListener('visibilitychange', resume);
-    return () => { active = false; clearTimeout(timer); document.removeEventListener('visibilitychange', resume); };
+    window.addEventListener('jentera:work-change', resume);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', resume);
+      window.removeEventListener('jentera:work-change', resume);
+    };
   }, [repo, signedIn, refresh]);
   if (!signedIn) return null;
   const state = error ? 'unknown' : data ? computerStatus(data) : 'checking';
-  const compact = ['ready', 'asleep', 'busy'].includes(state);
+  const activeWork = error ? null : data?.activeWork ?? null;
+  const compact = Boolean(activeWork) || ['ready', 'asleep', 'busy'].includes(state);
   const manage = data?.canManage === true;
-  const headerOnly = ['ready', 'asleep', 'busy', 'checking', 'waking', 'updating'].includes(state);
+  const headerOnly = Boolean(activeWork) || ['ready', 'asleep', 'busy', 'checking', 'waking', 'updating'].includes(state);
   const settingUp = ['settingUp', 'updating'].includes(state);
+  const workState = activeWork?.status === 'needs_approval' ? 'needsApproval'
+    : activeWork?.status === 'queued' ? 'queued' : 'working';
+  const title = activeWork ? t('workStatus.title') : t('computer.title');
+  const status = activeWork ? t(`workStatus.${workState}`) : t(`computer.${state}`);
+  const openActivity = () => {
+    setOpen(false);
+    if (activeWork) onOpenActivity?.(activeWork.runId, activeWork.objective);
+  };
   const content = <>
-      <Desktop size={18} aria-hidden="true" />
+      {activeWork ? <JenteraMark size={22} /> : <Desktop size={18} aria-hidden="true" />}
       <div className="computer-status-copy">
-        <div role="status"><span>{t('computer.title')}</span><strong>{t(`computer.${state}`)}</strong></div>
-        {!compact && <p>{t(`computer.${state}.detail`)}</p>}
-        {settingUp && data?.setupProgress && <ComputerSetupProgress progress={data.setupProgress} />}
-        {!compact && !manage && ['missing', 'attention'].includes(state) && <p>{t('computer.owner')}</p>}
+        <div role="status"><span>{title}</span><strong>{status}</strong></div>
+        {activeWork ? <>
+          <p className="computer-status-objective">{activeWork.objective}</p>
+          {activeWork.count > 1 && <p>{t('workStatus.more', { n: activeWork.count - 1 })}</p>}
+        </> : <>
+          {!compact && <p>{t(`computer.${state}.detail`)}</p>}
+          {settingUp && data?.setupProgress && <ComputerSetupProgress progress={data.setupProgress} />}
+          {!compact && !manage && ['missing', 'attention'].includes(state) && <p>{t('computer.owner')}</p>}
+        </>}
       </div>
       <div className="computer-status-actions">
-        {manage && ['missing', 'attention'].includes(state) && <Link to="/setup" className="btn btn-outline">
+        {activeWork && onOpenActivity && <button type="button" className="ask-inline-action" onClick={openActivity}>{t('workStatus.open')}</button>}
+        {!activeWork && manage && ['missing', 'attention'].includes(state) && <Link to="/setup" className="btn btn-outline">
           {t(state === 'missing' ? 'computer.setup' : 'computer.review')}
         </Link>}
-        {['settingUp', 'updating', 'waking'].includes(state) && <button type="button" className="ask-inline-action" onClick={onOpenKnowledge}>{t('computer.knowledge')}</button>}
-        {compact && onOpenChat && <button type="button" className="ask-inline-action" onClick={onOpenChat}>{t('computer.job')}</button>}
-        {['unknown', 'attention'].includes(state) && <button type="button" className="ask-inline-action" onClick={() => setRefresh(n => n + 1)}>{t('computer.refresh')}</button>}
+        {!activeWork && ['settingUp', 'updating', 'waking'].includes(state) && <button type="button" className="ask-inline-action" onClick={onOpenKnowledge}>{t('computer.knowledge')}</button>}
+        {!activeWork && compact && onOpenChat && <button type="button" className="ask-inline-action" onClick={onOpenChat}>{t('computer.job')}</button>}
+        {!activeWork && ['unknown', 'attention'].includes(state) && <button type="button" className="ask-inline-action" onClick={() => setRefresh(n => n + 1)}>{t('computer.refresh')}</button>}
       </div>
   </>;
   return <>
-    <section className={`computer-status ${settingUp ? 'computer-status-setup' : ''} ${compact ? 'computer-status-compact' : ''} ${mobileTarget && headerOnly ? 'computer-status-header-hidden' : ''}`} aria-label={t('computer.title')}>
+    <section className={`computer-status ${settingUp ? 'computer-status-setup' : ''} ${activeWork ? 'computer-status-active' : ''} ${compact ? 'computer-status-compact' : ''} ${mobileTarget && headerOnly ? 'computer-status-header-hidden' : ''}`} aria-label={title}>
       {content}
     </section>
     {mobileTarget && createPortal(<div ref={disclosure} className="computer-status-disclosure">
-      <button ref={trigger} type="button" className="computer-status-trigger" data-state={state}
-        aria-label={`${t('computer.title')} · ${t(`computer.${state}`)}`}
+      <button ref={trigger} type="button" className="computer-status-trigger" data-state={activeWork?.status ?? state}
+        aria-label={`${title} · ${status}${activeWork ? ` · ${activeWork.objective}` : ''}`}
         aria-expanded={open} aria-controls={open ? panelId : undefined} onClick={() => setOpen(value => !value)}>
-        <Desktop size={18} aria-hidden="true" /><span className="computer-status-dot" aria-hidden="true" />
+        {activeWork ? <JenteraMark size={22} /> : <Desktop size={18} aria-hidden="true" />}
+        <span className="computer-status-dot" aria-hidden="true" />
       </button>
-      {open && <div id={panelId} className={`computer-status-popover ${settingUp ? 'computer-status-setup' : ''}`} role="region" aria-label={t('computer.title')}>
+      {open && <div id={panelId} className={`computer-status-popover ${settingUp ? 'computer-status-setup' : ''} ${activeWork ? 'computer-status-active' : ''}`} role="region" aria-label={title}>
         {content}
       </div>}
     </div>, mobileTarget)}

@@ -103,11 +103,17 @@ describe('Ask Jentera runtime bridge', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
+    const body = await response.json() as { runId: string };
+    expect(body).toMatchObject({
       ok: true,
       text: 'A drafted reply.',
       grounded: false,
+      kind: 'conversation',
+      taskStatus: 'completed',
     });
+    const [record] = await asOwner((sql) => sql<{ kind: string }[]>`
+      select kind from work_record where run_id = ${body.runId}`);
+    expect(record.kind).toBe('conversation');
   });
 
   it('routes a mode-less Ask to durable Hermes work by default', async () => {

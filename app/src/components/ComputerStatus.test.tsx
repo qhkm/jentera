@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
@@ -9,10 +9,16 @@ import { computerStatus } from '@/lib/computer-status';
 import { ComputerStatus } from './ComputerStatus';
 
 const ready: RuntimeSummary = { status: 'ready', desiredRelease: 'v1', observedRelease: 'v1', lastReadyAt: '2026-09-12T00:00:00Z', lastError: null };
-function mount(read: () => Promise<RuntimeOverview>, signedIn = true, onOpenChat = vi.fn(), mobileTarget?: HTMLElement) {
+function mount(
+  read: () => Promise<RuntimeOverview>,
+  signedIn = true,
+  onOpenChat = vi.fn(),
+  mobileTarget?: HTMLElement,
+  onOpenActivity = vi.fn(),
+) {
   const repo = Object.assign(new LocalRepository(), { runtimeStatus: read });
   return render(<MemoryRouter><SignedInProvider value={signedIn}><RepositoryProvider repository={repo}>
-    <I18nProvider><ComputerStatus mobileTarget={mobileTarget} onOpenChat={onOpenChat} onOpenKnowledge={vi.fn()} /></I18nProvider>
+    <I18nProvider><ComputerStatus mobileTarget={mobileTarget} onOpenChat={onOpenChat} onOpenKnowledge={vi.fn()} onOpenActivity={onOpenActivity} /></I18nProvider>
   </RepositoryProvider></SignedInProvider></MemoryRouter>);
 }
 afterEach(() => vi.useRealTimers());
@@ -53,6 +59,29 @@ describe('computer readiness', () => {
   it('shows owner setup action without creating compute on mount', async () => {
     mount(async () => ({ runtime: null, canManage: true }));
     expect(await screen.findByRole('link', { name: 'Set up' })).toHaveAttribute('href', '/setup');
+  });
+  it('turns the header indicator into a useful link to the current task', async () => {
+    const target = document.createElement('div'); document.body.append(target);
+    const openActivity = vi.fn();
+    const activeWork = {
+      count: 2,
+      runId: '11111111-1111-4111-8111-111111111111',
+      objective: 'Prepare tomorrow’s supplier comparison',
+      status: 'working' as const,
+      startedAt: '2026-09-15T12:00:00.000Z',
+    };
+    const view = mount(async () => ({ runtime: ready, activeWork }), true, vi.fn(), target, openActivity);
+    try {
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole('button', {
+        name: `Jentera · Working on · ${activeWork.objective}`,
+      }));
+      const popover = document.querySelector<HTMLElement>('.computer-status-popover')!;
+      expect(within(popover).getByText(activeWork.objective)).toBeVisible();
+      expect(within(popover).getByText('1 more in progress')).toBeVisible();
+      await user.click(within(popover).getByRole('button', { name: 'View activity' }));
+      expect(openActivity).toHaveBeenCalledWith(activeWork.runId, activeWork.objective);
+    } finally { view.unmount(); target.remove(); }
   });
   it('keeps lifecycle actions out of a staff dashboard', async () => {
     mount(async () => ({ runtime: null, canManage: false }));

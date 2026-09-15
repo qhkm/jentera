@@ -137,6 +137,7 @@ export default function AskJenteraView({
       setAttachmentError(t('ask.attachment.tooLarge'));
       return;
     }
+    if (file) ask.warm();
     setAttachments((current) => ({ ...current, [ask.activeId]: file }));
   }
 
@@ -207,9 +208,9 @@ export default function AskJenteraView({
     });
   }
 
-  function submit(text = draft, mode: AskMode = 'work') {
+  function submit(text = draft, mode?: AskMode) {
     const body = text.trim() || (attachment ? t('ask.attachment.defaultPrompt') : '');
-    if (!body || busy || browserPaused) return;
+    if (!body || browserPaused) return;
     scroll.jumpToLatest();
     ask.send(body, mode, attachment);
     setDraft('');
@@ -417,11 +418,13 @@ export default function AskJenteraView({
               value={draft}
               onChange={(event) => {
                 setDraft(event.target.value);
+                if (event.target.value.trim()) ask.warm();
                 mentions.sync(
                   event.target.value,
                   event.target.selectionStart ?? event.target.value.length,
                 );
               }}
+              onFocus={ask.warm}
               onClick={(event) =>
                 mentions.sync(
                   event.currentTarget.value,
@@ -499,36 +502,11 @@ export default function AskJenteraView({
                   </span>
                 )}
               </div>
-              {/* Grouped with send, because it changes what send does. Left
-                  as a third child of a space-between row it was stranded in
-                  the middle of the composer, reading as a stray label. */}
               <div className="ask-writing-actions">
-                <div className="ask-mode-picker" role="group" aria-label={t('ask.mode.label')}>
-                  <button
-                    type="button"
-                    className="ask-mode-option"
-                    aria-pressed={!ask.deep}
-                    title={t('ask.mode.quick.hint')}
-                    disabled={busy}
-                    onClick={() => ask.setDeep(false)}
-                  >
-                    {t('ask.mode.quick')}
-                  </button>
-                  <button
-                    type="button"
-                    className="ask-mode-option"
-                    aria-pressed={ask.deep}
-                    title={t('ask.mode.research.hint')}
-                    disabled={busy}
-                    onClick={() => ask.setDeep(true)}
-                  >
-                    {t('ask.mode.research')}
-                  </button>
-                </div>
                 <button
                   type="submit"
                   className="ask-studio-send"
-                  disabled={(!draft.trim() && !attachment) || busy || browserPaused}
+                  disabled={(!draft.trim() && !attachment) || browserPaused}
                   aria-label={t('ask.studio.send')}
                 >
                   <ArrowUp size={20} weight="bold" aria-hidden="true" />

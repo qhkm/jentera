@@ -36,7 +36,7 @@ export async function handleRuntime(
   }
 
   if (url.pathname === '/api/runtime' && request.method === 'GET') {
-    const { runtime, budget, observedRegion, setupStatus, setupProgress } = await withTenant(
+    const { runtime, budget, observedRegion, setupStatus, setupProgress, activeWork } = await withTenant(
       env,
       identity.businessId,
       async (tx) => ({
@@ -53,6 +53,35 @@ export async function handleRuntime(
           from runtime_task where business_id = ${identity.businessId}
             and kind in ('provision','upgrade','reconcile') and status in ('queued','leased')
           order by (status = 'leased') desc, created_at desc limit 1`)[0] ?? null,
+        /* Only the viewer's own requests are named here. A business-wide
+           indicator must not reveal the objective of a colleague's private
+           chat just because both people share the same runtime. */
+        activeWork: (await tx<{
+          runId: string;
+          objective: string;
+          status: 'queued' | 'working' | 'needs_approval';
+          startedAt: Date;
+          count: number;
+        }[]>`select r.id as "runId",
+            left(coalesce(nullif(task.payload->>'objective', ''),
+                          nullif(r.trigger_ref->>'question', ''), 'Current task'), 160) as objective,
+            case when r.status = 'needs_approval' then 'needs_approval'
+                 when task.status = 'queued' then 'queued'
+                 else 'working' end as status,
+            coalesce(r.started_at, r.created_at) as "startedAt",
+            count(*) over()::int as count
+          from run r
+          join lateral (
+            select payload, status from runtime_task
+            where business_id = ${identity.businessId} and run_id = r.id
+              and kind in ('run', 'resume')
+            order by created_at desc limit 1
+          ) task on true
+          where r.business_id = ${identity.businessId}
+            and r.requested_by = ${identity.userId}
+            and r.status in ('queued', 'working', 'needs_approval')
+          order by (r.status = 'needs_approval') desc, r.created_at
+          limit 1`)[0] ?? null,
       }),
     );
     const expectedRegion = validRegion(env.RUNTIME_EXPECTED_REGION);
@@ -61,6 +90,7 @@ export async function handleRuntime(
       canManage: can(identity, 'runtime.manage'),
       setupStatus,
       setupProgress,
+      activeWork,
       runtime: runtime ? {
         status: runtime.status,
         desiredRelease: runtime.desiredRelease,

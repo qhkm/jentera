@@ -28,6 +28,7 @@ import { trackActivation } from '@/lib/analytics';
 import { isRunId } from '@/lib/task';
 import type { ReminderDraft } from '@/lib/reminders';
 import { safeTaskProgressLabel } from '@/lib/task-presentation';
+import { automaticAskMode, automaticResponseDepth } from '@/lib/ask-routing';
 
 export interface AskMessage {
   reminderDraft?: ReminderDraft;
@@ -98,6 +99,10 @@ const MAX_SESSIONS = 20;
 
 function sessionsKey(account: string): string {
   return `${ASK_SESSIONS_KEY}:${account}`;
+}
+
+function announceWorkChange(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('jentera:work-change'));
 }
 
 /** Forget every account's Ask conversations on this browser. Called at
@@ -298,13 +303,21 @@ export function useAsk(
 ) {
   const repo = useRepository();
   const grounded = useSignedIn();
-  /* Deep opts into the research loop; quick is the default, as on Telegram. */
-  const [deep, setDeep] = useState(false);
+  const lastWarm = useRef(0);
+  /* Typing can begin long after the initial page-open wake has expired. Keep
+     the agent warm while the owner is actively composing, at most once every
+     seven seconds, without keeping idle businesses running. */
+  const warm = useCallback(() => {
+    if (!grounded || !repo.warmAgent) return;
+    const now = Date.now();
+    if (now - lastWarm.current < 7_000) return;
+    lastWarm.current = now;
+    void repo.warmAgent().catch(() => undefined);
+  }, [grounded, repo]);
   /* Wake the agent as the chat opens so the first message finds it warm. */
   useEffect(() => {
-    if (!grounded) return;
-    void repo.warmAgent?.().catch(() => undefined);
-  }, [grounded, repo]);
+    warm();
+  }, [warm]);
   /* Persist only when the account is known: a signed-in session without an
      id would otherwise fall back to one shared key, which is the leak. */
   const account = useAccountKey();
@@ -487,7 +500,8 @@ export function useAsk(
         };
       });
       onCompleted?.(mode, a);
-      trackActivation(mode === 'work' ? 'work_completed' : 'ask_completed');
+      trackActivation(a.kind === 'work' ? 'work_completed' : 'ask_completed');
+      announceWorkChange();
     }, (reason: unknown) => {
       const text = reason instanceof Error ? reason.message : 'Jentera could not answer.';
       setState((prev) => {
@@ -517,6 +531,7 @@ export function useAsk(
           activeId: prev.activeId,
         };
       });
+      announceWorkChange();
     });
   }, [onCompleted]);
 
@@ -552,9 +567,11 @@ export function useAsk(
   }, [persisted, repo, patchPending, settlePending, t]);
 
   const send = useCallback(
-    (raw: string, mode: AskMode = 'work', attachment?: File) => {
+    (raw: string, mode?: AskMode, attachment?: File) => {
       const question = raw.trim();
       if (!question) return;
+      const selectedMode = mode ?? automaticAskMode(question, Boolean(attachment));
+      const depth = automaticResponseDepth(question);
       const sessionId = activeIdRef.current;
       const now = Date.now();
       const inputFiles = attachment
@@ -566,7 +583,8 @@ export function useAsk(
          replies below stay for the anonymous demo, which has no
          backend to ask and no facts to ground an answer in. */
       if (grounded) {
-        trackActivation(mode === 'work' ? 'work_sent' : 'ask_sent');
+        trackActivation(selectedMode === 'work' ? 'work_sent' : 'ask_sent');
+        if (selectedMode === 'work') warm();
         const pendingId = crypto.randomUUID();
         setState((prev) => {
           const index = prev.sessions.findIndex((s) => s.id === sessionId);
@@ -580,9 +598,9 @@ export function useAsk(
               ...session.messages,
               { from: 'you', text: question, inputFiles },
               {
-                from: 'ai', text: t(attachment ? 'ask.readingAttachment' : deep ? 'ask.working' : 'ask.thinking'),
-                pendingId, state: 'sending', mode,
-                depth: deep ? 'deep' : 'quick', startedAt: now, inputFiles,
+                from: 'ai', text: t(attachment ? 'ask.readingAttachment' : selectedMode === 'work' ? 'ask.accepted' : 'ask.thinking'),
+                pendingId, state: 'sending', mode: selectedMode,
+                depth, startedAt: now, inputFiles,
               },
             ],
           };
@@ -592,11 +610,10 @@ export function useAsk(
           };
         });
         const workspaceId = sessionsRef.current.find((s) => s.id === sessionId)?.workspaceId;
-        settlePending(sessionId, pendingId, question, mode, repo.ask(question, {
-          mode,
+        settlePending(sessionId, pendingId, question, selectedMode, repo.ask(question, {
+          mode: selectedMode,
           sessionId,
           ...(workspaceId ? { workspaceId } : {}),
-          responseMode: deep ? 'deep' : 'quick',
           ...(attachment ? { attachment } : {}),
           onRunCreated: (runId: string) => {
             if (!isRunId(runId)) return;
@@ -604,9 +621,10 @@ export function useAsk(
               ...message,
               runId,
               taskTitle: question,
-              text: t(deep ? 'ask.working' : 'ask.thinking'),
+              text: t('ask.accepted'),
               state: 'working',
             }));
+            announceWorkChange();
           },
           onProgress: (event: AskProgressEvent) =>
             patchPending(sessionId, pendingId, (message) => applyProgress(message, event, t)),
@@ -650,7 +668,7 @@ export function useAsk(
         };
       });
     },
-    [answer, business.team, deep, lang, grounded, repo, patchPending, settlePending, t],
+    [answer, business.team, lang, grounded, repo, patchPending, settlePending, t, warm],
   );
 
   const active = state.sessions.find((s) => s.id === state.activeId) ?? state.sessions[0];
@@ -667,7 +685,6 @@ export function useAsk(
     openSession,
     deleteSession,
     hasHistory: messages.length > 0,
-    deep,
-    setDeep,
+    warm,
   };
 }

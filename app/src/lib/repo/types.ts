@@ -312,6 +312,15 @@ export interface RuntimeOverview {
   canManage?: boolean;
   setupStatus?: string | null;
   setupProgress?: { stage: string; startedAt: string; updatedAt: string } | null;
+  /** The current viewer's durable work. It follows them across screens without
+      exposing another team member's private chat objective. */
+  activeWork?: {
+    count: number;
+    runId: string;
+    objective: string;
+    status: 'queued' | 'working' | 'needs_approval';
+    startedAt: string;
+  } | null;
 }
 
 /** Thrown when a feature needs the server and there is no session. */
