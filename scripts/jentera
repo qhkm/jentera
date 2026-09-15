@@ -51,10 +51,14 @@ refuse() {
 
 # ---------------------------------------------------------------- checks ----
 
+# Scoped to what the target actually ships. A worker deploy sends worker/ and
+# nothing else, so refusing it because another session has app/ open teaches
+# people to --force past the guard, which is worse than not having one.
 check_tree() {
-  echo "== working tree"
+  local scope="${1:-}"
+  echo "== working tree${scope:+ ($scope)}"
   local dirty
-  dirty="$(git -C "$ROOT" status --porcelain)"
+  dirty="$(git -C "$ROOT" status --porcelain -- ${scope:-.})"
   if [[ -n "$dirty" ]]; then
     # A deploy ships the working directory, not HEAD. Another session's
     # half-finished work is the thing most likely to be sitting here.
@@ -156,18 +160,18 @@ case "$CMD" in
   deploy)
     case "$TARGET" in
       app)
-        check_tree; check_live; gate
+        check_tree app; check_live; gate
         # deploy.sh ships the working directory and verifies the served hash.
         "$ROOT/deploy.sh" "${3:-deploy from jentera dispatcher}"
         ;;
       worker)
-        check_tree; check_migrations; check_flags; gate
+        check_tree worker; check_migrations; check_flags; gate
         echo "== worker changes since the last five commits touching worker/"
         git -C "$ROOT" log --oneline -5 -- worker/ | sed 's/^/  /'
         ( cd "$ROOT/worker" && pnpm run deploy )
         ;;
       runtime)
-        check_tree; check_migrations; gate
+        check_tree 'worker runner'; check_migrations; gate
         # ship-runtime.sh owns the pin, the release gate, convergence and
         # fleet-verify. Do not reimplement any of it here.
         shift 2 || true
