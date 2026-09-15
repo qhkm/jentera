@@ -177,12 +177,32 @@ export function createBusinessBrowser(config, deps = {}) {
         await ensure();
         return { ...(await status()), expiresAt: lease.expiresAt };
       }
-      if (!paused || !controlledBy(body)) throw new BrowserProblem(409, 'browser_control_expired');
+      /* Handing back is the safe direction — it is how the agent gets its
+         browser back — so unlike every other action it does not need a live
+         lease. Gating it behind one meant an owner whose control expired could
+         not hand back at all, and a paused browser makes the runner refuse
+         every task: one sign-in that ran past ten minutes on 15 September left
+         that business's agent answering nothing. Only someone else's live
+         control is a reason to refuse.
+
+         The pause still outlives the lease. A half-finished login is handed to
+         the agent when a person says so and not because a timer ran out; what
+         changed is that saying so is always possible. */
       if (body.action === 'release') {
+        if (lease && lease.expiresAt > now() && !controlledBy(body)) {
+          throw new BrowserProblem(409, 'browser_controlled');
+        }
         await persist(false);
         lease = null;
         return status();
       }
+      if (!paused || !controlledBy(body)) throw new BrowserProblem(409, 'browser_control_expired');
+      /* Idle timeout, not a cap on the session. The lease used to be set at the
+         claim and never extended, so control died ten minutes later however
+         actively it was being used — and the sign-ins this browser exists for
+         run longer than that. The owner lost the screen mid-flow, with a
+         half-typed password on it. */
+      lease.expiresAt = now() + LEASE_MS;
       const ctx = await ensure();
       const pages = ctx.pages().filter((p) => !p.isClosed());
       const page = selected && !selected.isClosed() ? selected : pages[0];

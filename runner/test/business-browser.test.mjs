@@ -224,8 +224,60 @@ test('expired control and runner restarts stay paused until a new explicit hand-
   assert.equal(await f.browser.isPaused(), true);
   const restarted = f.restart();
   assert.equal(await restarted.isPaused(), true);
-  await assert.rejects(restarted.command(command('release')), /browser_control_expired/);
   await restarted.command(command('claim'));
   await restarted.command(command('release'));
   assert.equal(await restarted.isPaused(), false);
+});
+
+/* Handing back is the safe direction — it is how the agent gets its browser
+   again — and it used to be gated behind a live lease like every other action.
+   So an owner whose control expired could not hand back at all: the browser
+   stayed paused, and a paused browser makes the runner refuse every task
+   (`slotBusy`). On 15 September a Google sign-in ran past the ten minutes,
+   and that business's agent answered nothing for the rest of the day.
+
+   The pause itself still survives — a half-finished login is not handed to the
+   agent by a timeout, only by someone saying so. What changed is that saying
+   so is always possible. */
+test('an expired controller can still hand the browser back', async () => {
+  const f = fixture();
+  await f.browser.command(command('claim'));
+  f.advance(11 * 60 * 1000);
+  assert.equal(await f.browser.isPaused(), true);
+  await f.browser.command(command('release'));
+  assert.equal(await f.browser.isPaused(), false);
+});
+
+test('a fresh window can hand back a browser left paused by an expired session', async () => {
+  const f = fixture();
+  await f.browser.command(command('claim'));
+  f.advance(11 * 60 * 1000);
+  const laterWindow = { action: 'release', ownerId, controlId: '33333333-3333-4333-8333-333333333333' };
+  await f.browser.command(laterWindow);
+  assert.equal(await f.browser.isPaused(), false);
+});
+
+test('handing back is refused while someone else still holds live control', async () => {
+  const f = fixture();
+  await f.browser.command(command('claim'));
+  const otherWindow = { action: 'release', ownerId, controlId: '33333333-3333-4333-8333-333333333333' };
+  await assert.rejects(f.browser.command(otherWindow), /browser_controlled/);
+  assert.equal(await f.browser.isPaused(), true);
+});
+
+/* Ten minutes was a cap on the whole session, not on idleness: the lease was
+   set at the claim and nothing extended it, so control died mid-flow however
+   actively it was being used. The sign-ins this browser exists for — Google
+   with MFA, a bank — routinely run longer, and the owner lost the screen with
+   a half-typed password on it. */
+test('using the browser renews control instead of expiring ten minutes after the claim', async () => {
+  const f = fixture();
+  await f.browser.command(command('claim'));
+  for (let minute = 0; minute < 20; minute++) {
+    f.advance(60 * 1000);
+    await f.browser.command(command('frame'));
+  }
+  assert.equal((await f.browser.command(command('frame'))).width, 1280);
+  f.advance(11 * 60 * 1000);
+  await assert.rejects(f.browser.command(command('frame')), /browser_control_expired/);
 });
