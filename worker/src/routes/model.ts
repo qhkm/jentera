@@ -46,7 +46,8 @@ import {
 import { cachedPromptTokens, modelUsageCostMicrousd } from '../model-usage';
 import { fetchModelResponse } from '../model-fetch';
 import { runtimeModelBaseAllowed } from '../runtime/execution';
-import { connect, withUser } from '../db';
+import { getRuntime } from '../agent-runtime';
+import { connect, withTenant, withUser } from '../db';
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_IMAGE_BODY_BYTES = 8 * 1024 * 1024;
@@ -106,7 +107,27 @@ export async function handleModelProxy(
       const [row] = await sql<{ business_id: string | null }[]>`select public.runtime_business_for_rider(${claims.rid}) as business_id`;
       return row?.business_id;
     });
-    if (!businessId || !(await businessHasAccess(env, businessId))) return jsonError(403, 'Platform access required', headers);
+    if (!businessId) return jsonError(403, 'Platform access required', headers);
+    if (!(await businessHasAccess(env, businessId))) {
+      /* A sprite mid-bootstrap may prove itself. The bootstrap ends with a live
+         inference precisely so a runtime is never called ready on a model path
+         that does not work, and refusing that call left every unadmitted
+         business's sprite unable to finish an upgrade at all — frozen on
+         whatever release it held when the waitlist went on, security fixes
+         included. A machine we are running has to stay patchable.
+
+         The window is the control plane's own: `upgradeRuntime` sets
+         `upgrading` before the bootstrap and readiness clears it, so this
+         cannot admit ordinary work — by the time there is any, the status has
+         moved on. The spend ledger below still applies. */
+      const runtime = await withTenant(env, businessId, (tx) => getRuntime(tx, businessId));
+      if (runtime?.status !== 'provisioning' && runtime?.status !== 'upgrading') {
+        return jsonError(403, 'Platform access required', headers);
+      }
+      console.warn('[model-access] bootstrap smoke admitted for a business that is not', JSON.stringify({
+        business: businessId, status: runtime.status,
+      }));
+    }
   }
   const budget = await riderBudgetStatus(env, claims.rid, new Date());
   if (!budget.allowed) {

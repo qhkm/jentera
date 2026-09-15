@@ -127,6 +127,51 @@ describe('worker-native jentera credential verification', () => {
 });
 
 describe('model proxy route', () => {
+  /* Turning on ACCESS_MODE=waitlist on 2026-09-13 refused inference for every
+     business without a grant, which is what the gate is for. It also refused
+     the one inference a bootstrap makes to prove its model path works, so
+     those sprites could not finish an upgrade at all: fifteen of them sat on
+     the release from the day the flag went on, security fixes included, and
+     the only symptom was a fleet that would not converge. A machine we are
+     running has to stay patchable, whoever it belongs to. */
+  describe('a sprite mid-bootstrap, for a business with no access', () => {
+    const business = '22222222-2222-4222-8222-222222222222';
+    const waitlisted = () => proxyEnv({ ACCESS_MODE: 'waitlist' });
+    const completion = async (env: ReturnType<typeof proxyEnv>, fetcher: typeof fetch) =>
+      callModel('POST', `${RUNTIME_PROXY_PATH}/chat/completions`, env, {
+        token: await derivedKey(),
+        body: { model: 'MiniMax-M3', messages: [{ role: 'user', content: 'ping' }], max_tokens: 1 },
+        options: { upstreamFetch: fetcher, waitUntil: () => {} },
+      });
+
+    const runtimeAt = async (status: string) => {
+      await asOwner(async sql => {
+        await sql`insert into business (id,name,playbook_key) values (${business},'Waitlisted','restaurant')
+                  on conflict (id) do nothing`;
+        await sql`delete from agent_runtime where provider_name = ${RID}`;
+        await sql`insert into agent_runtime (business_id,provider,provider_name,desired_release,status)
+                  values (${business},'fly-sprite',${RID},'test',${status})`;
+      });
+    };
+
+    it('is refused once it is ready, like any other work', async () => {
+      await runtimeAt('ready');
+      const { fetcher, seen } = stubUpstream(200, { id: 'ok' });
+      const response = await completion(waitlisted(), fetcher);
+      expect(response.status).toBe(403);
+      // Refused here, so nothing reached the model and nothing was spent.
+      expect(seen).toHaveLength(0);
+    });
+
+    it('may prove its model path while the control plane has it upgrading', async () => {
+      await runtimeAt('upgrading');
+      const { fetcher, seen } = stubUpstream(200, { id: 'ok' });
+      const response = await completion(waitlisted(), fetcher);
+      expect(response.status).not.toBe(403);
+      expect(seen).toHaveLength(1);
+    });
+  });
+
   it('uses the server-owned budget only for the matching rider', async () => {
     const business = '11111111-1111-4111-8111-111111111111';
     await asOwner(async sql => {
