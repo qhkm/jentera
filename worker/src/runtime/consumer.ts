@@ -1413,21 +1413,29 @@ export async function handleRuntimeMessage(
                   }
                 }
               : undefined,
-            onHeartbeat: liveStream
-              ? async () => {
-                  await liveStream.heartbeat();
-                  if (Date.now() - lastLeaseRenewal < RUNTIME_LEASE_RENEWAL_MS) return;
-                  const renewed = await withTenant(env, message.businessId, (tx) =>
-                    renewRuntimeTaskLease(
-                      tx,
-                      message.businessId,
-                      message.taskId,
-                      leaseToken,
-                    ));
-                  if (!renewed) throw new Error('runtime task lease was lost while streaming');
-                  lastLeaseRenewal = Date.now();
-                }
-              : undefined,
+            /* Always renew, stream or not. This used to be wired only when a
+               liveStream existed — a private Telegram chat — so every web run
+               and every lifecycle task held a lease whose heartbeat never
+               moved. The dead-owner sweep then reclaimed healthy leases at
+               90 s, the runner answered the re-dispatch with duplicate: true,
+               two slices streamed the same run, and the first slice's next
+               write failed with "lease was lost". Every completed app run over
+               ~120 s in the last ten days carries attempt >= 1 because of it,
+               and each recovery spent one of the five attempts on noise.
+               Upgrades, at 203 s median, were dead to any sibling wake. */
+            onHeartbeat: async () => {
+              await liveStream?.heartbeat();
+              if (Date.now() - lastLeaseRenewal < RUNTIME_LEASE_RENEWAL_MS) return;
+              const renewed = await withTenant(env, message.businessId, (tx) =>
+                renewRuntimeTaskLease(
+                  tx,
+                  message.businessId,
+                  message.taskId,
+                  leaseToken,
+                ));
+              if (!renewed) throw new Error('runtime task lease was lost while streaming');
+              lastLeaseRenewal = Date.now();
+            },
             onProgress: (liveStream || web)
               ? async (label) => {
                   /* The web keeps every step as a list item, in either mode;
