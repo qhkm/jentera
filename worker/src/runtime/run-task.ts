@@ -209,12 +209,8 @@ export async function dispatchRuntimeRun(
     expectedRelease: runtime.desiredRelease,
     fetch: options.fetch,
   });
-  /* [runtime-dispatch] Temporary instrumentation, 15 September 2026. Every
-     task since 19:18 MYT on 14 September has failed with "exceeded its time
-     limit before Hermes started" while every layer probes healthy from the
-     sprite side, so the missing view is what this call actually does. Fixed
-     labels and timings only — never the input, the instructions, the grant or
-     any credential. Remove once the cause is known. */
+  /* How long readiness took is reported by the intake refusal below, which is
+     the one place it explains something: a request that went stale waiting. */
   const readyStartedAt = Date.now();
   const readiness = await client.ready();
   const readyMs = Date.now() - readyStartedAt;
@@ -262,13 +258,7 @@ export async function dispatchRuntimeRun(
     task.businessId,
     task.id,
   );
-  const startBeganAt = Date.now();
-  console.warn('[runtime-dispatch]', JSON.stringify({
-    stage: 'starting', task: task.id, attempt: task.attempt, elapsedMs, readyMs, runSeconds,
-  }));
-  let started;
-  try {
-    started = await client.start({
+  const started = await client.start({
     businessId: task.businessId,
     taskId: task.id,
     leaseToken,
@@ -283,33 +273,15 @@ export async function dispatchRuntimeRun(
     // Keep the canonical `model` above for reservation/accounting.
     model: isDirectDeepSeek(env) && model === 'deepseek-flash' ? undefined : model,
     toolGrant,
-    /* Absolute deadline derived from the persisted reservation start, so a
-       retry reuses the same value instead of refreshing it (runner contract:
-       FIX:FINDINGS B5). The pre-start guard above guarantees it is still in
-       the future at this point. */
-    /* Per attempt, from now. It used to be reservation.startedAt + runSeconds,
-       so a retry inherited whatever the first attempt had already spent — the
-       17:08 MYT run on 15 September was handed 23 seconds of a 300-second
-       budget and only survived because it answered in five. The runner ignores
-       this on a duplicate, so a genuine resume keeps the original deadline. */
+    /* Per attempt, from now. It used to be reservation.startedAt + runSeconds
+       — one absolute deadline a retry inherited along with whatever the first
+       attempt had already spent, so the 17:08 MYT run on 15 September was
+       handed 23 seconds of a 300-second budget and survived only by answering
+       in five. The runner ignores this on a duplicate, so a genuine resume
+       keeps its original deadline. */
     deadlineAt: Date.now() + runSeconds * 1_000,
-      ...(keepaliveUntil ? { keepaliveUntil } : {}),
-    });
-  } catch (error) {
-    /* The name and a bounded message: a runner error can carry a status line
-       but never page content, and this must not become a leak. */
-    console.warn('[runtime-dispatch]', JSON.stringify({
-      stage: 'start_threw', task: task.id, attempt: task.attempt,
-      afterMs: Date.now() - startBeganAt, elapsedMs, readyMs,
-      name: error instanceof Error ? error.name : 'Error',
-      message: error instanceof Error ? error.message.slice(0, 120) : '',
-    }));
-    throw error;
-  }
-  console.warn('[runtime-dispatch]', JSON.stringify({
-    stage: 'started', task: task.id, attempt: task.attempt,
-    startMs: Date.now() - startBeganAt, hermesRunId: Boolean(started.hermesRunId),
-  }));
+    ...(keepaliveUntil ? { keepaliveUntil } : {}),
+  });
   stage('hermes_started');
   const remoteRunId = started.hermesRunId;
   if (!remoteRunId) throw new Error('runner returned no Hermes run id');

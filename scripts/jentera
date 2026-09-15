@@ -134,6 +134,15 @@ check_live() {
        -d '{}' https://api.jentera.ai/api/auth/native/code)"
 }
 
+# gate [keep-dry]
+#
+# `keep-dry` means the target runs its own --dry-run and this must not exit
+# first. That distinction cost a real rehearsal: `jentera deploy runtime
+# --dry-run` stopped here, reporting that every check had run, when the checks
+# that matter for a runtime release — the bundle commit, the installer pin, the
+# transfer fields against the pinned bootstrap — live in ship-runtime.sh's gate
+# and had not run at all. A dry run that skips the gate it exists to rehearse
+# is worse than none, because it reports success.
 gate() {
   echo
   if [[ "$REFUSALS" -gt 0 ]]; then
@@ -144,7 +153,7 @@ gate() {
       exit 1
     fi
   fi
-  if [[ "$DRY" -eq 1 ]]; then
+  if [[ "$DRY" -eq 1 && "${1:-}" != "keep-dry" ]]; then
     green "dry run: every check ran, nothing shipped"
     exit 0
   fi
@@ -171,10 +180,16 @@ case "$CMD" in
         ( cd "$ROOT/worker" && pnpm run deploy )
         ;;
       runtime)
-        check_tree 'worker runner'; check_migrations; gate
+        check_tree 'worker runner'; check_migrations; gate keep-dry
         # ship-runtime.sh owns the pin, the release gate, convergence and
         # fleet-verify. Do not reimplement any of it here.
         shift 2 || true
+        # --dry-run was stripped from the arguments up top, so hand it back:
+        # ship-runtime.sh stops after its own release gate, which is the whole
+        # point of rehearsing a runtime deploy.
+        if [[ "$DRY" -eq 1 ]]; then
+          set -- ${1+"$@"} --dry-run
+        fi
         "$ROOT/worker/scripts/ship-runtime.sh" "$@"
         ;;
       *)
