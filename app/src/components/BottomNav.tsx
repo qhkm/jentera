@@ -1,12 +1,7 @@
-/* ============================================================
-   The phone's bottom bar. Five sections and a sixth behind a flag made it
-   read as a row of tiny icons; four is what a thumb can tell apart. Home,
-   Activity and Alerts stay, and everything else sits behind "More", which
-   opens a sheet with the rest — badges included, so a count is never
-   hidden behind the fold.
-   ============================================================ */
+/* Dashboard destinations flank a central Chat shortcut on phones.
+   Secondary destinations and their badges remain in the More sheet. */
 import { useEffect, useId, useRef } from 'react';
-import { DotsThreeCircle } from '@phosphor-icons/react';
+import { ChatCircleText, DotsThreeCircle } from '@phosphor-icons/react';
 import { Icon, type IconName } from '@/components/Icon';
 import { useT } from '@/i18n/I18nProvider';
 
@@ -20,10 +15,11 @@ export interface BottomNavItem<T extends string> {
 /** How many sections show as their own button; the rest go behind More. */
 export const PRIMARY_SLOTS = 3;
 
-export function BottomNav<T extends string>({ items, current, onGo, label }: {
+export function BottomNav<T extends string>({ items, current, onGo, onChat, label }: {
   items: BottomNavItem<T>[];
   current: T;
   onGo: (id: T) => void;
+  onChat?: () => void;
   label: string;
 }) {
   const t = useT();
@@ -69,7 +65,16 @@ export function BottomNav<T extends string>({ items, current, onGo, label }: {
       className="dashboard-bottom-nav fixed inset-x-0 bottom-0 z-30 flex border-t border-rail bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
       aria-label={label}
     >
-      {primary.map(button)}
+      {primary.slice(0, 2).map(button)}
+      {onChat && (
+        <button type="button" className="bottom-nav-chat" onClick={onChat}>
+          <span className="bottom-nav-chat-icon">
+            <ChatCircleText size={25} weight="bold" aria-hidden="true" />
+          </span>
+          <span>{t('workspace.mode.chat')}</span>
+        </button>
+      )}
+      {primary.slice(2).map(button)}
       {overflow && (
         <>
           <button

@@ -314,6 +314,7 @@ export default function Dashboard() {
         label={t('workspace.mode.dashboard')}
         current={view}
         onGo={(next) => go(next)}
+        onChat={() => switchMode('chat')}
         items={nav.map((item) => ({
           id: item.id,
           icon: item.icon,
