@@ -10,6 +10,18 @@
 
 const ROUTINES_CRON = '* * * * *';
 
+/* Quiet enough that a busy sprite finishing a long deep run never trips it,
+   loud long before a customer notices. The 14 September wedge would have
+   said so within ten minutes instead of twenty-one hours. */
+const STALLED_AFTER_SECONDS = 600;
+
+interface LivenessRow {
+  waiting: string | number;
+  waiting_businesses: string | number;
+  oldest_waiting_secs: number;
+  secs_since_completion: number;
+}
+
 import { handleSession } from './routes/session';
 import { handleAccess } from './routes/access';
 import { handleLaunchAdmin } from './routes/launch-admin';
@@ -27,6 +39,7 @@ import { handleChats } from './routes/chats';
 import { handleAgentMemory } from './routes/agent-memory';
 import { dispatchDueRoutines } from './routines/dispatch';
 import { handleConnect } from './routes/connect';
+import { connect } from './db';
 import { handleRuntime } from './routes/runtime';
 import { handleBrowser } from './routes/browser';
 import { handleEvents } from './routes/events';
@@ -219,6 +232,32 @@ export default {
         }
       } catch (err) {
         console.error(`[push-outbox] ${String(err)}`);
+      }
+      /* Liveness. Work waiting while nothing finishes is the shape of every
+         wedge this system has had, whatever the cause — a paused browser
+         refusing tasks, a lease nobody reclaims, a runner that will not admit.
+         On 14 September that state lasted 21 hours and nothing said a word.
+         Counts and ages only; a loud line is the whole feature. */
+      try {
+        const sql = connect(env);
+        let live: LivenessRow | undefined;
+        try {
+          [live] = await sql<LivenessRow[]>`select * from public.runtime_liveness()`;
+        } finally {
+          await sql.end({ timeout: 1 });
+        }
+        /* postgres.js hands back bigint as a string; compare numbers. */
+        if (live && Number(live.waiting) > 0 && live.secs_since_completion > STALLED_AFTER_SECONDS) {
+          console.error('[runtime-liveness]', JSON.stringify({
+            stalled: true,
+            waiting: Number(live.waiting),
+            businesses: Number(live.waiting_businesses),
+            oldestWaitingSecs: live.oldest_waiting_secs,
+            secsSinceCompletion: live.secs_since_completion,
+          }));
+        }
+      } catch (err) {
+        console.error(`[runtime-liveness] ${String(err)}`);
       }
       return;
     }
