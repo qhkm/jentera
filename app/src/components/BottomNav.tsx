@@ -69,7 +69,7 @@ export function BottomNav<T extends string>({ items, current, onGo, onChat, labe
       {onChat && (
         <button type="button" className="bottom-nav-chat" onClick={onChat}>
           <span className="bottom-nav-chat-icon">
-            <ChatCircleText size={25} weight="bold" aria-hidden="true" />
+            <ChatCircleText size={19} aria-hidden="true" />
           </span>
           <span>{t('workspace.mode.chat')}</span>
         </button>

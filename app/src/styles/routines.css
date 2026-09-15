@@ -65,26 +65,30 @@
   flex: 1;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
-  gap: 3px;
-  padding: 0 0 10px;
+  gap: 4px;
+  padding: 10px 0;
   color: var(--accent-green);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .bottom-nav-chat-icon {
+  position: relative;
+  isolation: isolate;
   display: grid;
   place-items: center;
-  width: 52px;
-  height: 52px;
-  margin-top: -18px;
-  border: 4px solid var(--bg);
-  border-radius: 19px;
-  color: #052e25;
-  background: var(--accent-green);
-  box-shadow: 0 4px 14px rgb(var(--accent-green-rgb) / 0.2);
+  width: 19px;
+  height: 19px;
+  color: var(--accent-green);
 }
-.bottom-nav-chat:hover .bottom-nav-chat-icon { filter: brightness(1.08); }
+.bottom-nav-chat-icon::before {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  z-index: -1;
+  border-radius: 50%;
+  background: rgb(var(--accent-green-rgb) / 0.12);
+}
+.bottom-nav-chat:hover .bottom-nav-chat-icon::before { background: rgb(var(--accent-green-rgb) / 0.2); }
 .bottom-nav-chat:focus-visible { outline: 2px solid var(--accent-green); outline-offset: -3px; border-radius: 12px; }
 
 /* The "More" sheet behind the phone bottom bar: a short list rising from
