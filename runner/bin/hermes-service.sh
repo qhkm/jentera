@@ -33,6 +33,7 @@ elif [[ -r "$display_env" ]]; then
 fi
 
 export HERMES_HOME="/home/sprite/.hermes"
+export PATH="/home/sprite/.local/bin:$PATH"
 export API_SERVER_HOST="127.0.0.1"
 export API_SERVER_PORT="${HERMES_PORT:-8642}"
 unset API_SERVER_CORS_ORIGINS

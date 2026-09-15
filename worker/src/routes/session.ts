@@ -35,6 +35,7 @@ import { notifySignup, type SignupDoor } from '../signup-notice';
 import { accessForEmail, restrictedAccess } from '../access';
 import { verifyIdentitySession } from '../auth';
 import { verifyTurnstile } from '../turnstile';
+import { handleGoogleCalendarCallback } from './google-calendar-oauth';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -81,6 +82,12 @@ export async function handleSession(
   cors: Record<string, string>,
   deps: { ctx?: ExecutionContext } = {},
 ): Promise<Response | null> {
+  /* Calendar intentionally shares Google's already-registered callback URI,
+     but has a separate state cookie and never signs a person in. Give that
+     explicit connection flow first refusal, then fall through to sign-in. */
+  const calendar = await handleGoogleCalendarCallback(request, env, url);
+  if (calendar) return calendar;
+
   /* The operator's notice rides behind the response when a context is
      there to carry it, and is awaited only where there is none (tests). */
   const announce = async (email: string, door: SignupDoor) => {

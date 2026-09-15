@@ -6,6 +6,7 @@ import type { ConnectionsState } from '@/hooks/useConnections';
 import { DataIcon } from '@/components/Icon';
 import TelegramConnect from '@/routes/views/TelegramConnect';
 import TokenConnect from '@/routes/views/TokenConnect';
+import GoogleCalendarConnect from '@/routes/views/GoogleCalendarConnect';
 
 export function ConnectorOptions({ connections }: { connections: ConnectionsState }) {
   const repo = useRepository();
@@ -23,14 +24,14 @@ export function ConnectorOptions({ connections }: { connections: ConnectionsStat
   const options = [
     ...Object.entries(CONNECTORS).map(([id, item]) => ({ id, name: item.n, icon: item.e })),
     ...tokens.filter(item => !CONNECTORS[item.connector]).map(item => ({ id: item.connector, name: item.label, icon: '🔗' })),
-  ].sort((a, b) => Number(b.id === 'telegram' || tokens.some(t => t.connector === b.id)) - Number(a.id === 'telegram' || tokens.some(t => t.connector === a.id)) || a.name.localeCompare(b.name));
+  ].sort((a, b) => Number(['telegram', 'google'].includes(b.id) || tokens.some(t => t.connector === b.id)) - Number(['telegram', 'google'].includes(a.id) || tokens.some(t => t.connector === a.id)) || a.name.localeCompare(b.name));
   const visible = options.filter(item => item.name.toLowerCase().includes(query.trim().toLowerCase()));
   return <div className="connector-options">
     <label className="connector-search">Find an app<input className="input" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search connectors…" /></label>
     {catalogError && <p role="alert">Additional connectors could not be loaded. <button className="routine-link" type="button" onClick={() => setAttempt(n => n + 1)}>Retry catalog</button></p>}
     {connections.mode === 'error' && <p role="alert">Connection status unavailable. <button className="routine-link" type="button" onClick={connections.retry}>Retry status check</button></p>}
     <ul className="connector-list">{visible.map(item => {
-      const supported = item.id === 'telegram' || tokens.some(token => token.connector === item.id);
+      const supported = item.id === 'telegram' || item.id === 'google' || tokens.some(token => token.connector === item.id);
       const row = connections.rows?.find(connection => connection.connector === item.id);
       const paired = item.id !== 'telegram' || row?.paired;
       const status = !supported ? 'Not available yet' : connections.mode === 'pending' ? 'Checking connection…'
@@ -45,7 +46,9 @@ export function ConnectorOptions({ connections }: { connections: ConnectionsStat
             <button type="button" className="btn btn-outline" disabled={connections.mode !== 'real'} aria-expanded={open} aria-controls={`connector-${item.id}`} aria-label={`${open ? 'Close' : row ? 'Manage' : 'Connect'} ${item.name}`} onClick={() => setSelected(open ? null : item.id)}>{open ? 'Close' : row ? 'Manage' : 'Connect'}</button>}
         </div>
         {open && connections.mode === 'real' && <div className="connector-inline-setup" id={`connector-${item.id}`}>
-          {item.id === 'telegram' ? <TelegramConnect rows={connections.rows} setRows={connections.setRows} /> : <TokenConnect connector={item.id} rows={connections.rows} setRows={connections.setRows} />}
+          {item.id === 'telegram' ? <TelegramConnect rows={connections.rows} setRows={connections.setRows} />
+            : item.id === 'google' ? <GoogleCalendarConnect rows={connections.rows} setRows={connections.setRows} />
+              : <TokenConnect connector={item.id} rows={connections.rows} setRows={connections.setRows} />}
         </div>}
       </li>;
     })}</ul>

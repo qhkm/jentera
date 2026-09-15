@@ -41,6 +41,11 @@ export interface Env {
       offered — the other two ways in keep working. */
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  /** Optional dedicated OAuth client for Google Workspace connections. A
+      separate client prevents Calendar disconnects from affecting sign-in.
+      Pilot environments may fall back to the sign-in client above. */
+  GOOGLE_WORKSPACE_CLIENT_ID?: string;
+  GOOGLE_WORKSPACE_CLIENT_SECRET?: string;
   /** Organization-scoped Fly Sprites API token. Control plane only. */
   SPRITES_TOKEN?: string;
   /** Override only for tests or a future compatible provider gateway. */

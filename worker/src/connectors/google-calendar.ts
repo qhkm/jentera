@@ -1,0 +1,362 @@
+/* ============================================================
+   Google Calendar, behind the Jentera control plane.
+
+   The OAuth refresh token stays encrypted in the Worker. A tenant runtime
+   receives only narrow list/propose operations and can never call Google or
+   turn a proposed event into a real one by itself.
+   ============================================================ */
+
+import type { Env } from '../env';
+import { redirectUri } from '../oauth';
+
+const AUTHORIZE = 'https://accounts.google.com/o/oauth2/v2/auth';
+const TOKEN = 'https://oauth2.googleapis.com/token';
+const REVOKE = 'https://oauth2.googleapis.com/revoke';
+const API = 'https://www.googleapis.com/calendar/v3';
+
+export const GOOGLE_CALENDAR_CONNECTOR = 'google';
+export const GOOGLE_CALENDAR_SCOPES = [
+  'openid',
+  'email',
+  'profile',
+  'https://www.googleapis.com/auth/calendar.events.owned',
+] as const;
+
+interface GoogleCalendarSecret {
+  v: 1;
+  refreshToken: string;
+  scopes: string[];
+}
+
+export interface GoogleCalendarProfile {
+  subject: string;
+  email: string;
+  name: string | null;
+  refreshToken: string;
+  scopes: string[];
+}
+
+export interface CalendarEventInput {
+  requestId: string;
+  summary: string;
+  start: string;
+  end: string;
+  timeZone: string;
+  location?: string;
+  description?: string;
+}
+
+export interface CalendarEventView {
+  id: string;
+  summary: string;
+  status: string;
+  start: string;
+  end: string;
+  location: string | null;
+  htmlLink: string | null;
+}
+
+export class GoogleCalendarError extends Error {
+  constructor(message: string, readonly auth = false) {
+    super(message);
+  }
+}
+
+function client(env: Env): { id: string; secret: string } | null {
+  const id = env.GOOGLE_WORKSPACE_CLIENT_ID?.trim() || env.GOOGLE_CLIENT_ID?.trim();
+  const secret = env.GOOGLE_WORKSPACE_CLIENT_SECRET?.trim() || env.GOOGLE_CLIENT_SECRET?.trim();
+  return id && secret ? { id, secret } : null;
+}
+
+export function googleCalendarConfigured(env: Env): boolean {
+  return client(env) !== null;
+}
+
+export function googleCalendarAuthorizeUrl(
+  env: Env,
+  opts: { state: string; codeChallenge: string },
+): string {
+  const oauth = client(env);
+  if (!oauth) throw new GoogleCalendarError('Google Calendar is not configured.');
+  const params = new URLSearchParams({
+    client_id: oauth.id,
+    redirect_uri: redirectUri(env),
+    response_type: 'code',
+    scope: GOOGLE_CALENDAR_SCOPES.join(' '),
+    state: opts.state,
+    code_challenge: opts.codeChallenge,
+    code_challenge_method: 'S256',
+    access_type: 'offline',
+    include_granted_scopes: 'true',
+    // Google returns a refresh token reliably only when consent is explicit.
+    prompt: 'consent select_account',
+  });
+  return `${AUTHORIZE}?${params}`;
+}
+
+function decodePayload(jwt: string): Record<string, unknown> | null {
+  const part = jwt.split('.')[1];
+  if (!part) return null;
+  try {
+    const padded = part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=');
+    return JSON.parse(atob(padded)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+export async function exchangeGoogleCalendarCode(
+  env: Env,
+  code: string,
+  codeVerifier: string,
+  fetcher: typeof fetch = fetch,
+): Promise<GoogleCalendarProfile | null> {
+  const oauth = client(env);
+  if (!oauth) return null;
+  const response = await fetcher(TOKEN, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code,
+      client_id: oauth.id,
+      client_secret: oauth.secret,
+      redirect_uri: redirectUri(env),
+      grant_type: 'authorization_code',
+      code_verifier: codeVerifier,
+    }),
+  });
+  if (!response.ok) {
+    console.error(`[google-calendar] OAuth exchange failed (${response.status})`);
+    return null;
+  }
+  const body = await response.json().catch(() => null) as {
+    id_token?: string;
+    refresh_token?: string;
+    scope?: string;
+  } | null;
+  if (!body?.id_token || !body.refresh_token) return null;
+  const claims = decodePayload(body.id_token);
+  if (!claims || claims.aud !== oauth.id ||
+      !(claims.email_verified === true || claims.email_verified === 'true')) return null;
+  const subject = typeof claims.sub === 'string' ? claims.sub : '';
+  const email = typeof claims.email === 'string' ? claims.email.toLowerCase() : '';
+  if (!subject || !email) return null;
+  const scopes = (body.scope ?? '').split(/\s+/).filter(Boolean);
+  if (!scopes.includes(GOOGLE_CALENDAR_SCOPES[3])) return null;
+  return {
+    subject,
+    email,
+    name: typeof claims.name === 'string' ? claims.name : null,
+    refreshToken: body.refresh_token,
+    scopes,
+  };
+}
+
+export function calendarSecret(profile: GoogleCalendarProfile): string {
+  return JSON.stringify({
+    v: 1,
+    refreshToken: profile.refreshToken,
+    scopes: profile.scopes,
+  } satisfies GoogleCalendarSecret);
+}
+
+function openSecret(raw: string): GoogleCalendarSecret {
+  try {
+    const value = JSON.parse(raw) as Partial<GoogleCalendarSecret>;
+    if (value.v === 1 && typeof value.refreshToken === 'string' && value.refreshToken &&
+        Array.isArray(value.scopes)) {
+      return { v: 1, refreshToken: value.refreshToken, scopes: value.scopes.filter((s): s is string => typeof s === 'string') };
+    }
+  } catch {
+    // The caller receives one actionable error without secret material.
+  }
+  throw new GoogleCalendarError('Reconnect Google Calendar to continue.', true);
+}
+
+async function accessToken(
+  env: Env,
+  rawSecret: string,
+  fetcher: typeof fetch,
+): Promise<string> {
+  const oauth = client(env);
+  if (!oauth) throw new GoogleCalendarError('Google Calendar is not configured.');
+  const stored = openSecret(rawSecret);
+  const response = await fetcher(TOKEN, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: oauth.id,
+      client_secret: oauth.secret,
+      refresh_token: stored.refreshToken,
+      grant_type: 'refresh_token',
+    }),
+  });
+  if (!response.ok) {
+    throw new GoogleCalendarError('Google Calendar access expired. Reconnect it to continue.', true);
+  }
+  const body = await response.json().catch(() => null) as { access_token?: string } | null;
+  if (!body?.access_token) throw new GoogleCalendarError('Google Calendar could not be reached.');
+  return body.access_token;
+}
+
+function providerError(response: Response): GoogleCalendarError {
+  return response.status === 401 || response.status === 403
+    ? new GoogleCalendarError('Google Calendar access expired. Reconnect it to continue.', true)
+    : new GoogleCalendarError(`Google Calendar could not complete that request (${response.status}).`);
+}
+
+function view(raw: Record<string, unknown>): CalendarEventView {
+  const start = raw.start as Record<string, unknown> | undefined;
+  const end = raw.end as Record<string, unknown> | undefined;
+  return {
+    id: typeof raw.id === 'string' ? raw.id : '',
+    summary: typeof raw.summary === 'string' ? raw.summary : '(untitled event)',
+    status: typeof raw.status === 'string' ? raw.status : 'confirmed',
+    start: typeof start?.dateTime === 'string' ? start.dateTime : typeof start?.date === 'string' ? start.date : '',
+    end: typeof end?.dateTime === 'string' ? end.dateTime : typeof end?.date === 'string' ? end.date : '',
+    location: typeof raw.location === 'string' ? raw.location : null,
+    htmlLink: typeof raw.htmlLink === 'string' ? raw.htmlLink : null,
+  };
+}
+
+const RFC3339 = /^\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:\d{2})$/;
+
+export function normaliseCalendarEvent(raw: unknown): CalendarEventInput {
+  const value = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+  const requestId = typeof value.requestId === 'string' ? value.requestId.trim() : '';
+  const summary = typeof value.summary === 'string' ? value.summary.trim() : '';
+  const start = typeof value.start === 'string' ? value.start.trim() : '';
+  const end = typeof value.end === 'string' ? value.end.trim() : '';
+  const timeZone = typeof value.timeZone === 'string' && value.timeZone.trim()
+    ? value.timeZone.trim()
+    : 'Asia/Kuala_Lumpur';
+  if (!/^[A-Za-z0-9_-]{8,100}$/.test(requestId)) {
+    throw new GoogleCalendarError('requestId must be 8 to 100 letters, numbers, underscores, or dashes.');
+  }
+  if (!summary || summary.length > 200) throw new GoogleCalendarError('Event title must be 1 to 200 characters.');
+  if (!RFC3339.test(start) || !RFC3339.test(end)) {
+    throw new GoogleCalendarError('Event start and end must include a date, time, and UTC offset.');
+  }
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+    throw new GoogleCalendarError('Event end must be after its start.');
+  }
+  if (endMs - startMs > 7 * 24 * 60 * 60 * 1000) {
+    throw new GoogleCalendarError('One event cannot be longer than seven days.');
+  }
+  if (!/^[A-Za-z_]+(?:\/[A-Za-z0-9_+.-]+)+$/.test(timeZone) || timeZone.length > 100) {
+    throw new GoogleCalendarError('Event time zone is invalid.');
+  }
+  const location = typeof value.location === 'string' ? value.location.trim() : '';
+  const description = typeof value.description === 'string' ? value.description.trim() : '';
+  if (location.length > 500) throw new GoogleCalendarError('Event location is too long.');
+  if (description.length > 5000) throw new GoogleCalendarError('Event description is too long.');
+  return {
+    requestId,
+    summary,
+    start,
+    end,
+    timeZone,
+    ...(location ? { location } : {}),
+    ...(description ? { description } : {}),
+  };
+}
+
+export function normaliseCalendarRange(url: URL): { timeMin: string; timeMax: string } {
+  const timeMin = url.searchParams.get('timeMin') ?? '';
+  const timeMax = url.searchParams.get('timeMax') ?? '';
+  const min = Date.parse(timeMin);
+  const max = Date.parse(timeMax);
+  if (!RFC3339.test(timeMin) || !RFC3339.test(timeMax) ||
+      !Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+    throw new GoogleCalendarError('timeMin and timeMax must be a valid RFC3339 range.');
+  }
+  if (max - min > 31 * 24 * 60 * 60 * 1000) {
+    throw new GoogleCalendarError('Calendar lookups are limited to 31 days.');
+  }
+  return { timeMin, timeMax };
+}
+
+export async function listGoogleCalendarEvents(
+  env: Env,
+  rawSecret: string,
+  range: { timeMin: string; timeMax: string },
+  fetcher: typeof fetch = fetch,
+): Promise<CalendarEventView[]> {
+  const token = await accessToken(env, rawSecret, fetcher);
+  const params = new URLSearchParams({
+    timeMin: range.timeMin,
+    timeMax: range.timeMax,
+    singleEvents: 'true',
+    orderBy: 'startTime',
+    maxResults: '50',
+    fields: 'items(id,summary,status,start,end,location,htmlLink)',
+  });
+  const response = await fetcher(`${API}/calendars/primary/events?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw providerError(response);
+  const body = await response.json().catch(() => null) as { items?: Record<string, unknown>[] } | null;
+  return (body?.items ?? []).map(view).filter((event) => event.id && event.start && event.end);
+}
+
+export async function createGoogleCalendarEvent(
+  env: Env,
+  rawSecret: string,
+  event: CalendarEventInput,
+  fetcher: typeof fetch = fetch,
+): Promise<CalendarEventView> {
+  const token = await accessToken(env, rawSecret, fetcher);
+  // A stable provider id makes a retry safe even if the first response is lost.
+  const encodedRequest = [...new TextEncoder().encode(event.requestId)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+  const id = `jentera${encodedRequest}`;
+  const response = await fetcher(`${API}/calendars/primary/events?sendUpdates=none`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      id,
+      summary: event.summary,
+      start: { dateTime: event.start, timeZone: event.timeZone },
+      end: { dateTime: event.end, timeZone: event.timeZone },
+      ...(event.location ? { location: event.location } : {}),
+      ...(event.description ? { description: event.description } : {}),
+    }),
+  });
+  if (response.status === 409) {
+    /* The deterministic id makes an uncertain retry safe. A 409 means Google
+       already has this exact Jentera request; read it back and treat that as
+       success instead of inviting the owner to create a duplicate. */
+    const existing = await fetcher(`${API}/calendars/primary/events/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!existing.ok) throw providerError(existing);
+    const body = await existing.json().catch(() => null) as Record<string, unknown> | null;
+    if (!body) throw new GoogleCalendarError('Google Calendar returned an incomplete event.');
+    return view(body);
+  }
+  if (!response.ok) throw providerError(response);
+  const body = await response.json().catch(() => null) as Record<string, unknown> | null;
+  if (!body) throw new GoogleCalendarError('Google Calendar returned an incomplete event.');
+  return view(body);
+}
+
+export async function revokeGoogleCalendar(
+  env: Env,
+  rawSecret: string,
+  fetcher: typeof fetch = fetch,
+): Promise<void> {
+  const oauth = client(env);
+  if (!oauth) return;
+  const stored = openSecret(rawSecret);
+  await fetcher(REVOKE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token: stored.refreshToken }),
+  });
+}

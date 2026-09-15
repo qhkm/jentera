@@ -73,6 +73,7 @@ sprite file push -o "$sprite_org" -s "$sprite_name" -p \
   runner/src/business-browser.mjs \
   runner/src/browser-preview-stream.mjs \
   runner/bin/browser-smoke.mjs \
+  runner/bin/jentera-calendar.mjs \
   runner/bin/model-smoke.py \
   runner/bin/web-search-smoke.py \
   runner/bin/configure-model-provider.py \
@@ -88,6 +89,7 @@ sprite exec -o "$sprite_org" -s "$sprite_name" -- \
   chmod 755 \
     /home/sprite/aisar/runner/configure-model-provider.py \
     /home/sprite/aisar/runner/model-smoke.py \
+    /home/sprite/aisar/runner/jentera-calendar.mjs \
     /home/sprite/aisar/runner/hermes-service.sh \
     /home/sprite/aisar/runner/display-service.sh \
     /home/sprite/aisar/runner/runner-service.sh \

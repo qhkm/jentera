@@ -68,15 +68,15 @@ export const CONNECTORS: Record<string, Connector> = {
     ]
   },
   "google": {
-    "n": "Google (Sheets & Calendar)",
-    "e": "📊",
+    "n": "Google Calendar",
+    "e": "📅",
     "tier": "T1",
     "method": "oauth",
-    "flow": "Google OAuth — popup login, sync ke Sheets/Calendar",
+    "flow": "Google OAuth — explicit Calendar grant; new events require owner approval",
     "scope": [
-      "baca stock/order",
-      "auto-import booking",
-      "hantar jadual"
+      "check calendar availability",
+      "read upcoming events",
+      "draft events for approval"
     ],
     "countries": [
       "MY",

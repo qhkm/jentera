@@ -33,6 +33,23 @@ const reply: Approval = {
   status: 'pending',
 };
 
+const calendar: Approval = {
+  id: 2,
+  remoteId: 'a-2',
+  conn: 'google',
+  op: 'create_event',
+  args: {
+    summary: 'Supplier call',
+    start: '2026-09-17T10:00:00+08:00',
+    end: '2026-09-17T10:30:00+08:00',
+    timeZone: 'Asia/Kuala_Lumpur',
+    location: 'Office',
+  },
+  risk: 'medium',
+  ts: '2026-09-16T10:00:00.000Z',
+  status: 'pending',
+};
+
 /** A repository that records how decideApproval was called. */
 function repoSpy(behaviour: 'ok' | 'throw' = 'ok') {
   const calls: { id: number; approved: boolean; text?: string }[] = [];
@@ -82,6 +99,17 @@ describe('showing what is waiting', () => {
     mount([reply], repo);
     await screen.findByRole('button', { name: /send it/i });
     expect(screen.getByRole('button', { name: /don.t send/i })).toBeTruthy();
+  });
+
+  it('renders a Calendar proposal as an event review, not raw arguments', async () => {
+    const { repo } = repoSpy();
+    mount([calendar], repo);
+    expect(await screen.findByText('Add to Google Calendar')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Supplier call' })).toBeVisible();
+    expect(screen.getByText('Location: Office')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Don’t add' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Add event' })).toBeVisible();
+    expect(screen.queryByText(/requestId:/)).toBeNull();
   });
 });
 

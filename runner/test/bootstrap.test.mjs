@@ -75,6 +75,15 @@ test('bootstrap and model config pin the reviewed plus customer-router endpoints
   assert.match(configure, /https:\/\/api\.jentera\.ai\/v1\/model/);
 });
 
+test('runtime installs the narrow Calendar client on the Hermes PATH', async () => {
+  const bootstrap = await readFile(SCRIPT, 'utf8');
+  const hermes = await readFile(HERMES_SERVICE, 'utf8');
+  const provision = await readFile(PROVISION, 'utf8');
+  assert.match(bootstrap, /install -m 755 .*jentera-calendar\.mjs/);
+  assert.match(hermes, /\.local\/bin:\$PATH/);
+  assert.match(provision, /runner\/bin\/jentera-calendar\.mjs/);
+});
+
 test('production runtime pins and proves its keyless search backend', async () => {
   const source = await readFile(SCRIPT, 'utf8');
   assert.match(source, /AISAR_WEB_SEARCH_BACKEND=%q.*ddgs/);

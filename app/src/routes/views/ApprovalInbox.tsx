@@ -29,8 +29,32 @@ interface ReplyArgs {
   draft?: string;
 }
 
+interface CalendarArgs {
+  summary?: string;
+  start?: string;
+  end?: string;
+  timeZone?: string;
+  location?: string;
+  description?: string;
+}
+
 function isReply(a: Approval): boolean {
   return a.conn === 'telegram' && a.op === 'send_message';
+}
+
+function isCalendarEvent(a: Approval): boolean {
+  return a.conn === 'google' && a.op === 'create_event';
+}
+
+function eventTime(args: CalendarArgs): string {
+  if (!args.start || !args.end) return 'Time not provided';
+  const start = new Date(args.start);
+  const end = new Date(args.end);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 'Time not provided';
+  const day = start.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  const from = start.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const to = end.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return `${day} · ${from}–${to}`;
 }
 
 export default function ApprovalInbox({
@@ -59,7 +83,7 @@ export default function ApprovalInbox({
 
 function Row({ approval, onDecided }: { approval: Approval; onDecided: () => void }) {
   const repo = useRepository();
-  const args = (approval.args ?? {}) as ReplyArgs;
+  const args = (approval.args ?? {}) as ReplyArgs & CalendarArgs;
   const [draft, setDraft] = useState(args.draft ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +113,9 @@ function Row({ approval, onDecided }: { approval: Approval; onDecided: () => voi
           <span className="text-sm">
             {isReply(approval)
               ? `Reply to ${args.from ?? 'a customer'} on Telegram`
-              : `${approval.op} · ${approval.conn}`}
+              : isCalendarEvent(approval)
+                ? 'Add to Google Calendar'
+                : `${approval.op} · ${approval.conn}`}
           </span>
           <span className="text-[11px] text-text-muted">
             {new Date(approval.ts).toLocaleString()}
@@ -123,6 +149,15 @@ function Row({ approval, onDecided }: { approval: Approval; onDecided: () => voi
             </span>
           )}
         </div>
+      ) : isCalendarEvent(approval) ? (
+        <div className="flex flex-col gap-2 rounded-card border border-border bg-bg-card p-4">
+          <h3 className="font-pixel text-lg tracking-tight">{args.summary ?? 'Untitled event'}</h3>
+          <p className="text-[13px] text-text-secondary">{eventTime(args)}</p>
+          {args.timeZone && <p className="text-[11px] text-text-muted">Time zone: {args.timeZone}</p>}
+          {args.location && <p className="text-[12px] text-text-secondary">Location: {args.location}</p>}
+          {args.description && <p className="whitespace-pre-wrap text-[12px] text-text-secondary">{args.description}</p>}
+          <p className="mt-1 text-[11px] text-text-muted">Nothing has been added to Google Calendar yet.</p>
+        </div>
       ) : (
         <p className="text-[12px] text-text-secondary">
           {Object.entries(args)
@@ -141,10 +176,12 @@ function Row({ approval, onDecided }: { approval: Approval; onDecided: () => voi
         {/* Equal weight. A queue whose easy action is "yes" teaches
             people to stop reading. */}
         <Button variant="outline" onClick={() => void decide(false)} disabled={busy}>
-          Don&rsquo;t send
+          {isCalendarEvent(approval) ? 'Don’t add' : 'Don’t send'}
         </Button>
         <Button onClick={() => void decide(true)} disabled={busy || (isReply(approval) && !draft.trim())}>
-          {busy ? 'Sending…' : edited ? 'Send my version' : 'Send it'}
+          {isCalendarEvent(approval)
+            ? busy ? 'Adding…' : 'Add event'
+            : busy ? 'Sending…' : edited ? 'Send my version' : 'Send it'}
         </Button>
       </div>
     </Card>

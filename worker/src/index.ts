@@ -54,6 +54,7 @@ import { handleEvents } from './routes/events';
 import { handleSupport } from './routes/support';
 import { handleModelProxy, sweepModelCalls } from './routes/model';
 import { handleRuntimeConfig } from './routes/runtime-config';
+import { handleGoogleCalendarRuntime } from './routes/google-calendar-runtime';
 import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
 import { handleQueueMessagePlaced } from './runtime/placed-slice';
@@ -133,6 +134,8 @@ export default {
        presents a runtime credential, not a session cookie. */
     const runtimeConfig = await handleRuntimeConfig(request, env, url, headers);
     if (runtimeConfig) return runtimeConfig;
+    const calendarRuntime = await handleGoogleCalendarRuntime(request, env, url, headers);
+    if (calendarRuntime) return calendarRuntime;
     /* A task's output files, uploaded by the runner with the same credential. */
     if (url.pathname === RUNTIME_ARTIFACTS_PATH) {
       const uploaded = await handleArtifacts(request, env, url, headers);

@@ -73,18 +73,23 @@ export async function saveConnection(
     displayName: string;
     secret: string;
     connectedBy: string;
+    scopes?: string[];
+    expiresAt?: Date | null;
   },
 ): Promise<ConnectionRow> {
   const [row] = await tx<Raw[]>`
     insert into connection
-      (business_id, connector, method, status, external_id, display_name, connected_by, last_ok_at)
+      (business_id, connector, method, status, external_id, display_name,
+       connected_by, scopes, last_ok_at)
     values
       (${businessId}, ${input.connector}, ${input.method}, 'connected',
-       ${input.externalId}, ${input.displayName}, ${input.connectedBy}, now())
+       ${input.externalId}, ${input.displayName}, ${input.connectedBy},
+       array(select jsonb_array_elements_text(${tx.json(input.scopes ?? [])})), now())
     on conflict (business_id, connector, external_id) do update
       set status = 'connected',
           display_name = excluded.display_name,
           connected_by = excluded.connected_by,
+          scopes = excluded.scopes,
           connected_at = now(),
           last_ok_at = now(),
           -- Reconnecting is how an owner fixes a broken connection, so
@@ -95,11 +100,12 @@ export async function saveConnection(
 
   const sealed = await seal(env, input.secret);
   await tx`
-    insert into credential (connection_id, ciphertext, key_version)
-    values (${row.id}, ${sealed}, ${KEY_VERSION})
+    insert into credential (connection_id, ciphertext, key_version, expires_at)
+    values (${row.id}, ${sealed}, ${KEY_VERSION}, ${input.expiresAt ?? null})
     on conflict (connection_id) do update
       set ciphertext = excluded.ciphertext,
           key_version = excluded.key_version,
+          expires_at = excluded.expires_at,
           refreshed_at = now()`;
 
   return toRow(row);
@@ -210,6 +216,40 @@ export async function markBroken(
 ): Promise<void> {
   await tx`
     update connection set status = 'error', last_error = ${why.slice(0, 500)}
+     where id = ${connectionId}`;
+}
+
+/** Provider health belongs on the metadata row; the decrypted credential is
+    intentionally never returned to the status screen. */
+export async function markConnectionHealthy(
+  tx: postgres.TransactionSql,
+  connectionId: string,
+): Promise<void> {
+  await tx`
+    update connection
+       set status = 'connected', last_ok_at = now(), last_error = null
+     where id = ${connectionId}`;
+}
+
+export async function markConnectionExpired(
+  tx: postgres.TransactionSql,
+  connectionId: string,
+  why: string,
+): Promise<void> {
+  await tx`
+    update connection set status = 'expired', last_error = ${why.slice(0, 500)}
+     where id = ${connectionId}`;
+}
+
+/** A provider can be temporarily unavailable without the owner's grant being
+    broken. Keep the connection usable so the next request can retry. */
+export async function markConnectionProblem(
+  tx: postgres.TransactionSql,
+  connectionId: string,
+  why: string,
+): Promise<void> {
+  await tx`
+    update connection set last_error = ${why.slice(0, 500)}
      where id = ${connectionId}`;
 }
 

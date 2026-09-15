@@ -626,6 +626,13 @@ if [[ "$cua_enabled" == "1" ]]; then
   printf 'AISAR_CUA_ENABLED=%q\n' '1' >> "$runtime_env"
 fi
 
+# First-party tools are installed on the ordinary user PATH. They contain no
+# provider credential and call only the control plane with the runtime's
+# existing identity.
+install -d -m 755 /home/sprite/.local/bin
+install -m 755 /home/sprite/aisar/runner/jentera-calendar.mjs \
+  /home/sprite/.local/bin/jentera-calendar
+
 services=(aisar-runner hermes)
 if [[ "$cua_enabled" == "1" ]]; then
   services+=(x11-display)

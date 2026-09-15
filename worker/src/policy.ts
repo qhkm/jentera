@@ -55,6 +55,10 @@ export const DEFAULTS: Record<Operation, Policy> = {
  */
 export const GOVERNED_BY: Record<string, Operation> = {
   'telegram:send_message': 'send',
+  'google:list_events': 'read',
+  'google:create_event': 'book',
+  'google:update_event': 'update',
+  'google:delete_event': 'cancel',
 };
 
 export function permissionFor(connector: string, action: string): Operation | null {

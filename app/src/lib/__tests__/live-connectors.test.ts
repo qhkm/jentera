@@ -19,10 +19,11 @@ import { LIVE_CONNECTORS, isLive } from '@/lib/live-connectors';
 describe('the live list', () => {
   it('contains Telegram, which is implemented', () => {
     expect(isLive('Telegram')).toBe(true);
+    expect(isLive('Google Calendar')).toBe(true);
   });
 
   it('contains nothing that is only a stub', () => {
-    for (const name of ['WhatsApp', 'Instagram', 'Google Calendar', 'Google Sheets', 'Shopee']) {
+    for (const name of ['WhatsApp', 'Instagram', 'Google Sheets', 'Shopee']) {
       expect(isLive(name), `${name} is not implemented`).toBe(false);
     }
   });
@@ -38,7 +39,7 @@ describe('the live list', () => {
     const dir = resolve(process.cwd(), '../worker/src/connectors');
     const shipped = readdirSync(dir)
       .filter((f) => f.endsWith('.ts'))
-      .map((f) => f.replace('.ts', '').toLowerCase());
+      .map((f) => f.replace('.ts', '').replace(/-/g, ' ').toLowerCase());
 
     const claimed = [...LIVE_CONNECTORS].map((n) => n.toLowerCase());
     expect(claimed.sort()).toEqual(shipped.sort());

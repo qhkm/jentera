@@ -25,8 +25,9 @@ describe('Library', () => {
     await user.click(screen.getAllByText('View instructions')[1]);
     expect(screen.getAllByText(/Research the topic specified below/)[0]).toBeVisible();
     await user.click(screen.getByRole('link', { name: 'Connectors' }));
-    expect(screen.getByText('Not connected')).toBeVisible();
+    expect(screen.getAllByText('Not connected')).toHaveLength(2);
     expect(screen.getByRole('button', { name: 'Connect Telegram' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Connect Google Calendar' })).toBeEnabled();
     expect(screen.getAllByText('Not available yet').length).toBeGreaterThan(3);
     expect(onUse).not.toHaveBeenCalled();
   });

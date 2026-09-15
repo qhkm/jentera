@@ -20,7 +20,7 @@
  * connect flow like TelegramConnect, then add its name here. In that
  * order — a name here without the other two puts the old lie back.
  */
-export const LIVE_CONNECTORS = new Set(['Telegram']);
+export const LIVE_CONNECTORS = new Set(['Telegram', 'Google Calendar']);
 
 export function isLive(name: string): boolean {
   return LIVE_CONNECTORS.has(name);

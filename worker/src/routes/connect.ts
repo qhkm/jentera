@@ -16,6 +16,7 @@ import { TOKEN_CONNECTORS, tokenConnector } from '../token-connectors';
 import {
   bindTelegramInternalChat,
   findConnection,
+  findConnectionById,
   listConnections,
   markBroken,
   markWebhookUpdates,
@@ -26,6 +27,11 @@ import {
   useCredential,
   webhookSecret,
 } from '../connections';
+import {
+  GOOGLE_CALENDAR_CONNECTOR,
+  revokeGoogleCalendar,
+} from '../connectors/google-calendar';
+import { startGoogleCalendarOAuth } from './google-calendar-oauth';
 import {
   WEBHOOK_ALLOWED_UPDATES,
   clearWebhook,
@@ -134,6 +140,15 @@ export async function handleConnect(
       }
     }
     return json({ ok: true, connections: rows }, {}, cors);
+  }
+
+  /* ---- connect the owner's primary Google Calendar ------------------- */
+
+  if (url.pathname === '/api/connections/google-calendar/start' && request.method === 'GET') {
+    if (!can(id, 'connections.manage')) {
+      return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+    }
+    return startGoogleCalendarOAuth(env, id);
   }
 
   /* ---- what can be connected by pasting a token ------------------------ */
@@ -278,6 +293,10 @@ export async function handleConnect(
     const forceRefresh = url.searchParams.get('refresh') === '1';
     try {
       const info = await withTenant(env, id.businessId, async (tx) => {
+        const connection = await findConnectionById(tx, health[1]);
+        if (!connection || connection.connector !== 'telegram') {
+          throw new Error('Health check is not available for that connection.');
+        }
         const token = await useCredential(env, tx, health[1]);
         return webhookHealth(token);
       });
@@ -351,16 +370,20 @@ export async function handleConnect(
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
     await withTenant(env, id.businessId, async (tx) => {
-      /* Best effort: stop Telegram sending before the row goes. If the
-         token is already revoked this fails, and the disconnection
-         should still succeed. */
+      const connection = await findConnectionById(tx, drop[1]);
+      if (!connection) return;
+      /* Provider cleanup is best effort. Revoked credentials should never
+         make the local disconnect button impossible to use. */
       try {
-        const secret = await useCredential(env, tx, drop[1]);
-        await clearWebhook(secret);
+        const secret = await useCredential(env, tx, connection.id);
+        if (connection.connector === 'telegram') await clearWebhook(secret);
+        if (connection.connector === GOOGLE_CALENDAR_CONNECTOR) {
+          await revokeGoogleCalendar(env, secret);
+        }
       } catch {
-        /* nothing to clear */
+        /* nothing left to revoke */
       }
-      await removeConnection(tx, drop[1]);
+      await removeConnection(tx, connection.id);
     });
     return new Response(null, { status: 204, headers: cors });
   }

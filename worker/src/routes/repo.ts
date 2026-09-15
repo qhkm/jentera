@@ -27,6 +27,19 @@ import { signalRuntimeTask } from '../runtime';
 import { runtimeProvisioningProblem } from '../runtime/execution';
 import { enqueueRuntimeTask } from '../runtime/tasks';
 import { DEFAULT_SPECIALISTS, listSpecialists } from '../specialists';
+import {
+  findConnectionById,
+  markConnectionExpired,
+  markConnectionHealthy,
+  markConnectionProblem,
+  useCredential,
+} from '../connections';
+import {
+  GOOGLE_CALENDAR_CONNECTOR,
+  GoogleCalendarError,
+  createGoogleCalendarEvent,
+  normaliseCalendarEvent,
+} from '../connectors/google-calendar';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -585,6 +598,45 @@ export async function handleRepo(
            be visible in logs rather than silently leave the run parked. */
         console.error(`[approvals] rejection bookkeeping failed for run ${changed.runId}: ${String(error)}`);
       });
+    }
+
+    if (approved && changed.connector === GOOGLE_CALENDAR_CONNECTOR && changed.op === 'create_event') {
+      const args = changed.args as Record<string, unknown>;
+      const connectionId = typeof args.connectionId === 'string' ? args.connectionId : '';
+      try {
+        const event = normaliseCalendarEvent(args);
+        const secret = await withTenant(env, id.businessId, async (tx) => {
+          const connection = await findConnectionById(tx, connectionId);
+          if (!connection || connection.connector !== GOOGLE_CALENDAR_CONNECTOR ||
+              connection.status !== 'connected') {
+            throw new GoogleCalendarError('Reconnect Google Calendar before approving this event.', true);
+          }
+          return useCredential(env, tx, connection.id);
+        });
+        const created = await createGoogleCalendarEvent(env, secret, event);
+        await withTenant(env, id.businessId, async (tx) => {
+          await tx`update approval
+                     set status = 'executed', result = ${tx.json({ event: created } as never)}
+                   where id = ${decide[1]}::uuid and status = 'approved'`;
+          await markConnectionHealthy(tx, connectionId);
+        });
+        return json({ ok: true, status: 'executed', event: created }, {}, cors);
+      } catch (error) {
+        const why = error instanceof Error ? error.message : 'Google Calendar could not add that event.';
+        await withTenant(env, id.businessId, async (tx) => {
+          await tx`update approval
+                     set status = 'failed', result = ${tx.json({ error: why.slice(0, 500) })}
+                   where id = ${decide[1]}::uuid and status = 'approved'`;
+          if (connectionId) {
+            if (error instanceof GoogleCalendarError && error.auth) {
+              await markConnectionExpired(tx, connectionId, why);
+            } else {
+              await markConnectionProblem(tx, connectionId, why);
+            }
+          }
+        }).catch(() => {});
+        return json({ ok: true, status: 'failed', executed: false, err: why }, {}, cors);
+      }
     }
 
     /* Approving is not merely a status change: it is the moment the
