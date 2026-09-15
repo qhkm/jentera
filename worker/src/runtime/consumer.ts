@@ -1504,7 +1504,16 @@ export async function handleRuntimeMessage(
                   currentStep = step;
                   currentStepIsTool = false;
                   currentActivity = currentStep;
-                  await liveStream?.showProgress(step);
+                  /* The step belongs in the bubble, which setStatus updates just
+                     below, and nowhere else. showProgress sends a *message*: it
+                     would put the model's own @step words permanently into the
+                     chat, where every other thing on that lane is a generated
+                     phrase — tools go through telegramToolProgress and raw
+                     reasoning is refused outright, both decided in the same
+                     commit that added this call. Narration is not shown
+                     verbatim; older traces carried passwords and internal
+                     paths. The bubble still carries the step, so nothing is
+                     lost by not also announcing it. */
                   if (!firstVisibleDelta) {
                     await web?.status(timedStatus());
                     await liveStream?.setStatus(timedStatus());
