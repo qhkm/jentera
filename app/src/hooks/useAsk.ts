@@ -87,6 +87,10 @@ export interface AskSession {
   /** Set when the chat was opened inside a workspace: every member of it
       may read and continue the chat, and each turn is sent with it. */
   workspaceId?: string;
+  /** Every durable turn in this conversation advances this outcome. */
+  goalId?: string;
+  /** Human-readable context shown in Chat; the server trusts only goalId. */
+  goalTitle?: string;
 }
 
 /* Storage is keyed per account. The earlier single global key meant the next
@@ -264,6 +268,8 @@ function loadSessions(account: string): AskSession[] {
           updatedAt: typeof s.updatedAt === 'number' ? s.updatedAt : 0,
           messages: s.messages.filter(isMessage).slice(-40),
           ...(typeof s.workspaceId === 'string' ? { workspaceId: s.workspaceId } : {}),
+          ...(typeof s.goalId === 'string' ? { goalId: s.goalId } : {}),
+          ...(typeof s.goalTitle === 'string' ? { goalTitle: s.goalTitle } : {}),
         }));
       if (sessions.length) return sessions.sort(byRecent);
     }
@@ -375,10 +381,12 @@ export function useAsk(
     [business.sug, counts, t],
   );
 
-  const newSession = useCallback((resumeId?: string, workspaceId?: string) => {
+  const newSession = useCallback((resumeId?: string, workspaceId?: string, goalId?: string, goalTitle?: string) => {
     const session = freshSession();
     if (resumeId) session.id = resumeId;
     if (workspaceId) session.workspaceId = workspaceId;
+    if (goalId) session.goalId = goalId;
+    if (goalTitle) session.goalTitle = goalTitle;
     setState((prev) => ({
       sessions: prev.sessions.some((s) => s.id === session.id) ? prev.sessions : [session, ...prev.sessions].slice(0, MAX_SESSIONS),
       activeId: session.id,
@@ -570,9 +578,11 @@ export function useAsk(
     (raw: string, mode?: AskMode, attachment?: File) => {
       const question = raw.trim();
       if (!question) return;
-      const selectedMode = mode ?? automaticAskMode(question, Boolean(attachment));
-      const depth = automaticResponseDepth(question);
       const sessionId = activeIdRef.current;
+      const session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
+      const goalId = session?.goalId;
+      const selectedMode = goalId ? 'work' : mode ?? automaticAskMode(question, Boolean(attachment));
+      const depth = automaticResponseDepth(question);
       const now = Date.now();
       const inputFiles = attachment
         ? [{ name: attachment.name, contentType: attachment.type || 'application/octet-stream', size: attachment.size }]
@@ -609,11 +619,12 @@ export function useAsk(
             activeId: prev.activeId,
           };
         });
-        const workspaceId = sessionsRef.current.find((s) => s.id === sessionId)?.workspaceId;
+        const workspaceId = session?.workspaceId;
         settlePending(sessionId, pendingId, question, selectedMode, repo.ask(question, {
           mode: selectedMode,
           sessionId,
           ...(workspaceId ? { workspaceId } : {}),
+          ...(goalId ? { goalId } : {}),
           ...(attachment ? { attachment } : {}),
           onRunCreated: (runId: string) => {
             if (!isRunId(runId)) return;

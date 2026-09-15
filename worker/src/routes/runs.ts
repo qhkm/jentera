@@ -307,6 +307,7 @@ export async function handleRuns(
       sessionId?: unknown;
       responseMode?: unknown;
       workspaceId?: unknown;
+      goalId?: unknown;
     };
     if (url.pathname === ASK_FILE_PATH) {
       let form: FormData;
@@ -326,6 +327,7 @@ export async function handleRuns(
         sessionId: field('sessionId'),
         responseMode: field('responseMode'),
         workspaceId: field('workspaceId'),
+        goalId: field('goalId'),
       };
       const uploaded = form.get('file');
       if (!uploaded || typeof uploaded === 'string' || typeof uploaded.arrayBuffer !== 'function') {
@@ -376,6 +378,15 @@ export async function handleRuns(
       const member = await withTenant(env, id.businessId, (tx) => isWorkspaceMember(tx, id.businessId, workspaceId, id.userId));
       if (!member) return json({ ok: false, err: 'You are not in that workspace.' }, { status: 403 }, cors);
     }
+    const goalId = body.goalId === undefined ? null
+      : typeof body.goalId === 'string' && uuid(body.goalId) ? body.goalId : undefined;
+    if (goalId === undefined) return json({ ok: false, err: 'goal id is invalid' }, { status: 400 }, cors);
+    if (goalId) {
+      const [goal] = await withTenant(env, id.businessId, (tx) => tx<{ id: string }[]>`
+        select id from goal where business_id = ${id.businessId} and id = ${goalId}
+          and status = 'active'`);
+      if (!goal) return json({ ok: false, err: 'active goal not found' }, { status: 404 }, cors);
+    }
     const mode = body.mode ?? 'work';
     if (mode !== 'ask' && mode !== 'work') {
       return json({ ok: false, err: 'ask mode is invalid' }, { status: 400 }, cors);
@@ -384,6 +395,9 @@ export async function handleRuns(
       return json({ ok: false, err: 'response mode is invalid' }, { status: 400 }, cors);
     }
     const responseMode = body.responseMode as ResponseMode | undefined;
+    if (goalId && mode !== 'work') {
+      return json({ ok: false, err: 'goal work needs the durable agent' }, { status: 400 }, cors);
+    }
 
     if (mode === 'work') {
       if (!runtimeExecutionEnabled(env)) {
@@ -404,6 +418,7 @@ export async function handleRuns(
         { email: id.email, role: id.role ?? 'staff' },
         workspaceId,
         inputFile,
+        goalId,
       );
     }
 
@@ -745,6 +760,7 @@ async function startDurableAsk(
   speaker?: Speaker,
   workspaceId: string | null = null,
   inputFile?: ChatInputFile,
+  goalId: string | null = null,
 ): Promise<Response> {
   if (!env.RUNTIME_QUEUE || !env.AISAR_MODEL_NAME?.trim()) {
     return json({ ok: false, err: 'Jentera agent execution is unavailable' }, { status: 503 }, cors);
@@ -804,6 +820,7 @@ async function startDurableAsk(
       runtime: 'hermes-sprite',
       model,
       sessionId: chat,
+      goalId,
     });
     await append(tx, businessId, run.id, 'fact.retrieved', {
       keys: prepared.usedKeys,

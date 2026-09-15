@@ -20,7 +20,7 @@ import { useBusiness } from '@/hooks/useBusiness';
 import { useActivity } from '@/hooks/useActivity';
 import { useConnections } from '@/hooks/useConnections';
 import { useRepository, useSnapshot } from '@/lib/repo';
-import { useRoutinesEnabled } from '@/lib/repo/gate';
+import { useRoutinesEnabled, useSignedIn } from '@/lib/repo/gate';
 import { milestones, readiness } from '@/lib/business';
 import { useT } from '@/i18n/I18nProvider';
 import { Icon, type IconName } from '@/components/Icon';
@@ -35,13 +35,14 @@ import RoutinesView from './views/RoutinesView';
 import NotificationsView from './views/NotificationsView';
 import FilesView from './views/FilesView';
 import LibraryView from './views/LibraryView';
+import GoalsView from './views/GoalsView';
 import type { RoutineConfig } from '@/lib/routines/types';
 import { BottomNav } from '@/components/BottomNav';
 import { useNotifications } from '@/hooks/useNotifications';
 import { ComputerStatus } from '@/components/ComputerStatus';
 import { isPwaStandalone } from '@/pwa/install';
 
-export type View = 'home' | 'chat' | 'work' | 'files' | 'library' | 'routines' | 'notifications' | 'business';
+export type View = 'home' | 'chat' | 'work' | 'files' | 'library' | 'goals' | 'routines' | 'notifications' | 'business';
 
 const BUSINESS_TABS: BizTab[] = ['profile', 'knows', 'handles', 'connections', 'permissions', 'team'];
 
@@ -55,6 +56,7 @@ const NAV: NavItem[] = [
   { id: 'home', labelKey: 'nav.home', icon: 'home' },
   { id: 'work', labelKey: 'nav.work', icon: 'activity' },
   { id: 'library', labelKey: 'nav.library', icon: 'library' },
+  { id: 'goals', labelKey: 'nav.goals', icon: 'goals' },
   { id: 'files', labelKey: 'nav.files', icon: 'files' },
   { id: 'notifications', labelKey: 'notifications.title', icon: 'notifications' },
   { id: 'business', labelKey: 'nav.business', icon: 'business' },
@@ -63,10 +65,13 @@ const NAV: NavItem[] = [
 export default function Dashboard() {
   const t = useT();
   const repository = useRepository();
+  const signedIn = useSignedIn();
   const routinesEnabled = useRoutinesEnabled() && !!repository.routines;
+  const goalsEnabled = signedIn && !!repository.goals;
+  const availableNav = goalsEnabled ? NAV : NAV.filter((item) => item.id !== 'goals');
   const nav: NavItem[] = routinesEnabled
-    ? [...NAV.slice(0, 3), { id: 'routines', labelKey: 'routines.title', icon: 'routines' }, ...NAV.slice(3)]
-    : NAV;
+    ? [...availableNav.slice(0, 3), { id: 'routines', labelKey: 'routines.title', icon: 'routines' }, ...availableNav.slice(3)]
+    : availableNav;
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedView = searchParams.get('view');
   const view: View = requestedView === 'chat' || nav.some((item) => item.id === requestedView)
@@ -78,7 +83,7 @@ export default function Dashboard() {
   const focusedReviewId = view === 'work' ? searchParams.get('review') : null;
   const focusedRunId = view === 'work' ? focusedReviewId ?? searchParams.get('run') : null;
   const [taskContext, setTaskContext] = useState<{ runId: string; title?: string } | null>(null);
-  const [taskDraft, setTaskDraft] = useState<{ text: string; key: number; sessionId?: string } | null>(null);
+  const [taskDraft, setTaskDraft] = useState<{ text: string; key: number; sessionId?: string; goalId?: string; goalTitle?: string } | null>(null);
   const [playbookDraft, setPlaybookDraft] = useState<RoutineConfig | null>(null);
   const focusedRoutineId = view === 'routines' ? searchParams.get('routine') : null;
   const lastDashboard = useRef<{ view: Exclude<View, 'chat'>; tab: BizTab; runId: string | null; routineId: string | null; reviewId: string | null }>({ view: 'home', tab: 'profile', runId: null, routineId: null, reviewId: null });
@@ -252,7 +257,7 @@ export default function Dashboard() {
 
         <div className="dashboard-content min-w-0 flex-1">
           <ComputerStatus mobileTarget={computerStatusTarget} onOpenChat={isChat ? undefined : () => go('chat')} onOpenKnowledge={() => go('business', 'knows')} onOpenActivity={openTask} />
-          {view === 'home' && <HomeView b={b} connections={connections} onNavigate={go} />}
+          {view === 'home' && <HomeView b={b} connections={connections} goalsEnabled={goalsEnabled} onNavigate={go} />}
           {/* Keep the owner conversation mounted while they inspect another
               section. Returning to Ask Jentera must not erase the exchange. */}
           <div className={isChat ? 'workspace-chat-panel' : 'hidden'} hidden={!isChat}>
@@ -284,6 +289,19 @@ export default function Dashboard() {
           {view === 'files' && <FilesView onOpenTask={(runId) => openTask(runId)} />}
           {view === 'library' && <LibraryView canSchedule={routinesEnabled} connections={connections} onUse={config => {
             setPlaybookDraft(config); go('routines');
+          }} />}
+          {view === 'goals' && goalsEnabled && <GoalsView onWork={(goal) => {
+            setTaskDraft({
+              key: Date.now(),
+              goalId: goal.id,
+              goalTitle: goal.title,
+              text: t('goals.work.prompt', {
+                title: goal.title,
+                criteria: goal.successCriteria || t('goals.criteria.none'),
+                date: goal.targetDate || t('goals.date.none'),
+              }),
+            });
+            go('chat');
           }} />}
           {view === 'notifications' && <NotificationsView
             state={notifications}

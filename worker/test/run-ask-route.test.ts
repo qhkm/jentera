@@ -189,6 +189,35 @@ describe('Ask Jentera runtime bridge', () => {
     expect(row.payload).not.toHaveProperty('businessId');
   });
 
+  it('links durable work to an active goal in the same business only', async () => {
+    await readyRuntime(A);
+    const [ownGoal, foreignGoal] = await asOwner((sql) => sql<{ id: string }[]>`
+      insert into goal (business_id, title, success_criteria) values
+        (${A}, 'Reach 100 monthly orders', '100 paid orders in one month'),
+        (${B}, 'Open a second location', 'Second location is trading')
+      returning id`);
+    const response = await call('POST', '/api/runs/ask', durableEnv(sendFake()), cookieA, {
+      question: 'Plan the next sales campaign',
+      requestId: crypto.randomUUID(),
+      mode: 'work',
+      goalId: ownGoal.id,
+    });
+    expect(response.status).toBe(202);
+    const body = await response.json() as { runId: string };
+    const [run] = await asOwner((sql) => sql<{ goal_id: string | null }[]>`
+      select goal_id from run where id = ${body.runId}`);
+    expect(run.goal_id).toBe(ownGoal.id);
+
+    const foreign = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
+      question: 'Attach foreign goal', requestId: crypto.randomUUID(), mode: 'work', goalId: foreignGoal.id,
+    });
+    expect(foreign.status).toBe(404);
+    const inline = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
+      question: 'Use inline answer', requestId: crypto.randomUUID(), mode: 'ask', goalId: ownGoal.id,
+    });
+    expect(inline.status).toBe(400);
+  });
+
   it('gives durable chat the same agent prompt and framing Telegram gets', async () => {
     await readyRuntime(A);
     const send = sendFake();

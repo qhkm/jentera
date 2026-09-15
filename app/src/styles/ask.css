@@ -20,6 +20,20 @@
   font-size: 22px;
   letter-spacing: -0.025em;
 }
+.ask-goal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  max-width: min(320px, 34vw);
+  padding: 5px 10px;
+  border: 1px solid rgb(var(--accent-green-rgb) / .24);
+  border-radius: 999px;
+  color: var(--accent-green);
+  background: rgb(var(--accent-green-rgb) / .06);
+}
+.ask-goal-badge > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 11px; }
+.ask-goal-badge small { margin-right: 5px; color: var(--accent-green); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
 .ask-studio-tools {
   display: flex;
   align-items: center;

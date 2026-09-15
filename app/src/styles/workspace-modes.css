@@ -510,6 +510,8 @@
   .workspace-chat .ask-studio-topbar h1 {
     font-size: 18px;
   }
+  .workspace-chat .ask-goal-badge { max-width: 34vw; padding-inline: 8px; }
+  .workspace-chat .ask-goal-badge small { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 }
 @media (max-width: 380px) {
   /* Let longer BM labels wrap, without shrinking the reading size or

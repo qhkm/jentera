@@ -128,6 +128,8 @@ export interface AskOptions {
   /** Open this chat inside a workspace, so every member may read it. Only
       the first turn decides; later turns leave the chat where it is. */
   workspaceId?: string;
+  /** Link durable work to the business outcome it advances. */
+  goalId?: string;
 }
 
 export type WorkKind = 'work' | 'conversation';
@@ -323,6 +325,34 @@ export interface RuntimeOverview {
   } | null;
 }
 
+export type GoalStatus = 'active' | 'completed' | 'archived';
+
+export interface Goal {
+  id: string;
+  title: string;
+  successCriteria: string;
+  targetDate: string | null;
+  status: Exclude<GoalStatus, 'archived'>;
+  taskCount: number;
+  completedTaskCount: number;
+  latestOutcome: string | null;
+  latestWorkAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+}
+
+export interface GoalInput {
+  title: string;
+  successCriteria: string;
+  targetDate: string | null;
+}
+
+export interface GoalsOverview {
+  canManage: boolean;
+  goals: Goal[];
+}
+
 /** Thrown when a feature needs the server and there is no session. */
 export class NeedsAccountError extends Error {
   constructor(what: string) {
@@ -434,6 +464,11 @@ export interface Repository {
   resumeAsk?(runId: string, options?: ResumeAskOptions): Promise<AskAnswer>;
   /** Wake the business's agent ahead of the first message; best effort. */
   warmAgent?(): Promise<void>;
+
+  /** Shared business outcomes and the real work linked to each one. */
+  goals?(): Promise<GoalsOverview>;
+  createGoal?(input: GoalInput): Promise<Goal>;
+  updateGoal?(id: string, input: GoalInput & { status: GoalStatus }): Promise<void>;
 
   /** Web push, remote only. The server's VAPID public key, or null when
       push is not configured there. */

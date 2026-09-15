@@ -44,6 +44,7 @@ import { handleTeam } from './routes/team';
 import { handleWorkspaces } from './routes/workspaces';
 import { handleChats } from './routes/chats';
 import { handleAgentMemory } from './routes/agent-memory';
+import { handleGoals } from './routes/goals';
 import { dispatchDueRoutines } from './routines/dispatch';
 import { handleConnect } from './routes/connect';
 import { connect } from './db';
@@ -187,6 +188,8 @@ export default {
     if (chatList) return chatList;
     const agentMemory = await handleAgentMemory(request, env, url, headers);
     if (agentMemory) return agentMemory;
+    const goals = await handleGoals(request, env, url, headers);
+    if (goals) return goals;
 
     /* Connections, and the Telegram webhook — the one route here that
        is called by someone other than our own frontend. */

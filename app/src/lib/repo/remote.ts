@@ -28,6 +28,10 @@ import type {
   ConnectionHealth,
   Fact,
   FactSource,
+  Goal,
+  GoalInput,
+  GoalsOverview,
+  GoalStatus,
   IngestResult,
   OnboardingCompletion,
   Repository,
@@ -420,6 +424,7 @@ export class RemoteRepository implements Repository {
         mode: options.mode ?? 'work',
         ...(options.sessionId ? { sessionId: options.sessionId } : {}),
         ...(options.workspaceId ? { workspaceId: options.workspaceId } : {}),
+        ...(options.goalId ? { goalId: options.goalId } : {}),
         ...(options.responseMode ? { responseMode: options.responseMode } : {}),
       };
       let path = '/api/runs/ask';
@@ -454,6 +459,25 @@ export class RemoteRepository implements Repository {
       ? streamAsk(begun.runId, options.onProgress)
       : pollAsk(begun.runId));
     return { ...answer, runId: begun.runId };
+  }
+
+  async goals(): Promise<GoalsOverview> {
+    return call<GoalsOverview>('/api/goals');
+  }
+
+  async createGoal(input: GoalInput): Promise<Goal> {
+    const result = await call<{ goal: Goal }>('/api/goals', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return result.goal;
+  }
+
+  async updateGoal(id: string, input: GoalInput & { status: GoalStatus }): Promise<void> {
+    await call(`/api/goals/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    });
   }
 
   async warmAgent(): Promise<void> {

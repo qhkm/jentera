@@ -532,3 +532,34 @@ describe('useAsk and workspaces', () => {
     expect(asked[0]).toMatchObject({ sessionId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', workspaceId: 'ws-1' });
   });
 });
+
+describe('useAsk and goals', () => {
+  it('keeps every turn durable and linked to the goal', async () => {
+    const repo: Repository = new LocalRepository();
+    const asked: AskOptions[] = [];
+    repo.ask = async (_question: string, options?: AskOptions): Promise<AskAnswer> => {
+      asked.push(options ?? {});
+      return { text: 'Next action ready.', usedKeys: [], grounded: false };
+    };
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SignedInProvider value account="goal-test">
+        <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
+      </SignedInProvider>
+    );
+    const goalId = '11111111-1111-4111-8111-111111111111';
+    const { result } = renderHook(
+      () => useAsk(business, counts, translate),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current).not.toBeNull());
+    act(() => { result.current.newSession(undefined, undefined, goalId); });
+    await act(async () => { result.current.send('What should we do first?', 'ask'); });
+    await act(async () => { result.current.send('Now carry that out', 'ask'); });
+
+    expect(asked).toHaveLength(2);
+    expect(asked).toEqual([
+      expect.objectContaining({ goalId, mode: 'work' }),
+      expect.objectContaining({ goalId, mode: 'work' }),
+    ]);
+  });
+});

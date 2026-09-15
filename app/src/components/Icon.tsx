@@ -59,6 +59,7 @@ import {
   Sparkle,
   Stethoscope,
   Storefront,
+  Target,
   Tent,
   ThumbsDown,
   ThumbsUp,
@@ -74,6 +75,7 @@ import {
 const CHROME = {
   home: House,
   library: Books,
+  goals: Target,
   routines: ArrowsClockwise,
   chat: ChatCircle,
   activity: Lightning,

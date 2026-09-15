@@ -70,7 +70,7 @@ function Harness({ connections = connectionState([]), onNavigate = () => {} }: {
   onNavigate?: (view: string, tab?: string, runId?: string | null) => void;
 }) {
   const b = useBusiness();
-  return <HomeView b={b} connections={connections} onNavigate={onNavigate as never} />;
+  return <HomeView b={b} connections={connections} goalsEnabled={false} onNavigate={onNavigate as never} />;
 }
 
 async function mount(signedIn: boolean, activity: Activity | null, rows: Connection[] = [], onNavigate?: (view: string, tab?: string, runId?: string | null) => void) {

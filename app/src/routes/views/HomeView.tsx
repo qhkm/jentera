@@ -29,6 +29,7 @@ import { useActivity } from '@/hooks/useActivity';
 import type { ConnectionsState } from '@/hooks/useConnections';
 import { useSnapshot } from '@/lib/repo';
 import { DailyBrief } from '@/components/DailyBrief';
+import { HomeGoals } from '@/components/HomeGoals';
 import { useBusinessClock } from '@/hooks/useBusinessClock';
 import { BUSINESS_TIME_ZONE, malaysiaDay } from '@/lib/daily-brief';
 import { isRunId } from '@/lib/task';
@@ -42,10 +43,12 @@ const STAT_ICONS = [CheckCircle, Bell, Clock];
 export default function HomeView({
   b,
   connections,
+  goalsEnabled,
   onNavigate,
 }: {
   b: ReturnType<typeof useBusiness>;
   connections: ConnectionsState;
+  goalsEnabled: boolean;
   onNavigate: (v: View, businessTab?: BizTab, runId?: string) => void;
 }) {
   const { t, lang } = useI18n();
@@ -169,6 +172,8 @@ export default function HomeView({
       </section>
 
       {!demo && <DailyBrief activity={activity} snapshot={snap} now={now} onNavigate={onNavigate} />}
+
+      {goalsEnabled && <HomeGoals onOpen={() => onNavigate('goals')} />}
 
       {showTelegramNotice ? (
         <Card role="status" className="home-notice gap-4 border-brand-line bg-brand-soft">

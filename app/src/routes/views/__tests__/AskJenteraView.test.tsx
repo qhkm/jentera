@@ -22,13 +22,17 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function Harness({ onOpenConnections }: { onOpenConnections?: () => void } = {}) {
+function Harness({ onOpenConnections, taskDraft }: {
+  onOpenConnections?: () => void;
+  taskDraft?: { text: string; key: number; goalId?: string; goalTitle?: string };
+} = {}) {
   const { business } = useBusiness();
   return <AskJenteraView
     business={business}
     handled={0}
     needs={0}
     onOpenConnections={onOpenConnections}
+    taskDraft={taskDraft}
   />;
 }
 
@@ -54,6 +58,18 @@ async function mount(children: ReactNode = <Harness />, repo = new LocalReposito
 }
 
 describe('compose-first Ask Jentera', () => {
+  it('keeps the linked goal visible while the owner works in Chat', async () => {
+    await mount(<Harness taskDraft={{
+      key: 1,
+      text: 'Plan the next sales campaign',
+      goalId: '11111111-1111-4111-8111-111111111111',
+      goalTitle: 'Reach 100 monthly orders',
+    }} />);
+    expect(await screen.findByText('Reach 100 monthly orders')).toBeVisible();
+    expect(screen.getByTitle('Reach 100 monthly orders')).toBeVisible();
+    expect(screen.getByRole('textbox')).toHaveValue('Plan the next sales campaign');
+  });
+
   it('attaches an Excel file to a question and can send the file on its own', async () => {
     const user = userEvent.setup();
     const repo = new LocalRepository();

@@ -14,6 +14,7 @@ import {
   Notepad,
   Paperclip,
   Plus,
+  Target,
   UsersThree,
   X,
 } from '@phosphor-icons/react';
@@ -67,7 +68,7 @@ export default function AskJenteraView({
   onOpenActivity?: (runId?: string, title?: string) => void;
   onOpenConnections?: () => void;
   onOpenKnowledge?: () => void;
-  taskDraft?: { text: string; key: number; sessionId?: string } | null;
+  taskDraft?: { text: string; key: number; sessionId?: string; goalId?: string; goalTitle?: string } | null;
 }) {
   const { t, lang } = useI18n();
   const compact = useIsCompact();
@@ -93,7 +94,8 @@ export default function AskJenteraView({
     onOpenShared: (chatId: string) => { void openShared(chatId); },
     onNewIn: (workspaceId: string) => { ask.newSession(undefined, workspaceId); },
   } : undefined;
-  const activeWorkspace = sharedChats.workspaces.find((w) => w.id === ask.sessions.find((s) => s.id === ask.activeId)?.workspaceId);
+  const activeSession = ask.sessions.find((session) => session.id === ask.activeId);
+  const activeWorkspace = sharedChats.workspaces.find((w) => w.id === activeSession?.workspaceId);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const draft = drafts[ask.activeId] ?? '';
   const [attachments, setAttachments] = useState<Record<string, File | undefined>>({});
@@ -107,7 +109,7 @@ export default function AskJenteraView({
   useEffect(() => {
     if (!active || !taskDraft || consumedDraft.current === taskDraft.key) return;
     consumedDraft.current = taskDraft.key;
-    const id = ask.newSession(taskDraft.sessionId);
+    const id = ask.newSession(taskDraft.sessionId, undefined, taskDraft.goalId, taskDraft.goalTitle);
     setDrafts((current) => ({ ...current, [id]: taskDraft.text }));
     composer.current?.focus();
   }, [active, taskDraft, ask.newSession]);
@@ -229,6 +231,12 @@ export default function AskJenteraView({
         <h1>{t('view.chat')}</h1>
         {activeWorkspace && (
           <span className="ask-shared-badge"><UsersThree size={14} aria-hidden="true" />{t('chat.shared.badge', { name: activeWorkspace.name })}</span>
+        )}
+        {activeSession?.goalId && (
+          <span className="ask-goal-badge" title={activeSession.goalTitle ?? t('goals.chat')}>
+            <Target size={14} weight="duotone" aria-hidden="true" />
+            <span><small>{t('goals.chat')}</small>{activeSession.goalTitle ?? t('goals.title')}</span>
+          </span>
         )}
         <div className="ask-studio-tools">
           {!workspace && (signedIn || ask.sessions.length > 1) && (
