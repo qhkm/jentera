@@ -37,7 +37,6 @@ export async function markRoutineNeedsApproval(
   businessId: string,
   payload: unknown,
   runId: string | null,
-  message: string,
 ): Promise<void> {
   const meta = routineRuntimeMeta(payload);
   if (!meta || !runId) return;
@@ -53,9 +52,9 @@ export async function markRoutineNeedsApproval(
     title: meta.lang === 'bm'
       ? `${meta.name} — perlukan kelulusan`
       : `${meta.name} — needs approval`,
-    body: message || (meta.lang === 'bm'
-      ? 'Tugasan berjadual ini sedang menunggu keputusan anda.'
-      : 'This scheduled task is waiting for your decision.'),
+    body: meta.lang === 'bm'
+      ? 'Tugasan berjadual ini sedang menunggu keputusan anda. Buka tugasan untuk menyemaknya.'
+      : 'This scheduled task is waiting for your decision. Open the task to review it.',
     sourceKey: `${meta.occurrenceId}:routine_needs_approval`,
     runId,
     routineId: meta.id,
@@ -88,9 +87,13 @@ export async function finishRoutineRuntimeOccurrence(
     title: input.successful
       ? `${meta.name} — ${meta.lang === 'bm' ? 'selesai' : 'completed'}`
       : `${meta.name} — ${meta.lang === 'bm' ? 'gagal' : 'failed'}`,
-    body: input.summary || (meta.lang === 'bm'
-      ? 'Jentera tidak dapat menyelesaikan tugasan berjadual ini.'
-      : 'Jentera could not complete this scheduled task.'),
+    body: input.successful
+      ? meta.lang === 'bm'
+        ? 'Tugasan berjadual selesai. Buka Jentera untuk melihat hasilnya.'
+        : 'Scheduled task completed. Open Jentera to view the result.'
+      : meta.lang === 'bm'
+        ? 'Jentera tidak dapat menyelesaikan tugasan berjadual ini. Buka tugasan untuk butiran.'
+        : 'Jentera could not complete this scheduled task. Open the task for details.',
     sourceKey: `${meta.occurrenceId}:${kind}`,
     runId,
     routineId: meta.id,

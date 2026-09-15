@@ -245,6 +245,9 @@ export default function ActivityView({
               statusLabel={t(workLabel(w.status))}
               statusTone={workTone(w.status)}
               state={workSignal(w.status)}
+              collapsibleOutcome
+              showMoreLabel={t('activity.showMore')}
+              showLessLabel={t('activity.showLess')}
             >
               {isRunId(w.runId) && w.canOpen !== false && onOpenTask && <div className="mt-2">
                 <button type="button" className="ask-inline-action" onClick={() => onOpenTask(w.runId!)}>

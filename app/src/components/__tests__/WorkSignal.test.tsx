@@ -34,4 +34,24 @@ describe("ask loading signals", () => {
     fireEvent.click(screen.getByRole("button", { name: "View in Activity" }));
     expect(openActivity).toHaveBeenCalledOnce();
   });
+
+  it("keeps a long activity outcome compact until the reader expands it", () => {
+    const outcome = `A concise opening. ${"More supporting detail. ".repeat(20)}`;
+    const { container } = render(
+      <OutcomeReceipt
+        title="Research complete"
+        outcome={outcome}
+        audience="Private workspace"
+        statusLabel="Done"
+        collapsibleOutcome
+        showMoreLabel="Show more"
+        showLessLabel="Show less"
+      />,
+    );
+
+    expect(container.querySelector(".outcome-receipt-copy-collapsed")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(container.querySelector(".outcome-receipt-copy-collapsed")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show less" })).toHaveAttribute("aria-expanded", "true");
+  });
 });

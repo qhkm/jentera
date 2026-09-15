@@ -27,6 +27,16 @@ import {
 
 const SUMMARY_CAP = 500;
 
+function compactSummaryNotification(inputs: Record<string, unknown>, lang: 'en' | 'bm'): string {
+  const total = Number(inputs.total) || 0;
+  const completed = Number(inputs.completed) || 0;
+  const failed = Number(inputs.failed) || 0;
+  const minutes = Number(inputs.minutes) || 0;
+  return lang === 'bm'
+    ? `${total} kerja direkodkan: ${completed} selesai, ${failed} gagal. ${minutes} minit dijimatkan.`
+    : `${total} ${total === 1 ? 'piece' : 'pieces'} of work recorded: ${completed} completed, ${failed} failed. ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} saved.`;
+}
+
 export interface ExecutionResult {
   occurrence: OccurrenceRow;
   taskId: string | null;
@@ -99,7 +109,8 @@ export async function executeOccurrence(
     startedAt,
   });
   if (occurrence.trigger === 'scheduled') {
-    await notify(tx, businessId, routine, finished, lang, 'routine_completed', result.text);
+    await notify(tx, businessId, routine, finished, lang, 'routine_completed',
+      compactSummaryNotification(result.inputs, lang), routine.task_kind);
   }
   return { occurrence: finished, taskId: null };
 }
@@ -205,6 +216,7 @@ async function notify(
   lang: 'en' | 'bm',
   kind: 'routine_completed' | 'routine_failed' | 'routine_skipped',
   body: string,
+  summaryKind?: 'business_summary' | 'weekly_summary' | 'approval_reminder',
 ): Promise<void> {
   const suffix = kind === 'routine_completed'
     ? lang === 'bm' ? 'selesai' : 'completed'
@@ -214,7 +226,11 @@ async function notify(
   await createRoutineNotification(tx, businessId, {
     recipientUserId: routine.authorised_by,
     kind,
-    title: `${routine.name} — ${suffix}`,
+    title: kind === 'routine_completed' && summaryKind && summaryKind !== 'approval_reminder'
+      ? summaryKind === 'weekly_summary'
+        ? lang === 'bm' ? 'Ringkasan mingguan' : 'Weekly summary'
+        : lang === 'bm' ? 'Ringkasan harian' : 'Daily summary'
+      : `${routine.name} — ${suffix}`,
     body,
     sourceKey: `${occurrence.id}:${kind}`,
     runId: occurrence.run_id,

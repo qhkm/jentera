@@ -114,6 +114,9 @@ export function OutcomeReceipt({
   state = "done",
   actionLabel,
   onAction,
+  collapsibleOutcome = false,
+  showMoreLabel = 'Show more',
+  showLessLabel = 'Show less',
   children,
 }: {
   title: string;
@@ -126,8 +129,15 @@ export function OutcomeReceipt({
   state?: WorkSignalState;
   actionLabel?: string;
   onAction?: () => void;
+  collapsibleOutcome?: boolean;
+  showMoreLabel?: string;
+  showLessLabel?: string;
   children?: ReactNode;
 }) {
+  const [outcomeOpen, setOutcomeOpen] = useState(false);
+  const canCollapse = collapsibleOutcome && Boolean(outcome && (
+    outcome.length > 180 || (outcome.match(/\n/g)?.length ?? 0) > 2
+  ));
   return (
     <article className={`outcome-receipt outcome-receipt-${state}`}>
       <div className="flex items-start gap-3">
@@ -140,9 +150,14 @@ export function OutcomeReceipt({
             <Tag tone={statusTone}>{statusLabel}</Tag>
           </div>
           {outcome ? (
-            <p className="text-[13px] leading-relaxed text-text-secondary">
-              {outcome}
-            </p>
+            <>
+              <p className={`text-[13px] leading-relaxed text-text-secondary${canCollapse && !outcomeOpen ? ' outcome-receipt-copy-collapsed' : ''}`}>
+                {outcome}
+              </p>
+              {canCollapse && <button type="button" className="outcome-receipt-expand" aria-expanded={outcomeOpen} onClick={() => setOutcomeOpen((open) => !open)}>
+                {outcomeOpen ? showLessLabel : showMoreLabel}
+              </button>}
+            </>
           ) : null}
         </div>
       </div>

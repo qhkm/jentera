@@ -15,7 +15,18 @@
 .notification-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 5px; color: var(--text-secondary); line-height: 1.55; }
 .notification-copy strong { color: var(--text); font-weight: 600; }
 .notification-copy time { color: var(--text-muted); font-size: var(--workspace-support); }
+.notification-body-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
 .notification-title-row { display: flex; align-items: center; gap: 8px; }
+.notification-summary-card.card { align-items: stretch; padding: 18px; border-color: rgb(var(--accent-green-rgb) / .2); }
+.notification-summary-card .notification-icon { margin-top: 1px; }
+.notification-summary-card .notification-title-row { justify-content: flex-start; }
+.notification-summary-card .notification-title-row time { margin-left: auto; font-weight: 400; white-space: nowrap; }
+.notification-summary-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 7px; }
+.notification-summary-metrics > span { display: flex; min-width: 0; flex-direction: column; gap: 1px; padding: 9px 10px; border-radius: 9px; color: var(--text-muted); background: var(--workspace-control); font-size: 10px; }
+.notification-summary-metrics strong { color: var(--text); font-family: var(--font-mono); font-size: 15px; line-height: 1.2; }
+.notification-summary-metrics .notification-summary-issue strong { color: var(--color-red-400); }
+.notification-summary-attention { display: inline-flex; align-items: center; gap: 7px; margin-top: 3px; color: var(--color-amber-400); font-size: 11px; }
+.notification-summary-open { display: inline-flex; align-items: center; gap: 6px; margin-top: 3px; color: var(--accent-green); font-size: 11px; font-weight: 500; }
 .notification-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--accent-green); }
 .notification-arrow { flex: 0 0 auto; margin-top: 9px; color: var(--text-muted); }
 .notification-empty.card { align-items: center; gap: 10px; padding: 36px 20px; text-align: center; color: var(--text-secondary); }
@@ -24,5 +35,7 @@
   .notification-heading { flex-wrap: wrap; }
   .notification-actions { margin-left: auto; }
   .notification-card.card { padding: 16px; gap: 11px; }
+  .notification-summary-card.card { padding: 15px; }
+  .notification-summary-metrics > span { padding-inline: 8px; }
   .notification-arrow { display: none; }
 }

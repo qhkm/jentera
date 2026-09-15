@@ -8,6 +8,7 @@ import { RemindersPanel } from '@/components/RemindersPanel';
 import { AutomationPlaybooks } from '@/components/AutomationPlaybooks';
 import { RoutineError } from '@/lib/routines/api';
 import { occurrenceReason, occurrenceStatus, routineDate, scheduleLabel, starterSchedule } from '@/lib/routines/format';
+import { routineSummary } from '@/lib/notification-summary';
 import {
   ROUTINE_KINDS, ROUTINE_ZONE, knownRoutine, validSchedule,
   type Routine, type RoutineAction, type RoutineConfig, type RoutineKind,
@@ -50,12 +51,17 @@ function Status({ value, routine = false }: { value: string; routine?: boolean }
 function Occurrence({ item, onOpenTask }: { item: RoutineOccurrence; onOpenTask: (id: string) => void }) {
   const { lang, t } = useI18n();
   const reason = occurrenceReason(item.reason);
+  const summary = item.summary ? routineSummary(item.summary) : null;
   return <li className="routine-occurrence">
     <div className="routine-row-heading">
       <div><Status value={item.status} /><span className="routine-meta">{t(item.trigger === 'manual' ? 'routines.manual' : 'routines.scheduled')}</span></div>
       <time dateTime={item.scheduledFor}>{routineDate(item.scheduledFor, lang)}</time>
     </div>
-    {item.summary && <p>{item.summary}</p>}
+    {summary ? <div className="routine-summary-metrics" aria-label={t(`notifications.summary.${summary.period}`)}>
+      <span><strong>{summary.total}</strong>{t('notifications.summary.recorded')}</span>
+      <span><strong>{summary.completed}</strong>{t('notifications.summary.completed')}</span>
+      <span className={summary.failed ? 'routine-summary-issue' : ''}><strong>{summary.failed}</strong>{t('notifications.summary.failed')}</span>
+    </div> : item.summary && <p className={item.runId ? 'routine-summary-preview' : undefined}>{item.summary}</p>}
     {reason && <p className="routine-muted">{t(reason)}</p>}
     {item.runId && <button type="button" className="routine-link" onClick={() => onOpenTask(item.runId!)}>
       {t('routines.viewResult')}<ArrowUpRight size={16} aria-hidden="true" />

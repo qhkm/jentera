@@ -56,6 +56,11 @@
 .routine-row-heading > div { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }
 .routine-occurrence time { color: var(--text-secondary); }
 .routine-occurrence p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.routine-summary-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.routine-summary-metrics { display: grid; grid-template-columns: repeat(3, minmax(72px, 1fr)); gap: 8px; width: min(100%, 360px); }
+.routine-summary-metrics > span { display: flex; flex-direction: column; gap: 2px; padding: 9px 10px; border-radius: 9px; color: var(--text-muted); background: var(--workspace-control); font-size: 10px; }
+.routine-summary-metrics strong { color: var(--text); font-family: var(--font-mono); font-size: 15px; line-height: 1.2; }
+.routine-summary-metrics .routine-summary-issue strong { color: var(--color-red-400); }
 .routine-footer { display: flex; gap: 10px; padding-top: 6px; }
 .routine-footer svg { margin-top: 5px; flex-shrink: 0; }
 .dashboard-bottom-nav > button { min-width: 0; }

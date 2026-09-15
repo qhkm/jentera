@@ -57,9 +57,9 @@ describe('who is told about a colleague\'s work', () => {
 
   it('tells the owners when a colleague\'s action awaits approval', async () => {
     const runId = await run(ids.aisha);
-    expect(await asTenant(A, (tx) => notifyOwnersApprovalRequested(tx, A, { runId, objective: 'Email the supplier', summary: 'Send the revised order to Ali.' }))).toBe(2);
+    expect(await asTenant(A, (tx) => notifyOwnersApprovalRequested(tx, A, { runId, objective: 'Email the supplier' }))).toBe(2);
     const [first] = await rows();
     expect(first).toMatchObject({ kind: 'approval_requested', title: 'Email the supplier — approval needed' });
-    expect(first.body).toBe('aisha asked for this. Send the revised order to Ali.');
+    expect(first.body).toBe('aisha asked for this. Open the task to approve or decline.');
   });
 });

@@ -1617,10 +1617,9 @@ export async function handleRuntimeMessage(
                 await notifyOwnersApprovalRequested(tx, message.businessId, {
                   runId: lease.task.runId,
                   objective: outcome.payload.objective ?? outcome.payload.input.slice(0, 200),
-                  summary: paused.message,
                 });
                 await markRoutineNeedsApproval(
-                  tx, message.businessId, lease.task.payload, lease.task.runId, paused.message,
+                  tx, message.businessId, lease.task.payload, lease.task.runId,
                 );
               }
               return paused;
@@ -1696,10 +1695,9 @@ export async function handleRuntimeMessage(
               await notifyOwnersApprovalRequested(tx, message.businessId, {
                 runId: lease.task.runId,
                 objective: outcome.payload.objective ?? outcome.payload.input.slice(0, 200),
-                summary: paused.message,
               });
               await markRoutineNeedsApproval(
-                tx, message.businessId, lease.task.payload, lease.task.runId, paused.message,
+                tx, message.businessId, lease.task.payload, lease.task.runId,
               );
             }
             return paused;

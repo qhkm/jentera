@@ -50,7 +50,7 @@ export async function notifyOwnersWorkNeedsYou(
 export async function notifyOwnersApprovalRequested(
   tx: postgres.TransactionSql,
   businessId: string,
-  input: { runId: string; objective: string; summary?: string | null },
+  input: { runId: string; objective: string },
 ): Promise<number> {
   const asked = await requester(tx, businessId, input.runId);
   if (!asked?.requested_by) return 0;
@@ -62,7 +62,7 @@ export async function notifyOwnersApprovalRequested(
       recipientUserId: owner,
       kind: 'approval_requested',
       title: `${objective} — approval needed`,
-      body: `${who(asked.email)} asked for this. ${(input.summary ?? '').trim().slice(0, 300) || 'Open the task to approve or decline.'}`,
+      body: `${who(asked.email)} asked for this. Open the task to approve or decline.`,
       sourceKey: `${input.runId}:approval_requested`,
       runId: input.runId,
       url: `/app?view=work&review=${input.runId}`,

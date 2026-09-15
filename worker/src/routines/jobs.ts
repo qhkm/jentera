@@ -84,8 +84,12 @@ export async function summaryReport(
   const other = total - completed - failed;
   const minutes = Number(totals.minutes);
   const endLabel = formatInZone(end, timeZone, lang);
-  const lines = rows.map((row) =>
-    `- ${row.objective}${row.outcome ? ` — ${row.outcome}` : ''}`);
+  /* A summary is an index of work, not a dump of agent transcripts. Outcomes
+     can contain progress markers, file paths and hundreds of words; the task
+     remains reachable from Activity when the owner needs that detail. */
+  const lines = rows.map((row) => lang === 'bm'
+    ? `- ${row.status === 'completed' ? 'Selesai' : row.status === 'failed' ? 'Gagal' : 'Lain'}: ${row.objective}`
+    : `- ${row.status === 'completed' ? 'Completed' : row.status === 'failed' ? 'Failed' : 'Other'}: ${row.objective}`);
   const more = total - rows.length;
 
   let text: string;

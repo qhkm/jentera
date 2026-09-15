@@ -237,6 +237,21 @@ describe('permissions, history and failures', () => {
     expect(openTask).toHaveBeenCalledWith(RUN_ID);
   });
 
+  it('turns an existing long daily report into compact run metrics', async () => {
+    const { api, setHistory } = fixture([routineFixture()]);
+    setHistory(historyFixture([occurrenceFixture({
+      summary: 'Daily summary for the 24 hours to 15 Sept 2026. 19 pieces of work recorded: 18 completed, 1 failed. 0 minutes saved. - raw agent transcript and file paths',
+    })]));
+
+    await mount(api, ROUTINE_ID);
+    const metrics = await screen.findByLabelText('Daily summary');
+    expect(within(metrics).getByText('19')).toBeInTheDocument();
+    expect(within(metrics).getByText('18')).toBeInTheDocument();
+    expect(within(metrics).getByText('1')).toBeInTheDocument();
+    expect(screen.queryByText(/raw agent transcript/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'View task' })).toBeInTheDocument();
+  });
+
   it('does not treat an unversioned service error as an empty account', async () => {
     const { api } = fixture(); api.list.mockRejectedValue(new RoutineError('REQUEST_FAILED', 503));
     await mount(api);

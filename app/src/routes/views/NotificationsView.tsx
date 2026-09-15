@@ -1,13 +1,15 @@
-import { ArrowClockwise, ArrowUpRight, Bell, Check, WarningCircle } from '@phosphor-icons/react';
+import { ArrowClockwise, ArrowRight, ArrowUpRight, Bell, CalendarBlank, Check, WarningCircle } from '@phosphor-icons/react';
 import { Button, LoadingState } from '@/components/ui';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { AppNotification } from '@/lib/notifications';
 import type { useNotifications } from '@/hooks/useNotifications';
+import { notificationSummary } from '@/lib/notification-summary';
 
 type NotificationsState = ReturnType<typeof useNotifications>;
 
 function Glyph({ item }: { item: AppNotification }) {
-  const Icon = item.kind === 'routine_failed' ? WarningCircle
+  const Icon = notificationSummary(item) ? CalendarBlank
+    : item.kind === 'routine_failed' ? WarningCircle
     : item.kind === 'reminder_due' || item.kind === 'routine_needs_approval' || item.kind === 'approval_requested' || item.kind === 'work_needs_you' ? Bell : Check;
   return <span className={`notification-icon notification-icon-${item.kind}`}><Icon size={20} weight="duotone" aria-hidden="true" /></span>;
 }
@@ -21,6 +23,9 @@ export default function NotificationsView({ state, onOpenTask, onOpenRoutine, on
   const { lang, t } = useI18n();
   const date = (instant: string) => new Intl.DateTimeFormat(lang === 'bm' ? 'ms-MY' : 'en-MY', {
     dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur',
+  }).format(new Date(instant));
+  const summaryDate = (instant: string) => new Intl.DateTimeFormat(lang === 'bm' ? 'ms-MY' : 'en-MY', {
+    day: 'numeric', month: 'short', timeZone: 'Asia/Kuala_Lumpur',
   }).format(new Date(instant));
   async function open(item: AppNotification) {
     await state.markRead(item.id).catch(() => undefined);
@@ -40,14 +45,35 @@ export default function NotificationsView({ state, onOpenTask, onOpenRoutine, on
     {state.error && state.items.length === 0 && <div className="notification-empty card" role="alert"><p>{t('notifications.error')}</p><Button variant="outline" onClick={() => void state.refresh()}>{t('notifications.retry')}</Button></div>}
     {!state.loading && !state.error && state.items.length === 0 && <div className="notification-empty card"><Bell size={28} weight="duotone" /><h2>{t('notifications.empty')}</h2><p>{t('notifications.empty.detail')}</p></div>}
     {state.items.length > 0 && <ol className="notification-list" aria-busy={state.loading}>
-      {state.items.map((item) => <li key={item.id}>
-        <button type="button" className={`notification-card card ${item.readAt ? '' : 'notification-unread'}`} onClick={() => void open(item)}>
-          <Glyph item={item} />
-          <span className="notification-copy"><span className="notification-title-row"><strong>{item.title}</strong>{!item.readAt && <span className="notification-dot"><span className="sr-only">{t('notifications.unread')}</span></span>}</span>
-            <span>{item.body}</span><time dateTime={item.createdAt}>{date(item.createdAt)}</time></span>
-          <ArrowUpRight className="notification-arrow" size={18} aria-hidden="true" />
-        </button>
-      </li>)}
+      {state.items.map((item) => {
+        const summary = notificationSummary(item);
+        return <li key={item.id}>
+          <button type="button" className={`notification-card card ${summary ? 'notification-summary-card' : ''} ${item.readAt ? '' : 'notification-unread'}`} onClick={() => void open(item)}>
+            <Glyph item={item} />
+            <span className="notification-copy">
+              <span className="notification-title-row">
+                <strong>{summary ? t(`notifications.summary.${summary.period}`) : item.title}</strong>
+                {!item.readAt && <span className="notification-dot"><span className="sr-only">{t('notifications.unread')}</span></span>}
+                {summary && <time dateTime={item.createdAt}>{summaryDate(item.createdAt)}</time>}
+              </span>
+              {summary ? <>
+                <span className="notification-summary-metrics">
+                  <span><strong>{summary.total}</strong>{t('notifications.summary.recorded')}</span>
+                  <span><strong>{summary.completed}</strong>{t('notifications.summary.completed')}</span>
+                  <span className={summary.failed ? 'notification-summary-issue' : ''}><strong>{summary.failed}</strong>{t('notifications.summary.failed')}</span>
+                  {summary.minutes > 0 && <span><strong>{summary.minutes}</strong>{t('notifications.summary.minutes')}</span>}
+                </span>
+                {summary.failed > 0 && <span className="notification-summary-attention">
+                  <WarningCircle size={16} aria-hidden="true" />
+                  {t(`notifications.summary.attention.${summary.failed === 1 ? 'one' : 'many'}`, { n: summary.failed })}
+                </span>}
+                <span className="notification-summary-open">{t('notifications.summary.open')}<ArrowRight size={15} aria-hidden="true" /></span>
+              </> : <><span className={item.runId || item.routineId ? 'notification-body-preview' : undefined}>{item.body}</span><time dateTime={item.createdAt}>{date(item.createdAt)}</time></>}
+            </span>
+            {!summary && <ArrowUpRight className="notification-arrow" size={18} aria-hidden="true" />}
+          </button>
+        </li>;
+      })}
     </ol>}
     {state.nextCursor && <Button variant="outline" disabled={state.loadingMore} onClick={() => void state.loadMore()}>{t(state.loadingMore ? 'notifications.loadingMore' : 'notifications.more')}</Button>}
   </section>;

@@ -215,8 +215,13 @@ describe('notifications', () => {
     expect(owner.body.unread).toBe(1);
     expect(owner.body.notifications).toHaveLength(1);
     expect(owner.body.notifications[0]).toMatchObject({
-      kind: 'routine_completed', routineId: routine.id, readAt: null,
+      kind: 'routine_completed',
+      routineId: routine.id,
+      readAt: null,
+      title: 'Daily summary',
+      body: '1 piece of work recorded: 1 completed, 0 failed. 3 minutes saved.',
     });
+    expect(owner.body.notifications[0].body).not.toContain('Done 1');
     expect((await notifications(cookieStaffA)).body.notifications).toEqual([]);
     expect((await notifications(cookieOwnerB)).body.notifications).toEqual([]);
 
@@ -385,6 +390,8 @@ describe('run now', () => {
     const detail = (await (await handleRuns(request, env, url, cors))!.json()) as Body;
     expect(detail).toMatchObject({ ok: true, status: 'completed', pending: false });
     expect(detail.text).toContain('3 pieces of work');
+    expect(detail.text).toContain('Completed: Task 1');
+    expect(detail.text).not.toContain('Done 1');
     expect(detail.text).not.toContain('Task 4');
 
     const list = await call('GET', '/api/routines', cookieOwnerA);
