@@ -71,10 +71,10 @@ describe('AskReply: conversation versus work', () => {
     try {
       const text = 'Please confirm.\n```jentera-reminder\n' + JSON.stringify({ message: 'Drink water', dueAt: '2027-01-01T01:03:35.000Z', timeZone: 'Asia/Kuala_Lumpur' }) + '\n```';
       const view = mount({ from: 'ai', text, state: 'done', runId: RUN });
-      expect((await screen.findByLabelText('Date and time') as HTMLInputElement).value).toMatch(/^2027-01-01T09:03:35(?:\.000)?$/);
-      expect(screen.getByLabelText('Message')).toHaveValue('Drink water');
+      expect((await screen.findByLabelText('Date and time') as HTMLInputElement).value).toBe('2027-01-01T09:03');
+      expect(screen.getByLabelText('Remind me to')).toHaveValue('Drink water');
       expect(view.container.textContent).not.toContain('jentera-reminder');
-      expect(screen.getByText(/not a chat message/)).toBeInTheDocument();
+      expect(screen.getByText('Delivered to Notifications')).toBeInTheDocument();
       expect(fetch.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true);
     } finally { fetch.mockRestore(); }
   });

@@ -478,7 +478,7 @@ button.ask-context-link:hover {
   overflow-y: auto;
   overscroll-behavior-y: contain;
   scrollbar-width: thin;
-  padding: 28px 24px;
+  padding: 28px 24px 64px;
 }
 .ask-transcript {
   display: flex;
@@ -861,6 +861,170 @@ button.ask-context-link:hover {
   color: var(--text);
   font-size: 11px;
   white-space: nowrap;
+}
+
+/* Reminder confirmation is a decision card, not another assistant essay. */
+.reminder-card {
+  display: flex;
+  max-width: 620px;
+  margin-top: 12px;
+  gap: 14px;
+  border-color: var(--border-light);
+  background: var(--bg-card);
+}
+.reminder-card-header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.reminder-card-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 12px;
+  background: rgb(var(--accent-green-rgb) / .12);
+  color: var(--accent-green);
+}
+.reminder-card-header > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.reminder-card-header span {
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.reminder-card-header strong {
+  font-size: 16px;
+  line-height: 1.25;
+}
+.reminder-card-checking,
+.reminder-card-note,
+.reminder-card-error {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.reminder-card-form,
+.reminder-card-receipt {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+.reminder-card-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.reminder-card-field-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.reminder-card-field-heading small {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+.reminder-card-field textarea.input {
+  min-height: 68px;
+  resize: vertical;
+  line-height: 1.45;
+}
+.reminder-card-field input.input {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+}
+.reminder-card-delivery {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 11px;
+  border-radius: 12px;
+  background: var(--workspace-control);
+  color: var(--text-secondary);
+}
+.reminder-card-delivery > svg {
+  color: var(--accent-green);
+}
+.reminder-card-delivery > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.reminder-card-delivery strong {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+}
+.reminder-card-delivery span {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.reminder-card-link {
+  padding: 5px 0 5px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--accent-green);
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.reminder-card-primary {
+  width: 100%;
+  min-height: 46px;
+}
+.reminder-card-check,
+.reminder-card-cancel {
+  align-self: flex-start;
+}
+.reminder-card-receipt > p {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.45;
+}
+.reminder-card-time {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.reminder-card-time svg {
+  color: var(--accent-green);
+}
+.reminder-card-receipt > small {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+@media (max-width: 540px) {
+  .reminder-card {
+    gap: 12px;
+  }
+  .reminder-card-delivery {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .reminder-card-link {
+    grid-column: 2;
+    justify-self: start;
+    padding: 2px 0;
+  }
 }
 .ask-mention-list {
   position: absolute;
