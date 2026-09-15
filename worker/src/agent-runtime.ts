@@ -330,13 +330,18 @@ export async function recordProviderRuntime(
   tx: postgres.TransactionSql,
   businessId: string,
   observed: ObservedRuntime,
+  options: { preserveLifecycle?: boolean } = {},
 ): Promise<AgentRuntimeRecord> {
   const [row] = await tx<RuntimeRow[]>`
     update agent_runtime
        set provider_id = ${observed.id},
            provider_name = ${observed.name},
            provider_url = ${observed.url},
-           status = ${observed.state},
+           status = case
+             when ${Boolean(options.preserveLifecycle)}
+              and status in ('provisioning', 'upgrading') then status
+             else ${observed.state}
+           end,
            last_error = null,
            updated_at = now()
      where business_id = ${businessId}

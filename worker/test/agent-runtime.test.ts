@@ -5,6 +5,7 @@ import {
   getRuntimeSecrets,
   markRuntimeFailed,
   markRuntimeReady,
+  markRuntimeState,
   recordProviderRuntime,
   runtimeName,
 } from '../src/agent-runtime';
@@ -78,6 +79,18 @@ describe('the runtime control-plane record', () => {
     const [business] = await asOwner((sql) => sql<{ runtime: string }[]>`
       select runtime from business where id = ${A}`);
     expect(business.runtime).toBe('aisar-native');
+  });
+
+  it('does not erase the bootstrap lifecycle state with provider machine state', async () => {
+    const claimed = await claim(A);
+    await asTenant(A, (tx) => markRuntimeState(tx, A, 'upgrading'));
+    const row = await asTenant(A, (tx) =>
+      recordProviderRuntime(tx, A, {
+        provider: 'fly-sprite', id: 'sprite-id', name: claimed.providerName,
+        url: `https://${claimed.providerName}.example`, state: 'cold',
+      }, { preserveLifecycle: true }),
+    );
+    expect(row.status).toBe('upgrading');
   });
 
   it('switches the business only after readiness and a baseline checkpoint', async () => {

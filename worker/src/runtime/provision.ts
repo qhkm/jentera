@@ -115,7 +115,13 @@ export async function ensureProviderRuntime(
       release: claimed.desiredRelease,
     });
     const recorded = await withTenant(env, businessId, (tx) =>
-      recordProviderRuntime(tx, businessId, observed),
+      recordProviderRuntime(tx, businessId, observed, {
+        /* The provider reports machine state such as cold/running. During a
+           bootstrap, keep the control-plane lifecycle state so the model
+           proxy can distinguish its one readiness smoke from ordinary work
+           by a waitlisted business. */
+        preserveLifecycle: env.RUNTIME_BOOTSTRAP_ENABLED === 'true',
+      }),
     );
     if (env.RUNTIME_BOOTSTRAP_ENABLED !== 'true') return recorded;
     if (!canBootstrap(provider)) throw new Error('runtime provider cannot bootstrap releases');
