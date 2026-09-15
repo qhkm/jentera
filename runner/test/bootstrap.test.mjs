@@ -84,6 +84,14 @@ test('runtime installs the narrow Calendar client on the Hermes PATH', async () 
   assert.match(provision, /runner\/bin\/jentera-calendar\.mjs/);
 });
 
+test('bootstrap reuses the exact browser revision before contacting the CDN', async () => {
+  const bootstrap = await readFile(SCRIPT, 'utf8');
+  assert.match(bootstrap, /chromium\.executablePath\(\)/);
+  assert.match(bootstrap, /if \[\[ ! -x "\$browser_binary" \]\]; then/);
+  assert.match(bootstrap, /install --with-deps chromium/);
+  assert.doesNotMatch(bootstrap, /browser_binary="\$\(find "\$browser_cache"/);
+});
+
 test('production runtime pins and proves its keyless search backend', async () => {
   const source = await readFile(SCRIPT, 'utf8');
   assert.match(source, /AISAR_WEB_SEARCH_BACKEND=%q.*ddgs/);

@@ -304,7 +304,6 @@ stage_done install
 # not proof of a complete runtime. Repair the browser layer independently and
 # assert the executable exists before any service can be marked ready.
 stage_done npm
-browser_cache=/home/sprite/.cache/ms-playwright
 # Playwright is a devDependency of the apps/desktop workspace in the pinned
 # hermes tree (v2026.9.8+) and is NOT hoisted to the install root, so the
 # historical root node_modules path no longer resolves. Locate the real
@@ -323,23 +322,34 @@ case "$(uname -m)" in
     exit 1
     ;;
 esac
-# Run the install unconditionally: `playwright install` is idempotent, a fast
-# no-op when the pinned revision is already cached (checked against the
-# registry), and repairs a stale cache from an older playwright whose
-# chrome-headless-shell a revision-blind find() would otherwise accept as
-# "installed" — leaving the pinned playwright unable to launch it
-# (2026-09-05: sprite 4e8c2593 stranded past the module fix on exactly that).
-(
-  cd "$install_dir"
+# Ask the pinned Playwright package for its exact Chromium revision. Existing
+# runtimes already proved that binary during their previous bootstrap, so a
+# routine agent-tool release must not contact the browser CDN again. On
+# 2026-09-16 the CDN fallback failed on 11 healthy sprites even though the
+# exact v1208 browser was present, blocking an otherwise unrelated Calendar
+# rollout. A new runtime, or an actual Playwright revision change, still has
+# no exact executable and therefore runs the reviewed installer below.
+playwright_executable() {
   PLAYWRIGHT_HOST_PLATFORM_OVERRIDE="$playwright_platform" \
-    timeout --foreground -k 10 600 node "$playwright_dir/cli.js" install --with-deps chromium
-)
-browser_binary="$(find "$browser_cache" -type f \
-  \( -path '*/chrome-headless-shell-linux64/chrome-headless-shell' \
-     -o -path '*/chrome-linux/chrome' \) \
-  -perm -111 -print -quit 2>/dev/null || true)"
+    node --input-type=module -e \
+      'import(process.argv[1]).then(({ chromium }) => process.stdout.write(chromium.executablePath()))' \
+      "$playwright_dir/index.mjs" 2>/dev/null || true
+}
+browser_binary="$(playwright_executable)"
+if [[ ! -x "$browser_binary" ]]; then
+  (
+    cd "$install_dir"
+    PLAYWRIGHT_HOST_PLATFORM_OVERRIDE="$playwright_platform" \
+      timeout --foreground -k 10 600 node "$playwright_dir/cli.js" install --with-deps chromium
+  )
+  browser_binary="$(playwright_executable)"
+fi
 [[ -n "$browser_binary" ]] || {
   echo "Playwright Chromium is unavailable after installation" >&2
+  exit 1
+}
+[[ -x "$browser_binary" ]] || {
+  echo "Playwright Chromium is not executable after installation" >&2
   exit 1
 }
 
