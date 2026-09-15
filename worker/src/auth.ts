@@ -15,6 +15,19 @@ import { accessForEmail, restrictedAccess } from './access';
 const LINK_TTL_MS = 15 * 60 * 1000;
 /** 30 days. */
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Which door a session came through. */
+export type SessionKind = 'web' | 'native';
+
+/* 7 days for the app, against the web's 30.
+
+   A web session is an HttpOnly cookie: script cannot read it and it dies
+   with the browser profile. A native session is a bearer the app keeps in
+   Keychain or Keystore and puts in a header — portable, readable by the
+   code that holds it, and surviving an uninstall on iOS. Until there is a
+   devices list to revoke one from, its lifetime is the only bound on a
+   leak, so it is shorter. Decided with the owner on 2026-09-15. */
+const NATIVE_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** One minute. The app is already waiting for this browser hand-off. */
 const NATIVE_CODE_TTL_MS = 60 * 1000;
 /** Outstanding unconsumed links per address before we quietly stop sending. */
@@ -40,6 +53,11 @@ export interface IssueResult {
   token: string | null;
 }
 
+export interface NativeAuthRequest {
+  state: string;
+  codeChallenge: string;
+}
+
 /**
  * Issue a link token for an address.
  *
@@ -47,7 +65,11 @@ export interface IssueResult {
  * caller returns 204 regardless. A different answer for known and unknown
  * addresses turns this endpoint into an account-existence oracle.
  */
-export async function issueLoginToken(env: Env, email: string): Promise<IssueResult> {
+export async function issueLoginToken(
+  env: Env,
+  email: string,
+  native?: NativeAuthRequest,
+): Promise<IssueResult> {
   return withUser(env, async (sql) => {
     const [{ count }] = await sql<{ count: string }[]>`
       select count(*)::text as count from login_token
@@ -58,8 +80,13 @@ export async function issueLoginToken(env: Env, email: string): Promise<IssueRes
     const token = mintToken();
     const expiresAt = new Date(Date.now() + LINK_TTL_MS);
     await sql`
-      insert into login_token (token_hash, email, expires_at)
-      values (${await hashToken(token)}, ${email}, ${expiresAt})
+      insert into login_token (
+        token_hash, email, expires_at, native_state, native_code_challenge
+      )
+      values (
+        ${await hashToken(token)}, ${email}, ${expiresAt},
+        ${native?.state ?? null}, ${native?.codeChallenge ?? null}
+      )
     `;
     return { token };
   });
@@ -74,6 +101,8 @@ export interface Session {
       it. All three doors are upserts; the flag is read off the same
       statement (`xmax = 0`), never guessed from a lookup before it. */
   created: boolean;
+  /** Present only when a magic-link request began in the native app. */
+  native?: NativeAuthRequest;
 }
 
 /**
@@ -129,13 +158,17 @@ export async function consumeLoginToken(env: Env, token: string): Promise<Sessio
   const tokenHash = await hashToken(token);
 
   return withUser(env, async (sql) => {
-    const rows = await sql<{ email: string }[]>`
+    const rows = await sql<{
+      email: string;
+      native_state: string | null;
+      native_code_challenge: string | null;
+    }[]>`
       update login_token
          set consumed_at = now()
        where token_hash = ${tokenHash}
          and consumed_at is null
          and expires_at > now()
-      returning email
+      returning email, native_state, native_code_challenge
     `;
     if (rows.length === 0) return null;
 
@@ -162,7 +195,14 @@ export async function consumeLoginToken(env: Env, token: string): Promise<Sessio
       returning id, (xmax = 0) as created
     `;
 
-    return startSession(sql, user.id, email, user.created);
+    const session = await startSession(sql, user.id, email, user.created);
+    const native = rows[0].native_state && rows[0].native_code_challenge
+      ? {
+          state: rows[0].native_state,
+          codeChallenge: rows[0].native_code_challenge,
+        }
+      : undefined;
+    return native ? { ...session, native } : session;
   });
 }
 
@@ -178,12 +218,13 @@ async function startSession(
   userId: string,
   email: string,
   created = false,
+  kind: SessionKind = 'web',
 ): Promise<Session> {
   const sessionToken = mintToken();
-  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+  const expiresAt = new Date(Date.now() + (kind === 'native' ? NATIVE_SESSION_TTL_MS : SESSION_TTL_MS));
   await sql`
-    insert into session (id, user_id, expires_at)
-    values (${await hashToken(sessionToken)}, ${userId}, ${expiresAt})
+    insert into session (id, user_id, expires_at, kind)
+    values (${await hashToken(sessionToken)}, ${userId}, ${expiresAt}, ${kind})
   `;
   return { token: sessionToken, userId, email, expiresAt, created };
 }
@@ -278,7 +319,10 @@ export async function redeemNativeCode(
            and u.email_verified = true`;
       if (!source) return null;
 
-      return startSession(tx, code.user_id, source.email);
+      /* Marked native and short-lived: this token leaves the browser and
+         lives in the app's keystore, where nothing but its expiry bounds a
+         leak until there is a devices list to revoke it from. */
+      return startSession(tx, code.user_id, source.email, false, 'native');
     });
     return result as Session | null;
   });
@@ -539,9 +583,16 @@ export function readCookie(request: Request): string | null {
  * using the HttpOnly cookie unchanged.
  */
 export function readSessionToken(request: Request): string | null {
-  const authorization = request.headers.get('Authorization') ?? '';
-  const bearer = /^Bearer\s+(\S+)$/i.exec(authorization);
-  if (bearer) return bearer[1];
+  const authorization = request.headers.get('Authorization');
+  /* Present but malformed is a refusal, not a fallback to the cookie.
+     Falling through would reintroduce the shadowing this function exists to
+     prevent: Android's WebView shares the system cookie jar, so `Bearer `
+     with an empty token would quietly authenticate as whoever the cookie
+     says — which is not who the app thinks it is. */
+  if (authorization !== null) {
+    const bearer = /^Bearer\s+(\S+)$/i.exec(authorization);
+    return bearer ? bearer[1] : null;
+  }
   return readCookie(request);
 }
 

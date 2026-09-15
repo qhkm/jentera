@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  consumeLoginToken,
   hashToken,
+  issueLoginToken,
   issueNativeCode,
   redeemNativeCode,
   verifySession,
@@ -89,6 +91,24 @@ describe('minting a native code', () => {
     const response = await handleSession(make({ Origin: ORIGIN, Cookie: cookie }), env, url, {});
     expect(response?.status).toBe(200);
     await expect(response?.json()).resolves.toMatchObject({ ok: true, code: expect.any(String) });
+  });
+});
+
+describe('carrying native auth through an email link', () => {
+  it('returns the server-stored state and challenge when the link is consumed', async () => {
+    const { token } = await issueLoginToken(
+      testEnv(),
+      'email-native@example.com',
+      { state: STATE, codeChallenge: CHALLENGE },
+    );
+    const session = await consumeLoginToken(testEnv(), token!);
+    expect(session?.native).toEqual({ state: STATE, codeChallenge: CHALLENGE });
+  });
+
+  it('leaves an ordinary browser magic link unchanged', async () => {
+    const { token } = await issueLoginToken(testEnv(), 'email-web@example.com');
+    const session = await consumeLoginToken(testEnv(), token!);
+    expect(session?.native).toBeUndefined();
   });
 });
 
@@ -199,5 +219,85 @@ describe('exchanging a native code', () => {
       token: expect.any(String),
       expiresAt: expect.any(String),
     });
+  });
+});
+
+describe('what a native session is', () => {
+  it('is marked native and expires in 7 days, not 30', async () => {
+    const code = (await issueNativeCode(testEnv(), browserToken, { state: STATE, codeChallenge: CHALLENGE }))!;
+    const session = (await redeemNativeCode(testEnv(), { code, state: STATE, codeVerifier: VERIFIER }))!;
+
+    const days = (session.expiresAt.getTime() - Date.now()) / 86_400_000;
+    expect(days).toBeGreaterThan(6.9);
+    expect(days).toBeLessThan(7.1);
+
+    const sessionId = await hashToken(session.token);
+    const rows = await asApp((sql) => sql<{ kind: string }[]>`
+      select kind from session where id = ${sessionId}`);
+    expect(rows[0]?.kind).toBe('native');
+  });
+
+  /* The browser's own session must be untouched by any of this: revoking the
+     phone cannot sign out the laptop, which is why the exchange mints a row
+     rather than handing over the token it was given. */
+  it('leaves the browser session web and 30 days', async () => {
+    const browserId = await hashToken(browserToken);
+    const rows = await asApp((sql) => sql<{ kind: string }[]>`
+      select kind from session where id = ${browserId}`);
+    expect(rows[0]?.kind).toBe('web');
+  });
+
+  it('can be revoked in bulk by address after a leak', async () => {
+    const code = (await issueNativeCode(testEnv(), browserToken, { state: STATE, codeChallenge: CHALLENGE }))!;
+    const session = (await redeemNativeCode(testEnv(), { code, state: STATE, codeVerifier: VERIFIER }))!;
+    expect(await verifySession(testEnv(), session.token)).not.toBeNull();
+
+    /* The app role must NOT be able to mass-revoke: this is an operator tool,
+       and a compromised worker should not be able to sign an estate out. */
+    await expect(asApp((sql) => sql`
+      select public.revoke_sessions_for_email('native-owner@example.com')`))
+      .rejects.toThrow(/permission denied/i);
+
+    const [{ revoke_sessions_for_email: ended }] = await asOwner((sql) => sql<{ revoke_sessions_for_email: number }[]>`
+      select public.revoke_sessions_for_email('native-owner@example.com')`);
+    expect(Number(ended)).toBeGreaterThanOrEqual(2);
+
+    expect(await verifySession(testEnv(), session.token)).toBeNull();
+    expect(await verifySession(testEnv(), browserToken)).toBeNull();
+  });
+});
+
+describe('the gates on minting', () => {
+  /* testEnv() leaves ACCESS_MODE unset, so every other test in this file runs
+     the open branch. Production runs waitlist, and until this test that branch
+     executed nowhere in CI. */
+  it('refuses an address the waitlist has not admitted', async () => {
+    const gated = testEnv({ ACCESS_MODE: 'waitlist' });
+    expect(await issueNativeCode(gated, browserToken, { state: STATE, codeChallenge: CHALLENGE })).toBeNull();
+  });
+
+  it('refuses a code challenge that is not base64url', async () => {
+    const url = new URL('https://api.test/api/auth/native/code');
+    const request = new Request(url, {
+      method: 'POST',
+      headers: { Origin: ORIGIN, 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ state: STATE, codeChallenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw~cM' }),
+    });
+    const response = await handleSession(request, testEnv(), url, {});
+    expect(response?.status).toBe(400);
+  });
+
+  /* The harness stubs AUTH_BURST permissive, so without this the brake could
+     be deleted from the route and the suite would stay green. */
+  it('brakes the exchange when the burst limiter refuses', async () => {
+    const url = new URL('https://api.test/api/auth/native/token');
+    const request = new Request(url, {
+      method: 'POST',
+      headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: 'whatever', state: STATE, codeVerifier: VERIFIER }),
+    });
+    const braked = testEnv({ AUTH_BURST: { limit: async () => ({ success: false }) } });
+    const response = await handleSession(request, braked, url, {});
+    expect(response?.status).toBe(429);
   });
 });

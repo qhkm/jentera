@@ -44,6 +44,14 @@ function json(body: unknown, init: ResponseInit = {}, headers: Record<string, st
 }
 
 const EMAIL = /^[^@\s]+@[^@\s.]+\.[^@\s]+$/;
+const NATIVE_STATE = /^[A-Za-z0-9._~-]{16,128}$/;
+/* The verifier is the RFC 7636 unreserved set, 43 to 128 characters. */
+const PKCE_VALUE = /^[A-Za-z0-9._~-]{43,128}$/;
+/* The challenge is never that: it is base64url of a SHA-256, so exactly 43
+   characters from a narrower alphabet. Accepting `.` or `~` here mints a code
+   whose challenge no verifier can ever match — an unredeemable code and a
+   confusing dead end for whoever is holding the phone. */
+const PKCE_CHALLENGE = /^[A-Za-z0-9_-]{43}$/;
 
 const noContentCors = (headers: Record<string, string>) =>
   new Response(null, { status: 204, headers });
@@ -101,6 +109,16 @@ export async function handleSession(
     .filter(Boolean)
     .includes(request.headers.get('Origin') ?? '');
 
+  const nativeRequest = (input: {
+    native?: unknown;
+    state?: unknown;
+    codeChallenge?: unknown;
+  }) => input.native === true &&
+      typeof input.state === 'string' && NATIVE_STATE.test(input.state) &&
+      typeof input.codeChallenge === 'string' && PKCE_CHALLENGE.test(input.codeChallenge)
+    ? { state: input.state, codeChallenge: input.codeChallenge }
+    : undefined;
+
   /* ---- hand a browser session to the native app -------------------- */
   if (url.pathname === '/api/auth/native/code' && request.method === 'POST') {
     /* This converts an HttpOnly cookie into an exportable credential. An
@@ -127,8 +145,7 @@ export async function handleSession(
     };
     const state = typeof body.state === 'string' ? body.state : '';
     const codeChallenge = typeof body.codeChallenge === 'string' ? body.codeChallenge : '';
-    if (!/^[A-Za-z0-9._~-]{16,128}$/.test(state) ||
-        !/^[A-Za-z0-9._~-]{43,128}$/.test(codeChallenge)) {
+    if (!NATIVE_STATE.test(state) || !PKCE_CHALLENGE.test(codeChallenge)) {
       return json(
         { ok: false, err: 'state and codeChallenge are required' },
         { status: 400, headers: { 'Cache-Control': 'no-store' } },
@@ -174,8 +191,8 @@ export async function handleSession(
     const state = typeof body.state === 'string' ? body.state : '';
     const codeVerifier = typeof body.codeVerifier === 'string' ? body.codeVerifier : '';
     if (!/^[A-Za-z0-9_-]{43}$/.test(code) ||
-        !/^[A-Za-z0-9._~-]{16,128}$/.test(state) ||
-        !/^[A-Za-z0-9._~-]{43,128}$/.test(codeVerifier)) {
+        !NATIVE_STATE.test(state) ||
+        !PKCE_VALUE.test(codeVerifier)) {
       return json(
         { ok: false, err: 'code, state and codeVerifier are required' },
         { status: 400, headers: { 'Cache-Control': 'no-store' } },
@@ -191,7 +208,12 @@ export async function handleSession(
       );
     }
     return json(
-      { ok: true, token: session.token, expiresAt: session.expiresAt.toISOString() },
+      {
+        ok: true,
+        token: session.token,
+        expiresAt: session.expiresAt.toISOString(),
+        next: await authLandingPath(env, session.userId),
+      },
       { headers: { 'Cache-Control': 'no-store' } },
       cors,
     );
@@ -199,7 +221,14 @@ export async function handleSession(
 
   /* ---- request a link ---------------------------------------------- */
   if (url.pathname === '/api/auth/request' && request.method === 'POST') {
-    const body = (await request.json().catch(() => ({}))) as { email?: string; turnstileToken?: unknown; inviteCode?: unknown };
+    const body = (await request.json().catch(() => ({}))) as {
+      email?: string;
+      turnstileToken?: unknown;
+      inviteCode?: unknown;
+      native?: unknown;
+      state?: unknown;
+      codeChallenge?: unknown;
+    };
     const addr = (body.email ?? '').trim().toLowerCase();
     const refused = await refusedAsBot(body.turnstileToken);
     if (refused) return refused;
@@ -226,7 +255,7 @@ export async function handleSession(
         });
       }
       if (verdict === 'ok') {
-        const { token } = await issueLoginToken(env, addr);
+        const { token } = await issueLoginToken(env, addr, nativeRequest(body));
         if (token) {
           const carry = await sealTrial(env, body.inviteCode, `email:${token}`);
           const link = `${env.APP_ORIGIN}/api/auth/consume?token=${encodeURIComponent(token)}${carry ? `&invite=${carry}` : ''}`;
@@ -252,11 +281,20 @@ export async function handleSession(
     }
     if (session.created) await announce(session.email, 'magic-link');
     const invite = await openTrial(env, url.searchParams.get('invite'), `email:${token}`);
+    const landing = trialLanding(invite, await authLandingPath(env, session.userId));
+    const location = session.native
+      ? `${env.APP_ORIGIN}/signin?${new URLSearchParams({
+          native: '1',
+          state: session.native.state,
+          code_challenge: session.native.codeChallenge,
+          next: landing,
+        })}`
+      : `${env.APP_ORIGIN}${landing}`;
 
     return new Response(null, {
       status: 302,
       headers: {
-        Location: `${env.APP_ORIGIN}${trialLanding(invite, await authLandingPath(env, session.userId))}`,
+        Location: location,
         'Set-Cookie': sessionCookie(session.token, session.expiresAt),
       },
     });
@@ -389,14 +427,24 @@ export async function handleSession(
 
   if (url.pathname === '/api/auth/google' && (request.method === 'GET' || request.method === 'POST')) {
     let inviteCode = '';
+    let requestedNative: ReturnType<typeof nativeRequest>;
     if (request.method === 'POST') {
       const form = await request.formData().catch(() => null);
       inviteCode = trialCode(form?.get('inviteCode'));
+      requestedNative = nativeRequest({
+        native: form?.get('native') === '1',
+        state: form?.get('state'),
+        codeChallenge: form?.get('codeChallenge'),
+      });
       /* This is a top-level OAuth navigation, like the GET route above—not
          an authenticated mutation. OAuth state + PKCE protect the callback,
          and carrying an invite never redeems it. Do not origin-gate the POST:
          in-app browsers can report an opaque Origin and strand a real invite. */
-    }
+    } else requestedNative = nativeRequest({
+      native: url.searchParams.get('native') === '1',
+      state: url.searchParams.get('state'),
+      codeChallenge: url.searchParams.get('codeChallenge'),
+    });
     /* This route is reached by a browser NAVIGATION, not by fetch, so
        an error body renders as raw JSON on a blank page. Bounce back to
        the sign-in screen instead and let it explain in words — the same
@@ -419,7 +467,13 @@ export async function handleSession(
       status: 302,
       headers: {
         Location: authorizeUrl(env, { state, codeChallenge: await s256(verifier) }),
-        'Set-Cookie': `${OAUTH_COOKIE}=${state}.${verifier}${carry ? `.${carry}` : ''}; HttpOnly; Secure; SameSite=Lax; Path=/api/auth; Max-Age=600`,
+        'Set-Cookie': `${OAUTH_COOKIE}=${[
+          state,
+          verifier,
+          carry ?? '',
+          requestedNative?.state ?? '',
+          requestedNative?.codeChallenge ?? '',
+        ].join('.')}; HttpOnly; Secure; SameSite=Lax; Path=/api/auth; Max-Age=600`,
       },
     });
   }
@@ -441,7 +495,7 @@ export async function handleSession(
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state');
     const stash = readNamedCookie(request, OAUTH_COOKIE);
-    const [wantState, verifier, carry] = (stash ?? '').split('.');
+    const [wantState, verifier, carry, nativeState, nativeChallenge] = (stash ?? '').split('.');
 
     /* The CSRF check. Without it an attacker can hand a victim a
        callback URL carrying the ATTACKER's code, silently signing the
@@ -461,10 +515,19 @@ export async function handleSession(
     const session = await signInWithGoogle(env, profile);
     const invite = await openTrial(env, carry ?? null, `google:${state}`);
     if (session.created) await announce(profile.email, 'google');
+    const landing = trialLanding(invite, await authLandingPath(env, session.userId));
+    const location = NATIVE_STATE.test(nativeState ?? '') && PKCE_CHALLENGE.test(nativeChallenge ?? '')
+      ? `${env.APP_ORIGIN}/signin?${new URLSearchParams({
+          native: '1',
+          state: nativeState,
+          code_challenge: nativeChallenge,
+          next: landing,
+        })}`
+      : `${env.APP_ORIGIN}${landing}`;
     return new Response(null, {
       status: 302,
       headers: [
-        ['Location', `${env.APP_ORIGIN}${trialLanding(invite, await authLandingPath(env, session.userId))}`],
+        ['Location', location],
         ['Set-Cookie', sessionCookie(session.token, session.expiresAt)],
         ['Set-Cookie', `${OAUTH_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/api/auth; Max-Age=0`],
       ],
