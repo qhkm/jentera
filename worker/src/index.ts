@@ -296,6 +296,16 @@ export default {
   async queue(batch: MessageBatch<RuntimeQueueMessage>, env: Env): Promise<void> {
     for (const message of batch.messages) {
       try {
+        /* [runtime-queue] Temporary, 15 September 2026. 75 upgrade tasks have
+           sat queued for two days with attempt 0 while their wakes are
+           published continuously and the backlog stays empty. Either those
+           messages never reach this handler or they leave it without a word,
+           and only an unconditional line at the door can tell the two apart.
+           Ids only — no payload, no tenant content. */
+        console.warn('[runtime-queue] received', JSON.stringify({
+          task: runtimeQueueMessageId(message.body),
+          attempts: message.attempts,
+        }));
         const result = await handleQueueMessagePlaced(env, message.body);
         const queueId = runtimeQueueMessageId(message.body);
         if (!result.placed) console.warn(`[runtime-queue] task=${queueId} ran unplaced`);
