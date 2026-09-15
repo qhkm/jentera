@@ -211,6 +211,10 @@ function applyProgress(message: AskMessage, event: AskProgressEvent, t: Translat
   const key = event.type === 'queued' ? 'ask.queued'
     : event.type === 'waking' ? 'ask.waking'
       : event.type === 'retrying' ? 'ask.retrying' : 'ask.working';
+  /* The server accepts the run before the browser subscribes, so its queued
+     receipt is commonly replayed after onRunCreated has already moved the
+     card to Thinking. Do not visually move a running task backwards. */
+  if (event.type === 'queued' && message.state === 'working') return message;
   return { ...message, text: t(key), state: event.type };
 }
 
@@ -576,7 +580,8 @@ export function useAsk(
               ...session.messages,
               { from: 'you', text: question, inputFiles },
               {
-                from: 'ai', text: t('ask.working'), pendingId, state: 'sending', mode,
+                from: 'ai', text: t(attachment ? 'ask.readingAttachment' : deep ? 'ask.working' : 'ask.thinking'),
+                pendingId, state: 'sending', mode,
                 depth: deep ? 'deep' : 'quick', startedAt: now, inputFiles,
               },
             ],
@@ -595,7 +600,13 @@ export function useAsk(
           ...(attachment ? { attachment } : {}),
           onRunCreated: (runId: string) => {
             if (!isRunId(runId)) return;
-            patchPending(sessionId, pendingId, (message) => ({ ...message, runId, taskTitle: question }));
+            patchPending(sessionId, pendingId, (message) => ({
+              ...message,
+              runId,
+              taskTitle: question,
+              text: t(deep ? 'ask.working' : 'ask.thinking'),
+              state: 'working',
+            }));
           },
           onProgress: (event: AskProgressEvent) =>
             patchPending(sessionId, pendingId, (message) => applyProgress(message, event, t)),
