@@ -13,11 +13,26 @@
 #
 # Why this exists: raising the screencast frame rate is one constant
 # (`interval` in runner/src/browser-preview-stream.mjs), but frame rate is only
-# one term of what a person feels when they drive the browser. Every click also
-# pays resolveTenant plus a tenant transaction for the runner credentials
-# (worker/src/routes/browser.ts:26 and :64, agent-runtime.ts:189), and that is
-# database work for data which is static per business. Measure before tuning
-# either one.
+# one term of what a person feels when they drive the browser. Measure before
+# tuning anything — the first two guesses made here were both wrong.
+#
+# MEASURED 2026-09-15 from the owner's browser, signed in, against production,
+# ten samples each, median:
+#
+#   GET /api/me             97 ms   edge + resolveTenant (session verify)
+#   GET /api/notifications 100 ms   the above + a real tenant transaction
+#   GET /api/browser       297 ms   the above + credentials + the sprite hop
+#
+# So the tenant transaction costs about 3 ms on the margin in a placed route,
+# not the ~60 ms CLAUDE.md records for one in the queue consumer — and caching
+# the runner credentials, which this header used to recommend, would save
+# roughly nothing. The ~195 ms that /api/browser adds over /api/notifications is
+# essentially all worker-to-sprite round trip.
+#
+# That is the lever for take control: a per-event HTTPS request to the sprite,
+# paid on every click and keystroke. A persistent connection would remove it —
+# see docs/plans/2026-09-10-business-runtime-durable-object.md. Frame rate and
+# database work are both noise beside it.
 #
 # net and frames need nothing but curl. db needs psql and AISAR_NEON_OWNER_URL
 # (or a logged-in neonctl). sprite needs the sprite CLI. frames needs a real
@@ -99,11 +114,11 @@ case "$CMD" in
         awk '{s += $1} END {if (NR) print s}'   # the whole transaction, not one statement
     done | median | awk '{printf "   median: %.1f ms\n", $1}'
     echo
-    echo "Both run on every click and keystroke in take control, for data that changes"
-    echo "roughly never. These are a floor: they exclude Hyperdrive, pool acquisition"
-    echo "and Worker overhead, which is why CLAUDE.md records ~60 ms for the same"
-    echo "transaction in a placed route. Caching the second one is worth more than any"
-    echo "frame-rate change; see the header."
+    echo "Both run on every click and keystroke in take control. Measured in-browser"
+    echo "against production, though, the tenant transaction costs only ~3 ms on the"
+    echo "margin (97 ms for /api/me vs 100 ms for /api/notifications), so caching the"
+    echo "credentials is not the win it looks like here. The sprite hop is: see the"
+    echo "header."
     ;;
 
   sprite)
