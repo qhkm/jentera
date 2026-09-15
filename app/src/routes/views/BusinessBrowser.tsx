@@ -75,14 +75,27 @@ export default function BusinessBrowser() {
       if (action.action === 'release') {
         setState(next); setControlled(false); setFrame(null); setText('');
       }
-    } catch (e) { if (live.current) setError((e as Error).message); }
+    } catch (e) {
+      if (live.current) {
+        const message = (e as Error).message;
+        setError(message);
+        /* A lost lease is not a transient error, and treating it as one is what
+           trapped the owner: the toolbar kept offering Hand back, the only
+           button it had, and that button could now only fail. Dropping the
+           local claim puts Take control back within reach. */
+        if (/expired|controlling this browser/i.test(message)) { setControlled(false); setFrame(null); }
+      }
+    }
     finally { inFlight.current = false; actionBusy.current = false; if (live.current) setBusy(false); }
   }
 
   function close() {
     // Closing the viewer does NOT silently hand a half-completed login to
     // the agent. The durable pause remains until an explicit hand-back.
-    dialog.current?.close(); setOpen(false); setFrame(null); setText(''); setUrl('');
+    // The local claim does not survive, though: it goes stale while the dialog
+    // is shut, and reopening on a stale one showed a Hand back that could only
+    // 409. Reopening re-reads the real state and offers both doors.
+    dialog.current?.close(); setOpen(false); setControlled(false); setFrame(null); setText(''); setUrl('');
   }
 
   return <>
@@ -105,6 +118,12 @@ export default function BusinessBrowser() {
       <div className="business-browser-toolbar">
         {!controlled ? <Button disabled={busy} onClick={() => void send({ action: 'claim' })}>{t('browser.takeControl')}</Button>
           : <Button disabled={busy} onClick={() => void send({ action: 'release' })}>{t('browser.handBack')}</Button>}
+        {/* A browser left paused by a session that ended is the state the owner
+            most needs a way out of, and it is exactly the state that offered
+            none: no live claim, so no Hand back, while the agent refused every
+            task behind it. Whenever it is paused, handing back is one click. */}
+        {!controlled && state.paused && <Button variant="outline" disabled={busy}
+          onClick={() => void send({ action: 'release' })}>{t('browser.handBack')}</Button>}
         {controlled && <span>{t('browser.expires')}</span>}
       </div>
       {controlled && <>

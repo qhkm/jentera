@@ -17,10 +17,17 @@ it('takes control, keeps typed secrets out of storage, and only hands back expli
   const user = userEvent.setup();
   const repo = new LocalRepository();
   const calls: BrowserCommand[] = [];
+  /* The pause is durable on the sprite and outlives the viewer, so the fake
+     holds it too. A fake that reported "not paused" to every status call
+     described a browser that cannot get stuck, which is the one thing this
+     screen has to handle. */
+  let paused = false;
   const browser = vi.fn(async (command?: BrowserCommand): Promise<BusinessBrowserState> => {
     if (command) calls.push(command);
+    if (command?.action === 'claim') paused = true;
+    if (command?.action === 'release') paused = false;
     if (command?.action === 'frame') return { image: 'aW1hZ2U=', tabs: [] };
-    return { enabled: true, paused: command?.action === 'claim' };
+    return { enabled: true, paused };
   });
   repo.businessBrowser = browser;
   render(<RepositoryProvider repository={repo}><I18nProvider><BusinessBrowser /></I18nProvider></RepositoryProvider>);
@@ -38,4 +45,35 @@ it('takes control, keeps typed secrets out of storage, and only hands back expli
   await user.click(screen.getByRole('button', { name: /hand back/i }));
   await waitFor(() => expect(calls.some((c) => c.action === 'release')).toBe(true));
   expect(new Set(calls.map((c) => c.controlId)).size).toBe(1);
+});
+
+/* The trap this screen set on 15 September: an owner signing into Google ran
+   past the ten-minute lease and every action started failing. The runner fix
+   lets an expired controller hand back, but only if the screen offers the
+   button — and after a reload, which is what an owner reaches for when a page
+   seems stuck, it did not. `controlled` starts false, so the toolbar showed
+   Take control alone while the browser sat paused behind it, refusing every
+   task the agent was given. Paused is exactly when hand back has to be there. */
+it('offers hand back on a reloaded page when the browser is paused by nobody', async () => {
+  const user = userEvent.setup();
+  const repo = new LocalRepository();
+  const calls: BrowserCommand[] = [];
+  // A fresh mount holds no lease, and the sprite reports the durable pause an
+  // abandoned session left behind.
+  let paused = true;
+  const browser = vi.fn(async (command?: BrowserCommand): Promise<BusinessBrowserState> => {
+    if (command) calls.push(command);
+    if (command?.action === 'release') { paused = false; return { enabled: true, paused }; }
+    if (command?.action === 'claim') { paused = true; return { enabled: true, paused }; }
+    return { enabled: true, paused };
+  });
+  repo.businessBrowser = browser;
+  render(<RepositoryProvider repository={repo}><I18nProvider><BusinessBrowser /></I18nProvider></RepositoryProvider>);
+  await user.click(await screen.findByRole('button', { name: /open business browser/i }));
+
+  // Without claiming anything first: the browser is stuck and this is the way out.
+  await user.click(await screen.findByRole('button', { name: /hand back/i }));
+  await waitFor(() => expect(calls.some((c) => c.action === 'release')).toBe(true));
+  expect(paused).toBe(false);
+  expect(calls.some((c) => c.action === 'claim')).toBe(false);
 });
