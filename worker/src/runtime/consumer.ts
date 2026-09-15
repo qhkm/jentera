@@ -121,6 +121,13 @@ const BUSY_RETRY_SECONDS = 2;
     a person does not: they are signing in, and two-second polling for the
     length of a Google login is churn that tells nobody anything. */
 const BROWSER_PAUSED_RETRY_SECONDS = 30;
+/** And a browser nobody comes back to is the case this has to end. The pause is
+    durable and outlives the session that set it deliberately, so without a bound
+    here a question waits on a person who has closed the tab — for ever, since a
+    defer does not spend an attempt. Half an hour is past any real sign-in; after
+    it the owner gets an answer that names the browser instead of a bubble that
+    never resolves. */
+const BROWSER_PAUSED_GIVE_UP_MS = 30 * 60 * 1000;
 const RUNTIME_LEASE_STALE_MS = 60_000;
 const RUNTIME_LEASE_RENEWAL_MS = 20_000;
 const ORPHAN_RETRY_SECONDS = 65;
@@ -1931,6 +1938,7 @@ export async function handleRuntimeMessage(
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     let busyExhausted = false;
+    let browserPausedTooLong = false;
     /* A runner can remain busy for a moment after the durable lease in the
        control plane is released. Poll it promptly without charging this as a
        failed attempt or imposing the generic 30-second retry penalty. */
@@ -1947,18 +1955,29 @@ export async function handleRuntimeMessage(
           business: message.businessId, task: message.taskId,
           run: lease.task.runId, attempt: lease.task.attempt,
         }));
-        const deferred = await withTenant(env, message.businessId, (tx) =>
-          deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
+        /* A defer preserves started_at, so this is how long the question has
+           been waiting on a person across every attempt, not just this one. */
+        const waitingSince = lease.task.startedAt?.getTime() ?? null;
+        const waitedOut = waitingSince !== null &&
+          Date.now() - waitingSince >= BROWSER_PAUSED_GIVE_UP_MS;
+        if (!waitedOut) {
+          const deferred = await withTenant(env, message.businessId, (tx) =>
+            deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
+              delaySeconds: BROWSER_PAUSED_RETRY_SECONDS,
+            }));
+          if (deferred && executionTask && lease.task.runId) {
+            await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'retrying');
+          }
+          return {
+            action: 'requeue',
             delaySeconds: BROWSER_PAUSED_RETRY_SECONDS,
-          }));
-        if (deferred && executionTask && lease.task.runId) {
-          await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'retrying');
+            reason: deferred ? 'business browser is held by someone in this business' : 'runtime task lease was lost',
+          };
         }
-        return {
-          action: 'requeue',
-          delaySeconds: BROWSER_PAUSED_RETRY_SECONDS,
-          reason: deferred ? 'business browser is held by someone in this business' : 'runtime task lease was lost',
-        };
+        /* Fall through to the terminal path, which reports `reason` — the
+           error's own message, which says to hand the browser back. Not
+           busyExhausted: that speaks of a wedged slot, and this is a person. */
+        browserPausedTooLong = true;
       }
       /* L4: stop escalation when the slot is wedged. Prefer the runner's own
          admission stamp (it only moves when the slot rotates); fall back to
@@ -1988,7 +2007,10 @@ export async function handleRuntimeMessage(
            terminal so the durable queue never stacks behind a dead runner. */
         busyExhausted = true;
       }
-      if (!busyExhausted) {
+      /* `browserPausedTooLong` wants the terminal path below, not this one:
+         falling through to the ordinary requeue would defer the task again and
+         the wait would never end after all. */
+      if (!busyExhausted && !browserPausedTooLong) {
         const deferred = await withTenant(env, message.businessId, (tx) =>
           deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
             delaySeconds: BUSY_RETRY_SECONDS,
@@ -2036,7 +2058,8 @@ export async function handleRuntimeMessage(
     const budgetExhausted = error instanceof RuntimeBudgetExceeded;
     const terminal = budgetExhausted ||
       lease.task.attempt + 1 >= maxAttempts ||
-      busyExhausted;
+      busyExhausted ||
+      browserPausedTooLong;
     if (terminal) {
       let measured: { inputTokens: number; outputTokens: number } | undefined;
       let failedCancelTarget: RuntimeTask | null = null;

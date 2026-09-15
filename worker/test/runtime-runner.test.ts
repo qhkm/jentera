@@ -445,6 +445,71 @@ describe('durable Hermes run delivery', () => {
     expect(state).toEqual({ status: 'queued', attempt: 0, lease_token: null });
   });
 
+  /* A defer does not spend an attempt, so waiting on a person had no end: the
+     pause is durable and outlives the session that set it, and an owner who
+     closed the tab left the question deferring every thirty seconds for ever
+     behind a bubble that never resolved. Past any real sign-in, say so and
+     stop. */
+  it('stops waiting on an abandoned browser and says why', async () => {
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.08.27-1',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.27-1', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: env.AISAR_MODEL_NAME,
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `run:${run.id}`, payload: { input: 'hello' },
+    }));
+    // Deferred across earlier attempts since well before the give-up window.
+    await asOwner((sql) => sql`
+      update runtime_task set started_at = now() - interval '31 minutes' where id = ${task.id}`);
+
+    const fetcher: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return response({
+          ok: true,
+          release: '2026.08.27-1',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
+          toolMode: 'full-tools',
+          webSearchBackend: 'ddgs',
+          edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
+          businessBrowser: { enabled: true, paused: true, controlled: false },
+        });
+      }
+      if (url.endsWith('/v1/tasks')) {
+        return response({ ok: false, error: 'runtime_busy', reason: 'business_browser_paused' }, 409);
+      }
+      return response({ error: 'not found' }, 404);
+    };
+
+    await expect(handleRuntimeMessage(
+      env,
+      { version: 1, businessId: A, taskId: task.id },
+      { provider, fetch: fetcher },
+    )).resolves.toEqual({ action: 'ack', reason: 'failed' });
+    const [state] = await asOwner((sql) => sql<{ task: string; run: string; last_error: string }[]>`
+      select t.status as task, r.status as run, t.last_error
+        from runtime_task t join run r on r.id = t.run_id where t.id = ${task.id}`);
+    expect(state.task).toBe('exhausted');
+    expect(state.run).toBe('failed');
+    /* What it stopped for, in words the owner can act on — not "runtime slot
+       stayed busy too long", which describes a wedged machine rather than a
+       browser somebody is holding. */
+    expect(state.last_error).toMatch(/hand it back/i);
+    expect(state.last_error).toMatch(/business browser/i);
+  });
+
   /* This used to assert the opposite: that a reservation older than the run
      budget meant the runner was never called. That rule is what made the
      14-15 September outage permanent — a slow first attempt spent the shared
