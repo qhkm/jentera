@@ -93,13 +93,15 @@
 .workspace-chat .ask-studio-starters { margin-top: 16px; }
 .workspace-chat .ask-recent-chats { margin-top: 28px; }
 
+@media (max-width: 360px) {
+  .workspace-chat .ask-writing-pad { padding-inline: 12px; }
+}
+
 @media (min-width: 1024px) {
   .dashboard-shell .dashboard-sidebar { width: 200px; }
 }
 
 @media (max-width: 700px) {
-  .workspace-chat .ask-writing-pad { padding: 12px; }
-  .workspace-chat .ask-writing-pad textarea { min-height: 28px; }
   .dashboard-shell {
     --workspace-panel-pad: 16px;
     --workspace-section-gap: 16px;

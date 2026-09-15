@@ -413,7 +413,7 @@ export default function AskJenteraView({
             {attachmentError && <p className="ask-attachment-error" role="alert">{attachmentError}</p>}
             <textarea
               ref={composer}
-              rows={ask.hasHistory || compact ? 1 : 3}
+              rows={ask.hasHistory ? 1 : 3}
               value={draft}
               onChange={(event) => {
                 setDraft(event.target.value);
