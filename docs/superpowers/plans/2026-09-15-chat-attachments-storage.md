@@ -285,6 +285,20 @@ function bodyCapFor(method: string, pathname: string): number {
 }
 ```
 
+`MAX_ATTACHMENT_BODY_BYTES` is **derived, not restated** — the guard must never
+refuse a body the route would accept, which is the invariant the ingest cap had
+to be rewritten to hold:
+
+```typescript
+import { MAX_ATTACHMENT_BYTES } from './attachments';
+/* Headroom over the route's own ceiling so the route, not the guard, answers
+   with the specific message. Mirrors MAX_UPLOAD_BODY_BYTES. */
+export const MAX_ATTACHMENT_BODY_BYTES = MAX_ATTACHMENT_BYTES + 64 * 1024;
+```
+
+Add the same assertion the ingest cap has — `MAX_ATTACHMENT_BODY_BYTES >=
+MAX_ATTACHMENT_BYTES` — to `test/request-guard-body.test.ts`.
+
 Export `ATTACHMENTS_PATH` from the route module and import it here, the way `INGEST_FILE_PATH` is imported from `routes/runs.ts` — a literal in two files is the drift this guard exists to prevent.
 
 Mount `handleAttachments` in `index.ts` **after** `guardApiRequest`, beside `handleArtifacts`.
