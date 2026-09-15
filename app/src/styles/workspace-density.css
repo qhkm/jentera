@@ -98,6 +98,8 @@
 }
 
 @media (max-width: 700px) {
+  .workspace-chat .ask-writing-pad { padding: 12px; }
+  .workspace-chat .ask-writing-pad textarea { min-height: 28px; }
   .dashboard-shell {
     --workspace-panel-pad: 16px;
     --workspace-section-gap: 16px;

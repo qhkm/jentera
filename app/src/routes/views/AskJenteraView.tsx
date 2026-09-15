@@ -413,7 +413,7 @@ export default function AskJenteraView({
             {attachmentError && <p className="ask-attachment-error" role="alert">{attachmentError}</p>}
             <textarea
               ref={composer}
-              rows={ask.hasHistory ? 1 : 3}
+              rows={ask.hasHistory || compact ? 1 : 3}
               value={draft}
               onChange={(event) => {
                 setDraft(event.target.value);
@@ -472,22 +472,30 @@ export default function AskJenteraView({
                 <button
                   type="button"
                   className="ask-attach-button"
+                  aria-label={t(attachment ? 'ask.attachment.replace' : 'ask.attachment.add')}
+                  title={t(attachment ? 'ask.attachment.replace' : 'ask.attachment.add')}
                   onClick={() => filePicker.current?.click()}
                 >
                   <Paperclip size={15} aria-hidden="true" />
                   <span>{t(attachment ? 'ask.attachment.replace' : 'ask.attachment.add')}</span>
                 </button>
                 {onOpenKnowledge ? (
-                  <button type="button" className="ask-context-link" onClick={onOpenKnowledge}>
+                  <button
+                    type="button"
+                    className="ask-context-link"
+                    onClick={onOpenKnowledge}
+                    aria-label={t(confirmed ? 'ask.studio.knowledge' : 'ask.studio.teach', { n: confirmed })}
+                    title={t(confirmed ? 'ask.studio.knowledge' : 'ask.studio.teach', { n: confirmed })}
+                  >
                     <BookOpenText size={15} aria-hidden="true" />
                     <span>
                       {t(confirmed ? 'ask.studio.knowledge' : 'ask.studio.teach', { n: confirmed })}
                     </span>
                   </button>
                 ) : (
-                  <span className="ask-context-link">
+                  <span className="ask-context-link" title={t('ask.private')}>
                     <LockSimple size={14} aria-hidden="true" />
-                    {t('ask.private')}
+                    <span>{t('ask.private')}</span>
                   </span>
                 )}
               </div>
