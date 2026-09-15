@@ -109,11 +109,25 @@ export async function handleSession(
     .filter(Boolean)
     .includes(request.headers.get('Origin') ?? '');
 
+  /* The native doors stay shut until the callback is an App Link.
+     
+     Today the minted code travels to `ai.jentera.app:`, a custom scheme any
+     installed app can claim, so whoever receives it holds a session for that
+     account. A deliberate tap now stands in front of the mint, but the real
+     control is a verified App Link and Universal Link, and those need a Play
+     App Signing hash and an Apple team id that will not exist until there are
+     store listings. Until then these answer 404 rather than 403: a door that
+     is not ready should not advertise itself.
+     
+     Fails closed — unset is shut, so a fresh environment cannot open it by
+     forgetting something. */
+  const nativeAuthOpen = env.NATIVE_AUTH_ENABLED === 'true';
+
   const nativeRequest = (input: {
     native?: unknown;
     state?: unknown;
     codeChallenge?: unknown;
-  }) => input.native === true &&
+  }) => nativeAuthOpen && input.native === true &&
       typeof input.state === 'string' && NATIVE_STATE.test(input.state) &&
       typeof input.codeChallenge === 'string' && PKCE_CHALLENGE.test(input.codeChallenge)
     ? { state: input.state, codeChallenge: input.codeChallenge }
@@ -121,6 +135,7 @@ export async function handleSession(
 
   /* ---- hand a browser session to the native app -------------------- */
   if (url.pathname === '/api/auth/native/code' && request.method === 'POST') {
+    if (!nativeAuthOpen) return json({ ok: false, err: 'not found' }, { status: 404 }, cors);
     /* This converts an HttpOnly cookie into an exportable credential. An
        exact Origin check is therefore part of authentication, not CORS
        decoration. A bearer cannot mint another bearer through this route. */
@@ -169,6 +184,7 @@ export async function handleSession(
 
   /* ---- exchange the one-time code for a separate phone session ----- */
   if (url.pathname === '/api/auth/native/token' && request.method === 'POST') {
+    if (!nativeAuthOpen) return json({ ok: false, err: 'not found' }, { status: 404 }, cors);
     if (!trustedOrigin()) {
       return json(
         { ok: false, err: 'Untrusted request origin.' },

@@ -47,6 +47,13 @@ enabled = true
 [vars]
 # Migration 041 must be applied before deploying this restriction.
 ACCESS_MODE = "waitlist"
+
+# The native app's sign-in doors (/api/auth/native/*). Shut until the callback
+# is a verified App Link and Universal Link rather than the ai.jentera.app
+# custom scheme, which any installed app can claim — see the comment in
+# routes/session.ts. Flip to "true" only together with assetlinks.json carrying
+# the Play App Signing hash and an AASA file, never before.
+NATIVE_AUTH_ENABLED = "false"
 # Comma-separated origins allowed to call this API. Credentialed requests
 # need an exact origin match — a wildcard is rejected by the browser when
 # credentials: 'include' is set, which is how the session cookie travels.

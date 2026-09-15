@@ -265,6 +265,9 @@ export function testEnv(over: Partial<Record<string, unknown>> = {}): import('..
         `postgres://aisar_app:${APP_PASSWORD}@127.0.0.1:${process.env.AISAR_TEST_PG_PORT ?? 0}/aisar_test`,
     },
     ALLOWED_ORIGINS: 'http://localhost:5173',
+    /* Open here so the native auth tests exercise the routes. Production
+       ships "false"; test/native-auth.test.ts covers the shut case. */
+    NATIVE_AUTH_ENABLED: 'true',
     APP_ORIGIN: 'http://localhost:5173',
     API_ORIGIN: 'http://localhost:8787',
     CREDENTIAL_KEY: btoa(String.fromCharCode(...new Uint8Array(32).fill(5))),

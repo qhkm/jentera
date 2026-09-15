@@ -301,3 +301,47 @@ describe('the gates on minting', () => {
     expect(response?.status).toBe(429);
   });
 });
+
+describe('the native doors are shut by default', () => {
+  /* Production ships NATIVE_AUTH_ENABLED="false" because the callback is
+     still a custom scheme any app can claim. 404 rather than 403: a door that
+     is not ready should not advertise itself. */
+  const shut = () => testEnv({ NATIVE_AUTH_ENABLED: undefined });
+
+  it('does not mint', async () => {
+    const url = new URL('https://api.test/api/auth/native/code');
+    const request = new Request(url, {
+      method: 'POST',
+      headers: { Origin: ORIGIN, 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ state: STATE, codeChallenge: CHALLENGE }),
+    });
+    expect((await handleSession(request, shut(), url, {}))?.status).toBe(404);
+  });
+
+  it('does not exchange', async () => {
+    const url = new URL('https://api.test/api/auth/native/token');
+    const request = new Request(url, {
+      method: 'POST',
+      headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: 'x', state: STATE, codeVerifier: VERIFIER }),
+    });
+    expect((await handleSession(request, shut(), url, {}))?.status).toBe(404);
+  });
+
+  /* And a magic link must not carry native params while the doors are shut,
+     or consuming it returns someone to a handoff page with nothing behind it. */
+  it('does not carry native params into the login token', async () => {
+    const url = new URL('https://api.test/api/auth/request');
+    const request = new Request(url, {
+      method: 'POST',
+      headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'native-owner@example.com', native: true, state: STATE, codeChallenge: CHALLENGE,
+      }),
+    });
+    await handleSession(request, shut(), url, {});
+    const rows = await asApp((sql) => sql<{ native_state: string | null }[]>`
+      select native_state from login_token order by created_at desc limit 1`);
+    expect(rows[0]?.native_state ?? null).toBeNull();
+  });
+});

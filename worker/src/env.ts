@@ -129,6 +129,9 @@ export interface Env {
   AISAR_QUICK_MODEL_OVERRIDES?: string;
   /** 'true' turns owner-scheduled deterministic and Sprite-backed jobs on. */
   ROUTINES_ENABLED?: string;
+  /* 'true' opens /api/auth/native/*. Anything else, including unset, answers
+     404 as though the routes do not exist. */
+  NATIVE_AUTH_ENABLED?: string;
   /** Comma-separated business ids allowed to see and use routines while the
       feature is canaried; empty means every business once enabled. */
   AISAR_ROUTINES_BUSINESS_IDS?: string;
