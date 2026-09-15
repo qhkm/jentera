@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { readSessionToken, verifySession } from '../src/auth';
 import { handleSupport } from '../src/routes/support';
+import { handleModelProxy } from '../src/routes/model';
+import { handleArtifacts } from '../src/routes/artifacts';
 import { asOwner, signIn, testEnv, truncateAll } from './harness';
 
 const BUSINESS_ID = '22222222-2222-4222-8222-222222222222';
@@ -81,5 +83,46 @@ describe('a session bearer is not a service credential', () => {
       {},
     );
     expect(response?.status).toBe(401);
+  });
+
+  /* The model proxy and the artifacts route read a runtime credential from the
+     same Authorization header a session bearer now travels in. The separation
+     holds structurally — a session token is base64url and fails the jentera
+     key's HMAC, and a jentera key hashes to no session row — but nothing failed
+     if a refactor of either verifier broke it, which is what these pin. */
+  it('is refused at the model proxy', async () => {
+    const request = new Request('https://api.test/v1/model/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'deepseek-flash', messages: [] }),
+    });
+    const response = await handleModelProxy(
+      request,
+      testEnv({ AISAR_MODEL_KEY: 'model-only-secret-model-only-secret' }),
+      new URL(request.url),
+      {},
+    );
+    expect(response?.status).toBe(401);
+  });
+
+  it('is refused at the runtime artifacts route', async () => {
+    const request = new Request('https://api.test/v1/runtime/artifacts', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    /* The secret must be configured or the route answers 503 before it ever
+       looks at the credential, and this test would prove nothing. */
+    const response = await handleArtifacts(
+      request,
+      testEnv({ AISAR_MODEL_KEY: 'model-only-secret-model-only-secret' }),
+      new URL(request.url),
+      {},
+    );
+    expect(response?.status).toBe(401);
+  });
+
+  it('and a runtime credential is not a session', async () => {
+    expect(await verifySession(testEnv(), 'sk-jentera-v1.not-a-session.signature')).toBeNull();
   });
 });
