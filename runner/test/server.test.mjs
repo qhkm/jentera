@@ -795,6 +795,32 @@ test('browser preview is bound to the active task without taking control', async
   assert.equal(browserCommands.length, 0);
 });
 
+/* A sprite whose owner is holding the browser refuses every task, and used to
+   do it in the one shape that reads as healthy: a 200 on /readyz with no active
+   task, and a 409 identical to the one a working slot returns. There was
+   nothing for the control plane to report and nothing for the owner to act on,
+   so a business could sit unanswered for hours with the cause a click away. */
+test('a browser held by its owner is named in the refusal and on the readiness probe', async () => {
+  browserPaused = true;
+
+  const refused = await start(TASK);
+  assert.equal(refused.status, 409);
+  const body = await refused.json();
+  assert.equal(body.error, 'runtime_busy');
+  assert.equal(body.reason, 'business_browser_paused');
+  // No task to blame: this kind of busy ends when a person ends it.
+  assert.equal(body.activeTaskId, undefined);
+
+  const ready = await (await call('/readyz')).json();
+  assert.equal(ready.activeTask, null);
+  assert.equal(ready.businessBrowser.paused, true);
+
+  browserPaused = false;
+  assert.equal((await start(TASK)).status, 202);
+  const running = await (await call('/readyz')).json();
+  assert.equal(running.businessBrowser.paused, false);
+});
+
 test('browser control authenticates, checks business and excludes agent admission', async () => {
   const command = (businessId = BUSINESS, action = 'claim') => call('/v1/browser', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },

@@ -117,6 +117,10 @@ const LIFECYCLE_TASK_KINDS = new Set<RuntimeTaskKind>([
   'reconcile',
 ]);
 const BUSY_RETRY_SECONDS = 2;
+/** A slot busy with another task frees itself in seconds. A browser paused for
+    a person does not: they are signing in, and two-second polling for the
+    length of a Google login is churn that tells nobody anything. */
+const BROWSER_PAUSED_RETRY_SECONDS = 30;
 const RUNTIME_LEASE_STALE_MS = 60_000;
 const RUNTIME_LEASE_RENEWAL_MS = 20_000;
 const ORPHAN_RETRY_SECONDS = 65;
@@ -1931,6 +1935,31 @@ export async function handleRuntimeMessage(
        control plane is released. Poll it promptly without charging this as a
        failed attempt or imposing the generic 30-second retry penalty. */
     if (error instanceof RuntimeBusyError) {
+      /* A browser in someone's hands is the one kind of busy a person has to
+         end, and it used to be indistinguishable from a working slot: no
+         active task to escalate against, so this retried every two seconds
+         until the attempts ran out, and the owner watched a question go
+         unanswered with nothing anywhere saying why. Now it is said three
+         times — here in the logs, on the sprite's readiness probe, and on the
+         owner's own screen as a run still waiting rather than a dead one. */
+      if (error.reason === 'business_browser_paused') {
+        console.warn('[business-browser] run blocked by an owner-held browser', JSON.stringify({
+          business: message.businessId, task: message.taskId,
+          run: lease.task.runId, attempt: lease.task.attempt,
+        }));
+        const deferred = await withTenant(env, message.businessId, (tx) =>
+          deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
+            delaySeconds: BROWSER_PAUSED_RETRY_SECONDS,
+          }));
+        if (deferred && executionTask && lease.task.runId) {
+          await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'retrying');
+        }
+        return {
+          action: 'requeue',
+          delaySeconds: BROWSER_PAUSED_RETRY_SECONDS,
+          reason: deferred ? 'business browser is held by someone in this business' : 'runtime task lease was lost',
+        };
+      }
       /* L4: stop escalation when the slot is wedged. Prefer the runner's own
          admission stamp (it only moves when the slot rotates); fall back to
          the task row's start for older runners without the field. */

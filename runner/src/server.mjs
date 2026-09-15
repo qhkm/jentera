@@ -786,6 +786,12 @@ export function createRunner(input) {
               }
             : null,
           hermes: boundedReadiness(body),
+          /* A paused browser refuses every task, and until now a sprite in that
+             state answered this probe as healthy with no active task — the one
+             shape that looks idle and is not. Reported, never enforced: a
+             browser in the owner's hands is a normal state, not an unready
+             runtime. */
+          businessBrowser: businessBrowser ? await businessBrowser.status() : null,
           keepalive: keepalive.status(),
         });
       }
@@ -816,9 +822,16 @@ export function createRunner(input) {
         const active = await activeTask(config, state, terminations);
         const browserPaused = await businessBrowser?.isPaused();
         if (active || admitting || browserPaused) {
+          /* Say which kind of busy this is. An owner holding the browser and a
+             slot working through another task both refused with one
+             indistinguishable code, and the first has no active task to point
+             at — so the control plane could only retry, silently, until the
+             attempts ran out. Nobody was ever told the browser was in a
+             person's hands. */
           return json(res, 409, {
             ok: false,
             error: 'runtime_busy',
+            ...(!active && !admitting && browserPaused ? { reason: 'business_browser_paused' } : {}),
             activeTaskId: active?.taskId,
             activeTaskStartedAt: typeof active?.startedAt === 'number' ? active.startedAt : null,
           });

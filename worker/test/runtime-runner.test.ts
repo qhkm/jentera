@@ -383,6 +383,68 @@ describe('durable Hermes run delivery', () => {
     expect(state).toEqual({ status: 'queued', attempt: 0, lease_token: null });
   });
 
+  /* A slot working through another task frees itself; a browser someone is
+     signing in with does not, and the two refused with one indistinguishable
+     code. With no active task to escalate against, a blocked run re-polled
+     every two seconds until its attempts ran out, and the owner watched a
+     question go unanswered with nothing anywhere naming the cause. */
+  it('waits on a human pace when the browser is in someone\'s hands, and says so', async () => {
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.08.27-1',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.27-1', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: env.AISAR_MODEL_NAME,
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `run:${run.id}`, payload: { input: 'hello' },
+    }));
+    const fetcher: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return response({
+          ok: true,
+          release: '2026.08.27-1',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
+          toolMode: 'full-tools',
+          webSearchBackend: 'ddgs',
+          edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
+          // The shape a paused sprite reports: healthy, idle, and refusing.
+          businessBrowser: { enabled: true, paused: true, controlled: true },
+        });
+      }
+      if (url.endsWith('/v1/tasks')) {
+        // No activeTaskId: there is no task to blame, only a person.
+        return response({ ok: false, error: 'runtime_busy', reason: 'business_browser_paused' }, 409);
+      }
+      return response({ error: 'not found' }, 404);
+    };
+
+    await expect(handleRuntimeMessage(
+      env,
+      { version: 1, businessId: A, taskId: task.id },
+      { provider, fetch: fetcher },
+    )).resolves.toEqual({
+      action: 'requeue',
+      delaySeconds: 30,
+      reason: 'business browser is held by someone in this business',
+    });
+    const [state] = await asOwner((sql) => sql<{
+      status: string; attempt: number; lease_token: string | null;
+    }[]>`
+      select status, attempt, lease_token from runtime_task where id = ${task.id}`);
+    expect(state).toEqual({ status: 'queued', attempt: 0, lease_token: null });
+  });
+
   /* This used to assert the opposite: that a reservation older than the run
      budget meant the runner was never called. That rule is what made the
      14-15 September outage permanent — a slow first attempt spent the shared

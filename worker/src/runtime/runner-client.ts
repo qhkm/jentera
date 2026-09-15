@@ -73,6 +73,8 @@ export interface RunnerTaskResponse {
   result?: unknown;
   response?: unknown;
   error?: unknown;
+  /** Which kind of busy a 409 was, when the runner distinguishes them. */
+  reason?: unknown;
   activeTaskId?: string;
   /** Runner-side admission stamp of the active task (epoch ms). Lets the
       worker tell \"momentarily busy\" from a wedged slot that outlived its
@@ -121,14 +123,25 @@ export interface RunnerConfigState {
   staleSince?: string;
 }
 
+/** Why the runner would not take the task. Ordinary backpressure resolves on
+    its own; a paused browser resolves only when a person hands it back, and
+    conflating the two is what let a business sit unanswered without anyone
+    being told which it was. */
+export type RuntimeBusyReason = 'business_browser_paused';
+
 /** The isolated runtime is still finishing an earlier task. This is normal
     backpressure, not a failed model attempt, and callers should poll shortly. */
 export class RuntimeBusyError extends Error {
   constructor(
     readonly activeTaskId?: string,
     readonly activeTaskStartedAt?: number | null,
+    readonly reason?: RuntimeBusyReason,
   ) {
-    super('business runtime is busy');
+    /* The message is what a failed run finally reports, so the waiting kind
+       says what the owner can do about it. */
+    super(reason === 'business_browser_paused'
+      ? 'the business browser is in someone\'s hands — hand it back to let Jentera continue'
+      : 'business runtime is busy');
     this.name = 'RuntimeBusyError';
   }
 }
@@ -241,6 +254,7 @@ export class RunnerClient {
       throw new RuntimeBusyError(
         body.activeTaskId,
         typeof body.activeTaskStartedAt === 'number' ? body.activeTaskStartedAt : null,
+        body.reason === 'business_browser_paused' ? 'business_browser_paused' : undefined,
       );
     }
     return body;
