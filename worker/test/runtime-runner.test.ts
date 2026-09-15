@@ -1331,7 +1331,7 @@ describe('per-run deadline by response mode', () => {
 });
 
 describe('live progress to the web chat', () => {
-  it("streams the agent's status, thinking and answer text to the run stream", async () => {
+  it("streams what the agent is doing, and holds the answer once a tool runs", async () => {
     const published: Array<Record<string, unknown>> = [];
     const env = testEnv({
       RUNTIME_RELEASE: '2026.09.01-3',
@@ -1356,7 +1356,15 @@ describe('live progress to the web chat', () => {
     }));
     const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
       kind: 'run', runId: run.id, dedupeKey: `live:${run.id}`,
-      payload: { input: 'Are we open on Sunday?', model: 'MiniMax-M3', responseMode: 'deep' },
+      /* `objective` is what the answer-stream gate reads, and every real intake
+         sets it — taskTitle(question) from app chat, the routine's name, the
+         Telegram question. Omitting it here handed the gate an empty string,
+         which it reads as an ambiguous follow-up and holds, so this test was
+         asserting against a stream deliberately switched off. */
+      payload: {
+        input: 'Are we open on Sunday?', model: 'MiniMax-M3', responseMode: 'deep',
+        objective: 'Are we open on Sunday?', function: 'ask', channel: 'app',
+      },
     }));
     const events = [
       { type: 'thinking', text: 'checking the calendar' },
@@ -1403,8 +1411,15 @@ describe('live progress to the web chat', () => {
     expect(published.find((event) => event.type === 'thinking')).toMatchObject({
       detail: expect.stringContaining('checking the calendar'),
     });
-    expect(published.filter((event) => event.type === 'delta').map((event) => event.text).join(''))
-      .toBe('We are open on Sunday.');
+    /* No answer text, and that is the safeguard rather than a gap. The moment a
+       tool runs, the reply stops being reasoning over facts the owner has
+       vetted and starts incorporating whatever a search or a page returned —
+       the exact place a prompt injection lands. The durable answer goes through
+       sourceReview and the answer guard before delivery; a preview would reach
+       the screen without either, and a sentence cannot be taken back once its
+       prefix is public. So the stream carries what the agent is doing, and the
+       answer arrives when it has been checked (`answer-stream-policy.ts`). */
+    expect(published.filter((event) => event.type === 'delta')).toEqual([]);
     /* Each status says what kind of thing it is, so the web can keep the
        agent's own steps and tools as a list and treat the rest as a label. */
     const statuses = published.filter((event) => event.type === 'status');
@@ -1669,8 +1684,16 @@ describe('resuming a run stream across observation slices', () => {
     await expect(handleRuntimeMessage(env, message, { provider, fetch: runnerFetch }))
       .resolves.toEqual({ action: 'ack', reason: 'completed' });
     expect(attached).toBe(2);
+    /* The preview stops at the slice boundary and does not resume. A gate
+       rebuilt for a resumed run holds from the start (`resumed_run`), because
+       a second attach replays from the runner and a preview that stitches a
+       replay onto what is already on screen can duplicate or reorder it. The
+       owner loses nothing: the reviewed answer below is whole. */
     expect(published.filter((event) => event.type === 'delta').map((event) => event.text).join(''))
-      .toBe('We are open on Sunday.');
+      .toBe('We are open ');
+    const [answered] = await asOwner((sql) => sql<{ outcome: string }[]>`
+      select outcome from work_record where run_id = ${run.id}`);
+    expect(answered.outcome).toContain('We are open on Sunday.');
     /* A quick reply is a conversation, not a research task: the label that
        waits for the first token says so. */
     const statuses = published.filter((event) => event.type === 'status').map((event) => event.detail);

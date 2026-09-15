@@ -498,21 +498,29 @@ describe('durable Hermes Telegram replies', () => {
       .resolves.toEqual({ action: 'ack', reason: 'completed' });
 
     expect(typing).toContainEqual({ chatId: 42, action: 'typing' });
+    /* What the owner is told while a tool runs is narration, not the tool:
+       `telegramToolProgress` maps each one to plain language that describes an
+       attempt and never claims a result. It used to read
+       `🐍 execute_code: "import urllib.request"` — the tool's name and the code
+       the model wrote — which is both meaningless to an owner and model-authored
+       text on its way to a screen. */
     expect(sent).toContainEqual({
       chatId: 42,
-      text: '🐍 execute_code: "import urllib.request"',
+      text: 'I’m running the next check on the computer. I’ll let you know what I find.',
     });
     expect(sent).not.toContainEqual({ chatId: 42, text: 'Yes, we are open on Sunday.' });
-    /* The admission bubble (message 99) carries streaming deltas and is then
-       finalized in place. No second answer bubble is sent or deleted. */
-    expect(edits).toContainEqual({ chatId: 42, messageId: 99, text: 'Yes, ' });
+    /* No partial answer: the tool closed the stream gate, so "Yes, " never
+       reaches the bubble. The admission bubble (message 99) is finalized in
+       place with the reviewed answer, whole. No second bubble, none deleted. */
+    expect(edits).not.toContainEqual({ chatId: 42, messageId: 99, text: 'Yes, ' });
     expect(edits).toContainEqual({
       chatId: 42,
       messageId: 99,
       text: 'Yes, we are open on Sunday.',
     });
     const visibleProgress = JSON.stringify([...sent, ...edits]);
-    expect(visibleProgress).toContain('🐍 execute_code');
+    expect(visibleProgress).not.toContain('execute_code');
+    expect(visibleProgress).not.toContain('urllib');
     expect(visibleProgress).not.toMatch(
       /never show this|Do not show quick research|Agent session ready|Agent started|Researching|Working/,
     );
@@ -907,10 +915,13 @@ describe('durable Hermes Telegram replies', () => {
     await expect(handleRuntimeQueueMessage(durableEnv, queued[0], { provider, fetch: fetcher }))
       .resolves.toEqual({ action: 'ack', reason: 'completed' });
 
-    /* The thought appears in the working bubble's status lane while working. */
-    expect(edits.some((edit) =>
-      typeof edit.text === 'string' && edit.text.includes(thought))).toBe(true);
-    /* Reasoning never leaks into any sent message or the durable answer. */
+    /* Raw reasoning no longer reaches Telegram at all — not the bubble, not a
+       message. It used to animate the status lane, which put model-authored
+       text on the owner's screen verbatim; Telegram progress is now explicit
+       phase narration and execution events only (`onThinking` in the consumer,
+       `telegramToolProgress`). The web keeps its own reasoning lane, where the
+       app decides how to render it. */
+    expect(JSON.stringify(edits)).not.toContain(thought);
     expect(JSON.stringify(sent)).not.toContain(thought);
     expect(sent).not.toContainEqual({ chatId: 42, text: 'Yes, we are open on Sunday.' });
     expect(edits).toContainEqual({
