@@ -15,6 +15,13 @@ const ROUTINES_CRON = '* * * * *';
    said so within ten minutes instead of twenty-one hours. */
 const STALLED_AFTER_SECONDS = 600;
 
+/* A second question, because the first one missed the case in front of it.
+   When the assertion first ran, 75 upgrade tasks had been waiting 47 hours
+   while ordinary chat flowed — so "nothing is completing" was false and the
+   wedge stayed silent. Work can rot in a corner while the rest of the fleet
+   looks healthy, and an hour is far longer than any honest queue wait. */
+const ABANDONED_AFTER_SECONDS = 3_600;
+
 interface LivenessRow {
   waiting: string | number;
   waiting_businesses: string | number;
@@ -247,10 +254,14 @@ export default {
           await sql.end({ timeout: 1 });
         }
         /* postgres.js hands back bigint as a string; compare numbers. */
-        if (live && Number(live.waiting) > 0 && live.secs_since_completion > STALLED_AFTER_SECONDS) {
+        const waiting = live ? Number(live.waiting) : 0;
+        const stalled = waiting > 0 && live!.secs_since_completion > STALLED_AFTER_SECONDS;
+        const abandoned = waiting > 0 && live!.oldest_waiting_secs > ABANDONED_AFTER_SECONDS;
+        if (live && (stalled || abandoned)) {
           console.error('[runtime-liveness]', JSON.stringify({
-            stalled: true,
-            waiting: Number(live.waiting),
+            stalled,
+            abandoned,
+            waiting,
             businesses: Number(live.waiting_businesses),
             oldestWaitingSecs: live.oldest_waiting_secs,
             secsSinceCompletion: live.secs_since_completion,
