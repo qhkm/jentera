@@ -196,17 +196,21 @@ describe('Ask Jentera runtime bridge', () => {
         (${A}, 'Reach 100 monthly orders', '100 paid orders in one month'),
         (${B}, 'Open a second location', 'Second location is trading')
       returning id`);
+    const [checkpoint] = await asOwner((sql) => sql<{ id: string }[]>`
+      insert into goal_checkpoint (business_id, goal_id, title, position)
+      values (${A}, ${ownGoal.id}, 'Prepare the sales campaign', 0) returning id`);
     const response = await call('POST', '/api/runs/ask', durableEnv(sendFake()), cookieA, {
       question: 'Plan the next sales campaign',
       requestId: crypto.randomUUID(),
       mode: 'work',
       goalId: ownGoal.id,
+      goalCheckpointId: checkpoint.id,
     });
     expect(response.status).toBe(202);
     const body = await response.json() as { runId: string };
-    const [run] = await asOwner((sql) => sql<{ goal_id: string | null }[]>`
-      select goal_id from run where id = ${body.runId}`);
-    expect(run.goal_id).toBe(ownGoal.id);
+    const [run] = await asOwner((sql) => sql<{ goal_id: string | null; goal_checkpoint_id: string | null }[]>`
+      select goal_id, goal_checkpoint_id from run where id = ${body.runId}`);
+    expect(run).toEqual({ goal_id: ownGoal.id, goal_checkpoint_id: checkpoint.id });
 
     const foreign = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
       question: 'Attach foreign goal', requestId: crypto.randomUUID(), mode: 'work', goalId: foreignGoal.id,
@@ -216,6 +220,10 @@ describe('Ask Jentera runtime bridge', () => {
       question: 'Use inline answer', requestId: crypto.randomUUID(), mode: 'ask', goalId: ownGoal.id,
     });
     expect(inline.status).toBe(400);
+    const orphanCheckpoint = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
+      question: 'Missing goal', requestId: crypto.randomUUID(), mode: 'work', goalCheckpointId: checkpoint.id,
+    });
+    expect(orphanCheckpoint.status).toBe(400);
   });
 
   it('gives durable chat the same agent prompt and framing Telegram gets', async () => {

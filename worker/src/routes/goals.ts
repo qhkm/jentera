@@ -36,6 +36,14 @@ function input(body: unknown) {
   return { title, successCriteria, targetDate };
 }
 
+function checkpointInput(body: unknown) {
+  if (!body || typeof body !== 'object') return null;
+  const value = body as Record<string, unknown>;
+  const title = typeof value.title === 'string' ? value.title.trim() : '';
+  if (!title || title.length > 160) return null;
+  return { title };
+}
+
 /** Shared goals, with progress derived only from linked runs and recorded outcomes. */
 export async function handleGoals(
   request: Request,
@@ -52,20 +60,21 @@ export async function handleGoals(
   const manage = can(identity, 'goals.manage');
 
   if (url.pathname === '/api/goals' && request.method === 'GET') {
-    const goals = await withTenant(env, identity.businessId, (tx) => tx<{
-      id: string;
-      title: string;
-      successCriteria: string;
-      targetDate: string | null;
-      status: 'active' | 'completed';
-      createdAt: Date;
-      updatedAt: Date;
-      completedAt: Date | null;
-      taskCount: number;
-      completedTaskCount: number;
-      latestOutcome: string | null;
-      latestWorkAt: Date | null;
-    }[]>`select g.id, g.title, g.success_criteria as "successCriteria",
+    const goals = await withTenant(env, identity.businessId, async (tx) => {
+      const rows = await tx<{
+        id: string;
+        title: string;
+        successCriteria: string;
+        targetDate: string | null;
+        status: 'active' | 'completed';
+        createdAt: Date;
+        updatedAt: Date;
+        completedAt: Date | null;
+        taskCount: number;
+        completedTaskCount: number;
+        latestOutcome: string | null;
+        latestWorkAt: Date | null;
+      }[]>`select g.id, g.title, g.success_criteria as "successCriteria",
           g.target_date::text as "targetDate", g.status,
           g.created_at as "createdAt", g.updated_at as "updatedAt",
           g.completed_at as "completedAt",
@@ -86,7 +95,51 @@ export async function handleGoals(
         ) latest on true
         where g.business_id = ${identity.businessId} and g.status <> 'archived'
         order by (g.status = 'active') desc,
-          g.target_date asc nulls last, g.updated_at desc`);
+          g.target_date asc nulls last, g.updated_at desc`;
+      const checkpoints = await tx<{
+        id: string;
+        goalId: string;
+        title: string;
+        status: 'todo' | 'working' | 'blocked' | 'completed';
+        position: number;
+        taskCount: number;
+        completedTaskCount: number;
+        latestOutcome: string | null;
+        latestWorkAt: Date | null;
+        createdAt: Date;
+        updatedAt: Date;
+        completedAt: Date | null;
+      }[]>`select c.id, c.goal_id as "goalId", c.title, c.status, c.position,
+          c.created_at as "createdAt", c.updated_at as "updatedAt",
+          c.completed_at as "completedAt",
+          (select count(*)::int from run r where r.business_id = c.business_id
+            and r.goal_id = c.goal_id and r.goal_checkpoint_id = c.id) as "taskCount",
+          (select count(distinct r.id)::int from run r
+            join work_record w on w.business_id = r.business_id and w.run_id = r.id
+            where r.business_id = c.business_id and r.goal_id = c.goal_id
+              and r.goal_checkpoint_id = c.id and w.kind = 'work'
+              and w.status = 'completed') as "completedTaskCount",
+          latest.outcome as "latestOutcome", latest.occurred_at as "latestWorkAt"
+        from goal_checkpoint c
+        join goal g on g.business_id = c.business_id and g.id = c.goal_id
+        left join lateral (
+          select w.outcome, w.occurred_at from run r
+          join work_record w on w.business_id = r.business_id and w.run_id = r.id
+          where r.business_id = c.business_id and r.goal_id = c.goal_id
+            and r.goal_checkpoint_id = c.id and w.kind = 'work'
+            and w.outcome is not null
+          order by w.occurred_at desc limit 1
+        ) latest on true
+        where c.business_id = ${identity.businessId} and g.status <> 'archived'
+        order by c.goal_id, c.position, c.created_at`;
+      const byGoal = new Map<string, Array<(typeof checkpoints)[number]>>();
+      for (const checkpoint of checkpoints) {
+        const list = byGoal.get(checkpoint.goalId) ?? [];
+        list.push(checkpoint);
+        byGoal.set(checkpoint.goalId, list);
+      }
+      return rows.map((goal) => ({ ...goal, checkpoints: byGoal.get(goal.id) ?? [] }));
+    });
     return json({ ok: true, canManage: manage, goals }, {}, cors);
   }
 
@@ -115,8 +168,67 @@ export async function handleGoals(
         createdAt: goal.createdAt,
         updatedAt: goal.updatedAt,
         completedAt: null,
+        checkpoints: [],
       },
     }, { status: 201 }, cors);
+  }
+
+  const createCheckpoint = url.pathname.match(/^\/api\/goals\/([0-9a-f-]{36})\/checkpoints$/i);
+  if (createCheckpoint && UUID.test(createCheckpoint[1]) && request.method === 'POST') {
+    const fields = checkpointInput(await request.json().catch(() => null));
+    if (!fields) return json({ ok: false, err: 'check the checkpoint details' }, { status: 400 }, cors);
+    const checkpoint = await withTenant(env, identity.businessId, async (tx) => {
+      await tx`select pg_advisory_xact_lock(hashtextextended(${`goal-checkpoint:${identity.businessId}:${createCheckpoint[1]}`}, 0))`;
+      const [goal] = await tx`select id from goal where business_id = ${identity.businessId}
+        and id = ${createCheckpoint[1]} and status = 'active'`;
+      if (!goal) return null;
+      const [position] = await tx<{ next: number }[]>`select coalesce(max(position), -1)::int + 1 as next
+        from goal_checkpoint where business_id = ${identity.businessId} and goal_id = ${createCheckpoint[1]}`;
+      const [created] = await tx<{ id: string; createdAt: Date; updatedAt: Date }[]>`
+        insert into goal_checkpoint (business_id, goal_id, created_by, title, position)
+        values (${identity.businessId}, ${createCheckpoint[1]}, ${identity.userId},
+          ${fields.title}, ${position.next})
+        returning id, created_at as "createdAt", updated_at as "updatedAt"`;
+      return {
+        id: created.id,
+        goalId: createCheckpoint[1],
+        title: fields.title,
+        status: 'todo',
+        position: position.next,
+        taskCount: 0,
+        completedTaskCount: 0,
+        latestOutcome: null,
+        latestWorkAt: null,
+        createdAt: created.createdAt,
+        updatedAt: created.updatedAt,
+        completedAt: null,
+      };
+    });
+    return checkpoint
+      ? json({ ok: true, checkpoint }, { status: 201 }, cors)
+      : json({ ok: false, err: 'active goal not found' }, { status: 404 }, cors);
+  }
+
+  const updateCheckpoint = url.pathname.match(/^\/api\/goals\/([0-9a-f-]{36})\/checkpoints\/([0-9a-f-]{36})$/i);
+  if (updateCheckpoint && UUID.test(updateCheckpoint[1]) && UUID.test(updateCheckpoint[2]) && request.method === 'PUT') {
+    const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+    const fields = checkpointInput(body);
+    const status = body?.status;
+    if (!fields || !['todo', 'working', 'blocked', 'completed'].includes(String(status))) {
+      return json({ ok: false, err: 'check the checkpoint details' }, { status: 400 }, cors);
+    }
+    const updated = await withTenant(env, identity.businessId, (tx) => tx`
+      update goal_checkpoint c set title = ${fields.title}, status = ${String(status)},
+        updated_at = now(), completed_at = case when ${String(status)} = 'completed'
+          then coalesce(c.completed_at, now()) else null end
+      from goal g
+      where c.business_id = ${identity.businessId} and c.goal_id = ${updateCheckpoint[1]}
+        and c.id = ${updateCheckpoint[2]} and g.business_id = c.business_id
+        and g.id = c.goal_id and g.status <> 'archived'
+      returning c.id`);
+    return updated.length
+      ? json({ ok: true }, {}, cors)
+      : json({ ok: false, err: 'checkpoint not found' }, { status: 404 }, cors);
   }
 
   const match = url.pathname.match(/^\/api\/goals\/([0-9a-f-]{36})$/i);

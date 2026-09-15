@@ -21,13 +21,20 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
     vi.stubGlobal('fetch', fetch);
 
     const created = vi.fn();
-    await expect(new RemoteRepository().ask('What happened?', { sessionId: 'chat-1', onRunCreated: created })).resolves.toEqual(ANSWER);
+    await expect(new RemoteRepository().ask('What happened?', {
+      sessionId: 'chat-1',
+      goalId: '22222222-2222-4222-8222-222222222222',
+      goalCheckpointId: '33333333-3333-4333-8333-333333333333',
+      onRunCreated: created,
+    })).resolves.toEqual(ANSWER);
     expect(created).toHaveBeenCalledExactlyOnceWith(ANSWER.runId);
     expect(fetch).toHaveBeenCalledOnce();
     const sent = JSON.parse(String(fetch.mock.calls[0][1]?.body));
     expect(sent.question).toBe('What happened?');
     expect(sent.mode).toBe('work');
     expect(sent.sessionId).toBe('chat-1');
+    expect(sent.goalId).toBe('22222222-2222-4222-8222-222222222222');
+    expect(sent.goalCheckpointId).toBe('33333333-3333-4333-8333-333333333333');
     expect(sent.requestId).toMatch(/^[0-9a-f-]{36}$/);
     expect(sent).not.toHaveProperty('businessId');
   });
@@ -42,6 +49,8 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
     await expect(new RemoteRepository().ask('Check the totals', {
       attachment: file,
       sessionId: 'chat-1',
+      goalId: '22222222-2222-4222-8222-222222222222',
+      goalCheckpointId: '33333333-3333-4333-8333-333333333333',
       responseMode: 'quick',
     })).resolves.toEqual(ANSWER);
 
@@ -50,6 +59,8 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
     const form = fetch.mock.calls[0][1]?.body as FormData;
     expect(form.get('question')).toBe('Check the totals');
     expect(form.get('sessionId')).toBe('chat-1');
+    expect(form.get('goalId')).toBe('22222222-2222-4222-8222-222222222222');
+    expect(form.get('goalCheckpointId')).toBe('33333333-3333-4333-8333-333333333333');
     expect(form.get('responseMode')).toBe('quick');
     expect((form.get('file') as File).name).toBe('sales.xlsx');
   });

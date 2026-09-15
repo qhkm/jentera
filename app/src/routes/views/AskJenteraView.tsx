@@ -68,7 +68,7 @@ export default function AskJenteraView({
   onOpenActivity?: (runId?: string, title?: string) => void;
   onOpenConnections?: () => void;
   onOpenKnowledge?: () => void;
-  taskDraft?: { text: string; key: number; sessionId?: string; goalId?: string; goalTitle?: string } | null;
+  taskDraft?: { text: string; key: number; sessionId?: string; goalId?: string; goalTitle?: string; goalCheckpointId?: string; goalCheckpointTitle?: string } | null;
 }) {
   const { t, lang } = useI18n();
   const compact = useIsCompact();
@@ -109,7 +109,7 @@ export default function AskJenteraView({
   useEffect(() => {
     if (!active || !taskDraft || consumedDraft.current === taskDraft.key) return;
     consumedDraft.current = taskDraft.key;
-    const id = ask.newSession(taskDraft.sessionId, undefined, taskDraft.goalId, taskDraft.goalTitle);
+    const id = ask.newSession(taskDraft.sessionId, undefined, taskDraft.goalId, taskDraft.goalTitle, taskDraft.goalCheckpointId, taskDraft.goalCheckpointTitle);
     setDrafts((current) => ({ ...current, [id]: taskDraft.text }));
     composer.current?.focus();
   }, [active, taskDraft, ask.newSession]);
@@ -235,7 +235,10 @@ export default function AskJenteraView({
         {activeSession?.goalId && (
           <span className="ask-goal-badge" title={activeSession.goalTitle ?? t('goals.chat')}>
             <Target size={14} weight="duotone" aria-hidden="true" />
-            <span><small>{t('goals.chat')}</small>{activeSession.goalTitle ?? t('goals.title')}</span>
+            <span>
+              <small>{t(activeSession.goalCheckpointId ? 'goals.chat.step' : 'goals.chat')}</small>
+              {activeSession.goalCheckpointTitle ?? activeSession.goalTitle ?? t('goals.title')}
+            </span>
           </span>
         )}
         <div className="ask-studio-tools">

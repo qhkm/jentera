@@ -29,6 +29,8 @@ import type {
   Fact,
   FactSource,
   Goal,
+  GoalCheckpoint,
+  GoalCheckpointStatus,
   GoalInput,
   GoalsOverview,
   GoalStatus,
@@ -425,6 +427,7 @@ export class RemoteRepository implements Repository {
         ...(options.sessionId ? { sessionId: options.sessionId } : {}),
         ...(options.workspaceId ? { workspaceId: options.workspaceId } : {}),
         ...(options.goalId ? { goalId: options.goalId } : {}),
+        ...(options.goalCheckpointId ? { goalCheckpointId: options.goalCheckpointId } : {}),
         ...(options.responseMode ? { responseMode: options.responseMode } : {}),
       };
       let path = '/api/runs/ask';
@@ -475,6 +478,24 @@ export class RemoteRepository implements Repository {
 
   async updateGoal(id: string, input: GoalInput & { status: GoalStatus }): Promise<void> {
     await call(`/api/goals/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async createGoalCheckpoint(goalId: string, title: string): Promise<GoalCheckpoint> {
+    const result = await call<{ checkpoint: GoalCheckpoint }>(
+      `/api/goals/${encodeURIComponent(goalId)}/checkpoints`,
+      { method: 'POST', body: JSON.stringify({ title }) },
+    );
+    return result.checkpoint;
+  }
+
+  async updateGoalCheckpoint(goalId: string, checkpointId: string, input: {
+    title: string;
+    status: GoalCheckpointStatus;
+  }): Promise<void> {
+    await call(`/api/goals/${encodeURIComponent(goalId)}/checkpoints/${encodeURIComponent(checkpointId)}`, {
       method: 'PUT',
       body: JSON.stringify(input),
     });

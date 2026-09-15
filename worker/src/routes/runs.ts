@@ -308,6 +308,7 @@ export async function handleRuns(
       responseMode?: unknown;
       workspaceId?: unknown;
       goalId?: unknown;
+      goalCheckpointId?: unknown;
     };
     if (url.pathname === ASK_FILE_PATH) {
       let form: FormData;
@@ -328,6 +329,7 @@ export async function handleRuns(
         responseMode: field('responseMode'),
         workspaceId: field('workspaceId'),
         goalId: field('goalId'),
+        goalCheckpointId: field('goalCheckpointId'),
       };
       const uploaded = form.get('file');
       if (!uploaded || typeof uploaded === 'string' || typeof uploaded.arrayBuffer !== 'function') {
@@ -381,11 +383,25 @@ export async function handleRuns(
     const goalId = body.goalId === undefined ? null
       : typeof body.goalId === 'string' && uuid(body.goalId) ? body.goalId : undefined;
     if (goalId === undefined) return json({ ok: false, err: 'goal id is invalid' }, { status: 400 }, cors);
+    const goalCheckpointId = body.goalCheckpointId === undefined ? null
+      : typeof body.goalCheckpointId === 'string' && uuid(body.goalCheckpointId)
+        ? body.goalCheckpointId : undefined;
+    if (goalCheckpointId === undefined) return json({ ok: false, err: 'checkpoint id is invalid' }, { status: 400 }, cors);
+    if (goalCheckpointId && !goalId) {
+      return json({ ok: false, err: 'a checkpoint needs its goal' }, { status: 400 }, cors);
+    }
     if (goalId) {
       const [goal] = await withTenant(env, id.businessId, (tx) => tx<{ id: string }[]>`
         select id from goal where business_id = ${id.businessId} and id = ${goalId}
           and status = 'active'`);
       if (!goal) return json({ ok: false, err: 'active goal not found' }, { status: 404 }, cors);
+      if (goalCheckpointId) {
+        const [checkpoint] = await withTenant(env, id.businessId, (tx) => tx<{ id: string }[]>`
+          select id from goal_checkpoint where business_id = ${id.businessId}
+            and goal_id = ${goalId} and id = ${goalCheckpointId}
+            and status <> 'completed'`);
+        if (!checkpoint) return json({ ok: false, err: 'open checkpoint not found' }, { status: 404 }, cors);
+      }
     }
     const mode = body.mode ?? 'work';
     if (mode !== 'ask' && mode !== 'work') {
@@ -419,6 +435,7 @@ export async function handleRuns(
         workspaceId,
         inputFile,
         goalId,
+        goalCheckpointId,
       );
     }
 
@@ -761,6 +778,7 @@ async function startDurableAsk(
   workspaceId: string | null = null,
   inputFile?: ChatInputFile,
   goalId: string | null = null,
+  goalCheckpointId: string | null = null,
 ): Promise<Response> {
   if (!env.RUNTIME_QUEUE || !env.AISAR_MODEL_NAME?.trim()) {
     return json({ ok: false, err: 'Jentera agent execution is unavailable' }, { status: 503 }, cors);
@@ -821,6 +839,7 @@ async function startDurableAsk(
       model,
       sessionId: chat,
       goalId,
+      goalCheckpointId,
     });
     await append(tx, businessId, run.id, 'fact.retrieved', {
       keys: prepared.usedKeys,

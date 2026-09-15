@@ -107,6 +107,8 @@ export async function startRun(
     sessionId?: string | null;
     /** A durable business outcome this work advances. */
     goalId?: string | null;
+    /** The owner-defined step this run provides evidence for. */
+    goalCheckpointId?: string | null;
   },
 ): Promise<Run> {
   const requested = {
@@ -116,11 +118,13 @@ export async function startRun(
   const [row] = await tx<RunRow[]>`
     with started as (
       insert into run (business_id, kind, status, trigger_shape, trigger_ref,
-                       requested_by, runtime, model, session_id, goal_id, started_at)
+                       requested_by, runtime, model, session_id, goal_id,
+                       goal_checkpoint_id, started_at)
       values (${businessId}, ${input.kind}, 'working', ${input.triggerShape},
               ${input.triggerRef === undefined ? null : tx.json(input.triggerRef as never)},
               ${input.requestedBy ?? null}, ${input.runtime}, ${input.model ?? null},
-              ${input.sessionId ?? null}, ${input.goalId ?? null}, now())
+              ${input.sessionId ?? null}, ${input.goalId ?? null},
+              ${input.goalCheckpointId ?? null}, now())
       returning id, kind, status, trigger_shape, runtime, model,
                 started_at, ended_at, created_at
     ), requested as (

@@ -130,6 +130,8 @@ export interface AskOptions {
   workspaceId?: string;
   /** Link durable work to the business outcome it advances. */
   goalId?: string;
+  /** Narrow that evidence to one owner-defined checkpoint. */
+  goalCheckpointId?: string;
 }
 
 export type WorkKind = 'work' | 'conversation';
@@ -326,6 +328,22 @@ export interface RuntimeOverview {
 }
 
 export type GoalStatus = 'active' | 'completed' | 'archived';
+export type GoalCheckpointStatus = 'todo' | 'working' | 'blocked' | 'completed';
+
+export interface GoalCheckpoint {
+  id: string;
+  goalId: string;
+  title: string;
+  status: GoalCheckpointStatus;
+  position: number;
+  taskCount: number;
+  completedTaskCount: number;
+  latestOutcome: string | null;
+  latestWorkAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+}
 
 export interface Goal {
   id: string;
@@ -340,6 +358,7 @@ export interface Goal {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+  checkpoints: GoalCheckpoint[];
 }
 
 export interface GoalInput {
@@ -469,6 +488,11 @@ export interface Repository {
   goals?(): Promise<GoalsOverview>;
   createGoal?(input: GoalInput): Promise<Goal>;
   updateGoal?(id: string, input: GoalInput & { status: GoalStatus }): Promise<void>;
+  createGoalCheckpoint?(goalId: string, title: string): Promise<GoalCheckpoint>;
+  updateGoalCheckpoint?(goalId: string, checkpointId: string, input: {
+    title: string;
+    status: GoalCheckpointStatus;
+  }): Promise<void>;
 
   /** Web push, remote only. The server's VAPID public key, or null when
       push is not configured there. */

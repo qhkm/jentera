@@ -35,6 +35,7 @@
     "db:migrate:fact-proposals": "node scripts/apply-fact-proposals.mjs",
     "db:migrate:activation-milestone": "node scripts/apply-activation-milestone.mjs",
     "db:migrate:goals": "node scripts/apply-goals.mjs",
+    "db:migrate:goal-checkpoints": "node scripts/apply-goal-checkpoints.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -20,6 +20,36 @@ const goal: Goal = {
   createdAt: '2026-09-15T10:00:00.000Z',
   updatedAt: '2026-09-15T12:00:00.000Z',
   completedAt: null,
+  checkpoints: [
+    {
+      id: '22222222-2222-4222-8222-222222222222',
+      goalId: '11111111-1111-4111-8111-111111111111',
+      title: 'Confirm the launch offer',
+      status: 'completed',
+      position: 0,
+      taskCount: 1,
+      completedTaskCount: 1,
+      latestOutcome: 'Offer approved',
+      latestWorkAt: '2026-09-15T11:00:00.000Z',
+      createdAt: '2026-09-15T10:00:00.000Z',
+      updatedAt: '2026-09-15T11:00:00.000Z',
+      completedAt: '2026-09-15T11:00:00.000Z',
+    },
+    {
+      id: '33333333-3333-4333-8333-333333333333',
+      goalId: '11111111-1111-4111-8111-111111111111',
+      title: 'Prepare the sales campaign',
+      status: 'todo',
+      position: 1,
+      taskCount: 0,
+      completedTaskCount: 0,
+      latestOutcome: null,
+      latestWorkAt: null,
+      createdAt: '2026-09-15T10:01:00.000Z',
+      updatedAt: '2026-09-15T10:01:00.000Z',
+      completedAt: null,
+    },
+  ],
 };
 
 function mount(canManage = true) {
@@ -27,6 +57,8 @@ function mount(canManage = true) {
   repo.goals = vi.fn().mockResolvedValue({ canManage, goals: [goal] });
   repo.createGoal = vi.fn().mockResolvedValue(goal);
   repo.updateGoal = vi.fn().mockResolvedValue(undefined);
+  repo.createGoalCheckpoint = vi.fn().mockResolvedValue(goal.checkpoints[1]);
+  repo.updateGoalCheckpoint = vi.fn().mockResolvedValue(undefined);
   const onWork = vi.fn();
   render(<RepositoryProvider repository={repo}><I18nProvider><GoalsView onWork={onWork} /></I18nProvider></RepositoryProvider>);
   return { repo, onWork, user: userEvent.setup() };
@@ -37,9 +69,35 @@ describe('Goals', () => {
     const { onWork, user } = mount();
     expect(await screen.findByRole('heading', { name: goal.title })).toBeVisible();
     expect(screen.getByText('1 of 3 linked tasks completed')).toBeVisible();
+    expect(screen.getByText('1 of 2 steps complete')).toBeVisible();
+    expect(screen.getByText(/Next step/)).toBeVisible();
     expect(screen.getByText(goal.latestOutcome!)).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Work on this goal' }));
     expect(onWork).toHaveBeenCalledWith(goal);
+  });
+
+  it('adds a step, changes its status, and opens a checkpoint-linked chat', async () => {
+    const { repo, onWork, user } = mount();
+    await screen.findByRole('heading', { name: goal.title });
+    await user.click(screen.getByRole('button', { name: 'Add step' }));
+    await user.type(screen.getByLabelText('Step'), 'Contact the first 20 customers');
+    await user.click(screen.getByRole('button', { name: 'Add step' }));
+    await waitFor(() => expect(repo.createGoalCheckpoint).toHaveBeenCalledWith(
+      goal.id,
+      'Contact the first 20 customers',
+    ));
+
+    await user.selectOptions(
+      screen.getByLabelText('Status for step: Prepare the sales campaign'),
+      'working',
+    );
+    await waitFor(() => expect(repo.updateGoalCheckpoint).toHaveBeenCalledWith(
+      goal.id,
+      goal.checkpoints[1].id,
+      { title: goal.checkpoints[1].title, status: 'working' },
+    ));
+    await user.click(screen.getByRole('button', { name: 'Work on step' }));
+    expect(onWork).toHaveBeenLastCalledWith(goal, goal.checkpoints[1]);
   });
 
   it('lets an owner define the outcome and success criteria', async () => {

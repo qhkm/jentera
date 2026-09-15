@@ -4,6 +4,7 @@ import {
   CalendarBlank,
   Check,
   CheckCircle,
+  Circle,
   PencilSimple,
   Plus,
   Target,
@@ -12,7 +13,7 @@ import {
 import { Button, Card, Eyebrow, LoadingState } from '@/components/ui';
 import { useGoals } from '@/hooks/useGoals';
 import { useI18n } from '@/i18n/I18nProvider';
-import { useRepository, type Goal, type GoalInput, type GoalStatus } from '@/lib/repo';
+import { useRepository, type Goal, type GoalCheckpoint, type GoalCheckpointStatus, type GoalInput, type GoalStatus } from '@/lib/repo';
 import { malaysiaDay } from '@/lib/daily-brief';
 
 type Editor = GoalInput & { id?: string; status: GoalStatus };
@@ -28,13 +29,16 @@ function fields(goal: Goal): Editor {
   };
 }
 
-export default function GoalsView({ onWork }: { onWork: (goal: Goal) => void }) {
+export default function GoalsView({ onWork }: { onWork: (goal: Goal, checkpoint?: GoalCheckpoint) => void }) {
   const { t, lang } = useI18n();
   const repo = useRepository();
   const goals = useGoals();
   const [editor, setEditor] = useState<Editor | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [addingTo, setAddingTo] = useState<string | null>(null);
+  const [stepDraft, setStepDraft] = useState('');
+  const [editingStep, setEditingStep] = useState<{ goalId: string; id: string; title: string } | null>(null);
   const active = goals.goals.filter((goal) => goal.status === 'active');
   const completed = goals.goals.filter((goal) => goal.status === 'completed');
   const today = malaysiaDay(new Date());
@@ -88,6 +92,48 @@ export default function GoalsView({ onWork }: { onWork: (goal: Goal) => void }) 
     }
   }
 
+  async function addCheckpoint(event: FormEvent, goalId: string) {
+    event.preventDefault();
+    const title = stepDraft.trim();
+    if (!title || title.length > 160 || !repo.createGoalCheckpoint) {
+      setError(t('goals.checkpoint.validation'));
+      return;
+    }
+    setSaving(true); setError('');
+    try {
+      await repo.createGoalCheckpoint(goalId, title);
+      setAddingTo(null); setStepDraft('');
+      await goals.reload().catch(() => undefined);
+    } catch {
+      setError(t('goals.checkpoint.saveError'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function updateCheckpoint(goal: Goal, checkpoint: GoalCheckpoint, input: {
+    title: string;
+    status: GoalCheckpointStatus;
+  }) {
+    if (!repo.updateGoalCheckpoint || saving) return;
+    setSaving(true); setError('');
+    try {
+      await repo.updateGoalCheckpoint(goal.id, checkpoint.id, input);
+      setEditingStep(null);
+      await goals.reload().catch(() => undefined);
+    } catch {
+      setError(t('goals.checkpoint.saveError'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function stepIcon(status: GoalCheckpointStatus) {
+    return status === 'completed'
+      ? <CheckCircle size={18} weight="fill" aria-hidden="true" />
+      : <Circle size={18} weight={status === 'working' ? 'duotone' : 'regular'} aria-hidden="true" />;
+  }
+
   const card = (goal: Goal) => <li key={goal.id}>
     <Card className={`goal-card ${goal.status === 'completed' ? 'goal-card-completed' : ''}`}>
       <header>
@@ -103,6 +149,56 @@ export default function GoalsView({ onWork }: { onWork: (goal: Goal) => void }) 
         </button>}
       </header>
       {goal.successCriteria && <p className="goal-success"><span>{t('goals.success')}</span>{goal.successCriteria}</p>}
+      <section className="goal-plan" aria-label={t('goals.plan')}>
+        <header>
+          <strong>{t('goals.plan')}</strong>
+          <span>{goal.checkpoints.length
+            ? t('goals.checkpoints.progress', {
+                done: goal.checkpoints.filter((checkpoint) => checkpoint.status === 'completed').length,
+                total: goal.checkpoints.length,
+              })
+            : t('goals.checkpoints.empty')}</span>
+        </header>
+        {goal.checkpoints.length > 0 && <ol>
+          {goal.checkpoints.map((checkpoint, index) => {
+            const next = index === goal.checkpoints.findIndex((candidate) => candidate.status !== 'completed');
+            return <li key={checkpoint.id} className={`goal-checkpoint goal-checkpoint-${checkpoint.status}`}>
+              <span className="goal-checkpoint-mark">{stepIcon(checkpoint.status)}</span>
+              <div className="goal-checkpoint-copy">
+                {editingStep?.id === checkpoint.id ? <form onSubmit={(event) => {
+                  event.preventDefault();
+                  const title = editingStep.title.trim();
+                  if (!title || title.length > 160) { setError(t('goals.checkpoint.validation')); return; }
+                  void updateCheckpoint(goal, checkpoint, { title, status: checkpoint.status });
+                }}>
+                  <input className="input" autoFocus maxLength={160} aria-label={t('goals.checkpoint.editNamed', { title: checkpoint.title })} value={editingStep.title} onChange={(event) => setEditingStep({ ...editingStep, title: event.target.value })} />
+                  <button type="submit" disabled={saving}><Check size={15} aria-hidden="true" /><span className="sr-only">{t('goals.save')}</span></button>
+                  <button type="button" onClick={() => setEditingStep(null)}><X size={15} aria-hidden="true" /><span className="sr-only">{t('goals.cancel')}</span></button>
+                </form> : <strong>{checkpoint.title}</strong>}
+                <span>
+                  {next ? `${t('goals.checkpoint.next')} · ` : ''}
+                  {checkpoint.taskCount
+                    ? t('goals.progress', { done: checkpoint.completedTaskCount, total: checkpoint.taskCount })
+                    : t(`goals.checkpoint.status.${checkpoint.status}`)}
+                </span>
+                {checkpoint.latestOutcome && <small>{checkpoint.latestOutcome}</small>}
+              </div>
+              <div className="goal-checkpoint-actions">
+                {goal.status === 'active' && checkpoint.status !== 'completed' && <button type="button" onClick={() => onWork(goal, checkpoint)}>{t('goals.checkpoint.work')}<ArrowRight size={14} aria-hidden="true" /></button>}
+                {goals.canManage && editingStep?.id !== checkpoint.id && <button type="button" onClick={() => setEditingStep({ goalId: goal.id, id: checkpoint.id, title: checkpoint.title })} aria-label={t('goals.checkpoint.editNamed', { title: checkpoint.title })}><PencilSimple size={15} aria-hidden="true" /></button>}
+                {goals.canManage && <select value={checkpoint.status} disabled={saving} aria-label={t('goals.checkpoint.statusNamed', { title: checkpoint.title })} onChange={(event) => void updateCheckpoint(goal, checkpoint, { title: checkpoint.title, status: event.target.value as GoalCheckpointStatus })}>
+                  {(['todo', 'working', 'blocked', 'completed'] as const).map((status) => <option key={status} value={status}>{t(`goals.checkpoint.status.${status}`)}</option>)}
+                </select>}
+              </div>
+            </li>;
+          })}
+        </ol>}
+        {goals.canManage && goal.status === 'active' && (addingTo === goal.id ? <form className="goal-add-checkpoint" onSubmit={(event) => void addCheckpoint(event, goal.id)}>
+          <input className="input" autoFocus required maxLength={160} aria-label={t('goals.checkpoint.name')} placeholder={t('goals.checkpoint.placeholder')} value={stepDraft} onChange={(event) => setStepDraft(event.target.value)} />
+          <Button type="submit" disabled={saving || !stepDraft.trim()}>{t('goals.checkpoint.add')}</Button>
+          <Button type="button" variant="ghost" onClick={() => { setAddingTo(null); setStepDraft(''); }}>{t('goals.cancel')}</Button>
+        </form> : <button type="button" className="goal-add-checkpoint-trigger" onClick={() => { setAddingTo(goal.id); setStepDraft(''); }}><Plus size={15} aria-hidden="true" />{t('goals.checkpoint.add')}</button>)}
+      </section>
       <div className="goal-evidence">
         <span>{goal.taskCount ? t('goals.progress', { done: goal.completedTaskCount, total: goal.taskCount }) : t('goals.noWork')}</span>
         {goal.targetDate && <time dateTime={goal.targetDate} className={goal.status === 'active' && goal.targetDate < today ? 'goal-overdue' : ''}>

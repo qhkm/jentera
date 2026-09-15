@@ -91,6 +91,8 @@ export interface AskSession {
   goalId?: string;
   /** Human-readable context shown in Chat; the server trusts only goalId. */
   goalTitle?: string;
+  goalCheckpointId?: string;
+  goalCheckpointTitle?: string;
 }
 
 /* Storage is keyed per account. The earlier single global key meant the next
@@ -270,6 +272,8 @@ function loadSessions(account: string): AskSession[] {
           ...(typeof s.workspaceId === 'string' ? { workspaceId: s.workspaceId } : {}),
           ...(typeof s.goalId === 'string' ? { goalId: s.goalId } : {}),
           ...(typeof s.goalTitle === 'string' ? { goalTitle: s.goalTitle } : {}),
+          ...(typeof s.goalCheckpointId === 'string' ? { goalCheckpointId: s.goalCheckpointId } : {}),
+          ...(typeof s.goalCheckpointTitle === 'string' ? { goalCheckpointTitle: s.goalCheckpointTitle } : {}),
         }));
       if (sessions.length) return sessions.sort(byRecent);
     }
@@ -381,12 +385,14 @@ export function useAsk(
     [business.sug, counts, t],
   );
 
-  const newSession = useCallback((resumeId?: string, workspaceId?: string, goalId?: string, goalTitle?: string) => {
+  const newSession = useCallback((resumeId?: string, workspaceId?: string, goalId?: string, goalTitle?: string, goalCheckpointId?: string, goalCheckpointTitle?: string) => {
     const session = freshSession();
     if (resumeId) session.id = resumeId;
     if (workspaceId) session.workspaceId = workspaceId;
     if (goalId) session.goalId = goalId;
     if (goalTitle) session.goalTitle = goalTitle;
+    if (goalCheckpointId) session.goalCheckpointId = goalCheckpointId;
+    if (goalCheckpointTitle) session.goalCheckpointTitle = goalCheckpointTitle;
     setState((prev) => ({
       sessions: prev.sessions.some((s) => s.id === session.id) ? prev.sessions : [session, ...prev.sessions].slice(0, MAX_SESSIONS),
       activeId: session.id,
@@ -581,6 +587,7 @@ export function useAsk(
       const sessionId = activeIdRef.current;
       const session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
       const goalId = session?.goalId;
+      const goalCheckpointId = session?.goalCheckpointId;
       const selectedMode = goalId ? 'work' : mode ?? automaticAskMode(question, Boolean(attachment));
       const depth = automaticResponseDepth(question);
       const now = Date.now();
@@ -625,6 +632,7 @@ export function useAsk(
           sessionId,
           ...(workspaceId ? { workspaceId } : {}),
           ...(goalId ? { goalId } : {}),
+          ...(goalCheckpointId ? { goalCheckpointId } : {}),
           ...(attachment ? { attachment } : {}),
           onRunCreated: (runId: string) => {
             if (!isRunId(runId)) return;

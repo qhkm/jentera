@@ -83,7 +83,7 @@ export default function Dashboard() {
   const focusedReviewId = view === 'work' ? searchParams.get('review') : null;
   const focusedRunId = view === 'work' ? focusedReviewId ?? searchParams.get('run') : null;
   const [taskContext, setTaskContext] = useState<{ runId: string; title?: string } | null>(null);
-  const [taskDraft, setTaskDraft] = useState<{ text: string; key: number; sessionId?: string; goalId?: string; goalTitle?: string } | null>(null);
+  const [taskDraft, setTaskDraft] = useState<{ text: string; key: number; sessionId?: string; goalId?: string; goalTitle?: string; goalCheckpointId?: string; goalCheckpointTitle?: string } | null>(null);
   const [playbookDraft, setPlaybookDraft] = useState<RoutineConfig | null>(null);
   const focusedRoutineId = view === 'routines' ? searchParams.get('routine') : null;
   const lastDashboard = useRef<{ view: Exclude<View, 'chat'>; tab: BizTab; runId: string | null; routineId: string | null; reviewId: string | null }>({ view: 'home', tab: 'profile', runId: null, routineId: null, reviewId: null });
@@ -290,13 +290,18 @@ export default function Dashboard() {
           {view === 'library' && <LibraryView canSchedule={routinesEnabled} connections={connections} onUse={config => {
             setPlaybookDraft(config); go('routines');
           }} />}
-          {view === 'goals' && goalsEnabled && <GoalsView onWork={(goal) => {
+          {view === 'goals' && goalsEnabled && <GoalsView onWork={(goal, checkpoint) => {
             setTaskDraft({
               key: Date.now(),
               goalId: goal.id,
               goalTitle: goal.title,
-              text: t('goals.work.prompt', {
+              ...(checkpoint ? {
+                goalCheckpointId: checkpoint.id,
+                goalCheckpointTitle: checkpoint.title,
+              } : {}),
+              text: t(checkpoint ? 'goals.work.stepPrompt' : 'goals.work.prompt', {
                 title: goal.title,
+                step: checkpoint?.title ?? '',
                 criteria: goal.successCriteria || t('goals.criteria.none'),
                 date: goal.targetDate || t('goals.date.none'),
               }),

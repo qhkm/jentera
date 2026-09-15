@@ -552,14 +552,15 @@ describe('useAsk and goals', () => {
       { wrapper },
     );
     await waitFor(() => expect(result.current).not.toBeNull());
-    act(() => { result.current.newSession(undefined, undefined, goalId); });
+    const checkpointId = '22222222-2222-4222-8222-222222222222';
+    act(() => { result.current.newSession(undefined, undefined, goalId, 'Grow orders', checkpointId, 'Prepare campaign'); });
     await act(async () => { result.current.send('What should we do first?', 'ask'); });
     await act(async () => { result.current.send('Now carry that out', 'ask'); });
 
     expect(asked).toHaveLength(2);
     expect(asked).toEqual([
-      expect.objectContaining({ goalId, mode: 'work' }),
-      expect.objectContaining({ goalId, mode: 'work' }),
+      expect.objectContaining({ goalId, goalCheckpointId: checkpointId, mode: 'work' }),
+      expect.objectContaining({ goalId, goalCheckpointId: checkpointId, mode: 'work' }),
     ]);
   });
 });

@@ -90,10 +90,14 @@ describe('business goals', () => {
 
   it('reports progress only from linked runs and their recorded outcomes', async () => {
     const goalId = await createGoal();
+    const checkpointResponse = await call('POST', `/api/goals/${goalId}/checkpoints`, ownerCookie, {
+      title: 'Prepare the sales campaign',
+    });
+    const checkpointId = (await jsonOf<{ checkpoint: { id: string } }>(checkpointResponse)).checkpoint.id;
     const completed = await asTenant(A, async (tx) => {
       const run = await startRun(tx, A, {
         kind: 'ask', triggerShape: 'owner.ask', requestedBy: ownerId,
-        runtime: 'hermes-sprite', goalId,
+        runtime: 'hermes-sprite', goalId, goalCheckpointId: checkpointId,
       });
       await recordWork(tx, A, {
         runId: run.id,
@@ -107,7 +111,7 @@ describe('business goals', () => {
     });
     await asTenant(A, (tx) => startRun(tx, A, {
       kind: 'ask', triggerShape: 'owner.ask', requestedBy: ownerId,
-      runtime: 'hermes-sprite', goalId,
+      runtime: 'hermes-sprite', goalId, goalCheckpointId: checkpointId,
     }));
     await asTenant(A, async (tx) => {
       const unrelated = await startRun(tx, A, {
@@ -125,8 +129,47 @@ describe('business goals', () => {
       taskCount: 2,
       completedTaskCount: 1,
       latestOutcome: 'Campaign brief ready for review',
+      checkpoints: [{
+        id: checkpointId,
+        status: 'todo',
+        taskCount: 2,
+        completedTaskCount: 1,
+        latestOutcome: 'Campaign brief ready for review',
+      }],
     });
     expect(completed.id).toBeTruthy();
+  });
+
+  it('lets the owner build and update an ordered checkpoint plan', async () => {
+    const goalId = await createGoal();
+    const first = await call('POST', `/api/goals/${goalId}/checkpoints`, ownerCookie, {
+      title: 'Confirm the launch offer',
+    });
+    expect(first.status).toBe(201);
+    const firstCheckpoint = (await jsonOf<{ checkpoint: { id: string; position: number } }>(first)).checkpoint;
+    const second = await call('POST', `/api/goals/${goalId}/checkpoints`, ownerCookie, {
+      title: 'Prepare the sales campaign',
+    });
+    const secondCheckpoint = (await jsonOf<{ checkpoint: { id: string; position: number } }>(second)).checkpoint;
+    expect([firstCheckpoint.position, secondCheckpoint.position]).toEqual([0, 1]);
+    expect((await call('POST', `/api/goals/${goalId}/checkpoints`, staffCookie, {
+      title: 'Staff cannot change the plan',
+    })).status).toBe(403);
+
+    const updated = await call(
+      'PUT',
+      `/api/goals/${goalId}/checkpoints/${firstCheckpoint.id}`,
+      ownerCookie,
+      { title: 'Confirm and approve the launch offer', status: 'completed' },
+    );
+    expect(updated.status).toBe(200);
+    const view = await jsonOf<{ goals: Array<{ checkpoints: Array<Record<string, unknown>> }> }>(
+      await call('GET', '/api/goals', staffCookie),
+    );
+    expect(view.goals[0].checkpoints).toMatchObject([
+      { id: firstCheckpoint.id, title: 'Confirm and approve the launch offer', status: 'completed', position: 0 },
+      { id: secondCheckpoint.id, title: 'Prepare the sales campaign', status: 'todo', position: 1 },
+    ]);
   });
 
   it('completes and reopens a goal without losing its evidence', async () => {
