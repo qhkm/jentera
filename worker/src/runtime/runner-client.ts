@@ -5,6 +5,16 @@ import { specialistProfileValid, type SpecialistProfile } from '../specialists';
 
 const RESPONSE_LIMIT = 256 * 1024;
 const STREAM_LIMIT = 64 * 1024;
+
+/** The runner refuses a task body over 64 KB (`BODY_LIMIT` in
+    `runner/src/server.mjs`), and the two long fields share it. Both halves are
+    capped here rather than at either end, because the producer and the parser
+    drifting apart is the failure this prevents: the whole prompt travels in
+    `instructions`, so a prompt that grows silently eats the room the business
+    context was promised, and the run is refused at dispatch — not at intake,
+    where someone would see it. */
+export const RUNNER_INPUT_MAX = 20_000;
+export const RUNNER_INSTRUCTIONS_MAX = 20_000;
 const HERMES_PATCH_ID = 'jentera-runtime-2026-09-07';
 const PROBE_TIMEOUT_MS = 3_000;
 const TERMINAL_TASK_STATUSES = new Set(['completed', 'failed', 'cancelled', 'stopped', 'expired']);

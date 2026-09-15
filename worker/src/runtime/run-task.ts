@@ -10,6 +10,8 @@ import type { RuntimeProvider } from './provider';
 import { runtimeProviderFor } from './provision';
 import {
   RunnerClient,
+  RUNNER_INPUT_MAX,
+  RUNNER_INSTRUCTIONS_MAX,
   type RunnerApprovalRequest,
   type RunnerTaskResponse,
   type RunnerToolEvent,
@@ -477,7 +479,7 @@ function runPayload(value: unknown): RunPayload {
   if (!value || typeof value !== 'object') throw new Error('runtime run payload is invalid');
   const body = value as Record<string, unknown>;
   const input = typeof body.input === 'string' ? body.input.trim() : '';
-  if (!input || input.length > 20_000) throw new Error('runtime run input is invalid');
+  if (!input || input.length > RUNNER_INPUT_MAX) throw new Error('runtime run input is invalid');
   const optional = (key: string, max: number): string | undefined => {
     if (body[key] === undefined) return undefined;
     if (typeof body[key] !== 'string' || body[key].length > max) {
@@ -494,7 +496,7 @@ function runPayload(value: unknown): RunPayload {
   }
   return {
     input,
-    instructions: optional('instructions', 20_000),
+    instructions: optional('instructions', RUNNER_INSTRUCTIONS_MAX),
     profile,
     sessionId: optional('sessionId', 500),
     objective: optional('objective', 1_000),

@@ -19,6 +19,10 @@ import type postgres from 'postgres';
 import type { Env } from './env';
 import { specialistRunInstructions, type SpecialistDefinition } from './specialists';
 import { MODEL } from './ingest';
+import {
+  RUNNER_INPUT_MAX,
+  RUNNER_INSTRUCTIONS_MAX,
+} from './runtime/runner-client';
 
 export interface Answer {
   text: string;
@@ -323,14 +327,25 @@ export function prepareAsk(
   };
 }
 
-/** The business context is bounded so the runner's 64 KB task body has
-    room for the prompt, the tool grant and the message. */
+/** A ceiling on the business context for the model's sake: past this much
+    confirmed record, the turn's actual question is competing with it. The
+    binding limit is usually the other one below. */
 const HERMES_CONTEXT_MAX = 16_000;
 
-function boundedContext(context: string): string {
-  if (context.length <= HERMES_CONTEXT_MAX) return context;
+/** Leave the parser a little room rather than aiming at its edge, so a
+    one-character prompt edit is not the difference between a run and a
+    refusal. */
+const HERMES_INSTRUCTIONS_MAX = RUNNER_INSTRUCTIONS_MAX - 500;
+
+/** `budget` is what is left of the instructions field once the prompt, the
+    specialist, the speaker and the clock have taken their share. The context
+    is the only part that can be cut: the prompt's rules run to its last line,
+    and truncating those changes what the agent is allowed to do. */
+function boundedContext(context: string, budget: number): string {
+  const max = Math.max(0, Math.min(HERMES_CONTEXT_MAX, budget));
+  if (context.length <= max) return context;
   const note = '\n- …(more facts omitted)';
-  return `${context.slice(0, HERMES_CONTEXT_MAX - note.length)}${note}`;
+  return `${context.slice(0, Math.max(0, max - note.length))}${note}`;
 }
 
 /** Every durable request, Telegram or app chat, uses Hermes as an agent
@@ -379,6 +394,14 @@ export function prepareHermesAgent(
         .slice(0, 8)
         .map((entry) => `- ${entry.objective}${entry.outcome ? ` — ${entry.outcome}` : ''}`)
         .join('\n');
+  /* Stable policy first; the precise clock changes every request and must not
+     invalidate the reusable prefix before the business context. */
+  const preamble = HERMES_AGENT_PROMPT +
+    `${specialist ? `\n\n${specialistRunInstructions(specialist)}` : ''}` +
+    `${speaker ? `\n\n${speakerInstructions(speaker)}` : ''}` +
+    '\n\n';
+  const clock =
+    `\n\nCurrent date (UTC): ${now.toISOString().slice(0, 10)}. Current timestamp (UTC): ${now.toISOString()}. Reminder timezone: Asia/Kuala_Lumpur (UTC+8).`;
   const context = boundedContext(
     `Confirmed information about this business:\n${renderFacts(facts)}\n\n` +
     `Recent Jentera work:\n${recent}\n\n` +
@@ -387,15 +410,10 @@ export function prepareHermesAgent(
        confirmed record the owner actually maintains. */
     'Jentera supplies the confirmed business facts above on every turn; do not save them to your memory. ' +
     'Save only what Jentera cannot tell you.',
+    HERMES_INSTRUCTIONS_MAX - preamble.length - clock.length,
   );
   return {
-    // Stable policy and business context first; the precise clock changes every
-    // request and must not invalidate the reusable prefix before that context.
-    instructions: HERMES_AGENT_PROMPT +
-      `${specialist ? `\n\n${specialistRunInstructions(specialist)}` : ''}` +
-      `${speaker ? `\n\n${speakerInstructions(speaker)}` : ''}` +
-      `\n\n${context}` +
-      `\n\nCurrent date (UTC): ${now.toISOString().slice(0, 10)}. Current timestamp (UTC): ${now.toISOString()}. Reminder timezone: Asia/Kuala_Lumpur (UTC+8).`,
+    instructions: `${preamble}${context}${clock}`,
     input: question,
     usedKeys: facts.map((fact) => fact.key),
     grounded: facts.length > 0,
@@ -437,7 +455,7 @@ export async function answer(
 /** Cap the message at Hermes's comfortable size and say so when it was
     cut. Shared by the Telegram and app intakes so neither can drift. */
 export function boundedAgentInput(question: string): string {
-  const max = 19_500;
+  const max = RUNNER_INPUT_MAX - 500;
   if (question.length <= max) return question;
   const note = '\n\n[message truncated]';
   return `${question.slice(0, max - note.length)}${note}`;

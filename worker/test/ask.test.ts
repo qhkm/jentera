@@ -16,6 +16,7 @@ import { asOwner, asTenant, truncateAll } from './harness';
 import { answer, prepareHermesAgent, retrieve, retrieveHermesContext,
   boundedAgentInput,
 } from '../src/ask';
+import { RUNNER_INSTRUCTIONS_MAX } from '../src/runtime/runner-client';
 import { recordFact } from '../src/facts';
 import { recentWork, recordWork, startRun } from '../src/runs';
 import type { Env } from '../src/env';
@@ -360,7 +361,17 @@ describe('the durable Hermes agent request', () => {
     expect(prepared.instructions).toMatch(/External\s+research supplements it/i);
   });
 
-  it('bounds the business context so the runner request stays well under its body limit', () => {
+  /* The number this asserted until 2026-09-15 was a round 24,000, chosen
+     against the runner's 64 KB body — which is not what refuses first. The
+     parser of the durable payload caps `instructions` at 20,000
+     (`runPayload`), and the whole prompt rides in that one field, so a full
+     business context already produced 24,075 characters: accepted at intake,
+     written to the task, and then refused by every dispatch of it with
+     "runtime run instructions is invalid". No business had enough confirmed
+     facts to reach it (the largest held 458 characters), which is why nothing
+     was on fire. Asserting the real cap is what makes the next prompt that
+     outgrows its room fail here instead of in production. */
+  it('bounds the business context to what the task payload parser will accept', () => {
     const facts = Array.from({ length: 400 }, (_, i) => ({
       key: `fact.${i}`,
       value: 'v'.repeat(200),
@@ -370,10 +381,35 @@ describe('the durable Hermes agent request', () => {
       confirmed: true,
     }));
     const prepared = prepareHermesAgent('hi', facts, [], new Date('2026-08-28T05:00:00.000Z'));
-    expect(prepared.instructions.length).toBeLessThan(24_000);
+    expect(prepared.instructions.length).toBeLessThanOrEqual(RUNNER_INSTRUCTIONS_MAX);
     expect(prepared.instructions).toContain('fact.0: ');
     expect(prepared.instructions).toMatch(/more facts omitted/);
     expect(prepared.input).toBe('hi');
+  });
+
+  /* The cut falls on the context, so a prompt that grows takes the business's
+     room silently — the assertion above still passes while the owner's facts
+     quietly stop arriving. This is the one that notices. */
+  it('leaves the business real room once the prompt has taken its share', () => {
+    const bare = prepareHermesAgent('hi', [], [], new Date('2026-08-28T05:00:00.000Z'));
+    expect(RUNNER_INSTRUCTIONS_MAX - bare.instructions.length).toBeGreaterThan(8_000);
+  });
+
+  /* The last line of the prompt is a rule like any other. Cutting the context
+     is a smaller loss than cutting those, so the clock — appended last — must
+     survive a context that overflows. */
+  it('keeps the whole prompt when the context is cut', () => {
+    const facts = Array.from({ length: 400 }, (_, i) => ({
+      key: `fact.${i}`,
+      value: 'v'.repeat(200),
+      source: 'owner',
+      sourceRef: null,
+      confidence: 1,
+      confirmed: true,
+    }));
+    const prepared = prepareHermesAgent('hi', facts, [], new Date('2026-08-28T05:00:00.000Z'));
+    expect(prepared.instructions).toContain('Current date (UTC): 2026-08-28');
+    expect(prepared.instructions).toContain('Reminder timezone: Asia/Kuala_Lumpur');
   });
 });
 
