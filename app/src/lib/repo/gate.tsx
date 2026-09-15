@@ -16,6 +16,11 @@ import type { MeResponse } from './remote';
 import { RepositoryProvider } from './context';
 import { migrateLocalToRemote } from './migrate';
 import { PageLoading } from '@/components/ui';
+import {
+  isNative,
+  nativeAuthorizationHeaders,
+  resumeNativeSignIn,
+} from '@/lib/native';
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
@@ -110,13 +115,21 @@ async function choose(): Promise<Chosen> {
      working exactly as it does today. */
   if (!API) return { repo: new LocalRepository(), mode: 'local', account: null };
 
+  /* A callback can launch a fresh native process. Complete that pending
+     exchange before asking /api/me, or the first request would look signed
+     out even though the one-time code is waiting in the launch URL. */
+  if (isNative()) await resumeNativeSignIn();
+
   let signedIn = false;
   /* The body, not just the status. It carries the detail-level setting,
      which the hook below used to fetch from this same endpoint a moment
      later — the response was here all along and was being discarded. */
   let me: MeResponse | null = null;
   try {
-    const res = await fetch(`${API}/api/me`, { credentials: 'include' });
+    const res = await fetch(`${API}/api/me`, {
+      credentials: 'include',
+      headers: await nativeAuthorizationHeaders(),
+    });
     if (res.status === 403) {
       const body = await res.clone().json().catch(() => null);
       if (body?.code === 'ACCESS_REQUIRED') {

@@ -12,6 +12,7 @@ import type { Approval, CountryCode, Lang, Policy } from '@/lib/types';
 import { isRunId } from '@/lib/task';
 import { isArtifact } from '@/lib/artifacts';
 import { RemoteRoutinesApi } from '@/lib/routines/api';
+import { nativeAuthorizationHeaders } from '@/lib/native';
 import type {
   BrowserCommand,
   BusinessBrowserState,
@@ -75,10 +76,21 @@ export class NoBusinessError extends Error {
 
 class TemporaryConnectionError extends Error {}
 
+/** Cookie on the web, bearer in the native shell. Keeping credentials on
+    both paths preserves the browser flow while the Authorization header wins
+    server-side if Android also has an old cookie in its shared jar. */
+async function sessionFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  for (const [name, value] of Object.entries(await nativeAuthorizationHeaders())) {
+    headers.set(name, value);
+  }
+  return fetch(input, { ...init, credentials: 'include', headers });
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${BASE}${path}`, {
+    res = await sessionFetch(`${BASE}${path}`, {
       ...init,
       // The session is an HttpOnly cookie; without this it is not sent
       // cross-origin and every request looks unauthenticated.
@@ -229,7 +241,7 @@ export class RemoteRepository implements Repository {
     return call('/api/browser', { ...(command ? { method: 'POST', body: JSON.stringify(command) } : {}), signal });
   }
   async watchBrowser(runId: string, onFrame: (frame: BusinessBrowserState) => void, signal: AbortSignal): Promise<void> {
-    const response = await fetch(`${BASE}/api/browser`, {
+    const response = await sessionFetch(`${BASE}/api/browser`, {
       method: 'POST', credentials: 'include', signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'preview-stream', runId, controlId: crypto.randomUUID() }),
@@ -333,7 +345,7 @@ export class RemoteRepository implements Repository {
     post(`/api/state/specialists/${encodeURIComponent(id)}`, { disable: true });
 
   async ingestFile(file: File): Promise<IngestResult & { source?: string }> {
-    const res = await fetch(`${BASE}/api/runs/ingest/file`, {
+    const res = await sessionFetch(`${BASE}/api/runs/ingest/file`, {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -365,7 +377,7 @@ export class RemoteRepository implements Repository {
     /* The server answers 200 with ok:false when the RUN happened but
        the reading failed — the run is on record either way, so `call`
        would throw on a result worth showing. Handled here instead. */
-    const res = await fetch(`${BASE}/api/runs/ingest`, {
+    const res = await sessionFetch(`${BASE}/api/runs/ingest`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -514,7 +526,7 @@ export class RemoteRepository implements Repository {
      configured" and a 409 means "another account's device", both answers
      the caller acts on, where `call` would have thrown. */
   async pushPublicKey(): Promise<string | null> {
-    const res = await fetch(`${BASE}/api/push/vapid-public-key`, { credentials: 'include', signal: AbortSignal.timeout(15_000) });
+    const res = await sessionFetch(`${BASE}/api/push/vapid-public-key`, { signal: AbortSignal.timeout(15_000) });
     if (res.status === 503) return null;
     if (res.status === 401) throw new NotSignedInError();
     if (!res.ok) throw new Error('Could not load notification configuration.');
@@ -523,7 +535,7 @@ export class RemoteRepository implements Repository {
   }
 
   async savePushSubscription(subscription: PushSubscriptionJson): Promise<'saved' | 'conflict'> {
-    const res = await fetch(`${BASE}/api/push/subscription`, {
+    const res = await sessionFetch(`${BASE}/api/push/subscription`, {
       method: 'PUT',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -554,7 +566,7 @@ export class RemoteRepository implements Repository {
   artifactUrl = (id: string) => `${BASE}/api/artifacts/${encodeURIComponent(id)}`;
 
   fetchArtifact = async (id: string): Promise<Blob> => {
-    const res = await fetch(this.artifactUrl(id), { credentials: 'include' });
+    const res = await sessionFetch(this.artifactUrl(id));
     if (res.status === 401) throw new NotSignedInError();
     if (!res.ok) throw new Error('This file could not be opened.');
     return res.blob();

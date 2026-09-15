@@ -25,8 +25,15 @@ import { Link, Navigate, useSearchParams } from "react-router";
 import { trackActivation } from "@/lib/analytics";
 import { useTurnstile } from "@/lib/turnstile";
 import { JenteraMark } from "@/components/JenteraMark";
+import {
+  handoffBrowserSession,
+  isNative,
+  signIn as signInNative,
+} from '@/lib/native';
 
 const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+const NATIVE_STATE = /^[A-Za-z0-9._~-]{16,128}$/;
+const PKCE_VALUE = /^[A-Za-z0-9._~-]{43,128}$/;
 
 type Mode = "signin" | "signup";
 type BusyAction = "password" | "link" | null;
@@ -44,12 +51,73 @@ const ERRORS: Record<string, string> = {
     "Google sign-in is not available right now. Use your email instead.",
 };
 
+function NativeSignIn() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function openSignIn() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const next = await signInNative();
+      if (next) window.location.replace(next);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Sign-in could not be completed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="marketing-page auth-entrance min-h-dvh bg-bg text-text">
+      <div className="auth-atmosphere" aria-hidden="true"><span>Jentera</span></div>
+      <main id="main-content" className="auth-layout">
+        <div className="auth-card">
+          <div className="auth-emblem"><JenteraMark size={64} /></div>
+          <span className="auth-card-eyebrow">Secure sign-in</span>
+          <h1>Welcome to Jentera.</h1>
+          <p className="auth-card-description">
+            Continue in your browser to sign in with Google, your password, or an email link.
+          </p>
+          <button
+            type="button"
+            className="btn btn-primary mt-6 w-full"
+            disabled={busy}
+            onClick={() => void openSignIn()}
+          >
+            {busy ? 'Opening secure sign-in…' : 'Continue to sign in'}
+          </button>
+          {error ? <p role="alert" className="mt-3 text-sm opacity-80">{error}</p> : null}
+          <p className="mt-5 text-xs text-text-secondary">
+            Your Jentera session is stored securely on this device.
+          </p>
+        </div>
+      </main>
+    </div>
+  );
+}
+
 export default function SignIn() {
+  return isNative() ? <NativeSignIn /> : <BrowserSignIn />;
+}
+
+function BrowserSignIn() {
   const [inviteCode] = useState(pendingTrialInvite);
+  const [params, setParams] = useSearchParams();
+  const nativeState = params.get('state') ?? '';
+  const nativeChallenge = params.get('code_challenge') ?? '';
+  const nativeHandoff = params.get('native') === '1' &&
+      NATIVE_STATE.test(nativeState) && PKCE_VALUE.test(nativeChallenge)
+    ? { state: nativeState, codeChallenge: nativeChallenge }
+    : null;
   /* Already signed in: the workspace, not the form. A 401 leaves the form
      alone, so a magic link or a fresh sign-in still works. */
-  useSignedInRedirect('/app', inviteCode ? `/access?invite=1#code=${encodeURIComponent(inviteCode)}` : '/access');
-  const [params, setParams] = useSearchParams();
+  useSignedInRedirect(
+    '/app',
+    inviteCode ? `/access?invite=1#code=${encodeURIComponent(inviteCode)}` : '/access',
+    nativeHandoff === null,
+  );
   const [mode, setMode] = useState<Mode>(() =>
     params.get("mode") === "signup" ? "signup" : "signin",
   );
@@ -63,6 +131,32 @@ export default function SignIn() {
   const emailInput = useRef<HTMLInputElement>(null);
   const confirmationHeading = useRef<HTMLHeadingElement>(null);
   const restoreEmailFocus = useRef(false);
+
+  /* Deliberately NOT an effect that mints on arrival.
+     
+     The code minted here is a 7-day credential for this account, and the
+     challenge it is bound to comes from the query string, so whoever wrote
+     the link chose it. An effect that fired on load meant a link sent to a
+     signed-in owner silently minted a code against their session and handed
+     it to whatever app claims the ai.jentera.app scheme — the attacker's,
+     if they installed one. PKCE cannot help: the attacker owns the verifier.
+     
+     A tap is not a complete fix, and the real control is a verified App Link
+     so only the signed app can receive the callback. But it removes the
+     silent case, which is the one nobody can notice. */
+  const [handoffBusy, setHandoffBusy] = useState(false);
+  const returnToApp = async () => {
+    if (!nativeHandoff) return;
+    setHandoffBusy(true);
+    try {
+      if (await handoffBrowserSession(nativeHandoff)) return;
+      setError('Your browser session could not be returned to the Jentera app.');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not return to the Jentera app.');
+    } finally {
+      setHandoffBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (sent) confirmationHeading.current?.focus({ preventScroll: true });
@@ -122,6 +216,11 @@ export default function SignIn() {
 
       if (res.ok) {
         const body = (await res.json().catch(() => ({}))) as { next?: unknown };
+        if (nativeHandoff) {
+          if (await handoffBrowserSession(nativeHandoff)) return;
+          setError('Your browser session could not be returned to the Jentera app.');
+          return;
+        }
         // Full reload, not a client-side navigate: RepositoryGate reads
         // the session once at startup, so the app has to boot again to
         // pick up the cookie that was just set.
@@ -163,6 +262,11 @@ export default function SignIn() {
           email,
           ...(inviteCode ? { inviteCode } : {}),
           ...(turnstileToken ? { turnstileToken } : {}),
+          ...(nativeHandoff ? {
+            native: true,
+            state: nativeHandoff.state,
+            codeChallenge: nativeHandoff.codeChallenge,
+          } : {}),
         }),
       });
       if (!response.ok) {
@@ -189,6 +293,16 @@ export default function SignIn() {
     }
   }
 
+  function alternateModeParams(): URLSearchParams {
+    const next = new URLSearchParams(params);
+    if (mode === 'signup') next.delete('mode');
+    else next.set('mode', 'signup');
+    return next;
+  }
+
+  const alternateQuery = alternateModeParams().toString();
+  const alternateModeHref = `/signin${alternateQuery ? `?${alternateQuery}` : ''}`;
+
   if (mode === 'signup' && import.meta.env.VITE_ACCESS_MODE === 'waitlist') return <Navigate to="/waitlist" replace />;
 
   return (
@@ -206,7 +320,7 @@ export default function SignIn() {
           Jentera<span className="auth-parent">by AISAR</span>
         </Link>
         <Link
-          to={mode === "signup" ? "/signin" : "/signin?mode=signup"}
+          to={alternateModeHref}
           className="lp-text-link"
         >
           {mode === "signup" ? "Sign in" : "Get started"}
@@ -278,8 +392,31 @@ export default function SignIn() {
             ) : null}
             {inviteCode && <p role="status" className="mt-3 text-sm text-brand">Your exclusive invitation will continue after sign-in. Your trial starts only when you confirm.</p>}
 
+            {nativeHandoff ? (
+              <section className="card mt-4 px-4 py-3" aria-label="Return to the Jentera app">
+                <strong className="block text-[14px]">Continue in the Jentera app</strong>
+                <p className="m-0 mt-1 text-[13px] text-text-secondary">
+                  If you are already signed in here, this hands your session to the app on
+                  this device. Only continue if you opened this page from Jentera yourself.
+                </p>
+                <button
+                  type="button"
+                  className="btn mt-3"
+                  disabled={handoffBusy}
+                  onClick={() => { void returnToApp(); }}
+                >
+                  {handoffBusy ? 'Returning…' : 'Return to the Jentera app'}
+                </button>
+              </section>
+            ) : null}
+
             <form method={inviteCode ? 'post' : 'get'} action={`${API}/api/auth/google`} className="mt-6">
               {inviteCode ? <input type="hidden" name="inviteCode" value={inviteCode} /> : null}
+              {nativeHandoff ? <>
+                <input type="hidden" name="native" value="1" />
+                <input type="hidden" name="state" value={nativeHandoff.state} />
+                <input type="hidden" name="codeChallenge" value={nativeHandoff.codeChallenge} />
+              </> : null}
               <button
                 type="submit"
                 className="btn btn-outline flex w-full items-center justify-center gap-2"
@@ -423,7 +560,7 @@ export default function SignIn() {
                 className="nav-link normal-case tracking-normal"
                 disabled={Boolean(busy)}
                 onClick={() => {
-                  setParams(mode === "signup" ? {} : { mode: "signup" });
+                  setParams(alternateModeParams());
                 }}
               >
                 {mode === "signup" ? "Sign in" : "Create one"}

@@ -3,15 +3,19 @@ import {
   NativeCapabilityUnavailableError,
   capturePhoto,
   isNative,
+  nativeAuthorizationHeaders,
   nativePlatform,
   openArtifact,
   registerForPush,
   secureStore,
   signIn,
 } from '..';
+import { RemoteRepository } from '@/lib/repo/remote';
 
 afterEach(() => {
   Reflect.deleteProperty(globalThis, 'Capacitor');
+  localStorage.removeItem('jentera-native-install-v1');
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -34,6 +38,64 @@ describe('native boundary', () => {
     });
     expect(isNative()).toBe(true);
     expect(nativePlatform()).toBe(platform);
+  });
+
+  it('keeps the bearer in the native secure-storage plugin', async () => {
+    localStorage.setItem('jentera-native-install-v1', '1');
+    const values = new Map<string, string>();
+    Object.assign(globalThis, {
+      Capacitor: {
+        isNativePlatform: () => true,
+        getPlatform: () => 'ios',
+        Plugins: {
+          SecureStorage: {
+            internalGetItem: vi.fn(async ({ prefixedKey }: { prefixedKey: string }) => ({
+              data: values.get(prefixedKey) ?? null,
+            })),
+            internalSetItem: vi.fn(async ({ prefixedKey, data }: { prefixedKey: string; data: string }) => {
+              values.set(prefixedKey, data);
+            }),
+            internalRemoveItem: vi.fn(async ({ prefixedKey }: { prefixedKey: string }) => ({
+              success: values.delete(prefixedKey),
+            })),
+          },
+        },
+      },
+    });
+
+    await secureStore.set('jentera.session', 'native-secret');
+    await expect(secureStore.get('jentera.session')).resolves.toBe('native-secret');
+    await expect(nativeAuthorizationHeaders()).resolves.toEqual({
+      Authorization: 'Bearer native-secret',
+    });
+    expect(localStorage.getItem('native-secret')).toBeNull();
+  });
+
+  it('adds the stored bearer to repository requests', async () => {
+    localStorage.setItem('jentera-native-install-v1', '1');
+    const values = new Map([['jentera.session', 'repository-session']]);
+    Object.assign(globalThis, {
+      Capacitor: {
+        isNativePlatform: () => true,
+        getPlatform: () => 'android',
+        Plugins: {
+          SecureStorage: {
+            internalGetItem: vi.fn(async ({ prefixedKey }: { prefixedKey: string }) => ({
+              data: values.get(prefixedKey) ?? null,
+            })),
+            internalSetItem: vi.fn(async () => undefined),
+            internalRemoveItem: vi.fn(async () => ({ success: true })),
+          },
+        },
+      },
+    });
+    const request = vi.fn().mockResolvedValue(Response.json({ detailLevel: 'beginner' }));
+    vi.stubGlobal('fetch', request);
+
+    await expect(new RemoteRepository().detailLevel()).resolves.toBe('beginner');
+    const headers = new Headers((request.mock.calls[0][1] as RequestInit).headers);
+    expect(headers.get('Authorization')).toBe('Bearer repository-session');
+    expect((request.mock.calls[0][1] as RequestInit).credentials).toBe('include');
   });
 
   it('refuses to pretend unfinished native capabilities work', async () => {

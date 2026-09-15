@@ -17,6 +17,71 @@ function mount(path = '/signin') {
 }
 
 describe('sign-in experience', () => {
+  /* The page must never mint a native code just because a URL said so.
+     A link carrying someone else's state and PKCE challenge, opened by a
+     signed-in owner, used to hand a 7-day credential for their account to
+     whatever app claims the ai.jentera.app scheme. The mint now waits for a
+     deliberate tap, and this test is what keeps it waiting. */
+  it('does not hand the session to the app until someone asks it to', async () => {
+    const state = 'state-0123456789abcdef';
+    const challenge = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
+    const request = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true, code: 'minted' }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', request);
+    const user = userEvent.setup();
+    mount(`/signin?native=1&state=${state}&code_challenge=${challenge}`);
+
+    const minted = () => request.mock.calls.some(([input]) =>
+      String(typeof input === 'string' ? input : (input as Request).url).includes('/api/auth/native/code'));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /return to the jentera app/i })).toBeTruthy());
+    expect(minted()).toBe(false);
+
+    /* The tap runs the handoff. It cannot complete here — handoffBrowserSession
+       returns early without VITE_API_URL — so the observable proof that the tap
+       (and only the tap) drives it is the failure it reports. */
+    await user.click(screen.getByRole('button', { name: /return to the jentera app/i }));
+    await waitFor(() => expect(
+      screen.getByText(/could not be returned to the jentera app/i),
+    ).toBeTruthy());
+  });
+
+  it('carries the native state and PKCE challenge through every sign-in door', async () => {
+    const state = 'state-0123456789abcdef';
+    const challenge = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
+    const request = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', request);
+    const user = userEvent.setup();
+    mount(`/signin?native=1&state=${state}&code_challenge=${challenge}`);
+
+    const googleForm = screen.getByRole('button', { name: /continue with google/i }).closest('form')!;
+    const googleData = new FormData(googleForm);
+    expect(googleData.get('native')).toBe('1');
+    expect(googleData.get('state')).toBe(state);
+    expect(googleData.get('codeChallenge')).toBe(challenge);
+
+    await user.type(screen.getByLabelText('Email address'), 'owner@example.com');
+    await user.click(screen.getByRole('button', { name: /email me a link/i }));
+    const body = JSON.parse(String((request.mock.calls.at(-1)?.[1] as RequestInit).body));
+    expect(body).toMatchObject({
+      native: true,
+      state,
+      codeChallenge: challenge,
+    });
+  });
+
+  it('shows only the system-browser door inside a native shell', () => {
+    vi.stubGlobal('Capacitor', {
+      isNativePlatform: () => true,
+      getPlatform: () => 'ios',
+    });
+    mount();
+    expect(screen.getByRole('button', { name: 'Continue to sign in' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Password')).toBeNull();
+    expect(screen.getByText(/stored securely on this device/i)).toBeInTheDocument();
+  });
+
   it('posts the invitation to Google sign-in without putting it in a query string or localStorage', async () => {
     const code = 'a'.repeat(48);
     window.history.replaceState(null, '', `/signin#code=${code}`);

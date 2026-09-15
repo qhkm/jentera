@@ -16,6 +16,7 @@ import { PwaUpdateNotice } from '@/components/PwaUpdateNotice';
 import { InstallNudge } from '@/components/InstallNudge';
 import { disablePush } from '@/pwa/push';
 import { useRepository } from '@/lib/repo';
+import { isNative, signOutNative } from '@/lib/native';
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
@@ -76,7 +77,8 @@ export function Shell({
          cookie. Clearing the cookie alone would leave a live session
          behind — usable by anyone who captured it, and still counted
          as active on the account. */
-      await fetch(`${API}/api/auth/logout`, { method: 'POST', credentials: 'include' });
+      if (isNative()) await signOutNative();
+      else await fetch(`${API}/api/auth/logout`, { method: 'POST', credentials: 'include' });
     } catch {
       /* Offline, or the API is unreachable. Fall through to the reload
          anyway: the cookie may survive, but stranding someone on a
