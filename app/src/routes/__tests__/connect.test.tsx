@@ -20,9 +20,11 @@ describe('Jentera connections', () => {
     expect(rows).toHaveLength(5);
     for (const row of rows) {
       const name = within(row).getByRole('heading').textContent;
-      const available = name === 'Web workspace' || name === 'Telegram';
+      const available = name === 'Web workspace' || name === 'Telegram' || name === 'Google Calendar';
       expect(within(row).getByText(available ? 'Available now' : 'Planned')).toBeInTheDocument();
     }
+    expect(screen.getByText(/review every event before it is added/i)).toBeInTheDocument();
+    expect(screen.getByText(/automatic booking is not available yet/i)).toBeInTheDocument();
     expect(
       screen.getByText(/MyInvois submission and e-invoicing are not currently available/),
     ).toBeInTheDocument();
@@ -36,12 +38,14 @@ describe('Jentera connections', () => {
     const user = userEvent.setup();
     mount();
     await user.click(screen.getByRole('button', { name: 'Available now' }));
-    expect(screen.getAllByRole('article')).toHaveLength(2);
+    expect(screen.getAllByRole('article')).toHaveLength(3);
+    expect(screen.getByRole('heading', { name: 'Google Calendar' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'WhatsApp' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Planned' }));
-    expect(screen.getAllByRole('article')).toHaveLength(3);
+    expect(screen.getAllByRole('article')).toHaveLength(2);
     expect(screen.getByRole('button', { name: 'Planned' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByRole('heading', { name: 'Telegram' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Google Calendar' })).not.toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('not available to connect yet');
     await user.click(screen.getByRole('button', { name: 'All connections' }));
     expect(screen.getAllByRole('article')).toHaveLength(5);

@@ -33,6 +33,7 @@ import {
 import { reserveRuntimeUsage } from '../src/runtime/usage';
 import type { Env } from '../src/env';
 import { ensureProviderRuntime, LocalRuntimeProvider } from '../src/runtime';
+import { calendarSecret, GOOGLE_CALENDAR_SCOPES } from '../src/connectors/google-calendar';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
@@ -633,6 +634,89 @@ describe('connections', () => {
     expect(connection.displayName).toBe('@alpha_bot');
     expect(connection.paired).toBe(false);
     expect(connection.pairingUrl).toMatch(/^https:\/\/t\.me\/alpha_bot\?start=/);
+  });
+
+  it('adds one Calendar event only after owner approval', async () => {
+    env = testEnv({
+      GOOGLE_CLIENT_ID: 'google-client',
+      GOOGLE_CLIENT_SECRET: 'google-secret',
+    });
+    const connection = await asTenant(A, (tx) =>
+      saveConnection(env, tx, A, {
+        connector: 'google',
+        method: 'oauth',
+        externalId: 'google-account-1',
+        displayName: 'owner@example.com',
+        secret: calendarSecret({
+          subject: 'google-account-1',
+          email: 'owner@example.com',
+          name: 'Owner',
+          refreshToken: 'refresh-secret',
+          scopes: [...GOOGLE_CALENDAR_SCOPES],
+        }),
+        connectedBy: alice,
+        scopes: [...GOOGLE_CALENDAR_SCOPES],
+      }));
+    const [approval] = await asTenant(A, (tx) => tx<{ id: string }[]>`
+      insert into approval (business_id, connector, op, args, risk)
+      values (${A}, 'google', 'create_event', ${tx.json({
+        requestId: 'calendar-route-1',
+        summary: 'Supplier call',
+        start: '2026-09-17T10:00:00+08:00',
+        end: '2026-09-17T10:30:00+08:00',
+        timeZone: 'Asia/Kuala_Lumpur',
+        connectionId: connection.id,
+      } as never)}, 'medium')
+      returning id`);
+
+    const providerWrites: string[] = [];
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === 'https://oauth2.googleapis.com/token') {
+        return new Response(JSON.stringify({ access_token: 'access-secret' }));
+      }
+      if (url.includes('/calendars/primary/events?sendUpdates=none') && init?.method === 'POST') {
+        const event = JSON.parse(String(init.body)) as {
+          id: string;
+          summary: string;
+          start: { dateTime: string };
+          end: { dateTime: string };
+        };
+        providerWrites.push(event.id);
+        return new Response(JSON.stringify({
+          ...event,
+          status: 'confirmed',
+          htmlLink: 'https://calendar.google.com/event/1',
+        }));
+      }
+      return new Response(null, { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetch);
+
+    const approved = await state('POST', `/api/state/approvals/${approval.id}/decide`, {
+      cookie: cookieA,
+      body: { approved: true },
+    });
+    expect(approved.status).toBe(200);
+    expect(approved.body).toMatchObject({
+      ok: true,
+      status: 'executed',
+      event: { summary: 'Supplier call', status: 'confirmed' },
+    });
+    expect(providerWrites).toHaveLength(1);
+
+    const repeated = await state('POST', `/api/state/approvals/${approval.id}/decide`, {
+      cookie: cookieA,
+      body: { approved: true },
+    });
+    expect(repeated.status).toBe(409);
+    expect(providerWrites).toHaveLength(1);
+    const [saved] = await asTenant(A, (tx) => tx<{ status: string; result: unknown }[]>`
+      select status, result from approval where id = ${approval.id}`);
+    expect(saved).toMatchObject({
+      status: 'executed',
+      result: { event: { summary: 'Supplier call' } },
+    });
   });
 
   it('pairs one private owner chat and refuses every other Telegram user', async () => {

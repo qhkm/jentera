@@ -38,12 +38,12 @@ const CONNECTIONS = [
       'Customer enquiries and follow-ups through the channel businesses here depend on. This connection is planned and cannot be connected yet.',
   },
   {
-    name: 'Calendars & bookings',
+    name: 'Google Calendar',
     icon: CalendarBlank,
-    available: false,
+    available: isLive('Google Calendar'),
     category: 'Keep the day organised',
     description:
-      'Availability, bookings, and reminders in the tools you already use. Calendar connections and automatic bookings are planned.',
+      'Let Jentera check your primary calendar and prepare new events. You review every event before it is added; automatic booking is not available yet.',
   },
   {
     name: 'Local accounting',
