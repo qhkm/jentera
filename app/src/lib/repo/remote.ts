@@ -772,7 +772,7 @@ async function streamAsk(
       } catch { recoverySocket = undefined; }
     };
     const forwardProgress = (data: unknown) => {
-      let event: { version?: unknown; seq?: unknown; type?: unknown; detail?: unknown; text?: unknown; approvalId?: unknown; kind?: unknown };
+      let event: { version?: unknown; seq?: unknown; type?: unknown; detail?: unknown; text?: unknown; approvalId?: unknown; approvalSource?: unknown; kind?: unknown };
       try { event = JSON.parse(String(data)); } catch { return; }
       if (!event || event.version !== 1 || typeof event.type !== 'string') return;
       // Lifecycle events replay on subscription; answer deltas are live-only.
@@ -785,6 +785,8 @@ async function streamAsk(
         ...(typeof event.detail === 'string' ? { detail: event.detail } : {}),
         ...(typeof event.text === 'string' ? { text: event.text } : {}),
         ...(typeof event.approvalId === 'string' ? { approvalId: event.approvalId } : {}),
+        ...(event.approvalSource === 'vault' || event.approvalSource === 'runtime'
+          ? { approvalSource: event.approvalSource } : {}),
         ...(event.kind === 'stage' || event.kind === 'step' || event.kind === 'tool' ? { kind: event.kind } : {}),
       });
     };
@@ -818,7 +820,7 @@ async function streamAsk(
       if (handedOff) return;
       let event: {
         version?: unknown; seq?: unknown; type?: unknown; detail?: unknown; text?: unknown;
-        approvalId?: unknown; kind?: unknown;
+        approvalId?: unknown; approvalSource?: unknown; kind?: unknown;
       };
       try {
         event = JSON.parse(String(message.data)) as typeof event;
@@ -833,6 +835,8 @@ async function streamAsk(
           ...(typeof event.detail === 'string' ? { detail: event.detail } : {}),
           ...(typeof event.text === 'string' ? { text: event.text } : {}),
           ...(typeof event.approvalId === 'string' ? { approvalId: event.approvalId } : {}),
+          ...(event.approvalSource === 'vault' || event.approvalSource === 'runtime'
+            ? { approvalSource: event.approvalSource } : {}),
           ...(event.kind === 'stage' || event.kind === 'step' || event.kind === 'tool' ? { kind: event.kind } : {}),
         });
       }

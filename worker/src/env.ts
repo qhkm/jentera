@@ -117,6 +117,11 @@ export interface Env {
   VAPID_SUBJECT?: string;
   /** Placement spike: a service binding to this Worker itself. */
   SELF?: Fetcher;
+  /** Isolated credential broker. Owner-facing calls use this private binding,
+      never the vault's public workers.dev hostname. */
+  VAULT?: Fetcher;
+  /** Defence-in-depth credential shared with aisar-vault over the binding. */
+  VAULT_INTERNAL_TOKEN?: string;
   /** R2 bucket for files the agent hands the owner (routes/artifacts.ts).
       Keys are `<business>/<run>/<artifact id>/<name>`; nothing reads the
       bucket without first resolving the artifact row under RLS. */

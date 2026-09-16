@@ -61,6 +61,28 @@ describe('live progress for the web chat', () => {
     ]);
   });
 
+  it('marks a vault approval without putting its scope on the stream', async () => {
+    const fetch = fetchFake(async () => Response.json({ ok: true }));
+    const env = testEnv({
+      RUN_STREAMS: { idFromName: () => ({ toString: () => 'stream-id' }), get: () => ({ fetch }) },
+    });
+    const approvalId = '33333333-3333-4333-8333-333333333333';
+
+    await publishRunProgress(env, BUSINESS, RUN, 'needs_approval', {
+      approvalId,
+      approvalSource: 'vault',
+    });
+
+    const [, init] = fetch.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      businessId: BUSINESS,
+      runId: RUN,
+      type: 'needs_approval',
+      approvalId,
+      approvalSource: 'vault',
+    });
+  });
+
   it('parses a live event only when its type and payload are the reviewed shape', () => {
     expect(liveEvent({ type: 'status', detail: '  Reading 2 pages…  ' })).toMatchObject({
       version: 1, seq: 0, type: 'status', detail: 'Reading 2 pages…',

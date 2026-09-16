@@ -88,6 +88,9 @@ export class RunStream extends DurableObject<Env> {
       uuid(body.approvalId)
       ? body.approvalId
       : undefined;
+    const approvalSource = approvalId && (body.approvalSource === 'vault' || body.approvalSource === 'runtime')
+      ? body.approvalSource
+      : undefined;
 
     const outcome = await this.ctx.storage.transaction(async (tx) => {
       const existing = await tx.get<StreamIdentity>('identity');
@@ -107,6 +110,7 @@ export class RunStream extends DurableObject<Env> {
         type,
         at: new Date().toISOString(),
         ...(approvalId ? { approvalId } : {}),
+        ...(approvalSource ? { approvalSource } : {}),
       };
       await tx.put({
         identity,

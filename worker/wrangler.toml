@@ -217,6 +217,13 @@ namespace_id = "1005"
 binding = "SELF"
 service = "aisar-api"
 
+# Credential operations cross a private Worker-to-Worker binding. The vault
+# has no public route; owner metadata and decisions never need to leave
+# Cloudflare's service boundary.
+[[services]]
+binding = "VAULT"
+service = "aisar-vault"
+
 [[durable_objects.bindings]]
 name = "RUN_STREAMS"
 class_name = "RunStream"

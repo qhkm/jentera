@@ -100,6 +100,7 @@ export interface AskProgressEvent {
   /** needs_approval: which approval to fetch. Nothing about the request
       travels through the stream — the card asks the API what it is. */
   approvalId?: string;
+  approvalSource?: 'runtime' | 'vault';
 }
 export type AskMode = 'ask' | 'work';
 

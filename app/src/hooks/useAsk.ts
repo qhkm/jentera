@@ -76,6 +76,7 @@ export interface AskMessage {
   /** Set with state 'needs_approval': the card fetches the question with it.
       Nothing about what is being approved travels through the stream. */
   approvalId?: string;
+  approvalSource?: 'runtime' | 'vault';
 }
 
 export interface AskSession {
@@ -190,6 +191,7 @@ function applyProgress(message: AskMessage, event: AskProgressEvent, t: Translat
         ...message,
         state: 'needs_approval',
         approvalId: event.approvalId,
+        approvalSource: event.approvalSource,
         liveStatus: undefined,
       };
     }
@@ -216,6 +218,7 @@ function applyProgress(message: AskMessage, event: AskProgressEvent, t: Translat
       ...message,
       state: 'needs_approval',
       approvalId: event.approvalId,
+      approvalSource: event.approvalSource,
       liveStatus: undefined,
     };
   }

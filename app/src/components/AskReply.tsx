@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { RuntimeApprovalCard } from './RuntimeApprovalCard';
+import { VaultApprovalCard } from './VaultApprovalCard';
 import { ReminderCard } from './ReminderCard';
 import { reminderProposal } from '@/lib/reminders';
 import { renderReplyMarkdown } from '@/lib/reply-markdown';
@@ -142,7 +143,9 @@ export function AskReply({
               {message.text && message.state !== 'needs_approval'
                 ? <div className="ask-reply-text">{renderReplyMarkdown(displayWorkspacePaths(displayText))}</div>
                 : null}
-              <RuntimeApprovalCard approvalId={message.approvalId} />
+              {message.approvalSource === 'vault'
+                ? <VaultApprovalCard approvalId={message.approvalId} />
+                : <RuntimeApprovalCard approvalId={message.approvalId} />}
             </>
           )
           : message.state === 'streaming'

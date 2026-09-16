@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useT } from '@/i18n/I18nProvider';
+import { HumanApprovalCard } from './HumanApprovalCard';
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
 /**
@@ -92,49 +93,33 @@ export function RuntimeApprovalCard({ approvalId, onDecided }: { approvalId: str
   }, [approvalId, t, onDecided]);
 
   if (phase === 'loading') return null;
-  if (phase === 'gone') {
-    return <div className="ask-approval-note"><p>{t('task.approvalUnavailable')}</p>
-      <button type="button" className="btn btn-outline" onClick={() => setAttempt((n) => n + 1)}>{t('loading.retry')}</button></div>;
-  }
-
-  const settled = phase === 'settled';
+  const status = phase === 'deciding'
+    ? 'deciding'
+    : phase === 'settled' && approval?.status === 'pending'
+      ? 'expired'
+      : approval?.status ?? 'expired';
   return (
-    <section className="ask-approval" aria-label={t('ask.approval.title')}>
-      <p className="ask-approval-title">{t('ask.approval.title')}</p>
-      <p className="ask-approval-tool">{approval?.tool}</p>
-      <code className="ask-approval-command">{approval?.message}</code>
-      {/* Said plainly, because "approve and run" invites the wrong mental
-          model: this runs on Jentera's machine, not the owner's. */}
-      <p className="ask-approval-where">{t('ask.approval.where')}</p>
-      {approval?.surface === 'telegram' && !settled ? <p>{t('task.telegramApproval')}</p> : settled ? (
-        <p className="ask-approval-note">
-          {approval?.status === 'approved'
-            ? t('ask.approval.approved')
-            : approval?.status === 'denied'
-              ? t('ask.approval.denied')
-              : t('ask.approval.closed')}
-        </p>
-      ) : (
-        <div className="ask-approval-actions">
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={phase === 'deciding'}
-            onClick={() => void decide('approve')}
-          >
-            {t('ask.approval.approve')}
-          </button>
-          <button
-            type="button"
-            className="btn"
-            disabled={phase === 'deciding'}
-            onClick={() => void decide('deny')}
-          >
-            {t('ask.approval.deny')}
-          </button>
-        </div>
-      )}
-      {problem && <p className="ask-approval-problem" role="status">{problem}</p>}
-    </section>
+    <HumanApprovalCard
+      title={t('ask.approval.title')}
+      eyebrow={t('ask.approval.runtime')}
+      summary={approval?.message ?? ''}
+      facts={[{ label: t('ask.approval.action'), value: approval?.tool ?? '' }]}
+      disclosure={t('ask.approval.where')}
+      status={status}
+      statusLabel={t(`ask.approval.status.${status}`)}
+      unavailable={phase === 'gone' ? t('task.approvalUnavailable') : undefined}
+      retryLabel={t('loading.retry')}
+      approveLabel={t('ask.approval.approve')}
+      denyLabel={t('ask.approval.deny')}
+      approvedLabel={t('ask.approval.approved')}
+      deniedLabel={t('ask.approval.denied')}
+      closedLabel={approval?.surface === 'telegram' && phase !== 'settled'
+        ? t('task.telegramApproval')
+        : t('ask.approval.closed')}
+      problem={problem}
+      remoteDecision={approval?.surface === 'telegram' && phase !== 'settled'}
+      onRetry={() => setAttempt((n) => n + 1)}
+      onDecision={(decision) => void decide(decision)}
+    />
   );
 }

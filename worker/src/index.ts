@@ -55,6 +55,7 @@ import { handleSupport } from './routes/support';
 import { handleModelProxy, sweepModelCalls } from './routes/model';
 import { handleRuntimeConfig } from './routes/runtime-config';
 import { handleGoogleCalendarRuntime } from './routes/google-calendar-runtime';
+import { handleVault } from './routes/vault';
 import { hasBusiness, resolveTenant } from './tenancy';
 import type { Env } from './env';
 import { handleQueueMessagePlaced } from './runtime/placed-slice';
@@ -201,6 +202,8 @@ export default {
 
     const runtime = await handleRuntime(request, env, url, headers, ctx);
     if (runtime) return runtime;
+    const vault = await handleVault(request, env, url, headers);
+    if (vault) return vault;
     const browser = await handleBrowser(request, env, url, headers);
     if (browser) return browser;
 

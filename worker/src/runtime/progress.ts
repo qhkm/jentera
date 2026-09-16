@@ -10,6 +10,7 @@ export interface RunProgressExtra {
   /** needs_approval: which approval to fetch. The id is all that travels;
       what is being approved stays in Postgres. */
   approvalId?: string;
+  approvalSource?: 'runtime' | 'vault';
   /** For status: a dispatch stage, one of the agent's steps, or a tool call. */
   kind?: StatusKind;
 }
@@ -34,6 +35,7 @@ export async function publishRunProgress(
       ...(extra.detail === undefined ? {} : { detail: extra.detail }),
       ...(extra.text === undefined ? {} : { text: extra.text }),
       ...(extra.approvalId === undefined ? {} : { approvalId: extra.approvalId }),
+      ...(extra.approvalSource === undefined ? {} : { approvalSource: extra.approvalSource }),
       ...(extra.kind === undefined ? {} : { kind: extra.kind }),
     }),
   });

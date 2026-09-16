@@ -36,6 +36,7 @@ export interface RunProgressEvent {
       approved lives in Postgres, so nothing about the request — a tool name,
       a command — travels through the stream object or its storage. */
   approvalId?: string;
+  approvalSource?: 'runtime' | 'vault';
 }
 
 /** What a status line is, so the browser can keep the agent's own steps and
