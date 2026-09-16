@@ -31,6 +31,8 @@ type Chosen = {
   mode: 'local' | 'remote';
   /** Session user id when remote; null for the demo. */
   account: string | null;
+  /** The signed-in address; null for the demo. */
+  email: string | null;
 };
 
 /* `mode` was computed and then thrown away, so nothing downstream could
@@ -40,6 +42,10 @@ const SignedInContext = createContext(false);
 /* Which account this server-backed session belongs to. Per-browser state
    keyed by it (Ask history) stays private when accounts share a device. */
 const AccountContext = createContext<string | null>(null);
+/** The signed-in address, for the one screen that needs the owner to
+    retype it: deleting the account. Per-account like AccountContext, so
+    it clears on sign-out the same way. */
+const EmailContext = createContext<string | null>(null);
 const RoutinesContext = createContext(false);
 /* Team is a plan. The flag says the Team tab may show; every team write is
    checked again by the routes. */
@@ -68,6 +74,7 @@ export function useTeamEnabled(): boolean {
 export function SignedInProvider({
   value,
   account = null,
+  email = null,
   routinesVersion,
   teamVersion,
   children,
@@ -75,6 +82,8 @@ export function SignedInProvider({
   value: boolean;
   /** The signed-in account's opaque id; omit for the demo. */
   account?: string | null;
+  /** The signed-in address; omit for the demo. */
+  email?: string | null;
   routinesVersion?: number;
   teamVersion?: number;
   children: ReactNode;
@@ -82,9 +91,11 @@ export function SignedInProvider({
   return (
     <SignedInContext.Provider value={value}>
       <AccountContext.Provider value={value ? account : null}>
-        <RoutinesContext.Provider value={value && routinesVersion === 1}>
-          <TeamContext.Provider value={value && teamVersion === 1}>{children}</TeamContext.Provider>
-        </RoutinesContext.Provider>
+        <EmailContext.Provider value={value ? email : null}>
+          <RoutinesContext.Provider value={value && routinesVersion === 1}>
+            <TeamContext.Provider value={value && teamVersion === 1}>{children}</TeamContext.Provider>
+          </RoutinesContext.Provider>
+        </EmailContext.Provider>
       </AccountContext.Provider>
     </SignedInContext.Provider>
   );
@@ -97,6 +108,16 @@ export function SignedInProvider({
  */
 export function useAccountKey(): string | null {
   return useContext(AccountContext);
+}
+
+/**
+ * The signed-in account's own address, or null in the demo. Used only by
+ * the account-deletion screen, which asks the owner to retype it — the
+ * confirmation two of the three sign-in doors can offer without a
+ * password.
+ */
+export function useAccountEmail(): string | null {
+  return useContext(EmailContext);
 }
 
 /**
@@ -113,7 +134,7 @@ export function useSignedIn(): boolean {
 async function choose(): Promise<Chosen> {
   /* No backend configured: this is the anonymous demo, and it must keep
      working exactly as it does today. */
-  if (!API) return { repo: new LocalRepository(), mode: 'local', account: null };
+  if (!API) return { repo: new LocalRepository(), mode: 'local', account: null, email: null };
 
   /* A callback can launch a fresh native process. Complete that pending
      exchange before asking /api/me, or the first request would look signed
@@ -143,10 +164,10 @@ async function choose(): Promise<Chosen> {
     /* Unreachable API is not the same as signed out, but the honest
        fallback is the local demo rather than an error page for a visitor
        who never had an account. */
-    return { repo: new LocalRepository(), mode: 'local', account: null };
+    return { repo: new LocalRepository(), mode: 'local', account: null, email: null };
   }
 
-  if (!signedIn) return { repo: new LocalRepository(), mode: 'local', account: null };
+  if (!signedIn) return { repo: new LocalRepository(), mode: 'local', account: null, email: null };
 
   const remote = new RemoteRepository();
   if (me) remote.prime({ me });
@@ -165,7 +186,7 @@ async function choose(): Promise<Chosen> {
          /api/state. That is an ordinary signed-out transition, not a broken
          workspace. Falling back keeps public onboarding usable and lets the
          /app auth guard send protected routes to sign-in. */
-      return { repo: new LocalRepository(), mode: 'local', account: null };
+      return { repo: new LocalRepository(), mode: 'local', account: null, email: null };
     } else {
       throw e;
     }
@@ -174,6 +195,7 @@ async function choose(): Promise<Chosen> {
     repo: remote,
     mode: 'remote',
     account: typeof me?.userId === 'string' && me.userId ? me.userId : null,
+    email: typeof me?.email === 'string' && me.email ? me.email : null,
     routinesVersion: me?.features?.routines?.apiVersion,
     teamVersion: me?.features?.team?.apiVersion,
   };
@@ -207,7 +229,7 @@ export function RepositoryGate({ children }: { children: ReactNode }) {
   }
 
   return (
-    <SignedInProvider value={chosen.mode === 'remote'} account={chosen.account} routinesVersion={chosen.routinesVersion} teamVersion={chosen.teamVersion}>
+    <SignedInProvider value={chosen.mode === 'remote'} account={chosen.account} email={chosen.email} routinesVersion={chosen.routinesVersion} teamVersion={chosen.teamVersion}>
       <RepositoryProvider repository={chosen.repo}>{children}</RepositoryProvider>
     </SignedInProvider>
   );

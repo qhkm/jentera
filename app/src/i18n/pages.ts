@@ -963,6 +963,7 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'account.leaving': 'Signing out…',
     'account.language.bm': 'Switch to Bahasa Malaysia',
     'account.language.en': 'Switch to English',
+    'account.delete': 'Delete my account',
     'loading.activity.title': 'Loading your activity…',
     'loading.activity.detail':
       'Checking completed work, active tasks, and decisions that need you.',
@@ -2063,6 +2064,7 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'account.leaving': 'Sedang log keluar…',
     'account.language.bm': 'Tukar ke Bahasa Malaysia',
     'account.language.en': 'Tukar ke Bahasa Inggeris',
+    'account.delete': 'Padam akaun saya',
     'loading.activity.title': 'Memuatkan aktiviti anda…',
     'loading.activity.detail':
       'Menyemak kerja siap, tugasan aktif, dan keputusan yang memerlukan anda.',

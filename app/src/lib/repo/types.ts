@@ -535,6 +535,11 @@ export interface Repository {
   provisionRuntime(): Promise<void>;
 
   reset(): Promise<void>;
+
+  /** Ask the server to delete this account. Access ends at once; the data
+      is purged after the grace period. `email` is the address the owner
+      just typed to confirm — the server checks it matches their own. */
+  requestAccountDeletion(email: string): Promise<{ graceDays: number; routines: number }>;
 }
 
 /* ---- The team ---- */

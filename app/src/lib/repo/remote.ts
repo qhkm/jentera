@@ -74,6 +74,9 @@ export interface MeResponse {
   /** Opaque account id from the session; scopes per-browser state such as
       Ask history so two accounts sharing a browser never see each other's. */
   userId?: string;
+  /** The signed-in address. Shown back to the owner as the thing they must
+      retype to delete the account — never sent anywhere else. */
+  email?: string;
 }
 
 /** No business yet — first sign-in, before the local state is migrated. */
@@ -750,6 +753,14 @@ export class RemoteRepository implements Repository {
     post('/api/runs/quality', { workId, quality });
 
   reset = () => post('/api/state/reset');
+
+  async requestAccountDeletion(email: string): Promise<{ graceDays: number; routines: number }> {
+    const body = await call<{ graceDays: number; routines: number }>('/api/me', {
+      method: 'DELETE',
+      body: JSON.stringify({ email }),
+    });
+    return { graceDays: body.graceDays, routines: body.routines };
+  }
 }
 
 async function pollAsk(runId: string, onProgress?: (event: AskProgressEvent) => void, deadline = Date.now() + 16 * 60 * 1_000, onPending?: () => void): Promise<AskAnswer> {

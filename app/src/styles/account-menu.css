@@ -114,7 +114,9 @@
   background: var(--rail);
 }
 .account-menu-signout:hover,
-.account-menu-signout:focus-visible {
+.account-menu-signout:focus-visible,
+.account-menu-delete:hover,
+.account-menu-delete:focus-visible {
   color: var(--text);
   background: rgb(var(--border-ink) / 0.06);
 }
@@ -125,6 +127,20 @@
   margin-top: 6px;
   padding: 8px 5px 5px;
   border-top: 1px solid var(--rail);
+}
+/* The delete-account card replaces the item list rather than squeezing in
+   beside it, so it gets a little more room than the 282px the popover
+   otherwise keeps to. */
+.account-menu-delete-panel {
+  width: min(340px, calc(100vw - 32px));
+}
+.account-menu-delete-confirm {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+}
+.account-menu-delete-confirm:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 6%, transparent);
 }
 @media (prefers-reduced-motion: no-preference) {
   .account-menu-popover {

@@ -413,4 +413,11 @@ export class LocalRepository implements Repository {
   async reset(): Promise<void> {
     store.resetAll();
   }
+
+  /* The demo has no account behind it, so there is nothing to delete —
+     saying so plainly follows the pattern every other server-only
+     operation here uses. */
+  async requestAccountDeletion(): Promise<{ graceDays: number; routines: number }> {
+    throw new NeedsAccountError('Deleting your account');
+  }
 }
