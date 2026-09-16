@@ -43,6 +43,8 @@ export const PERMISSIONS = {
   'goals.manage': ['owner'],
   /** See and forget what the agent remembers; it holds notes about people. */
   'agent.memory': ['owner'],
+  /** Start a checkout, open the customer portal. Buying is an owner action. */
+  'billing.manage': ['owner'],
 } as const satisfies Record<string, readonly ('owner' | 'staff')[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

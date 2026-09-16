@@ -167,4 +167,20 @@ export interface Env {
       every dispatch; a silent business releases itself after this window.
       Default 24h. */
   AISAR_KEEPALIVE_GRACE_HOURS?: string;
+  /** Stripe secret key (sk_/rk_). Worker secret:
+      `wrangler secret put STRIPE_SECRET_KEY`. Never a var or in source. */
+  STRIPE_SECRET_KEY?: string;
+  /** Stripe webhook signing secret (whsec_…). Worker secret:
+      `wrangler secret put STRIPE_WEBHOOK_SECRET`. */
+  STRIPE_WEBHOOK_SECRET?: string;
+  /** Price ids for each plan and billing interval. Vars, not secrets — the
+      MYR amounts live in the Stripe Dashboard, these only name them. */
+  STRIPE_PRICE_PRO_MONTHLY?: string;
+  STRIPE_PRICE_PRO_ANNUAL?: string;
+  STRIPE_PRICE_TEAM_MONTHLY?: string;
+  STRIPE_PRICE_TEAM_ANNUAL?: string;
+  /** 'true' enables automatic_tax on checkout. Leave unset until Stripe Tax
+      has a head-office address and an active registration — without one,
+      automatic_tax silently collects nothing. */
+  STRIPE_AUTOMATIC_TAX?: string;
 }

@@ -148,6 +148,16 @@ AISAR_ROUTINES_BUSINESS_IDS = "4e8c2593-2af2-494f-b157-fec0295a50b5"
 #   npx wrangler secret put SPRITES_TOKEN
 #   npx wrangler secret put AISAR_OPENROUTER_MANAGEMENT_KEY
 
+# Stripe Billing (migration 051). Secrets, never vars:
+#   npx wrangler secret put STRIPE_SECRET_KEY       # sk_/rk_ test or live key
+#   npx wrangler secret put STRIPE_WEBHOOK_SECRET   # whsec_… from the webhook
+# Price ids are vars — the MYR amounts live in the Stripe Dashboard; add each
+# one you create to [vars] above:
+#   STRIPE_PRICE_PRO_MONTHLY, STRIPE_PRICE_PRO_ANNUAL,
+#   STRIPE_PRICE_TEAM_MONTHLY, STRIPE_PRICE_TEAM_ANNUAL
+# STRIPE_AUTOMATIC_TAX = "true" only after a head-office address AND an active
+# Stripe Tax registration exist — otherwise tax silently collects nothing.
+
 # Edge burst brake on the magic-link endpoint, keyed by client IP.
 # Refuses before any database or email work, so a flood costs nothing.
 # `period` accepts only 10 or 60. The field is `name`, not `binding`.

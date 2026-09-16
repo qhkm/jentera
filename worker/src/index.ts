@@ -45,6 +45,8 @@ import { handleWorkspaces } from './routes/workspaces';
 import { handleChats } from './routes/chats';
 import { handleAgentMemory } from './routes/agent-memory';
 import { handleGoals } from './routes/goals';
+import { handleBilling } from './routes/billing';
+import { handleStripeWebhook } from './routes/stripe-webhook';
 import { dispatchDueRoutines } from './routines/dispatch';
 import { handleConnect } from './routes/connect';
 import { connect } from './db';
@@ -195,10 +197,19 @@ export default {
     const goals = await handleGoals(request, env, url, headers);
     if (goals) return goals;
 
+    /* Billing: checkout, the customer portal, and plan status. */
+    const billing = await handleBilling(request, env, url, headers);
+    if (billing) return billing;
+
     /* Connections, and the Telegram webhook — the one route here that
        is called by someone other than our own frontend. */
     const conn = await handleConnect(request, env, url, headers, ctx);
     if (conn) return conn;
+
+    /* Stripe webhook — the second route called by someone other than our
+       own frontend. Signature-verified against the raw body, no session. */
+    const stripeHook = await handleStripeWebhook(request, env, url);
+    if (stripeHook) return stripeHook;
 
     const runtime = await handleRuntime(request, env, url, headers, ctx);
     if (runtime) return runtime;
