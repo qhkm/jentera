@@ -4,6 +4,7 @@ import { asApp, asOwner, asTenant, testEnv, truncateAll } from './harness';
 import { sweepAccountDeletions } from '../src/account-deletion/purge';
 import type { Env } from '../src/env';
 import type { sendNotice } from '../src/email';
+import { applyTenantFixtures, newFixtureContext, TENANT_FIXTURES } from './fixtures/tenant-rows';
 
 beforeEach(async () => {
   await truncateAll();
@@ -62,6 +63,13 @@ describe('the purge', () => {
     const { businessId, userId, connectionId } = await asOwner((owner) =>
       seedDueDeletion(owner, { artifacts: ['a/1'], sprite: 'sprite-9' }),
     );
+    /* seedDueDeletion above seeds one of everything the purge itself has to
+       reason about; this seeds one row in every OTHER tenant table, so the
+       assertion below — nothing left for this business, table by table — is
+       checked against a business that is genuinely full rather than one
+       where most tables were never populated in the first place. */
+    const fixtureCtx = newFixtureContext(businessId, userId);
+    await asOwner((owner) => applyTenantFixtures(owner, fixtureCtx));
     const env = testEnv({
       ARTIFACTS: { delete: async (key: string) => { deleted.push(key); } },
       RUNTIME_QUEUE: {
@@ -96,6 +104,20 @@ describe('the purge', () => {
       const [invite] = await owner<{ redeemed_by: string | null }[]>`
         select redeemed_by from trial_invite`;
       expect(invite.redeemed_by).toBeNull();
+
+      /* The genuinely-full-business assertion: every tenant table
+         tenant-cascade.test.ts requires a fixture for is checked here,
+         table by table, rather than trusting the cascade in the abstract.
+         `session` is the one exception — its business_id is set null
+         before the row disappears (migrations/001_identity.sql), so it is
+         checked by user_id, the id whose cascade actually removes it. */
+      for (const table of Object.keys(TENANT_FIXTURES)) {
+        const rows =
+          table === 'session'
+            ? await owner.unsafe('select 1 from session where user_id = $1 limit 1', [userId])
+            : await owner.unsafe(`select 1 from ${table} where business_id = $1 limit 1`, [businessId]);
+        expect(rows, `expected ${table} to be purged`).toHaveLength(0);
+      }
     });
 
     /* user_id is null by now: deleting app_user set it null, which is the
