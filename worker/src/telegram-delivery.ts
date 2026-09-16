@@ -1,6 +1,7 @@
 import type { Env } from './env';
 import { withTenant } from './db';
-import { useCredential } from './connections';
+import { useTelegramCredential } from './connections';
+import type { TelegramCredential } from './vault/telegram';
 import {
   deleteMessage,
   editMessageText,
@@ -32,7 +33,7 @@ export async function deliverTelegramDraft(
   text: string,
   usedKeys: string[],
   knownPolicy?: Policy,
-  existingToken?: string,
+  existingToken?: TelegramCredential,
   existingMessageId?: number,
   options: { onlyIfRunWorking?: boolean; proposalRecorded?: boolean } = {},
 ): Promise<'sent' | 'needs_approval' | 'blocked' | 'already_handled'> {
@@ -134,12 +135,13 @@ export async function sendAndRecord(
   incoming: TelegramIncoming,
   text: string,
   usedKeys: string[],
-  existingToken?: string,
+  existingToken?: TelegramCredential,
   existingMessageId?: number,
 ): Promise<void> {
   const visibleText = sanitizePublicRuntimeText(text);
   const token = existingToken ??
-    await withTenant(env, businessId, (tx) => useCredential(env, tx, connectionId));
+    await withTenant(env, businessId, (tx) =>
+      useTelegramCredential(env, tx, businessId, connectionId));
   let sent: { messageId: number };
   if (existingMessageId) {
     await editMessageText(token, incoming.chatId, existingMessageId, visibleText);
@@ -215,7 +217,7 @@ export async function deleteTelegramLiveBubble(
   if (!messageId) return;
   try {
     const token = await withTenant(env, businessId, (tx) =>
-      useCredential(env, tx, telegram.connectionId));
+      useTelegramCredential(env, tx, businessId, telegram.connectionId));
     await deleteMessage(token, telegram.chatId, messageId);
   } catch {
     /* Cosmetic: the run is already terminal. */
@@ -272,7 +274,7 @@ export async function settleCancelledDraft(
     }
     if (!telegram?.privateChat) return;
     const token = await withTenant(env, businessId, (tx) =>
-      useCredential(env, tx, telegram.connectionId));
+      useTelegramCredential(env, tx, businessId, telegram.connectionId));
     const stream = new TelegramLiveStream(token, telegram.chatId, {
       messageId: telegram.liveMessageId,
     });

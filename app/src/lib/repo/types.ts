@@ -179,6 +179,9 @@ export interface Connection {
       signed-in owner claims one private chat through this deep link. */
   paired?: boolean;
   pairingUrl?: string | null;
+  /** True when the API and agent hold only an opaque reference and the
+      credential can be used solely through the isolated vault. */
+  vaultProtected?: boolean;
 }
 
 export interface ConnectionHealth {

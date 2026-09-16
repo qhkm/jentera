@@ -12,8 +12,37 @@
    ============================================================ */
 
 import { sanitizePublicRuntimeText } from '../runtime/public-output';
+import {
+  callVaultTelegram,
+  isVaultTelegramCredential,
+  type TelegramCredential,
+} from '../vault/telegram';
 
 const API = 'https://api.telegram.org';
+
+async function telegramFetch(
+  credential: TelegramCredential,
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  if (isVaultTelegramCredential(credential)) {
+    let payload: Record<string, unknown> | undefined;
+    if (typeof init.body === 'string') {
+      const parsed = JSON.parse(init.body) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('invalid Telegram request payload');
+      }
+      payload = parsed as Record<string, unknown>;
+    }
+    return callVaultTelegram(
+      credential,
+      (init.method ?? 'GET').toUpperCase() === 'POST' ? 'POST' : 'GET',
+      path,
+      payload,
+    );
+  }
+  return fetch(`${API}/bot${credential}${path}`, init);
+}
 
 /** Minimum gap between live-bubble edits. Distinct status updates outside the
     window publish at once — live steps must surface — while bursts inside the
@@ -67,11 +96,11 @@ export async function verifyToken(token: string): Promise<BotIdentity> {
  * endpoint into a business's conversation history.
  */
 export async function setWebhook(
-  token: string,
+  token: TelegramCredential,
   url: string,
   secret: string,
 ): Promise<void> {
-  const res = await fetch(`${API}/bot${token}/setWebhook`, {
+  const res = await telegramFetch(token, '/setWebhook', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -91,8 +120,8 @@ export async function setWebhook(
 }
 
 /** Stop receiving. Called when a connection is removed. */
-export async function clearWebhook(token: string): Promise<void> {
-  await fetch(`${API}/bot${token}/deleteWebhook`, {
+export async function clearWebhook(token: TelegramCredential): Promise<void> {
+  await telegramFetch(token, '/deleteWebhook', {
     method: 'POST',
     signal: AbortSignal.timeout(10_000),
   }).catch(() => {
@@ -102,13 +131,13 @@ export async function clearWebhook(token: string): Promise<void> {
 }
 
 export async function sendMessage(
-  token: string,
+  token: TelegramCredential,
   chatId: number | string,
   text: string,
   replyMarkup?: TelegramInlineKeyboardMarkup,
 ): Promise<{ messageId: number }> {
   const visibleText = sanitizePublicRuntimeText(text);
-  const res = await fetch(`${API}/bot${token}/sendMessage`, {
+  const res = await telegramFetch(token, '/sendMessage', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -135,7 +164,7 @@ export async function sendMessage(
     do not expose their normal copy controls. The durable answer must remain
     selectable and copyable, so it deliberately uses sendMessage. */
 export async function sendHermesMessage(
-  token: string,
+  token: TelegramCredential,
   chatId: number | string,
   text: string,
 ): Promise<{ messageId: number }> {
@@ -144,8 +173,8 @@ export async function sendHermesMessage(
 
 /** Tell Telegram that the bot is composing a reply. This is deliberately a
     separate best-effort signal: failure must never suppress the real answer. */
-export async function sendTyping(token: string, chatId: number | string): Promise<void> {
-  const res = await fetch(`${API}/bot${token}/sendChatAction`, {
+export async function sendTyping(token: TelegramCredential, chatId: number | string): Promise<void> {
+  const res = await telegramFetch(token, '/sendChatAction', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: chatId, action: 'typing' }),
@@ -166,14 +195,14 @@ export async function sendTyping(token: string, chatId: number | string): Promis
     the same string). Throwing on it would kill the whole live lane, so it is
     treated as a successful no-op instead. */
 export async function editMessageText(
-  token: string,
+  token: TelegramCredential,
   chatId: number | string,
   messageId: number,
   text: string,
   replyMarkup?: TelegramInlineKeyboardMarkup,
 ): Promise<void> {
   const visibleText = sanitizePublicRuntimeText(text);
-  const res = await fetch(`${API}/bot${token}/editMessageText`, {
+  const res = await telegramFetch(token, '/editMessageText', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -201,12 +230,12 @@ export interface TelegramInlineKeyboardMarkup {
 
 /** Remove or replace controls without mutating the live bubble's text. */
 export async function editMessageReplyMarkup(
-  token: string,
+  token: TelegramCredential,
   chatId: number | string,
   messageId: number,
   replyMarkup: TelegramInlineKeyboardMarkup = { inline_keyboard: [] },
 ): Promise<void> {
-  const res = await fetch(`${API}/bot${token}/editMessageReplyMarkup`, {
+  const res = await telegramFetch(token, '/editMessageReplyMarkup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -228,12 +257,12 @@ export async function editMessageReplyMarkup(
 /** Stop Telegram's button spinner. Text is deliberately generic: detailed
     authorization failures stay in logs, not in an attacker-controlled chat. */
 export async function answerCallbackQuery(
-  token: string,
+  token: TelegramCredential,
   callbackQueryId: string,
   text?: string,
 ): Promise<void> {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(callbackQueryId)) return;
-  const res = await fetch(`${API}/bot${token}/answerCallbackQuery`, {
+  const res = await telegramFetch(token, '/answerCallbackQuery', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -249,11 +278,11 @@ export async function answerCallbackQuery(
 /** Remove a bot-owned message. Used to tidy the live working bubble once the
     durable answer lands (or a run dies), mirroring the old draft expiry. */
 export async function deleteMessage(
-  token: string,
+  token: TelegramCredential,
   chatId: number | string,
   messageId: number,
 ): Promise<void> {
-  const res = await fetch(`${API}/bot${token}/deleteMessage`, {
+  const res = await telegramFetch(token, '/deleteMessage', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
@@ -301,7 +330,7 @@ export class TelegramLiveStream {
   private progressCount = 0;
 
   constructor(
-    private readonly token: string,
+    private readonly token: TelegramCredential,
     private readonly chatId: number | string,
     options: TelegramLiveStreamOptions = {},
   ) {
@@ -531,7 +560,7 @@ export function hermesToolLine(tool: string, preview?: string): string {
  * connector failure, and have a hard lifetime even if model work stalls.
  */
 export async function withTypingIndicator<T>(
-  token: string,
+  token: TelegramCredential,
   chatId: number | string,
   work: () => Promise<T>,
   timing: { refreshMs?: number; maxMs?: number } = {},
@@ -665,8 +694,8 @@ export interface WebhookHealth {
  * rather than being invisible on our side — where the symptom is
  * simply an absence.
  */
-export async function webhookHealth(token: string): Promise<WebhookHealth> {
-  const res = await fetch(`${API}/bot${token}/getWebhookInfo`, {
+export async function webhookHealth(token: TelegramCredential): Promise<WebhookHealth> {
+  const res = await telegramFetch(token, '/getWebhookInfo', {
     signal: AbortSignal.timeout(10_000),
   });
   const body = (await res.json().catch(() => null)) as {

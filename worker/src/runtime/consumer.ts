@@ -72,7 +72,8 @@ import { CREDIT_CAP_NOTICE, failureNotice } from './failure-notice';
 import { createWebProgress } from './web-progress';
 import { STEP_STRIP_RE } from './step-progress';
 import { deliverTelegramDraft, deleteTelegramLiveBubble, persistLiveMessageId, settleCancelledDraft } from '../telegram-delivery';
-import { telegramInternalChat, useCredential } from '../connections';
+import { telegramInternalChat, useTelegramCredential } from '../connections';
+import type { TelegramCredential } from '../vault/telegram';
 import {
   deleteMessage,
   answerCallbackQuery,
@@ -486,7 +487,7 @@ export async function handleRuntimeApprovalCallback(
     chatId: number;
     messageId: number;
   },
-  telegramToken: string,
+  telegramToken: TelegramCredential,
   fetcher?: typeof globalThis.fetch,
 ): Promise<'accepted' | 'duplicate' | 'invalid' | 'unavailable'> {
   const { outcome } = await applyRuntimeApprovalDecision(
@@ -560,10 +561,10 @@ export async function handleRuntimeQueueMessage(
     `${message.incoming.messageId}`;
   let speculativeBubble: Promise<{ messageId: number } | null> | undefined;
   let speculativeStatus: string | undefined;
-  let speculativeToken: string | undefined;
+  let speculativeToken: TelegramCredential | undefined;
   let admitted: {
     task: RuntimeTask;
-    token: string;
+    token: TelegramCredential;
     ahead: number;
     runtime: AgentRuntimeRecord | null;
     preleased?: { lease: LeaseResult; leaseToken: string; leaseMs: number };
@@ -904,7 +905,7 @@ export async function handleRuntimeMessage(
     provider?: RuntimeProvider;
     fetch?: typeof globalThis.fetch;
     preleased?: { lease: LeaseResult; leaseToken: string; leaseMs: number };
-    telegramToken?: string;
+    telegramToken?: TelegramCredential;
     liveMessageId?: number;
     runtimeSnapshot?: { value: AgentRuntimeRecord | null };
     /** Test-only/specialized override; production keeps the 13-minute cap. */
@@ -1663,7 +1664,7 @@ export async function handleRuntimeMessage(
           const token = options.telegramToken ?? await withTenant(
             env,
             message.businessId,
-            (tx) => useCredential(env, tx, telegram.connectionId),
+            (tx) => useTelegramCredential(env, tx, message.businessId, telegram.connectionId),
           );
           if (!approvalMessageId) {
             const sent = await sendMessage(
@@ -2319,14 +2320,16 @@ async function notifyTelegramFloodOwner(
   env: Env,
   businessId: string,
   task: RuntimeTask,
-  existingToken?: string,
+  existingToken?: TelegramCredential,
 ): Promise<void> {
   const telegram = telegramHint(task.payload);
   if (!telegram) return;
   try {
     const destination = await withTenant(env, businessId, async (tx) => ({
       chatId: await telegramInternalChat(tx, telegram.connectionId),
-      token: existingToken ?? await useCredential(env, tx, telegram.connectionId),
+      token: existingToken ?? await useTelegramCredential(
+        env, tx, businessId, telegram.connectionId,
+      ),
     }));
     if (!destination.chatId) return;
     await sendHermesMessage(
@@ -2351,13 +2354,13 @@ async function notifyTelegramCancelFailure(
   env: Env,
   businessId: string,
   task: RuntimeTask,
-  existingToken?: string,
+  existingToken?: TelegramCredential,
 ): Promise<void> {
   const telegram = telegramHint(task.payload);
   if (!telegram) return;
   try {
     const token = existingToken ?? await withTenant(env, businessId, (tx) =>
-      useCredential(env, tx, telegram.connectionId));
+      useTelegramCredential(env, tx, businessId, telegram.connectionId));
     await sendHermesMessage(
       token,
       telegram.chatId,
@@ -2408,20 +2411,20 @@ async function pulseTelegramTyping(env: Env, task: RuntimeTask): Promise<void> {
   const telegram = telegramHint(task.payload);
   if (!telegram) return;
   const token = await withTenant(env, task.businessId, (tx) =>
-    useCredential(env, tx, telegram.connectionId));
+    useTelegramCredential(env, tx, task.businessId, telegram.connectionId));
   await sendTyping(token, telegram.chatId);
 }
 
 async function telegramLiveStream(
   env: Env,
   task: RuntimeTask,
-  existingToken?: string,
+  existingToken?: TelegramCredential,
   initialMessageId?: number,
 ): Promise<TelegramLiveStream | null> {
   const telegram = telegramHint(task.payload);
   if (!telegram?.privateChat) return null;
   const token = existingToken ?? await withTenant(env, task.businessId, (tx) =>
-    useCredential(env, tx, telegram.connectionId));
+    useTelegramCredential(env, tx, task.businessId, telegram.connectionId));
   return new TelegramLiveStream(token, telegram.chatId, {
     messageId: initialMessageId ?? telegram.liveMessageId,
     onMessageId: (messageId) => persistLiveMessageId(env, task.businessId, task.id, messageId),
@@ -2459,12 +2462,12 @@ async function settleApprovalBubble(
   messageId: number,
   decision: 'approve' | 'deny',
   timedOut: boolean,
-  existingToken?: string,
+  existingToken?: TelegramCredential,
 ): Promise<void> {
   const telegram = telegramHint(task.payload);
   if (!telegram) return;
   const token = existingToken ?? await withTenant(env, task.businessId, (tx) =>
-    useCredential(env, tx, telegram.connectionId));
+    useTelegramCredential(env, tx, task.businessId, telegram.connectionId));
   const text = timedOut
     ? '⌛ Approval timed out — continuing without the tool…'
     : decision === 'approve'
@@ -2560,7 +2563,7 @@ async function settleFailedTelegramBubble(
   result: unknown,
   liveStream: TelegramLiveStream | null,
   liveBubbleId?: number,
-  existingToken?: string,
+  existingToken?: TelegramCredential,
   override?: string,
 ): Promise<boolean> {
   const messageId = liveStream?.handoffMessageId() ?? liveBubbleId;
@@ -2570,7 +2573,7 @@ async function settleFailedTelegramBubble(
   const text = override ?? failureNotice(result);
   try {
     const token = existingToken ?? await withTenant(env, businessId, (tx) =>
-      useCredential(env, tx, telegram.connectionId));
+      useTelegramCredential(env, tx, businessId, telegram.connectionId));
     await editMessageText(token, telegram.chatId, messageId, text);
     return true;
   } catch {

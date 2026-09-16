@@ -75,6 +75,7 @@ SIGNUP_NOTICE_TO = "qhkmdev90@gmail.com"
 # and a published app must prove ownership of it in Search Console.
 # qhkmdev90.workers.dev is not ours to verify; jentera.ai is.
 API_ORIGIN = "https://api.jentera.ai"
+VAULT_DEPOSIT_ORIGIN = "https://aisar-vault-deposit.qhkmdev90.workers.dev"
 
 # The immutable runner/Hermes/browser bundle requested for newly
 # provisioned runtimes. Changing this asks reconciliation to upgrade;

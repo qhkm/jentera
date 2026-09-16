@@ -122,6 +122,9 @@ export interface Env {
   VAULT?: Fetcher;
   /** Defence-in-depth credential shared with aisar-vault over the binding. */
   VAULT_INTERNAL_TOKEN?: string;
+  /** Public Worker with exactly one direct-deposit route. Returned to the
+      browser only after an owner-authenticated one-time ticket is minted. */
+  VAULT_DEPOSIT_ORIGIN?: string;
   /** R2 bucket for files the agent hands the owner (routes/artifacts.ts).
       Keys are `<business>/<run>/<artifact id>/<name>`; nothing reads the
       bucket without first resolving the artifact row under RLS. */

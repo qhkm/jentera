@@ -100,6 +100,16 @@ Structured work record captures the result and updates memory
 
 The first implementation uses Telegram as a private owner/internal interface. One private chat must be paired from the authenticated setup flow; discovering the public bot username grants no business access. Customer messaging is a separate, explicit audience mode. WhatsApp follows through the same connector contract.
 
+Telegram bot credentials use a direct-deposit vault boundary. The authenticated API may
+mint a five-minute, tenant-and-origin-bound ticket, but the device submits the token to a
+separate one-route deposit Worker. The main API receives only a single-use completion
+receipt and stores an opaque `vault_secret_id`; neither the API, the chat model, nor the
+business runtime can reveal the token. The private vault verifies it with Telegram,
+encrypts it under the tenant DEK, binds outbound chat operations to the one paired positive
+private-chat id, applies a path-and-payload allowlist, and records material-free use audit
+entries. Disconnecting revokes the vault secret. Passwords, personal Telegram sessions,
+payments, and general browser credentials remain outside this pilot.
+
 ## System Components
 
 ```mermaid
@@ -263,6 +273,9 @@ This is also where the product becomes difficult to copy. Industry playbooks are
 - Store relational state in managed Postgres with row-level tenant isolation; add vector retrieval only where normal indexed search is insufficient.
 - Store imported documents and large run artifacts in the existing private R2 environment.
 - Keep credentials in a managed secret vault and issue short-lived connector grants.
+- Use direct-to-vault browser deposits for pasted Telegram bot tokens. Ticket and receipt
+  secrets are hashed, expire after five and ten minutes respectively, and are single-use;
+  abandoned ceremony state is swept per tenant on the next deposit.
 
 ## MVP Delivery Plan
 

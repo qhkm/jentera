@@ -49,13 +49,13 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
     try {
       const c = await repo.connectTelegram(token.trim());
       setRows((prev) => [c, ...(prev ?? []).filter((r) => r.id !== c.id)]);
-      // Cleared immediately on success: there is no reason for a live
-      // bot token to sit in a form field afterwards.
-      setToken('');
       trackActivation('telegram_connected');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not connect that bot.');
     } finally {
+      // Clear after every attempt, including a refusal or network error. A
+      // credential should not remain readable in DOM state after submission.
+      setToken('');
       setBusy(false);
     }
   }
@@ -127,6 +127,11 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
                   {checking === c.id ? (
                     <span role="status" className="text-[12px] text-text-secondary">
                       Checking the webhook and recent delivery status…
+                    </span>
+                  ) : null}
+                  {c.vaultProtected ? (
+                    <span className="text-[12px] text-emerald-500">
+                      Protected by secure vault · Jentera cannot reveal this token
                     </span>
                   ) : null}
                 </div>
@@ -212,9 +217,7 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
               value={token}
               onChange={(e) => setToken(e.target.value)}
               aria-label="Your bot token"
-              // Not `password`: the owner is pasting and should be able
-              // to see they pasted the right thing. It is cleared the
-              // moment it is saved, and never shown back afterwards.
+              type="password"
               autoComplete="off"
               spellCheck={false}
               disabled={busy}
@@ -232,6 +235,8 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
             />
           ) : null}
           <p className="mt-3 text-[12px] text-text-muted">
+            Your token goes directly from this device to Jentera’s isolated credential vault.
+            It does not pass through chat, the AI agent, or the main Jentera API.{' '}
             Saving the bot does not start the chat automatically. Telegram requires you to open
             the secure pairing link and press Start once. Only that private chat can access your
             business agent.

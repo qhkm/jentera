@@ -2,6 +2,7 @@ import type postgres from 'postgres';
 import type { Env } from './env';
 import { KEY_VERSION, open, seal } from './vault';
 import type { ObservedRuntime, RuntimeState } from './runtime/provider';
+import { vaultTelegramCredential, type TelegramCredential } from './vault/telegram';
 
 export interface AgentRuntimeRecord {
   id: string;
@@ -160,26 +161,31 @@ export async function getRuntimeTelegramAccess(
   tx: postgres.TransactionSql,
   businessId: string,
   connectionId: string,
-): Promise<{ runtime: AgentRuntimeRecord | null; token: string }> {
+): Promise<{ runtime: AgentRuntimeRecord | null; token: TelegramCredential }> {
   const runtimeColumns = columns
     .split(',')
     .map((column) => `ar.${column.trim()}`)
     .join(', ');
   const [row] = await tx<(RuntimeRow & {
-    ciphertext: Uint8Array;
-    key_version: number;
+    vault_secret_id: string | null;
+    ciphertext: Uint8Array | null;
+    key_version: number | null;
   })[]>`
-    select ${tx.unsafe(runtimeColumns)}, cr.ciphertext, cr.key_version
-      from credential cr
+    select ${tx.unsafe(runtimeColumns)}, c.vault_secret_id,
+           cr.ciphertext, cr.key_version
+      from connection c
+      left join credential cr on cr.connection_id = c.id
       left join agent_runtime ar
         on ar.business_id = ${businessId} and ar.deleted_at is null
-     where cr.connection_id = ${connectionId}`;
-  if (!row?.ciphertext || row.key_version === null) {
+     where c.id = ${connectionId} and c.connector = 'telegram'`;
+  if (!row || (!row.vault_secret_id && (!row.ciphertext || row.key_version === null))) {
     throw new Error('that connection has no credential');
   }
   return {
     runtime: row.id ? toRecord(row) : null,
-    token: await open(env, row.ciphertext, row.key_version),
+    token: row.vault_secret_id
+      ? vaultTelegramCredential(env, businessId, row.vault_secret_id)
+      : await open(env, row.ciphertext!, row.key_version!),
   };
 }
 

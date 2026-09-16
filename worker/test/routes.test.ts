@@ -65,6 +65,27 @@ async function conn(method: string, path: string, opts: { cookie?: string; body?
   return { status: res.status, body: text ? (JSON.parse(text) as Record<string, unknown>) : null };
 }
 
+async function connAtOrigin(
+  method: string,
+  path: string,
+  opts: { cookie?: string; body?: unknown; origin: string },
+) {
+  const incoming = req(method, path, { cookie: opts.cookie });
+  const headers = new Headers(incoming.request.headers);
+  headers.set('Origin', opts.origin);
+  const request = new Request(incoming.url, {
+    method,
+    headers,
+    body: method === 'GET' || method === 'HEAD' ? undefined : JSON.stringify(opts.body ?? {}),
+  });
+  const res = await handleConnect(request, env, incoming.url, {
+    'Access-Control-Allow-Origin': opts.origin,
+  });
+  if (!res) throw new Error(`no route matched ${method} ${path}`);
+  const text = await res.text();
+  return { status: res.status, body: text ? (JSON.parse(text) as Record<string, unknown>) : null };
+}
+
 async function telegramHook(
   connectionId: string,
   secret: string,
@@ -588,30 +609,94 @@ describe('connections', () => {
     expect((await asTenant(A, (tx) => homeCounters(tx))).connections).toBe(1);
   });
 
-  it('rejects a token that is not shaped like one, before any network call', async () => {
-    /* Checked before the value reaches anything that might log it, and
-       before a request goes out carrying it. */
+  it('retires the legacy route so a token cannot enter the main API', async () => {
     const spy = vi.fn();
     vi.stubGlobal('fetch', spy);
     for (const token of ['', 'nonsense', '123:short', 'abcdef:AA' + 'x'.repeat(40)]) {
       const r = await conn('POST', '/api/connections/telegram', { cookie: cookieA, body: { token } });
-      expect(r.status, token).toBe(400);
+      expect(r.status, token).toBe(410);
+      expect(String(r.body?.err)).toMatch(/direct-to-vault/i);
     }
-    expect(spy, 'a malformed token was sent to Telegram').not.toHaveBeenCalled();
+    expect(spy, 'a token reaching the retired API route caused outbound traffic').not.toHaveBeenCalled();
   });
 
-  it('reports Telegram’s own words when it rejects a token', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ ok: false, description: 'Unauthorized' }))),
-    );
+  it('never accepts even a correctly shaped token on the legacy route', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
     const r = await conn('POST', '/api/connections/telegram', {
       cookie: cookieA,
       body: { token: `123456789:${'A'.repeat(35)}` },
     });
-    expect(r.status).toBe(400);
-    // "Unauthorized" tells the owner they pasted the wrong thing.
-    expect(String(r.body?.err)).toMatch(/unauthorized/i);
+    expect(r.status).toBe(410);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('mints a deposit ticket and completes from metadata without storing the token', async () => {
+    const origin = 'http://localhost:5173';
+    const vaultSecretId = '33333333-3333-4333-8333-333333333333';
+    const vault = vi.fn(async (request: Request) => {
+      expect(request.headers.get('X-Vault-Internal')).toBe('vault-internal-test');
+      const body = await request.json() as Record<string, unknown>;
+      expect(JSON.stringify(body)).not.toContain('SUPERSECRETTOKEN');
+      const path = new URL(request.url).pathname;
+      if (path === '/v1/deposits/tickets') {
+        expect(body).toMatchObject({ businessId: A, provider: 'telegram', origin, createdBy: alice });
+        return Response.json({
+          ok: true,
+          businessId: A,
+          ticket: 'ticket-id.ticket-secret',
+          expiresAt: '2026-09-16T12:00:00.000Z',
+        }, { status: 201 });
+      }
+      if (path === '/v1/deposits/claim') {
+        expect(body).toMatchObject({
+          businessId: A, receipt: 'ticket-id.receipt-secret', claimedBy: alice,
+        });
+        return Response.json({
+          ok: true,
+          claim: { secretId: vaultSecretId, externalId: '123456789', displayName: '@alpha_bot' },
+        });
+      }
+      if (path === `/v1/telegram/${vaultSecretId}/call`) {
+        expect(body).toMatchObject({ businessId: A, method: 'POST', path: '/setWebhook' });
+        return Response.json({ ok: true, result: true });
+      }
+      return Response.json({ ok: false, err: 'not found' }, { status: 404 });
+    });
+    env = testEnv({
+      VAULT: { fetch: vault },
+      VAULT_INTERNAL_TOKEN: 'vault-internal-test',
+      VAULT_DEPOSIT_ORIGIN: 'https://aisar-vault-deposit.example',
+    });
+
+    const ticket = await connAtOrigin('POST', '/api/connections/telegram/deposit-ticket', {
+      cookie: cookieA, origin, body: {},
+    });
+    expect(ticket.status).toBe(200);
+    expect(ticket.body).toMatchObject({
+      ticket: 'ticket-id.ticket-secret',
+      businessId: A,
+      depositUrl: 'https://aisar-vault-deposit.example/v1/deposits/redeem',
+    });
+
+    const completed = await connAtOrigin('POST', '/api/connections/telegram/complete', {
+      cookie: cookieA, origin, body: { receipt: 'ticket-id.receipt-secret' },
+    });
+    expect(completed.status).toBe(200);
+    expect(completed.body?.connection).toMatchObject({
+      connector: 'telegram', method: 'vault_bot_token', displayName: '@alpha_bot',
+      vaultProtected: true, paired: false,
+    });
+    expect(JSON.stringify(completed.body)).not.toContain(vaultSecretId);
+
+    const [stored] = await asOwner((sql) => sql<{
+      vault_secret_id: string | null; credentials: string;
+    }[]>`
+      select c.vault_secret_id,
+             (select count(*)::text from credential cr where cr.connection_id = c.id) as credentials
+        from connection c where c.business_id = ${A} and c.connector = 'telegram'`);
+    expect(stored).toEqual({ vault_secret_id: vaultSecretId, credentials: '0' });
+    expect(vault).toHaveBeenCalledTimes(3);
   });
 
   it('lists connections without ever including a secret', async () => {

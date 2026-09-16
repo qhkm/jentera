@@ -22,7 +22,7 @@ import {
   findConnectionById,
   listConnections,
   telegramInternalChat,
-  useCredential,
+  useTelegramCredential,
 } from '../connections';
 import { sendHermesMessage } from '../connectors/telegram';
 import { sendNotice } from '../email';
@@ -183,13 +183,15 @@ async function view(
   tx: Parameters<typeof listConnections>[0],
   row: ConnectionRow,
 ): Promise<Record<string, unknown>> {
-  if (row.connector !== 'telegram') return { ...row };
+  const { vaultSecretId: _vaultSecretId, ...safe } = row;
+  if (row.connector !== 'telegram') return { ...safe };
 
   const chat = await telegramInternalChat(tx, row.id);
   const paired = chat !== null;
   const code = paired ? null : await telegramPairingCode(env, row.id);
   return {
-    ...row,
+    ...safe,
+    vaultProtected: Boolean(row.vaultSecretId),
     paired,
     internalChat: chat,
     /* Once paired, the deep link is a no-op (it cannot rebind), so support
@@ -271,7 +273,7 @@ async function announce(
         }
         try {
           const token = await withTenant(env, businessId, (tx) =>
-            useCredential(env, tx, chat.connectionId));
+            useTelegramCredential(env, tx, businessId, chat.connectionId));
           await sendHermesMessage(token, chat.chatId, text);
           results.push({ businessId, channel, target, outcome: 'sent' });
         } catch (error) {

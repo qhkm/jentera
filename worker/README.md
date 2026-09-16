@@ -96,6 +96,15 @@ not disable the owner's assistant. Ordinary Ask stays inline; Telegram falls bac
 only while its runtime is not ready or execution is globally paused. Customer-facing bots
 require a separate explicit audience mode and are not enabled by this path.
 
+New Telegram connections are vault-backed. The browser first asks this Worker for a
+short-lived deposit ticket, then sends the bot token directly to the dedicated
+`aisar-vault-deposit` Worker with cookies and referrer disabled. This Worker receives only
+the one-time receipt, bot id/username, and an opaque vault secret id. All Telegram API calls
+for such a connection go over the private `VAULT` service binding; the vault decrypts only
+for the allow-listed request and enforces the paired private chat again. The former
+`POST /api/connections/telegram` token endpoint is permanently `410 Gone`. Legacy stored
+Telegram connections continue to work until they are reconnected.
+
 The control plane never accepts a business id from the browser for this decision. Queue
 messages are wake-up hints only: task kind, payload, run id, and tenant all come from the
 leased Postgres row. Each runtime receives a signed five-minute wildcard tool grant bound

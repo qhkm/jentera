@@ -22,9 +22,11 @@ import {
   markWebhookUpdates,
   removeConnection,
   saveConnection,
+  saveVaultConnection,
   telegramWebhookAccess,
   telegramInternalChat,
   useCredential,
+  useTelegramCredential,
   webhookSecret,
 } from '../connections';
 import {
@@ -40,7 +42,6 @@ import {
   sendMessage,
   sendTyping,
   setWebhook,
-  verifyToken,
   webhookHealth,
   withTypingIndicator,
 } from '../connectors/telegram';
@@ -74,6 +75,8 @@ import {
   validTelegramPairingCode,
 } from '../telegram-pairing';
 import type { ConnectionRow } from '../connections';
+import { bindVaultTelegramChat, type TelegramCredential } from '../vault/telegram';
+import { callVault, VaultUnavailable } from '../vault/client';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -220,70 +223,128 @@ export async function handleConnect(
     return json({ ok: true, connection }, {}, cors);
   }
 
-  /* ---- connect a Telegram bot ----------------------------------------- */
+  /* ---- direct-to-vault Telegram deposit ------------------------------- */
 
-  if (url.pathname === '/api/connections/telegram' && request.method === 'POST') {
+  if (url.pathname === '/api/connections/telegram/deposit-ticket' && request.method === 'POST') {
     if (!can(id, 'connections.manage')) {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
-    const body = (await request.json().catch(() => ({}))) as { token?: string };
-    const token = typeof body.token === 'string' ? body.token.trim() : '';
-    /* Shape check before spending a network call, and before the value
-       reaches anything that might log it. */
-    if (!/^\d{6,}:[A-Za-z0-9_-]{30,}$/.test(token)) {
-      return json(
-        { ok: false, err: 'That does not look like a bot token. It should look like 123456789:AA…' },
-        { status: 400 },
-        cors,
-      );
+    const origin = request.headers.get('Origin');
+    if (!origin || cors['Access-Control-Allow-Origin'] !== origin) {
+      return json({ ok: false, err: 'origin not allowed' }, { status: 403 }, cors);
     }
-
-    let bot;
     try {
-      bot = await verifyToken(token);
-    } catch (e) {
-      return json(
-        { ok: false, err: e instanceof Error ? e.message : 'Could not reach Telegram' },
-        { status: 400 },
-        cors,
-      );
+      const upstream = await callVault<{
+        businessId?: string; ticket?: string; expiresAt?: string;
+      }>(env, '/v1/deposits/tickets', {
+        method: 'POST',
+        body: {
+          businessId: id.businessId,
+          provider: 'telegram',
+          label: 'Private Telegram bot',
+          origin,
+          createdBy: id.userId,
+        },
+      });
+      const depositOrigin = env.VAULT_DEPOSIT_ORIGIN?.replace(/\/$/, '');
+      if (upstream.status !== 201 || !upstream.body.ticket || !upstream.body.businessId ||
+          !upstream.body.expiresAt || !depositOrigin?.startsWith('https://')) {
+        return json({ ok: false, err: 'secure deposit is unavailable' }, { status: 503 }, cors);
+      }
+      return json({
+        ok: true,
+        ticket: upstream.body.ticket,
+        businessId: upstream.body.businessId,
+        expiresAt: upstream.body.expiresAt,
+        depositUrl: `${depositOrigin}/v1/deposits/redeem`,
+      }, {}, cors);
+    } catch (error) {
+      if (error instanceof VaultUnavailable) {
+        return json({ ok: false, err: error.message }, { status: 503 }, cors);
+      }
+      throw error;
     }
+  }
 
-    const saved = await withTenant(env, id.businessId, (tx) =>
-      saveConnection(env, tx, id.businessId, {
-        connector: 'telegram',
-        method: 'bot_token',
-        externalId: String(bot.id),
-        displayName: `@${bot.username}`,
-        secret: token,
-        connectedBy: id.userId,
-      }),
-    );
-
-    /* Webhook last: the connection has to exist before its id can key
-       the secret. A failure here leaves a stored connection that
-       receives nothing, which is recoverable by reconnecting — the
-       reverse would leave Telegram posting at an id we have no
-       credential for. */
+  if (url.pathname === '/api/connections/telegram/complete' && request.method === 'POST') {
+    if (!can(id, 'connections.manage')) {
+      return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
+    }
+    const origin = request.headers.get('Origin');
+    if (!origin || cors['Access-Control-Allow-Origin'] !== origin) {
+      return json({ ok: false, err: 'origin not allowed' }, { status: 403 }, cors);
+    }
+    const body = await request.json().catch(() => null) as { receipt?: unknown } | null;
+    if (!body || typeof body.receipt !== 'string') {
+      return json({ ok: false, err: 'deposit receipt is required' }, { status: 400 }, cors);
+    }
+    let claimed;
     try {
-      const secret = await withTenant(env, id.businessId, (tx) =>
-        webhookSecret(tx, saved.id),
+      claimed = await callVault<{
+        claim?: { secretId: string; externalId: string; displayName: string };
+      }>(env, '/v1/deposits/claim', {
+        method: 'POST',
+        body: { businessId: id.businessId, receipt: body.receipt, claimedBy: id.userId },
+      });
+    } catch (error) {
+      if (error instanceof VaultUnavailable) {
+        return json({ ok: false, err: error.message }, { status: 503 }, cors);
+      }
+      throw error;
+    }
+    if (claimed.status !== 200 || !claimed.body.claim) {
+      return json({ ok: false, err: 'secure deposit is no longer valid' }, { status: 409 }, cors);
+    }
+    const claim = claimed.body.claim;
+    let saved: ConnectionRow;
+    try {
+      saved = await withTenant(env, id.businessId, (tx) =>
+        saveVaultConnection(tx, id.businessId, {
+          connector: 'telegram',
+          externalId: claim.externalId,
+          displayName: claim.displayName,
+          vaultSecretId: claim.secretId,
+          connectedBy: id.userId,
+        }),
       );
-      await setWebhook(token, `${env.API_ORIGIN}/api/webhooks/telegram/${id.businessId}/${saved.id}`, secret);
-      /* Best-effort marker: the webhook is registered with the current
-         allowed_updates, so the receive path must not re-register. A
-         write failure here only means one redundant refresh later. */
+    } catch (error) {
+      /* Claiming consumes the receipt. If the metadata transaction cannot
+         complete, compensate immediately so a browser/network retry cannot
+         leave an unreachable credential sitting in the vault. */
+      await callVault(
+        env,
+        `/v1/secrets/${claim.secretId}?businessId=${encodeURIComponent(id.businessId)}`,
+        { method: 'DELETE' },
+      ).catch(() => {});
+      throw error;
+    }
+    const credential = await withTenant(env, id.businessId, (tx) =>
+      useTelegramCredential(env, tx, id.businessId, saved.id));
+    try {
+      const secret = await withTenant(env, id.businessId, (tx) => webhookSecret(tx, saved.id));
+      await setWebhook(
+        credential,
+        `${env.API_ORIGIN}/api/webhooks/telegram/${id.businessId}/${saved.id}`,
+        secret,
+      );
       await withTenant(env, id.businessId, (tx) =>
         markWebhookUpdates(tx, saved.id, REGISTERED_UPDATES)).catch(() => {});
-    } catch (e) {
-      const why = e instanceof Error ? e.message : 'webhook setup failed';
+    } catch (error) {
+      const why = error instanceof Error ? error.message : 'webhook setup failed';
       await withTenant(env, id.businessId, (tx) => markBroken(tx, saved.id, why));
       return json({ ok: false, err: why }, { status: 400 }, cors);
     }
-
     const connection = await withTenant(env, id.businessId, (tx) =>
       connectionView(env, tx, { ...saved, status: 'connected' }));
     return json({ ok: true, connection }, {}, cors);
+  }
+
+  if (url.pathname === '/api/connections/telegram' && request.method === 'POST') {
+    return json(
+      { ok: false, err: 'Use the secure direct-to-vault connection flow.' },
+      { status: 410 },
+      cors,
+    );
   }
 
   /* ---- is it actually working? ---------------------------------------- */
@@ -297,7 +358,7 @@ export async function handleConnect(
         if (!connection || connection.connector !== 'telegram') {
           throw new Error('Health check is not available for that connection.');
         }
-        const token = await useCredential(env, tx, health[1]);
+        const token = await useTelegramCredential(env, tx, id.businessId, health[1]);
         return webhookHealth(token);
       });
       const expected = `${env.API_ORIGIN}/api/webhooks/telegram/${id.businessId}/${health[1]}`;
@@ -328,7 +389,7 @@ export async function handleConnect(
       let repaired = false;
       if (forceRefresh || !info.url || info.url !== expected || !secretStored) {
         await withTenant(env, id.businessId, async (tx) => {
-          const token = await useCredential(env, tx, health[1]);
+          const token = await useTelegramCredential(env, tx, id.businessId, health[1]);
           await setWebhook(token, expected, await webhookSecret(tx, health[1]));
           await markWebhookUpdates(tx, health[1], REGISTERED_UPDATES);
         });
@@ -369,22 +430,43 @@ export async function handleConnect(
     if (!can(id, 'connections.manage')) {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
-    await withTenant(env, id.businessId, async (tx) => {
-      const connection = await findConnectionById(tx, drop[1]);
-      if (!connection) return;
-      /* Provider cleanup is best effort. Revoked credentials should never
-         make the local disconnect button impossible to use. */
-      try {
-        const secret = await useCredential(env, tx, connection.id);
-        if (connection.connector === 'telegram') await clearWebhook(secret);
-        if (connection.connector === GOOGLE_CALENDAR_CONNECTOR) {
-          await revokeGoogleCalendar(env, secret);
+    try {
+      await withTenant(env, id.businessId, async (tx) => {
+        const connection = await findConnectionById(tx, drop[1]);
+        if (!connection) return;
+        /* Provider cleanup is best effort. The encrypted vault record is not:
+           report a transient failure rather than orphaning a credential the
+           owner believes was deleted. */
+        if (connection.connector === 'telegram') {
+          try {
+            await clearWebhook(await useTelegramCredential(
+              env, tx, id.businessId, connection.id,
+            ));
+          } catch { /* Telegram may already have revoked it. */ }
+          if (connection.vaultSecretId) {
+            const removed = await callVault<{ ok?: boolean }>(
+              env,
+              `/v1/secrets/${connection.vaultSecretId}?businessId=${encodeURIComponent(id.businessId)}`,
+              { method: 'DELETE' },
+            );
+            if (removed.status !== 200 && removed.status !== 404) throw new VaultUnavailable();
+          }
+        } else {
+          try {
+            const secret = await useCredential(env, tx, connection.id);
+            if (connection.connector === GOOGLE_CALENDAR_CONNECTOR) {
+              await revokeGoogleCalendar(env, secret);
+            }
+          } catch { /* Provider may already have revoked it. */ }
         }
-      } catch {
-        /* nothing left to revoke */
+        await removeConnection(tx, connection.id);
+      });
+    } catch (error) {
+      if (error instanceof VaultUnavailable) {
+        return json({ ok: false, err: error.message }, { status: 503 }, cors);
       }
-      await removeConnection(tx, connection.id);
-    });
+      throw error;
+    }
     return new Response(null, { status: 204, headers: cors });
   }
 
@@ -424,7 +506,7 @@ async function telegramWebhook(
   let access: Awaited<ReturnType<typeof telegramWebhookAccess>>;
   try {
     access = await withTenant(env, businessId, (tx) =>
-      telegramWebhookAccess(env, tx, connectionId, presented));
+      telegramWebhookAccess(env, tx, businessId, connectionId, presented));
   } catch (error) {
     /* Authentication lookup failure is not an authentication verdict. A 5xx
        keeps Telegram's update retryable through a transient Neon outage. */
@@ -452,7 +534,7 @@ async function telegramWebhook(
         businessId,
         connectionId,
         callback,
-        access.token,
+        access.credential,
       );
     } catch (error) {
       console.error(`[telegram] approval callback failed on ${connectionId}: ${String(error)}`);
@@ -476,8 +558,14 @@ async function telegramWebhook(
     const bound = await withTenant(env, businessId, (tx) =>
       bindTelegramInternalChat(tx, connectionId, incoming.chatId));
     if (bound === 'paired' || bound === 'already_paired') {
+      try {
+        await bindVaultTelegramChat(access.credential, incoming.chatId);
+      } catch (error) {
+        console.error(`[telegram] vault pairing failed on ${connectionId}: ${String(error)}`);
+        return new Response(null, { status: 503, headers: { 'Retry-After': '2' } });
+      }
       await sendMessage(
-        access.token,
+        access.credential,
         incoming.chatId,
         'Jentera is connected to your business. Ask me about your operations, research, planning, or anything you need to get done.',
       ).catch(() => {});
@@ -490,7 +578,7 @@ async function telegramWebhook(
      together. This removes a separate cross-region credential transaction
      from every accepted message while keeping the secret inside this one
      request. */
-  const { internalChat, token } = access;
+  const { internalChat, credential: token } = access;
   if (internalChat !== incoming.chatId || !incoming.privateChat) {
     /* Silence made a secure pairing boundary look like a broken or very slow
        agent. A private, unpaired sender may receive setup guidance, but never
@@ -521,7 +609,7 @@ async function telegramWebhook(
     try {
       const secret = await withTenant(env, businessId, (tx) =>
         webhookSecret(tx, connectionId));
-      await setWebhook(access.token, webhookPath, secret);
+      await setWebhook(access.credential, webhookPath, secret);
       await withTenant(env, businessId, (tx) =>
         markWebhookUpdates(tx, connectionId, REGISTERED_UPDATES));
       webhookRefreshed = true;
@@ -662,10 +750,12 @@ async function connectionView(
   tx: Parameters<typeof listConnections>[0],
   row: ConnectionRow,
 ) {
-  if (row.connector !== 'telegram') return row;
+  const { vaultSecretId: _vaultSecretId, ...safe } = row;
+  if (row.connector !== 'telegram') return safe;
   const paired = await telegramInternalChat(tx, row.id) !== null;
   return {
-    ...row,
+    ...safe,
+    vaultProtected: Boolean(row.vaultSecretId),
     paired,
     pairingUrl: paired ? null : await telegramPairingUrl(env, row.id, row.displayName),
   };
@@ -676,7 +766,7 @@ export async function handleIncoming(
   businessId: string,
   connectionId: string,
   incoming: TelegramIncoming,
-  telegramToken?: string,
+  telegramToken?: TelegramCredential,
   requestedAtMs = Date.now(),
   ctx?: BackgroundContext,
   inline?: InlineSliceOptions,
@@ -729,7 +819,7 @@ export async function handleIncoming(
     }));
 
     const automaticToken = telegramToken ?? await withTenant(env, businessId, (tx) =>
-      useCredential(env, tx, connectionId));
+      useTelegramCredential(env, tx, businessId, connectionId));
     const draft = await withTypingIndicator(
       automaticToken,
       incoming.chatId,

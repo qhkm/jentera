@@ -53,6 +53,10 @@ import type {
 } from './types';
 
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+const VAULT_DEPOSIT_ORIGIN = (
+  import.meta.env.VITE_VAULT_DEPOSIT_ORIGIN ??
+  'https://aisar-vault-deposit.qhkmdev90.workers.dev'
+).replace(/\/$/, '');
 
 /** The session expired or was never established. Distinct so the UI can
     offer sign-in rather than a generic "something went wrong". */
@@ -512,10 +516,62 @@ export class RemoteRepository implements Repository {
   }
 
   async connectTelegram(token: string): Promise<Connection> {
-    const { connection } = await call<{ connection: Connection }>('/api/connections/telegram', {
+    /* The API may authorize a short-lived deposit, but it must never receive
+       the bot token. The browser sends the material straight to the narrow
+       vault edge and returns only a one-time receipt to the API. */
+    const ticket = await call<{
+      ticket: string;
+      businessId: string;
+      expiresAt: string;
+      depositUrl: string;
+    }>('/api/connections/telegram/deposit-ticket', {
       method: 'POST',
-      body: JSON.stringify({ token }),
+      body: '{}',
     });
+
+    let target: URL;
+    try {
+      target = new URL(ticket.depositUrl);
+    } catch {
+      throw new TemporaryConnectionError('Secure Telegram deposit is unavailable.');
+    }
+    if (target.origin !== VAULT_DEPOSIT_ORIGIN || target.pathname !== '/v1/deposits/redeem') {
+      throw new TemporaryConnectionError('Secure Telegram deposit is unavailable.');
+    }
+
+    let deposit: Response;
+    try {
+      deposit = await fetch(target, {
+        method: 'POST',
+        credentials: 'omit',
+        cache: 'no-store',
+        referrerPolicy: 'no-referrer',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ticket: ticket.ticket,
+          businessId: ticket.businessId,
+          material: token,
+        }),
+      });
+    } catch {
+      throw new TemporaryConnectionError('Could not reach the secure credential vault.');
+    }
+    const deposited = (await deposit.json().catch(() => ({}))) as {
+      ok?: boolean;
+      receipt?: string;
+      err?: string;
+    };
+    if (!deposit.ok || deposited.ok === false || !deposited.receipt) {
+      const ErrorType = deposit.status === 408 || deposit.status === 429 || deposit.status >= 500
+        ? TemporaryConnectionError
+        : Error;
+      throw new ErrorType(deposited.err ?? 'The secure vault could not save that bot token.');
+    }
+
+    const { connection } = await call<{ connection: Connection }>(
+      '/api/connections/telegram/complete',
+      { method: 'POST', body: JSON.stringify({ receipt: deposited.receipt }) },
+    );
     return connection;
   }
 

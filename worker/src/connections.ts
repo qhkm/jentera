@@ -10,6 +10,7 @@
 import type postgres from 'postgres';
 import type { Env } from './env';
 import { KEY_VERSION, open, seal } from './vault';
+import { vaultTelegramCredential, type TelegramCredential } from './vault/telegram';
 
 export interface ConnectionRow {
   id: string;
@@ -21,6 +22,8 @@ export interface ConnectionRow {
   connectedAt: Date;
   lastOkAt: Date | null;
   lastError: string | null;
+  /** Metadata reference only. Never return this from an owner-facing view. */
+  vaultSecretId: string | null;
 }
 
 interface Raw {
@@ -33,6 +36,7 @@ interface Raw {
   connected_at: Date;
   last_ok_at: Date | null;
   last_error: string | null;
+  vault_secret_id: string | null;
 }
 
 const toRow = (r: Raw): ConnectionRow => ({
@@ -45,12 +49,13 @@ const toRow = (r: Raw): ConnectionRow => ({
   connectedAt: r.connected_at,
   lastOkAt: r.last_ok_at,
   lastError: r.last_error,
+  vaultSecretId: r.vault_secret_id,
 });
 
 export async function listConnections(tx: postgres.TransactionSql): Promise<ConnectionRow[]> {
   const rows = await tx<Raw[]>`
     select id, connector, method, status, display_name, external_id,
-           connected_at, last_ok_at, last_error
+           connected_at, last_ok_at, last_error, vault_secret_id
       from connection order by connected_at desc`;
   return rows.map(toRow);
 }
@@ -96,7 +101,7 @@ export async function saveConnection(
           -- the old failure must not linger on a working one.
           last_error = null
     returning id, connector, method, status, display_name, external_id,
-              connected_at, last_ok_at, last_error`;
+              connected_at, last_ok_at, last_error, vault_secret_id`;
 
   const sealed = await seal(env, input.secret);
   await tx`
@@ -108,6 +113,42 @@ export async function saveConnection(
           expires_at = excluded.expires_at,
           refreshed_at = now()`;
 
+  return toRow(row);
+}
+
+/** Store connection metadata for a credential that only the isolated vault owns. */
+export async function saveVaultConnection(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  input: {
+    connector: 'telegram';
+    externalId: string;
+    displayName: string;
+    vaultSecretId: string;
+    connectedBy: string;
+  },
+): Promise<ConnectionRow> {
+  const [row] = await tx<Raw[]>`
+    insert into connection
+      (business_id, connector, method, status, external_id, display_name,
+       connected_by, scopes, last_ok_at, vault_secret_id)
+    values
+      (${businessId}, ${input.connector}, 'vault_bot_token', 'connected',
+       ${input.externalId}, ${input.displayName}, ${input.connectedBy},
+       '{}'::text[], now(), ${input.vaultSecretId})
+    on conflict (business_id, connector, external_id) do update
+      set method = 'vault_bot_token', status = 'connected',
+          display_name = excluded.display_name,
+          connected_by = excluded.connected_by,
+          scopes = excluded.scopes,
+          connected_at = now(), last_ok_at = now(), last_error = null,
+          vault_secret_id = excluded.vault_secret_id
+    returning id, connector, method, status, display_name, external_id,
+              connected_at, last_ok_at, last_error, vault_secret_id`;
+  if (!row) throw new Error('vault connection insert returned no row');
+  // A reconnect replaces the legacy credential atomically with metadata. The
+  // old ciphertext has no use once the connection points at the vault.
+  await tx`delete from credential where connection_id = ${row.id}`;
   return toRow(row);
 }
 
@@ -123,13 +164,29 @@ export async function useCredential(
   return open(env, row.ciphertext, row.key_version);
 }
 
+/** Load either a legacy bot token or an opaque vault reference. */
+export async function useTelegramCredential(
+  env: Env,
+  tx: postgres.TransactionSql,
+  businessId: string,
+  connectionId: string,
+): Promise<TelegramCredential> {
+  const [row] = await tx<{ vault_secret_id: string | null }[]>`
+    select vault_secret_id from connection where id = ${connectionId}`;
+  if (!row) throw new Error('that Telegram connection does not exist');
+  if (row.vault_secret_id) {
+    return vaultTelegramCredential(env, businessId, row.vault_secret_id);
+  }
+  return useCredential(env, tx, connectionId);
+}
+
 export async function findConnection(
   tx: postgres.TransactionSql,
   connector: string,
 ): Promise<ConnectionRow | null> {
   const [row] = await tx<Raw[]>`
     select id, connector, method, status, display_name, external_id,
-           connected_at, last_ok_at, last_error
+           connected_at, last_ok_at, last_error, vault_secret_id
       from connection
      where connector = ${connector} and status = 'connected'
      order by connected_at desc limit 1`;
@@ -144,7 +201,7 @@ export async function findConnectionById(
 ): Promise<ConnectionRow | null> {
   const [row] = await tx<Raw[]>`
     select id, connector, method, status, display_name, external_id,
-           connected_at, last_ok_at, last_error
+           connected_at, last_ok_at, last_error, vault_secret_id
       from connection where id = ${connectionId}`;
   return row ? toRow(row) : null;
 }
@@ -325,7 +382,7 @@ export type TelegramWebhookAccess =
   | {
       ok: true;
       internalChat: number | null;
-      token: string;
+      credential: TelegramCredential;
       webhookUpdates: string | null;
       runtimeProvider: 'local' | 'fly-sprite' | null;
       runtimeUrl: string | null;
@@ -337,6 +394,7 @@ export type TelegramWebhookAccess =
 export async function telegramWebhookAccess(
   env: Env,
   tx: postgres.TransactionSql,
+  businessId: string,
   connectionId: string,
   presented: string,
 ): Promise<TelegramWebhookAccess> {
@@ -347,10 +405,11 @@ export async function telegramWebhookAccess(
     webhook_updates: string | null;
     ciphertext: Uint8Array | null;
     key_version: number | null;
+    vault_secret_id: string | null;
     runtime_provider: 'local' | 'fly-sprite' | null;
     runtime_url: string | null;
   }[]>`
-    select c.webhook_secret, c.status, c.webhook_updates,
+    select c.webhook_secret, c.status, c.webhook_updates, c.vault_secret_id,
            (
              select scope from unnest(coalesce(c.scopes, '{}'::text[])) as scope
               where scope like ${`${INTERNAL_CHAT_SCOPE}%`} limit 1
@@ -365,13 +424,15 @@ export async function telegramWebhookAccess(
      where c.id = ${connectionId}`;
   const verdict = webhookVerdict(row, presented);
   if (!verdict.ok) return verdict;
-  if (!row.ciphertext || row.key_version === null) {
+  if (!row.vault_secret_id && (!row.ciphertext || row.key_version === null)) {
     return { ok: false, why: 'that connection has no credential' };
   }
   return {
     ok: true,
     internalChat: internalChatFromScope(row.internal_scope),
-    token: await open(env, row.ciphertext, row.key_version),
+    credential: row.vault_secret_id
+      ? vaultTelegramCredential(env, businessId, row.vault_secret_id)
+      : await open(env, row.ciphertext!, row.key_version!),
     webhookUpdates: row.webhook_updates,
     runtimeProvider: row.runtime_provider,
     runtimeUrl: row.runtime_url,

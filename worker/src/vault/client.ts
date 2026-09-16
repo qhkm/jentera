@@ -23,7 +23,7 @@ export interface VaultResponse<T> {
 export async function callVault<T>(
   env: Env,
   path: string,
-  init: { method?: 'GET' | 'POST'; body?: Record<string, unknown> } = {},
+  init: { method?: 'GET' | 'POST' | 'DELETE'; body?: Record<string, unknown> } = {},
 ): Promise<VaultResponse<T>> {
   const token = env.VAULT_INTERNAL_TOKEN?.trim();
   if (!env.VAULT || !token) throw new VaultUnavailable();
