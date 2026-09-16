@@ -39,6 +39,7 @@ import { handleReminders, dispatchDueReminders } from './reminders';
 import { handlePush } from './routes/push';
 import { handleArtifacts, RUNTIME_ARTIFACTS_PATH } from './routes/artifacts';
 import { sweepPushOutbox } from './push/outbox';
+import { sweepAccountDeletions } from './account-deletion/purge';
 import { handleNotifications } from './routes/notifications';
 import { handleTeam } from './routes/team';
 import { handleAccount } from './routes/account';
@@ -251,6 +252,19 @@ export default {
         }
       } catch (err) {
         console.error(`[push-outbox] ${String(err)}`);
+      }
+      /* Accounts whose grace period is over, one stage per tick. Nothing is
+         logged for a quiet minute, which is almost every minute. */
+      try {
+        const purged = await sweepAccountDeletions(env);
+        if (purged.advanced || purged.stalled) {
+          console.log(
+            `[deletion] advanced=${purged.advanced} completed=${purged.completed} ` +
+              `stalled=${purged.stalled}`,
+          );
+        }
+      } catch (err) {
+        console.error(`[deletion] ${String(err)}`);
       }
       /* Liveness. Work waiting while nothing finishes is the shape of every
          wedge this system has had, whatever the cause — a paused browser
