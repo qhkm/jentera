@@ -380,7 +380,7 @@ door's refusal to admit an address exists."
 - Test: `worker/test/account-deletion-request.test.ts` (extend)
 
 **Interfaces:**
-- Consumes: Task 1's schema; `withTenant`, `withUser` from `../db`; `publishRuntimeTask(env, businessId, { kind, dedupeKey })`; `sendNotice(env, email, subject, text)`.
+- Consumes: Task 1's schema; `withTenant`, `withUser` from `../db`; `sendNotice(env, email, subject, text)`; `mintToken()` and `hashToken()` from `../auth`; `originAllowed`, which this task moves from `routes/team.ts` into `request-guard.ts` as an export.
 - Produces:
   - `GRACE_DAYS = 7`
   - `requestDeletion(env, identity, confirmEmail): Promise<{ status: 200 } | { status: 403 | 409; err: string }>`
@@ -493,13 +493,16 @@ export async function externalIdentifiers(
 ): Promise<{ artifactKeys: string[]; spriteId: string | null; connectorIds: string[] }> {
   const artifacts = await tx<{ r2_key: string }[]>`
     select r2_key from artifact where business_id = ${businessId}`;
-  const runtimes = await tx<{ external_id: string | null }[]>`
-    select external_id from runtime where business_id = ${businessId}`;
+  /* agent_runtime, not `runtime`, and the sprite's identity is provider_name
+     (not null) with provider_id alongside it — there is no external_id
+     column (migration 012). */
+  const runtimes = await tx<{ provider_name: string; provider_id: string | null }[]>`
+    select provider_name, provider_id from agent_runtime where business_id = ${businessId}`;
   const connectors = await tx<{ id: string }[]>`
     select id from connection where business_id = ${businessId}`;
   return {
     artifactKeys: artifacts.map((a) => a.r2_key),
-    spriteId: runtimes[0]?.external_id ?? null,
+    spriteId: runtimes[0]?.provider_name ?? null,
     connectorIds: connectors.map((c) => c.id),
   };
 }
@@ -512,7 +515,6 @@ export async function externalIdentifiers(
 import type { Env } from '../env';
 import type { Identity } from '../auth';
 import { withTenant } from '../db';
-import { publishRuntimeTask } from '../runtime/consumer';
 import { GRACE_DAYS, deletionConsequences, externalIdentifiers } from './store';
 
 export type RequestResult = { status: 200; routines: number } | { status: 403 | 409; err: string };
@@ -565,16 +567,11 @@ export async function requestDeletion(
     return { status: 200, routines };
   });
 
-  if (outcome.status !== 200) return outcome;
-
-  /* Outside the transaction, always: nothing is sent or queued from inside
-     one. Stopped rather than destroyed — the sprite holds Hermes memory and
-     the cancel path has to be honest about what comes back. */
-  await publishRuntimeTask(env, businessId, {
-    kind: 'stop',
-    dedupeKey: `stop:deletion:${identity.userId}`,
-  });
-
+  /* Nothing is queued here. `stop` is not a runtime task kind, and the sprite
+     does not need one: every session was just revoked, so nothing will wake
+     it, and providers sleep on their own. The spec requires only that it is
+     not DESTROYED during grace — the purge destroys it, through the `delete`
+     task that already exists. */
   return outcome;
 }
 ```
