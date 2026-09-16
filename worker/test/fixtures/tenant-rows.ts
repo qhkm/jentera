@@ -179,6 +179,20 @@ export const TENANT_FIXTURES: Record<
     await sql`insert into workspace (business_id, name, created_by)
               values (${businessId}, 'Fixture workspace', ${userId})`;
   },
+  /* Only reachable from `business` through the composite
+     `(business_id, workspace_id) references workspace(business_id, id)`
+     FK (migrations/036_workspace.sql) — no direct FK to business at all.
+     Missing from the guard's discovery query until that query moved from
+     "has a direct FK to business" to "has a business_id column"; self-
+     contained (creates its own workspace row) so it doesn't depend on the
+     `workspace` entry above having run first. */
+  workspace_member: async (sql, { businessId, userId }) => {
+    const [workspace] = await sql<{ id: string }[]>`
+      insert into workspace (business_id, name, created_by)
+      values (${businessId}, 'Fixture workspace for member', ${userId}) returning id`;
+    await sql`insert into workspace_member (business_id, workspace_id, user_id)
+              values (${businessId}, ${workspace.id}, ${userId})`;
+  },
   chat_session: async (sql, { businessId, userId }) => {
     await sql`insert into chat_session (id, business_id, created_by)
               values (${crypto.randomUUID()}, ${businessId}, ${userId})`;
@@ -186,6 +200,18 @@ export const TENANT_FIXTURES: Record<
   goal: async (sql, { businessId, userId }) => {
     await sql`insert into goal (business_id, created_by, title, success_criteria)
               values (${businessId}, ${userId}, 'Fixture goal', 'Fixture success criteria.')`;
+  },
+  /* Only reachable from `business` through the composite
+     `(business_id, goal_id) references goal(business_id, id)` FK
+     (migrations/049_goal_checkpoints.sql) — same shape as workspace_member
+     above, and self-contained for the same reason. */
+  goal_checkpoint: async (sql, { businessId, userId }) => {
+    const [goal] = await sql<{ id: string }[]>`
+      insert into goal (business_id, created_by, title, success_criteria)
+      values (${businessId}, ${userId}, 'Fixture goal for checkpoint', 'Fixture success criteria.')
+      returning id`;
+    await sql`insert into goal_checkpoint (business_id, goal_id, title, position)
+              values (${businessId}, ${goal.id}, 'Fixture checkpoint', 0)`;
   },
   activation_milestone: async (sql, { businessId, userId }) => {
     await sql`insert into activation_milestone (business_id, user_id, kind)
