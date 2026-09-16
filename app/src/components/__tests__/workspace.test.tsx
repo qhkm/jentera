@@ -21,9 +21,9 @@ import MyBusinessView, { type BizTab } from '@/routes/views/MyBusinessView';
 import ActivityView from '@/routes/views/ActivityView';
 import { KEYS } from '@/lib/storage';
 
-function mount(children: ReactNode, { repo = new LocalRepository(), signedIn = true } = {}) {
+function mount(children: ReactNode, { repo = new LocalRepository(), signedIn = true, email = null as string | null } = {}) {
   return render(
-    <SignedInProvider value={signedIn}>
+    <SignedInProvider value={signedIn} email={email}>
       <RepositoryProvider repository={repo}>
         <I18nProvider>
           <ToastProvider>
@@ -41,6 +41,29 @@ beforeEach(() => {
 });
 
 describe('account menu', () => {
+  it('shows the signed-in email under the account heading without adding a menu action', async () => {
+    const email = 'owner@business.example';
+    localStorage.setItem('aisar-email', 'previous@business.example');
+    mount(<AccountMenu onSignOut={vi.fn()} />, { email });
+    await userEvent.click(await screen.findByRole('button', { name: 'Account menu' }));
+    expect(screen.getByText(email)).toHaveClass('account-menu-email');
+    expect(screen.getByText(email).parentElement).toHaveTextContent('Your account');
+    expect(screen.getByText(email).parentElement).toHaveClass('account-menu-heading');
+    expect(screen.queryByText('previous@business.example')).not.toBeInTheDocument();
+    expect(screen.getByRole('menu')).toHaveAccessibleDescription(email);
+    expect(screen.queryByRole('menuitem', { name: email })).not.toBeInTheDocument();
+  });
+
+  it('does not expose an email in demo preferences or invent one when it is missing', async () => {
+    const view = mount(<AccountMenu onSignOut={vi.fn()} />, { signedIn: false, email: 'previous@business.example' });
+    await userEvent.click(await screen.findByRole('button', { name: 'Workspace preferences' }));
+    expect(screen.queryByText('previous@business.example')).not.toBeInTheDocument();
+    view.unmount();
+    mount(<AccountMenu onSignOut={vi.fn()} />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Account menu' }));
+    expect(document.querySelector('.account-menu-email')).toBeNull();
+  });
+
   it('supports arrow navigation, Escape and outside dismissal', async () => {
     const user = userEvent.setup();
     mount(

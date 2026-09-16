@@ -73,6 +73,14 @@
   font-weight: 500;
   color: var(--text);
 }
+.account-menu-email {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
 .account-menu-item {
   display: flex;
   align-items: center;

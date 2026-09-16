@@ -13,7 +13,7 @@ import {
 import { useI18n } from '@/i18n/I18nProvider';
 import { useTheme } from '@/hooks/useTheme';
 import { useDetailLevel } from '@/hooks/useDetailLevel';
-import { useSignedIn } from '@/lib/repo/gate';
+import { useAccountEmail, useSignedIn } from '@/lib/repo/gate';
 import { useToast } from '@/components/Toast';
 import { usePwaInstall } from '@/pwa/install';
 import { usePushNotifications } from '@/pwa/push';
@@ -31,6 +31,7 @@ export function AccountMenu({
   const { theme, toggleTheme } = useTheme();
   const detail = useDetailLevel();
   const signedIn = useSignedIn();
+  const accountEmail = useAccountEmail();
   const toast = useToast();
   const install = usePwaInstall();
   const push = usePushNotifications();
@@ -164,12 +165,14 @@ export function AccountMenu({
           <div className="account-menu-heading">
             <span>Jentera</span>
             <strong>{t(signedIn ? 'account.title' : 'account.preferences')}</strong>
+            {accountEmail ? <p id={`${id}-email`} className="account-menu-email">{accountEmail}</p> : null}
           </div>
           <div
             ref={menu}
             id={`${id}-menu`}
             role="menu"
             aria-labelledby={`${id}-trigger`}
+            aria-describedby={accountEmail ? `${id}-email` : undefined}
             onKeyDown={handleKey}
           >
             <button

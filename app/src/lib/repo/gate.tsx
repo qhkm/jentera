@@ -31,6 +31,7 @@ type Chosen = {
   mode: 'local' | 'remote';
   /** Session user id when remote; null for the demo. */
   account: string | null;
+  email?: string | null;
 };
 
 /* `mode` was computed and then thrown away, so nothing downstream could
@@ -40,6 +41,7 @@ const SignedInContext = createContext(false);
 /* Which account this server-backed session belongs to. Per-browser state
    keyed by it (Ask history) stays private when accounts share a device. */
 const AccountContext = createContext<string | null>(null);
+const AccountEmailContext = createContext<string | null>(null);
 const RoutinesContext = createContext(false);
 /* Team is a plan. The flag says the Team tab may show; every team write is
    checked again by the routes. */
@@ -68,6 +70,7 @@ export function useTeamEnabled(): boolean {
 export function SignedInProvider({
   value,
   account = null,
+  email = null,
   routinesVersion,
   teamVersion,
   children,
@@ -75,6 +78,8 @@ export function SignedInProvider({
   value: boolean;
   /** The signed-in account's opaque id; omit for the demo. */
   account?: string | null;
+  /** Display identity from /api/me only; never browser storage or form input. */
+  email?: string | null;
   routinesVersion?: number;
   teamVersion?: number;
   children: ReactNode;
@@ -82,9 +87,11 @@ export function SignedInProvider({
   return (
     <SignedInContext.Provider value={value}>
       <AccountContext.Provider value={value ? account : null}>
-        <RoutinesContext.Provider value={value && routinesVersion === 1}>
-          <TeamContext.Provider value={value && teamVersion === 1}>{children}</TeamContext.Provider>
-        </RoutinesContext.Provider>
+        <AccountEmailContext.Provider value={value ? email : null}>
+          <RoutinesContext.Provider value={value && routinesVersion === 1}>
+            <TeamContext.Provider value={value && teamVersion === 1}>{children}</TeamContext.Provider>
+          </RoutinesContext.Provider>
+        </AccountEmailContext.Provider>
       </AccountContext.Provider>
     </SignedInContext.Provider>
   );
@@ -97,6 +104,11 @@ export function SignedInProvider({
  */
 export function useAccountKey(): string | null {
   return useContext(AccountContext);
+}
+
+/** Signed-in email for display only; null for the demo or a missing identity. */
+export function useAccountEmail(): string | null {
+  return useContext(AccountEmailContext);
 }
 
 /**
@@ -174,6 +186,7 @@ async function choose(): Promise<Chosen> {
     repo: remote,
     mode: 'remote',
     account: typeof me?.userId === 'string' && me.userId ? me.userId : null,
+    email: typeof me?.email === 'string' && me.email.trim() ? me.email.trim() : null,
     routinesVersion: me?.features?.routines?.apiVersion,
     teamVersion: me?.features?.team?.apiVersion,
   };
@@ -207,7 +220,7 @@ export function RepositoryGate({ children }: { children: ReactNode }) {
   }
 
   return (
-    <SignedInProvider value={chosen.mode === 'remote'} account={chosen.account} routinesVersion={chosen.routinesVersion} teamVersion={chosen.teamVersion}>
+    <SignedInProvider value={chosen.mode === 'remote'} account={chosen.account} email={chosen.email} routinesVersion={chosen.routinesVersion} teamVersion={chosen.teamVersion}>
       <RepositoryProvider repository={chosen.repo}>{children}</RepositoryProvider>
     </SignedInProvider>
   );

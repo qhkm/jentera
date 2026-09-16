@@ -75,6 +75,45 @@ describe('RepositoryGate session transitions', () => {
 
     expect(await screen.findByText('signed in as user-77')).toBeInTheDocument();
   });
+
+  it('passes the server-confirmed email without a second identity request', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(json({ ok: true, userId: 'user-77', email: 'owner@business.example' }))
+      .mockResolvedValueOnce(json({ snapshot: { onboarded: true } }));
+    vi.stubGlobal('fetch', fetch);
+    localStorage.setItem('aisar-email', 'previous@business.example');
+    const { RepositoryGate, useAccountEmail } = await import('@/lib/repo/gate');
+    function Probe() { return <p>{useAccountEmail() ?? 'no signed-in email'}</p>; }
+    render(<RepositoryGate><Probe /></RepositoryGate>);
+    expect(await screen.findByText('owner@business.example')).toBeInTheDocument();
+    expect(screen.queryByText('previous@business.example')).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('discards the email if sign-out races the state load', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(json({ ok: true, userId: 'user-77', email: 'owner@business.example' }))
+      .mockResolvedValueOnce(json({ err: 'not signed in' }, 401));
+    vi.stubGlobal('fetch', fetch);
+    const { RepositoryGate, useAccountEmail } = await import('@/lib/repo/gate');
+    function Probe() { return <p>{useAccountEmail() ?? 'no signed-in email'}</p>; }
+    render(<RepositoryGate><Probe /></RepositoryGate>);
+    expect(await screen.findByText('no signed-in email')).toBeInTheDocument();
+    expect(screen.queryByText('owner@business.example')).not.toBeInTheDocument();
+  });
+
+  it('updates the displayed identity on account changes and clears it when signed out', async () => {
+    const { SignedInProvider, useAccountEmail } = await import('@/lib/repo/gate');
+    function Probe() { return <p>{useAccountEmail() ?? 'no signed-in email'}</p>; }
+    const view = render(<SignedInProvider value email="first@business.example"><Probe /></SignedInProvider>);
+    expect(screen.getByText('first@business.example')).toBeInTheDocument();
+    view.rerender(<SignedInProvider value email="second@business.example"><Probe /></SignedInProvider>);
+    expect(screen.getByText('second@business.example')).toBeInTheDocument();
+    expect(screen.queryByText('first@business.example')).not.toBeInTheDocument();
+    view.rerender(<SignedInProvider value={false} email="second@business.example"><Probe /></SignedInProvider>);
+    expect(screen.getByText('no signed-in email')).toBeInTheDocument();
+    expect(screen.queryByText('second@business.example')).not.toBeInTheDocument();
+  });
 });
 
 function json(body: unknown, status = 200): Response {
