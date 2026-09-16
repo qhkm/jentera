@@ -5,7 +5,7 @@ import { requestDeletion } from '../account-deletion/request';
 import { GRACE_DAYS } from '../account-deletion/store';
 import { sendNotice } from '../email';
 import { hashToken, mintToken } from '../auth';
-import { withUser } from '../db';
+import { withUser, withTenant } from '../db';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -30,8 +30,11 @@ export async function handleAccount(
       return Response.redirect(`${env.APP_ORIGIN}/signin?error=restore-failed`, 302);
     }
     const id = await hashToken(presented);
-    const restored = await withUser(env, async (sql) => {
-      const rows = await sql<{ user_id: string; business_id: string | null; kind: string }[]>`
+
+    /* First, try the conditional UPDATE that guards single-use. This runs
+       outside a tenant transaction because account_deletion has no RLS. */
+    const record = await withUser(env, async (sql) => {
+      const rows = await sql<{ user_id: string; business_id: string | null }[]>`
         update account_deletion
            set cancelled_at = now()
          where cancel_token_id = ${id}
@@ -39,16 +42,29 @@ export async function handleAccount(
            and completed_at is null
            and stage = 'pending'
            and scheduled_for > now()
-        returning user_id, business_id, kind`;
-      if (rows.length === 0) return null;
-      const row = rows[0];
-      await sql`update app_user set deleted_at = null where id = ${row.user_id}`;
-      if (row.business_id) await sql`update business set deleted_at = null where id = ${row.business_id}`;
-      return row;
+        returning user_id, business_id`;
+      return rows.length === 0 ? null : rows[0];
     });
-    if (!restored) {
+
+    if (!record) {
       return json({ ok: false, err: 'not found' }, { status: 404 }, cors);
     }
+
+    /* Now restore the user and business. Both updates must run inside a
+       tenant transaction because business has forced RLS. */
+    if (record.business_id) {
+      await withTenant(env, record.business_id, async (tx) => {
+        await tx`update app_user set deleted_at = null where id = ${record.user_id}`;
+        await tx`update business set deleted_at = null where id = ${record.business_id}`;
+      });
+    } else {
+      /* Staff deletion: no business to restore. Update the user outside a
+         tenant context. */
+      await withUser(env, async (sql) => {
+        await sql`update app_user set deleted_at = null where id = ${record.user_id}`;
+      });
+    }
+
     return Response.redirect(`${env.APP_ORIGIN}/signin?restored=1`, 302);
   }
 

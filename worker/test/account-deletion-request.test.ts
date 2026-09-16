@@ -4,6 +4,7 @@ import { asOwner, asTenant, testEnv, truncateAll, req } from './harness';
 import { requestDeletion } from '../src/account-deletion/request';
 import { handleAccount } from '../src/routes/account';
 import { hashToken } from '../src/auth';
+import { GRACE_DAYS } from '../src/account-deletion/store';
 import type { Identity } from '../src/auth';
 
 beforeEach(async () => {
@@ -192,14 +193,16 @@ async function requestDeletionWithToken(
   env: import('../src/env').Env,
   identity: Identity,
   tokenValue: string,
+  opts: { stage?: string } = {},
 ): Promise<void> {
   const tokenId = await hashToken(tokenValue);
+  const stage = opts.stage ?? 'pending';
   await asOwner(async (owner) => {
     await owner`update app_user set deleted_at = now() where id = ${identity.userId}`;
     await owner`update business set deleted_at = now() where id = ${identity.businessId}`;
     await owner`
       insert into account_deletion (user_id, business_id, email, kind, cancel_token_id, stage, scheduled_for, sprite_id)
-      values (${identity.userId}, ${identity.businessId}, ${identity.email}, 'owner', ${tokenId}, 'pending', now() + interval '7 days', 'test-sprite')`;
+      values (${identity.userId}, ${identity.businessId}, ${identity.email}, 'owner', ${tokenId}, ${stage}, now() + ${`${GRACE_DAYS} days`}::interval, 'test-sprite')`;
   });
 }
 
@@ -214,11 +217,15 @@ describe('cancelling during grace', () => {
     const first = await handleAccount(firstReq, env, firstUrl, {});
     expect(first!.status).toBe(302);
 
+    // Verify both user and business deleted_at are cleared
     await asTenant(businessId, async (tx) => {
       const [user] = await tx`select deleted_at from app_user where id = ${identity.userId}`;
+      const [business] = await tx`select deleted_at from business where id = ${businessId}`;
       expect(user.deleted_at).toBeNull();
+      expect(business.deleted_at).toBeNull();
     });
 
+    // Second use must fail
     const { request: secondReq, url: secondUrl } = req('GET', `/api/account/restore?token=${tokenValue}`);
     const second = await handleAccount(secondReq, env, secondUrl, {});
     expect(second!.status).toBe(404);
@@ -236,5 +243,28 @@ describe('cancelling during grace', () => {
     const { request, url } = req('GET', `/api/account/restore?token=${tokenValue}`);
     const response = await handleAccount(request, env, url, {});
     expect(response!.status).toBe(404);
+
+    // Verify nothing was cleared
+    await asTenant(businessId, async (tx) => {
+      const [user] = await tx`select deleted_at from app_user where id = ${identity.userId}`;
+      expect(user.deleted_at).not.toBeNull();
+    });
+  });
+
+  it('refuses when stage is not pending', async () => {
+    const env = testEnv();
+    const { identity, businessId } = await asOwner(async (owner) => seedTeam(owner, { members: 0 }));
+    const tokenValue = 'stage-not-pending-1234567890';
+    await requestDeletionWithToken(env, identity, tokenValue, { stage: 'objects' });
+
+    const { request, url } = req('GET', `/api/account/restore?token=${tokenValue}`);
+    const response = await handleAccount(request, env, url, {});
+    expect(response!.status).toBe(404);
+
+    // Verify nothing was cleared
+    await asTenant(businessId, async (tx) => {
+      const [user] = await tx`select deleted_at from app_user where id = ${identity.userId}`;
+      expect(user.deleted_at).not.toBeNull();
+    });
   });
 });
