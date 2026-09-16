@@ -8,7 +8,7 @@
    @layer components !important override the static site carries.
    ============================================================ */
 
-import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode, Ref } from 'react';
 import type { Tone } from '@/lib/types';
 import { DataIcon } from '@/components/Icon';
 import { JenteraMark } from '@/components/JenteraMark';
@@ -25,6 +25,7 @@ type ButtonVariant = 'primary' | 'outline' | 'ghost' | 'reco';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
+  ref?: Ref<HTMLButtonElement>;
 }
 
 const BUTTON_VARIANT: Record<ButtonVariant, string> = {

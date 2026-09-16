@@ -65,6 +65,15 @@ Task details read the existing tenant-scoped run endpoint, independently of the
 50 most recent Activity records, and refresh every three seconds while pending.
 Switching modes preserves the selected task and the current chat draft.
 
+Task results use Chat's restricted Markdown renderer for bold text, lists,
+inline/fenced code, tables and validated web links; model HTML is never rendered.
+A finished private response for the exact run can display the existing Google
+Calendar setup card instead of its `jentera-connect` block. This is only a
+fixed-route setup shortcut, not a connection grant or event approval. Pending,
+failed and shared-review replies cannot offer that action, and quoted or invalid
+blocks remain literal formatted text. Returning task context to Chat omits a
+successfully parsed setup block rather than copying it into the user's draft.
+
 The frontend retains accepted run IDs through reply failures so the owner can
 check the existing task before sending another request. Completed and failed
 reply links survive refresh in the same account-scoped chat storage; in-flight
@@ -117,6 +126,27 @@ Verified against mocked responses: owner/staff, missing discovery, review,
 pause/resume availability, idempotent retry, revision conflicts, result links,
 pagination and errors. Browser checks cover 1440/1024/390/320px, dark/light,
 EN/BM, 15px body and 16px inputs, plus the existing public/onboarding routes.
+
+### Connector directory
+
+Library → Connectors, My Business → Connections, and public `/connect` share
+the catalogue in `src/lib/data/connectors.ts`, presented by
+`src/lib/connector-catalogue.ts` and `ConnectorCard`. The directory uses a
+responsive grid with name/category search and availability filters. Business
+directory actions jump to its existing setup cards rather than duplicating forms.
+
+Calendar keeps its existing `google` ID and is labelled Pilot while Google
+permission verification is pending. Gmail, Drive, Sheets, Docs, Slides,
+Contacts and Tasks are planned entries, not implemented integrations; their
+scopes are empty. Planned entries cannot open credential forms or claim to be
+connected, including from stale connection rows or a token catalogue entry.
+The real live-connector allowlist and backend permissions remain unchanged.
+
+Telegram’s “Check connection” is read-only and only runs when requested.
+Telegram and Calendar disconnect controls require explicit confirmation, explain
+what stops, preserve rows on failure, and support Cancel/Escape with focus return.
+`scripts/check-connectors.mjs` checks fictional account fixtures at 320/390/768/1440px,
+including EN/BM, dark/light, core routes and absence of provider calls.
 
 ## Installing as an app
 

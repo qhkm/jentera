@@ -7,10 +7,9 @@
    one "Connected" when connecting it does nothing, which is what the
    toggle did: it wrote a name into a list and turned the tag green.
 
-   `worker/src/connectors.ts` is the authority, and it says plainly
-   that every execute body but one is a stub pending OAuth app
-   registrations. This mirrors that, and the test beside it fails if
-   the two disagree.
+   Worker implementations and real owner-facing connection flows
+   are the authority. This mirrors them, and the test beside it fails
+   if they disagree. Availability here does not imply provider verification.
    ============================================================ */
 
 /**

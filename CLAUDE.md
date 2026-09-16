@@ -116,6 +116,23 @@ Two invariants hold the tenancy model up, and both are load-bearing:
   `app.business_id` that only `withTenant` sets. The predicates in route SQL
   are deliberate belt-and-braces, not the actual boundary.
 
+Every tenant table is deleted with its business, cascading — except
+`account_deletion` itself, which is deliberately `business_id … on delete
+set null` (migration 051). It has to outlive the row it is about: deleting
+the business is one stage of the purge, and the stages after it — freeing
+the R2 objects, destroying the Fly sprite — need the ids that were copied
+into this record *before* that delete ran, not a foreign key that would
+have carried them into the cascade and erased them along with everything
+else. `worker/test/tenant-cascade.test.ts` guards this: it discovers every
+`business_id`-bearing table from the catalog (not a maintained list, so a
+new one is caught automatically) and asserts each one reaches `business`
+by at least one fully-cascading FK path — `account_deletion` excluded from
+that discovery by name, and `session` (belongs to its user, not its
+business, and disappears when `app_user` cascades instead) excused by the
+same reasoning in the assertion itself. Anything else with no cascading
+path to `business` fails this test the moment it is added, before anyone
+finds out by hand that deleting an account left it behind.
+
 **Hyperdrive query caching is disabled on the `aisar-db` config, and must
 stay disabled.** It is on by default and caches plain SELECTs for ~60s.
 `verifySession`, `resolveTenant` and the password lookup all run outside a

@@ -16,6 +16,8 @@ import { useRepository } from '@/lib/repo';
 import type { Connection } from '@/lib/repo';
 import type { ConnectionsState } from '@/hooks/useConnections';
 import { trackActivation } from '@/lib/analytics';
+import { ConnectionActions } from '@/components/ConnectionActions';
+import { useT } from '@/i18n/I18nProvider';
 
 const STEPS = [
   'Open Telegram and message @BotFather',
@@ -32,8 +34,9 @@ function statusTone(c: Connection) {
 
 /* Rows come from the screen rather than from here, so the tab badge
    and this card cannot disagree about what is connected. */
-export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState, 'rows' | 'setRows'>) {
+export default function TelegramConnect({ rows, setRows, id }: Pick<ConnectionsState, 'rows' | 'setRows'> & { id?: string }) {
   const repo = useRepository();
+  const t = useT();
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState<string | null>(null);
@@ -65,6 +68,7 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
      one whose webhook is pointing at the wrong place — both look like
      silence. */
   async function check(id: string) {
+    if (checking !== null) return;
     setChecking(id);
     try {
       const h = await repo.connectionHealth(id);
@@ -89,6 +93,7 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
   }
 
   async function drop(id: string) {
+    if (disconnecting !== null) return;
     setDisconnecting(id);
     setError(null);
     try {
@@ -105,7 +110,7 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
   const telegram = (rows ?? []).filter((r) => r.connector === 'telegram');
 
   return (
-    <Card>
+    <Card id={id} tabIndex={id ? -1 : undefined}>
       <Eyebrow>Telegram</Eyebrow>
 
       {telegram.length > 0 ? (
@@ -122,7 +127,7 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
                     <span className="text-[12px] text-text-secondary">{c.lastError}</span>
                   )}
                   {health[c.id] && (
-                    <span className="text-[12px] text-text-secondary">{health[c.id]}</span>
+                    <span role="status" className="text-[12px] text-text-secondary">{health[c.id]}</span>
                   )}
                   {checking === c.id ? (
                     <span role="status" className="text-[12px] text-text-secondary">
@@ -164,38 +169,10 @@ export default function TelegramConnect({ rows, setRows }: Pick<ConnectionsState
                 </div>
               ) : null}
 
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                {confirmingDrop === c.id ? (
-                  <>
-                    <span className="w-full text-right text-[11px] text-text-muted">
-                      You will need the bot token to reconnect.
-                    </span>
-                    <Button
-                      variant="ghost"
-                      disabled={disconnecting === c.id}
-                      onClick={() => setConfirmingDrop(null)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      variant="outline"
-                      disabled={disconnecting === c.id}
-                      onClick={() => void drop(c.id)}
-                    >
-                      {disconnecting === c.id ? 'Disconnecting…' : 'Confirm disconnect'}
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button variant="ghost" onClick={() => void check(c.id)}>
-                      {checking === c.id ? 'Checking…' : 'Test'}
-                    </Button>
-                    <Button variant="ghost" onClick={() => setConfirmingDrop(c.id)}>
-                      Disconnect
-                    </Button>
-                  </>
-                )}
-              </div>
+              <ConnectionActions name="Telegram" confirming={confirmingDrop === c.id} checking={checking !== null} busy={disconnecting !== null}
+                explanation={t('connectors.disconnectTelegram')}
+                onCheck={() => void check(c.id)} onRequestDisconnect={() => setConfirmingDrop(c.id)}
+                onCancel={() => setConfirmingDrop(null)} onDisconnect={() => void drop(c.id)} />
             </div>
           ))}
         </div>

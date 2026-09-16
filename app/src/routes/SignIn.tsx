@@ -49,6 +49,13 @@ const ERRORS: Record<string, string> = {
     "That Google account has an unverified email address, so we cannot use it to sign in.",
   "google-unavailable":
     "Google sign-in is not available right now. Use your email instead.",
+  /* The two doors with no password are the two this message exists for.
+     Google arrives here through ?error=; the link door reads the same
+     sentence off the 409 body in sendLink below. */
+  "account-deleting":
+    "An account for this address is being deleted. Use the cancel link in the email we sent to keep it.",
+  "restore-failed":
+    "That cancel link could not be used. It may already have been followed, or the seven days may be up.",
 };
 
 function NativeSignIn() {
@@ -179,6 +186,11 @@ function BrowserSignIn() {
   }, [params]);
 
   const urlError = ERRORS[params.get("error") ?? ""] ?? null;
+  /* The cancel link in the deletion email lands back here. Following it is
+     the whole point of the email, so the page has to say it worked —
+     otherwise a person who changed their mind sees an ordinary sign-in form
+     and no confirmation that their account survived. */
+  const restored = params.get("restored") === "1";
 
   async function submitPassword(e: React.FormEvent) {
     e.preventDefault();
@@ -274,13 +286,20 @@ function BrowserSignIn() {
           err?: string;
           code?: string;
         };
+        /* A 409 is the server telling this person something only it knows —
+           today, that the account is inside its deletion grace period and
+           how to keep it. Collapsing that into "could not send your link"
+           strands them for seven days, so the sentence is shown as sent,
+           the way the password door already does. */
         setError(
           response.status === 429
             ? "Too many attempts. Wait a minute and try again."
-            : body.code === "TURNSTILE"
-              ? (body.err ??
-                "Please complete the security check and try again.")
-              : "Could not send your sign-in link. Please try again.",
+            : response.status === 409 && body.err
+              ? body.err
+              : body.code === "TURNSTILE"
+                ? (body.err ??
+                  "Please complete the security check and try again.")
+                : "Could not send your sign-in link. Please try again.",
         );
         return;
       }
@@ -388,6 +407,12 @@ function BrowserSignIn() {
             {urlError ? (
               <p role="alert" className="mt-3 text-sm opacity-80">
                 {urlError}
+              </p>
+            ) : null}
+            {restored ? (
+              <p role="status" className="mt-3 text-sm text-brand">
+                Your account is no longer being deleted. Nothing was erased —
+                sign in to pick up where you left off.
               </p>
             ) : null}
             {inviteCode && <p role="status" className="mt-3 text-sm text-brand">Your exclusive invitation will continue after sign-in. Your trial starts only when you confirm.</p>}

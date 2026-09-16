@@ -263,6 +263,9 @@ describe('business profile', () => {
     mount(<Harness initialTab="connections" />, { repo });
     expect(await screen.findByRole('link', { name: 'Connect Google Calendar →' })).toBeVisible();
     expect(screen.getByText(/A draft is never added until/)).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Google Sheets' })).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Connect Google Calendar' })).toHaveAttribute('href', '#connection-google');
+    expect(screen.queryByRole('link', { name: 'Connect Google Sheets' })).toBeNull();
   });
 
   it('shows a failed Calendar callback on the actual Connections landing page', async () => {

@@ -10,6 +10,32 @@ Production at 19:20 MYT on 12 September: 13 of 13 runtimes ready on
 classifier miss, push outbox clean, one business on the team plan, no open
 invitations.
 
+## Before the account-deletion worker deploy
+
+Both migrations must be applied **before** the worker that needs them, and in
+this order. Without 051 the minute cron throws on a missing
+`account_deletion_due()` every sixty seconds and `DELETE /api/me` answers 500;
+without 052 a staff purge calls a function that does not exist. The test
+harness applies `migrations/` wholesale, so nothing in CI notices either gap.
+
+```bash
+cd worker
+AISAR_NEON_OWNER_URL='postgresql://neondb_owner:...@.../neondb?sslmode=require' \
+  pnpm db:migrate:account-deletion        # 051, first
+AISAR_NEON_OWNER_URL='postgresql://neondb_owner:...@.../neondb?sslmode=require' \
+  pnpm db:migrate:delete-member-routines  # 052, second
+```
+
+Each runs its migration transactionally against the reviewed owner target and
+verifies the objects it created before committing: 051 the table, index,
+`deleted_at` columns, grants and both definers; 052 the definer, its execute
+grant, and that `delete` on `routine` is still revoked from `aisar_app` — the
+premise the function exists for.
+
+| Item | Why | Done when |
+|---|---|---|
+| Apply 051 then 052 to production | The worker deploy is broken without them, and nothing in the suite catches it | Both scripts print `{"ok":true,...}`; `/api/health` stays green and the minute cron logs no `account_deletion_due` error |
+
 ## Shipped, never exercised on production
 
 | Item | Why | Done when |
@@ -74,3 +100,4 @@ Decided on 12 September to wait for a request before building. Reasoning in
 - 13 Sep — Installed app now looks for a release on every return to the foreground and hourly while open (`pwa/update-checks.ts`); the prompt still waits for a tap.
 - 13 Sep — Service worker cache header on jentera.ai: dropped, not fixed. Only `/sw.js` gets the zone's `max-age=14400`; HTML, manifest and offline page keep their `no-cache`, old deployments' assets still resolve, and browsers bypass the HTTP cache for a service worker's main script on every update check (`updateViaCache` defaults to `imports`). The header changes nothing a user can see. What delays a phone is the update prompt (`registerType: 'prompt'`) and the check cadence, not the cache.
 - 13 Sep — Real checkpoint ids on 12 of 13 rows, written by release 2026.09.13-4 (fix 51c844b). BoxCompute alone still says `Current`, and will until Fly clears its orphan `v31`.
+- 17 Sep — Account deletion ships end to end and closes the `docs/mobile-launch-checklist.md` §3 blocker: `DELETE /api/me` with typed-email confirmation (a password prompt is a dead end for the magic-link and Google doors), the grace-period restore link, the cron purge (`worker/src/account-deletion/purge.ts`), and the entry point in the app's account menu, which is the only place both stores require it to be reachable from. A deletion that keeps failing a stage stops retrying after 8 attempts (`GIVE_UP_AFTER`), sets `account_deletion.stage = 'stalled'` — which overwrites the stage that was actually failing, so `last_error` is what says which one — and emails `SIGNUP_NOTICE_TO`. Nothing un-stalls it automatically: an operator reads `last_error`, fixes what it named, then writes `stage` back to the real stage (never `'stalled'` — `account_deletion_due()` excludes that value on purpose) with `attempts = 0` and `next_attempt_at = now()`, over the same writable owner connection `docs/mobile-launch-checklist.md`'s device-revoke row uses (`psql "$(neonctl connection-string --role-name neondb_owner)"` — `stats.sh sql` cannot write). The next cron minute picks it back up. There is no admin route for this yet. Known gap, not yet closed: `login_token` is keyed by email, not `user_id`, so `app_user`'s cascade does not reach it and the purge does not clear it separately — an unconsumed magic-link row can outlive the account it named.

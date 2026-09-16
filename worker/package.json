@@ -37,6 +37,8 @@
     "db:migrate:goals": "node scripts/apply-goals.mjs",
     "db:migrate:goal-checkpoints": "node scripts/apply-goal-checkpoints.mjs",
     "db:migrate:vault-connection": "node scripts/apply-vault-connection.mjs",
+    "db:migrate:account-deletion": "node scripts/apply-account-deletion.mjs",
+    "db:migrate:delete-member-routines": "node scripts/apply-delete-member-routines.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import Connect from '@/routes/Connect';
+import { getConnectorCatalogue } from '@/lib/connector-catalogue';
 
 function mount() {
   return render(
@@ -17,11 +18,11 @@ describe('Jentera connections', () => {
     mount();
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Your familiar tools.');
     const rows = screen.getAllByRole('article');
-    expect(rows).toHaveLength(5);
+    expect(rows).toHaveLength(getConnectorCatalogue().length + 2);
     for (const row of rows) {
       const name = within(row).getByRole('heading').textContent;
-      const available = name === 'Web workspace' || name === 'Telegram' || name === 'Google Calendar';
-      expect(within(row).getByText(available ? 'Available now' : 'Planned')).toBeInTheDocument();
+      const available = name === 'Web workspace' || name === 'Telegram';
+      expect(within(row).getByText(name === 'Google Calendar' ? 'Pilot' : available ? 'Available now' : 'Planned')).toBeInTheDocument();
     }
     expect(screen.getByText(/review every event before it is added/i)).toBeInTheDocument();
     expect(screen.getByText(/automatic booking is not available yet/i)).toBeInTheDocument();
@@ -42,13 +43,29 @@ describe('Jentera connections', () => {
     expect(screen.getByRole('heading', { name: 'Google Calendar' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'WhatsApp' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Planned' }));
-    expect(screen.getAllByRole('article')).toHaveLength(2);
+    expect(screen.getAllByRole('article')).toHaveLength(getConnectorCatalogue().length - 1);
     expect(screen.getByRole('button', { name: 'Planned' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByRole('heading', { name: 'Telegram' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Google Calendar' })).not.toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('not available to connect yet');
     await user.click(screen.getByRole('button', { name: 'All connections' }));
-    expect(screen.getAllByRole('article')).toHaveLength(5);
+    expect(screen.getAllByRole('article')).toHaveLength(getConnectorCatalogue().length + 2);
+  });
+
+  it('uses the shared Google Workspace catalogue without offering planned authorisation', async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Category' }), 'google');
+    expect(screen.getAllByRole('article')).toHaveLength(8);
+    for (const row of screen.getAllByRole('article')) {
+      expect(within(row).queryByRole('button')).toBeNull();
+      expect(within(row).queryByRole('link')).toBeNull();
+    }
+    await user.type(screen.getByRole('searchbox'), 'Sheets');
+    expect(screen.getAllByRole('article')).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: 'Google Sheets' })).toBeVisible();
+    await user.type(screen.getByRole('searchbox'), 'xxx');
+    expect(screen.getByText(/No apps match/)).toBeVisible();
   });
 
 });

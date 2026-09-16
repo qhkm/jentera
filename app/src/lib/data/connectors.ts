@@ -70,6 +70,12 @@ export const CONNECTORS: Record<string, Connector> = {
   "google": {
     "n": "Google Calendar",
     "e": "📅",
+    "category": "google",
+    "availability": "pilot",
+    "description": {
+      "en": "Check your primary calendar and prepare new events. You review every event before it is added; automatic booking is not available yet. Google permission verification is pending.",
+      "bm": "Semak kalendar utama dan sediakan acara baharu. Anda menyemak setiap acara sebelum ia ditambah; tempahan automatik belum tersedia. Pengesahan kebenaran Google masih menunggu."
+    },
     "tier": "T1",
     "method": "oauth",
     "flow": "Google OAuth — explicit Calendar grant; new events require owner approval",
@@ -86,6 +92,76 @@ export const CONNECTORS: Record<string, Connector> = {
       "VN",
       "PH"
     ]
+  },
+  "gmail": {
+    "n": "Gmail", "e": "✉️", "tier": "T1", "method": "oauth",
+    "category": "google", "availability": "planned",
+    "flow": "Planned — no authorisation flow available", "scope": [],
+    "description": {
+      "en": "Planned: summarise email and prepare replies for your approval. No mailbox access is available yet.",
+      "bm": "Dirancang: ringkaskan e-mel dan sediakan balasan untuk kelulusan anda. Akses peti masuk belum tersedia."
+    },
+    "countries": ["MY", "ID", "SG", "TH", "VN", "PH"]
+  },
+  "google-drive": {
+    "n": "Google Drive", "e": "🗂️", "tier": "T1", "method": "oauth",
+    "category": "google", "availability": "planned",
+    "flow": "Planned — no authorisation flow available", "scope": [],
+    "description": {
+      "en": "Planned: work with files you choose to share. Connecting your Drive is not available yet.",
+      "bm": "Dirancang: bekerja dengan fail yang anda pilih untuk dikongsi. Sambungan Drive belum tersedia."
+    },
+    "countries": ["MY", "ID", "SG", "TH", "VN", "PH"]
+  },
+  "google-sheets": {
+    "n": "Google Sheets", "e": "📊", "tier": "T1", "method": "oauth",
+    "category": "google", "availability": "planned",
+    "flow": "Planned — no authorisation flow available", "scope": [],
+    "description": {
+      "en": "Planned: analyse spreadsheets and prepare updates. Direct Sheets access is not available yet.",
+      "bm": "Dirancang: analisis hamparan dan sediakan kemas kini. Akses terus ke Sheets belum tersedia."
+    },
+    "countries": ["MY", "ID", "SG", "TH", "VN", "PH"]
+  },
+  "google-docs": {
+    "n": "Google Docs", "e": "📝", "tier": "T1", "method": "oauth",
+    "category": "google", "availability": "planned",
+    "flow": "Planned — no authorisation flow available", "scope": [],
+    "description": {
+      "en": "Planned: draft and review documents in Google Docs. This connection is not available yet.",
+      "bm": "Dirancang: draf dan semak dokumen dalam Google Docs. Sambungan ini belum tersedia."
+    },
+    "countries": ["MY", "ID", "SG", "TH", "VN", "PH"]
+  },
+  "google-slides": {
+    "n": "Google Slides", "e": "📽️", "tier": "T1", "method": "oauth",
+    "category": "google", "availability": "planned",
+    "flow": "Planned — no authorisation flow available", "scope": [],
+    "description": {
+      "en": "Planned: prepare and review Google Slides. This connection is not available yet.",
+      "bm": "Dirancang: sediakan dan semak Google Slides. Sambungan ini belum tersedia."
+    },
+    "countries": ["MY", "ID", "SG", "TH", "VN", "PH"]
+  },
+  "google-contacts": {
+    "n": "Google Contacts", "e": "👥", "tier": "T1", "method": "oauth",
+    "category": "google", "availability": "planned",
+    "flow": "Planned for a later phase — no authorisation flow available", "scope": [],
+    "description": {
+      "en": "For a later phase: help organise contacts you permit Jentera to access. Not available yet.",
+      "bm": "Untuk fasa kemudian: bantu susun kenalan yang anda benarkan Jentera akses. Belum tersedia."
+    },
+    "countries": ["MY", "ID", "SG", "TH", "VN", "PH"]
+  },
+  "google-tasks": {
+    "n": "Google Tasks", "e": "✅", "tier": "T1", "method": "oauth",
+    "category": "google", "availability": "planned",
+    "flow": "Planned for a later phase — no authorisation flow available", "scope": [],
+    "description": {
+      "en": "For a later phase: prepare and organise your Google Tasks. Not available yet.",
+      "bm": "Untuk fasa kemudian: sediakan dan susun Google Tasks anda. Belum tersedia."
+    },
+    "countries": ["MY", "ID", "SG", "TH", "VN", "PH"]
   },
   "billplz": {
     "n": "Billplz",

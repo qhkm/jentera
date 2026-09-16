@@ -23,7 +23,7 @@ describe('the live list', () => {
   });
 
   it('contains nothing that is only a stub', () => {
-    for (const name of ['WhatsApp', 'Instagram', 'Google Sheets', 'Shopee']) {
+    for (const name of ['WhatsApp', 'Instagram', 'Gmail', 'Google Drive', 'Google Sheets', 'Google Docs', 'Google Slides', 'Google Contacts', 'Google Tasks', 'Shopee']) {
       expect(isLive(name), `${name} is not implemented`).toBe(false);
     }
   });

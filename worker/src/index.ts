@@ -39,8 +39,10 @@ import { handleReminders, dispatchDueReminders } from './reminders';
 import { handlePush } from './routes/push';
 import { handleArtifacts, RUNTIME_ARTIFACTS_PATH } from './routes/artifacts';
 import { sweepPushOutbox } from './push/outbox';
+import { sweepAccountDeletions } from './account-deletion/purge';
 import { handleNotifications } from './routes/notifications';
 import { handleTeam } from './routes/team';
+import { handleAccount } from './routes/account';
 import { handleWorkspaces } from './routes/workspaces';
 import { handleChats } from './routes/chats';
 import { handleAgentMemory } from './routes/agent-memory';
@@ -186,6 +188,8 @@ export default {
     /* The team: members and invitations. A plan, not a default. */
     const team = await handleTeam(request, env, url, headers);
     if (team) return team;
+    const account = await handleAccount(request, env, url, headers);
+    if (account) return account;
     const workspaces = await handleWorkspaces(request, env, url, headers);
     if (workspaces) return workspaces;
     const chatList = await handleChats(request, env, url, headers);
@@ -248,6 +252,19 @@ export default {
         }
       } catch (err) {
         console.error(`[push-outbox] ${String(err)}`);
+      }
+      /* Accounts whose grace period is over, one stage per tick. Nothing is
+         logged for a quiet minute, which is almost every minute. */
+      try {
+        const purged = await sweepAccountDeletions(env);
+        if (purged.advanced || purged.stalled) {
+          console.log(
+            `[deletion] advanced=${purged.advanced} completed=${purged.completed} ` +
+              `stalled=${purged.stalled}`,
+          );
+        }
+      } catch (err) {
+        console.error(`[deletion] ${String(err)}`);
       }
       /* Liveness. Work waiting while nothing finishes is the shape of every
          wedge this system has had, whatever the cause — a paused browser

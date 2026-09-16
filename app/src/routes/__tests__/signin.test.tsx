@@ -159,6 +159,74 @@ describe('sign-in experience', () => {
     },
   );
 
+  /* The confirmation for deletion is a typed address rather than a password
+     precisely because magic-link and Google accounts have no password — so
+     those two doors are the ones that must say an account is being deleted.
+     Both used to drop the message: the link door rendered "could not send",
+     the Google door rendered nothing at all. One test per door, asserting
+     what the page shows rather than what the API answered. */
+  it('names the cancel path when the link door refuses a deleting account', async () => {
+    const request = vi.fn().mockResolvedValue(
+      Response.json(
+        {
+          ok: false,
+          err: 'An account for this address is being deleted. Use the cancel link in the email we sent to keep it.',
+          code: 'ACCOUNT_DELETING',
+        },
+        { status: 409 },
+      ),
+    );
+    vi.stubGlobal('fetch', request);
+    const user = userEvent.setup();
+    mount();
+    await user.type(screen.getByLabelText('Email address'), 'owner@example.com');
+    await user.click(screen.getByRole('button', { name: /email me a link/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/being deleted/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/cancel link/i);
+    expect(screen.queryByRole('heading', { name: 'Check your inbox' })).not.toBeInTheDocument();
+  });
+
+  it.each(['signin', 'signup'] as const)(
+    'names the cancel path when the password %s door refuses a deleting account',
+    async (mode) => {
+      const request = vi.fn().mockResolvedValue(
+        Response.json(
+          {
+            ok: false,
+            err: 'An account for this address is being deleted. Use the cancel link in the email we sent to keep it.',
+            code: 'ACCOUNT_DELETING',
+          },
+          { status: 409 },
+        ),
+      );
+      vi.stubGlobal('fetch', request);
+      const user = userEvent.setup();
+      mount(mode === 'signup' ? '/signin?mode=signup' : '/signin');
+      await user.type(screen.getByLabelText('Email address'), 'owner@example.com');
+      await user.type(screen.getByLabelText('Password'), 'hunter2hunter2');
+      await user.click(
+        screen.getByRole('button', { name: mode === 'signup' ? 'Create account' : 'Sign in' }),
+      );
+      expect(await screen.findByRole('alert')).toHaveTextContent(/being deleted/i);
+    },
+  );
+
+  it('names the cancel path when Google bounces a deleting account back', () => {
+    mount('/signin?error=account-deleting');
+    expect(screen.getByRole('alert')).toHaveTextContent(/being deleted/i);
+    expect(screen.getByRole('alert')).toHaveTextContent(/cancel link/i);
+  });
+
+  it('says so when a cancel link could not be honoured', () => {
+    mount('/signin?error=restore-failed');
+    expect(screen.getByRole('alert')).toHaveTextContent(/cancel link/i);
+  });
+
+  it('confirms a cancelled deletion when the restore link lands here', () => {
+    mount('/signin?restored=1');
+    expect(screen.getByRole('status')).toHaveTextContent(/no longer being deleted/i);
+  });
+
   it('confirms a successful request without exposing account existence and allows correction', async () => {
     const request = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal('fetch', request);

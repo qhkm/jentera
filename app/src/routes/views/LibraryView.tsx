@@ -4,6 +4,7 @@ import { ConnectorOptions } from '@/components/ConnectorOptions';
 import { AUTOMATION_PLAYBOOKS } from '@/lib/routines/playbooks';
 import type { RoutineConfig } from '@/lib/routines/types';
 import type { ConnectionsState } from '@/hooks/useConnections';
+import { useT } from '@/i18n/I18nProvider';
 import '@/styles/routines.css';
 import '@/styles/library.css';
 
@@ -16,6 +17,7 @@ export default function LibraryView({ canSchedule, onUse, connections }: {
   connections: ConnectionsState;
 }) {
   const [params, setParams] = useSearchParams();
+  const t = useT();
   const tab = tabs.find(value => value === params.get('tab')) ?? 'playbooks';
   return <section className="library-view" aria-labelledby="library-title">
     <header><h1 id="library-title">Library</h1><p>Discover what Jentera can do. Your scheduled work stays in Routines.</p></header>
@@ -39,7 +41,7 @@ export default function LibraryView({ canSchedule, onUse, connections }: {
       })}</div>
     </section>}
     {tab === 'connectors' && <section aria-labelledby="connectors-title">
-      <h2 id="connectors-title">Connectors</h2><p className="library-description">Choose an app to connect. Only supported integrations can be connected; you stay in control of access.</p>
+      <h2 id="connectors-title">{t('connectors.title')}</h2><p className="library-description">{t('connectors.detail')}</p>
       <ConnectorOptions connections={connections} />
     </section>}
   </section>;

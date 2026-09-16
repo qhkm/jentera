@@ -14,6 +14,7 @@ import { isArtifact } from '@/lib/artifacts';
 import { RemoteRoutinesApi } from '@/lib/routines/api';
 import { nativeAuthorizationHeaders } from '@/lib/native';
 import type {
+  AccountDeletionRequested,
   BrowserCommand,
   BusinessBrowserState,
   Activity,
@@ -74,6 +75,9 @@ export interface MeResponse {
   /** Opaque account id from the session; scopes per-browser state such as
       Ask history so two accounts sharing a browser never see each other's. */
   userId?: string;
+  /** The signed-in address. Shown back to the owner as the thing they must
+      retype to delete the account — never sent anywhere else. */
+  email?: string;
 }
 
 /** No business yet — first sign-in, before the local state is migrated. */
@@ -750,6 +754,21 @@ export class RemoteRepository implements Repository {
     post('/api/runs/quality', { workId, quality });
 
   reset = () => post('/api/state/reset');
+
+  async requestAccountDeletion(email: string): Promise<AccountDeletionRequested> {
+    const body = await call<AccountDeletionRequested>('/api/me', {
+      method: 'DELETE',
+      body: JSON.stringify({ email }),
+    });
+    /* `noticeSent` is coerced rather than passed through: a worker on an
+       older release omits it, and `undefined` would read as "the email
+       failed" on a screen whose whole job is to say which happened. */
+    return {
+      graceDays: body.graceDays,
+      routines: body.routines,
+      noticeSent: body.noticeSent !== false,
+    };
+  }
 }
 
 async function pollAsk(runId: string, onProgress?: (event: AskProgressEvent) => void, deadline = Date.now() + 16 * 60 * 1_000, onPending?: () => void): Promise<AskAnswer> {

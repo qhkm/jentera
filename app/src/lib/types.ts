@@ -46,6 +46,10 @@ export interface Connector {
   /** what the agent is allowed to do once connected */
   scope: string[];
   countries: CountryCode[];
+  /** Catalogue labels only; never enable an integration or grant permission. */
+  availability?: 'planned' | 'pilot';
+  category?: 'google';
+  description?: Record<Lang, string>;
   meta?: boolean;
   fpga?: boolean;
   marketplace?: boolean;

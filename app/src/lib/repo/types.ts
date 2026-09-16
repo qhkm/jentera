@@ -535,6 +535,26 @@ export interface Repository {
   provisionRuntime(): Promise<void>;
 
   reset(): Promise<void>;
+
+  /** Ask the server to delete this account. Access ends at once; the data
+      is purged after the grace period. `email` is the address the owner
+      just typed to confirm — the server checks it matches their own. */
+  requestAccountDeletion(email: string): Promise<AccountDeletionRequested>;
+}
+
+/** What the server says once a deletion is scheduled — the only facts the
+    person has about what just happened to their account. */
+export interface AccountDeletionRequested {
+  /** Days before anything is erased. */
+  graceDays: number;
+  /** Scheduled jobs that will stop. The server's count, of jobs this
+      person created — the caller's own list is everything they can see,
+      which for a staff member is a larger and untrue number. */
+  routines: number;
+  /** Whether the cancel link actually reached their inbox. False is not a
+      failure of the deletion: it is scheduled either way, and this is the
+      difference between offering a way back and only claiming to. */
+  noticeSent: boolean;
 }
 
 /* ---- The team ---- */

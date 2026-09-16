@@ -503,6 +503,10 @@ export async function verifySession(env: Env, token: string): Promise<Identity |
 }
 
 /** Authentication only, for the access page and code redemption; never product routes. */
+/* deleted_at is checked here rather than at each route because this is the
+   only place a session becomes an identity. Access ends the moment
+   deletion is requested; the seven-day grace buys back the data, not the
+   way in — so a stolen phone cannot reverse the decision. */
 export async function verifyIdentitySession(env: Env, token: string): Promise<Identity | null> {
   const id = await hashToken(token);
   return withUser(env, async (sql) => {
@@ -523,6 +527,7 @@ export async function verifyIdentitySession(env: Env, token: string): Promise<Id
        where s.id = ${id}
          and s.revoked_at is null
          and s.expires_at > now()
+         and u.deleted_at is null
          and (${!restrictedAccess(env)} or u.email_verified = true)
        order by case m.role when 'owner' then 0 when 'staff' then 1 else 2 end,
                 m.business_id

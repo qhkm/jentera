@@ -21,6 +21,7 @@
   --text-secondary:  #b4b4b4;
   --text-muted:      #9b9b9b;
   --text-dim:        #a8a8a8;
+  --danger:          #ff6568;
   --accent:          #5a5a5a;
   --naive-accent:    #fff;
 
@@ -146,6 +147,7 @@ body.site-theme-light {
   /* #777 measured 4.26:1 on #fbf9f6 — just under AA for the 11px meta
      text it is used for. */
   --text-muted:        #6e6e6e;
+  --danger:            #b42331;
   --lp-warm:        #fff;
 
   background-color: var(--bg);
