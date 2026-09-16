@@ -7,6 +7,7 @@
    present, which is why that check happens before anything else.
    ============================================================ */
 
+import type postgres from 'postgres';
 import type { Env } from '../env';
 import { withTenant } from '../db';
 import { prewarmSprite } from '../runtime/prewarm';
@@ -434,32 +435,7 @@ export async function handleConnect(
       await withTenant(env, id.businessId, async (tx) => {
         const connection = await findConnectionById(tx, drop[1]);
         if (!connection) return;
-        /* Provider cleanup is best effort. The encrypted vault record is not:
-           report a transient failure rather than orphaning a credential the
-           owner believes was deleted. */
-        if (connection.connector === 'telegram') {
-          try {
-            await clearWebhook(await useTelegramCredential(
-              env, tx, id.businessId, connection.id,
-            ));
-          } catch { /* Telegram may already have revoked it. */ }
-          if (connection.vaultSecretId) {
-            const removed = await callVault<{ ok?: boolean }>(
-              env,
-              `/v1/secrets/${connection.vaultSecretId}?businessId=${encodeURIComponent(id.businessId)}`,
-              { method: 'DELETE' },
-            );
-            if (removed.status !== 200 && removed.status !== 404) throw new VaultUnavailable();
-          }
-        } else {
-          try {
-            const secret = await useCredential(env, tx, connection.id);
-            if (connection.connector === GOOGLE_CALENDAR_CONNECTOR) {
-              await revokeGoogleCalendar(env, secret);
-            }
-          } catch { /* Provider may already have revoked it. */ }
-        }
-        await removeConnection(tx, connection.id);
+        await revokeConnectionRow(env, tx, id.businessId, connection);
       });
     } catch (error) {
       if (error instanceof VaultUnavailable) {
@@ -471,6 +447,68 @@ export async function handleConnect(
   }
 
   return null;
+}
+
+/**
+ * Tell the provider to stop, then drop the row.
+ *
+ * Lifted verbatim out of the DELETE branch above so the account purge can
+ * revoke a departing business's connectors through the same calls rather
+ * than a second copy of them. Deliberately still inside the caller's tenant
+ * transaction, exactly where the route had it: moving the provider calls out
+ * would change when the row disappears relative to the provider being told,
+ * which is a behaviour change this extraction has no business making.
+ */
+async function revokeConnectionRow(
+  env: Env,
+  tx: postgres.TransactionSql,
+  businessId: string,
+  connection: ConnectionRow,
+): Promise<void> {
+  /* Provider cleanup is best effort. The encrypted vault record is not:
+     report a transient failure rather than orphaning a credential the
+     owner believes was deleted. */
+  if (connection.connector === 'telegram') {
+    try {
+      await clearWebhook(await useTelegramCredential(env, tx, businessId, connection.id));
+    } catch { /* Telegram may already have revoked it. */ }
+    if (connection.vaultSecretId) {
+      const removed = await callVault<{ ok?: boolean }>(
+        env,
+        `/v1/secrets/${connection.vaultSecretId}?businessId=${encodeURIComponent(businessId)}`,
+        { method: 'DELETE' },
+      );
+      if (removed.status !== 200 && removed.status !== 404) throw new VaultUnavailable();
+    }
+  } else {
+    try {
+      const secret = await useCredential(env, tx, connection.id);
+      if (connection.connector === GOOGLE_CALENDAR_CONNECTOR) {
+        await revokeGoogleCalendar(env, secret);
+      }
+    } catch { /* Provider may already have revoked it. */ }
+  }
+  await removeConnection(tx, connection.id);
+}
+
+/**
+ * Revoke one connection of a business that is being deleted.
+ *
+ * The purge has no request and no identity — the account it is acting for
+ * is already locked out — so it cannot go through the route. It gets the
+ * route's work instead. A connection that is already gone is not an error:
+ * the sweep retries whole stages, so every stage has to be repeatable.
+ */
+export async function revokeConnector(
+  env: Env,
+  businessId: string,
+  connectionId: string,
+): Promise<void> {
+  await withTenant(env, businessId, async (tx) => {
+    const connection = await findConnectionById(tx, connectionId);
+    if (!connection) return;
+    await revokeConnectionRow(env, tx, businessId, connection);
+  });
 }
 
 /* ---- incoming ---------------------------------------------------------- */
