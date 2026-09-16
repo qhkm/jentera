@@ -265,6 +265,8 @@ try {
         }
       }
       await sidebar.getByRole('button', { name: 'Home', exact: true }).click();
+      await content.locator('.home-view').waitFor({ state: 'visible' });
+      await page.evaluate(() => document.fonts.ready);
       await content.evaluate(node => { node.scrollTop = 180; });
       assert(await content.evaluate(node => node.scrollTop > 0), 'Long desktop content can scroll independently');
       const sidebarTop = await sidebar.evaluate(node => node.getBoundingClientRect().top);
