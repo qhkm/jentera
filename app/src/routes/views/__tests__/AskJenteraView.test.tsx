@@ -119,6 +119,31 @@ describe('compose-first Ask Jentera', () => {
     expect(openConnections).not.toHaveBeenCalled();
     expect(browser.mock.calls.every(([command]) => !command)).toBe(true);
   });
+  it('opens the same browser from an agent handoff card without sending, claiming, or losing a draft', async () => {
+    const user = userEvent.setup();
+    const repo = new LocalRepository();
+    const browser = vi.fn(async (_command?: BrowserCommand) => ({ enabled: true, paused: false }));
+    repo.businessBrowser = browser;
+    repo.ask = vi.fn().mockResolvedValue({ text: 'The site needs sign-in.\n```jentera-browser\n{"reason":"sign_in"}\n```',
+      runId: '11111111-1111-4111-8111-111111111111', grounded: false, usedKeys: [] });
+    const openConnections = vi.fn();
+    await mount(<Harness onOpenConnections={openConnections} />, repo);
+    await user.type(await screen.findByRole('textbox'), 'Check my browser session');
+    await user.click(screen.getByRole('button', { name: 'Send message' }));
+    const card = await screen.findByRole('region', { name: 'Sign in to continue' });
+    await user.type(screen.getByRole('textbox'), 'My follow-up draft');
+    await user.click(within(card).getByRole('button', { name: 'Open business browser' }));
+    expect(await screen.findByRole('heading', { name: 'Business browser' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Close browser view' }));
+    expect(screen.getByRole('textbox')).toHaveValue('My follow-up draft');
+    expect(browser.mock.calls.every(([command]) => !command)).toBe(true);
+    expect(repo.ask).toHaveBeenCalledOnce();
+    expect(openConnections).not.toHaveBeenCalled();
+    await user.click(within(document.querySelector('.ask-writing-pad') as HTMLElement).getByRole('button', { name: 'Open business browser' }));
+    expect(await screen.findByRole('heading', { name: 'Business browser' })).toBeVisible();
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: 'Close browser view' }));
+  });
   it('keeps the browser dialog mounted during takeover and never submits chat from browser forms', async () => {
     const user = userEvent.setup();
     const repo = new LocalRepository();

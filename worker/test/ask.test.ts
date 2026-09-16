@@ -336,6 +336,19 @@ describe('the durable Hermes agent request', () => {
     expect(prepared.input).toBe("what's latest today in tech?");
   });
 
+  it('requests browser sign-in inline without granting permission or requesting secrets', () => {
+    const prepared = prepareHermesAgent('Check my browser sign-in', [], [], new Date('2026-09-16T05:00:00.000Z'));
+    expect(prepared.instructions).toContain('code block tagged jentera-browser');
+    for (const reason of ['sign_in', 'mfa', 'user_action']) expect(prepared.instructions).toContain(`{"reason":"${reason}"}`);
+    expect(prepared.instructions).toContain('globe button in Chat');
+    expect(prepared.instructions).toContain('not approval for any external action');
+    expect(prepared.instructions).toContain('not for a missing Calendar or other connector');
+    expect(prepared.instructions).toContain('ask you to continue');
+    expect(prepared.instructions).toContain('verify access before');
+    expect(prepared.instructions).toContain('only through the narrow jentera-calendar command');
+    expect(prepared.instructions).not.toContain('→ Business browser, take control');
+  });
+
   it('gives Quick turns a bounded tool-efficiency contract', () => {
     const quick = prepareHermesAgent(
       'how bad is the haze today?', [], [], new Date('2026-09-16T01:00:00.000Z'),

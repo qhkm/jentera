@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { AskReply } from '@/components/AskReply';
 import { ToastProvider } from '@/components/Toast';
@@ -10,8 +10,9 @@ import { LocalRepository } from '@/lib/repo/local';
 import type { AskMessage } from '@/hooks/useAsk';
 
 const RUN = '11111111-1111-4111-8111-111111111111';
+beforeEach(() => localStorage.clear());
 
-function mount(message: AskMessage, repo = new LocalRepository()) {
+function mount(message: AskMessage, repo = new LocalRepository(), onOpenBusinessBrowser?: () => void) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <RepositoryProvider repository={repo}>
       <I18nProvider>
@@ -19,12 +20,66 @@ function mount(message: AskMessage, repo = new LocalRepository()) {
       </I18nProvider>
     </RepositoryProvider>
   );
-  return render(<AskReply message={message} onOpenActivity={() => {}} onRetry={() => {}} />, { wrapper });
+  return render(<AskReply message={message} onOpenActivity={() => {}} onRetry={() => {}} onOpenBusinessBrowser={onOpenBusinessBrowser} />, { wrapper });
 }
 
 /* Every reply used to become a task card. Conversation reads as a reply;
    only work, by request (deep) or by the server's verdict, gets the card. */
 describe('AskReply: conversation versus work', () => {
+  it.each([
+    ['sign_in', 'Sign in to continue'],
+    ['mfa', 'Complete verification'],
+    ['user_action', 'Your help is needed'],
+  ])('offers a browser viewer for a completed %s request, never taking control itself', async (reason, title) => {
+    const user = userEvent.setup();
+    const open = vi.fn();
+    const repo = new LocalRepository();
+    const browser = vi.spyOn(repo, 'businessBrowser');
+    const text = 'The website needs your help.\n```jentera-browser\n' + JSON.stringify({ reason }) + '\n```';
+    const view = mount({ from: 'ai', text, state: 'done', runId: RUN }, repo, open);
+    const card = await screen.findByRole('region', { name: title });
+    expect(card).toHaveTextContent('Hand back to Jentera');
+    expect(card).toHaveTextContent('never in Chat');
+    expect(view.container.textContent).not.toContain('jentera-browser');
+    expect(view.container.textContent).not.toContain('"reason"');
+    expect(open).not.toHaveBeenCalled();
+    await user.click(within(card).getByRole('button', { name: 'Open business browser' }));
+    expect(open).toHaveBeenCalledOnce();
+    expect(browser).not.toHaveBeenCalled();
+  });
+  it.each([true, false])('hides a %s-complete streamed handoff without showing an action', async complete => {
+    const text = 'Please sign in.\n```jentera-browser\n{"reason":"sign_in"}' + (complete ? '\n```' : '');
+    const view = mount({ from: 'ai', text, state: 'streaming', pendingId: 'p1', runId: RUN }, new LocalRepository(), vi.fn());
+    expect(await screen.findByText('Please sign in.')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Open business browser' })).toBeNull();
+    expect(view.container.textContent).not.toContain('jentera-browser');
+    expect(view.container.textContent).not.toContain('"reason"');
+  });
+  it('localizes the handoff and explicit hand-back instructions in Bahasa Malaysia', async () => {
+    const repo = new LocalRepository();
+    await repo.setLang('bm');
+    mount({ from: 'ai', state: 'done', runId: RUN, text: 'Sila log masuk.\n```jentera-browser\n{"reason":"sign_in"}\n```' }, repo, vi.fn());
+    const card = await screen.findByRole('region', { name: 'Log masuk untuk meneruskan' });
+    expect(within(card).getByRole('button', { name: 'Buka pelayar bisnes' })).toBeVisible();
+    expect(card).toHaveTextContent('Serah kembali kepada Jentera');
+    expect(card).toHaveTextContent('bukan dalam Chat');
+  });
+  it('does not offer an unusable viewer button when browser access is unavailable', async () => {
+    const view = mount({ from: 'ai', state: 'done', runId: RUN, text: 'Please sign in.\n```jentera-browser\n{"reason":"sign_in"}\n```' });
+    expect(await screen.findByText('Please sign in.')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Open business browser' })).toBeNull();
+    expect(view.container.textContent).not.toContain('jentera-browser');
+  });
+  it.each([
+    { state: 'failed' as const, failedQuestion: 'Open a site' },
+    { runId: undefined },
+    { from: 'you' as const },
+    { state: 'working' as const },
+  ])('does not offer handoff for a non-completed agent request: %j', async overrides => {
+    mount({ from: 'ai', state: 'done', runId: RUN, text: '```jentera-browser\n{"reason":"sign_in"}\n```', ...overrides }, new LocalRepository(), vi.fn());
+    await waitFor(() => expect(screen.getByRole('article', { name: 'Jentera' })).toBeVisible());
+    expect(screen.queryByRole('button', { name: 'Open business browser' })).toBeNull();
+  });
   it.each(['done', 'streaming'] as const)('hides internal markers in %s replies', async state => {
     const view = mount({ from: 'ai', text: '@step: Susun ringkasan dan sumber\n\nSiap boss.', state,
       ...(state === 'streaming' ? { pendingId: 'p1' } : {}) });

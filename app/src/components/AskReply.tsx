@@ -3,6 +3,8 @@ import { RuntimeApprovalCard } from './RuntimeApprovalCard';
 import { VaultApprovalCard } from './VaultApprovalCard';
 import { ReminderCard } from './ReminderCard';
 import { reminderProposal } from '@/lib/reminders';
+import { browserHandoff, hideStreamingBrowserHandoff } from '@/lib/browser-handoff';
+import { BrowserHandoffCard } from './BrowserHandoffCard';
 import { renderReplyMarkdown } from '@/lib/reply-markdown';
 import { ArrowUpRight, Check, Copy, Info, WarningCircle } from '@phosphor-icons/react';
 import { JenteraMark } from '@/components/JenteraMark';
@@ -54,10 +56,12 @@ export function AskReply({
   message,
   onRetry,
   onOpenActivity,
+  onOpenBusinessBrowser,
 }: {
   message: AskMessage;
   onRetry: () => void;
   onOpenActivity?: (runId?: string, title?: string) => void;
+  onOpenBusinessBrowser?: () => void;
 }) {
   const t = useT();
   const toast = useToast();
@@ -65,8 +69,11 @@ export function AskReply({
   const repo = useRepository();
   const proposal = !message.pendingId && message.state !== 'failed' ? reminderProposal(message.text, message.runId) : { text: message.text };
   const reminderDraft = proposal.draft ?? message.reminderDraft;
+  const handoff = message.from === 'ai' && message.state === 'done' && !message.pendingId && !message.failedQuestion
+    ? browserHandoff(proposal.text, message.runId)
+    : { text: proposal.text };
   // Also clean saved replies produced before the server-side marker fix.
-  const displayText = (message.pendingId ? message.text.replace(/```jentera-reminder[\s\S]*?(?:```|$)/g, '') : proposal.text)
+  const displayText = (message.pendingId ? hideStreamingBrowserHandoff(message.text.replace(/```jentera-reminder[\s\S]*?(?:```|$)/g, '')) : handoff.text)
     .replace(/(?:^|\n)\s*(?:[-*•>]\s*)?(?:\*\*|\*)?\s*@step:[*_]{0,2}[^\n]*/gi, '');
   const [recovered, setRecovered] = useState<Artifact[]>([]);
   const [filesChecked, setFilesChecked] = useState(false);
@@ -177,6 +184,7 @@ export function AskReply({
           <div className="ask-reply-text" role={failed ? 'alert' : undefined}>
             {renderReplyMarkdown(displayWorkspacePaths(displayText))}
           </div>
+          {handoff.reason && onOpenBusinessBrowser && <BrowserHandoffCard reason={handoff.reason} onOpen={onOpenBusinessBrowser} />}
           {files.length > 0 && <ArtifactList artifacts={files} inlineImages label={t('ask.files')} className="mt-3" />}
           {missingImages.length > 0 && <p className="task-recovery-note" role="status">Some images weren’t attached: {missingImages.join(', ')}. Ask Jentera to attach them again.</p>}
           {failed && linkedTask ? (

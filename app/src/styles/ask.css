@@ -863,6 +863,59 @@ button.ask-context-link:hover {
   white-space: nowrap;
 }
 
+/* Browser handoff is a viewer shortcut, not permission to act or auto-resume. */
+.ask-browser-handoff {
+  max-width: 620px;
+  margin-top: 14px;
+  gap: 12px;
+  border-color: var(--border-light);
+  background: var(--bg-card);
+}
+.ask-browser-handoff > header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.ask-browser-handoff-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 12px;
+  background: rgb(var(--accent-green-rgb) / .12);
+  color: var(--accent-green);
+}
+.ask-browser-handoff > header > div { min-width: 0; }
+.ask-browser-handoff > header p {
+  margin: 0 0 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.ask-browser-handoff h3 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.3;
+}
+.ask-browser-handoff-detail,
+.ask-browser-handoff-note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.ask-browser-handoff > button {
+  align-self: flex-start;
+  min-height: 44px;
+  gap: 8px;
+  white-space: normal;
+}
+.ask-browser-handoff > small {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 /* Reminder confirmation is a decision card, not another assistant essay. */
 .reminder-card {
   display: flex;

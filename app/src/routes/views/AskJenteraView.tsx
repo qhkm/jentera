@@ -301,6 +301,7 @@ export default function AskJenteraView({
                       }
                     }}
                     onOpenActivity={onOpenActivity}
+                    onOpenBusinessBrowser={signedIn ? () => setBrowserOpenRequest(n => n + 1) : undefined}
                   />
                 ),
               )}
