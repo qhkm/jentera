@@ -904,7 +904,8 @@ button.ask-context-link:hover {
   font-size: 13px;
   line-height: 1.5;
 }
-.ask-browser-handoff > button {
+.ask-browser-handoff > button,
+.ask-browser-handoff > a.btn {
   align-self: flex-start;
   min-height: 44px;
   gap: 8px;
@@ -914,6 +915,17 @@ button.ask-context-link:hover {
   color: var(--text-muted);
   font-size: 11px;
   line-height: 1.5;
+}
+.ask-calendar-connect-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ask-calendar-connect-actions > .btn {
+  min-height: 44px;
+  gap: 8px;
+  white-space: normal;
 }
 
 /* Reminder confirmation is a decision card, not another assistant essay. */

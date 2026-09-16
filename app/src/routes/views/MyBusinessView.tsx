@@ -8,7 +8,7 @@
    ============================================================ */
 
 import { useEffect, useId, useMemo, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import {
   ArrowRight,
   ArrowUpRight,
@@ -36,6 +36,7 @@ import PermissionsPanel from './PermissionsPanel';
 import KnowledgePanel from './KnowledgePanel';
 import { hasConfirmedValue, confirmedValue } from '@/lib/knowledge';
 import TelegramConnect from './TelegramConnect';
+import GoogleCalendarConnect from './GoogleCalendarConnect';
 import TokenConnect from './TokenConnect';
 import BusinessBrowser from './BusinessBrowser';
 import { isLive, withoutLinkClaim } from '@/lib/live-connectors';
@@ -71,6 +72,9 @@ export default function MyBusinessView({
   onTabChange?: (tab: BizTab) => void;
 }) {
   const [tab, setTab] = useState<BizTab>(initialTab);
+  const [searchParams] = useSearchParams();
+  const calendarFocus = searchParams.get('connector') === 'google'
+    || ['connected', 'failed', 'unavailable', 'session'].includes(searchParams.get('calendar') ?? '');
   const teamEnabled = useTeamEnabled();
   const t = useT();
   const toast = useToast();
@@ -547,7 +551,9 @@ export default function MyBusinessView({
               </Card>
             ) : (
               <>
+                {calendarFocus && signedIn && conns.mode === 'real' && <GoogleCalendarConnect rows={conns.rows} setRows={conns.setRows} />}
                 <TelegramConnect rows={conns.rows} setRows={conns.setRows} />
+                {!calendarFocus && signedIn && conns.mode === 'real' && <GoogleCalendarConnect rows={conns.rows} setRows={conns.setRows} />}
                 {/* Under the connections most owners use, not competing
                     with them: this one renders nothing unless the backend
                     offers something to connect. */}

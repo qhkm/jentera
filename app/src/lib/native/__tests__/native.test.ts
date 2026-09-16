@@ -6,6 +6,7 @@ import {
   nativeAuthorizationHeaders,
   nativePlatform,
   openArtifact,
+  openGoogleCalendarSetup,
   registerForPush,
   secureStore,
   signIn,
@@ -27,6 +28,7 @@ describe('native boundary', () => {
     await expect(registerForPush()).resolves.toBeNull();
     await expect(capturePhoto()).resolves.toBeNull();
     await expect(openArtifact('/api/artifacts/a1')).resolves.toBe(false);
+    await expect(openGoogleCalendarSetup()).resolves.toBeUndefined();
     await expect(secureStore.get('session')).resolves.toBeNull();
     await expect(secureStore.set('session', 'secret')).resolves.toBeUndefined();
     await expect(secureStore.remove('session')).resolves.toBeUndefined();
@@ -38,6 +40,20 @@ describe('native boundary', () => {
     });
     expect(isNative()).toBe(true);
     expect(nativePlatform()).toBe(platform);
+  });
+
+  it.each(['ios', 'android'])('opens only public Calendar setup with the %s system-browser plugin', async platform => {
+    const open = vi.fn(async () => undefined);
+    const read = vi.fn();
+    Object.assign(globalThis, { Capacitor: {
+      isNativePlatform: () => true, getPlatform: () => platform,
+      Plugins: { Browser: { open }, SecureStorage: { internalGetItem: read } },
+    } });
+    await openGoogleCalendarSetup();
+    expect(open).toHaveBeenCalledWith({
+      url: 'https://jentera.ai/app?view=business&tab=connections&connector=google', toolbarColor: '#242c29',
+    });
+    expect(read).not.toHaveBeenCalled();
   });
 
   it('keeps the bearer in the native secure-storage plugin', async () => {
@@ -103,6 +119,7 @@ describe('native boundary', () => {
       Capacitor: { isNativePlatform: () => true, getPlatform: () => 'ios' },
     });
     await expect(signIn()).rejects.toBeInstanceOf(NativeCapabilityUnavailableError);
+    await expect(openGoogleCalendarSetup()).rejects.toBeInstanceOf(NativeCapabilityUnavailableError);
     await expect(secureStore.set('session', 'secret')).rejects.toBeInstanceOf(NativeCapabilityUnavailableError);
   });
 });

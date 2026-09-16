@@ -99,3 +99,59 @@ The synthetic Chrome smoke covers 320px/390px phones, desktop, short landscape,
 and light theme, checking footer visibility, coordinate projection after zoom,
 no overflow, and all original control/secret handling invariants. Before/after
 screenshots remain local test artifacts, not customer browser captures.
+
+## Google Calendar: supported OAuth instead of cloud-browser login
+
+A real Google sign-in attempt returned “This browser or app may not be secure”.
+The runner launches automation-controlled headless Chromium; Google's supported
+browser guidance explicitly permits blocking software-automated sign-ins. Owner
+takeover does not remove those browser characteristics. The warning is a provider
+sign-in restriction, not evidence by itself of a breach. Synthetic viewer tests
+do not validate real third-party login compatibility.
+
+Calendar setup now uses a separate display-only `jentera-connect` protocol with
+exactly `{"connector":"google_calendar"}` in one top-level fenced block. Only a
+finished agent reply with a durable run ID renders the localized Calendar card.
+URLs, scopes, credentials, arbitrary connectors, duplicate markers and quoted or
+nested examples cannot choose an action. Streamed blocks remain hidden. If a
+reply erroneously also requests a browser handoff, Calendar setup takes priority.
+
+The inline **Connect Google Calendar** link opens the existing authenticated OAuth
+start route in a normal browser tab, preserving the Chat draft. **Copy setup link**
+copies only the fixed public My Business → Connections URL, never an OAuth callback,
+authorization code, native bearer, or customer credential. A person opening it on
+another device signs into Jentera separately, then connects Calendar. Google returns
+to the existing callback directly; nothing is pasted into Chat.
+
+Native connect/reconnect uses the existing OS-browser plugin to open that same
+public setup page, not the privileged WebView or an unauthenticated API URL.
+Missing browser capability fails closed with recovery instructions. Native bearer
+credentials are not read or forwarded. My Business → Connections now actually
+renders the existing Google Calendar setup panel (previously present only in
+Library), making both copied links and callback outcomes usable. Calendar-focused
+setup links and callback outcomes place this panel first, above Telegram setup.
+A successful
+URL outcome alone cannot claim a connection without a connected repository row.
+
+The worker directs user-requested Calendar setup and missing/revoked Calendar grants
+to this card, and prohibits Google sign-in/MFA browser handoffs, automation disguise,
+password/code requests and cookie transfer. Other Google services require their own
+supported connectors. Calendar access does not create a Google cloud-browser session.
+An explicit follow-up and connector verification are required; connection never
+approves an event or automatically resumes a task. Existing PKCE/state/session checks,
+encrypted token storage, scope allowlist, and per-event approval remain unchanged.
+
+Requires frontend then worker release. No runtime/vault pins, database migrations,
+new credential providers, or Google protection bypasses are introduced. Google's
+OAuth client configuration/consent/verification still needs a real owner login test.
+
+Verification: all 800 frontend tests (93 files) pass; worker request/prompt tests
+(38) and worker typecheck pass. The real-Chrome synthetic smoke passes five
+phone/desktop/landscape/theme cases plus `/`, `/onboard`, `/setup`, and `/app`.
+It covers the public copy link, user-click-only OAuth start in a separate tab,
+Calendar-first denied-grant return, no browser claim/release or Chat submission
+from setup, and unchanged handoff/secret handling. No real Google grant or event
+is used. Local screenshots can be generated with `CHECK_OUTPUT_DIR` as above.
+
+References: [supported browsers](https://support.google.com/accounts/answer/7675428),
+[Google OAuth policies](https://developers.google.com/identity/protocols/oauth2/policies).

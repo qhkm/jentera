@@ -238,9 +238,9 @@ describe('past chats', () => {
 });
 
 describe('business profile', () => {
-  function Harness({ initialTab = 'profile' }: { initialTab?: BizTab }) {
+  function Harness({ initialTab = 'profile', initialUrl = '/app' }: { initialTab?: BizTab; initialUrl?: string }) {
     return (
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[initialUrl]}>
         <MyBusinessView
           b={useBusiness()}
           initialTab={initialTab}
@@ -256,6 +256,39 @@ describe('business profile', () => {
       </MemoryRouter>
     );
   }
+
+  it('makes Google Calendar setup visible in the Connections destination used by Chat and OAuth callbacks', async () => {
+    const repo = new LocalRepository();
+    await repo.setBizType('restaurant');
+    mount(<Harness initialTab="connections" />, { repo });
+    expect(await screen.findByRole('link', { name: 'Connect Google Calendar →' })).toBeVisible();
+    expect(screen.getByText(/A draft is never added until/)).toBeVisible();
+  });
+
+  it('shows a failed Calendar callback on the actual Connections landing page', async () => {
+    const repo = new LocalRepository();
+    await repo.setBizType('restaurant');
+    mount(<Harness initialTab="connections" initialUrl="/app?view=business&tab=connections&calendar=failed" />, { repo });
+    expect(await screen.findByText('Google did not complete the connection. Please try again.')).toBeVisible();
+    const panel = screen.getByRole('tabpanel');
+    expect(within(panel).getByRole('link', { name: 'Connect Google Calendar →' }).closest('.card')).toBe(panel.querySelector('.card'));
+  });
+
+  it('places Calendar setup first for a copied phone setup link', async () => {
+    const repo = new LocalRepository();
+    await repo.setBizType('restaurant');
+    mount(<Harness initialTab="connections" initialUrl="/app?view=business&tab=connections&connector=google" />, { repo });
+    const link = await screen.findByRole('link', { name: 'Connect Google Calendar →' });
+    expect(link.closest('.card')).toBe(screen.getByRole('tabpanel').querySelector('.card'));
+  });
+
+  it('does not claim Calendar is connected just because a URL says so', async () => {
+    const repo = new LocalRepository();
+    await repo.setBizType('restaurant');
+    mount(<Harness initialTab="connections" initialUrl="/app?view=business&tab=connections&calendar=connected" />, { repo });
+    expect(await screen.findByRole('link', { name: 'Connect Google Calendar →' })).toBeVisible();
+    expect(screen.queryByText('Google Calendar connected.')).toBeNull();
+  });
 
   it('prevents empty names and cancels edits without submitting them', async () => {
     const repo = new LocalRepository();

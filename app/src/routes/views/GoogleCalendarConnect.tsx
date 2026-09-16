@@ -4,8 +4,7 @@ import { Button, Card, Eyebrow, Tag } from '@/components/ui';
 import { useRepository } from '@/lib/repo';
 import type { ConnectionsState } from '@/hooks/useConnections';
 import { isNative } from '@/lib/native';
-
-const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+import { GoogleCalendarConnectionLink } from '@/components/GoogleCalendarConnectionLink';
 
 export default function GoogleCalendarConnect({
   rows,
@@ -46,7 +45,7 @@ export default function GoogleCalendarConnect({
       {outcome === 'failed' && <p role="alert" className="text-[13px] text-text-secondary">Google did not complete the connection. Please try again.</p>}
       {outcome === 'unavailable' && <p role="alert" className="text-[13px] text-text-secondary">Google Calendar is not configured for this Jentera environment yet.</p>}
       {outcome === 'session' && <p role="alert" className="text-[13px] text-text-secondary">Your session changed during connection. Sign in again, then retry.</p>}
-      {outcome === 'connected' && <p role="status" className="text-[13px] text-brand">Google Calendar connected.</p>}
+      {outcome === 'connected' && calendars.some(calendar => calendar.status === 'connected') && <p role="status" className="text-[13px] text-brand">Google Calendar connected.</p>}
 
       {calendars.length ? (
         <ul className="flex flex-col gap-3">
@@ -66,9 +65,9 @@ export default function GoogleCalendarConnect({
               {calendar.lastError && <p className="text-[12px] text-text-secondary">{calendar.lastError}</p>}
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {calendar.status !== 'connected' && !confirming && (
-                  <a className="btn btn-primary inline-flex" href={`${API}/api/connections/google-calendar/start`}>
+                  <GoogleCalendarConnectionLink className="btn btn-primary inline-flex" newTab={false}>
                     Reconnect
-                  </a>
+                  </GoogleCalendarConnectionLink>
                 )}
                 {confirming === calendar.id ? (
                   <>
@@ -93,9 +92,9 @@ export default function GoogleCalendarConnect({
             Connect Calendar at jentera.ai in your phone&rsquo;s browser. Google does not allow account
             authorisation inside an embedded app browser.
           </p>
-          <a className="btn btn-outline mt-3 inline-flex" href="https://jentera.ai/app?view=business&tab=connections" target="_blank" rel="noreferrer">
+          <GoogleCalendarConnectionLink className="btn btn-outline mt-3 inline-flex">
             Open jentera.ai →
-          </a>
+          </GoogleCalendarConnectionLink>
         </div>
       ) : (
         <div className="flex flex-col gap-3">
@@ -105,9 +104,9 @@ export default function GoogleCalendarConnect({
             <li>Require your approval before every event is added</li>
           </ul>
           <div>
-            <a className="btn btn-primary inline-flex" href={`${API}/api/connections/google-calendar/start`}>
+            <GoogleCalendarConnectionLink className="btn btn-primary inline-flex" newTab={false}>
               Connect Google Calendar →
-            </a>
+            </GoogleCalendarConnectionLink>
           </div>
           <p className="text-[11px] text-text-muted">
             Google will show the exact Calendar permission before you agree. Jentera stores the

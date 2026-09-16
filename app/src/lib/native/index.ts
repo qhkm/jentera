@@ -60,6 +60,7 @@ interface CapacitorBridge {
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 const WEB_SIGN_IN = 'https://jentera.ai/signin';
+export const GOOGLE_CALENDAR_WEB_SETUP = 'https://jentera.ai/app?view=business&tab=connections&connector=google';
 const CALLBACK_SCHEME = 'ai.jentera.app:';
 const CALLBACK_HOST = 'auth';
 const SESSION_KEY = 'jentera.session';
@@ -92,6 +93,14 @@ export function nativePlatform(): NativePlatform {
 
 export function isNative(): boolean {
   return nativePlatform() !== 'web';
+}
+
+/** Open a fixed setup page in the OS browser, never in the privileged WebView.
+ * The user signs in on the web separately; no native token or Google password is forwarded. */
+export async function openGoogleCalendarSetup(): Promise<void> {
+  if (!isNative()) return;
+  const browser = plugins().Browser ?? unavailable('System browser');
+  await browser.open({ url: GOOGLE_CALENDAR_WEB_SETUP, toolbarColor: '#242c29' });
 }
 
 export class NativeCapabilityUnavailableError extends Error {

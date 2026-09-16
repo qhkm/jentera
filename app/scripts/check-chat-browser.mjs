@@ -27,12 +27,20 @@ try {
     const errors = [];
     const commands = [];
     let paused = false;
+    let oauthStarts = 0;
     await context.route('**/*', async route => {
       const request = route.request();
       const url = new URL(request.url());
       if (!url.pathname.startsWith('/api/')) return url.origin === origin ? route.continue() : route.abort();
       let body;
-      if (url.pathname === '/api/browser') {
+      if (url.pathname === '/api/connections/google-calendar/start') {
+        assert.equal(request.method(), 'GET');
+        oauthStarts++;
+        // Simulate a denied grant, never call Google or claim real login success.
+        return route.fulfill({ status: 302, headers: {
+          location: origin + '/app?view=business&tab=connections&calendar=failed',
+        } });
+      } else if (url.pathname === '/api/browser') {
         const command = request.method() === 'POST' ? request.postDataJSON() : undefined;
         if (command) commands.push(command);
         if (command?.action === 'claim') paused = true;
@@ -49,6 +57,7 @@ try {
       else if (url.pathname === '/api/state') body = { ok: true, snapshot: { ...snapshot, theme } };
       else if (url.pathname === '/api/runs/activity') body = { ok: true, work: [], counters: { completed: 0, needsApproval: 0, minutesSaved: 0, failed: 0 } };
       else if (url.pathname === '/api/connections') body = { ok: true, connections: [] };
+      else if (url.pathname === '/api/connections/token') body = { ok: true, connectors: [] };
       else if (url.pathname === '/api/notifications') body = { ok: true, items: [], notifications: [], unread: 0, nextCursor: null };
       else if (url.pathname === '/api/workspaces') body = { ok: true, workspaces: [], canManage: true };
       else if (url.pathname === '/api/runtime') body = { ok: true, runtime: { status: 'ready' }, usage: {} };
@@ -70,6 +79,13 @@ try {
           { from: 'you', text: 'Check whether my business browser is signed in. Don’t change anything.' },
           { from: 'ai', state: 'done', runId: '11111111-1111-4111-8111-111111111111',
             text: 'The website needs sign-in. Nothing was changed.\n```jentera-browser\n{"reason":"sign_in"}\n```' },
+        ],
+      }, {
+        id: '11111111-1111-4111-8111-111111111113', title: 'Calendar connection check', createdAt: now, updatedAt: now,
+        messages: [
+          { from: 'you', text: 'Check my schedule. Do not add an event.' },
+          { from: 'ai', state: 'done', runId: '11111111-1111-4111-8111-111111111114',
+            text: 'Calendar needs a connection. No event was created.\n```jentera-connect\n{"connector":"google_calendar"}\n```' },
         ],
       }]));
     });
@@ -144,8 +160,50 @@ try {
     assert.equal(await page.getByRole('dialog').count(), 1);
     await dialog.getByRole('button', { name: 'Close browser view', exact: true }).click();
     if (process.env.CHECK_OUTPUT_DIR) await page.screenshot({ path: `${process.env.CHECK_OUTPUT_DIR}/chat-${suffix}.png` });
+    const explicitActions = commands.filter(command => command.action !== 'frame').length;
+    if (!await page.getByRole('button', { name: 'Open chat: Calendar connection check', exact: true }).count()) {
+      await page.getByRole('button', { name: 'Open your chats', exact: true }).click();
+    }
+    await page.getByRole('button', { name: 'Open chat: Calendar connection check', exact: true }).click();
+    const calendar = page.getByRole('region', { name: 'Connect your calendar' });
+    await calendar.waitFor();
+    const connect = calendar.getByRole('link', { name: 'Connect Google Calendar', exact: true });
+    const authorize = new URL(await connect.getAttribute('href'));
+    assert.equal(authorize.pathname, '/api/connections/google-calendar/start');
+    assert.ok([origin, 'https://api.jentera.ai'].includes(authorize.origin));
+    assert.equal(authorize.search + authorize.hash, '');
+    assert.equal(await connect.getAttribute('target'), '_blank');
+    assert.equal(await calendar.getByRole('button', { name: 'Copy setup link' }).evaluate(node => node.getBoundingClientRect().height >= 44), true);
+    assert.equal(await connect.evaluate(node => node.getBoundingClientRect().height >= 44), true);
+    assert.equal(await page.locator('.ask-reply').innerText().then(text => text.includes('jentera-connect')), false);
+    assert.equal(await page.getByRole('dialog').count(), 0);
+    assert.equal(oauthStarts, 0);
+    await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true,
+      value: { writeText: async text => { window.__jenteraCalendarCopy = text; } } }));
+    await calendar.getByRole('button', { name: 'Copy setup link', exact: true }).click();
+    assert.equal(await page.evaluate(() => window.__jenteraCalendarCopy), 'https://jentera.ai/app?view=business&tab=connections&connector=google');
+    assert.equal(oauthStarts, 0);
+    assert.equal(commands.filter(command => command.action !== 'frame').length, explicitActions);
+    await calendar.scrollIntoViewIfNeeded();
+    if (process.env.CHECK_OUTPUT_DIR) await page.screenshot({ path: `${process.env.CHECK_OUTPUT_DIR}/calendar-${suffix}.png` });
+    const [setup] = await Promise.all([context.waitForEvent('page'), connect.click()]);
+    setup.on('pageerror', error => errors.push(error.message));
+    await setup.getByText('Google did not complete the connection. Please try again.', { exact: true }).waitFor();
+    assert.equal(await setup.getByRole('link', { name: 'Connect Google Calendar →', exact: true }).evaluate(node => {
+      const cards = [...document.querySelectorAll('[role="tabpanel"] .card')];
+      return node.closest('.card') === cards[0];
+    }), true);
+    assert.equal(oauthStarts, 1);
+    assert.equal(await setup.getByRole('link', { name: 'Connect Google Calendar →', exact: true }).count(), 1);
+    assert.equal(await setup.getByText('Google Calendar connected.', { exact: true }).count(), 0);
+    assert.equal(await page.getByRole('dialog').count(), 0);
+    assert.equal(commands.filter(command => command.action !== 'frame').length, explicitActions);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    assert.equal(await setup.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    if (process.env.CHECK_OUTPUT_DIR) await setup.screenshot({ path: `${process.env.CHECK_OUTPUT_DIR}/calendar-return-${suffix}.png` });
+    await setup.close();
     assert.deepEqual(errors, []);
-    console.log(`PASS ${width}×${height} ${theme}: reply card, shared viewer, visible hand-back, explicit release, no Chat submit, secret-free storage, no overflow`);
+    console.log(`PASS ${width}×${height} ${theme}: browser handoff, Calendar OAuth tab, public copy link, callback error visible, no auto-control/resume, secret-free storage, no overflow`);
     await context.close();
   }
   const context = await browser.newContext({ viewport: { width: 390, height: 1000 }, serviceWorkers: 'block' });

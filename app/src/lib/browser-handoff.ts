@@ -1,27 +1,12 @@
 import { isRunId } from '@/lib/task';
+import { hideStreamingReplyRequest, replyRequestBlocks } from '@/lib/reply-request';
 
 export type BrowserHandoffReason = 'sign_in' | 'mfa' | 'user_action';
-
-function requestBlocks(text: string): { raw: string; content: string }[] {
-  const blocks: { raw: string; content: string }[] = [];
-  let open: RegExpMatchArray | undefined;
-  // Track surrounding fences so a marker inside a code example is not a card.
-  for (const fence of text.matchAll(/^(`{3,}|~{3,})([^\r\n]*)(?=\r?$)/gm)) {
-    if (!open) { open = fence; continue; }
-    if (fence[1][0] !== open[1][0] || fence[1].length < open[1].length || fence[2].trim()) continue;
-    if (open[1] === '```' && open[2].trim() === 'jentera-browser') {
-      blocks.push({ raw: text.slice(open.index!, fence.index! + fence[0].length),
-        content: text.slice(open.index! + open[0].length, fence.index) });
-    }
-    open = undefined;
-  }
-  return blocks;
-}
 
 /** A display-only request, never an approval, navigation command, or credential.
  * Only finished agent replies with a durable run identity may offer the viewer. */
 export function browserHandoff(text: string, runId?: string): { text: string; reason?: BrowserHandoffReason } {
-  const blocks = requestBlocks(text);
+  const blocks = replyRequestBlocks(text, 'jentera-browser');
   if (blocks.length !== 1 || !isRunId(runId) || blocks[0].content.length > 128) return { text };
   try {
     const value: unknown = JSON.parse(blocks[0].content);
@@ -36,5 +21,5 @@ export function browserHandoff(text: string, runId?: string): { text: string; re
 
 /** Hide incomplete control blocks while text streams; no viewer until done. */
 export function hideStreamingBrowserHandoff(text: string): string {
-  return text.replace(/^```jentera-browser\b[\s\S]*?(?:^```[ \t]*\r?$|(?![\s\S]))/gm, '').trimEnd();
+  return hideStreamingReplyRequest(text, 'jentera-browser');
 }

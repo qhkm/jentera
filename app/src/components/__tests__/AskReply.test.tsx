@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { AskReply } from '@/components/AskReply';
 import { ToastProvider } from '@/components/Toast';
@@ -11,6 +11,11 @@ import type { AskMessage } from '@/hooks/useAsk';
 
 const RUN = '11111111-1111-4111-8111-111111111111';
 beforeEach(() => localStorage.clear());
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 function mount(message: AskMessage, repo = new LocalRepository(), onOpenBusinessBrowser?: () => void) {
   const wrapper = ({ children }: { children: ReactNode }) => (
@@ -26,6 +31,107 @@ function mount(message: AskMessage, repo = new LocalRepository(), onOpenBusiness
 /* Every reply used to become a task card. Conversation reads as a reply;
    only work, by request (deep) or by the server's verdict, gets the card. */
 describe('AskReply: conversation versus work', () => {
+  it('offers the fixed Calendar OAuth route without any browser action or connection write', async () => {
+    vi.stubEnv('VITE_API_URL', 'https://api.jentera.ai');
+    const repo = new LocalRepository();
+    const browser = vi.spyOn(repo, 'businessBrowser');
+    const request = vi.spyOn(globalThis, 'fetch');
+    const open = vi.fn();
+    const view = mount({ from: 'ai', state: 'done', runId: RUN,
+      text: 'Calendar is not connected.\n```jentera-connect\n{"connector":"google_calendar"}\n```' }, repo, open);
+    const card = await screen.findByRole('region', { name: 'Connect your calendar' });
+    expect(within(card).getByRole('link', { name: 'Connect Google Calendar' }))
+      .toHaveAttribute('href', 'https://api.jentera.ai/api/connections/google-calendar/start');
+    expect(within(card).getByRole('link', { name: 'Connect Google Calendar' })).toHaveAttribute('target', '_blank');
+    expect(within(card).getByRole('link', { name: 'Connect Google Calendar' })).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(card).toHaveTextContent('not the business browser');
+    expect(card).toHaveTextContent('each event still needs your approval');
+    expect(card).toHaveTextContent('hand it back first');
+    expect(view.container.textContent).not.toContain('jentera-connect');
+    expect(open).not.toHaveBeenCalled();
+    expect(browser).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
+  });
+  it('copies only a public setup link, never a Google callback or code', async () => {
+    const user = userEvent.setup();
+    const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+    const view = mount({ from: 'ai', state: 'done', runId: RUN,
+      text: 'Connect first.\n```jentera-connect\n{"connector":"google_calendar"}\n```' });
+    await user.click(await screen.findByRole('button', { name: 'Copy setup link' }));
+    expect(copy).toHaveBeenCalledWith('https://jentera.ai/app?view=business&tab=connections&connector=google');
+    expect(copy).toHaveBeenCalledOnce();
+    expect(await screen.findByText(/Setup link copied/)).toBeVisible();
+    expect(localStorage.getItem('jentera.session')).toBeNull();
+    view.unmount();
+  });
+  it('does not copy the setup protocol into the reply clipboard', async () => {
+    const user = userEvent.setup();
+    const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+    mount({ from: 'ai', state: 'done', runId: RUN,
+      text: 'Calendar needs access.\n```jentera-connect\n{"connector":"google_calendar"}\n```' });
+    await user.click(await screen.findByRole('button', { name: 'Copy reply' }));
+    expect(copy).toHaveBeenCalledWith('Calendar needs access.');
+  });
+  it('prefers Calendar setup if the agent mistakenly also emits a browser handoff', async () => {
+    const view = mount({ from: 'ai', state: 'done', runId: RUN,
+      text: 'Connect first.\n```jentera-connect\n{"connector":"google_calendar"}\n```\n```jentera-browser\n{"reason":"sign_in"}\n```' }, new LocalRepository(), vi.fn());
+    expect(await screen.findByRole('link', { name: 'Connect Google Calendar' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Open business browser' })).toBeNull();
+    expect(view.container.textContent).not.toContain('jentera-');
+  });
+  it.each([true, false])('hides %s-complete streamed Calendar setup without offering a link', async complete => {
+    const view = mount({ from: 'ai', state: 'streaming', pendingId: 'p1', runId: RUN,
+      text: 'Calendar needs access.\n```jentera-connect\n{"connector":"google_calendar"}' + (complete ? '\n```' : '') });
+    expect(await screen.findByText('Calendar needs access.')).toBeVisible();
+    expect(screen.queryByRole('link', { name: 'Connect Google Calendar' })).toBeNull();
+    expect(view.container.textContent).not.toContain('jentera-connect');
+  });
+  it.each([
+    { state: 'failed' as const, failedQuestion: 'Check calendar' },
+    { runId: undefined },
+    { from: 'you' as const },
+    { state: 'working' as const },
+    { state: 'needs_approval' as const, pendingId: 'p1', approvalId: 'approval' },
+  ])('does not offer Calendar setup in a non-completed agent reply: %j', async overrides => {
+    mount({ from: 'ai', state: 'done', runId: RUN,
+      text: '```jentera-connect\n{"connector":"google_calendar"}\n```', ...overrides });
+    await waitFor(() => expect(screen.getByRole('article', { name: 'Jentera' })).toBeVisible());
+    expect(screen.queryByRole('link', { name: 'Connect Google Calendar' })).toBeNull();
+  });
+  it('localizes Calendar setup in Bahasa Malaysia', async () => {
+    const repo = new LocalRepository();
+    await repo.setLang('bm');
+    mount({ from: 'ai', state: 'done', runId: RUN,
+      text: 'Sambungkan dahulu.\n```jentera-connect\n{"connector":"google_calendar"}\n```' }, repo);
+    const card = await screen.findByRole('region', { name: 'Sambungkan kalendar anda' });
+    expect(within(card).getByRole('link', { name: 'Sambung Google Calendar' })).toBeVisible();
+    expect(within(card).getByRole('button', { name: 'Salin pautan persediaan' })).toBeVisible();
+    expect(card).toHaveTextContent('setiap acara masih memerlukan kelulusan anda');
+  });
+  it.each(['ios', 'android'])('opens normal web setup with the %s browser plugin without forwarding native tokens', async platform => {
+    const user = userEvent.setup();
+    const open = vi.fn(async () => undefined);
+    const read = vi.fn();
+    vi.stubGlobal('Capacitor', { isNativePlatform: () => true, getPlatform: () => platform,
+      Plugins: { Browser: { open }, SecureStorage: { internalGetItem: read } } });
+    mount({ from: 'ai', state: 'done', runId: RUN,
+      text: 'Connect first.\n```jentera-connect\n{"connector":"google_calendar"}\n```' });
+    const link = await screen.findByRole('link', { name: 'Connect Google Calendar' });
+    expect(link).toHaveAttribute('href', 'https://jentera.ai/app?view=business&tab=connections&connector=google');
+    expect(screen.getByRole('region', { name: 'Connect your calendar' })).toHaveTextContent('same Jentera account');
+    await user.click(link);
+    expect(open).toHaveBeenCalledOnce();
+    expect(open).toHaveBeenCalledWith({ url: 'https://jentera.ai/app?view=business&tab=connections&connector=google', toolbarColor: '#242c29' });
+    expect(read).not.toHaveBeenCalled();
+  });
+  it('keeps native setup out of the WebView and explains how to recover if the system browser is unavailable', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('Capacitor', { isNativePlatform: () => true, getPlatform: () => 'ios', Plugins: {} });
+    mount({ from: 'ai', state: 'done', runId: RUN,
+      text: 'Connect first.\n```jentera-connect\n{"connector":"google_calendar"}\n```' });
+    await user.click(await screen.findByRole('link', { name: 'Connect Google Calendar' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not open the system browser');
+  });
   it.each([
     ['sign_in', 'Sign in to continue'],
     ['mfa', 'Complete verification'],
