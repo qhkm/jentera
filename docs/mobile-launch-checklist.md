@@ -45,7 +45,7 @@ can claim**, so a verified link is the control that makes the callback safe.
 | Privacy policy reachable and linked | Both listings require the URL; PDPA requires the notice regardless, in Bahasa Malaysia and English | `https://jentera.ai/privacy` is live on the deployed app and linked from the footer. The page is committed (`0b72ffc`); **verify it is deployed** |
 | App Store privacy labels / Play Data safety | Must match what is collected | Email, analytics (`PRODUCT_ANALYTICS`), and photographs transmitted-and-not-retained are all declared |
 | Sign in with Apple decision (4.8) | Google is offered, so an equivalent is required | Either the hide-Google-on-native flag is flipped, or SIWA is built. Plan: ship with Google, flip the flag same-day if review raises it |
-| Demo account for App Review | `ACCESS_MODE="waitlist"` and trials are 72 hours; review takes longer | A reviewer address holds a `kind='paid'` access grant and its onboarding is complete. Note it provisions a sprite against the 10-concurrent org limit |
+| Demo account for App Review | `ACCESS_MODE="waitlist"` and trials are 72 hours; review takes longer | A reviewer address holds a `kind='paid'` access grant and its onboarding is complete. It provisions a sprite, which is no longer a constraint: the Fly account moved to the Hero plan on 16 September and the org's concurrent-sprite limit went from 10 to 100 |
 | `ITSAppUsesNonExemptEncryption` in Info.plist | Every submission asks | Declared |
 | Review notes for the business browser | `routes/views/BusinessBrowser.tsx` streams a remote Chromium and invites password entry; a reviewer can read it as a non-WebKit browser (2.5.6) | Notes explain it is a remote-computer view, or 1.0 hides it |
 
