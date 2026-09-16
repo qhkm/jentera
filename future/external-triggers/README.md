@@ -48,6 +48,10 @@ wanted; it is outside all deployed build inputs either way. Nothing here is
 committed or pushed automatically. A later, explicitly requested feature commit
 can preserve it on a dedicated branch.
 
+On 17 September 2026 the owner requested that all completed work be committed.
+Commit `be8eae2` preserves this archive on main together with the launch exclusion
+test. This does not restore its wiring or authorise production enablement.
+
 ## Launch exclusion verification
 
 After isolation, both typechecks and the production frontend build pass. There

@@ -16,6 +16,16 @@ The test suite starts one temporary Postgres 16 container, applies every file in
 `migrations/`, and executes application queries as the non-owner `aisar_app` role. Docker
 must be running.
 
+## Signed external report pilot — deferred, excluded from launch
+
+The pilot's source/tests and restoration patch are parked in
+[future/external-triggers](../future/external-triggers/README.md). Its handlers,
+discovery/enablement variables and migration command are not in the active
+Worker. Migration 051 is outside `worker/migrations/` (number reserved), so the
+active migration runner does not apply it. Core auth, Chat/uploads, approvals,
+connections, routines and browser recovery are unchanged by this deferral.
+No production trigger migration, deployment or activation was performed.
+
 ## What is real
 
 - magic-link, password, and Google authentication;

@@ -1,5 +1,9 @@
 # Jentera Launch & Content Plan — Q4 2026
 
+Historical planning context. For the current one-plan RM99→RM199 launch funnel,
+use [the 16 September launch plan](../plans/2026-09-16-launch-funnel.md).
+The dates, tier proposals and capability descriptions below are not the live offer.
+
 > Owner: qhkm dev · Last updated: 2026-09-07 · Working doc for the weekly content cron.
 
 ## Positioning north star
