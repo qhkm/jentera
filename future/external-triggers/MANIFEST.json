@@ -1,0 +1,65 @@
+{
+  "status": "deferred-not-in-launch",
+  "files": [
+    {
+      "source": "app/src/components/ExternalTriggers.tsx",
+      "parked": "future/external-triggers/app/src/components/ExternalTriggers.tsx",
+      "sha256": "5fe2bc0c0df81fe8b6eb9891ce65f47d7a8c7e21ba13e0c08ed442f8d068076d"
+    },
+    {
+      "source": "app/src/components/__tests__/external-triggers.test.tsx",
+      "parked": "future/external-triggers/app/src/components/__tests__/external-triggers.test.tsx",
+      "sha256": "500f3036af9e4fdcf323e913b9ddab145cc5e8a68dfbedb0922653694ad4b212"
+    },
+    {
+      "source": "app/src/i18n/external-triggers.ts",
+      "parked": "future/external-triggers/app/src/i18n/external-triggers.ts",
+      "sha256": "344c1859e448aa095f50aec04c4f333e5513a10c2b614749cbd075df26329b16"
+    },
+    {
+      "source": "app/src/lib/external-triggers.ts",
+      "parked": "future/external-triggers/app/src/lib/external-triggers.ts",
+      "sha256": "549279223d7fb35730ea15b77cdd3f6c288157b892c53857c27491ff2676b6ad"
+    },
+    {
+      "source": "app/src/lib/__tests__/external-triggers.test.ts",
+      "parked": "future/external-triggers/app/src/lib/__tests__/external-triggers.test.ts",
+      "sha256": "485f0c74fbeaae534cd93242010f86114e2f3fba80f0e3e57111bb26004e782e"
+    },
+    {
+      "source": "app/src/styles/external-triggers.css",
+      "parked": "future/external-triggers/app/src/styles/external-triggers.css",
+      "sha256": "f6cd60c7c7a936bef15d3e6c436d30eb6a710ce63422ada0ad1a0edeb24ed370"
+    },
+    {
+      "source": "app/src/lib/__tests__/notifications.test.ts",
+      "parked": "future/external-triggers/app/src/lib/__tests__/notifications.test.ts",
+      "sha256": "4dc186edacf66feb0b7a9381a41705162286d1e726ec949963a007e6c1c1d0f7"
+    },
+    {
+      "source": "worker/src/external-triggers.ts",
+      "parked": "future/external-triggers/worker/src/external-triggers.ts",
+      "sha256": "14570b9c08ff42ed5f3e8eaab5525c90190481e634ecbea7db0edf6eada6cfa4"
+    },
+    {
+      "source": "worker/src/routes/external-triggers.ts",
+      "parked": "future/external-triggers/worker/src/routes/external-triggers.ts",
+      "sha256": "5aa9c98255cc254ff1fc416f421c152894300714e891903a83b651ffb90d576f"
+    },
+    {
+      "source": "worker/test/external-triggers.test.ts",
+      "parked": "future/external-triggers/worker/test/external-triggers.test.ts",
+      "sha256": "f9817df4040242e8ea15604e14c75d21e698710fc724e9b536d0e89b81873a38"
+    },
+    {
+      "source": "worker/migrations/051_external_triggers.sql",
+      "parked": "future/external-triggers/worker/migrations/051_external_triggers.sql",
+      "sha256": "7d73529b70a4ab90604d6035481485a71a22a8d6ccc6917ec58152fb239b68b1"
+    },
+    {
+      "source": "worker/scripts/apply-external-triggers.mjs",
+      "parked": "future/external-triggers/worker/scripts/apply-external-triggers.mjs",
+      "sha256": "8c88cdcfc0cf910325b068e52ec4ed088c69b577beea75d05b4a8044ae6c8963"
+    }
+  ]
+}

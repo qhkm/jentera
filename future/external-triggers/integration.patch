@@ -1,0 +1,491 @@
+diff --git a/app/src/i18n/I18nProvider.tsx b/app/src/i18n/I18nProvider.tsx
+--- a/app/src/i18n/I18nProvider.tsx
++++ b/app/src/i18n/I18nProvider.tsx
+@@ -21,14 +21,15 @@
+ } from 'react';
+ import { MESSAGES as PORTED } from '@/lib/data/i18n';
+ import { PAGE_MESSAGES } from './pages';
++import { TRIGGER_MESSAGES } from './external-triggers';
+ import type { Lang } from '@/lib/types';
+ 
+ import { useMutate, useSnapshot } from '@/lib/repo';
+ 
+ /** Ported engine strings, with the React app's page copy layered on top. */
+ const MESSAGES: Record<Lang, Record<string, string>> = {
+-  en: { ...PORTED.en, ...PAGE_MESSAGES.en },
+-  bm: { ...PORTED.bm, ...PAGE_MESSAGES.bm },
++  en: { ...PORTED.en, ...PAGE_MESSAGES.en, ...TRIGGER_MESSAGES.en },
++  bm: { ...PORTED.bm, ...PAGE_MESSAGES.bm, ...TRIGGER_MESSAGES.bm },
+ };
+ 
+ export const DEFAULT_LANG: Lang = 'en';
+diff --git a/app/src/lib/repo/gate.tsx b/app/src/lib/repo/gate.tsx
+--- a/app/src/lib/repo/gate.tsx
++++ b/app/src/lib/repo/gate.tsx
+@@ -25,6 +25,8 @@
+ const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+ 
+ type Chosen = {
++  externalTriggersVersion?: number;
++  business?: string | null;
+   routinesVersion?: number;
+   teamVersion?: number;
+   repo: LocalRepository | RemoteRepository;
+@@ -44,7 +46,13 @@
+ /* Team is a plan. The flag says the Team tab may show; every team write is
+    checked again by the routes. */
+ const TeamContext = createContext(false);
++const ExternalTriggersContext = createContext<string | null>(null);
+ 
++/** Owner-management discovery only; every operation rechecks server permissions. */
++export function useExternalTriggersScope(): string | null {
++  return useContext(ExternalTriggersContext);
++}
++
+ /** Discovery only. Live permissions come from /api/routines on every visit. */
+ export function useRoutinesEnabled(): boolean {
+   return useContext(RoutinesContext);
+@@ -70,6 +78,8 @@
+   account = null,
+   routinesVersion,
+   teamVersion,
++  externalTriggersVersion,
++  business = null,
+   children,
+ }: {
+   value: boolean;
+@@ -77,13 +87,19 @@
+   account?: string | null;
+   routinesVersion?: number;
+   teamVersion?: number;
++  externalTriggersVersion?: number;
++  business?: string | null;
+   children: ReactNode;
+ }) {
+   return (
+     <SignedInContext.Provider value={value}>
+       <AccountContext.Provider value={value ? account : null}>
+         <RoutinesContext.Provider value={value && routinesVersion === 1}>
+-          <TeamContext.Provider value={value && teamVersion === 1}>{children}</TeamContext.Provider>
++          <TeamContext.Provider value={value && teamVersion === 1}>
++            <ExternalTriggersContext.Provider value={value && account && business && externalTriggersVersion === 1 ? `${account}:${business}` : null}>
++              {children}
++            </ExternalTriggersContext.Provider>
++          </TeamContext.Provider>
+         </RoutinesContext.Provider>
+       </AccountContext.Provider>
+     </SignedInContext.Provider>
+@@ -176,6 +192,8 @@
+     account: typeof me?.userId === 'string' && me.userId ? me.userId : null,
+     routinesVersion: me?.features?.routines?.apiVersion,
+     teamVersion: me?.features?.team?.apiVersion,
++    externalTriggersVersion: me?.features?.externalTriggers?.apiVersion,
++    business: typeof me?.businessId === 'string' && me.businessId ? me.businessId : null,
+   };
+ }
+ 
+@@ -207,7 +225,7 @@
+   }
+ 
+   return (
+-    <SignedInProvider value={chosen.mode === 'remote'} account={chosen.account} routinesVersion={chosen.routinesVersion} teamVersion={chosen.teamVersion}>
++    <SignedInProvider value={chosen.mode === 'remote'} account={chosen.account} business={chosen.business} externalTriggersVersion={chosen.externalTriggersVersion} routinesVersion={chosen.routinesVersion} teamVersion={chosen.teamVersion}>
+       <RepositoryProvider repository={chosen.repo}>{children}</RepositoryProvider>
+     </SignedInProvider>
+   );
+diff --git a/app/src/lib/repo/remote.ts b/app/src/lib/repo/remote.ts
+--- a/app/src/lib/repo/remote.ts
++++ b/app/src/lib/repo/remote.ts
+@@ -69,7 +69,8 @@
+ 
+ /** What /api/me answers with. Only the parts anything here reads. */
+ export interface MeResponse {
+-  features?: { routines?: { apiVersion?: number }; team?: { apiVersion?: number } };
++  features?: { routines?: { apiVersion?: number }; team?: { apiVersion?: number }; externalTriggers?: { apiVersion?: number } };
++  businessId?: string | null;
+   detailLevel?: string;
+   /** Opaque account id from the session; scopes per-browser state such as
+       Ask history so two accounts sharing a browser never see each other's. */
+diff --git a/app/src/lib/repo/__tests__/gate.test.tsx b/app/src/lib/repo/__tests__/gate.test.tsx
+--- a/app/src/lib/repo/__tests__/gate.test.tsx
++++ b/app/src/lib/repo/__tests__/gate.test.tsx
+@@ -25,6 +25,18 @@
+     expect(fetch).toHaveBeenCalledTimes(2);
+   });
+ 
++  it.each([undefined, 1, 2])('scopes supported owner-trigger discovery to the existing account and business: %s', async apiVersion => {
++    const fetch = vi.fn()
++      .mockResolvedValueOnce(json({ userId: 'owner-77', businessId: 'business-55', features: { externalTriggers: { apiVersion } } }))
++      .mockResolvedValueOnce(json({ snapshot: { onboarded: true } }));
++    vi.stubGlobal('fetch', fetch);
++    const { RepositoryGate, useExternalTriggersScope } = await import('@/lib/repo/gate');
++    function Probe() { return <div>{useExternalTriggersScope() ?? 'triggers hidden'}</div>; }
++    render(<RepositoryGate><Probe /></RepositoryGate>);
++    await screen.findByText(apiVersion === 1 ? 'owner-77:business-55' : 'triggers hidden');
++    expect(fetch).toHaveBeenCalledTimes(2);
++  });
++
+   it('falls back to public onboarding when logout races the state load', async () => {
+     const fetch = vi.fn()
+       .mockResolvedValueOnce(json({ ok: true, detailLevel: 'beginner' }))
+diff --git a/app/src/routes/views/MyBusinessView.tsx b/app/src/routes/views/MyBusinessView.tsx
+--- a/app/src/routes/views/MyBusinessView.tsx
++++ b/app/src/routes/views/MyBusinessView.tsx
+@@ -39,6 +39,7 @@
+ import GoogleCalendarConnect from './GoogleCalendarConnect';
+ import TokenConnect from './TokenConnect';
+ import BusinessBrowser from './BusinessBrowser';
++import ExternalTriggers from '@/components/ExternalTriggers';
+ import { ConnectorOptions } from '@/components/ConnectorOptions';
+ import { connectedNames, type ConnectionsState } from '@/hooks/useConnections';
+ import { useSignedIn } from '@/lib/repo/gate';
+@@ -556,6 +557,8 @@
+                 {t('biz.connections.desc')}
+               </p>
+             </div>
++
++            <ExternalTriggers />
+ 
+             <section aria-labelledby="business-connectors-title">
+               <h3 id="business-connectors-title" className="text-sm font-semibold">
+diff --git a/app/src/lib/repo/types.ts b/app/src/lib/repo/types.ts
+--- a/app/src/lib/repo/types.ts
++++ b/app/src/lib/repo/types.ts
+@@ -249,6 +249,8 @@
+ }
+ 
+ export interface RunResult {
++  /** Server-generated report data, never an agent handoff/control request. */
++  reportOnly?: boolean;
+   summaryOnly?: boolean;
+   objective?: string;
+   sessionId?: string;
+diff --git a/app/src/lib/notifications.ts b/app/src/lib/notifications.ts
+--- a/app/src/lib/notifications.ts
++++ b/app/src/lib/notifications.ts
+@@ -1,6 +1,7 @@
+ import { isRunId } from '@/lib/task';
+ 
+ export type NotificationKind =
++  | 'external_report'
+   | 'reminder_due'
+   | 'routine_completed'
+   | 'routine_failed'
+@@ -34,7 +35,7 @@
+ function notification(value: unknown): value is AppNotification {
+   if (!object(value)) return false;
+   return isRunId(value.id) && typeof value.kind === 'string' &&
+-    ['reminder_due', 'routine_completed', 'routine_failed', 'routine_skipped', 'routine_needs_approval', 'work_needs_you', 'approval_requested'].includes(value.kind) &&
++    ['external_report', 'reminder_due', 'routine_completed', 'routine_failed', 'routine_skipped', 'routine_needs_approval', 'work_needs_you', 'approval_requested'].includes(value.kind) &&
+     typeof value.title === 'string' && typeof value.body === 'string' &&
+     (value.runId === null || isRunId(value.runId)) &&
+     (value.routineId === null || isRunId(value.routineId)) &&
+diff --git a/worker/src/notifications/store.ts b/worker/src/notifications/store.ts
+--- a/worker/src/notifications/store.ts
++++ b/worker/src/notifications/store.ts
+@@ -2,6 +2,7 @@
+ import { enqueuePush } from '../push/outbox';
+ 
+ export type NotificationKind =
++  | 'external_report'
+   | 'reminder_due'
+   | 'routine_completed'
+   | 'routine_failed'
+diff --git a/worker/src/index.ts b/worker/src/index.ts
+--- a/worker/src/index.ts
++++ b/worker/src/index.ts
+@@ -35,6 +35,7 @@
+ import { handleRepo } from './routes/repo';
+ import { handleRuns } from './routes/runs';
+ import { handleRoutines } from './routes/routines';
++import { handleExternalTriggers } from './routes/external-triggers';
+ import { handleReminders, dispatchDueReminders } from './reminders';
+ import { handlePush } from './routes/push';
+ import { handleArtifacts, RUNTIME_ARTIFACTS_PATH } from './routes/artifacts';
+@@ -145,6 +146,8 @@
+ 
+     const guarded = await guardApiRequest(request, env, url, headers);
+     if (guarded) return guarded;
++    const externalTriggers = await handleExternalTriggers(request, env, url, headers);
++    if (externalTriggers) return externalTriggers;
+     const launchAdmin = await handleLaunchAdmin(request, env, url, headers);
+     if (launchAdmin) return launchAdmin;
+     const access = await handleAccess(request, env, url, headers, ctx);
+diff --git a/worker/src/env.ts b/worker/src/env.ts
+--- a/worker/src/env.ts
++++ b/worker/src/env.ts
+@@ -1,4 +1,9 @@
+ export interface Env {
++  /** Advertise owner controls only after migration 051; does not enable ingress. */
++  EXTERNAL_TRIGGERS_MANAGEMENT_ENABLED?: string;
++  /** Signed fixed-report pilot; requires explicit tenant allowlist and migration 051. */
++  EXTERNAL_TRIGGERS_ENABLED?: string;
++  EXTERNAL_TRIGGERS_BUSINESSES?: string;
+   /** Enable only after migration 041 and confirmed paid grants are installed. */
+   ACCESS_MODE?: 'open' | 'waitlist';
+   /** Postgres on Neon, pooled through Hyperdrive. */
+diff --git a/worker/src/routes/session.ts b/worker/src/routes/session.ts
+--- a/worker/src/routes/session.ts
++++ b/worker/src/routes/session.ts
+@@ -1,4 +1,5 @@
+ import { routinesEnabledFor } from '../routines/gating';
++import { can } from '../permissions';
+ import { openTrial, sealTrial, trialCode, trialLanding } from '../trial-auth';
+ import type { Env } from '../env';
+ import { withTenant } from '../db';
+@@ -572,6 +573,8 @@
+       ? await withTenant(env, businessId, (tx) => getBusinessPlan(tx, businessId))
+       : null;
+     const features = {
++      ...(businessId && can(identity, 'connections.manage') && env.EXTERNAL_TRIGGERS_MANAGEMENT_ENABLED === 'true'
++        ? { externalTriggers: { apiVersion: 1 } } : {}),
+       ...(businessId && routinesEnabledFor(env, businessId) ? { routines: { apiVersion: 1 } } : {}),
+       ...(plan === 'team' ? { team: { apiVersion: 1 } } : {}),
+     };
+diff --git a/worker/src/request-guard.ts b/worker/src/request-guard.ts
+--- a/worker/src/request-guard.ts
++++ b/worker/src/request-guard.ts
+@@ -2,6 +2,7 @@
+ import type { Env } from './env';
+ import { clientIp } from './ratelimit';
+ import { ASK_FILE_PATH, INGEST_FILE_PATH, UPLOAD_DOCUMENT_LIMIT } from './routes/runs';
++import { TRIGGER_BODY_CAP } from './external-triggers';
+ 
+ /** API payloads are small JSON commands except on the two explicitly bounded
+     file routes below. */
+@@ -19,11 +20,14 @@
+ export const MAX_UPLOAD_BODY_BYTES = UPLOAD_DOCUMENT_LIMIT + 64 * 1024;
+ 
+ function bodyCapFor(method: string, pathname: string): number {
++  if (pathname === '/api/external-triggers' || pathname.startsWith('/api/webhooks/external/')) return TRIGGER_BODY_CAP;
+   return method === 'POST' && [INGEST_FILE_PATH, ASK_FILE_PATH].includes(pathname)
+     ? MAX_UPLOAD_BODY_BYTES
+     : MAX_API_BODY_BYTES;
+ }
+ 
++const triggerSurface = (pathname: string) => pathname === '/api/external-triggers' || pathname.startsWith('/api/webhooks/external/');
++
+ const text = new TextEncoder();
+ 
+ async function opaqueKey(env: Env, value: string): Promise<string> {
+@@ -114,7 +118,9 @@
+     if (!Number.isFinite(length) || length < 0 || length > cap) {
+       return response(413, 'request body too large', cors);
+     }
+-  } else if (request.body !== null) {
++  } else if (request.body !== null && !triggerSurface(url.pathname)) {
++    // External triggers do their own byte- AND time-bounded read after this
++    // burst guard. An unbounded clone probe would defeat their upload timeout.
+     /* No Content-Length (e.g. Transfer-Encoding: chunked) bypassed the
+        check above. Measure the real body through a clone — reading the
+        clone leaves the original intact for the route — and refuse
+@@ -176,6 +182,9 @@
+       return response(429, 'too many requests', cors, { 'Retry-After': '60' });
+     }
+   } catch (error) {
++    if (url.pathname.startsWith('/api/webhooks/external/')) {
++      return response(503, 'request protection unavailable', {}, { 'Retry-After': '60' });
++    }
+     /* The broad limiter is defence in depth behind the zone WAF. Ordinary
+        reads and health checks remain available during a binding outage. */
+     console.error(`[request-guard] general limiter unavailable: ${String(error)}`);
+diff --git a/worker/src/routes/runs.ts b/worker/src/routes/runs.ts
+--- a/worker/src/routes/runs.ts
++++ b/worker/src/routes/runs.ts
+@@ -646,6 +646,7 @@
+         runId,
+         status: state.run.status,
+         pending: !terminalRun(state.run.status),
++        ...(state.run.triggerShape === 'external.report' ? { reportOnly: true } : {}),
+         ...(outcome ? { text: outcome } : {}),
+       }, {}, privateHeaders);
+     }
+diff --git a/worker/package.json b/worker/package.json
+--- a/worker/package.json
++++ b/worker/package.json
+@@ -37,6 +37,7 @@
+     "db:migrate:goals": "node scripts/apply-goals.mjs",
+     "db:migrate:goal-checkpoints": "node scripts/apply-goal-checkpoints.mjs",
+     "db:migrate:vault-connection": "node scripts/apply-vault-connection.mjs",
++    "db:migrate:external-triggers": "node scripts/apply-external-triggers.mjs",
+     "test": "vitest run",
+     "test:watch": "vitest"
+   },
+diff --git a/app/src/routes/views/TaskDetailView.tsx b/app/src/routes/views/TaskDetailView.tsx
+--- a/app/src/routes/views/TaskDetailView.tsx
++++ b/app/src/routes/views/TaskDetailView.tsx
+@@ -95,7 +95,7 @@
+   // Setup shortcuts are display-only, and belong only to a finished private
+   // agent response for this exact run. Shared reviews remain literal Markdown.
+   const canOfferSetup = result?.status === 'completed' && !result.pending
+-    && result.runId === runId && !reviewOnly && !result.summaryOnly;
++    && result.runId === runId && !reviewOnly && !result.summaryOnly && !result.reportOnly;
+   const connection = connectionHandoff(fullText, canOfferSetup ? runId : undefined);
+   const handoff = browserHandoff(connection.text, canOfferSetup ? runId : undefined);
+   // As in Chat, Calendar setup wins over an accidentally co-emitted browser
+diff --git a/app/src/routes/views/__tests__/TaskDetailView.test.tsx b/app/src/routes/views/__tests__/TaskDetailView.test.tsx
+--- a/app/src/routes/views/__tests__/TaskDetailView.test.tsx
++++ b/app/src/routes/views/__tests__/TaskDetailView.test.tsx
+@@ -43,7 +43,7 @@
+     expect(browser).not.toHaveBeenCalled();
+     expect(open).not.toHaveBeenCalled();
+   });
+-  it.each([{ pending: true }, { summaryOnly: true }, { runId: '22222222-2222-4222-8222-222222222222' }])(
++  it.each([{ pending: true }, { summaryOnly: true }, { reportOnly: true }, { runId: '22222222-2222-4222-8222-222222222222' }])(
+     'does not offer private browser handoff or recovery for an ineligible result: %j', async overrides => {
+       const repo = new LocalRepository();
+       repo.runResult = vi.fn(async () => ({ runId, status: 'completed', pending: false, taskStatus: 'needs_input',
+diff --git a/app/src/lib/task-recovery.ts b/app/src/lib/task-recovery.ts
+--- a/app/src/lib/task-recovery.ts
++++ b/app/src/lib/task-recovery.ts
+@@ -22,7 +22,7 @@
+   if (!isRunId(runId) || signal?.aborted) return { status: 'unavailable' };
+   const result: RunResult = await repo.runResult(runId);
+   if (signal?.aborted) return { status: 'unavailable' };
+-  if (result.runId !== runId || result.summaryOnly || typeof result.pending !== 'boolean') {
++  if (result.runId !== runId || result.summaryOnly || result.reportOnly || typeof result.pending !== 'boolean') {
+     return { status: 'unavailable' };
+   }
+   if (result.status === 'needs_approval' || result.taskStatus === 'needs_approval' || result.approvalId) {
+diff --git a/app/src/lib/__tests__/task-recovery.test.ts b/app/src/lib/__tests__/task-recovery.test.ts
+--- a/app/src/lib/__tests__/task-recovery.test.ts
++++ b/app/src/lib/__tests__/task-recovery.test.ts
+@@ -71,6 +71,7 @@
+     [{ status: 'cancelled' }, 'changed'],
+     [{ taskStatus: 'needs_review' }, 'changed'],
+     [{ summaryOnly: true }, 'unavailable'],
++    [{ reportOnly: true }, 'unavailable'],
+     [{ runId: '22222222-2222-4222-8222-222222222222' }, 'unavailable'],
+   ] as const)('does not check accounts or continue a task whose state changed: %j', async (overrides, expected) => {
+     const repo = fixture(overrides);
+diff --git a/app/scripts/check-connectors.mjs b/app/scripts/check-connectors.mjs
+--- a/app/scripts/check-connectors.mjs
++++ b/app/scripts/check-connectors.mjs
+@@ -2,12 +2,14 @@
+ // VITE_API_URL=http://127.0.0.1:5183 pnpm dev --host 127.0.0.1 --port 5183
+ // CHROME_CHANNEL=chrome node scripts/check-connectors.mjs
+ // Optional CHECK_WIDTH=320 filters the responsive cases for a focused rerun.
++// CHECK_TRIGGERS=1 also tests fictional owner trigger creation/key/revocation.
+ import assert from 'node:assert/strict';
+ import { mkdir } from 'node:fs/promises';
+ import { chromium } from 'playwright';
+ 
+ const origin = process.env.CHECK_ORIGIN ?? 'http://127.0.0.1:5183';
+ const output = process.env.CHECK_OUTPUT_DIR;
++const checkTriggers = process.env.CHECK_TRIGGERS === '1';
+ const runId = '11111111-1111-4111-8111-111111111111';
+ const sessionId = '33333333-3333-4333-8333-333333333333';
+ const setupMarker = '```jentera-connect\n{"connector":"google_calendar"}\n```';
+@@ -40,10 +42,18 @@
+     const page = await context.newPage();
+     const errors = [];
+     const operations = [];
++    const triggerOperations = [];
+     let apiCalls = 0;
+     let taskCase = 'connect';
+     let paused = false;
+     let taskStatus = 'needs_input';
++    let triggerAvailable = true;
++    let triggers = [
++      { id: '55555555-5555-4555-8555-555555555555', name: 'Fictional reporting service', task: 'business_summary', timeZone: 'Asia/Kuala_Lumpur',
++        expiresAt: new Date(Date.now() + 86400_000).toISOString(), createdAt: new Date().toISOString(), revokedAt: null },
++      { id: '66666666-6666-4666-8666-666666666666', name: 'Previous reporting service', task: 'weekly_summary', timeZone: 'Asia/Kuala_Lumpur',
++        expiresAt: '2020-01-01T00:00:00.000Z', createdAt: '2019-12-31T00:00:00.000Z', revokedAt: null },
++    ];
+     let rows = ['telegram', 'google'].map(connector => ({
+       id: `fictional-${connector}`, connector, method: connector === 'telegram' ? 'bss' : 'oauth',
+       status: 'connected', paired: true, displayName: connector === 'telegram' ? 'Kedai Kita bot' : 'Owner calendar',
+@@ -59,7 +69,21 @@
+       if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: fixtureHeaders });
+       let body;
+       if (url.pathname === '/api/events') return route.fulfill({ status: 204, headers: fixtureHeaders });
+-      if (/^\/api\/connections\/fictional-(telegram|google)$/.test(url.pathname) && request.method() === 'DELETE') {
++      if (checkTriggers && url.pathname === '/api/external-triggers' && request.method() === 'POST') {
++        const config = request.postDataJSON();
++        assert.deepEqual(Object.keys(config).sort(), ['expiresAt', 'id', 'name', 'task', 'timeZone']);
++        assert.equal(config.task, 'weekly_summary');
++        assert.equal(config.timeZone, 'Asia/Kuala_Lumpur');
++        assert.match(config.id, /^[0-9a-f-]{36}$/);
++        const row = { ...config, createdAt: new Date().toISOString(), revokedAt: null };
++        triggers.unshift(row); triggerOperations.push('create');
++        body = { ok: true, shownOnce: true, trigger: row, url: url.origin + '/api/webhooks/external/' + row.id, secret: 'f'.repeat(64) };
++      } else if (checkTriggers && url.pathname.startsWith('/api/external-triggers/') && request.method() === 'DELETE') {
++        const id = url.pathname.split('/').at(-1);
++        assert(triggers.some(row => row.id === id), 'Revoke only a known fictional trigger');
++        triggers = triggers.map(row => row.id === id ? { ...row, revokedAt: new Date().toISOString() } : row);
++        triggerOperations.push('revoke'); body = { ok: true, trigger: triggers.find(row => row.id === id) };
++      } else if (/^\/api\/connections\/fictional-(telegram|google)$/.test(url.pathname) && request.method() === 'DELETE') {
+         operations.push('disconnect:' + url.pathname.split('/').at(-1));
+         rows = rows.filter(row => !url.pathname.endsWith(row.id));
+         body = { ok: true };
+@@ -73,8 +97,10 @@
+       else if (request.method() !== 'GET') {
+         errors.push('Unexpected write: ' + request.method() + ' ' + url.pathname);
+         return route.fulfill({ status: 400 });
+-      } else if (url.pathname === '/api/me') body = { ok: true, userId: 'fictional-owner', detailLevel: 'simple',
+-        features: width >= 1024 ? { routines: { apiVersion: 1 } } : {} };
++      } else if (url.pathname === '/api/me') body = { ok: true, userId: 'fictional-owner', businessId: 'fictional-business', detailLevel: 'simple',
++        features: { ...(width >= 1024 ? { routines: { apiVersion: 1 } } : {}), ...(checkTriggers ? { externalTriggers: { apiVersion: 1 } } : {}) } };
++      else if (checkTriggers && url.pathname === '/api/external-triggers') body = { ok: true, apiVersion: 1, available: triggerAvailable, triggers,
++        tasks: ['business_summary', 'weekly_summary', 'approval_reminder'], limits: { maxActive: 3, dailyEvents: 20, bodyBytes: 2048 } };
+       else if (url.pathname === '/api/state') body = { ok: true, snapshot: { ...snapshot, lang, theme } };
+       else if (url.pathname === '/api/connections') body = { ok: true, connections: rows };
+       else if (url.pathname === '/api/connections/token') body = { ok: true, connectors: [] };
+@@ -127,6 +153,48 @@
+     await checkLayout();
+     await screenshot('account-controls');
+ 
++    if (checkTriggers) {
++      const names = lang === 'bm' ? { title: 'Pencetus luaran', add: 'Tambah pencetus', name: 'Nama perkhidmatan atau pencetus', task: 'Laporan dibenarkan',
++        review: 'Semak kebenaran', grant: 'Cipta kunci tandatangan', key: 'Kunci tandatangan perkhidmatan', close: 'Tutup dan sembunyi kunci',
++        revoke: 'Batalkan akses', confirm: 'Sahkan pembatalan', cancel: 'Batal', refresh: 'Segarkan pencetus' }
++        : { title: 'External triggers', add: 'Add trigger', name: 'Service or trigger name', task: 'Allowed report', review: 'Review permission',
++          grant: 'Create signing key', key: 'Service signing key', close: 'Close and hide key', revoke: 'Revoke access', confirm: 'Confirm revocation', cancel: 'Cancel', refresh: 'Refresh triggers' };
++      const region = page.getByRole('region', { name: names.title });
++      await region.getByRole('button', { name: names.add }).waitFor();
++      assert.equal(triggerOperations.length, 0, 'Visiting settings never grants access');
++      const gridColumns = await region.locator('.trigger-grid').evaluate(node => getComputedStyle(node).gridTemplateColumns.split(' ').length);
++      assert.equal(gridColumns, width <= 640 ? 1 : 2);
++      await region.scrollIntoViewIfNeeded(); await screenshot('trigger-grid');
++      await region.getByRole('button', { name: names.add }).click();
++      await page.getByLabel(names.name).fill('Fictional weekly reporting service');
++      await page.getByLabel(names.task).selectOption('weekly_summary');
++      await page.getByRole('button', { name: names.review }).click();
++      assert.equal(triggerOperations.length, 0, 'Review is not approval');
++      await checkLayout(); await screenshot('trigger-review');
++      await page.getByRole('button', { name: names.grant }).click();
++      await page.getByLabel(names.key).waitFor();
++      assert(await page.locator('.trigger-dialog [data-initial-focus]').evaluate(node => node === document.activeElement && node.getBoundingClientRect().top >= 0), 'One-time warning is focused and visible before the key');
++      assert.equal(await page.getByLabel(names.key).getAttribute('type'), 'password');
++      assert(await page.evaluate(() => !JSON.stringify(localStorage).includes('f'.repeat(64)) && !JSON.stringify(sessionStorage).includes('f'.repeat(64))));
++      await checkLayout(); await screenshot('trigger-key-masked');
++      await page.getByRole('button', { name: names.close }).click();
++      assert.equal(await page.getByLabel(names.key).count(), 0);
++      triggerAvailable = false;
++      await region.getByRole('button', { name: names.refresh }).click();
++      await region.getByRole('button', { name: names.add }).waitFor();
++      assert(await region.getByRole('button', { name: names.add }).isDisabled(), 'Paused ingress prevents new grants');
++      const revokeButton = region.getByRole('button', { name: names.revoke }).first();
++      await revokeButton.click();
++      assert.deepEqual(triggerOperations, ['create']);
++      await page.getByRole('button', { name: names.cancel, exact: true }).click();
++      assert(await revokeButton.evaluate(node => node === document.activeElement), 'Cancel restores keyboard focus');
++      await revokeButton.click(); await checkLayout(); await screenshot('trigger-revoke');
++      await page.getByRole('button', { name: names.confirm }).click();
++      assert.deepEqual(triggerOperations, ['create', 'revoke']);
++      assert.equal(await page.getByLabel(names.key).count(), 0);
++      await checkLayout();
++    }
++
+     await page.goto(origin + '/app?view=library&tab=connectors');
+     await page.getByRole('combobox', { name: labels.category }).selectOption('google');
+     assert.deepEqual(await page.locator('.connector-card').evaluateAll(nodes => nodes.map(node => node.dataset.connector).sort()), publicIds);
+@@ -338,7 +406,7 @@
+       await page.waitForLoadState('networkidle');
+       await checkLayout();
+     }
+-    console.log(`${width}×${height} ${lang}/${theme}: sidebar · connectors · safe recovery/drafts · browser modal · Activity Markdown · keyboard · core routes · no overflow/errors`);
++    console.log(`${width}×${height} ${lang}/${theme}: sidebar · connectors${checkTriggers ? ' · owner trigger review/key/revoke' : ''} · safe recovery/drafts · browser modal · Activity Markdown · keyboard · core routes · no overflow/errors`);
+     await context.close();
+   }
+ } finally {
