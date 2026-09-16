@@ -474,6 +474,9 @@ amendments and acceptance gate live in `docs/plans/2026-09-09-routines-api-v1.md
 ```
 
 Credentials come from `neonctl` (already logged in) or `AISAR_NEON_OWNER_URL`.
+The command names the `production` branch explicitly; Neon's default branch is
+not the deployed database. It uses the direct endpoint because the pooled
+endpoint rejects the read-only startup option.
 It connects as `neondb_owner` on purpose — RLS scopes every tenant table to
 `app.business_id`, so `aisar_app` outside `withTenant` counts nothing. The
 session sets `default_transaction_read_only`, so the owner connection cannot
@@ -531,8 +534,10 @@ Authentication-Results on a real magic link read dkim=pass, spf=pass,
 dmarc=pass before the flip. Any new sender must go through Resend or carry
 its own aligned DKIM, or its mail lands in spam.
 
-Unsetting the secret falls back to logging the link to `npx wrangler tail`,
-which is how to test without sending. Resend's `delivered@resend.dev`
+Missing email configuration logs only a generic delivery warning, never the
+recipient or authentication link. Test without sending through mocked delivery;
+bearer links and provider response bodies must not become log material.
+Resend's `delivered@resend.dev`
 simulates a delivery and is the right recipient for load tests: a bounce
 from a made-up address would damage the sending reputation being tested.
 

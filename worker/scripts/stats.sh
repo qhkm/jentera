@@ -26,7 +26,9 @@ conn() {
     printf '%s' "$AISAR_NEON_OWNER_URL"
     return
   fi
-  neonctl connection-string --project-id "$PROJECT_ID" --role-name neondb_owner
+  # The default branch is not production; name the branch explicitly.
+  # Use the direct endpoint: the pooler rejects the read-only startup option.
+  neonctl connection-string production --project-id "$PROJECT_ID" --role-name neondb_owner --database-name neondb
 }
 
 CS="$(conn)"
