@@ -23,6 +23,63 @@ beforeEach(async () => {
   await asOwner(sql => sql`truncate platform_access, trial_invite, trial_redemption, waitlist_entry cascade`);
 });
 describe('restricted access with real Postgres', () => {
+  const groupUrl = `https://chat.whatsapp.com/${'A'.repeat(22)}`;
+  async function support(token?: string, mode = 'waitlist', configuredUrl = groupUrl) {
+    const url = new URL('http://localhost:8787/api/access');
+    const response = await handleAccess(new Request(url, { headers: token ? { Cookie: `aisar_session=${token}` } : {} }),
+      testEnv({ ACCESS_MODE: mode, LAUNCH_FOUNDER_GROUP_URL: configuredUrl }), url, {});
+    expect(response!.headers.get('Cache-Control')).toBe('no-store');
+    return response!.json() as Promise<{ founderGroup: { url: string } | null }>;
+  }
+  it('never exposes the group to an anonymous or free signed-in account', async () => {
+    expect((await support()).founderGroup).toBeNull();
+    const person = await identity('unpaid@example.com');
+    expect((await support(person.token)).founderGroup).toBeNull();
+    expect((await support(person.token, 'open')).founderGroup).toBeNull();
+  });
+  it('requires an operator-recorded reference and an active paid grant, not an owner exemption', async () => {
+    const person = await identity('paid-support@example.com');
+    const owner = await identity('qhkmdev90@gmail.com');
+    expect((await support(owner.token)).founderGroup).toBeNull();
+    await asOwner(sql => sql`insert into platform_access (email, kind, expires_at) values (${person.email}, 'paid', now() + interval '1 day')`);
+    expect((await support(person.token)).founderGroup).toBeNull();
+    await asOwner(sql => sql`update platform_access set note='  ' where email=${person.email}`);
+    expect((await support(person.token)).founderGroup).toBeNull();
+    await asOwner(sql => sql`update platform_access set note='verified-test-payment-reference' where email=${person.email}`);
+    const response = await support(person.token);
+    expect(response.founderGroup).toEqual({ url: groupUrl });
+    expect(JSON.stringify(response)).not.toContain('verified-test-payment-reference');
+    expect((await support(person.token, 'open')).founderGroup).toEqual({ url: groupUrl });
+    expect((await support(owner.token)).founderGroup).toBeNull();
+  });
+  it('does not treat a trial reference as proof of payment', async () => {
+    const person = await identity('trial-support@example.com');
+    await asOwner(sql => sql`insert into platform_access (email, kind, expires_at, note)
+      values (${person.email}, 'trial', now() + interval '1 day', 'Invite code redemption')`);
+    expect((await support(person.token)).founderGroup).toBeNull();
+  });
+  it('withdraws the invitation after expiry, revocation or loss of email verification', async () => {
+    const person = await identity('expiry-support@example.com');
+    await asOwner(sql => sql`insert into platform_access (email, kind, expires_at, note)
+      values (${person.email}, 'paid', now() + interval '1 day', 'verified-test-payment-reference')`);
+    expect((await support(person.token)).founderGroup).not.toBeNull();
+    await asOwner(sql => sql`update platform_access set expires_at=now()-interval '1 second' where email=${person.email}`);
+    expect((await support(person.token, 'open')).founderGroup).toBeNull();
+    await asOwner(sql => sql`update platform_access set expires_at=now()+interval '1 day',revoked_at=now() where email=${person.email}`);
+    expect((await support(person.token, 'open')).founderGroup).toBeNull();
+    await asOwner(async sql => {
+      await sql`update platform_access set revoked_at=null where email=${person.email}`;
+      await sql`update app_user set email_verified=false where id=${person.userId}`;
+    });
+    expect((await support(person.token, 'open')).founderGroup).toBeNull();
+  });
+  it('keeps the group disabled if the server configuration is missing or unsafe', async () => {
+    const person = await identity('configuration-support@example.com');
+    await asOwner(sql => sql`insert into platform_access (email, kind, expires_at, note)
+      values (${person.email}, 'paid', now() + interval '1 day', 'verified-test-payment-reference')`);
+    expect((await support(person.token, 'waitlist', '')).founderGroup).toBeNull();
+    expect((await support(person.token, 'waitlist', 'https://attacker.example')).founderGroup).toBeNull();
+  });
   it('lets only one account claim an email-free invitation, even concurrently', async () => {
     const first = await identity('first@example.com');
     const second = await identity('second@example.com');

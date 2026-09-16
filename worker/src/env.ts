@@ -1,6 +1,8 @@
 export interface Env {
   /** Enable only after migration 041 and confirmed paid grants are installed. */
   ACCESS_MODE?: 'open' | 'waitlist';
+  /** Lifetime ten-chat preview; enable only after migration 057. */
+  CHAT_PREVIEW_ENABLED?: string;
   /** Postgres on Neon, pooled through Hyperdrive. */
   HYPERDRIVE: Hyperdrive;
   /** Comma-separated list of origins permitted to call this API. */
@@ -9,6 +11,26 @@ export interface Env {
   RESEND_API_KEY: string;
   /** Where magic links point, e.g. https://jentera.ai */
   APP_ORIGIN: string;
+  /** Cloudflare Worker secrets; never ship Stripe credentials in the frontend. */
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  STRIPE_BILLING_SANDBOX_ENABLED?: string;
+  /** Explicit live release gate; also requires production origins/catalog/account. */
+  STRIPE_BILLING_LIVE_ENABLED?: string;
+  /** New-purchase brake, independent of ongoing signed payment fulfillment. */
+  STRIPE_CHECKOUT_ENABLED?: string;
+  STRIPE_EXPECTED_ACCOUNT_ID?: string;
+  STRIPE_LAUNCH_PRODUCT?: string;
+  STRIPE_LAUNCH_MONTHLY_PRICE?: string;
+  STRIPE_LAUNCH_COUPON?: string;
+  STRIPE_PRICE_PRO_MONTHLY?: string;
+  STRIPE_PRICE_PRO_ANNUAL?: string;
+  STRIPE_PRICE_TEAM_MONTHLY?: string;
+  STRIPE_PRICE_TEAM_ANNUAL?: string;
+  /** Not enabled until applicable tax obligations and registrations are reviewed. */
+  STRIPE_AUTOMATIC_TAX?: string;
+  /** Founder support invite; only returned after operator-verified payment. */
+  LAUNCH_FOUNDER_GROUP_URL?: string;
   /** 32 random bytes, base64. Encrypts the credentials business
       owners paste in — their secrets, not ours. */
   CREDENTIAL_KEY: string;
@@ -160,6 +182,13 @@ export interface Env {
   /** Where a plain-text notice goes each time a new account is made,
       through any door. Unset: nobody is told. A var, not a secret. */
   SIGNUP_NOTICE_TO?: string;
+  /** The address a waiting-list announcement offers as its unsubscribe.
+      It must be an inbox that receives: jentera.ai has no MX, so a
+      mailto at that domain would be a black hole, and an unsubscribe
+      nobody can act on is what turns into a spam complaint against the
+      domain the magic links come from. Unset: the launch administrator's
+      own address. A var, not a secret. */
+  WAITLIST_UNSUBSCRIBE_TO?: string;
   /** Cloudflare Turnstile secret for the link, signup and password-login
       doors. Set with `wrangler secret put TURNSTILE_SECRET`. Unset: the
       check is skipped, which is how tests and local runs work. Set it only

@@ -23,6 +23,8 @@ export const PERMISSIONS = {
   'specialists.manage': ['owner'],
   /** Complete onboarding, reset it, mark setup done. */
   'business.setup': ['owner'],
+  /** Purchase, manage and cancel the business subscription. */
+  'billing.manage': ['owner'],
   /** Policies and their reset. */
   'policies.manage': ['owner'],
   /** Approve or reject a proposed action on behalf of the business. */

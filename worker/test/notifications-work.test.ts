@@ -29,7 +29,9 @@ const rows = () => asTenant(A, (tx) => tx<{ recipient_user_id: string; kind: str
 
 describe('who is told about a colleague\'s work', () => {
   it('names every owner but the one who asked', async () => {
-    expect(await asTenant(A, (tx) => ownersOf(tx, A))).toEqual([ids.owner, ids.partner]);
+    // Multi-row fixture inserts share created_at; the database does not
+    // promise insertion order. Assert the exact recipients instead.
+    expect((await asTenant(A, (tx) => ownersOf(tx, A))).sort()).toEqual([ids.owner, ids.partner].sort());
     expect(await asTenant(A, (tx) => ownersOf(tx, A, { except: ids.owner }))).toEqual([ids.partner]);
   });
 

@@ -33,6 +33,7 @@ import {
 } from '../runtime/consumer';
 import { telegramPairingCode, telegramPairingUrl } from '../telegram-pairing';
 import type { ConnectionRow } from '../connections';
+import { checkStripeReadiness, enableReviewedStripeWebhook } from '../billing/readiness';
 
 function json(body: unknown, init: ResponseInit = {}, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -75,6 +76,30 @@ export async function handleSupport(
   const presented = (request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
   if (!presented || !keyEquals(expected, presented)) {
     return json({ ok: false, err: 'unauthorized' }, { status: 401 }, cors);
+  }
+
+  if (url.pathname === '/api/support/billing-readiness') {
+    if (request.method !== 'GET') return json({ ok: false, err: 'method not allowed' }, { status: 405 }, cors);
+    return json(await checkStripeReadiness(env), { headers: { 'Cache-Control': 'private, no-store' } }, cors);
+  }
+  if (url.pathname === '/api/support/billing-webhook-enable') {
+    const headers = { ...cors, 'Cache-Control': 'private, no-store' };
+    // Unlike legacy support reads, a billing mutation may not use a provider
+    // management key as an authentication fallback.
+    if (!env.AISAR_SUPPORT_KEY?.trim() || !keyEquals(env.AISAR_SUPPORT_KEY.trim(), presented)) {
+      return json({ ok: false, err: 'Dedicated support authentication required.' }, { status: 401 }, headers);
+    }
+    if (request.method !== 'POST') return json({ ok: false, err: 'method not allowed' }, { status: 405 }, headers);
+    const body = await request.json().catch(() => null) as { confirm?: unknown } | null;
+    if (!body || body.confirm !== 'enable-reviewed-billing-webhook' || Object.keys(body).length !== 1) {
+      return json({ ok: false, err: 'Explicit reviewed-endpoint confirmation required.' }, { status: 400 }, headers);
+    }
+    try {
+      const { status, ...result } = await enableReviewedStripeWebhook(env);
+      return json(result, { status }, headers);
+    } catch {
+      return json({ ok: false, err: 'Could not enable verified billing delivery.' }, { status: 503 }, headers);
+    }
   }
 
   /* Placement spike (2026-09-10): which data centre served this request.

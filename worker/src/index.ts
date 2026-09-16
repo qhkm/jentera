@@ -31,6 +31,8 @@ interface LivenessRow {
 
 import { handleSession } from './routes/session';
 import { handleAccess } from './routes/access';
+import { handleBilling } from './routes/billing';
+import { handleStripeWebhook } from './routes/stripe-webhook';
 import { handleLaunchAdmin } from './routes/launch-admin';
 import { handleRepo } from './routes/repo';
 import { handleRuns } from './routes/runs';
@@ -93,7 +95,7 @@ function cors(env: Env, origin: string | null): Record<string, string> {
        /api/runs/ingest/file. A custom request header must be named here or
        the preflight refuses the request; test/cors.test.ts scans the client
        for these so the next one cannot be forgotten. */
-    'Access-Control-Allow-Headers': 'Content-Type,X-Aisar-File-Name,Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type,X-Aisar-File-Name,Authorization,Idempotency-Key',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
   };
@@ -145,6 +147,10 @@ export default {
 
     const guarded = await guardApiRequest(request, env, url, headers);
     if (guarded) return guarded;
+    const stripeWebhook = await handleStripeWebhook(request, env, url);
+    if (stripeWebhook) return stripeWebhook;
+    const billing = await handleBilling(request, env, url, headers);
+    if (billing) return billing;
     const launchAdmin = await handleLaunchAdmin(request, env, url, headers);
     if (launchAdmin) return launchAdmin;
     const access = await handleAccess(request, env, url, headers, ctx);

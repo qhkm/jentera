@@ -47,6 +47,9 @@ enabled = true
 [vars]
 # Migration 041 must be applied before deploying this restriction.
 ACCESS_MODE = "waitlist"
+# Apply migration 057 and verify trial + paid flows before opening the preview.
+# Separate from checkout: exhaustion blocks new chat work, not result/history reads.
+CHAT_PREVIEW_ENABLED = "true"
 
 # The native app's sign-in doors (/api/auth/native/*). Shut until the callback
 # is a verified App Link and Universal Link rather than the ai.jentera.app
@@ -62,6 +65,21 @@ ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173,https://jentera.a
 # Where magic links point. Must match the Resend sender domain, or the
 # email carries a link to a different domain than it came from.
 APP_ORIGIN = "https://jentera.ai"
+
+# Payment release gates: prepare/migrate first, verify real sandbox lifecycle,
+# install rotated restricted credentials and signing secret, then open checkout.
+# The purchase brake is separate so closing purchases preserves paid callbacks.
+STRIPE_BILLING_LIVE_ENABLED = "true"
+STRIPE_BILLING_SANDBOX_ENABLED = "false"
+STRIPE_CHECKOUT_ENABLED = "true"
+STRIPE_EXPECTED_ACCOUNT_ID = "acct_1UG90wHuvvz49fq3"
+STRIPE_LAUNCH_PRODUCT = "prod_VGrzwJYyjyq39c"
+STRIPE_LAUNCH_MONTHLY_PRICE = "price_1UGKFDHuvvz49fq3tGmnpgky"
+STRIPE_LAUNCH_COUPON = "jentera_launch_myr_100_off_3_months_v1"
+
+# Supply LAUNCH_FOUNDER_GROUP_URL as a Worker secret, never a frontend var or
+# tracked invite URL. Only operator-verified active paid accounts receive it.
+# Missing configuration safely hides the optional appreciation invitation.
 
 # One plain-text email here each time a new account is made, through any
 # door. Sent behind the response, never in its way. Unset: nobody is told.

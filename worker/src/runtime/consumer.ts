@@ -920,7 +920,7 @@ export async function handleRuntimeMessage(
   if (message.version !== 1 || !uuid(message.businessId) || !uuid(message.taskId)) {
     return { action: 'ack', reason: 'missing' };
   }
-  if (!(await businessHasAccess(env, message.businessId))) {
+  if (!(await businessHasAccess(env, message.businessId, message.taskId))) {
     /* Only the refused path pays for this lookup, so the ordinary message is
        not slowed by it — and out here every tenant transaction costs seconds. */
     const kind = await withTenant(env, message.businessId, (tx) =>

@@ -17,7 +17,8 @@ describe('invitation authentication carry-through', () => {
     expect(sealed).not.toContain(code);
     expect(await openTrial(env(), sealed, 'google:state-a')).toBe(code);
     expect(await openTrial(env(), sealed, 'google:state-b')).toBe('');
-    expect(await openTrial(env(), 'X' + sealed.slice(1), 'google:state-a')).toBe('');
+    // A random IV can already start with X; guarantee the ciphertext changes.
+    expect(await openTrial(env(), (sealed[0] === 'X' ? 'Y' : 'X') + sealed.slice(1), 'google:state-a')).toBe('');
     expect(await openTrial(env(), 'bad', 'google:state-a')).toBe('');
     expect(await sealTrial(env(), 'https://evil.example', 'state')).toBe('');
     expect(trialLanding('https://evil.example', '/access')).toBe('/access');

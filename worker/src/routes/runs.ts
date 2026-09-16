@@ -25,6 +25,8 @@ import {
   runSteps,
 } from '../runs';
 import { recordFact } from '../facts';
+import { accessForEmail } from '../access';
+import { chatPreviewEnabled, reservePreview, bindPreview, failPreview } from '../chat-preview';
 import { extractFacts, urlProblem } from '../ingest';
 import { runtimeFor, signalRuntimeTask } from '../runtime';
 import { INLINE_SAFETY_NET_SECONDS, runInlineSlice } from '../runtime/inline-slice';
@@ -403,9 +405,13 @@ export async function handleRuns(
         if (!checkpoint) return json({ ok: false, err: 'open checkpoint not found' }, { status: 404 }, cors);
       }
     }
-    const mode = body.mode ?? 'work';
+    let mode = body.mode ?? 'work';
     if (mode !== 'ask' && mode !== 'work') {
       return json({ ok: false, err: 'ask mode is invalid' }, { status: 400 }, cors);
+    }
+    if (mode === 'ask' && chatPreviewEnabled(env) && (await accessForEmail(env, id.email)).kind === 'preview') {
+      // A stale/older client can still use Chat, but cannot bypass admission.
+      mode = 'work';
     }
     if (body.responseMode !== undefined && body.responseMode !== 'quick' && body.responseMode !== 'deep') {
       return json({ ok: false, err: 'response mode is invalid' }, { status: 400 }, cors);
@@ -791,11 +797,30 @@ async function startDurableAsk(
     }, { status: 503 }, cors);
   }
 
+  const reservation = await reservePreview(env, userId, businessId, requestId);
+  if (reservation?.kind === 'blocked') return json({
+    ok: false, code: 'CHAT_PREVIEW_EXHAUSTED', next: '/subscribe',
+    err: 'You’ve used your 10 free chat requests. Upgrade to keep working with Jentera.',
+  }, { status: 402 }, cors);
+  if (reservation?.kind === 'busy') return json({ ok: false, err: 'That request is already being prepared. Please wait a moment.' }, { status: 409 }, cors);
+  if (reservation?.kind === 'failed' || reservation?.kind === 'conflict') return json({ ok: false, err: 'That request cannot be repeated. Please send a new message.' }, { status: 409 }, cors);
+  if (reservation?.kind === 'replay') {
+    // The committed task is the evidence. Retries never repeat file conversion.
+    if (ctx) ctx.waitUntil(runInlineSlice(env, { version: 1, businessId, taskId: reservation.taskId }, inline));
+    try {
+      await signalRuntimeTask(env, businessId, reservation.taskId, { delaySeconds: ctx ? INLINE_SAFETY_NET_SECONDS : 0 });
+    } catch {
+      console.error('[durable-ask] queue signal failed');
+      if (!ctx) return json({ ok: false, err: 'Jentera could not queue that answer. Please try again.' }, { status: 503 }, cors);
+    }
+    return json({ ok: true, pending: true, runId: reservation.runId, preview: reservation.preview }, { status: 202 }, cors);
+  }
   let agentQuestion = question;
   if (inputFile) {
     try {
       agentQuestion = await questionWithFile(env, question, inputFile);
     } catch (error) {
+      if (reservation?.kind === 'new') await failPreview(env, userId, requestId);
       const message = error instanceof Error ? error.message : 'Could not read that file.';
       return json({ ok: false, err: message }, { status: 422 }, cors);
     }
@@ -825,6 +850,7 @@ async function startDurableAsk(
     const existing = await runtimeTaskByDedupeKey(tx, businessId, dedupeKey);
     if (existing) {
       if (!existing.runId) throw new Error('durable ask task has no run');
+      if (reservation?.kind === 'new') await bindPreview(tx, userId, businessId, requestId, existing.runId, existing.id);
       return { runId: existing.runId, task: existing };
     }
 
@@ -865,6 +891,7 @@ async function startDurableAsk(
         requestedAtMs: Date.now(),
       },
     });
+    if (reservation?.kind === 'new') await bindPreview(tx, userId, businessId, requestId, run.id, task.id);
     return { runId: run.id, task };
   });
 
@@ -907,6 +934,7 @@ async function startDurableAsk(
     pending: true,
     status: created.task.status,
     runId: created.runId,
+    ...(reservation?.kind === 'new' ? { preview: reservation.preview } : {}),
   }, { status: 202 }, cors);
 }
 

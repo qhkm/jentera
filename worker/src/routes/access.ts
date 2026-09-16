@@ -5,6 +5,8 @@ import { withUser } from '../db';
 import { checkAuthRate, clientIp } from '../ratelimit';
 import { verifyTurnstile } from '../turnstile';
 import { notifyWaitlist } from '../signup-notice';
+import { founderGroupUrl } from '../founder-group';
+import { stripeCheckoutEnabled } from '../stripe';
 
 export async function handleAccess(request: Request, env: Env, url: URL, cors: Record<string, string>, ctx?: Pick<ExecutionContext, 'waitUntil'>): Promise<Response | null> {
   if (!['/api/access', '/api/access/redeem', '/api/waitlist'].includes(url.pathname)) return null;
@@ -33,7 +35,28 @@ export async function handleAccess(request: Request, env: Env, url: URL, cors: R
   const token = readSessionToken(request);
   const identity = token ? await verifyIdentitySession(env, token) : null;
   if (request.method === 'GET' && url.pathname === '/api/access') {
-    return json({ restricted: restrictedAccess(env), signedIn: !!identity, access: identity ? await accessForEmail(env, identity.email) : null });
+    const access = identity ? await accessForEmail(env, identity.email) : null;
+    const configuredGroup = founderGroupUrl(env.LAUNCH_FOUNDER_GROUP_URL);
+    let founderGroup: { url: string } | null = null;
+    if (identity && configuredGroup) {
+      // Only trusted writers create paid grants: an operator after payment
+      // verification, or the signed Stripe handler after durable payment proof.
+      // A plan flag, redirect query or owner exemption is never evidence.
+      const [payment] = await withUser(env, sql => sql<{ verified: boolean }[]>`
+        select true as verified from platform_access a
+        join app_user u on lower(u.email) = a.email
+        where u.id = ${identity.userId} and u.email_verified = true
+          and a.kind = 'paid' and a.revoked_at is null
+          and a.expires_at > now() and length(trim(a.note)) > 0`).catch(() => {
+        // Optional support fails closed without breaking platform access or
+        // logging the account, payment reference or invite URL.
+        console.warn('[founder-support] payment eligibility unavailable');
+        return [];
+      });
+      if (payment?.verified) founderGroup = configuredGroup;
+    }
+    return json({ restricted: restrictedAccess(env), signedIn: !!identity, access, founderGroup,
+      billing: { checkoutEnabled: stripeCheckoutEnabled(env) } });
   }
   if (request.method !== 'POST' || url.pathname !== '/api/access/redeem') return json({ err: 'Method not allowed.' }, 405);
   if (!identity) return json({ err: 'Sign in to redeem your invite code.' }, 401);

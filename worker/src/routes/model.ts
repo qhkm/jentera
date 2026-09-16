@@ -31,6 +31,7 @@
 
 import type { Env } from '../env';
 import { businessHasAccess, restrictedAccess } from '../access';
+import { previewModelAccess } from '../chat-preview';
 import { prepareModelPayload, readModelBody } from '../model-payload';
 import { modelUpstreamCredential, prepareUpstreamPayload } from '../model-upstream';
 import {
@@ -108,7 +109,7 @@ export async function handleModelProxy(
       return row?.business_id;
     });
     if (!businessId) return jsonError(403, 'Platform access required', headers);
-    if (!(await businessHasAccess(env, businessId))) {
+    if (!(await businessHasAccess(env, businessId)) && !(await previewModelAccess(env, businessId))) {
       /* A sprite mid-bootstrap may prove itself. The bootstrap ends with a live
          inference precisely so a runtime is never called ready on a model path
          that does not work, and refusing that call left every unadmitted

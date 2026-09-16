@@ -37,16 +37,21 @@
     "db:migrate:goals": "node scripts/apply-goals.mjs",
     "db:migrate:goal-checkpoints": "node scripts/apply-goal-checkpoints.mjs",
     "db:migrate:vault-connection": "node scripts/apply-vault-connection.mjs",
+    "db:migrate:chat-preview": "node scripts/apply-chat-preview.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:stripe-canary": "vitest run --config vitest.stripe-canary.config.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260816.1",
+    "@types/node": "^22.20.3",
+    "playwright": "1.63.0",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11",
     "wrangler": "^4.123.0"
   },
   "dependencies": {
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "stripe": "22.6.2"
   }
 }

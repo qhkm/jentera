@@ -8,8 +8,11 @@ accounts or data.
 Policy when `ACCESS_MODE=waitlist`:
 
 - Verified `qhkmdev90@gmail.com` retains access. This is not a login bypass.
-- Paid access is an explicit, expiring operator grant after payment verification;
-  business `pro`/`team` flags are not payment evidence. No checkout/webhook added.
+- Paid access is an explicit, expiring operator grant after payment verification,
+  or a server-confirmed Stripe grant when live billing is configured and enabled.
+  Business `pro`/`team` flags are not payment evidence. See
+  [automatic activation](billing/automatic-activation.md) for release gates;
+  implementing the handler does not itself open paid checkout.
 - All other accounts, including existing free accounts, are restricted.
 - Recipient codes are email-bound and single-use. Shared private links have an
   explicit claim limit from 1–100. Both are redeemable within seven days. A trial

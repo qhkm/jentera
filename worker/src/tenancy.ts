@@ -9,7 +9,7 @@
    ============================================================ */
 
 import type { Env } from './env';
-import { readSessionToken, verifySession, type Identity } from './auth';
+import { readSessionToken, verifySession, verifyIdentitySession, type Identity } from './auth';
 
 export type { Identity };
 
@@ -25,6 +25,12 @@ export async function resolveTenant(env: Env, request: Request): Promise<Identit
   const token = readSessionToken(request);
   if (!token) return null;
   return verifySession(env, token);
+}
+
+/** Billing establishes identity only: paying never requires an existing grant. */
+export async function resolveBillingTenant(env: Env, request: Request): Promise<Identity | null> {
+  const token = readSessionToken(request);
+  return token ? verifyIdentitySession(env, token) : null;
 }
 
 /** Identity that is signed in AND has a business. */
