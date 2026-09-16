@@ -31,38 +31,61 @@ export async function handleAccount(
     }
     const id = await hashToken(presented);
 
-    /* First, try the conditional UPDATE that guards single-use. This runs
-       outside a tenant transaction because account_deletion has no RLS. */
-    const record = await withUser(env, async (sql) => {
+    /* Read first to learn the business_id without committing anything. */
+    const lookup = await withUser(env, async (sql) => {
       const rows = await sql<{ user_id: string; business_id: string | null }[]>`
-        update account_deletion
-           set cancelled_at = now()
+        select user_id, business_id from account_deletion
          where cancel_token_id = ${id}
            and cancelled_at is null
            and completed_at is null
            and stage = 'pending'
-           and scheduled_for > now()
-        returning user_id, business_id`;
+           and scheduled_for > now()`;
       return rows.length === 0 ? null : rows[0];
     });
 
-    if (!record) {
+    if (!lookup) {
       return json({ ok: false, err: 'not found' }, { status: 404 }, cors);
     }
 
-    /* Now restore the user and business. Both updates must run inside a
-       tenant transaction because business has forced RLS. */
-    if (record.business_id) {
-      await withTenant(env, record.business_id, async (tx) => {
-        await tx`update app_user set deleted_at = null where id = ${record.user_id}`;
-        await tx`update business set deleted_at = null where id = ${record.business_id}`;
-      });
-    } else {
-      /* Staff deletion: no business to restore. Update the user outside a
-         tenant context. */
-      await withUser(env, async (sql) => {
-        await sql`update app_user set deleted_at = null where id = ${record.user_id}`;
-      });
+    /* The conditional UPDATE and the restorations must all happen in one
+       transaction, or a failure between them leaves the token spent while the
+       account stays locked. The UPDATE guards single-use and commits nothing
+       if no row matched; if it matches, both restorations proceed atomically. */
+    const restored = lookup.business_id
+      ? await withTenant(env, lookup.business_id, async (tx) => {
+          const rows = await tx<{ user_id: string }[]>`
+            update account_deletion
+               set cancelled_at = now()
+             where cancel_token_id = ${id}
+               and cancelled_at is null
+               and completed_at is null
+               and stage = 'pending'
+               and scheduled_for > now()
+            returning user_id`;
+          if (rows.length === 0) return null;
+          await tx`update app_user set deleted_at = null where id = ${lookup.user_id}`;
+          await tx`update business set deleted_at = null where id = ${lookup.business_id}`;
+          return rows[0];
+        })
+      : await withUser(env, async (sql) => {
+          return sql.begin(async (tx) => {
+            const rows = await tx<{ user_id: string }[]>`
+              update account_deletion
+                 set cancelled_at = now()
+               where cancel_token_id = ${id}
+                 and cancelled_at is null
+                 and completed_at is null
+                 and stage = 'pending'
+                 and scheduled_for > now()
+              returning user_id`;
+            if (rows.length === 0) return null;
+            await tx`update app_user set deleted_at = null where id = ${lookup.user_id}`;
+            return rows[0];
+          });
+        });
+
+    if (!restored) {
+      return json({ ok: false, err: 'not found' }, { status: 404 }, cors);
     }
 
     return Response.redirect(`${env.APP_ORIGIN}/signin?restored=1`, 302);
