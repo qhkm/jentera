@@ -62,7 +62,23 @@ change is part of this release. Existing live Stripe secrets are preserved.
 Source commits include `ab6d71e` (billing/preview), `c6c1a8f` (announcements),
 `21e25c4` (launch onboarding), `40669bc` (account email), `311d002` (sidebar),
 `0da5116` (recovery), and `65defb7` (phone confirmation layout).
-Publication identifiers and post-release verification are recorded after deploy.
+Both services were published from source revision `dac64d2`:
+
+- Pages deployment: `4c3ff751` (`aisar-jentera`, production branch main).
+- Worker version: `d910f733-ed3e-41aa-b4e8-170229a8339e` (`aisar-api`).
+- Main asset: `index-DKyGPq0S.js`; shared CSS: `index-C8-3zUom.css`;
+  Dashboard: `Dashboard-C1tPFFl5.js` / `Dashboard-GeKzflRM.css`.
+
+Six main/shared/Dashboard assets on each of `jentera.ai` and `jentera.aisar.ai`
+match local build bytes by SHA-256. The published API reports checkout enabled,
+keeps the founder invite private, and answers 404 for anonymous admin access.
+The real preview/payment-readiness canary passes: verified ten-chat preview,
+exhausted read access, unverified denial and all live Stripe readiness checks.
+It creates no payment or AI request and removes its exact temporary fixture.
+All eight launch-funnel browser cases also pass against published assets with
+fictional APIs. All eight published connector/sidebar/recovery browser cases
+pass as well, including both short desktop layouts. No customer account was
+changed by these checks.
 
 Deployment targets are only `aisar-jentera` Pages and the existing `aisar-api`
 Worker. The separate `aisar.ai` Pages project and native store builds are untouched.
