@@ -1,8 +1,5 @@
-import { beforeAll, afterAll, describe, expect, it } from 'vitest';
-import { startDatabase, stopDatabase, asOwner } from './harness';
-
-beforeAll(startDatabase);
-afterAll(stopDatabase);
+import { describe, expect, it } from 'vitest';
+import { asOwner } from './harness';
 
 describe('account_deletion schema', () => {
   it('survives the business cascade it describes', async () => {
