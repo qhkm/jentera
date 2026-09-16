@@ -326,15 +326,20 @@ const DELETING = {
 /** True when this address belongs to an account inside its grace period. */
 async function deletionPending(env: Env, email: string): Promise<boolean> {
   return withUser(env, async (sql) => {
+    /* `email = ` and not `lower(email) = `: app_user.email is citext with a
+       unique index, so plain equality is already case-insensitive AND uses
+       the index. Wrapping the column in lower() is a functional expression
+       the index does not cover, which would make this a sequential scan on
+       an endpoint anyone can call. */
     const rows = await sql<{ one: number }[]>`
       select 1 as one from app_user
-       where lower(email) = ${email.toLowerCase()} and deleted_at is not null limit 1`;
+       where email = ${email} and deleted_at is not null limit 1`;
     return rows.length > 0;
   });
 }
 ```
 
-Then, as the first check inside each of the three handlers — the link request, the password signup and the password login — after the email is parsed and before Turnstile:
+Then inside each of the three handlers — the link request, the password signup and the password login — **after `refusedAsBot` and after the burst check**, not before them. This is a database round trip on an unauthenticated public endpoint: `wrangler.toml` states the burst limiter runs "before any database or email work, so a flood costs nothing", and putting a query ahead of it would undo that. Place it immediately after the throttles and before any account work:
 
 ```ts
     if (await deletionPending(env, email)) return json(DELETING, { status: 409 }, cors);
