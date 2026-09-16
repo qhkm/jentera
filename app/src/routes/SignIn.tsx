@@ -145,6 +145,7 @@ function BrowserSignIn() {
      so only the signed app can receive the callback. But it removes the
      silent case, which is the one nobody can notice. */
   const [handoffBusy, setHandoffBusy] = useState(false);
+  const [handoffReady, setHandoffReady] = useState(false);
   const returnToApp = async () => {
     if (!nativeHandoff) return;
     setHandoffBusy(true);
@@ -217,8 +218,13 @@ function BrowserSignIn() {
       if (res.ok) {
         const body = (await res.json().catch(() => ({}))) as { next?: unknown };
         if (nativeHandoff) {
-          if (await handoffBrowserSession(nativeHandoff)) return;
-          setError('Your browser session could not be returned to the Jentera app.');
+          /* Signing in is not consent to hand the session over. A phished
+             link carries the attacker's state and challenge; a victim who
+             then genuinely signs in here would mint a code against their
+             own account and send it to whoever wrote the link. So this
+             lands on the same tap the already-signed-in case goes through,
+             and mints nothing on its own. */
+          setHandoffReady(true);
           return;
         }
         // Full reload, not a client-side navigate: RepositoryGate reads
@@ -396,8 +402,9 @@ function BrowserSignIn() {
               <section className="card mt-4 px-4 py-3" aria-label="Return to the Jentera app">
                 <strong className="block text-[14px]">Continue in the Jentera app</strong>
                 <p className="m-0 mt-1 text-[13px] text-text-secondary">
-                  If you are already signed in here, this hands your session to the app on
-                  this device. Only continue if you opened this page from Jentera yourself.
+                  {handoffReady
+                    ? 'You are signed in on this device. Continue only if you opened this page from Jentera yourself.'
+                    : 'If you are already signed in here, this hands your session to the app on this device. Only continue if you opened this page from Jentera yourself.'}
                 </p>
                 <button
                   type="button"
