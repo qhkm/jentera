@@ -21,6 +21,8 @@ It is also owed on the web regardless of mobile. Nothing here is mobile work.
 | Mechanism | Cascade-led, with a catalog test that keeps it honest |
 | Confirmation | Type the account's email address |
 | Cancel | Signed link in the confirmation email |
+| Grace period | 7 days |
+| Re-signup during grace | Refused, with the cancel path offered |
 
 ## Why cascade-led
 
@@ -189,15 +191,19 @@ account created for it, with the sprite and R2 cleanup verified by hand after.
   for a listing.
 - **Admin-initiated deletion** for abuse or takedown.
 
+## Re-signup during grace
+
+The address is still in `app_user` and unique, so a signup would collide. All
+three doors refuse it with "an account for this address is being deleted",
+naming the cancel path — never silently resurrecting the account, and never
+failing in a way that reads as a broken sign-up. The password door already
+refuses to say whether an address exists; this message is the deliberate
+exception, because the person on the other end is almost always the account's
+owner changing their mind, and telling them nothing strands them for 7 days.
+
 ## Open questions
 
-1. **Grace length.** Seven days is an assumption, not a decision. Shorter
-   serves "I want it gone"; longer serves the misclick.
-2. **Re-signup during grace.** The address is still in `app_user` and unique, so
-   a signup collides. Proposed: refuse it with "an account for this address is
-   being deleted" and the cancel path, rather than silently resurrecting the
-   account or silently failing.
-3. **Billing.** `stripe-billing` is unmerged. Once money moves, invoices must
+1. **Billing.** `stripe-billing` is unmerged. Once money moves, invoices must
    survive deletion — Malaysian tax records run to seven years — which is a real
    exception to "delete everything". Decide it when billing merges, not after
    the first deletion.
