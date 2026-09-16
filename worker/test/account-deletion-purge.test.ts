@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type postgres from 'postgres';
-import { asOwner, asTenant, testEnv, truncateAll } from './harness';
+import { asApp, asOwner, asTenant, testEnv, truncateAll } from './harness';
 import { sweepAccountDeletions } from '../src/account-deletion/purge';
 import type { Env } from '../src/env';
 import type { sendNotice } from '../src/email';
@@ -183,7 +183,8 @@ describe('the purge', () => {
       select stage, attempts, last_error from account_deletion where user_id = ${userId}`);
     expect(stuck.stage).toBe('tenant');
     expect(stuck.attempts).toBeGreaterThan(0);
-    expect(stuck.last_error).toMatch(/sprite-9 is still there/);
+    expect(stuck.last_error).toMatch(/still standing/);
+    expect(stuck.last_error).toMatch(/recorded sprite: sprite-9/);
 
     /* The consumer finishes; the purge picks up where it stopped. */
     await asOwner((o) => o`delete from agent_runtime where business_id = ${businessId}`);
@@ -194,6 +195,101 @@ describe('the purge', () => {
     const [record] = await asOwner((o) => o<Stored[]>`
       select stage from account_deletion where email = ${EMAIL}`);
     expect(record.stage).toBe('done');
+  });
+
+  it('destroys a sprite that appeared after the request, which the record never named', async () => {
+    /* `sprite_id` is a snapshot seven days old, and only verifySession
+       honours `business.deleted_at` — a Telegram message during the grace
+       period provisions a machine nothing in the record knows about. It is
+       still the person's memory, so it is still theirs to have destroyed. */
+    const tasks: unknown[] = [];
+    const env = testEnv({
+      ARTIFACTS: { delete: async () => {} },
+      RUNTIME_QUEUE: { send: async (message: unknown) => { tasks.push(message); } },
+    });
+    const { businessId, userId } = await asOwner((owner) =>
+      seedDueDeletion(owner, { artifacts: [] }),
+    );
+    const [record] = await asOwner((o) => o<{ sprite_id: string | null }[]>`
+      select sprite_id from account_deletion where user_id = ${userId}`);
+    expect(record.sprite_id).toBeNull();
+    await asOwner((o) => o`
+      insert into agent_runtime (business_id, provider, provider_name, desired_release)
+      values (${businessId}, 'fly-sprite', 'sprite-late', 'r1')`);
+
+    await drive(env, {}, 6);
+
+    /* Queued, despite the record naming no sprite. */
+    expect(tasks).toHaveLength(1);
+    expect(await asOwner((o) => o`
+      select 1 from runtime_task where business_id = ${businessId} and kind = 'delete'`))
+      .toHaveLength(1);
+    /* And guarded: the cascade would have orphaned it. */
+    expect(await asOwner((o) => o`select 1 from business where id = ${businessId}`))
+      .toHaveLength(1);
+    const [stuck] = await asOwner((o) => o<Stored[]>`
+      select stage, last_error from account_deletion where user_id = ${userId}`);
+    expect(stuck.stage).toBe('tenant');
+    expect(stuck.last_error).toMatch(/recorded sprite: none/);
+
+    await asOwner((o) => o`delete from agent_runtime where business_id = ${businessId}`);
+    await drive(env, {}, 4);
+
+    expect(await asOwner((o) => o`select 1 from business where id = ${businessId}`))
+      .toHaveLength(0);
+  });
+
+  it('will not delete another tenant’s routines through the definer', async () => {
+    /* FORCE row level security binds a table owner, not a superuser and not
+       a BYPASSRLS role, so the function cannot lean on RLS for its tenant
+       bound — it reads app.business_id itself. Without that it would be a
+       cross-tenant delete granted to the app role, correct only for as long
+       as every caller passed the right id. */
+    const { businessId, userId } = await asOwner((owner) =>
+      seedDueDeletion(owner, { kind: 'staff' }),
+    );
+
+    const loose = await asApp((sql) => sql`
+      select public.delete_member_routines(${businessId}::uuid, ${userId}::uuid) as id`);
+    expect(loose).toHaveLength(0);
+
+    const elsewhere = await asTenant(crypto.randomUUID(), (tx) => tx`
+      select public.delete_member_routines(${businessId}::uuid, ${userId}::uuid) as id`);
+    expect(elsewhere).toHaveLength(0);
+
+    expect(await asOwner((o) => o`select 1 from routine where created_by = ${userId}`))
+      .toHaveLength(1);
+  });
+
+  it('leaves a routine the departing member only authorised', async () => {
+    /* A routine whose authoriser is lost is paused, not deleted (022), and
+       the confirm screen counts `created_by` alone — so deleting on
+       `authorised_by` would destroy more than the person was shown. */
+    const { businessId, userId } = await asOwner((owner) =>
+      seedDueDeletion(owner, { kind: 'staff' }),
+    );
+    const [boss] = await asOwner((o) => o<{ user_id: string }[]>`
+      select user_id from membership where business_id = ${businessId} and role = 'owner'`);
+    const [bosses] = await asOwner((o) => o<{ id: string }[]>`
+      insert into routine
+        (business_id, name, task_kind, frequency, time_of_day, time_zone, status,
+         created_by, authorised_by, create_request_id)
+      values (${businessId}, 'The owner''s job', 'weekly_summary', 'daily', '08:00',
+              'Asia/Kuala_Lumpur', 'active', ${boss.user_id}, ${userId},
+              gen_random_uuid())
+      returning id`);
+
+    const removed = await asTenant(businessId, (tx) => tx`
+      select public.delete_member_routines(${businessId}::uuid, ${userId}::uuid) as id`);
+
+    /* Only the one they created. The owner's, which they merely authorised,
+       stays — to be paused, which is what the house rule says happens to a
+       routine that loses its authoriser. */
+    expect(removed).toHaveLength(1);
+    expect(await asOwner((o) => o`select 1 from routine where id = ${bosses.id}`))
+      .toHaveLength(1);
+    expect(await asOwner((o) => o`select 1 from routine where created_by = ${userId}`))
+      .toHaveLength(0);
   });
 
   it('stalls loudly rather than abandoning a sprite that will not die', async () => {

@@ -121,7 +121,14 @@ async function advance(
       if (record.kind === 'owner') await deleteObjects(env, record.artifactKeys);
       break;
     case 'sprite':
-      if (record.kind === 'owner' && record.spriteId && record.businessId) {
+      /* Asked live, not read off the record. `sprite_id` is a snapshot taken
+         seven days earlier, and only `verifySession` honours
+         `business.deleted_at` — a Telegram message during the grace period
+         provisions a sprite for a business whose snapshot had none. Trusting
+         the snapshot would leave that machine unqueued, unguarded, and
+         orphaned by the cascade a minute later. */
+      if (record.kind === 'owner' && record.businessId
+          && await runtimeStanding(env, record.businessId)) {
         /* The existing destroy path, not a new one. It needs the business
            row, which is why it runs before the cascade and not after. */
         await publishRuntimeTask(env, record.businessId, {
@@ -131,7 +138,7 @@ async function advance(
       }
       break;
     case 'tenant':
-      if (record.kind === 'owner' && record.spriteId) await requireRuntimeGone(env, record);
+      if (record.kind === 'owner') await requireRuntimeGone(env, record);
       await deleteTenantData(env, record);
       break;
     case 'identity':
@@ -196,15 +203,26 @@ async function deleteObjects(env: Env, keys: string[]): Promise<void> {
  * absence means the machine is gone, not merely that something was queued.
  * Eight refusals stall the deletion and tell a human, which is the loud
  * ending the design asks for.
+ *
+ * Asked of the table, never of `record.spriteId`: a sprite provisioned after
+ * the request is exactly the one nothing else knows about.
  */
 async function requireRuntimeGone(env: Env, record: DeletionRecord): Promise<void> {
   const businessId = record.businessId;
   if (!businessId) return;
+  if (await runtimeStanding(env, businessId)) {
+    throw new Error(
+      `a runtime is still standing for ${businessId} ` +
+        `(recorded sprite: ${record.spriteId ?? 'none'}); not cascading over it`,
+    );
+  }
+}
+
+/** Is there a machine right now? The row goes when the sprite is destroyed. */
+async function runtimeStanding(env: Env, businessId: string): Promise<boolean> {
   const rows = await withTenant(env, businessId, (tx) => tx`
     select 1 from agent_runtime where business_id = ${businessId}`);
-  if (rows.length > 0) {
-    throw new Error(`sprite ${record.spriteId} is still there; not cascading over it`);
-  }
+  return rows.length > 0;
 }
 
 /**
