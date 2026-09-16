@@ -28,6 +28,16 @@ describe('automatic Ask routing', () => {
     expect(automaticAskMode('What stands out?', true)).toBe('work');
   });
 
+  it.each([
+    'Continue my earlier request: Check task status\nFirst verify account access before continuing.',
+    'Resume the work status investigation',
+    'Teruskan permintaan saya sebelum ini: Semak status tugasan',
+    'Sambung tugasan status kerja',
+  ])('keeps a continuation on the durable path even when its context mentions a fast-path intent: %s', question => {
+    expect(automaticAskMode(question)).toBe('work');
+    expect(automaticResponseDepth(question)).toBe('quick');
+  });
+
   it('keeps typed research commands as the advanced escape hatch', () => {
     expect(automaticResponseDepth('/research compare these suppliers')).toBe('deep');
     expect(automaticResponseDepth('compare these suppliers')).toBe('quick');

@@ -928,6 +928,35 @@ button.ask-context-link:hover {
   white-space: normal;
 }
 
+.task-recovery-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-light);
+}
+.task-recovery-actions > p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.task-recovery-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.task-recovery-actions .btn {
+  min-height: 44px;
+  gap: 8px;
+  white-space: normal;
+}
+.task-recovery-actions > small {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* Reminder confirmation is a decision card, not another assistant essay. */
 .reminder-card {
   display: flex;
@@ -1483,3 +1512,10 @@ button.ask-context-link:hover {
   from { opacity: 0; transform: translateY(10px) scale(0.98); }
   to { opacity: 1; transform: none; }
 }
+.ask-preview-banner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; color: var(--text-secondary); font-size: 12px; }
+.ask-preview-banner a { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px; color: var(--accent-green); border-radius: 8px; }
+.ask-preview-upgrade { padding: 24px; border: 1px solid var(--rail); border-radius: 20px; background: var(--bg-card); }
+.ask-preview-upgrade h3 { font-size: 18px; line-height: 1.4; }
+.ask-preview-upgrade p { margin-block: 12px 20px; color: var(--text-secondary); font-size: 14px; line-height: 1.6; }
+.ask-preview-upgrade .btn { display: flex; justify-content: center; gap: 8px; }
+.ask-preview-upgrade small { display: block; margin-top: 12px; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }

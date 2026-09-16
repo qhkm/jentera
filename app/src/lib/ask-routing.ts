@@ -5,6 +5,7 @@ import type { AskMode } from '@/lib/repo';
    information, a file, a tool, or an external effect goes to the durable
    agent instead. The user never has to make this routing decision. */
 const GREETING = /^(?:hi|hello|hey|thanks?|thank you|ok(?:ay)?|good (?:morning|afternoon|evening)|hai|helo|terima kasih|baik|assalamualaikum)[!.?\s]*$/i;
+const CONTINUATION = /^(?:continue|resume|teruskan|sambung)\b/i;
 const STATUS_QUESTION = /\b(?:what happened|what(?:'s| is) happening|give me an update|needs? my attention|pending approvals?|work status|task status|apa berlaku|apa yang berlaku|beri saya kemas kini|perlukan perhatian saya|kelulusan tertangguh|status kerja|status tugasan)\b/i;
 const QUESTION = /\?$|^(?:what|when|where|who|why|how|is|are|was|were|do|does|did|can|could|which|apa|bila|di mana|siapa|kenapa|mengapa|bagaimana|adakah|berapa)\b/i;
 const BUSINESS_CONTEXT = /\b(?:we|our|my|business|company|shop|store|cafe|restaurant|clinic|team|staff|customer|customers|opening|open|closed|hours|address|location|phone|email|website|approval|approvals|task|tasks|work|activity|handled|completed|pending|kami|kita|saya|bisnes|perniagaan|syarikat|kedai|kafe|restoran|klinik|pasukan|pekerja|pelanggan|waktu|alamat|lokasi|telefon|e-mel|laman web|kelulusan|tugasan|kerja|aktiviti|selesai|tertangguh)\b/i;
@@ -13,7 +14,7 @@ const LIVE_PUBLIC_INFO = /\b(?:latest|current|today|tonight|tomorrow|news|weathe
 
 export function automaticAskMode(question: string, hasAttachment = false): AskMode {
   const text = question.trim();
-  if (hasAttachment || /^\/(?:deep|research|quick)(?:\s|$)/i.test(text)) return 'work';
+  if (hasAttachment || CONTINUATION.test(text) || /^\/(?:deep|research|quick)(?:\s|$)/i.test(text)) return 'work';
   if (GREETING.test(text) || STATUS_QUESTION.test(text)) return 'ask';
   if (NEEDS_AGENT.test(text) || LIVE_PUBLIC_INFO.test(text)) return 'work';
   if (QUESTION.test(text) && BUSINESS_CONTEXT.test(text)) return 'ask';

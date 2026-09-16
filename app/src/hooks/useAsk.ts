@@ -413,7 +413,7 @@ export function useAsk(
       messages.push({ from: 'you', text: turn.question });
       if (turn.status === 'completed' && turn.text) {
         messages.push({
-          from: 'ai', text: turn.text, state: 'done', runId: turn.runId,
+          from: 'ai', text: turn.text, state: 'done', runId: turn.runId, taskTitle: turn.question,
           ...(turn.artifacts.length ? { artifacts: turn.artifacts } : {}),
         });
       }

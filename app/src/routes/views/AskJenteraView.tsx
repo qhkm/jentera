@@ -22,6 +22,8 @@ import { useI18n } from '@/i18n/I18nProvider';
 import { useRepository } from '@/lib/repo';
 import { useSharedChats } from '@/hooks/useSharedChats';
 import { useAsk } from '@/hooks/useAsk';
+import { useChatPreview } from '@/hooks/useChatPreview';
+import { Link } from 'react-router';
 import { useIsCompact } from '@/hooks/useMediaQuery';
 import { useConversationScroll } from '@/hooks/useConversationScroll';
 import { useMentions } from '@/hooks/useMentions';
@@ -103,6 +105,8 @@ export default function AskJenteraView({
   const attachment = attachments[ask.activeId];
   const [attachmentError, setAttachmentError] = useState('');
   const signedIn = useSignedIn();
+  const preview = useChatPreview(signedIn);
+  const previewExhausted = preview?.remaining === 0;
   const [browserPaused, setBrowserPaused] = useState(false);
   const [browserOpenRequest, setBrowserOpenRequest] = useState(0);
   const composer = useRef<HTMLTextAreaElement>(null);
@@ -112,7 +116,8 @@ export default function AskJenteraView({
     if (!active || !taskDraft || consumedDraft.current === taskDraft.key) return;
     consumedDraft.current = taskDraft.key;
     const id = ask.newSession(taskDraft.sessionId, undefined, taskDraft.goalId, taskDraft.goalTitle, taskDraft.goalCheckpointId, taskDraft.goalCheckpointTitle);
-    setDrafts((current) => ({ ...current, [id]: taskDraft.text }));
+    setDrafts((current) => ({ ...current, [id]: current[id]?.startsWith(taskDraft.text)
+      ? current[id] : current[id]?.trim() ? `${taskDraft.text}\n\n${current[id]}` : taskDraft.text }));
     composer.current?.focus();
   }, [active, taskDraft, ask.newSession]);
   const mentions = useMentions(business.team);
@@ -126,7 +131,7 @@ export default function AskJenteraView({
     .filter((session) => session.id !== ask.activeId && session.messages.length > 0)
     .slice(0, 3);
   const canRefine =
-    !busy && ask.messages.at(-1)?.from === 'ai' && !ask.messages.at(-1)?.failedQuestion;
+    !previewExhausted && !busy && ask.messages.at(-1)?.from === 'ai' && !ask.messages.at(-1)?.failedQuestion;
 
   useEffect(() => setAttachmentError(''), [ask.activeId]);
 
@@ -196,6 +201,17 @@ export default function AskJenteraView({
     composer.current?.focus();
   }
 
+  function prepareContinuation(text: string, sessionId?: string) {
+    const id = sessionId || ask.activeId;
+    if (id !== ask.activeId) ask.newSession(id);
+    setDrafts((current) => ({
+      ...current,
+      [id]: current[id]?.startsWith(text) ? current[id] : current[id]?.trim() ? `${text}\n\n${current[id]}` : text,
+    }));
+    mentions.close();
+    composer.current?.focus();
+  }
+
   function choose(member: (typeof business.team)[number]) {
     const element = composer.current;
     if (!element) return;
@@ -214,9 +230,9 @@ export default function AskJenteraView({
 
   function submit(text = draft, mode?: AskMode) {
     const body = text.trim() || (attachment ? t('ask.attachment.defaultPrompt') : '');
-    if (!body || browserPaused) return;
+    if (!body || browserPaused || previewExhausted) return;
     scroll.jumpToLatest();
-    ask.send(body, mode, attachment);
+    ask.send(body, preview ? 'work' : mode, attachment);
     setDraft('');
     setAttachment(undefined);
     if (filePicker.current) filePicker.current.value = '';
@@ -291,7 +307,7 @@ export default function AskJenteraView({
                 ) : (
                   <AskReply
                     key={`${ask.activeId}-${index}`}
-                    message={message}
+                    message={{ ...message, taskTitle: message.taskTitle ?? ask.messages[index - 1]?.text }}
                     onRetry={() => {
                       if (message.inputFiles?.length) {
                         setDraft(message.failedQuestion ?? '');
@@ -302,6 +318,7 @@ export default function AskJenteraView({
                     }}
                     onOpenActivity={onOpenActivity}
                     onOpenBusinessBrowser={signedIn ? () => setBrowserOpenRequest(n => n + 1) : undefined}
+                    onContinueTask={signedIn && !busy ? prepareContinuation : undefined}
                   />
                 ),
               )}
@@ -360,7 +377,16 @@ export default function AskJenteraView({
             </div>
           )}
 
-          <form
+          {preview && !previewExhausted && <div className="ask-preview-banner" role="status">
+            <span>{lang === 'bm' ? preview.remaining + ' daripada 10 chat percuma berbaki' : preview.remaining + ' of 10 free chats left'}</span>
+            <Link to="/subscribe">{lang === 'bm' ? 'Naik taraf' : 'Upgrade'}<ArrowRight size={14} aria-hidden="true" /></Link>
+          </div>}
+          {previewExhausted ? <section className="ask-preview-upgrade" aria-labelledby="preview-upgrade-heading">
+            <h3 id="preview-upgrade-heading">{lang === 'bm' ? '10 chat percuma anda telah digunakan.' : 'Your 10 free chats are complete.'}</h3>
+            <p>{lang === 'bm' ? 'Naik taraf untuk terus memberi kerja kepada Jentera. Permintaan yang sedang berjalan boleh selesai dan hasil terdahulu masih boleh dibaca.' : 'Upgrade to keep giving Jentera work. Requests already in progress can finish, and previous results stay readable.'}</p>
+            <Link to="/subscribe" className="btn btn-primary">{lang === 'bm' ? 'Naik taraf — RM99/bulan' : 'Upgrade — RM99/month'}<ArrowRight size={16} aria-hidden="true" /></Link>
+            <small>{lang === 'bm' ? 'RM99/bulan untuk 3 bulan pertama, kemudian RM199/bulan.' : 'RM99/month for your first 3 months, then RM199/month.'}</small>
+          </section> : <form
             className="ask-writing-pad"
             onSubmit={(event) => {
               event.preventDefault();
@@ -528,7 +554,7 @@ export default function AskJenteraView({
                 </button>
               </div>
             </div>
-          </form>
+          </form>}
           <p className="ask-writing-hint ask-ai-disclaimer" id={hintId}>
             <span>{t('ask.studio.disclaimer')}</span>
             <span className="sr-only">{' '}{t(
@@ -539,7 +565,7 @@ export default function AskJenteraView({
 
         {!ask.hasHistory && (
           <div className="ask-studio-extras">
-            <div
+            {!previewExhausted && <div
               className="ask-studio-starters"
               role="group"
               aria-label={t('ask.studio.startWith')}
@@ -554,7 +580,7 @@ export default function AskJenteraView({
                   {t(`ask.starter.${key}`)}
                 </button>
               ))}
-            </div>
+            </div>}
             {!workspace && recent.length > 0 && (
               <section className="ask-recent-chats" aria-label={t('ask.studio.recent')}>
                 <header>

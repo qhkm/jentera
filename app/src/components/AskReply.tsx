@@ -7,6 +7,7 @@ import { browserHandoff, hideStreamingBrowserHandoff } from '@/lib/browser-hando
 import { BrowserHandoffCard } from './BrowserHandoffCard';
 import { connectionHandoff, hideStreamingConnectionHandoff } from '@/lib/connection-handoff';
 import { CalendarConnectCard } from '@/components/CalendarConnectCard';
+import { TaskRecoveryActions } from '@/components/TaskRecoveryActions';
 import { renderReplyMarkdown } from '@/lib/reply-markdown';
 import { ArrowUpRight, Check, Copy, Info, WarningCircle } from '@phosphor-icons/react';
 import { JenteraMark } from '@/components/JenteraMark';
@@ -59,11 +60,13 @@ export function AskReply({
   onRetry,
   onOpenActivity,
   onOpenBusinessBrowser,
+  onContinueTask,
 }: {
   message: AskMessage;
   onRetry: () => void;
   onOpenActivity?: (runId?: string, title?: string) => void;
   onOpenBusinessBrowser?: () => void;
+  onContinueTask?: (context: string, sessionId?: string) => void;
 }) {
   const t = useT();
   const toast = useToast();
@@ -188,8 +191,15 @@ export function AskReply({
           <div className="ask-reply-text" role={failed ? 'alert' : undefined}>
             {renderReplyMarkdown(displayWorkspacePaths(displayText))}
           </div>
-          {connection.connector && <CalendarConnectCard />}
-          {!connection.connector && handoff.reason && onOpenBusinessBrowser && <BrowserHandoffCard reason={handoff.reason} onOpen={onOpenBusinessBrowser} />}
+          {connection.connector && <CalendarConnectCard runId={message.runId} title={message.taskTitle} onContinue={onContinueTask} />}
+          {!connection.connector && handoff.reason && onOpenBusinessBrowser && <BrowserHandoffCard reason={handoff.reason} onOpen={onOpenBusinessBrowser} runId={message.runId} title={message.taskTitle} onContinue={onContinueTask} />}
+          {completedRequest && !connection.connector && !handoff.reason && isRunId(message.runId)
+            && ['needs_input', 'blocked'].includes(message.taskStatus ?? '') && onContinueTask && (
+              <section className="card ask-browser-handoff" aria-label={t('task.recovery.title')}>
+                <h3>{t('task.recovery.title')}</h3>
+                <TaskRecoveryActions runId={message.runId!} request="input" title={message.taskTitle} onContinue={onContinueTask} />
+              </section>
+            )}
           {files.length > 0 && <ArtifactList artifacts={files} inlineImages label={t('ask.files')} className="mt-3" />}
           {missingImages.length > 0 && <p className="task-recovery-note" role="status">Some images weren’t attached: {missingImages.join(', ')}. Ask Jentera to attach them again.</p>}
           {failed && linkedTask ? (

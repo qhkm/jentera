@@ -28,6 +28,31 @@ afterEach(() => {
 });
 
 describe('exact task details', () => {
+  it('offers the same display-only browser handoff and recovery in private Activity results', async () => {
+    const repo = new LocalRepository();
+    const browser = vi.spyOn(repo, 'businessBrowser');
+    repo.runResult = vi.fn(async () => ({ runId, status: 'completed', pending: false, taskStatus: 'needs_input',
+      text: 'Sign in yourself.\n```jentera-browser\n{"reason":"sign_in"}\n```' }));
+    const open = vi.fn();
+    const view = mount(repo, { onOpenAsk: open });
+    const card = await screen.findByRole('region', { name: 'Sign in to continue' });
+    expect(within(card).getByRole('button', { name: 'Open business browser' })).toBeVisible();
+    expect(within(card).getByRole('button', { name: 'Check setup' })).toBeVisible();
+    expect(view.container.textContent).not.toContain('jentera-browser');
+    expect(screen.queryByRole('button', { name: 'Provide details in Chat' })).toBeNull();
+    expect(browser).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+  });
+  it.each([{ pending: true }, { summaryOnly: true }, { runId: '22222222-2222-4222-8222-222222222222' }])(
+    'does not offer private browser handoff or recovery for an ineligible result: %j', async overrides => {
+      const repo = new LocalRepository();
+      repo.runResult = vi.fn(async () => ({ runId, status: 'completed', pending: false, taskStatus: 'needs_input',
+        text: '```jentera-browser\n{"reason":"sign_in"}\n```', ...overrides }));
+      mount(repo, { onOpenAsk: vi.fn() });
+      await screen.findByText('{"reason":"sign_in"}', { selector: 'code' });
+      expect(screen.queryByRole('button', { name: 'Open business browser' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Check setup' })).toBeNull();
+    });
   it('formats Markdown, lists, code and tables using the safe Chat renderer', async () => {
     const repo = new LocalRepository();
     repo.runResult = vi.fn(async () => ({ runId, status: 'completed', pending: false,
@@ -69,8 +94,14 @@ describe('exact task details', () => {
     expect(screen.getAllByRole('status').some(node => node.textContent?.includes('Needs you'))).toBe(true);
     expect(browser).not.toHaveBeenCalled();
     expect(request).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole('button', { name: 'Provide details in Chat' }));
-    expect(open).toHaveBeenCalledWith(expect.stringContaining('Calendar needs access.'), 'original-chat');
+    repo.connections = vi.fn(async () => [{ id: 'google', connector: 'google', method: 'oauth', status: 'connected' as const,
+      displayName: null, externalId: null, connectedAt: '', lastOkAt: null, lastError: null }]);
+    browser.mockResolvedValue({ enabled: true, paused: false });
+    await userEvent.click(screen.getByRole('button', { name: 'Check setup' }));
+    expect(open).not.toHaveBeenCalled();
+    await userEvent.click(await screen.findByRole('button', { name: 'Continue in Chat' }));
+    await waitFor(() => expect(open).toHaveBeenCalledWith(expect.stringContaining('Continue my earlier request:'), 'original-chat'));
+    expect(open.mock.calls[0][0]).toContain('First verify');
     expect(open.mock.calls[0][0]).not.toContain('jentera-connect');
   });
   it('copies only the public setup link, never OAuth codes or credentials', async () => {

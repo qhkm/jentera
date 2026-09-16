@@ -4,10 +4,17 @@ import { isNative } from '@/lib/native';
 import { GoogleCalendarConnectionLink } from '@/components/GoogleCalendarConnectionLink';
 import { GOOGLE_CALENDAR_WEB_SETUP } from '@/lib/calendar-connection';
 import { useToast } from '@/components/Toast';
+import { TaskRecoveryActions } from '@/components/TaskRecoveryActions';
+import { useSignedIn } from '@/lib/repo/gate';
 
-export function CalendarConnectCard() {
+export function CalendarConnectCard({ runId, title, onContinue }: {
+  runId?: string;
+  title?: string;
+  onContinue?: (context: string, sessionId?: string) => void;
+} = {}) {
   const t = useT();
   const toast = useToast();
+  const canRecover = useSignedIn() && Boolean(runId && onContinue);
   async function copySetupLink() {
     try {
       // Copy only the public setup page, never an OAuth callback, code or bearer.
@@ -34,7 +41,8 @@ export function CalendarConnectCard() {
           {t('ask.calendarConnect.copy')}
         </button>
       </div>
-      <p className="ask-browser-handoff-note">{t(isNative() ? 'ask.calendarConnect.native' : 'ask.calendarConnect.continue')}</p>
+      {(!canRecover || isNative()) && <p className="ask-browser-handoff-note">{t(isNative() ? 'ask.calendarConnect.native' : 'ask.calendarConnect.continue')}</p>}
+      {runId && onContinue && <TaskRecoveryActions runId={runId} request="google_calendar" title={title} onContinue={onContinue} />}
       <small>{t('ask.calendarConnect.private')}</small>
     </section>
   );

@@ -14,6 +14,9 @@ import { RuntimeApprovalCard } from '@/components/RuntimeApprovalCard';
 import { useActivity } from '@/hooks/useActivity';
 import { TaskCoordination } from '@/components/TaskCoordination';
 import { CalendarConnectCard } from '@/components/CalendarConnectCard';
+import { BrowserHandoffCard } from '@/components/BrowserHandoffCard';
+import { TaskRecoveryActions } from '@/components/TaskRecoveryActions';
+import BusinessBrowser from './BusinessBrowser';
 import { connectionHandoff } from '@/lib/connection-handoff';
 import { browserHandoff } from '@/lib/browser-handoff';
 import { renderReplyMarkdown } from '@/lib/reply-markdown';
@@ -53,6 +56,7 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk, 
   const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [traceOpen, setTraceOpen] = useState(false);
+  const [browserOpenRequest, setBrowserOpenRequest] = useState(0);
 
   useEffect(() => { heading.current?.focus(); }, []);
   useEffect(() => {
@@ -93,10 +97,11 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk, 
   const canOfferSetup = result?.status === 'completed' && !result.pending
     && result.runId === runId && !reviewOnly && !result.summaryOnly;
   const connection = connectionHandoff(fullText, canOfferSetup ? runId : undefined);
+  const handoff = browserHandoff(connection.text, canOfferSetup ? runId : undefined);
   // As in Chat, Calendar setup wins over an accidentally co-emitted browser
   // prompt. Opening Google's normal-browser flow never takes browser control.
-  const displayText = displayWorkspacePaths(connection.connector
-    ? browserHandoff(connection.text, runId).text : connection.text);
+  const displayText = displayWorkspacePaths(handoff.text);
+  const recoveryRequest = connection.connector || handoff.reason;
   const summary = completed && !fullText ? work?.outcome : null;
   const needsReview = outcomeStatus === 'needs_review';
   const needsInput = outcomeStatus === 'needs_input' || outcomeStatus === 'blocked';
@@ -153,7 +158,10 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk, 
               {outcomeStatus === 'needs_input' && <p>{t('task.needsInputNote')}</p>}
               {outcomeStatus === 'needs_review' && <p>{t('task.needsReviewNote')}</p>}
               <div className="ask-reply-text task-result-text">{renderReplyMarkdown(fullText ? displayText : displayWorkspacePaths(summary || t('task.noResult')))}</div>
-              {connection.connector && <CalendarConnectCard />}
+              {connection.connector && <CalendarConnectCard runId={runId} title={result.objective || work?.objective || title} onContinue={onOpenAsk} />}
+              {!connection.connector && handoff.reason && <BrowserHandoffCard reason={handoff.reason}
+                onOpen={() => setBrowserOpenRequest(n => n + 1)} runId={runId}
+                title={result.objective || work?.objective || title} onContinue={onOpenAsk} />}
             </Card>
           ) : (
             <Card className="task-result gap-4">
@@ -178,15 +186,18 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk, 
             activity.reload(); setAttempt((n) => n + 1);
           }} />}
           {(needsReview || needsInput) && <Card className="gap-3">
-            <p>{t(needsReview ? 'task.reviewHelp' : 'task.inputHelp')}</p>
+            <p>{t(needsReview ? 'task.reviewHelp' : recoveryRequest ? 'task.recovery.saved' : 'task.inputHelp')}</p>
+            {needsInput && !recoveryRequest && canOfferSetup && onOpenAsk && <TaskRecoveryActions
+              runId={runId} request="input" title={result.objective || work?.objective || title} onContinue={onOpenAsk} />}
             <div className="flex flex-wrap gap-2">
               {needsReview && repo.confirmTaskReview && <Button disabled={reviewBusy} onClick={() => void settle('confirm')}>{t('task.confirmReview')}</Button>}
-              {onOpenAsk && !result.summaryOnly && <Button variant={needsReview ? 'outline' : 'primary'} onClick={continueTask}>{t(needsReview ? 'task.requestChanges' : 'task.provideInput')}</Button>}
+              {onOpenAsk && !result.summaryOnly && !recoveryRequest && (needsReview || !canOfferSetup) && <Button variant={needsReview ? 'outline' : 'primary'} onClick={continueTask}>{t(needsReview ? 'task.requestChanges' : 'task.provideInput')}</Button>}
               {needsInput && repo.confirmTaskReview && <Button variant="outline" disabled={reviewBusy} onClick={() => void settle('confirm')}>{t('task.markDone')}</Button>}
               {repo.dismissTask && <Button variant="outline" disabled={reviewBusy} onClick={() => void settle('dismiss')}>{t('task.dismiss')}</Button>}
             </div>
             {reviewError && <p role="alert">{reviewError}</p>}
           </Card>}
+          {handoff.reason && !connection.connector && canOfferSetup && <BusinessBrowser appearance="dialog-only" openRequest={browserOpenRequest} />}
           {detail.advanced && !result.summaryOnly && <details className="task-trace" onToggle={(event) => setTraceOpen(event.currentTarget.open)}>
             <summary>{t('activity.trace')}</summary>
             {traceOpen && <RunTrace runId={runId} />}

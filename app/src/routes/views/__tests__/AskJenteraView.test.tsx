@@ -10,9 +10,10 @@ import { I18nProvider } from '@/i18n/I18nProvider';
 import { RepositoryProvider } from '@/lib/repo/context';
 import { LocalRepository } from '@/lib/repo/local';
 import { SignedInProvider } from '@/lib/repo/gate';
-import type { AskAnswer } from '@/lib/repo';
+import type { AskAnswer, AskOptions } from '@/lib/repo';
 import type { BrowserCommand } from '@/lib/repo/types';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { MemoryRouter } from 'react-router';
 
 beforeEach(() => {
   localStorage.clear();
@@ -23,11 +24,11 @@ beforeEach(() => {
     vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
   );
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 function Harness({ onOpenConnections, taskDraft }: {
   onOpenConnections?: () => void;
-  taskDraft?: { text: string; key: number; goalId?: string; goalTitle?: string };
+  taskDraft?: { text: string; key: number; sessionId?: string; goalId?: string; goalTitle?: string };
 } = {}) {
   const { business } = useBusiness();
   return <AskJenteraView
@@ -46,21 +47,143 @@ async function mount(children: ReactNode = <Harness />, repo = new LocalReposito
     counters: { handled: 0, needsYou: 0, minutesSaved: 0, thisWeek: 0, connections: 0 },
     work: [],
   });
-  render(
-    <SignedInProvider value account="ask-studio-test">
-      <RepositoryProvider repository={repo}>
-        <I18nProvider>
-          <ToastProvider>
-            <ActivityProvider>{children}</ActivityProvider>
-          </ToastProvider>
-        </I18nProvider>
-      </RepositoryProvider>
-    </SignedInProvider>,
-  );
+  // Flush the async initial snapshot and Shell effects before a short test
+  // can finish and remove its browser API stubs during cleanup.
+  await act(async () => {
+    render(
+      <MemoryRouter>
+      <SignedInProvider value account="ask-studio-test">
+        <RepositoryProvider repository={repo}>
+          <I18nProvider>
+            <ToastProvider>
+              <ActivityProvider>{children}</ActivityProvider>
+            </ToastProvider>
+          </I18nProvider>
+        </RepositoryProvider>
+      </SignedInProvider>
+      </MemoryRouter>,
+    );
+  });
   return repo;
 }
 
 describe('compose-first Ask Jentera', () => {
+  it('shows the free-chat balance without changing the writing pad', async () => {
+    vi.stubEnv('VITE_API_URL', 'https://fixture.invalid');
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ signedIn: true, access: { kind: 'preview', preview: { limit: 10, used: 3, remaining: 7 } } })));
+    await mount();
+    expect(await screen.findByText('7 of 10 free chats left')).toBeVisible();
+    expect(screen.getByRole('textbox')).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Upgrade' })).toHaveAttribute('href', '/subscribe');
+  });
+  it('blocks new input after ten chats but keeps the tenth response alive', async () => {
+    const user = userEvent.setup();
+    vi.stubEnv('VITE_API_URL', 'https://fixture.invalid');
+    let used = 9;
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ signedIn: true, access: { kind: 'preview', preview: { limit: 10, used, remaining: 10 - used } } })));
+    let finish!: (answer: AskAnswer) => void;
+    const repo = new LocalRepository();
+    repo.ask = vi.fn(() => {
+      used = 10; window.dispatchEvent(new Event('jentera:preview-change'));
+      return new Promise<AskAnswer>(resolve => { finish = resolve; });
+    });
+    await mount(<Harness />, repo);
+    await screen.findByText('1 of 10 free chats left');
+    await user.type(screen.getByRole('textbox'), 'Are we open today?');
+    await user.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(await screen.findByRole('heading', { name: 'Your 10 free chats are complete.' })).toBeVisible();
+    expect(repo.ask).toHaveBeenCalledWith('Are we open today?', expect.objectContaining({ mode: 'work' }));
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Upgrade — RM99/ })).toHaveAttribute('href', '/subscribe');
+    await act(async () => finish({ text: 'Yes, open until 6pm.', grounded: true, usedKeys: [] }));
+    expect(await screen.findByText('Yes, open until 6pm.')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Your 10 free chats are complete.' })).toBeVisible();
+    expect(repo.ask).toHaveBeenCalledTimes(1);
+  });
+  it('keeps the original chat draft and attachment when a continuation arrives from Activity', async () => {
+    const user = userEvent.setup();
+    const repo = new LocalRepository();
+    repo.ask = vi.fn();
+    localStorage.setItem('jentera-ask-sessions-v1:ask-studio-test', JSON.stringify([{ id: 'original-chat', title: 'Earlier task',
+      createdAt: 1, updatedAt: 2, messages: [{ from: 'you', text: 'My original request' }, { from: 'ai', text: 'Waiting for details' }] }]));
+    function ReturningFromActivity() {
+      const [taskDraft, setTaskDraft] = useState<NonNullable<Parameters<typeof Harness>[0]>['taskDraft']>();
+      return <><button onClick={() => setTaskDraft({ key: 1, sessionId: 'original-chat', text: 'Continue my earlier request: Earlier task' })}>
+        Return with task context
+      </button><Harness taskDraft={taskDraft} /></>;
+    }
+    await mount(<ReturningFromActivity />, repo);
+    await user.type(await screen.findByRole('textbox'), 'Keep my draft');
+    await user.upload(screen.getByLabelText('Choose a file for Jentera'), new File(['notes'], 'notes.txt', { type: 'text/plain' }));
+    await user.click(screen.getByRole('button', { name: 'Return with task context' }));
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('Continue my earlier request: Earlier task\n\nKeep my draft'));
+    expect(screen.getByText('notes.txt')).toBeVisible();
+    expect(screen.getByText('My original request', { selector: '.ask-owner-message p' })).toBeVisible();
+    expect(repo.ask).not.toHaveBeenCalled();
+    expect(JSON.parse(localStorage.getItem('jentera-ask-sessions-v1:ask-studio-test') ?? '[]')).toHaveLength(1);
+  });
+  it('prepares a verified-setup continuation in the same chat without sending or losing a draft or attachment', async () => {
+    const user = userEvent.setup();
+    const repo = new LocalRepository();
+    const runId = '11111111-1111-4111-8111-111111111111';
+    const text = 'The site needs sign-in.\n```jentera-browser\n{"reason":"sign_in"}\n```';
+    let originalSession = '';
+    repo.ask = vi.fn(async (_question: string, options?: AskOptions) => {
+      originalSession = options?.sessionId ?? '';
+      return { text, runId, taskStatus: 'needs_input', grounded: false, usedKeys: [] };
+    });
+    repo.runResult = vi.fn(async () => ({ runId, status: 'completed', taskStatus: 'needs_input', pending: false,
+      text, sessionId: originalSession }));
+    repo.businessBrowser = vi.fn(async () => ({ enabled: true, paused: false }));
+    await mount(<Harness />, repo);
+    await user.type(await screen.findByRole('textbox'), 'Check my browser session');
+    await user.click(screen.getByRole('button', { name: 'Send message' }));
+    const card = await screen.findByRole('region', { name: 'Sign in to continue' });
+    await user.type(screen.getByRole('textbox'), 'My follow-up draft');
+    const file = new File(['context'], 'notes.txt', { type: 'text/plain' });
+    await user.upload(screen.getByLabelText('Choose a file for Jentera'), file);
+    await user.click(within(card).getByRole('button', { name: 'Check setup' }));
+    expect(repo.ask).toHaveBeenCalledOnce();
+    await user.click(await within(card).findByRole('button', { name: 'Continue in Chat' }));
+    await waitFor(() => expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toContain('Continue my earlier request: Check my browser session'));
+    const draft = (screen.getByRole('textbox') as HTMLTextAreaElement).value;
+    expect(draft).toContain('My follow-up draft');
+    expect(draft).toContain('First verify');
+    expect(draft).not.toContain('jentera-browser');
+    expect(screen.getByText('notes.txt')).toBeVisible();
+    expect(repo.ask).toHaveBeenCalledOnce();
+    await user.click(within(card).getByRole('button', { name: 'Continue in Chat' }));
+    await waitFor(() => expect(repo.runResult).toHaveBeenCalledTimes(3));
+    expect(screen.getByRole('textbox')).toHaveValue(draft);
+    expect(JSON.parse(localStorage.getItem('jentera-ask-sessions-v1:ask-studio-test') ?? '[]')).toHaveLength(1);
+    expect(screen.getByText('Check my browser session', { selector: '.ask-owner-message p' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(repo.ask).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(repo.ask).mock.calls[1][1]).toMatchObject({ sessionId: originalSession, attachment: file });
+  });
+  it('retains a setup card and its original request after a refresh without automatically checking or resending', async () => {
+    const user = userEvent.setup();
+    const repo = new LocalRepository();
+    const runId = '11111111-1111-4111-8111-111111111111';
+    localStorage.setItem('jentera-ask-sessions-v1:ask-studio-test', JSON.stringify([{ id: 'original-chat', title: 'Calendar task',
+      createdAt: 1, updatedAt: 2, messages: [{ from: 'you', text: 'Check my calendar access' },
+        { from: 'ai', state: 'done', runId, text: 'Connect first.\n```jentera-connect\n{"connector":"google_calendar"}\n```' }] }]));
+    repo.ask = vi.fn();
+    repo.runResult = vi.fn(async () => ({ runId, status: 'completed', pending: false, taskStatus: 'needs_input',
+      sessionId: 'original-chat', text: 'Connect first.\n```jentera-connect\n{"connector":"google_calendar"}\n```' }));
+    repo.connections = vi.fn(async () => [{ id: 'google', connector: 'google', method: 'oauth', status: 'connected' as const,
+      displayName: null, externalId: null, connectedAt: '', lastOkAt: null, lastError: null }]);
+    repo.businessBrowser = vi.fn(async () => ({ enabled: true, paused: false }));
+    await mount(<Harness />, repo);
+    const card = await screen.findByRole('region', { name: 'Connect your calendar' });
+    expect(repo.ask).not.toHaveBeenCalled();
+    expect(repo.runResult).not.toHaveBeenCalled();
+    expect(repo.connections).not.toHaveBeenCalled();
+    await user.click(within(card).getByRole('button', { name: 'Check setup' }));
+    await user.click(await within(card).findByRole('button', { name: 'Continue in Chat' }));
+    await waitFor(() => expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toContain('Continue my earlier request: Check my calendar access'));
+    expect(repo.ask).not.toHaveBeenCalled();
+  });
   it('keeps the linked goal visible while the owner works in Chat', async () => {
     await mount(<Harness taskDraft={{
       key: 1,

@@ -14,7 +14,7 @@ export default function BusinessBrowser({
   openRequest = 0,
   onPauseChange,
 }: {
-  appearance?: 'card' | 'chat-tool';
+  appearance?: 'card' | 'chat-tool' | 'dialog-only';
   openRequest?: number;
   onPauseChange?: (paused: boolean) => void;
 }) {

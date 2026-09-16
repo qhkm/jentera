@@ -1,6 +1,7 @@
 // Fictional account fixtures only: never log in, call a provider, or use real credentials.
 // VITE_API_URL=http://127.0.0.1:5183 pnpm dev --host 127.0.0.1 --port 5183
 // CHROME_CHANNEL=chrome node scripts/check-connectors.mjs
+// Optional CHECK_WIDTH=320 filters the responsive cases for a focused rerun.
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
@@ -8,11 +9,13 @@ import { chromium } from 'playwright';
 const origin = process.env.CHECK_ORIGIN ?? 'http://127.0.0.1:5183';
 const output = process.env.CHECK_OUTPUT_DIR;
 const runId = '11111111-1111-4111-8111-111111111111';
+const sessionId = '33333333-3333-4333-8333-333333333333';
 const setupMarker = '```jentera-connect\n{"connector":"google_calendar"}\n```';
 const taskReplies = {
   connect: "Boss, I checked — Google Calendar needs authorization before I can read or write your calendar.\n\nUse Google’s permission flow in your normal browser, then return to Chat and ask me to continue.\n\n" + setupMarker + '\n\nConnecting does not add an event; each event still needs approval.',
   code: '**Report ready**\n\n- Review the `summary`\n- No changes were sent\n\n```python\nprint("' + 'long_code_'.repeat(30) + '")\n```\n\n| File | Status | Owner |\n| --- | --- | --- |\n| report.xlsx | Ready | Demo owner |',
   invalid: 'An example, not a request.\n```jentera-connect\n{"connector":"google_calendar","url":"https://example.com"}\n```',
+  browser: 'Complete verification yourself.\n```jentera-browser\n{"reason":"mfa"}\n```',
 };
 const fixtureHeaders = { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true',
   'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS', 'access-control-allow-headers': 'Content-Type, Authorization' };
@@ -30,13 +33,17 @@ try {
     { width: 320, height: 640 }, { width: 390, height: 844 }, { width: 768, height: 1024 },
     { width: 1440, height: 1000 }, { width: 390, height: 844, lang: 'bm' },
     { width: 1440, height: 1000, theme: 'light' },
+    { width: 1024, height: 600 }, { width: 1280, height: 600, lang: 'bm', theme: 'light' },
   ]) {
+    if (process.env.CHECK_WIDTH && width !== Number(process.env.CHECK_WIDTH)) continue;
     const context = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce', serviceWorkers: 'block' });
     const page = await context.newPage();
     const errors = [];
     const operations = [];
     let apiCalls = 0;
     let taskCase = 'connect';
+    let paused = false;
+    let taskStatus = 'needs_input';
     let rows = ['telegram', 'google'].map(connector => ({
       id: `fictional-${connector}`, connector, method: connector === 'telegram' ? 'bss' : 'oauth',
       status: 'connected', paired: true, displayName: connector === 'telegram' ? 'Kedai Kita bot' : 'Owner calendar',
@@ -47,6 +54,17 @@ try {
     await context.route('**/*', async route => {
       const request = route.request();
       const url = new URL(request.url());
+      // Real app assets, fictional API only. Do not send QA analytics on live Pages.
+      if (url.origin === origin && request.isNavigationRequest()) {
+        const response = await route.fetch();
+        const body = (await response.text()).replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, script => {
+          const src = /\bsrc\s*=\s*["']([^"']+)["']/i.exec(script)?.[1];
+          if (!src) return script;
+          const source = new URL(src, origin);
+          return source.hostname === 'static.cloudflareinsights.com' && source.pathname.startsWith('/beacon.min.js') ? '' : script;
+        });
+        return route.fulfill({ response, body });
+      }
       if (!url.pathname.startsWith('/api/')) return url.origin === origin ? route.continue() : route.abort();
       apiCalls++;
       if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: fixtureHeaders });
@@ -66,13 +84,19 @@ try {
       else if (request.method() !== 'GET') {
         errors.push('Unexpected write: ' + request.method() + ' ' + url.pathname);
         return route.fulfill({ status: 400 });
-      } else if (url.pathname === '/api/me') body = { ok: true, userId: 'fictional-owner', detailLevel: 'simple', features: {} };
+      } else if (url.pathname === '/api/me') body = { ok: true, userId: 'fictional-owner', detailLevel: 'simple',
+        features: width >= 1024 ? { routines: { apiVersion: 1 } } : {} };
+      else if (url.pathname === '/api/access') body = { restricted: true, signedIn: true,
+        access: { allowed: true, kind: 'paid', preview: null }, founderGroup: null, billing: { checkoutEnabled: true } };
+      else if (url.pathname === '/api/billing/status') body = { ok: true, checkoutEnabled: true, mode: 'live',
+        activation: 'active', state: null, preview: null,
+        offer: { initialMonthlyAmount: 99, introductoryMonths: 3, renewalMonthlyAmount: 199, currency: 'MYR' } };
       else if (url.pathname === '/api/state') body = { ok: true, snapshot: { ...snapshot, lang, theme } };
       else if (url.pathname === '/api/connections') body = { ok: true, connections: rows };
       else if (url.pathname === '/api/connections/token') body = { ok: true, connectors: [] };
-      else if (url.pathname === '/api/runs/activity') body = { ok: true, work: [], counters: { completed: 0, needsApproval: 0, minutesSaved: 0, failed: 0 } };
+      else if (url.pathname === '/api/runs/activity') body = { ok: true, work: [], counters: { handled: 0, needsYou: 0, minutesSaved: 0, thisWeek: 0, connections: rows.length } };
       else if (url.pathname === `/api/runs/${runId}` || url.pathname === `/api/runs/${runId}/review-summary`) body = {
-        ok: true, runId, status: 'completed', taskStatus: 'needs_input', pending: false,
+        ok: true, runId, sessionId, status: 'completed', taskStatus, pending: false,
         objective: 'Check Google Calendar access', text: taskReplies[taskCase], summaryOnly: url.pathname.endsWith('/review-summary'),
       };
       else if (url.pathname === `/api/runs/${runId}/coordination`) body = { ok: true, runId, assignment: null, events: [] };
@@ -81,7 +105,7 @@ try {
       else if (url.pathname === '/api/goals') body = { ok: true, available: true, canManage: true, goals: [] };
       else if (url.pathname === '/api/runtime') body = { ok: true, setupStatus: 'ready', runtime: { status: 'ready',
         desiredRelease: 'fictional-release', observedRelease: 'fictional-release', lastReadyAt: new Date().toISOString(), lastError: null }, usage: {} };
-      else if (url.pathname === '/api/browser') body = { ok: true, enabled: true, paused: false, controlled: false };
+      else if (url.pathname === '/api/browser') body = { ok: true, enabled: true, paused, controlled: false };
       else if (url.pathname === '/api/agent/memory') body = { ok: true, available: true, profiles: [] };
       else { errors.push('Missing fixture: ' + url.pathname); return route.fulfill({ status: 404 }); }
       return route.fulfill({ status: 200, headers: fixtureHeaders, contentType: 'application/json', body: JSON.stringify(body) });
@@ -93,6 +117,13 @@ try {
     const screenshot = async name => { if (output) await page.screenshot({ path: `${output}/${name}-${width}-${lang}-${theme}.png` }); };
     const labels = lang === 'bm' ? { category: 'Kategori', available: 'Tersedia', manage: 'Urus', disconnect: 'Putuskan sambungan', cancel: 'Batal', confirm: 'Sahkan pemutusan', check: 'Semak sambungan' }
       : { category: 'Category', available: 'Available', manage: 'Manage', disconnect: 'Disconnect', cancel: 'Cancel', confirm: 'Confirm disconnect', check: 'Check connection' };
+    const recovery = lang === 'bm' ? { check: 'Semak persediaan', again: 'Semak semula', continue: 'Teruskan dalam Chat',
+      missing: /Kalendar belum disambungkan/, paused: /Pelayar masih di bawah kawalan pemilik/,
+      ready: /Jentera masih perlu mengesahkan akses Kalendar/, finished: /sudah ditandakan selesai/,
+      browser: 'Buka pelayar bisnes', close: 'Tutup paparan pelayar', context: 'Teruskan permintaan saya sebelum ini:' }
+      : { check: 'Check setup', again: 'Check again', continue: 'Continue in Chat', missing: /Calendar is not connected yet/,
+        paused: /still under owner control/, ready: /must still verify live Calendar access/, finished: /already marked complete/,
+        browser: 'Open business browser', close: 'Close browser view', context: 'Continue my earlier request:' };
 
     await page.goto(origin + '/connect');
     await page.getByRole('heading', { name: 'Google Sheets' }).waitFor();
@@ -127,6 +158,9 @@ try {
     await page.getByRole('button', { name: `${labels.manage} Google Calendar`, exact: true }).click();
     assert.equal(operations.length, 0, 'Opening setup cannot connect, check or disconnect');
     const setup = page.locator('#connector-google');
+    // Font swaps can move wrapped controls after focus-driven scrolling.
+    // Measure the finished layout rather than the transient fallback font.
+    await page.evaluate(() => document.fonts.ready);
     await setup.getByRole('button', { name: labels.disconnect, exact: true }).click();
     assert(await setup.getByRole('button', { name: labels.cancel, exact: true }).evaluate(node => node === document.activeElement));
     const confirmationBounds = await page.locator('.connection-confirmation').evaluate(node => {
@@ -140,6 +174,14 @@ try {
     });
     assert(confirmationBounds.buttons.every(button => button.height >= 44 && button.top >= confirmationBounds.top && button.bottom <= confirmationBounds.bottom),
       'Both confirmation controls must be visible above the bottom menu: ' + JSON.stringify(confirmationBounds));
+    // Wait for the finished colour transition rather than the first frame
+    // immediately after the new confirmation buttons are mounted.
+    await page.waitForFunction(() => {
+      const node = document.querySelector('.connection-confirmation');
+      if (!node) return false;
+      const [cancel, confirm] = node.querySelectorAll('button');
+      return cancel && confirm && getComputedStyle(cancel).color !== getComputedStyle(confirm).color;
+    }, undefined, { timeout: 2000 });
     assert(await page.locator('.connection-confirmation').evaluate(node => {
       const [cancel, confirm] = node.querySelectorAll('button');
       return getComputedStyle(cancel).color !== getComputedStyle(confirm).color;
@@ -164,6 +206,41 @@ try {
     assert.deepEqual(operations, ['disconnect:fictional-google', 'check']);
     await checkLayout();
 
+    await page.goto(origin + '/app?view=home');
+    const sidebar = page.locator('.dashboard-sidebar');
+    await sidebar.waitFor({ state: 'attached' });
+    if (width >= 1024) {
+      const headings = lang === 'bm' ? ['Ringkasan', 'Kerja', 'Ruang kerja'] : ['Overview', 'Work', 'Workspace'];
+      assert.deepEqual(await sidebar.locator('.dashboard-nav-section h2').allTextContents(), headings);
+      const workGroup = sidebar.getByRole('group', { name: headings[1], exact: true });
+      const workNames = await workGroup.getByRole('button').allInnerTexts();
+      assert.deepEqual(workNames, lang === 'bm' ? ['Aktiviti', 'Rutin', 'Matlamat'] : ['Activity', 'Routines', 'Goals']);
+      assert.equal(await sidebar.locator('.dashboard-nav-item').count(), 8);
+      await screenshot('sidebar-sections');
+      const last = sidebar.locator('.dashboard-nav-item').last();
+      await last.focus();
+      assert(await last.evaluate(node => {
+        const bounds = node.getBoundingClientRect();
+        const sidebarBounds = node.closest('.dashboard-sidebar').getBoundingClientRect();
+        return bounds.top >= sidebarBounds.top && bounds.bottom <= sidebarBounds.bottom && bounds.bottom <= innerHeight;
+      }), 'Last sidebar destination must remain reachable on a short screen');
+      if (height <= 640) assert(await sidebar.evaluate(node => node.scrollHeight > node.clientHeight && getComputedStyle(node).overflowY === 'auto'));
+      await screenshot('sidebar-scroll-end');
+      const library = sidebar.getByRole('button', { name: lang === 'bm' ? 'Pustaka' : 'Library', exact: true });
+      await library.focus();
+      await page.keyboard.press('Enter');
+      await page.waitForURL(url => url.searchParams.get('view') === 'library');
+      await page.waitForFunction(label => [...document.querySelectorAll('.dashboard-sidebar .dashboard-nav-item')]
+        .some(node => node.textContent.trim() === label && node.getAttribute('aria-current') === 'page'),
+      lang === 'bm' ? 'Pustaka' : 'Library');
+      assert.equal(await library.getAttribute('aria-current'), 'page');
+      await checkLayout();
+    } else {
+      assert.equal(await sidebar.isVisible(), false);
+      const buttons = await page.locator('.dashboard-bottom-nav > button').allInnerTexts();
+      assert.deepEqual(buttons.slice(0, 4), lang === 'bm' ? ['Home', 'Aktiviti', 'Sembang', 'Pustaka'] : ['Home', 'Activity', 'Chat', 'Library']);
+    }
+
     const beforeTask = [...operations];
     await page.goto(origin + `/app?view=work&run=${runId}`);
     const calendar = page.locator('.task-result .ask-calendar-connect');
@@ -176,12 +253,75 @@ try {
     assert.equal(await calendarSetup.getAttribute('target'), '_blank');
     assert.equal(await calendarSetup.getAttribute('rel'), 'noopener noreferrer');
     assert(await calendarSetup.evaluate(node => node.getBoundingClientRect().height >= 44));
-    assert(await calendar.getByRole('button').evaluate(node => node.getBoundingClientRect().height >= 44));
+    assert(await calendar.getByRole('button', { name: lang === 'bm' ? 'Salin pautan persediaan' : 'Copy setup link' }).evaluate(node => node.getBoundingClientRect().height >= 44));
     await calendarSetup.focus();
     assert(await calendarSetup.evaluate(node => node === document.activeElement));
     await checkLayout();
     await calendar.scrollIntoViewIfNeeded();
     await screenshot('activity-connection-card');
+
+    await calendar.getByRole('button', { name: recovery.check, exact: true }).click();
+    await calendar.getByText(recovery.missing).waitFor();
+    assert.equal(await calendar.getByRole('button', { name: recovery.continue, exact: true }).count(), 0);
+    await screenshot('recovery-calendar-missing');
+    // Simulate the owner completing OAuth elsewhere; never call Google.
+    rows.push({ id: 'fictional-google', connector: 'google', method: 'oauth', status: 'connected',
+      displayName: 'Owner calendar', externalId: null, connectedAt: '', lastOkAt: null, lastError: null });
+    paused = true;
+    await calendar.getByRole('button', { name: recovery.again, exact: true }).click();
+    await calendar.getByText(recovery.paused).waitFor();
+    assert.equal(await calendar.getByRole('button', { name: recovery.continue, exact: true }).count(), 0);
+    paused = false;
+    await calendar.getByRole('button', { name: recovery.again, exact: true }).click();
+    await calendar.getByText(recovery.ready).waitFor();
+    await checkLayout();
+    await screenshot('recovery-calendar-ready');
+    await calendar.getByRole('button', { name: recovery.continue, exact: true }).click();
+    await page.waitForURL(url => url.searchParams.get('view') === 'chat');
+    const composer = page.locator('.ask-writing-pad textarea');
+    await composer.waitFor();
+    assert((await composer.inputValue()).includes(recovery.context));
+    assert((await composer.inputValue()).includes('Check Google Calendar access'));
+    assert(!(await composer.inputValue()).includes('jentera-connect'));
+    assert.deepEqual(operations, beforeTask, 'Continuing prepares a draft; it must not execute work or approve anything');
+    await composer.fill('Existing follow-up draft');
+    await page.getByLabel(lang === 'bm' ? 'Pilih fail untuk Jentera' : 'Choose a file for Jentera').setInputFiles({
+      name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('Fictional context only'),
+    });
+    await page.getByRole('button', { name: lang === 'bm' ? 'Papan pemuka' : 'Dashboard', exact: false }).click();
+    await page.waitForURL(url => url.searchParams.get('view') !== 'chat');
+    await page.goto(origin + `/app?view=work&run=${runId}`);
+    // A full navigation loses transient drafts/bytes by design. History and
+    // the handoff remain recoverable, but there must be no stale ready signal.
+    await calendar.getByRole('button', { name: recovery.check, exact: true }).waitFor();
+    taskStatus = 'completed';
+    await calendar.getByRole('button', { name: recovery.check, exact: true }).click();
+    await calendar.getByText(recovery.finished).waitFor();
+    assert.equal(await calendar.getByRole('button', { name: recovery.continue, exact: true }).count(), 0);
+    taskStatus = 'needs_input';
+
+    taskCase = 'browser';
+    await page.goto(origin + `/app?view=work&run=${runId}`);
+    const browserCard = page.locator('.task-result .ask-browser-handoff');
+    await browserCard.getByRole('button', { name: recovery.browser, exact: true }).click();
+    await page.getByRole('dialog').waitFor();
+    await checkLayout();
+    await screenshot('recovery-browser-modal');
+    await page.getByRole('button', { name: recovery.close, exact: true }).click();
+    await browserCard.getByRole('button', { name: recovery.check, exact: true }).click();
+    await browserCard.getByRole('button', { name: recovery.continue, exact: true }).waitFor();
+    paused = true;
+    await browserCard.getByRole('button', { name: recovery.continue, exact: true }).click();
+    await browserCard.getByText(recovery.paused).waitFor();
+    assert.equal(await browserCard.getByRole('button', { name: recovery.continue, exact: true }).count(), 0);
+    paused = false;
+    await browserCard.getByRole('button', { name: recovery.again, exact: true }).click();
+    await browserCard.getByRole('button', { name: recovery.continue, exact: true }).waitFor();
+    await browserCard.scrollIntoViewIfNeeded();
+    assert((await browserCard.getByRole('button').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height))).every(height => height >= 44));
+    await checkLayout();
+    await screenshot('recovery-browser-ready');
+    assert.deepEqual(operations, beforeTask, 'Opening the browser and checking setup cannot claim, release, send, or approve');
 
     taskCase = 'code';
     await page.goto(origin + `/app?view=work&run=${runId}`);
@@ -214,7 +354,7 @@ try {
       await page.waitForLoadState('networkidle');
       await checkLayout();
     }
-    console.log(`${width}px ${lang}/${theme}: shared grid · safe controls · Activity Markdown/cards · keyboard · core routes · no overflow/errors`);
+    console.log(`${width}×${height} ${lang}/${theme}: sidebar · connectors · safe recovery/drafts · browser modal · Activity Markdown · keyboard · core routes · no overflow/errors`);
     await context.close();
   }
 } finally {
