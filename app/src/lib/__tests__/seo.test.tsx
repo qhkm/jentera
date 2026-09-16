@@ -85,6 +85,11 @@ describe('public SEO and social previews', () => {
     expect(landing).toContain('<h1');
     expect(renderPublic('/connect')).toContain('MyInvois submission and e-invoicing are not currently available');
     expect(renderPublic('/privacy')).toContain('Privacy notice');
+    expect(renderPublic('/privacy')).toContain('Google sign-in and Google Calendar');
+    expect(renderPublic('/terms')).toContain('Terms of service');
+    expect(renderPublic('/terms')).toContain('Kitakod Ventures');
+    expect(renderPublic('/terms')).toContain('href="/privacy"');
+    expect(landing).toContain('href="/terms"');
     expect(renderPublic('/404')).toContain('Page not found');
     expect(() => renderPublic('/app')).toThrow('Cannot prerender a private route');
     expect(fetch).not.toHaveBeenCalled();
@@ -92,11 +97,13 @@ describe('public SEO and social previews', () => {
 
   it('keeps Cloudflare private headers and removes the blanket soft-404 rewrite', () => {
     const headers = readFileSync('public/_headers', 'utf8');
+    expect(headers).toMatch(/^\/terms\n  Cache-Control: no-cache, no-store, must-revalidate$/m);
     for (const path of PRIVATE_PATHS) {
       const escapedPath = path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       expect(headers).toMatch(new RegExp(`^${escapedPath}\\n(?:  [^\\n]+\\n)*  X-Robots-Tag: noindex, nofollow$`, 'm'));
     }
     const redirects = readFileSync('public/_redirects', 'utf8');
+    expect(redirects).toMatch(/^\/terms\/\s+\/terms\s+301$/m);
     expect(redirects).not.toMatch(/^\/\*\s+\/index.html\s+200/m);
   });
 });

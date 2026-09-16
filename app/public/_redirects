@@ -3,6 +3,7 @@
 # (including missing images) into an indexable copy of the landing page.
 /connect/  /connect  301
 /privacy/  /privacy  301
+/terms/    /terms    301
 /signin/   /signin   301
 /onboard/  /onboard  301
 /setup/    /setup    301

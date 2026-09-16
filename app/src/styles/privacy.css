@@ -104,6 +104,7 @@
     color: var(--accent-green);
     text-decoration: underline;
     text-underline-offset: 3px;
+    overflow-wrap: anywhere;
   }
 }
 

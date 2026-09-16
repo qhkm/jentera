@@ -244,6 +244,7 @@ export const FOOTER = {
   email: "hello@kitakodventures.com",
   links: [
     { href: "/privacy", label: "Privacy" },
+    { href: "/terms", label: "Terms" },
     { href: "https://aisar.ai", label: "AISAR ↗" },
     { href: "https://github.com/qhkm", label: "Open source ↗" },
     { href: "https://x.com/qhkmdev9", label: "Updates ↗" },

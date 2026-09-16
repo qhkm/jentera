@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 
 const base = process.env.SEO_BASE?.replace(/\/$/, '');
 const dist = new URL('../dist/', import.meta.url);
-const publicRoutes = ['/', '/connect'];
+const publicRoutes = ['/', '/connect', '/privacy', '/terms'];
 const privateRoutes = ['/signin', '/onboard', '/setup', '/app'];
 const read = async (file) => readFile(new URL(file, dist));
 const request = async (path) => {

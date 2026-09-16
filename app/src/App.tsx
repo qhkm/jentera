@@ -14,6 +14,7 @@ import Join from '@/routes/Join';
 import Connect from '@/routes/Connect';
 import NotFound from '@/routes/NotFound';
 import Privacy from '@/routes/Privacy';
+import Terms from '@/routes/Terms';
 import { PageMetadata } from '@/components/PageMetadata';
 import { PageLoading } from '@/components/ui';
 import { lazy, Suspense, type ReactElement } from 'react';
@@ -114,6 +115,7 @@ export function AppRoutes() {
           <Route path="/" element={<Landing />} />
           <Route path="/connect" element={<Connect />} />
           <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
           <Route path="/signin" element={<SignIn />} />
           <Route path="/waitlist" element={<Access />} />
           <Route path="/access" element={<Access />} />
