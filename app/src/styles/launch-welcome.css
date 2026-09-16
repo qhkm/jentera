@@ -1,0 +1,42 @@
+.launch-announcement {
+  position: relative;
+  border-bottom: 1px solid rgb(var(--accent-green-rgb) / .14);
+  background: linear-gradient(100deg, rgb(var(--accent-green-rgb) / .08), rgb(var(--accent-green-rgb) / .025)), var(--bg);
+  color: var(--text);
+}
+.launch-announcement__inner {
+  display: flex; align-items: center; gap: 16px;
+  max-width: 1154px; min-height: 44px; margin: 0 auto; padding: 0 24px;
+}
+.launch-announcement__badge {
+  display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+  color: var(--accent-green); font-size: 10px; font-weight: 600; letter-spacing: .08em;
+}
+.launch-announcement__copy { flex: 1; min-width: 0; margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.launch-announcement__link { display: inline-flex; gap: 6px; align-items: center; flex-shrink: 0; color: var(--accent-green); font-size: 12px; font-weight: 600; min-height: 44px; }
+.launch-announcement__close { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; color: var(--text-secondary); }
+.launch-announcement__close:hover { background: rgb(var(--accent-green-rgb) / .1); color: var(--text); }
+.launch-announcement :is(a, button):focus-visible { outline: 2px solid var(--accent-green); outline-offset: 3px; border-radius: 6px; }
+.account-welcome { display: flex; gap: 16px; align-items: flex-start; padding: 22px; border: 1px solid rgb(var(--accent-green-rgb) / .25); border-radius: 20px; background: linear-gradient(120deg, rgb(var(--accent-green-rgb) / .1), rgb(var(--accent-green-rgb) / .025)); color: var(--text); }
+.account-welcome__icon { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 14px; background: rgb(var(--accent-green-rgb) / .12); color: var(--accent-green); }
+.account-welcome__eyebrow { display: block; margin-bottom: 7px; color: var(--accent-green); font-size: 10px; font-weight: 600; letter-spacing: .08em; }
+.account-welcome__title { display: block; font-size: 20px; font-weight: 600; line-height: 1.35; letter-spacing: -.025em; }
+.account-welcome p { margin-top: 8px; color: var(--text-secondary); font-size: 13px; line-height: 1.7; }
+.access-launch .account-welcome { color: #f4f6f5; }
+.access-launch .account-welcome p { color: #bac9c1; }
+.access-launch .account-welcome__title { color: #f4f6f5; }
+.auth-signup-celebration { display: inline-flex; gap: 7px; align-items: center; color: var(--accent-green); font-size: 12px; font-weight: 600; }
+.auth-signup-steps { display: flex; gap: 12px; align-items: flex-start; width: 100%; margin: 8px 0; counter-reset: signup-step; }
+.auth-signup-steps li { flex: 1; min-width: 0; color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
+.auth-signup-steps li::before { display: grid; place-items: center; width: 26px; height: 26px; margin: 0 auto 6px; border: 1px solid var(--rail); border-radius: 50%; counter-increment: signup-step; content: counter(signup-step); }
+.auth-signup-steps li[aria-current="step"] { color: var(--accent-green); }
+.auth-signup-steps li[aria-current="step"]::before { border-color: rgb(var(--accent-green-rgb) / .35); background: rgb(var(--accent-green-rgb) / .1); }
+@media (max-width: 767px) {
+  .launch-announcement__inner { display: grid; grid-template-columns: minmax(0, 1fr) auto 44px; gap: 0 8px; padding: 0 12px 8px; }
+  .launch-announcement__badge { grid-column: 1; grid-row: 1; }
+  .launch-announcement__link { grid-column: 2; grid-row: 1; }
+  .launch-announcement__close { grid-column: 3; grid-row: 1; }
+  .launch-announcement__copy { grid-column: 1 / -1; grid-row: 2; }
+  .account-welcome { padding: 18px; gap: 12px; }
+  .account-welcome__title { font-size: 18px; }
+}

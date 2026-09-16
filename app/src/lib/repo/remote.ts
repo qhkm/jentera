@@ -13,6 +13,7 @@ import { isRunId } from '@/lib/task';
 import { isArtifact } from '@/lib/artifacts';
 import { RemoteRoutinesApi } from '@/lib/routines/api';
 import { nativeAuthorizationHeaders } from '@/lib/native';
+import { parseFounderGroup } from '@/lib/founder-group';
 import type {
   BrowserCommand,
   BusinessBrowserState,
@@ -69,6 +70,8 @@ export class NotSignedInError extends Error {
 
 /** What /api/me answers with. Only the parts anything here reads. */
 export interface MeResponse {
+  /** Server-confirmed session email; display only, never an authorization key. */
+  email?: string;
   features?: { routines?: { apiVersion?: number }; team?: { apiVersion?: number } };
   detailLevel?: string;
   /** Opaque account id from the session; scopes per-browser state such as
@@ -121,6 +124,9 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (res.status === 404 && body.code === 'NO_BUSINESS') throw new NoBusinessError();
   if (!res.ok || body.ok === false) {
+    if (res.status === 402 && body.code === 'CHAT_PREVIEW_EXHAUSTED') {
+      window.dispatchEvent(new Event('jentera:preview-change'));
+    }
     const ErrorType = res.status === 408 || res.status === 429 || res.status >= 500 ? TemporaryConnectionError : Error;
     throw Object.assign(new ErrorType(String(body.err ?? `${res.status} ${res.statusText}`)), { status: res.status });
   }
@@ -161,6 +167,11 @@ interface WireApproval {
 
 export class RemoteRepository implements Repository {
   readonly routines = new RemoteRoutinesApi();
+
+  async founderGroup(): Promise<{ url: string } | null> {
+    const response = await call<{ founderGroup?: unknown }>('/api/access');
+    return parseFounderGroup(response.founderGroup);
+  }
   /** numeric id → server uuid, rebuilt on every load. */
   private ids = new Map<number, string>();
 
@@ -447,6 +458,7 @@ export class RemoteRepository implements Repository {
         pending?: boolean;
         status?: string;
         runId?: string;
+        preview?: { limit: number; used: number; remaining: number };
       }>(path, { method: 'POST', body });
     };
     let begun;
@@ -459,6 +471,7 @@ export class RemoteRepository implements Repository {
       if (!(error instanceof Error) || !error.message.includes('could not queue')) throw error;
       begun = await start();
     }
+    if (begun.preview) window.dispatchEvent(new Event('jentera:preview-change'));
     if (isRunId(begun.runId)) options.onRunCreated?.(begun.runId);
     if (!begun.pending) return begun;
     if (!isRunId(begun.runId)) throw new Error('Jentera returned no run identifier.');

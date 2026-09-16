@@ -4,7 +4,7 @@ export const SITE_URL = 'https://jentera.ai';
 export const SOCIAL_IMAGE = `${SITE_URL}/social/jentera-v1.png`;
 export const SOCIAL_ALT = 'Jentera by AISAR. AI staff that works 24/7 for Malaysian businesses.';
 export const INDEXABLE_PATHS = ['/', '/connect', '/privacy', '/terms'] as const;
-export const PRIVATE_PATHS = ['/signin', '/onboard', '/setup', '/app', '/join', '/access', '/waitlist', '/admin/launch'] as const;
+export const PRIVATE_PATHS = ['/signin', '/onboard', '/setup', '/app', '/join', '/access', '/waitlist', '/subscribe', '/admin/launch'] as const;
 
 /** Files whose committed changes materially alter each public page. The build
  * uses their most recent git commit for sitemap lastmod; it never stamps every
@@ -13,6 +13,7 @@ export const INDEXABLE_PAGE_SOURCES: Record<(typeof INDEXABLE_PATHS)[number], re
   '/': [
     'app/src/routes/Landing.tsx',
     'app/src/lib/landing-content.ts',
+    'app/src/lib/launch-offer.ts',
     'app/src/components/landing/LandingChrome.tsx',
     'app/src/components/landing/WorkIllustration.tsx',
     'app/src/styles/landing.css',
@@ -54,12 +55,13 @@ export interface PageSeo {
 }
 
 const PAGES: Record<string, Omit<PageSeo, 'canonical' | 'indexable'>> = {
+  '/subscribe': { title: 'Subscribe — Jentera', description: 'Secure Jentera subscription checkout and payment status.' },
   '/admin/launch': { title: 'Launch centre — Jentera', description: 'Private launch administration.' },
   '/waitlist': { title: 'Join the waitlist — Jentera', description: 'Join the Jentera waitlist or redeem an invitation for a three-day trial.' },
   '/access': { title: 'Your access — Jentera', description: 'Review your Jentera access or redeem a trial invitation.' },
   '/': {
     title: 'Jentera — 24/7 AI staff for Malaysian businesses',
-    description: 'AI help for the business you already run. Prepare replies, follow-ups, paperwork and plans with Jentera, in English or Bahasa Malaysia. Built by AISAR.',
+    description: 'AI help for the business you already run. Prepare replies, files and everyday business work with Jentera. RM99/month for your first 3 months, then RM199/month.',
   },
   '/connect': {
     title: 'Jentera connections — The tools your business uses',

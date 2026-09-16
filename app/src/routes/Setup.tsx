@@ -18,6 +18,9 @@ import { FirstJob } from '@/components/FirstJob';
 import { computerStatus } from '@/lib/computer-status';
 import { ComputerSetupProgress } from '@/components/ComputerSetupProgress';
 import type { RuntimeOverview } from '@/lib/repo';
+import { useI18n } from '@/i18n/I18nProvider';
+import { onboardingCopy } from '@/lib/onboarding-copy';
+import { FounderGroupInvite } from '@/components/FounderGroupInvite';
 
 type Status = 'pending' | 'running' | 'waiting' | 'done';
 
@@ -48,6 +51,7 @@ export default function Setup() {
     committed its durable task but Queue delivery failed before the response. */
 function LiveSetup() {
   const t = useT();
+  const { lang } = useI18n(); const c = onboardingCopy[lang];
   const navigate = useNavigate();
   const repo = useRepository();
   const mutate = useMutate();
@@ -160,7 +164,6 @@ function LiveSetup() {
   return (
     <Shell suffix="/setup">
       <div className="mx-auto flex max-w-[720px] flex-col gap-8 py-8">
-        <FirstJob ready={runtimeReady} />
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-4">
             <Eyebrow>{t('su.eyebrow')}</Eyebrow>
@@ -178,6 +181,12 @@ function LiveSetup() {
         {!runtimeReady && !runtimeError ? (
           setupProgress ? <div className="computer-status computer-status-setup"><ComputerSetupProgress progress={setupProgress} /></div> : <RuntimePreparing stage={runtimeStage} />
         ) : null}
+
+        {runtimeReady && <section className="computer-ready-moment" aria-label={c.computerMoment}>
+          <h2>{c.computerMoment}</h2>
+          <ul>{c.readyChecks.map(label => <li key={label}><span aria-hidden="true">✓</span>{label}</li>)}</ul>
+          <p>{c.readyChecksNote}</p>
+        </section>}
 
         <Card className="gap-0 p-0">
           <SetupStatusRow
@@ -216,6 +225,9 @@ function LiveSetup() {
             </Button>
           </div>
         ) : null}
+
+        <FirstJob ready={runtimeReady} />
+        <FounderGroupInvite />
 
         {connections.mode === 'pending' ? (
           <Card>

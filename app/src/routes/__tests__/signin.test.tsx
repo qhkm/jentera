@@ -17,6 +17,28 @@ function mount(path = '/signin') {
 }
 
 describe('sign-in experience', () => {
+  it('celebrates the signup request while requiring email confirmation and explicit sign-in', async () => {
+    vi.stubEnv('VITE_ACCESS_MODE', '');
+    const request = vi.fn().mockResolvedValue(new Response(null, { status: 202 }));
+    vi.stubGlobal('fetch', request);
+    try {
+      const user = userEvent.setup();
+      mount('/signin?mode=signup');
+      await user.type(screen.getByLabelText('Email address'), 'early-user@example.com');
+      await user.type(screen.getByLabelText('Password'), 'fictional-password');
+      await user.click(screen.getByRole('button', { name: 'Create account' }));
+      expect(await screen.findByRole('heading', { name: 'Check your inbox' })).toHaveFocus();
+      expect(screen.getByRole('status')).toHaveTextContent('A great start');
+      expect(screen.getByRole('status')).toHaveTextContent('If early-user@example.com is not already registered');
+      expect(screen.getByRole('list', { name: 'Finish creating your account' })).toHaveTextContent('Confirm your email');
+      expect(request.mock.calls.filter(([input]) => String(input).endsWith('/api/auth/login'))).toHaveLength(0);
+      await user.click(screen.getByRole('button', { name: /Sign in after confirming email/ }));
+      expect(await screen.findByRole('heading', { name: 'Welcome back.' })).toBeVisible();
+      expect(screen.getByLabelText('Email address')).toHaveValue('early-user@example.com');
+      expect(screen.getByLabelText('Password')).toHaveValue('');
+      expect(request.mock.calls.filter(([input]) => String(input).endsWith('/api/auth/login'))).toHaveLength(0);
+    } finally { vi.unstubAllEnvs(); }
+  });
   /* The page must never mint a native code just because a URL said so.
      A link carrying someone else's state and PKCE challenge, opened by a
      signed-in owner, used to hand a 7-day credential for their account to

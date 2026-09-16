@@ -97,8 +97,7 @@ describe('what mode says while the answer is in flight', () => {
       </SignedInProvider>,
     );
 
-    await new Promise((r) => setTimeout(r, 50));
-    expect(screen.getByTestId('mode')).toHaveTextContent('error');
+    await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('error'));
   });
 
   it('is demo when nobody is signed in', async () => {

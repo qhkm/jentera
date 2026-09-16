@@ -108,6 +108,10 @@
   gap: 14px 26px;
   margin-top: 26px;
 }
+.hero-stage .lp-hero-offer {
+  margin-inline: auto;
+  text-wrap: balance;
+}
 .hero-stage .lp-hero-note {
   justify-content: center;
 }

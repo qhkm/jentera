@@ -81,6 +81,11 @@ describe('public SEO and social previews', () => {
     const fetch = vi.fn(() => { throw new Error('No network in prerender'); }); vi.stubGlobal('fetch', fetch);
     const landing = renderPublic('/');
     expect(landing).toContain('AI staff that works');
+    expect(landing).toContain('hero-hours');
+    expect(landing).not.toContain('Purchases are not open yet');
+    expect(pageSeo('/').description).not.toContain('Purchases not open yet');
+    expect(landing).toContain('RM199');
+    expect(landing).not.toContain('chat.whatsapp.com/');
     expect(landing).toContain('href="/connect"');
     expect(landing).toContain('<h1');
     expect(renderPublic('/connect')).toContain('MyInvois submission and e-invoicing are not currently available');

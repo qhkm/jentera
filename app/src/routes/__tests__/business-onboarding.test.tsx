@@ -9,6 +9,7 @@ import { SignedInProvider } from '@/lib/repo/gate';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { ToastProvider } from '@/components/Toast';
 import { KEYS } from '@/lib/storage';
+import { workflowCategoryKey, workflowTaskKey } from '@/lib/first-workflow';
 
 function mount(repo: LocalRepository, firstJob?: boolean) {
   return render(<MemoryRouter><SignedInProvider value><RepositoryProvider repository={repo}><I18nProvider><ToastProvider>
@@ -17,12 +18,27 @@ function mount(repo: LocalRepository, firstJob?: boolean) {
 }
 beforeEach(() => localStorage.clear());
 
+async function chooseWorkflow(task = 'Prepare my weekly sales report') {
+  await userEvent.click(await screen.findByRole('button', { name: /Reports/ }));
+  await userEvent.type(screen.getByLabelText('What is one task you repeat every day or every week?'), task);
+  await userEvent.click(screen.getByRole('button', { name: 'Use this as my first workflow' }));
+}
+
 describe('real business onboarding', () => {
+  it('welcomes the signed-in owner before selecting the first workflow without running it', async () => {
+    const repo = new LocalRepository();
+    repo.ask = vi.fn();
+    mount(repo);
+    expect(await screen.findByRole('region', { name: 'Welcome to Jentera!' })).toHaveTextContent('first useful job');
+    expect(await screen.findByRole('heading', { name: 'What would you like your AI Staff to help with first?' })).toBeVisible();
+    expect(repo.ask).not.toHaveBeenCalled();
+  });
   it('does not skip reading after an anonymous demo, and does not treat zero facts as success', async () => {
     localStorage.setItem(KEYS.onboardingDraft, JSON.stringify({ completedDemo: true, step: 5, url: 'example.com' }));
     const repo = new LocalRepository();
     repo.ingest = vi.fn().mockResolvedValue({ facts: 0, chars: 20, suggestions: [] });
     mount(repo);
+    await chooseWorkflow();
     expect(await screen.findByDisplayValue('example.com')).toBeInTheDocument();
     expect(repo.ingest).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('button', { name: 'Learn about my business' }));
@@ -52,6 +68,7 @@ describe('real business onboarding', () => {
   it('uses the document ingestion route and offers retry on failure', async () => {
     const repo = Object.assign(new LocalRepository(), { ingestFile: vi.fn().mockRejectedValueOnce(new Error('Cannot read document')).mockResolvedValue({ facts: 1, suggestions: [{ key: 'business.about', value: 'We run workshops', confidence: 0.9 }] }) });
     mount(repo);
+    await chooseWorkflow();
     await userEvent.click(await screen.findByRole('button', { name: 'Upload a document' }));
     await userEvent.upload(screen.getByLabelText('Upload a document'), new File(['workshops'], 'business.txt', { type: 'text/plain' }));
     await userEvent.click(screen.getByRole('button', { name: 'Learn about my business' }));
@@ -62,6 +79,7 @@ describe('real business onboarding', () => {
   it('keeps manual descriptions as reviewable owner input, not a pretend extraction', async () => {
     const repo = new LocalRepository(); repo.ingest = vi.fn();
     mount(repo);
+    await chooseWorkflow();
     await userEvent.click(await screen.findByRole('button', { name: 'Describe your business' }));
     await userEvent.type(screen.getByLabelText('What do you offer, and who do you help?'), 'We teach workshops for small businesses.');
     await userEvent.click(screen.getByRole('button', { name: 'Learn about my business' }));
@@ -71,7 +89,69 @@ describe('real business onboarding', () => {
   });
 });
 
+describe('workflow-first onboarding', () => {
+  it('starts with six outcome choices and does not save or execute an unconfirmed task', async () => {
+    const repo = new LocalRepository(); repo.ask = vi.fn(); repo.setFact = vi.fn(); repo.provisionRuntime = vi.fn();
+    mount(repo);
+    expect(await screen.findByRole('heading', { name: 'What would you like your AI Staff to help with first?' })).toBeVisible();
+    expect(screen.getByRole('group', { name: 'First workflow category' }).querySelectorAll('button')).toHaveLength(6);
+    await chooseWorkflow('Prepare my customer quotations');
+    expect(screen.getByRole('heading', { name: 'Where can I learn about your business?' })).toHaveFocus();
+    expect(repo.ask).not.toHaveBeenCalled(); expect(repo.setFact).not.toHaveBeenCalled(); expect(repo.provisionRuntime).not.toHaveBeenCalled();
+    expect(localStorage.getItem(KEYS.onboardingDraft)).not.toContain('Prepare my customer quotations');
+  });
+  it('requires a category and a nonblank task, while keeping other work describable', async () => {
+    mount(new LocalRepository());
+    await userEvent.type(await screen.findByLabelText('What is one task you repeat every day or every week?'), '   ');
+    await userEvent.click(screen.getByRole('button', { name: 'Use this as my first workflow' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Choose a category');
+    await userEvent.click(screen.getByRole('button', { name: /Something else/ }));
+    await userEvent.clear(screen.getByLabelText('What is one task you repeat every day or every week?'));
+    await userEvent.type(screen.getByLabelText('What is one task you repeat every day or every week?'), 'Prepare a packing checklist');
+    await userEvent.click(screen.getByRole('button', { name: 'Use this as my first workflow' }));
+    expect(screen.getByRole('heading', { name: 'Where can I learn about your business?' })).toBeVisible();
+  });
+  it('persists the chosen task only when the owner confirms the reviewed details', async () => {
+    const repo = new LocalRepository(); repo.ask = vi.fn();
+    mount(repo);
+    await chooseWorkflow();
+    await userEvent.click(screen.getByRole('button', { name: 'Describe your business' }));
+    await userEvent.type(screen.getByLabelText('What do you offer, and who do you help?'), 'We sell coffee.');
+    await userEvent.click(screen.getByRole('button', { name: 'Learn about my business' }));
+    expect(await screen.findByRole('textbox', { name: 'Your repetitive task' })).toHaveValue('Prepare my weekly sales report');
+    expect((await repo.load()).facts.find(f => f.key === workflowTaskKey)).toBeUndefined();
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm details & prepare Jentera' }));
+    await waitFor(async () => expect((await repo.load()).onboarded).toBe(true));
+    expect((await repo.load()).facts.find(f => f.key === workflowTaskKey)).toMatchObject({ confirmed: true, value: 'Prepare my weekly sales report' });
+    expect((await repo.load()).facts.find(f => f.key === workflowCategoryKey)).toMatchObject({ confirmed: true, value: 'reports' });
+    expect(repo.ask).not.toHaveBeenCalled();
+  });
+  it('does not save a repetitive task the owner unticks during review', async () => {
+    const repo = new LocalRepository(); mount(repo);
+    await chooseWorkflow();
+    await userEvent.click(screen.getByRole('button', { name: 'Describe your business' }));
+    await userEvent.type(screen.getByLabelText('What do you offer, and who do you help?'), 'We sell coffee.');
+    await userEvent.click(screen.getByRole('button', { name: 'Learn about my business' }));
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Your repetitive task' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm details & prepare Jentera' }));
+    await waitFor(async () => expect((await repo.load()).onboarded).toBe(true));
+    expect((await repo.load()).facts.find(f => f.key === workflowTaskKey)).toBeUndefined();
+  });
+});
+
 describe('the first useful job', () => {
+  it('carries the confirmed workflow into an editable brief without starting or scheduling it', async () => {
+    const repo = new LocalRepository();
+    await repo.setFact({ key: workflowTaskKey, value: 'Prepare my weekly sales report', source: 'owner' });
+    repo.ask = vi.fn().mockResolvedValue({ runId: '11111111-1111-4111-8111-111111111111', text: 'Workflow draft', usedKeys: [], grounded: true });
+    mount(repo, true);
+    expect((await screen.findByLabelText('Your brief') as HTMLTextAreaElement).value).toContain('Prepare my weekly sales report');
+    expect(repo.ask).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Create this draft' }));
+    await screen.findByRole('button', { name: 'View your work' });
+    expect(repo.ask).toHaveBeenCalledWith(expect.stringContaining('Do not claim that this workflow is active or scheduled.'), expect.objectContaining({ mode: 'work', requestId: expect.any(String) }));
+    expect(vi.mocked(repo.ask).mock.calls[0][0]).toContain('do not send, publish, schedule or contact anyone');
+  });
   it('reuses the request identity when the owner retries an ambiguous network failure', async () => {
     const repo = new LocalRepository();
     repo.ask = vi.fn().mockRejectedValueOnce(new Error('Connection lost')).mockResolvedValue({ runId: '11111111-1111-4111-8111-111111111111', text: 'Draft', usedKeys: [], grounded: true });

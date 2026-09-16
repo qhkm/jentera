@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -19,15 +19,20 @@ describe("Jentera landing experience", () => {
     const pricing = screen.getByRole("region", { name: /your ai staff.*special launch price/i });
     expect(within(pricing).getByText("RM99")).toBeVisible();
     expect(within(pricing).getByText("/month")).toBeVisible();
-    expect(within(pricing).getByText("One computer task at a time")).toBeVisible();
-    expect(within(pricing).getByRole("link", { name: /notify me at launch/i })).toHaveAttribute("href", "/waitlist");
-    expect(pricing).toHaveTextContent("Free to join. No payment today.");
-    expect(pricing).toHaveTextContent("Launching 16 September 2026");
-    expect(pricing).toHaveTextContent("Purchases are not open yet.");
-    expect(pricing.querySelector('time')).toHaveAttribute('dateTime', '2026-09-16');
+    expect(pricing).not.toHaveTextContent("One computer task at a time");
+    expect(within(pricing).getByRole("link", { name: 'Get My AI Staff — RM99' })).toHaveAttribute("href", "/signin");
+    expect(pricing).not.toHaveTextContent("no payment today");
+    expect(pricing).toHaveTextContent("Early-user launch offer");
+    expect(pricing).not.toHaveTextContent("Purchases are not open yet.");
+    expect(pricing).not.toHaveTextContent("Launching on");
     expect(within(pricing).getAllByRole('link')).toHaveLength(1);
-    expect(pricing).toHaveTextContent("Joining the waitlist does not reserve this price.");
-    expect(pricing).toHaveTextContent("renewal pricing");
+    expect(pricing).toHaveTextContent("Review usage limits and cancellation terms before subscribing.");
+    expect(pricing).toHaveTextContent("first 3 monthly billing periods, then RM199/month from month 4");
+    expect(pricing).toHaveTextContent('Private WhatsApp support group');
+    expect(pricing).toHaveTextContent('Direct access to the founder');
+    expect(pricing).toHaveTextContent('Save RM300 over your first 3 months');
+    expect(pricing).not.toHaveTextContent('Free Automation Mapping');
+    expect(pricing).not.toHaveTextContent('Lucky draw');
     expect(screen.getByRole("link", { name: "Pricing" })).toHaveAttribute("href", "/#pricing");
   });
 
@@ -48,22 +53,22 @@ describe("Jentera landing experience", () => {
     }
   });
 
-  it("offers account creation and a clearly labelled local-business illustration", () => {
+  it("uses one consistent launch action and a clearly labelled local-business illustration", () => {
     mount();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
       "AI staff that works 24/7 for 🇲🇾 Malaysian businesses.",
     );
     const proof = screen.getByRole("region", {
-      name: /your business knowledge.*your approval/i,
+      name: /you stay in control.*important actions/i,
     });
     expect(within(proof).getByText("Confirmed business knowledge")).toBeVisible();
     expect(within(proof).getByText("Approval when it matters")).toBeVisible();
     expect(within(proof).getByText("A clear activity history")).toBeVisible();
     expect(within(proof).getByRole('img')).toHaveAttribute('src', '/images/product-tour/knowledge-mobile-v1.png');
     for (const link of screen.getAllByRole("link", {
-      name: /meet jentera|set up jentera/i,
+      name: 'Get My AI Staff — RM99',
     })) {
-      expect(link).toHaveAttribute("href", "/signin?mode=signup");
+      expect(link).toHaveAttribute("href", "/signin");
     }
     expect(
       screen.getByText(
@@ -74,13 +79,32 @@ describe("Jentera landing experience", () => {
       screen.getByRole("link", { name: /see supported connections/i }),
     ).toHaveAttribute("href", "/connect");
   });
+  it('restores the original hero presentation and removes outdated purchase notices', () => {
+    const { container } = mount();
+    const hero = container.querySelector('.lp-hero-copy');
+    expect(hero?.querySelector('.hero-hours')).toHaveTextContent('24/7');
+    expect(hero?.querySelector('.hero-country')).toHaveTextContent('Malaysian');
+    expect(hero).toHaveTextContent('Just hand the work to Jentera.');
+    expect(hero).toHaveTextContent('your AI staff has its own computer');
+    expect(hero).toHaveTextContent('Try 10 chats free.');
+    expect(hero).toHaveTextContent('RM99/month for your first 3 months, RM199/month thereafter.');
+    expect(hero?.querySelector('.lp-hero-benefits')).toBeNull();
+    expect(within(hero as HTMLElement).getByRole('link', { name: 'Try my AI staff — 10 free chats' })).toHaveAttribute('href', '/signin');
+    for (const notice of ['Purchases are not open yet', 'no payment today', 'will be published before checkout opens']) {
+      expect(container).not.toHaveTextContent(notice);
+    }
+  });
 
   it('moves from demonstration to mechanism, jobs, control and pricing without duplicate positioning sections', () => {
     const { container } = mount();
     const ids = [...container.querySelectorAll('main > section[id]')].map(section => section.id);
-    expect(ids).toEqual(['product-tour', 'how', 'work', 'control', 'pricing', 'questions']);
+    expect(ids).toEqual(['first-workflow', 'product-tour', 'how', 'work', 'control', 'pricing', 'questions']);
+    expect(container.querySelector('.lp-workflow-examples')?.children).toHaveLength(5);
+    expect(container.querySelector('#first-workflow')).toHaveTextContent('You don’t need to build complicated workflows');
+    expect(container.querySelector('#first-workflow')).toHaveTextContent('Start with one task');
+    expect(container.querySelector('#first-workflow')).toHaveTextContent('limited pilot');
     expect(container.querySelector('.lp-job-grid')?.children).toHaveLength(8);
-    for (const title of ['Keep enquiries moving.', 'Turn content into a publishing routine.', 'Move from enquiry to quotation.', 'Bring important emails to you.']) {
+    for (const title of ['Keep enquiries moving.', 'Get next week’s content ready.', 'Move from enquiry to quotation.', 'Find your next opportunities.', 'Turn the numbers into a report.']) {
       expect(screen.getByRole('heading', { name: title })).toBeVisible();
     }
     expect(container.querySelector('#work')).toHaveTextContent('not one-click integrations');
@@ -93,14 +117,82 @@ describe("Jentera landing experience", () => {
     expect(container.querySelector('#aisar')).toBeNull();
   });
 
-  it('explains managed setup without promising universal software or subscription compatibility', () => {
+  it('explains the dedicated computer through practical tasks and supported access', () => {
     mount();
-    const section = screen.getByRole('region', { name: /AI staff.*without the server setup/i });
-    expect(section).toHaveTextContent('No VPS to rent.');
+    const section = screen.getByRole('region', { name: /AI staff.*its own computer/i });
+    expect(section).toHaveTextContent('no technical setup to figure out.');
+    expect(section).toHaveTextContent('Less prompting. More delegating.');
+    expect(section).toHaveTextContent('Hand off the work. Come back to the result.');
+    expect(section).not.toHaveTextContent('activation goal');
+    expect(section).not.toHaveTextContent('24–48 hours');
     expect(within(section).getAllByRole('article')).toHaveLength(4);
-    expect(section).toHaveTextContent('Install compatible software');
-    expect(section).toHaveTextContent('Start with Jentera AI');
-    expect(section).toHaveTextContent('not every subscription includes API access');
+    expect(section).toHaveTextContent('You don’t need to keep your laptop open.');
+    expect(section).toHaveTextContent('supported websites and connections');
+    expect(section).toHaveTextContent('not every website allows automated access');
+    expect(section).toHaveTextContent('Upload a picture, document or spreadsheet.');
+    expect(section).toHaveTextContent('what a good result looks like');
+  });
+
+  it('thanks paid early users without exposing the founder-group invitation publicly', () => {
+    const { container } = mount();
+    const pricing = screen.getByRole('region', { name: /your ai staff.*special launch price/i });
+    expect(pricing).toHaveTextContent('As a thank-you for supporting us early');
+    expect(pricing).toHaveTextContent('direct founder access');
+    expect(pricing).toHaveTextContent('help shape what we build next');
+    expect(pricing).toHaveTextContent('after payment is confirmed');
+    expect(pricing).not.toHaveTextContent('Free Automation Mapping');
+    expect(container.innerHTML).not.toContain('chat.whatsapp.com');
+    expect(container.querySelectorAll('a[href*="whatsapp"]')).toHaveLength(0);
+  });
+
+  it('states launch limits instead of promising unlimited AI or universal routine access', async () => {
+    const user = userEvent.setup();
+    mount();
+    const pricing = screen.getByRole('region', { name: /your ai staff.*special launch price/i });
+    expect(pricing).toHaveTextContent('Standard AI usage included; fair-use limits apply.');
+    expect(pricing).not.toHaveTextContent('Unlimited AI');
+    await user.click(screen.getByText('Is AI usage unlimited?'));
+    const usage = screen.getByText('Is AI usage unlimited?').closest('details');
+    expect(usage).toHaveTextContent('No.');
+    expect(usage).toHaveTextContent('does not promise unlimited usage');
+    await user.click(screen.getByText('Can Jentera run work on a schedule?'));
+    const routines = screen.getByText('Can Jentera run work on a schedule?').closest('details');
+    expect(routines).toHaveTextContent('limited pilot');
+    expect(routines).toHaveTextContent('not enabled for every account');
+  });
+
+  it('keeps customer benefits separate from computer limits and safety features', async () => {
+    const user = userEvent.setup();
+    const { container } = mount();
+    const benefits = screen.getByRole('list', { name: 'Launch plan inclusions' });
+    expect(within(benefits).getAllByRole('listitem').map(item => item.textContent)).toEqual([
+      'Your own AI staff, available 24/7',
+      'Its own dedicated computer',
+      'AI usage included for day-to-day work',
+      'Private WhatsApp support group',
+      'Direct access to the founder',
+      'Early access to new features',
+    ]);
+    for (const removed of ['Automation Mapping', 'Help choosing and setting up', 'One computer task', 'Approvals and activity history']) {
+      expect(benefits).not.toHaveTextContent(removed);
+    }
+    expect(container).not.toHaveTextContent('Automation Mapping');
+    expect(container).not.toHaveTextContent('RM900');
+    await user.click(screen.getByText('How many computer tasks can run at once?'));
+    expect(screen.getByText('How many computer tasks can run at once?').closest('details')).toHaveTextContent('Your AI staff handles one computer task at a time.');
+    expect(screen.getByRole('region', { name: /you stay in control.*important actions/i })).toHaveTextContent('A clear activity history');
+  });
+
+  it('offers concrete file and draft jobs without advertising unavailable inbox or publishing integrations', () => {
+    const { container } = mount();
+    const jobs = container.querySelector('#work');
+    expect(jobs).toHaveTextContent('Upload your order files or spreadsheet.');
+    expect(jobs).toHaveTextContent('follow-up messages for your review');
+    expect(jobs).toHaveTextContent('Review and publish them through your own channels.');
+    for (const claim of ['connected inbox', 'connected mailbox', 'schedule publishing through supported connections']) {
+      expect(jobs).not.toHaveTextContent(claim);
+    }
+    expect(screen.getByRole('heading', { name: /what are you still doing manually.*hand it to jentera/i })).toBeVisible();
   });
 
   it("switches examples and restores keyboard focus when returning from a draft", async () => {
@@ -172,9 +264,8 @@ describe("Jentera landing experience", () => {
 });
 
 describe("a signed-in visitor on the landing page", () => {
-  /* The landing sits outside the repository gate on purpose (first paint
-     must not wait on the API), so it asks /api/me itself, after paint, and
-     sends an owner who is already signed in to the app. */
+  /* Deliberately public, including for active and exhausted-preview owners.
+     The sign-in route still chooses the authenticated destination. */
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
@@ -188,21 +279,30 @@ describe("a signed-in visitor on the landing page", () => {
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/app" element={<h1>Workspace</h1>} />
+          <Route path="/access" element={<h1>Choose your plan</h1>} />
         </Routes>
       </MemoryRouter>,
     );
   }
 
-  it("is sent to the app once the session check answers", async () => {
+  it("stays browsable for an active owner without an automatic workspace redirect", async () => {
     const calls: string[] = [];
     mountAt(async (input) => {
       calls.push(String(input));
       return Response.json({ userId: "u1" });
     });
-    await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "Workspace" })).toBeInTheDocument(),
-    );
-    expect(calls).toEqual(["https://api.test/api/me"]);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("AI staff that works 24/7");
+    expect(screen.queryByRole("heading", { name: "Workspace" })).not.toBeInTheDocument();
+    expect(calls).toEqual([]);
+  });
+
+  it('lets an unpaid signed-in owner browse the public site instead of returning to the paywall', async () => {
+    await act(async () => {
+      mountAt(async () => Response.json({ code: 'ACCESS_REQUIRED' }, { status: 403 }));
+    });
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('AI staff that works 24/7');
+    expect(screen.queryByRole('heading', { name: 'Choose your plan' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Workspace' })).not.toBeInTheDocument();
   });
 
   it("stays on the landing page when signed out or when the API is unreachable", async () => {

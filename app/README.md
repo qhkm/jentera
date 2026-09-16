@@ -21,6 +21,41 @@ pnpm deploy       # build + publish to aisar-jentera (jentera.ai)
 | `src/styles/` | `tokens.css` (both themes), `theme.css` (Tailwind `@theme` + components), `fonts.css` |
 | `src/routes/` | Landing, Onboard, Setup, Dashboard |
 
+## Launch offer and workflow-first onboarding
+
+The one-plan launch copy is RM99/month for three monthly billing periods, then
+RM199/month from month four. `src/lib/launch-offer.ts` keeps the shared offer and
+CTA together. Public entry links open sign-in; verified accounts can try ten
+Chat requests before upgrading. Live account-bound Stripe Checkout is open.
+Access activation comes from verified paid-invoice handling, not the return URL.
+The giveaway awaits published rules.
+
+The optional Founder WhatsApp Group appreciation card appears during onboarding,
+Setup and My Business → Profile only when `/api/access` returns `founderGroup`.
+The actual invite must be supplied as the `LAUNCH_FOUNDER_GROUP_URL` Worker
+secret, not a tracked URL or the public app bundle. A gitignored local support
+configuration is not a source of customer entitlement. Missing server
+configuration safely hides the card. Eligibility requires a verified email and
+active payment evidence: an operator-verified paid grant or confirmed Stripe
+paid invoices. Trials, owner exemptions, plan flags, waitlist joins, checkout
+return URLs and open access alone never qualify. Stripe fulfillment queues the
+appreciation email after confirmed payment. This workspace consolidates the
+previous isolated billing and frontend releases; see
+[`automatic activation`](../docs/billing/automatic-activation.md).
+
+New signed-in onboarding asks for a work category and one repetitive task before
+business introduction. Unconfirmed task text stays in the mounted form, outside
+the shared onboarding-draft storage. Only explicitly selected, confirmed task
+details are saved through the existing tenant-scoped facts API under
+`business.workflow.category` and `business.workflow.task`. Setup uses the confirmed
+task to prepare an editable first-job brief; selection never runs or schedules it.
+Existing source/fact review and release-matched readiness gates remain in place.
+The computer/browser/workspace/Jentera-ready moment appears only after that
+readiness gate passes. Routine availability remains capability/canary restricted.
+
+The full launch/activation/billing gates and founder-led retention plan are in
+[`docs/plans/2026-09-16-launch-funnel.md`](../docs/plans/2026-09-16-launch-funnel.md).
+
 ## Things worth knowing
 
 **The data layer is hand-maintained.** Add a playbook with `../scripts/add-playbook.mjs`, which edits `playbooks.ts` directly, typechecks, and verifies the new keywords infer back to the new key — don't hand-merge entries.
@@ -54,6 +89,12 @@ section and business tab visited in that mounted workspace. Direct links and bro
 Back/Forward use the existing `view` and `tab` parameters. Mode switching does not
 create a conversation or send a request.
 
+The desktop sidebar groups existing destinations under Overview (Home and
+Notifications), Work (Activity, plus available Routines/Goals), and Workspace
+(Library, Files and My Business). The headings support EN/BM and the sidebar
+scrolls on short desktop screens. Capability checks, routes and phone bottom-bar
+ordering remain unchanged; grouping does not start work or grant permissions.
+
 Completed chat history remains in the existing account-scoped browser storage;
 this is not cross-device chat synchronisation. No storage keys or API contracts
 were changed for the mode split. Customer-facing agents remain unavailable.
@@ -76,11 +117,33 @@ successfully parsed setup block rather than copying it into the user's draft.
 
 The frontend retains accepted run IDs through reply failures so the owner can
 check the existing task before sending another request. Completed and failed
-reply links survive refresh in the same account-scoped chat storage; in-flight
-chat pairs still do not survive reload. Older replies without IDs open general
+reply links survive refresh in the same account-scoped chat storage. Accepted
+in-flight pairs retain their run IDs so the existing stream can be reattached;
+requests without a run ID and original attachment bytes are not persisted.
+Older replies without IDs open general
 Activity and are never matched by their wording. No storage keys, onboarding
 data, cache headers or backend endpoints changed. Approval links open the
 existing inbox; they do not infer which approval belongs to a task.
+
+### Recovering blocked tasks
+
+Finished private Chat and Activity replies offer guided recovery for the existing
+Calendar/browser handoff requests and for tasks awaiting details. “Check setup”
+reads the exact authorised run, revalidates its current request and checks
+connection metadata/browser owner-control state where needed. Running, approval-waiting,
+completed, changed and shared-summary results cannot prepare a continuation.
+Checks are explicit and bounded to 15 seconds; late/unmounted responses are ignored.
+
+“Continue in Chat” rechecks setup and prepares a reviewable continuation in the
+original server-identified conversation. Chat preserves existing drafts and file
+attachments; the original task/reply remains in account-scoped history. Nothing
+is sent automatically, no browser control is claimed/released and no approval is
+granted. The next user-sent turn is a follow-up, not resumption of a suspended
+Hermes execution: it requests live account verification before unfinished steps.
+A connected row or browser hand-back is explicitly not proof of successful login
+or live provider access. No API contracts, scopes, storage keys, runtime pins or
+cache headers change in this slice. External event triggers and a local driver
+remain separate future work.
 
 ### Daily business brief
 
@@ -97,6 +160,15 @@ the visible refresh time belongs to the last successful Activity fetch. Refresh
 reads existing endpoints, with explicit loading/error states. This is an on-screen
 summary, not a scheduled delivery or an AI-generated report. No backend, storage
 key, onboarding or cache-header changes are needed.
+
+### External triggers (deferred; excluded from launch)
+
+The source and a reviewed restoration patch are parked in
+[future/external-triggers](../future/external-triggers/README.md), outside the
+frontend/Worker build inputs. Launch has no trigger UI, API handler, feature
+discovery or trigger migration. Core Chat, uploads, approvals, routines and
+guided browser/Calendar recovery remain active. No production activation was
+performed; revisit the pilot separately after launch.
 
 ### Routines (capability-gated)
 
@@ -145,8 +217,10 @@ The real live-connector allowlist and backend permissions remain unchanged.
 Telegram’s “Check connection” is read-only and only runs when requested.
 Telegram and Calendar disconnect controls require explicit confirmation, explain
 what stops, preserve rows on failure, and support Cancel/Escape with focus return.
-`scripts/check-connectors.mjs` checks fictional account fixtures at 320/390/768/1440px,
-including EN/BM, dark/light, core routes and absence of provider calls.
+Confirmation panels are centred clear of phone navigation when opened.
+`scripts/check-connectors.mjs` checks fictional account fixtures at
+320/390/768/1024/1280/1440px, including short desktop viewports, EN/BM, dark/light,
+core routes and absence of provider calls.
 
 ## Installing as an app
 

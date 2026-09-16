@@ -10,6 +10,28 @@ const ANSWER = {
 };
 
 describe('RemoteRepository durable Ask Jentera bridge', () => {
+  it('refreshes trial quota on admission and still reads the tenth answer', async () => {
+    const changed = vi.fn();
+    window.addEventListener('jentera:preview-change', changed);
+    try {
+      vi.stubGlobal('fetch', vi.fn()
+        .mockResolvedValueOnce(response({ ok: true, pending: true, runId: ANSWER.runId, preview: { limit: 10, used: 10, remaining: 0 } }, 202))
+        .mockResolvedValueOnce(response({ ...ANSWER, pending: false, status: 'completed' })));
+      await expect(new RemoteRepository().ask('My tenth request')).resolves.toMatchObject(ANSWER);
+      expect(changed).toHaveBeenCalledTimes(1);
+    } finally { window.removeEventListener('jentera:preview-change', changed); }
+  });
+  it('refreshes the upgrade prompt when the server rejects an eleventh request', async () => {
+    const changed = vi.fn();
+    window.addEventListener('jentera:preview-change', changed);
+    try {
+      const fetch = vi.fn().mockResolvedValue(response({ err: 'Upgrade to continue', code: 'CHAT_PREVIEW_EXHAUSTED' }, 402));
+      vi.stubGlobal('fetch', fetch);
+      await expect(new RemoteRepository().ask('One more request')).rejects.toThrow('Upgrade to continue');
+      expect(changed).toHaveBeenCalledTimes(1);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally { window.removeEventListener('jentera:preview-change', changed); }
+  });
   afterEach(() => vi.useRealTimers());
   beforeEach(() => {
     vi.restoreAllMocks();

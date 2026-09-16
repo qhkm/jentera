@@ -1,17 +1,23 @@
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { JenteraMark } from '@/components/JenteraMark';
 import { useTurnstile } from '@/lib/turnstile';
 import { pendingTrialInvite, clearTrialInvite } from '@/lib/trial-link';
 import '@/styles/access.css';
+import { launchOffer } from '@/lib/launch-offer';
+import { LaunchAnnouncement } from '@/components/LaunchAnnouncement';
+import { AccountWelcome } from '@/components/AccountWelcome';
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 export default function Access() {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
   const [linkCode] = useState(pendingTrialInvite);
   const showTrialCode = searchParams.get('invite') === '1' || Boolean(linkCode);
   const [signedIn, setSignedIn] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [checkoutEnabled, setCheckoutEnabled] = useState(false);
   const [email, setEmail] = useState('');
   const [code, setCode] = useState(linkCode);
   const [notice, setNotice] = useState('');
@@ -24,11 +30,18 @@ export default function Access() {
     fetch(`${API}/api/access`, { credentials: 'include', signal: controller.signal }).then(async res => {
       if (!res.ok) throw new Error('Could not check access. Please refresh and try again.');
       const body = await res.json();
+      if (controller.signal.aborted) return;
       if (body.access?.allowed) { clearTrialInvite(); window.location.replace('/app'); return; }
-      setSignedIn(body.signedIn === true); setLoaded(true);
+      // Every sign-in door lands here for a restricted account. Only a
+      // server-confirmed identity and open checkout may continue to its plan.
+      // Keep explicit waitlist and trial invitations available unchanged.
+      if (pathname === '/access' && !showTrialCode && body.signedIn === true && body.billing?.checkoutEnabled === true) {
+        navigate('/subscribe', { replace: true }); return;
+      }
+      setSignedIn(body.signedIn === true); setCheckoutEnabled(body.billing?.checkoutEnabled === true); setLoaded(true);
     }).catch(error => { if (!controller.signal.aborted) setNotice(error.message); });
     return () => controller.abort();
-  }, []);
+  }, [navigate, pathname, showTrialCode]);
   async function logout() {
     if (loggingOut) return;
     setLoggingOut(true);
@@ -56,7 +69,7 @@ export default function Access() {
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Please try again.'); }
     finally { setBusy(false); if (kind === 'waitlist') captcha.reset(); }
   }
-  return <main className="access-launch">
+  return <><LaunchAnnouncement /><main className="access-launch">
     <header className="access-launch__header"><Link to="/" aria-label="Jentera home" className="access-launch__logo"><JenteraMark size={36} /><span>Jentera</span></Link><span className="access-launch__edition">EARLY ACCESS</span></header>
     <div className="access-launch__layout">
     <section className="access-launch__story">
@@ -67,11 +80,14 @@ export default function Access() {
       <div className="access-launch__jobs" aria-label="Example jobs"><span>Follow up leads</span><span>Prepare reports</span><span>Handle admin</span></div>
     </section>
     <div className="access-launch__panel">
+    {loaded && signedIn && !checkoutEnabled && <AccountWelcome />}
     {!linkCode && <section className="access-launch__card" aria-labelledby="access-title">
       <div className="access-launch__card-top"><span>YOUR NEXT CHAPTER</span><span aria-hidden="true">↗</span></div>
-      <h2 id="access-title">{joined ? 'You’re on the list.' : 'Get in early.'}</h2>
-      <p className="access-launch__card-copy">{joined ? 'Thanks for joining the Jentera waitlist. We’ll let you know when your batch opens.' : 'We’re opening Jentera in small batches. Join the waitlist to be among the first to put AI staff to work for your business.'}</p>
-    {!joined && <form className="flex flex-col gap-3" onSubmit={event => { event.preventDefault(); void submit('waitlist'); }}>
+      <h2 id="access-title">{joined ? 'You’re on the list.' : 'Your first AI staff.'}</h2>
+      <p className="access-launch__card-copy">{joined ? 'Thanks for joining. We’ll let you know when you can subscribe and choose your first workflow.' : `The launch offer: RM${launchOffer.monthlyPrice}/month for ${launchOffer.introductoryMonths} months, then RM${launchOffer.renewalPrice}/month from month 4. Your AI staff, its own computer and included AI usage. Private WhatsApp support and direct founder access are available after payment is confirmed.`}</p>
+      {!checkoutEnabled && <p className="access-launch__consent">{launchOffer.availability}</p>}
+      {checkoutEnabled && <><Link className="btn btn-primary min-h-11 access-launch__submit" to={signedIn ? '/subscribe' : '/signin'}>{signedIn ? 'Choose my launch plan' : 'Get my AI staff'}<span aria-hidden="true">→</span></Link><p className="access-launch__consent">Your account activates automatically after Stripe confirms payment. Founder support is available after verification.</p></>}
+    {!joined && !checkoutEnabled && <form className="flex flex-col gap-3" onSubmit={event => { event.preventDefault(); void submit('waitlist'); }}>
       <label className="flex flex-col gap-2 text-sm">Email address<input className="input w-full text-base" placeholder="you@company.com" type="email" autoComplete="email" maxLength={320} required value={email} onChange={event => setEmail(event.target.value)} /></label>
       {captcha.enabled && <div ref={captcha.attach} />}
       <button className="btn btn-primary min-h-11 access-launch__submit" disabled={busy} type="submit">{busy ? 'Saving your place…' : 'Get early access'}<span aria-hidden="true">↗</span></button>
@@ -94,5 +110,5 @@ export default function Access() {
     {!loaded && !notice && <p role="status">Checking access…</p>}
     </div>
     </div>
-  </main>;
+  </main></>;
 }

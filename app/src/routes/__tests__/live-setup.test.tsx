@@ -114,6 +114,28 @@ function mount(repo: LocalRepository) {
 }
 
 describe('signed-in setup', () => {
+  it('shows the computer-ready moment only after release-matched readiness', async () => {
+    const repo = new ReadyRepository(); await repo.setOnboarded(true); mount(repo);
+    const moment = await screen.findByRole('region', { name: 'Meet your AI Staff.' });
+    expect(moment).toHaveTextContent('Computer ready'); expect(moment).toHaveTextContent('Browser ready');
+    expect(moment).toHaveTextContent('Workspace ready'); expect(moment).toHaveTextContent('Jentera ready');
+    expect(moment).toHaveTextContent('idle computer may need to wake');
+    expect(screen.getByRole('heading', { name: 'Give your AI Staff its first job.' })).toBeVisible();
+  });
+  it('does not show fake ready checks during provisioning', async () => {
+    const repo = new ProvisioningRepository(); await repo.setOnboarded(true); mount(repo);
+    await screen.findByText('Your computer is getting ready. You can choose and edit your first job while you wait.');
+    expect(screen.queryByRole('region', { name: 'Meet your AI Staff.' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create this draft' })).toBeDisabled();
+  });
+  it('does not present an old-release runtime as ready for the first job', async () => {
+    const repo = new ReadyRepository(); await repo.setOnboarded(true);
+    repo.runtimeStatus = async () => ({ runtime: { status: 'ready', desiredRelease: 'target', observedRelease: 'old', lastReadyAt: new Date().toISOString(), lastError: null } });
+    mount(repo);
+    await screen.findByText('Your computer is getting ready. You can choose and edit your first job while you wait.');
+    expect(screen.queryByRole('region', { name: 'Meet your AI Staff.' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create this draft' })).toBeDisabled();
+  });
   it('shows a clear live indicator while the private runtime is provisioning', async () => {
     const repo = new ProvisioningRepository();
     await repo.setOnboarded(true);

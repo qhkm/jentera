@@ -31,6 +31,18 @@
 .access-launch__signin { text-align: center; color: #aebbb4; font-size: 13px; }
 .access-launch__signin span { color: #e2eae6; }
 .access-launch__notice { color: #e2eee7; font-size: 14px; line-height: 1.6; margin-top: 18px; }
+.subscribe-page__layout { max-width: 560px; margin: 54px auto; }
+.subscribe-page h1 { margin-top: 26px; font-size: clamp(30px, 6vw, 40px); }
+.subscribe-page__price { margin: 24px 0 8px; font-size: 44px; font-weight: 650; letter-spacing: -.04em; }
+.subscribe-page__price > span { font-size: 16px; font-weight: 400; color: #bac9c1; letter-spacing: 0; }
+.subscribe-page__benefits { display: grid; gap: 10px; padding-left: 20px; margin: 24px 0; color: #dbe7df; font-size: 14px; list-style: disc; }
+.subscribe-page .access-launch__consent a { color: #dbe7df; text-decoration: underline; }
+.subscribe-page button, .subscribe-page .btn { margin-top: 16px; }
+.subscribe-page__navigation { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.subscribe-page__navigation a, .subscribe-page__navigation button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 8px; margin-top: 0; border-radius: 6px; }
+.subscribe-page__navigation a:hover, .subscribe-page__navigation button:hover:not(:disabled) { color: #e2eae6; }
+.subscribe-page__navigation :focus-visible { outline: 2px solid #00cea3; outline-offset: 3px; }
+.subscribe-page__navigation button:disabled { opacity: .6; cursor: wait; }
 @media (max-width: 767px) {
   .access-launch { padding: 20px; }
   .access-launch__layout { grid-template-columns: minmax(0, 1fr); gap: 30px; padding: 44px 0 28px; }

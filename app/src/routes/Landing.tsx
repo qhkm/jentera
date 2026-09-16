@@ -20,7 +20,6 @@ import {
   LandingHeader,
 } from "@/components/landing/LandingChrome";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
-import { useSignedInRedirect } from "@/hooks/useSignedInRedirect";
 import { JenteraMark } from "@/components/JenteraMark";
 import { ProductTour } from "@/components/landing/ProductTour";
 import { LandingInstallNudge } from "@/components/InstallNudge";
@@ -28,9 +27,12 @@ import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistratio
 import {
   BUSINESS_EXAMPLES,
   EVERYDAY_WORK,
+  FIRST_WORKFLOW_EXAMPLES,
   FAQS,
   HERO,
 } from "@/lib/landing-content";
+import { launchOffer, launchPlanBenefits } from '@/lib/launch-offer';
+import { LaunchAnnouncement } from '@/components/LaunchAnnouncement';
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
@@ -241,9 +243,9 @@ function TrustProof() {
           </figure>
 
           <div className="lp-proof-copy">
-            <Eyebrow>Your knowledge and your decisions</Eyebrow>
+            <Eyebrow>Your business, your decisions</Eyebrow>
             <h2 id="proof-heading">
-              Your business knowledge.<br /><span>Your approval.</span>
+              You stay in control.<br /><span>Of important actions.</span>
             </h2>
             <p>
               Review the business details Jentera uses, inspect important actions before approving them, and check the outcome. AI can make mistakes; verify important information.
@@ -279,13 +281,13 @@ const WORK_ICONS = {
 
 export default function Landing() {
   useScrollReveal();
-  /* An owner who is already signed in belongs in the workspace, not on the
-     marketing page. Checked after paint so the page never waits on it. */
-  useSignedInRedirect("/app");
+  /* The public site stays browsable even after sign-in or preview exhaustion.
+     /signin chooses the workspace; the API and app gate enforce paid access. */
 
   return (
     <div className="marketing-page landing-home min-h-dvh bg-bg text-text">
-      <LandingHeader />
+      <LaunchAnnouncement />
+      <LandingHeader primaryAction={{ href: launchOffer.href, label: launchOffer.cta }} />
       <main id="main-content">
         <section className="lp-hero hero-stage">
           <div className="lp-hero-grid" aria-hidden="true" />
@@ -309,9 +311,7 @@ export default function Landing() {
                 <span>
                   {HERO.headline.preposition}{" "}
                   <span className="hero-country">
-                    <span role="img" aria-label="Malaysia">
-                      {HERO.headline.flag}
-                    </span>{" "}
+                    <span role="img" aria-label="Malaysia">{HERO.headline.flag}</span>{" "}
                     {HERO.headline.country}
                   </span>{" "}
                   {HERO.headline.audience}
@@ -319,8 +319,8 @@ export default function Landing() {
               </h1>
               <p className="lp-hero-description">{HERO.detail}</p>
               <div className="lp-actions">
-                <Link to={import.meta.env.VITE_ACCESS_MODE === 'waitlist' ? '/waitlist' : '/signin?mode=signup'} className="btn btn-primary">
-                  {import.meta.env.VITE_ACCESS_MODE === 'waitlist' ? 'Join waitlist' : HERO.ctaPrimary}
+                <Link to={launchOffer.href} className="btn btn-primary">
+                  {HERO.ctaPrimary}
                   <ArrowUpRight size={16} aria-hidden="true" />
                 </Link>
                 <a href="#product-tour" className="lp-text-link">
@@ -328,6 +328,7 @@ export default function Landing() {
                   <ArrowDown size={15} aria-hidden="true" />
                 </a>
               </div>
+              <p className="lp-hero-offer">Try 10 chats free. Then RM99/month for your first 3 months, RM199/month thereafter.</p>
               <p className="lp-hero-note">
                 <Check size={14} aria-hidden="true" /> Bahasa &amp; English
                 <span aria-hidden="true">·</span> You decide before anything
@@ -337,9 +338,20 @@ export default function Landing() {
             <BusinessPreview />
           </div>
           <div className="lp-container lp-region-line">
-            <span>Built in Malaysia. Made for Southeast Asia.</span>
+            <span>Built in Malaysia. For businesses like yours.</span>
             <span>Kedai · Klinik · Kopitiam · Catering · You</span>
           </div>
+        </section>
+
+        <section id="first-workflow" className="lp-container lp-section" aria-labelledby="workflow-examples-title">
+          <div className="lp-section-heading">
+            <Eyebrow>Start with one task</Eyebrow>
+            <h2 id="workflow-examples-title">What can I ask<br /><span className="text-brand">Jentera to do?</span></h2>
+            <p>Too much of your day goes to small, repetitive work. Check an order. Update a spreadsheet. Prepare a report. Then do it all again tomorrow.</p>
+            <p>You don’t need to build complicated workflows or learn automation tools. Just explain the work like you would to a staff member.</p>
+          </div>
+          <div className="lp-workflow-examples">{FIRST_WORKFLOW_EXAMPLES.map(example => <article key={example.title}><h3>{example.title}</h3><blockquote>{example.request}</blockquote></article>)}</div>
+          <p className="lp-workflow-note">Examples to set up together, not active automations. Recurring routines are currently in a limited pilot. Connected accounts and your approval are needed where applicable; customer WhatsApp automation is not available.</p>
         </section>
 
         <ProductTour />
@@ -347,32 +359,32 @@ export default function Landing() {
         <section id="how" className="lp-how-section" aria-labelledby="computer-heading">
           <div className="lp-container lp-section">
             <div className="lp-section-heading">
-              <Eyebrow>The workspace behind your AI staff</Eyebrow>
-              <h2 id="computer-heading">AI staff.<br /><span className="text-brand">Without the server setup.</span></h2>
-              <p>No VPS to rent. No hours spent configuring a server. Sign in, add your business details and give Jentera a job. We handle the computer setup behind the scenes.</p>
+              <Eyebrow>Less prompting. More delegating.</Eyebrow>
+              <h2 id="computer-heading">Your AI staff.<br /><span className="text-brand">Its own computer.</span></h2>
+              <p>You already have enough software. Someone still needs to do the work between those tools. Jentera can open supported websites, work with files and complete multi-step jobs on its own computer. You don’t need to keep your laptop open.</p>
             </div>
             <div className="lp-steps lp-difference-grid">
-              <article><span className="lp-step-number">01 / YOUR COMPUTER</span><h3>Its own computer.</h3><p>A dedicated cloud computer for files, browser work and running tasks. You don’t need to keep your own laptop open.</p></article>
-              <article><span className="lp-step-number">02 / YOUR TOOLS</span><h3>More than a chat window.</h3><p>Install compatible software on Jentera’s computer and use supported websites. Some tools need a licence, sign-in or your approval.</p></article>
-              <article><span className="lp-step-number">03 / YOUR AI</span><h3>AI included. Connections optional.</h3><p>Start with Jentera AI, or connect supported AI tools and accounts. Compatibility and provider terms apply—not every subscription includes API access.</p></article>
-              <article><span className="lp-step-number">04 / YOUR BUSINESS</span><h3>A workspace that keeps the context.</h3><p>Keep confirmed business details, files and routines together. Set up repeatable work without starting from an empty chat every time.</p></article>
+              <article><span className="lp-step-number">01 / YOUR COMPUTER</span><h3>A place to get work done.</h3><p>A dedicated cloud workspace for browser tasks and working files. We prepare the computer for you—no technical setup to figure out.</p></article>
+              <article><span className="lp-step-number">02 / YOUR TOOLS</span><h3>Work across browser tabs.</h3><p>Research online and use supported websites and connections. Some services need your sign-in or permission; not every website allows automated access.</p></article>
+              <article><span className="lp-step-number">03 / YOUR FILES</span><h3>Give it the real material.</h3><p>Upload a picture, document or spreadsheet. Ask Jentera to comment, compare, organise or prepare a file you can review.</p></article>
+              <article><span className="lp-step-number">04 / YOUR BUSINESS</span><h3>Teach it how you work.</h3><p>Share your process, the things to check and what a good result looks like. Keep your business details and checklists in its workspace, ready for the next job—like training a new staff member.</p></article>
             </div>
-            <p className="lp-difference-closing">You focus on the business. Jentera handles the workspace your AI works in.</p>
+            <p className="lp-difference-closing">Hand off the work. Come back to the result. Start with one task you don’t want to do again tomorrow. Some jobs need your sign-in, more information or an approval before they can continue.</p>
             <Link to="/connect" className="lp-text-link lp-try-link">See supported connections <ArrowUpRight size={16} aria-hidden="true" /></Link>
           </div>
         </section>
 
         <section id="work" className="lp-section lp-container">
           <div className="lp-section-heading">
-            <Eyebrow>Work that keeps running</Eyebrow>
+            <Eyebrow>Take repetitive work off your plate</Eyebrow>
             <h2>
               Give it a job.<br /><span className="text-brand">Not another prompt.</span>
             </h2>
             <p>
-              From following up enquiries to preparing invoices, build a routine around the work your business repeats. Give Jentera the instructions, sources and schedule—not the same prompt every day.
+              Sales research. Customer follow-up drafts. Admin. Reports. Give Jentera a clear job, the information it needs and the result you want back.
             </p>
             <p>
-              These are workflows to configure, not one-click integrations. Connected apps, compatible software and permissions are required where applicable. Review customer-facing messages and financial documents before sending.
+              These are jobs to set up with your files or supported access, not one-click integrations. Review customer-facing messages and financial documents before sending. Recurring routines are currently in a limited pilot.
             </p>
           </div>
           <div className="lp-job-grid">
@@ -405,28 +417,22 @@ export default function Landing() {
 
         <section id="pricing" className="lp-container lp-section lp-pricing" aria-labelledby="launch-pricing-title">
           <div className="lp-section-heading">
-            <Eyebrow>Launch-only offer</Eyebrow>
+            <Eyebrow>Join early. Get more than software.</Eyebrow>
             <h2 id="launch-pricing-title">Your AI staff.<br /><span className="text-brand">A special launch price.</span></h2>
-            <p>Officially launching on <time dateTime="2026-09-16">16 September 2026</time>. Less everyday admin. More time for your business.</p>
+            <p>Built in Malaysia, for small teams wearing too many hats and owners still doing too much themselves. We’re building Jentera with Malaysian businesses, not just for them.</p>
+            <p>As a thank-you for supporting us early, paid launch members get direct founder access through our private WhatsApp support group. Ask questions, get help making the most of Jentera and share what you need. Your feedback will help shape what we build next. Your invitation appears in the platform after payment is confirmed.</p>
           </div>
           <div className="lp-launch-plan">
-            <span className="lp-launch-badge">Launching 16 September 2026</span>
-            <h3>Jentera</h3>
-            <p className="lp-launch-price"><span>RM99</span><span>/month</span></p>
-            <p>AI staff for the business you already run.</p>
+            <span className="lp-launch-badge">Early-user launch offer</span>
+            <h3>Your first AI staff</h3>
+            <p className="lp-launch-price"><span>RM{launchOffer.monthlyPrice}</span><span>/month</span></p>
+            <p className="lp-launch-renewal">For your first {launchOffer.introductoryMonths} months. Then RM{launchOffer.renewalPrice}/month from month 4.</p>
+            <p className="lp-launch-saving">Save RM{(launchOffer.renewalPrice - launchOffer.monthlyPrice) * launchOffer.introductoryMonths} over your first {launchOffer.introductoryMonths} months compared with the regular monthly price.</p>
             <ul aria-label="Launch plan inclusions">
-              {[
-                'Jentera AI included — no separate AI subscription needed',
-                'AI staff roles for everyday business work',
-                'A dedicated computer',
-                'Ready-made playbooks and scheduled routines',
-                'One computer task at a time',
-                'Approvals and activity history',
-              ].map((feature) => <li key={feature}><Check size={18} aria-hidden="true" /><span>{feature}</span></li>)}
+              {launchPlanBenefits.map((feature) => <li key={feature}><Check size={18} aria-hidden="true" /><span>{feature}</span></li>)}
             </ul>
-            <Link to="/waitlist" className="btn btn-primary">Notify me at launch <ArrowUpRight size={16} aria-hidden="true" /></Link>
-            <p className="lp-launch-note">Purchases are not open yet. Free to join. No payment today.</p>
-            <p className="lp-launch-terms">Standard AI usage included; fair-use limits apply. Offer end date, promotional duration, renewal pricing and usage limits will be published before subscriptions open. Joining the waitlist does not reserve this price.</p>
+            <Link to={launchOffer.href} className="btn btn-primary">{launchOffer.cta} <ArrowUpRight size={16} aria-hidden="true" /></Link>
+            <p className="lp-launch-terms">{launchOffer.terms}</p>
           </div>
         </section>
 
@@ -462,17 +468,17 @@ export default function Landing() {
           <div className="lp-container">
             <JenteraMark size={64} className="closing-mark" />
             <span className="lp-closing-label">
-              For the business you already run
+              Built in Malaysia. For the business you already run.
             </span>
             <h2>
-              More time for the business.
+              What are you still doing manually?
               <br />
-              <span>Less time on the admin.</span>
+              <span>Hand it to Jentera.</span>
             </h2>
-            <Link to={import.meta.env.VITE_ACCESS_MODE === 'waitlist' ? '/waitlist' : '/signin?mode=signup'} className="btn btn-primary">
-              {import.meta.env.VITE_ACCESS_MODE === 'waitlist' ? 'Join waitlist' : 'Set up Jentera'} <ArrowUpRight size={16} aria-hidden="true" />
+            <Link to={launchOffer.href} className="btn btn-primary">
+              {launchOffer.cta} <ArrowUpRight size={16} aria-hidden="true" />
             </Link>
-            <p>Start with one job that keeps taking up your time.</p>
+            <p>RM99/month for your first 3 months, then RM199/month.</p>
           </div>
         </section>
       </main>

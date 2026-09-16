@@ -14,6 +14,26 @@
 .business-onboarding label, .first-job label { display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
 .onboarding-source-panel input[type="file"] { width: 100%; min-width: 0; }
 .business-onboarding textarea, .first-job textarea { width: 100%; min-height: 120px; padding: 12px; border: 1px solid var(--rail); border-radius: 10px; resize: vertical; line-height: 1.7; background: var(--bg); }
+.first-workflow { display: flex; flex-direction: column; gap: 24px; }
+.first-workflow > p { color: var(--text-secondary); font-size: 13px; line-height: 1.7; }
+.first-workflow-categories { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.first-workflow-categories button { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 20px; text-align: left; border: 1px solid var(--rail); border-radius: 16px; background: var(--bg-card); }
+.first-workflow-categories button[aria-pressed="true"] { border-color: var(--accent-green); background: rgb(var(--accent-green-rgb) / 0.08); }
+.first-workflow-categories small { font-size: 12px; line-height: 1.6; color: var(--text-secondary); }
+.first-workflow-categories button:focus-visible { outline: 2px solid var(--accent-green); outline-offset: 3px; }
+.computer-ready-moment { display: flex; flex-direction: column; gap: 20px; padding: 28px; border: 1px solid rgb(var(--accent-green-rgb) / 0.4); border-radius: 20px; background: linear-gradient(135deg, rgb(var(--accent-green-rgb) / 0.12), var(--bg-card)); }
+.computer-ready-moment h2 { font-family: var(--font-pixel); font-size: clamp(26px, 5vw, 36px); line-height: 1.25; }
+.computer-ready-moment ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.computer-ready-moment li { display: flex; gap: 10px; align-items: center; font-size: 14px; }
+.computer-ready-moment li > span { color: var(--accent-green); }
+.computer-ready-moment p { color: var(--text-secondary); font-size: 12px; line-height: 1.7; }
+.founder-group-invite { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 18px; padding: 22px; border: 1px solid var(--rail); border-radius: 18px; background: var(--bg-card); }
+.founder-group-invite > svg { color: var(--accent-green); flex-shrink: 0; }
+.founder-group-invite > div { flex: 1; min-width: min(220px, 100%); }
+.founder-group-invite h2 { font-size: 18px; line-height: 1.4; }
+.founder-group-invite p { margin-top: 8px; color: var(--text-secondary); font-size: 13px; line-height: 1.7; }
+.founder-group-invite small { display: block; margin-top: 10px; color: var(--text-muted); font-size: 12px; line-height: 1.6; }
+.founder-group-invite > a { max-width: 100%; white-space: normal; line-height: 1.5; text-align: center; }
 .onboarding-findings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .onboarding-finding { display: flex; flex-direction: column; gap: 12px; padding: 18px; border: 1px solid var(--rail); border-radius: 16px; background: var(--bg-card); }
 .onboarding-finding .onboarding-finding-label { flex-direction: row; align-items: center; overflow-wrap: anywhere; }
@@ -34,6 +54,9 @@
 .first-job-result { min-width: 0; padding-top: 20px; border-top: 1px solid var(--rail); }
 .first-job-result h3 { font-size: 20px; margin-bottom: 16px; }
 @media (max-width: 600px) {
+  .computer-ready-moment { padding: 20px; }
+  .computer-ready-moment ul { grid-template-columns: 1fr; }
+  .first-workflow-categories { grid-template-columns: 1fr; gap: 8px; }
   .onboarding-moments { gap: 8px; }
   .onboarding-moments li { flex-direction: column; align-items: flex-start; font-size: 11px; }
   .onboarding-source-options { grid-template-columns: 1fr; gap: 8px; }

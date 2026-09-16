@@ -1,9 +1,11 @@
-/* Public copy follows the positioning agreed on 8 September 2026.
+/* Public copy follows the launch brief agreed on 16 September 2026.
    Jentera is the product; AISAR is the parent. Examples are illustrations,
    and planned connections are never presented as available features. */
 
+import { launchOffer } from '@/lib/launch-offer';
+
 export const HERO = {
-  eyebrow: "Launching 16 September 2026 · Built for Malaysian businesses",
+  eyebrow: "Early access · Built in Malaysia",
   headline: {
     lead: "AI staff that works 24/7",
     preposition: "for",
@@ -12,8 +14,8 @@ export const HERO = {
     audience: "businesses.",
   },
   detail:
-    "Give Jentera a job. It uses a dedicated computer to research, prepare files and handle everyday tasks—with your business knowledge and approval controls.",
-  ctaPrimary: "Meet Jentera",
+    "Just hand the work to Jentera. Research, admin, reports and customer follow-up drafts—your AI staff has its own computer and can keep working while you’re away.",
+  ctaPrimary: 'Try my AI staff — 10 free chats',
   ctaSecondary: "See how it helps",
 };
 
@@ -86,70 +88,78 @@ export const BUSINESS_EXAMPLES = [
   },
 ] as const;
 
+export const FIRST_WORKFLOW_EXAMPLES = [
+  { title: 'Sales research', request: 'Find 30 potential customers in Kuala Lumpur and put them into a spreadsheet.' },
+  { title: 'Quotation preparation', request: 'When I give you customer details, prepare a quotation using my template.' },
+  { title: 'Weekly reporting', request: 'Every Friday, use the figures I provide to prepare my weekly report.' },
+  { title: 'Research & monitoring', request: 'Check these public competitor websites every Monday and tell me if their prices change.' },
+  { title: 'Customer follow-up drafts', request: 'Use my customer list to identify who needs a follow-up and prepare messages for my review.' },
+] as const;
+
 export const EVERYDAY_WORK = [
   {
     number: "01",
     icon: "chat",
     kicker: "Enquiries and follow-ups",
     title: "Keep enquiries moving.",
-    body: "Build a routine around a connected inbox: check new enquiries against your business knowledge, prepare replies and flag leads that need a follow-up. Review before sending.",
-    example: "“Check new enquiries each morning and queue replies for my approval.”",
+    body: "Share your enquiry list and business details. Jentera can organise the leads, flag who needs attention and prepare follow-up messages for your review.",
+    example: "“Organise these enquiries and draft follow-ups for me to review.”",
   },
   {
     number: "02",
     icon: "document",
-    kicker: "Social media operations",
-    title: "Turn content into a publishing routine.",
-    body: "Use the performance reports you provide to plan the next batch of posts. Review the content, then schedule publishing through supported connections.",
-    example: "“Review last week’s results and prepare next week’s posts for approval.”",
+    kicker: "Marketing preparation",
+    title: "Get next week’s content ready.",
+    body: "Turn your brief, product details and past results into a content plan and draft posts. Review and publish them through your own channels.",
+    example: "“Use this product list to prepare five posts for next week.”",
   },
   {
     number: "03",
     icon: "document",
-    kicker: "Quotes and invoices",
+    kicker: "Quotation preparation",
     title: "Move from enquiry to quotation.",
-    body: "Read client requirements, use your confirmed price list and prepare a quotation file. With a supported sending connection, send it after approval and record the follow-up date.",
-    example: "“Prepare a quote from this enquiry and flag any missing details before sending.”",
+    body: "Share the customer requirements, your price list and a template. Jentera can prepare a quotation file and flag missing details before you send it.",
+    example: "“Prepare a quote using my template and flag anything missing.”",
   },
   {
     number: "04",
-    icon: "chat",
-    kicker: "Inbox triage",
-    title: "Bring important emails to you.",
-    body: "Set up checks for a connected mailbox, separate routine messages from items needing attention and prepare a summary with suggested replies for your review.",
-    example: "“Every weekday, summarise important emails and draft replies without sending.”",
+    icon: "search",
+    kicker: "Sales research",
+    title: "Find your next opportunities.",
+    body: "Research public business websites, compare prospects and organise the findings into a lead list. Check the sources before you reach out.",
+    example: "“Research 30 potential business customers in KL and make a spreadsheet.”",
   },
   {
     number: "05",
-    icon: "chat",
-    kicker: "Scheduled monitoring",
+    icon: "search",
+    kicker: "Website checks",
     title: "Watch supplier prices.",
-    body: "Set up a routine to check the supplier pages you specify, compare them with saved prices and prepare a change report.",
-    example: "“Check these supplier pages every Friday and flag price changes.”",
+    body: "Compare accessible public supplier pages with the prices you saved. Get a clear report of what changed and what to check next.",
+    example: "“Compare these supplier prices with last week’s list.”",
   },
   {
     number: "06",
     icon: "document",
     kicker: "Files and records",
     title: "Keep your working files updated.",
-    body: "Collect information from accessible sources and update a report or spreadsheet in your workspace. External records require supported access and any necessary approval.",
+    body: "Upload your order files or spreadsheet. Jentera can organise the information and prepare an updated tracker in its workspace for you to check.",
     example: "“Read these order files and update my order tracker.”",
   },
   {
     number: "07",
-    icon: "search",
-    kicker: "Daily checks",
-    title: "Check what needs your attention.",
-    body: "Schedule a review of the sources you make available. Return to a saved report of changes and items to check, without starting a new chat each morning.",
-    example: "“Every morning, review this stock file and flag items below my minimum.”",
+    icon: "document",
+    kicker: "Business reporting",
+    title: "Turn the numbers into a report.",
+    body: "Share your sales figures, orders or stock files. Jentera can summarise the numbers, highlight exceptions and prepare your next report.",
+    example: "“Use this spreadsheet to prepare my weekly sales report.”",
   },
   {
     number: "08",
     icon: "shield",
-    kicker: "Repeatable routines",
+    kicker: "Your own process",
     title: "Put your SOP to work.",
-    body: "Set up a routine around your instructions: read the inputs, follow the checks and save the output. Review the results and anything that needs a decision.",
-    example: "“Run this weekly reporting checklist and save the report for my review.”",
+    body: "Share your checklist, the inputs and what a good result looks like. Ask Jentera to follow the same process on the next job, then review the output.",
+    example: "“Follow this reporting checklist and save the result for my review.”",
   },
 ] as const;
 
@@ -195,24 +205,42 @@ export const TRADE_TYPES = [
 
 export const FAQS = [
   {
+    question: 'Can I try Jentera before paying?',
+    answer: 'Yes. Create and verify your account to explore the platform and send 10 free chat requests. The allowance is shared across all your chats and businesses, not 10 per conversation. After that, upgrade to keep sending work. Requests already in progress can finish, and previous results stay readable. The launch plan is RM99/month for your first 3 months, then RM199/month.',
+  },
+  {
     question: "How does the launch offer work?",
     answer:
-      "Jentera officially launches on 16 September 2026. Our special launch offer is RM99/month. Purchases are not open yet; you can join the waitlist for launch updates. Joining is free and does not start a subscription or guarantee the promotional price. We’ll publish the offer end date, promotional duration, renewal pricing and fair-use details before you subscribe.",
+      `The launch offer is RM${launchOffer.monthlyPrice}/month for your first ${launchOffer.introductoryMonths} monthly billing periods, then RM${launchOffer.renewalPrice}/month from month 4. Your plan includes your AI staff, its own dedicated computer and AI usage subject to fair-use limits. Paid early users also get private WhatsApp support, direct founder access and early access to new features. Your founder-group invitation appears in your workspace after payment is confirmed. Review usage limits and cancellation terms before subscribing.`,
   },
   {
     question: "Is Jentera for a business like mine?",
     answer:
-      "Jentera is built for small businesses and solopreneurs who already trade: shops, cafés, clinics, caterers, and service businesses. Start with a specific piece of everyday work, such as drafting replies, preparing a checklist, or researching a supplier.",
+      "If your team repeats computer-based work across spreadsheets, documents and browser tabs, start there. Jentera is built for Malaysian small businesses and solopreneurs—from shops and online sellers to agencies and service businesses. Pick one task, such as a quotation, a supplier comparison or a weekly report.",
   },
   {
     question: "Do I need technical skills?",
     answer:
-      "No. Describe your business in ordinary language, review the details, and ask Jentera to help with a task. There are no models, API keys, or servers for you to configure.",
+      "No. Explain the job like you would to a staff member, share the files or details it needs, and review the result. Start with one task; there are no models, API keys, or servers for you to configure. Some websites and tools still need your sign-in or permission.",
+  },
+  {
+    question: "Is AI usage unlimited?",
+    answer:
+      "No. Your subscription includes standard AI usage, with usage and fair-use limits. A multi-step job can use more AI than a simple question. Review the plan’s usage limits before subscribing; the launch offer does not promise unlimited usage.",
+  },
+  {
+    question: 'How many computer tasks can run at once?',
+    answer: 'Your AI staff handles one computer task at a time. The plan includes one dedicated computer, not several AI staff working in parallel.',
+  },
+  {
+    question: "Can Jentera run work on a schedule?",
+    answer:
+      "Recurring routines are currently in a limited pilot and are not enabled for every account. We can help you identify repeatable work and check whether your workflow can join the pilot. Supported access, setup and any required approvals still apply.",
   },
   {
     question: "Does it connect to WhatsApp?",
     answer:
-      "WhatsApp is part of our direction, but it is not available yet. Today, you can work with Jentera in the web workspace and through your paired private Telegram chat.",
+      "Founder WhatsApp support is part of the launch offer; it is human onboarding and support, not an AI WhatsApp connector. Today, you can work with Jentera in the web workspace and through your paired private Telegram chat. Customer-facing WhatsApp automation is not available yet.",
   },
   {
     question: "Does Jentera handle e-invoicing?",
@@ -222,7 +250,7 @@ export const FAQS = [
   {
     question: "Will it send messages to my customers?",
     answer:
-      "Your first connection is a private Telegram chat with you, the owner. The examples on this page show drafts for review. Customer-facing WhatsApp messaging and automatic booking connections are not currently available.",
+      "Your paired private Telegram chat is for you, the owner—not your customers. The follow-up examples on this page are drafts for you to review and send through your own channels. Customer-facing WhatsApp messaging is not available yet.",
   },
   {
     question: "What is the relationship between AISAR and Jentera?",

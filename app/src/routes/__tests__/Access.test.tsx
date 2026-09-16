@@ -1,18 +1,71 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import Access from '../Access';
 
 vi.mock('@/lib/turnstile', () => ({ useTurnstile: () => ({ enabled: false, getToken: async () => undefined, reset: vi.fn(), attach: vi.fn() }) }));
 afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); window.history.replaceState(null, '', '/'); });
-function mount(signedIn: boolean, route = '/waitlist') {
-  const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ signedIn, access: { allowed: false } }), { status: 200 }));
+function mount(signedIn: boolean, route = '/waitlist', checkoutEnabled = false) {
+  const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ signedIn, access: { allowed: false }, billing: { checkoutEnabled } }), { status: 200 }));
   vi.stubGlobal('fetch', fetch);
-  render(<MemoryRouter initialEntries={[route]}><Access /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={[route]}><Routes>
+    <Route path="/subscribe" element={<h1>Choose your plan</h1>} />
+    <Route path="*" element={<Access />} />
+  </Routes></MemoryRouter>);
   return { fetch, user: userEvent.setup() };
 }
 describe('waitlist and access page', () => {
+  it('continues a verified unpaid account to its plan only when server checkout is open', async () => {
+    const { fetch } = mount(true, '/access', true);
+    expect(await screen.findByRole('heading', { name: 'Choose your plan' })).toBeVisible();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][1]).not.toHaveProperty('method');
+  });
+  it('keeps signed-out users at sign-in even when checkout is open', async () => {
+    const { fetch } = mount(false, '/access?paid=true&checkoutEnabled=true', true);
+    expect(await screen.findByRole('link', { name: 'Get my AI staff' })).toHaveAttribute('href', '/signin');
+    expect(screen.queryByRole('heading', { name: 'Choose your plan' })).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it('keeps an explicit waitlist visit available when checkout is open', async () => {
+    mount(true, '/waitlist', true);
+    expect(await screen.findByRole('link', { name: 'Choose my launch plan' })).toHaveAttribute('href', '/subscribe');
+    expect(screen.queryByRole('heading', { name: 'Choose your plan' })).not.toBeInTheDocument();
+  });
+  it('does not replace a private trial invitation with a paid plan', async () => {
+    window.history.replaceState(null, '', `/access#code=${'d'.repeat(48)}`);
+    const { fetch } = mount(true, '/access', true);
+    expect(await screen.findByRole('button', { name: 'Start my 3-day trial' })).toBeEnabled();
+    expect(screen.queryByRole('heading', { name: 'Choose your plan' })).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it('preserves explicit trial-code entry when checkout is open', async () => {
+    mount(true, '/access?invite=1', true);
+    expect(await screen.findByLabelText('Invite code')).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Choose your plan' })).not.toBeInTheDocument();
+  });
+  it('welcomes only a confirmed signed-in visitor, without granting access', async () => {
+    const { fetch } = mount(true);
+    expect(await screen.findByRole('region', { name: 'Welcome to Jentera!' })).toHaveTextContent('You’re signed in');
+    expect(screen.getByRole('region', { name: 'Welcome to Jentera!' })).toHaveTextContent('invitation-only');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it('does not infer a welcome or paid access from crafted query parameters', async () => {
+    const { fetch } = mount(false, '/access?welcome=1&paid=true');
+    await screen.findByRole('link', { name: /Already have access/ });
+    expect(screen.queryByRole('region', { name: 'Welcome to Jentera!' })).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it('discloses the introductory and renewal prices without implying checkout exists', async () => {
+    mount(false);
+    expect(await screen.findByRole('heading', { name: 'Your first AI staff.' })).toBeVisible();
+    expect(screen.getByText(/RM99\/month for 3 months, then RM199\/month from month 4/)).toBeVisible();
+    expect(screen.getByText(/Joining the waitlist is free and does not start a subscription/)).toBeVisible();
+    expect(screen.queryByText(/Automation Mapping/)).not.toBeInTheDocument();
+    expect(screen.getByText(/The launch offer:/)).toHaveTextContent('Private WhatsApp support and direct founder access are available after payment is confirmed.');
+    expect(screen.queryByRole('button', { name: /pay|subscribe|start my ai staff/i })).not.toBeInTheDocument();
+  });
   it('carries a private invitation to sign-in in the fragment, not storage', async () => {
     const code = 'a'.repeat(48);
     window.history.replaceState(null, '', `/access?invite=1#code=${code}`);

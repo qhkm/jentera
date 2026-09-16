@@ -388,6 +388,8 @@ export interface Repository {
   /** Remote only; callers must also require /api/me v1 discovery. */
   routines?: import('@/lib/routines/types').RoutinesApi;
   load(): Promise<BusinessSnapshot>;
+  /** Read-only, remote-only support invitation; server checks verified paid access. */
+  founderGroup?(): Promise<{ url: string } | null>;
 
   setBizType(key: string): Promise<void>;
   setBizProfile(p: { name?: string; loc?: string }): Promise<void>;

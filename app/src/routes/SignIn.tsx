@@ -20,11 +20,13 @@ import {
   Eye,
   EyeSlash,
   ShieldCheck,
+  Sparkle,
 } from "@phosphor-icons/react";
 import { Link, Navigate, useSearchParams } from "react-router";
 import { trackActivation } from "@/lib/analytics";
 import { useTurnstile } from "@/lib/turnstile";
 import { JenteraMark } from "@/components/JenteraMark";
+import { LaunchAnnouncement } from '@/components/LaunchAnnouncement';
 import {
   handoffBrowserSession,
   isNative,
@@ -205,7 +207,7 @@ function BrowserSignIn() {
       if (mode === "signup") {
         // 202 either way — the address may already be taken, and the
         // server deliberately does not say which.
-        if (res.ok) setSent("verify");
+        if (res.ok) { setPassword(''); setShowPassword(false); setSent("verify"); }
         else
           setError(
             (await res.json().catch(() => ({}))).err ??
@@ -307,6 +309,7 @@ function BrowserSignIn() {
 
   return (
     <div className="marketing-page auth-entrance min-h-dvh bg-bg text-text">
+      <LaunchAnnouncement />
       <div className="auth-atmosphere" aria-hidden="true">
         <span>Jentera</span>
       </div>
@@ -330,6 +333,7 @@ function BrowserSignIn() {
       <main id="main-content" className="auth-layout">
         {sent ? (
           <div className="auth-card auth-confirmation" role="status">
+            {sent === 'verify' && <span className="auth-signup-celebration"><Sparkle size={18} aria-hidden="true" /> A great start. You’re one step away!</span>}
             <EnvelopeSimple
               size={32}
               weight="duotone"
@@ -356,6 +360,15 @@ function BrowserSignIn() {
             <p className="text-text-secondary">
               Can’t find it? Check your spam or junk folder too.
             </p>
+            {sent === 'verify' && <>
+              <ol className="auth-signup-steps" aria-label="Finish creating your account">
+                <li aria-current="step">Confirm your email</li><li>Sign in</li><li>Choose your first job</li>
+              </ol>
+              <button type="button" className="btn btn-primary w-full" onClick={() => {
+                const next = new URLSearchParams(params); next.delete('mode');
+                restoreEmailFocus.current = true; setSent(null); setMode('signin'); setError(null); setParams(next);
+              }}>Sign in after confirming email <ArrowUpRight size={15} aria-hidden="true" /></button>
+            </>}
             <button
               type="button"
               className="btn btn-outline"

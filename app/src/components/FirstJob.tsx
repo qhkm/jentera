@@ -9,18 +9,22 @@ import { ArtifactList } from '@/components/ArtifactList';
 import { LiveTaskProgress } from '@/components/LiveTaskProgress';
 import { renderReplyMarkdown } from '@/lib/reply-markdown';
 import type { AskAnswer } from '@/lib/repo/types';
+import { firstWorkflowTask } from '@/lib/first-workflow';
 
 export function FirstJob({ ready }: { ready: boolean }) {
   const { lang } = useI18n(); const c = onboardingCopy[lang];
   const repo = useRepository(); const mutate = useMutate(); const snap = useSnapshot(); const navigate = useNavigate();
   const context = snap.facts.filter(hasConfirmedValue).map(f => String(confirmedValue(f) ?? '')).join(' ');
   const workshop = /workshop|training|bengkel|latihan/i.test(context);
+  const selectedTask = firstWorkflowTask(snap);
+  const selectedPrompt = selectedTask ? `${c.workflowPrompt}\n${selectedTask}\n\n${c.workflowInstructions}` : '';
   const choices = [
+    ...(selectedPrompt ? [{ label: c.workflowChoice, prompt: selectedPrompt, outcome: c.workflowOutcome }] : []),
     { label: c.content, prompt: c.contentPrompt, outcome: c.contentOutcome },
     { label: workshop ? c.workshop : c.reply, prompt: workshop ? c.workshopPrompt : c.replyPrompt, outcome: workshop ? c.workshopOutcome : c.replyOutcome },
     { label: c.checklist, prompt: c.checklistPrompt, outcome: c.checklistOutcome },
   ];
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState(selectedPrompt);
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const [runId, setRunId] = useState<string | null>(null);
   const [result, setResult] = useState<AskAnswer | null>(null);

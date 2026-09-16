@@ -27,6 +27,12 @@ import { ToastProvider } from '@/components/Toast';
 import { SignedInProvider } from '@/lib/repo/gate';
 import { KEYS } from '@/lib/storage';
 
+async function chooseFirstWorkflow() {
+  await userEvent.click(await screen.findByRole('button', { name: /Reports/ }));
+  await userEvent.type(screen.getByRole('textbox', { name: 'What is one task you repeat every day or every week?' }), 'Prepare a weekly report');
+  await userEvent.click(screen.getByRole('button', { name: 'Use this as my first workflow' }));
+}
+
 /** Records the order of writes and navigations as one sequence. */
 function tracked() {
   const order: string[] = [];
@@ -157,6 +163,7 @@ describe('what onboarding writes', () => {
       </MemoryRouter>,
     );
 
+    await chooseFirstWorkflow();
     await userEvent.click(await screen.findByRole('button', { name: 'Learn about my business' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Confirm details & prepare Jentera' }));
     await screen.findByTestId('telegram-setup');
@@ -251,6 +258,7 @@ describe('what onboarding writes', () => {
       </MemoryRouter>,
     );
 
+    await chooseFirstWorkflow();
     await userEvent.click(await screen.findByRole('button', { name: 'Learn about my business' }));
     await userEvent.clear(screen.getByRole('textbox', { name: 'Business name' }));
     await userEvent.type(screen.getByRole('textbox', { name: 'Business name' }), 'Correct Business');
@@ -284,6 +292,7 @@ describe('what onboarding writes', () => {
       </MemoryRouter>,
     );
 
+    await chooseFirstWorkflow();
     expect(await screen.findByText('Where can I learn about your business?')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Learn about my business' })).toBeInTheDocument();
     expect((await repo.load()).onboarded).toBe(false);
@@ -315,6 +324,7 @@ describe('what onboarding writes', () => {
       </MemoryRouter>,
     );
 
+    await chooseFirstWorkflow();
     await userEvent.click(await screen.findByRole('button', { name: 'Learn about my business' }));
     expect(await screen.findByText('Here’s what I understood.')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Change source' }));

@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router';
 import Access from './routes/Access';
+import Subscribe from './routes/Subscribe';
 import * as store from '@/lib/storage';
 import { useSnapshot } from '@/lib/repo';
 import { RepositoryGate, useSignedIn } from '@/lib/repo/gate';
@@ -119,6 +120,7 @@ export function AppRoutes() {
           <Route path="/signin" element={<SignIn />} />
           <Route path="/waitlist" element={<Access />} />
           <Route path="/access" element={<Access />} />
+          <Route path="/subscribe" element={<Subscribe />} />
           <Route path="/admin/launch" element={<LaunchAdmin />} />
           <Route path="/join" element={<Join />} />
 

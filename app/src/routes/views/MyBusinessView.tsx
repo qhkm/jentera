@@ -32,6 +32,7 @@ import { Tabs, type TabDef } from '@/components/Tabs';
 import { useTeamEnabled } from '@/lib/repo/gate';
 import TeamPanel from './TeamPanel';
 import { JenteraMark } from '@/components/JenteraMark';
+import { FounderGroupInvite } from '@/components/FounderGroupInvite';
 import PermissionsPanel from './PermissionsPanel';
 import KnowledgePanel from './KnowledgePanel';
 import { hasConfirmedValue, confirmedValue } from '@/lib/knowledge';
@@ -253,6 +254,7 @@ export default function MyBusinessView({
       >
         {tab === 'profile' ? (
           <section className="flex flex-col gap-3">
+            {signedIn && <FounderGroupInvite />}
             <div className="flex flex-col gap-1">
               <h3 className="text-sm font-medium">{t('biz.overview')}</h3>
               <p className="business-supporting text-[13px]">{t('biz.overview.detail')}</p>
