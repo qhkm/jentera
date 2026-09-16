@@ -94,19 +94,28 @@ try {
     await dialog.getByLabel('Website address').fill('https://example.com');
     await dialog.getByRole('button', { name: 'Go', exact: true }).click();
     await dialog.getByRole('button', { name: 'Zoom in', exact: true }).click();
+    await dialog.getByRole('group', { name: 'Browser view zoom' }).getByText('125%', { exact: true }).waitFor();
     const remote = dialog.locator('.business-browser-screen');
     await remote.waitFor();
-    const screenSize = await remote.evaluate(node => {
-      const bounds = node.getBoundingClientRect();
-      return { width: bounds.width, height: bounds.height };
+    await remote.evaluate(node => {
+      // Measure at the actual click, not before Playwright finishes scrolling
+      // the zoomed screen into view and the browser settles layout.
+      node.addEventListener('click', event => {
+        const bounds = node.getBoundingClientRect();
+        window.__jenteraSmokeTap = { width: bounds.width, height: bounds.height,
+          x: event.clientX - bounds.left, y: event.clientY - bounds.top,
+          styleWidth: node.style.width };
+      }, { capture: true, once: true });
     });
     await remote.click({ position: { x: 100, y: 80 } });
+    const screenSize = await page.evaluate(() => window.__jenteraSmokeTap);
     const click = commands.findLast(command => command.action === 'click');
-    // Native mouse coordinates round to CSS pixels. Allow one CSS pixel after
-    // projection, not a percentage or an arbitrary wide remote-screen margin.
-    assert.ok(click && Math.abs(click.x - 100 * 1280 / screenSize.width) <= 1280 / screenSize.width, JSON.stringify({ click, screenSize }));
-    assert.ok(click && Math.abs(click.y - 80 * 800 / screenSize.height) <= 800 / screenSize.height, JSON.stringify({ click, screenSize }));
+    assert.equal(screenSize.styleWidth, '125%');
+    assert.ok(Math.abs(screenSize.x - 100) <= 1 && Math.abs(screenSize.y - 80) <= 1);
+    assert.ok(click && Math.abs(click.x - screenSize.x * 1280 / screenSize.width) < .001, JSON.stringify({ click, screenSize }));
+    assert.ok(click && Math.abs(click.y - screenSize.y * 800 / screenSize.height) < .001, JSON.stringify({ click, screenSize }));
     await dialog.getByRole('button', { name: 'Fit view', exact: true }).click();
+    await dialog.getByRole('group', { name: 'Browser view zoom' }).getByText('100%', { exact: true }).waitFor();
     await dialog.getByLabel('Text or password for the selected field').fill('synthetic-secret');
     await dialog.getByRole('button', { name: 'Type into browser', exact: true }).click();
     assert.equal(await dialog.getByLabel('Text or password for the selected field').inputValue(), '');
