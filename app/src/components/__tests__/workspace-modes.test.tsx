@@ -14,6 +14,8 @@ import { LocalRepository } from '@/lib/repo/local';
 import { SignedInProvider } from '@/lib/repo/gate';
 import type { AskSession } from '@/hooks/useAsk';
 import type { AskAnswer } from '@/lib/repo';
+import type { RoutinesApi } from '@/lib/routines/types';
+import { listFixture } from '@/lib/routines/__tests__/fixtures';
 
 beforeEach(() => {
   localStorage.clear();
@@ -22,13 +24,14 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-async function mount(children: ReactNode, repo = new LocalRepository(), entry = '/app') {
+async function mount(children: ReactNode, repo = new LocalRepository(), entry = '/app',
+  options: { signedIn?: boolean; routinesVersion?: number } = {}) {
   await repo.setBizType('restaurant');
   await repo.setBizProfile({ name: 'Kedai Kita', loc: 'Shah Alam' });
   repo.activity = async () => ({ counters: { handled: 0, needsYou: 2, minutesSaved: 0, thisWeek: 0, connections: 0 }, work: [] });
   return render(
     <MemoryRouter initialEntries={[entry]}>
-      <SignedInProvider value account="workspace-modes-test">
+      <SignedInProvider value={options.signedIn ?? true} account="workspace-modes-test" routinesVersion={options.routinesVersion}>
         <RepositoryProvider repository={repo}>
           <I18nProvider>
             <ToastProvider>
@@ -40,6 +43,10 @@ async function mount(children: ReactNode, repo = new LocalRepository(), entry = 
     </MemoryRouter>,
   );
 }
+async function sidebarQueries() {
+  await waitFor(() => expect(document.querySelector('.dashboard-sidebar')).not.toBeNull());
+  return within(document.querySelector('.dashboard-sidebar') as HTMLElement);
+}
 
 const sessions: AskSession[] = [
   { id: 'older', title: 'Supplier notes', createdAt: 100, updatedAt: 100, messages: [{ from: 'ai', text: 'Kopi beans arrive Monday.' }] },
@@ -47,6 +54,71 @@ const sessions: AskSession[] = [
 ];
 
 describe('workspace navigation', () => {
+  it('groups every existing desktop destination once under Overview, Work and Workspace', async () => {
+    await mount(<Dashboard />);
+    const sidebar = await sidebarQueries();
+    const nav = sidebar.getByRole('navigation', { name: 'Dashboard' });
+    const overview = within(nav).getByRole('group', { name: 'Overview' });
+    const work = within(nav).getByRole('group', { name: 'Work' });
+    const workspace = within(nav).getByRole('group', { name: 'Workspace' });
+    expect(within(overview).getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
+    expect(within(overview).getByRole('button', { name: 'Notifications' })).toBeInTheDocument();
+    await waitFor(() => expect(within(work).getByRole('button', { name: /^Activity/ })).toHaveTextContent('2'));
+    expect(within(work).getAllByRole('button')).toHaveLength(1);
+    for (const name of ['Library', 'Files', 'My Business']) expect(within(workspace).getByRole('button', { name })).toBeInTheDocument();
+    expect(within(nav).getAllByRole('button')).toHaveLength(6);
+    const mobile = document.querySelector('.dashboard-bottom-nav')!;
+    expect([...mobile.querySelectorAll(':scope > button')].slice(0, 4).map(button => button.textContent))
+      .toEqual(['Home', 'Activity2', 'Chat', 'Library']);
+  });
+  it('keeps grouped destinations keyboard-operable and on their existing URLs', async () => {
+    function Location() { return <output data-testid="location">{useLocation().search}</output>; }
+    await mount(<><Dashboard /><Location /></>);
+    const sidebar = await sidebarQueries();
+    const library = sidebar.getByRole('button', { name: 'Library' });
+    library.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByTestId('location')).toHaveTextContent('view=library');
+    expect(library).toHaveAttribute('aria-current', 'page');
+    expect(sidebar.getByRole('button', { name: 'Home' })).not.toHaveAttribute('aria-current');
+    await userEvent.click(sidebar.getByRole('button', { name: 'My Business' }));
+    expect(screen.getByTestId('location')).toHaveTextContent('view=business');
+  });
+  it('localizes the section headings in Bahasa Malaysia', async () => {
+    const repo = new LocalRepository();
+    await repo.setLang('bm');
+    await mount(<Dashboard />, repo);
+    const sidebar = await sidebarQueries();
+    for (const name of ['Ringkasan', 'Kerja', 'Ruang kerja']) expect(sidebar.getByRole('group', { name })).toBeInTheDocument();
+  });
+  it('places available Routines and Goals in Work without starting any work', async () => {
+    const routines = { list: vi.fn(async () => listFixture()), read: vi.fn(), occurrences: vi.fn(), execute: vi.fn() } satisfies RoutinesApi;
+    const repo = Object.assign(new LocalRepository(), { routines, goals: vi.fn(async () => ({ canManage: false, goals: [] })) });
+    await mount(<Dashboard />, repo, '/app', { routinesVersion: 1 });
+    const work = (await sidebarQueries()).getByRole('group', { name: 'Work' });
+    expect(within(work).getAllByRole('button').map(button => button.textContent?.replace(/\d+$/, ''))).toEqual(['Activity', 'Routines', 'Goals']);
+    expect(routines.list).not.toHaveBeenCalled();
+    expect(routines.execute).not.toHaveBeenCalled();
+  });
+  it.each([undefined, 2])('does not expose Routines without supported discovery: %s', async routinesVersion => {
+    const routines = { list: vi.fn(async () => listFixture()), read: vi.fn(), occurrences: vi.fn(), execute: vi.fn() } satisfies RoutinesApi;
+    const repo = Object.assign(new LocalRepository(), { routines });
+    await mount(<Dashboard />, repo, '/app', { routinesVersion });
+    const work = (await sidebarQueries()).getByRole('group', { name: 'Work' });
+    expect(within(work).queryByRole('button', { name: 'Routines' })).toBeNull();
+    expect(routines.list).not.toHaveBeenCalled();
+    expect(routines.execute).not.toHaveBeenCalled();
+  });
+  it('does not expose account-only Routines or Goals in the anonymous demo', async () => {
+    const routines = { list: vi.fn(async () => listFixture()), read: vi.fn(), occurrences: vi.fn(), execute: vi.fn() } satisfies RoutinesApi;
+    const repo = Object.assign(new LocalRepository(), { routines, goals: vi.fn(async () => ({ canManage: false, goals: [] })) });
+    await mount(<Dashboard />, repo, '/app', { signedIn: false, routinesVersion: 1 });
+    const work = (await sidebarQueries()).getByRole('group', { name: 'Work' });
+    expect(within(work).queryByRole('button', { name: 'Routines' })).toBeNull();
+    expect(within(work).queryByRole('button', { name: 'Goals' })).toBeNull();
+    expect(repo.goals).not.toHaveBeenCalled();
+    expect(routines.list).not.toHaveBeenCalled();
+  });
   it('exposes the selected mode and only shows a real attention count', async () => {
     const change = vi.fn();
     await mount(<WorkspaceModeSwitch mode="chat" onChange={change} needsAttention={2} />);

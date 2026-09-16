@@ -11,7 +11,7 @@
      My Business knowledge, responsibilities, connections
    ============================================================ */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { Shell } from '@/components/Shell';
 import { WorkspaceModeSwitch, type WorkspaceMode } from '@/components/WorkspaceModeSwitch';
@@ -50,27 +50,35 @@ interface NavItem {
   id: View;
   labelKey: string;
   icon: IconName;
+  section: 'overview' | 'work' | 'workspace';
 }
 
 const NAV: NavItem[] = [
-  { id: 'home', labelKey: 'nav.home', icon: 'home' },
-  { id: 'work', labelKey: 'nav.work', icon: 'activity' },
-  { id: 'library', labelKey: 'nav.library', icon: 'library' },
-  { id: 'goals', labelKey: 'nav.goals', icon: 'goals' },
-  { id: 'files', labelKey: 'nav.files', icon: 'files' },
-  { id: 'notifications', labelKey: 'notifications.title', icon: 'notifications' },
-  { id: 'business', labelKey: 'nav.business', icon: 'business' },
+  { id: 'home', labelKey: 'nav.home', icon: 'home', section: 'overview' },
+  { id: 'work', labelKey: 'nav.work', icon: 'activity', section: 'work' },
+  { id: 'library', labelKey: 'nav.library', icon: 'library', section: 'workspace' },
+  { id: 'goals', labelKey: 'nav.goals', icon: 'goals', section: 'work' },
+  { id: 'files', labelKey: 'nav.files', icon: 'files', section: 'workspace' },
+  { id: 'notifications', labelKey: 'notifications.title', icon: 'notifications', section: 'overview' },
+  { id: 'business', labelKey: 'nav.business', icon: 'business', section: 'workspace' },
+];
+
+const NAV_SECTIONS: { id: NavItem['section']; labelKey: string }[] = [
+  { id: 'overview', labelKey: 'sidebar.overview' },
+  { id: 'work', labelKey: 'sidebar.work' },
+  { id: 'workspace', labelKey: 'sidebar.workspace' },
 ];
 
 export default function Dashboard() {
   const t = useT();
+  const sidebarId = useId();
   const repository = useRepository();
   const signedIn = useSignedIn();
   const routinesEnabled = useRoutinesEnabled() && !!repository.routines;
   const goalsEnabled = signedIn && !!repository.goals;
   const availableNav = goalsEnabled ? NAV : NAV.filter((item) => item.id !== 'goals');
   const nav: NavItem[] = routinesEnabled
-    ? [...availableNav.slice(0, 3), { id: 'routines', labelKey: 'routines.title', icon: 'routines' }, ...availableNav.slice(3)]
+    ? [...availableNav.slice(0, 3), { id: 'routines', labelKey: 'routines.title', icon: 'routines', section: 'work' }, ...availableNav.slice(3)]
     : availableNav;
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedView = searchParams.get('view');
@@ -246,8 +254,16 @@ export default function Dashboard() {
       >
         {!isChat && <aside className="dashboard-sidebar hidden shrink-0 flex-col gap-6 lg:flex lg:w-[220px]">
           {profile}
-          <nav className="flex flex-col gap-1" aria-label={t('workspace.mode.dashboard')}>
-            {nav.map(navButton)}
+          <nav className="dashboard-sidebar-nav" aria-label={t('workspace.mode.dashboard')}>
+            {NAV_SECTIONS.map(section => {
+              const items = nav.filter(item => item.section === section.id);
+              if (!items.length) return null;
+              const headingId = `${sidebarId}-${section.id}`;
+              return <div key={section.id} className="dashboard-nav-section" role="group" aria-labelledby={headingId}>
+                <h2 id={headingId}>{t(section.labelKey)}</h2>
+                <div className="dashboard-nav-section-items">{items.map(navButton)}</div>
+              </div>;
+            })}
           </nav>
           <div className="dashboard-sidebar-note">
             <Icon name="shield" size={17} />
