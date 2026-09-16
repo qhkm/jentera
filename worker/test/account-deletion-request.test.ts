@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type postgres from 'postgres';
-import { asOwner, testEnv, truncateAll } from './harness';
+import { asOwner, asTenant, testEnv, truncateAll } from './harness';
 import { requestDeletion } from '../src/account-deletion/request';
 import type { Identity } from '../src/auth';
 
@@ -60,16 +60,18 @@ describe('requesting deletion', () => {
     const result = await requestDeletion(env, identity, identity.email, TEST_TOKEN);
     expect(result.status).toBe(200);
 
-    await asOwner(async (owner) => {
-      const [business] = await owner`select deleted_at from business where id = ${businessId}`;
-      const [user] = await owner`select deleted_at from app_user where id = ${identity.userId}`;
+    /* Exactly what the Worker gets: assert through the tenant transaction,
+       not the owner connection RLS never sees. */
+    await asTenant(businessId, async (tx) => {
+      const [business] = await tx`select deleted_at from business where id = ${businessId}`;
+      const [user] = await tx`select deleted_at from app_user where id = ${identity.userId}`;
       expect(business.deleted_at).not.toBeNull();
       expect(user.deleted_at).not.toBeNull();
 
-      const live = await owner`select 1 from session where user_id = ${identity.userId} and revoked_at is null`;
+      const live = await tx`select 1 from session where user_id = ${identity.userId} and revoked_at is null`;
       expect(live).toHaveLength(0);
 
-      const [record] = await owner`select * from account_deletion where user_id = ${identity.userId}`;
+      const [record] = await tx`select * from account_deletion where user_id = ${identity.userId}`;
       expect(record.kind).toBe('owner');
       expect(record.sprite_id).toBe('sprite-9');
       /* Copied out before anything is deleted — after the cascade there is
@@ -85,7 +87,7 @@ describe('requesting deletion', () => {
          business was just revoked, so nothing will wake the sprite during
          grace — doing nothing here is what leaves it merely stopped rather
          than destroyed. */
-      const tasks = await owner`select 1 from runtime_task where business_id = ${businessId}`;
+      const tasks = await tx`select 1 from runtime_task where business_id = ${businessId}`;
       expect(tasks).toHaveLength(0);
     });
   });
@@ -98,16 +100,18 @@ describe('requesting deletion', () => {
     const result = await requestDeletion(env, staffIdentity, staffIdentity.email, TEST_TOKEN);
     expect(result.status).toBe(200);
 
-    await asOwner(async (owner) => {
-      const [business] = await owner`select deleted_at from business where id = ${businessId}`;
-      const [user] = await owner`select deleted_at from app_user where id = ${staffIdentity.userId}`;
+    /* Exactly what the Worker gets: assert through the tenant transaction,
+       not the owner connection RLS never sees. */
+    await asTenant(businessId, async (tx) => {
+      const [business] = await tx`select deleted_at from business where id = ${businessId}`;
+      const [user] = await tx`select deleted_at from app_user where id = ${staffIdentity.userId}`;
       expect(business.deleted_at).toBeNull();
       expect(user.deleted_at).not.toBeNull();
 
-      const [record] = await owner`select kind from account_deletion where user_id = ${staffIdentity.userId}`;
+      const [record] = await tx`select kind from account_deletion where user_id = ${staffIdentity.userId}`;
       expect(record.kind).toBe('staff');
 
-      const stillMember = await owner`
+      const stillMember = await tx`
         select 1 from membership where business_id = ${businessId} and user_id = ${staffIdentity.userId}`;
       /* Membership is a tenant row, cascaded only by a business deletion —
          a staff request does not touch the business, so it is untouched

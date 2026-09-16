@@ -51,8 +51,6 @@ async function sha256Hex(text: string): Promise<string> {
   return hex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))));
 }
 
-/* Cookie-authenticated writes from the browser: the same origin check the
-   task-review route makes, so a cross-site form cannot invite or accept. */
 interface InvitationRow {
   id: string;
   email: string;
