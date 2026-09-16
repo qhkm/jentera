@@ -16,7 +16,9 @@
 - Give-up threshold is **8 attempts**, matching `push_outbox`.
 - Migrations are numbered sequentially and **049 is the last committed one** — this plan adds `050_account_deletion.sql` and nothing else. Verify with `ls worker/migrations | tail -1` before writing it; if 050 exists, use the next free number consistently everywhere in this plan.
 - Every cross-tenant read is a `SECURITY DEFINER` function returning **ids only**; all row reads and writes happen inside `withTenant`.
-- Tests **assert as `aisar_app`, arrange as `owner`** (`test/harness.ts`). A test that asserts as the owner passes while production leaks.
+- Tests **assert as `aisar_app`, arrange as `owner`** — `asApp(fn)` and `asOwner(fn)` in `test/harness.ts`. A test that asserts as the owner passes while production leaks.
+- **No test file starts or stops the database.** `test/global-setup.ts` owns the container through vitest's `globalSetup`; a `stopDatabase()` in a test file tears it down while other files are still running, which cost 226 failures on Task 1.
+- New tenant tables go into `truncateAll` in `test/harness.ts`.
 - Nothing is sent to an external service from inside a transaction.
 - Worker tests need Docker running: `cd worker && pnpm test`.
 - Typecheck is two passes and both matter: `cd worker && pnpm typecheck`.
@@ -64,10 +66,12 @@
 ```ts
 // worker/test/account-deletion-request.test.ts
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
-import { startDatabase, stopDatabase, appSql, ownerSql } from './harness';
+import { asOwner } from './harness';
 
-beforeAll(startDatabase);
-afterAll(stopDatabase);
+/* No startDatabase/stopDatabase here: test/global-setup.ts owns the Postgres
+   container through vitest's globalSetup, and it is the only file that may
+   start or stop it. A test file that calls stopDatabase tears the database
+   down while other files are still running. */
 
 describe('account_deletion schema', () => {
   it('survives the business cascade it describes', async () => {
@@ -209,12 +213,11 @@ than cascading. This row is what the external cleanup retries from."
 ```ts
 // worker/test/account-deletion-lockout.test.ts
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
-import { startDatabase, stopDatabase, ownerSql, testEnv, jsonOf } from './harness';
+import { asOwner, testEnv, jsonOf } from './harness';
 import { verifySession } from '../src/auth';
 import { handleSession } from '../src/routes/session';
 
-beforeAll(startDatabase);
-afterAll(stopDatabase);
+/* The container belongs to test/global-setup.ts. Never start or stop it here. */
 
 describe('an account being deleted', () => {
   it('cannot authenticate with a session that was valid a moment ago', async () => {
@@ -1125,10 +1128,9 @@ stalls loudly rather than leaving a machine holding someone's memory."
 ```ts
 // worker/test/tenant-cascade.test.ts
 import { beforeAll, afterAll, expect, it } from 'vitest';
-import { startDatabase, stopDatabase, ownerSql } from './harness';
+import { asOwner } from './harness';
 
-beforeAll(startDatabase);
-afterAll(stopDatabase);
+/* The container belongs to test/global-setup.ts. Never start or stop it here. */
 
 /* A cascade is invisible: nobody reviewing the code sees what it deletes.
    This is what makes it reviewable — the list exists and is checked, rather
