@@ -13,6 +13,11 @@ import RunTrace from './RunTrace';
 import { RuntimeApprovalCard } from '@/components/RuntimeApprovalCard';
 import { useActivity } from '@/hooks/useActivity';
 import { TaskCoordination } from '@/components/TaskCoordination';
+import { CalendarConnectCard } from '@/components/CalendarConnectCard';
+import { connectionHandoff } from '@/lib/connection-handoff';
+import { browserHandoff } from '@/lib/browser-handoff';
+import { renderReplyMarkdown } from '@/lib/reply-markdown';
+import { displayWorkspacePaths } from '@/lib/task-presentation';
 
 const STATUS: Record<string, { label: string; tone: Tone }> = {
   queued: { label: 'task.queued', tone: 'neutral' },
@@ -83,12 +88,21 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk, 
   const failed = result?.status === 'failed' || result?.status === 'cancelled';
   const StatusIcon = completed ? CheckCircle : failed ? WarningCircle : Clock;
   const fullText = typeof result?.text === 'string' ? result.text.trim() : '';
+  // Setup shortcuts are display-only, and belong only to a finished private
+  // agent response for this exact run. Shared reviews remain literal Markdown.
+  const canOfferSetup = result?.status === 'completed' && !result.pending
+    && result.runId === runId && !reviewOnly && !result.summaryOnly;
+  const connection = connectionHandoff(fullText, canOfferSetup ? runId : undefined);
+  // As in Chat, Calendar setup wins over an accidentally co-emitted browser
+  // prompt. Opening Google's normal-browser flow never takes browser control.
+  const displayText = displayWorkspacePaths(connection.connector
+    ? browserHandoff(connection.text, runId).text : connection.text);
   const summary = completed && !fullText ? work?.outcome : null;
   const needsReview = outcomeStatus === 'needs_review';
   const needsInput = outcomeStatus === 'needs_input' || outcomeStatus === 'blocked';
   function continueTask() {
     const taskTitle = taskDisplayTitle(work?.objective || title || runId);
-    const excerpt = fullText.length > 300 ? `${fullText.slice(0, 300)}…` : fullText;
+    const excerpt = displayText.length > 300 ? `${displayText.slice(0, 300)}…` : displayText;
     onOpenAsk?.(t('task.feedbackContext', { title: taskTitle }) + '\n\n' + excerpt + '\n\n' + t('task.feedbackPrompt'), result?.sessionId);
   }
   async function settle(decision: 'confirm' | 'dismiss') {
@@ -138,7 +152,8 @@ export default function TaskDetailView({ runId, title, work, onBack, onOpenAsk, 
               </header>
               {outcomeStatus === 'needs_input' && <p>{t('task.needsInputNote')}</p>}
               {outcomeStatus === 'needs_review' && <p>{t('task.needsReviewNote')}</p>}
-              <div className="task-result-text">{fullText || summary || t('task.noResult')}</div>
+              <div className="ask-reply-text task-result-text">{renderReplyMarkdown(fullText ? displayText : displayWorkspacePaths(summary || t('task.noResult')))}</div>
+              {connection.connector && <CalendarConnectCard />}
             </Card>
           ) : (
             <Card className="task-result gap-4">

@@ -65,6 +65,15 @@ Task details read the existing tenant-scoped run endpoint, independently of the
 50 most recent Activity records, and refresh every three seconds while pending.
 Switching modes preserves the selected task and the current chat draft.
 
+Task results use Chat's restricted Markdown renderer for bold text, lists,
+inline/fenced code, tables and validated web links; model HTML is never rendered.
+A finished private response for the exact run can display the existing Google
+Calendar setup card instead of its `jentera-connect` block. This is only a
+fixed-route setup shortcut, not a connection grant or event approval. Pending,
+failed and shared-review replies cannot offer that action, and quoted or invalid
+blocks remain literal formatted text. Returning task context to Chat omits a
+successfully parsed setup block rather than copying it into the user's draft.
+
 The frontend retains accepted run IDs through reply failures so the owner can
 check the existing task before sending another request. Completed and failed
 reply links survive refresh in the same account-scoped chat storage; in-flight

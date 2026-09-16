@@ -5,6 +5,7 @@ import { RepositoryProvider } from '@/lib/repo/context';
 import { LocalRepository } from '@/lib/repo/local';
 import { SignedInProvider } from '@/lib/repo/gate';
 import { I18nProvider } from '@/i18n/I18nProvider';
+import { ToastProvider } from '@/components/Toast';
 import type { RunResult, WorkSummary } from '@/lib/repo';
 import TaskDetailView from '../TaskDetailView';
 
@@ -12,14 +13,130 @@ const runId = '11111111-1111-4111-8111-111111111111';
 function mount(repo: LocalRepository, props: Partial<Parameters<typeof TaskDetailView>[0]> = {}) {
   return render(<SignedInProvider value account="task-test">
     <RepositoryProvider repository={repo}><I18nProvider>
-      <TaskDetailView runId={runId} {...props} />
+      <ToastProvider><TaskDetailView runId={runId} {...props} /></ToastProvider>
     </I18nProvider></RepositoryProvider>
   </SignedInProvider>);
 }
+function taskStatus() {
+  return screen.getAllByRole('status').find(node => node.classList.contains('task-status-bar'))!;
+}
 beforeEach(() => localStorage.clear());
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
 
 describe('exact task details', () => {
+  it('formats Markdown, lists, code and tables using the safe Chat renderer', async () => {
+    const repo = new LocalRepository();
+    repo.runResult = vi.fn(async () => ({ runId, status: 'completed', pending: false,
+      text: '**Report ready**\n\n- Read the `summary`\n- Review changes\n\n```python\nprint("hello")\n```\n\n| File | Status |\n| --- | --- |\n| report.xlsx | Ready |' }));
+    const view = mount(repo);
+    expect(await screen.findByText('Report ready', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.getByRole('list')).toHaveTextContent('Review changes');
+    expect(screen.getByText('summary', { selector: 'code' })).toHaveClass('reply-code');
+    expect(view.container.querySelector('pre.reply-pre > code')).toHaveTextContent('print("hello")');
+    expect(screen.getByRole('table')).toHaveTextContent('report.xlsx');
+    expect(view.container.querySelector('.task-result-text')).not.toHaveTextContent('```python');
+  });
+  it('escapes model HTML and refuses executable or credential-bearing links', async () => {
+    const repo = new LocalRepository();
+    repo.runResult = vi.fn(async () => ({ runId, status: 'completed', pending: false,
+      text: '<img src=x onerror=alert(1)>\n<script>alert(1)</script>\n[unsafe](javascript:alert(1))\n[secret](https://user:password@example.com)\n[Docs](https://example.com/docs)' }));
+    const view = mount(repo);
+    await screen.findByRole('link', { name: /Docs/ });
+    const content = view.container.querySelector('.task-result-text')!;
+    expect(content.querySelector('script, img')).toBeNull();
+    expect(content).toHaveTextContent('<script>alert(1)</script>');
+    expect(within(content as HTMLElement).getAllByRole('link')).toHaveLength(1);
+    expect(screen.getByRole('link', { name: /Docs/ })).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+  it('turns the Calendar setup marker into a fixed, explicit connection card without granting access', async () => {
+    vi.stubEnv('VITE_API_URL', 'https://api.jentera.ai');
+    const repo = new LocalRepository();
+    const browser = vi.spyOn(repo, 'businessBrowser');
+    const request = vi.spyOn(globalThis, 'fetch');
+    repo.runResult = vi.fn(async () => ({ runId, status: 'completed', taskStatus: 'needs_input', pending: false,
+      sessionId: 'original-chat', text: 'Calendar needs access.\n```jentera-connect\n{"connector":"google_calendar"}\n```' }));
+    const open = vi.fn();
+    const view = mount(repo, { onOpenAsk: open });
+    const card = await screen.findByRole('region', { name: 'Connect your calendar' });
+    expect(within(card).getByRole('link', { name: 'Connect Google Calendar' }))
+      .toHaveAttribute('href', 'https://api.jentera.ai/api/connections/google-calendar/start');
+    expect(card).toHaveTextContent('each event still needs your approval');
+    expect(view.container.textContent).not.toContain('jentera-connect');
+    expect(screen.getAllByRole('status').some(node => node.textContent?.includes('Needs you'))).toBe(true);
+    expect(browser).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Provide details in Chat' }));
+    expect(open).toHaveBeenCalledWith(expect.stringContaining('Calendar needs access.'), 'original-chat');
+    expect(open.mock.calls[0][0]).not.toContain('jentera-connect');
+  });
+  it('copies only the public setup link, never OAuth codes or credentials', async () => {
+    const user = userEvent.setup();
+    const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+    const repo = new LocalRepository();
+    repo.runResult = vi.fn(async () => ({ runId, status: 'completed', pending: false,
+      text: '```jentera-connect\n{"connector":"google_calendar"}\n```' }));
+    mount(repo);
+    await user.click(await screen.findByRole('button', { name: 'Copy setup link' }));
+    expect(copy).toHaveBeenCalledExactlyOnceWith('https://jentera.ai/app?view=business&tab=connections&connector=google');
+  });
+  it.each([
+    '```jentera-connect\n{"connector":"google_calendar","url":"https://example.com"}\n```',
+    '```jentera-connect\nnot json\n```',
+    '> ```jentera-connect\n> {"connector":"google_calendar"}\n> ```',
+    '````markdown\n```jentera-connect\n{"connector":"google_calendar"}\n```\n````',
+    '```jentera-connect\n{"connector":"google_calendar"}\n```\n```jentera-connect\n{"connector":"google_calendar"}\n```',
+  ])('keeps invalid, duplicate or quoted setup examples as literal Markdown: %s', async text => {
+    const repo = new LocalRepository();
+    repo.runResult = vi.fn(async () => ({ runId, status: 'completed', pending: false, text }));
+    const view = mount(repo);
+    await screen.findByRole('heading', { name: 'Result' });
+    expect(screen.queryByRole('link', { name: 'Connect Google Calendar' })).toBeNull();
+    expect(view.container.querySelector('.task-result-text')).toHaveTextContent(text.includes('not json') ? 'not json' : 'google_calendar');
+  });
+  it.each([
+    { pending: true },
+    { status: 'failed', taskStatus: 'completed' },
+    { runId: '22222222-2222-4222-8222-222222222222' },
+    { summaryOnly: true },
+  ])('does not offer setup for a pending, failed, mismatched or shared result: %j', async overrides => {
+    const repo = new LocalRepository();
+    repo.runResult = vi.fn(async () => ({ runId, status: 'completed', pending: false,
+      text: '```jentera-connect\n{"connector":"google_calendar"}\n```', ...overrides }));
+    const view = mount(repo);
+    await screen.findByText('{"connector":"google_calendar"}', { selector: 'code' });
+    expect(screen.queryByRole('link', { name: 'Connect Google Calendar' })).toBeNull();
+    view.unmount();
+  });
+  it('does not offer private connection actions in owner review mode', async () => {
+    const repo = Object.assign(new LocalRepository(), { taskReviewSummary: vi.fn(async () => ({
+      runId, status: 'completed', pending: false, text: '```jentera-connect\n{"connector":"google_calendar"}\n```',
+    })) });
+    mount(repo, { reviewOnly: true });
+    await screen.findByText('{"connector":"google_calendar"}', { selector: 'code' });
+    expect(screen.queryByRole('link', { name: 'Connect Google Calendar' })).toBeNull();
+  });
+  it('prefers Calendar setup over a co-emitted browser prompt, without offering browser takeover', async () => {
+    const repo = new LocalRepository();
+    repo.runResult = vi.fn(async () => ({ runId, status: 'completed', pending: false,
+      text: 'Connect first.\n```jentera-connect\n{"connector":"google_calendar"}\n```\n```jentera-browser\n{"reason":"sign_in"}\n```' }));
+    const view = mount(repo);
+    await screen.findByRole('link', { name: 'Connect Google Calendar' });
+    expect(screen.queryByRole('button', { name: 'Open business browser' })).toBeNull();
+    expect(view.container.textContent).not.toContain('jentera-');
+  });
+  it('localizes the Calendar connection card in Bahasa Malaysia', async () => {
+    const repo = new LocalRepository();
+    await repo.setLang('bm');
+    repo.runResult = vi.fn(async () => ({ runId, status: 'completed', pending: false,
+      text: '```jentera-connect\n{"connector":"google_calendar"}\n```' }));
+    mount(repo);
+    const card = await screen.findByRole('region', { name: 'Sambungkan kalendar anda' });
+    expect(within(card).getByRole('link', { name: 'Sambung Google Calendar' })).toBeInTheDocument();
+  });
   it('owner review loads the shared summary without fetching or continuing the private chat', async () => {
     const taskReviewSummary = vi.fn(async () => ({ runId, status: 'completed', taskStatus: 'needs_review',
       pending: false, summaryOnly: true, text: 'Shared business outcome', objective: 'Prepare digest' }));
@@ -57,7 +174,7 @@ describe('exact task details', () => {
     mount(repo);
     await userEvent.click(await screen.findByRole('button', { name: 'Confirm task complete' }));
     expect(confirmTaskReview).toHaveBeenCalledWith(runId);
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Done'));
+    await waitFor(() => expect(taskStatus()).toHaveTextContent('Done'));
   });
   it('lets the owner mark a task that is waiting on them as done', async () => {
     const confirmTaskReview = vi.fn(async () => {});
@@ -66,10 +183,10 @@ describe('exact task details', () => {
       .mockResolvedValue({ runId, status: 'completed', taskStatus: 'completed', pending: false, text: 'Tell me if the digest does not land.' });
     mount(repo);
     const markDone = await screen.findByRole('button', { name: 'Mark as done' });
-    expect(screen.getByRole('status')).toHaveTextContent('Needs you');
+    expect(taskStatus()).toHaveTextContent('Needs you');
     await userEvent.click(markDone);
     expect(confirmTaskReview).toHaveBeenCalledWith(runId);
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Done'));
+    await waitFor(() => expect(taskStatus()).toHaveTextContent('Done'));
   });
   it('lets the owner dismiss a task that is no longer needed', async () => {
     const dismissTask = vi.fn(async () => {});
@@ -79,7 +196,7 @@ describe('exact task details', () => {
     mount(repo);
     await userEvent.click(await screen.findByRole('button', { name: 'Dismiss task' }));
     expect(dismissTask).toHaveBeenCalledWith(runId);
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Cancelled'));
+    await waitFor(() => expect(taskStatus()).toHaveTextContent('Cancelled'));
     expect(screen.queryByRole('button', { name: 'Dismiss task' })).not.toBeInTheDocument();
   });
   it('opens feedback with the result and original conversation, without approving anything', async () => {
@@ -96,8 +213,8 @@ describe('exact task details', () => {
       pending: false, text: 'Open Cloudflare and authorize this login.' }));
     mount(repo, { title: 'Log in to Cloudflare' });
     expect(await screen.findByText('Open Cloudflare and authorize this login.')).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Needs you');
-    expect(screen.getByRole('status')).not.toHaveTextContent('Done');
+    expect(taskStatus()).toHaveTextContent('Needs you');
+    expect(taskStatus()).not.toHaveTextContent('Done');
     expect(repo.runResult).toHaveBeenCalledOnce();
   });
   it('loads the result without a recent Activity record and moves keyboard focus to its heading', async () => {

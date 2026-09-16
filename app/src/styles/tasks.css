@@ -59,9 +59,9 @@
 .task-status-bar > span:first-child { display: flex; align-items: center; gap: 10px; }
 .task-status-bar strong { font-weight: 500; }
 .task-result { padding: clamp(18px, 3vw, 28px); }
-.task-result header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.task-result > header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
 .task-result h2 { font-size: 18px; font-weight: 500; }
-.task-result-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
+.task-result-text { font-size: inherit; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
 .task-trace { border-top: 1px solid var(--rail); padding-top: 16px; }
 .task-trace summary { cursor: pointer; color: var(--text-secondary); margin-bottom: 16px; }
 @media (max-width: 540px) {
