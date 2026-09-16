@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { Button, Card, Eyebrow, Tag } from '@/components/ui';
+import { Card, Eyebrow, Tag } from '@/components/ui';
+import { ConnectionActions } from '@/components/ConnectionActions';
+import { useT } from '@/i18n/I18nProvider';
 import { useRepository } from '@/lib/repo';
 import type { ConnectionsState } from '@/hooks/useConnections';
 import { isNative } from '@/lib/native';
@@ -9,8 +11,10 @@ import { GoogleCalendarConnectionLink } from '@/components/GoogleCalendarConnect
 export default function GoogleCalendarConnect({
   rows,
   setRows,
-}: Pick<ConnectionsState, 'rows' | 'setRows'>) {
+  id,
+}: Pick<ConnectionsState, 'rows' | 'setRows'> & { id?: string }) {
   const repo = useRepository();
+  const t = useT();
   const [searchParams] = useSearchParams();
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -19,6 +23,7 @@ export default function GoogleCalendarConnect({
   const outcome = searchParams.get('calendar');
 
   async function disconnect(id: string) {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -33,13 +38,14 @@ export default function GoogleCalendarConnect({
   }
 
   return (
-    <Card className="gap-4">
+    <Card id={id} tabIndex={id ? -1 : undefined} className="gap-4">
       <div className="flex flex-col gap-1">
-        <Eyebrow>Google Calendar</Eyebrow>
+        <div className="flex items-center gap-3"><Eyebrow>Google Calendar</Eyebrow><Tag>Pilot</Tag></div>
         <p className="max-w-[66ch] text-[13px] text-text-secondary">
           Let Jentera check your primary calendar and draft events. A draft is never added until
           you approve it in Activity.
         </p>
+        <p className="text-[12px] text-text-muted">{t('connectors.googleVerification')}</p>
       </div>
 
       {outcome === 'failed' && <p role="alert" className="text-[13px] text-text-secondary">Google did not complete the connection. Please try again.</p>}
@@ -63,26 +69,15 @@ export default function GoogleCalendarConnect({
                 </Tag>
               </div>
               {calendar.lastError && <p className="text-[12px] text-text-secondary">{calendar.lastError}</p>}
-              <div className="flex flex-wrap items-center justify-end gap-2">
+              <ConnectionActions name="Google Calendar" confirming={confirming === calendar.id} busy={busy}
+                explanation={t('connectors.disconnectCalendar')}
+                onRequestDisconnect={() => setConfirming(calendar.id)} onCancel={() => setConfirming(null)} onDisconnect={() => void disconnect(calendar.id)}>
                 {calendar.status !== 'connected' && !confirming && (
                   <GoogleCalendarConnectionLink className="btn btn-primary inline-flex" newTab={false}>
                     Reconnect
                   </GoogleCalendarConnectionLink>
                 )}
-                {confirming === calendar.id ? (
-                  <>
-                    <span className="w-full text-right text-[11px] text-text-muted">
-                      Jentera will stop reading or adding events. Existing events stay in Google Calendar.
-                    </span>
-                    <Button variant="ghost" disabled={busy} onClick={() => setConfirming(null)}>Cancel</Button>
-                    <Button variant="outline" disabled={busy} onClick={() => void disconnect(calendar.id)}>
-                      {busy ? 'Disconnecting…' : 'Confirm disconnect'}
-                    </Button>
-                  </>
-                ) : (
-                  <Button variant="ghost" onClick={() => setConfirming(calendar.id)}>Disconnect</Button>
-                )}
-              </div>
+              </ConnectionActions>
             </li>
           ))}
         </ul>

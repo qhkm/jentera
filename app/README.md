@@ -118,6 +118,27 @@ pause/resume availability, idempotent retry, revision conflicts, result links,
 pagination and errors. Browser checks cover 1440/1024/390/320px, dark/light,
 EN/BM, 15px body and 16px inputs, plus the existing public/onboarding routes.
 
+### Connector directory
+
+Library → Connectors, My Business → Connections, and public `/connect` share
+the catalogue in `src/lib/data/connectors.ts`, presented by
+`src/lib/connector-catalogue.ts` and `ConnectorCard`. The directory uses a
+responsive grid with name/category search and availability filters. Business
+directory actions jump to its existing setup cards rather than duplicating forms.
+
+Calendar keeps its existing `google` ID and is labelled Pilot while Google
+permission verification is pending. Gmail, Drive, Sheets, Docs, Slides,
+Contacts and Tasks are planned entries, not implemented integrations; their
+scopes are empty. Planned entries cannot open credential forms or claim to be
+connected, including from stale connection rows or a token catalogue entry.
+The real live-connector allowlist and backend permissions remain unchanged.
+
+Telegram’s “Check connection” is read-only and only runs when requested.
+Telegram and Calendar disconnect controls require explicit confirmation, explain
+what stops, preserve rows on failure, and support Cancel/Escape with focus return.
+`scripts/check-connectors.mjs` checks fictional account fixtures at 320/390/768/1440px,
+including EN/BM, dark/light, core routes and absence of provider calls.
+
 ## Installing as an app
 
 Jentera is a progressive web app: an owner can put it on the home screen

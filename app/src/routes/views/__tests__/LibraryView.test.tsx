@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
@@ -56,7 +56,55 @@ describe('Library', () => {
     vi.spyOn(repo, 'tokenConnectors').mockResolvedValue([{ connector: 'github', label: 'GitHub' }]);
     const { user } = await mount('connectors', connections, true, repo);
     await user.click(await screen.findByRole('button', { name: 'Connect GitHub' }));
-    expect(await screen.findByRole('combobox')).toHaveValue('github');
+    expect(await screen.findByRole('combobox', { name: 'Service' })).toHaveValue('github');
+  });
+  it('keeps planned Google apps unconnectable even with stale rows or a token catalogue entry', async () => {
+    const repo = new LocalRepository();
+    vi.spyOn(repo, 'tokenConnectors').mockResolvedValue([{ connector: 'google-sheets', label: 'Google Sheets' }]);
+    const { user } = await mount('connectors', { ...connections, rows: [{
+      id: 'stale', connector: 'google-sheets', method: 'oauth', status: 'connected', displayName: null,
+      externalId: null, connectedAt: '', lastOkAt: null, lastError: null,
+    }] }, true, repo);
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Category' }), 'google');
+    expect(screen.getAllByRole('article')).toHaveLength(8);
+    const sheets = screen.getByRole('heading', { name: 'Google Sheets' }).closest('article')!;
+    expect(within(sheets).getByText('Not available yet')).toBeVisible();
+    expect(within(sheets).getByText('Planned')).toBeVisible();
+    expect(within(sheets).queryByRole('button')).toBeNull();
+    expect(within(sheets).queryByText('Connected')).toBeNull();
+    expect(within(sheets).queryByRole('textbox')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Connected' }));
+    expect(screen.queryByRole('article')).toBeNull();
+  });
+  it('filters available apps and closes credential fields when searching or changing category', async () => {
+    const { user } = await mount('connectors');
+    await user.click(screen.getByRole('button', { name: 'Available' }));
+    expect(screen.getAllByRole('article')).toHaveLength(2);
+    await user.click(screen.getByRole('button', { name: 'Connect Telegram' }));
+    await user.type(screen.getByLabelText('Your bot token'), 'fictional-secret');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Category' }), 'google');
+    expect(screen.queryByLabelText('Your bot token')).toBeNull();
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Category' }), 'all');
+    await user.click(screen.getByRole('button', { name: 'Connect Telegram' }));
+    expect(screen.getByLabelText('Your bot token')).toHaveValue('');
+    await user.type(screen.getByRole('searchbox'), 'Google Workspace');
+    expect(screen.getAllByRole('article')).toHaveLength(1);
+  });
+  it('never shows stale connected rows while status is loading', async () => {
+    const { user } = await mount('connectors', { ...connections, mode: 'pending', real: false, rows: null });
+    expect(screen.getAllByText('Checking connection…')).toHaveLength(2);
+    await user.click(screen.getByRole('button', { name: 'Connected' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Connection status must be loaded');
+  });
+  it('translates the directory controls and Google plans into BM', async () => {
+    const repo = new LocalRepository();
+    await repo.setLang('bm');
+    const { user } = await mount('connectors', connections, true, repo);
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Kategori' }), 'google');
+    await user.click(screen.getByRole('button', { name: 'Dirancang' }));
+    expect(screen.getAllByRole('article')).toHaveLength(7);
+    expect(screen.getByText(/analisis hamparan/)).toBeVisible();
+    expect(screen.queryByRole('button', { name: /Connect Google/ })).toBeNull();
   });
   it('hands a reviewed playbook draft to scheduling, without saving', async () => {
     const { user, onUse } = await mount();

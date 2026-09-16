@@ -20,9 +20,16 @@ export const INDEXABLE_PAGE_SOURCES: Record<(typeof INDEXABLE_PATHS)[number], re
   ],
   '/connect': [
     'app/src/routes/Connect.tsx',
+    'app/src/components/ConnectorCard.tsx',
+    'app/src/components/Icon.tsx',
+    'app/src/lib/data/connectors.ts',
+    'app/src/lib/connector-catalogue.ts',
+    'app/src/i18n/pages.ts',
     'app/src/lib/live-connectors.ts',
     'app/src/components/landing/LandingChrome.tsx',
     'app/src/styles/connect.css',
+    'app/src/styles/connectors.css',
+    'app/src/styles/landing.css',
     'app/src/lib/seo.ts',
   ],
   '/privacy': [

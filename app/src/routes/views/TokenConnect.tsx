@@ -16,8 +16,9 @@ import { Button, Card, Eyebrow, Input, Tag } from '@/components/ui';
 import { useRepository } from '@/lib/repo';
 import type { ConnectionsState } from '@/hooks/useConnections';
 import { useT } from '@/i18n/I18nProvider';
+import { permitsTokenConnector } from '@/lib/connector-catalogue';
 
-export default function TokenConnect({ rows, setRows, connector }: Pick<ConnectionsState, 'rows' | 'setRows'> & { connector?: string }) {
+export default function TokenConnect({ rows, setRows, connector, id }: Pick<ConnectionsState, 'rows' | 'setRows'> & { connector?: string; id?: string }) {
   const repo = useRepository();
   const t = useT();
   const [catalogue, setCatalogue] = useState<{ connector: string; label: string }[]>([]);
@@ -31,7 +32,7 @@ export default function TokenConnect({ rows, setRows, connector }: Pick<Connecti
     repo.tokenConnectors()
       .then((list) => {
         if (cancelled) return;
-        const available = connector ? list.filter(item => item.connector === connector) : list;
+        const available = list.filter(item => permitsTokenConnector(item.connector) && (!connector || item.connector === connector));
         setCatalogue(available);
         setChosen((current) => available.some(item => item.connector === current) ? current : available[0]?.connector || '');
       })
@@ -64,7 +65,7 @@ export default function TokenConnect({ rows, setRows, connector }: Pick<Connecti
   }
 
   return (
-    <Card className="gap-4">
+    <Card id={id} tabIndex={id ? -1 : undefined} className="gap-4">
       <div className="flex flex-col gap-1">
         <Eyebrow>{t('connect.token.title')}</Eyebrow>
         <p className="max-w-[66ch] text-[13px] text-text-secondary">

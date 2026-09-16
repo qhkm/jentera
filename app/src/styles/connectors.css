@@ -1,0 +1,70 @@
+.connector-options { margin-top: 16px; min-width: 0; }
+.connector-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, 220px); gap: 12px; margin-bottom: 16px; }
+.connector-search { display: flex; flex-direction: column; gap: 8px; min-width: 0; font-size: 13px; color: var(--color-text-muted); }
+.connector-search .input { width: 100%; min-width: 0; font-size: 16px; min-height: 44px; }
+.connector-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.connector-filters button { min-height: 44px; padding: 8px 14px; border: 1px solid var(--color-rail); border-radius: 12px; font-size: 13px; color: var(--color-text-muted); }
+.connector-filters button[aria-pressed='true'] { color: var(--color-brand); border-color: color-mix(in srgb, var(--color-brand) 35%, var(--color-rail)); background: color-mix(in srgb, var(--color-brand) 8%, transparent); }
+.connector-filters button:focus-visible, .connector-search .input:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 3px; }
+.connector-directory-note, .connector-empty { font-size: 13px; line-height: 1.6; color: var(--color-text-muted); margin-bottom: 16px; }
+.connector-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 14px; list-style: none; padding: 0; margin: 0; }
+.connector-grid > li { min-width: 0; }
+.connector-card { display: flex; flex-direction: column; gap: 16px; height: 100%; min-width: 0; padding: 20px; border: 1px solid var(--color-rail); border-radius: 18px; background: var(--bg-card); overflow-wrap: anywhere; }
+.connector-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.connector-card-icon { display: grid; place-items: center; width: 46px; height: 46px; flex-shrink: 0; border-radius: 13px; background: color-mix(in srgb, var(--color-text-muted) 7%, transparent); color: var(--color-text-muted); }
+.connector-card-icon-live { color: var(--color-brand); background: color-mix(in srgb, var(--color-brand) 9%, transparent); }
+.connector-availability { border: 1px solid var(--color-rail); border-radius: 20px; padding: 4px 9px; font-size: 11px; line-height: 1.4; color: var(--color-text-muted); }
+.connector-availability-available { color: var(--color-brand); }
+.connector-availability-pilot { color: var(--color-text-secondary); }
+.connector-category { display: block; font-size: 11px; color: var(--color-text-muted); margin-bottom: 5px; }
+.connector-card h3 { font-family: var(--font-sans); font-size: 17px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.4; }
+.connector-card-description { font-size: 13px; line-height: 1.65; color: var(--color-text-secondary); }
+.connector-card-footer { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; margin-top: auto; }
+.connector-status { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; line-height: 1.5; color: var(--color-text-muted); }
+.connector-status-connected { color: var(--color-brand); }
+.connector-status-connected::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.connector-card-footer .btn { min-height: 44px; width: 100%; }
+.connector-grid > .connector-option-open { grid-column: 1 / -1; }
+.connector-option-open > .connector-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; height: auto; border-radius: 18px 18px 0 0; border-bottom: 0; }
+.connector-option-open > .connector-card .connector-card-top, .connector-option-open > .connector-card .connector-card-heading { grid-column: 1; }
+.connector-option-open > .connector-card .connector-card-top { justify-content: flex-start; }
+.connector-option-open > .connector-card .connector-card-description { display: none; }
+.connector-option-open > .connector-card .connector-card-footer { grid-column: 2; grid-row: 1 / 3; align-items: flex-end; align-self: center; margin-top: 0; }
+.connector-option-open .connector-card-footer .btn { width: auto; min-width: 100px; }
+.connector-inline-setup { padding: 0 16px 16px; border: 1px solid var(--color-rail); border-top: 0; border-radius: 0 0 18px 18px; background: var(--bg-card); overflow-wrap: anywhere; }
+.connector-inline-setup .input { min-width: 0; max-width: 100%; }
+.connector-inline-setup > .card { padding: 12px 4px 4px; border: 0; background: transparent; }
+.connector-empty { padding: 28px 16px; border: 1px dashed var(--color-rail); border-radius: 16px; text-align: center; }
+@media (max-width: 639px) {
+  .connector-toolbar { grid-template-columns: minmax(0, 1fr); }
+  .connector-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .connector-card { padding: 14px; gap: 12px; }
+  .connector-card-top { flex-wrap: wrap; }
+  .connector-card-icon { width: 40px; height: 40px; border-radius: 12px; }
+  .connector-card h3 { font-size: 15px; }
+  .connector-card-description { font-size: 12px; }
+  .connector-card-footer .btn { padding-inline: 10px; font-size: 13px; }
+  .connector-inline-setup { padding: 0 10px 10px; }
+}
+@media (max-width: 359px) { .connector-grid { grid-template-columns: minmax(0, 1fr); } }
+
+[id^='connection-'] { scroll-margin-block-start: 120px; }
+[id^='connection-']:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 3px; }
+.connection-action-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.connection-action-bar .btn { min-height: 44px; gap: 8px; font-size: 13px; white-space: normal; overflow-wrap: normal; scroll-margin-block: 120px 96px; }
+.connection-action-bar .btn svg { flex-shrink: 0; }
+.connection-action-bar .btn.connection-disconnect { color: var(--color-text-muted); }
+.connection-action-bar .btn.connection-disconnect:hover:not(:disabled) { color: var(--danger); }
+.connection-confirmation { padding: 16px; border: 1px solid var(--color-rail); border-radius: 14px; background: color-mix(in srgb, var(--color-text-muted) 4%, transparent); scroll-margin-block: 120px 96px; }
+.connection-confirmation h4 { font-size: 14px; font-weight: 600; }
+.connection-confirmation p { max-width: 65ch; margin-block: 8px 16px; font-size: 13px; line-height: 1.6; color: var(--color-text-secondary); }
+.connection-action-bar .btn.connection-disconnect-confirm { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+.connection-action-bar .btn.connection-disconnect-confirm:hover:not(:disabled) { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 6%, transparent); }
+.connection-checking { animation: connection-spin 1.2s linear infinite; }
+@keyframes connection-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .connection-checking { animation: none; } }
+@media (max-width: 639px) {
+  .connection-confirmation .connection-action-bar { display: grid; grid-template-columns: auto minmax(0, 1fr); }
+  .connection-confirmation .connection-action-bar .btn { min-width: 0; padding-inline: 12px; }
+  .connection-confirmation .connection-action-bar .btn:first-child { white-space: nowrap; }
+}

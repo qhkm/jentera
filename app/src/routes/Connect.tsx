@@ -2,58 +2,33 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import {
   ArrowUpRight,
-  CalendarBlank,
-  Globe,
-  Receipt,
   ShieldCheck,
-  TelegramLogo,
-  WhatsappLogo,
 } from '@phosphor-icons/react';
 import { LandingFooter, LandingHeader } from '@/components/landing/LandingChrome';
-import { isLive } from '@/lib/live-connectors';
+import { ConnectorCard } from '@/components/ConnectorCard';
+import { CONNECTOR_CATEGORIES, getConnectorCatalogue, matchesConnector, type CatalogueEntry, type ConnectorCategory } from '@/lib/connector-catalogue';
 
-const CONNECTIONS = [
+const CONNECTIONS: CatalogueEntry[] = [
   {
+    id: 'web-workspace',
     name: 'Web workspace',
-    icon: Globe,
-    available: true,
-    category: 'Your place to work',
-    description:
-      'Describe a task, review your business details, and see what Jentera has worked on. Your starting point, right in the browser.',
+    icon: '🌐', availability: 'available', category: 'other',
+    description: {
+      en: 'Describe a task, review your business details, and see what Jentera has worked on. Your starting point, right in the browser.',
+      bm: 'Terangkan tugasan, semak butiran perniagaan dan lihat kerja Jentera. Bermula terus dalam pelayar.',
+    },
   },
+  ...getConnectorCatalogue(),
   {
-    name: 'Telegram',
-    icon: TelegramLogo,
-    available: isLive('Telegram'),
-    category: 'Your private conversation',
-    description:
-      'Pair a private chat with your business. Ask Jentera for help and review its work from your phone. This is your owner channel.',
-  },
-  {
-    name: 'WhatsApp',
-    icon: WhatsappLogo,
-    available: isLive('WhatsApp'),
-    category: 'Where your customers are',
-    description:
-      'Customer enquiries and follow-ups through the channel businesses here depend on. This connection is planned and cannot be connected yet.',
-  },
-  {
-    name: 'Google Calendar',
-    icon: CalendarBlank,
-    available: isLive('Google Calendar'),
-    category: 'Keep the day organised',
-    description:
-      'Let Jentera check your primary calendar and prepare new events. You review every event before it is added; automatic booking is not available yet.',
-  },
-  {
+    id: 'local-accounting',
     name: 'Local accounting',
-    icon: Receipt,
-    available: false,
-    category: 'The paperwork that matters here',
-    description:
-      'Local accounting connections are part of our direction. MyInvois submission and e-invoicing are not currently available.',
+    icon: '🧾', availability: 'planned', category: 'accounting',
+    description: {
+      en: 'Local accounting connections are part of our direction. MyInvois submission and e-invoicing are not currently available.',
+      bm: 'Sambungan perakaunan tempatan dalam perancangan. Penyerahan MyInvois dan e-invois belum tersedia.',
+    },
   },
-] as const;
+];
 
 type Filter = 'all' | 'available' | 'planned';
 const FILTERS: { id: Filter; label: string }[] = [
@@ -64,8 +39,11 @@ const FILTERS: { id: Filter; label: string }[] = [
 
 export default function Connect() {
   const [filter, setFilter] = useState<Filter>('all');
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState<ConnectorCategory | 'all'>('all');
   const visible = CONNECTIONS.filter(
-    (connection) => filter === 'all' || connection.available === (filter === 'available'),
+    connection => matchesConnector(connection, query) && (category === 'all' || connection.category === category)
+      && (filter === 'all' || (connection.availability !== 'planned') === (filter === 'available')),
   );
 
   return (
@@ -117,33 +95,23 @@ export default function Connect() {
               ))}
             </div>
           </div>
+          <div className="connector-toolbar">
+            <label className="connector-search">Find an app<input className="input" type="search" value={query}
+              onChange={event => setQuery(event.target.value)} placeholder="Search apps or categories…" /></label>
+            <label className="connector-search">Category<select className="input" value={category} onChange={event => setCategory(event.target.value as typeof category)}>
+              <option value="all">All categories</option>
+              {Object.entries(CONNECTOR_CATEGORIES).map(([id, label]) => <option key={id} value={id}>{label.en}</option>)}
+            </select></label>
+          </div>
           <p className="connections-note" role="status">
             {filter === 'planned'
               ? 'These connections are planned. They are not available to connect yet.'
-              : 'Available means you can use it now. Planned connections are not live.'}
+              : 'Telegram and the web workspace are available. Calendar is a pilot with Google permission verification pending. Planned connections are not live.'}
           </p>
-          <div className="connections-list">
-            {visible.map((connection) => {
-              const Glyph = connection.icon;
-              return (
-                <article className="connection-row" key={connection.name}>
-                  <span
-                    className={`connection-glyph ${connection.available ? 'connection-glyph-live' : ''}`}
-                  >
-                    <Glyph size={27} weight="duotone" aria-hidden="true" />
-                  </span>
-                  <div>
-                    <span className="connection-category">{connection.category}</span>
-                    <h3>{connection.name}</h3>
-                    <p>{connection.description}</p>
-                  </div>
-                  <span className={`tag ${connection.available ? 'tag-green' : ''}`}>
-                    {connection.available ? 'Available now' : 'Planned'}
-                  </span>
-                </article>
-              );
-            })}
+          <div className="connector-grid">
+            {visible.map(connection => <ConnectorCard key={connection.id} entry={connection} />)}
           </div>
+          {!visible.length && <p className="connector-empty">No apps match these filters. Try another search or choose All connections.</p>}
         </section>
 
         <section className="lp-container connections-request">

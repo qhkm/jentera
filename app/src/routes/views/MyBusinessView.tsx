@@ -25,7 +25,7 @@ import {
   UsersThree,
   Trash,
 } from '@phosphor-icons/react';
-import { Avatar, Button, Card, Eyebrow, Input, LoadingState, Tag } from '@/components/ui';
+import { Button, Card, Eyebrow, Input, LoadingState, Tag } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
 import { DataIcon } from '@/components/Icon';
 import { Tabs, type TabDef } from '@/components/Tabs';
@@ -39,15 +39,12 @@ import TelegramConnect from './TelegramConnect';
 import GoogleCalendarConnect from './GoogleCalendarConnect';
 import TokenConnect from './TokenConnect';
 import BusinessBrowser from './BusinessBrowser';
-import { isLive, withoutLinkClaim } from '@/lib/live-connectors';
+import { ConnectorOptions } from '@/components/ConnectorOptions';
 import { connectedNames, type ConnectionsState } from '@/hooks/useConnections';
 import { useSignedIn } from '@/lib/repo/gate';
 import { useToast } from '@/components/Toast';
-import { findConnector } from '@/lib/tools';
 import { useMutate, useSnapshot } from '@/lib/repo';
 import type { useBusiness } from '@/hooks/useBusiness';
-
-const CHANNELS = ['WhatsApp', 'Telegram', 'Instagram', 'Email', 'Phone'];
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -103,20 +100,12 @@ export default function MyBusinessView({
   }
 
   /* One shared fetch for the whole dashboard. The Home notice, this badge,
-     the chips, and the Telegram card all move from the same answer. */
+     the catalogue, and the Telegram card all move from the same answer. */
   const conns = connections;
   const linked = useMemo(() => connectedNames(conns.rows), [conns.rows]);
+  // Profile summaries still distinguish simulated demo channels from live grants.
+  const active = conns.mode === 'demo' ? (business.ch.length ? business.ch : b.connections) : [...linked];
 
-  /* Signed in, "active" means connected — not what onboarding said the
-     business uses, and not what the playbook seeded. Those two were
-     lighting WhatsApp and Instagram for an account whose only
-     connection was the Telegram bot sitting directly above them.
-
-     Pending is not the demo here either: falling back while the fetch
-     was in flight lit those same two chips for a moment on every
-     visit. Nothing lit until the answer arrives. */
-  const active =
-    conns.mode === 'demo' ? (business.ch.length ? business.ch : b.connections) : [...linked];
   const dirty = name.trim() !== business.name || loc.trim() !== business.loc;
 
   async function save() {
@@ -551,13 +540,13 @@ export default function MyBusinessView({
               </Card>
             ) : (
               <>
-                {calendarFocus && signedIn && conns.mode === 'real' && <GoogleCalendarConnect rows={conns.rows} setRows={conns.setRows} />}
-                <TelegramConnect rows={conns.rows} setRows={conns.setRows} />
-                {!calendarFocus && signedIn && conns.mode === 'real' && <GoogleCalendarConnect rows={conns.rows} setRows={conns.setRows} />}
+                {calendarFocus && signedIn && conns.mode === 'real' && <GoogleCalendarConnect id="connection-google" rows={conns.rows} setRows={conns.setRows} />}
+                <TelegramConnect id="connection-telegram" rows={conns.rows} setRows={conns.setRows} />
+                {!calendarFocus && signedIn && conns.mode === 'real' && <GoogleCalendarConnect id="connection-google" rows={conns.rows} setRows={conns.setRows} />}
                 {/* Under the connections most owners use, not competing
                     with them: this one renders nothing unless the backend
                     offers something to connect. */}
-                <TokenConnect rows={conns.rows} setRows={conns.setRows} />
+                <TokenConnect id="connection-tokens" rows={conns.rows} setRows={conns.setRows} />
                 {signedIn && <BusinessBrowser />}
               </>
             )}
@@ -568,84 +557,12 @@ export default function MyBusinessView({
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              {CHANNELS.map((c) => (
-                <span
-                  key={c}
-                  className={`chip ${active.includes(c) ? 'chip-green' : 'text-text-muted'}`}
-                >
-                  {c}
-                </span>
-              ))}
-            </div>
-
-            <details className="rounded-card border border-border p-4">
-              <summary className="cursor-pointer text-[13px] font-semibold text-text">
+            <section aria-labelledby="business-connectors-title">
+              <h3 id="business-connectors-title" className="text-sm font-semibold">
                 {t('biz.connections.more')}
-              </summary>
-              <div className="mt-4 flex flex-col gap-3">
-                {business.conns
-                  .filter((c) => !(signedIn && isLive(c.n)))
-                  .map((c) => {
-                    const on = b.connections.includes(c.n);
-                    const cx = findConnector(c.n);
-                    /* Signed in, this is a real business: a connector with no
-               implementation behind it cannot be marked connected,
-               because the toggle only ever wrote a name into a list.
-               Telegram has its own card above; the rest are honest
-               about not being ready. The demo keeps the simulation —
-               it is showing what the product will do. */
-                    const pretend = signedIn && !isLive(c.n);
-                    return (
-                      <Card key={c.n}>
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="flex items-start gap-3">
-                            <Avatar emoji={c.e} />
-                            <div className="flex flex-col gap-1">
-                              <span className="text-sm font-semibold">{c.n}</span>
-                              {/* "Business API · linked" is a claim baked into
-                          static data. Drop it for a real business; the
-                          demo keeps the illustration. */}
-                              {(pretend ? withoutLinkClaim(c.s) : c.s) && (
-                                <span className="text-[11px] text-text-muted">
-                                  {pretend ? withoutLinkClaim(c.s) : c.s}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {cx && !pretend ? (
-                              <Tag tone="amber">{t(`conn.guide.${cx.method}`)}</Tag>
-                            ) : null}
-                            <Tag tone={pretend ? 'neutral' : on ? 'green' : 'neutral'}>
-                              {pretend ? t('conn.soon') : on ? t('conn.connected') : t('conn.off')}
-                            </Tag>
-                          </div>
-                        </div>
-                        <p className="text-[13px] text-text-secondary">{c.d}</p>
-                        <div className="flex justify-end">
-                          <Button
-                            variant={on ? 'outline' : 'primary'}
-                            className="px-4 py-1.5 text-xs"
-                            disabled={pretend}
-                            onClick={() => {
-                              if (pretend) return;
-                              b.toggleConn(c.n);
-                              toast(on ? `${c.n} disconnected.` : `${c.n} connected ✓`);
-                            }}
-                          >
-                            {pretend
-                              ? t('conn.soon.cta')
-                              : on
-                                ? t('conn.disconnect')
-                                : t('conn.connect')}
-                          </Button>
-                        </div>
-                      </Card>
-                    );
-                  })}
-              </div>
-            </details>
+              </h3>
+              <ConnectorOptions connections={conns} setupMode="existing" />
+            </section>
           </section>
         )}
 
