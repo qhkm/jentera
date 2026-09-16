@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type postgres from 'postgres';
-import { asOwner, asTenant, testEnv, truncateAll } from './harness';
+import { asOwner, asTenant, testEnv, truncateAll, req } from './harness';
 import { requestDeletion } from '../src/account-deletion/request';
+import { handleAccount } from '../src/routes/account';
+import { hashToken } from '../src/auth';
 import type { Identity } from '../src/auth';
 
 beforeEach(async () => {
@@ -182,3 +184,57 @@ async function seedTeam(
   };
   return { identity, businessId, staff };
 }
+
+/**
+ * Seed the account_deletion record with a known token value.
+ */
+async function requestDeletionWithToken(
+  env: import('../src/env').Env,
+  identity: Identity,
+  tokenValue: string,
+): Promise<void> {
+  const tokenId = await hashToken(tokenValue);
+  await asOwner(async (owner) => {
+    await owner`update app_user set deleted_at = now() where id = ${identity.userId}`;
+    await owner`update business set deleted_at = now() where id = ${identity.businessId}`;
+    await owner`
+      insert into account_deletion (user_id, business_id, email, kind, cancel_token_id, stage, scheduled_for, sprite_id)
+      values (${identity.userId}, ${identity.businessId}, ${identity.email}, 'owner', ${tokenId}, 'pending', now() + interval '7 days', 'test-sprite')`;
+  });
+}
+
+describe('cancelling during grace', () => {
+  it('clears the stamps and works exactly once', async () => {
+    const env = testEnv();
+    const { identity, businessId } = await asOwner(async (owner) => seedTeam(owner, { members: 0 }));
+    const tokenValue = 'cancel-token-value-1234567890';
+    await requestDeletionWithToken(env, identity, tokenValue);
+
+    const { request: firstReq, url: firstUrl } = req('GET', `/api/account/restore?token=${tokenValue}`);
+    const first = await handleAccount(firstReq, env, firstUrl, {});
+    expect(first!.status).toBe(302);
+
+    await asTenant(businessId, async (tx) => {
+      const [user] = await tx`select deleted_at from app_user where id = ${identity.userId}`;
+      expect(user.deleted_at).toBeNull();
+    });
+
+    const { request: secondReq, url: secondUrl } = req('GET', `/api/account/restore?token=${tokenValue}`);
+    const second = await handleAccount(secondReq, env, secondUrl, {});
+    expect(second!.status).toBe(404);
+  });
+
+  it('refuses after the grace period has passed', async () => {
+    const env = testEnv();
+    const { identity, businessId } = await asOwner(async (owner) => seedTeam(owner, { members: 0 }));
+    const tokenValue = 'expired-token-value-1234567890';
+    await requestDeletionWithToken(env, identity, tokenValue);
+    await asOwner(async (owner) => {
+      await owner`update account_deletion set scheduled_for = now() - interval '1 hour' where user_id = ${identity.userId}`;
+    });
+
+    const { request, url } = req('GET', `/api/account/restore?token=${tokenValue}`);
+    const response = await handleAccount(request, env, url, {});
+    expect(response!.status).toBe(404);
+  });
+});
