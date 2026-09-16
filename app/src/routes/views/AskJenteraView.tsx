@@ -31,6 +31,7 @@ import { JenteraMark } from '@/components/JenteraMark';
 import { ChatHistory } from '@/components/ChatHistory';
 import { ChatWorkspace } from '@/components/ChatWorkspace';
 import { AskReply } from '@/components/AskReply';
+import BusinessBrowser from './BusinessBrowser';
 import { useTeamEnabled, useSignedIn } from '@/lib/repo/gate';
 import { useSnapshot, type AskMode } from '@/lib/repo';
 import type { Business } from '@/lib/types';
@@ -103,6 +104,7 @@ export default function AskJenteraView({
   const [attachmentError, setAttachmentError] = useState('');
   const signedIn = useSignedIn();
   const [browserPaused, setBrowserPaused] = useState(false);
+  const [browserOpenRequest, setBrowserOpenRequest] = useState(0);
   const composer = useRef<HTMLTextAreaElement>(null);
   const filePicker = useRef<HTMLInputElement>(null);
   const consumedDraft = useRef<number | null>(null);
@@ -350,12 +352,10 @@ export default function AskJenteraView({
                 <strong>{t('ask.browserPaused.title')}</strong>
                 <p>{t('ask.browserPaused.detail')}</p>
               </div>
-              {onOpenConnections && (
-                <button type="button" onClick={onOpenConnections}>
-                  {t('ask.browserPaused.action')}
-                  <ArrowRight size={13} aria-hidden="true" />
-                </button>
-              )}
+              <button type="button" onClick={() => setBrowserOpenRequest(n => n + 1)}>
+                {t('ask.browserPaused.action')}
+                <ArrowRight size={13} aria-hidden="true" />
+              </button>
             </div>
           )}
 
@@ -511,6 +511,9 @@ export default function AskJenteraView({
                     <LockSimple size={14} aria-hidden="true" />
                     <span>{t('ask.private')}</span>
                   </span>
+                )}
+                {signedIn && (
+                  <BusinessBrowser appearance="chat-tool" openRequest={browserOpenRequest} onPauseChange={setBrowserPaused} />
                 )}
               </div>
               <div className="ask-writing-actions">

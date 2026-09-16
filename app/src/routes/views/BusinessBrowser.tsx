@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Globe, ArrowDown, ArrowUp, X } from '@phosphor-icons/react';
 import { Button, Card, Eyebrow, Input } from '@/components/ui';
 import { useRepository } from '@/lib/repo';
@@ -8,9 +9,18 @@ import '@/styles/business-browser.css';
 
 type Action = BrowserCommand extends infer C ? C extends BrowserCommand ? Omit<C, 'controlId'> : never : never;
 
-export default function BusinessBrowser() {
+export default function BusinessBrowser({
+  appearance = 'card',
+  openRequest = 0,
+  onPauseChange,
+}: {
+  appearance?: 'card' | 'chat-tool';
+  openRequest?: number;
+  onPauseChange?: (paused: boolean) => void;
+}) {
   const repo = useRepository();
   const t = useT();
+  const titleId = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const controlId = useRef(crypto.randomUUID());
   const inFlight = useRef(false);
@@ -20,6 +30,7 @@ export default function BusinessBrowser() {
   const [open, setOpen] = useState(false);
   const [controlled, setControlled] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [statusLoading, setStatusLoading] = useState(false);
   const [state, setState] = useState<BusinessBrowserState>({});
   const [frame, setFrame] = useState<BusinessBrowserState | null>(null);
   const [error, setError] = useState('');
@@ -28,11 +39,21 @@ export default function BusinessBrowser() {
 
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   useEffect(() => {
+    if (!openRequest) return;
+    setError(''); setOpen(true);
+  }, [openRequest]);
+  useEffect(() => {
     if (!open) return;
+    let cancelled = false;
+    setStatusLoading(true);
     dialog.current?.showModal();
-    void repo.businessBrowser().then((s) => { if (live.current) setState(s); })
-      .catch((e: Error) => { if (live.current) setError(e.message); });
-  }, [open, repo]);
+    void repo.businessBrowser().then((s) => {
+      if (!cancelled && live.current) { setState(s); if (typeof s.paused === 'boolean') onPauseChange?.(s.paused); }
+    })
+      .catch((e: Error) => { if (!cancelled && live.current) setError(e.message); })
+      .finally(() => { if (!cancelled && live.current) setStatusLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, repo, onPauseChange]);
 
   useEffect(() => {
     if (!open || !controlled) return;
@@ -71,9 +92,10 @@ export default function BusinessBrowser() {
       inFlight.current = true;
       const next = await repo.businessBrowser({ ...action, controlId: controlId.current } as BrowserCommand);
       if (!live.current) return;
-      if (action.action === 'claim') { setState(next); setControlled(true); }
+      if (action.action === 'claim') { setState(next); setControlled(true); onPauseChange?.(true); }
       if (action.action === 'release') {
         setState(next); setControlled(false); setFrame(null); setText('');
+        onPauseChange?.(false);
       }
     } catch (e) {
       if (live.current) {
@@ -98,31 +120,41 @@ export default function BusinessBrowser() {
     dialog.current?.close(); setOpen(false); setControlled(false); setFrame(null); setText(''); setUrl('');
   }
 
+  const openBrowser = () => { setError(''); setOpen(true); };
+  const trigger = appearance === 'chat-tool' ? (
+    <button type="button" className="ask-context-link" onClick={openBrowser}
+      aria-label={t('browser.open')} title={t('browser.open')}>
+      <Globe size={15} aria-hidden="true" /><span>{t('browser.title')}</span>
+    </button>
+  ) : null;
+
   return <>
-    <Card className="gap-3">
+    {appearance === 'card' ? <Card className="gap-3">
       <Eyebrow>{t('browser.title')}</Eyebrow>
       <p className="text-sm text-text-secondary">{t('browser.description')}</p>
-      <div><Button variant="outline" onClick={() => { setError(''); setOpen(true); }}>
+      <div><Button variant="outline" onClick={openBrowser}>
         <Globe size={18} aria-hidden="true" />{t('browser.open')}
       </Button></div>
-    </Card>
-    {open && <dialog ref={dialog} className="business-browser-dialog" aria-labelledby="browser-title"
+    </Card> : trigger}
+    {open && createPortal(<dialog ref={dialog} className="business-browser-dialog" aria-labelledby={titleId}
+      // Portals escape the composer DOM, but React events still bubble through it.
+      onSubmit={(event) => event.stopPropagation()}
       onCancel={(e) => { e.preventDefault(); close(); }}>
       <header className="business-browser-toolbar">
-        <h2 id="browser-title">{t('browser.title')}</h2>
+        <h2 id={titleId}>{t('browser.title')}</h2>
         <button type="button" className="ask-inline-action" aria-label={t('browser.close')} onClick={close}><X size={20} /></button>
       </header>
       <p>{t('browser.privacy')}</p>
-      <p role="status">{t(controlled || state.paused ? 'browser.paused' : 'browser.available')}</p>
+      <p role="status">{t(statusLoading ? 'browser.loading' : controlled || state.paused ? 'browser.paused' : 'browser.available')}</p>
       {error && <p role="alert" className="text-red">{error}</p>}
       <div className="business-browser-toolbar">
-        {!controlled ? <Button disabled={busy} onClick={() => void send({ action: 'claim' })}>{t('browser.takeControl')}</Button>
+        {!controlled ? <Button disabled={busy || statusLoading} onClick={() => void send({ action: 'claim' })}>{t('browser.takeControl')}</Button>
           : <Button disabled={busy} onClick={() => void send({ action: 'release' })}>{t('browser.handBack')}</Button>}
         {/* A browser left paused by a session that ended is the state the owner
             most needs a way out of, and it is exactly the state that offered
             none: no live claim, so no Hand back, while the agent refused every
             task behind it. Whenever it is paused, handing back is one click. */}
-        {!controlled && state.paused && <Button variant="outline" disabled={busy}
+        {!controlled && state.paused && <Button variant="outline" disabled={busy || statusLoading}
           onClick={() => void send({ action: 'release' })}>{t('browser.handBack')}</Button>}
         {controlled && <span>{t('browser.expires')}</span>}
       </div>
@@ -163,6 +195,6 @@ export default function BusinessBrowser() {
         </div>
       </>}
       <p className="text-sm text-text-secondary">{t('browser.closeNote')}</p>
-    </dialog>}
+    </dialog>, document.body)}
   </>;
 }

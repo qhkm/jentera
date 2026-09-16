@@ -11,10 +11,13 @@ import { RepositoryProvider } from '@/lib/repo/context';
 import { LocalRepository } from '@/lib/repo/local';
 import { SignedInProvider } from '@/lib/repo/gate';
 import type { AskAnswer } from '@/lib/repo';
+import type { BrowserCommand } from '@/lib/repo/types';
 import type { ReactNode } from 'react';
 
 beforeEach(() => {
   localStorage.clear();
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
   vi.stubGlobal(
     'matchMedia',
     vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
@@ -100,13 +103,57 @@ describe('compose-first Ask Jentera', () => {
     expect(screen.queryByRole('button', { name: 'Quick' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Research' })).toBeNull();
   });
-  it('explains owner browser control, blocks sending, and links to the hand-back control', async () => {
+  it('opens browser control from the composer without navigating away or losing the draft', async () => {
     const user = userEvent.setup();
     const repo = new LocalRepository();
+    const browser = vi.fn(async (_command?: BrowserCommand) => ({ enabled: true, paused: false }));
+    repo.businessBrowser = browser;
     const openConnections = vi.fn();
-    repo.businessBrowser = vi.fn().mockResolvedValue({ enabled: true, paused: true });
-    repo.ask = vi.fn().mockResolvedValue({ text: 'Should not send.', grounded: false, usedKeys: [] });
     await mount(<Harness onOpenConnections={openConnections} />, repo);
+    await user.type(await screen.findByRole('textbox'), 'Review my business account');
+    await user.click(screen.getByRole('button', { name: 'Open business browser' }));
+    expect(await screen.findByRole('heading', { name: 'Business browser' })).toBeVisible();
+    expect(screen.getByRole('dialog').closest('form')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Close browser view' }));
+    expect(screen.getByRole('textbox')).toHaveValue('Review my business account');
+    expect(openConnections).not.toHaveBeenCalled();
+    expect(browser.mock.calls.every(([command]) => !command)).toBe(true);
+  });
+  it('keeps the browser dialog mounted during takeover and never submits chat from browser forms', async () => {
+    const user = userEvent.setup();
+    const repo = new LocalRepository();
+    let paused = false;
+    repo.businessBrowser = vi.fn(async (command?: BrowserCommand) => {
+      if (command?.action === 'claim') paused = true;
+      if (command?.action === 'release') paused = false;
+      return { enabled: true, paused, ...(command?.action === 'frame' ? { image: 'aW1hZ2U=', tabs: [] } : {}) };
+    });
+    repo.ask = vi.fn();
+    await mount(<Harness />, repo);
+    await user.type(await screen.findByRole('textbox'), 'Continue after I sign in');
+    await user.click(screen.getByRole('button', { name: 'Open business browser' }));
+    await user.click(screen.getByRole('button', { name: 'Take control' }));
+    expect(await screen.findByText('Jentera is paused')).toBeVisible();
+    await user.type(screen.getByLabelText('Website address'), 'https://example.com');
+    await user.click(screen.getByRole('button', { name: 'Go' }));
+    expect(repo.ask).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Close browser view' }));
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Open Business Browser' }));
+    await user.click(screen.getByRole('button', { name: 'Hand back to Jentera' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled());
+    expect(screen.getByRole('textbox')).toHaveValue('Continue after I sign in');
+  });
+  it('explains owner browser control, blocks sending, and opens the hand-back control inline', async () => {
+    const user = userEvent.setup();
+    const repo = new LocalRepository();
+    let paused = true;
+    repo.businessBrowser = vi.fn(async (command?: BrowserCommand) => {
+      if (command?.action === 'release') paused = false;
+      return { enabled: true, paused };
+    });
+    repo.ask = vi.fn().mockResolvedValue({ text: 'Should not send.', grounded: false, usedKeys: [] });
+    await mount(<Harness />, repo);
 
     expect(await screen.findByText('Jentera is paused')).toBeVisible();
     expect(screen.getByText(/Business Browser is still under owner control/)).toBeVisible();
@@ -117,7 +164,10 @@ describe('compose-first Ask Jentera', () => {
     expect(repo.ask).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: 'Open Business Browser' }));
-    expect(openConnections).toHaveBeenCalledOnce();
+    expect(await screen.findByRole('heading', { name: 'Business browser' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Hand back to Jentera' }));
+    await waitFor(() => expect(screen.queryByText('Jentera is paused')).toBeNull());
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled();
   });
   it('shows an accuracy disclaimer associated with the composer', async () => {
     await mount();
