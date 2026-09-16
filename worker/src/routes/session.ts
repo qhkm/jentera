@@ -71,7 +71,7 @@ async function deletionPending(env: Env, email: string): Promise<boolean> {
   return withUser(env, async (sql) => {
     const rows = await sql<{ one: number }[]>`
       select 1 as one from app_user
-       where lower(email) = ${email.toLowerCase()} and deleted_at is not null limit 1`;
+       where email = ${email} and deleted_at is not null limit 1`;
     return rows.length > 0;
   });
 }
@@ -269,7 +269,6 @@ export async function handleSession(
       codeChallenge?: unknown;
     };
     const addr = (body.email ?? '').trim().toLowerCase();
-    if (await deletionPending(env, addr)) return json(DELETING, { status: 409 }, cors);
     const refused = await refusedAsBot(body.turnstileToken);
     if (refused) return refused;
 
@@ -295,6 +294,7 @@ export async function handleSession(
         });
       }
       if (verdict === 'ok') {
+        if (await deletionPending(env, addr)) return json(DELETING, { status: 409 }, cors);
         const { token } = await issueLoginToken(env, addr, nativeRequest(body));
         if (token) {
           const carry = await sealTrial(env, body.inviteCode, `email:${token}`);
@@ -350,7 +350,6 @@ export async function handleSession(
       turnstileToken?: unknown;
     };
     const addr = (body.email ?? '').trim().toLowerCase();
-    if (await deletionPending(env, addr)) return json(DELETING, { status: 409 }, cors);
     const problem = passwordProblem(body.password);
 
     /* Password shape is the caller's own mistake and safe to report.
@@ -366,6 +365,7 @@ export async function handleSession(
     }
 
     if (verdict === 'ok') {
+      if (await deletionPending(env, addr)) return json(DELETING, { status: 409 }, cors);
       const outcome = await signUpWithPassword(env, addr, await hashPassword(body.password!));
       if (outcome === 'created') await announce(addr, 'password');
       /* Either way a link goes to the address, and either way the
@@ -397,7 +397,6 @@ export async function handleSession(
       inviteCode?: unknown;
     };
     const addr = (body.email ?? '').trim().toLowerCase();
-    if (await deletionPending(env, addr)) return json(DELETING, { status: 409 }, cors);
     const password = typeof body.password === 'string' ? body.password : '';
 
     if (!EMAIL.test(addr) || !password) {
@@ -410,6 +409,7 @@ export async function handleSession(
       return new Response(null, { status: 429, headers: { ...cors, 'Retry-After': '60' } });
     }
 
+    if (await deletionPending(env, addr)) return json(DELETING, { status: 409 }, cors);
     const result = await loginWithPassword(env, addr, password, verifyPassword, DUMMY_HASH);
 
     if (result === 'bad-credentials') {
