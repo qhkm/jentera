@@ -109,7 +109,14 @@ async function advance(
     case 'connectors':
       /* Only an owner's deletion takes the business down with it. A staff
          member leaving must not revoke the business's connectors or destroy
-         its sprite — both belong to the business, which survives. */
+         its sprite — both belong to the business, which survives.
+
+         The record alone, with no live read beside it: connecting anything
+         needs a session, and every session was revoked in the same
+         transaction that wrote this record, so `connector_ids` can only have
+         shrunk since. Artifacts below are the opposite case — work keeps
+         producing them through the grace period — which is why that stage
+         asks the table and this one does not. */
       if (record.kind === 'owner' && record.businessId) {
         for (const id of record.connectorIds) {
           await revokeConnector(env, record.businessId, id);
@@ -118,7 +125,7 @@ async function advance(
       break;
     case 'objects':
       /* Artifacts belong to the business, so a staff deletion leaves them. */
-      if (record.kind === 'owner') await deleteObjects(env, record.artifactKeys);
+      if (record.kind === 'owner') await deleteObjects(env, await liveArtifactKeys(env, record));
       break;
     case 'sprite':
       /* Asked live, not read off the record. `sprite_id` is a snapshot taken
@@ -171,7 +178,32 @@ async function advance(
 /* ---- the stages -------------------------------------------------------- */
 
 /**
- * The bytes in R2, from the keys copied into the record.
+ * Every key this business has in R2, recorded and current.
+ *
+ * `artifact_keys` is a snapshot taken seven days earlier, and nothing reads
+ * `business.deleted_at` — Telegram messages and routines keep doing work
+ * through the grace period, and each artifact they produce has a key the
+ * record does not carry. The cascade one stage later erases the `artifact`
+ * row naming it, so what is missed here is missed permanently and silently,
+ * after the person has been emailed that everything was erased.
+ *
+ * So the table is asked while it still exists — this stage runs before the
+ * cascade — and the record is kept as the union's other half, because after
+ * the cascade (a resumed deletion, a business id already nulled) it is all
+ * there is.
+ */
+async function liveArtifactKeys(env: Env, record: DeletionRecord): Promise<string[]> {
+  const keys = new Set(record.artifactKeys);
+  if (record.businessId) {
+    const rows = await withTenant(env, record.businessId, (tx) => tx<{ r2_key: string }[]>`
+      select r2_key from artifact where business_id = ${record.businessId}`);
+    for (const row of rows) keys.add(row.r2_key);
+  }
+  return [...keys];
+}
+
+/**
+ * The bytes in R2.
  *
  * `ARTIFACTS` is optional in `env.ts`, and a deployment without it must
  * finish the deletion rather than crash the cron — but silence would leave
@@ -206,11 +238,29 @@ async function deleteObjects(env: Env, keys: string[]): Promise<void> {
  *
  * Asked of the table, never of `record.spriteId`: a sprite provisioned after
  * the request is exactly the one nothing else knows about.
+ *
+ * And it asks again before it refuses. A wake lost between the sprite stage
+ * and here — the queue dropped it, the consumer died mid-flight — is the most
+ * likely reason this ever stalls, and `publishRuntimeTask` is idempotent on
+ * `dedupeKey` and re-signals a task that is queued or failed. So the refusal
+ * carries one more attempt with it rather than counting down to a human.
+ * A re-publish that itself fails is logged and swallowed: the refusal below
+ * is the message worth keeping.
  */
 async function requireRuntimeGone(env: Env, record: DeletionRecord): Promise<void> {
   const businessId = record.businessId;
   if (!businessId) return;
   if (await runtimeStanding(env, businessId)) {
+    try {
+      await publishRuntimeTask(env, businessId, {
+        kind: 'delete',
+        dedupeKey: `delete:deletion:${record.id}`,
+      });
+    } catch (err) {
+      console.warn(
+        `[deletion] could not re-publish the destroy for ${businessId}: ${String(err)}`,
+      );
+    }
     throw new Error(
       `a runtime is still standing for ${businessId} ` +
         `(recorded sprite: ${record.spriteId ?? 'none'}); not cascading over it`,
@@ -260,20 +310,27 @@ async function deleteTenantData(env: Env, record: DeletionRecord): Promise<void>
               where business_id = ${businessId} and confirmed_by = ${userId}`;
     await tx`update connection set connected_by = null
               where business_id = ${businessId} and connected_by = ${userId}`;
-    /* routine.created_by and routine.authorised_by are not null, so these
-       cannot lose their author. They go: the authorisation was personal and
-       nobody else gave it. The confirm screen said so in numbers before any
-       of this was asked for.
+    /* `routine.created_by` is not null, so a routine cannot lose its author
+       the way a run loses its requester. The ones they created go; the ones
+       they merely authorised are paused rather than deleted (022), and the
+       confirm screen counts `created_by` alone, so deleting on
+       `authorised_by` too would destroy more than they were shown a number
+       for. 052 narrowed this to `created_by` for exactly that reason.
 
        Through a function because 022 revoked delete on `routine` from the
        app role on purpose — pause is the recoverable stop, and no route may
-       delete one. The definer still runs under the table's forced RLS, so
-       this reaches only the tenant this transaction is scoped to. */
+       delete one. The function does NOT lean on RLS for its tenant bound:
+       FORCE row level security binds a table owner, not a superuser or a
+       BYPASSRLS role, and the definer is owned by whoever ran the migration.
+       052 reads `app.business_id` itself instead, which is why this call is
+       only correct from inside `withTenant`. */
     await tx`select public.delete_member_routines(${businessId}::uuid, ${userId}::uuid)`;
     /* An invitation names an address, and the address is the personal data.
        It is a tenant row under RLS, so it can only be reached from inside
        the business — which for a staff deletion means here, while the
-       business still exists. An owner's cascade takes theirs. */
+       business still exists. An owner's cascade takes theirs. Invitations
+       sent by OTHER businesses are swept in the identity stage, which is
+       where the address-keyed rows live. */
     await tx`delete from invitation where business_id = ${businessId} and email = ${record.email}`;
     await tx`delete from membership where business_id = ${businessId} and user_id = ${userId}`;
   });
@@ -286,23 +343,58 @@ async function deleteTenantData(env: Env, record: DeletionRecord): Promise<void>
  * chats. Two references block it instead of cascading and have to be cleared
  * first: `trial_redemption.user_id` and `trial_invite.redeemed_by`. The
  * invite row itself stays — it is the operator's record that a code was
- * issued and spent, and it points at nobody once the account is gone.
+ * issued and spent — but `trial_invite.email` is the person's address and
+ * is nullable, so it goes with the pointer rather than outliving it.
  *
  * Statement by statement rather than one transaction: every one is
  * idempotent, so a failure part-way through is resumed by the next tick.
  */
 async function deleteIdentity(env: Env, record: DeletionRecord): Promise<void> {
+  await deleteInvitationsForAddress(env, record.email);
   await withUser(env, async (sql) => {
     if (record.userId) {
       await sql`delete from trial_redemption where user_id = ${record.userId}`;
-      await sql`update trial_invite set redeemed_by = null where redeemed_by = ${record.userId}`;
+      await sql`update trial_invite set redeemed_by = null, email = null
+                 where redeemed_by = ${record.userId}`;
       await sql`delete from app_user where id = ${record.userId}`;
     }
+    /* An invite issued to the address and never spent still names it. */
+    await sql`update trial_invite set email = null where email = ${record.email}`;
     /* Keyed by a lowercased address, referencing neither business nor user,
        so no cascade reaches them. */
     await sql`delete from platform_access where email = ${record.email}`;
     await sql`delete from waitlist_entry where email = ${record.email}`;
   });
+}
+
+/**
+ * Every open invitation for the address, in whatever business sent it.
+ *
+ * `deleteTenantData` clears the ones in the business the person belonged to,
+ * which is all RLS lets it see. An invitation from a different business is
+ * invisible from there and survives holding their address, which the spec
+ * calls out and which is a residual address after the deletion said it was
+ * done.
+ *
+ * The definer reads ids and nothing else (051); the DELETE is the app role's
+ * own, inside `withTenant` for each business named, so the table's policy is
+ * still what bounds every write. Grouped so one business costs one
+ * transaction.
+ */
+async function deleteInvitationsForAddress(env: Env, email: string): Promise<void> {
+  const rows = await withUser(env, (sql) => sql<{ invitation_id: string; business_id: string }[]>`
+    select invitation_id, business_id from public.invitations_for_email(${email})`);
+  const byBusiness = new Map<string, string[]>();
+  for (const row of rows) {
+    byBusiness.set(row.business_id, [...(byBusiness.get(row.business_id) ?? []), row.invitation_id]);
+  }
+  for (const [businessId, ids] of byBusiness) {
+    await withTenant(env, businessId, async (tx) => {
+      for (const id of ids) {
+        await tx`delete from invitation where id = ${id} and business_id = ${businessId}`;
+      }
+    });
+  }
 }
 
 /* ---- the record -------------------------------------------------------- */

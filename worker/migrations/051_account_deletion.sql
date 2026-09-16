@@ -68,3 +68,40 @@ $$;
 
 revoke all on function public.account_deletion_due(timestamptz, integer) from public;
 grant execute on function public.account_deletion_due(timestamptz, integer) to aisar_app;
+
+-- An invitation names an address, and the address is the personal data. The
+-- spec says any open invitation for it goes, not only the ones in the
+-- business the person belonged to: a business that invited them and was never
+-- answered keeps their address forever otherwise.
+--
+-- `invitation` is a tenant table under forced RLS, so aisar_app cannot even
+-- see rows in another business — which is the point. This reads ids and
+-- nothing else, like account_deletion_due above and invitation_by_token
+-- (035); the DELETE is then done by the app role inside withTenant for each
+-- business it names, where the table's own policy is what bounds it. A
+-- definer that deleted would be a cross-tenant DELETE primitive granted to
+-- the app role, correct only as long as every caller passed the right
+-- address — exactly what 052's header refuses to build.
+--
+-- Bounded to an address with a deletion in flight, so it answers nothing
+-- about anyone else: no in-flight deletion, no rows, whoever asks.
+create or replace function public.invitations_for_email(p_email text)
+returns table (invitation_id uuid, business_id uuid)
+language sql
+stable
+security definer
+set search_path = pg_catalog, public, pg_temp
+as $$
+  select i.id, i.business_id
+    from public.invitation as i
+   where i.email = lower(p_email)
+     and exists (
+       select 1
+         from public.account_deletion as d
+        where d.email = lower(p_email)
+          and d.cancelled_at is null
+          and d.completed_at is null)
+$$;
+
+revoke all on function public.invitations_for_email(text) from public;
+grant execute on function public.invitations_for_email(text) to aisar_app;

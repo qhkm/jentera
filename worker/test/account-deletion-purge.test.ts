@@ -85,7 +85,11 @@ describe('the purge', () => {
 
     const summaries = await drive(env, { send: notices.send }, 8);
 
-    expect(deleted).toEqual(['a/1']);
+    /* Both: 'a/1' is the key the record copied out, and the tenant fixture's
+       artifact was inserted after it — so it stands for every artifact the
+       grace period produces. Until the objects stage read the table live,
+       that one was left in R2 with nothing left pointing at it. */
+    expect([...deleted].sort()).toEqual(['a/1', `fixtures/${fixtureCtx.runId}`].sort());
     expect(tasks).toHaveLength(1);
     expect(summaries.some((s) => s.completed === 1)).toBe(true);
 
@@ -101,9 +105,12 @@ describe('the purge', () => {
       expect(await owner`select 1 from trial_redemption where user_id = ${userId}`).toHaveLength(0);
       /* The invite itself is the operator's record that a code was issued
          and spent, so it stays — pointing at nobody. */
-      const [invite] = await owner<{ redeemed_by: string | null }[]>`
-        select redeemed_by from trial_invite`;
+      const [invite] = await owner<{ redeemed_by: string | null; email: string | null }[]>`
+        select redeemed_by, email from trial_invite`;
       expect(invite.redeemed_by).toBeNull();
+      /* The row is the record; the address on it is the person's, and
+         `trial_invite.email` is nullable precisely so it can go. */
+      expect(invite.email).toBeNull();
 
       /* The genuinely-full-business assertion: every tenant table
          tenant-cascade.test.ts requires a fixture for is checked here,
@@ -185,6 +192,100 @@ describe('the purge', () => {
     expect(record.completed_at).not.toBeNull();
   });
 
+  it('deletes an artifact made during grace that the record never named', async () => {
+    /* `artifact_keys` is a seven-day-old snapshot, and nothing reads
+       `business.deleted_at` — Telegram and routines keep working through the
+       grace period. An artifact they produce has a key the record does not
+       carry, and the cascade a stage later erases the `artifact` row naming
+       it: a permanent orphan in R2, after the person was emailed that
+       everything had been erased. So the keys are read live, under the
+       tenant, while the rows are still there. */
+    const deleted: string[] = [];
+    const env = testEnv({
+      ARTIFACTS: { delete: async (key: string) => { deleted.push(key); } },
+      RUNTIME_QUEUE: { send: async () => {} },
+    });
+    const { businessId, runId } = await asOwner((owner) =>
+      seedDueDeletion(owner, { artifacts: ['a/1'] }),
+    );
+    await asOwner((o) => o`
+      insert into artifact (business_id, run_id, name, content_type, size_bytes, r2_key)
+      values (${businessId}, ${runId}, 'during-grace.txt', 'text/plain', 10, 'a/late')`);
+
+    await drive(env, {}, 8);
+
+    expect([...deleted].sort()).toEqual(['a/1', 'a/late']);
+    expect(await asOwner((o) => o`select 1 from business where id = ${businessId}`))
+      .toHaveLength(0);
+    const [record] = await asOwner((o) => o<Stored[]>`
+      select stage from account_deletion where email = ${EMAIL}`);
+    expect(record.stage).toBe('done');
+  });
+
+  it('re-publishes a destroy the consumer never picked up', async () => {
+    /* The wake between the sprite stage and the cascade can be lost — the
+       queue drops it, the consumer dies mid-flight. `publishRuntimeTask` is
+       idempotent on `dedupeKey` and re-signals a queued or failed task, so
+       asking again from the stage that is already refusing to cascade turns
+       the most likely cause of hand recovery into one more attempt. */
+    const tasks: unknown[] = [];
+    const env = testEnv({
+      ARTIFACTS: { delete: async () => {} },
+      RUNTIME_QUEUE: { send: async (message: unknown) => { tasks.push(message); } },
+    });
+    const { businessId, userId } = await asOwner((owner) =>
+      seedDueDeletion(owner, { artifacts: [], sprite: 'sprite-9' }),
+    );
+
+    await drive(env, {}, 6);
+
+    /* One task, signalled more than once: dedupe held, the wake was resent. */
+    expect(await asOwner((o) => o`
+      select 1 from runtime_task where business_id = ${businessId} and kind = 'delete'`))
+      .toHaveLength(1);
+    expect(tasks.length).toBeGreaterThan(1);
+    const [stuck] = await asOwner((o) => o<Stored[]>`
+      select stage, last_error from account_deletion where user_id = ${userId}`);
+    expect(stuck.stage).toBe('tenant');
+    expect(stuck.last_error).toMatch(/still standing/);
+  });
+
+  it('takes the address off an open invitation from another business', async () => {
+    /* The spec says any open invitation for the address. The in-tenant
+       delete only reaches the departing member's own business, so an
+       invitation another business sent them survived holding their
+       address — a residual address, after the deletion said it was done. */
+    const env = testEnv({
+      ARTIFACTS: { delete: async () => {} },
+      RUNTIME_QUEUE: { send: async () => {} },
+    });
+    const { businessId } = await asOwner((owner) => seedDueDeletion(owner, { kind: 'staff' }));
+    const elsewhere = await asOwner(async (owner) => {
+      const [other] = await owner<{ id: string }[]>`
+        insert into business (name, playbook_key) values ('Another Shop', 'retail') returning id`;
+      const [boss] = await owner<{ id: string }[]>`
+        insert into app_user (email, email_verified) values ('other-boss@example.com', true)
+        returning id`;
+      await owner`insert into membership (user_id, business_id, role)
+                  values (${boss.id}, ${other.id}, 'owner')`;
+      await owner`
+        insert into invitation (business_id, email, token_hash, invited_by, expires_at)
+        values (${other.id}, ${EMAIL}, ${'d'.repeat(64)}, ${boss.id}, now() + interval '7 days')`;
+      return other.id;
+    });
+
+    await drive(env, {}, 8);
+
+    expect(await asOwner((o) => o`select 1 from invitation where email = ${EMAIL}`))
+      .toHaveLength(0);
+    /* The other business is untouched apart from the address that was the
+       departing person's. */
+    expect(await asOwner((o) => o`select 1 from business where id = ${elsewhere}`))
+      .toHaveLength(1);
+    expect(await asOwner((o) => o`select 1 from business where id = ${businessId}`))
+      .toHaveLength(1);
+  });
+
   it('will not cascade over a sprite that is still standing', async () => {
     /* The destroy is queued, not watched — and the cascade erases the queued
        task along with everything else that names the machine. So the last
@@ -241,8 +342,10 @@ describe('the purge', () => {
 
     await drive(env, {}, 6);
 
-    /* Queued, despite the record naming no sprite. */
-    expect(tasks).toHaveLength(1);
+    /* Queued, despite the record naming no sprite. More than one wake is
+       the tenant stage re-publishing while it refuses to cascade; the one
+       task row is what proves the dedupe key held. */
+    expect(tasks.length).toBeGreaterThanOrEqual(1);
     expect(await asOwner((o) => o`
       select 1 from runtime_task where business_id = ${businessId} and kind = 'delete'`))
       .toHaveLength(1);
