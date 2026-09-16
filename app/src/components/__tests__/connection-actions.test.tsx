@@ -27,6 +27,23 @@ function mount(repo: LocalRepository, connector = 'telegram') {
 }
 
 describe('connection account controls', () => {
+  it('centres the expanded confirmation away from fixed phone navigation and restores focus on cancel', async () => {
+    const previous = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
+    const scroll = vi.fn();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: scroll });
+    try {
+      const user = mount(new LocalRepository(), 'google');
+      await user.click(await screen.findByRole('button', { name: 'Disconnect' }));
+      expect(scroll).toHaveBeenLastCalledWith({ block: 'center', behavior: 'instant' });
+      expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+      await user.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(scroll).toHaveBeenLastCalledWith({ block: 'nearest', behavior: 'instant' });
+      expect(screen.getByRole('button', { name: 'Disconnect' })).toHaveFocus();
+    } finally {
+      if (previous) Object.defineProperty(Element.prototype, 'scrollIntoView', previous);
+      else Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+    }
+  });
   it('checks Telegram only on request and disables repeated checks while waiting', async () => {
     const repo = new LocalRepository();
     let resolve!: (value: ConnectionHealth) => void;

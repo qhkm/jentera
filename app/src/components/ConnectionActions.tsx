@@ -27,7 +27,9 @@ export function ConnectionActions({ name, explanation, confirming, checking = fa
   useEffect(() => {
     if (confirming) {
       cancel.current?.focus({ preventScroll: true });
-      confirmation.current?.scrollIntoView?.({ block: 'nearest', behavior: 'instant' });
+      // Centre the expanded panel so wrapped controls stay clear of the
+      // fixed phone header/footer even while the surrounding layout settles.
+      confirmation.current?.scrollIntoView?.({ block: 'center', behavior: 'instant' });
     } else if (wasConfirming.current) {
       disconnect.current?.focus({ preventScroll: true });
       disconnect.current?.scrollIntoView?.({ block: 'nearest', behavior: 'instant' });
