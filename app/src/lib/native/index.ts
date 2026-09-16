@@ -61,8 +61,17 @@ interface CapacitorBridge {
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 const WEB_SIGN_IN = 'https://jentera.ai/signin';
 export const GOOGLE_CALENDAR_WEB_SETUP = 'https://jentera.ai/app?view=business&tab=connections&connector=google';
+/* The callback is a verified App Link, not the ai.jentera.app scheme.
+   Any app may declare a custom scheme, so a minted code sent to one can be
+   received by an attacker's app and exchanged with the verifier it chose —
+   PKCE cannot help, because in that flow the attacker owns the verifier.
+   Only the signed app can receive an App Link that /.well-known verifies.
+
+   The scheme is still accepted on the way in, because an iOS build may have
+   to fall back to it (see docs/todo.md), but nothing emits it any more. */
 const CALLBACK_SCHEME = 'ai.jentera.app:';
 const CALLBACK_HOST = 'auth';
+const CALLBACK_LINK = 'https://jentera.ai/app-auth';
 const SESSION_KEY = 'jentera.session';
 const ATTEMPT_KEY = 'jentera.native-auth-attempt';
 const INSTALL_MARKER = 'jentera-native-install-v1';
@@ -206,11 +215,24 @@ function parseAttempt(raw: string | null): NativeAuthAttempt | null {
   }
 }
 
+/** Either callback shape, and nothing else. */
+function isCallback(url: string | undefined | null): url is string {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    const link = new URL(CALLBACK_LINK);
+    return (parsed.origin === link.origin && parsed.pathname === link.pathname) ||
+      (parsed.protocol === CALLBACK_SCHEME && parsed.hostname === CALLBACK_HOST);
+  } catch {
+    return false;
+  }
+}
+
 async function exchangeCallback(callback: string): Promise<string> {
-  const url = new URL(callback);
-  if (url.protocol !== CALLBACK_SCHEME || url.hostname !== CALLBACK_HOST) {
+  if (!isCallback(callback)) {
     throw new Error('Jentera received an invalid sign-in callback.');
   }
+  const url = new URL(callback);
   const code = url.searchParams.get('code') ?? '';
   const returnedState = url.searchParams.get('state') ?? '';
   if (!VALID_CODE.test(code) || !VALID_STATE.test(returnedState)) {
@@ -250,9 +272,8 @@ export async function resumeNativeSignIn(): Promise<string | null> {
   const app = plugins().App;
   if (!app) return unavailable('Native sign-in');
   const launch = await app.getLaunchUrl();
-  return launch?.url?.startsWith(`${CALLBACK_SCHEME}//${CALLBACK_HOST}`)
-    ? exchangeCallback(launch.url)
-    : null;
+  const launched = launch?.url;
+  return isCallback(launched) ? exchangeCallback(launched) : null;
 }
 
 let activeSignIn: Promise<string | null> | null = null;
@@ -296,7 +317,7 @@ export async function signIn(): Promise<string | null> {
       };
       try {
         opened = await app.addListener('appUrlOpen', (event) => {
-          if (!event.url?.startsWith(`${CALLBACK_SCHEME}//${CALLBACK_HOST}`)) return;
+          if (!isCallback(event.url)) return;
           void exchangeCallback(event.url)
             .then(async (next) => {
               await browser.close().catch(() => undefined);
@@ -338,7 +359,7 @@ export async function handoffBrowserSession(input: {
     throw new Error(typeof body.err === 'string' ? body.err : 'Could not return to the Jentera app.');
   }
   window.location.assign(
-    `${CALLBACK_SCHEME}//${CALLBACK_HOST}?${new URLSearchParams({
+    `${CALLBACK_LINK}?${new URLSearchParams({
       code: body.code,
       state: input.state,
     })}`,

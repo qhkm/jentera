@@ -54,6 +54,16 @@ The iOS and Android apps are one Capacitor project with app id
 native projects. There is deliberately no production `server.url`: loading the
 live site inside a privileged WebView would create both review and XSS risk.
 
+The sign-in callback is `https://jentera.ai/app-auth`, a verified App Link,
+never the `ai.jentera.app` scheme: any app may claim a custom scheme and
+exchange a code minted against someone else's session, which PKCE cannot
+prevent because the app that chose the challenge is the attacker. The scheme
+is still parsed inbound as an iOS fallback, and nothing emits it. The
+association files are written at build by `app/scripts/app-links.mjs`, which
+omits a file whose values are missing rather than shipping a placeholder — a
+wrong association is cached by the platform and fails silently. `docs/todo.md`
+carries what is still needed before `NATIVE_AUTH_ENABLED` can be flipped.
+
 The bundled origins are `capacitor://app.jentera.ai` on iOS and
 `https://app.jentera.ai` on Android. `app/src/lib/native/` is the only platform
 boundary; keep PWA installation, web push and service-worker updates inert

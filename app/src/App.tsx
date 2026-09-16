@@ -10,6 +10,7 @@ import { ActivityProvider } from '@/hooks/useActivity';
 import { isOnboarded, isSetupDone } from '@/lib/business';
 import Landing from '@/routes/Landing';
 import SignIn from '@/routes/SignIn';
+import AppAuth from '@/routes/AppAuth';
 import Join from '@/routes/Join';
 import Connect from '@/routes/Connect';
 import NotFound from '@/routes/NotFound';
@@ -115,6 +116,7 @@ export function AppRoutes() {
           <Route path="/connect" element={<Connect />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/signin" element={<SignIn />} />
+          <Route path="/app-auth" element={<AppAuth />} />
           <Route path="/waitlist" element={<Access />} />
           <Route path="/access" element={<Access />} />
           <Route path="/admin/launch" element={<LaunchAdmin />} />

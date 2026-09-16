@@ -4,7 +4,7 @@ export const SITE_URL = 'https://jentera.ai';
 export const SOCIAL_IMAGE = `${SITE_URL}/social/jentera-v1.png`;
 export const SOCIAL_ALT = 'Jentera by AISAR. AI staff that works 24/7 for Malaysian businesses.';
 export const INDEXABLE_PATHS = ['/', '/connect', '/privacy'] as const;
-export const PRIVATE_PATHS = ['/signin', '/onboard', '/setup', '/app', '/join', '/access', '/waitlist', '/admin/launch'] as const;
+export const PRIVATE_PATHS = ['/signin', '/app-auth', '/onboard', '/setup', '/app', '/join', '/access', '/waitlist', '/admin/launch'] as const;
 
 /** Files whose committed changes materially alter each public page. The build
  * uses their most recent git commit for sitemap lastmod; it never stamps every

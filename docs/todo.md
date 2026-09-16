@@ -34,6 +34,21 @@ invitations.
 |---|---|---|
 | Clear orphan `checkpoints/v31` on sprite `aisar-b-702bf940d4f6ac4a4f52` | Fly support; the owner sends the message drafted 12 Sep | Include the exact JuiceFS rename error and the NEOREKA ASIA precedent of 7 Sep, which cleared when Fly rebuilt the store |
 | Reply to Scott at Fly | Owner | Open since before 12 Sep |
+| Apple team ID for the App Link association | Owner | `JENTERA_APPLE_TEAM_ID` at build. Without it `apple-app-site-association` is not written at all, deliberately: a wrong association is cached by the platform and fails silently. The team ID is the one the Mac apps are signed with |
+| Play App Signing SHA-256 for the App Link association | Owner | `JENTERA_ANDROID_CERT_SHA256`, comma-separated, from Play Console → Setup → App signing. It does not exist until the app record does, and the Play record has not been created. Include the upload certificate too while testing |
+
+## Native sign-in callback
+
+The callback is `https://jentera.ai/app-auth`, a verified App Link, because any
+app may claim the `ai.jentera.app` scheme and exchange a code minted for
+someone else. `NATIVE_AUTH_ENABLED` stays `"false"` until all of the following
+are true, because until then the link is not actually verified anywhere:
+
+| Item | Done when |
+|---|---|
+| Both association files served | `curl https://jentera.ai/.well-known/assetlinks.json` and `.../apple-app-site-association` return JSON, no redirect, `Content-Type: application/json` |
+| Android verification | On a device, `adb shell pm get-app-links ai.jentera.app` reports `verified` for jentera.ai, and the callback opens the app rather than Chrome |
+| iOS verification | **Not established.** Universal Links do not open the app for a navigation that starts on the same domain, and the handoff page is on jentera.ai. Either the callback moves to a host of its own, or the shell stops using `@capacitor/browser` for sign-in and adopts `ASWebAuthenticationSession` with an https callback (iOS 17.4+). Xcode is not installed, so none of this has been tried |
 
 ## Review later
 

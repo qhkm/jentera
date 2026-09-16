@@ -83,3 +83,18 @@
 /404
   Cache-Control: no-cache, no-store, must-revalidate
   X-Robots-Tag: noindex, nofollow
+
+# App Link association files. Android and iOS fetch these directly, follow no
+# redirect, and treat anything but JSON as a failed association — which fails
+# silently, as a link that quietly opens the browser instead of the app.
+# apple-app-site-association has no extension, so its type must be forced.
+/.well-known/apple-app-site-association
+  Content-Type: application/json
+  Cache-Control: public, max-age=3600, must-revalidate
+/.well-known/assetlinks.json
+  Cache-Control: public, max-age=3600, must-revalidate
+
+# The sign-in callback carries a one-time code in its query string.
+/app-auth
+  Cache-Control: no-cache, no-store, must-revalidate
+  X-Robots-Tag: noindex, nofollow

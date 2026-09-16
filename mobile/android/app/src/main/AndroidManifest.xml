@@ -19,6 +19,19 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- The sign-in callback. autoVerify makes Android fetch
+                 https://jentera.ai/.well-known/assetlinks.json at install time
+                 and hand this link only to an app signed with a certificate
+                 named there, which is what stops another app claiming it.
+                 Verification fails closed: the link opens in the browser. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="jentera.ai" android:path="/app-auth" />
+            </intent-filter>
+            <!-- Legacy custom scheme. Any app may claim it, so nothing emits
+                 it any more; it stays only as an iOS fallback route. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

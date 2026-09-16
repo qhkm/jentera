@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && tsc -p tsconfig.sw.json && vite build && node scripts/prerender.mjs",
+    "build": "tsc -b && tsc -p tsconfig.sw.json && vite build && node scripts/prerender.mjs && node scripts/app-links.mjs",
     "preview": "vite preview",
     "social:image": "node scripts/render-social-image.mjs",
     "verify:seo": "node scripts/check-seo.mjs",
