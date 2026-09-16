@@ -33,8 +33,8 @@ export async function handleAccount(
 
     /* Read first to learn the business_id without committing anything. */
     const lookup = await withUser(env, async (sql) => {
-      const rows = await sql<{ user_id: string; business_id: string | null }[]>`
-        select user_id, business_id from account_deletion
+      const rows = await sql<{ user_id: string; business_id: string | null; email: string }[]>`
+        select user_id, business_id, email from account_deletion
          where cancel_token_id = ${id}
            and cancelled_at is null
            and completed_at is null
@@ -88,6 +88,29 @@ export async function handleAccount(
       return json({ ok: false, err: 'not found' }, { status: 404 }, cors);
     }
 
+    /* Tell them it was cancelled.
+     *
+     * A cancel link in an email is a GET, and corporate mail scanners
+     * follow links to check them. A scanner's prefetch cancels a deletion
+     * the person asked for and, without this, tells nobody — they find out
+     * seven days later when their data is still there. The notice is
+     * best-effort: the cancellation is already committed and a mailer
+     * outage must not turn a restored account into an error page. */
+    try {
+      const told = await sendNotice(
+        env,
+        lookup.email,
+        'Your Jentera account is no longer being deleted',
+        `The deletion of your Jentera account has been cancelled and nothing was erased.\n\n` +
+          `You can sign in again as usual: ${env.APP_ORIGIN}/signin\n\n` +
+          `If this was not you — a link checker or someone else may have followed ` +
+          `the cancel link — you can ask for deletion again from your account menu.`,
+      );
+      if (!told) console.warn(`[deletion] restore notice not sent for ${lookup.user_id}`);
+    } catch (err) {
+      console.error(`[deletion] restore notice for ${lookup.user_id}: ${String(err)}`);
+    }
+
     return Response.redirect(`${env.APP_ORIGIN}/signin?restored=1`, 302);
   }
 
@@ -113,16 +136,38 @@ export async function handleAccount(
   /* Outside the transaction requestDeletion already committed: Resend is an
      external service, and nothing here can be allowed to hold that
      transaction open waiting on it. */
+  /* The email is the only way back for seven days, and by here the
+   * transaction has committed and every session is revoked — so neither
+   * outcome may be thrown away.
+   *
+   * `sendNotice` answers false on a non-2xx and throws if `fetch` itself
+   * rejects. Letting the throw out turns a completed deletion into a 500,
+   * which reads as "nothing happened" while the account is locked out and
+   * scheduled; ignoring the false tells the caller a cancel link is in
+   * their inbox that is not. So both become `noticeSent`, and the screen
+   * says plainly which happened. */
   const cancelUrl = `${env.API_ORIGIN}/api/account/restore?token=${value}`;
-  await sendNotice(
-    env,
-    identity.email,
-    'Your Jentera account is being deleted',
-    `You asked us to delete your Jentera account.\n\n` +
-      `You have been signed out everywhere. Your data is erased in ${GRACE_DAYS} days.\n\n` +
-      `Changed your mind? Keep the account: ${cancelUrl}\n\n` +
-      `This link works once, and only until the ${GRACE_DAYS} days are up.`,
-  );
+  let noticeSent = false;
+  try {
+    noticeSent = await sendNotice(
+      env,
+      identity.email,
+      'Your Jentera account is being deleted',
+      `You asked us to delete your Jentera account.\n\n` +
+        `You have been signed out everywhere. Your data is erased in ${GRACE_DAYS} days.\n\n` +
+        `Changed your mind? Keep the account: ${cancelUrl}\n\n` +
+        `This link works once, and only until the ${GRACE_DAYS} days are up.`,
+    );
+  } catch (err) {
+    console.error(`[deletion] cancel link for ${identity.userId}: ${String(err)}`);
+  }
+  if (!noticeSent) {
+    console.warn(`[deletion] cancel link NOT delivered for ${identity.userId}`);
+  }
 
-  return json({ ok: true, graceDays: GRACE_DAYS, routines: result.routines }, {}, cors);
+  return json(
+    { ok: true, graceDays: GRACE_DAYS, routines: result.routines, noticeSent },
+    {},
+    cors,
+  );
 }

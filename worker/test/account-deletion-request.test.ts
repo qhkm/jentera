@@ -43,8 +43,10 @@ describe('requesting deletion', () => {
 
     const result = await requestDeletion(env, identity, identity.email, TEST_TOKEN);
 
-    expect(result.status).toBe(409);
-    expect(result.err).toMatch(/remove.*member/i);
+    /* One assertion over the union rather than reading `.err` off it: the
+       200 arm has no `err`, so the narrower form only typechecked because
+       nothing typechecked `test/` until 10 September. */
+    expect(result).toMatchObject({ status: 409, err: expect.stringMatching(/remove.*member/i) });
   });
 
   it('refuses when the typed address does not match', async () => {
