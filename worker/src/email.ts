@@ -16,9 +16,9 @@ import type { Env } from './env';
  * filters and cautious recipients treat it that way. So: jentera.ai,
  * not aisar.ai, whatever the product is called.
  *
- * Overridable because staging and preview origins differ. Until the
- * domain is verified in Resend the link is logged rather than sent, so
- * the flow stays testable without delivery.
+ * Overridable because staging and preview origins differ. Missing delivery
+ * configuration is logged without the address or authentication link. Tests
+ * inspect a mocked send; bearer links must never become log material.
  */
 const FROM = 'Jentera <hello@jentera.ai>';
 
@@ -54,7 +54,7 @@ export async function sendMagicLink(
   kind: LinkKind = 'signin',
 ): Promise<void> {
   if (!env.RESEND_API_KEY) {
-    console.log(`[email] no RESEND_API_KEY — link for ${email}: ${url}`);
+    console.warn('[email] authentication delivery unavailable: provider not configured');
     return;
   }
 
@@ -82,20 +82,28 @@ export async function sendMagicLink(
   if (!res.ok) {
     // Log and swallow: the caller answers 204 regardless, so a send
     // failure must not become an account-existence signal.
-    console.error(`[email] resend ${res.status}: ${await res.text()}`);
+    console.error(`[email] authentication delivery refused: status=${res.status}`);
   }
 }
 
 /** A plain-text notice to one address, same sender as the magic link.
-    Returns false (and logs) when the key is unset or Resend refuses. */
+    Returns false (and logs) when the key is unset or Resend refuses.
+
+    `headers` carries message headers the recipient's client acts on —
+    List-Unsubscribe on anything that is not transactional. Announcement
+    mail shares a domain with the sign-in link, so an unsubscribe a
+    person can actually use is what keeps a spam complaint from landing
+    on the address that has to deliver magic links. */
 export async function sendNotice(
   env: Env,
   email: string,
   subject: string,
   text: string,
+  headers?: Record<string, string>,
+  replyTo?: string,
 ): Promise<boolean> {
   if (!env.RESEND_API_KEY) {
-    console.log(`[email] no RESEND_API_KEY — notice for ${email}: ${subject}`);
+    console.warn('[email] notice delivery unavailable: provider not configured');
     return false;
   }
   const res = await fetch('https://api.resend.com/emails', {
@@ -104,10 +112,17 @@ export async function sendNotice(
       Authorization: `Bearer ${env.RESEND_API_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ from: env.MAGIC_FROM || FROM, to: [email], subject, text }),
+    body: JSON.stringify({
+      from: env.MAGIC_FROM || FROM,
+      to: [email],
+      subject,
+      text,
+      ...(headers ? { headers } : {}),
+      ...(replyTo ? { reply_to: replyTo } : {}),
+    }),
   });
   if (!res.ok) {
-    console.error(`[email] resend ${res.status}: ${await res.text()}`);
+    console.error(`[email] notice delivery refused: status=${res.status}`);
     return false;
   }
   return true;

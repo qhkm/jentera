@@ -26,6 +26,33 @@ describe('launch admin page', () => {
     expect(screen.queryByText('private-code')).not.toBeInTheDocument();
     expect(localStorage.getItem('private-code')).toBeNull();
   });
+  it('previews an announcement before anything is sent, and sends only on a second, explicit click', async () => {
+    const data = { totals: { waitlist: 2, invited: 0, redeemed: 0, active: 0 }, rows: [], hasMore: false };
+    const fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (!String(url).includes('/announce')) return Response.json(data);
+      const body = JSON.parse(String(init?.body)) as { dryRun?: boolean };
+      return Response.json(body.dryRun
+        ? { recipients: 2, sent: 0, failed: 0, remaining: 0, dryRun: true }
+        : { recipients: 2, sent: 2, failed: 0, remaining: 0, dryRun: false });
+    });
+    vi.stubGlobal('fetch', fetch);
+    render(<MemoryRouter><LaunchAdmin /></MemoryRouter>);
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText('Announcement key'), 'launch-week');
+    await user.type(screen.getByLabelText('Subject'), 'Jentera is open');
+    await user.type(screen.getByLabelText('Message'), 'We are open for business.');
+    expect(screen.queryByRole('button', { name: /Send to 2 people/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Preview recipients' }));
+    expect(await screen.findByText(/2 people have not had this announcement/)).toBeVisible();
+    const announces = () => fetch.mock.calls.filter(([url]) => String(url).includes('/announce'));
+    expect(announces()).toHaveLength(1);
+    expect(JSON.parse(String(announces()[0][1]?.body)).dryRun).toBe(true);
+
+    await user.click(screen.getByRole('button', { name: /Send to 2 people/ }));
+    expect(await screen.findByText(/Sent to 2/)).toBeVisible();
+    expect(JSON.parse(String(announces()[1][1]?.body)).dryRun).toBe(false);
+  });
   it('shows observed activation stages and keeps missing stages visibly incomplete', async () => {
     const instant = '2026-09-14T10:00:00.000Z';
     const person = {

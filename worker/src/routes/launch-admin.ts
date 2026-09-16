@@ -2,6 +2,7 @@ import type { Env } from '../env';
 import { ACCESS_OWNER } from '../access';
 import { hashToken, readSessionToken, verifyIdentitySession } from '../auth';
 import { withUser, withTenant } from '../db';
+import { sendNotice } from '../email';
 
 /** A platform-admin surface, never enabled by a tenant's owner role or plan. */
 export async function handleLaunchAdmin(request: Request, env: Env, url: URL, cors: Record<string, string>): Promise<Response | null> {
@@ -33,6 +34,61 @@ export async function handleLaunchAdmin(request: Request, env: Env, url: URL, co
     if (!created) return json({ err: 'This account has already used its trial.' }, 409);
     return json({ email, code, expiresAt: created.expires_at, trialHours: 72 }, 201);
   }
+  /* One announcement to the waiting list, at most once per address.
+     Nothing is claimed before the send: a row lands only after Resend
+     accepts the message, so a refusal leaves that address for the next
+     run rather than silently dropping it. The list is walked in pages,
+     because Resend rates the sends and a Worker request is not the
+     place to sit through hundreds of them. */
+  if (url.pathname === '/api/admin/launch/announce' && request.method === 'POST') {
+    const body = await request.json().catch(() => null) as
+      { key?: unknown; subject?: unknown; text?: unknown; dryRun?: unknown; limit?: unknown } | null;
+    const key = typeof body?.key === 'string' ? body.key.trim() : '';
+    const subject = typeof body?.subject === 'string' ? body.subject.trim() : '';
+    const text = typeof body?.text === 'string' ? body.text.trim() : '';
+    const dryRun = body?.dryRun === true;
+    const limit = Number.isSafeInteger(body?.limit) ? Math.min(Math.max(Number(body!.limit), 1), 200) : 25;
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(key)) return json({ err: 'Give the announcement a key like launch-week.' }, 400);
+    if (!subject || subject.length > 150) return json({ err: 'Enter a subject of 150 characters or fewer.' }, 400);
+    if (!text || text.length > 4000) return json({ err: 'Enter a message of 4000 characters or fewer.' }, 400);
+    if (!dryRun && !env.RESEND_API_KEY) return json({ err: 'Email is not configured. Nothing was sent.' }, 503);
+
+    const pending = (sql: Parameters<Parameters<typeof withUser>[1]>[0], take: number) => sql<{ email: string }[]>`
+      select w.email from waitlist_entry w
+      where not exists (select 1 from waitlist_notice n where n.email = w.email and n.notice_key = ${key})
+      order by w.created_at limit ${take}`;
+    const recipients = await withUser(env, sql => pending(sql, limit));
+    if (dryRun) {
+      const [rest] = await withUser(env, async sql => sql<{ count: number }[]>`
+        select count(*)::int as count from waitlist_entry w
+        where not exists (select 1 from waitlist_notice n where n.email = w.email and n.notice_key = ${key})`);
+      return json({ key, dryRun: true, recipients: recipients.length, sent: 0, failed: 0, remaining: Math.max(0, rest.count - recipients.length) });
+    }
+
+    /* jentera.ai has no MX, so hello@ cannot receive: a reply — to
+       unsubscribe or to answer the message — must be aimed at an inbox
+       that exists, or the invitation to reply is a lie. */
+    const inbox = env.WAITLIST_UNSUBSCRIBE_TO || ACCESS_OWNER;
+    const unsubscribe = `<mailto:${inbox}?subject=unsubscribe>`;
+    const footer = ['', '—', `You are on the Jentera waiting list because you asked to be at ${env.APP_ORIGIN || 'https://jentera.ai'}.`, 'Reply to this email with "unsubscribe" and we will take you off it.'].join('\n');
+    let sent = 0;
+    let failed = 0;
+    for (const [index, person] of recipients.entries()) {
+      /* Resend rates a sending key. Pacing here costs seconds; being
+         rate-limited costs a recipient, because a refusal is recorded
+         as a failure and the address waits for the next run. */
+      if (index > 0) await new Promise(resolve => setTimeout(resolve, 350));
+      const delivered = await sendNotice(env, person.email, subject, `${text}\n${footer}`, { 'List-Unsubscribe': unsubscribe }, inbox);
+      if (!delivered) { failed += 1; continue; }
+      await withUser(env, sql => sql`insert into waitlist_notice (email, notice_key) values (${person.email}, ${key}) on conflict do nothing`);
+      sent += 1;
+    }
+    const [rest] = await withUser(env, async sql => sql<{ count: number }[]>`
+      select count(*)::int as count from waitlist_entry w
+      where not exists (select 1 from waitlist_notice n where n.email = w.email and n.notice_key = ${key})`);
+    return json({ key, dryRun: false, recipients: recipients.length, sent, failed, remaining: rest.count });
+  }
+
   if (url.pathname !== '/api/admin/launch' || request.method !== 'GET') return json({ err: 'Not found.' }, 404);
   const offset = Number(url.searchParams.get('offset') ?? 0);
   if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000) return json({ err: 'Invalid page.' }, 400);

@@ -33,6 +33,9 @@ export default function LaunchAdmin() {
   const [email, setEmail] = useState('');
   const [invite, setInvite] = useState<{ email: string; code: string; expiresAt: string } | null>(null);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState({ key: '', subject: '', text: '' });
+  const [preview, setPreview] = useState<{ recipients: number; remaining: number } | null>(null);
+  const [delivery, setDelivery] = useState<{ sent: number; failed: number; remaining: number } | null>(null);
   const [denied, setDenied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -67,6 +70,27 @@ export default function LaunchAdmin() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not create the code.'); }
     finally { setBusy(false); }
   }
+  /* An edit invalidates the preview, so the count on the send button is
+     always the count for the message about to go out. */
+  function edit(field: 'key' | 'subject' | 'text', value: string) {
+    setNotice(current => ({ ...current, [field]: value }));
+    setPreview(null); setDelivery(null);
+  }
+  async function announce(dryRun: boolean) {
+    if (busy) return;
+    setBusy(true); setError(''); if (dryRun) setDelivery(null);
+    try {
+      const res = await fetch(`${API}/api/admin/launch/announce`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...notice, dryRun }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.err || 'Could not reach the waiting list.');
+      if (dryRun) setPreview({ recipients: body.recipients, remaining: body.remaining });
+      else { setDelivery({ sent: body.sent, failed: body.failed, remaining: body.remaining }); setPreview(null); }
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not reach the waiting list.'); }
+    finally { setBusy(false); }
+  }
   return <main className="mx-auto min-h-dvh max-w-4xl px-4 py-6 text-text">
     <header className="mb-8 flex items-center justify-between gap-4"><Link to="/app" className="flex items-center gap-2"><JenteraMark size={32} />Back to Jentera</Link><span className="text-xs text-text-muted">ADMIN ONLY</span></header>
     <h1 className="text-3xl font-semibold">Launch centre</h1>
@@ -89,6 +113,19 @@ export default function LaunchAdmin() {
         <p className="text-sm text-text-secondary">Ask the recipient to sign in, then open <Link className="text-brand" to="/access?invite=1">the invite redemption page</Link>.</p>
         <button className="btn" onClick={() => { void navigator.clipboard.writeText(`Sign in to Jentera, then open https://jentera.ai/access?invite=1\nYour code: ${invite.code}\nUse the account ${invite.email}. Redeem by ${date(invite.expiresAt)} MYT. Your 3-day trial starts when you redeem.`).then(() => setCopied(true)).catch(() => setError('Could not copy. Select the code and copy it manually.')); }}>{copied ? 'Copied' : 'Copy invitation'}</button>
         <button className="btn" onClick={() => setInvite(null)}>Hide code</button>
+      </section>}
+      {data && <section className="my-6 grid gap-3 rounded-xl border border-border p-4" aria-labelledby="announcement-title">
+        <h2 id="announcement-title" className="text-lg font-medium">Email the waiting list</h2>
+        <p className="text-sm text-text-secondary">Plain text, from hello@jentera.ai, one message per address. The key is how a person is remembered as having had this announcement—reuse it to reach only whoever was added since, change it to start a new one. Every message carries an unsubscribe address.</p>
+        <label className="grid gap-2 text-sm">Announcement key<input className="input w-full" required maxLength={64} pattern="[a-z0-9][a-z0-9-]*" placeholder="launch-week" value={notice.key} onChange={e => edit('key', e.target.value)} disabled={busy} /></label>
+        <label className="grid gap-2 text-sm">Subject<input className="input w-full" required maxLength={150} value={notice.subject} onChange={e => edit('subject', e.target.value)} disabled={busy} /></label>
+        <label className="grid gap-2 text-sm">Message<textarea className="input min-h-40 w-full" required maxLength={4000} value={notice.text} onChange={e => edit('text', e.target.value)} disabled={busy} /></label>
+        <div className="flex flex-wrap gap-3">
+          <button type="button" className="btn" disabled={busy || !notice.key || !notice.subject || !notice.text} onClick={() => void announce(true)}>{busy && !preview ? 'Checking…' : 'Preview recipients'}</button>
+          {preview && <button type="button" className="btn btn-primary" disabled={busy || preview.recipients === 0} onClick={() => void announce(false)}>{busy ? 'Sending…' : `Send to ${preview.recipients} ${preview.recipients === 1 ? 'person' : 'people'}`}</button>}
+        </div>
+        {preview && <p className="text-sm" role="status">{preview.recipients} people have not had this announcement. Nothing has been sent yet.{preview.remaining > 0 && ` ${preview.remaining} more will wait for a second run.`}</p>}
+        {delivery && <p className="text-sm" role="status">Sent to {delivery.sent}.{delivery.failed > 0 && ` ${delivery.failed} were refused and stay unmarked—run it again to reach them.`}{delivery.remaining > 0 && ` ${delivery.remaining} still waiting; run it again.`}</p>}
       </section>}
       <div className="my-4 flex items-center justify-between"><h2 className="text-lg font-medium">People</h2><button className="btn" onClick={() => setRefresh(value => value + 1)}>Refresh</button></div>
       {!data && !error && <p role="status">Loading launch data…</p>}
