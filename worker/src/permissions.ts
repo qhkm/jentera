@@ -12,6 +12,10 @@
    signed-in person with no membership; they can do nothing here.
    ============================================================ */
 
+/* Account deletion has no entry here on purpose. Both app stores require
+   that anyone can delete their own account, so it is not role-gated;
+   ownership decides which of the two operations runs (destroy the business,
+   or leave it), not whether the person may ask. */
 export const PERMISSIONS = {
   /** Change, import, confirm, and forget shared business knowledge. */
   'knowledge.manage': ['owner'],

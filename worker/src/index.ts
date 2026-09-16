@@ -41,6 +41,7 @@ import { handleArtifacts, RUNTIME_ARTIFACTS_PATH } from './routes/artifacts';
 import { sweepPushOutbox } from './push/outbox';
 import { handleNotifications } from './routes/notifications';
 import { handleTeam } from './routes/team';
+import { handleAccount } from './routes/account';
 import { handleWorkspaces } from './routes/workspaces';
 import { handleChats } from './routes/chats';
 import { handleAgentMemory } from './routes/agent-memory';
@@ -186,6 +187,8 @@ export default {
     /* The team: members and invitations. A plan, not a default. */
     const team = await handleTeam(request, env, url, headers);
     if (team) return team;
+    const account = await handleAccount(request, env, url, headers);
+    if (account) return account;
     const workspaces = await handleWorkspaces(request, env, url, headers);
     if (workspaces) return workspaces;
     const chatList = await handleChats(request, env, url, headers);
