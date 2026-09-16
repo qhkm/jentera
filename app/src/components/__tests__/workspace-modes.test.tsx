@@ -54,6 +54,28 @@ const sessions: AskSession[] = [
 ];
 
 describe('workspace navigation', () => {
+  it('resets only desktop content scroll and preserves the sidebar when changing sections', async () => {
+    vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
+      matches: query === '(min-width: 1024px)', addEventListener: vi.fn(), removeEventListener: vi.fn(),
+    })));
+    await mount(<Dashboard />);
+    const sidebar = await sidebarQueries();
+    const content = document.querySelector('.dashboard-content') as HTMLElement;
+    const navigation = document.querySelector('.dashboard-sidebar') as HTMLElement;
+    content.scrollTop = 180;
+    navigation.scrollTop = 90;
+    await userEvent.click(sidebar.getByRole('button', { name: 'Notifications' }));
+    expect(content.scrollTop).toBe(0);
+    expect(navigation.scrollTop).toBe(90);
+    expect(window.scrollTo).not.toHaveBeenCalled();
+  });
+  it('keeps mobile section navigation resetting the page scroll', async () => {
+    await mount(<Dashboard />);
+    await sidebarQueries();
+    const navigation = within(document.querySelector('.dashboard-bottom-nav') as HTMLElement);
+    await userEvent.click(navigation.getByRole('button', { name: /^Activity/ }));
+    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'instant' });
+  });
   it('keeps the business identity as one keyboard-operable row without sidebar setup progress', async () => {
     function Location() { return <output data-testid="location">{useLocation().search}</output>; }
     await mount(<><Dashboard /><Location /></>);

@@ -11,7 +11,7 @@
      My Business knowledge, responsibilities, connections
    ============================================================ */
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { ArrowRight } from '@phosphor-icons/react';
 import { Shell } from '@/components/Shell';
@@ -96,6 +96,7 @@ export default function Dashboard() {
   const focusedRoutineId = view === 'routines' ? searchParams.get('routine') : null;
   const lastDashboard = useRef<{ view: Exclude<View, 'chat'>; tab: BizTab; runId: string | null; routineId: string | null; reviewId: string | null }>({ view: 'home', tab: 'profile', runId: null, routineId: null, reviewId: null });
   const trackedOpen = useRef(false);
+  const contentRef = useRef<HTMLDivElement>(null);
   const b = useBusiness();
   const { business } = b;
 
@@ -138,6 +139,11 @@ export default function Dashboard() {
     if (view !== 'chat') lastDashboard.current = { view, tab: businessTab, runId: focusedRunId, routineId: focusedRoutineId, reviewId: focusedReviewId };
   }, [view, businessTab, focusedRunId, focusedRoutineId, focusedReviewId]);
 
+  useLayoutEffect(() => {
+    // Desktop sections own their scroll; never reset the sidebar or Chat.
+    if (!isChat && contentRef.current) contentRef.current.scrollTop = 0;
+  }, [view, isChat, businessTab, focusedRunId, focusedRoutineId]);
+
   function go(next: View, businessTab?: BizTab, runId?: string | null, routineId?: string | null) {
     setSearchParams({
       view: next,
@@ -145,7 +151,9 @@ export default function Dashboard() {
       ...(next === 'work' && runId ? { run: runId } : {}),
       ...(next === 'routines' && routineId ? { routine: routineId } : {}),
     });
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    if (!window.matchMedia('(min-width: 1024px)').matches) {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
   }
 
   function switchMode(mode: WorkspaceMode) {
@@ -233,7 +241,7 @@ export default function Dashboard() {
           </div>
         </aside>}
 
-        <div className="dashboard-content min-w-0 flex-1">
+        <div ref={contentRef} className="dashboard-content min-w-0 flex-1">
           <ComputerStatus mobileTarget={computerStatusTarget} onOpenChat={isChat ? undefined : () => go('chat')} onOpenKnowledge={() => go('business', 'knows')} onOpenActivity={openTask} />
           {view === 'home' && <HomeView b={b} connections={connections} goalsEnabled={goalsEnabled} onNavigate={go} />}
           {/* Keep the owner conversation mounted while they inspect another

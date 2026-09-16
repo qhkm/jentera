@@ -85,9 +85,36 @@
   gap: 2px;
 }
 @media (min-width: 1024px) {
+  /* Keep navigation independent of the active section's height. A sticky
+     sidebar was clamped by short sections and jumped when views changed. */
+  .workspace-dashboard {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .workspace-dashboard > :not(main) { flex-shrink: 0; }
+  .workspace-dashboard > main {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    width: 100%;
+  }
+  .workspace-dashboard .workspace-layout {
+    flex: 1;
+    min-height: 0;
+  }
+  .workspace-dashboard .dashboard-content {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
   .dashboard-sidebar {
-    align-self: flex-start;
-    max-height: calc(100dvh - 112px);
+    position: static;
+    align-self: stretch;
+    min-height: 0;
     padding-bottom: 8px;
     overflow-y: auto;
     overscroll-behavior: contain;
