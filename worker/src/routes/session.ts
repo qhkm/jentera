@@ -1,7 +1,7 @@
 import { routinesEnabledFor } from '../routines/gating';
 import { openTrial, sealTrial, trialCode, trialLanding } from '../trial-auth';
 import type { Env } from '../env';
-import { withTenant } from '../db';
+import { withTenant, withUser } from '../db';
 import { getBusinessPlan } from '../agent-runtime';
 import {
   clearedCookie,
@@ -59,6 +59,22 @@ const noContentCors = (headers: Record<string, string>) =>
 
 const badRequest = (cors: Record<string, string>, err: string) =>
   json({ ok: false, err }, { status: 400 }, cors);
+
+const DELETING = {
+  ok: false as const,
+  err: 'An account for this address is being deleted. Use the cancel link in the email we sent to keep it.',
+  code: 'ACCOUNT_DELETING' as const,
+};
+
+/** True when this address belongs to an account inside its grace period. */
+async function deletionPending(env: Env, email: string): Promise<boolean> {
+  return withUser(env, async (sql) => {
+    const rows = await sql<{ one: number }[]>`
+      select 1 as one from app_user
+       where lower(email) = ${email.toLowerCase()} and deleted_at is not null limit 1`;
+    return rows.length > 0;
+  });
+}
 
 /** Short-lived holder for the OAuth state and PKCE verifier. Scoped to
     /api/auth so it is not sent on ordinary API calls. */
@@ -253,6 +269,7 @@ export async function handleSession(
       codeChallenge?: unknown;
     };
     const addr = (body.email ?? '').trim().toLowerCase();
+    if (await deletionPending(env, addr)) return json(DELETING, { status: 409 }, cors);
     const refused = await refusedAsBot(body.turnstileToken);
     if (refused) return refused;
 
@@ -333,6 +350,7 @@ export async function handleSession(
       turnstileToken?: unknown;
     };
     const addr = (body.email ?? '').trim().toLowerCase();
+    if (await deletionPending(env, addr)) return json(DELETING, { status: 409 }, cors);
     const problem = passwordProblem(body.password);
 
     /* Password shape is the caller's own mistake and safe to report.
@@ -379,6 +397,7 @@ export async function handleSession(
       inviteCode?: unknown;
     };
     const addr = (body.email ?? '').trim().toLowerCase();
+    if (await deletionPending(env, addr)) return json(DELETING, { status: 409 }, cors);
     const password = typeof body.password === 'string' ? body.password : '';
 
     if (!EMAIL.test(addr) || !password) {
@@ -530,6 +549,8 @@ export async function handleSession(
 
     const profile = await exchangeCode(env, code, verifier);
     if (!profile) return fail('google-failed');
+
+    if (await deletionPending(env, profile.email)) return fail('account-deleting');
 
     /* An unverified Google address proves nothing, and this whole flow
        leans on Google's assertion of ownership to claim accounts. */
