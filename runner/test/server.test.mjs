@@ -5,7 +5,12 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
-import { createRunner, configFromEnv, commandProgram } from '../src/server.mjs';
+import {
+  QUICK_MAX_ITERATIONS,
+  createRunner,
+  configFromEnv,
+  commandProgram,
+} from '../src/server.mjs';
 
 const BUSINESS = '11111111-1111-4111-8111-111111111111';
 const TASK = '22222222-2222-4222-8222-222222222222';
@@ -39,7 +44,7 @@ beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'aisar-runner-'));
   hermesStatus = 'running';
   hermesReasoning = 'The user asks a biographical question.\nKeep the answer focused and factual.';
-  hermesPatch = 'jentera-runtime-2026-09-07';
+  hermesPatch = 'jentera-runtime-2026-09-16';
   hermesRunMissing = false;
   starts = [];
   hermesPaths = [];
@@ -187,7 +192,7 @@ test('detailed readiness requires the per-runtime key', async () => {
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.hermes.status, 'ok');
-  assert.equal(body.hermes.jenteraPatch, 'jentera-runtime-2026-09-07');
+  assert.equal(body.hermes.jenteraPatch, 'jentera-runtime-2026-09-16');
   assert.equal(body.hermes.pid, 321);
   assert.match(body.runner.sourceSha256, /^[0-9a-f]{64}$/);
   assert.equal(body.runner.sourceAttested, true);
@@ -329,6 +334,8 @@ test('disables reasoning for quick business conversation', async () => {
     reasoning: { enabled: false },
   });
   assert.equal(starts[0].model, 'MiniMax-M3');
+  assert.equal(starts[0].max_iterations, QUICK_MAX_ITERATIONS);
+  assert.equal(QUICK_MAX_ITERATIONS, 2);
 });
 
 test('refuses an unknown response mode', async () => {

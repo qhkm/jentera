@@ -6,6 +6,9 @@ import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
 
 const SCRIPT = new URL('../bin/patch-hermes-dependencies.mjs', import.meta.url).pathname;
+const scriptSource = await readFile(SCRIPT, 'utf8');
+const RUNTIME_PATCH_ID = scriptSource.match(/const runtimePatchId = '([^']+)'/)?.[1];
+assert.ok(RUNTIME_PATCH_ID, 'runtime patch id must be declared');
 const directories = [];
 
 /* The wire-order stage (jentera-wire-order-2026-09-03) was retired: prefix
@@ -104,7 +107,7 @@ test('narrowly updates the reviewed vulnerable dependencies and verifies the loc
   assert.equal(lock.packages['node_modules/mermaid'].version, '11.16.1');
   const apiServer = await readFile(join(root, 'gateway/platforms/api_server.py'), 'utf8');
   assert.ok(apiServer.includes('provider_sort=provider_routing.get("sort"),'));
-  assert.ok(apiServer.includes('"jentera_patch": "jentera-runtime-2026-09-07",'));
+  assert.ok(apiServer.includes(`"jentera_patch": "${RUNTIME_PATCH_ID}",`));
   assert.ok(apiServer.includes('result.get("last_reasoning")'));
   assert.equal(
     apiServer.match(/\*\*\(\{"reasoning": reasoning\} if reasoning else \{}\),/g)?.length,
@@ -113,6 +116,8 @@ test('narrowly updates the reviewed vulnerable dependencies and verifies the loc
   assert.ok(apiServer.includes('"event": "iteration.started",'));
   assert.ok(apiServer.includes('step_callback=step_callback,'));
   assert.ok(apiServer.includes('step_callback=_step_cb,'));
+  assert.ok(apiServer.includes('max_iterations: Optional[int] = None,'));
+  assert.ok(apiServer.includes('max_iterations=requested_max_iterations,'));
   assert.ok(apiServer.includes('agent._compress_context = _compress_with_progress'));
   assert.ok(apiServer.includes('event_cb("context.compressing")'));
   const bootstrap = await readFile(join(root, 'agent/process_bootstrap.py'), 'utf8');
@@ -246,11 +251,16 @@ async function fixture(override, locked, legacyReasoning = false, wiredOrder = f
     '        stream_delta_callback=None,',
     '        tool_progress_callback=None,',
     '        tool_start_callback=None,',
-    '    ):',
+    '        tool_complete_callback=None,',
+    '        gateway_session_key: Optional[str] = None,',
+    '        route: Optional[Dict[str, Any]] = None,',
+    '    ) -> Any:',
     '        user_config = _load_gateway_config()',
+    '        max_iterations = _current_max_iterations()',
     '        agent = AIAgent(',
     '            model=model,',
     '            **runtime_kwargs,',
+    '            max_iterations=max_iterations,',
     '            tool_progress_callback=tool_progress_callback,',
     '            tool_start_callback=tool_start_callback,',
     '            reasoning_config=reasoning_config,',
@@ -260,11 +270,17 @@ async function fixture(override, locked, legacyReasoning = false, wiredOrder = f
     '            ts = time.time()',
     '            if event_type == "tool.started":',
     '                pass',
+    '        instructions = body.get("instructions")',
+    '        previous_response_id = body.get("previous_response_id")',
+    '',
+    '        # Accept explicit conversation_history from the request body.',
+    '        # Precedence: explicit conversation_history > previous_response_id.',
     '        event_cb = self._make_run_event_callback(run_id, loop)',
     '                agent = self._create_agent(',
     '                        stream_delta_callback=_text_cb,',
     '                        tool_progress_callback=event_cb,',
     '                        gateway_session_key=gateway_session_key,',
+    '                        route=route,',
     '                )',
     '                self._active_run_agents[run_id] = agent',
     '        return web.json_response({',

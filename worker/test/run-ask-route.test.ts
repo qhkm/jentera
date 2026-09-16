@@ -756,7 +756,7 @@ describe('the first slice of a web ask runs inline from the intake', () => {
         return Response.json({
           ok: true, release: RELEASE,
           runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
-          hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-16' },
           toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
           specialistProfiles: { operations: true, customers: true, growth: true, records: true },
         });

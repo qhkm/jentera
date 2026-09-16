@@ -18,6 +18,7 @@ const HERMES_REPO = process.env.HERMES_AGENT_REPO || join(homedir(), 'ios', 'her
 const ROUTING_MARKER = '# Jentera: apply reviewed OpenRouter routing to API-server agents.';
 const RUNTIME_MARKER = '# Jentera: expose bounded final reasoning and attest this runtime patch.';
 const ITERATION_MARKER = '# Jentera: expose real Hermes iteration progress to the run SSE.';
+const ITERATION_LIMIT_MARKER = '# Jentera: allow a caller to lower the per-run iteration budget.';
 // Retired 2026-09-08: the wire-order stage measured no cache benefit. A
 // patched tree must come out of apply without it.
 const WIRE_ORDER_MARKER = '# Jentera: reorder chat.completions wire bodies (tools first, messages last).';
@@ -102,10 +103,15 @@ async function assertPatchedShapes(root) {
     'provider_sort=provider_routing.get("sort"),',
     RUNTIME_MARKER,
     ITERATION_MARKER,
+    ITERATION_LIMIT_MARKER,
     `"jentera_patch": "${runtimePatchId}",`,
     'result.get("last_reasoning")',
     'step_callback=step_callback,',
     'step_callback=_step_cb,',
+    'max_iterations: Optional[int] = None,',
+    'else min(configured_max_iterations, max_iterations)',
+    'max_iterations=requested_max_iterations,',
+    'isinstance(requested_max_iterations, bool)',
     '"event": "iteration.started",',
     '**({\"reasoning\": reasoning} if reasoning else {}),',
   ]) {
@@ -164,6 +170,12 @@ test('clean install of the pinned Hermes commit applies and verifies (B1 release
 
   await assertPatchedShapes(root);
   await assertReviewedPins(root);
+  const compile = spawnSync('python3', [
+    '-m',
+    'py_compile',
+    join(root, 'gateway/platforms/api_server.py'),
+  ], { encoding: 'utf8' });
+  assert.equal(compile.status, 0, `patched api_server.py must compile: ${compile.stderr}`);
 
   const verify = run(root, ['--verify']);
   assert.equal(verify.status, 0, `verify failed: ${verify.stderr}`);

@@ -17,11 +17,13 @@ const apiServerPath = join(root, 'gateway/platforms/api_server.py');
 const routingMarker = '# Jentera: apply reviewed OpenRouter routing to API-server agents.';
 const runtimeMarker = '# Jentera: expose bounded final reasoning and attest this runtime patch.';
 const iterationMarker = '# Jentera: expose real Hermes iteration progress to the run SSE.';
-const runtimePatchId = 'jentera-runtime-2026-09-07';
-const priorRuntimePatchId = 'jentera-runtime-2026-09-06';
+const iterationLimitMarker = '# Jentera: allow a caller to lower the per-run iteration budget.';
+const runtimePatchId = 'jentera-runtime-2026-09-16';
+const priorRuntimePatchId = 'jentera-runtime-2026-09-07';
 const legacyRuntimePatchIds = new Set([
   'jentera-runtime-2026-09-01',
   'jentera-runtime-2026-09-04',
+  'jentera-runtime-2026-09-06',
 ]);
 const webToolsPath = join(root, 'tools/web_tools.py');
 const extractErrorMarker = '# Jentera: omit a null error from a successful extract result.';
@@ -210,6 +212,8 @@ if (!apiServer.includes(routingMarker) ||
     !apiServer.includes('result.get("last_reasoning")') ||
     !apiServer.includes('**({"reasoning": reasoning} if reasoning else {}),') ||
     !apiServer.includes(iterationMarker) ||
+    !apiServer.includes(iterationLimitMarker) ||
+    !apiServer.includes('max_iterations=requested_max_iterations,') ||
     !apiServer.includes('agent._compress_context = _compress_with_progress') ||
     !apiServer.includes('step_callback=_step_cb,') ||
     !apiServer.includes('"event": "iteration.started",')) {
@@ -410,6 +414,72 @@ async function patchApiServer() {
       activeAgentAnchor.trimEnd(),
     ].join('\n') + '\n';
     source = replaceReviewedAnchor(source, activeAgentAnchor, activeAgentPatch);
+  }
+  if (!source.includes(iterationLimitMarker)) {
+    const signatureAnchor = [
+      '        gateway_session_key: Optional[str] = None,',
+      '        route: Optional[Dict[str, Any]] = None,',
+      '    ) -> Any:',
+    ].join('\n');
+    const signaturePatch = [
+      '        gateway_session_key: Optional[str] = None,',
+      '        route: Optional[Dict[str, Any]] = None,',
+      '        max_iterations: Optional[int] = None,',
+      '    ) -> Any:',
+    ].join('\n');
+    source = replaceReviewedAnchor(source, signatureAnchor, signaturePatch);
+
+    const budgetAnchor =
+      '        max_iterations = _current_max_iterations()\n';
+    const budgetPatch = [
+      `        ${iterationLimitMarker}`,
+      '        configured_max_iterations = _current_max_iterations()',
+      '        max_iterations = (',
+      '            configured_max_iterations',
+      '            if max_iterations is None',
+      '            else min(configured_max_iterations, max_iterations)',
+      '        )',
+    ].join('\n') + '\n';
+    source = replaceReviewedAnchor(source, budgetAnchor, budgetPatch);
+
+    const requestAnchor = [
+      '        instructions = body.get("instructions")',
+      '        previous_response_id = body.get("previous_response_id")',
+      '',
+      '        # Accept explicit conversation_history from the request body.',
+      '        # Precedence: explicit conversation_history > previous_response_id.',
+    ].join('\n');
+    const requestPatch = [
+      '        instructions = body.get("instructions")',
+      '        requested_max_iterations = body.get("max_iterations")',
+      '        if requested_max_iterations is not None and (',
+      '            isinstance(requested_max_iterations, bool)',
+      '            or not isinstance(requested_max_iterations, int)',
+      '            or not 1 <= requested_max_iterations <= 10000',
+      '        ):',
+      '            return web.json_response(',
+      '                _openai_error("\'max_iterations\' must be an integer from 1 to 10000"),',
+      '                status=400,',
+      '            )',
+      '        previous_response_id = body.get("previous_response_id")',
+      '',
+      '        # Accept explicit conversation_history from the request body.',
+      '        # Precedence: explicit conversation_history > previous_response_id.',
+    ].join('\n');
+    source = replaceReviewedAnchor(source, requestAnchor, requestPatch);
+
+    const createAgentAnchor = [
+      '                        step_callback=_step_cb,',
+      '                        gateway_session_key=gateway_session_key,',
+      '                        route=route,',
+    ].join('\n');
+    const createAgentPatch = [
+      '                        step_callback=_step_cb,',
+      '                        gateway_session_key=gateway_session_key,',
+      '                        route=route,',
+      '                        max_iterations=requested_max_iterations,',
+    ].join('\n');
+    source = replaceReviewedAnchor(source, createAgentAnchor, createAgentPatch);
   }
   const compressionMarker = '# Jentera: expose context compression without prompt contents.';
   if (!source.includes(compressionMarker)) {

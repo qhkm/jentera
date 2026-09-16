@@ -29,7 +29,11 @@ const WATCHDOG_INTERVAL_MS = 60 * 1000;
 const TERMINATION_RETRY_MS = 1_000;
 const STREAM_THINK_LIMIT = 8 * 1024;
 const STREAM_TTL_MS = 5 * 60 * 1000;
-const HERMES_PATCH_ID = 'jentera-runtime-2026-09-07';
+const HERMES_PATCH_ID = 'jentera-runtime-2026-09-16';
+/** Quick chat gets one focused tool pass, one follow-up/model pass, then
+    Hermes' existing tool-free final-summary call if it has not answered yet.
+    Deep work keeps the fleet-wide Hermes budget (currently 20 iterations). */
+export const QUICK_MAX_ITERATIONS = 2;
 export const STARTER_SPECIALIST_PROFILES = Object.freeze([
   'operations',
   'customers',
@@ -897,6 +901,9 @@ export function createRunner(input) {
                     ? { enabled: false }
                     : { enabled: true, effort: 'high' },
                 },
+                ...(responseMode === 'quick'
+                  ? { max_iterations: QUICK_MAX_ITERATIONS }
+                  : {}),
               }),
             }, body.profile);
           } catch (error) {

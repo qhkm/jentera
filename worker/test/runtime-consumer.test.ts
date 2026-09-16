@@ -63,7 +63,7 @@ describe('the runtime queue consumer', () => {
       const url = String(input);
       if (url.endsWith('/readyz')) return jsonResponse({ ok: true, release: '2026.09.01-3',
         runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
-        hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
+        hermes: { jenteraPatch: 'jentera-runtime-2026-09-16' },
         toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false });
       if (url.endsWith('/v1/tasks')) return jsonResponse({ ok: true, hermesRunId: 'guarded-run', status: 'started' }, 202);
       if (url.endsWith('/events')) return new Response([
@@ -107,7 +107,7 @@ describe('the runtime queue consumer', () => {
       if (url.endsWith('/readyz')) return jsonResponse({
         ok: true, release: '2026.09.01-3',
         runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
-        hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
+        hermes: { jenteraPatch: 'jentera-runtime-2026-09-16' },
         toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
       });
       if (url.endsWith('/v1/tasks')) return jsonResponse({ ok: true, hermesRunId: 'expired-remote', status: 'expired' });
@@ -895,7 +895,7 @@ describe('the runtime queue consumer', () => {
           ok: true,
           release: '2026.09.01-3',
           runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
-          hermes: { jenteraPatch: 'jentera-runtime-2026-09-07' },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-16' },
           toolMode: 'full-tools',
           webSearchBackend: 'ddgs',
           edgeAuthorizationForwarded: false,

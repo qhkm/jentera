@@ -15,7 +15,7 @@ const STREAM_LIMIT = 64 * 1024;
     where someone would see it. */
 export const RUNNER_INPUT_MAX = 20_000;
 export const RUNNER_INSTRUCTIONS_MAX = 20_000;
-const HERMES_PATCH_ID = 'jentera-runtime-2026-09-07';
+const HERMES_PATCH_ID = 'jentera-runtime-2026-09-16';
 const PROBE_TIMEOUT_MS = 3_000;
 const TERMINAL_TASK_STATUSES = new Set(['completed', 'failed', 'cancelled', 'stopped', 'expired']);
 

@@ -181,6 +181,17 @@ task". Re-run `reply-latency.sh db 2` and compare tool starts after enough new
 Quick turns have completed; this change has no claimed latency win until that
 measurement exists.
 
+The first live check after that prompt change proved prompt-only control was
+not sufficient. A Quick app turn started in 2.0 s but then spent 98.2 s in
+the agent, made eight tool calls and processed 191,049 input tokens before
+finishing at 100.2 s. The payload did contain the Quick contract; the model
+simply continued researching. The follow-up runtime release therefore
+enforces `max_iterations = 2` for Quick runs at the Hermes boundary. That
+allows one focused tool/model pass and one follow-up; if neither answers,
+Hermes makes its existing final tool-free summary call. Deep runs retain the
+configured 20-iteration budget. This is an enforced bound, but still not a
+claimed production latency improvement until another live turn is measured.
+
 ## Levers
 
 Done:
