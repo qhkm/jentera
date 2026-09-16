@@ -31,6 +31,7 @@ import { hasBusiness, resolveTenant } from '../tenancy';
 import { can } from '../permissions';
 import { getBusinessPlan } from '../agent-runtime';
 import { sendNotice } from '../email';
+import { originAllowed } from '../request-guard';
 
 const EMAIL = /^[^@\s]+@[^@\s.]+\.[^@\s]+$/;
 const TOKEN = /^[0-9a-f]{64}$/;
@@ -52,11 +53,6 @@ async function sha256Hex(text: string): Promise<string> {
 
 /* Cookie-authenticated writes from the browser: the same origin check the
    task-review route makes, so a cross-site form cannot invite or accept. */
-function originAllowed(request: Request, cors: Record<string, string>): boolean {
-  const origin = request.headers.get('Origin');
-  return Boolean(origin) && origin === cors['Access-Control-Allow-Origin'];
-}
-
 interface InvitationRow {
   id: string;
   email: string;

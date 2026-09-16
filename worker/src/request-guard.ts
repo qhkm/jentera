@@ -72,6 +72,15 @@ function response(
   });
 }
 
+/** True when the request's Origin header is the one the CORS headers were
+    computed for — i.e. it is on ALLOWED_ORIGINS. State-changing routes that
+    accept no other CSRF defence (no custom header, cookie-only auth) gate on
+    this before touching the database. */
+export function originAllowed(request: Request, cors: Record<string, string>): boolean {
+  const origin = request.headers.get('Origin');
+  return Boolean(origin) && origin === cors['Access-Control-Allow-Origin'];
+}
+
 function requestIdentity(request: Request, url: URL): string {
   const hook = url.pathname.match(
     /^\/api\/webhooks\/telegram\/([0-9a-f-]{36})\/([0-9a-f-]{36})$/i,
