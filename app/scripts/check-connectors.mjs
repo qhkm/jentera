@@ -251,12 +251,15 @@ try {
       // Exercise tall -> empty -> tall sections as well as independent scroll.
       const top = await sidebar.evaluate(node => node.getBoundingClientRect().top);
       const content = page.locator('.dashboard-content');
-      for (const name of lang === 'bm' ? ['Notifikasi', 'Home', 'Bisnes Saya', 'Pustaka'] : ['Notifications', 'Home', 'My Business', 'Library']) {
-        const previousScroll = await sidebar.evaluate(node => node.scrollTop);
+      const selectSection = async name => {
         await sidebar.getByRole('button', { name, exact: true }).click();
         await page.waitForFunction(label => [...document.querySelectorAll('.dashboard-sidebar .dashboard-nav-item')]
           .some(node => node.textContent.trim() === label && node.getAttribute('aria-current') === 'page'), name);
         await page.evaluate(() => document.fonts.ready);
+      };
+      for (const name of lang === 'bm' ? ['Notifikasi', 'Home', 'Bisnes Saya', 'Pustaka'] : ['Notifications', 'Home', 'My Business', 'Library']) {
+        const previousScroll = await sidebar.evaluate(node => node.scrollTop);
+        await selectSection(name);
         assert(Math.abs(await sidebar.evaluate(node => node.getBoundingClientRect().top) - top) < 1, 'Sidebar stays anchored across sections');
         assert.equal(await content.evaluate(node => node.scrollTop), 0, 'Only the main section resets its scroll');
         assert.equal(await page.evaluate(() => scrollY), 0, 'Desktop navigation cannot scroll the page');
@@ -264,13 +267,13 @@ try {
           assert.equal(await sidebar.evaluate(node => node.scrollTop), previousScroll, 'Visible menu navigation preserves sidebar scroll');
         }
       }
-      await sidebar.getByRole('button', { name: 'Home', exact: true }).click();
+      await selectSection('Home');
       await content.locator('.home-view').waitFor({ state: 'visible' });
       await page.evaluate(() => document.fonts.ready);
       await content.evaluate(node => { node.scrollTop = 180; });
       assert(await content.evaluate(node => node.scrollTop > 0), 'Long desktop content can scroll independently');
       const sidebarTop = await sidebar.evaluate(node => node.getBoundingClientRect().top);
-      await sidebar.getByRole('button', { name: lang === 'bm' ? 'Notifikasi' : 'Notifications', exact: true }).click();
+      await selectSection(lang === 'bm' ? 'Notifikasi' : 'Notifications');
       assert(Math.abs(await sidebar.evaluate(node => node.getBoundingClientRect().top) - sidebarTop) < 1, 'Content scroll cannot shift the sidebar');
       assert.equal(await content.evaluate(node => node.scrollTop), 0);
       await screenshot('sidebar-stable-empty-section');
