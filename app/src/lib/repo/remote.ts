@@ -14,6 +14,7 @@ import { isArtifact } from '@/lib/artifacts';
 import { RemoteRoutinesApi } from '@/lib/routines/api';
 import { nativeAuthorizationHeaders } from '@/lib/native';
 import type {
+  AccountDeletionRequested,
   BrowserCommand,
   BusinessBrowserState,
   Activity,
@@ -754,12 +755,19 @@ export class RemoteRepository implements Repository {
 
   reset = () => post('/api/state/reset');
 
-  async requestAccountDeletion(email: string): Promise<{ graceDays: number; routines: number }> {
-    const body = await call<{ graceDays: number; routines: number }>('/api/me', {
+  async requestAccountDeletion(email: string): Promise<AccountDeletionRequested> {
+    const body = await call<AccountDeletionRequested>('/api/me', {
       method: 'DELETE',
       body: JSON.stringify({ email }),
     });
-    return { graceDays: body.graceDays, routines: body.routines };
+    /* `noticeSent` is coerced rather than passed through: a worker on an
+       older release omits it, and `undefined` would read as "the email
+       failed" on a screen whose whole job is to say which happened. */
+    return {
+      graceDays: body.graceDays,
+      routines: body.routines,
+      noticeSent: body.noticeSent !== false,
+    };
   }
 }
 

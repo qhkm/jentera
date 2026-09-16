@@ -14,7 +14,21 @@ describe('DeleteAccount', () => {
     const confirm = screen.getByRole('button', { name: /delete permanently/i });
     expect(confirm).toBeDisabled();
 
-    await userEvent.type(screen.getByLabelText(/type your email/i), 'owner@example.com');
+    /* The gate is the whole confirmation, and jumping from empty straight
+       to exact never checked it: a prefix, a near-miss and a different
+       address must all leave the button disabled. */
+    const field = screen.getByLabelText(/type your email/i);
+    await userEvent.type(field, 'owner@exam');
+    expect(confirm).toBeDisabled();
+    await userEvent.clear(field);
+    await userEvent.type(field, 'owner@example.co');
+    expect(confirm).toBeDisabled();
+    await userEvent.clear(field);
+    await userEvent.type(field, 'someone.else@example.com');
+    expect(confirm).toBeDisabled();
+    await userEvent.clear(field);
+
+    await userEvent.type(field, 'owner@example.com');
     expect(confirm).toBeEnabled();
     await userEvent.click(confirm);
     expect(request).toHaveBeenCalledWith('owner@example.com');
@@ -29,6 +43,14 @@ describe('DeleteAccount', () => {
     await userEvent.type(screen.getByLabelText(/type your email/i), 'owner@example.com');
     await userEvent.click(screen.getByRole('button', { name: /delete permanently/i }));
     expect(await screen.findByText(/remove the other people/i)).toBeInTheDocument();
+  });
+
+  it('says so when the scheduled jobs could not be counted', async () => {
+    /* Silently omitting the line reads as "you have none", which is a
+       different statement from "we could not check". */
+    render(<DeleteAccount email="owner@example.com" onDelete={vi.fn()} routines={null} />);
+    await userEvent.click(screen.getByRole('button', { name: /delete my account/i }));
+    expect(screen.getByText(/could not check/i)).toBeInTheDocument();
   });
 
   it('does not show the routines line when nothing is scheduled', async () => {

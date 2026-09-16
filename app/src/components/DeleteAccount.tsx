@@ -17,8 +17,10 @@ interface Props {
       case- and whitespace-insensitively. */
   email: string;
   /** Scheduled jobs that will stop. Zero hides the line rather than
-      stating a false consequence. */
-  routines: number;
+      stating a false consequence; `null` means the count could not be
+      fetched, which is a different statement from "you have none" and is
+      said out loud rather than silently omitted. */
+  routines: number | null;
   onDelete: (email: string) => Promise<unknown>;
   /** Render the confirmation card straight away, skipping the toggle
       button — for a caller (the account menu) that already has its own
@@ -63,11 +65,13 @@ export default function DeleteAccount({ email, routines, onDelete, startOpen = f
       <ul className="mt-2 list-disc pl-5 text-text-secondary">
         <li>You are signed out on every device now.</li>
         <li>Your chats, files and business data are erased in {GRACE_DAYS} days.</li>
-        {routines > 0 && (
+        {routines === null ? (
+          <li>We could not check your scheduled jobs. Any you set up will stop.</li>
+        ) : routines > 0 ? (
           <li>
             {routines} scheduled {routines === 1 ? 'job' : 'jobs'} you set up will stop.
           </li>
-        )}
+        ) : null}
       </ul>
       <label className="mt-3 block" htmlFor="confirm-email">
         Type your email address to confirm
