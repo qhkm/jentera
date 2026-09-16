@@ -10,6 +10,32 @@ Production at 19:20 MYT on 12 September: 13 of 13 runtimes ready on
 classifier miss, push outbox clean, one business on the team plan, no open
 invitations.
 
+## Before the account-deletion worker deploy
+
+Both migrations must be applied **before** the worker that needs them, and in
+this order. Without 051 the minute cron throws on a missing
+`account_deletion_due()` every sixty seconds and `DELETE /api/me` answers 500;
+without 052 a staff purge calls a function that does not exist. The test
+harness applies `migrations/` wholesale, so nothing in CI notices either gap.
+
+```bash
+cd worker
+AISAR_NEON_OWNER_URL='postgresql://neondb_owner:...@.../neondb?sslmode=require' \
+  pnpm db:migrate:account-deletion        # 051, first
+AISAR_NEON_OWNER_URL='postgresql://neondb_owner:...@.../neondb?sslmode=require' \
+  pnpm db:migrate:delete-member-routines  # 052, second
+```
+
+Each runs its migration transactionally against the reviewed owner target and
+verifies the objects it created before committing: 051 the table, index,
+`deleted_at` columns, grants and both definers; 052 the definer, its execute
+grant, and that `delete` on `routine` is still revoked from `aisar_app` — the
+premise the function exists for.
+
+| Item | Why | Done when |
+|---|---|---|
+| Apply 051 then 052 to production | The worker deploy is broken without them, and nothing in the suite catches it | Both scripts print `{"ok":true,...}`; `/api/health` stays green and the minute cron logs no `account_deletion_due` error |
+
 ## Shipped, never exercised on production
 
 | Item | Why | Done when |
