@@ -54,6 +54,19 @@ const sessions: AskSession[] = [
 ];
 
 describe('workspace navigation', () => {
+  it('keeps the business identity as one keyboard-operable row without sidebar setup progress', async () => {
+    function Location() { return <output data-testid="location">{useLocation().search}</output>; }
+    await mount(<><Dashboard /><Location /></>);
+    const sidebar = await sidebarQueries();
+    const profile = sidebar.getByRole('button', { name: 'Open your business profile' });
+    expect(within(profile).getByText('Kedai Kita')).toBeInTheDocument();
+    expect(within(profile).getByText('Shah Alam')).toBeInTheDocument();
+    expect(sidebar.queryByRole('progressbar')).toBeNull();
+    expect(sidebar.queryByText('Setup progress')).toBeNull();
+    profile.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByTestId('location')).toHaveTextContent('view=business&tab=profile');
+  });
   it('groups every existing desktop destination once under Overview, Work and Workspace', async () => {
     await mount(<Dashboard />);
     const sidebar = await sidebarQueries();
@@ -118,6 +131,7 @@ describe('workspace navigation', () => {
     expect(within(work).queryByRole('button', { name: 'Goals' })).toBeNull();
     expect(repo.goals).not.toHaveBeenCalled();
     expect(routines.list).not.toHaveBeenCalled();
+    expect((await sidebarQueries()).queryByRole('progressbar')).toBeNull();
   });
   it('exposes the selected mode and only shows a real attention count', async () => {
     const change = vi.fn();

@@ -216,6 +216,17 @@ try {
       const workNames = await workGroup.getByRole('button').allInnerTexts();
       assert.deepEqual(workNames, lang === 'bm' ? ['Aktiviti', 'Rutin', 'Matlamat'] : ['Activity', 'Routines', 'Goals']);
       assert.equal(await sidebar.locator('.dashboard-nav-item').count(), 8);
+      await page.evaluate(() => document.fonts.ready);
+      const density = await sidebar.evaluate(node => ({
+        gap: parseFloat(getComputedStyle(node).gap),
+        sectionGap: parseFloat(getComputedStyle(node.querySelector('.dashboard-sidebar-nav')).gap),
+        profileHeight: node.querySelector('.dashboard-profile').getBoundingClientRect().height,
+        rows: [...node.querySelectorAll('.dashboard-nav-item')].map(button => button.getBoundingClientRect().height),
+      }));
+      assert(density.gap <= 14 && density.sectionGap <= 10, 'Sidebar sections should remain compact');
+      assert(density.profileHeight >= 44 && density.profileHeight <= 64, 'Business identity should be a compact, accessible row');
+      assert.equal(await sidebar.getByRole('progressbar').count(), 0, 'Setup progress belongs outside the navigation');
+      assert(density.rows.every(height => height >= 44 && height <= 45), 'Compact rows retain 44px accessible targets');
       await screenshot('sidebar-sections');
       const last = sidebar.locator('.dashboard-nav-item').last();
       await last.focus();
@@ -224,7 +235,7 @@ try {
         const sidebarBounds = node.closest('.dashboard-sidebar').getBoundingClientRect();
         return bounds.top >= sidebarBounds.top && bounds.bottom <= sidebarBounds.bottom && bounds.bottom <= innerHeight;
       }), 'Last sidebar destination must remain reachable on a short screen');
-      if (height <= 640) assert(await sidebar.evaluate(node => node.scrollHeight > node.clientHeight && getComputedStyle(node).overflowY === 'auto'));
+      if (height <= 640) assert(await sidebar.evaluate(node => getComputedStyle(node).overflowY === 'auto'), 'Short sidebars can scroll whenever content needs it');
       await screenshot('sidebar-scroll-end');
       const library = sidebar.getByRole('button', { name: lang === 'bm' ? 'Pustaka' : 'Library', exact: true });
       await library.focus();

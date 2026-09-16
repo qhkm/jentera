@@ -16,9 +16,9 @@
 }
 .dashboard-shell .workspace-layout { gap: 24px; }
 .dashboard-shell:not(.workspace-chat) > main { padding-top: 24px; }
-.dashboard-shell .dashboard-sidebar { gap: 20px; }
-.dashboard-shell .dashboard-profile { padding: 16px 14px; }
-.dashboard-shell .dashboard-nav-item { min-height: 44px; padding-block: 8px; }
+.dashboard-shell .dashboard-sidebar { gap: 14px; }
+.dashboard-shell .dashboard-nav-item { min-height: 44px; padding: 8px 12px; border-radius: 10px; }
+.dashboard-shell .dashboard-sidebar-note { font-size: var(--workspace-caption); line-height: 1.4; }
 .dashboard-shell :is(.home-view, .home-overview) { gap: 16px; }
 .dashboard-shell :is(.dashboard-content > .flex.flex-col, .routines-view, .task-detail) { gap: var(--workspace-section-gap); }
 

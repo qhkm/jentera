@@ -96,7 +96,7 @@
 }
 
 /* Surface value provides the card boundary; dividers remain hairlines. */
-.dashboard-shell :is(.dashboard-profile, .daily-brief, .home-ask-launcher, .home-notice, .business-identity:not(.business-identity-compact)) {
+.dashboard-shell :is(.daily-brief, .home-ask-launcher, .home-notice, .business-identity:not(.business-identity-compact)) {
   border-color: var(--border);
   border-radius: var(--radius-card);
   background: var(--bg-card);

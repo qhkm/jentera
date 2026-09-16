@@ -13,15 +13,15 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
+import { ArrowRight } from '@phosphor-icons/react';
 import { Shell } from '@/components/Shell';
 import { WorkspaceModeSwitch, type WorkspaceMode } from '@/components/WorkspaceModeSwitch';
-import { Avatar, Card, Eyebrow, Progress, Tag } from '@/components/ui';
+import { Avatar, Tag } from '@/components/ui';
 import { useBusiness } from '@/hooks/useBusiness';
 import { useActivity } from '@/hooks/useActivity';
 import { useConnections } from '@/hooks/useConnections';
-import { useRepository, useSnapshot } from '@/lib/repo';
+import { useRepository } from '@/lib/repo';
 import { useRoutinesEnabled, useSignedIn } from '@/lib/repo/gate';
-import { milestones, readiness } from '@/lib/business';
 import { useT } from '@/i18n/I18nProvider';
 import { Icon, type IconName } from '@/components/Icon';
 import { useVisualViewport } from '@/hooks/useVisualViewport';
@@ -111,7 +111,6 @@ export default function Dashboard() {
      describe the same server answer. Keeping the request here also lets a
      pending Telegram pairing clear while the owner moves between views. */
   const connections = useConnections();
-  const snap = useSnapshot();
   const demo = activity.mode === 'demo';
   const needsAttention = activity.real
     ? activity.data!.counters.needsYou
@@ -127,13 +126,6 @@ export default function Dashboard() {
     [business.work, b],
   );
   const handled = activity.real ? activity.data!.counters.handled : demo ? playbookHandled : 0;
-
-  /* Milestones, not a projection: knows something, can reach someone,
-     has done something. All three are checkable and all three move. */
-  const done = activity.real ? activity.data!.counters.handled : 0;
-  const linked = activity.real ? activity.data!.counters.connections : 0;
-  const ready = readiness(snap, done, linked);
-  const nextStep = milestones(snap, done, linked).find((m) => !m.done);
 
   useEffect(() => {
     if (trackedOpen.current) return;
@@ -196,49 +188,19 @@ export default function Dashboard() {
   }
 
   const profile = (
-    <Card className="dashboard-profile gap-2">
-      <button
-        type="button"
-        className="flex items-center gap-3 text-left"
-        onClick={() => go('business')}
-        aria-label={t('home.profile.open')}
-      >
-        <Avatar emoji={business.icon} />
-        <div className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-semibold">{business.name}</span>
-          <span className="truncate text-[11px] text-text-muted">{business.loc}</span>
-        </div>
-      </button>
-      {/* Real progress for a real business; the playbook's projection
-          for the demo. "Jentera can handle 82%" was the same number for
-          every business of a type and moved for nobody — precise,
-          prominent, and untethered to anything the owner had done. */}
-      {activity.mode !== 'demo' ? (
-        <div className="flex flex-col gap-2 border-t border-rail pt-3">
-          <div className="flex items-center justify-between">
-            <Eyebrow>{t('side.ready')}</Eyebrow>
-            <span className="font-pixel text-sm tabular-nums text-brand">
-              {activity.real ? `${ready}%` : '—'}
-            </span>
-          </div>
-          <Progress value={activity.real ? ready : 0} label={t('side.ready')} />
-          <span className="text-[11px] text-text-muted">
-            {!activity.real ? '\u00a0' : nextStep ? t(`ms.${nextStep.key}`) : t('ms.alldone')}
-          </span>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2 border-t border-rail pt-3">
-          <div className="flex items-center justify-between">
-            <Eyebrow>{t('side.potential')}</Eyebrow>
-            <span className="font-pixel text-sm tabular-nums text-brand">{b.potential}%</span>
-          </div>
-          <Progress value={b.potential} label={t('side.potential')} />
-          <span className="text-[11px] text-text-muted">
-            {t('pot.txt').replace('{n}', String(business.opportunities))}
-          </span>
-        </div>
-      )}
-    </Card>
+    <button
+      type="button"
+      className="dashboard-profile"
+      onClick={() => go('business', 'profile')}
+      aria-label={t('home.profile.open')}
+    >
+      <Avatar emoji={business.icon} />
+      <span className="dashboard-profile-details">
+        <span className="dashboard-profile-name" title={business.name}>{business.name}</span>
+        <span className="dashboard-profile-location" title={business.loc}>{business.loc}</span>
+      </span>
+      <ArrowRight className="dashboard-profile-arrow" size={14} aria-hidden="true" />
+    </button>
   );
 
   const [computerStatusTarget, setComputerStatusTarget] = useState<HTMLDivElement | null>(null);
