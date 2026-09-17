@@ -42,6 +42,8 @@ invitations.
 | Classifier detail | A few days after 12 Sep | `run_event` where `type = 'outcome.observed'` and `payload->>'observed' = 'classifier_unavailable'`; read the `uncertaintyDetail` split (timeout, unparseable, error). Retry landed 12 Sep |
 | Flaky app test `activity-mode` | When it fails again | Not blocking; record the failure mode before fixing |
 | Reply latency re-measure | Before quoting any number | `worker/scripts/reply-latency.sh`; `docs/reply-latency.md` carries the dated figures |
+| **`STAGE:install` exhausts intermittently** | Next time a provision or upgrade exhausts | 12 upgrade tasks across 10 businesses exhausted at attempt 8 on 16 Sep 00:52-00:59 (`pinned Hermes dependencies (nanoid, undici, postcss, react-router…)`, and a Playwright `fallback build for ubuntu24.04-x64`); one provision exhausted the same way on 17 Sep 17:51 and then succeeded unattended at 18:00. It is flaky, not broken — which makes it the fleet's most common failure point, not just its slowest stage. `select (created_at at time zone 'Asia/Kuala_Lumpur')::date, kind, count(*) from runtime_task where status='exhausted' and last_error like '%STAGE:install%' group by 1,2`. The fix is [serving the bootstrap's bytes ourselves](plans/2026-09-17-prebuilt-bootstrap-bytes.md) |
+| **Asks that fail before Hermes starts** | If it recurs outside a bad release | Five `owner.ask` runs on Kitakod Ventures failed 15 Sep 16:28-18:16 with `runtime task exceeded its time limit before Hermes started`, attempt 5, no `work.started` event — the sprite could not come up, hours before the 16 Sep upgrade failures above. Nothing was spent on tokens; the elapsed time was retry backoff. Related to the row above, and expected to disappear with it |
 
 ## Owner-side
 
@@ -67,6 +69,31 @@ Decided on 12 September to wait for a request before building. Reasoning in
 
 - Mini apps, starting with Receipts & Expenses:
   `docs/plans/2026-09-12-mini-apps.md`. Planning only, no code.
+
+### Post-launch: Grok Bot-inspired improvements
+
+Decision: 17 September 2026 — launch the current product first. These are
+post-launch backlog items, not launch requirements or approval to implement,
+deploy, enable new access, or restore deferred external triggers. Build on the
+existing memory, approvals, browser handoffs, file previews and routines rather
+than replacing them or adding an agent-management burden for business owners.
+Grok Bot's published capabilities are references, not independently benchmarked
+speed or reliability claims.
+
+| Priority | Item | Why | Done when |
+|---|---|---|---|
+| 1 | Investigate chat startup delay | Owner reported roughly 30 seconds before visible agent activity; clearer progress alone does not reduce execution latency | Measure intake, queue, runtime wake and first meaningful activity separately; record dated findings in `docs/reply-latency.md`, then verify any fix against that baseline. Progress reflects actual execution, not simulated thinking |
+| 2 | “Repeat this task” from completed chat work | Convert a useful first result into a recurring business workflow | Eligible completed tasks offer a prefilled routine draft with inputs, expected result, schedule, time zone, access requirements and approval boundaries; owner reviews and explicitly confirms activation. Provide a test run with safe inputs, next run, history and pause control |
+| 3 | Deliverable-first results and blocked-task recovery | Make completed work easier to inspect and make failures actionable | Results lead with the actual file or output, a concise summary and unresolved work; blocked tasks explain the reason and offer the appropriate connection, browser handoff or safe continuation. Reuse file previews and recovery cards; retries preserve task context and avoid duplicate external actions |
+| 4 | “Show Jentera how” workflow teaching | Let owners demonstrate repetitive browser work instead of describing every click | Demonstration produces a reviewable draft procedure with validation, failure handling and approval boundaries; credential-entry steps are excluded from recording, storage and model context. Owner tests with safe inputs before explicitly enabling any schedule |
+| 5 | Optional desktop companion / network routing pilot | Reach approved local resources when cloud connectors are insufficient | Resolve pairing, signed updates, destination/operation allowlists, prompt-injection boundaries, visible controls and immediate revocation before a read-only pilot. Network routing is distinct from local browser/computer control; obtain explicit permission for each capability, expose no inbound ports and keep cloud use independent of installation. No promise to bypass site restrictions; start from `docs/plans/2026-09-11-local-driver.md` |
+| Later | Revisit event-triggered work | Start a narrowly scoped routine from an authorized business event | Make a separate post-launch scope decision and review the archived design and security gates in `future/external-triggers/README.md`; keep the launch exclusion intact until then |
+
+References: [skills, teaching and routines](https://docs.x.ai/grok-bot/skills-routines-and-automations),
+[progress and computer-view design](https://x.ai/news/designing-grok-bot),
+[files and results](https://docs.x.ai/grok-bot/files-and-results),
+[desktop traffic routing](https://docs.x.ai/grok-bot/settings-and-notifications),
+[approvals and sensitive-step handoffs](https://docs.x.ai/grok-bot/approvals-security-and-privacy).
 
 ## Closed
 

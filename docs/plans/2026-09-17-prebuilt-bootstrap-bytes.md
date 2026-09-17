@@ -17,6 +17,33 @@ downloads from third parties that every sprite repeats**:
 Everything else — `npm` 11 s, `configure` 7 s, `smokes` 35 s — is 53 s
 together.
 
+## It is also the fleet's most common failure point
+
+Measured 17 September 2026, and this is the stronger argument:
+
+- **16 Sep 00:52-00:59 — 12 upgrade tasks across 10 businesses exhausted** at
+  attempt 8. Two errors, both inside `install`: `pinned Hermes dependencies
+  (nanoid, undici, postcss, react-router…)`, and Playwright reporting the host
+  is "not officially supported… downloading fallback build for
+  ubuntu24.04-x64".
+- **17 Sep 17:51 — a provision exhausted the same way**, then succeeded
+  unattended at 18:00 and reached `ready` on `2026.09.17-4`.
+- **15 Sep 16:28-18:16 — five `owner.ask` runs failed** on Kitakod Ventures
+  with `runtime task exceeded its time limit before Hermes started`, no
+  `work.started` event at all, hours before the upgrade failures above. The
+  sprite could not come up, so the asks never reached it.
+
+It exhausts eight attempts and then works minutes later, which is the
+signature of an upstream fetch being briefly unavailable rather than anything
+wrong on the sprite. That is what a `git clone` from GitHub plus a Chromium
+download from Playwright's CDN buys: two third parties that both have to be up
+at the moment a customer signs up, on the one stage that is 60% of the wall
+clock.
+
+So the case is not only that `install` is slow. **It is the stage that fails.**
+Prebuilt bytes in R2 replace two external dependencies with one we control and
+already depend on for artifacts.
+
 The durable fix is Fly's: fork a bootstrapped template per release, leaving
 only `configure` and the smokes. That needs the Sprites Block Device, which
 was in private beta as of 10 September and is not exposed through the API.
