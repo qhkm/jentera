@@ -5,6 +5,33 @@ channels answer the way they do, where the seconds go, and what has been
 tried. Numbers here are dated and come from `worker/scripts/reply-latency.sh`;
 re-run it before trusting them.
 
+## Reading the numbers without fooling yourself
+
+Three traps, each of which has produced a confident wrong answer here.
+
+**A window that spans a config change is two populations, not one.** `run.model`
+is a snapshot of what executed that run, kept deliberately so history stays
+truthful after a routing change. Group fourteen days by `model` and you get
+`deepseek-v4-flash` beside `deepseek-flash` and it reads as two models with
+different speeds; they are the same upstream model either side of the
+2026-09-13 switch to the direct DeepSeek route. A comparison built on that
+said one was twice as fast as the other. Before grouping by `model`, `runtime`
+or anything else configured in `wrangler.toml`, check when that value last
+changed — `select model, max(created_at) ... group by model` answers it in one
+query.
+
+**A p50 over a whole window hides the shape.** Ask latency by day over three
+weeks ranges from 9.6 s to 63.6 s on eight to forty-six runs a day. Any two
+windows you choose will differ, and neither difference means anything. One day
+in that range was dragged entirely by five failed runs on a single account.
+
+**Reply time tracks tool calls, not the model.** Measured 2026-09-17: time from
+`work.started` to the first `agent.tool` event is flat at 5-9 s every day,
+while median tool calls per run swings 0 to 4 and the daily p50 follows it —
+zero tools ≈ 10-20 s, two ≈ 45 s, four ≈ 51 s. A question that needs the web
+is slower because it does more, and that is the answer to most "why was this
+one slow" questions before any infrastructure is suspected.
+
 ## The path a message takes
 
 Both channels end up on the same durable path. Only the first step differs.
