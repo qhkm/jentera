@@ -1,8 +1,9 @@
 # Jentera Computer: Sprites vs dedicated VMs
 
-Recorded: 10 September 2026.
+Recorded: 10 September 2026. E2B added as a third option 17 September 2026.
 Status: retain Sprites as the current default; a dedicated-VM pilot is proposed,
-not provisioned or approved for fleet migration.
+not provisioned or approved for fleet migration; E2B is not recommended at
+current scale and carries a dated revisit trigger.
 
 ## Recommendation
 
@@ -10,6 +11,12 @@ Keep one Fly Sprite per business for the current intermittent chat and task
 workload. Evaluate an Alibaba 4 GB VM for sustained browser work, frequent human
 takeover, or another measured requirement that justifies an always-on computer.
 Do not switch the fleet based on the entry-level VM price alone.
+
+**E2B is the third option and the answer is the same: not now.** It solves the
+two things Fly cannot — a custom base image, and a resume that restores process
+memory rather than restarting Hermes — but its $150/month floor costs roughly
+4x what the fleet spends today, and it would replace the whole runtime layer.
+See *E2B* below for the numbers and the revisit trigger.
 
 The product principle remains **one company, one computer, many logical workers**.
 It does not require a particular compute provider, a VM per worker, or a shared
@@ -165,6 +172,108 @@ later. Compare both marginal cost and the allocated subscription fee across
 the fleet; do not count included usage as permanently free. A fixed VM becomes
 attractive at sustained use, but neither threshold proves migration saves money
 after operating costs or differences in throughput.
+
+## E2B
+
+Checked 17 September 2026 against E2B's own docs and pricing page.
+
+### What it has that Sprites does not
+
+**Custom templates from a Dockerfile.** `e2b template build`; first build 5-15
+minutes, incremental rebuilds 1-3. Hermes and Chromium would be *in the image*,
+so the 257 s of clone-and-download that dominates a cold provision
+([`provisioning-time.md`](provisioning-time.md)) stops existing rather than
+getting faster. Fly has said custom base images are not supported and are not
+planned — "build up your base, then fork off of it" — and forking is still not
+in the public API.
+
+**Pause and resume that preserve memory, not just disk.** Both the filesystem
+and the memory state are saved: running processes, loaded variables. Resume is
+about a second; pausing costs roughly 4 s per GiB of RAM. A paused sandbox is
+kept indefinitely — no TTL, no automatic deletion — and must be killed
+explicitly.
+
+That second property would remove a latency cost this repo has already
+measured. Today a cold sprite wakes in 1-2 s and *then Hermes restarts*, which
+is the 15-30 s an owner feels on the first message after a gap
+([`reply-latency.md`](reply-latency.md)). A resume from a memory snapshot has
+no restart to pay for.
+
+### Rates
+
+| | Sprites | E2B |
+|---|---:|---:|
+| CPU | $0.07 / CPU-hour | $0.0504 / vCPU-hour |
+| Memory | $0.04375 / GB-hour | $0.0162 / GiB-hour |
+| Storage | $0.000683 / GB-hour hot | included (20 GiB on Pro) |
+| Subscription floor | none | **$150 / month (Pro)** |
+| Concurrency | 100 since the Hero upgrade | 100 on Pro; 600 and 1,100 as add-ons |
+| Maximum session | none | **24 hours on Pro** (1 hour on Hobby) |
+
+On the same illustrative shape this document uses elsewhere — 0.2 CPU, 2 GB
+RAM, 5 GB hot storage — a Sprite is **$0.104915** per active hour and E2B is
+**$0.0425**. E2B's compute is about 2.5x cheaper per hour. The floor is what
+decides it below scale.
+
+### Against measured load
+
+Production on 17 September 2026: **34 businesses, 30 users, 22 runtimes**, of
+which **13 ran anything in the last 7 days** and 17 in the last 30. Those 13
+produced 220 runs landing in 83 distinct business-hours — about **357 active
+hours a month** fleet-wide.
+
+| | Monthly |
+|---|---:|
+| Sprites, 357 active hours | **~$37.60** |
+| E2B, 357 active hours | $15.17 usage + $150 floor = **~$165** |
+
+Break-even against Sprites:
+
+```text
+0.104915 H = 150 + 0.0425 H
+     H = 150 / 0.062415
+       = about 2,400 active hours/month
+```
+
+At the current rate of roughly 27 active hours per active business per month,
+that is **about 88 businesses actually using the product weekly** — not 88
+signed up. Today's 13 active is a factor of 6.8 away, and the 21 dormant
+businesses cost close to nothing on Sprites while they would sit behind E2B's
+floor regardless.
+
+Note the direction past that point: E2B's compute being 2.5x cheaper means it
+gets *cheaper than Sprites* once the floor amortises, so this is a scale
+threshold rather than a rejection.
+
+### What migration would cost
+
+The `RuntimeProvider` contract maps onto E2B reasonably — create, wake, stop,
+status, checkpoint, restore and destroy have counterparts, with pause/resume
+standing in for checkpoint/restore. Everything around it does not.
+`bootstrap-runtime.sh`, the closed transfer-field allowlist it parses,
+`ship-runtime.sh`, the pinned-bundle release model, checkpoint handling and
+`fleet-verify.sh` are all shaped by Sprites. A template image replaces the
+bootstrap rather than porting it — which is the point of moving, and also why
+this is a rewrite of the runtime layer rather than a provider swap.
+
+**Unverified, and it matters:** E2B's region control and data residency were
+not confirmed. Fly gives ap-southeast-1. Under PDPA that is a question to
+answer before a pilot, not after.
+
+### Revisit trigger
+
+Two conditions, either one:
+
+1. Signups are visibly waiting on the 285-325 s cold provision.
+2. Weekly-active businesses approach ~80.
+
+Until then the useful thing E2B proves is that the template model works, which
+is the argument for
+[serving the bootstrap's bytes ourselves](plans/2026-09-17-prebuilt-bootstrap-bytes.md)
+— the same idea without the migration.
+
+Sources: [E2B persistence](https://docs.e2b.dev/sandbox/persistence),
+[E2B pricing](https://e2b.dev/pricing), [E2B templates](https://docs.e2b.dev/sandbox-template).
 
 ## Proposed pilot and decision gate
 
