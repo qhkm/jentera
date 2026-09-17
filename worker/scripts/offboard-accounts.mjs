@@ -8,7 +8,10 @@ const arrayParameter = values => '{' + values.map(value => '"' + value.replaceAl
 /** Exact, reviewed operator targets only. Does not erase businesses, VMs,
  * files, billing evidence or task results. Requires a verified backup before
  * deletion. Unsupported dependencies fail closed rather than cascading data. */
-export async function offboardAccounts(sql, targets, backup) {
+export async function offboardAccounts(sql, targets, backup, options = {}) {
+  const mode = options.mode ?? 'block';
+  assert.ok(mode === 'block' || mode === 'reset-for-testing', 'Explicit supported removal mode required');
+  const reset = mode === 'reset-for-testing';
   assert.ok(Array.isArray(targets) && targets.length > 0 && targets.length <= 10, 'Explicit targets required');
   assert.equal(typeof backup, 'function', 'Verified backup callback required');
   assert.equal(new Set(targets.map(target => target.id)).size, targets.length, 'Duplicate target');
@@ -38,6 +41,27 @@ export async function offboardAccounts(sql, targets, backup) {
     const identities = await tx`select * from oauth_identity where user_id = any(${ids}::uuid[])`;
     const sessions = await tx`select * from session where user_id = any(${ids}::uuid[])`;
 
+    if (reset) {
+      // A testing reset is not an unblock operation and must never silently
+      // erase billing evidence or detach a real subscription from its payer.
+      const [billing] = await tx`select count(*)::int as count from business
+        where id=any(${businesses}::uuid[]) and (plan <> 'free' or
+          stripe_customer_id is not null or stripe_subscription_id is not null)`;
+      assert.equal(billing.count, 0, 'Stripe or paid workspace requires billing offboarding review');
+      for (const table of ['billing_checkout', 'billing_payment', 'billing_appreciation_outbox']) {
+        const [evidence] = await tx.unsafe(`select count(*)::int as count from public.${identifier(table)} where business_id=any($1::uuid[])`, [businesses]);
+        assert.equal(evidence.count, 0, 'Billing evidence requires separate offboarding review');
+      }
+      const [work] = await tx`select count(*)::int as count from runtime_task
+        where business_id=any(${businesses}::uuid[]) and status in ('queued','leased','waiting')`;
+      assert.equal(work.count, 0, 'Active runtime work requires separate offboarding review');
+      for (const identity of identities) {
+        const blocks = await tx`select 1 from account_identity_block
+          where provider=${identity.provider} and subject=${identity.subject}`;
+        assert.equal(blocks.length, 0, 'Existing identity block requires separate unblock review');
+      }
+    }
+
     const references = await tx`select n.nspname as schema, c.relname as table, a.attname as column,
         k.confdeltype as on_delete, array_length(k.conkey,1) as columns from pg_constraint k
       join pg_class c on c.oid=k.conrelid join pg_namespace n on n.oid=c.relnamespace
@@ -45,6 +69,10 @@ export async function offboardAccounts(sql, targets, backup) {
       where k.confrelid='public.app_user'::regclass and k.contype='f'`;
     const allowed = new Set(['public.membership.user_id', 'public.oauth_identity.user_id', 'public.session.user_id',
       'public.chat_preview_account.user_id', 'public.business_fact.confirmed_by', 'public.run.requested_by']);
+    if (reset) {
+      allowed.add('public.chat_session.created_by');
+      allowed.add('public.connection.connected_by');
+    }
     for (const ref of references) {
       assert.equal(ref.columns, 1, 'Composite dependency requires separate offboarding review');
       const path = `${ref.schema}.${ref.table}.${ref.column}`;
@@ -54,34 +82,61 @@ export async function offboardAccounts(sql, targets, backup) {
     const previews = await tx`select * from chat_preview_account where user_id = any(${ids}::uuid[])`;
     const previewRequests = await tx`select * from chat_preview_request where user_id = any(${ids}::uuid[])`;
     const facts = await tx`select id, confirmed_by from business_fact where confirmed_by = any(${ids}::uuid[])`;
-    const runs = await tx`select id, requested_by from run where requested_by = any(${ids}::uuid[])`;
+    const runs = await tx`select id, requested_by, session_id from run where requested_by = any(${ids}::uuid[])`;
+    const chats = reset ? await tx`select * from chat_session where created_by=any(${ids}::uuid[])` : [];
+    const chatRuns = reset ? await tx`select id,business_id,session_id from run where (business_id,session_id) in
+      (select business_id,id from chat_session where created_by=any(${ids}::uuid[]))` : [];
+    const connections = reset ? await tx`select * from connection where connected_by=any(${ids}::uuid[])` : [];
     const canonicalEmails = await tx`select public.canonical_account_email(address) as email
       from unnest(${arrayParameter(targets.map(target => target.email))}::text[]) as address`;
     const emails = arrayParameter(canonicalEmails.map(row => row.email));
     assert.ok(!canonicalEmails.some(row => row.email === OWNER_EMAIL), 'Protected operator account');
+    if (reset) {
+      const blocks = await tx`select 1 from account_block where email=any(${emails}::text[])`;
+      assert.equal(blocks.length, 0, 'Existing account block requires separate unblock review');
+    }
     const logins = await tx`select * from login_token where public.canonical_account_email(email::text)=any(${emails}::text[])`;
     const waitlist = await tx`select * from waitlist_entry where public.canonical_account_email(email)=any(${emails}::text[])`;
     const grants = await tx`select * from platform_access where public.canonical_account_email(email)=any(${emails}::text[])`;
-    assert.ok(grants.every(grant => grant.kind !== 'paid'), 'Paid grant requires billing offboarding review');
-    const recovery = await backup({ users, memberships, identities, sessions, previews, previewRequests, facts, runs, logins, waitlist, grants });
+    assert.ok(reset || grants.every(grant => grant.kind !== 'paid'), 'Paid grant requires billing offboarding review');
+    const recovery = await backup({ users, memberships, identities, sessions, previews, previewRequests, facts, runs, chats, chatRuns, connections, logins, waitlist, grants });
     assert.ok(recovery?.verified === true, 'Backup must be verified before deletion');
 
-    for (const target of targets) await tx`insert into account_block(email)
-      values(public.canonical_account_email(${target.email})) on conflict(email) do nothing`;
-    for (const identity of identities) await tx`insert into account_identity_block(provider, subject)
-      values(${identity.provider}, ${identity.subject}) on conflict(provider,subject) do nothing`;
+    if (!reset) {
+      for (const target of targets) await tx`insert into account_block(email)
+        values(public.canonical_account_email(${target.email})) on conflict(email) do nothing`;
+      for (const identity of identities) await tx`insert into account_identity_block(provider, subject)
+        values(${identity.provider}, ${identity.subject}) on conflict(provider,subject) do nothing`;
+    }
+    if (reset) {
+      // Retain completed run evidence, but remove private chat identities and
+      // disable the departed test owner's connector intake. No external files,
+      // Sprites, keys, inventory tombstones or billing records are erased.
+      await tx`update run set session_id=null where (business_id,session_id) in
+        (select business_id,id from chat_session where created_by=any(${ids}::uuid[]))`;
+      await tx`update connection set connected_by=null,status='revoked'
+        where connected_by=any(${ids}::uuid[])`;
+    }
     await tx`delete from chat_preview_request where user_id = any(${ids}::uuid[])`;
     await tx`delete from chat_preview_account where user_id = any(${ids}::uuid[])`;
     await tx`delete from login_token where public.canonical_account_email(email::text)=any(${emails}::text[])`;
     await tx`delete from waitlist_entry where public.canonical_account_email(email)=any(${emails}::text[])`;
-    await tx`update platform_access set revoked_at=now() where public.canonical_account_email(email)=any(${emails}::text[])`;
+    if (reset) {
+      // An expired/revoked grant intentionally excludes the ordinary preview.
+      // For a reviewed, unbilled test reset, remove that legacy gate entirely
+      // after backing it up so fresh verified signup receives the normal 10.
+      await tx`delete from platform_access where public.canonical_account_email(email)=any(${emails}::text[])`;
+    } else {
+      await tx`update platform_access set revoked_at=now() where public.canonical_account_email(email)=any(${emails}::text[])`;
+    }
     await tx`update business_fact set confirmed_by=null where confirmed_by = any(${ids}::uuid[])`;
     await tx`update run set requested_by=null where requested_by = any(${ids}::uuid[])`;
     const removed = await tx`delete from app_user where id = any(${ids}::uuid[]) returning id`;
     assert.equal(removed.length, targets.length, 'Removal verification failed');
     const [remaining] = await tx`select count(*)::int as count from app_user where id = any(${ids}::uuid[])`;
     assert.equal(remaining.count, 0, 'Account records remain');
-    return { removed: removed.length, revokedSessions: sessions.length, blockedIdentities: identities.length,
+    return { removed: removed.length, revokedSessions: sessions.length, blockedIdentities: reset ? 0 : identities.length,
+      registrationBlocked: !reset, disconnectedConnections: connections.length,
       removedPreviewLedgers: previews.length, preservedFacts: facts.length, preservedRuns: runs.length, recovery: recovery.path ?? null };
   });
 }

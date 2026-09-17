@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { asApp, asOwner, testEnv, truncateAll } from './harness';
-import { consumeLoginToken, issueLoginToken, signInWithGoogle, signUpWithPassword } from '../src/auth';
+import { accessForEmail } from '../src/access';
+import { authLandingPath, consumeLoginToken, issueLoginToken, signInWithGoogle, signUpWithPassword, verifySession } from '../src/auth';
 // @ts-expect-error Operator tooling is JavaScript, tested against real Postgres.
 import { offboardAccounts } from '../scripts/offboard-accounts.mjs';
 
@@ -93,4 +94,89 @@ it('requires an exact target and verified backup, then removes auth while preser
     expect((await sql`select confirmed_by from business_fact`)).toMatchObject([{ confirmed_by: null }]);
     expect((await sql`select requested_by,status from run`)).toMatchObject([{ requested_by: null, status: 'completed' }]);
   });
+});
+
+async function resetFixture() {
+  const session = await signInWithGoogle(env, { subject: 'reset-subject', email: 'reset@example.com', name: 'Reset' });
+  const businessId = '22222222-2222-4222-8222-222222222222';
+  await asOwner(async sql => {
+    await sql`insert into business(id,name,playbook_key) values(${businessId},'Private reset fixture','generic')`;
+    await sql`insert into membership(user_id,business_id,role) values(${session.userId},${businessId},'owner')`;
+  });
+  return { session, businessId, targets: [{ id: session.userId, email: session.email }] };
+}
+
+it('explicit test reset permits fresh verified signup without reusing old workspace, results or quota', async () => {
+  const { session, businessId, targets } = await resetFixture();
+  const chatId = '33333333-3333-4333-8333-333333333333';
+  await asOwner(async sql => {
+    await sql`insert into platform_access(email,kind,note) values(${session.email},'paid','Internal test allowlist, not a payment')`;
+    await sql`insert into chat_preview_account(user_id,requests_used) values(${session.userId},10)`;
+    await sql`insert into chat_session(id,business_id,created_by) values(${chatId},${businessId},${session.userId})`;
+    await sql`insert into run(business_id,kind,status,trigger_shape,runtime,requested_by,session_id)
+      values(${businessId},'task','completed','chat','test',${session.userId},${chatId})`;
+    await sql`insert into connection(business_id,connector,method,status,connected_by)
+      values(${businessId},'google_calendar','oauth','connected',${session.userId})`;
+  });
+  const backup = vi.fn(async (_snapshot: unknown) => ({ verified: true, path: 'encrypted-test-backup' }));
+  const result = await asOwner(sql => offboardAccounts(sql, targets, backup, { mode: 'reset-for-testing' }));
+  expect(result).toMatchObject({ removed: 1, registrationBlocked: false, blockedIdentities: 0, disconnectedConnections: 1 });
+  expect(backup.mock.calls[0][0]).toMatchObject({ chats: [{ id: chatId }], chatRuns: [{ session_id: chatId }], connections: [{ status: 'connected' }] });
+  expect(await verifySession(env, session.token)).toBeNull();
+  const fresh = await signInWithGoogle(env, { subject: 'reset-subject', email: session.email, name: 'Reset' });
+  expect(fresh.created).toBe(true);
+  expect(fresh.userId).not.toBe(session.userId);
+  expect(await authLandingPath(env, fresh.userId)).toBe('/onboard');
+  expect((await issueLoginToken(env, session.email)).token).not.toBeNull();
+  await asOwner(async sql => {
+    expect((await sql`select id from business where id=${businessId}`)).toHaveLength(1);
+    expect((await sql`select requested_by,session_id,status from run where business_id=${businessId}`))
+      .toMatchObject([{ requested_by: null, session_id: null, status: 'completed' }]);
+    expect((await sql`select connected_by,status from connection where business_id=${businessId}`))
+      .toMatchObject([{ connected_by: null, status: 'revoked' }]);
+    expect((await sql`select * from membership where user_id=${fresh.userId}`)).toHaveLength(0);
+    expect((await sql`select * from chat_preview_account where user_id=${fresh.userId}`)).toHaveLength(0);
+    expect((await sql`select * from account_block`)).toHaveLength(0);
+    expect((await sql`select * from account_identity_block`)).toHaveLength(0);
+    expect((await sql`select * from platform_access where email=${session.email}`)).toHaveLength(0);
+  });
+  expect(await accessForEmail({ ...env, ACCESS_MODE: 'waitlist', CHAT_PREVIEW_ENABLED: 'true' }, session.email))
+    .toMatchObject({ allowed: true, kind: 'preview', preview: { used: 0, remaining: 10 } });
+});
+
+it('test reset refuses a Stripe-linked workspace and does not change identity or billing evidence', async () => {
+  const { session, businessId, targets } = await resetFixture();
+  await asOwner(sql => sql`update business set stripe_customer_id='cus_real' where id=${businessId}`);
+  const backup = vi.fn(async () => ({ verified: true }));
+  await expect(asOwner(sql => offboardAccounts(sql, targets, backup, { mode: 'reset-for-testing' })))
+    .rejects.toThrow('billing offboarding review');
+  expect(backup).not.toHaveBeenCalled();
+  expect(await verifySession(env, session.token)).not.toBeNull();
+});
+
+it('test reset never clears an existing registration or identity block', async () => {
+  const { session, targets } = await resetFixture();
+  await block(session.email);
+  const backup = vi.fn(async () => ({ verified: true }));
+  await expect(asOwner(sql => offboardAccounts(sql, targets, backup, { mode: 'reset-for-testing' })))
+    .rejects.toThrow('Existing account block');
+  expect(backup).not.toHaveBeenCalled();
+  await asOwner(async sql => {
+    expect((await sql`select * from app_user where id=${session.userId}`)).toHaveLength(1);
+    await sql`delete from account_block`;
+    await sql`insert into account_identity_block(provider,subject) values('google','reset-subject')`;
+  });
+  await expect(asOwner(sql => offboardAccounts(sql, targets, backup, { mode: 'reset-for-testing' })))
+    .rejects.toThrow('Existing identity block');
+});
+
+it('test reset rolls back when backup verification fails and denies application-role quota resets', async () => {
+  const { session, targets } = await resetFixture();
+  await expect(asOwner(sql => offboardAccounts(sql, targets, async () => ({ verified: false }), { mode: 'reset-for-testing' })))
+    .rejects.toThrow('Backup must be verified');
+  expect(await verifySession(env, session.token)).not.toBeNull();
+  await expect(asApp(sql => offboardAccounts(sql, targets, async () => ({ verified: true }), { mode: 'reset-for-testing' })))
+    .rejects.toThrow('Operator role required');
+  await expect(asOwner(sql => offboardAccounts(sql, targets, async () => ({ verified: true }), { mode: 'allow' })))
+    .rejects.toThrow('supported removal mode');
 });

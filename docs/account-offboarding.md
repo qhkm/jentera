@@ -30,6 +30,36 @@ verified by reading it back and decrypting it before deletion proceeds.
 never publish either, commit them, or restore a deleted identity automatically.
 Restoration and lifting a block require an explicit operator decision.
 
+## Resetting private test accounts for fresh signup
+
+Account blocking is deliberately the default. When the operator explicitly
+wants a private test account to register again, use the separate command:
+
+```sh
+node scripts/reset-test-accounts.mjs --apply UUID=email [UUID=email ...]
+```
+
+This uses the same production-target, exact-identity, serializable-transaction
+and verified encrypted-backup checks. It refuses shared workspaces, active work,
+Stripe-linked or paid workspaces, billing evidence, unsupported dependencies,
+and existing account/identity blocks. It never lifts a ban.
+
+The original account, OAuth links, sessions, login links and preview quota are
+removed so normal verified sign-in creates a new identity and onboarding starts
+fresh. Internal legacy allowlist grants may be removed only after confirming
+the workspace is free, has no Stripe link and has no billing evidence. No
+subscription is cancelled or refunded by this tool.
+
+Old businesses, Sprites, files and completed runs remain untouched for recovery;
+they are never assigned to the replacement identity. Private chat metadata is
+backed up before removal, its completed runs detached from the deleted chat,
+and the departed owner's connector intake marked revoked. Connector credentials
+and external files are retained, not securely purged or remotely revoked.
+Only use this for explicitly reviewed private testing, never as a customer
+self-service reset or a way around the lifetime trial limit. Removing an
+unbilled legacy grant matters: merely revoking it would correctly keep that
+address out of the ordinary preview, making a fresh-signup test impossible.
+
 Operator-only `account_block` and `account_identity_block` records survive
 deletion. Database triggers reject blocked account creation/changes, magic-link
 issuance, Google identity linking and new sessions, including from older Worker
