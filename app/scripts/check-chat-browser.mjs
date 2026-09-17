@@ -101,6 +101,17 @@ try {
     const draft = 'Continue after I sign in';
     const composer = page.locator('.ask-writing-pad textarea');
     await composer.fill(draft);
+    const toolbar = page.locator('.ask-writing-tools');
+    assert.equal(await toolbar.getByRole('button', { name: 'Add photo or file', exact: true }).innerText(), 'Attach');
+    assert.equal(await toolbar.getByRole('button', { name: 'Add your business details', exact: true }).innerText(), 'Details');
+    assert.equal(await toolbar.getByRole('button', { name: 'Open business browser', exact: true }).innerText(), 'Browser');
+    const toolGeometry = await toolbar.evaluate(node => ({ width: node.getBoundingClientRect().width,
+      tools: [...node.querySelectorAll('button')].map(button => ({ width: button.getBoundingClientRect().width,
+        height: button.getBoundingClientRect().height, title: button.title, label: button.getAttribute('aria-label') })) }));
+    if (width > 960) assert.ok(toolGeometry.width <= 300, 'Desktop toolbar should stay concise');
+    if (width <= 640) assert.ok(toolGeometry.tools.every(tool => tool.width >= 44 && tool.height >= 44), 'Keep mobile touch targets');
+    assert.ok(toolGeometry.tools.every(tool => tool.title && tool.title === tool.label), 'Keep descriptive names/tooltips');
+    if (process.env.CHECK_OUTPUT_DIR && width > 960) await toolbar.screenshot({ path: `${process.env.CHECK_OUTPUT_DIR}/toolbar-${suffix}.png` });
     const handoff = page.getByRole('region', { name: 'Sign in to continue' });
     await handoff.waitFor();
     assert.equal(await handoff.getByRole('button', { name: 'Open business browser' }).evaluate(node => node.getBoundingClientRect().height >= 44), true);

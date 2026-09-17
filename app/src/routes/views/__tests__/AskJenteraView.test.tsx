@@ -26,8 +26,9 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
-function Harness({ onOpenConnections, taskDraft }: {
+function Harness({ onOpenConnections, onOpenKnowledge, taskDraft }: {
   onOpenConnections?: () => void;
+  onOpenKnowledge?: () => void;
   taskDraft?: { text: string; key: number; sessionId?: string; goalId?: string; goalTitle?: string };
 } = {}) {
   const { business } = useBusiness();
@@ -36,6 +37,7 @@ function Harness({ onOpenConnections, taskDraft }: {
     handled={0}
     needs={0}
     onOpenConnections={onOpenConnections}
+    onOpenKnowledge={onOpenKnowledge}
     taskDraft={taskDraft}
   />;
 }
@@ -68,6 +70,27 @@ async function mount(children: ReactNode = <Harness />, repo = new LocalReposito
 }
 
 describe('compose-first Ask Jentera', () => {
+  it('uses concise toolbar labels while preserving descriptive accessible names and tooltips', async () => {
+    const user = userEvent.setup();
+    const openKnowledge = vi.fn();
+    const repo = new LocalRepository();
+    await repo.setFact({ key: 'business.name', value: 'Kedai Kita', source: 'owner' });
+    await mount(<Harness onOpenKnowledge={openKnowledge} />, repo);
+    const toolbar = within(document.querySelector('.ask-writing-tools') as HTMLElement);
+    const attach = toolbar.getByRole('button', { name: 'Add photo or file' });
+    expect(attach).toHaveTextContent('Attach');
+    expect(attach).toHaveAttribute('title', 'Add photo or file');
+    const details = toolbar.getByRole('button', { name: 'Business details · 1 confirmed' });
+    expect(details).toHaveTextContent('Details');
+    expect(details).not.toHaveTextContent('confirmed');
+    expect(details).toHaveAttribute('title', 'Business details · 1 confirmed');
+    await user.click(details);
+    expect(openKnowledge).toHaveBeenCalledOnce();
+    const browser = toolbar.getByRole('button', { name: 'Open business browser' });
+    expect(browser).toHaveTextContent('Browser');
+    expect(browser).not.toHaveTextContent('Business browser');
+    expect(browser).toHaveAttribute('title', 'Open business browser');
+  });
   it('shows the free-chat balance without changing the writing pad', async () => {
     vi.stubEnv('VITE_API_URL', 'https://fixture.invalid');
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ signedIn: true, access: { kind: 'preview', preview: { limit: 10, used: 3, remaining: 7 } } })));

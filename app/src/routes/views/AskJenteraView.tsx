@@ -518,7 +518,7 @@ export default function AskJenteraView({
                   onClick={() => filePicker.current?.click()}
                 >
                   <Paperclip size={15} aria-hidden="true" />
-                  <span>{t(attachment ? 'ask.attachment.replace' : 'ask.attachment.add')}</span>
+                  <span>{t(attachment ? 'ask.toolbar.replace' : 'ask.toolbar.attach')}</span>
                 </button>
                 {onOpenKnowledge ? (
                   <button
@@ -529,9 +529,8 @@ export default function AskJenteraView({
                     title={t(confirmed ? 'ask.studio.knowledge' : 'ask.studio.teach', { n: confirmed })}
                   >
                     <BookOpenText size={15} aria-hidden="true" />
-                    <span>
-                      {t(confirmed ? 'ask.studio.knowledge' : 'ask.studio.teach', { n: confirmed })}
-                    </span>
+                    <span>{t('ask.toolbar.details')}</span>
+                    {confirmed > 0 && <span className="ask-context-count" aria-hidden="true">{confirmed}</span>}
                   </button>
                 ) : (
                   <span className="ask-context-link" title={t('ask.private')}>

@@ -145,7 +145,7 @@ export default function BusinessBrowser({
   const trigger = appearance === 'chat-tool' ? (
     <button type="button" className="ask-context-link" onClick={openBrowser}
       aria-label={t('browser.open')} title={t('browser.open')}>
-      <Globe size={15} aria-hidden="true" /><span>{t('browser.title')}</span>
+      <Globe size={15} aria-hidden="true" /><span>{t('ask.toolbar.browser')}</span>
     </button>
   ) : null;
 

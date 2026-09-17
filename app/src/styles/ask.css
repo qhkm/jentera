@@ -295,7 +295,7 @@
 .ask-writing-tools {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
   min-width: 0;
 }
 .ask-attach-button {
@@ -323,6 +323,8 @@
   gap: 7px;
   min-width: 0;
   min-height: 36px;
+  padding-inline: 8px;
+  border-radius: 999px;
   color: var(--text-secondary);
   font-size: 11px;
   text-align: left;
@@ -333,7 +335,20 @@
   color: var(--accent-green);
 }
 button.ask-context-link:hover {
+  background: var(--workspace-control-hover);
   color: var(--text);
+}
+.ask-context-count {
+  display: grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding-inline: 4px;
+  border-radius: 5px;
+  background: var(--workspace-control);
+  color: var(--text-muted);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
 }
 .ask-studio-send {
   display: grid;
