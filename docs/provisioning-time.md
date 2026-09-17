@@ -21,6 +21,20 @@ result (`stages`), and `provision.ts` stores it on the runtime task. Over the
 | **bootstrap total** | **43 s** | | **310 s** |
 | **whole task, created to completed** | **203 s** | **364 s** | **323 s** |
 
+A second cold provision on 2026-09-17 (business "Jentera", release
+2026.09.17-2) took **285 s** created to ready — attempt 0, no retries, no
+error. It is the only other cold provision on record and it sits just under
+the n=1 figure above, so treat 285-325 s as the range rather than either
+number as the truth.
+
+That provision is also what a person sees. The owner watching it reported it
+as stuck at "~25%, 2-8 minutes left": the bar advances on confirmed stages,
+`install` is 185 s of the 310 s with nothing between its start and its end,
+and the UI cannot tell a long stage from a dead worker. The estimate was
+honest and the provision was healthy. Weighting the bar by measured stage
+duration, and naming the running stage, would cost nothing and would remove
+the only reason anyone has had to ask whether provisioning works.
+
 Two readings follow.
 
 **An upgrade spends a quarter of its time in the bootstrap.** The other
@@ -94,7 +108,7 @@ R2 conventions.
 release and hand it to the next signup. Bounded by the organisation's limit of
 ten concurrent active sprites, which the fleet already exceeds when awake.
 
-## What Fly has said and shipped, as of 2026-09-11
+## What Fly has said and shipped, as of 2026-09-11 (re-checked 2026-09-17)
 
 Checked on 2026-09-11 against the newest API reference (`0.0.1-dev`), the CLI
 reference, the release notes and the community forum. None of the exchange
@@ -124,8 +138,21 @@ with Fly's own people is in the repository; this is the public record.
   in about the same; the platform keeps pools of empty sprites ready. The cost
   Jentera pays is entirely what the bootstrap installs afterwards.
 - **Concurrency.** Organisations without a plan are limited to ten concurrent
-  active sprites; paid levels raise it. See the memory note on the fleet's
-  twelve business sprites plus the proof-of-concept.
+  active sprites; paid levels raise it. **No longer a constraint here:** the
+  account moved to the Hero plan on 2026-09-16 and the limit is now 100, so
+  "a sleeping template plus forks would not fit" has stopped being an argument
+  against either forking or a pre-provisioned spare.
+
+**Re-checked on 2026-09-17, six days on. Nothing has shipped that changes any
+of this.** `POST /v1/sprites` in the current `dev-latest` reference still takes
+exactly `name`, `wait_for_capacity` and `url_settings` — no source sprite,
+template, snapshot or image. The checkpoint endpoints are still Create, List,
+Get and Restore, and restore is still in place. The forking thread carries no
+reply after Fly's May statement that forking "in general" is not available and
+that there is no timeline for REST. SBD remains the thing to wait for, and the
+early-access form at https://fly.io/early-access is generic — it names no
+programme, so a request has to say "Sprites Block Device private beta" and
+what it is for.
 
 Sources: [fork-from-checkpoint feature request](https://community.fly.io/t/feature-request-native-fork-sprite-from-checkpoint/28191),
 [forking functionality](https://community.fly.io/t/sprites-forking-functionality/27838),

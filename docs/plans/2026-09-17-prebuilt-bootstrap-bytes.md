@@ -1,0 +1,119 @@
+# Serving the bootstrap's bytes ourselves
+
+Status: proposal, 17 September 2026. No code. Read
+[`provisioning-time.md`](../provisioning-time.md) first — it holds the
+measurements this argues from.
+
+## The case
+
+A cold provision is 285–325 s created to ready, and **257 s of it is two
+downloads from third parties that every sprite repeats**:
+
+| Stage | Cold | What it does |
+|---|---|---|
+| `install` | 185 s | Fetches the Hermes installer from `raw.githubusercontent.com`, verifies its SHA-256, runs it; the installer clones and checks out the pinned commit and installs dependencies |
+| `playwright` | 72 s | `node playwright/cli.js install --with-deps chromium` — Chromium from Playwright's CDN, plus its apt dependencies |
+
+Everything else — `npm` 11 s, `configure` 7 s, `smokes` 35 s — is 53 s
+together.
+
+The durable fix is Fly's: fork a bootstrapped template per release, leaving
+only `configure` and the smokes. That needs the Sprites Block Device, which
+was in private beta as of 10 September and is not exposed through the API.
+**This proposal is what can be done without waiting for Fly**, and it is
+independent of forking: if SBD arrives, this becomes redundant and should be
+deleted rather than kept alongside.
+
+## The shape
+
+Build the bytes once per release, put them in R2, and have the bootstrap fetch
+and unpack instead of clone and download.
+
+Two artifacts, keyed by exactly what determines their contents:
+
+- `runtime/hermes/<commit>.tar.zst` — the installed Hermes tree for the pinned
+  commit, after dependency install and patching, before any per-business
+  configuration.
+- `runtime/chromium/<playwright-version>-<platform>.tar.zst` — the Playwright
+  browser directory for `ubuntu24.04-x64` and `ubuntu24.04-arm64`.
+
+`ship-runtime.sh` already pins `RUNTIME_BUNDLE_COMMIT` and bumps
+`RUNTIME_RELEASE`. Building and uploading these belongs in the same place, as
+a step that runs before the pin is written — a release whose artifacts are
+missing must not be pinnable.
+
+## What makes this safe rather than a new class of outage
+
+**Integrity is not optional and the precedent already exists.** The bootstrap
+verifies the Hermes installer against `hermes_installer_sha256` and exits 1 on
+a mismatch. Prebuilt artifacts get the same treatment: a `MANIFEST.json` beside
+them carrying sha256 and size per object, the digest checked after download and
+before unpack, and a mismatch is a hard failure, never a warning. This is the
+convention in `ARTIFACT-STORAGE.md`; it also records that `wrangler r2 object
+put` without `--remote` writes to a local simulator and exits 0, which is how
+twelve uploads once "succeeded" into nothing. Verify a release's upload by
+fetching a byte range back, not by exit code.
+
+**The slow path stays, and failure falls back to it.** If the fetch fails, the
+digest mismatches, or the manifest is absent, the bootstrap does what it does
+today: clone and download. A provision that takes five minutes is a bad day; a
+provision that fails because R2 was unreachable is an outage we introduced.
+The fallback must be exercised in the release gate, not assumed — flip the URL
+to something unreachable and confirm the sprite still reaches ready.
+
+**The artifacts are private.** `qhkm/hermes-agent` is not public, so these
+objects must not be either. That rules out a public `r2.dev` URL and means the
+worker mints a short-lived presigned GET at provision time.
+
+**Which drags in the ordering rule, and this is the part that bites.** A
+presigned URL reaches the sprite as a field in `provision.ts`'s `transfer`,
+and those fields are parsed by `bootstrap-runtime.sh` against a **closed
+allowlist that exits 1 on anything else** — from the bundle at
+`RUNTIME_BUNDLE_COMMIT`, not from whatever is on the sprite's disk. On
+2026-09-10 `EXTRACT_BASE_B64` went out in a worker deploy while the pinned
+bundle had no matching arm: every sprite rejected the transfer, upgrade tasks
+retried to exhaustion, and convergence stalled until the field was withdrawn.
+So: **add the arm, pin a bundle containing it, then deploy a worker that sends
+the field.** `check-transfer-fields.mjs` runs as `predeploy` and blocks exactly
+this mismatch.
+
+## What this does not fix
+
+- **`--with-deps` installs apt packages**, and a tarball of the browser
+  directory does not carry them. Measure the split before assuming 72 s is
+  recoverable: if the apt half dominates, the answer is a base layer with the
+  dependencies already present, which is a different piece of work.
+- **Upgrades, which are the common case.** 191 upgrades to one cold provision
+  over the 30 days to 2026-09-11. Upgrades are 203 s p50 and already reuse the
+  tree, so this proposal barely touches them. It buys a better first
+  impression for a new customer, not a faster fleet.
+
+That second point is the honest argument against doing this at all. It is
+worth building when signups are waiting on the five minutes, and not before.
+
+## Sequence
+
+1. Measure the `--with-deps` split inside the `playwright` stage, and time an
+   unpack of each artifact on a sprite. If the saving is under ~120 s, stop
+   here and wait for SBD.
+2. Add the `transfer` arms to `bootstrap-runtime.sh` — fetch, verify, unpack,
+   fall back — with the fields unused. Pin a bundle carrying them.
+3. Add artifact build and upload to `ship-runtime.sh`, before the pin, with a
+   round-trip verification of the upload.
+4. Deploy a worker that mints the presigned URLs and sends the fields.
+5. Re-measure a cold provision against the figures in `provisioning-time.md`,
+   and force a fetch failure to prove the fallback.
+
+## Cheaper things worth doing first
+
+Neither needs R2 and both improve the thing the owner actually complained
+about:
+
+- **Weight the progress bar by measured stage duration** rather than stage
+  count, and name the running stage. `install` is 60% of the wall clock and
+  currently shows nothing between its start and its end, which is why a
+  healthy provision reads as stuck at ~25%.
+- **Ask Fly for SBD private-beta access**, quoting the number: 310 s of which
+  257 s is a clone and a browser download that every sprite repeats. The
+  concurrency objection to a sleeping template is gone since the Hero upgrade
+  raised the limit from 10 to 100.
