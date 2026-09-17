@@ -7,6 +7,7 @@
    checkpoint form the second half and must all succeed first.
    ============================================================ */
 
+import { HERMES_COMMIT, HERMES_TAG } from './hermes-pin';
 import type { Env } from '../env';
 import { candidateModelNames } from './response-mode';
 import { withTenant } from '../db';
@@ -140,6 +141,7 @@ export async function ensureProviderRuntime(
       if (!canBootstrap(provider)) throw new Error('spare provider cannot activate');
       const adopted = await provider.exec(observed, '/.sprite/bin/node', [
         '/home/sprite/aisar/runner/spare-state.mjs', 'claim', spare.release, spare.bundle_commit, businessId,
+        HERMES_COMMIT,
       ]);
       if (adopted.exitCode !== 0) throw new Error('assigned spare failed its clean-state check');
     }
@@ -394,8 +396,8 @@ function field(name: string, value: string): string {
 
 function hermesPinTransfer(): string[] {
   return [
-    field('HERMES_TAG_B64', 'v2026.9.9'),
-    field('HERMES_COMMIT_B64', 'bb0305ae08bf1dc9ac5a39d2b017f27e42854170'),
+    field('HERMES_TAG_B64', HERMES_TAG),
+    field('HERMES_COMMIT_B64', HERMES_COMMIT),
   ];
 }
 

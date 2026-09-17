@@ -243,7 +243,7 @@ fi
 if [[ "$prepare_spare" == "1" ]]; then
   [[ "${AISAR_SPARE_BUNDLE_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]] || exit 1
   /.sprite/bin/node /home/sprite/aisar/runner/spare-state.mjs \
-    start "$runtime_release" "$AISAR_SPARE_BUNDLE_COMMIT"
+    start "$runtime_release" "$AISAR_SPARE_BUNDLE_COMMIT" "" "$hermes_commit"
 fi
 
 install -d -m 700 /home/sprite/aisar /home/sprite/aisar/runner /home/sprite/.hermes

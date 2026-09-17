@@ -69,8 +69,9 @@ encode() { printf '%s' "$1" | base64 | tr -d '\n'; }
   printf 'MODEL_KEY_B64=%s\n' "$(encode "$OPENROUTER_API_KEY")"
   printf 'MODEL_NAME_B64=%s\n' "$(encode "$model_name")"
   printf 'DEEP_MODEL_NAME_B64=%s\n' "$(encode "$deep_model_name")"
-  printf 'HERMES_TAG_B64=%s\n' "$(encode 'v2026.9.9')"
-  printf 'HERMES_COMMIT_B64=%s\n' "$(encode 'bb0305ae08bf1dc9ac5a39d2b017f27e42854170')"
+  # No default: see worker/src/runtime/hermes-pin.ts, the single source.
+  printf 'HERMES_TAG_B64=%s\n' "$(encode "${AISAR_HERMES_TAG:?set AISAR_HERMES_TAG from hermes-pin.ts}")"
+  printf 'HERMES_COMMIT_B64=%s\n' "$(encode "${AISAR_HERMES_COMMIT:?set AISAR_HERMES_COMMIT from hermes-pin.ts}")"
 } > "$transfer"
 
 AISAR_BOOTSTRAP_CONTROL_PLANE=1 \

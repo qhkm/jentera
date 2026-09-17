@@ -1,3 +1,4 @@
+import { HERMES_COMMIT } from '../src/runtime/hermes-pin';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { asApp, asOwner, asTenant, req, testEnv, truncateAll } from './harness';
@@ -17,7 +18,7 @@ const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
 const RELEASE = '2026.09.17-3';
 const BUNDLE = 'a'.repeat(40);
-const HERMES = 'bb0305ae08bf1dc9ac5a39d2b017f27e42854170';
+const HERMES = HERMES_COMMIT;
 const config = { release: RELEASE, bundle: BUNDLE };
 
 function enabled(over: Partial<Env> = {}) {

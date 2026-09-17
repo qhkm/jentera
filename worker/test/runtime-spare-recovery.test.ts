@@ -1,3 +1,4 @@
+import { HERMES_COMMIT } from '../src/runtime/hermes-pin';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
@@ -194,7 +195,7 @@ it('runs the actual read-only guard against clean and unsafe filesystem fixtures
       mkdirSync(join(home, 'aisar', 'runner'), { recursive: true });
       mkdirSync(join(home, '.hermes', 'sessions'), { recursive: true });
       writeFileSync(join(home, 'aisar', 'spare-state.json'), JSON.stringify({ state: kind === 'assigned' ? 'assigned' : 'prepared',
-        release: OLD, bundle: BUNDLE, hermesCommit: 'bb0305ae08bf1dc9ac5a39d2b017f27e42854170' }), { mode: 0o600 });
+        release: OLD, bundle: BUNDLE, hermesCommit: HERMES_COMMIT }), { mode: 0o600 });
       if (kind === 'credential') writeFileSync(join(home, 'aisar', 'runner.env'), 'SECRET');
       if (kind === 'session') writeFileSync(join(home, '.hermes', 'sessions', 'private.json'), 'SECRET');
       if (kind === 'symlink') symlinkSync(join(home, 'aisar'), join(home, '.hermes', 'skills'));

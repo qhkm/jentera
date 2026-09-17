@@ -1,3 +1,4 @@
+import { HERMES_COMMIT } from './hermes-pin';
 import type { Env } from '../env';
 import { withUser } from '../db';
 import { FlySpriteProvider } from './fly-sprite-provider';
@@ -34,7 +35,7 @@ try {
   if(!stat.isFile() || stat.isSymbolicLink() || stat.size>2048 || (stat.mode & 511)!==384) throw Error();
   const m=JSON.parse(fs.readFileSync(marker,'utf8'));
   if(m.state!=='prepared' || m.release!==expectedRelease || m.bundle!==expectedBundle ||
-    m.hermesCommit!=='bb0305ae08bf1dc9ac5a39d2b017f27e42854170' ||
+    m.hermesCommit!==${JSON.stringify(HERMES_COMMIT)} ||
     Object.keys(m).sort().join(',')!=='bundle,hermesCommit,release,state') throw Error();
   if(directory(path.join(home,'aisar')).some(n=>!['runner','spare-state.json'].includes(n))) throw Error();
   const empty=['cron','sessions','logs','pairing','hooks','image_cache','audio_cache','memories'];

@@ -54,10 +54,14 @@ describe('FlySpriteProvider', () => {
   it('permits only the fixed clean-spare claim helper, not arbitrary Node code', async () => {
     const provider = fly(async () => new Response(new Uint8Array([3,0])));
     const args = ['/home/sprite/aisar/runner/spare-state.mjs','claim','2026.09.17-3','a'.repeat(40),
-      '11111111-1111-4111-8111-111111111111'];
+      '11111111-1111-4111-8111-111111111111','b'.repeat(40)];
     expect((await provider.exec(observed('cold'),'/.sprite/bin/node',args)).exitCode).toBe(0);
+    /* The Hermes pin is the sixth argument since 2026-09-17. A claim without
+       it, or with a non-SHA in its place, must still be refused — the guard
+       is what stops this exec becoming a way to run arbitrary Node. */
     for (const rejected of [['-e','console.log(1)'],[...args,'/different-home'],
-      [args[0],'finish',...args.slice(2)],[args[0],'claim',args[2],'main',args[4]]]) {
+      [args[0],'finish',...args.slice(2)],[args[0],'claim',args[2],'main',args[4],args[5]],
+      args.slice(0, 5),[...args.slice(0, 5),'not-a-sha']]) {
       await expect(provider.exec(observed('cold'),'/.sprite/bin/node',rejected as string[])).rejects.toThrow(/not allowed/);
     }
   });

@@ -1,3 +1,4 @@
+import { HERMES_COMMIT } from './hermes-pin';
 import type { Env } from '../env';
 import { withUser } from '../db';
 import { canBootstrap, type RuntimeProvider, type ObservedRuntime } from './provider';
@@ -66,6 +67,6 @@ function preparationAttested(stdout: string, spare: { release: string; bundle_co
     const body = JSON.parse(stdout.trimEnd().split('\n').pop() ?? '');
     return body?.prepared === true && body.release === spare.release &&
       body.bundleCommit === spare.bundle_commit &&
-      body.hermesCommit === 'bb0305ae08bf1dc9ac5a39d2b017f27e42854170';
+      body.hermesCommit === HERMES_COMMIT;
   } catch { return false; }
 }

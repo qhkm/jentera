@@ -3,7 +3,6 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const HERMES_COMMIT = 'bb0305ae08bf1dc9ac5a39d2b017f27e42854170';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EMPTY_DIRS = ['cron', 'sessions', 'logs', 'pairing', 'hooks', 'image_cache', 'audio_cache', 'memories'];
 const INSTALL_DIRS = ['hermes-agent', 'bin', 'node', 'skills'];
@@ -38,9 +37,10 @@ async function clean(home, installing = false) {
 
 /** Tests supply an isolated fixture root; production CLI always uses the
  * fixed Sprite home. Never sanitize or delete an existing customer's home. */
-export async function spareState(mode, release, bundle, businessId, home = '/home/sprite') {
+export async function spareState(mode, release, bundle, businessId, hermesCommit, home = '/home/sprite') {
   if (!/^[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[0-9]+$/.test(release ?? '') ||
-      !/^[0-9a-f]{40}$/.test(bundle ?? '') || !['start', 'finish', 'claim'].includes(mode)) {
+      !/^[0-9a-f]{40}$/.test(bundle ?? '') || !/^[0-9a-f]{40}$/.test(hermesCommit ?? '') ||
+      !['start', 'finish', 'claim'].includes(mode)) {
     throw new Error('invalid spare operation');
   }
   const marker = path.join(home, 'aisar', 'spare-state.json');
@@ -49,14 +49,14 @@ export async function spareState(mode, release, bundle, businessId, home = '/hom
     try { await fs.lstat(path.join(home, '.hermes')); throw new Error('existing installation'); }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
     await clean(home);
-    await fs.writeFile(marker, JSON.stringify({ state: 'preparing', release, bundle, hermesCommit: HERMES_COMMIT }),
+    await fs.writeFile(marker, JSON.stringify({ state: 'preparing', release, bundle, hermesCommit }),
       { mode: 0o600, flag: 'wx' });
     return;
   }
   const stat = await fs.lstat(marker);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 2048) throw new Error('invalid spare marker');
   const record = JSON.parse(await fs.readFile(marker, 'utf8'));
-  if (record.release !== release || record.bundle !== bundle || record.hermesCommit !== HERMES_COMMIT) {
+  if (record.release !== release || record.bundle !== bundle || record.hermesCommit !== hermesCommit) {
     throw new Error('spare pin mismatch');
   }
   if (mode === 'finish') {
@@ -87,8 +87,8 @@ export async function spareState(mode, release, bundle, businessId, home = '/hom
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const [mode, release, bundle, businessId] = process.argv.slice(2);
-  spareState(mode, release, bundle, businessId).catch(() => {
+  const [mode, release, bundle, businessId, hermesCommit] = process.argv.slice(2);
+  spareState(mode, release, bundle, businessId, hermesCommit).catch(() => {
     console.error('spare clean-state check failed'); process.exitCode = 1;
   });
 }

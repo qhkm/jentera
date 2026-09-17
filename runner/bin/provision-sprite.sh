@@ -19,8 +19,10 @@ set -euo pipefail
 }
 
 sprite_org="${AISAR_SPRITE_ORG:-aisar}"
-hermes_tag="${AISAR_HERMES_TAG:-v2026.9.9}"
-hermes_commit="${AISAR_HERMES_COMMIT:-bb0305ae08bf1dc9ac5a39d2b017f27e42854170}"
+# No default: the pin lives in worker/src/runtime/hermes-pin.ts and a stale
+# copy here would provision last month's Hermes without saying so.
+hermes_tag="${AISAR_HERMES_TAG:?set AISAR_HERMES_TAG from worker/src/runtime/hermes-pin.ts}"
+hermes_commit="${AISAR_HERMES_COMMIT:?set AISAR_HERMES_COMMIT from worker/src/runtime/hermes-pin.ts}"
 [[ "$AISAR_MODEL_PROVIDER" == "openrouter" ]] || exit 1
 case "$AISAR_MODEL_BASE" in
   "https://openrouter.ai/api/v1"|"https://router.fmcv.my") ;;
