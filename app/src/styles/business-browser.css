@@ -92,6 +92,31 @@
 .business-browser-footer-note p { margin: 2px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
 .business-browser-control-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 8px; }
 .business-browser-control-actions .btn { min-height: 44px; padding-inline: 18px; font-size: 12px; }
+@media (min-width: 961px) {
+  .business-browser-dialog {
+    position: fixed;
+    inset: 0;
+    margin: 0;
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .business-browser-body { display: flex; flex: 1; flex-direction: column; overflow: hidden; }
+  .business-browser-error { flex-shrink: 0; }
+  .business-browser-workspace { flex: 1; min-height: 0; grid-template-rows: minmax(0, 1fr); align-items: stretch; }
+  .business-browser-window { display: flex; min-height: 0; flex-direction: column; }
+  .business-browser-window-label,
+  .business-browser-tabs,
+  .business-browser-address,
+  .business-browser-view-hint { flex-shrink: 0; }
+  .business-browser-viewport { flex: 1; min-height: 0; max-height: none; }
+  .business-browser-empty { flex: 1; min-height: 0; overflow: auto; justify-content: safe center; }
+  .business-browser-empty > * { flex-shrink: 0; }
+  .business-browser-controls { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+}
 @media (max-width: 960px) {
   .business-browser-dialog { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); border-radius: 20px; }
   .business-browser-workspace.is-controlled { grid-template-columns: minmax(0, 1fr); }

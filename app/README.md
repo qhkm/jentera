@@ -87,6 +87,13 @@ Chat has no dashboard sidebar or bottom navigation. Below 1024px, its conversati
 list opens in a native modal dialog with keyboard focus containment and Escape
 dismissal. Dashboard uses a desktop sidebar and a three-section mobile bottom bar.
 
+The Business browser dialog fills the desktop viewport above 960px without
+outer margins or rounded corners. Its header/footer stay visible while the live
+view and typing controls scroll independently; phone/tablet dialog sizing is
+unchanged. `scripts/check-chat-browser.mjs` verifies edge-to-edge geometry,
+short desktop screens, the responsive breakpoint, zoom/click coordinates,
+explicit hand-back, Escape and preserved chat drafts using fictional state.
+
 The conversation component stays mounted when switching modes: drafts and pending
 replies survive a visit to Dashboard. The mode switch returns to the last dashboard
 section and business tab visited in that mounted workspace. Direct links and browser

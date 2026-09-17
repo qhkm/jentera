@@ -21,7 +21,11 @@ try {
     { width: 390, height: 844 }, { width: 1440, height: 1000 },
     { width: 320, height: 640 }, { width: 844, height: 390 },
     { width: 1440, height: 1000, theme: 'light' },
+    { width: 2048, height: 1080 }, { width: 1280, height: 720 },
+    { width: 1024, height: 500 }, { width: 960, height: 800 },
+    { width: 961, height: 600 },
   ]) {
+    if (process.env.CHECK_WIDTH && width !== Number(process.env.CHECK_WIDTH)) continue;
     const suffix = `${width}${theme === 'light' ? '-light' : ''}`;
     const context = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce', serviceWorkers: 'block' });
     const errors = [];
@@ -54,6 +58,10 @@ try {
         errors.push('Unexpected write: ' + url.pathname);
         return route.fulfill({ status: 400, contentType: 'application/json', body: '{"err":"unexpected write"}' });
       } else if (url.pathname === '/api/me') body = { ok: true, userId: 'demo-owner', detailLevel: 'simple', features: {} };
+      else if (url.pathname === '/api/access') body = { restricted: false, signedIn: true,
+        access: { allowed: true, kind: 'paid', preview: null }, founderGroup: null, billing: { checkoutEnabled: true } };
+      else if (url.pathname === '/api/billing/status') body = { ok: true, checkoutEnabled: true,
+        activation: 'active', state: null, preview: null };
       else if (url.pathname === '/api/state') body = { ok: true, snapshot: { ...snapshot, theme } };
       else if (url.pathname === '/api/runs/activity') body = { ok: true, work: [], counters: { completed: 0, needsApproval: 0, minutesSaved: 0, failed: 0 } };
       else if (url.pathname === '/api/connections') body = { ok: true, connections: [] };
@@ -102,6 +110,29 @@ try {
     await handoff.getByRole('button', { name: 'Open business browser', exact: true }).click();
     const dialog = page.getByRole('dialog');
     await dialog.waitFor();
+    const checkBrowserLayout = async () => {
+      const geometry = await dialog.evaluate(node => {
+        const bounds = node.getBoundingClientRect();
+        const header = node.querySelector('.business-browser-header').getBoundingClientRect();
+        const footer = node.querySelector('.business-browser-footer').getBoundingClientRect();
+        return { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height,
+          radius: getComputedStyle(node).borderRadius,
+          headerVisible: header.top >= 0 && header.bottom <= innerHeight,
+          footerVisible: footer.top >= 0 && footer.bottom <= innerHeight,
+          noOverflow: node.scrollWidth <= node.clientWidth };
+      });
+      if (width > 960) {
+        assert.deepEqual({ left: geometry.left, top: geometry.top, width: geometry.width,
+          height: geometry.height, radius: geometry.radius },
+        { left: 0, top: 0, width, height, radius: '0px' }, 'Desktop browser must fill the viewport without gaps');
+      } else {
+        assert.equal(geometry.width, width - 24, 'Keep the existing phone/tablet dialog gutters');
+        assert.equal(geometry.radius, '20px');
+      }
+      assert.ok(geometry.headerVisible && geometry.footerVisible && geometry.noOverflow,
+        'Close and hand-back controls must stay visible without horizontal overflow');
+    };
+    await checkBrowserLayout();
     assert.equal(await dialog.evaluate(node => node.closest('form') === null), true);
     assert.equal(await page.evaluate(() => document.body.style.overflow), 'hidden');
     if (process.env.CHECK_OUTPUT_DIR) await page.screenshot({ path: `${process.env.CHECK_OUTPUT_DIR}/welcome-${suffix}.png` });
@@ -142,6 +173,7 @@ try {
       return bounds.top >= 0 && bounds.bottom <= innerHeight;
     }), true);
     assert.equal(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth), true);
+    await checkBrowserLayout();
     if (process.env.CHECK_OUTPUT_DIR) await page.screenshot({ path: `${process.env.CHECK_OUTPUT_DIR}/browser-${suffix}.png` });
     await dialog.getByRole('button', { name: 'Close browser view', exact: true }).click();
     assert.equal(await page.evaluate(() => document.body.style.overflow), '');
@@ -158,7 +190,9 @@ try {
     await page.locator('.ask-writing-pad').getByRole('button', { name: 'Open business browser', exact: true }).click();
     await dialog.waitFor();
     assert.equal(await page.getByRole('dialog').count(), 1);
-    await dialog.getByRole('button', { name: 'Close browser view', exact: true }).click();
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'hidden' });
+    assert.equal(await page.evaluate(() => document.body.style.overflow), '');
     if (process.env.CHECK_OUTPUT_DIR) await page.screenshot({ path: `${process.env.CHECK_OUTPUT_DIR}/chat-${suffix}.png` });
     const explicitActions = commands.filter(command => command.action !== 'frame').length;
     if (!await page.getByRole('button', { name: 'Open chat: Calendar connection check', exact: true }).count()) {
@@ -213,6 +247,11 @@ try {
       return route.fulfill({ status: 401, contentType: 'application/json', body: '{"err":"not signed in"}' });
     }
     if (new URL(route.request().url()).pathname === '/api/events') return route.fulfill({ status: 204 });
+    if (new URL(route.request().url()).pathname === '/api/access') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        restricted: false, signedIn: false, access: { allowed: true, kind: null, preview: null }, founderGroup: null,
+      }) });
+    }
     errors.push('Unexpected anonymous API request: ' + route.request().url());
     return route.fulfill({ status: 404 });
   });
