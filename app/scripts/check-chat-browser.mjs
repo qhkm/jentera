@@ -115,8 +115,13 @@ try {
         const bounds = node.getBoundingClientRect();
         const header = node.querySelector('.business-browser-header').getBoundingClientRect();
         const footer = node.querySelector('.business-browser-footer').getBoundingClientRect();
+        const window = node.querySelector('.business-browser-window').getBoundingClientRect();
+        const view = node.querySelector('.business-browser-viewport, .business-browser-empty').getBoundingClientRect();
         return { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height,
           radius: getComputedStyle(node).borderRadius,
+          headerHeight: header.height, footerHeight: footer.height,
+          windowLeft: window.left, windowTop: window.top, windowBottom: window.bottom,
+          viewHeight: view.height,
           headerVisible: header.top >= 0 && header.bottom <= innerHeight,
           footerVisible: footer.top >= 0 && footer.bottom <= innerHeight,
           noOverflow: node.scrollWidth <= node.clientWidth };
@@ -125,6 +130,14 @@ try {
         assert.deepEqual({ left: geometry.left, top: geometry.top, width: geometry.width,
           height: geometry.height, radius: geometry.radius },
         { left: 0, top: 0, width, height, radius: '0px' }, 'Desktop browser must fill the viewport without gaps');
+        assert.ok(geometry.headerHeight <= 65 && geometry.footerHeight <= 65,
+          'Desktop browser chrome must stay slim without shrinking 44px controls');
+        assert.equal(geometry.windowLeft, 8, 'Use thin desktop frame gutters');
+        assert.ok(geometry.windowTop <= geometry.headerHeight + 8 &&
+          geometry.windowBottom >= height - geometry.footerHeight - 8,
+        'The browser frame must use the available height');
+        assert.ok(geometry.viewHeight >= height - 310,
+          'Leave most desktop height available for the browser, not outer chrome');
       } else {
         assert.equal(geometry.width, width - 24, 'Keep the existing phone/tablet dialog gutters');
         assert.equal(geometry.radius, '20px');

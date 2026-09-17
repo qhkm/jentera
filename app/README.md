@@ -88,7 +88,8 @@ list opens in a native modal dialog with keyboard focus containment and Escape
 dismissal. Dashboard uses a desktop sidebar and a three-section mobile bottom bar.
 
 The Business browser dialog fills the desktop viewport above 960px without
-outer margins or rounded corners. Its header/footer stay visible while the live
+outer margins or rounded corners. Slim header/footer bars and 8px inner gutters
+leave more room for the live view while preserving 44px action targets. The live
 view and typing controls scroll independently; phone/tablet dialog sizing is
 unchanged. `scripts/check-chat-browser.mjs` verifies edge-to-edge geometry,
 short desktop screens, the responsive breakpoint, zoom/click coordinates,
