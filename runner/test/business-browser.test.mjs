@@ -45,6 +45,90 @@ function fixture() {
     restart: () => createBusinessBrowser(config, deps) };
 }
 
+function typingFixture() {
+  const f = fixture();
+  let focused = { tagName: 'INPUT', type: 'password', isConnected: true, getAttribute: () => null };
+  const handle = node => ({ node, asElement() { return this; },
+    evaluate: async (fn, other) => fn(node, other?.node ?? other), dispose: async () => {},
+  });
+  const frame = { evaluateHandle: async () => handle(focused) };
+  f.page.mainFrame = () => frame;
+  return { ...f, focus: node => { focused = node; } };
+}
+
+test('direct typing is field-bound, ordered, deduplicated and never persisted', async () => {
+  const f = typingFixture();
+  await f.browser.command(command('claim'));
+  const first = await f.browser.command(command('click', { x: 10, y: 20 }));
+  assert.equal(first.directTyping, 1);
+  assert.equal(first.inputTarget.kind, 'password');
+  const input = command('input', { inputId: first.inputTarget.id, sequence: 1, text: 'synthetic-secret' });
+  const sent = await f.browser.command(input);
+  assert.equal(sent.inputTarget.nextSequence, 2);
+  await f.browser.command(input);
+  assert.deepEqual(f.typed, ['synthetic-secret']);
+  await assert.rejects(f.browser.command({ ...input, sequence: 4 }), { message: 'browser_input_sequence', status: 409 });
+  assert.deepEqual([...f.files.values()], ['{"paused":true}']);
+  await f.browser.command(command('release'));
+  await assert.rejects(f.browser.command({ ...input, sequence: 2 }), { message: 'browser_control_expired' });
+});
+
+test('a focus change, disabled/read-only field, navigation or reclaim invalidates queued direct input', async () => {
+  for (const change of ['focus', 'readonly', 'disabled', 'navigation', 'claim', 'expiry']) {
+    const f = typingFixture();
+    await f.browser.command(command('claim'));
+    const { inputTarget } = await f.browser.command(command('frame'));
+    if (change === 'navigation') f.page.url = () => 'https://example.com/changed';
+    else if (change === 'claim') await f.browser.command(command('claim'));
+    else if (change === 'expiry') f.advance(10 * 60 * 1000 + 1);
+    else f.focus({ tagName: 'INPUT', type: 'password', isConnected: true,
+      readOnly: change === 'readonly', disabled: change === 'disabled', getAttribute: () => null });
+    await assert.rejects(f.browser.command(command('input', { inputId: inputTarget.id, sequence: 1, text: 'never-type' })),
+      { message: change === 'expiry' ? 'browser_control_expired' : 'browser_input_changed', status: 409 });
+    assert.deepEqual(f.typed, []);
+  }
+});
+
+test('direct typing rejects malformed sessions, mixed commands and unapproved shortcuts', () => {
+  const input = command('input', { inputId: controlId, sequence: 1, text: 'hello' });
+  assert.equal(browserCommandProblem(input), null);
+  for (const extra of [{ inputId: 'invalid' }, { sequence: 0 }, { sequence: 1.5 }, { text: '' },
+    { text: 'x'.repeat(4097) }, { key: 'Enter' }, { text: undefined, key: 'F12' }, { text: undefined, key: undefined }]) {
+    assert.ok(browserCommandProblem({ ...input, ...extra }));
+  }
+});
+
+test('a hung focus inspection times out, permits hand-back and discards a late field handle', { timeout: 5000 }, async () => {
+  const f = typingFixture();
+  let finish;
+  let disposed = 0;
+  const element = { asElement() { return this; }, evaluate: async () => 'password', dispose: async () => { disposed++; } };
+  f.page.mainFrame = () => ({ evaluateHandle: () => new Promise(resolve => { finish = resolve; }) });
+  await f.browser.command(command('claim'));
+  assert.equal((await f.browser.command(command('frame'))).inputTarget, null);
+  assert.equal(await f.browser.isPaused(), true, 'Timeout must not silently hand control back');
+  await f.browser.command(command('release'));
+  finish(element);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(disposed, 1);
+  assert.equal(await f.browser.isPaused(), false);
+  assert.equal((await f.browser.status()).controlled, false);
+  assert.deepEqual(f.typed, []);
+});
+
+test('Tab rebinds to the next field and allows Enter on a button, but never text', async () => {
+  const f = typingFixture();
+  await f.browser.command(command('claim'));
+  const { inputTarget } = await f.browser.command(command('frame'));
+  f.page.keyboard.press = async () => f.focus({ tagName: 'BUTTON', isConnected: true, getAttribute: () => null });
+  const next = await f.browser.command(command('input', { inputId: inputTarget.id, sequence: 1, key: 'Tab' }));
+  assert.equal(next.inputTarget.kind, 'control');
+  assert.notEqual(next.inputTarget.id, inputTarget.id);
+  await assert.rejects(f.browser.command(command('input', { inputId: next.inputTarget.id, sequence: 1, text: 'never-type' })), { message: 'browser_input_changed' });
+  await f.browser.command(command('input', { inputId: next.inputTarget.id, sequence: 1, key: 'Enter' }));
+  assert.deepEqual(f.typed, []);
+});
+
 test('preview never launches or claims a browser and blocks private URLs', async () => {
   const f = fixture();
   assert.equal((await f.browser.preview()).previewStatus, 'loading');

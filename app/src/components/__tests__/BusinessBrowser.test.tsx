@@ -226,3 +226,116 @@ it('clears unsent credentials after a lost lease and explains successful hand-ba
   expect(JSON.stringify(localStorage)).not.toContain('synthetic-unsent-secret');
   expect(browser.mock.calls.some(([command]) => command?.action === 'text')).toBe(false);
 });
+
+const TARGET = '33333333-3333-4333-8333-333333333333';
+const directFrame = (sequence = 1, kind: 'text' | 'password' = 'text'): BusinessBrowserState => ({ ...sampleFrame,
+  directTyping: 1, inputTarget: { id: TARGET, kind, nextSequence: sequence } });
+
+it('focuses the keyboard on screen tap, types/pastes directly, forwards keys and leaves no local plaintext', async () => {
+  const user = userEvent.setup();
+  let sequence = 1;
+  const browser = vi.fn(async (command?: BrowserCommand) => {
+    if (command?.action === 'input') sequence++;
+    return ['frame', 'click', 'input'].includes(command?.action ?? '') ? directFrame(sequence, 'password') : { paused: true };
+  });
+  mountBrowser(browser);
+  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  await user.click(screen.getByRole('button', { name: 'Take control' }));
+  await screen.findByRole('img');
+  const proxy = screen.getByLabelText('Live browser keyboard');
+  expect(proxy).toHaveAttribute('readonly');
+  const remote = screen.getByRole('button', { name: /^Business browser screen/ });
+  vi.spyOn(remote, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 640, height: 400 } as DOMRect);
+  fireEvent.click(remote, { detail: 1, clientX: 100, clientY: 100 });
+  expect(proxy).toHaveFocus();
+  await screen.findByText('Keyboard connected — type or paste');
+  expect(proxy).toHaveAttribute('type', 'password');
+  // Chromium can place the caret before the invisible mobile-delete marker
+  // after switching keyboard modes. The marker must never reach the site.
+  fireEvent.input(proxy, { target: { value: 'x\u200b' } });
+  await waitFor(() => expect(browser.mock.calls.some(([command]) => command?.action === 'input' && command.text === 'x')).toBe(true));
+  fireEvent.input(proxy, { target: { value: '\u200bsynthetic-direct-secret' } });
+  expect(proxy).toHaveValue('\u200b');
+  await waitFor(() => expect(browser.mock.calls.some(([command]) => command?.action === 'input' && command.text === 'synthetic-direct-secret')).toBe(true));
+  await user.keyboard('{Backspace}{Enter}');
+  await waitFor(() => expect(browser.mock.calls.some(([command]) => command?.action === 'input' && command.key === 'Enter')).toBe(true));
+  expect(browser.mock.calls.filter(([command]) => command?.action === 'input').map(([command]) => command && 'sequence' in command ? command.sequence : null)).toEqual([1, 2, 3, 4]);
+  expect(JSON.stringify(localStorage)).not.toContain('synthetic-direct-secret');
+  await user.keyboard('{Escape}');
+  expect(proxy).not.toHaveFocus();
+  expect(screen.getByRole('dialog')).toBeVisible();
+  expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(false);
+});
+
+it('commits IME composition once and supports native mobile deletion without a Type button', async () => {
+  const user = userEvent.setup();
+  let sequence = 1;
+  const browser = vi.fn(async (command?: BrowserCommand) => {
+    if (command?.action === 'input') sequence++;
+    return ['frame', 'click', 'input'].includes(command?.action ?? '') ? directFrame(sequence) : { paused: true };
+  });
+  mountBrowser(browser);
+  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  await user.click(screen.getByRole('button', { name: 'Take control' }));
+  await screen.findByRole('img');
+  fireEvent.click(screen.getByRole('button', { name: /^Business browser screen/ }), { detail: 1 });
+  await screen.findByText('Keyboard connected — type or paste');
+  const proxy = screen.getByLabelText('Live browser keyboard');
+  fireEvent.compositionStart(proxy);
+  fireEvent.input(proxy, { target: { value: '\u200b你好' }, isComposing: true });
+  expect(browser.mock.calls.some(([command]) => command?.action === 'input')).toBe(false);
+  fireEvent.compositionEnd(proxy);
+  fireEvent.input(proxy);
+  await waitFor(() => expect(browser.mock.calls.some(([command]) => command?.action === 'input' && command.text === '你好')).toBe(true));
+  fireEvent(proxy, new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'deleteContentBackward' }));
+  await waitFor(() => expect(browser.mock.calls.some(([command]) => command?.action === 'input' && command.key === 'Backspace')).toBe(true));
+  expect(browser.mock.calls.filter(([command]) => command?.action === 'input' && command.text === '你好')).toHaveLength(1);
+});
+
+it('does not send queued direct input or reopen a closed viewer after a slow selection', async () => {
+  const user = userEvent.setup();
+  let finish!: (value: BusinessBrowserState) => void;
+  const browser = vi.fn(async (command?: BrowserCommand): Promise<BusinessBrowserState> => {
+    if (command?.action === 'click') return new Promise(resolve => { finish = resolve; });
+    return command?.action === 'frame' ? directFrame() : { paused: true };
+  });
+  mountBrowser(browser);
+  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  await user.click(screen.getByRole('button', { name: 'Take control' }));
+  await screen.findByRole('img');
+  fireEvent.click(screen.getByRole('button', { name: /^Business browser screen/ }), { detail: 1 });
+  await waitFor(() => expect(finish).toBeTypeOf('function'));
+  const proxy = screen.getByLabelText('Live browser keyboard');
+  fireEvent.input(proxy, { target: { value: '\u200bunsent-secret' } });
+  await user.click(screen.getByRole('button', { name: 'Close browser view' }));
+  await act(async () => finish(directFrame()));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(browser.mock.calls.some(([command]) => command?.action === 'input' || command?.action === 'release')).toBe(false);
+});
+
+it('uses the same field guard for the paste box and clears direct typing on loss of control', async () => {
+  const user = userEvent.setup();
+  let expired = false;
+  const browser = vi.fn(async (command?: BrowserCommand) => {
+    if (command?.action === 'input' && expired) throw new Error('Your browser control expired.');
+    return ['frame', 'click', 'input'].includes(command?.action ?? '') ? directFrame(command?.action === 'input' ? 2 : 1, 'password') : { paused: true };
+  });
+  mountBrowser(browser);
+  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  await user.click(screen.getByRole('button', { name: 'Take control' }));
+  await screen.findByRole('img');
+  await user.type(screen.getByLabelText('Text or password for the selected field'), 'guarded-paste');
+  expect(screen.getByRole('button', { name: 'Type into browser' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: /^Business browser screen/ }), { detail: 1 });
+  await screen.findByText('Keyboard connected — type or paste');
+  await user.click(screen.getByRole('button', { name: 'Type into browser' }));
+  await waitFor(() => expect(browser.mock.calls.some(([command]) => command?.action === 'input' && command.text === 'guarded-paste')).toBe(true));
+  expect(browser.mock.calls.some(([command]) => command?.action === 'text')).toBe(false);
+  expired = true;
+  const proxy = screen.getByLabelText('Live browser keyboard');
+  fireEvent.input(proxy, { target: { value: '\u200bexpire-now' } });
+  await screen.findByText('Your browser control expired.');
+  expect(screen.queryByLabelText('Live browser keyboard')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Take control' })).toBeEnabled();
+  expect(JSON.stringify(localStorage)).not.toContain('guarded-paste');
+});

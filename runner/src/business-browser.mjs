@@ -1,9 +1,11 @@
 import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { randomUUID } from 'node:crypto';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEYS = new Set(['Enter', 'Tab', 'Shift+Tab', 'Backspace', 'Delete', 'Escape',
-  'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'ControlOrMeta+A']);
+  'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'ControlOrMeta+A',
+  'Shift+ArrowLeft', 'Shift+ArrowRight', 'Shift+ArrowUp', 'Shift+ArrowDown', 'Shift+Home', 'Shift+End']);
 const LEASE_MS = 10 * 60 * 1000;
 export const BROWSER_VIEWPORT = Object.freeze({ width: 1280, height: 800 });
 
@@ -13,7 +15,7 @@ export class BrowserProblem extends Error {
 
 export function browserCommandProblem(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return 'invalid_command';
-  if (!['claim', 'frame', 'navigate', 'click', 'text', 'key', 'scroll', 'tab', 'release'].includes(body.action)) return 'invalid_command';
+  if (!['claim', 'frame', 'navigate', 'click', 'text', 'key', 'input', 'scroll', 'tab', 'release'].includes(body.action)) return 'invalid_command';
   if (!UUID.test(body.ownerId ?? '') || !UUID.test(body.controlId ?? '')) return 'invalid_controller';
   if (body.action === 'navigate') {
     try {
@@ -27,6 +29,12 @@ export function browserCommandProblem(body) {
       body.x < 0 || body.y < 0 || body.x >= BROWSER_VIEWPORT.width || body.y >= BROWSER_VIEWPORT.height)) return 'invalid_position';
   if (body.action === 'text' && (typeof body.text !== 'string' || body.text.length > 4096)) return 'invalid_text';
   if (body.action === 'key' && !KEYS.has(body.key)) return 'invalid_key';
+  if (body.action === 'input') {
+    if (!UUID.test(body.inputId ?? '') || !Number.isSafeInteger(body.sequence) || body.sequence < 1) return 'invalid_input_session';
+    if ((typeof body.text === 'string') === (typeof body.key === 'string')) return 'invalid_input';
+    if (body.text !== undefined && (typeof body.text !== 'string' || !body.text.length || body.text.length > 4096)) return 'invalid_text';
+    if (body.key !== undefined && !KEYS.has(body.key)) return 'invalid_key';
+  }
   if (body.action === 'scroll' && (!Number.isFinite(body.deltaY) || Math.abs(body.deltaY) > 1600)) return 'invalid_scroll';
   if (body.action === 'tab' && (!Number.isInteger(body.index) || body.index < 0 || body.index > 50)) return 'invalid_tab';
   return null;
@@ -47,6 +55,79 @@ export function createBusinessBrowser(config, deps = {}) {
   let lastPreview = -Infinity;
   let controlRevision = 0;
   let cast = null;
+  let input = null;
+  async function clearInput() {
+    const previous = input;
+    input = null;
+    if (previous) await bounded(previous.element.dispose()).catch(() => {});
+  }
+  // No field values, DOM labels, cookies or selectors cross this boundary.
+  // A handle identifies one actual node, not a selector that could retarget.
+  async function inspectFocusedInput(page) {
+    let frame = page.mainFrame?.();
+    for (let depth = 0; frame && depth < 8; depth++) {
+      let handle;
+      try {
+        handle = await frame.evaluateHandle(() => {
+          let element = document.activeElement;
+          while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement;
+          return element;
+        });
+        const element = handle.asElement();
+        if (!element) { await handle.dispose(); return null; }
+        const kind = await element.evaluate(node => {
+          if (!node.isConnected || node.disabled || node.readOnly || node.getAttribute('aria-disabled') === 'true') return null;
+          if (node.tagName === 'IFRAME' || node.tagName === 'FRAME') return 'frame';
+          if (node.tagName === 'TEXTAREA' || node.isContentEditable) return 'multiline';
+          if (['BUTTON', 'SELECT', 'A'].includes(node.tagName) || (node.tagName === 'INPUT' && ['submit', 'button', 'checkbox', 'radio'].includes(node.type))) return 'control';
+          if (node.tagName !== 'INPUT' || !['text', 'password', 'email', 'search', 'url', 'tel', 'number'].includes(node.type)) return null;
+          return node.type === 'password' ? 'password' : 'text';
+        });
+        if (kind === 'frame') { frame = await element.contentFrame(); await handle.dispose(); continue; }
+        if (!kind) { await handle.dispose(); return null; }
+        return { element, frame, kind, url: page.url() };
+      } catch { await handle?.dispose().catch(() => {}); return null; }
+    }
+    return null;
+  }
+  async function focusedInput(page) {
+    const pending = inspectFocusedInput(page);
+    try { return await bounded(pending); }
+    catch {
+      // A hung website must not lock owner control indefinitely. Read-only
+      // inspection may finish late; discard its handle, never restore a target.
+      void pending.then(focused => focused?.element.dispose()).catch(() => {});
+      return null;
+    }
+  }
+  async function inputTarget(page) {
+    const focused = await focusedInput(page);
+    if (!focused) { await clearInput(); return null; }
+    let same = false;
+    if (input?.page === page && input.frame === focused.frame && input.url === focused.url && input.kind === focused.kind) {
+      same = await bounded(input.element.evaluate((node, other) => node === other, focused.element)).catch(() => false);
+    }
+    if (same) await bounded(focused.element.dispose()).catch(() => {});
+    else {
+      await clearInput();
+      input = { ...focused, page, id: randomUUID(), nextSequence: 1 };
+    }
+    return { id: input.id, kind: input.kind, nextSequence: input.nextSequence };
+  }
+  async function ownerFrame(page, pages) {
+    await page.setViewportSize(BROWSER_VIEWPORT);
+    const bytes = await page.screenshot({ type: 'jpeg', quality: 65, timeout: 5000 });
+    if (bytes.length > 750000) throw new BrowserProblem(503, 'browser_frame_too_large');
+    return {
+      image: bytes.toString('base64'), ...BROWSER_VIEWPORT, expiresAt: lease.expiresAt,
+      directTyping: 1, inputTarget: await inputTarget(page),
+      tabs: pages.map((p, index) => {
+        let origin = 'Browser';
+        try { origin = new URL(p.url()).origin; } catch { /* No internal URL details. */ }
+        return { index, origin, selected: p === page };
+      }).slice(0, 51),
+    };
+  }
   async function bounded(operation) {
     let timer;
     try {
@@ -158,7 +239,7 @@ export function createBusinessBrowser(config, deps = {}) {
   }
   async function status() {
     await loaded;
-    return { enabled: true, paused, controlled: Boolean(lease && lease.expiresAt > now()) };
+    return { enabled: true, paused, controlled: Boolean(lease && lease.expiresAt > now()), directTyping: 1 };
   }
   async function isPaused() { await loaded; return paused || busy; }
 
@@ -172,6 +253,7 @@ export function createBusinessBrowser(config, deps = {}) {
     try {
       if (body.action === 'claim') {
         if (lease && lease.expiresAt > now() && !controlledBy(body)) throw new BrowserProblem(409, 'browser_controlled');
+        await clearInput();
         await persist(true);
         lease = { ownerId: body.ownerId, controlId: body.controlId, expiresAt: now() + LEASE_MS };
         await ensure();
@@ -194,9 +276,10 @@ export function createBusinessBrowser(config, deps = {}) {
         }
         await persist(false);
         lease = null;
+        await clearInput();
         return status();
       }
-      if (!paused || !controlledBy(body)) throw new BrowserProblem(409, 'browser_control_expired');
+      if (!paused || !controlledBy(body)) { await clearInput(); throw new BrowserProblem(409, 'browser_control_expired'); }
       /* Idle timeout, not a cap on the session. The lease used to be set at the
          claim and never extended, so control died ten minutes later however
          actively it was being used — and the sign-ins this browser exists for
@@ -206,27 +289,33 @@ export function createBusinessBrowser(config, deps = {}) {
       const ctx = await ensure();
       const pages = ctx.pages().filter((p) => !p.isClosed());
       const page = selected && !selected.isClosed() ? selected : pages[0];
+      if (['navigate', 'click', 'tab', 'text', 'key'].includes(body.action)) await clearInput();
       if (body.action === 'tab') {
         if (!pages[body.index]) throw new BrowserProblem(400, 'invalid_tab');
         selected = pages[body.index];
       } else if (body.action === 'navigate') {
         await page.goto(body.url, { waitUntil: 'domcontentloaded', timeout: 15000 });
       } else if (body.action === 'click') await page.mouse.click(body.x, body.y);
+      else if (body.action === 'input') {
+        const target = await inputTarget(page);
+        if (!target || target.id !== body.inputId) throw new BrowserProblem(409, 'browser_input_changed');
+        if (body.text !== undefined && target.kind === 'control') throw new BrowserProblem(409, 'browser_input_changed');
+        if (body.sequence === input.nextSequence - 1) return { ok: true, ...(await ownerFrame(page, pages)) };
+        if (body.sequence !== input.nextSequence) throw new BrowserProblem(409, 'browser_input_sequence');
+        // Advance before dispatch: an ambiguous transport/execution failure
+        // must never repeat a deletion, submission or credential insertion.
+        input.nextSequence++;
+        try {
+          if (body.text !== undefined) await page.keyboard.insertText(body.text);
+          else await page.keyboard.press(body.key);
+        } catch (error) { await clearInput(); throw error; }
+      }
       else if (body.action === 'text') await page.keyboard.insertText(body.text);
       else if (body.action === 'key') await page.keyboard.press(body.key);
       else if (body.action === 'scroll') await page.mouse.wheel(0, body.deltaY);
-      if (body.action !== 'frame') return { ok: true };
-      await page.setViewportSize(BROWSER_VIEWPORT);
-      const bytes = await page.screenshot({ type: 'jpeg', quality: 65, timeout: 5000 });
-      if (bytes.length > 750000) throw new BrowserProblem(503, 'browser_frame_too_large');
-      return {
-        image: bytes.toString('base64'), ...BROWSER_VIEWPORT, expiresAt: lease.expiresAt,
-        tabs: pages.map((p, index) => {
-          let origin = 'Browser';
-          try { origin = new URL(p.url()).origin; } catch { /* No internal URL details. */ }
-          return { index, origin, selected: p === page };
-        }).slice(0, 51),
-      };
+      if (body.action === 'frame') return ownerFrame(page, pages);
+      if (body.action === 'click' || body.action === 'input') return { ok: true, ...(await ownerFrame(page, pages)) };
+      return { ok: true };
     } finally { busy = false; }
   }
   async function preview({ streaming = false } = {}) {

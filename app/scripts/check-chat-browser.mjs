@@ -3,8 +3,10 @@
 // CHROME_CHANNEL=chrome node scripts/check-chat-browser.mjs
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
+import { createBusinessBrowser, BrowserProblem } from '../../runner/src/business-browser.mjs';
 
 const origin = process.env.CHECK_ORIGIN ?? 'http://127.0.0.1:5183';
+const directTyping = process.env.CHECK_DIRECT_TYPING === '1';
 const snapshot = {
   onboarded: true, setupDone: true, bizType: 'restaurant', bizName: 'Launch smoke · Demo',
   bizLoc: 'Shah Alam', channels: [], conns: [], country: 'MY', lang: 'en', theme: 'dark',
@@ -32,6 +34,25 @@ try {
     const commands = [];
     let paused = false;
     let oauthStarts = 0;
+    // Optional full input path: React keyboard -> API fixture -> real runner
+    // -> isolated Chromium page. No production cookies, CDP port or profile.
+    let remoteContext;
+    let remotePage;
+    let inputBrowser;
+    if (directTyping) {
+      remoteContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+      await remoteContext.route('**/*', route => route.fulfill({ contentType: 'text/html', body:
+        '<main style="padding:60px"><input id="email"><input id="password" type="password"><button id="submit" onclick="window.submitted=(window.submitted||0)+1">Sign in</button></main>' }));
+      remotePage = await remoteContext.newPage();
+      await remotePage.goto('https://example.com');
+      let saved;
+      inputBrowser = createBusinessBrowser({ stateFile: '/fictional/control.json', profileDir: '/fictional/profile' }, {
+        chromium: { connectOverCDP: async () => { throw new Error('isolated fixture'); }, launchPersistentContext: async () => remoteContext },
+        fs: { mkdir: async () => {}, readFile: async () => {
+          if (!saved) throw Object.assign(new Error('missing'), { code: 'ENOENT' }); return saved;
+        }, writeFile: async (_path, bytes) => { saved = bytes; }, rename: async () => {} },
+      });
+    }
     await context.route('**/*', async route => {
       const request = route.request();
       const url = new URL(request.url());
@@ -49,6 +70,14 @@ try {
         if (command) commands.push(command);
         if (command?.action === 'claim') paused = true;
         if (command?.action === 'release') paused = false;
+        if (inputBrowser) {
+          try { body = command ? await inputBrowser.command({ ...command, ownerId: '11111111-1111-4111-8111-111111111111' }) : await inputBrowser.status(); }
+          catch (error) {
+            return route.fulfill({ status: error instanceof BrowserProblem ? error.status : 503, contentType: 'application/json',
+              body: JSON.stringify({ err: error instanceof BrowserProblem ? 'The selected field changed. Click the field again before typing.' : 'Browser unavailable.' }) });
+          }
+          return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+        }
         body = { enabled: true, paused, controlled: paused, ok: true,
           ...(command?.action === 'frame' ? { image, width: 1280, height: 800,
             tabs: [{ index: 0, origin: 'https://example.com', selected: true }] } : {}) };
@@ -180,6 +209,9 @@ try {
     });
     await remote.click({ position: { x: 100, y: 80 } });
     const screenSize = await page.evaluate(() => window.__jenteraSmokeTap);
+    for (let attempt = 0; attempt < 40 && !commands.some(command => command.action === 'click'); attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
     const click = commands.findLast(command => command.action === 'click');
     assert.equal(screenSize.styleWidth, '125%');
     assert.ok(Math.abs(screenSize.x - 100) <= 1 && Math.abs(screenSize.y - 80) <= 1);
@@ -187,6 +219,55 @@ try {
     assert.ok(click && Math.abs(click.y - screenSize.y * 800 / screenSize.height) < .001, JSON.stringify({ click, screenSize }));
     await dialog.getByRole('button', { name: 'Fit view', exact: true }).click();
     await dialog.getByRole('group', { name: 'Browser view zoom' }).getByText('100%', { exact: true }).waitFor();
+    if (directTyping) {
+      const selectField = async selector => {
+        const field = await remotePage.locator(selector).boundingBox();
+        // Playwright's later click waits for stability. Measure in that same
+        // stable state, not while the zoom/layout is still settling.
+        await remote.click({ trial: true });
+        const screen = await remote.boundingBox();
+        await remote.click({ position: { x: (field.x + field.width / 2) * screen.width / 1280,
+          y: (field.y + field.height / 2) * screen.height / 800 } });
+        try { await dialog.getByText('Keyboard connected — type or paste', { exact: true }).waitFor(); }
+        catch (error) {
+          // Fictional pages only. Report selection geometry, never input text.
+          console.error(JSON.stringify({ width, selector, field, screen,
+            clicks: commands.filter(command => command.action === 'click').map(({ x, y }) => ({ x, y })),
+            remoteFocus: await remotePage.evaluate(() => document.activeElement?.id),
+            keyboardStatus: await dialog.locator('.business-browser-keyboard-proxy span').textContent(),
+          }));
+          throw error;
+        }
+        assert.equal(await dialog.getByLabel('Live browser keyboard').evaluate(node => document.activeElement === node), true);
+      };
+      await selectField('#email');
+      await page.keyboard.type('boss@example.test');
+      await page.keyboard.press('Tab');
+      await page.keyboard.insertText('synthetic-direct-secret');
+      await remotePage.waitForFunction(() => document.querySelector('#password').value === 'synthetic-direct-secret');
+      await page.keyboard.press('Backspace');
+      await remotePage.waitForFunction(() => document.querySelector('#password').value === 'synthetic-direct-secre');
+      await page.keyboard.press('Tab'); await page.keyboard.press('Enter');
+      await remotePage.waitForFunction(() => window.submitted === 1);
+      assert.equal(await remotePage.locator('#email').inputValue(), 'boss@example.test');
+      assert.equal(await dialog.getByLabel('Live browser keyboard').inputValue(), '\u200b');
+      assert.equal(await composer.inputValue(), draft);
+      assert.equal(await page.evaluate(() => JSON.stringify(localStorage).includes('synthetic-direct-secret')), false);
+      await selectField('#password');
+      await remotePage.locator('#email').focus();
+      await page.keyboard.insertText('must-not-spill');
+      await dialog.getByRole('alert').waitFor();
+      assert.equal(await remotePage.locator('#email').inputValue(), 'boss@example.test');
+      await selectField('#password');
+      await page.keyboard.press('End');
+      await dialog.getByLabel('Live browser keyboard').evaluate(node => node.dispatchEvent(new InputEvent('beforeinput', {
+        bubbles: true, cancelable: true, inputType: 'deleteContentBackward',
+      })));
+      await remotePage.waitForFunction(() => document.querySelector('#password').value === 'synthetic-direct-secr');
+      await page.keyboard.press('Escape');
+      assert.equal(await dialog.isVisible(), true, 'Escape exits keyboard before closing the viewer');
+      assert.equal(commands.filter(command => command.action === 'release').length, 0);
+    }
     await dialog.getByLabel('Text or password for the selected field').fill('synthetic-secret');
     await dialog.getByRole('button', { name: 'Type into browser', exact: true }).click();
     assert.equal(await dialog.getByLabel('Text or password for the selected field').inputValue(), '');
@@ -261,8 +342,9 @@ try {
     if (process.env.CHECK_OUTPUT_DIR) await setup.screenshot({ path: `${process.env.CHECK_OUTPUT_DIR}/calendar-return-${suffix}.png` });
     await setup.close();
     assert.deepEqual(errors, []);
-    console.log(`PASS ${width}×${height} ${theme}: browser handoff, Calendar OAuth tab, public copy link, callback error visible, no auto-control/resume, secret-free storage, no overflow`);
+    console.log(`PASS ${width}×${height} ${theme}: ${directTyping ? 'direct typing/paste/Tab/Enter, mobile deletion, focus-change guard, ' : ''}browser handoff, Calendar OAuth tab, public copy link, callback error visible, no auto-control/resume, secret-free storage, no overflow`);
     await context.close();
+    await remoteContext?.close();
   }
   const context = await browser.newContext({ viewport: { width: 390, height: 1000 }, serviceWorkers: 'block' });
   const errors = [];

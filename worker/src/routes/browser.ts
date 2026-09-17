@@ -4,7 +4,7 @@ import { getRuntimeAccess } from '../agent-runtime';
 import { hasBusiness, resolveTenant } from '../tenancy';
 import { can } from '../permissions';
 
-const ACTIONS = new Set(['claim', 'release', 'frame', 'navigate', 'click', 'text', 'key', 'scroll', 'tab', 'preview', 'preview-stream']);
+const ACTIONS = new Set(['claim', 'release', 'frame', 'navigate', 'click', 'text', 'key', 'input', 'scroll', 'tab', 'preview', 'preview-stream']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MESSAGES: Record<string, string> = {
   runtime_busy: 'Jentera is still working. Let the current task finish, then take control.',
@@ -12,6 +12,8 @@ const MESSAGES: Record<string, string> = {
   browser_controlled: 'Another window is controlling this browser. Hand back there or wait for its control to expire.',
   browser_control_expired: 'Your browser control expired. Take control again to continue or hand back.',
   invalid_url: 'Enter a public HTTPS website address.',
+  browser_input_changed: 'The selected field changed. Click the field again before typing.',
+  browser_input_sequence: 'Typing was interrupted. Click the field again to continue.',
 };
 
 /** Deliberately not a generic proxy. Identity selects both the business and
@@ -40,6 +42,14 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
       const body = JSON.parse(raw);
       if (!body || !ACTIONS.has(body.action) || !UUID.test(body.controlId ?? '')) return json({ err: 'invalid command' }, 400);
       command = { action: body.action, controlId: body.controlId, ownerId: identity.userId, businessId: identity.businessId };
+      if (body.action === 'input' && (!UUID.test(body.inputId ?? '') || !Number.isSafeInteger(body.sequence) || body.sequence < 1 ||
+          (typeof body.text === 'string') === (typeof body.key === 'string') ||
+          (body.text !== undefined && (typeof body.text !== 'string' || !body.text.length || body.text.length > 4096)) ||
+          (body.key !== undefined && !['Enter', 'Tab', 'Shift+Tab', 'Backspace', 'Delete', 'Escape',
+            'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'ControlOrMeta+A',
+            'Shift+ArrowLeft', 'Shift+ArrowRight', 'Shift+ArrowUp', 'Shift+ArrowDown', 'Shift+Home', 'Shift+End'].includes(body.key)))) {
+        return json({ err: 'invalid typing command' }, 400);
+      }
       if (body.action === 'preview' || body.action === 'preview-stream') {
         if (!UUID.test(body.runId ?? '')) return json({ err: 'invalid run' }, 400);
         const tasks = await withTenant(env, identity.businessId, tx => tx`
@@ -54,7 +64,7 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
         if (['completed', 'failed', 'cancelled', 'exhausted'].includes(tasks[0].status)) return json({ previewStatus: 'inactive' });
         command.taskId = tasks[0].id;
       }
-      for (const field of ['url', 'x', 'y', 'text', 'key', 'deltaY', 'index']) {
+      for (const field of ['url', 'x', 'y', 'text', 'key', 'deltaY', 'index', 'inputId', 'sequence']) {
         if (body[field] !== undefined) command[field] = body[field];
       }
     } catch { return json({ err: 'invalid command' }, 400); }
@@ -97,8 +107,10 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
     }
     const body = await upstream.json() as Record<string, unknown>;
     if (command?.action === 'preview') return json(previewResponse(body, true));
-    return json(Object.fromEntries(['enabled', 'paused', 'controlled', 'expiresAt', 'image', 'width', 'height', 'tabs', 'ok', 'previewStatus', 'capturedAt']
-      .filter((key) => body[key] !== undefined).map((key) => [key, body[key]])));
+    return json({ ...Object.fromEntries(['enabled', 'paused', 'controlled', 'expiresAt', 'image', 'width', 'height', 'tabs', 'ok', 'previewStatus', 'capturedAt']
+      .filter((key) => body[key] !== undefined).map((key) => [key, body[key]])),
+      ...(body.directTyping === 1 ? { directTyping: 1, inputTarget: browserInputTarget(body.inputTarget) } : {}),
+    });
   } catch (error) {
     // Never log exception messages, request bodies, URLs, controller IDs,
     // credentials, screenshots, or typed input. Only fixed diagnostic labels.
@@ -107,6 +119,15 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
     console.warn('[business-browser]', JSON.stringify({ stage, name, action: command?.action ?? 'status' }));
     return json({ err: 'Business browser is unavailable. Try again shortly.' }, 503);
   }
+}
+
+/** Only an opaque field identity, kind and sequence; never relay field values. */
+export function browserInputTarget(value: unknown): { id: string; kind: string; nextSequence: number } | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const target = value as Record<string, unknown>;
+  if (typeof target.id !== 'string' || !UUID.test(target.id) || !['text', 'password', 'multiline', 'control'].includes(String(target.kind)) ||
+      !Number.isSafeInteger(target.nextSequence) || Number(target.nextSequence) < 1) return null;
+  return { id: target.id, kind: String(target.kind), nextSequence: Number(target.nextSequence) };
 }
 
 /** Bound framing and revalidate every image. Never relay arbitrary runtime data. */

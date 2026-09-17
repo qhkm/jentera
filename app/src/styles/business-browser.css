@@ -54,6 +54,11 @@
 .business-browser-view-hint { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--rail); color: var(--text-muted); font-size: 12px; line-height: 1.5; }
 .business-browser-view-hint > div:first-child { display: flex; align-items: center; gap: 8px; flex: 1 1 200px; }
 .business-browser-view-hint svg { flex-shrink: 0; }
+.business-browser-keyboard-proxy { position: relative; min-width: 0; flex: 1; }
+.business-browser-keyboard-proxy input { display: block; width: 100%; min-width: 0; height: 44px; padding: 8px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: transparent; caret-color: transparent; font-size: 16px; }
+.business-browser-keyboard-proxy input:focus { outline: none; border-color: var(--accent-green); background: rgb(var(--accent-green-rgb) / .04); }
+.business-browser-keyboard-proxy span { position: absolute; inset: 0; display: flex; align-items: center; padding: 8px; pointer-events: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.business-browser-direct-input:focus-within > svg { color: var(--accent-green); }
 .business-browser-zoom { display: flex; align-items: center; flex-shrink: 0; gap: 2px; }
 .business-browser-zoom > button { min-width: 44px; min-height: 44px; border-radius: 9px; color: var(--text-secondary); font-size: 11px; }
 .business-browser-zoom > button:hover:not(:disabled) { background: var(--bg-card-hover); }

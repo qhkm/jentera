@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
-import { handleBrowser, previewResponse } from '../src/routes/browser';
+import { browserInputTarget, handleBrowser, previewResponse } from '../src/routes/browser';
 import { ensureProviderRuntime, LocalRuntimeProvider } from '../src/runtime';
 import { asOwner, asTenant, fetchFake, req, signIn, testEnv, truncateAll } from './harness';
 import { startRun } from '../src/runs';
@@ -19,6 +19,13 @@ it('drops blocked, stale and malformed preview images without relaying extra fie
     .toEqual({ previewStatus: 'ready', image: 'YWJj', capturedAt });
 });
 const CONTROL = '22222222-2222-4222-8222-222222222222';
+it('sanitizes typing targets without exposing values, labels or selectors', () => {
+  const target = { id: CONTROL, kind: 'password', nextSequence: 3 };
+  expect(browserInputTarget({ ...target, value: 'private', label: 'email', selector: '#password' })).toEqual(target);
+  for (const value of [null, [], {}, { ...target, id: 'invalid' }, { ...target, kind: 'script' }, { ...target, nextSequence: 0 }, { ...target, nextSequence: 1.5 }]) {
+    expect(browserInputTarget(value)).toBeNull();
+  }
+});
 const env = testEnv({ SPRITES_TOKEN: 'sprite-secret', RUNTIME_RELEASE: '2026.09.11-3' });
 let ownerId: string;
 let ownerCookie: string;
@@ -72,6 +79,32 @@ it('binds the target and controller to the signed-in business, never customer in
   expect(JSON.parse(String(init?.body))).toEqual({ action: 'claim', controlId: CONTROL, ownerId, businessId: A });
   expect(init?.headers).toMatchObject({ 'X-Aisar-Runner-Key': 'runner-secret', Authorization: 'Bearer sprite-secret' });
   expect(init?.redirect).toBe('manual');
+});
+
+it('validates direct input before contacting a runtime and enforces owner/origin checks', async () => {
+  const upstream = fetchFake(async () => new Response('{}'));
+  vi.stubGlobal('fetch', upstream);
+  const body = { action: 'input', controlId: CONTROL, inputId: CONTROL, sequence: 1, text: 'synthetic' };
+  expect((await call(staffCookie, body)).status).toBe(403);
+  expect((await call(ownerCookie, body, 'https://evil.test')).status).toBe(403);
+  for (const changed of [{ inputId: 'invalid' }, { sequence: 0 }, { sequence: 1.5 }, { key: 'Enter' }, { text: '' }, { text: 'x'.repeat(4097) }, { text: undefined, key: 'F12' }]) {
+    expect((await call(ownerCookie, { ...body, ...changed })).status).toBe(400);
+  }
+  expect(upstream).not.toHaveBeenCalled();
+});
+
+it('forwards only owner-bound direct input and relays narrow capability/target metadata', async () => {
+  const target = { id: CONTROL, kind: 'text', nextSequence: 2 };
+  const upstream = fetchFake(async () => new Response(JSON.stringify({ ok: true, directTyping: 1,
+    inputTarget: { ...target, value: 'secret', selector: '#login' }, text: 'never-relay' })));
+  vi.stubGlobal('fetch', upstream);
+  const body = { action: 'input', controlId: CONTROL, inputId: CONTROL, sequence: 1, text: 'synthetic', ownerId: CONTROL, businessId: CONTROL, secret: 'ignored' };
+  const response = await call(ownerCookie, body);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ ok: true, directTyping: 1, inputTarget: target });
+  expect(JSON.parse(String(upstream.mock.calls[0][1]?.body))).toEqual({ action: 'input', controlId: CONTROL,
+    ownerId, businessId: A, inputId: CONTROL, sequence: 1, text: 'synthetic' });
+  expect(response.headers.get('Cache-Control')).toContain('no-store');
 });
 
 it('redacts arbitrary upstream errors and preserves safe conflict messages', async () => {

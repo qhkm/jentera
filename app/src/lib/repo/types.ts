@@ -226,10 +226,14 @@ export type BrowserCommand = { controlId: string } & (
   | { action: 'click'; x: number; y: number }
   | { action: 'text'; text: string }
   | { action: 'key'; key: string }
+  | ({ action: 'input'; inputId: string; sequence: number } & ({ text: string; key?: never } | { key: string; text?: never }))
   | { action: 'scroll'; deltaY: number }
   | { action: 'tab'; index: number }
 );
 export interface BusinessBrowserState {
+  /** Guarded direct-input protocol; absent on older runtimes. */
+  directTyping?: 1;
+  inputTarget?: BrowserInputTarget | null;
   previewStatus?: 'ready' | 'inactive' | 'paused' | 'private' | 'unavailable' | 'waiting' | 'loading' | 'navigating';
   capturedAt?: number;
   enabled?: boolean;
@@ -240,6 +244,11 @@ export interface BusinessBrowserState {
   width?: number;
   height?: number;
   tabs?: { index: number; origin: string; selected: boolean }[];
+}
+export interface BrowserInputTarget {
+  id: string;
+  kind: 'text' | 'password' | 'multiline' | 'control';
+  nextSequence: number;
 }
 
 /** Read-only projection of the existing tenant-scoped run endpoint. */

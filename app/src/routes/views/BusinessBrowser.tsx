@@ -4,6 +4,7 @@ import { Globe, ArrowDown, ArrowUp, ArrowRight, ArrowBendDownLeft, CheckCircle, 
 import { Button, Card, Eyebrow, Input } from '@/components/ui';
 import { useRepository } from '@/lib/repo';
 import type { BrowserCommand, BusinessBrowserState } from '@/lib/repo/types';
+import { BrowserInput, type DirectInputState } from '@/lib/browser-input';
 import { useT } from '@/i18n/I18nProvider';
 import '@/styles/business-browser.css';
 
@@ -23,12 +24,18 @@ export default function BusinessBrowser({
   const titleId = useId();
   const descriptionId = useId();
   const typingId = useId();
+  const keyboardProxy = useRef<HTMLInputElement>(null);
+  const composing = useRef(false);
+  const compositionRevision = useRef(0);
+  const compositionStartRevision = useRef(0);
   const dialog = useRef<HTMLDialogElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const controlId = useRef(crypto.randomUUID());
   const inFlight = useRef(false);
   const frameFlight = useRef<Promise<BusinessBrowserState> | null>(null);
   const actionBusy = useRef(false);
+  const actionChain = useRef<Promise<void>>(Promise.resolve());
+  const pendingActions = useRef(0);
   const live = useRef(true);
   const viewGeneration = useRef(0);
   const [open, setOpen] = useState(false);
@@ -44,8 +51,57 @@ export default function BusinessBrowser({
   const [showText, setShowText] = useState(false);
   const [handedBack, setHandedBack] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [typingState, setTypingState] = useState<DirectInputState>({ phase: 'idle' });
+  const direct = useRef<BrowserInput | null>(null);
+  const dispatch = useRef(send);
+  dispatch.current = send;
+  if (!direct.current) direct.current = new BrowserInput(
+    command => dispatch.current(command),
+    next => {
+      if (live.current) setTypingState(next);
+      if (next.phase === 'idle') {
+        composing.current = false; compositionRevision.current++;
+        if (keyboardProxy.current) { keyboardProxy.current.value = '\u200b'; keyboardProxy.current.blur(); }
+      }
+    },
+    () => { if (live.current) setError(previous => previous || t('browser.direct.interrupted')); },
+  );
+  const directEnabled = controlled && frame?.directTyping === 1;
+  // A zero-width sentinel lets mobile keyboards emit Backspace even though
+  // the proxy never retains the remote field's value. Nothing is persisted.
+  const sentinel = '\u200b';
 
-  useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
+  function resetTyping() {
+    direct.current?.reset(); composing.current = false; compositionRevision.current++;
+    if (keyboardProxy.current) keyboardProxy.current.value = sentinel;
+  }
+
+  function consumeProxy(input: HTMLInputElement) {
+    // Changing input type (password -> text) can reset the local caret to
+    // zero. Strip our one sentinel wherever that first character landed.
+    const value = input.value.replace(sentinel, '');
+    input.value = sentinel; input.setSelectionRange(1, 1);
+    direct.current?.text(value);
+  }
+
+  useEffect(() => {
+    const input = keyboardProxy.current;
+    if (!directEnabled || !input) return;
+    const beforeInput = (event: InputEvent) => {
+      if (composing.current || event.isComposing) return;
+      if (input.value === sentinel) input.setSelectionRange(1, 1);
+      if (event.inputType === 'deleteContentBackward' || event.inputType === 'deleteContentForward') {
+        event.preventDefault(); event.stopPropagation();
+        direct.current?.key(event.inputType === 'deleteContentBackward' ? 'Backspace' : 'Delete');
+      } else if (event.inputType === 'insertLineBreak' || event.inputType === 'insertParagraph') {
+        event.preventDefault(); event.stopPropagation(); direct.current?.key('Enter');
+      }
+    };
+    input.addEventListener('beforeinput', beforeInput);
+    return () => input.removeEventListener('beforeinput', beforeInput);
+  }, [directEnabled]);
+
+  useEffect(() => { live.current = true; return () => { live.current = false; resetTyping(); }; }, []);
   useEffect(() => {
     if (!openRequest) return;
     setError(''); setHandedBack(false); setOpen(true);
@@ -75,13 +131,14 @@ export default function BusinessBrowser({
         try {
           frameFlight.current = repo.businessBrowser({ action: 'frame', controlId: controlId.current });
           const next = await frameFlight.current;
-          if (!cancelled) setFrame(next);
+          if (!cancelled) { setFrame(next); direct.current?.observe(next); }
         } catch (e) {
           if (!cancelled) {
             setError((e as Error).message);
             setControlled(false);
             setFrame(null);
             setText(''); setShowText(false);
+            resetTyping();
           }
         } finally { inFlight.current = false; frameFlight.current = null; }
       }
@@ -92,18 +149,23 @@ export default function BusinessBrowser({
   }, [open, controlled, repo]);
 
   async function send(action: Action) {
-    if (actionBusy.current) return;
     const generation = viewGeneration.current;
+    const previous = actionChain.current;
+    let finish!: () => void;
+    actionChain.current = new Promise(resolve => { finish = resolve; });
+    pendingActions.current++;
     actionBusy.current = true;
     setBusy(true);
     setError('');
+    await previous;
     try {
+      if (!live.current || generation !== viewGeneration.current) return null;
       // A screenshot may be in flight when the owner clicks. Wait for it;
       // never silently drop a click or password because a poll held the slot.
       await frameFlight.current?.catch(() => undefined);
       inFlight.current = true;
       const next = await repo.businessBrowser({ ...action, controlId: controlId.current } as BrowserCommand);
-      if (!live.current) return;
+      if (!live.current) return null;
       if (action.action === 'claim') {
         setState(next); onPauseChange?.(true);
         if (generation === viewGeneration.current) { setControlled(true); setHandedBack(false); }
@@ -113,6 +175,9 @@ export default function BusinessBrowser({
         if (generation === viewGeneration.current) setHandedBack(true);
         onPauseChange?.(false);
       }
+      if (generation !== viewGeneration.current) return null;
+      if (next.image) setFrame(next);
+      return next;
     } catch (e) {
       if (live.current && generation === viewGeneration.current) {
         const message = (e as Error).message;
@@ -121,14 +186,21 @@ export default function BusinessBrowser({
            trapped the owner: the toolbar kept offering Hand back, the only
            button it had, and that button could now only fail. Dropping the
            local claim puts Take control back within reach. */
-        if (/expired|controlling this browser/i.test(message)) { setControlled(false); setFrame(null); setText(''); setShowText(false); }
+        if (/expired|controlling this browser/i.test(message)) { setControlled(false); setFrame(null); setText(''); setShowText(false); resetTyping(); }
       }
+      return null;
     }
-    finally { inFlight.current = false; actionBusy.current = false; if (live.current) setBusy(false); }
+    finally {
+      inFlight.current = false; pendingActions.current--; actionBusy.current = pendingActions.current > 0;
+      finish(); if (live.current) setBusy(actionBusy.current);
+    }
   }
+
+  function command(action: Action) { resetTyping(); void send(action); }
 
   function close() {
     viewGeneration.current += 1;
+    resetTyping();
     // Closing the viewer does NOT silently hand a half-completed login to
     // the agent. The durable pause remains until an explicit hand-back.
     // The local claim does not survive, though: it goes stale while the dialog
@@ -182,24 +254,33 @@ export default function BusinessBrowser({
             {controlled && frame?.tabs && frame.tabs.length > 0 && <div className="business-browser-tabs" role="group" aria-label={t('browser.tabs')}>
               {frame.tabs.map(tab => <button type="button" key={tab.index} aria-pressed={tab.selected}
                 title={tab.origin === 'null' ? t('browser.blank') : tab.origin} disabled={busy}
-                onClick={() => void send({ action: 'tab', index: tab.index })}>
+                onClick={() => command({ action: 'tab', index: tab.index })}>
                 <Globe size={14} aria-hidden="true" /><span>{tabName(tab.origin)}</span>
               </button>)}
             </div>}
-            {controlled ? <form className="business-browser-address" onSubmit={e => { e.preventDefault(); void send({ action: 'navigate', url }); }}>
+            {controlled ? <form className="business-browser-address" onSubmit={e => { e.preventDefault(); command({ action: 'navigate', url }); }}>
               <Globe size={17} aria-hidden="true" />
               <Input aria-label={t('browser.address')} placeholder={frame?.tabs?.find(tab => tab.selected)?.origin || 'https://example.com'} type="url" value={url}
                 disabled={busy} onChange={e => setUrl(e.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} />
               <Button type="submit" variant="outline" disabled={busy || !url}>{t('browser.go')}<ArrowRight size={16} aria-hidden="true" /></Button>
             </form> : <div className="business-browser-window-label"><Globe size={16} aria-hidden="true" />{t('browser.windowLabel')}</div>}
-            {controlled && frame?.image ? <div className="business-browser-viewport" ref={viewport}><button type="button" className="business-browser-screen" disabled={busy} style={{ width: `${zoom * 100}%` }}
-              aria-label={t('browser.screen')} onClick={e => {
+            {controlled && frame?.image ? <div className="business-browser-viewport" ref={viewport}><button type="button" className="business-browser-screen" disabled={busy && !directEnabled} style={{ width: `${zoom * 100}%` }}
+              aria-label={t(directEnabled ? 'browser.direct.screen' : 'browser.screen')} onClick={e => {
                 // Keyboard activation has no remote screen coordinates. Use the
                 // explicit key controls, never turn it into a top-left click.
                 if (!e.detail) return;
                 const bounds = e.currentTarget.getBoundingClientRect();
-                void send({ action: 'click', x: Math.min(1279, Math.max(0, (e.clientX - bounds.left) * 1280 / bounds.width)),
-                  y: Math.min(799, Math.max(0, (e.clientY - bounds.top) * 800 / bounds.height)) });
+                const x = Math.min(1279, Math.max(0, (e.clientX - bounds.left) * 1280 / bounds.width));
+                const y = Math.min(799, Math.max(0, (e.clientY - bounds.top) * 800 / bounds.height));
+                if (directEnabled) {
+                  composing.current = false; compositionRevision.current++;
+                  if (keyboardProxy.current) { keyboardProxy.current.value = sentinel; keyboardProxy.current.readOnly = false; }
+                  direct.current?.select(x, y);
+                  // Focus synchronously inside the tap: iOS won't open its
+                  // keyboard if we wait for the network acknowledgement.
+                  keyboardProxy.current?.focus({ preventScroll: true });
+                  keyboardProxy.current?.setSelectionRange(1, 1);
+                } else command({ action: 'click', x, y });
               }}>
               <img src={`data:image/jpeg;base64,${frame.image}`} alt={t('browser.screen')} draggable={false} />
             </button></div> : <div className="business-browser-empty" role={controlled || statusLoading ? 'status' : undefined}>
@@ -213,7 +294,44 @@ export default function BusinessBrowser({
               </ol>}
             </div>}
             {controlled && <div className="business-browser-view-hint">
-              <div><CursorClick size={16} aria-hidden="true" /><span>{t('browser.clickHint')}</span></div>
+              {directEnabled ? <div className="business-browser-direct-input">
+                <Keyboard size={16} aria-hidden="true" />
+                <div className="business-browser-keyboard-proxy">
+                  <input ref={keyboardProxy} aria-label={t('browser.direct.keyboard')} aria-describedby={`${typingId}-direct`}
+                    type={typingState.kind === 'text' || typingState.kind === 'multiline' ? 'text' : 'password'}
+                    defaultValue={sentinel} readOnly={typingState.phase === 'idle'}
+                    autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                    onInput={e => {
+                      e.stopPropagation();
+                      if (!composing.current && !(e.nativeEvent as InputEvent).isComposing) consumeProxy(e.currentTarget);
+                    }}
+                    onCompositionStart={e => {
+                      if (e.currentTarget.value === sentinel) e.currentTarget.setSelectionRange(1, 1);
+                      composing.current = true; compositionStartRevision.current = compositionRevision.current;
+                    }}
+                    onCompositionEnd={e => {
+                      composing.current = false;
+                      if (compositionStartRevision.current === compositionRevision.current) consumeProxy(e.currentTarget);
+                      else e.currentTarget.value = sentinel;
+                    }}
+                    onBlur={e => { composing.current = false; compositionRevision.current++; e.currentTarget.value = sentinel; }}
+                    onKeyDown={e => {
+                      e.stopPropagation();
+                      if (e.nativeEvent.isComposing || composing.current || e.keyCode === 229) return;
+                      if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); return; }
+                      // This is an input sink, not the remote clipboard. Never
+                      // replace the owner's clipboard with the local sentinel.
+                      if ((e.ctrlKey || e.metaKey) && ['c', 'x'].includes(e.key.toLowerCase())) { e.preventDefault(); return; }
+                      const key = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' ? 'ControlOrMeta+A'
+                        : e.shiftKey && ['Tab', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key) ? `Shift+${e.key}` : e.key;
+                      if (['Enter', 'Tab', 'Shift+Tab', 'Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'ControlOrMeta+A',
+                        'Shift+ArrowLeft', 'Shift+ArrowRight', 'Shift+ArrowUp', 'Shift+ArrowDown', 'Shift+Home', 'Shift+End'].includes(key)) {
+                        e.preventDefault(); direct.current?.key(key);
+                      }
+                    }} />
+                  <span id={`${typingId}-direct`} aria-live="polite">{t(`browser.direct.${typingState.kind === 'control' && typingState.phase === 'ready' ? 'control' : typingState.phase}`)}</span>
+                </div>
+              </div> : <div><CursorClick size={16} aria-hidden="true" /><span>{t('browser.clickHint')}</span></div>}
               <div className="business-browser-zoom" role="group" aria-label={t('browser.zoomControls')}>
                 <button type="button" onClick={() => { setZoom(1); if (viewport.current) { viewport.current.scrollTop = 0; viewport.current.scrollLeft = 0; } }}>{t('browser.fitView')}</button>
                 <button type="button" className="business-browser-icon-button" aria-label={t('browser.zoomOut')} disabled={zoom <= 1} onClick={() => setZoom(v => Math.max(1, v - .25))}><Minus size={15} aria-hidden="true" /></button>
@@ -224,9 +342,11 @@ export default function BusinessBrowser({
           </div>
           {controlled && <aside className="business-browser-controls" aria-label={t('browser.controls')}>
             <div className="business-browser-controls-heading"><Keyboard size={20} aria-hidden="true" /><h3>{t('browser.controls')}</h3></div>
-            <p id={typingId}>{t('browser.typingHint')}</p>
+            <p id={typingId}>{t(directEnabled ? 'browser.direct.hint' : 'browser.typingHint')}</p>
             <form className="business-browser-typing" autoComplete="off" onSubmit={e => {
-              e.preventDefault(); const value = text; setText(''); setShowText(false); void send({ action: 'text', text: value });
+              e.preventDefault(); const value = text; setText(''); setShowText(false);
+              if (directEnabled) direct.current?.text(value);
+              else command({ action: 'text', text: value });
             }}>
               <label className="business-browser-field-label" htmlFor={`${typingId}-input`}>{t('browser.type')}</label>
               <div className="business-browser-text-field">
@@ -237,17 +357,17 @@ export default function BusinessBrowser({
                   {showText ? <EyeSlash size={19} aria-hidden="true" /> : <Eye size={19} aria-hidden="true" />}
                 </button>
               </div>
-              <Button type="submit" variant="outline" disabled={busy || !text || !frame?.image}>{t('browser.sendText')}<ArrowRight size={16} aria-hidden="true" /></Button>
+              <Button type="submit" variant="outline" disabled={busy || !text || !frame?.image || (directEnabled && (typingState.phase === 'idle' || typingState.kind === 'control'))}>{t('browser.sendText')}<ArrowRight size={16} aria-hidden="true" /></Button>
             </form>
             <div className="business-browser-keys" role="group" aria-label={t('browser.keys')}>
               {['Tab', 'Enter', 'Backspace'].map(key => <Button key={key} type="button" variant="outline" disabled={busy || !frame?.image}
-                onClick={() => void send({ action: 'key', key })}>{key === 'Enter' && <ArrowBendDownLeft size={15} aria-hidden="true" />}{key}</Button>)}
+                onClick={() => { if (directEnabled && typingState.phase !== 'idle') direct.current?.key(key); else command({ action: 'key', key }); }}>{key === 'Enter' && <ArrowBendDownLeft size={15} aria-hidden="true" />}{key}</Button>)}
             </div>
             <details className="business-browser-more">
               <summary>{t('browser.moreControls')}</summary>
               <div className="business-browser-keys">
                 {['Shift+Tab', 'Escape', 'ControlOrMeta+A'].map(key => <Button key={key} type="button" variant="outline" disabled={busy || !frame?.image}
-                  onClick={() => void send({ action: 'key', key })}>{key === 'ControlOrMeta+A' ? t('browser.selectAll') : key}</Button>)}
+                  onClick={() => { if (directEnabled && typingState.phase !== 'idle' && key !== 'Escape') direct.current?.key(key); else command({ action: 'key', key }); }}>{key === 'ControlOrMeta+A' ? t('browser.selectAll') : key}</Button>)}
                 <Button type="button" variant="outline" disabled={busy || !frame?.image} aria-label={t('browser.scrollUp')} onClick={() => void send({ action: 'scroll', deltaY: -500 })}><ArrowUp size={17} aria-hidden="true" />{t('browser.scrollUp')}</Button>
                 <Button type="button" variant="outline" disabled={busy || !frame?.image} aria-label={t('browser.scrollDown')} onClick={() => void send({ action: 'scroll', deltaY: 500 })}><ArrowDown size={17} aria-hidden="true" />{t('browser.scrollDown')}</Button>
               </div>
@@ -265,10 +385,10 @@ export default function BusinessBrowser({
         </div>
         <div className="business-browser-control-actions">
           {!controlled && <Button type="button" variant={state.paused ? 'outline' : 'primary'} disabled={busy || statusLoading}
-            onClick={() => void send({ action: 'claim' })}><CursorClick size={18} aria-hidden="true" />{t('browser.takeControl')}</Button>}
+            onClick={() => command({ action: 'claim' })}><CursorClick size={18} aria-hidden="true" />{t('browser.takeControl')}</Button>}
           {/* Also recover a durable pause left by an abandoned/expired controller. */}
           {(controlled || state.paused) && <Button type="button" disabled={busy || statusLoading}
-            onClick={() => void send({ action: 'release' })}>{t('browser.handBack')}<ArrowRight size={18} aria-hidden="true" /></Button>}
+            onClick={() => command({ action: 'release' })}>{t('browser.handBack')}<ArrowRight size={18} aria-hidden="true" /></Button>}
         </div>
       </footer>
     </dialog>, document.body)}

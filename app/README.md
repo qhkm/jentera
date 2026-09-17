@@ -95,6 +95,30 @@ unchanged. `scripts/check-chat-browser.mjs` verifies edge-to-edge geometry,
 short desktop screens, the responsive breakpoint, zoom/click coordinates,
 explicit hand-back, Escape and preserved chat drafts using fictional state.
 
+On runtimes advertising `directTyping: 1`, click a field in the live view and
+type normally. A small keyboard indicator also opens the mobile keyboard;
+paste, Tab/Shift+Tab, Enter, deletion and caret keys go to the website. Escape
+leaves keyboard capture without handing control back. IME text commits once.
+Remote clipboard copy/cut and browser/OS shortcuts are not implemented.
+The existing masked Type/paste box remains available, including on old runtimes.
+
+Direct input is transient and serialized, with bounded character batching.
+An opaque actual-node identity and monotonic sequence bind each command to
+the selected field; unexpected focus/navigation changes, failed sends, close,
+hand-back or loss of control discard pending input. Ambiguous sends are not
+automatically retried. This prevents accidental retargeting, not a malicious
+website from reading text intentionally entered into it. No chat/storage keys,
+credentials vault, provider permissions or approval rules change.
+
+`CHECK_DIRECT_TYPING=1 CHROME_CHANNEL=chrome node scripts/check-chat-browser.mjs`
+checks the complete React -> fictional API -> real runner -> isolated Chromium
+input path, including preserved chat drafts and secret-free storage. The
+runner's opt-in `BROWSER_SMOKE=1 BROWSER_SMOKE_CHANNEL=chrome` smoke also checks
+passwords, multiline input, iframe/shadow fields, sequence replay and handoff.
+This is a runner protocol change: release via `worker/scripts/ship-runtime.sh`
+with a new pinned bundle before enabling it on production; never patch Sprites
+individually. Physical iOS/Android keyboard testing is still required.
+
 The conversation component stays mounted when switching modes: drafts and pending
 replies survive a visit to Dashboard. The mode switch returns to the last dashboard
 section and business tab visited in that mounted workspace. Direct links and browser
