@@ -6,6 +6,8 @@ import { PageMetadata } from '@/components/PageMetadata';
 import { INDEXABLE_PAGE_SOURCES, INDEXABLE_PATHS, PRIVATE_PATHS, SOCIAL_IMAGE, alternateLinks, escapeXml, metaEntries, pageSeo, seoHead, structuredData } from '../seo';
 import { CONNECTOR_PAGES, unbackedConnectorPages } from '@/lib/connector-pages';
 import { PRICING_QUESTIONS, pricingFaqs } from '@/routes/Pricing';
+import { PLAN_BENEFITS_MS } from '@/lib/landing-content-ms';
+import { launchOffer, launchPlanBenefits } from '@/lib/launch-offer';
 import { renderPublic } from '@/entry-prerender';
 
 afterEach(() => {
@@ -169,6 +171,25 @@ describe('secondary public pages', () => {
       expect(page.limits.length).toBeGreaterThan(2);
       expect(page.related.length).toBeGreaterThan(1);
     }
+  });
+
+  it('renders the Bahasa Malaysia page without English chrome or an English plan card', () => {
+    const ms = renderPublic('/ms');
+    // The chrome is the part that gave the page away: a Malay hero under an
+    // English skip link, nav and plan card.
+    for (const english of ['Skip to content', 'Sign in', 'Main navigation', 'Jentera home', 'by AISAR', 'Get started']) {
+      expect(ms).not.toContain(english);
+    }
+    for (const malay of ['Terus ke kandungan', 'Log masuk', 'Navigasi utama', 'oleh AISAR', 'Mula sekarang']) {
+      expect(ms).toContain(malay);
+    }
+    for (const benefit of launchPlanBenefits) expect(ms).not.toContain(benefit);
+    expect(ms).toContain(PLAN_BENEFITS_MS[0]);
+    expect(PLAN_BENEFITS_MS).toHaveLength(launchPlanBenefits.length);
+    // Same plan, so the same numbers must survive the translation.
+    expect(ms).toContain(`RM${launchOffer.monthlyPrice}`);
+    expect(ms).toContain(`RM${launchOffer.renewalPrice}`);
+    expect(ms).not.toContain(launchOffer.terms);
   });
 
   it('keeps the pricing page answering the same questions as the landing FAQ', () => {

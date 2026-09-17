@@ -41,15 +41,42 @@ function ActionLink({
   );
 }
 
+/* Every string the header renders, so a page in another language can hand
+   over its own set. A Malay page with an English "Sign in" and "Skip to
+   content" reads as a translated copy of someone else's site, and the skip
+   link and aria-labels are the part a screen reader announces first. */
+export interface ChromeLabels {
+  skip: string;
+  signIn: string;
+  menu: string;
+  brand: string;
+  nav: string;
+  mobileNav: string;
+  parent: string;
+}
+
+const CHROME_LABELS: ChromeLabels = {
+  skip: 'Skip to content',
+  signIn: 'Sign in',
+  menu: 'Menu',
+  brand: 'Jentera home',
+  nav: 'Main navigation',
+  mobileNav: 'Mobile navigation',
+  parent: 'by AISAR',
+};
+
 export function LandingHeader({
   navLinks = NAV_LINKS,
   primaryAction = { href: '/signin?mode=signup', label: 'Get started' },
   showSignIn = true,
+  labels: given,
 }: {
   navLinks?: readonly MarketingLink[];
   primaryAction?: MarketingLink;
   showSignIn?: boolean;
+  labels?: Partial<ChromeLabels>;
 } = {}) {
+  const labels = { ...CHROME_LABELS, ...given };
   const [open, setOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
 
@@ -68,25 +95,25 @@ export function LandingHeader({
   return (
     <header className="marketing-header sticky z-50">
       <a href="#main-content" className="marketing-skip-link">
-        Skip to content
+        {labels.skip}
       </a>
       <div className="marketing-header-bar">
         <div className="marketing-brand">
           <Link
             to="/"
-            aria-label="Jentera home"
+            aria-label={labels.brand}
             className="jentera-wordmark font-pixel text-2xl tracking-tight text-brand"
           >
             <JenteraMark size={32} />
             Jentera
           </Link>
           <a href="https://aisar.ai" className="marketing-parent">
-            by AISAR
+            {labels.parent}
           </a>
         </div>
 
         <nav
-          aria-label="Main navigation"
+          aria-label={labels.nav}
           className="hidden flex-row items-center justify-center gap-1 lg:flex"
         >
           {navLinks.map((l) => (
@@ -103,7 +130,7 @@ export function LandingHeader({
               primary CTA, and .btn carries the shared control height. */}
           {showSignIn ? (
             <Link to="/signin" className="marketing-nav-link hidden sm:inline-flex">
-              Sign in
+              {labels.signIn}
             </Link>
           ) : null}
           <ActionLink
@@ -119,7 +146,7 @@ export function LandingHeader({
             ref={menuButton}
             onClick={() => setOpen((v) => !v)}
             className="inline-flex size-11 items-center justify-center rounded-item border border-rail lg:hidden"
-            aria-label="Menu"
+            aria-label={labels.menu}
             aria-expanded={open}
             aria-controls="landing-mobile-menu"
           >
@@ -131,7 +158,7 @@ export function LandingHeader({
       {open ? (
         <div id="landing-mobile-menu" className="border-t border-rail bg-bg lg:hidden">
           <nav
-            aria-label="Mobile navigation"
+            aria-label={labels.mobileNav}
             className="mx-auto flex w-full max-w-[1250px] flex-col px-6 py-4"
           >
             {navLinks.map((l) => (
@@ -151,7 +178,7 @@ export function LandingHeader({
                 onClick={() => setOpen(false)}
                 className="nav-link py-3 text-sm normal-case tracking-normal"
               >
-                Sign in
+                {labels.signIn}
               </Link>
             ) : null}
             <ActionLink
@@ -173,10 +200,14 @@ export function LandingFooter({
   tagline = FOOTER.tagline,
   links = FOOTER.links,
   label = 'Company links',
+  brandLabel = CHROME_LABELS.brand,
+  contactLabel = 'Let\u2019s talk \u2197',
 }: {
   tagline?: string;
   links?: readonly MarketingLink[];
   label?: string;
+  brandLabel?: string;
+  contactLabel?: string;
 } = {}) {
   return (
     <footer className="marketing-footer w-full border-t border-rail">
@@ -185,7 +216,7 @@ export function LandingFooter({
           <div className="flex flex-col gap-3">
             <Link
               to="/"
-              aria-label="Jentera home"
+              aria-label={brandLabel}
               className="jentera-wordmark font-pixel text-2xl text-brand"
             >
               <JenteraMark size={36} />
@@ -218,7 +249,7 @@ export function LandingFooter({
           <p>
             {FOOTER.copyright} <span>{FOOTER.registration}</span>
           </p>
-          <a href={`mailto:${FOOTER.email}`}>Let’s talk ↗</a>
+          <a href={`mailto:${FOOTER.email}`}>{contactLabel}</a>
         </div>
       </div>
     </footer>

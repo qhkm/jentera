@@ -185,6 +185,37 @@ export const NAV_LINKS_MS = [
   { href: '/about', label: 'Tentang kami' },
 ] as const;
 
+export const CHROME_LABELS_MS = {
+  skip: 'Terus ke kandungan',
+  signIn: 'Log masuk',
+  menu: 'Menu',
+  brand: 'Laman utama Jentera',
+  nav: 'Navigasi utama',
+  mobileNav: 'Navigasi mudah alih',
+  parent: 'oleh AISAR',
+} as const;
+
+/* The plan card on /ms showed English inclusions and English terms next to
+   Malay copy. Same plan, same limits — stated in the language the reader
+   chose. */
+export const PLAN_BENEFITS_MS = [
+  'Staf AI anda sendiri, tersedia 24/7',
+  'Komputer khusus untuknya sendiri',
+  'Penggunaan AI disertakan untuk kerja harian',
+  'Kumpulan sokongan WhatsApp peribadi',
+  'Akses terus kepada pengasas',
+  'Akses awal kepada ciri baharu',
+] as const;
+
+export const OFFER_MS = {
+  availability: 'Menyertai senarai menunggu adalah percuma dan tidak memulakan langganan.',
+  terms:
+    `RM${launchOffer.monthlyPrice}/bulan untuk ${launchOffer.introductoryMonths} tempoh bil bulanan pertama anda, `
+    + `kemudian RM${launchOffer.renewalPrice}/bulan mulai bulan ke-4. Penggunaan AI standard disertakan; `
+    + 'had penggunaan berpatutan terpakai. Semak had penggunaan dan terma pembatalan sebelum melanggan.',
+  contact: 'Hubungi kami ↗',
+} as const;
+
 export const FOOTER_MS = {
   tagline: 'Dibina oleh AISAR untuk perniagaan Malaysia.',
   label: 'Pautan syarikat',

@@ -3,6 +3,7 @@ import { ArrowUpRight, Check, Plus, Prohibit, ShieldCheck } from '@phosphor-icon
 import { LandingFooter, LandingHeader } from '@/components/landing/LandingChrome';
 import { JenteraMark } from '@/components/JenteraMark';
 import {
+  CHROME_LABELS_MS,
   CONTROL_MS,
   EVERYDAY_WORK_MS,
   FAQS_MS,
@@ -11,9 +12,11 @@ import {
   HERO_MS,
   LIMITS_MS,
   NAV_LINKS_MS,
+  OFFER_MS,
+  PLAN_BENEFITS_MS,
   SETUP_STEPS_MS,
 } from '@/lib/landing-content-ms';
-import { launchOffer, launchPlanBenefits } from '@/lib/launch-offer';
+import { launchOffer } from '@/lib/launch-offer';
 
 /* The Bahasa Malaysia landing page. Served at /ms and paired with / by
    hreflang, so a reader who searches in Malay lands on Malay copy instead
@@ -23,7 +26,11 @@ export default function LandingMs() {
 
   return (
     <div className="marketing-page min-h-dvh bg-bg text-text" lang="ms">
-      <LandingHeader navLinks={NAV_LINKS_MS} primaryAction={{ href: '/signin?mode=signup', label: 'Mula sekarang' }} />
+      <LandingHeader
+        navLinks={NAV_LINKS_MS}
+        primaryAction={{ href: '/signin?mode=signup', label: 'Mula sekarang' }}
+        labels={CHROME_LABELS_MS}
+      />
       <main id="main-content">
         <section className="lp-container lp-section">
           <div className="lp-section-heading">
@@ -114,7 +121,7 @@ export default function LandingMs() {
               Dibina di Malaysia, untuk pasukan kecil yang memikul terlalu banyak tugas dan pemilik yang masih
               buat semuanya sendiri.
             </p>
-            <p>{launchOffer.availability}</p>
+            <p>{OFFER_MS.availability}</p>
           </div>
           <div className="lp-launch-plan">
             <span className="lp-launch-badge">Tawaran pelancaran</span>
@@ -127,12 +134,12 @@ export default function LandingMs() {
               Jimat RM{saving} sepanjang {launchOffer.introductoryMonths} bulan pertama berbanding harga bulanan biasa.
             </p>
             <ul aria-label="Apa yang disertakan">
-              {launchPlanBenefits.map((feature) => <li key={feature}><Check size={18} aria-hidden="true" /><span>{feature}</span></li>)}
+              {PLAN_BENEFITS_MS.map((feature) => <li key={feature}><Check size={18} aria-hidden="true" /><span>{feature}</span></li>)}
             </ul>
             <Link to={launchOffer.href} className="btn btn-primary">
               {HERO_MS.ctaPrimary} <ArrowUpRight size={16} aria-hidden="true" />
             </Link>
-            <p className="lp-launch-terms">{launchOffer.terms}</p>
+            <p className="lp-launch-terms">{OFFER_MS.terms}</p>
           </div>
         </section>
 
@@ -178,7 +185,13 @@ export default function LandingMs() {
           </div>
         </section>
       </main>
-      <LandingFooter tagline={FOOTER_MS.tagline} links={FOOTER_MS.links} label={FOOTER_MS.label} />
+      <LandingFooter
+        tagline={FOOTER_MS.tagline}
+        links={FOOTER_MS.links}
+        label={FOOTER_MS.label}
+        brandLabel={CHROME_LABELS_MS.brand}
+        contactLabel={OFFER_MS.contact}
+      />
     </div>
   );
 }
