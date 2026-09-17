@@ -1,11 +1,12 @@
 # Clean Sprite spare pool
 
-Deployed on 2026-09-17. **Enabled in production with target 1.** Migration 059
-was applied and its restricted permissions verified before the runtime release.
-The matching Worker and runtime bundle are live. The isolated clean preparation,
-activation, real-task and pool-off retry pilot passed. General enablement,
-assigned-fleet verification and automatic replenishment all passed. One clean
-ready spare is available; the previously claimed spare remains assigned.
+Deployed on 2026-09-17. **Enabled in production with target 2 and safe unused-spare
+recovery.** Migrations 059 and 060 were applied with restricted permissions
+verified before their matching releases. The initial preparation, activation,
+real-task and pool-off retry pilot passed. Two clean, private, current-release
+spares are ready; the assigned fleet passed verification. Automatic retirement
+of the obsolete never-assigned spare and replenishment both passed. Previously
+assigned Sprites remain assigned and are never recycled.
 
 ## Deployment evidence
 
@@ -70,10 +71,52 @@ ready spare is available; the previously claimed spare remains assigned.
   all 22 assigned runtimes remained ready and converged. Provider metadata
   confirmed the replacement endpoint uses private `sprite` authentication.
 
-This release changes backend/runtime code only. The existing Pages deployment,
+### Two-spare recovery rollout
+
+- Migration 060 was applied at 10:45 UTC. The verified owner-target transaction
+  confirmed inventory/monitor direct access is denied and narrow recovery
+  functions are available to `aisar_app`; no compute was created or deleted.
+- Feature/bundle commit: `745c1e6aa96ef1301a5b7b42249fb5e52635cb41`.
+  Release commit: `b8bf66e3f83c78a18b933b3b1217858a4dd5fe67`, runtime release
+  `2026.09.17-4`. The standard release gate passed without changing the Hermes
+  pin. Worker `3c4d245f-c39b-4542-a5e6-8d0703641ecc` was deployed at 10:48 UTC
+  with pool enabled, target `2` and recovery enabled. No installed runtime
+  files were hand-patched.
+- All 22 customer runtimes converged by 10:54 UTC and passed full DB-backed
+  fleet verification: file and authenticated readiness release, dependency
+  verification, and both services running. A fresh check at 13:09 UTC again
+  passed 22/22 on the same release.
+- The obsolete never-assigned resource
+  `aisar-p-fe2f94d02dd14055a2f063805f805427` was quarantined and retained its
+  inventory budget when the first 15-second provider attempt timed out. Its
+  exact read-only attestation subsequently passed in 2.9 seconds. The normal
+  bounded retry retired it after its second attempt; provider absence was
+  freshly confirmed by HTTP 404 at 13:09 UTC. Only this unused factory resource
+  was removed. Its public installation is rebuildable from the published pins;
+  no customer Sprite or data was removed.
+- Replacement `aae6830f-ae28-4d08-bcd2-23ee35dede86` became ready at 10:53:55
+  UTC. Automatic replenishment queued `46f9aa5b-e646-44be-b346-d659f80ccb51`
+  after retirement, and it became ready at 11:07:08 UTC. Both have checkpoint
+  `v1` and the exact new release/bundle. The hourly cap remained four entries
+  and preparation remained serialized throughout.
+- At 13:08 UTC, inventory had two ready entries, one permanent assigned pilot
+  tombstone and one retired obsolete entry, with no queued, preparing or
+  quarantined entries. The read-only replenishment gate passed at 13:09 UTC.
+  Provider inspection and the exact clean-state check passed for both spares:
+  private `sprite` authentication, prepared markers, no tenant environment or
+  private-state files and no services. `/api/health` returned HTTP 200.
+- Typecheck and all backend tests passed: 105 files, 1,274 tests. Six operator
+  script tests and shell syntax checks also passed. Recovery tests cover
+  restricted permissions, concurrent/token-fenced retirement, protection of
+  assigned/deleted customer identities, provider absence confirmation,
+  quarantine budget retention, unsafe-state refusal and throttled alerts.
+  Production alert configuration uses the existing Resend account and founder
+  recipient; no fabricated incident email was sent during verification.
+
+These releases change backend/runtime code only. The existing Pages deployment,
 billing configuration, and separately disabled desktop-streaming feature remain
-unchanged. Hold the enabled target at 1; increasing it to 2 is a separate rollout
-decision after observing healthy replenishment and compute/storage costs.
+unchanged. The target is now two; increasing capacity or spending limits beyond
+these bounds requires observed signup demand and cost data.
 
 ## What changes
 
@@ -151,7 +194,7 @@ after failures instead of hiding orphan resources or accumulating bills.
 ### Recovery and two-spare rollout
 
 Migration 060 adds opt-in recovery (`RUNTIME_SPARE_POOL_RECOVERY_ENABLED`) and
-operator monitoring. The next runtime release raises the target to **2**.
+operator monitoring. Runtime release `2026.09.17-4` raises the target to **2**.
 Preparation stays serialized and the hard limit remains four new pool entries
 per rolling hour, including already-assigned entries. This is a buffer, not an
 always-available or unlimited-concurrency guarantee.
@@ -203,6 +246,20 @@ compute. `ship-runtime.sh` now also waits for the desired count of ready spares
 on the **exact new release/bundle**, after assigned-fleet verification. The
 read-only gate allows approximately 15 minutes and fails explicitly on manual
 review or an unfilled pool; customer cold provisioning remains available.
+
+## Capacity beyond launch
+
+Two spares and four pool preparations per hour deliberately bound launch spend;
+they are not a signup-admission or customer-task capacity limit. Larger signup
+bursts use normal provisioning and therefore wait longer. This configuration
+has not been load-tested as a high-volume onboarding system.
+
+Before increasing the bounds, measure spare claim rate, customer queue wait,
+warm/cold activation times, replenishment duration, signup peaks and actual
+compute/storage spend. A larger rollout should size a bounded buffer from
+demand during replenishment, isolate preparation capacity from customer tasks,
+and permit preparation concurrency only within a spending ceiling. Those are
+future changes, not enabled by this release; the current safety bounds stay.
 
 ## Safe rollout
 
