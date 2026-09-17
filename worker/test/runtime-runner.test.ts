@@ -24,6 +24,73 @@ afterEach(() => {
 });
 
 describe('durable Hermes run delivery', () => {
+  it('does not spend an attempt while a cold sprite is still waking', async () => {
+    /* A sleeping sprite wakes in a second or two, so the RUNNER answers
+       before Hermes behind it does — and it answers 5xx with a body that is
+       not JSON. Kitakod Ventures lost a run to that at 23:39 MYT on 17 Sep:
+       cold for twenty minutes, five attempts burned over three minutes while
+       Hermes came up, and a fresh ask succeeded at 23:42 while the retry was
+       still being graded terminal. The wake is a known, bounded wait, like a
+       wedged slot or a held browser — wait it out rather than counting it. */
+    const env = testEnv({ RUNTIME_RELEASE: '2026.09.01-3', AISAR_MODEL_NAME: 'MiniMax-M3' });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `run:${run.id}`, payload: { input: 'hello' },
+    }));
+    /* Reachable, but still an HTML error page rather than JSON. */
+    const wakingFetch: typeof fetch = async () =>
+      new Response('<html>502 Bad Gateway</html>', { status: 500 });
+
+    const result = await handleRuntimeMessage(
+      env, { version: 1, businessId: A, taskId: task.id }, { provider, fetch: wakingFetch },
+    );
+
+    expect(result.action).toBe('requeue');
+    const [row] = await asOwner((sql) => sql<{ attempt: number; status: string }[]>`
+      select attempt, status from runtime_task where id = ${task.id}`);
+    expect(row.attempt, 'a wake window must not count against the five attempts').toBe(0);
+    expect(row.status).toBe('queued');
+  });
+
+  it('still gives up when the runner keeps answering badly long after any wake', async () => {
+    /* Bounded by the measured wake cost, not open-ended: a runner that is
+       simply broken must still reach the terminal path. started_at survives a
+       defer, so the wait is measured across every attempt. */
+    const env = testEnv({ RUNTIME_RELEASE: '2026.09.01-3', AISAR_MODEL_NAME: 'MiniMax-M3' });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `run:${run.id}`, payload: { input: 'hello' },
+    }));
+    await asOwner((sql) => sql`
+      update runtime_task set started_at = now() - interval '10 minutes', attempt = 4
+       where id = ${task.id}`);
+    const brokenFetch: typeof fetch = async () =>
+      new Response('<html>502 Bad Gateway</html>', { status: 500 });
+
+    const result = await handleRuntimeMessage(
+      env, { version: 1, businessId: A, taskId: task.id }, { provider, fetch: brokenFetch },
+    );
+
+    expect(result.action).toBe('ack');
+    const [row] = await asOwner((sql) => sql<{ status: string }[]>`
+      select status from runtime_task where id = ${task.id}`);
+    expect(row.status, 'a genuinely broken runner must still exhaust').toBe('exhausted');
+  });
+
   it('ends a live observation slice before the consumer ceiling and persists its next wake', async () => {
     const env = testEnv({
       RUNTIME_RELEASE: '2026.09.01-3',

@@ -112,6 +112,13 @@ import {
   routineRuntimeMeta,
 } from '../routines/runtime-result';
 
+/** A runner reachable but not yet serving: it answered, and the answer was
+ *  not JSON. Narrow on purpose — a runner that returns a well-formed error is
+ *  saying something, and that still counts as an attempt. */
+function isWakingRunnerFailure(error: unknown): boolean {
+  return error instanceof Error && /^runner returned invalid JSON \(5\d\d\)$/.test(error.message);
+}
+
 const MAX_TASK_ATTEMPTS = 5;
 /** Background lifecycle tasks (upgrade/provision/reconcile) get a wider net
     than interactive run tasks: a multi-minute infra blip (registry 503,
@@ -142,6 +149,17 @@ const BUSY_RETRY_SECONDS = 2;
     a person does not: they are signing in, and two-second polling for the
     length of a Google login is churn that tells nobody anything. */
 const BROWSER_PAUSED_RETRY_SECONDS = 30;
+/* A sleeping sprite wakes in a second or two, so the RUNNER answers before
+   Hermes behind it does — and it answers 5xx with a body that is not JSON.
+   That is not a broken runtime; it is the 15-30 s Hermes restart an owner
+   feels on the first message after a gap (docs/reply-latency.md). Until
+   2026-09-17 those seconds were charged as attempts: a cold sprite could
+   burn all five before Hermes finished starting, and Kitakod Ventures lost
+   a run that way while a fresh ask two minutes later succeeded.
+   Bounded by started_at, which survives a defer, so the wait is measured
+   across every attempt rather than reset by each one. */
+const WAKE_RETRY_SECONDS = 10;
+const WAKE_GIVE_UP_MS = 4 * 60 * 1_000;
 /** And a browser nobody comes back to is the case this has to end. The pause is
     durable and outlives the session that set it deliberately, so without a bound
     here a question waits on a person who has closed the tab — for ever, since a
@@ -2108,6 +2126,28 @@ export async function handleRuntimeMessage(
         );
       }
       return { action: 'requeue', delaySeconds, reason: `telegram flood-wait ${floodSeconds}s` };
+    }
+    /* A runner that answers, but not with JSON, while the sprite is still
+       coming up. Wait it out instead of spending the attempts the owner will
+       need if this turns out to be real. */
+    if (executionTask && isWakingRunnerFailure(error)) {
+      const waitingSince = lease.task.startedAt?.getTime() ?? null;
+      const wokeTooSlowly = waitingSince !== null &&
+        Date.now() - waitingSince >= WAKE_GIVE_UP_MS;
+      if (!wokeTooSlowly) {
+        const deferred = await withTenant(env, message.businessId, (tx) =>
+          deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
+            delaySeconds: WAKE_RETRY_SECONDS,
+          }));
+        if (deferred && lease.task.runId) {
+          await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'waking');
+        }
+        return {
+          action: 'requeue',
+          delaySeconds: WAKE_RETRY_SECONDS,
+          reason: deferred ? 'runtime is still waking' : 'runtime task lease was lost',
+        };
+      }
     }
     const maxAttempts = LIFECYCLE_TASK_KINDS.has(lease.task.kind)
       ? MAX_LIFECYCLE_TASK_ATTEMPTS
