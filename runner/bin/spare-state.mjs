@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const HERMES_COMMIT = 'ff5b9fcfb029e230a2d3f90d1a3c06260ea1d413';
+const HERMES_COMMIT = 'bb0305ae08bf1dc9ac5a39d2b017f27e42854170';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EMPTY_DIRS = ['cron', 'sessions', 'logs', 'pairing', 'hooks', 'image_cache', 'audio_cache', 'memories'];
 const INSTALL_DIRS = ['hermes-agent', 'bin', 'node', 'skills'];

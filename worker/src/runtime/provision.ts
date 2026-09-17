@@ -394,8 +394,8 @@ function field(name: string, value: string): string {
 
 function hermesPinTransfer(): string[] {
   return [
-    field('HERMES_TAG_B64', 'v2026.9.8'),
-    field('HERMES_COMMIT_B64', 'ff5b9fcfb029e230a2d3f90d1a3c06260ea1d413'),
+    field('HERMES_TAG_B64', 'v2026.9.9'),
+    field('HERMES_COMMIT_B64', 'bb0305ae08bf1dc9ac5a39d2b017f27e42854170'),
   ];
 }
 

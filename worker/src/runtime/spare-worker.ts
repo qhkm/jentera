@@ -66,6 +66,6 @@ function preparationAttested(stdout: string, spare: { release: string; bundle_co
     const body = JSON.parse(stdout.trimEnd().split('\n').pop() ?? '');
     return body?.prepared === true && body.release === spare.release &&
       body.bundleCommit === spare.bundle_commit &&
-      body.hermesCommit === 'ff5b9fcfb029e230a2d3f90d1a3c06260ea1d413';
+      body.hermesCommit === 'bb0305ae08bf1dc9ac5a39d2b017f27e42854170';
   } catch { return false; }
 }

@@ -17,7 +17,7 @@ const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
 const RELEASE = '2026.09.17-3';
 const BUNDLE = 'a'.repeat(40);
-const HERMES = 'ff5b9fcfb029e230a2d3f90d1a3c06260ea1d413';
+const HERMES = 'bb0305ae08bf1dc9ac5a39d2b017f27e42854170';
 const config = { release: RELEASE, bundle: BUNDLE };
 
 function enabled(over: Partial<Env> = {}) {
