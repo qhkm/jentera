@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { EventEmitter } from 'node:events';
-import { createBusinessBrowser, browserCommandProblem } from '../src/business-browser.mjs';
+import { createBusinessBrowser, browserCommandProblem, desktopBrowserArguments } from '../src/business-browser.mjs';
 
 const ownerId = '11111111-1111-4111-8111-111111111111';
 const controlId = '22222222-2222-4222-8222-222222222222';
 const command = (action, extra = {}) => ({ action, ownerId, controlId, ...extra });
-function fixture() {
+function fixture(desktopEnabled = false, extras = {}) {
   const files = new Map();
   let clock = 1000;
   let launches = 0;
@@ -39,11 +39,76 @@ function fixture() {
       rename: async (from, to) => { files.set(to, files.get(from)); files.delete(from); },
     },
   };
-  const config = { stateFile: '/private/control.json', profileDir: '/private/profile' };
+  const config = { stateFile: '/private/control.json', profileDir: '/private/profile', desktopEnabled };
+  Object.assign(deps, extras);
   return { browser: createBusinessBrowser(config, deps), files, typed, page, context, chromium: deps.chromium,
     advance: (ms) => { clock += ms; }, launches: () => launches,
     restart: () => createBusinessBrowser(config, deps) };
 }
+
+test('desktop uses the same persistent profile, native viewport and headed Chrome without attesting agent computer use', async () => {
+  const f = fixture(true); let options;
+  const launch = f.chromium.launchPersistentContext;
+  f.chromium.launchPersistentContext = async (profile, opts) => { options = opts; return launch(profile, opts); };
+  await f.browser.command(command('claim'));
+  assert.equal(options.headless, false); assert.equal(options.viewport, null);
+  assert.equal(options.chromiumSandbox, true);
+  assert.ok(options.args.includes('--restore-last-session'));
+  assert.equal((await f.browser.status()).desktopView, 1);
+  assert.equal(f.browser.desktopControlValid(command('claim')), true);
+  assert.equal(f.browser.desktopControlValid(command('claim', { controlId: ownerId })), false);
+  assert.ok(!JSON.stringify(await f.browser.status()).includes('computer_use'));
+});
+
+test('desktop cleanup must finish before release/reclaim; failure keeps durable pause and existing lease', async () => {
+  const f = fixture(true); await f.browser.command(command('claim'));
+  let fail = true;
+  f.browser.onControlChanging(async () => { assert.equal(await f.browser.isPaused(), true); if (fail) throw new Error('cleanup unavailable'); });
+  await assert.rejects(f.browser.command(command('release')), /cleanup unavailable/);
+  await assert.rejects(f.browser.command(command('reclaim', { controlId: ownerId })), /cleanup unavailable/);
+  assert.deepEqual([...f.files.values()], ['{"paused":true}']);
+  assert.equal(f.browser.desktopControlValid(command('claim')), true);
+  fail = false; await f.browser.command(command('release'));
+  assert.equal(await f.browser.isPaused(), false);
+});
+
+test('desktop capability disappears when the local gateway is not ready; legacy viewer stays available', async () => {
+  const f = fixture(true, { desktopReady: () => false });
+  assert.equal((await f.browser.status()).desktopView, undefined);
+  assert.equal((await f.browser.status()).directTyping, 1);
+});
+
+test('headless migration happens only after durable pause and only for the exact business profile', async () => {
+  for (const wrongProfile of [false, true]) {
+    const f = fixture(true); const attached = new EventEmitter(); let closed = false;
+    attached.contexts = () => [f.context];
+    attached.newBrowserCDPSession = async () => ({
+      send: async method => {
+        if (method === 'Browser.getBrowserCommandLine') return { arguments: ['--headless', `--user-data-dir=${wrongProfile ? '/other/profile' : '/private/profile'}`] };
+        assert.equal(method, 'Browser.close'); assert.equal(await f.browser.isPaused(), true);
+        closed = true; attached.emit('disconnected');
+      }, detach: async () => {},
+    });
+    f.chromium.connectOverCDP = async () => attached;
+    if (wrongProfile) {
+      await assert.rejects(f.browser.command(command('claim')), /browser_unavailable/);
+      assert.equal(closed, false); assert.equal(f.launches(), 0);
+    } else {
+      await f.browser.command(command('claim')); assert.equal(closed, true); assert.equal(f.launches(), 1);
+    }
+    assert.deepEqual([...f.files.values()], ['{"paused":true}']);
+  }
+});
+
+test('native browser identification rejects absent/ambiguous instances and ignores Chromium child processes', async () => {
+  const args = ['/usr/lib/chromium/chromium', '--headless', '--remote-debugging-port=9222', '--user-data-dir=/private/profile'];
+  for (const joined of [false, true]) {
+    const io = { readdir: async () => ['1', '2', 'net'], readFile: async path => Buffer.from(path.includes('/1/') ? args.join(joined ? ' ' : '\0') : [...args, '--type=renderer'].join('\0')) };
+    assert.deepEqual(await desktopBrowserArguments(io), args);
+    await assert.rejects(desktopBrowserArguments({ ...io, readFile: async () => Buffer.from(args.join('\0')) }), /identity unavailable/);
+    await assert.rejects(desktopBrowserArguments({ ...io, readdir: async () => [] }), /identity unavailable/);
+  }
+});
 
 function typingFixture() {
   const f = fixture();

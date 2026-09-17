@@ -7,6 +7,7 @@ import type { BrowserCommand, BusinessBrowserState } from '@/lib/repo/types';
 import { BrowserInput, type DirectInputState } from '@/lib/browser-input';
 import { useT } from '@/i18n/I18nProvider';
 import '@/styles/business-browser.css';
+import DesktopViewer from './DesktopViewer';
 
 type Action = BrowserCommand extends infer C ? C extends BrowserCommand ? Omit<C, 'controlId'> : never : never;
 
@@ -68,6 +69,7 @@ export default function BusinessBrowser({
     () => { if (live.current) setError(previous => previous || t('browser.direct.interrupted')); },
   );
   const directEnabled = controlled && frame?.directTyping === 1;
+  const desktopEnabled = state.desktopView === 1 && Boolean(repo.desktopConnection);
   // A zero-width sentinel lets mobile keyboards emit Backspace even though
   // the proxy never retains the remote field's value. Nothing is persisted.
   const sentinel = '\u200b';
@@ -123,7 +125,7 @@ export default function BusinessBrowser({
   }, [open, repo, onPauseChange, statusAttempt]);
 
   useEffect(() => {
-    if (!open || !controlled) return;
+    if (!open || !controlled || desktopEnabled) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
     async function refresh() {
@@ -147,7 +149,7 @@ export default function BusinessBrowser({
     }
     void refresh();
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [open, controlled, repo]);
+  }, [open, controlled, repo, desktopEnabled]);
 
   async function send(action: Action) {
     const generation = viewGeneration.current;
@@ -256,7 +258,10 @@ export default function BusinessBrowser({
           <div><strong>{t('browser.recover.title')}</strong><p>{t('browser.recover.detail')}</p></div>
           <Button type="button" disabled={busy || statusLoading} onClick={() => command({ action: 'reclaim' })}>{t('browser.recover.action')}<ArrowRight size={16} aria-hidden="true" /></Button>
         </div>}
-        <div className={`business-browser-workspace ${controlled ? 'is-controlled' : ''}`}>
+        {controlled && desktopEnabled ? <DesktopViewer controlId={controlId.current} onControlLost={() => {
+          resetTyping(); setControlled(false); setFrame(null); setText(''); setShowText(false);
+          setError(t('browser.desktop.lost'));
+        }} /> : <div className={`business-browser-workspace ${controlled ? 'is-controlled' : ''}`}>
           <div className="business-browser-window">
             {controlled && frame?.tabs && frame.tabs.length > 0 && <div className="business-browser-tabs" role="group" aria-label={t('browser.tabs')}>
               {frame.tabs.map(tab => <button type="button" key={tab.index} aria-pressed={tab.selected}
@@ -382,7 +387,7 @@ export default function BusinessBrowser({
             <div className="business-browser-privacy"><ShieldCheck size={19} aria-hidden="true" /><p>{t('browser.privacyShort')}</p></div>
             <p className="business-browser-lease"><Clock size={15} aria-hidden="true" />{t('browser.expires')}</p>
           </aside>}
-        </div>
+        </div>}
       </div>
       <footer className="business-browser-footer">
         <div className="business-browser-footer-note">

@@ -472,6 +472,27 @@ test('bootstrap refuses an invalid computer-use gate before touching the runtime
   assert.match(result.stderr, /CUA_ENABLED_B64/);
 });
 
+test('owner desktop is opt-in and proves sandboxed Chrome/RFB before enabling the viewer, independently of agent CUA', async () => {
+  const source = await readFile(SCRIPT, 'utf8');
+  assert.match(source, /DESKTOP_ENABLED_B64\) DESKTOP_ENABLED_B64="\$value" ;;/);
+  assert.match(source, /\$\{DESKTOP_ENABLED_B64:-\}/);
+  assert.match(source, /x11vnc tint2 xauth python3 libxtst6/);
+  assert.ok(source.indexOf('node /home/sprite/aisar/runner/desktop-smoke.mjs') < source.indexOf("'AISAR_DESKTOP_VIEW=%q\\n' '1'"));
+  const smoke = await readFile(new URL('../bin/desktop-smoke.mjs', import.meta.url), 'utf8');
+  assert.match(smoke, /chromiumSandbox: true/);
+  assert.match(smoke, /RFB 003/);
+  const runner = await readFile(RUNNER_SERVICE, 'utf8');
+  assert.match(runner, /AISAR_DESKTOP_VIEW:-0/); assert.match(runner, /source "\$display_env"/);
+  const display = await readFile(DISPLAY_SERVICE, 'utf8');
+  assert.match(display, /-nolisten tcp/); assert.match(display, /tint2/);
+});
+
+test('invalid owner desktop gate is rejected before installing or changing any runtime', async () => {
+  const transfer = await tempTransfer(`DESKTOP_ENABLED_B64=Mg==\n${fields()}`);
+  const result = run(transfer); assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /DESKTOP_ENABLED_B64 must decode/);
+});
+
 function run(transfer) {
   return spawnSync('bash', [SCRIPT, transfer], {
     encoding: 'utf8',

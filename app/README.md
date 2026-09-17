@@ -58,6 +58,13 @@ The full launch/activation/billing gates and founder-led retention plan are in
 
 ## Things worth knowing
 
+The optional owner-only real desktop viewer is a disabled pilot, not an
+automatically enabled feature. It uses lazy-loaded noVNC, real Chrome/taskbar,
+the existing saved browser profile, and the same durable pause/explicit hand-back
+contract. See [desktop streaming](../docs/desktop-streaming.md) for isolated Linux
+checks, security gates, deployment limitations and rollback. QA HTML is not a
+production build input; the published app never exposes fixture credentials.
+
 Optional GA4 public-page tracking uses `G-VF5X89K0MC`; it loads only after a
 browser opt-in and stays out of private screens. See [analytics setup](../docs/analytics.md)
 for required Google-side settings, privacy controls and safe local verification.

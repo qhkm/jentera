@@ -30,6 +30,7 @@ DEEP_MODEL_NAME_B64=
 HERMES_TAG_B64=
 HERMES_COMMIT_B64=
 CUA_ENABLED_B64=
+DESKTOP_ENABLED_B64=
 CANDIDATE_MODEL_NAMES_B64=
 EXTRACT_BASE_B64=
 EXTRACT_KEY_B64=
@@ -72,6 +73,7 @@ while IFS='=' read -r name value; do
     HERMES_TAG_B64) HERMES_TAG_B64="$value" ;;
     HERMES_COMMIT_B64) HERMES_COMMIT_B64="$value" ;;
     CUA_ENABLED_B64) CUA_ENABLED_B64="$value" ;;
+    DESKTOP_ENABLED_B64) DESKTOP_ENABLED_B64="$value" ;;
     CANDIDATE_MODEL_NAMES_B64) CANDIDATE_MODEL_NAMES_B64="$value" ;;
     EXTRACT_BASE_B64) EXTRACT_BASE_B64="$value" ;;
     EXTRACT_KEY_B64) EXTRACT_KEY_B64="$value" ;;
@@ -179,6 +181,11 @@ hermes_tag="$(decode "$HERMES_TAG_B64")"
 hermes_commit="$(decode "$HERMES_COMMIT_B64")"
 edge_token="$(decode "$EDGE_TOKEN_B64")"
 cua_enabled="$(decode "${CUA_ENABLED_B64:-}")"
+desktop_enabled="$(decode "${DESKTOP_ENABLED_B64:-}")"
+[[ "$desktop_enabled" =~ ^(0|1)?$ ]] || {
+  echo "DESKTOP_ENABLED_B64 must decode to 0 or 1 (absent means disabled)" >&2
+  exit 1
+}
 [[ "$cua_enabled" =~ ^(0|1)?$ ]] || {
   echo "CUA_ENABLED_B64 must decode to 0 or 1 (absent means disabled)" >&2
   exit 1
@@ -578,12 +585,26 @@ done
 #      x11-display service will run. AISAR_CUA_ENABLED is written to
 #      runtime.env only after this — fail-closed: a broken display or driver
 #      can never be attested as ready.
-if [[ "$cua_enabled" == "1" ]]; then
+if [[ "$cua_enabled" == "1" || "$desktop_enabled" == "1" ]]; then
   # The sprite user is non-root; apt-get needs sudo (passwordless on sprites).
   DEBIAN_FRONTEND=noninteractive sudo apt-get update -qq
   DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends \
     xvfb openbox dbus at-spi2-core x11-utils xdotool \
     >/dev/null
+fi
+
+# Owner desktop viewing is NOT the agent computer_use capability. Install only
+# a reviewed OS viewer and taskbar; no floating JS daemon or public VNC port.
+if [[ "$desktop_enabled" == "1" ]]; then
+  DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends \
+    x11vnc tint2 xauth python3 libxtst6 >/dev/null
+  PLAYWRIGHT_ENTRY="$playwright_dir/index.mjs" \
+    timeout --foreground -k 5 60 xvfb-run -a \
+    node /home/sprite/aisar/runner/desktop-smoke.mjs >/dev/null
+  printf 'AISAR_DESKTOP_VIEW=%q\n' '1' >> "$runtime_env"
+fi
+
+if [[ "$cua_enabled" == "1" ]]; then
 
   case "$(uname -m)" in
     x86_64|amd64)
@@ -643,24 +664,22 @@ install -d -m 755 /home/sprite/.local/bin
 install -m 755 /home/sprite/aisar/runner/jentera-calendar.mjs \
   /home/sprite/.local/bin/jentera-calendar
 
-services=(aisar-runner hermes)
-if [[ "$cua_enabled" == "1" ]]; then
-  services+=(x11-display)
-fi
+services=(aisar-runner hermes x11-display)
 for service in "${services[@]}"; do
   if sprite-env services get "$service" >/dev/null 2>&1; then
     sprite-env services stop "$service" >/dev/null 2>&1 || true
     sprite-env services delete "$service" >/dev/null
   fi
 done
-if [[ "$cua_enabled" == "1" ]]; then
+if [[ "$cua_enabled" == "1" || "$desktop_enabled" == "1" ]]; then
   sprite-env services create x11-display \
     --cmd /home/sprite/aisar/runner/display-service.sh \
     --env AISAR_DISPLAY_ENV_FILE=/home/sprite/aisar/display.env \
+    --env AISAR_DESKTOP_VIEW="${desktop_enabled:-0}" \
     --no-stream
 fi
 hermes_needs=()
-if [[ "$cua_enabled" == "1" ]]; then
+if [[ "$cua_enabled" == "1" || "$desktop_enabled" == "1" ]]; then
   hermes_needs=(--needs x11-display)
 fi
 sprite-env services create hermes \

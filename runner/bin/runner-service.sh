@@ -13,4 +13,13 @@ source "$runtime_env"
 source "$runner_env"
 set +a
 
+if [[ "${AISAR_DESKTOP_VIEW:-0}" == "1" ]]; then
+  display_env="${AISAR_DISPLAY_ENV_FILE:-/home/sprite/aisar/display.env}"
+  [[ -r "$display_env" ]] || { echo "desktop display is unavailable" >&2; exit 1; }
+  set -a
+  source "$display_env"
+  set +a
+  [[ -n "${DISPLAY:-}" ]] || { echo "desktop display is unavailable" >&2; exit 1; }
+fi
+
 exec /.sprite/bin/node /home/sprite/aisar/runner/server.mjs

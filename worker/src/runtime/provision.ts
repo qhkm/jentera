@@ -27,6 +27,7 @@ import { canBootstrap, type BootstrapRuntimeProvider, type RuntimeProvider } fro
 import { finalizeRuntimeModelKeyRotation, runtimeModelKey } from './openrouter-keys';
 import { RunnerClient } from './runner-client';
 import { setupStageReporter, type SetupStage } from './setup-progress';
+import { desktopEnabledFor } from './desktop';
 
 export interface ProvisionOptions {
   provider?: RuntimeProvider;
@@ -192,6 +193,7 @@ async function bootstrapRuntime(
     field('MODEL_KEY_B64', modelKey),
     field('MODEL_NAME_B64', modelName),
     field('DEEP_MODEL_NAME_B64', deepModelName),
+    ...(desktopEnabledFor(env, businessId) ? [field('DESKTOP_ENABLED_B64', '1')] : []),
     ...(candidates.length ? [field('CANDIDATE_MODEL_NAMES_B64', candidates.join(','))] : []),
     ...(extract
       ? [field('EXTRACT_BASE_B64', extract.base), field('EXTRACT_KEY_B64', extract.key)]
@@ -213,6 +215,10 @@ async function bootstrapRuntime(
     'runner/src/server.mjs',
     'runner/src/business-browser.mjs',
     'runner/src/browser-preview-stream.mjs',
+    'runner/src/desktop-gateway.mjs',
+    'runner/bin/display-service.sh',
+    'runner/bin/desktop-smoke.mjs',
+    'runner/bin/desktop-release-keys.py',
     'runner/bin/browser-smoke.mjs',
     'runner/bin/jentera-calendar.mjs',
     'runner/bin/model-smoke.py',
@@ -236,6 +242,7 @@ async function bootstrapRuntime(
       '/home/sprite/aisar/runner/jentera-calendar.mjs ' +
       '/home/sprite/aisar/runner/hermes-service.sh ' +
       '/home/sprite/aisar/runner/runner-service.sh ' +
+      '/home/sprite/aisar/runner/display-service.sh ' +
       '/home/sprite/aisar/runner/bootstrap-runtime.sh',
   ].join('\n');
   await provider.exec(observed, '/bin/bash', ['-lc', downloads]);

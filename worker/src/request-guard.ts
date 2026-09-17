@@ -162,7 +162,7 @@ export async function guardApiRequest(
        refused for doing exactly what the surface asks of them. */
     /^\/api\/runtime\/approvals\/[0-9a-f-]{36}\/decide$/i.test(url.pathname));
   const runStream = request.method === 'GET' &&
-    /^\/api\/runs\/[0-9a-f-]{36}\/events$/i.test(url.pathname);
+    (/^\/api\/runs\/[0-9a-f-]{36}\/events$/i.test(url.pathname) || url.pathname === '/api/browser/desktop');
   try {
     /* The cookie is not authenticated yet, so it cannot be the only key: a
        bot could rotate fake cookie values. The source-address brake remains

@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createBusinessBrowser, BrowserProblem } from './business-browser.mjs';
 import { serveBrowserPreview } from './browser-preview-stream.mjs';
+import { createDesktopGateway } from './desktop-gateway.mjs';
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'stopped', 'expired']);
 const BODY_LIMIT = 64 * 1024;
@@ -569,12 +570,14 @@ export function createRunner(input) {
   const keepalive = createSpriteKeepalive(process.env.SPRITE_API_SOCK);
   let admitting = false;
   let admittingTaskId = null;
+  let desktopGateway = null;
   const businessBrowser = input.businessBrowser ?? (config.businessBrowserEnabled
     ? createBusinessBrowser({
       stateFile: '/var/lib/aisar/browser-control.json',
       profileDir: '/home/sprite/.jentera-browser',
       playwrightEntry: config.playwrightEntry,
-    }) : null);
+      desktopEnabled: config.desktopEnabled,
+    }, { desktopReady: () => Boolean(desktopGateway?.desktopReady()) }) : null);
   const terminations = new RunTerminations(
     config,
     state,
@@ -1100,6 +1103,14 @@ export function createRunner(input) {
       return json(res, status, { ok: false, error: status === 413 ? 'body too large' : 'runner error' });
     }
   });
+  if (config.desktopEnabled && businessBrowser) {
+    desktopGateway = createDesktopGateway({
+      businessId: config.businessId, runnerKey: config.runnerKey,
+      browser: businessBrowser, display: process.env.DISPLAY,
+    });
+    server.once('listening', () => desktopGateway.listen(5901, '127.0.0.1'));
+    server.once('close', () => { void desktopGateway.closeDesktop().catch(() => {}); });
+  }
   server.once('close', () => {
     if (watchdog) clearInterval(watchdog);
     terminations.close();
@@ -1124,6 +1135,7 @@ export function capabilitiesFromEnv(env = process.env) {
 export function configFromEnv(env = process.env) {
   return {
     businessBrowserEnabled: env.AISAR_BUSINESS_BROWSER === '1',
+    desktopEnabled: env.AISAR_DESKTOP_VIEW === '1',
     playwrightEntry: env.PLAYWRIGHT_ENTRY,
     businessId: env.AISAR_BUSINESS_ID,
     runnerKey: env.AISAR_RUNNER_KEY,

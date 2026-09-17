@@ -3,6 +3,7 @@ import { withTenant } from '../db';
 import { getRuntimeAccess } from '../agent-runtime';
 import { hasBusiness, resolveTenant } from '../tenancy';
 import { can } from '../permissions';
+import { desktopEnabledFor } from '../runtime/desktop';
 
 const ACTIONS = new Set(['claim', 'reclaim', 'release', 'frame', 'navigate', 'click', 'text', 'key', 'input', 'scroll', 'tab', 'preview', 'preview-stream']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -111,6 +112,7 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
       .filter((key) => body[key] !== undefined).map((key) => [key, body[key]])),
       ...(body.directTyping === 1 ? { directTyping: 1, inputTarget: browserInputTarget(body.inputTarget) } : {}),
       ...(body.controlRecovery === 1 ? { controlRecovery: 1 } : {}),
+      ...(body.desktopView === 1 && desktopEnabledFor(env, identity.businessId) ? { desktopView: 1 } : {}),
     });
   } catch (error) {
     // Never log exception messages, request bodies, URLs, controller IDs,

@@ -262,6 +262,9 @@ export class RemoteRepository implements Repository {
   businessBrowser(command?: BrowserCommand, signal?: AbortSignal): Promise<BusinessBrowserState> {
     return call('/api/browser', { ...(command ? { method: 'POST', body: JSON.stringify(command) } : {}), signal });
   }
+  desktopConnection(controlId: string) {
+    return { url: websocketUrl('/api/browser/desktop'), protocols: ['binary', `jentera-control.${controlId}`] };
+  }
   async watchBrowser(runId: string, onFrame: (frame: BusinessBrowserState) => void, signal: AbortSignal): Promise<void> {
     const response = await sessionFetch(`${BASE}/api/browser`, {
       method: 'POST', credentials: 'include', signal,

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename, readdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -8,6 +8,31 @@ const KEYS = new Set(['Enter', 'Tab', 'Shift+Tab', 'Backspace', 'Delete', 'Escap
   'Shift+ArrowLeft', 'Shift+ArrowRight', 'Shift+ArrowUp', 'Shift+ArrowDown', 'Shift+Home', 'Shift+End']);
 const LEASE_MS = 10 * 60 * 1000;
 export const BROWSER_VIEWPORT = Object.freeze({ width: 1280, height: 800 });
+
+/** Linux fallback for Chrome builds that don't expose command-line CDP.
+ * Identify ONE native browser using the fixed loopback debugging port, then
+ * verify its exact profile at the call site. Never log/return process args. */
+export async function desktopBrowserArguments(io = { readdir, readFile }) {
+  const processes = (await io.readdir('/proc')).filter(name => /^[1-9][0-9]*$/.test(name));
+  if (processes.length > 4096) throw new Error('Browser identity unavailable');
+  let found;
+  for (const pid of processes) {
+    let raw;
+    try { raw = await io.readFile(`/proc/${pid}/cmdline`); } catch { continue; }
+    if (raw.length > 128 * 1024) continue;
+    let args = raw.toString().split('\0').filter(Boolean);
+    // Chromium may rewrite argv into a single native process title. Our
+    // profile/debugging flags contain no whitespace and must be exact tokens,
+    // not substrings in a URL or a different profile path.
+    if (args.length === 1) args = args[0].split(/\s+/);
+    if (!/\/(?:chrome|chromium|chrome-headless-shell|headless_shell)$/.test(args[0] ?? '') ||
+        args.some(arg => arg.startsWith('--type=')) || !args.includes('--remote-debugging-port=9222')) continue;
+    if (found) throw new Error('Browser identity unavailable');
+    found = args;
+  }
+  if (!found) throw new Error('Browser identity unavailable');
+  return found;
+}
 
 export class BrowserProblem extends Error {
   constructor(status, code) { super(code); this.status = status; }
@@ -51,11 +76,17 @@ export function createBusinessBrowser(config, deps = {}) {
   let context = null;
   let selected = null;
   let launching = null;
+  let desktopAttached = false;
   let previewing = false;
   let lastPreview = -Infinity;
   let controlRevision = 0;
   let cast = null;
   let input = null;
+  const controlListeners = new Set();
+  async function changingControl() {
+    // Desktop keys are released BEFORE the durable pause can be cleared.
+    for (const listener of controlListeners) await listener();
+  }
   async function clearInput() {
     const previous = input;
     input = null;
@@ -197,7 +228,7 @@ export function createBusinessBrowser(config, deps = {}) {
     };
     ctx.pages().forEach(track);
     ctx.on('page', page => { selected = page; track(page); });
-    ctx.on('close', () => { if (context === ctx) { context = null; selected = null; } });
+    ctx.on('close', () => { if (context === ctx) { context = null; selected = null; desktopAttached = false; } });
   }
 
   async function persist(value) {
@@ -207,29 +238,73 @@ export function createBusinessBrowser(config, deps = {}) {
     paused = value;
   }
   async function ensure() {
-    if (context && context.pages().some((p) => !p.isClosed())) return context;
+    if (context && context.pages().some((p) => !p.isClosed()) &&
+        (!config.desktopEnabled || desktopAttached || !paused)) return context;
     if (launching) return launching;
     launching = (async () => {
+      let restoreUrl = null;
+      let didLaunch = false;
       const chromium = deps.chromium ?? (await import(config.playwrightEntry)).chromium;
       await fs.mkdir(config.profileDir, { recursive: true, mode: 0o700 });
       // Reattach after a runner restart if the browser survived it.
       try {
         const browser = await chromium.connectOverCDP('http://127.0.0.1:9222', { timeout: 1500 });
         context = browser.contexts()[0];
+        if (config.desktopEnabled && paused) {
+          const session = await browser.newBrowserCDPSession();
+          try {
+            let args;
+            try { ({ arguments: args } = await session.send('Browser.getBrowserCommandLine')); }
+            catch { args = await (deps.desktopBrowserArguments ?? desktopBrowserArguments)(); }
+            if (!Array.isArray(args) || !args.includes(`--user-data-dir=${config.profileDir}`)) throw new BrowserProblem(503, 'browser_unavailable');
+            if (args.some(arg => arg.startsWith('--headless')) || args.includes('--no-sandbox')) {
+              // Only our exact persistent profile may be migrated, and only
+              // after an explicit owner claim has durably paused the agent.
+              restoreUrl = selected?.url() ?? context.pages().find(page => page.url() !== 'about:blank')?.url() ?? null;
+              const closed = new Promise(resolve => browser.once('disconnected', resolve));
+              // Browser.close may reject because its transport is closed by
+              // the successful shutdown. The disconnected event is the proof.
+              await session.send('Browser.close').catch(() => {});
+              let timer;
+              try {
+                await Promise.race([closed, new Promise((_, reject) => { timer = setTimeout(() => reject(new BrowserProblem(503, 'browser_unavailable')), 10000); })]);
+              } finally { clearTimeout(timer); }
+              context = null;
+            }
+            desktopAttached = true;
+          } finally { await session.detach().catch(() => {}); }
+        }
       } catch {
+        // A failed migration must not launch a second browser on the profile.
+        if (context) throw new BrowserProblem(503, 'browser_unavailable');
+      }
+      if (!context) {
+        didLaunch = true;
         context = await chromium.launchPersistentContext(config.profileDir, {
-          headless: true, viewport: BROWSER_VIEWPORT,
+          headless: !config.desktopEnabled, viewport: config.desktopEnabled ? null : BROWSER_VIEWPORT,
+          // Human desktop launch must keep Chromium's own sandbox. Do not
+          // silently fall back to --no-sandbox if the host cannot support it.
+          chromiumSandbox: Boolean(config.desktopEnabled),
           // Chromium's CDP HTTP server binds loopback by default. Explicit
           // --remote-debugging-address hangs startup on some Sprite hosts;
           // keep the default and verify the actual bind in the Linux smoke.
-          args: ['--remote-debugging-port=9222', '--restore-last-session'],
+          args: ['--remote-debugging-port=9222', '--restore-last-session',
+            ...(config.desktopEnabled ? ['--start-maximized', '--window-size=1280,800'] : [])],
           timeout: 20000, acceptDownloads: false,
         });
+        desktopAttached = Boolean(config.desktopEnabled);
       }
       if (!context) throw new BrowserProblem(503, 'browser_unavailable');
       if (!context.pages().length) await context.newPage();
       context.setDefaultTimeout(5000);
       observeContext(context);
+      if (config.desktopEnabled && paused && didLaunch) {
+        // Persistent-session restore also opens a new blank tab. Bring the
+        // actual previous business page forward, not that empty startup tab.
+        selected = context.pages().find(page => page.url() === restoreUrl) ??
+          context.pages().find(page => page.url() !== 'about:blank') ?? context.pages()[0];
+        await selected.bringToFront?.();
+      }
       return context;
     })();
     try { return await launching; } finally { launching = null; }
@@ -239,7 +314,8 @@ export function createBusinessBrowser(config, deps = {}) {
   }
   async function status() {
     await loaded;
-    return { enabled: true, paused, controlled: Boolean(lease && lease.expiresAt > now()), directTyping: 1, controlRecovery: 1 };
+    return { enabled: true, paused, controlled: Boolean(lease && lease.expiresAt > now()), directTyping: 1, controlRecovery: 1,
+      ...(config.desktopEnabled && (deps.desktopReady?.() ?? true) ? { desktopView: 1 } : {}) };
   }
   async function isPaused() { await loaded; return paused || busy; }
 
@@ -256,6 +332,7 @@ export function createBusinessBrowser(config, deps = {}) {
         // replace a live window. Normal claims and other owners still conflict.
         if (lease && lease.expiresAt > now() && !controlledBy(body) &&
             !(body.action === 'reclaim' && lease.ownerId === body.ownerId)) throw new BrowserProblem(409, 'browser_controlled');
+        await changingControl();
         await clearInput();
         await persist(true);
         lease = { ownerId: body.ownerId, controlId: body.controlId, expiresAt: now() + LEASE_MS };
@@ -277,6 +354,7 @@ export function createBusinessBrowser(config, deps = {}) {
         if (lease && lease.expiresAt > now() && !controlledBy(body)) {
           throw new BrowserProblem(409, 'browser_controlled');
         }
+        await changingControl();
         await persist(false);
         lease = null;
         await clearInput();
@@ -386,5 +464,12 @@ export function createBusinessBrowser(config, deps = {}) {
     } catch { await stopScreencast(); return { previewStatus: 'unavailable' }; }
     finally { previewing = false; }
   }
-  return { ensure, status, isPaused, command, preview, stopScreencast };
+  return { ensure, status, isPaused, command, preview, stopScreencast,
+    desktopControlValid: body => Boolean(config.desktopEnabled && paused && controlledBy(body)),
+    touchDesktopControl: body => {
+      if (!config.desktopEnabled || !paused || !controlledBy(body)) return false;
+      lease.expiresAt = now() + LEASE_MS; return true;
+    },
+    onControlChanging: listener => { controlListeners.add(listener); return () => controlListeners.delete(listener); },
+  };
 }

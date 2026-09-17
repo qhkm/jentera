@@ -15,6 +15,9 @@ importers:
       '@fontsource/jetbrains-mono':
         specifier: ^5.3.0
         version: 5.3.0
+      '@novnc/novnc':
+        specifier: 1.7.0
+        version: 1.7.0
       '@phosphor-icons/react':
         specifier: ^2.1.10
         version: 2.1.10(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1110,6 +1113,9 @@ packages:
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [win32]
+
+  '@novnc/novnc@1.7.0':
+    resolution: {integrity: sha512-ucEJOx4T2avIRCleodk7YobZj5O2Ga2AeLfQ69A/yjG9HHba2+PDgwSkN3FttrmG+70ZGx21sElNFouK13RzyA==}
 
   '@oxc-project/types@0.144.0':
     resolution: {integrity: sha512-nuhZIOLuI6TFQ32I/WnUx+SCPY7SdSKwgnFHydAuoS1+Z4BRcaP+RRJmGzl9lw+0OFF7UmaESf7KQRXaNLHypg==}
@@ -4214,6 +4220,8 @@ snapshots:
 
   '@next/swc-win32-x64-msvc@16.3.3':
     optional: true
+
+  '@novnc/novnc@1.7.0': {}
 
   '@oxc-project/types@0.144.0': {}
 

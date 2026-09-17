@@ -52,6 +52,7 @@ import { handleConnect } from './routes/connect';
 import { connect } from './db';
 import { handleRuntime } from './routes/runtime';
 import { handleBrowser } from './routes/browser';
+import { handleBrowserDesktop } from './routes/browser-desktop';
 import { handleEvents } from './routes/events';
 import { handleSupport } from './routes/support';
 import { handleModelProxy, sweepModelCalls } from './routes/model';
@@ -210,6 +211,8 @@ export default {
     if (runtime) return runtime;
     const vault = await handleVault(request, env, url, headers);
     if (vault) return vault;
+    const desktop = await handleBrowserDesktop(request, env, url);
+    if (desktop) return desktop;
     const browser = await handleBrowser(request, env, url, headers);
     if (browser) return browser;
 

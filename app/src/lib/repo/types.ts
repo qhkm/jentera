@@ -235,6 +235,8 @@ export interface BusinessBrowserState {
   directTyping?: 1;
   /** Explicit same-owner window transfer; absent on older runtimes. */
   controlRecovery?: 1;
+  /** Owner-only full desktop pilot; absent unless enabled on both server layers. */
+  desktopView?: 1;
   inputTarget?: BrowserInputTarget | null;
   previewStatus?: 'ready' | 'inactive' | 'paused' | 'private' | 'unavailable' | 'waiting' | 'loading' | 'navigating';
   capturedAt?: number;
@@ -543,6 +545,7 @@ export interface Repository {
   /** Owner-safe runtime state; provider ids, URLs and credentials are never returned. */
   runtimeStatus(): Promise<RuntimeOverview>;
   businessBrowser(command?: BrowserCommand, signal?: AbortSignal): Promise<BusinessBrowserState>;
+  desktopConnection?(controlId: string): { url: string; protocols: string[] };
   watchBrowser?(runId: string, onFrame: (frame: BusinessBrowserState) => void, signal: AbortSignal): Promise<void>;
   /** Idempotently create or re-signal this business's provisioning task. */
   provisionRuntime(): Promise<void>;

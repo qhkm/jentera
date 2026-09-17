@@ -284,11 +284,11 @@ describe('pre-route API request guard', () => {
     expect(keys.every((key) => /^[0-9a-f]{64}$/.test(key))).toBe(true);
   });
 
-  it('fails closed when WebSocket admission protection is unavailable', async () => {
+  it.each(['/api/runs/11111111-1111-4111-8111-111111111111/events', '/api/browser/desktop'])('fails closed when WebSocket admission protection is unavailable: %s', async path => {
     const env = testEnv({
       RUN_STREAM_BURST: { limit: async () => { throw new Error('binding failed'); } },
     });
-    const req = request('/api/runs/11111111-1111-4111-8111-111111111111/events');
+    const req = request(path);
 
     expect((await guardApiRequest(req, env, new URL(req.url), cors))?.status).toBe(503);
   });

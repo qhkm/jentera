@@ -1,0 +1,7 @@
+{
+  "name": "jentera-desktop-local-test",
+  "main": "desktop-transport.fixture.ts",
+  "compatibility_date": "2026-08-18",
+  "compatibility_flags": ["nodejs_compat"],
+  "dev": { "port": 3981, "ip": "127.0.0.1" }
+}

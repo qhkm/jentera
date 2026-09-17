@@ -101,6 +101,29 @@
 .business-browser-footer-note p { margin: 2px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
 .business-browser-control-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 8px; }
 .business-browser-control-actions .btn { min-height: 44px; padding-inline: 18px; font-size: 12px; }
+.business-desktop { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; border: 1px solid var(--rail); border-radius: 10px; overflow: hidden; background: #101412; }
+.business-desktop-stage { flex: 1; min-width: 0; min-height: 0; height: 65dvh; overflow: auto; overscroll-behavior: contain; }
+.business-desktop-stage canvas { outline-offset: -3px; }
+.business-desktop-stage canvas:focus-visible { outline: 2px solid var(--accent-green); }
+.business-desktop-status { position: absolute; inset: 0 0 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: #101412; color: #e4eae7; }
+.business-desktop-status p { font-size: 14px; }
+.business-desktop-status button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 14px; border: 1px solid var(--border-light); border-radius: 10px; }
+.business-desktop-toolbar { display: flex; flex: 0 0 auto; justify-content: space-between; align-items: center; gap: 12px; padding: 4px 8px; border-top: 1px solid var(--rail); background: var(--bg); }
+.business-desktop-toolbar > span { min-width: 0; color: var(--text-muted); font-size: 12px; }
+.business-desktop-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.business-desktop-actions > button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 8px; border-radius: 8px; font-size: 12px; color: var(--text-secondary); }
+.business-desktop-actions > button:hover:not(:disabled) { background: var(--bg-card-hover); }
+.business-desktop-mobile-keyboard { display: flex; position: relative; align-items: center; gap: 6px; width: 152px; min-height: 44px; padding-left: 8px; border-radius: 8px; color: var(--text-secondary); }
+.business-desktop-mobile-keyboard:focus-within { outline: 1px solid var(--accent-green); }
+.business-desktop-mobile-keyboard input { position: absolute; inset: 0; width: 100%; min-height: 44px; padding: 8px; border: 0; background: transparent; color: transparent; caret-color: transparent; font-size: 16px; }
+.business-desktop-mobile-keyboard span { pointer-events: none; font-size: 12px; }
+@media (max-width: 960px) {
+  .business-desktop-stage { flex: none; height: min(58dvh, 560px); }
+  .business-desktop-toolbar { flex-wrap: wrap; }
+  .business-desktop-actions { width: 100%; justify-content: space-between; }
+  .business-desktop-toolbar > span { width: 100%; font-size: 11px; }
+  .business-desktop-status { inset-block-end: 100px; }
+}
 @media (min-width: 961px) {
   .business-browser-dialog {
     position: fixed;

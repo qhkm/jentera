@@ -72,6 +72,9 @@ export interface Env {
   SPRITES_TOKEN?: string;
   /** Override only for tests or a future compatible provider gateway. */
   SPRITES_API_ORIGIN?: string;
+  /** Disabled by default. Both flag and explicit business UUID pilot list required. */
+  DESKTOP_VIEW_ENABLED?: string;
+  DESKTOP_VIEW_BUSINESS_IDS?: string;
   /** Immutable runner + Hermes + browser release identifier. */
   RUNTIME_RELEASE?: string;
   /** Preferred Fly region for diagnostics. Sprites cannot currently be pinned. */

@@ -1,0 +1,207 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createServer, connect } from 'node:net';
+import { spawn, execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
+import { lstat, mkdir, chmod, unlink } from 'node:fs/promises';
+import { dirname } from 'node:path';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export const DESKTOP_TTL_MS = 60_000;
+
+/** Tickets are purpose-bound, single-use and sent ONLY inside the server-side
+ * Sprites tunnel, never a URL, client response, trace, or durable file. */
+export function desktopTicketValid(ticket, config, now = Date.now()) {
+  if (!ticket || ticket.purpose !== 'jentera-desktop-v1' || ticket.businessId !== config.businessId ||
+      ![ticket.ownerId, ticket.controlId, ticket.nonce].every(value => typeof value === 'string' && UUID.test(value)) ||
+      !Number.isSafeInteger(ticket.issuedAt) || !Number.isSafeInteger(ticket.expiresAt) ||
+      ticket.issuedAt > now + 5000 || ticket.issuedAt < now - DESKTOP_TTL_MS ||
+      ticket.expiresAt <= now || ticket.expiresAt - ticket.issuedAt > DESKTOP_TTL_MS ||
+      typeof ticket.signature !== 'string' || !/^[a-f0-9]{64}$/.test(ticket.signature)) return false;
+  const { signature, ...payload } = ticket;
+  const expected = createHmac('sha256', config.runnerKey).update(JSON.stringify(payload)).digest();
+  return timingSafeEqual(Buffer.from(signature, 'hex'), expected);
+}
+
+/** VNC is a per-viewer process and a private UNIX socket, not a public TCP
+ * listener. Normal shutdown runs x11vnc's -clear_keys before agent hand-back.
+ * No desktop stdout/stderr, key data or screenshots are logged or stored. */
+export async function openDesktop(config) {
+  const socketPath = config.socketPath ?? '/home/sprite/aisar/desktop.sock';
+  await mkdir(dirname(socketPath), { recursive: true, mode: 0o700 });
+  try {
+    const previous = await lstat(socketPath);
+    if (!previous.isSocket()) throw new Error('Desktop socket unavailable');
+    await unlink(socketPath);
+  } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  const child = spawn('/usr/bin/x11vnc', [
+    '-display', config.display ?? ':99', '-unixsock', socketPath, '-rfbport', '0',
+    '-once', '-nopw', '-quiet', '-noremote', '-nolookup', '-no6',
+    '-nosel', '-noclipboard', '-nosetclipboard', '-nosetprimary', '-clear_keys', '-norepeat',
+  ], { stdio: 'ignore' });
+  let exited = false;
+  let spawnFailed = false;
+  const done = new Promise(resolve => {
+    child.once('error', () => { spawnFailed = true; exited = true; resolve(); });
+    child.once('exit', () => { exited = true; resolve(); });
+  });
+  const stop = async () => {
+    if (!exited) child.kill('SIGTERM');
+    let timer;
+    const clean = await Promise.race([
+      done.then(() => true), new Promise(resolve => { timer = setTimeout(() => resolve(false), 2000); }),
+    ]);
+    clearTimeout(timer);
+    if (!clean) {
+      child.kill('SIGKILL');
+      let forceTimer;
+      const stopped = await Promise.race([done.then(() => true), new Promise(resolve => { forceTimer = setTimeout(() => resolve(false), 2000); })]);
+      clearTimeout(forceTimer);
+      if (!stopped) throw new Error('Desktop cleanup unavailable');
+    }
+    // Native reset is verified AFTER the sole input producer has stopped.
+    // x11vnc's cleanup is not sufficient on all Linux builds and doesn't
+    // release a held drag button. Failure keeps the durable agent pause.
+    const local = new URL('./desktop-release-keys.py', import.meta.url);
+    const script = existsSync(local) ? local : new URL('../bin/desktop-release-keys.py', import.meta.url);
+    await promisify(execFile)('/usr/bin/python3', [fileURLToPath(script)], {
+      timeout: 2000, maxBuffer: 1024, env: { ...process.env, DISPLAY: config.display ?? ':99' },
+    });
+    try { await unlink(socketPath); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  };
+  try {
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      if (exited) throw new Error('Desktop unavailable');
+      try {
+        if ((await lstat(socketPath)).isSocket()) break;
+      } catch (error) { if (error.code !== 'ENOENT') throw error; }
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    await chmod(socketPath, 0o600);
+    if (spawnFailed || exited) throw new Error('Desktop unavailable');
+    const stream = connect({ path: socketPath });
+    // Close is observed before attaching the stream, so early failure is safe.
+    stream.on('error', () => {});
+    await new Promise((resolve, reject) => {
+      stream.once('connect', resolve); stream.once('error', reject);
+    });
+    return { stream, stop, done };
+  } catch {
+    await stop();
+    throw new Error('Desktop unavailable');
+  }
+}
+
+/** Fixed owner-only TCP endpoint behind Sprites' authenticated proxy. The
+ * runner independently checks the current durable pause + exact live lease
+ * for every input chunk. No generic destination or shell command is accepted. */
+export function createDesktopGateway(config, deps = {}) {
+  const now = deps.now ?? Date.now;
+  const launch = deps.openDesktop ?? (() => openDesktop(config));
+  const seen = new Map();
+  const sockets = new Set();
+  let viewer = null;
+  let cleanupBlocked = false;
+  let closing = false;
+  let pendingCleanup = Promise.resolve();
+  async function disconnect() {
+    const old = viewer;
+    viewer = null;
+    if (old) {
+      old.client.destroy(); old.desktop?.stream.destroy();
+      pendingCleanup = pendingCleanup.then(async () => {
+        const desktop = old.desktop ?? await old.opening;
+        await desktop?.stop();
+      }).catch(() => { cleanupBlocked = true; });
+    }
+    await pendingCleanup;
+    if (cleanupBlocked) throw new Error('Desktop cleanup unavailable');
+  }
+  const unsubscribe = config.browser.onControlChanging(disconnect);
+  const server = createServer(client => {
+    if (closing || cleanupBlocked || sockets.size >= 16) { client.destroy(); return; }
+    sockets.add(client);
+    client.setNoDelay(true);
+    client.setTimeout(3000, () => client.destroy());
+    let preface = Buffer.alloc(0);
+    let authorized = false;
+    let ticket;
+    let heartbeat;
+    let deadline;
+    let bytes = 0;
+    let windowAt = now();
+    const valid = () => authorized && !closing && !cleanupBlocked && viewer?.client === client &&
+      ticket.expiresAt > now() && config.browser.desktopControlValid(ticket);
+    const reject = () => client.destroy();
+    client.on('error', () => {});
+    client.once('close', () => {
+      sockets.delete(client); clearInterval(heartbeat); clearTimeout(deadline);
+      if (viewer?.client === client) void disconnect().catch(() => {});
+    });
+    const onInput = chunk => {
+      if (!valid()) { reject(); return; }
+      if (now() - windowAt >= 1000) { bytes = 0; windowAt = now(); }
+      bytes += chunk.length;
+      if (bytes > 256 * 1024 || !config.browser.touchDesktopControl(ticket)) { reject(); return; }
+      if (!viewer.desktop.stream.write(chunk)) client.pause();
+    };
+    client.on('data', async function authenticate(chunk) {
+      if (authorized) { onInput(chunk); return; }
+      preface = Buffer.concat([preface, chunk]);
+      if (preface.length > 1024) { reject(); return; }
+      const end = preface.indexOf(10);
+      if (end < 0) return;
+      // Authentication and RFB input must be separate. Never queue unauth data.
+      if (end !== preface.length - 1 || viewer) { reject(); return; }
+      try { ticket = JSON.parse(preface.subarray(0, end).toString('utf8')); } catch { reject(); return; }
+      preface = Buffer.alloc(0);
+      for (const [nonce, expires] of seen) if (expires <= now()) seen.delete(nonce);
+      if (!desktopTicketValid(ticket, config, now()) || seen.has(ticket.nonce) || seen.size >= 128 ||
+          !config.browser.desktopControlValid(ticket)) { reject(); return; }
+      seen.set(ticket.nonce, ticket.expiresAt);
+      client.setTimeout(8000);
+      const current = { client, desktop: null, opening: null };
+      viewer = current;
+      client.pause();
+      try {
+        await pendingCleanup;
+        if (closing || cleanupBlocked || client.destroyed || viewer !== current) { reject(); return; }
+        current.opening = launch();
+        current.desktop = await current.opening;
+        authorized = true;
+        if (!valid() || client.destroyed) {
+          reject();
+          // A stale launch must not disconnect a newer viewer waiting for
+          // its cleanup. The old viewer's cleanup already owns this process.
+          if (viewer === current) await disconnect();
+          return;
+        }
+        client.setTimeout(0);
+        // Lease acknowledgement is consumed by the Worker, not by noVNC.
+        client.write('{"ok":true}\n');
+        current.desktop.stream.on('data', data => {
+          if (!valid()) { reject(); return; }
+          if (!client.write(data)) current.desktop.stream.pause();
+        });
+        current.desktop.stream.on('drain', () => { if (valid()) client.resume(); });
+        client.on('drain', () => { if (valid()) current.desktop.stream.resume(); });
+        current.desktop.stream.once('close', reject);
+        current.desktop.done.then(reject);
+        heartbeat = setInterval(() => { if (!valid()) reject(); }, 250);
+        heartbeat.unref();
+        deadline = setTimeout(reject, ticket.expiresAt - now()); deadline.unref();
+        client.resume();
+      } catch { reject(); if (viewer === current) await disconnect().catch(() => {}); }
+    });
+  });
+  server.on('error', () => { closing = true; void disconnect().catch(() => {}); });
+  server.desktopReady = () => server.listening && !closing && !cleanupBlocked;
+  server.closeDesktop = async () => {
+    closing = true; unsubscribe(); for (const socket of sockets) socket.destroy();
+    try { await disconnect(); }
+    finally { if (server.listening) await new Promise(resolve => server.close(resolve)); }
+  };
+  return server;
+}

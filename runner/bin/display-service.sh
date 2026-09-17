@@ -22,6 +22,7 @@ dbus_address_file="$state_dir/.dbus.address"
 dbus_pid_file="$state_dir/.dbus.pid"
 xvfb_pid_file="$state_dir/.xvfb.pid"
 openbox_pid_file="$state_dir/.openbox.pid"
+tint2_pid_file="$state_dir/.tint2.pid"
 display_lock="/tmp/.X${display}-lock"
 display_socket_dir="/tmp/.X11-unix"
 
@@ -78,10 +79,18 @@ publish() {
   mv -f "$tmp" "$display_env"
 }
 
+start_panel() {
+  [[ "${AISAR_DESKTOP_VIEW:-0}" == "1" ]] || return 0
+  is_alive "$tint2_pid_file" && return 0
+  DISPLAY=":$display" tint2 >/dev/null 2>&1 &
+  echo $! > "$tint2_pid_file"
+}
+
 while true; do
   start_dbus
   start_xvfb
   start_openbox
+  start_panel
   publish
   sleep 3
 done

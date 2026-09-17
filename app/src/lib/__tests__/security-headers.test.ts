@@ -28,7 +28,8 @@ describe('Google-compatible security headers', () => {
 
   it('allows regional analytics collection and preserves the business API and vault endpoints', () => {
     expect(directives.get('connect-src')).toEqual([
-      "'self'", 'https://api.jentera.ai', 'https://aisar-api.qhkmdev90.workers.dev',
+      "'self'", 'https://api.jentera.ai', 'wss://api.jentera.ai',
+      'https://aisar-api.qhkmdev90.workers.dev', 'wss://aisar-api.qhkmdev90.workers.dev',
       'https://aisar-vault-deposit.qhkmdev90.workers.dev', 'https://www.googletagmanager.com',
       'https://*.google-analytics.com', 'https://analytics.google.com', 'https://*.analytics.google.com',
     ]);
