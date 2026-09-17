@@ -102,6 +102,14 @@ leaves keyboard capture without handing control back. IME text commits once.
 Remote clipboard copy/cut and browser/OS shortcuts are not implemented.
 The existing masked Type/paste box remains available, including on old runtimes.
 
+Runtimes advertising `controlRecovery: 1` offer **Use this window** after a
+control conflict. This is an explicit same-authenticated-owner window transfer,
+never an automatic takeover or permission to displace another owner. It keeps
+the current browser/session and durable pause, invalidates old input bindings,
+and rejects the displaced window's commands until a new explicit claim. No
+controller credentials are stored in browser storage. Release via the pinned
+runtime bundle before shipping the UI; old runtimes do not offer recovery.
+
 Direct input is transient and serialized, with bounded character batching.
 An opaque actual-node identity and monotonic sequence bind each command to
 the selected field; unexpected focus/navigation changes, failed sends, close,

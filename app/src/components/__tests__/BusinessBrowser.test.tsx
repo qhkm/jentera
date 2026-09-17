@@ -24,6 +24,45 @@ const sampleFrame: BusinessBrowserState = { image: 'aW1hZ2U=', width: 1280, heig
   { index: 1, origin: 'null', selected: false },
 ] };
 
+it('offers explicit window recovery after a conflict and keeps the agent paused until hand-back', async () => {
+  const user = userEvent.setup();
+  const pause = vi.fn();
+  const browser = vi.fn(async (command?: BrowserCommand): Promise<BusinessBrowserState> => {
+    if (command?.action === 'claim') throw new Error('Another window is controlling this browser.');
+    if (command?.action === 'frame') return sampleFrame;
+    return { enabled: true, controlRecovery: 1, paused: command?.action !== 'release' };
+  });
+  mountBrowser(browser, pause);
+  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  expect(screen.queryByRole('button', { name: 'Use this window' })).toBeNull();
+  await user.click(screen.getByRole('button', { name: 'Take control' }));
+  const recovery = await screen.findByRole('region', { name: 'Continue in this window?' });
+  expect(recovery).toHaveTextContent('This disconnects your previous window.');
+  expect(browser.mock.calls.some(([command]) => command?.action === 'reclaim')).toBe(false);
+  expect(screen.queryByRole('img')).toBeNull();
+  await user.click(within(recovery).getByRole('button', { name: 'Use this window' }));
+  await screen.findByRole('img');
+  expect(screen.queryByRole('region', { name: 'Continue in this window?' })).toBeNull();
+  expect(pause).toHaveBeenLastCalledWith(true);
+  expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(false);
+  await user.click(screen.getByRole('button', { name: 'Hand back to Jentera' }));
+  expect(pause).toHaveBeenLastCalledWith(false);
+});
+
+it('does not offer unsupported recovery on an older runtime', async () => {
+  const user = userEvent.setup();
+  const browser = vi.fn(async (command?: BrowserCommand) => {
+    if (command?.action === 'claim') throw new Error('Another window is controlling this browser.');
+    return { enabled: true, paused: true };
+  });
+  mountBrowser(browser);
+  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  await user.click(screen.getByRole('button', { name: 'Take control' }));
+  await screen.findByRole('alert');
+  expect(screen.queryByRole('button', { name: 'Use this window' })).toBeNull();
+  expect(browser.mock.calls.some(([command]) => command?.action === 'reclaim')).toBe(false);
+});
+
 it('explains takeover before opening the live view, locks background scroll, and restores it on close', async () => {
   const user = userEvent.setup();
   const priorOverflow = document.body.style.overflow;

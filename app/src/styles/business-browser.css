@@ -27,6 +27,10 @@
 .business-browser-icon-button { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 44px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--text-secondary); }
 .business-browser-icon-button:hover:not(:disabled) { background: var(--bg-card-hover); color: var(--text); }
 .business-browser-body { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 24px; }
+.business-browser-recovery { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 16px; padding: 16px; border: 1px solid var(--border-light); border-radius: 12px; background: var(--bg-card); }
+.business-browser-recovery > div { flex: 1; min-width: min(100%, 240px); }
+.business-browser-recovery strong { font-size: 14px; }
+.business-browser-recovery p { margin: 6px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
 .business-browser-workspace { display: grid; min-width: 0; gap: 24px; align-items: start; }
 .business-browser-workspace.is-controlled { grid-template-columns: minmax(0, 1fr) 280px; }
 .business-browser-window { min-width: 0; overflow: hidden; border: 1px solid var(--border-light); border-radius: 16px; background: var(--bg-card); }

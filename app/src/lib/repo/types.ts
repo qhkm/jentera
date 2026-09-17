@@ -221,7 +221,7 @@ export interface AskAnswer {
 
 export type BrowserCommand = { controlId: string } & (
   | { action: 'preview'; runId: string }
-  | { action: 'claim' | 'release' | 'frame' }
+  | { action: 'claim' | 'reclaim' | 'release' | 'frame' }
   | { action: 'navigate'; url: string }
   | { action: 'click'; x: number; y: number }
   | { action: 'text'; text: string }
@@ -233,6 +233,8 @@ export type BrowserCommand = { controlId: string } & (
 export interface BusinessBrowserState {
   /** Guarded direct-input protocol; absent on older runtimes. */
   directTyping?: 1;
+  /** Explicit same-owner window transfer; absent on older runtimes. */
+  controlRecovery?: 1;
   inputTarget?: BrowserInputTarget | null;
   previewStatus?: 'ready' | 'inactive' | 'paused' | 'private' | 'unavailable' | 'waiting' | 'loading' | 'navigating';
   capturedAt?: number;

@@ -93,6 +93,23 @@ it('validates direct input before contacting a runtime and enforces owner/origin
   expect(upstream).not.toHaveBeenCalled();
 });
 
+it('recovery requires an authenticated owner, binds identity server-side and only relays the versioned capability', async () => {
+  const upstream = fetchFake(async () => new Response(JSON.stringify({ controlRecovery: 1, paused: true, controlId: 'never-relay' })));
+  vi.stubGlobal('fetch', upstream);
+  const body = { action: 'reclaim', controlId: CONTROL, ownerId: CONTROL, businessId: CONTROL, force: true };
+  expect((await call(undefined, body)).status).toBe(401);
+  expect((await call(staffCookie, body)).status).toBe(403);
+  expect((await call(ownerCookie, body, 'https://evil.test')).status).toBe(403);
+  expect((await call(ownerCookie, { ...body, controlId: 'bad' })).status).toBe(400);
+  expect(upstream).not.toHaveBeenCalled();
+  const response = await call(ownerCookie, body);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ controlRecovery: 1, paused: true });
+  expect(JSON.parse(String(upstream.mock.calls[0][1]?.body))).toEqual({ action: 'reclaim', controlId: CONTROL, ownerId, businessId: A });
+  upstream.mockImplementation(async () => new Response('{"controlRecovery":true}'));
+  expect(await (await call(ownerCookie)).json()).toEqual({});
+});
+
 it('forwards only owner-bound direct input and relays narrow capability/target metadata', async () => {
   const target = { id: CONTROL, kind: 'text', nextSequence: 2 };
   const upstream = fetchFake(async () => new Response(JSON.stringify({ ok: true, directTyping: 1,

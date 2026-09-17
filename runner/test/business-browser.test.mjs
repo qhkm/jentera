@@ -56,6 +56,44 @@ function typingFixture() {
   return { ...f, focus: node => { focused = node; } };
 }
 
+test('explicit same-owner recovery replaces a live window without resuming or replacing the browser', async () => {
+  const f = typingFixture();
+  const nextControl = '33333333-3333-4333-8333-333333333333';
+  assert.equal((await f.browser.status()).controlRecovery, 1);
+  await f.browser.command(command('claim'));
+  const oldTarget = (await f.browser.command(command('frame'))).inputTarget;
+  await assert.rejects(f.browser.command(command('claim', { controlId: nextControl })), { message: 'browser_controlled', status: 409 });
+  await f.browser.command(command('reclaim', { controlId: nextControl }));
+  assert.equal(await f.browser.isPaused(), true);
+  assert.equal(f.launches(), 1);
+  assert.deepEqual([...f.files.values()], ['{"paused":true}']);
+  const target = (await f.browser.command(command('frame', { controlId: nextControl }))).inputTarget;
+  assert.notEqual(target.id, oldTarget.id);
+  for (const action of ['frame', 'text', 'click', 'input']) {
+    await assert.rejects(f.browser.command(command(action, { text: 'stale-secret', x: 1, y: 1, inputId: oldTarget.id, sequence: 1 })),
+      { message: 'browser_control_expired', status: 409 });
+  }
+  await assert.rejects(f.browser.command(command('release')), { message: 'browser_controlled', status: 409 });
+  await f.browser.command(command('input', { controlId: nextControl, inputId: target.id, sequence: 1, text: 'new-window' }));
+  assert.deepEqual(f.typed, ['new-window']);
+  await f.browser.command(command('release', { controlId: nextControl }));
+  assert.equal(await f.browser.isPaused(), false);
+});
+
+test('recovery cannot displace a different owner or disclose controller credentials', async () => {
+  const f = fixture();
+  await f.browser.command(command('claim'));
+  const stranger = { ownerId: '33333333-3333-4333-8333-333333333333', controlId: '44444444-4444-4444-8444-444444444444' };
+  await assert.rejects(f.browser.command(command('reclaim', stranger)), { message: 'browser_controlled', status: 409 });
+  assert.equal(await f.browser.isPaused(), true);
+  const status = JSON.stringify(await f.browser.status());
+  assert.ok(!status.includes(ownerId) && !status.includes(controlId));
+  await f.browser.command(command('frame'));
+  f.advance(10 * 60 * 1000 + 1);
+  await f.browser.command(command('reclaim', stranger));
+  assert.equal(await f.browser.isPaused(), true);
+});
+
 test('direct typing is field-bound, ordered, deduplicated and never persisted', async () => {
   const f = typingFixture();
   await f.browser.command(command('claim'));

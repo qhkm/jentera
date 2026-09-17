@@ -74,7 +74,9 @@ try {
           try { body = command ? await inputBrowser.command({ ...command, ownerId: '11111111-1111-4111-8111-111111111111' }) : await inputBrowser.status(); }
           catch (error) {
             return route.fulfill({ status: error instanceof BrowserProblem ? error.status : 503, contentType: 'application/json',
-              body: JSON.stringify({ err: error instanceof BrowserProblem ? 'The selected field changed. Click the field again before typing.' : 'Browser unavailable.' }) });
+              body: JSON.stringify({ err: error instanceof BrowserProblem && error.message === 'browser_controlled'
+                ? 'Another window is controlling this browser.' : error instanceof BrowserProblem
+                ? 'The selected field changed. Click the field again before typing.' : 'Browser unavailable.' }) });
           }
           return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
         }
@@ -189,7 +191,18 @@ try {
     assert.equal(await dialog.evaluate(node => node.closest('form') === null), true);
     assert.equal(await page.evaluate(() => document.body.style.overflow), 'hidden');
     if (process.env.CHECK_OUTPUT_DIR) await page.screenshot({ path: `${process.env.CHECK_OUTPUT_DIR}/welcome-${suffix}.png` });
+    const abandonedControl = '22222222-2222-4222-8222-222222222222';
+    if (directTyping) await inputBrowser.command({ action: 'claim', ownerId: '11111111-1111-4111-8111-111111111111', controlId: abandonedControl });
     await dialog.getByRole('button', { name: 'Take control', exact: true }).click();
+    if (directTyping) {
+      const recovery = dialog.getByRole('region', { name: 'Continue in this window?' });
+      await recovery.waitFor();
+      assert.equal(commands.some(command => command.action === 'reclaim'), false, 'Recovery is never automatic');
+      await recovery.getByRole('button', { name: 'Use this window' }).click();
+      assert.equal(await inputBrowser.isPaused(), true);
+      await assert.rejects(inputBrowser.command({ action: 'frame', ownerId: '11111111-1111-4111-8111-111111111111', controlId: abandonedControl }),
+        { message: 'browser_control_expired' });
+    }
     await page.getByText('Jentera is paused', { exact: true }).waitFor();
     await dialog.getByLabel('Website address').fill('https://example.com');
     await dialog.getByRole('button', { name: 'Go', exact: true }).click();

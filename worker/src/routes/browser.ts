@@ -4,12 +4,12 @@ import { getRuntimeAccess } from '../agent-runtime';
 import { hasBusiness, resolveTenant } from '../tenancy';
 import { can } from '../permissions';
 
-const ACTIONS = new Set(['claim', 'release', 'frame', 'navigate', 'click', 'text', 'key', 'input', 'scroll', 'tab', 'preview', 'preview-stream']);
+const ACTIONS = new Set(['claim', 'reclaim', 'release', 'frame', 'navigate', 'click', 'text', 'key', 'input', 'scroll', 'tab', 'preview', 'preview-stream']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MESSAGES: Record<string, string> = {
   runtime_busy: 'Jentera is still working. Let the current task finish, then take control.',
   browser_busy: 'The browser is handling another action. Try again.',
-  browser_controlled: 'Another window is controlling this browser. Hand back there or wait for its control to expire.',
+  browser_controlled: 'Another window is controlling this browser. You can move your control to this window, or hand back in the other window.',
   browser_control_expired: 'Your browser control expired. Take control again to continue or hand back.',
   invalid_url: 'Enter a public HTTPS website address.',
   browser_input_changed: 'The selected field changed. Click the field again before typing.',
@@ -110,6 +110,7 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
     return json({ ...Object.fromEntries(['enabled', 'paused', 'controlled', 'expiresAt', 'image', 'width', 'height', 'tabs', 'ok', 'previewStatus', 'capturedAt']
       .filter((key) => body[key] !== undefined).map((key) => [key, body[key]])),
       ...(body.directTyping === 1 ? { directTyping: 1, inputTarget: browserInputTarget(body.inputTarget) } : {}),
+      ...(body.controlRecovery === 1 ? { controlRecovery: 1 } : {}),
     });
   } catch (error) {
     // Never log exception messages, request bodies, URLs, controller IDs,

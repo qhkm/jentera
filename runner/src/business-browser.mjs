@@ -15,7 +15,7 @@ export class BrowserProblem extends Error {
 
 export function browserCommandProblem(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return 'invalid_command';
-  if (!['claim', 'frame', 'navigate', 'click', 'text', 'key', 'input', 'scroll', 'tab', 'release'].includes(body.action)) return 'invalid_command';
+  if (!['claim', 'reclaim', 'frame', 'navigate', 'click', 'text', 'key', 'input', 'scroll', 'tab', 'release'].includes(body.action)) return 'invalid_command';
   if (!UUID.test(body.ownerId ?? '') || !UUID.test(body.controlId ?? '')) return 'invalid_controller';
   if (body.action === 'navigate') {
     try {
@@ -239,7 +239,7 @@ export function createBusinessBrowser(config, deps = {}) {
   }
   async function status() {
     await loaded;
-    return { enabled: true, paused, controlled: Boolean(lease && lease.expiresAt > now()), directTyping: 1 };
+    return { enabled: true, paused, controlled: Boolean(lease && lease.expiresAt > now()), directTyping: 1, controlRecovery: 1 };
   }
   async function isPaused() { await loaded; return paused || busy; }
 
@@ -251,8 +251,11 @@ export function createBusinessBrowser(config, deps = {}) {
     controlRevision++;
     busy = true;
     try {
-      if (body.action === 'claim') {
-        if (lease && lease.expiresAt > now() && !controlledBy(body)) throw new BrowserProblem(409, 'browser_controlled');
+      if (body.action === 'claim' || body.action === 'reclaim') {
+        // Only an explicit recovery by the SAME authenticated owner may
+        // replace a live window. Normal claims and other owners still conflict.
+        if (lease && lease.expiresAt > now() && !controlledBy(body) &&
+            !(body.action === 'reclaim' && lease.ownerId === body.ownerId)) throw new BrowserProblem(409, 'browser_controlled');
         await clearInput();
         await persist(true);
         lease = { ownerId: body.ownerId, controlId: body.controlId, expiresAt: now() + LEASE_MS };
@@ -279,7 +282,8 @@ export function createBusinessBrowser(config, deps = {}) {
         await clearInput();
         return status();
       }
-      if (!paused || !controlledBy(body)) { await clearInput(); throw new BrowserProblem(409, 'browser_control_expired'); }
+      // A displaced window must not invalidate the new controller's input.
+      if (!paused || !controlledBy(body)) throw new BrowserProblem(409, 'browser_control_expired');
       /* Idle timeout, not a cap on the session. The lease used to be set at the
          claim and never extended, so control died ten minutes later however
          actively it was being used — and the sign-ins this browser exists for

@@ -46,6 +46,7 @@ export default function BusinessBrowser({
   const [state, setState] = useState<BusinessBrowserState>({});
   const [frame, setFrame] = useState<BusinessBrowserState | null>(null);
   const [error, setError] = useState('');
+  const [controlConflict, setControlConflict] = useState(false);
   const [url, setUrl] = useState('');
   const [text, setText] = useState('');
   const [showText, setShowText] = useState(false);
@@ -166,7 +167,8 @@ export default function BusinessBrowser({
       inFlight.current = true;
       const next = await repo.businessBrowser({ ...action, controlId: controlId.current } as BrowserCommand);
       if (!live.current) return null;
-      if (action.action === 'claim') {
+      if (action.action === 'claim' || action.action === 'reclaim') {
+        setControlConflict(false);
         setState(next); onPauseChange?.(true);
         if (generation === viewGeneration.current) { setControlled(true); setHandedBack(false); }
       }
@@ -182,6 +184,7 @@ export default function BusinessBrowser({
       if (live.current && generation === viewGeneration.current) {
         const message = (e as Error).message;
         setError(message);
+        setControlConflict(/controlling this browser/i.test(message));
         /* A lost lease is not a transient error, and treating it as one is what
            trapped the owner: the toolbar kept offering Hand back, the only
            button it had, and that button could now only fail. Dropping the
@@ -206,7 +209,7 @@ export default function BusinessBrowser({
     // The local claim does not survive, though: it goes stale while the dialog
     // is shut, and reopening on a stale one showed a Hand back that could only
     // 409. Reopening re-reads the real state and offers both doors.
-    dialog.current?.close(); setOpen(false); setControlled(false); setFrame(null); setText(''); setShowText(false); setUrl(''); setZoom(1);
+    dialog.current?.close(); setOpen(false); setControlled(false); setControlConflict(false); setFrame(null); setText(''); setShowText(false); setUrl(''); setZoom(1);
   }
 
   const openBrowser = () => { setError(''); setHandedBack(false); setOpen(true); };
@@ -248,6 +251,10 @@ export default function BusinessBrowser({
         {error && <div className="business-browser-error" role="alert">
           <WarningCircle size={20} aria-hidden="true" /><p>{error}</p>
           {!controlled && <button type="button" disabled={busy || statusLoading} onClick={() => { setError(''); setStatusAttempt(n => n + 1); }}>{t('loading.retry')}</button>}
+        </div>}
+        {!controlled && controlConflict && state.controlRecovery === 1 && <div className="business-browser-recovery" role="region" aria-label={t('browser.recover.title')}>
+          <div><strong>{t('browser.recover.title')}</strong><p>{t('browser.recover.detail')}</p></div>
+          <Button type="button" disabled={busy || statusLoading} onClick={() => command({ action: 'reclaim' })}>{t('browser.recover.action')}<ArrowRight size={16} aria-hidden="true" /></Button>
         </div>}
         <div className={`business-browser-workspace ${controlled ? 'is-controlled' : ''}`}>
           <div className="business-browser-window">
