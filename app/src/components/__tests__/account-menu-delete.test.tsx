@@ -100,21 +100,6 @@ describe('deleting the account from the menu', () => {
     expect(screen.queryByText(/cancel is in your inbox/i)).not.toBeInTheDocument();
   });
 
-  it('says the scheduled jobs could not be checked rather than omitting the line', async () => {
-    const repo: Repository = new LocalRepository();
-    repo.requestAccountDeletion = vi.fn();
-    repo.routines = {
-      ...repo.routines!,
-      list: vi.fn(async () => { throw new Error('offline'); }),
-    } as Repository['routines'];
-    const user = userEvent.setup();
-    mount(repo, { email: 'owner@example.com', routinesVersion: 1 });
-
-    await user.click(await screen.findByRole('button', { name: 'Account menu' }));
-    await user.click(await screen.findByRole('menuitem', { name: /delete my account/i }));
-
-    expect(await screen.findByText(/could not check/i)).toBeInTheDocument();
-  });
 
   it('returns to the normal menu when the owner keeps the account', async () => {
     const repo: Repository = new LocalRepository();

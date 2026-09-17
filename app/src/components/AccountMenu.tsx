@@ -14,13 +14,12 @@ import {
 import { useI18n } from '@/i18n/I18nProvider';
 import { useTheme } from '@/hooks/useTheme';
 import { useDetailLevel } from '@/hooks/useDetailLevel';
-import { useAccountEmail, useRoutinesEnabled, useSignedIn } from '@/lib/repo/gate';
+import { useAccountEmail, useSignedIn } from '@/lib/repo/gate';
 import { useToast } from '@/components/Toast';
 import { usePwaInstall } from '@/pwa/install';
 import { usePushNotifications } from '@/pwa/push';
 import { useRepository } from '@/lib/repo';
 import type { AccountDeletionRequested } from '@/lib/repo/types';
-import { knownRoutine } from '@/lib/routines/types';
 import DeleteAccount from '@/components/DeleteAccount';
 
 export function AccountMenu({
@@ -38,7 +37,6 @@ export function AccountMenu({
   const signedIn = useSignedIn();
   const email = useAccountEmail();
   const repo = useRepository();
-  const routinesEnabled = useRoutinesEnabled() && !!repo.routines;
   const toast = useToast();
   const install = usePwaInstall();
   const push = usePushNotifications();
@@ -46,7 +44,6 @@ export function AccountMenu({
   const [pushNotice, setPushNotice] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   /* null is "could not be checked", which DeleteAccount says out loud. */
-  const [routineCount, setRoutineCount] = useState<number | null>(0);
   const [deleted, setDeleted] = useState<AccountDeletionRequested | null>(null);
   const container = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -84,24 +81,6 @@ export function AccountMenu({
     }
   }, [open]);
 
-  /* Counted only when the owner actually opens the card — not on every
-     visit to the menu — since it is the one thing here that costs a
-     request. A failed count says so: omitting the line reads as "you have
-     none", which is a different statement and one this screen is not
-     entitled to make. The authoritative number arrives with the response
-     and is what the confirmation below shows. */
-  useEffect(() => {
-    if (!deleteOpen || !routinesEnabled || !repo.routines) return;
-    let cancelled = false;
-    repo.routines.list().then((list) => {
-      if (!cancelled) setRoutineCount(list.routines.filter(knownRoutine).length);
-    }).catch(() => {
-      if (!cancelled) setRoutineCount(null);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [deleteOpen, routinesEnabled, repo]);
 
   function close() {
     setOpen(false);
@@ -277,7 +256,6 @@ export function AccountMenu({
             >
               <DeleteAccount
                 email={email}
-                routines={routineCount}
                 onDelete={deleteAccount}
                 startOpen
                 onCancel={() => setDeleteOpen(false)}

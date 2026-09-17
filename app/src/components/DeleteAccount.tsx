@@ -20,7 +20,6 @@ interface Props {
       stating a false consequence; `null` means the count could not be
       fetched, which is a different statement from "you have none" and is
       said out loud rather than silently omitted. */
-  routines: number | null;
   onDelete: (email: string) => Promise<unknown>;
   /** Render the confirmation card straight away, skipping the toggle
       button — for a caller (the account menu) that already has its own
@@ -36,7 +35,7 @@ interface Props {
 /* No `text-*` or `py-*` utility on .btn or .input: they own their type and
    padding through --control-h, and overriding it has broken the shared
    control height three times. */
-export default function DeleteAccount({ email, routines, onDelete, startOpen = false, onCancel }: Props) {
+export default function DeleteAccount({ email, onDelete, startOpen = false, onCancel }: Props) {
   const [open, setOpen] = useState(startOpen);
   const [typed, setTyped] = useState('');
   const [busy, setBusy] = useState(false);
@@ -65,13 +64,12 @@ export default function DeleteAccount({ email, routines, onDelete, startOpen = f
       <ul className="mt-2 list-disc pl-5 text-text-secondary">
         <li>You are signed out on every device now.</li>
         <li>Your chats, files and business data are erased in {GRACE_DAYS} days.</li>
-        {routines === null ? (
-          <li>We could not check your scheduled jobs. Any you set up will stop.</li>
-        ) : routines > 0 ? (
-          <li>
-            {routines} scheduled {routines === 1 ? 'job' : 'jobs'} you set up will stop.
-          </li>
-        ) : null}
+        {/* No number here. The client can only count routines it can SEE, while
+            the server counts the ones this person CREATED (`created_by = me`,
+            store.ts) — the two differ for a staff member, and the sentence says
+            "you set up". Saying it without a count is true for everyone; the
+            confirmation panel afterwards shows the server's real figure. */}
+        <li>Any scheduled jobs you set up will stop.</li>
       </ul>
       <label className="mt-3 block" htmlFor="confirm-email">
         Type your email address to confirm
