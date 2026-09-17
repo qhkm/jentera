@@ -34,6 +34,7 @@ try {
     const commands = [];
     let paused = false;
     let oauthStarts = 0;
+    let provisioning = true;
     // Optional full input path: React keyboard -> API fixture -> real runner
     // -> isolated Chromium page. No production cookies, CDP port or profile.
     let remoteContext;
@@ -99,7 +100,11 @@ try {
       else if (url.pathname === '/api/connections/token') body = { ok: true, connectors: [] };
       else if (url.pathname === '/api/notifications') body = { ok: true, items: [], notifications: [], unread: 0, nextCursor: null };
       else if (url.pathname === '/api/workspaces') body = { ok: true, workspaces: [], canManage: true };
-      else if (url.pathname === '/api/runtime') body = { ok: true, runtime: { status: 'ready' }, usage: {} };
+      else if (url.pathname === '/api/runtime') body = provisioning
+        ? { ok: true, runtime: null, canManage: true, setupStatus: 'leased', usage: {}, setupProgress: {
+          stage: 'install', startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        } }
+        : { ok: true, runtime: { status: 'ready', desiredRelease: 'fixture', observedRelease: 'fixture', lastReadyAt: new Date().toISOString() }, usage: {} };
       else if (url.pathname === '/api/agent/memory') body = { ok: true, available: true, profiles: [] };
       else if (/^\/api\/runs\/[^/]+\/coordination$/.test(url.pathname)) body = { ok: true, assignment: null, events: [] };
       else {
@@ -129,6 +134,19 @@ try {
       }]));
     });
     await page.goto(origin + '/app?view=chat');
+    const strip = page.locator('.computer-status-setup-strip');
+    await strip.getByText('Installing the workspace', { exact: true }).waitFor();
+    assert.ok((await strip.boundingBox()).height <= 52, 'Setup should stay a slim strip at every viewport');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    assert.equal(await strip.getByText(/Rough estimate/).count(), 0);
+    if (process.env.CHECK_OUTPUT_DIR) await strip.screenshot({ path: `${process.env.CHECK_OUTPUT_DIR}/setup-strip-${suffix}.png` });
+    const setupDetails = strip.getByRole('button', { name: 'Setup details', exact: true });
+    await setupDetails.click();
+    await strip.getByRole('region', { name: 'Setup details' }).getByText(/Rough estimate/).waitFor();
+    await setupDetails.click();
+    provisioning = false;
+    await page.evaluate(() => window.dispatchEvent(new Event('jentera:work-change')));
+    await strip.waitFor({ state: 'detached' });
     const draft = 'Continue after I sign in';
     const composer = page.locator('.ask-writing-pad textarea');
     await composer.fill(draft);

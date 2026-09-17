@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router';
-import { Desktop } from '@phosphor-icons/react';
+import { CaretDown, Desktop } from '@phosphor-icons/react';
 import { useRepository, type RuntimeOverview } from '@/lib/repo';
 import { useSignedIn } from '@/lib/repo/gate';
 import { useT } from '@/i18n/I18nProvider';
@@ -21,9 +21,11 @@ export function ComputerStatus({ onOpenChat, onOpenKnowledge, onOpenActivity, mo
   const [error, setError] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [open, setOpen] = useState(false);
+  const [setupExpanded, setSetupExpanded] = useState(false);
   const disclosure = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const panelId = useId();
+  const setupPanelId = useId();
   useEffect(() => {
     if (!open) return;
     const outside = (event: PointerEvent) => {
@@ -104,8 +106,26 @@ export function ComputerStatus({ onOpenChat, onOpenKnowledge, onOpenActivity, mo
       </div>
   </>;
   return <>
-    <section className={`computer-status ${settingUp ? 'computer-status-setup' : ''} ${activeWork ? 'computer-status-active' : ''} ${compact ? 'computer-status-compact' : ''} ${mobileTarget && headerOnly ? 'computer-status-header-hidden' : ''}`} aria-label={title}>
-      {content}
+    <section className={`computer-status ${settingUp ? 'computer-status-setup' : ''} ${settingUp && !activeWork ? 'computer-status-setup-strip' : ''} ${activeWork ? 'computer-status-active' : ''} ${compact ? 'computer-status-compact' : ''} ${mobileTarget && headerOnly ? 'computer-status-header-hidden' : ''}`} aria-label={title}>
+      {settingUp && !activeWork ? <>
+        <div className="computer-status-setup-row">
+          <Desktop size={18} aria-hidden="true" />
+          <div role="status" className="computer-status-setup-summary"><span>{title}</span><strong>{status}</strong></div>
+          {data?.setupProgress && <ComputerSetupProgress progress={data.setupProgress} compact />}
+          <div className="computer-status-setup-actions">
+            <button type="button" aria-expanded={setupExpanded} aria-controls={setupExpanded ? setupPanelId : undefined}
+              className="computer-status-details" aria-label={t('computer.details')} onClick={() => setSetupExpanded(value => !value)}>
+              <span>{t('computer.details')}</span><CaretDown size={14} aria-hidden="true" />
+            </button>
+            <button type="button" className="ask-inline-action computer-status-setup-knowledge" onClick={onOpenKnowledge}>{t('computer.knowledge')}</button>
+          </div>
+        </div>
+        {setupExpanded && <div id={setupPanelId} className="computer-status-setup-details" role="region" aria-label={t('computer.details')}>
+          <p>{t(`computer.${state}.detail`)}</p>
+          {data?.setupProgress && <ComputerSetupProgress progress={data.setupProgress} />}
+          <button type="button" className="ask-inline-action" onClick={onOpenKnowledge}>{t('computer.knowledge')}</button>
+        </div>}
+      </> : content}
     </section>
     {mobileTarget && createPortal(<div ref={disclosure} className="computer-status-disclosure">
       <button ref={trigger} type="button" className="computer-status-trigger" data-state={activeWork?.status ?? state}

@@ -9,7 +9,7 @@ import { SignedInProvider } from '@/lib/repo/gate';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { ToastProvider } from '@/components/Toast';
 import { KEYS } from '@/lib/storage';
-import { workflowCategoryKey, workflowTaskKey } from '@/lib/first-workflow';
+import { workflowBriefKey, workflowCategoryKey, workflowTaskKey } from '@/lib/first-workflow';
 
 function mount(repo: LocalRepository, firstJob?: boolean) {
   return render(<MemoryRouter><SignedInProvider value><RepositoryProvider repository={repo}><I18nProvider><ToastProvider>
@@ -164,10 +164,53 @@ describe('the first useful job', () => {
     const calls = vi.mocked(repo.ask).mock.calls;
     expect(calls[0][1]?.requestId).toBe(calls[1][1]?.requestId);
   });
-  it('allows preparing a brief while provisioning but does not execute', async () => {
-    const repo = new LocalRepository(); repo.ask = vi.fn(); mount(repo, false);
+  it('saves a brief while provisioning, restores it on return and requires a fresh start after readiness', async () => {
+    const repo = new LocalRepository(); repo.ask = vi.fn().mockResolvedValue({ runId: '11111111-1111-4111-8111-111111111111', text: 'Draft', usedKeys: [], grounded: true });
+    const view = mount(repo, false);
     await userEvent.click(await screen.findByRole('button', { name: /A week of content/ }));
-    expect(screen.getByRole('button', { name: 'Create this draft' })).toBeDisabled();
+    const brief = screen.getByLabelText('Your brief');
+    await userEvent.clear(brief); await userEvent.type(brief, 'Prepare a coffee campaign');
+    expect((await repo.load()).facts.find(f => f.key === workflowBriefKey)).toBeUndefined();
+    expect(screen.getByRole('button', { name: 'Save my first job' })).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Save my first job' }));
+    expect(await screen.findByRole('button', { name: 'First job saved' })).toBeDisabled();
+    expect((await repo.load()).facts.find(f => f.key === workflowBriefKey)).toMatchObject({ value: 'Prepare a coffee campaign', confirmed: true });
+    expect(screen.getByText(/You can leave this page/)).toBeInTheDocument();
+    expect(repo.ask).not.toHaveBeenCalled();
+    view.unmount();
+    mount(repo, true);
+    expect(await screen.findByLabelText('Your brief')).toHaveValue('Prepare a coffee campaign');
+    expect(repo.ask).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Create this draft' }));
+    await screen.findByRole('button', { name: 'View your work' });
+    expect(repo.ask).toHaveBeenCalledOnce();
+  });
+  it('keeps an unsuccessful save editable and retryable without calling the agent', async () => {
+    const repo = new LocalRepository(); repo.ask = vi.fn();
+    const setFact = repo.setFact.bind(repo);
+    repo.setFact = vi.fn().mockRejectedValueOnce(new Error('Could not save')).mockImplementation(setFact);
+    mount(repo, false);
+    await userEvent.click(await screen.findByRole('button', { name: /A week of content/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save my first job' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not save');
+    expect(screen.getByRole('button', { name: 'Save my first job' })).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Save my first job' }));
+    await screen.findByRole('button', { name: 'First job saved' });
+    await userEvent.type(screen.getByLabelText('Your brief'), ' Include Instagram.');
+    expect(screen.getByRole('button', { name: 'Save my first job' })).toBeEnabled();
+    expect(repo.ask).not.toHaveBeenCalled();
+  });
+  it('does not start automatically when readiness changes', async () => {
+    const repo = new LocalRepository(); repo.ask = vi.fn();
+    const contents = (ready: boolean) => <MemoryRouter><SignedInProvider value><RepositoryProvider repository={repo}><I18nProvider><ToastProvider>
+      <FirstJob ready={ready} />
+    </ToastProvider></I18nProvider></RepositoryProvider></SignedInProvider></MemoryRouter>;
+    const view = render(contents(false));
+    await userEvent.click(await screen.findByRole('button', { name: /A practical checklist/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save my first job' }));
+    await screen.findByRole('button', { name: 'First job saved' });
+    view.rerender(contents(true));
+    expect(screen.getByRole('button', { name: 'Create this draft' })).toBeEnabled();
     expect(repo.ask).not.toHaveBeenCalled();
   });
   it('uses confirmed knowledge for choices and submits only after the owner asks', async () => {

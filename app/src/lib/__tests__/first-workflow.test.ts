@@ -1,9 +1,20 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { LocalRepository } from '@/lib/repo';
-import { firstWorkflowTask, workflowTaskKey } from '@/lib/first-workflow';
+import { firstWorkflowBrief, firstWorkflowTask, workflowBriefKey, workflowTaskKey } from '@/lib/first-workflow';
 
 beforeEach(() => localStorage.clear());
 describe('confirmed first-workflow brief', () => {
+  it('restores only a valid confirmed saved brief from the current repository', async () => {
+    const repo = new LocalRepository();
+    await repo.setFact({ key: workflowBriefKey, value: 'Unconfirmed instructions', source: 'agent' });
+    expect(firstWorkflowBrief(await repo.load())).toBe('');
+    await repo.setFact({ key: workflowBriefKey, value: ' My saved instructions ', source: 'owner' });
+    expect(firstWorkflowBrief(await repo.load())).toBe('My saved instructions');
+    for (const value of [null, { task: 'invalid' }, 'x'.repeat(6001)]) {
+      await repo.setFact({ key: workflowBriefKey, value, source: 'owner' });
+      expect(firstWorkflowBrief(await repo.load())).toBe('');
+    }
+  });
   it('ignores unconfirmed proposed work', async () => {
     const repo = new LocalRepository();
     await repo.setFact({ key: workflowTaskKey, value: 'Agent-proposed task', source: 'agent' });

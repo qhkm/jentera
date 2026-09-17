@@ -5,6 +5,14 @@ export const workflowCategories = ['sales', 'admin', 'reports', 'research', 'mar
 export type WorkflowCategory = typeof workflowCategories[number];
 export const workflowCategoryKey = 'business.workflow.category';
 export const workflowTaskKey = 'business.workflow.task';
+export const workflowBriefKey = 'business.workflow.brief';
+
+/** Explicitly saved preparation, not a queued or scheduled task. */
+export function firstWorkflowBrief(snapshot: BusinessSnapshot): string {
+  const fact = snapshot.facts.find(f => f.key === workflowBriefKey && hasConfirmedValue(f));
+  const value = fact ? confirmedValue(fact) : null;
+  return typeof value === 'string' && value.trim().length <= 6000 ? value.trim() : '';
+}
 
 export function firstWorkflowTask(snapshot: BusinessSnapshot): string {
   const fact = snapshot.facts.find(f => f.key === workflowTaskKey && hasConfirmedValue(f));

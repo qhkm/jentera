@@ -9,7 +9,7 @@ import { ArtifactList } from '@/components/ArtifactList';
 import { LiveTaskProgress } from '@/components/LiveTaskProgress';
 import { renderReplyMarkdown } from '@/lib/reply-markdown';
 import type { AskAnswer } from '@/lib/repo/types';
-import { firstWorkflowTask } from '@/lib/first-workflow';
+import { firstWorkflowBrief, firstWorkflowTask, workflowBriefKey } from '@/lib/first-workflow';
 
 export function FirstJob({ ready }: { ready: boolean }) {
   const { lang } = useI18n(); const c = onboardingCopy[lang];
@@ -24,7 +24,8 @@ export function FirstJob({ ready }: { ready: boolean }) {
     { label: workshop ? c.workshop : c.reply, prompt: workshop ? c.workshopPrompt : c.replyPrompt, outcome: workshop ? c.workshopOutcome : c.replyOutcome },
     { label: c.checklist, prompt: c.checklistPrompt, outcome: c.checklistOutcome },
   ];
-  const [draft, setDraft] = useState(selectedPrompt);
+  const savedBrief = firstWorkflowBrief(snap);
+  const [draft, setDraft] = useState(savedBrief || selectedPrompt);
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const [runId, setRunId] = useState<string | null>(null);
   const [result, setResult] = useState<AskAnswer | null>(null);
@@ -58,14 +59,24 @@ export function FirstJob({ ready }: { ready: boolean }) {
     } catch (e) { setError(e instanceof Error ? e.message : c.failed); }
     finally { lock.current = false; setBusy(false); }
   }
+  async function save() {
+    if (!draft.trim() || lock.current) return;
+    lock.current = true; setBusy(true); setError(''); setProgress(null);
+    try {
+      await mutate(r => r.setFact({ key: workflowBriefKey, value: draft.trim(), source: 'owner' }));
+    } catch (e) { setError(e instanceof Error ? e.message : c.saveFailed); }
+    finally { lock.current = false; setBusy(false); }
+  }
   return <section className="first-job">
     <span className="eyebrow">3 · {c.steps[2]}</span>
     <h2>{c.jobs}</h2><p>{c.jobsNote}</p>
     <div className="first-job-options">{choices.map(choice => <button type="button" key={choice.label} disabled={busy || Boolean(runId)} aria-pressed={draft === choice.prompt} onClick={() => edit(choice.prompt)}><span>{choice.label}<small>{choice.outcome}</small></span><span aria-hidden="true">↗</span></button>)}</div>
-    {draft && <label>{c.draft}<textarea value={draft} disabled={busy || Boolean(runId)} maxLength={6000} onChange={e => edit(e.target.value)} /></label>}
+    <label>{c.draft}<textarea value={draft} disabled={busy || Boolean(runId)} maxLength={6000} onChange={e => edit(e.target.value)} /></label>
     {!ready && <p role="status">{c.waiting}</p>}
     {runId ? <Button onClick={() => void open(runId).catch(e => setError(String(e)))}>{c.open}</Button>
-      : <Button disabled={!ready || !draft.trim() || busy} onClick={() => void start()}>{busy ? c.starting : c.start}</Button>}
+      : !ready ? <Button disabled={!draft.trim() || busy || draft.trim() === savedBrief} onClick={() => void save()}>{busy ? c.savingBrief : draft.trim() && draft.trim() === savedBrief ? c.savedButton : c.saveBrief}</Button>
+      : <Button disabled={!draft.trim() || busy} onClick={() => void start()}>{busy ? c.starting : c.start}</Button>}
+    {savedBrief && !runId && draft.trim() === savedBrief && <p role="status">{ready ? c.savedReady : c.savedWaiting}</p>}
     {busy && progress && <LiveTaskProgress steps={progress.steps} since={progress.since} lastProgressAt={progress.last} disconnected={progress.disconnected} durable={Boolean(runId)} />}
     {result && <section className="first-job-result" aria-label={resultTitle}>
       <h3>{resultTitle}</h3>

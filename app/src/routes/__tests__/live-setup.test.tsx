@@ -124,17 +124,20 @@ describe('signed-in setup', () => {
   });
   it('does not show fake ready checks during provisioning', async () => {
     const repo = new ProvisioningRepository(); await repo.setOnboarded(true); mount(repo);
-    await screen.findByText('Your computer is getting ready. You can choose and edit your first job while you wait.');
+    await screen.findByText(/Prepare and save your first job while your computer gets ready/);
     expect(screen.queryByRole('region', { name: 'Meet your AI Staff.' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Create this draft' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Create this draft' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /A week of content/ }));
+    expect(screen.getByRole('button', { name: 'Save my first job' })).toBeEnabled();
   });
   it('does not present an old-release runtime as ready for the first job', async () => {
     const repo = new ReadyRepository(); await repo.setOnboarded(true);
     repo.runtimeStatus = async () => ({ runtime: { status: 'ready', desiredRelease: 'target', observedRelease: 'old', lastReadyAt: new Date().toISOString(), lastError: null } });
     mount(repo);
-    await screen.findByText('Your computer is getting ready. You can choose and edit your first job while you wait.');
+    await screen.findByText(/Prepare and save your first job while your computer gets ready/);
     expect(screen.queryByRole('region', { name: 'Meet your AI Staff.' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Create this draft' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Create this draft' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save my first job' })).toBeDisabled();
   });
   it('shows a clear live indicator while the private runtime is provisioning', async () => {
     const repo = new ProvisioningRepository();

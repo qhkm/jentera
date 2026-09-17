@@ -23,6 +23,24 @@ function mount(
 }
 afterEach(() => vi.useRealTimers());
 describe('computer readiness', () => {
+  it('shows a slim setup summary and reveals full guidance only on request', async () => {
+    mount(async () => ({ runtime: null, setupStatus: 'queued', setupProgress: {
+      stage: 'install', startedAt: '2026-09-17T08:00:00Z', updatedAt: new Date().toISOString(),
+    } }));
+    expect(await screen.findByText('Installing the workspace')).toBeVisible();
+    expect(document.querySelector('.computer-status')).toHaveClass('computer-status-setup-strip');
+    expect(screen.queryByText(/Rough estimate/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/This updates automatically/)).not.toBeInTheDocument();
+    const details = screen.getByRole('button', { name: 'Setup details' });
+    expect(details).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(details);
+    expect(details).toHaveAttribute('aria-expanded', 'true');
+    const panel = screen.getByRole('region', { name: 'Setup details' });
+    expect(within(panel).getByText(/Rough estimate/)).toBeVisible();
+    expect(within(panel).getByText(/This updates automatically/)).toBeVisible();
+    await userEvent.click(details);
+    expect(screen.queryByRole('region', { name: 'Setup details' })).not.toBeInTheDocument();
+  });
   it('shares one status poll with the header on every screen size and supports disclosure dismissal', async () => {
     const target = document.createElement('div'); document.body.append(target);
     const read = vi.fn().mockResolvedValue({ runtime: ready });

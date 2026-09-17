@@ -3,6 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { ComputerSetupProgress } from '@/components/ComputerSetupProgress';
 vi.mock('@/i18n/I18nProvider', () => ({ useI18n: () => ({ lang: 'en' }) }));
 describe('setup progress', () => {
+  it('keeps compact mode to stage and confirmed progress without estimates', () => {
+    render(<ComputerSetupProgress compact progress={{ stage: 'install', startedAt: '2026-09-17T08:00:00Z', updatedAt: '2026-09-17T08:01:00Z' }} />);
+    expect(screen.getByText('Installing the workspace')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar')).toHaveAttribute('value', '25');
+    expect(screen.queryByText(/estimate|longer than expected/)).not.toBeInTheDocument();
+  });
   it('uses confirmed stages and holds the percentage when the estimate overruns', () => {
     const progress = { stage: 'npm', startedAt: '2026-09-13T00:00:00Z', updatedAt: '2026-09-13T00:01:00Z' };
     const { rerender } = render(<ComputerSetupProgress progress={progress} now={Date.parse('2026-09-13T00:02:00Z')} />);

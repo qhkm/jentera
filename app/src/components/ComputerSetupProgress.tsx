@@ -6,7 +6,7 @@ const en = ['Preparing your computer', 'Getting setup files', 'Installing the wo
 const bm = ['Menyediakan komputer anda', 'Mendapatkan fail persediaan', 'Memasang ruang kerja', 'Memasang aplikasi', 'Menyediakan pelayar', 'Menyambungkan alatan anda', 'Menyemak semuanya berfungsi', 'Menyimpan komputer yang sedia'];
 // Broad initial ranges, not promises or a timer-driven progress percentage.
 const minutes = [[3, 10], [3, 10], [2, 8], [2, 6], [1, 4], [1, 3], [1, 2], [1, 2]];
-export function ComputerSetupProgress({ progress, now = Date.now() }: { progress: NonNullable<RuntimeOverview['setupProgress']>; now?: number }) {
+export function ComputerSetupProgress({ progress, now = Date.now(), compact = false }: { progress: NonNullable<RuntimeOverview['setupProgress']>; now?: number; compact?: boolean }) {
   const { lang } = useI18n();
   const index = stages.indexOf(progress.stage);
   if (index < 0 || !Number.isFinite(Date.parse(progress.updatedAt))) return null;
@@ -14,6 +14,11 @@ export function ComputerSetupProgress({ progress, now = Date.now() }: { progress
   const [low, high] = minutes[index];
   const stalled = now - Date.parse(progress.updatedAt) > high * 60_000;
   const label = (lang === 'bm' ? bm : en)[index];
+  if (compact) return <div className="computer-setup-inline" title={label}>
+    <span>{label}</span>
+    <progress max={100} value={percent} aria-label={lang === 'bm' ? 'Kemajuan persediaan anggaran' : 'Approximate setup progress'} />
+    <small>~{percent}%</small>
+  </div>;
   return <div className="computer-setup-progress">
     <div className="computer-setup-stage"><strong>{label}</strong><span>~{percent}%</span></div>
     <progress max={100} value={percent} aria-label={lang === 'bm' ? 'Kemajuan persediaan anggaran' : 'Approximate setup progress'} />
