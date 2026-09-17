@@ -1,0 +1,60 @@
+.analytics-choice {
+  position: fixed;
+  inset: auto 1rem 1rem;
+  z-index: 80;
+  max-width: 42rem;
+  margin-inline: auto;
+  padding: 1rem;
+  border: 1px solid var(--rail);
+  border-radius: var(--radius-panel, 1rem);
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 8px 32px rgb(var(--border-ink) / 0.15);
+}
+
+.analytics-choice h2 {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.analytics-choice p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.analytics-choice a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.analytics-choice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.analytics-choice-actions button {
+  flex: 1;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--rail);
+  border-radius: var(--radius-control, 0.5rem);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.analytics-choice-actions button:hover,
+.analytics-choice-actions button[aria-pressed='true'] {
+  border-color: var(--accent-green);
+}
+
+.analytics-settings {
+  margin-top: 2rem;
+  scroll-margin-top: 7rem;
+}

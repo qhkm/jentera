@@ -39,7 +39,7 @@ describe('privacy notice', () => {
     expect(screen.getByRole('link', { name: 'your Google Account' })).toHaveAttribute('href', 'https://myaccount.google.com/connections');
     expect(screen.getByRole('link', { name: 'Google API Services User Data Policy' })).toHaveAttribute('href', 'https://developers.google.com/terms/api-services-user-data-policy');
     expect(screen.getByText(/Disconnection does not delete Google events/)).toBeVisible();
-    expect(screen.getByText('Effective: 16 September 2026')).toBeVisible();
+    expect(screen.getByText('Effective: 17 September 2026')).toBeVisible();
     expect(screen.getByRole('link', { name: 'terms of service' })).toHaveAttribute('href', '/terms');
     expect(screen.queryByText(/Google has verified Jentera/i)).not.toBeInTheDocument();
   });
@@ -53,5 +53,17 @@ describe('privacy notice', () => {
     expect(screen.getByText(/Token penyegaran Calendar disulitkan/)).toHaveTextContent(/tidak diberikan kepada ejen/);
     expect(screen.getByRole('link', { name: 'Akaun Google anda' })).toHaveAttribute('href', 'https://myaccount.google.com/connections');
     expect(screen.getByRole('link', { name: 'Dasar Data Pengguna Perkhidmatan API Google' })).toHaveAttribute('href', 'https://developers.google.com/terms/api-services-user-data-policy');
+  });
+
+  it('discloses optional public-page analytics and lets people change their preference', async () => {
+    const user = userEvent.setup();
+    mount();
+    expect(screen.getByText(/Our tag does not run in sign-in/)).toBeVisible();
+    expect(screen.getByText(/choice is stored in this browser for up to 180 days/)).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Google analytics preferences' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Disable Google analytics' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Bahasa Malaysia' }));
+    expect(screen.getByText(/Tag kami tidak berjalan pada halaman log masuk/)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Matikan analitik Google' })).toBeEnabled();
   });
 });

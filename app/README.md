@@ -58,6 +58,10 @@ The full launch/activation/billing gates and founder-led retention plan are in
 
 ## Things worth knowing
 
+Optional GA4 public-page tracking uses `G-VF5X89K0MC`; it loads only after a
+browser opt-in and stays out of private screens. See [analytics setup](../docs/analytics.md)
+for required Google-side settings, privacy controls and safe local verification.
+
 **The data layer is hand-maintained.** Add a playbook with `../scripts/add-playbook.mjs`, which edits `playbooks.ts` directly, typechecks, and verifies the new keywords infer back to the new key — don't hand-merge entries.
 
 **Business resolution is a pure function.** The old engine memoised into a module-level `BIZ` cache and hand-invalidated it on every mutation (`delete BIZ[key]`). Here `resolveBusiness(key)` is pure and `useBusiness` memoises it, so there is no cache to forget to clear.

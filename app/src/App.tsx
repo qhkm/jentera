@@ -21,6 +21,7 @@ import NotFound from '@/routes/NotFound';
 import Privacy from '@/routes/Privacy';
 import Terms from '@/routes/Terms';
 import { PageMetadata } from '@/components/PageMetadata';
+import { GoogleAnalytics } from '@/components/GoogleAnalytics';
 import { PageLoading } from '@/components/ui';
 import { lazy, Suspense, type ReactElement } from 'react';
 
@@ -114,6 +115,7 @@ export function AppRoutes() {
   return (
     <>
       <PageMetadata />
+      <GoogleAnalytics />
       <Suspense fallback={<RouteLoading />}>
         <Routes>
           {/* Public, and free of any provider dependency. */}

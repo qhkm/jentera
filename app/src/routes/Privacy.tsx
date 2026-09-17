@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { LandingFooter, LandingHeader } from '@/components/landing/LandingChrome';
+import { AnalyticsSettings } from '@/components/GoogleAnalytics';
 
 type Language = 'en' | 'bm';
 
@@ -27,6 +28,7 @@ const ENGLISH: Section[] = [
         <li><strong>Connected-service data:</strong> account identifiers, credentials or tokens, messages and actions needed for a connection you choose, such as Telegram, Google sign-in or Google Calendar. Section 14 explains Google data specifically.</li>
         <li><strong>Device and technical data:</strong> session cookies, IP-derived security records, browser or app information, push-subscription tokens, service logs, errors and security events.</li>
         <li><strong>Limited product analytics:</strong> an allowed event name, a random 30-day browser identifier, a coarse route and elapsed time. These events exclude prompts, answers, emails, business names, URLs, connector names and error messages.</li>
+        <li><strong>Optional public-page analytics:</strong> if you allow Google Analytics, Google receives public pageviews, approved campaign labels, a referrer origin, cookie identifiers and browser/device information. Our tag does not run in sign-in, onboarding, Chat, billing or other private screens. We do not send chat content, uploads, credentials, emails, business names or URL tokens to Google Analytics.</li>
       </ul>
     </>,
   },
@@ -58,6 +60,7 @@ const ENGLISH: Section[] = [
         <li>Neon for the application database, and Fly.io/Sprites for each business’s isolated computer;</li>
         <li>AI/model providers, currently including DeepSeek, and other providers where a task requires them;</li>
         <li>Resend for service email, Google for optional sign-in and Calendar access, and Telegram or another connection only when you choose to connect or use it;</li>
+        <li>Google for optional public-page analytics when you allow it;</li>
         <li>websites and services you instruct Jentera to access or contact; and</li>
         <li>professional advisers, regulators, courts or authorities when reasonably necessary or legally required.</li>
       </ul>
@@ -72,6 +75,7 @@ const ENGLISH: Section[] = [
     title: '8. Cookies, local storage and choices',
     body: <>
       <p>Jentera uses essential cookies and browser storage for sign-in, security, language, setup state and app operation. We do not use advertising cookies. First-party activation analytics stops when your browser sends Global Privacy Control or Do Not Track. Push notifications, camera access, document upload, Google sign-in and service connections are optional and start only when you choose them.</p>
+      <p>Google Analytics is separate and optional. Its tag and analytics cookies load only after you allow analytics on a public page. The choice is stored in this browser for up to 180 days. Global Privacy Control and Do Not Track override an opt-in. Change or withdraw your choice below; withdrawal disables our Google tracking, clears accessible Google Analytics cookies and reloads the page. Cloudflare traffic measurement and first-party product measurement are separate from this Google preference.</p>
       <p>You can disconnect a service, turn off notifications in Jentera or your device, and remove browser permissions in browser or phone settings.</p>
     </>,
   },
@@ -125,6 +129,7 @@ const MALAY: Section[] = [
         <li><strong>Data perkhidmatan yang disambungkan:</strong> pengecam akaun, kelayakan atau token, mesej dan tindakan yang diperlukan untuk sambungan pilihan anda seperti Telegram, log masuk Google atau Google Calendar. Bahagian 14 menerangkan data Google secara khusus.</li>
         <li><strong>Data peranti dan teknikal:</strong> kuki sesi, rekod keselamatan berasaskan IP, maklumat pelayar atau aplikasi, token langganan pemberitahuan, log perkhidmatan, ralat dan peristiwa keselamatan.</li>
         <li><strong>Analitik produk terhad:</strong> nama peristiwa yang dibenarkan, pengecam pelayar rawak selama 30 hari, laluan umum dan masa berlalu. Peristiwa ini tidak mengandungi arahan, jawapan, e-mel, nama perniagaan, URL, nama sambungan atau mesej ralat.</li>
+        <li><strong>Analitik halaman awam pilihan:</strong> jika anda membenarkan Google Analytics, Google menerima paparan halaman awam, label kempen yang diluluskan, asal perujuk, pengecam kuki dan maklumat pelayar/peranti. Tag kami tidak berjalan pada halaman log masuk, onboarding, Chat, bil atau skrin persendirian lain. Kami tidak menghantar kandungan chat, muat naik, kelayakan, e-mel, nama perniagaan atau token URL kepada Google Analytics.</li>
       </ul>
     </>,
   },
@@ -142,7 +147,7 @@ const MALAY: Section[] = [
   },
   {
     title: '6. Pihak yang menerima data',
-    body: <><p>Kami hanya mendedahkan apa yang diperlukan untuk mengendalikan sesuatu ciri, kepada kakitangan yang dibenarkan dan kepada penyedia perkhidmatan yang bertindak untuk kami. Kategori dan contoh semasa termasuk:</p><ul><li>Cloudflare untuk penghantaran laman web, keselamatan API, log, penyimpanan fail dan penukaran dokumen;</li><li>Neon untuk pangkalan data aplikasi, serta Fly.io/Sprites untuk komputer berasingan setiap perniagaan;</li><li>penyedia AI/model, kini termasuk DeepSeek, dan penyedia lain apabila diperlukan oleh sesuatu tugasan;</li><li>Resend untuk e-mel perkhidmatan, Google untuk log masuk pilihan dan akses Calendar, dan Telegram atau sambungan lain hanya apabila anda memilih untuk menyambung atau menggunakannya;</li><li>laman web dan perkhidmatan yang anda arahkan Jentera untuk akses atau hubungi; dan</li><li>penasihat profesional, pengawal selia, mahkamah atau pihak berkuasa apabila munasabah atau diwajibkan undang-undang.</li></ul><p>Perkhidmatan pihak ketiga yang anda sambungkan turut mengendalikan data di bawah terma privasinya sendiri.</p></>,
+    body: <><p>Kami hanya mendedahkan apa yang diperlukan untuk mengendalikan sesuatu ciri, kepada kakitangan yang dibenarkan dan kepada penyedia perkhidmatan yang bertindak untuk kami. Kategori dan contoh semasa termasuk:</p><ul><li>Cloudflare untuk penghantaran laman web, keselamatan API, log, penyimpanan fail dan penukaran dokumen;</li><li>Neon untuk pangkalan data aplikasi, serta Fly.io/Sprites untuk komputer berasingan setiap perniagaan;</li><li>penyedia AI/model, kini termasuk DeepSeek, dan penyedia lain apabila diperlukan oleh sesuatu tugasan;</li><li>Resend untuk e-mel perkhidmatan, Google untuk log masuk pilihan dan akses Calendar, dan Telegram atau sambungan lain hanya apabila anda memilih untuk menyambung atau menggunakannya;</li><li>Google untuk analitik halaman awam pilihan apabila anda membenarkannya;</li><li>laman web dan perkhidmatan yang anda arahkan Jentera untuk akses atau hubungi; dan</li><li>penasihat profesional, pengawal selia, mahkamah atau pihak berkuasa apabila munasabah atau diwajibkan undang-undang.</li></ul><p>Perkhidmatan pihak ketiga yang anda sambungkan turut mengendalikan data di bawah terma privasinya sendiri.</p></>,
   },
   {
     title: '7. Pemprosesan di luar Malaysia',
@@ -150,7 +155,7 @@ const MALAY: Section[] = [
   },
   {
     title: '8. Kuki, storan setempat dan pilihan',
-    body: <><p>Jentera menggunakan kuki penting dan storan pelayar untuk log masuk, keselamatan, bahasa, status persediaan dan operasi aplikasi. Kami tidak menggunakan kuki pengiklanan. Analitik pengaktifan pihak pertama berhenti apabila pelayar anda menghantar Kawalan Privasi Global atau Jangan Jejak. Pemberitahuan, akses kamera, muat naik dokumen, log masuk Google dan sambungan perkhidmatan adalah pilihan dan hanya bermula apabila anda memilihnya.</p><p>Anda boleh memutuskan sambungan perkhidmatan, mematikan pemberitahuan dalam Jentera atau peranti, dan membuang kebenaran pelayar melalui tetapan pelayar atau telefon.</p></>,
+    body: <><p>Jentera menggunakan kuki penting dan storan pelayar untuk log masuk, keselamatan, bahasa, status persediaan dan operasi aplikasi. Kami tidak menggunakan kuki pengiklanan. Analitik pengaktifan pihak pertama berhenti apabila pelayar anda menghantar Kawalan Privasi Global atau Jangan Jejak. Pemberitahuan, akses kamera, muat naik dokumen, log masuk Google dan sambungan perkhidmatan adalah pilihan dan hanya bermula apabila anda memilihnya.</p><p>Google Analytics berasingan dan pilihan. Tag serta kuki analitiknya hanya dimuatkan selepas anda membenarkan analitik pada halaman awam. Pilihan disimpan dalam pelayar ini sehingga 180 hari. Kawalan Privasi Global dan Jangan Jejak mengatasi persetujuan anda. Ubah atau tarik balik pilihan di bawah; penarikan balik mematikan penjejakan Google kami, memadamkan kuki Google Analytics yang boleh dicapai dan memuat semula halaman. Pengukuran trafik Cloudflare dan produk pihak pertama berasingan daripada pilihan Google ini.</p><p>Anda boleh memutuskan sambungan perkhidmatan, mematikan pemberitahuan dalam Jentera atau peranti, dan membuang kebenaran pelayar melalui tetapan pelayar atau telefon.</p></>,
   },
   {
     title: '9. Tempoh penyimpanan data',
@@ -205,7 +210,7 @@ export default function Privacy() {
               ? 'Notis ini menerangkan cara Kitakod Ventures mengumpul, menggunakan, mendedahkan, menyimpan dan melindungi data peribadi apabila anda melawat jentera.ai, menggunakan Jentera atau aplikasi mudah alihnya, dan menyambungkan perkhidmatan lain.'
               : 'This notice explains how Kitakod Ventures collects, uses, discloses, stores and protects personal data when you visit jentera.ai, use Jentera or its mobile apps, and connect other services.'}
           </p>
-          <p className="privacy-date">{malay ? 'Berkuat kuasa: 16 September 2026' : 'Effective: 16 September 2026'}</p>
+          <p className="privacy-date">{malay ? 'Berkuat kuasa: 17 September 2026' : 'Effective: 17 September 2026'}</p>
           <div className="privacy-language" role="group" aria-label="Privacy notice language">
             <button type="button" aria-pressed={!malay} onClick={() => setLanguage('en')}>English</button>
             <button type="button" aria-pressed={malay} onClick={() => setLanguage('bm')}>Bahasa Malaysia</button>
@@ -220,6 +225,7 @@ export default function Privacy() {
             </section>
           ))}
         </article>
+        <AnalyticsSettings malay={malay} />
         <p className="privacy-intro">{malay ? 'Lihat juga ' : 'See also our '}<Link className="text-brand underline" to="/terms">{malay ? 'terma perkhidmatan' : 'terms of service'}</Link>.</p>
       </main>
       <LandingFooter tagline={malay ? 'Dibina oleh AISAR untuk perniagaan Malaysia.' : undefined} />
