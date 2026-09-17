@@ -1,7 +1,7 @@
 import type { Env } from '../env';
 import { LIVE_DETAIL_MAX, LIVE_TEXT_MAX } from '../run-stream-events';
 import type { StatusKind } from '../run-stream-events';
-import { publishRunProgressSafely } from './progress';
+import { publishRunProgress, publishRunProgressSafely } from './progress';
 
 /** How long answer text may sit before it is sent, and how much may
     accumulate first. Four sends a second reads as streaming in a browser;
@@ -17,8 +17,10 @@ export interface WebProgress {
   delta(text: string): void;
   flush(): Promise<void>;
   /** Release an answer the stream gate withheld, so the chat shows it without
-      waiting for the checks that follow it. */
-  reveal(text: string): Promise<void>;
+      waiting for the checks that follow it. Resolves true when the stream
+      accepted every piece — which says it was published, not that anyone was
+      watching; only the client knows that. */
+  reveal(text: string): Promise<boolean>;
 }
 
 /**
@@ -47,12 +49,21 @@ export function createWebProgress(env: Env, businessId: string, runId: string): 
     return enqueue(() => publishRunProgressSafely(env, businessId, runId, 'delta', { text }));
   };
   /* One push would be cut at LIVE_TEXT_MAX by the publish endpoint, so a
-     withheld answer goes out in publish-sized pieces. */
-  const reveal = async (text: string): Promise<void> => {
+     withheld answer goes out in publish-sized pieces. Unlike every other
+     call here this one reports failure: a measurement built on the safe
+     publisher would count an answer nobody was sent. */
+  const reveal = async (text: string): Promise<boolean> => {
+    if (!text) return false;
+    await flush();
+    let published = true;
     for (let at = 0; at < text.length; at += LIVE_TEXT_MAX) {
-      buffer += text.slice(at, at + LIVE_TEXT_MAX);
-      await flush();
+      const piece = text.slice(at, at + LIVE_TEXT_MAX);
+      await enqueue(async () => {
+        try { await publishRunProgress(env, businessId, runId, 'delta', { text: piece }); }
+        catch { published = false; }
+      });
     }
+    return published;
   };
   return {
     reveal,

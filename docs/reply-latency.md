@@ -265,37 +265,57 @@ this change. Only the moment of delivery moved; total time to completion is
 unchanged by design. A query on that span would have read as "no effect" from
 a change working perfectly.
 
-So both check events carry a `delivery` object:
+So both check events carry a `delivery` object, written after delivery in
+both branches. **Policy is recorded apart from outcome**, because the two
+disagree: an unheld run whose send failed, or one that spanned slices and so
+could not reveal early, took the fast branch and delivered nothing sooner.
 
 | Field | Reads |
 |---|---|
-| `deliveredFirst` | Whether the owner had the answer before the checks finished |
-| `checksMs` | How long the checks took — on a `deliveredFirst` run, the wait removed |
+| `heldForChecks` | Policy: the checks were awaited before delivery was attempted |
 | `channel` | `telegram`, or the run's own channel |
-| `resumedSlice` | The run spanned slices, so its app answer still waits for completion |
-| `revealed` | The finished answer was released to the app's stream early |
+| `resumedSlice` | The run spanned slices, so the app reveal does not apply |
+| `checksMs`, `checksFinishedAt` | How long the checks took, and when they ended |
+| `deliveryStartedAt` | When the answer began going out — the moment that moved |
+| `outcome` | `sent`, `published`, `failed`, `none` |
+| `deliveredBeforeChecks` | Evidence: it arrived, and started before the checks ended |
+| `savedMs` | `checksFinishedAt − deliveryStartedAt` — the wait actually removed |
 
-The win per run is `checksMs` where `deliveredFirst` is true, split by
-`channel` and `resumedSlice`:
+Three things that measure would have got wrong, and how:
+
+- **`work.completed` cannot see it** (above): it is written after the checks
+  in both orders.
+- **The branch is not the outcome.** `!checked` says the checks were not
+  awaited first, not that anything reached anyone. `outcome` and
+  `deliveryStartedAt` say that.
+- **The send's end is not the moment that moved.** Delivery takes the same
+  time either way; what changed is when it could *start*. Timing the
+  completed send counts a run as no better whenever the checks happen to
+  finish mid-send.
+
+And `published` is the honest word for the app: the run stream accepting a
+push does not prove a client was listening, which only the client knows.
+`WebProgress.reveal` returns false when a publish fails rather than using the
+error-swallowing publisher, so a failed push is never counted as delivery.
 
 ```sql
 select payload->'delivery'->>'channel' as channel,
        payload->'delivery'->>'resumedSlice' as resumed,
+       payload->'delivery'->>'outcome' as outcome,
        count(*),
        round(percentile_cont(0.5) within group (
-         order by (payload->'delivery'->>'checksMs')::numeric) / 1000, 1) as p50_s
+         order by (payload->'delivery'->>'savedMs')::numeric) / 1000, 1) as p50_saved_s
   from run_event
  where type = 'outcome.observed'
-   and (payload->'delivery'->>'deliveredFirst')::boolean
+   and (payload->'delivery'->>'deliveredBeforeChecks')::boolean
    and created_at > now() - interval '7 days'
- group by 1, 2;
+ group by 1, 2, 3;
 ```
 
 A caution that arrived behind an answer already read is
 `type = 'answer.guardrail'` with a non-empty `warnings` **and**
-`delivery.deliveredFirst` true. The warning alone proves nothing: the event
-does not otherwise record the order, and a held run's caution is in the
-delivered text.
+`delivery.deliveredBeforeChecks` true. The warning alone proves nothing: a
+held run's caution is inside the delivered text.
 
 If one does appear it will be `unverified_completion`, and the corrective
 change is **not** to hold action questions — `streamHoldReason` already

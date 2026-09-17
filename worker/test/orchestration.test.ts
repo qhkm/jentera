@@ -1268,8 +1268,14 @@ describe('the wait for an answer\u2019s checks', () => {
     const traces = await deliveryTraces();
     expect(traces.map((row) => row.type)).toContain('outcome.observed');
     for (const row of traces) {
-      expect(row.delivery).toMatchObject({ deliveredFirst: true, channel: 'telegram', resumedSlice: false });
-      expect(typeof row.delivery?.checksMs).toBe('number');
+      /* Measured, not assumed: the answer reached Telegram, and it did so
+         before the checks finished. `savedMs` is that gap. */
+      expect(row.delivery).toMatchObject({
+        channel: 'telegram', heldForChecks: false, resumedSlice: false,
+        outcome: 'sent', deliveredBeforeChecks: true,
+      });
+      expect(typeof row.delivery?.savedMs).toBe('number');
+      expect(Number(row.delivery?.deliveryStartedAt)).toBeLessThan(Number(row.delivery?.checksFinishedAt));
     }
   });
 
@@ -1284,7 +1290,11 @@ describe('the wait for an answer\u2019s checks', () => {
     expect(events).toContain('answer.guardrail');
     expect(events).toContain('outcome.observed');
     for (const row of await deliveryTraces()) {
-      expect(row.delivery).toMatchObject({ deliveredFirst: false, revealed: false });
+      /* Held: the caution is inside the delivered text, so nothing was
+         saved and the answer cannot have gone out before the checks. */
+      expect(row.delivery).toMatchObject({
+        heldForChecks: true, deliveredBeforeChecks: false, savedMs: null, outcome: 'sent',
+      });
     }
   });
 });

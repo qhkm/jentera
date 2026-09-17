@@ -26,17 +26,28 @@ describe('releasing an answer the stream gate withheld', () => {
   it('publishes every character of an answer longer than one push', async () => {
     const { env, published } = streamFake();
     const answer = 'x'.repeat(LIVE_TEXT_MAX * 2 + 137);
-    await createWebProgress(env, 'b', 'r').reveal(answer);
+    await expect(createWebProgress(env, 'b', 'r').reveal(answer)).resolves.toBe(true);
     expect(published.every(event => event.type === 'delta')).toBe(true);
     expect(published.map(event => event.text ?? '').join('')).toBe(answer);
     expect(published.length).toBe(3);
   });
 
+  it('says it did not publish when the stream refuses, rather than swallowing it', async () => {
+    const env = {
+      RUN_STREAMS: {
+        idFromName: () => 'id',
+        get: () => ({ fetch: async () => new Response('no', { status: 500 }) }),
+      },
+    } as unknown as Env;
+    await expect(createWebProgress(env, 'b', 'r').reveal('An answer nobody receives.'))
+      .resolves.toBe(false);
+  });
+
   it('sends a short answer as one delta and nothing for an empty one', async () => {
     const { env, published } = streamFake();
     const progress = createWebProgress(env, 'b', 'r');
-    await progress.reveal('Yes, we are open on Sunday.');
-    await progress.reveal('');
+    await expect(progress.reveal('Yes, we are open on Sunday.')).resolves.toBe(true);
+    await expect(progress.reveal('')).resolves.toBe(false);
     expect(published).toEqual([{ type: 'delta', text: 'Yes, we are open on Sunday.' }]);
   });
 });

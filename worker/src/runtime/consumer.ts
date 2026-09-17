@@ -571,17 +571,32 @@ export async function handleRuntimeApprovalCallback(
  *  span between the last tool and `work.completed` contains the checks
  *  either way, so nothing else here can measure the change.
  */
+/** What actually happened to one answer, kept apart from what policy chose.
+ *  The distinction is the point: `heldForChecks` says which branch ran, and
+ *  every other field says what the owner got, because the two disagree — an
+ *  unheld run that could not reveal (resumed) or whose send failed took the
+ *  fast branch and delivered nothing early.
+ */
 interface AnswerDelivery {
-  /** Whether the owner had the answer before these checks finished. */
-  deliveredFirst: boolean;
-  /** How long the checks took. On a `deliveredFirst` run this is the wait
-      that used to sit in front of the reply. */
-  checksMs: number | null;
   channel: string;
-  /** A run that spanned slices: its app answer still waits for completion. */
+  /** Policy: the checks were awaited before delivery was attempted. */
+  heldForChecks: boolean;
+  /** The run spanned slices, so the app reveal does not apply to it. */
   resumedSlice: boolean;
-  /** Whether the finished answer was released to the app's stream early. */
-  revealed: boolean;
+  checksMs: number | null;
+  checksFinishedAt: number | null;
+  /** When the answer started going out, which is the moment that moved: the
+      send itself takes the same time either way. Null when this slice
+      delivered nothing. */
+  deliveryStartedAt: number | null;
+  /** Whether it arrived. "Published" is as far as the app case goes: a
+      stream that accepts a push does not prove a client was listening. */
+  outcome: 'sent' | 'published' | 'failed' | 'none';
+  /** Evidence rather than policy: both moments are known and delivery came
+      first. */
+  deliveredBeforeChecks: boolean;
+  /** The wait actually removed from this reply, measured, not inferred. */
+  savedMs: number | null;
 }
 
 async function recordAnswerChecks(
@@ -1844,7 +1859,10 @@ export async function handleRuntimeMessage(
            seconds the owner no longer spends watching a finished reply. */
         const checksStartedAt = Date.now();
         let checksMs: number | null = null;
-        let revealedAnswer = false;
+        let checksFinishedAt: number | null = null;
+        let publishStartedAt: number | null = null;
+        let published = false;
+        let sendStartedAt: number | null = null;
         const checks = Promise.all([lease.task.runId ? assessTaskOutcome(
           env, message.businessId, lease.task.runId,
           outcome.payload.telegram?.question ?? outcome.payload.input,
@@ -1860,7 +1878,11 @@ export async function handleRuntimeMessage(
               error: error instanceof Error ? error.message : String(error),
             });
             return [null, { status: 'not_applicable', sources: 0 }];
-          }).then((settled) => { checksMs ??= Date.now() - checksStartedAt; return settled; });
+          }).then((settled) => {
+            checksFinishedAt ??= Date.now();
+            checksMs ??= checksFinishedAt - checksStartedAt;
+            return settled;
+          });
         /* The checks cost the owner seconds of silence after the answer already
            exists, on a reply whose median is 47 s. They are waited for only
            where they can still change what is read: a question that may carry a
@@ -1868,16 +1890,34 @@ export async function handleRuntimeMessage(
            else is delivered now and assessed behind the reply, which is where
            `checks` is awaited instead. */
         const checked = !successful || holdAnswerForChecks(reviewQuestion) ? await checks : null;
-        /* Both events carry this, so a caution can be told from one that
-           arrived behind an answer already read, and the win can be split by
-           channel and by whether the run spanned more than one slice. */
-        const deliveryTrace = () => ({
-          deliveredFirst: !checked,
-          checksMs,
-          channel: outcome.payload.telegram ? 'telegram' : outcome.payload.channel ?? 'app',
-          resumedSlice: (lease.task.streamSeq ?? 0) > 0,
-          revealed: revealedAnswer,
-        });
+        /* Built after delivery, from the moments themselves. Telegram is the
+           channel of record for a run that came from it: an app publish on
+           the same run feeds Activity, not the reply the owner is reading. */
+        const deliveryTrace = (): AnswerDelivery => {
+          const telegram = Boolean(outcome.payload.telegram);
+          const outcomeLabel: AnswerDelivery['outcome'] = telegram
+            ? telegramDelivery === 'sent' ? 'sent'
+              : telegramDelivery && telegramDelivery !== 'already_handled' ? 'failed' : 'none'
+            : published ? 'published' : 'none';
+          const deliveryStartedAt = outcomeLabel === 'sent' ? sendStartedAt
+            : outcomeLabel === 'published' ? publishStartedAt : null;
+          /* Only a delivery that arrived counts, and only against the moment
+             it could start: a send that began while the checks were still
+             running is time the owner did not spend waiting. */
+          const deliveredBeforeChecks = deliveryStartedAt !== null && checksFinishedAt !== null
+            && deliveryStartedAt < checksFinishedAt;
+          return {
+            channel: telegram ? 'telegram' : outcome.payload.channel ?? 'app',
+            heldForChecks: Boolean(checked),
+            resumedSlice: (lease.task.streamSeq ?? 0) > 0,
+            checksMs,
+            checksFinishedAt,
+            deliveryStartedAt,
+            outcome: outcomeLabel,
+            deliveredBeforeChecks,
+            savedMs: deliveredBeforeChecks ? checksFinishedAt! - deliveryStartedAt! : null,
+          };
+        };
         const guardedAnswer = successful && checked ? guardAnswer(outcome.result,
           reviewQuestion, checked[0], checked[1]) : null;
         if (guardedAnswer) {
@@ -1900,8 +1940,6 @@ export async function handleRuntimeMessage(
             },
           );
           if (!saved) return { saved: false, deliveryClaimed: false };
-          if (checked) await recordAnswerChecks(tx, message.businessId, lease.task.runId,
-            guardedAnswer?.warnings ?? null, checked[0], checked[1], answerGate.reason, deliveryTrace());
           if (!successful || !outcome.payload.telegram || !lease.task.runId) {
             return { saved: true, deliveryClaimed: false };
           }
@@ -1933,9 +1971,8 @@ export async function handleRuntimeMessage(
            streamed anything keeps waiting for its answer at completion. */
         if (!checked && successful && web && answerGate.reason
           && !answerGate.emitted && (lease.task.streamSeq ?? 0) === 0) {
-          await web.reveal(assessmentAnswer(outcome.result))
-            .then(() => { revealedAnswer = true; })
-            .catch(() => {});
+          publishStartedAt = Date.now();
+          published = await web.reveal(assessmentAnswer(outcome.result)).catch(() => false);
         }
 
         let telegramDelivery: 'sent' | 'needs_approval' | 'blocked' | 'failed' |
@@ -1947,6 +1984,7 @@ export async function handleRuntimeMessage(
             ? liveStream?.handoffMessageId() ?? liveBubbleId
             : undefined;
           if (terminal.deliveryClaimed) {
+            sendStartedAt = Date.now();
             telegramDelivery = await deliverTelegramDraft(
               env,
               message.businessId,
@@ -2005,8 +2043,11 @@ export async function handleRuntimeMessage(
           outcome.summary = assessmentAnswer(outcome.result).slice(0, 500);
         }
         const completed = await withTenant(env, message.businessId, async (tx) => {
-          if (!checked) await recordAnswerChecks(tx, message.businessId, lease.task.runId,
-            lateAnswer?.warnings ?? null, assessment, sourceReview, answerGate.reason, deliveryTrace());
+          /* Both branches record here, after delivery, so `deliveredAt` is
+             known for either and the two are described the same way. */
+          await recordAnswerChecks(tx, message.businessId, lease.task.runId,
+            (checked ? guardedAnswer : lateAnswer)?.warnings ?? null,
+            assessment, sourceReview, answerGate.reason, deliveryTrace());
           const done = await completeRuntimeTask(
             tx,
             message.businessId,
