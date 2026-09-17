@@ -102,7 +102,10 @@ describe('public SEO and social previews', () => {
 
   it('keeps Cloudflare private headers and removes the blanket soft-404 rewrite', () => {
     const headers = readFileSync('public/_headers', 'utf8');
-    expect(headers).toMatch(/^\/terms\n  Cache-Control: no-cache, no-store, must-revalidate$/m);
+    // Public shells revalidate but may be stored; no-store belongs to the
+    // authenticated routes below them.
+    expect(headers).toMatch(/^\/terms\n  Cache-Control: no-cache, must-revalidate$/m);
+    expect(headers).not.toMatch(/^\/(?:|connect|privacy|terms)\n  Cache-Control: [^\n]*no-store/m);
     for (const path of PRIVATE_PATHS) {
       const escapedPath = path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       expect(headers).toMatch(new RegExp(`^${escapedPath}\\n(?:  [^\\n]+\\n)*  X-Robots-Tag: noindex, nofollow$`, 'm'));
