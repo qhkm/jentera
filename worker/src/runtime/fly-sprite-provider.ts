@@ -91,6 +91,10 @@ export class FlySpriteProvider implements BootstrapRuntimeProvider {
     return observed;
   }
 
+  async lookup(name: string): Promise<ObservedRuntime | null> {
+    return this.get(name, true);
+  }
+
   async checkpoint(runtime: ObservedRuntime, comment = 'Jentera known-good'): Promise<string> {
     const created = await this.request(
       `/v1/sprites/${encodeURIComponent(runtime.name)}/checkpoint`,

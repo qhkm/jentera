@@ -148,18 +148,61 @@ expired lease, obsolete pin or expired ready entry is quarantined and still
 occupies its inventory budget. This intentionally stops repeated creation
 after failures instead of hiding orphan resources or accumulating bills.
 
-V1 does **not** automatically retire or delete quarantined resources. An
-operator must review them, confirm the exact provider identity and that the
-entry is unassigned, then remove that resource through the provider's normal
-management path before explicitly retiring its inventory entry with the
-owner role. For an interrupted create where the provider ID was not saved,
-resolve the exact recorded random name first; absence of an ID is not proof
-that no resource exists. Never retire an assigned entry, never remove a
-customer Sprite, and never modify installed runtime files by hand.
+### Recovery and two-spare rollout
 
-Do this review when a release changes or ready spares expire. Quarantine
-stops pool replenishment, not normal customer provisioning. Automatic safe
-retirement is a separate follow-up, not implemented here.
+Migration 060 adds opt-in recovery (`RUNTIME_SPARE_POOL_RECOVERY_ENABLED`) and
+operator monitoring. The next runtime release raises the target to **2**.
+Preparation stays serialized and the hard limit remains four new pool entries
+per rolling hour, including already-assigned entries. This is a buffer, not an
+always-available or unlimited-concurrency guarantee.
+
+Cron republishes retirement candidates in the normal placed runtime queue.
+Retirement is fenced by a two-minute DB lease, limited to one concurrent job
+and three attempts, with a ten-minute retry backoff. It refuses assigned
+tombstones and any resource name linked to `agent_runtime`, including deleted
+runtimes. It never calls provider create, wakes an agent endpoint, sends tenant
+credentials, writes installed files or sanitizes data.
+
+For an existing provider resource, a read-only check requires the exact
+recorded provider identity, a clean **prepared** marker with original release,
+bundle and Hermes pins, no tenant files or private-state entries, and no
+services. The DB authorization is rechecked before deleting that exact unused
+resource. Provider absence must then be confirmed before the inventory is
+retired and its slot becomes available for a new preparation. API calls and
+the read-only remote check have 15-second deadlines. Missing known resources
+and obsolete queue entries that provably never began preparation can be
+retired without deletion. Unknown interrupted creates cannot be forgotten
+merely because lookup currently returns missing.
+
+Dirty, partially prepared, assigned, malformed or identity-mismatched resources
+remain quarantined for manual review; they are **not** force-deleted. Provider
+failures retain their budget and stop after three attempts. An operator must
+resolve the exact random name and any unfinished work before removing an
+uncertain unused resource through the normal provider management path and
+explicitly retiring only that unassigned inventory entry. Never remove a
+customer Sprite or modify its installed runtime files by hand.
+
+An aggregate-only notice goes to `SIGNUP_NOTICE_TO` through the existing
+Resend configuration when no current-pin spare is ready for ten minutes, or
+cleanup needs manual review. A private singleton monitor fences concurrent
+sends, throttles successful notices to one per hour, and retries refused
+delivery after five minutes. The alert includes counts and release only, not
+businesses, resource identities, inputs, credentials or provider error bodies.
+Missing email configuration is logged, not mistaken for successful delivery.
+
+Apply 060 before enabling recovery:
+
+```sh
+cd worker
+pnpm db:migrate:runtime-spare-recovery
+```
+
+Supply the reviewed production owner DSN securely via `AISAR_NEON_OWNER_URL`.
+The migration command verifies restricted permissions and creates/deletes no
+compute. `ship-runtime.sh` now also waits for the desired count of ready spares
+on the **exact new release/bundle**, after assigned-fleet verification. The
+read-only gate allows approximately 15 minutes and fails explicitly on manual
+review or an unfilled pool; customer cold provisioning remains available.
 
 ## Safe rollout
 

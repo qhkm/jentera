@@ -93,6 +93,8 @@ export interface Env {
       before enabling. Maximum two spares, one preparation at a time. */
   RUNTIME_SPARE_POOL_ENABLED?: string;
   RUNTIME_SPARE_POOL_TARGET?: string;
+  /** Migration 060: bounded retirement of clean unused spares and operator alerts. */
+  RUNTIME_SPARE_POOL_RECOVERY_ENABLED?: string;
   /** FMCV inference credential. Kept in the control plane and installed only
       into isolated Jentera runtimes while FMCV tenant-key issuance is pending. */
   AISAR_MODEL_PROVIDER?: string;

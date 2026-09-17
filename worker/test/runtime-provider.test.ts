@@ -42,6 +42,15 @@ describe('LocalRuntimeProvider', () => {
 });
 
 describe('FlySpriteProvider', () => {
+  it('looks up missing resources without creating them or hiding provider refusals', async () => {
+    const methods: string[] = [];
+    const missing = fly(async (_url, init) => {
+      methods.push(init?.method ?? 'GET'); return new Response('', { status: 404 });
+    });
+    expect(await missing.lookup('aisar-p-' + 'a'.repeat(32))).toBeNull();
+    expect(methods).toEqual(['GET']);
+    await expect(fly(async () => new Response('', { status: 403 })).lookup('aisar-p-' + 'a'.repeat(32))).rejects.toThrow();
+  });
   it('permits only the fixed clean-spare claim helper, not arbitrary Node code', async () => {
     const provider = fly(async () => new Response(new Uint8Array([3,0])));
     const args = ['/home/sprite/aisar/runner/spare-state.mjs','claim','2026.09.17-3','a'.repeat(40),

@@ -46,7 +46,9 @@ enabled = true
 
 [vars]
 RUNTIME_SPARE_POOL_ENABLED = "true"
-RUNTIME_SPARE_POOL_TARGET = "1"
+RUNTIME_SPARE_POOL_TARGET = "2"
+# Apply migration 060 before enabling safe unused-spare retirement and alerts.
+RUNTIME_SPARE_POOL_RECOVERY_ENABLED = "true"
 # Migration 041 must be applied before deploying this restriction.
 ACCESS_MODE = "waitlist"
 # Apply migration 057 and verify trial + paid flows before opening the preview.

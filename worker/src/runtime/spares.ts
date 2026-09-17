@@ -1,6 +1,7 @@
 import type postgres from 'postgres';
 import type { Env } from '../env';
 import { withUser } from '../db';
+import { notifySparePool } from './spare-alerts';
 
 export interface RuntimeSpare {
   spare_id: string;
@@ -14,6 +15,12 @@ export interface RuntimeSpare {
 export interface SpareQueueMessage {
   version: 3;
   kind: 'prepare_spare';
+  spareId: string;
+}
+
+export interface SpareRetirementQueueMessage {
+  version: 3;
+  kind: 'retire_spare';
   spareId: string;
 }
 
@@ -52,6 +59,14 @@ export async function refillSparePool(env: Env): Promise<number> {
   if (!config) return 0;
   const rows = await withUser(env, sql => sql<{ spare_id: string }[]>`
     select * from public.queue_runtime_spares(${config.release},${config.bundle},${config.target})`);
+  if (env.RUNTIME_SPARE_POOL_RECOVERY_ENABLED === 'true') {
+    const obsolete = await withUser(env, sql => sql<{ spare_id: string }[]>`
+      select * from public.runtime_spare_retirement_candidates()`);
+    for (const row of obsolete) {
+      await env.RUNTIME_QUEUE!.send({ version: 3, kind: 'retire_spare', spareId: row.spare_id });
+    }
+    await notifySparePool(env, config);
+  }
   for (const row of rows) {
     await env.RUNTIME_QUEUE!.send({ version: 3, kind: 'prepare_spare', spareId: row.spare_id });
   }

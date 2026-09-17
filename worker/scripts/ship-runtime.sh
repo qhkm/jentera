@@ -213,4 +213,14 @@ step "watch convergence"
 step "verify every sprite"
 "$ROOT/worker/scripts/fleet-verify.sh" "$RELEASE" || die "converged but verification failed on at least one sprite"
 
+# Unassigned spares are not in the tenant drift sweep. Prove replenishment
+# separately; never mark a release complete while only stale inventory exists.
+if grep -q '^RUNTIME_SPARE_POOL_ENABLED = "true"$' "$WT/worker/wrangler.toml" &&
+   grep -q '^RUNTIME_SPARE_POOL_RECOVERY_ENABLED = "true"$' "$WT/worker/wrangler.toml"; then
+  step "verify current-release spare replenishment"
+  pool_target="$(sed -n 's/^RUNTIME_SPARE_POOL_TARGET = "\([12]\)"$/\1/p' "$WT/worker/wrangler.toml")"
+  AISAR_NEON_OWNER_URL="$(neon_url)" node "$ROOT/worker/scripts/watch-spare-pool.mjs" "$RELEASE" "$BUNDLE" "$pool_target" \
+    || die "spare pool did not replenish; cold provisioning remains available"
+fi
+
 step "shipped $RELEASE (bundle $BUNDLE, main $RELEASE_SHA)"

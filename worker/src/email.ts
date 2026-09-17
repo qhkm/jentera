@@ -101,6 +101,7 @@ export async function sendNotice(
   text: string,
   headers?: Record<string, string>,
   replyTo?: string,
+  options?: { timeoutMs?: number },
 ): Promise<boolean> {
   if (!env.RESEND_API_KEY) {
     console.warn('[email] notice delivery unavailable: provider not configured');
@@ -108,6 +109,7 @@ export async function sendNotice(
   }
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
+    ...(options?.timeoutMs ? { signal: AbortSignal.timeout(options.timeoutMs) } : {}),
     headers: {
       Authorization: `Bearer ${env.RESEND_API_KEY}`,
       'Content-Type': 'application/json',

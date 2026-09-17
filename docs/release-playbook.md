@@ -75,15 +75,19 @@ bundle. On a pin change, the pool refill quarantines obsolete entries, which
 still occupy its bounded budget. Normal signups fall back to cold provisioning;
 do not force assignment of a stale spare or relax the pin check.
 
-V1's release policy is discard/refill, not re-bootstrap or reuse. Review each
-obsolete unassigned entry, resolve its exact provider identity, remove only
-that unused resource through the provider's management path, then explicitly
-retire that inventory entry with the owner role. The next minute cron can
-prepare fresh inventory. Do not retire first and assume cleanup happened, and
-never delete or retire an assigned resource. See
+The release policy is discard/refill, not re-bootstrap or reuse. With migration
+060 and `RUNTIME_SPARE_POOL_RECOVERY_ENABLED=true`, bounded queue jobs attest
+clean prepared state, delete only never-assigned unused resources, and confirm
+provider absence before freeing inventory. `ship-runtime.sh` then also waits
+for current-pin ready inventory to reach the configured target. Unsafe or
+uncertain resources stay quarantined and generate a throttled operator alert;
+those still require manual review. Resolve their exact identity and remove only
+the unused resource before explicitly retiring its entry with the owner role.
+Do not retire first and assume cleanup happened, and never delete or retire an
+assigned resource. See
 [runtime-spare-pool.md](runtime-spare-pool.md) for the bounds, safe pilot,
-monitoring and manual cleanup requirements. Automatic retirement is not yet
-implemented; include this review in every runtime release while the pool is on.
+monitoring and manual cleanup requirements. Recovery is separately gated;
+without it, include manual cleanup review in every release while the pool is on.
 
 ## Rollback
 

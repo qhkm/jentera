@@ -49,6 +49,8 @@ export interface RuntimeProvider {
   stop(runtime: ObservedRuntime): Promise<void>;
 
   status(runtime: ObservedRuntime): Promise<ObservedRuntime>;
+  /** Read-only exact-name lookup. Missing is not permission to create. */
+  lookup?(name: string): Promise<ObservedRuntime | null>;
   checkpoint(runtime: ObservedRuntime, comment?: string): Promise<string>;
   restore(runtime: ObservedRuntime, checkpointId: string): Promise<void>;
   destroy(runtime: ObservedRuntime): Promise<void>;
