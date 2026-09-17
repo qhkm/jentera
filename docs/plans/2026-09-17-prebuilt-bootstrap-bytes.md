@@ -110,13 +110,20 @@ this mismatch.
   directory does not carry them. Measure the split before assuming 72 s is
   recoverable: if the apt half dominates, the answer is a base layer with the
   dependencies already present, which is a different piece of work.
-- **Upgrades, which are the common case.** 191 upgrades to one cold provision
-  over the 30 days to 2026-09-11. Upgrades are 203 s p50 and already reuse the
-  tree, so this proposal barely touches them. It buys a better first
-  impression for a new customer, not a faster fleet.
+- **Upgrade *speed*, which is the common case.** 191 upgrades to one cold
+  provision over the 30 days to 2026-09-11. Upgrades are 203 s p50 and already
+  reuse the tree, so on time alone this proposal barely touches them.
 
-That second point is the honest argument against doing this at all. It is
-worth building when signups are waiting on the five minutes, and not before.
+On reliability it does touch them, and that changes the balance. Ten of the
+twelve exhausted tasks on 16 September were **upgrades**, failing in `install`
+for the same reason a cold provision does — the upgrade path re-runs the
+installer against the pinned commit, so it depends on the same two third
+parties. Prebuilt bytes remove that dependency from every release, not only
+from a new customer's first five minutes.
+
+So the honest position is narrower than "wait for signups to be gated": on
+speed this is a first-impression fix and can wait; on fleet convergence it is
+a fix for the thing that most recently stalled a release.
 
 ## Sequence
 
