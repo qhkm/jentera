@@ -65,7 +65,7 @@ try {
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${width}px overflow`);
       assert.deepEqual(errors, [], `${width}px browser errors`);
     };
-    await page.goto('https://jentera.ai/');
+    await page.goto('https://jentera.ai/?gtm_debug=1789600000000');
     await page.getByRole('region', { name: 'Analytics choice' }).waitFor();
     assert.equal(tagRequests, 0, 'Tag must not load before consent');
     await layout();
@@ -74,6 +74,8 @@ try {
     await page.waitForFunction(() => document.getElementById('jentera-google-tag'));
     const views = () => page.evaluate(() => (window.dataLayer ?? []).map(item => Array.from(item)).filter(item => item[0] === 'event' && item[1] === 'page_view'));
     assert.equal((await views()).length, 1);
+    assert.equal((await views())[0][2].debug_mode, true, 'Debugger flag enables debug mode only after consent');
+    assert.equal((await views())[0][2].page_location, 'https://jentera.ai/', 'Debug URL is sanitized');
     await page.getByRole('link', { name: 'Pricing', exact: true }).first().click();
     await page.waitForURL('**/pricing');
     await page.waitForFunction(() => (window.dataLayer ?? []).filter(item => item[0] === 'event').length === 2);
@@ -108,7 +110,23 @@ try {
     await page.goto('https://jentera.ai/?token=private-token');
     await page.getByRole('heading', { level: 1 }).waitFor();
     assert.equal(await page.locator('#jentera-google-tag').count(), 0, 'Sensitive query blocks Google');
+    for (const query of ['?_dbg=1', '?gtm_debug=1789600000000', '?_dbg=1&utm_source=whatsapp']) {
+      await page.goto(`https://jentera.ai/${query}`);
+      await page.waitForFunction(() => document.getElementById('jentera-google-tag'));
+      const event = (await views())[0][2];
+      assert.equal(event.debug_mode, true);
+      assert.equal(event.page_location, 'https://jentera.ai/');
+      assert(!JSON.stringify(event).includes('1789600000000'), 'Debug timestamp is not sent');
+      await layout();
+    }
+    const tagsAfterDebug = tagRequests;
+    for (const path of ['/?_dbg=1&token=private-token', '/?gtm_debug=private@example.com', '/signin?_dbg=1', '/app?gtm_debug=1789600000000', '/subscribe?_dbg=1']) {
+      await page.goto(`https://jentera.ai${path}`);
+      await page.waitForLoadState('networkidle');
+      assert.equal(await page.locator('#jentera-google-tag').count(), 0, `${path} remains excluded`);
+    }
+    assert.equal(tagRequests, tagsAfterDebug, 'Debug flags do not bypass private or sensitive URL exclusion');
     await context.close();
-    console.log(`PASS ${width}px: opt-in, public navigation, withdrawal, private boundary and core routes`);
+    console.log(`PASS ${width}px: opt-in, public navigation, withdrawal, private boundary, core routes and validated debug URLs`);
   }
 } finally { await browser.close(); }

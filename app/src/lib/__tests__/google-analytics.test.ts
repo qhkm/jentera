@@ -84,6 +84,55 @@ describe('public-page Google analytics', () => {
     expect(serialized).not.toMatch(/secret|example\.com|utm_source|#pricing/);
   });
 
+  it.each(['?_dbg=1', '?gtm_debug=1789600000000', '?_dbg=1&gtm_debug=1789600000000&utm_source=whatsapp'])('accepts a bounded Tag Assistant signal without including it in page URLs: %s', (query) => {
+    expect(publicAnalyticsPage(`https://jentera.ai/${query}`)).not.toBeNull();
+    client.trackPage(`https://jentera.ai/${query}`);
+    expect(document.getElementById('jentera-google-tag')).toBeNull();
+    saveAnalyticsChoice('allowed');
+    client.trackPage(`https://jentera.ai/${query}`);
+    expect(document.getElementById('jentera-google-tag')).not.toBeNull();
+    const config = commands().find((entry) => entry[0] === 'config')?.[2];
+    expect(config).toMatchObject({ debug_mode: true, page_location: 'https://jentera.ai/' });
+    expect(commands().find((entry) => entry[0] === 'event')?.[2]).toMatchObject({ debug_mode: true, page_location: 'https://jentera.ai/' });
+    expect(JSON.stringify(commands())).not.toMatch(/_dbg|gtm_debug|1789600000000/);
+  });
+
+  it('does not enable debug mode for ordinary visitors', () => {
+    saveAnalyticsChoice('allowed');
+    client.trackPage();
+    expect(commands().find((entry) => entry[0] === 'config')?.[2]).not.toHaveProperty('debug_mode');
+    expect(commands().find((entry) => entry[0] === 'event')?.[2]).not.toHaveProperty('debug_mode');
+  });
+
+  it.each(['?gtm_debug=', '?gtm_debug=private@example.com', '?gtm_debug=-1', '?gtm_debug=1.5', '?gtm_debug=12345678901234', '?gtm_debug=1&gtm_debug=2', '?_dbg=secret', '?_dbg=0', '?_dbg=1&_dbg=1', '?_dbg=1&token=secret', '?gtm_debug=1&email=private@example.com'])('rejects malformed or sensitive debugger URLs: %s', (query) => {
+    saveAnalyticsChoice('allowed');
+    client.trackPage(`https://jentera.ai/${query}`);
+    expect(publicAnalyticsPage(`https://jentera.ai/${query}`)).toBeNull();
+    expect(document.getElementById('jentera-google-tag')).toBeNull();
+    expect(commands()).toEqual([]);
+  });
+
+  it.each(['/signin', '/onboard', '/setup', '/app', '/subscribe', '/join', '/admin/launch'])('debug flags never authorize tracking on %s', (path) => {
+    saveAnalyticsChoice('allowed');
+    client.trackPage(`https://jentera.ai${path}?_dbg=1`);
+    client.trackPage(`https://jentera.ai${path}?gtm_debug=1789600000000`);
+    expect(document.getElementById('jentera-google-tag')).toBeNull();
+    expect(commands()).toEqual([]);
+  });
+
+  it.each(['denied', 'doNotTrack', 'globalPrivacyControl', 'native', 'storage'] as const)('debug flags cannot override %s', (restriction) => {
+    saveAnalyticsChoice('allowed');
+    if (restriction === 'denied') saveAnalyticsChoice('denied');
+    if (restriction === 'doNotTrack') Object.defineProperty(navigator, 'doNotTrack', { configurable: true, value: '1' });
+    if (restriction === 'globalPrivacyControl') Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, value: true });
+    if (restriction === 'native') vi.stubGlobal('Capacitor', { isNativePlatform: () => true, getPlatform: () => 'ios' });
+    if (restriction === 'storage') vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('Blocked'); });
+    client.trackPage('https://jentera.ai/?_dbg=1');
+    client.trackPage('https://jentera.ai/?gtm_debug=1789600000000');
+    expect(document.getElementById('jentera-google-tag')).toBeNull();
+    expect(commands()).toEqual([]);
+  });
+
   it.each(['/signin?token=secret', '/onboard', '/setup', '/app?view=chat', '/subscribe', '/join?token=secret', '/admin/launch', '/unknown'])('never loads on private or unknown route %s', (path) => {
     saveAnalyticsChoice('allowed');
     client.trackPage(`https://jentera.ai${path}`);
@@ -168,6 +217,17 @@ describe('private navigation boundary', () => {
     history.pushState(null, '', '/pricing');
     expect(location.pathname).toBe('/pricing');
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('keeps validated debugging navigation public but still guards sensitive destinations', () => {
+    const navigate = vi.fn();
+    cleanups.push(installAnalyticsNavigationBoundary(navigate));
+    history.pushState(null, '', '/pricing?gtm_debug=1789600000000');
+    expect(location.pathname).toBe('/pricing');
+    expect(navigate).not.toHaveBeenCalled();
+    history.pushState(null, '', '/app?_dbg=1');
+    expect(navigate).toHaveBeenCalledWith('https://jentera.ai/app?_dbg=1', false);
+    expect(location.pathname).toBe('/pricing');
   });
 
   it('reloads a private history entry on Back/Forward', () => {

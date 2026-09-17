@@ -58,6 +58,26 @@ launch_2026. Optional content values are hero, footer, announcement, founder,
 launch_post and referral. Unknown or duplicate parameters disable GA for that
 URL. Never put customer names, email addresses or tokens in campaign labels.
 
+### Google Tag Assistant
+
+The public URL filter permits `_dbg=1` and a numeric `gtm_debug` signal (1–13
+digits), including alongside approved campaign labels. Repeated flags,
+arbitrary text, sensitive parameters and private routes still block the tag.
+Valid signals enable `debug_mode: true` after consent; pageviews never include
+the debug query or timestamp. Ordinary visitors do not get debug mode.
+
+In Tag Assistant, connect to `https://jentera.ai/` with “Include debug signal
+in the URL” enabled. In the opened site, choose “Allow analytics” (or enable
+it at `/privacy#analytics-settings` if previously declined), then retry the
+connection. DNT/GPC and native-app exclusions remain in force. A fresh
+automatic scan without consent may still report no tag; this does not justify
+loading Google code or sending measurement before consent. Tag Assistant and
+GA Realtime ingestion require operator verification; automated QA intercepts
+measurement requests rather than sending fictional events.
+
+References: [Tag Assistant troubleshooting](https://support.google.com/tagassistant/answer/10039345?hl=en),
+[GA DebugView](https://support.google.com/analytics/answer/7201382?hl=en).
+
 ### Verification after an intentional deployment
 
 Preserve the current live API, access-mode and checkout build configuration when

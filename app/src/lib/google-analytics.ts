@@ -47,6 +47,12 @@ export function readAnalyticsChoice(): AnalyticsChoice | null {
   } catch { return null; }
 }
 
+function isGoogleDebugParameter(key: string, value: string): boolean {
+  // Tag Assistant adds a boolean flag or numeric timestamp, never arbitrary text.
+  return (key === '_dbg' && value === '1') ||
+    (key === 'gtm_debug' && /^[0-9]{1,13}$/.test(value));
+}
+
 export function publicAnalyticsPage(href: string): URL | null {
   try {
     const url = new URL(href);
@@ -54,7 +60,8 @@ export function publicAnalyticsPage(href: string): URL | null {
       !PUBLIC_PATHS.has(url.pathname)) return null;
     // Unknown parameters might be sign-in codes, emails, redirect URLs or tokens.
     for (const [key, value] of url.searchParams) {
-      if (!CAMPAIGNS[key]?.has(value) || url.searchParams.getAll(key).length !== 1) return null;
+      if (url.searchParams.getAll(key).length !== 1 ||
+        (!isGoogleDebugParameter(key, value) && !CAMPAIGNS[key]?.has(value))) return null;
     }
     return url;
   } catch { return null; }
@@ -151,6 +158,8 @@ export function createGoogleAnalyticsClient() {
       browser[DISABLE_KEY] = false;
       const pageLocation = `${page.origin}${page.pathname}`;
       const title = pageSeo(page.pathname).title;
+      const debug = page.searchParams.has('_dbg') || page.searchParams.has('gtm_debug')
+        ? { debug_mode: true } : {};
       let referrer = '';
       try {
         const source = new URL(document.referrer);
@@ -182,6 +191,7 @@ export function createGoogleAnalyticsClient() {
           page_title: title,
           page_referrer: referrer,
           ...campaign,
+          ...debug,
         });
         removeBoundary = installAnalyticsNavigationBoundary();
         const script = document.createElement('script');
@@ -197,6 +207,7 @@ export function createGoogleAnalyticsClient() {
       browser.gtag?.('set', { page_location: pageLocation, page_title: title, page_referrer: referrer });
       browser.gtag?.('event', 'page_view', {
         send_to: GOOGLE_ANALYTICS_ID, page_location: pageLocation, page_title: title, page_referrer: referrer,
+        ...debug,
       });
       lastPage = pageLocation;
     },
