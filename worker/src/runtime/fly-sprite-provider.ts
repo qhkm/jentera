@@ -162,7 +162,11 @@ export class FlySpriteProvider implements BootstrapRuntimeProvider {
     args: string[] = [],
     options: { env?: string[]; dir?: string; onOutput?: (text: string) => Promise<void> } = {},
   ): Promise<RuntimeExecResult> {
-    if (command !== '/home/sprite/aisar/runner/bootstrap-runtime.sh' && command !== '/bin/bash') {
+    const spareCheck = command === '/.sprite/bin/node' &&
+      args[0] === '/home/sprite/aisar/runner/spare-state.mjs' && args[1] === 'claim' && args.length === 5 &&
+      /^[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[0-9]+$/.test(args[2]!) && /^[0-9a-f]{40}$/.test(args[3]!) &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(args[4]!);
+    if (command !== '/home/sprite/aisar/runner/bootstrap-runtime.sh' && command !== '/bin/bash' && !spareCheck) {
       throw new Error('runtime bootstrap command is not allowed');
     }
     const url = new URL(

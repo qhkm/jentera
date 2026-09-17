@@ -41,6 +41,7 @@ import { handleReminders, dispatchDueReminders } from './reminders';
 import { handlePush } from './routes/push';
 import { handleArtifacts, RUNTIME_ARTIFACTS_PATH } from './routes/artifacts';
 import { sweepPushOutbox } from './push/outbox';
+import { refillSparePool } from './runtime/spares';
 import { handleNotifications } from './routes/notifications';
 import { handleTeam } from './routes/team';
 import { handleWorkspaces } from './routes/workspaces';
@@ -236,6 +237,12 @@ export default {
        runs the fleet sweep. Both fire together at :00, :15, :30 and :45. */
     if (controller.cron === ROUTINES_CRON) {
       const started = Date.now();
+      // Publishes durable inventory ids only; installation runs in the queue,
+      // not waitUntil's 30-second tail. Disabled by default.
+      try {
+        const queued = await refillSparePool(env);
+        if (queued) console.info(`[runtime-spares] queued=${queued}`);
+      } catch { console.warn('[runtime-spares] refill unavailable'); }
       try {
         const result = await dispatchDueRoutines(env);
         if (result.admitted || result.skipped || result.errors) {
@@ -381,6 +388,7 @@ function logValue(value: string): string {
 }
 
 function runtimeQueueMessageId(message: RuntimeQueueMessage): string {
+  if (message.version === 3) return `spare:${message.spareId}`;
   return message.version === 1
     ? message.taskId
     : `telegram:${message.connectionId}:${message.incoming.messageId}`;

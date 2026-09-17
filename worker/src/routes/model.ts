@@ -103,7 +103,9 @@ export async function handleModelProxy(
   /* Admission: the signed ceiling inside the credential, checked against
      the spend ledger. Read-before-write, so concurrent completions can
      overshoot by the cost of in-flight requests; bounded and acceptable. */
-  if (restrictedAccess(env)) {
+  // Pool identities must resolve to an assigned tenant even when general
+  // access is open. A clean spare is never an inference-capable customer.
+  if (restrictedAccess(env) || claims.rid.startsWith('aisar-p-')) {
     const businessId = await withUser(env, async sql => {
       const [row] = await sql<{ business_id: string | null }[]>`select public.runtime_business_for_rider(${claims.rid}) as business_id`;
       return row?.business_id;

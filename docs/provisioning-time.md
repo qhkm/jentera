@@ -104,9 +104,15 @@ bootstrap than either speedup above, and only worth it if signups are waiting
 on the five minutes. `ARTIFACT-STORAGE.md` in the global instructions has the
 R2 conventions.
 
-**Pre-provision a spare.** Keep one bootstrapped, unassigned sprite per
-release and hand it to the next signup. Bounded by the organisation's limit of
-ten concurrent active sprites, which the fleet already exceeds when awake.
+**Pre-provision a spare.** Prepare a bounded pool of clean, unassigned sprites
+and hand one to the next verified business. The implementation added on
+2026-09-17 targets two spares, permits only one preparation at a time and never
+recycles customer-used sprites. It is **not enabled in production**; rollout,
+isolation checks, cost brakes and operator review are documented in
+[runtime-spare-pool.md](runtime-spare-pool.md). The historical ten-active limit
+no longer applies to this account (see the plan update below). Re-measure
+activation after a controlled pilot; the existing measurements are not pool
+latency results.
 
 ## What Fly has said and shipped, as of 2026-09-11 (re-checked 2026-09-17)
 

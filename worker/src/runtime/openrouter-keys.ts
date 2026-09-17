@@ -7,7 +7,7 @@ import {
   type RuntimeModelCredential,
 } from '../agent-runtime';
 import { withTenant } from '../db';
-import { RUNTIME_KEY_CONTEXT, RUNTIME_PROXY_PATH } from '../fmcv-verifier';
+import { RUNTIME_KEY_CONTEXT, RUNTIME_PROXY_PATH, RUNTIME_NAME } from '../fmcv-verifier';
 import { runtimeFacingModelBase } from './execution';
 
 const API = 'https://openrouter.ai/api/v1';
@@ -39,7 +39,7 @@ export class OpenRouterKeyManager {
   }
 
   async create(runtimeName: string, now = new Date()): Promise<RuntimeModelCredential> {
-    if (!/^aisar-b-[0-9a-f]{20}$/.test(runtimeName)) {
+    if (!RUNTIME_NAME.test(runtimeName)) {
       throw new Error('runtime name is invalid for model key issuance');
     }
     const expiresAt = new Date(now.getTime() + LIFETIME_DAYS * 24 * 60 * 60 * 1_000);
@@ -201,7 +201,7 @@ export async function deriveJenteraRuntimeCredential(
   runtimeName: string,
 ): Promise<RuntimeModelCredential> {
   if (controlSecret.length < 32) throw new Error('Jentera model credential is unavailable');
-  if (!/^aisar-b-[0-9a-f]{20}$/.test(runtimeName)) {
+  if (!RUNTIME_NAME.test(runtimeName)) {
     throw new Error('runtime identity is invalid for model key derivation');
   }
   const payload = base64Url(new TextEncoder().encode(JSON.stringify({

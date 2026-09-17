@@ -89,6 +89,10 @@ export interface Env {
   RUNTIME_BUNDLE_COMMIT?: string;
   /** Second half of provisioning; false leaves raw provider compute unselected. */
   RUNTIME_BOOTSTRAP_ENABLED?: string;
+  /** Clean, never-used Sprite inventory. Apply migration 059 and run a canary
+      before enabling. Maximum two spares, one preparation at a time. */
+  RUNTIME_SPARE_POOL_ENABLED?: string;
+  RUNTIME_SPARE_POOL_TARGET?: string;
   /** FMCV inference credential. Kept in the control plane and installed only
       into isolated Jentera runtimes while FMCV tenant-key issuance is pending. */
   AISAR_MODEL_PROVIDER?: string;

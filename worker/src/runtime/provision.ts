@@ -23,11 +23,12 @@ import {
 } from '../agent-runtime';
 import { FlySpriteProvider } from './fly-sprite-provider';
 import { runtimeFacingModelBase, runtimeFacingModelBaseAllowed } from './execution';
-import { canBootstrap, type BootstrapRuntimeProvider, type RuntimeProvider } from './provider';
+import { canBootstrap, type BootstrapRuntimeProvider, type ObservedRuntime, type RuntimeProvider } from './provider';
 import { finalizeRuntimeModelKeyRotation, runtimeModelKey } from './openrouter-keys';
 import { RunnerClient } from './runner-client';
 import { setupStageReporter, type SetupStage } from './setup-progress';
 import { desktopEnabledFor } from './desktop';
+import { assignedSpare, claimSpare, sparePoolConfig } from './spares';
 
 export interface ProvisionOptions {
   provider?: RuntimeProvider;
@@ -86,6 +87,7 @@ export async function ensureProviderRuntime(
   businessId: string,
   options: ProvisionOptions = {},
 ): Promise<AgentRuntimeRecord> {
+  const startedAt = Date.now();
   const release = env.RUNTIME_RELEASE?.trim();
   if (!release) throw new Error('RUNTIME_RELEASE is not configured');
 
@@ -94,15 +96,28 @@ export async function ensureProviderRuntime(
   const runnerKey = options.runnerKey ?? randomKey();
   const hermesApiKey = options.hermesApiKey ?? randomKey();
 
-  const claimed = await withTenant(env, businessId, (tx) =>
-    claimRuntime(env, tx, businessId, {
+  const pool = provider.id === 'fly-sprite' && canBootstrap(provider) ? sparePoolConfig(env) : null;
+  const claim = (usePool: boolean) => withTenant(env, businessId, async (tx) => {
+    // Serialize first assignment, including concurrent retries for one business.
+    if (usePool) await tx`select id from business where id=${businessId} for update`;
+    const spare = usePool && pool ? await claimSpare(tx, pool) : null;
+    return claimRuntime(env, tx, businessId, {
       provider: provider.id,
-      providerName: name,
+      providerName: spare?.provider_name ?? name,
       release,
       runnerKey,
       hermesApiKey,
-    }),
-  );
+    });
+  });
+  let claimed: AgentRuntimeRecord;
+  try { claimed = await claim(Boolean(pool)); }
+  catch (error) {
+    if (!pool) throw error;
+    // The complete reservation transaction rolls back. Inventory trouble
+    // must not take down normal signup; neither secrets nor errors are logged.
+    console.warn('[runtime-spares] inventory unavailable; using normal provisioning');
+    claimed = await claim(false);
+  }
   if (claimed.provider !== provider.id) {
     throw new Error(
       `runtime is claimed by ${claimed.provider}; refusing provider switch to ${provider.id}`,
@@ -110,11 +125,24 @@ export async function ensureProviderRuntime(
   }
 
   try {
-    const observed = await provider.create({
-      businessId,
-      name: claimed.providerName,
-      release: claimed.desiredRelease,
-    });
+    // Pool resources must already exist. Never recreate a missing assigned
+    // spare under the same name and pretend it has the verified installation.
+    const spare = /^aisar-p-[0-9a-f]{32}$/.test(claimed.providerName)
+      ? await withTenant(env, businessId, tx => assignedSpare(tx, claimed.providerName)) : null;
+    if (claimed.providerName.startsWith('aisar-p-') && !spare) throw new Error('assigned spare is unavailable');
+    const observed = spare ? await provider.status({
+      provider: 'fly-sprite', id: spare.provider_id, name: spare.provider_name,
+      url: spare.provider_url, state: 'cold',
+    }) : await provider.create({ businessId, name: claimed.providerName, release: claimed.desiredRelease });
+    if (spare && (observed.id !== spare.provider_id || observed.name !== spare.provider_name ||
+        observed.url !== spare.provider_url)) throw new Error('assigned spare identity changed');
+    if (spare && !claimed.observedRelease) {
+      if (!canBootstrap(provider)) throw new Error('spare provider cannot activate');
+      const adopted = await provider.exec(observed, '/.sprite/bin/node', [
+        '/home/sprite/aisar/runner/spare-state.mjs', 'claim', spare.release, spare.bundle_commit, businessId,
+      ]);
+      if (adopted.exitCode !== 0) throw new Error('assigned spare failed its clean-state check');
+    }
     const recorded = await withTenant(env, businessId, (tx) =>
       recordProviderRuntime(tx, businessId, observed, {
         /* The provider reports machine state such as cold/running. During a
@@ -126,7 +154,12 @@ export async function ensureProviderRuntime(
     );
     if (env.RUNTIME_BOOTSTRAP_ENABLED !== 'true') return recorded;
     if (!canBootstrap(provider)) throw new Error('runtime provider cannot bootstrap releases');
-    return await bootstrapRuntime(env, businessId, recorded, provider, options.fetch);
+    const ready = await bootstrapRuntime(env, businessId, recorded, provider, options.fetch);
+    console.info('[runtime-provision]', JSON.stringify({
+      source: claimed.observedRelease ? 'upgrade' : spare ? 'spare' : 'cold',
+      elapsedMs: Date.now()-startedAt,
+    }));
+    return ready;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await withTenant(env, businessId, (tx) => markRuntimeFailed(tx, businessId, message));
@@ -198,8 +231,7 @@ async function bootstrapRuntime(
     ...(extract
       ? [field('EXTRACT_BASE_B64', extract.base), field('EXTRACT_KEY_B64', extract.key)]
       : []),
-    field('HERMES_TAG_B64', 'v2026.9.8'),
-    field('HERMES_COMMIT_B64', 'ff5b9fcfb029e230a2d3f90d1a3c06260ea1d413'),
+    ...hermesPinTransfer(),
   ].join('\n') + '\n';
   const observed = {
     provider: runtime.provider,
@@ -210,48 +242,14 @@ async function bootstrapRuntime(
   } as const;
   await provider.writeFile(observed, '/home/sprite/aisar/bootstrap.env.in', transfer, 0o600);
 
-  const raw = `https://raw.githubusercontent.com/qhkm/jentera/${commit}`;
-  const assets = [
-    'runner/src/server.mjs',
-    'runner/src/business-browser.mjs',
-    'runner/src/browser-preview-stream.mjs',
-    'runner/src/desktop-gateway.mjs',
-    'runner/bin/display-service.sh',
-    'runner/bin/desktop-smoke.mjs',
-    'runner/bin/desktop-release-keys.py',
-    'runner/bin/browser-smoke.mjs',
-    'runner/bin/jentera-calendar.mjs',
-    'runner/bin/model-smoke.py',
-    'runner/bin/web-search-smoke.py',
-    'runner/bin/configure-model-provider.py',
-    'runner/bin/patch-hermes-dependencies.mjs',
-    'runner/bin/hermes-service.sh',
-    'runner/bin/runner-service.sh',
-    'runner/bin/bootstrap-runtime.sh',
-  ];
-  const downloads = [
-    'set -euo pipefail',
-    'install -d -m 700 /home/sprite/aisar/runner',
-    ...assets.map((asset) => {
-      const target = asset.replace(/^runner\/(?:src|bin)\//, '');
-      return `curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 ` +
-        `'${raw}/${asset}' --output '/home/sprite/aisar/runner/${target}'`;
-    }),
-    'chmod 755 /home/sprite/aisar/runner/configure-model-provider.py ' +
-      '/home/sprite/aisar/runner/model-smoke.py ' +
-      '/home/sprite/aisar/runner/jentera-calendar.mjs ' +
-      '/home/sprite/aisar/runner/hermes-service.sh ' +
-      '/home/sprite/aisar/runner/runner-service.sh ' +
-      '/home/sprite/aisar/runner/display-service.sh ' +
-      '/home/sprite/aisar/runner/bootstrap-runtime.sh',
-  ].join('\n');
-  await provider.exec(observed, '/bin/bash', ['-lc', downloads]);
+  await downloadRuntimeBundle(provider, observed, commit);
   const bootstrapped = await provider.exec(
     observed,
     '/home/sprite/aisar/runner/bootstrap-runtime.sh',
     ['/home/sprite/aisar/bootstrap.env.in'],
     { env: ['AISAR_BOOTSTRAP_CONTROL_PLANE=1'], onOutput: setupStageReporter(report) },
   );
+  if (bootstrapped.exitCode !== 0) throw new Error('runtime bootstrap did not complete');
   const awakened = await provider.wake(observed);
   const client = new RunnerClient({
     origin: awakened.url,
@@ -293,6 +291,57 @@ async function bootstrapRuntime(
   const ready = await withTenant(env, businessId, (tx) => getRuntime(tx, businessId));
   if (!ready) throw new Error('runtime disappeared after bootstrap');
   return { ...ready, observedRegion: readiness.region, ...bootstrapReport(bootstrapped.stdout) };
+}
+
+/** Both clean preparation and tenant bootstrap download exactly this bundle.
+ * Keep the asset list here: validate-release.mjs also reads it as a gate. */
+export async function downloadRuntimeBundle(
+  provider: BootstrapRuntimeProvider,
+  observed: ObservedRuntime,
+  commit: string,
+  boundedPreparation = false,
+): Promise<void> {
+  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('runtime bundle commit is invalid');
+  const raw = `https://raw.githubusercontent.com/qhkm/jentera/${commit}`;
+  const assets = [
+    'runner/src/server.mjs',
+    'runner/src/business-browser.mjs',
+    'runner/src/browser-preview-stream.mjs',
+    'runner/src/desktop-gateway.mjs',
+    'runner/bin/display-service.sh',
+    'runner/bin/desktop-smoke.mjs',
+    'runner/bin/desktop-release-keys.py',
+    'runner/bin/browser-smoke.mjs',
+    'runner/bin/jentera-calendar.mjs',
+    'runner/bin/model-smoke.py',
+    'runner/bin/web-search-smoke.py',
+    'runner/bin/configure-model-provider.py',
+    'runner/bin/patch-hermes-dependencies.mjs',
+    'runner/bin/hermes-service.sh',
+    'runner/bin/runner-service.sh',
+    'runner/bin/bootstrap-runtime.sh',
+    'runner/bin/spare-state.mjs',
+  ];
+  const downloads = [
+    'set -euo pipefail',
+    'install -d -m 700 /home/sprite/aisar/runner',
+    ...assets.map((asset) => {
+      const target = asset.replace(/^runner\/(?:src|bin)\//, '');
+      return `curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 ` +
+        `'${raw}/${asset}' --output '/home/sprite/aisar/runner/${target}'`;
+    }),
+    'chmod 755 /home/sprite/aisar/runner/configure-model-provider.py ' +
+      '/home/sprite/aisar/runner/model-smoke.py ' +
+      '/home/sprite/aisar/runner/jentera-calendar.mjs ' +
+      '/home/sprite/aisar/runner/hermes-service.sh ' +
+      '/home/sprite/aisar/runner/runner-service.sh ' +
+      '/home/sprite/aisar/runner/display-service.sh ' +
+      '/home/sprite/aisar/runner/bootstrap-runtime.sh',
+  ].join('\n');
+  const downloaded = await provider.exec(observed, '/bin/bash', boundedPreparation
+    ? ['-lc', 'exec timeout -k 10 180 /bin/bash -lc "$1"', '--', downloads]
+    : ['-lc', downloads]);
+  if (downloaded.exitCode !== 0) throw new Error('runtime bundle download did not complete');
 }
 
 /**
@@ -341,6 +390,18 @@ function field(name: string, value: string): string {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return `${name}=${btoa(binary)}`;
+}
+
+function hermesPinTransfer(): string[] {
+  return [
+    field('HERMES_TAG_B64', 'v2026.9.8'),
+    field('HERMES_COMMIT_B64', 'ff5b9fcfb029e230a2d3f90d1a3c06260ea1d413'),
+  ];
+}
+
+/** Deliberately contains no tenant identity, inference key or credentials. */
+export function sparePreparationTransfer(release: string): string {
+  return [field('RUNTIME_RELEASE_B64', release), ...hermesPinTransfer()].join('\n') + '\n';
 }
 
 function randomKey(): string {

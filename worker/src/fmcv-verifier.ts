@@ -35,7 +35,10 @@ export const RUNTIME_PROXY_PATH = '/v1/model';
 export const RUNTIME_MODEL_CEILING_LIMIT_USD = 5;
 
 const TOKEN_PREFIX = 'sk-jentera-v1';
-const RUNTIME_NAME = /^aisar-b-[0-9a-f]{20}$/;
+/** Exactly the two server-generated identities: existing business runtimes
+ * and single-use clean-pool resources. Signature and tenant lookup still
+ * enforce ownership; no arbitrary provider name or wildcard is accepted. */
+export const RUNTIME_NAME = /^(?:aisar-b-[0-9a-f]{20}|aisar-p-[0-9a-f]{32})$/;
 const MAX_PAYLOAD_BYTES = 512;
 
 export interface JenteraKeyClaims {
@@ -102,8 +105,9 @@ export async function verifyJenteraKey(
 
 /** Spend ledger lookups are deliberately NOT tenant-scoped: the table holds
     only a pseudonymous rider id and a dollar figure, so there is no tenant
-    data to isolate and no business_id to derive (the runtime name is a
-    one-way hash of it). The RLS policy on fmcv_rider_spend documents that. */
+    data to isolate and no business_id encoded in the rider: it is a hash for
+    existing runtimes or a random pseudonym for pooled ones. The RLS policy
+    on fmcv_rider_spend documents that. */
 
 export interface RiderBudgetStatus {
   month: string;

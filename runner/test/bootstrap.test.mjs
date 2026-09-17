@@ -493,10 +493,56 @@ test('invalid owner desktop gate is rejected before installing or changing any r
   assert.match(result.stderr, /DESKTOP_ENABLED_B64 must decode/);
 });
 
-function run(transfer) {
+test('spare preparation rejects every tenant field before installing anything', async () => {
+  for (const name of ['BUSINESS_ID_B64', 'RUNNER_KEY_B64', 'MODEL_KEY_B64', 'EXTRACT_KEY_B64', 'SURPRISE_B64']) {
+    const transfer = await tempTransfer(`${name}=YWJj\n`);
+    const result = run(transfer, { AISAR_BOOTSTRAP_PREPARE_SPARE: '1' });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /refuses tenant fields or credentials/);
+    await assert.rejects(readFile(transfer), /ENOENT/);
+  }
+});
+
+test('spare installation uses the same reviewed install and stops before customer configuration', async () => {
+  const source = await readFile(SCRIPT, 'utf8');
+  const start = source.indexOf('stage_done playwright');
+  const stop = source.indexOf('\n  exit 0\nfi\nruntime_env=', start);
+  assert.ok(stop > start);
+  const spare = source.slice(start, stop);
+  assert.match(spare, /ddgs==9\.16\.0/); assert.match(spare, /firecrawl==4\.17\.0/);
+  assert.match(spare, /finish "\$runtime_release" "\$AISAR_SPARE_BUNDLE_COMMIT"/);
+  assert.doesNotMatch(spare.replace(/^\s*#.*$/gm, ''), /model-smoke|services create|configure-model-provider|keepalive/);
+  assert.ok(source.indexOf('start "$runtime_release" "$AISAR_SPARE_BUNDLE_COMMIT"') < source.indexOf('install -d -m 700'));
+});
+
+test('spare filesystem attestation and preparation agree with the production Hermes pin', async () => {
+  const provision = await readFile(new URL('../../worker/src/runtime/provision.ts', import.meta.url), 'utf8');
+  const helper = await readFile(new URL('../bin/spare-state.mjs', import.meta.url), 'utf8');
+  const preparation = await readFile(new URL('../../worker/src/runtime/spare-worker.ts', import.meta.url), 'utf8');
+  const pin = provision.match(/field\('HERMES_COMMIT_B64', '([0-9a-f]{40})'\)/)?.[1];
+  assert.ok(pin);
+  assert.equal(helper.match(/HERMES_COMMIT = '([0-9a-f]{40})'/)?.[1], pin);
+  assert.equal(preparation.match(/body\.hermesCommit === '([0-9a-f]{40})'/)?.[1], pin);
+});
+
+test('tenant configuration recreates config and specialist homes after clean spare preparation', async () => {
+  const { status, stderr, configPath } = await runConfigure(
+    ['openrouter', 'https://api.jentera.ai/v1/model', 'MiniMax-M3', 'OPENROUTER_API_KEY', '0'],
+    null,
+  );
+  assert.equal(status, 0, stderr);
+  const config = JSON.parse(await readFile(configPath, 'utf8'));
+  assert.equal(config.model.base_url, 'https://api.jentera.ai/v1/model');
+  assert.equal(config.model.api_key, '${OPENROUTER_API_KEY}');
+  for (const profile of ['operations', 'customers', 'growth', 'records']) {
+    assert.deepEqual(JSON.parse(await readFile(join(configPath, '..', 'profiles', profile, 'config.yaml'), 'utf8')), config);
+  }
+});
+
+function run(transfer, extraEnv = {}) {
   return spawnSync('bash', [SCRIPT, transfer], {
     encoding: 'utf8',
-    env: process.env,
+    env: { ...process.env, ...extraEnv },
   });
 }
 
@@ -587,7 +633,7 @@ async function runConfigure(argv, preexisting = {}, extraEnv = {}) {
     'def resolve_toolset(name):\n    return {name, "fake-inference-tool"}\n',
   );
   const configPath = join(directory, 'config.yaml');
-  await writeFile(configPath, JSON.stringify(preexisting));
+  if (preexisting !== null) await writeFile(configPath, JSON.stringify(preexisting));
   const result = spawnSync('python3', [CONFIGURE, ...argv], {
     encoding: 'utf8',
     env: {

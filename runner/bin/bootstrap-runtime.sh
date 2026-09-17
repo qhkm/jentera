@@ -5,6 +5,8 @@ set -euo pipefail
 # file contains base64 data, never shell code, and is removed on every exit.
 incoming="${1:-/home/sprite/aisar/bootstrap.env.in}"
 hermes_installer_sha256="e6a44c55366aa676b281c7e75a4decc0834b9ca73daeb996e3eab0b404f097f4"
+prepare_spare="${AISAR_BOOTSTRAP_PREPARE_SPARE:-0}"
+[[ "$prepare_spare" =~ ^(0|1)$ ]] || exit 1
 
 if [[ ! -r "$incoming" ]]; then
   echo "runtime bootstrap transfer is unavailable" >&2
@@ -55,6 +57,12 @@ stage_done() {
 echo 'JENTERA_SETUP_STAGE:install'
 while IFS='=' read -r name value; do
   [[ -z "$name" ]] && continue
+  if [[ "$prepare_spare" == "1" ]]; then
+    case "$name" in
+      RUNTIME_RELEASE_B64|HERMES_TAG_B64|HERMES_COMMIT_B64) ;;
+      *) echo 'spare preparation refuses tenant fields or credentials' >&2; exit 1 ;;
+    esac
+  fi
   [[ "$value" =~ ^[A-Za-z0-9+/]*={0,2}$ ]] || {
     echo "runtime bootstrap transfer contains invalid base64" >&2
     exit 1
@@ -116,16 +124,18 @@ require() {
     exit 1
   }
 }
-require BUSINESS_ID_B64 "missing a business id"
 require RUNTIME_RELEASE_B64 "missing a runtime release"
+require HERMES_TAG_B64 "missing a Hermes tag"
+require HERMES_COMMIT_B64 "missing a Hermes commit"
+if [[ "$prepare_spare" != "1" ]]; then
+require BUSINESS_ID_B64 "missing a business id"
 require RUNNER_KEY_B64 "missing a runner key"
 require HERMES_KEY_B64 "missing a Hermes key"
 require MODEL_PROVIDER_B64 "missing a model provider"
 require MODEL_BASE_B64 "missing a model base URL"
 require MODEL_KEY_B64 "missing a model key"
 require MODEL_NAME_B64 "missing a model name"
-require HERMES_TAG_B64 "missing a Hermes tag"
-require HERMES_COMMIT_B64 "missing a Hermes commit"
+fi
 
 business_id="$(decode "$BUSINESS_ID_B64")"
 runtime_release="$(decode "$RUNTIME_RELEASE_B64")"
@@ -191,6 +201,7 @@ desktop_enabled="$(decode "${DESKTOP_ENABLED_B64:-}")"
   exit 1
 }
 
+if [[ "$prepare_spare" != "1" ]]; then
 [[ "$business_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] || {
   echo "business id must be a UUID" >&2
   exit 1
@@ -199,6 +210,7 @@ desktop_enabled="$(decode "${DESKTOP_ENABLED_B64:-}")"
   echo "runtime credential is too short" >&2
   exit 1
 }
+fi
 [[ "$runtime_release" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[0-9]+$ ]] || {
   echo "runtime release is invalid" >&2
   exit 1
@@ -206,6 +218,7 @@ desktop_enabled="$(decode "${DESKTOP_ENABLED_B64:-}")"
 [[ "$hermes_tag" =~ ^v[0-9]{4}\.[0-9]+\.[0-9]+$ ]] || exit 1
 [[ "$hermes_commit" =~ ^[0-9a-f]{40}$ ]] || exit 1
 hermes_installer_url="https://raw.githubusercontent.com/qhkm/hermes-agent/${hermes_commit}/scripts/install.sh"
+if [[ "$prepare_spare" != "1" ]]; then
 [[ "$model_provider" == "openrouter" ]] || {
   echo "only the reviewed OpenRouter provider is allowed" >&2
   exit 1
@@ -225,6 +238,13 @@ esac
   echo "deep model id is invalid" >&2
   exit 1
 }
+fi
+
+if [[ "$prepare_spare" == "1" ]]; then
+  [[ "${AISAR_SPARE_BUNDLE_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]] || exit 1
+  /.sprite/bin/node /home/sprite/aisar/runner/spare-state.mjs \
+    start "$runtime_release" "$AISAR_SPARE_BUNDLE_COMMIT"
+fi
 
 install -d -m 700 /home/sprite/aisar /home/sprite/aisar/runner /home/sprite/.hermes
 install_dir=/home/sprite/.hermes/hermes-agent
@@ -361,6 +381,20 @@ fi
 }
 
 stage_done playwright
+if [[ "$prepare_spare" == "1" ]]; then
+  # Public packages only. Never configure a business, create profiles, start
+  # an agent/browser service, call a model, or install a keepalive in a spare.
+  hermes_uv=/home/sprite/.hermes/bin/uv
+  [[ -x "$hermes_uv" ]] || exit 1
+  UV_NO_CONFIG=1 UV_NO_PROGRESS=1 "$hermes_uv" pip install \
+    --python "$install_dir/venv/bin/python" 'ddgs==9.16.0' 'firecrawl==4.17.0'
+  UV_NO_CONFIG=1 "$hermes_uv" pip check --python "$install_dir/venv/bin/python"
+  /.sprite/bin/node /home/sprite/aisar/runner/spare-state.mjs \
+    finish "$runtime_release" "$AISAR_SPARE_BUNDLE_COMMIT"
+  printf '{"prepared":true,"release":"%s","bundleCommit":"%s","hermesCommit":"%s","stages":{%s}}\n' \
+    "$runtime_release" "$AISAR_SPARE_BUNDLE_COMMIT" "$hermes_commit" "$stage_timings"
+  exit 0
+fi
 runtime_env=/home/sprite/aisar/runtime.env
 runner_env=/home/sprite/aisar/runner.env
 hermes_env=/home/sprite/aisar/hermes.env

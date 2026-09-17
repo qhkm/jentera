@@ -142,7 +142,7 @@ export async function handleSupport(
       return json({ ok: false, err: 'method not allowed' }, { status: 405 }, cors);
     }
     const message = await request.json().catch(() => null) as RuntimeQueueMessage | null;
-    if (!message || typeof message !== 'object' || (message.version !== 1 && message.version !== 2)) {
+    if (!message || typeof message !== 'object' || ![1,2,3].includes(message.version)) {
       return json({ ok: false, err: 'queue message is invalid' }, { status: 400 }, cors);
     }
     const result = await handleRuntimeQueueMessage(env, message);

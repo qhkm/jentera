@@ -15,6 +15,8 @@ import { reviewSources } from '../source-review';
 import { createAnswerStreamGate, heldProgressLabel } from '../answer-stream-policy';
 import { connect, withTenant } from '../db';
 import { ensureProviderRuntime } from './provision';
+import { prepareRuntimeSpare } from './spare-worker';
+import type { SpareQueueMessage } from './spares';
 import type { RuntimeProvider } from './provider';
 import {
   completeRuntimeTask,
@@ -206,7 +208,7 @@ export interface TelegramIntakeQueueMessage {
   };
 }
 
-export type RuntimeQueueMessage = RuntimeTaskQueueMessage | TelegramIntakeQueueMessage;
+export type RuntimeQueueMessage = RuntimeTaskQueueMessage | TelegramIntakeQueueMessage | SpareQueueMessage;
 
 export type RuntimeMessageResult =
   | { action: 'ack'; reason: 'completed' | 'failed' | 'already_done' | 'missing' }
@@ -554,6 +556,7 @@ export async function handleRuntimeQueueMessage(
   } = {},
 ): Promise<RuntimeQueueMessageResult> {
   if (message.version === 1) return handleRuntimeMessage(env, message, options);
+  if (message.version === 3) return prepareRuntimeSpare(env, message, options);
   if (!validTelegramIntake(message)) return { action: 'ack', reason: 'missing' };
   if (!(await businessHasAccess(env, message.businessId))) return { action: 'ack', reason: 'missing' };
   telegramLatency('queue_received', message.requestedAtMs);
