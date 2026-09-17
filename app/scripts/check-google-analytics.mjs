@@ -1,7 +1,7 @@
 // Serve built assets locally; the browser sees a production host for the tag gate.
 // Every network request is intercepted. Never sends fictional analytics or API writes.
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
 const localOrigin = process.env.ANALYTICS_QA_ORIGIN ?? 'http://127.0.0.1:4187';
@@ -12,6 +12,9 @@ if (process.env.ANALYTICS_QA_LIVE_ORIGIN) {
 }
 const output = process.env.CHECK_OUTPUT_DIR;
 if (output) await mkdir(output, { recursive: true });
+const localPolicy = (await readFile('public/_headers', 'utf8'))
+  .match(/^  Content-Security-Policy-Report-Only: (.+)$/m)?.[1];
+assert(localPolicy, 'Authored report-only CSP is required');
 const browser = await chromium.launch({ headless: true,
   ...(process.env.CHROME_CHANNEL ? { channel: process.env.CHROME_CHANNEL } : {}) });
 
@@ -19,6 +22,19 @@ try {
   for (const width of [320, 390, 1440]) {
     if (process.env.CHECK_WIDTH && width !== Number(process.env.CHECK_WIDTH)) continue;
     const context = await browser.newContext({ viewport: { width, height: width < 500 ? 844 : 1000 }, serviceWorkers: 'block', reducedMotion: 'reduce' });
+    await context.addInitScript(() => {
+      window.analyticsCspViolations = [];
+      addEventListener('securitypolicyviolation', event => {
+        try {
+          const host = new URL(event.blockedURI).hostname;
+          if (host === 'www.googletagmanager.com' || host === 'tagmanager.google.com' ||
+            host === 'analytics.google.com' || host.endsWith('.analytics.google.com') ||
+            host.endsWith('.google-analytics.com') || host === 'fonts.googleapis.com' || host === 'fonts.gstatic.com') {
+            window.analyticsCspViolations.push({ uri: event.blockedURI, directive: event.effectiveDirective, disposition: event.disposition });
+          }
+        } catch { /* Only Google network resource violations are relevant here. */ }
+      });
+    });
     const page = await context.newPage();
     const errors = [];
     let tagRequests = 0;
@@ -45,6 +61,10 @@ try {
         delete headers['content-encoding'];
         delete headers['content-length'];
         let body = Buffer.from(await response.arrayBuffer());
+        if (!process.env.ANALYTICS_QA_LIVE_ORIGIN && headers['content-type']?.includes('text/html')) {
+          // Vite preview ignores Pages headers; test the actual authored policy.
+          headers['content-security-policy-report-only'] = localPolicy;
+        }
         if (process.env.ANALYTICS_QA_LIVE_ORIGIN && headers['content-type']?.includes('text/html')) {
           // Remove only Cloudflare's injected tracker. Never modify application assets.
           body = Buffer.from(body.toString().replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, script => {
@@ -57,13 +77,14 @@ try {
         return route.fulfill({ status: response.status, headers, body });
       }
       // No Google collections, Turnstile, external pages or live provider calls.
-      return route.fulfill({ status: 204 });
+      return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': 'https://jentera.ai' } });
     });
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => { if (message.type() === 'error' && !message.text().includes('401')) errors.push(message.text()); });
     const layout = async () => {
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${width}px overflow`);
       assert.deepEqual(errors, [], `${width}px browser errors`);
+      assert.deepEqual(await page.evaluate(() => window.analyticsCspViolations), [], `${width}px Google CSP violations`);
     };
     await page.goto('https://jentera.ai/?gtm_debug=1789600000000');
     await page.getByRole('region', { name: 'Analytics choice' }).waitFor();
@@ -81,6 +102,17 @@ try {
     await page.waitForFunction(() => (window.dataLayer ?? []).filter(item => item[0] === 'event').length === 2);
     assert.equal((await views()).length, 2, 'One pageview per public navigation');
     assert.equal(tagRequests, 1, 'Single tag bootstrap');
+    // Safe CSP probes: intercepted above, with no real Google requests/events.
+    await page.evaluate(async () => {
+      await Promise.all([
+        'https://www.google-analytics.com/g/collect',
+        'https://region1.google-analytics.com/g/collect',
+        'https://analytics.google.com/g/collect',
+        'https://region1.analytics.google.com/g/collect',
+        'https://www.googletagmanager.com/qa-probe',
+      ].map(url => fetch(url)));
+    });
+    await layout();
     await page.goto('https://jentera.ai/privacy');
     await page.getByRole('button', { name: 'Disable Google analytics' }).click();
     await page.waitForFunction(() => !document.getElementById('jentera-google-tag') && JSON.parse(localStorage.getItem('jentera-google-analytics-choice-v1'))?.choice === 'denied');

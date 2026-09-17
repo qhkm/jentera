@@ -78,6 +78,31 @@ measurement requests rather than sending fictional events.
 References: [Tag Assistant troubleshooting](https://support.google.com/tagassistant/answer/10039345?hl=en),
 [GA DebugView](https://support.google.com/analytics/answer/7201382?hl=en).
 
+### Content Security Policy
+
+The deployed policy is authored in `app/public/_headers`, not the repository-root
+`_headers`. It remains **report-only** until the complete app policy is validated;
+this integration does not enable enforcement or claim site-wide CSP hardening.
+An omitted Google origin still causes violation reports and Tag Assistant warnings.
+
+`script-src-elem` permits the modern SDK and debugger on
+`www.googletagmanager.com` and `tagmanager.google.com`. `connect-src` permits the
+tag host, regional `*.google-analytics.com` / `*.analytics.google.com` collectors
+and the `analytics.google.com` apex. Preview styles and fonts permit the documented
+Google tag hosts, `fonts.googleapis.com` and `fonts.gstatic.com`. Existing HTTPS
+image permission already covers analytics/debugging images. No advertising
+endpoints, script `unsafe-inline`, or `unsafe-eval` are added. Existing API/vault,
+frame, base-URL and form protections remain. The app's consent, native/privacy
+preferences, sensitive-URL filter and private-page exclusions are unchanged.
+
+Keep a single policy: Cloudflare combines matching header values, so adding a
+second public policy would not relax the original one. Verify actual live response
+headers and Google `securitypolicyviolation` events after releasing, not just
+bundle hashes; a headers-only release may have identical JS/CSS asset names.
+
+References: [Google's CSP requirements](https://developers.google.com/tag-platform/security/guides/csp),
+[Cloudflare Pages headers](https://developers.cloudflare.com/pages/configuration/headers/).
+
 ### Verification after an intentional deployment
 
 Preserve the current live API, access-mode and checkout build configuration when
