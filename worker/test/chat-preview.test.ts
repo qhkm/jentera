@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { accessForEmail, businessHasAccess } from '../src/access';
 import { withUser } from '../src/db';
-import { previewForEmail, reservePreview, previewModelAccess } from '../src/chat-preview';
+import { previewForEmail, reservePreview, previewModelAccess, previewProvisioningAccess } from '../src/chat-preview';
+import { enqueueRuntimeTask } from '../src/runtime/tasks';
 import { authLandingPath, verifySession } from '../src/auth';
 import { claimRuntime, markRuntimeReady } from '../src/agent-runtime';
 import { handleRuns } from '../src/routes/runs';
@@ -36,6 +37,70 @@ async function ask(requestId = crypto.randomUUID(), options = {}, customEnv = en
   return (await handleRuns(incoming.request,customEnv,incoming.url,{}))!;
 }
 describe('verified account lifetime chat preview', () => {
+  async function provisionTask() {
+    await asOwner(sql => sql`update business set onboarded=true where id=${A}`);
+    return asTenant(A, tx => enqueueRuntimeTask(tx, A, { kind:'provision', dedupeKey:'preview:onboarding' }));
+  }
+  it('admits only computer setup before the first chat, without granting background or model access', async () => {
+    await previewForEmail(env(),'preview@example.com');
+    const task = await provisionTask();
+    expect(await previewProvisioningAccess(env(),A,task.id)).toBe(true);
+    expect(await businessHasAccess(env(),A)).toBe(false);
+    expect(await businessHasAccess(env(),A,task.id)).toBe(false);
+    expect(await previewModelAccess(env(),A)).toBe(false);
+    expect(await previewForEmail(env(),'preview@example.com')).toEqual({ limit:10,used:0,remaining:10 });
+    expect(await asOwner(sql => sql`select email from platform_access`)).toHaveLength(0);
+  });
+  it('does not admit setup with preview disabled, no allowance record, or no onboarding', async () => {
+    const task = await provisionTask();
+    expect(await previewProvisioningAccess(env(),A,task.id)).toBe(false);
+    await previewForEmail(env(),'preview@example.com');
+    expect(await previewProvisioningAccess(env({ CHAT_PREVIEW_ENABLED:'false' }),A,task.id)).toBe(false);
+    await asOwner(sql => sql`update business set onboarded=false where id=${A}`);
+    expect(await previewProvisioningAccess(env(),A,task.id)).toBe(false);
+  });
+  it('rejects cross-tenant IDs, non-provision tasks and finished lifecycle tasks', async () => {
+    await previewForEmail(env(),'preview@example.com');
+    const task = await provisionTask();
+    expect(await previewProvisioningAccess(env(),B,task.id)).toBe(false);
+    for (const kind of ['run','resume','upgrade','reconcile'] as const) {
+      const other = await asTenant(A, tx => enqueueRuntimeTask(tx,A,{ kind,dedupeKey:`preview:${kind}` }));
+      expect(await previewProvisioningAccess(env(),A,other.id)).toBe(false);
+    }
+    await asOwner(sql => sql`update runtime_task set status='completed' where id=${task.id}`);
+    expect(await previewProvisioningAccess(env(),A,task.id)).toBe(false);
+  });
+  it('requires a currently verified owner, not a staff membership', async () => {
+    await previewForEmail(env(),'preview@example.com');
+    const task = await provisionTask();
+    await asOwner(sql => sql`update app_user set email_verified=false where id=${userId}`);
+    expect(await previewProvisioningAccess(env(),A,task.id)).toBe(false);
+    await asOwner(async sql => {
+      await sql`update app_user set email_verified=true where id=${userId}`;
+      await sql`update membership set role='staff' where user_id=${userId} and business_id=${A}`;
+    });
+    expect(await previewProvisioningAccess(env(),A,task.id)).toBe(false);
+  });
+  it('does not reopen exhausted, expired, revoked or previously redeemed access', async () => {
+    await previewForEmail(env(),'preview@example.com');
+    const task = await provisionTask();
+    await asOwner(sql => sql`insert into platform_access(email,kind,expires_at) values ('preview@example.com','paid',now()-interval '1 day')`);
+    expect(await previewProvisioningAccess(env(),A,task.id)).toBe(false);
+    await asOwner(sql => sql`update platform_access set expires_at=now()+interval '1 day',revoked_at=now() where email='preview@example.com'`);
+    expect(await previewProvisioningAccess(env(),A,task.id)).toBe(false);
+    await asOwner(sql => sql`delete from platform_access where email='preview@example.com'`);
+    const hash = 'b'.repeat(64);
+    await asOwner(async sql => {
+      await sql`insert into trial_invite(token_hash,expires_at) values (${hash},now()+interval '1 day')`;
+      await sql`insert into trial_redemption(user_id,token_hash,expires_at) values (${userId},${hash},now()-interval '1 day')`;
+    });
+    expect(await previewProvisioningAccess(env(),A,task.id)).toBe(false);
+    await asOwner(async sql => {
+      await sql`delete from trial_redemption where user_id=${userId}`;
+      await sql`update chat_preview_account set requests_used=10 where user_id=${userId}`;
+    });
+    expect(await previewProvisioningAccess(env(),A,task.id)).toBe(false);
+  });
   it('does not give the app role delete privileges and prevents decreasing the lifetime counter', async () => {
     await previewForEmail(env(),'preview@example.com');
     await reservePreview(env(),userId,A,crypto.randomUUID());

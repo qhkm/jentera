@@ -72,6 +72,29 @@ export async function failPreview(env: Env, userId: string, requestId: string): 
   await withUser(env, sql => sql`update chat_preview_request set status='failed' where user_id=${userId} and request_id=${requestId} and status='reserved'`);
 }
 
+/** Onboarding creates a separate provision task before the first chat request.
+ * Admit only that trusted lifecycle task for a verified, unexhausted preview
+ * owner. This is not platform access and never admits run/resume/scheduled work.
+ * Check the task under tenant RLS; an ID from another business is not authority. */
+export async function previewProvisioningAccess(env: Env, businessId: string, taskId: string): Promise<boolean> {
+  if (!chatPreviewEnabled(env)) return false;
+  return withTenant(env, businessId, async tx => {
+    const [row] = await tx<{ allowed: boolean }[]>`select exists(
+      select 1 from runtime_task t join business b on b.id=t.business_id
+      join membership m on m.business_id=b.id and m.role='owner'
+      join app_user u on u.id=m.user_id
+      join chat_preview_account p on p.user_id=u.id
+      where t.id=${taskId}::uuid and t.business_id=${businessId}::uuid
+        and t.kind='provision' and t.status in ('queued','failed','leased')
+        and b.onboarded=true and u.email_verified=true
+        and p.requests_used<${CHAT_PREVIEW_LIMIT}
+        and not exists(select 1 from platform_access a where a.email=lower(u.email))
+        and not exists(select 1 from trial_redemption r where r.user_id=u.id)
+    ) as allowed`;
+    return row?.allowed === true;
+  });
+}
+
 /** Model calls require a live lease on a quota-admitted preview task.
  * Scheduling and Telegram do not receive this exception. Budgets still apply. */
 export async function previewModelAccess(env: Env, businessId: string): Promise<boolean> {

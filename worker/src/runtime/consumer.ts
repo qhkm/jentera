@@ -8,6 +8,7 @@
 
 import type { Env } from '../env';
 import { businessHasAccess } from '../access';
+import { previewProvisioningAccess } from '../chat-preview';
 import { assessTaskOutcome, assessmentAnswer, taskAssessmentForRun } from '../task-outcome';
 import { guardAnswer } from '../answer-guardrails';
 import { reviewSources } from '../source-review';
@@ -925,7 +926,9 @@ export async function handleRuntimeMessage(
        not slowed by it — and out here every tenant transaction costs seconds. */
     const kind = await withTenant(env, message.businessId, (tx) =>
       runtimeTaskKind(tx, message.businessId, message.taskId));
-    if (!kind || !MAINTENANCE_TASK_KINDS.has(kind)) {
+    const previewProvision = kind === 'provision' &&
+      await previewProvisioningAccess(env, message.businessId, message.taskId);
+    if (!kind || (!MAINTENANCE_TASK_KINDS.has(kind) && !previewProvision)) {
       /* Said out loud from now on. This dropped the message while leaving the
          row queued, so the work neither ran nor failed nor showed up anywhere:
          fifteen of seventeen runtimes went five releases without an upgrade,
@@ -936,7 +939,9 @@ export async function handleRuntimeMessage(
       }));
       return { action: 'ack', reason: 'missing' };
     }
-    console.warn('[runtime-access] maintenance admitted for a business that is not', JSON.stringify({
+    console.warn(previewProvision
+      ? '[runtime-access] verified preview computer setup admitted'
+      : '[runtime-access] maintenance admitted for a business that is not', JSON.stringify({
       business: message.businessId, task: message.taskId, kind,
     }));
   }

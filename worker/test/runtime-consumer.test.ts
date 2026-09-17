@@ -27,6 +27,8 @@ import { markRuntimeReady, storeRuntimeModelCredential } from '../src/agent-runt
 import { startRun } from '../src/runs';
 import { bindTelegramInternalChat, saveConnection } from '../src/connections';
 import { reserveRuntimeUsage } from '../src/runtime/usage';
+import { previewForEmail, previewModelAccess } from '../src/chat-preview';
+import { businessHasAccess } from '../src/access';
 
 const A = '11111111-1111-4111-8111-111111111111';
 
@@ -285,6 +287,36 @@ describe('the runtime queue consumer', () => {
     const [runtime] = await asOwner((sql) => sql<{ provider_id: string | null }[]>`
       select provider_id from agent_runtime where business_id = ${A}`);
     expect(runtime.provider_id).toBeTruthy();
+  });
+
+  it('recovers an onboarding task dropped by the old access gate without consuming trial chats', async () => {
+    const env = testEnv({ ACCESS_MODE:'waitlist', CHAT_PREVIEW_ENABLED:'true', RUNTIME_RELEASE:'2026.08.27-1' });
+    const email = 'preview-provision@example.com';
+    await asOwner(async sql => {
+      await sql`update business set onboarded=true where id=${A}`;
+      const [owner] = await sql<{ id:string }[]>`insert into app_user(email,email_verified) values (${email},true) returning id`;
+      await sql`insert into membership(user_id,business_id,role) values (${owner.id},${A},'owner')`;
+    });
+    await previewForEmail(env,email);
+    const task = await provisionTask();
+    const message = { version:1 as const,businessId:A,taskId:task.id };
+    const provider = new LocalRuntimeProvider();
+    const create = vi.spyOn(provider,'create');
+    expect(await handleRuntimeMessage({ ...env,CHAT_PREVIEW_ENABLED:'false' },message,{ provider }))
+      .toEqual({ action:'ack',reason:'missing' });
+    expect((await taskStatus(task.id)).status).toBe('queued');
+    expect(create).not.toHaveBeenCalled();
+    await asOwner(sql => sql`update runtime_task set created_at=now()-interval '2 hours' where id=${task.id}`);
+    expect(await handleRuntimeMessage(env,message,{ provider })).toEqual({ action:'ack',reason:'completed' });
+    expect((await taskStatus(task.id)).status).toBe('completed');
+    const [runtime] = await asOwner(sql => sql`select provider_id from agent_runtime where business_id=${A}`);
+    expect(runtime.provider_id).toBeTruthy();
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(await previewForEmail(env,email)).toEqual({ limit:10,used:0,remaining:10 });
+    expect(await businessHasAccess(env,A)).toBe(false);
+    expect(await previewModelAccess(env,A)).toBe(false);
+    expect(await handleRuntimeMessage(env,message,{ provider })).toEqual({ action:'ack',reason:'missing' });
+    expect(create).toHaveBeenCalledTimes(1);
   });
 
   it('acknowledges duplicate delivery without provisioning twice', async () => {

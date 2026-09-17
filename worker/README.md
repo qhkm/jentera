@@ -298,6 +298,15 @@ flow gate, and release-deduplicated task are one transaction, followed by a retr
 Queue signal. Signed-in setup re-signals that same task idempotently and polls the
 owner-safe runtime status, so a failed first Queue signal is recoverable without creating
 a second Sprite.
+Verified chat-preview accounts with allowance remaining may execute that
+separate onboarding `provision` task even before submitting their first chat.
+This exception checks the exact task under tenant RLS, requires a verified owner
+and completed onboarding, and rejects exhausted accounts, existing access grants
+and previously redeemed invitations. It does not create a platform-access grant,
+consume/reset free chats, admit other task kinds or change ordinary model access.
+The existing signed, budgeted bootstrap smoke window remains separate from
+quota-admitted chat model calls. Regression tests cover the old dropped-task
+recovery, duplicate delivery, cross-business IDs and the admission boundaries.
 Both runtime queues exist and the Worker consumes the primary and DLQ. Migration
 `014_runtime_task_execution.sql` was applied to Jentera production as `neondb_owner` and
 verified as `aisar_app` on 2026-08-27; it remains required when restoring or creating an

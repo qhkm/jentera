@@ -163,8 +163,8 @@ describe('model proxy route', () => {
       expect(seen).toHaveLength(0);
     });
 
-    it('may prove its model path while the control plane has it upgrading', async () => {
-      await runtimeAt('upgrading');
+    it.each(['upgrading', 'provisioning'])('may prove its model path while the control plane has it %s', async (status) => {
+      await runtimeAt(status);
       const { fetcher, seen } = stubUpstream(200, { id: 'ok' });
       const response = await completion(waitlisted(), fetcher);
       expect(response.status).not.toBe(403);
