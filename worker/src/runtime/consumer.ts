@@ -6,13 +6,18 @@
    provider compute. Duplicate delivery after completion is an ack.
    ============================================================ */
 
+import type postgres from 'postgres';
 import type { Env } from '../env';
 import { businessHasAccess } from '../access';
 import { previewProvisioningAccess } from '../chat-preview';
 import { assessTaskOutcome, assessmentAnswer, taskAssessmentForRun } from '../task-outcome';
+import type { TaskAssessment } from '../task-outcome';
 import { guardAnswer } from '../answer-guardrails';
+import type { AnswerWarning } from '../answer-guardrails';
 import { reviewSources } from '../source-review';
-import { createAnswerStreamGate, heldProgressLabel } from '../answer-stream-policy';
+import type { SourceReview } from '../source-review';
+import { createAnswerStreamGate, heldProgressLabel, holdAnswerForChecks } from '../answer-stream-policy';
+import type { StreamHoldReason } from '../answer-stream-policy';
 import { connect, withTenant } from '../db';
 import { ensureProviderRuntime } from './provision';
 import { prepareRuntimeSpare } from './spare-worker';
@@ -557,6 +562,31 @@ export async function handleRuntimeApprovalCallback(
     { inline_keyboard: [] },
   ).catch(() => {});
   return 'accepted';
+}
+
+/** The trace of what the answer's checks found, written either in front of
+ *  the reply or behind it depending on `holdAnswerForChecks`. Both orders
+ *  leave the same two events, so the task detail does not record which one
+ *  a given run took.
+ */
+async function recordAnswerChecks(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  runId: string | null,
+  warnings: AnswerWarning[] | null,
+  assessment: TaskAssessment | null,
+  sourceReview: SourceReview,
+  streamHoldReason: StreamHoldReason | null,
+): Promise<void> {
+  if (!runId) return;
+  if (warnings && (warnings.length || sourceReview.status !== 'not_applicable' || streamHoldReason)) {
+    await append(tx, businessId, runId, 'answer.guardrail', {
+      version: 1, warnings, sourceReview, streamHoldReason,
+    });
+  }
+  if (assessment && !await taskAssessmentForRun(tx, businessId, runId)) {
+    await append(tx, businessId, runId, 'outcome.observed', { ...assessment, assessmentVersion: 1 });
+  }
 }
 
 /** Queue-first Telegram admission. The Queue event is already durable, so
@@ -1788,16 +1818,33 @@ export async function handleRuntimeMessage(
 
         const successful = outcome.remoteStatus === 'completed';
         const reviewQuestion = outcome.payload.telegram?.question ?? outcome.payload.objective ?? '';
-        const [assessment, sourceReview] = await Promise.all([lease.task.runId ? assessTaskOutcome(
+        // Persist and deliver the same caution across chat, task detail and Telegram.
+        // Source review runs in parallel with assessment, with a fixed timeout.
+        const checks = Promise.all([lease.task.runId ? assessTaskOutcome(
           env, message.businessId, lease.task.runId,
           outcome.payload.telegram?.question ?? outcome.payload.input,
           assessmentAnswer(outcome.result),
         ) : Promise.resolve(null), successful ? reviewSources(env, reviewQuestion, assessmentAnswer(outcome.result))
-          : Promise.resolve({ status: 'not_applicable' as const, sources: 0 })]);
-        // Persist and deliver the same caution across chat, task detail and Telegram.
-        // Source review runs in parallel with assessment, with a fixed timeout.
-        const guardedAnswer = successful ? guardAnswer(outcome.result,
-          reviewQuestion, assessment, sourceReview) : null;
+          : Promise.resolve({ status: 'not_applicable' as const, sources: 0 })]).catch((error): [null, SourceReview] => {
+            /* Nothing between here and the late await may leave this promise
+               rejected: the paths in between can return early, and an
+               unhandled rejection would take the isolate, not the reply. */
+            console.warn('[runtime] answer checks failed', {
+              businessId: message.businessId,
+              taskId: lease.task.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            return [null, { status: 'not_applicable', sources: 0 }];
+          });
+        /* The checks cost the owner seconds of silence after the answer already
+           exists, on a reply whose median is 47 s. They are waited for only
+           where they can still change what is read: a question that may carry a
+           caution, or a run that failed and has no answer to deliver. Everything
+           else is delivered now and assessed behind the reply, which is where
+           `checks` is awaited instead. */
+        const checked = !successful || holdAnswerForChecks(reviewQuestion) ? await checks : null;
+        const guardedAnswer = successful && checked ? guardAnswer(outcome.result,
+          reviewQuestion, checked[0], checked[1]) : null;
         if (guardedAnswer) {
           outcome.result = guardedAnswer.result;
           if (guardedAnswer.warnings.length) outcome.summary = assessmentAnswer(outcome.result).slice(0, 500);
@@ -1818,16 +1865,8 @@ export async function handleRuntimeMessage(
             },
           );
           if (!saved) return { saved: false, deliveryClaimed: false };
-          if (guardedAnswer && (guardedAnswer.warnings.length || sourceReview.status !== 'not_applicable' || answerGate.reason) && lease.task.runId) {
-            await append(tx, message.businessId, lease.task.runId, 'answer.guardrail', {
-              version: 1, warnings: guardedAnswer.warnings, sourceReview, streamHoldReason: answerGate.reason,
-            });
-          }
-          if (assessment && lease.task.runId && !await taskAssessmentForRun(tx, message.businessId, lease.task.runId)) {
-            await append(tx, message.businessId, lease.task.runId, 'outcome.observed', {
-              ...assessment, assessmentVersion: 1,
-            });
-          }
+          if (checked) await recordAnswerChecks(tx, message.businessId, lease.task.runId,
+            guardedAnswer?.warnings ?? null, checked[0], checked[1], answerGate.reason);
           if (!successful || !outcome.payload.telegram || !lease.task.runId) {
             return { saved: true, deliveryClaimed: false };
           }
@@ -1849,6 +1888,17 @@ export async function handleRuntimeMessage(
         });
         if (!terminal.saved) {
           return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
+        }
+        /* The gate withheld every token of this answer, so the chat is still
+           showing a status line. Release the durable text now rather than
+           after the checks — but only where this slice's gate is the whole
+           story. A resumed slice cannot see what an earlier one put on
+           screen, and stitching a replayed answer onto a partial one
+           duplicates it (`runtime-runner.test.ts`), so a run that has already
+           streamed anything keeps waiting for its answer at completion. */
+        if (!checked && successful && web && answerGate.reason
+          && !answerGate.emitted && (lease.task.streamSeq ?? 0) === 0) {
+          await web.reveal(assessmentAnswer(outcome.result)).catch(() => {});
         }
 
         let telegramDelivery: 'sent' | 'needs_approval' | 'blocked' | 'failed' |
@@ -1902,7 +1952,24 @@ export async function handleRuntimeMessage(
           telegramDelivery = finalizedLiveBubble ? 'failed' : undefined;
         }
 
+        /* Delivery is done; this is the wait that used to sit in front of it.
+           A late caution still reaches the task detail and the stored answer,
+           but not a Telegram message already sent — so the only warning
+           reachable here must be one that does not contradict what was read.
+           For an unheld question that is `unverified_completion` alone: the
+           other three need a question this policy would have held, and that
+           one advises checking an action's status rather than doubting the
+           text. It has not fired on a delivered answer in 90 days. */
+        const [assessment, sourceReview] = checked ?? await checks;
+        const lateAnswer = !checked && successful
+          ? guardAnswer(outcome.result, reviewQuestion, assessment, sourceReview) : null;
+        if (lateAnswer?.warnings.length) {
+          outcome.result = lateAnswer.result;
+          outcome.summary = assessmentAnswer(outcome.result).slice(0, 500);
+        }
         const completed = await withTenant(env, message.businessId, async (tx) => {
+          if (!checked) await recordAnswerChecks(tx, message.businessId, lease.task.runId,
+            lateAnswer?.warnings ?? null, assessment, sourceReview, answerGate.reason);
           const done = await completeRuntimeTask(
             tx,
             message.businessId,

@@ -1663,6 +1663,79 @@ describe('resuming a run stream across observation slices', () => {
     expect(seqs).toEqual([3, 4]);
   });
 
+  it('shows the app an answer a tool withheld, without waiting for its checks', async () => {
+    const published: Array<Record<string, unknown>> = [];
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.09.01-3',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+      RUN_STREAMS: {
+        idFromName: () => ({ toString: () => 'stream-id' }),
+        get: () => ({
+          fetch: async (_url: string, init?: RequestInit) => {
+            published.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+            return Response.json({ ok: true });
+          },
+        }),
+      },
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `reveal:${run.id}`,
+      payload: {
+        input: 'Are we open on Sunday?', model: 'MiniMax-M3',
+        objective: 'Are we open on Sunday?', function: 'ask', channel: 'app',
+      },
+    }));
+    const sse = (events: Array<Record<string, unknown>>) =>
+      events.map((event) => `data: ${JSON.stringify(event)}`).join('\n\n') + '\n\n';
+    const runnerFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return response({
+          ok: true, release: '2026.09.01-3',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-16' },
+          toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        return response({ ok: true, hermesRunId: 'reveal-run', status: 'running' }, 202);
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}/events`)) {
+        return new Response(sse([
+          { type: 'tool.started', seq: 1, tool: 'web_search', preview: 'opening hours' },
+          { type: 'tool.completed', seq: 2, tool: 'web_search', duration: 0.3, error: false },
+          { type: 'delta', seq: 3, delta: 'We are open on Sunday.' },
+          { type: 'done' },
+        ]), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}`)) {
+        return response({ ok: true, status: 'completed', output: 'We are open on Sunday.' });
+      }
+      return response({ error: 'not found' }, 404);
+    };
+    await expect(handleRuntimeMessage(
+      env, { version: 1 as const, businessId: A, taskId: task.id }, { provider, fetch: runnerFetch },
+    )).resolves.toEqual({ action: 'ack', reason: 'completed' });
+    /* The tool closed the gate before a token was written, so nothing streamed
+       and the chat held a status line. The answer is released whole once it is
+       durable — ahead of the assessment, which changes nothing it says. */
+    expect(published.filter((event) => event.type === 'delta').map((event) => event.text).join(''))
+      .toBe('We are open on Sunday.');
+    const deltaAt = published.findIndex((event) => event.type === 'delta');
+    const completedAt = published.findIndex((event) => event.type === 'completed');
+    expect(deltaAt).toBeGreaterThanOrEqual(0);
+    expect(deltaAt).toBeLessThan(completedAt);
+  });
+
   it('persists the last relayed seq at the slice end and skips the replay on re-attach', async () => {
     const published: Array<Record<string, unknown>> = [];
     const env = testEnv({

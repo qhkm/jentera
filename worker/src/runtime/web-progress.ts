@@ -16,6 +16,9 @@ export interface WebProgress {
   thinking(detail: string): Promise<void>;
   delta(text: string): void;
   flush(): Promise<void>;
+  /** Release an answer the stream gate withheld, so the chat shows it without
+      waiting for the checks that follow it. */
+  reveal(text: string): Promise<void>;
 }
 
 /**
@@ -43,7 +46,16 @@ export function createWebProgress(env: Env, businessId: string, runId: string): 
     buffer = '';
     return enqueue(() => publishRunProgressSafely(env, businessId, runId, 'delta', { text }));
   };
+  /* One push would be cut at LIVE_TEXT_MAX by the publish endpoint, so a
+     withheld answer goes out in publish-sized pieces. */
+  const reveal = async (text: string): Promise<void> => {
+    for (let at = 0; at < text.length; at += LIVE_TEXT_MAX) {
+      buffer += text.slice(at, at + LIVE_TEXT_MAX);
+      await flush();
+    }
+  };
   return {
+    reveal,
     status(detail, kind = 'stage') {
       const line = detail.trim().slice(0, LIVE_DETAIL_MAX);
       if (!line || line === lastStatus) return chain;

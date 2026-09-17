@@ -1138,3 +1138,133 @@ describe('the Telegram webhook runs the first slice itself', () => {
     });
   });
 });
+
+/* ============================================================
+   When the owner sees the answer.
+
+   The answer's checks — the outcome assessment and the source review —
+   used to run in front of delivery, so a finished reply sat unseen for
+   their duration. They still run, and a question that could carry a
+   caution still waits for them, because a warning behind the answer it
+   applies to is worse than a slow answer. Everything else is delivered
+   first and assessed behind the reply.
+   ============================================================ */
+
+/** One durable Telegram run, answered by a fake runner that uses a tool
+    (so the stream gate holds, as it does on the median reply) and then
+    returns `answer`. */
+async function answerThroughRuntime(options: {
+  question: string;
+  answer: string;
+  ai?: Env['AI'];
+}) {
+  await setPolicy('automatic');
+  const provider = new LocalRuntimeProvider();
+  const queued: RuntimeQueueMessage[] = [];
+  const durableEnv = testEnv({
+    RUNTIME_RELEASE: '2026.08.28-4',
+    RUNTIME_EXECUTION_ENABLED: 'true',
+    AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+    RUNTIME_QUEUE: { send: async (message: RuntimeQueueMessage) => { queued.push(message); } },
+    ...(options.ai ? { AI: options.ai } : {}),
+  });
+  await ensureProviderRuntime(durableEnv, A, {
+    provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+  });
+  await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.28-4', 'v1'));
+  await handleIncoming(durableEnv, A, connId, { ...incoming, text: options.question });
+
+  const fetcher: typeof fetch = async (input, init) => {
+    const url = String(input);
+    if (url.endsWith('/readyz')) {
+      return runnerResponse({
+        ok: true,
+        release: '2026.08.28-4',
+        runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+        hermes: { jenteraPatch: 'jentera-runtime-2026-09-16' },
+        toolMode: 'full-tools',
+        webSearchBackend: 'ddgs',
+        edgeAuthorizationForwarded: false,
+        specialistProfiles: { operations: true, customers: true, growth: true, records: true },
+      });
+    }
+    if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+      return runnerResponse({ ok: true, hermesRunId: 'hermes-order-1', status: 'started' }, 202);
+    }
+    if (url.endsWith('/events')) {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const enc = new TextEncoder();
+          controller.enqueue(enc.encode('data: {"type":"tool.started","seq":1,"tool":"web_search","preview":"opening hours"}\n\n'));
+          controller.enqueue(enc.encode('data: {"type":"tool.completed","seq":2,"tool":"web_search","duration":0.4,"error":false}\n\n'));
+          controller.enqueue(enc.encode('data: {"type":"done"}\n\n'));
+          controller.close();
+        },
+      });
+      return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
+    }
+    if (url.includes('/v1/tasks/')) {
+      return runnerResponse({
+        ok: true, status: 'completed', output: options.answer,
+        usage: { input_tokens: 40, output_tokens: 12 },
+      });
+    }
+    return runnerResponse({ error: 'not found' }, 404);
+  };
+  const result = await handleRuntimeQueueMessage(durableEnv, queued[0], { provider, fetch: fetcher });
+  return { result };
+}
+
+describe('the wait for an answer’s checks', () => {
+  it('delivers an ordinary answer before the assessment finishes', async () => {
+    const order: string[] = [];
+    let releaseAssessment = () => {};
+    const delivered = new Promise<void>((resolve) => { releaseAssessment = resolve; });
+    /* Causal, not timed: the assessment cannot finish until the answer has
+       been delivered. Were delivery still waiting on it, the race below
+       falls through after a second and the order proves it. */
+    const ai = { run: async (_model: string, input: { messages?: { content: string }[] }) => {
+      if (!input.messages?.[0]?.content.startsWith('Classify an agent turn')) {
+        return { response: 'A drafted reply.' };
+      }
+      order.push('assessment.started');
+      await Promise.race([delivered, new Promise((resolve) => setTimeout(resolve, 1_000))]);
+      order.push('assessment.finished');
+      return { response: JSON.stringify({ kind: 'conversation', status: 'completed' }) };
+    } } as unknown as Env['AI'];
+
+    const original = edits.push.bind(edits);
+    edits.push = (...rows: typeof edits) => {
+      if (rows.some((row) => row.text === 'Yes, we are open on Sunday.')) {
+        order.push('delivered');
+        releaseAssessment();
+      }
+      return original(...rows);
+    };
+
+    await answerThroughRuntime({
+      question: 'Are you open on Sunday?',
+      answer: 'Yes, we are open on Sunday.',
+      ai,
+    });
+
+    expect(order).toContain('assessment.started');
+    expect(order.indexOf('delivered')).toBeLessThan(order.indexOf('assessment.finished'));
+    expect(edits).toContainEqual({ chatId: 42, messageId: 99, text: 'Yes, we are open on Sunday.' });
+    /* Delivering first does not skip the checks: the trace carries the same
+       assessment it would have had, written behind the reply instead. */
+    expect(await trace()).toContain('outcome.observed');
+  });
+
+  it('still puts the caution in front of an answer that may need one', async () => {
+    await answerThroughRuntime({
+      question: 'What is the latest price?',
+      answer: 'It is RM100.',
+    });
+    const answer = edits.find((edit) => String(edit.text).includes('RM100'));
+    expect(String(answer?.text)).toMatch(/^> Verification note: This answer does not include source links/);
+    const events = await trace();
+    expect(events).toContain('answer.guardrail');
+    expect(events).toContain('outcome.observed');
+  });
+});

@@ -219,6 +219,48 @@ Hermes makes its existing final tool-free summary call. Deep runs retain the
 configured 20-iteration budget. This is an enforced bound, but still not a
 claimed production latency improvement until another live turn is measured.
 
+## Measurements, 2026-09-18: the wait after the answer exists
+
+Over 14 days, 114 completed asks that used tools took **47.1 s at p50**, of
+which **10.4 s came after the last tool call** — the answer was finished and
+the owner was still watching a status line. That tail is the outcome
+assessment and the source review, which ran in front of delivery.
+
+What the 90-day record says about what that wait bought:
+
+| | |
+|---|---|
+| Completed runs (30 d) | 451 |
+| Runs whose answer was held or warned at delivery | 39 |
+| Runs that actually carried a caution (90 d) | **5** |
+| Warnings seen (90 d) | `source_review_incomplete` ×3, `missing_current_sources` ×2 |
+| `unverified_completion` reaching a delivered answer (90 d) | **never** |
+
+Every one of the five came from a question asking for current or high-stakes
+information — the class `streamHoldReason` already holds from streaming, and
+therefore knowable before the answer exists.
+
+So the checks now run behind the reply unless the question could carry a
+caution (`holdAnswerForChecks`, `answer-stream-policy.ts`). A question that
+would have been allowed to stream token by token is delivered as soon as it is
+durable; one that was held still waits, which is what keeps a caution ahead of
+the answer it applies to rather than behind it. The checks themselves are
+unchanged and still run on every reply — `outcome.observed` and
+`answer.guardrail` are written either side of delivery, so the task detail
+does not record which order a run took.
+
+The app gets the same answer through the delta lane it already uses for
+streaming (`WebProgress.reveal`), but only where the slice that finished the
+run is the whole story: a resumed slice cannot see what an earlier one put on
+screen, and stitching a replayed answer onto a partial one duplicates it.
+Lifting that needs a durable record of whether anything has been revealed for
+a run; `runtime_task.stream_seq` is the nearest thing and does not answer it.
+
+Not yet re-measured in production. The figure to compare is the gap from the
+last `agent.tool` to `work.completed`; `unverified_completion` appearing in
+`answer.guardrail` payloads would be the first sign the reachability argument
+above is wrong.
+
 ## Levers
 
 Done:

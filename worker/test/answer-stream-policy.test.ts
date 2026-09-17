@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createAnswerStreamGate, heldProgressLabel, streamHoldReason } from '../src/answer-stream-policy';
+import { createAnswerStreamGate, heldProgressLabel, holdAnswerForChecks, streamHoldReason } from '../src/answer-stream-policy';
 import { guardAnswer } from '../src/answer-guardrails';
-import { supportedReview } from '../src/source-review';
+import { needsCurrentSources, needsHighStakesSources, supportedReview } from '../src/source-review';
 
 // Offline regressions: deterministic policy/evidence tests, NOT an assertion
 // that a live model never hallucinates. Both languages and false positives matter.
@@ -47,6 +47,28 @@ describe('EN/BM high-risk streaming regression set', () => {
     await gate.forward('Claimed result', emit);
     await createAnswerStreamGate('Hello', true).forward('Old replay', emit);
     expect(emit).not.toHaveBeenCalled();
+  });
+  it.each(held)('makes %s wait for its checks, so no caution arrives behind the answer', (_name, question) => {
+    expect(holdAnswerForChecks(question)).toBe(true);
+  });
+  /* The two vocabularies are maintained apart. A term in the warning's half
+     alone would otherwise deliver the answer ahead of the warning about it. */
+  it.each(['tax', 'investment', 'loan', 'interest rate', 'medical', 'medicine', 'dosage',
+    'diagnosis', 'legal', 'laws', 'cukai', 'pelaburan', 'pinjaman', 'ubat', 'dos',
+    'undang-undang', 'latest', 'today', 'current', 'pricing', 'prices', 'news',
+    'terkini', 'terbaru', 'hari ini', 'harga semasa',
+  ])('waits whenever a warning is reachable from the question: %s', term => {
+    const question = `Something about ${term} please`;
+    expect(needsCurrentSources(question) || needsHighStakesSources(question)).toBe(true);
+    expect(holdAnswerForChecks(question)).toBe(true);
+  });
+  it('delivers ordinary conversation without waiting for its checks', () => {
+    for (const question of ['Hello', 'Write a poem about cats', 'Are you open on Sunday?',
+      'Tulis puisi tentang kucing', 'Draft marketing ideas']) {
+      expect(holdAnswerForChecks(question)).toBe(false);
+    }
+    /* An empty question is a resumed or unattributed turn: held, not guessed at. */
+    expect(holdAnswerForChecks('')).toBe(true);
   });
   it('keeps progress visible without completion claims through the step lane', () => {
     expect(heldProgressLabel('Checking the sources')).toBe('Checking the sources');

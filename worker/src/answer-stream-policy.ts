@@ -1,4 +1,4 @@
-import { needsCurrentSources } from './source-review';
+import { needsCurrentSources, needsHighStakesSources } from './source-review';
 
 export type StreamHoldReason = 'current_information' | 'high_stakes' | 'action' | 'ambiguous_followup' | 'resumed_run' | 'tool_used';
 
@@ -13,16 +13,42 @@ export function streamHoldReason(question: string): StreamHoldReason | null {
   return null;
 }
 
+/** Whether the owner waits for the answer's checks before seeing it.
+ *
+ * The checks run either way; this decides only the order. Three of the four
+ * answer warnings require a question asking for current or high-stakes
+ * information, and the fourth follows from an action the agent claims to have
+ * taken — every one of those classes is already held from streaming. So an
+ * answer this policy would have revealed token by token is delivered as soon
+ * as it exists, and one it held still waits, which is what keeps a caution
+ * ahead of the answer it applies to rather than behind it.
+ *
+ * `needsHighStakesSources` is tested as well as the hold reason: the two
+ * vocabularies are maintained separately, and a term added to only one of
+ * them must not turn into an answer delivered ahead of its warning.
+ */
+export function holdAnswerForChecks(question: string): boolean {
+  return Boolean(streamHoldReason(question)) ||
+    needsCurrentSources(question) || needsHighStakesSources(question);
+}
+
 /** Preview is disposable; the durable final result is delivered only after
  * review. Once held, stay held across subsequent tool and delta events.
  */
 export function createAnswerStreamGate(question: string, resumed = false) {
   let reason = resumed ? 'resumed_run' as StreamHoldReason : streamHoldReason(question);
+  let emitted = false;
   return {
     get reason() { return reason; },
+    /** Whether any answer text has reached a screen through this gate. Only
+        ever true of the slice that owns the gate: a later slice builds a new
+        one and cannot see what an earlier one let through. */
+    get emitted() { return emitted; },
     toolStarted() { reason ??= 'tool_used'; },
     async forward(delta: string, emit: (text: string) => Promise<void>) {
-      if (!reason) await emit(delta);
+      if (reason) return;
+      emitted = true;
+      await emit(delta);
     },
   };
 }
