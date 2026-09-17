@@ -98,7 +98,7 @@ VAULT_DEPOSIT_ORIGIN = "https://aisar-vault-deposit.qhkmdev90.workers.dev"
 # The immutable runner/Hermes/browser bundle requested for newly
 # provisioned runtimes. Changing this asks reconciliation to upgrade;
 # it must never silently track "latest".
-RUNTIME_RELEASE = "2026.09.16-4"
+RUNTIME_RELEASE = "2026.09.17-1"
 RUNTIME_EXPECTED_REGION = "sin"
 # Keep a sprite awake this many hours after each dispatch. Launch posture
 # was 24 on every plan; since 2026-09-09 it is 0: an idle sprite pauses and
@@ -114,7 +114,7 @@ MODEL_TRANSPORT_READY = "true"
 # business to own a fully bootstrapped, release-matched runtime row.
 RUNTIME_EXECUTION_ENABLED = "true"
 RUNTIME_BOOTSTRAP_ENABLED = "true"
-RUNTIME_BUNDLE_COMMIT = "dc2f75c43f675a9444488abd88bcb10a97a601ae"
+RUNTIME_BUNDLE_COMMIT = "2689cb7332f6636f2b066aed19f3580b09560124"
 AISAR_MODEL_PROVIDER = "openrouter"
 # The UPSTREAM model gateway the proxy forwards to (allowlisted, see
 # worker/src/runtime/execution.ts). The credential presented to it is the
