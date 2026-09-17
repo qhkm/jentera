@@ -7,6 +7,7 @@ import {
 import { LandingFooter, LandingHeader } from '@/components/landing/LandingChrome';
 import { ConnectorCard } from '@/components/ConnectorCard';
 import { CONNECTOR_CATEGORIES, getConnectorCatalogue, matchesConnector, type CatalogueEntry, type ConnectorCategory } from '@/lib/connector-catalogue';
+import { CONNECTOR_PAGES } from '@/lib/connector-pages';
 
 const CONNECTIONS: CatalogueEntry[] = [
   {
@@ -29,6 +30,13 @@ const CONNECTIONS: CatalogueEntry[] = [
     },
   },
 ];
+
+/* Only connections with a page of their own get a link. Naming one that
+   does not exist would send a reader, and a crawler, to the 404. */
+function pageFor(name: string): string | undefined {
+  const page = CONNECTOR_PAGES.find(item => item.name === name);
+  return page && `/connect/${page.slug}`;
+}
 
 type Filter = 'all' | 'available' | 'planned';
 const FILTERS: { id: Filter; label: string }[] = [
@@ -109,7 +117,7 @@ export default function Connect() {
               : 'Telegram and the web workspace are available. Calendar is a pilot with Google permission verification pending. Planned connections are not live.'}
           </p>
           <div className="connector-grid">
-            {visible.map(connection => <ConnectorCard key={connection.id} entry={connection} />)}
+            {visible.map(connection => <ConnectorCard key={connection.id} entry={connection} href={pageFor(connection.name)} />)}
           </div>
           {!visible.length && <p className="connector-empty">No apps match these filters. Try another search or choose All connections.</p>}
         </section>

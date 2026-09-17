@@ -33,7 +33,12 @@ describe("Jentera landing experience", () => {
     expect(pricing).toHaveTextContent('Save RM300 over your first 3 months');
     expect(pricing).not.toHaveTextContent('Free Automation Mapping');
     expect(pricing).not.toHaveTextContent('Lucky draw');
-    expect(screen.getByRole("link", { name: "Pricing" })).toHaveAttribute("href", "/#pricing");
+    // Pricing is its own page now, linked from the nav and the footer. The
+    // landing section stays; the nav no longer points at its anchor, because
+    // an anchor is not a URL a search engine can return.
+    const pricingLinks = screen.getAllByRole("link", { name: "Pricing" });
+    expect(pricingLinks.length).toBeGreaterThan(0);
+    for (const link of pricingLinks) expect(link).toHaveAttribute("href", "/pricing");
   });
 
   it("invites a phone visitor to install once the page has settled", async () => {

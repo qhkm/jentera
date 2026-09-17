@@ -1,15 +1,19 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router';
 import { DataIcon } from '@/components/Icon';
 import { CONNECTOR_CATEGORIES, type CatalogueEntry } from '@/lib/connector-catalogue';
 import type { Lang } from '@/lib/types';
 import { PAGE_MESSAGES } from '@/i18n/pages';
 import '@/styles/connectors.css';
 
-export function ConnectorCard({ entry, lang = 'en', status, connected = false, children }: {
+export function ConnectorCard({ entry, lang = 'en', status, connected = false, href, children }: {
   entry: CatalogueEntry;
   lang?: Lang;
   status?: string;
   connected?: boolean;
+  /** Set only where a connector has its own page. The workspace passes
+   * nothing, so nothing changes for a signed-in owner. */
+  href?: string;
   children?: ReactNode;
 }) {
   const availability = entry.availability === 'pilot' ? 'Pilot'
@@ -26,6 +30,9 @@ export function ConnectorCard({ entry, lang = 'en', status, connected = false, c
       <h3>{entry.name}</h3>
     </div>
     <p className="connector-card-description">{entry.description[lang]}</p>
+    {href && <Link className="connector-card-link" to={href}>
+      {lang === 'bm' ? `Tentang ${entry.name}` : `About ${entry.name}`} <span aria-hidden="true">↗</span>
+    </Link>}
     {(status || children) && <div className="connector-card-footer">
       {status && <span className={`connector-status ${connected ? 'connector-status-connected' : ''}`}>{status}</span>}
       {children}

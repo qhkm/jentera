@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router';
-import { metaEntries, pageSeo, structuredData } from '@/lib/seo';
+import { alternateLinks, metaEntries, pageSeo, structuredData } from '@/lib/seo';
 
 /** Static HTML serves bots. This keeps the same metadata correct after SPA navigation. */
 export function PageMetadata() {
@@ -21,13 +21,21 @@ export function PageMetadata() {
       const link = document.createElement('link'); link.rel = 'canonical'; link.href = seo.canonical;
       document.head.append(link);
     }
+    /* Removed and rebuilt rather than updated: a page with no translation
+       must end up with no alternates at all, not the previous page's pair. */
+    document.head.querySelectorAll('link[rel="alternate"][hreflang]').forEach((link) => link.remove());
+    for (const { hreflang, href } of alternateLinks(pathname)) {
+      const link = document.createElement('link');
+      link.rel = 'alternate'; link.hreflang = hreflang; link.href = href;
+      document.head.append(link);
+    }
     document.getElementById('jentera-structured-data')?.remove();
     const data = structuredData(pathname);
     if (data) {
       const script = document.createElement('script'); script.id = 'jentera-structured-data'; script.type = 'application/ld+json';
       script.textContent = JSON.stringify(data); document.head.append(script);
     }
-    if (seo.indexable || pathname === '/signin') document.documentElement.lang = 'en';
+    if (seo.indexable || pathname === '/signin') document.documentElement.lang = seo.lang;
   }, [pathname]);
   return null;
 }

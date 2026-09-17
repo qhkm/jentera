@@ -5,7 +5,15 @@ import { createHash } from 'node:crypto';
 
 const base = process.env.SEO_BASE?.replace(/\/$/, '');
 const dist = new URL('../dist/', import.meta.url);
-const publicRoutes = ['/', '/connect', '/privacy', '/terms'];
+const publicRoutes = [
+  '/', '/ms', '/pricing', '/about',
+  '/connect', '/connect/telegram', '/connect/google-calendar',
+  '/privacy', '/terms',
+];
+/* Every member of a translated pair must carry the whole pair plus
+   x-default, and a page with no translation must carry none. Google drops
+   the annotation entirely when one side is missing, silently. */
+const alternates = { '/': 3, '/ms': 3 };
 const privateRoutes = ['/signin', '/onboard', '/setup', '/app'];
 const read = async (file) => readFile(new URL(file, dist));
 const request = async (path) => {
@@ -42,6 +50,13 @@ for (const path of [...publicRoutes, ...privateRoutes, '/404']) {
   assert.equal(doc.querySelectorAll('link[rel=canonical]').length, indexable ? 1 : 0);
   if (indexable) {
     assert.equal(doc.querySelector('link[rel=canonical]').href, `https://jentera.ai${path}`);
+    const hreflangs = [...doc.querySelectorAll('link[rel=alternate][hreflang]')];
+    assert.equal(hreflangs.length, alternates[path] ?? 0, `hreflang count for ${path}`);
+    if (hreflangs.length) {
+      assert(hreflangs.some((link) => link.getAttribute('href') === `https://jentera.ai${path}`), `hreflang must self-reference ${path}`);
+      assert(hreflangs.some((link) => link.getAttribute('hreflang') === 'x-default'), `hreflang needs x-default: ${path}`);
+    }
+    assert.equal(doc.documentElement.lang, path === '/ms' ? 'ms' : 'en', `html lang for ${path}`);
     assert.doesNotMatch(doc.querySelector('meta[name=robots]').content, /noindex/);
     assert(doc.querySelector('h1'), 'public H1 must exist without JavaScript');
     assert(doc.querySelector('#root').textContent.length > 1000);

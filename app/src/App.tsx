@@ -13,6 +13,10 @@ import Landing from '@/routes/Landing';
 import SignIn from '@/routes/SignIn';
 import Join from '@/routes/Join';
 import Connect from '@/routes/Connect';
+import ConnectorPage from '@/routes/ConnectorPage';
+import Pricing from '@/routes/Pricing';
+import About from '@/routes/About';
+import LandingMs from '@/routes/LandingMs';
 import NotFound from '@/routes/NotFound';
 import Privacy from '@/routes/Privacy';
 import Terms from '@/routes/Terms';
@@ -114,7 +118,11 @@ export function AppRoutes() {
         <Routes>
           {/* Public, and free of any provider dependency. */}
           <Route path="/" element={<Landing />} />
+          <Route path="/ms" element={<LandingMs />} />
+          <Route path="/pricing" element={<Pricing />} />
+          <Route path="/about" element={<About />} />
           <Route path="/connect" element={<Connect />} />
+          <Route path="/connect/:slug" element={<ConnectorPage />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/signin" element={<SignIn />} />

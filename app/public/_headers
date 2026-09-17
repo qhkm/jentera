@@ -42,7 +42,15 @@
 # These exact rules do not overlap sitemap.xml or robots.txt.
 /
   Cache-Control: no-cache, must-revalidate
+/ms
+  Cache-Control: no-cache, must-revalidate
+/pricing
+  Cache-Control: no-cache, must-revalidate
+/about
+  Cache-Control: no-cache, must-revalidate
 /connect
+  Cache-Control: no-cache, must-revalidate
+/connect/*
   Cache-Control: no-cache, must-revalidate
 /privacy
   Cache-Control: no-cache, must-revalidate

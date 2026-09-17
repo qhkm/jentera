@@ -1,0 +1,156 @@
+/* ============================================================
+   Shared furniture for the secondary marketing pages — /pricing,
+   /about, /ms and the per-connector pages under /connect.
+
+   No literal colours: everything resolves through tokens so these
+   pages flip with the rest of the site. Layout only borrows the
+   lp-* primitives; anything below is what those pages needed and
+   the landing page did not have.
+   ============================================================ */
+
+.mp-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.mp-breadcrumb a {
+  color: var(--text-secondary);
+  transition: color 0.2s ease;
+}
+
+.mp-breadcrumb a:hover {
+  color: var(--text);
+}
+
+.mp-glyph {
+  margin-right: 12px;
+}
+
+.mp-steps {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: none;
+}
+
+.mp-steps > li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  padding: 22px 24px;
+  border: 1px solid var(--ov-line-2);
+  border-radius: 20px;
+}
+
+.mp-steps h3 {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+
+.mp-steps p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* The limits block. Deliberately quiet rather than alarming: these are
+   facts a reader needs, not warnings the page is apologising for. */
+.mp-limits ul {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-width: 760px;
+}
+
+.mp-limits li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 16px 18px;
+  border: 1px solid var(--ov-line-2);
+  border-radius: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.mp-limits li > svg {
+  margin-top: 3px;
+  color: var(--text-secondary);
+}
+
+.mp-related {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mp-related li {
+  display: flex;
+  align-items: start;
+  gap: 10px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.mp-facts dl {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  max-width: 760px;
+  border: 1px solid var(--ov-line-2);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.mp-facts dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--ov-line-2);
+}
+
+.mp-facts dl > div:last-child {
+  border-bottom: 0;
+}
+
+.mp-facts dt {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.mp-facts dd {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.mp-lang-switch {
+  margin-top: 18px;
+}
+
+@media (max-width: 700px) {
+  .mp-steps > li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .mp-facts dl > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}

@@ -59,7 +59,12 @@ describe('Jentera connections', () => {
     expect(screen.getAllByRole('article')).toHaveLength(8);
     for (const row of screen.getAllByRole('article')) {
       expect(within(row).queryByRole('button')).toBeNull();
-      expect(within(row).queryByRole('link')).toBeNull();
+      // A catalogue card may link to that connector's own page and nothing
+      // else. What this guards is an authorisation control on a connector
+      // nobody can actually authorise.
+      for (const link of within(row).queryAllByRole('link')) {
+        expect(link.getAttribute('href')).toMatch(/^\/connect\/[a-z-]+$/);
+      }
     }
     await user.type(screen.getByRole('searchbox'), 'Sheets');
     expect(screen.getAllByRole('article')).toHaveLength(1);

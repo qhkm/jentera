@@ -169,7 +169,15 @@ export function LandingHeader({
   );
 }
 
-export function LandingFooter({ tagline = FOOTER.tagline }: { tagline?: string } = {}) {
+export function LandingFooter({
+  tagline = FOOTER.tagline,
+  links = FOOTER.links,
+  label = 'Company links',
+}: {
+  tagline?: string;
+  links?: readonly MarketingLink[];
+  label?: string;
+} = {}) {
   return (
     <footer className="marketing-footer w-full border-t border-rail">
       <div className="lp-container">
@@ -186,10 +194,10 @@ export function LandingFooter({ tagline = FOOTER.tagline }: { tagline?: string }
             <p className="text-sm text-text-secondary">{tagline}</p>
           </div>
           <nav
-            aria-label="Company links"
+            aria-label={label}
             className="flex flex-wrap items-center gap-6 text-sm text-text-secondary"
           >
-            {FOOTER.links.map((l) => l.href.startsWith('/') ? (
+            {links.map((l) => l.href.startsWith('/') ? (
               <Link key={l.href} className="transition-colors hover:text-text" to={l.href}>
                 {l.label}
               </Link>

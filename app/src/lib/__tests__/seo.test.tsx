@@ -3,7 +3,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, useNavigate } from 'react-router';
 import { PageMetadata } from '@/components/PageMetadata';
-import { INDEXABLE_PAGE_SOURCES, INDEXABLE_PATHS, PRIVATE_PATHS, SOCIAL_IMAGE, escapeXml, metaEntries, pageSeo, seoHead, structuredData } from '../seo';
+import { INDEXABLE_PAGE_SOURCES, INDEXABLE_PATHS, PRIVATE_PATHS, SOCIAL_IMAGE, alternateLinks, escapeXml, metaEntries, pageSeo, seoHead, structuredData } from '../seo';
+import { CONNECTOR_PAGES, unbackedConnectorPages } from '@/lib/connector-pages';
+import { PRICING_QUESTIONS, pricingFaqs } from '@/routes/Pricing';
 import { renderPublic } from '@/entry-prerender';
 
 afterEach(() => {
@@ -95,6 +97,15 @@ describe('public SEO and social previews', () => {
     expect(renderPublic('/terms')).toContain('Kitakod Ventures');
     expect(renderPublic('/terms')).toContain('href="/privacy"');
     expect(landing).toContain('href="/terms"');
+    expect(renderPublic('/pricing')).toContain('RM199');
+    expect(renderPublic('/pricing')).toContain('10 free chat requests');
+    expect(renderPublic('/about')).toContain('SSM 202203226187');
+    expect(renderPublic('/connect/telegram')).toContain('does not message your customers');
+    expect(renderPublic('/connect/google-calendar')).toContain('permission verification');
+    const ms = renderPublic('/ms');
+    expect(ms).toContain('Staf AI');
+    expect(ms).toContain('RM199');
+    expect(ms).toContain('href="/"');
     expect(renderPublic('/404')).toContain('Page not found');
     expect(() => renderPublic('/app')).toThrow('Cannot prerender a private route');
     expect(fetch).not.toHaveBeenCalled();
@@ -105,13 +116,72 @@ describe('public SEO and social previews', () => {
     // Public shells revalidate but may be stored; no-store belongs to the
     // authenticated routes below them.
     expect(headers).toMatch(/^\/terms\n  Cache-Control: no-cache, must-revalidate$/m);
-    expect(headers).not.toMatch(/^\/(?:|connect|privacy|terms)\n  Cache-Control: [^\n]*no-store/m);
+    expect(headers).not.toMatch(/^\/(?:|ms|pricing|about|connect|privacy|terms)\n  Cache-Control: [^\n]*no-store/m);
     for (const path of PRIVATE_PATHS) {
       const escapedPath = path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       expect(headers).toMatch(new RegExp(`^${escapedPath}\\n(?:  [^\\n]+\\n)*  X-Robots-Tag: noindex, nofollow$`, 'm'));
     }
     const redirects = readFileSync('public/_redirects', 'utf8');
     expect(redirects).toMatch(/^\/terms\/\s+\/terms\s+301$/m);
+    for (const path of INDEXABLE_PATHS) {
+      if (path === '/') continue;
+      const escaped = path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      expect(redirects).toMatch(new RegExp(`^${escaped}\\/\\s+${escaped}\\s+301$`, 'm'));
+    }
     expect(redirects).not.toMatch(/^\/\*\s+\/index.html\s+200/m);
+  });
+});
+
+describe('secondary public pages', () => {
+  it('pairs the two landing languages in both directions and leaves untranslated pages alone', () => {
+    for (const path of ['/', '/ms']) {
+      const links = alternateLinks(path);
+      expect(links.map((link) => link.hreflang)).toEqual(['en-MY', 'ms-MY', 'x-default']);
+      // Self-reference: Google ignores the whole annotation without it.
+      expect(links.some((link) => link.href === `https://jentera.ai${path === '/' ? '/' : path}`)).toBe(true);
+      expect(links.find((link) => link.hreflang === 'x-default')!.href).toBe('https://jentera.ai/');
+    }
+    for (const path of INDEXABLE_PATHS) {
+      if (path === '/' || path === '/ms') expect(alternateLinks(path)).toHaveLength(3);
+      else expect(alternateLinks(path)).toHaveLength(0);
+    }
+    expect(pageSeo('/ms').lang).toBe('ms');
+    expect(pageSeo('/pricing').lang).toBe('en');
+    expect(metaEntries('/ms').find((entry) => entry.key === 'og:locale')!.content).toBe('ms_MY');
+  });
+
+  it('gives every indexable path its own title, description and sitemap sources', () => {
+    const titles = INDEXABLE_PATHS.map((path) => pageSeo(path).title);
+    expect(new Set(titles).size).toBe(titles.length);
+    const descriptions = INDEXABLE_PATHS.map((path) => pageSeo(path).description);
+    expect(new Set(descriptions).size).toBe(descriptions.length);
+    for (const path of INDEXABLE_PATHS) {
+      expect(pageSeo(path).title).not.toBe('Page not found — Jentera');
+      expect(pageSeo(path).description.length).toBeGreaterThan(60);
+      expect(pageSeo(path).description.length).toBeLessThan(320);
+    }
+  });
+
+  it('only publishes a connector page for a connector that works', () => {
+    expect(unbackedConnectorPages()).toEqual([]);
+    for (const page of CONNECTOR_PAGES) {
+      expect(INDEXABLE_PATHS).toContain(`/connect/${page.slug}`);
+      expect(page.limits.length).toBeGreaterThan(2);
+      expect(page.related.length).toBeGreaterThan(1);
+    }
+  });
+
+  it('keeps the pricing page answering the same questions as the landing FAQ', () => {
+    expect(pricingFaqs()).toHaveLength(PRICING_QUESTIONS.length);
+  });
+
+  it('describes the launch price as a range rather than the introductory month alone', () => {
+    const graph = structuredData('/pricing')!['@graph'] as Record<string, unknown>[];
+    const product = graph.find((node) => node['@type'] === 'Product') as Record<string, unknown>;
+    const offers = product.offers as Record<string, unknown>;
+    expect(offers['@type']).toBe('AggregateOffer');
+    expect(offers.lowPrice).toBe('99');
+    expect(offers.highPrice).toBe('199');
+    expect(offers.priceCurrency).toBe('MYR');
   });
 });

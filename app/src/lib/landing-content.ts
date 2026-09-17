@@ -259,20 +259,27 @@ export const FAQS = [
   },
 ] as const;
 
+/* Pricing points at the page, not the landing anchor. An anchor is invisible
+   to search — every secondary page needs a sitewide link before it can be
+   found at all. */
 export const NAV_LINKS = [
   { href: "/#work", label: "What it does" },
   { href: "/#how", label: "How it works" },
   { href: "/connect", label: "Connections" },
-  { href: "/#pricing", label: "Pricing" },
-  { href: "/#control", label: "Your control" },
+  { href: "/pricing", label: "Pricing" },
+  { href: "/about", label: "About" },
 ];
 
 export const FOOTER = {
   tagline: "Built by AISAR for Malaysian businesses.",
   email: "hello@kitakodventures.com",
   links: [
+    { href: "/pricing", label: "Pricing" },
+    { href: "/connect", label: "Connections" },
+    { href: "/about", label: "About" },
     { href: "/privacy", label: "Privacy" },
     { href: "/terms", label: "Terms" },
+    { href: "/ms", label: "Bahasa Malaysia" },
     { href: "https://aisar.ai", label: "AISAR ↗" },
     { href: "https://github.com/qhkm", label: "Open source ↗" },
     { href: "https://x.com/qhkmdev9", label: "Updates ↗" },

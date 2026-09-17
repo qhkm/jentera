@@ -7,13 +7,17 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const dist = new URL('../dist/', import.meta.url);
 const repository = fileURLToPath(new URL('../../', import.meta.url));
 const template = await readFile(new URL('index.html', dist), 'utf8');
-if (!template.includes('<!--seo-head-->') || !template.includes('<div id="root"></div>')) throw new Error('Prerender template markers missing');
+if (!template.includes('<!--seo-head-->') || !template.includes('<div id="root"></div>') || !template.includes('<html lang="en">')) throw new Error('Prerender template markers missing');
 const vite = await createServer({ root, mode: 'production', appType: 'custom', server: { middlewareMode: true, hmr: false } });
 try {
-  const { renderPublic, seoHead, escapeXml, INDEXABLE_PATHS, INDEXABLE_PAGE_SOURCES, PRIVATE_PATHS, SITE_URL } = await vite.ssrLoadModule('/src/entry-prerender.tsx');
+  const { renderPublic, seoHead, pageSeo, escapeXml, INDEXABLE_PATHS, INDEXABLE_PAGE_SOURCES, PRIVATE_PATHS, SITE_URL } = await vite.ssrLoadModule('/src/entry-prerender.tsx');
   for (const path of [...INDEXABLE_PATHS, ...PRIVATE_PATHS, '/404']) {
     const publicPage = INDEXABLE_PATHS.includes(path) || path === '/404';
-    const html = template.replace('<!--seo-head-->', () => seoHead(path)).replace('<div id="root"></div>', () => publicPage
+    // <html lang> is the first thing a translation tool and a screen reader
+    // read, and Google cross-checks it against the hreflang pair.
+    const html = template
+      .replace('<html lang="en">', () => `<html lang="${pageSeo(path).lang}">`)
+      .replace('<!--seo-head-->', () => seoHead(path)).replace('<div id="root"></div>', () => publicPage
       ? `<div id="root" data-prerendered="${path}">${renderPublic(path)}</div>` : '<div id="root"></div>');
     if (publicPage && (!html.includes('<h1') || html.includes('The server did not finish this Suspense boundary'))) throw new Error(`Incomplete public render: ${path}`);
     const output = new URL(path === '/' ? 'index.html' : `${path.slice(1)}.html`, dist);
