@@ -45,8 +45,8 @@ bucket_name = "jentera-artifacts"
 enabled = true
 
 [vars]
-RUNTIME_SPARE_POOL_ENABLED = "false"
-RUNTIME_SPARE_POOL_TARGET = "2"
+RUNTIME_SPARE_POOL_ENABLED = "true"
+RUNTIME_SPARE_POOL_TARGET = "1"
 # Migration 041 must be applied before deploying this restriction.
 ACCESS_MODE = "waitlist"
 # Apply migration 057 and verify trial + paid flows before opening the preview.
