@@ -184,6 +184,38 @@ describe('compose-first Ask Jentera', () => {
     await waitFor(() => expect(repo.ask).toHaveBeenCalledTimes(2));
     expect(vi.mocked(repo.ask).mock.calls[1][1]).toMatchObject({ sessionId: originalSession, attachment: file });
   });
+  it('says it could not check rather than claiming Jentera is paused', async () => {
+    /* The refresh fires on activation, focus and visibility only — never on a
+       timer, because a status request wakes a sleeping business computer. So a
+       failure on a phone's flaky connection used to render as "paused", and
+       sending is blocked while paused, so the one thing that could clear it
+       could not run. The panel must not assert a state it did not verify. */
+    const user = userEvent.setup();
+    const repo = new LocalRepository();
+    repo.businessBrowser = vi.fn(async () => { throw new Error('offline'); });
+    await mount(<Harness />, repo);
+
+    expect(await screen.findByText(/could not check/i)).toBeVisible();
+    expect(screen.queryByText(/still under owner control/i)).not.toBeInTheDocument();
+
+    vi.mocked(repo.businessBrowser).mockResolvedValue({ enabled: true, paused: false });
+    await user.click(screen.getByRole('button', { name: /check again/i }));
+
+    await waitFor(() => expect(screen.queryByText(/could not check/i)).not.toBeInTheDocument());
+  });
+
+  it('still names owner control when the browser really is paused', async () => {
+    const repo = new LocalRepository();
+    repo.businessBrowser = vi.fn(async () => ({ enabled: true, paused: true }));
+    await mount(<Harness />, repo);
+
+    expect(await screen.findByText(/still under owner control/i)).toBeVisible();
+    /* The chat tool offers the same action, so more than one button carries
+       this name; the panel having one is what matters. */
+    expect(screen.getAllByRole('button', { name: /open business browser/i }).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/could not check/i)).not.toBeInTheDocument();
+  });
+
   it('retains a setup card and its original request after a refresh without automatically checking or resending', async () => {
     const user = userEvent.setup();
     const repo = new LocalRepository();

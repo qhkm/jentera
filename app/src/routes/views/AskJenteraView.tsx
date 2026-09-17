@@ -107,7 +107,16 @@ export default function AskJenteraView({
   const signedIn = useSignedIn();
   const preview = useChatPreview(signedIn);
   const previewExhausted = preview?.remaining === 0;
-  const [browserPaused, setBrowserPaused] = useState(false);
+  /* 'unknown' is not a third kind of pause: it is the honest answer when the
+     check itself failed. Rendering it as 'paused' asserted a fact we had not
+     verified, and because sending is blocked while paused, the refresh that
+     would correct it could not run — the panel deadlocked itself. */
+  const [browserControl, setBrowserControl] = useState<'ready' | 'paused' | 'unknown'>('ready');
+  /* Only a verified pause blocks sending. When the check failed we say so and
+     let the message through: the send path surfaces real runtime
+     unavailability itself, and refusing on a guess is what left a phone with
+     no way forward. */
+  const browserPaused = browserControl === 'paused';
   const [browserOpenRequest, setBrowserOpenRequest] = useState(0);
   const composer = useRef<HTMLTextAreaElement>(null);
   const filePicker = useRef<HTMLInputElement>(null);
@@ -169,31 +178,35 @@ export default function AskJenteraView({
      so a hand-back in the Connections screen or another tab is reflected
      before the next message is sent. Do not poll: a status request wakes a
      sleeping business computer. */
+  const refreshBrowserControl = useCallback((cancelled?: { current: boolean }) => {
+      void repo.businessBrowser().then((state) => {
+        if (!cancelled?.current) setBrowserControl(state.paused === true ? 'paused' : 'ready');
+      }).catch(() => {
+        /* Never turn a failed check into a "ready" signal — but do not claim
+           it is paused either. Say so, and offer a retry the person can tap:
+           the refresh is not on a timer because polling wakes a sleeping
+           business computer, so without one there is nothing to break the tie. */
+        if (!cancelled?.current) setBrowserControl((current) => (current === 'paused' ? 'paused' : 'unknown'));
+      });
+  }, [repo]);
+
   useEffect(() => {
     if (!active || !signedIn) {
-      if (!signedIn) setBrowserPaused(false);
+      if (!signedIn) setBrowserControl('ready');
       return;
     }
-    let cancelled = false;
-    const refresh = () => {
-      void repo.businessBrowser().then((state) => {
-        if (!cancelled) setBrowserPaused(state.paused === true);
-      }).catch(() => {
-        /* Runtime availability is surfaced by the normal send path. Keep the
-           last known pause state rather than turning a failed check into an
-           incorrect "ready" signal. */
-      });
-    };
+    const cancelled = { current: false };
+    const refresh = () => refreshBrowserControl(cancelled);
     const onVisibility = () => { if (!document.hidden) refresh(); };
     refresh();
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
-      cancelled = true;
+      cancelled.current = true;
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [active, signedIn, repo]);
+  }, [active, signedIn, refreshBrowserControl]);
 
   function prepare(text: string) {
     setDraft(text);
@@ -363,17 +376,24 @@ export default function AskJenteraView({
             </div>
           )}
 
-          {browserPaused && (
+          {browserControl !== 'ready' && (
             <div className="ask-browser-paused" id={browserPausedId} role="status">
               <Globe size={20} weight="duotone" aria-hidden="true" />
               <div>
-                <strong>{t('ask.browserPaused.title')}</strong>
-                <p>{t('ask.browserPaused.detail')}</p>
+                <strong>{t(browserControl === 'paused' ? 'ask.browserPaused.title' : 'ask.browserUnknown.title')}</strong>
+                <p>{t(browserControl === 'paused' ? 'ask.browserPaused.detail' : 'ask.browserUnknown.detail')}</p>
               </div>
-              <button type="button" onClick={() => setBrowserOpenRequest(n => n + 1)}>
-                {t('ask.browserPaused.action')}
-                <ArrowRight size={13} aria-hidden="true" />
-              </button>
+              {browserControl === 'paused' ? (
+                <button type="button" onClick={() => setBrowserOpenRequest(n => n + 1)}>
+                  {t('ask.browserPaused.action')}
+                  <ArrowRight size={13} aria-hidden="true" />
+                </button>
+              ) : (
+                <button type="button" onClick={() => refreshBrowserControl()}>
+                  {t('ask.browserUnknown.action')}
+                  <ArrowRight size={13} aria-hidden="true" />
+                </button>
+              )}
             </div>
           )}
 
@@ -539,7 +559,7 @@ export default function AskJenteraView({
                   </span>
                 )}
                 {signedIn && (
-                  <BusinessBrowser appearance="chat-tool" openRequest={browserOpenRequest} onPauseChange={setBrowserPaused} />
+                  <BusinessBrowser appearance="chat-tool" openRequest={browserOpenRequest} onPauseChange={(paused) => setBrowserControl(paused ? 'paused' : 'ready')} />
                 )}
               </div>
               <div className="ask-writing-actions">
