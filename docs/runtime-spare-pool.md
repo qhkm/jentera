@@ -1,17 +1,18 @@
 # Clean Sprite spare pool
 
-Deployed on 2026-09-17. **Not enabled in production yet.** Migration 059
+Deployed on 2026-09-17. **Enabled in production with target 1.** Migration 059
 was applied and its restricted permissions verified before the runtime release.
 The matching Worker and runtime bundle are live. The isolated clean preparation,
-activation, real-task and pool-off retry pilot passed. General enablement and
-automatic replenishment are the remaining rollout checks.
+activation, real-task and pool-off retry pilot passed. General enablement,
+assigned-fleet verification and automatic replenishment all passed. One clean
+ready spare is available; the previously claimed spare remains assigned.
 
 ## Deployment evidence
 
 - Feature commit: `8ce92c8497af0732ebd1b7bc1280d1968db93710`.
 - Release commit: `bcd5514d719bfdf0d888f002fac2d5ffe683c04c`.
 - Runtime release: `2026.09.17-3`, using that feature commit as the bundle.
-- Worker version: `ec43b4bb-69be-47ea-9ed6-0c6a78fade0b`, deployed at
+- Initial disabled Worker version: `ec43b4bb-69be-47ea-9ed6-0c6a78fade0b`, deployed at
   09:44 UTC. The deployed version's bindings confirm pool enabled `false`,
   target `2`, and the exact release/bundle above.
 - By 09:50 UTC, all 21 live runtime rows were ready and converged. The standard
@@ -22,10 +23,11 @@ automatic replenishment are the remaining rollout checks.
 - The API health endpoint returned HTTP 200. Signed-out desktop and mobile
   smoke checks covered `/`, `/onboard`, `/setup`, and `/app`, with no page
   errors or horizontal overflow.
-- At the initial rollout, production spare inventory was empty. Existing founder test businesses
+- At the initial rollout, production spare inventory was empty. Existing
+  founder test businesses
   already have runtimes; use a separate, real private operator test workspace
   for the activation pilot, not replacement or recycling of one of those
-  existing workspaces. General enablement has **not** been verified yet.
+  existing workspaces.
 - A private preparation completed in 262,841 ms at 10:13 UTC, using the actual
   production preparation code against the published release. Inventory entry
   `aa39ec7b-8d8e-447a-8560-e8b8d012600d` was ready, unassigned and checkpointed
@@ -52,10 +54,26 @@ automatic replenishment are the remaining rollout checks.
 - Reconciliation with the pool flag off returned ready on the same exact
   resource with unchanged runner/Hermes credentials (40,394 ms). The temporary
   remote-development entry point was stopped after the pilot.
+- Flag-only enablement commit `e7bee722b8a30adbc4b6e8be55bc3501c460552e`
+  preserved the pilot's release and bundle. `ship-runtime.sh --resume` deployed
+  Worker `5303a1d9-f4a1-4379-9d2f-8ee28d7b87e7` at 10:21 UTC. Its deployed
+  bindings confirm pool enabled `true`, target `1` and the unchanged exact pins.
+  The drift sweep published no upgrades; convergence was 22/22. The first fleet
+  verification saw one existing runtime fail authenticated readiness; a normal
+  read-only retry passed, and full DB-backed verification then passed 22/22
+  without any runtime file/service changes. `/api/health` returned HTTP 200.
+- The production background path automatically created replacement inventory
+  `fe2f94d0-2dd1-4055-a2f0-63805f805427` at 10:21 UTC and began preparing it
+  against the exact release/bundle. It became ready at 10:26:45 UTC with
+  checkpoint `v1`, exact pins and no problem recorded. At 10:27 UTC inventory
+  was exactly one assigned pilot entry and one ready spare, with no quarantine;
+  all 22 assigned runtimes remained ready and converged. Provider metadata
+  confirmed the replacement endpoint uses private `sprite` authentication.
 
 This release changes backend/runtime code only. The existing Pages deployment,
 billing configuration, and separately disabled desktop-streaming feature remain
-unchanged. Keep the pool flag off until the safe-rollout pilot below passes.
+unchanged. Hold the enabled target at 1; increasing it to 2 is a separate rollout
+decision after observing healthy replenishment and compute/storage costs.
 
 ## What changes
 

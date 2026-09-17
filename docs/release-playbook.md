@@ -62,6 +62,29 @@ the middle can be finished by hand, and so rollback has a recipe.
    checks runtime.env, the runner's /readyz release, the Hermes patch verify,
    and that hermes and aisar-runner are running.
 
+## Clean spare inventory after a release
+
+Assigned pooled runtimes (`aisar-p-<32 hex>`) are ordinary customer runtimes:
+the DB-backed sweep, convergence watch and fleet verification include them.
+The legacy `--from-sprites` path filters only `aisar-b-` and cannot prove fleet
+health once pooled runtimes are assigned.
+
+Unassigned inventory is separate from `agent_runtime` and is **not** upgraded
+by the tenant drift sweep. Claiming requires the exact current release and
+bundle. On a pin change, the pool refill quarantines obsolete entries, which
+still occupy its bounded budget. Normal signups fall back to cold provisioning;
+do not force assignment of a stale spare or relax the pin check.
+
+V1's release policy is discard/refill, not re-bootstrap or reuse. Review each
+obsolete unassigned entry, resolve its exact provider identity, remove only
+that unused resource through the provider's management path, then explicitly
+retire that inventory entry with the owner role. The next minute cron can
+prepare fresh inventory. Do not retire first and assume cleanup happened, and
+never delete or retire an assigned resource. See
+[runtime-spare-pool.md](runtime-spare-pool.md) for the bounds, safe pilot,
+monitoring and manual cleanup requirements. Automatic retirement is not yet
+implemented; include this review in every runtime release while the pool is on.
+
 ## Rollback
 
 1. Point `RUNTIME_BUNDLE_COMMIT` (and/or `RUNTIME_RELEASE`) back at the last
@@ -69,6 +92,13 @@ the middle can be finished by hand, and so rollback has a recipe.
 2. Rollback to an **older** hermes pin still works: the bootstrap probes the
    installer for `--force-commit` and only passes it when supported (old
    installers guard rollback pins; new ones dropped the flag).
+3. After assigning a pooled runtime, retain pool-aware Worker code, migration
+   059 and its once-used tombstones. Disable the global pool flag to stop new
+   claims/refill; never roll the Worker back to pre-pool code or an unsupported
+   bundle. Already-assigned customers must retain their recorded resource
+   identity and tenant credentials. Review leftover unassigned resources
+   separately; turning the flag off does not delete them or cancel installation
+   already in progress.
 
 ## Rules learned the hard way
 
