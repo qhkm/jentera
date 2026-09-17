@@ -1215,7 +1215,17 @@ async function answerThroughRuntime(options: {
   return { result };
 }
 
-describe('the wait for an answer’s checks', () => {
+/** The delivery trace both check events carry, which is the only record of
+    which order a run took. */
+const deliveryTraces = () =>
+  asTenant(A, async (tx) => {
+    const rows = await tx<{ type: string; delivery: Record<string, unknown> | null }[]>`
+      select type, payload->'delivery' as delivery from run_event
+       where type in ('outcome.observed', 'answer.guardrail') order by seq`;
+    return rows;
+  });
+
+describe('the wait for an answer\u2019s checks', () => {
   it('delivers an ordinary answer before the assessment finishes', async () => {
     const order: string[] = [];
     let releaseAssessment = () => {};
@@ -1252,8 +1262,15 @@ describe('the wait for an answer’s checks', () => {
     expect(order.indexOf('delivered')).toBeLessThan(order.indexOf('assessment.finished'));
     expect(edits).toContainEqual({ chatId: 42, messageId: 99, text: 'Yes, we are open on Sunday.' });
     /* Delivering first does not skip the checks: the trace carries the same
-       assessment it would have had, written behind the reply instead. */
+       assessment it would have had, written behind the reply instead — and
+       says so, because nothing else in the record can tell the two apart. */
     expect(await trace()).toContain('outcome.observed');
+    const traces = await deliveryTraces();
+    expect(traces.map((row) => row.type)).toContain('outcome.observed');
+    for (const row of traces) {
+      expect(row.delivery).toMatchObject({ deliveredFirst: true, channel: 'telegram', resumedSlice: false });
+      expect(typeof row.delivery?.checksMs).toBe('number');
+    }
   });
 
   it('still puts the caution in front of an answer that may need one', async () => {
@@ -1266,5 +1283,8 @@ describe('the wait for an answer’s checks', () => {
     const events = await trace();
     expect(events).toContain('answer.guardrail');
     expect(events).toContain('outcome.observed');
+    for (const row of await deliveryTraces()) {
+      expect(row.delivery).toMatchObject({ deliveredFirst: false, revealed: false });
+    }
   });
 });

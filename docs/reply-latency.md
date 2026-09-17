@@ -256,10 +256,53 @@ screen, and stitching a replayed answer onto a partial one duplicates it.
 Lifting that needs a durable record of whether anything has been revealed for
 a run; `runtime_task.stream_seq` is the nearest thing and does not answer it.
 
-Not yet re-measured in production. The figure to compare is the gap from the
-last `agent.tool` to `work.completed`; `unverified_completion` appearing in
-`answer.guardrail` payloads would be the first sign the reachability argument
-above is wrong.
+### Measuring it, and one way not to
+
+**The span from the last `agent.tool` to `work.completed` does not move, and
+was the wrong thing to watch.** `work.completed` is written by `finishRun`,
+inside the completion transaction, which is after the checks on both sides of
+this change. Only the moment of delivery moved; total time to completion is
+unchanged by design. A query on that span would have read as "no effect" from
+a change working perfectly.
+
+So both check events carry a `delivery` object:
+
+| Field | Reads |
+|---|---|
+| `deliveredFirst` | Whether the owner had the answer before the checks finished |
+| `checksMs` | How long the checks took — on a `deliveredFirst` run, the wait removed |
+| `channel` | `telegram`, or the run's own channel |
+| `resumedSlice` | The run spanned slices, so its app answer still waits for completion |
+| `revealed` | The finished answer was released to the app's stream early |
+
+The win per run is `checksMs` where `deliveredFirst` is true, split by
+`channel` and `resumedSlice`:
+
+```sql
+select payload->'delivery'->>'channel' as channel,
+       payload->'delivery'->>'resumedSlice' as resumed,
+       count(*),
+       round(percentile_cont(0.5) within group (
+         order by (payload->'delivery'->>'checksMs')::numeric) / 1000, 1) as p50_s
+  from run_event
+ where type = 'outcome.observed'
+   and (payload->'delivery'->>'deliveredFirst')::boolean
+   and created_at > now() - interval '7 days'
+ group by 1, 2;
+```
+
+A caution that arrived behind an answer already read is
+`type = 'answer.guardrail'` with a non-empty `warnings` **and**
+`delivery.deliveredFirst` true. The warning alone proves nothing: the event
+does not otherwise record the order, and a held run's caution is in the
+delivered text.
+
+If one does appear it will be `unverified_completion`, and the corrective
+change is **not** to hold action questions — `streamHoldReason` already
+returns `action`, so those are held today. It would mean the assessment found
+missing completion evidence for an ordinary conversational question, and the
+answer would be either to hold on the assessment's reason rather than the
+question's, or to accept the late notice.
 
 ## Levers
 
