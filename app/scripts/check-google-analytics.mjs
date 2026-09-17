@@ -6,6 +6,10 @@ import { chromium } from 'playwright';
 
 const localOrigin = process.env.ANALYTICS_QA_ORIGIN ?? 'http://127.0.0.1:4187';
 assert(['localhost', '127.0.0.1', '[::1]'].includes(new URL(localOrigin).hostname), 'QA source must be local');
+const sourceOrigin = process.env.ANALYTICS_QA_LIVE_ORIGIN ?? localOrigin;
+if (process.env.ANALYTICS_QA_LIVE_ORIGIN) {
+  assert(['https://jentera.ai', 'https://jentera.aisar.ai'].includes(sourceOrigin), 'Live QA source must be an existing Jentera host');
+}
 const output = process.env.CHECK_OUTPUT_DIR;
 if (output) await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true,
@@ -35,12 +39,22 @@ try {
         return route.fulfill({ status: url.pathname === '/api/me' ? 401 : 200, headers, contentType: 'application/json', body: JSON.stringify(body) });
       }
       if (url.origin === 'https://jentera.ai') {
-        const source = new URL(url.pathname + url.search, localOrigin);
+        const source = new URL(url.pathname + url.search, sourceOrigin);
         const response = await fetch(source);
         const headers = Object.fromEntries(response.headers);
         delete headers['content-encoding'];
         delete headers['content-length'];
-        return route.fulfill({ status: response.status, headers, body: Buffer.from(await response.arrayBuffer()) });
+        let body = Buffer.from(await response.arrayBuffer());
+        if (process.env.ANALYTICS_QA_LIVE_ORIGIN && headers['content-type']?.includes('text/html')) {
+          // Remove only Cloudflare's injected tracker. Never modify application assets.
+          body = Buffer.from(body.toString().replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, script => {
+            const src = /\bsrc\s*=\s*["']([^"']+)["']/i.exec(script)?.[1];
+            if (!src) return script;
+            const target = new URL(src, sourceOrigin);
+            return target.hostname === 'static.cloudflareinsights.com' && target.pathname.startsWith('/beacon.min.js') ? '' : script;
+          }));
+        }
+        return route.fulfill({ status: response.status, headers, body });
       }
       // No Google collections, Turnstile, external pages or live provider calls.
       return route.fulfill({ status: 204 });
