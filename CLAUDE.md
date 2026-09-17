@@ -551,4 +551,18 @@ from a made-up address would damage the sending reputation being tested.
 ## Gotchas
 
 - `_next/static/` are deployed artifacts from an upstream Next.js build that is **not in this repo**. Treat as opaque. The React app does not load them — its design system was extracted into `design-system/` and reimplemented.
-- The landing page is English-only; only the dashboard is bilingual.
+- The landing page at `/` is English; `/ms` is its Bahasa Malaysia twin and the
+  two are paired with hreflang in `lib/seo.ts`. Every other marketing page is
+  English only. A claim stated on one landing must hold on the other — the
+  prices and limits on `/ms` come from `launch-offer.ts` through
+  `landing-content-ms.ts` so they cannot drift, and `seo.test.tsx` fails if an
+  English chrome string reaches the Malay page.
+- Public pages are `/`, `/ms`, `/pricing`, `/about`, `/connect`,
+  `/connect/telegram`, `/connect/google-calendar`, `/privacy`, `/terms`.
+  `INDEXABLE_PATHS` in `lib/seo.ts` is the list; adding a path there is what
+  prerenders it, sitemaps it and puts it under `check-seo.mjs`. A new page also
+  needs its trailing-slash 301 in `public/_redirects` and a cache rule in
+  `public/_headers`, both of which the tests check against `INDEXABLE_PATHS`.
+- **A connector only gets a page under `/connect/` if it is in
+  `LIVE_CONNECTORS`.** `unbackedConnectorPages()` fails the test otherwise. A
+  page for a planned connector is a page about something that does nothing.
