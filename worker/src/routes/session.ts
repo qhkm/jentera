@@ -8,12 +8,14 @@ import {
   consumeLoginToken,
   issueLoginToken,
   issueNativeCode,
+  isBlockedAccountError,
   readCookie,
   readSessionToken,
   redeemNativeCode,
   revokeSession,
   sessionCookie,
   verifySession,
+  verifyIdentitySession,
   authLandingPath,
   loginWithPassword,
   setDetailLevel,
@@ -33,7 +35,6 @@ import {
 } from '../oauth';
 import { notifySignup, type SignupDoor } from '../signup-notice';
 import { accessForEmail, restrictedAccess } from '../access';
-import { verifyIdentitySession } from '../auth';
 import { verifyTurnstile } from '../turnstile';
 import { handleGoogleCalendarCallback } from './google-calendar-oauth';
 
@@ -535,7 +536,9 @@ export async function handleSession(
        leans on Google's assertion of ownership to claim accounts. */
     if (!profile.emailVerified) return fail('google-unverified');
 
-    const session = await signInWithGoogle(env, profile);
+    let session;
+    try { session = await signInWithGoogle(env, profile); }
+    catch (error) { if (isBlockedAccountError(error)) return fail('google-failed'); throw error; }
     const invite = await openTrial(env, carry ?? null, `google:${state}`);
     if (session.created) await announce(profile.email, 'google');
     const landing = trialLanding(invite, await authLandingPath(env, session.userId));

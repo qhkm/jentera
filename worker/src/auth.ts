@@ -33,6 +33,12 @@ const NATIVE_CODE_TTL_MS = 60 * 1000;
 /** Outstanding unconsumed links per address before we quietly stop sending. */
 const MAX_OUTSTANDING = 3;
 
+/** Database guard also protects older releases and closes concurrent upsert
+ * races. Match only our fixed error; never expose database/identity details. */
+export function isBlockedAccountError(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === '42501' && error.message === 'Account unavailable';
+}
+
 function base64url(bytes: Uint8Array): string {
   let s = '';
   for (const b of bytes) s += String.fromCharCode(b);
@@ -89,7 +95,7 @@ export async function issueLoginToken(
       )
     `;
     return { token };
-  });
+  }).catch(error => { if (isBlockedAccountError(error)) return { token: null }; throw error; });
 }
 
 export interface Session {
@@ -203,7 +209,7 @@ export async function consumeLoginToken(env: Env, token: string): Promise<Sessio
         }
       : undefined;
     return native ? { ...session, native } : session;
-  });
+  }).catch(error => { if (isBlockedAccountError(error)) return null; throw error; });
 }
 
 /**
@@ -358,7 +364,7 @@ export async function signUpWithPassword(
       returning id
     `;
     return rows.length > 0 ? 'created' : 'exists';
-  });
+  }).catch(error => { if (isBlockedAccountError(error)) return 'exists'; throw error; });
 }
 
 export type LoginFailure = 'bad-credentials' | 'unverified';
@@ -393,7 +399,7 @@ export async function loginWithPassword(
 
     await sql`update app_user set last_seen_at = now() where id = ${user.id}`;
     return startSession(sql, user.id, email);
-  });
+  }).catch(error => { if (isBlockedAccountError(error)) return 'bad-credentials'; throw error; });
 }
 
 /** Set or replace the password of an already-authenticated user. */
@@ -425,8 +431,13 @@ export async function signInWithGoogle(
   profile: { subject: string; email: string; name: string | null },
 ): Promise<Session> {
   return withUser(env, async (sql) => {
-    const { userId, created } = await claimGoogleIdentity(sql, profile);
-    return startSession(sql, userId, profile.email, created);
+    // Linking and session creation are one transaction: a blocked stable
+    // Google subject must not leave a new verified account behind.
+    const result = await sql.begin(async tx => {
+      const { userId, created } = await claimGoogleIdentity(tx, profile);
+      return startSession(tx, userId, profile.email, created);
+    });
+    return result as Session;
   });
 }
 
@@ -440,7 +451,7 @@ export async function signInWithGoogle(
  * means handing over accounts.
  */
 export async function claimGoogleIdentity(
-  sql: postgres.Sql,
+  sql: postgres.Sql | postgres.TransactionSql,
   profile: { subject: string; email: string; name: string | null },
 ): Promise<{ userId: string; created: boolean }> {
   {
