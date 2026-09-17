@@ -1,9 +1,34 @@
 # Clean Sprite spare pool
 
-Implemented on 2026-09-17. **Not enabled in production yet.** Migration 059
+Deployed on 2026-09-17. **Not enabled in production yet.** Migration 059
 was applied and its restricted permissions verified before the runtime release.
-The matching runtime release and live pilot are the remaining rollout gates;
-no live spares have been created or assigned yet.
+The matching Worker and runtime bundle are live. The isolated preparation and
+activation pilot is still required; no live spares have been created or assigned.
+
+## Deployment evidence
+
+- Feature commit: `8ce92c8497af0732ebd1b7bc1280d1968db93710`.
+- Release commit: `bcd5514d719bfdf0d888f002fac2d5ffe683c04c`.
+- Runtime release: `2026.09.17-3`, using that feature commit as the bundle.
+- Worker version: `ec43b4bb-69be-47ea-9ed6-0c6a78fade0b`, deployed at
+  09:44 UTC. The deployed version's bindings confirm pool enabled `false`,
+  target `2`, and the exact release/bundle above.
+- By 09:50 UTC, all 21 live runtime rows were ready and converged. The standard
+  release script's DB-backed fleet verification passed 21/21: runtime file
+  release, authenticated `/readyz` release, dependency verification, and both
+  `hermes` and `aisar-runner` services running. One upgrade recovered from a
+  network disconnect through its normal retry; no manual Sprite patching.
+- The API health endpoint returned HTTP 200. Signed-out desktop and mobile
+  smoke checks covered `/`, `/onboard`, `/setup`, and `/app`, with no page
+  errors or horizontal overflow.
+- Production spare inventory was empty. Existing founder test businesses
+  already have runtimes; use a separate, real private operator test workspace
+  for the activation pilot, not replacement or recycling of one of those
+  existing workspaces. General enablement has **not** been verified.
+
+This release changes backend/runtime code only. The existing Pages deployment,
+billing configuration, and separately disabled desktop-streaming feature remain
+unchanged. Keep the pool flag off until the safe-rollout pilot below passes.
 
 ## What changes
 
