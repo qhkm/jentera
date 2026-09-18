@@ -63,3 +63,33 @@ a Pages-only deploy cannot install this. The new prompt includes legacy
 login, an event read, a pending proposal, refusal before approval, and final
 creation after approval using a dedicated test Calendar. Local request preparation
 and mocked gateway tests alone do not prove a live Google account works.
+
+## Production deployment: 18 September 2026
+
+- Runtime target: `2026.09.18-6`; bundle
+  `f34c88b028eb28aaa9f0da26fccbc3a6ae61ec7f`; release commit
+  `d7b99a9ff677555f78eb111bd78db61891193666`.
+- Worker version: `456eece9-ea03-4507-8310-76ee0dcad729`.
+  `/api/health` returned HTTP 200 after deployment.
+- The standard release gate passed, including 46 bootstrap contract tests,
+  public asset availability, Hermes pin resolution and transfer compatibility.
+- The preceding bundle omitted `browser-recipes.mjs`, which `business-browser.mjs`
+  imports. Production error classification confirmed this failure. Commit
+  `f34c88b` supplies the dependency and adds a regression test checking the module
+  graph and matching assets in both provisioning paths. Release `-6` supersedes
+  the initial gws release `-5`; no Sprite was patched by hand.
+- Real installed CLI/version, managed Calendar request preparation and
+  normal-browser setup-link checks passed on all 24 tenant Sprites.
+- After queued upgrades drained, all 24 runtime records reported the desired
+  and observed release `2026.09.18-6` with status `ready` at 05:27 UTC.
+  A fresh full-fleet verification passed 24/24: on-disk and serving release,
+  Hermes dependency checks, and both runtime services running. Earlier checks
+  caught a transient service restart; the settled check supersedes those results.
+- A bounded real Calendar read passed on the founder's Kitakod Ventures runtime.
+  Event contents were not printed or logged; no event or proposal was created.
+  Live event-approval execution and a new browser consent remain separate tests.
+- Unassigned inventory still contains two obsolete never-assigned spares from
+  `2026.09.17-4`, quarantined after provider-unavailable retirement attempts.
+  Read-only provider metadata confirms both still exist. They were not deleted,
+  retired, assigned, or counted as current-release ready inventory. Cold
+  provisioning remains available; the spare replenishment gate is not passed.
