@@ -73,7 +73,11 @@ sprite exec -o "$sprite_org" -s "$sprite_name" -- mkdir -p /home/sprite/aisar/ru
 sprite file push -o "$sprite_org" -s "$sprite_name" -p \
   runner/src/server.mjs \
   runner/src/business-browser.mjs \
+  runner/src/browser-recipes.mjs \
   runner/src/browser-preview-stream.mjs \
+  runner/src/desktop-gateway.mjs \
+  runner/bin/desktop-smoke.mjs \
+  runner/bin/desktop-release-keys.py \
   runner/bin/browser-smoke.mjs \
   runner/bin/jentera-calendar.mjs \
   runner/bin/jentera-gws.mjs \
@@ -87,6 +91,7 @@ sprite file push -o "$sprite_org" -s "$sprite_name" -p \
   runner/bin/display-service.sh \
   runner/bin/runner-service.sh \
   runner/bin/bootstrap-runtime.sh \
+  runner/bin/spare-state.mjs \
   /home/sprite/aisar/runner/
 sprite file push -o "$sprite_org" -s "$sprite_name" -p \
   "$transfer" /home/sprite/aisar/bootstrap.env.in

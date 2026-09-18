@@ -149,6 +149,24 @@ test('gws is pinned, checked, bundled and installed before sealing spares', asyn
   assert.match(bootstrap, /jentera-gws\.mjs \/home\/sprite\/\.local\/bin\/jentera-gws/);
 });
 
+test('both provisioning paths include every first-party module imported by the flat runtime bundle', async () => {
+  const worker = await readFile(new URL('../../worker/src/runtime/provision.ts', import.meta.url), 'utf8');
+  const operator = await readFile(PROVISION, 'utf8');
+  const body = worker.match(/const assets = \[([\s\S]*?)\n  \];/)?.[1];
+  assert.ok(body, 'production asset list must be inspectable');
+  const assets = [...body.matchAll(/'(runner\/(?:src|bin)\/[^']+)'/g)].map((match) => match[1]);
+  assert.ok(assets.length > 15);
+  const names = new Set(assets.map((asset) => asset.split('/').at(-1)));
+  for (const asset of assets) {
+    assert.ok(operator.includes(asset), `operator bundle is missing ${asset}`);
+    if (!asset.endsWith('.mjs')) continue;
+    const source = await readFile(new URL(`../../${asset}`, import.meta.url), 'utf8');
+    for (const match of source.matchAll(/(?:from\s*|import\s*\()['"]\.\/([^'"]+)['"]/g)) {
+      assert.ok(names.has(match[1]), `${asset} imports ${match[1]}, which is missing from the runtime bundle`);
+    }
+  }
+});
+
 test('operator provisioning includes the startup diagnostic patch module', async () => {
   const provision = await readFile(PROVISION, 'utf8');
   const patch = await readFile(new URL('../bin/patch-hermes-dependencies.mjs', import.meta.url), 'utf8');
