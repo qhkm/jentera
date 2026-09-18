@@ -134,6 +134,47 @@
       .business-shortcuts > button):hover {
   background: rgb(var(--border-ink) / .035);
 }
+/* Reduce nested boxes and roomy list cards across the remaining pages. */
+.dashboard-shell
+  :is(.library-card.card, .connector-card, .routine-card.card, .goal-card.card) {
+  padding: 16px;
+  gap: 12px;
+  border-radius: 14px;
+  box-shadow: none;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .goal-latest {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.dashboard-shell .routine-summary-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 0;
+  width: auto;
+}
+.dashboard-shell .routine-summary-metrics > span {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 4px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: var(--workspace-support);
+}
+.dashboard-shell .routine-summary-metrics > span + span::before {
+  content: '·';
+  margin-inline: 8px;
+}
+.dashboard-shell .routine-summary-metrics strong {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 500;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell
+  :is(.routine-notice, .goal-plan > header) {
+  background: transparent;
+}
 .dashboard-shell :is(.home-ask-launcher, .routine-starter:not(:disabled), .routine-card, .chat-task-card):hover {
   border-color: var(--rail);
   background: var(--bg-card-hover);
