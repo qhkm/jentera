@@ -520,7 +520,7 @@ export default function MyBusinessView({
 
         {/* ---- Connections (was its own view) ---- */}
         {tab === 'connections' && (
-          <section className="flex flex-col gap-4">
+          <section className="business-connections flex flex-col gap-4">
             {/* Real connections first. The catalogue below is what Jentera
             could connect to; this is what it actually can. */}
             {conns.mode === 'pending' ? (
@@ -542,29 +542,21 @@ export default function MyBusinessView({
               </Card>
             ) : (
               <>
-                {calendarFocus && signedIn && conns.mode === 'real' && <GoogleCalendarConnect id="connection-google" rows={conns.rows} setRows={conns.setRows} />}
-                <TelegramConnect id="connection-telegram" rows={conns.rows} setRows={conns.setRows} />
-                {!calendarFocus && signedIn && conns.mode === 'real' && <GoogleCalendarConnect id="connection-google" rows={conns.rows} setRows={conns.setRows} />}
+                {signedIn && conns.mode === 'real' && <details className="business-connection-row" open={calendarFocus || undefined}><summary>Google Calendar</summary><GoogleCalendarConnect id="connection-google" rows={conns.rows} setRows={conns.setRows} /></details>}
+                <details className="business-connection-row"><summary>Telegram</summary><TelegramConnect id="connection-telegram" rows={conns.rows} setRows={conns.setRows} /></details>
                 {/* Under the connections most owners use, not competing
                     with them: this one renders nothing unless the backend
                     offers something to connect. */}
-                <TokenConnect id="connection-tokens" rows={conns.rows} setRows={conns.setRows} />
+                <details className="business-connection-row"><summary>{t('biz.connections.other')}</summary><TokenConnect id="connection-tokens" rows={conns.rows} setRows={conns.setRows} /></details>
                 {signedIn && <BusinessBrowser />}
               </>
             )}
-            <div className="flex flex-col gap-1">
-              <Eyebrow>{t('biz.connections')}</Eyebrow>
-              <p className="max-w-[66ch] text-[13px] text-text-secondary">
-                {t('biz.connections.desc')}
-              </p>
-            </div>
-
-            <section aria-labelledby="business-connectors-title">
-              <h3 id="business-connectors-title" className="text-sm font-semibold">
+            <details className="business-connection-directory">
+              <summary id="business-connectors-title" className="text-sm font-semibold">
                 {t('biz.connections.more')}
-              </h3>
+              </summary>
               <ConnectorOptions connections={conns} setupMode="existing" />
-            </section>
+            </details>
           </section>
         )}
 
