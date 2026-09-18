@@ -54,7 +54,7 @@ export function ConnectionActions({ name, explanation, confirming, checking = fa
       <ArrowsClockwise size={17} className={checking ? 'connection-checking' : undefined} aria-hidden="true" />
       {checking ? t('connectors.checkBusy') : t('connectors.check')}
     </Button>}
-    <Button type="button" ref={disconnect} variant="ghost" className="connection-disconnect" disabled={checking || busy} onClick={onRequestDisconnect}>
+    <Button type="button" ref={disconnect} variant="outline" className="connection-disconnect" disabled={checking || busy} onClick={onRequestDisconnect}>
       <Plugs size={17} aria-hidden="true" />{t('connectors.disconnect')}
     </Button>
   </div>;

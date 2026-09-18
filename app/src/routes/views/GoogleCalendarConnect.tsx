@@ -38,15 +38,15 @@ export default function GoogleCalendarConnect({
   }
 
   return (
-    <Card id={id} tabIndex={id ? -1 : undefined} className="gap-4">
-      <div className="flex flex-col gap-1">
+    <Card id={id} tabIndex={id ? -1 : undefined} className="calendar-connection gap-4">
+      {!calendars.length && <div className="flex flex-col gap-1">
         <div className="flex items-center gap-3"><Eyebrow>Google Calendar</Eyebrow><Tag>Pilot</Tag></div>
         <p className="max-w-[66ch] text-[13px] text-text-secondary">
           Let Jentera check your primary calendar and draft events. A draft is never added until
           you approve it in Activity.
         </p>
         <p className="text-[12px] text-text-muted">{t('connectors.googleVerification')}</p>
-      </div>
+      </div>}
 
       {outcome === 'failed' && <p role="alert" className="text-[13px] text-text-secondary">Google did not complete the connection. Please try again.</p>}
       {outcome === 'unavailable' && <p role="alert" className="text-[13px] text-text-secondary">Google Calendar is not configured for this Jentera environment yet.</p>}
@@ -56,12 +56,12 @@ export default function GoogleCalendarConnect({
       {calendars.length ? (
         <ul className="flex flex-col gap-3">
           {calendars.map((calendar) => (
-            <li key={calendar.id} className="flex flex-col gap-3 rounded-card border border-border bg-bg-card p-4">
+            <li key={calendar.id} className="calendar-account flex flex-col gap-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-sm">{calendar.displayName ?? 'Google account'}</p>
                   <p className="mt-1 text-[12px] text-text-muted">
-                    Primary calendar · event access only · no Gmail, Drive, Contacts, or Sheets
+                    Primary calendar · event access only
                   </p>
                 </div>
                 <Tag tone={calendar.status === 'connected' ? 'green' : 'amber'}>
@@ -78,6 +78,11 @@ export default function GoogleCalendarConnect({
                   </GoogleCalendarConnectionLink>
                 )}
               </ConnectionActions>
+              <details className="calendar-permissions">
+                <summary>{t('connectors.calendarDetails')}</summary>
+                <p className="text-[12px] text-text-secondary">Let Jentera check your primary calendar and draft events. Each new event requires your approval in Activity. No Gmail, Drive, Contacts, or Sheets access.</p>
+                <p className="text-[12px] text-text-muted">{t('connectors.googleVerification')}</p>
+              </details>
             </li>
           ))}
         </ul>
