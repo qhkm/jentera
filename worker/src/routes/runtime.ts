@@ -1,5 +1,6 @@
 import type { Env } from '../env';
 import { getRuntime, getRuntimeRegion, recordPrewarm } from '../agent-runtime';
+import { setupNotice } from '../runtime/setup-notice';
 import { withTenant } from '../db';
 import { publishRuntimeTask } from '../runtime';
 import { cancelRuntimeTask, findRuntimeApproval } from '../runtime/tasks';
@@ -100,7 +101,9 @@ export async function handleRuntime(
         desiredRelease: runtime.desiredRelease,
         observedRelease: runtime.observedRelease,
         lastReadyAt: runtime.lastReadyAt,
-        lastError: runtime.lastError,
+        /* Never the column itself: it carries provider text, host paths
+           and warnings parked on runtimes that are working. */
+        lastError: setupNotice(runtime.status, runtime.lastError),
         observedRegion,
         expectedRegion,
         regionStatus: !observedRegion || !expectedRegion

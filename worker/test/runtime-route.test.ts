@@ -322,6 +322,48 @@ async function call(method: string, path: string, env: Env, cookie?: string) {
   return response;
 }
 
+describe('what the runtime status tells the owner', () => {
+  /* Shown to three businesses, two of them customers, on 2026-09-18 while
+     their runtime was `ready` — a warning we park deliberately so a release
+     still converges, rendered to them as an error with a Fly host path in
+     it. */
+  const WARNING = 'Checkpoint failed after a healthy bootstrap; rollback point unchanged: '
+    + 'Failed to create checkpoint: JuiceFS rename clone: rename /dev/fly_vol/juicefs/data/checkpoints/v37';
+
+  it('does not send a working runtime’s internal warning to the browser', async () => {
+    await asOwner((sql) => sql`
+      insert into agent_runtime
+        (business_id, provider, provider_id, provider_name, provider_url, status,
+         desired_release, observed_release, last_error)
+      values (${A}, 'fly-sprite', 'sprite-1', 'aisar-b-alpha', 'https://aisar-b-alpha-x1.sprites.app',
+              'ready', '2026.09.01-1', '2026.09.01-1', ${WARNING})`);
+    const response = await call('GET', '/api/runtime', testEnv(), ownerCookie);
+    const raw = await response.text();
+    const body = JSON.parse(raw) as { runtime: { status: string; lastError: string | null } };
+    expect(body.runtime.status).toBe('ready');
+    expect(body.runtime.lastError).toBeNull();
+    /* Not merely absent from that field — absent from the response. */
+    expect(raw).not.toContain('JuiceFS');
+    expect(raw).not.toContain('/dev/fly_vol');
+    expect(raw).not.toContain('checkpoints/v37');
+  });
+
+  it('gives an owner who genuinely cannot use it something to do', async () => {
+    await asOwner((sql) => sql`
+      insert into agent_runtime
+        (business_id, provider, provider_id, provider_name, provider_url, status,
+         desired_release, observed_release, last_error)
+      values (${A}, 'fly-sprite', 'sprite-1', 'aisar-b-alpha', 'https://aisar-b-alpha-x1.sprites.app',
+              'error', '2026.09.01-1', '2026.09.01-1',
+              ${'Sprite bootstrap exited 1: JENTERA_SETUP_STAGE:install nanoid, undici'})`);
+    const response = await call('GET', '/api/runtime', testEnv(), ownerCookie);
+    const raw = await response.text();
+    expect(JSON.parse(raw).runtime.lastError).toMatch(/retrying/i);
+    expect(raw).not.toContain('JENTERA_SETUP_STAGE');
+    expect(raw).not.toContain('nanoid');
+  });
+});
+
 describe('what a run remembers about its warm', () => {
   it('stamps the last warm onto work.requested, so each run keeps its own', async () => {
     await asOwner((sql) => sql`
