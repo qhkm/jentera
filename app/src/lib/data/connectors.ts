@@ -53,6 +53,10 @@ export const CONNECTORS: Record<string, Connector> = {
     "method": "link",
     "flow": "Turn on API access in your own Bukku control panel and paste the token \u2014 no dealer, no install",
     "category": "accounting",
+    "description": {
+      "en": "Ask who has not paid you. Jentera reads your invoices and contacts; it never writes to your books.",
+      "bm": "Tanya siapa belum bayar. Jentera membaca invois dan kenalan anda; ia tidak menulis apa-apa ke dalam akaun anda."
+    },
     "scope": [
       "read unpaid and overdue invoices",
       "read customer contacts"

@@ -115,11 +115,15 @@ export const CONNECTOR_PAGES: ConnectorPage[] = [
         body:
           'The credential stays in Jentera’s control plane. Your AI staff asks for a reading and receives '
           + 'an answer in words — it never holds the key to your accounts, so nothing it reads on the web '
-          + 'can talk it into handing one over.',
+          + 'can talk it into handing one over. That matters more than it sounds, because a Bukku token is '
+          + 'not limited to reading on its own.',
       },
     ],
     limits: [
-      'Reading only. Jentera cannot create, edit, send or void anything in Bukku.',
+      'Reading only, and Jentera is what enforces that. A Bukku API token carries the '
+      + 'permissions of the person who created it, so the limit is ours: Jentera refuses every '
+      + 'operation except reading invoices and contacts. To narrow the token itself, set that '
+      + 'user’s permissions in Bukku under Users.',
       'Invoices and contacts. Bills, payments, journals and reports are not covered yet.',
       'One Bukku company per business. Connect the company whose books you want it to read.',
       'A token you can revoke. Turn API access off in Bukku and the connection stops working immediately.',
