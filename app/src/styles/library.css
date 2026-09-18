@@ -2,8 +2,8 @@
 .library-view h1 { font-size: clamp(26px, 4vw, 36px); font-weight: 600; }
 .library-view h2 { font-size: 22px; font-weight: 600; }
 .library-view header p, .library-description { color: var(--color-text-muted); margin-top: 8px; }
-.library-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 4px; gap: 4px; border: 1px solid var(--color-rail); border-radius: 14px; }
-.library-tabs a { display: flex; align-items: center; justify-content: center; min-height: 44px; border-radius: 10px; font-size: 14px; }
+.library-tabs { display: flex; flex-wrap: wrap; padding: 0; gap: 6px; border-bottom: 1px solid var(--color-rail); padding-bottom: 10px; }
+.library-tabs a { display: flex; align-items: center; justify-content: center; min-height: 44px; padding-inline: 16px; border-radius: 999px; font-size: 14px; }
 .library-tabs a[aria-current] { background: color-mix(in srgb, var(--color-brand) 14%, transparent); color: var(--color-brand); }
 .library-tabs a:focus-visible, .library-card summary:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
 .library-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; margin-top: 16px; }
@@ -16,6 +16,33 @@
 .library-card summary { cursor: pointer; min-height: 44px; display: list-item; padding-top: 10px; }
 .library-card details h4 { margin: 12px 0 8px; font-weight: 600; }
 .library-card .routine-link { min-height: 44px; margin-top: auto; }
+.dashboard-shell .library-view .automation-playbooks { display: flex; flex-direction: column; gap: 14px; }
+.dashboard-shell .library-view .routine-section-heading p { margin-top: 4px; color: var(--text-secondary); font-size: var(--workspace-support); }
+.dashboard-shell .library-view .automation-playbook-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.dashboard-shell .library-view .automation-playbook-card.card {
+  padding: 16px;
+  gap: 10px;
+  border: 1px solid var(--rail);
+  border-radius: 14px;
+  box-shadow: none;
+}
+.playbook-card-heading { display: flex; align-items: center; gap: 10px; color: var(--text); }
+.playbook-card-heading svg { flex-shrink: 0; }
+.playbook-card-heading strong { font-size: var(--workspace-body); }
+.dashboard-shell .library-view .playbook-availability { font-size: var(--workspace-support); }
+.playbook-card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin-top: auto;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--workspace-control);
+  color: var(--text);
+  font-size: var(--workspace-support);
+}
+.automation-playbook-card:hover .playbook-card-action { background: var(--workspace-control-hover); }
 @media (max-width: 639px) {
   .library-view { gap: 16px; }
   .library-card { padding: 16px; gap: 8px; }

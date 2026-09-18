@@ -20,7 +20,7 @@ export default function LibraryView({ canSchedule, onUse, connections }: {
   const t = useT();
   const tab = tabs.find(value => value === params.get('tab')) ?? 'playbooks';
   return <section className="library-view" aria-labelledby="library-title">
-    <header><h1 id="library-title">Library</h1><p>Discover what Jentera can do. Your scheduled work stays in Routines.</p></header>
+    <header><h1 id="library-title">Library</h1></header>
     <nav className="library-tabs" aria-label="Library sections">
       {tabs.map(value => <Link key={value} to={`/app?view=library&tab=${value}`} aria-current={tab === value ? 'page' : undefined}>{value[0].toUpperCase() + value.slice(1)}</Link>)}
     </nav>

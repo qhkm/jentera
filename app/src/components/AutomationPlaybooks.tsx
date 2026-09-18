@@ -15,10 +15,10 @@ export function AutomationPlaybooks({ canUse, onUse, onClose }: {
     <div className="routine-section-heading"><div><h2 id="playbooks-heading">Automation Playbooks</h2><p>Choose a job. Review what it needs. Make it a routine.</p></div>
       {onClose && <button type="button" className="btn btn-outline" onClick={onClose}>Close library</button>}</div>
     {!selected ? <div className="automation-playbook-grid">{AUTOMATION_PLAYBOOKS.map(playbook => <button type="button" className="automation-playbook-card card" key={playbook.id} onClick={() => { setSelected(playbook); setBrief(''); setReviewed(false); }}>
-      <BookOpen size={24} className="text-brand" aria-hidden="true" />
-      <strong>{playbook.name}</strong><span>{playbook.description}</span>
-      <small>{playbook.available ? 'No external account connection needed' : `Requires ${playbook.connections.join(' + ')} · Not available yet`}</small>
-      <span className="routine-link">{playbook.available ? 'Explore playbook' : 'View requirements'}<ArrowUpRight size={16} aria-hidden="true" /></span>
+      <span className="playbook-card-heading"><BookOpen size={20} className="text-brand" aria-hidden="true" /><strong>{playbook.name}</strong></span>
+      <span>{playbook.description}</span>
+      <small className="playbook-availability">{playbook.available ? 'Ready to use · No connection needed' : `Coming soon · Requires ${playbook.connections.join(' + ')}`}</small>
+      <span className="playbook-card-action">{playbook.available ? 'Explore playbook' : 'View requirements'}<ArrowUpRight size={16} aria-hidden="true" /></span>
     </button>)}</div> : <div className="automation-playbook-detail card">
       <button type="button" className="routine-link" onClick={() => setSelected(null)}><ArrowLeft size={16} />All playbooks</button>
       <h3>{selected.name}</h3><p>{selected.description}</p>

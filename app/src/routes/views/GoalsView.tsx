@@ -10,7 +10,7 @@ import {
   Target,
   X,
 } from '@phosphor-icons/react';
-import { Button, Card, Eyebrow, LoadingState } from '@/components/ui';
+import { Button, Card, LoadingState } from '@/components/ui';
 import { useGoals } from '@/hooks/useGoals';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useRepository, type Goal, type GoalCheckpoint, type GoalCheckpointStatus, type GoalInput, type GoalStatus } from '@/lib/repo';
@@ -149,8 +149,8 @@ export default function GoalsView({ onWork }: { onWork: (goal: Goal, checkpoint?
         </button>}
       </header>
       {goal.successCriteria && <p className="goal-success"><span>{t('goals.success')}</span>{goal.successCriteria}</p>}
-      <section className="goal-plan" aria-label={t('goals.plan')}>
-        <header>
+      <section className={`goal-plan ${goal.checkpoints.length ? '' : 'goal-plan-empty'}`} aria-label={t('goals.plan')}>
+        {goal.checkpoints.length > 0 && <header>
           <strong>{t('goals.plan')}</strong>
           <span>{goal.checkpoints.length
             ? t('goals.checkpoints.progress', {
@@ -158,7 +158,7 @@ export default function GoalsView({ onWork }: { onWork: (goal: Goal, checkpoint?
                 total: goal.checkpoints.length,
               })
             : t('goals.checkpoints.empty')}</span>
-        </header>
+        </header>}
         {goal.checkpoints.length > 0 && <ol>
           {goal.checkpoints.map((checkpoint, index) => {
             const next = index === goal.checkpoints.findIndex((candidate) => candidate.status !== 'completed');
@@ -200,7 +200,7 @@ export default function GoalsView({ onWork }: { onWork: (goal: Goal, checkpoint?
         </form> : <button type="button" className="goal-add-checkpoint-trigger" onClick={() => { setAddingTo(goal.id); setStepDraft(''); }}><Plus size={15} aria-hidden="true" />{t('goals.checkpoint.add')}</button>)}
       </section>
       <div className="goal-evidence">
-        <span>{goal.taskCount ? t('goals.progress', { done: goal.completedTaskCount, total: goal.taskCount }) : t('goals.noWork')}</span>
+        {goal.taskCount > 0 && <span>{t('goals.progress', { done: goal.completedTaskCount, total: goal.taskCount })}</span>}
         {goal.targetDate && <time dateTime={goal.targetDate} className={goal.status === 'active' && goal.targetDate < today ? 'goal-overdue' : ''}>
           <CalendarBlank size={15} aria-hidden="true" />
           {t(goal.status === 'active' && goal.targetDate < today ? 'goals.overdue' : 'goals.target', { date: date(goal.targetDate) })}
@@ -221,7 +221,7 @@ export default function GoalsView({ onWork }: { onWork: (goal: Goal, checkpoint?
 
   return <section className="goals-view" aria-labelledby="goals-heading">
     <header className="goal-page-heading">
-      <div><Eyebrow>{t('goals.eyebrow')}</Eyebrow><h1 id="goals-heading">{t('goals.title')}</h1><p>{t('goals.intro')}</p></div>
+      <div><h1 id="goals-heading">{t('goals.title')}</h1></div>
       {goals.canManage && !editor && <Button onClick={() => setEditor(blank())}><Plus size={17} aria-hidden="true" />{t('goals.add')}</Button>}
     </header>
 
