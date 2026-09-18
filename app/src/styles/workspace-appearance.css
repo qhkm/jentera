@@ -104,14 +104,10 @@
 .dashboard-shell .home-action {
   border-color: var(--rail);
 }
-/* Keep the welcome banner accented and the cards below it neutral. */
+/* Let the page show through the cards without changing the welcome banner. */
 .dashboard-shell .home-view {
-  --home-card: #292929;
-  --home-card-hover: #323232;
-}
-:is(.theme-light, .site-theme-light) .dashboard-shell .home-view {
-  --home-card: #fff;
-  --home-card-hover: #f5f5f5;
+  --home-card: transparent;
+  --home-card-hover: rgb(var(--border-ink) / .035);
 }
 .dashboard-shell .home-view :is(.home-action, .daily-brief, .home-ask-launcher, .home-notice, .home-next, .home-recent) {
   background: var(--home-card);
