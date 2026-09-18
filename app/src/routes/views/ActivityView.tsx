@@ -176,7 +176,6 @@ export default function ActivityView({
       <div className="flex flex-col gap-6">
         <header className="flex flex-col gap-2">
           <h1 className="font-pixel text-2xl tracking-tight">{t('view.work')}</h1>
-          <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.work.desc')}</p>
         </header>
         <Card className="py-7">
           <LoadingState title={t('loading.activity.title')} detail={t('loading.activity.detail')} />
@@ -190,7 +189,6 @@ export default function ActivityView({
       <div className="flex flex-col gap-6">
         <header className="flex flex-col gap-2">
           <h1 className="font-pixel text-2xl tracking-tight">{t('view.work')}</h1>
-          <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.work.desc')}</p>
         </header>
         <Card role="alert" className="gap-3">
           <p className="text-sm">{t('loading.activity.error')}</p>
@@ -215,7 +213,6 @@ export default function ActivityView({
       <div className="flex flex-col gap-6">
         <header className="flex flex-col gap-2">
           <h1 className="font-pixel text-2xl tracking-tight">{t('view.work')}</h1>
-          <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.work.desc')}</p>
         </header>
 
         <ApprovalInbox
@@ -321,7 +318,6 @@ export default function ActivityView({
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <h1 className="font-pixel text-2xl tracking-tight">{t('view.work')}</h1>
-        <p className="max-w-[66ch] text-sm text-text-secondary">{t('view.work.desc')}</p>
       </header>
 
       <div className="grid gap-3 sm:grid-cols-3">

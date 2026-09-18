@@ -99,12 +99,6 @@ export function ActivityHistory({
 
   return (
     <section className="activity-history" aria-label={t('activity.history')}>
-      <header className="workspace-section-heading">
-        <div>
-          <h2>{t('activity.history')}</h2>
-          <p>{t('activity.history.detail')}</p>
-        </div>
-      </header>
       <div className="activity-overview">
         {(
           [
