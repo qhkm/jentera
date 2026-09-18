@@ -59,9 +59,23 @@ const bundleCommit = wrangler.match(/RUNTIME_BUNDLE_COMMIT\s*=\s*"([0-9a-f]{40})
 if (!bundleCommit) { fail('RUNTIME_BUNDLE_COMMIT not found in wrangler.toml'); process.exit(1); }
 ok(`bundle commit ${bundleCommit}`);
 
-const hermesTag = provision.match(/field\('HERMES_TAG_B64', '([^']+)'\)/)?.[1];
-const hermesCommit = provision.match(/field\('HERMES_COMMIT_B64', '([0-9a-f]{40})'\)/)?.[1];
-if (!hermesTag || !hermesCommit) { fail('HERMES_TAG_B64/HERMES_COMMIT_B64 not found in provision.ts'); process.exit(1); }
+/* The pin moved out of provision.ts on 2026-09-17 and this kept reading it
+   there, so it matched a quoted literal that no longer exists and failed
+   every release after the refactor. It reads the pin at its source now and
+   checks that provision.ts still sends it, which is the part that can
+   actually drift — `hermes-pin.test.ts` forbids a literal here, so a
+   validator looking for one contradicts the test that keeps the pin
+   single. */
+const pinSource = readFileSync(new URL('../src/runtime/hermes-pin.ts', import.meta.url), 'utf8');
+const hermesTag = pinSource.match(/HERMES_TAG\s*=\s*'([^']+)'/)?.[1];
+const hermesCommit = pinSource.match(/HERMES_COMMIT\s*=\s*'([0-9a-f]{40})'/)?.[1];
+if (!hermesTag || !hermesCommit) { fail('HERMES_TAG/HERMES_COMMIT not found in hermes-pin.ts'); process.exit(1); }
+for (const field of ['HERMES_TAG_B64', 'HERMES_COMMIT_B64']) {
+  if (!provision.includes(`field('${field}'`)) {
+    fail(`${field} is no longer sent by provision.ts`);
+    process.exit(1);
+  }
+}
 ok(`hermes pin ${hermesTag} @ ${hermesCommit}`);
 
 const assets = [...provision.matchAll(/'(runner\/(?:src|bin)\/[^']+)'/g)].map((m) => m[1]);
