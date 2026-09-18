@@ -131,6 +131,9 @@ grep -q "^RUNTIME_BUNDLE_COMMIT = \"$BUNDLE\"\$" "$TOML" || die "RUNTIME_BUNDLE_
 echo "pins written to $TOML"
 
 # ---- 2. the gate: bundle, installer pin, flags, assets, all against GitHub ---
+step "bootstrap contract regression tests"
+node --test "$WT/runner/test/bootstrap.test.mjs" "$WT/worker/scripts/bootstrap-contract.test.mjs" \
+  || die "bootstrap contract regression tests failed; not shipping"
 step "release gate"
 gate_ok=0
 for attempt in 1 2 3; do

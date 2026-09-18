@@ -17,9 +17,13 @@
  * was being cut.
  *
  * Runs as `predeploy`, so `pnpm run deploy` cannot ship the mismatch.
+ * Also exercises the pinned bootstrap's actual Hermes tag guard. A new valid
+ * tag whose syntax the older bundle rejects must not reach production.
+ * An unreadable bundle fails closed; retry rather than assuming compatibility.
  * Exit 0 = safe to deploy. Exit 1 = the deploy would strand the fleet.
  */
 import { readFileSync } from 'node:fs';
+import { assertBootstrapAcceptsHermesTag } from './bootstrap-contract.mjs';
 
 const RAW = 'https://raw.githubusercontent.com/qhkm/jentera';
 
@@ -38,15 +42,26 @@ if (sent.length < 5) {
   process.exit(1);
 }
 
-const res = await fetch(`${RAW}/${commit}/runner/bin/bootstrap-runtime.sh`, { redirect: 'follow' });
+const res = await fetch(`${RAW}/${commit}/runner/bin/bootstrap-runtime.sh`, {
+  redirect: 'follow', signal: AbortSignal.timeout(15000),
+});
 if (!res.ok) {
-  /* raw.githubusercontent lags new SHAs and throttles bursts. Refusing to
-     deploy on a transient fetch would be worse than the risk it covers, so
-     this warns — the release gate makes the same check with retries. */
-  console.warn(`warn  bootstrap at ${commit} unreadable (HTTP ${res.status}); transfer-field check skipped`);
-  process.exit(0);
+  console.error(`FAIL  bootstrap at ${commit} unreadable (HTTP ${res.status}); cannot prove deployment compatibility. Retry rather than skipping the guard.`);
+  process.exit(1);
 }
 const bootstrap = await res.text();
+const pinSource = readFileSync(new URL('../src/runtime/hermes-pin.ts', import.meta.url), 'utf8');
+const hermesTag = pinSource.match(/HERMES_TAG\s*=\s*'([^']+)'/)?.[1];
+if (!hermesTag) {
+  console.error('FAIL  HERMES_TAG not found in hermes-pin.ts');
+  process.exit(1);
+}
+try {
+  assertBootstrapAcceptsHermesTag(bootstrap, hermesTag);
+} catch (error) {
+  console.error(`FAIL  ${error.message}`);
+  process.exit(1);
+}
 const allowlisted = new Set(
   [...bootstrap.matchAll(/^\s*([A-Z0-9_]+_B64)\)\s*\1=/gm)].map((m) => m[1]),
 );

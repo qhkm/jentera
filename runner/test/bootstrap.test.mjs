@@ -60,6 +60,52 @@ test('bootstrap refuses an unreviewed model endpoint before installing anything'
   assert.match(result.stderr, /base URL is not pinned/);
 });
 
+test('bootstrap accepts the actual production Hermes pin before model endpoint validation', async () => {
+  const pin = await readFile(new URL('../../worker/src/runtime/hermes-pin.ts', import.meta.url), 'utf8');
+  const hermesTag = pin.match(/HERMES_TAG\s*=\s*'([^']+)'/)?.[1];
+  const hermesCommit = pin.match(/HERMES_COMMIT\s*=\s*'([0-9a-f]{40})'/)?.[1];
+  assert.ok(hermesTag && hermesCommit);
+  // A later deliberate failure proves the real transfer parser/tag guard ran,
+  // without installing software, configuring a tenant, or calling a model.
+  const transfer = await tempTransfer(fields({ hermesTag, hermesCommit, modelBase: 'https://model.invalid/v1' }));
+  const result = run(transfer);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /base URL is not pinned/);
+  assert.doesNotMatch(result.stderr, /Hermes tag format/);
+});
+
+test('bootstrap permits numeric tag revisions but rejects unsupported or shell-like tags', async () => {
+  for (const hermesTag of ['v2026.9.18', 'v2026.9.18-1', 'v2026.9.18-12', 'v2026.9.18-123', 'v2026.9.18-1234']) {
+    const result = run(await tempTransfer(fields({ hermesTag, modelBase: 'https://model.invalid/v1' })));
+    assert.match(result.stderr, /base URL is not pinned/, hermesTag);
+  }
+  for (const hermesTag of ['v2026.9.18-12345', 'v2026.9.18-', 'v2026.9.18-beta',
+    'v2026.9.18/../main', 'v2026.9.18;exit 0', 'v2026.9.18$(id)', 'v2026.9.\n18']) {
+    const result = run(await tempTransfer(fields({ hermesTag, modelBase: 'https://model.invalid/v1' })));
+    assert.notEqual(result.status, 0, hermesTag);
+    assert.match(result.stderr, /Hermes tag format is not supported/, hermesTag);
+  }
+});
+
+test('transfer parsing preserves a single base64 padding byte without truncating validation input', async () => {
+  // 38 bytes needs exactly one '='. Losing it could truncate the two invalid
+  // suffix bytes and turn this into a valid tenant UUID on a lenient decoder.
+  const result = run(await tempTransfer(fields({ businessId: '11111111-1111-4111-8111-111111111111XY',
+    modelBase: 'https://model.invalid/v1' })));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /business id must be a UUID/);
+  assert.doesNotMatch(result.stderr, /base URL is not pinned/);
+});
+
+test('transfer parsing refuses malformed records and accepts the final unterminated line', async () => {
+  const malformed = run(await tempTransfer('MALFORMED_RECORD\n'));
+  assert.notEqual(malformed.status, 0);
+  assert.match(malformed.stderr, /invalid record/);
+  const body = fields({ modelBase: 'https://model.invalid/v1' }).trimEnd();
+  const result = run(await tempTransfer(body));
+  assert.match(result.stderr, /base URL is not pinned/);
+});
+
 test('bootstrap and model config pin the reviewed plus customer-router endpoints', async () => {
   const source = await readFile(SCRIPT, 'utf8');
   assert.match(source, /https:\/\/openrouter\.ai\/api\/v1/);

@@ -25,6 +25,9 @@
  *      which a worker deploy can ship without any release; that stalled
  *      convergence on 2026-09-10. check-transfer-fields.mjs runs the same
  *      comparison as a predeploy hook.
+ *   7. The actual pinned bootstrap Bash guard accepts the central Hermes tag,
+ *      including reviewed numeric revision suffixes. Missing or unverifiable
+ *      tag resolution is a failure, not a silently skipped check.
  *
  * Usage: node worker/scripts/validate-release.mjs
  * Run from the repo root (reads worker/wrangler.toml + worker/src/runtime/provision.ts).
@@ -32,6 +35,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { assertBootstrapAcceptsHermesTag } from './bootstrap-contract.mjs';
 
 const REPO = 'qhkm/jentera';
 const HERMES_REPO = 'qhkm/hermes-agent';
@@ -42,7 +46,7 @@ const ok = (msg) => console.log(`ok    ${msg}`);
 const warn = (msg) => console.log(`warn  ${msg}`);
 
 async function httpGet(url) {
-  const res = await fetch(url, { redirect: 'follow' });
+  const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(15000) });
   return res;
 }
 async function readRaw(repo, ref, path) {
@@ -85,6 +89,16 @@ if (!assets.length) { fail('no runner assets found in provision.ts'); process.ex
 const bootstrap = await readRaw(REPO, bundleCommit, 'runner/bin/bootstrap-runtime.sh');
 if (!bootstrap) { fail(`bootstrap-runtime.sh missing at ${bundleCommit}`); process.exit(1); }
 ok('bootstrap-runtime.sh present at bundle commit');
+
+// 2026-09-18: a real tag resolved to the correct commit, but the bootstrap
+// rejected its numeric revision suffix before installation. GitHub existence
+// and clean-install patch tests do not exercise this production Bash guard.
+try {
+  assertBootstrapAcceptsHermesTag(bootstrap, hermesTag);
+  ok('pinned bootstrap accepts the central Hermes tag');
+} catch (error) {
+  fail(error.message);
+}
 
 const shaPin = bootstrap.match(/hermes_installer_sha256="([0-9a-f]{64})"/)?.[1];
 if (!shaPin) { fail('hermes_installer_sha256 pin missing in bootstrap-runtime.sh'); process.exit(1); }
@@ -143,10 +157,10 @@ try {
     if (target === hermesCommit) ok(`tag ${hermesTag} resolves to ${hermesCommit}`);
     else fail(`tag ${hermesTag} resolves to ${target}, not ${hermesCommit}`);
   } else {
-    warn(`tag ${hermesTag} not found on ${HERMES_REPO} (peeled-commit check skipped)`);
+    fail(`tag ${hermesTag} unreadable on ${HERMES_REPO} (HTTP ${refs.status}); cannot prove the installer pin`);
   }
 } catch {
-  warn('GitHub API unreachable; tag resolution skipped');
+  fail('GitHub API unreachable; cannot prove the installer tag resolves to the pinned commit');
 }
 
 // ---- 6. Runner assets exist at the bundle commit --------------------------

@@ -55,7 +55,16 @@ stage_done() {
   esac
 }
 echo 'JENTERA_SETUP_STAGE:install'
-while IFS='=' read -r name value; do
+while IFS= read -r transfer_line || [[ -n "$transfer_line" ]]; do
+  [[ -z "$transfer_line" ]] && continue
+  [[ "$transfer_line" == *=* ]] || {
+    echo "runtime bootstrap transfer contains an invalid record" >&2
+    exit 1
+  }
+  # Split only at the first '='. Bash read with IFS='=' can discard one
+  # trailing padding byte, silently truncating values on some decoders.
+  name="${transfer_line%%=*}"
+  value="${transfer_line#*=}"
   [[ -z "$name" ]] && continue
   if [[ "$prepare_spare" == "1" ]]; then
     case "$name" in
@@ -215,7 +224,10 @@ fi
   echo "runtime release is invalid" >&2
   exit 1
 }
-[[ "$hermes_tag" =~ ^v[0-9]{4}\.[0-9]+\.[0-9]+$ ]] || exit 1
+[[ "$hermes_tag" =~ ^v[0-9]{4}\.[0-9]+\.[0-9]+(-[0-9]{1,4})?$ ]] || {
+  echo "Hermes tag format is not supported by this runtime bundle" >&2
+  exit 1
+}
 [[ "$hermes_commit" =~ ^[0-9a-f]{40}$ ]] || exit 1
 hermes_installer_url="https://raw.githubusercontent.com/qhkm/hermes-agent/${hermes_commit}/scripts/install.sh"
 if [[ "$prepare_spare" != "1" ]]; then

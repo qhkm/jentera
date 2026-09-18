@@ -14,6 +14,15 @@ pin edit and the gate; `--reset-exhausted` is step 6; `--no-sweep` leaves the
 trigger to the cron. The steps stay written out here so a run that fails in
 the middle can be finished by hand, and so rollback has a recipe.
 
+Before the gate, the shipping script runs bootstrap contract regression
+tests. The gate executes the **actual Bash tag guard from the pinned bundle**
+against the current central Hermes pin. This catches a valid GitHub tag that
+the runtime cannot parse (the `v2026.9.18-1` incident). Tag/commit resolution
+must also be provable; an unavailable check does not mean a safe release.
+The ordinary `pnpm run deploy` predeploy hook runs the contract tests and
+checks the pinned guard too. An unreadable bundle blocks deployment: retry
+when GitHub is reachable, do not skip the check or hand-patch a Sprite.
+
 ## The moving parts
 
 - **`worker/wrangler.toml`** — `RUNTIME_RELEASE` (fleet target) and
