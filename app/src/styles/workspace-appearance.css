@@ -136,6 +136,16 @@
 }
 /* Reduce nested boxes and roomy list cards across the remaining pages. */
 .dashboard-shell .business-connections { gap: 12px; }
+.dashboard-shell .business-explore-connectors {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--accent-green);
+  font-size: var(--workspace-support);
+}
+.dashboard-shell .business-explore-connectors:hover { text-decoration: underline; text-underline-offset: 4px; }
 .dashboard-shell :is(.business-connection-row, .business-connection-directory) {
   border-bottom: 1px solid var(--rail);
   padding-bottom: 8px;

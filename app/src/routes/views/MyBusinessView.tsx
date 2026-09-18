@@ -39,8 +39,6 @@ import { hasConfirmedValue, confirmedValue } from '@/lib/knowledge';
 import TelegramConnect from './TelegramConnect';
 import GoogleCalendarConnect from './GoogleCalendarConnect';
 import TokenConnect from './TokenConnect';
-import BusinessBrowser from './BusinessBrowser';
-import { ConnectorOptions } from '@/components/ConnectorOptions';
 import { connectedNames, type ConnectionsState } from '@/hooks/useConnections';
 import { useSignedIn } from '@/lib/repo/gate';
 import { useToast } from '@/components/Toast';
@@ -548,15 +546,11 @@ export default function MyBusinessView({
                     with them: this one renders nothing unless the backend
                     offers something to connect. */}
                 <details className="business-connection-row"><summary>{t('biz.connections.other')}</summary><TokenConnect id="connection-tokens" rows={conns.rows} setRows={conns.setRows} /></details>
-                {signedIn && <BusinessBrowser />}
               </>
             )}
-            <details className="business-connection-directory">
-              <summary id="business-connectors-title" className="text-sm font-semibold">
-                {t('biz.connections.more')}
-              </summary>
-              <ConnectorOptions connections={conns} setupMode="existing" />
-            </details>
+            <Link className="business-explore-connectors" to="/app?view=library&tab=connectors">
+              {t('biz.connections.explore')} <span aria-hidden="true">→</span>
+            </Link>
           </section>
         )}
 
