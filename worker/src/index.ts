@@ -41,6 +41,7 @@ import { handleReminders, dispatchDueReminders } from './reminders';
 import { handlePush } from './routes/push';
 import { handleArtifacts, RUNTIME_ARTIFACTS_PATH } from './routes/artifacts';
 import { handleRuntimeConnector } from './routes/runtime-connector';
+import { handleRuntimeConnect } from './routes/runtime-connect';
 import { sweepPushOutbox } from './push/outbox';
 import { refillSparePool } from './runtime/spares';
 import { handleNotifications } from './routes/notifications';
@@ -146,6 +147,10 @@ export default {
        the service's credential never has to reach the sprite. */
     const runtimeConnector = await handleRuntimeConnector(request, env, url, headers);
     if (runtimeConnector) return runtimeConnector;
+    /* Helping an owner set a service up, which is a different thing from
+       using one they have already connected. */
+    const runtimeConnect = await handleRuntimeConnect(request, env, url, headers);
+    if (runtimeConnect) return runtimeConnect;
     /* A task's output files, uploaded by the runner with the same credential. */
     if (url.pathname === RUNTIME_ARTIFACTS_PATH) {
       const uploaded = await handleArtifacts(request, env, url, headers);

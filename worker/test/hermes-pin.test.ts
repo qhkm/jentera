@@ -41,11 +41,24 @@ describe('the Hermes pin', () => {
     expect(holders, 'a Hermes tag outside hermes-pin.ts is a second source of truth').toEqual([]);
   });
 
-  it('keeps the tag and the commit together', () => {
+  it('keeps the tag and the commit together, in a shape the fleet accepts', () => {
     /* bootstrap fetches the tag so the installer's checkout resolves, then
        pins forward to the commit. A tag that points elsewhere leaves the
-       sprite on whatever the tag names. */
-    expect(HERMES_TAG).toMatch(/^v\d{4}\.\d+\.\d+$/);
+       sprite on whatever the tag names.
+
+       The shape is not decorative. `bootstrap-runtime.sh` matches the tag
+       and exits 1 on anything else, before the installer runs — so a tag
+       GitHub accepts and the bootstrap does not fails every sprite in the
+       fleet at `STAGE:install`, which is indistinguishable at a glance from
+       the flaky upstream fetches that fail at the same stage. That happened
+       on 2026-09-18 with `v2026.9.18-1`, against an earlier version of this
+       very assertion, because the run was checked with `tail -3` and the
+       failure line was above the cut.
+
+       This regex mirrors the bootstrap's; `scripts/bootstrap-contract.mjs`
+       is what actually exercises the pinned Bash guard, and is the
+       authority when the two disagree. */
+    expect(HERMES_TAG).toMatch(/^v\d{4}\.\d+\.\d+(-\d{1,4})?$/);
     expect(HERMES_COMMIT).toMatch(/^[0-9a-f]{40}$/);
   });
 });
