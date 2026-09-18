@@ -14,5 +14,5 @@
  * to satisfy the installer's checkout, then the installer pins forward to
  * the commit.
  */
-export const HERMES_TAG = 'v2026.9.9';
-export const HERMES_COMMIT = 'bb0305ae08bf1dc9ac5a39d2b017f27e42854170';
+export const HERMES_TAG = 'v2026.9.18';
+export const HERMES_COMMIT = '70351f98fbec39cce50638cf3aa9bdaf41d01f02';
