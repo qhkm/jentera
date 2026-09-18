@@ -468,3 +468,92 @@ test('using the browser renews control instead of expiring ten minutes after the
   f.advance(11 * 60 * 1000);
   await assert.rejects(f.browser.command(command('frame')), /browser_control_expired/);
 });
+
+/* ---- harvesting a connector's credentials -----------------------------
+   The one action that reads a value off the page instead of putting one
+   there, so its refusals matter more than its happy path. */
+
+function harvestFixture(pageUrl = 'https://aisar.bukku.my/dashboard', values = {}, toggleOn = true) {
+  const goneTo = [];
+  const clicked = [];
+  const fields = { '#api_access_token': 'aaaaaaaa.bbbbbbbb.cccccccc', '#subdomain': 'aisar', ...values };
+  const page = {
+    isClosed: () => false, url: () => pageUrl,
+    setViewportSize: async () => {}, screenshot: async () => Buffer.from('screenshot'),
+    goto: async (url) => { goneTo.push(url); }, mouse: { click: async () => {}, wheel: async () => {} },
+    keyboard: { insertText: async () => {}, press: async () => {} },
+    inputValue: async (selector) => fields[selector] ?? '',
+    waitForTimeout: async () => {},
+    locator: (selector) => ({
+      evaluate: async (fn, cls) => fn({ classList: { contains: () => toggleOn } }, cls),
+      click: async () => { clicked.push(selector); },
+    }),
+  };
+  const context = { pages: () => [page], setDefaultTimeout: () => {}, on: () => {} };
+  const deps = {
+    now: () => 1000,
+    chromium: {
+      connectOverCDP: async () => { throw new Error('not running'); },
+      launchPersistentContext: async () => context,
+    },
+    fs: { mkdir: async () => {}, readFile: async () => { throw Object.assign(new Error('x'), { code: 'ENOENT' }); },
+      writeFile: async () => {}, rename: async () => {} },
+  };
+  const browser = createBusinessBrowser(
+    { stateFile: '/private/control.json', profileDir: '/private/profile', desktopEnabled: false }, deps);
+  return { browser, goneTo, clicked };
+}
+
+test('harvest names a recipe, never a selector or a script', () => {
+  assert.equal(browserCommandProblem(command('harvest', { connector: 'bukku' })), null);
+  assert.equal(browserCommandProblem(command('harvest', { connector: 'not-a-service' })), 'invalid_connector');
+  assert.equal(browserCommandProblem(command('harvest', {})), 'invalid_connector');
+  /* The shapes an eval endpoint would have accepted. */
+  assert.equal(browserCommandProblem(command('harvest', { connector: '#api_access_token' })), 'invalid_connector');
+  assert.equal(browserCommandProblem(command('harvest', { connector: { path: '/cp/integrations' } })), 'invalid_connector');
+});
+
+test('harvest reads the recipe fields from the service the owner signed into', async () => {
+  const f = harvestFixture();
+  await f.browser.command(command('claim'));
+  const result = await f.browser.command(command('harvest', { connector: 'bukku' }));
+  assert.deepEqual(result.fields, { token: 'aaaaaaaa.bbbbbbbb.cccccccc', subdomain: 'aisar' });
+  /* On the owner's own subdomain, not a host the recipe chose. */
+  assert.equal(f.goneTo.at(-1), 'https://aisar.bukku.my/cp/integrations');
+});
+
+test('harvest refuses when the owner is not on that service', async () => {
+  const f = harvestFixture('https://mail.example.com/inbox');
+  await f.browser.command(command('claim'));
+  await assert.rejects(
+    () => f.browser.command(command('harvest', { connector: 'bukku' })),
+    (error) => error.message === 'browser_not_signed_in' && error.status === 409,
+  );
+  /* And went nowhere: a redirect must not turn into a credential read. */
+  assert.equal(f.goneTo.length, 0);
+});
+
+test('harvest turns access on only when it is off, and never refreshes', async () => {
+  const on = harvestFixture('https://aisar.bukku.my/dashboard', {}, true);
+  await on.browser.command(command('claim'));
+  await on.browser.command(command('harvest', { connector: 'bukku' }));
+  /* Already on: the existing token is read and nothing is generated, because
+     generating invalidates whatever else the owner has wired to Bukku. */
+  assert.deepEqual(on.clicked, []);
+
+  const off = harvestFixture('https://aisar.bukku.my/dashboard', {}, false);
+  await off.browser.command(command('claim'));
+  await off.browser.command(command('harvest', { connector: 'bukku' }));
+  assert.deepEqual(off.clicked, ['#api_access_on']);
+});
+
+test('harvest hands on nothing when the page has changed under it', async () => {
+  for (const values of [{ '#api_access_token': '' }, { '#api_access_token': 'Enable API access' }, { '#subdomain': '' }]) {
+    const f = harvestFixture('https://aisar.bukku.my/dashboard', values);
+    await f.browser.command(command('claim'));
+    await assert.rejects(
+      () => f.browser.command(command('harvest', { connector: 'bukku' })),
+      (error) => /^browser_(missing|unexpected)_/.test(error.message),
+    );
+  }
+});

@@ -34,13 +34,15 @@ export async function desktopBrowserArguments(io = { readdir, readFile }) {
   return found;
 }
 
+import { browserRecipe, recipeProblem, recipeUrl } from './browser-recipes.mjs';
+
 export class BrowserProblem extends Error {
   constructor(status, code) { super(code); this.status = status; }
 }
 
 export function browserCommandProblem(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return 'invalid_command';
-  if (!['claim', 'reclaim', 'frame', 'navigate', 'click', 'text', 'key', 'input', 'scroll', 'tab', 'release'].includes(body.action)) return 'invalid_command';
+  if (!['claim', 'reclaim', 'frame', 'navigate', 'click', 'text', 'key', 'input', 'scroll', 'tab', 'release', 'harvest'].includes(body.action)) return 'invalid_command';
   if (!UUID.test(body.ownerId ?? '') || !UUID.test(body.controlId ?? '')) return 'invalid_controller';
   if (body.action === 'navigate') {
     try {
@@ -62,6 +64,8 @@ export function browserCommandProblem(body) {
   }
   if (body.action === 'scroll' && (!Number.isFinite(body.deltaY) || Math.abs(body.deltaY) > 1600)) return 'invalid_scroll';
   if (body.action === 'tab' && (!Number.isInteger(body.index) || body.index < 0 || body.index > 50)) return 'invalid_tab';
+  /* The caller names a recipe, never a selector or a script. */
+  if (body.action === 'harvest' && !browserRecipe(body.connector)) return 'invalid_connector';
   return null;
 }
 
@@ -391,6 +395,36 @@ export function createBusinessBrowser(config, deps = {}) {
           if (body.text !== undefined) await page.keyboard.insertText(body.text);
           else await page.keyboard.press(body.key);
         } catch (error) { await clearInput(); throw error; }
+      }
+      else if (body.action === 'harvest') {
+        const recipe = browserRecipe(body.connector);
+        /* On the service the owner signed into, or nowhere. A redirect, or
+           an owner who wandered, must not have us reading a credential-shaped
+           field off whatever site happens to be open. */
+        const target = recipeUrl(recipe, page.url());
+        if (!target) throw new BrowserProblem(409, 'browser_not_signed_in');
+        await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        if (recipe.toggle) {
+          const on = await page.locator(recipe.toggle.selector)
+            .evaluate((el, cls) => el.classList.contains(cls), recipe.toggle.onClass)
+            .catch(() => null);
+          if (on === null) throw new BrowserProblem(409, 'browser_page_changed');
+          /* Off means no token exists yet, so turning it on creates the
+             first one. Already on means one exists and is read as it is —
+             nothing is generated, because generating would invalidate
+             whatever else the owner has wired to this service. */
+          if (on === false) {
+            await page.locator(recipe.toggle.selector).click({ timeout: 5000 });
+            await page.waitForTimeout(1500);
+          }
+        }
+        const fields = {};
+        for (const [name, selector] of Object.entries(recipe.read)) {
+          fields[name] = (await page.inputValue(selector, { timeout: 5000 }).catch(() => '')).trim();
+        }
+        const problem = recipeProblem(recipe, fields);
+        if (problem) throw new BrowserProblem(409, `browser_${problem}`);
+        return { ok: true, fields };
       }
       else if (body.action === 'text') await page.keyboard.insertText(body.text);
       else if (body.action === 'key') await page.keyboard.press(body.key);
