@@ -22,6 +22,9 @@
 .dashboard-shell .library-view .automation-playbook-card.card {
   padding: 16px;
   gap: 10px;
+}
+/* One outline treatment for every Library catalogue card. */
+.dashboard-shell .library-view :is(.automation-playbook-card.card, .library-card.card, .connector-card) {
   border: 1px solid var(--rail);
   border-radius: 14px;
   box-shadow: none;
