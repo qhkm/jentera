@@ -54,20 +54,22 @@ export function ActivityHistory({
             value?.toLocaleLowerCase(locale).includes(needle),
           ),
       )
-      .sort((a, b) => (Date.parse(b.occurredAt) || 0) - (Date.parse(a.occurredAt) || 0));
+      .sort((a, b) => Number(matches(b, 'review')) - Number(matches(a, 'review')) ||
+        (Date.parse(b.occurredAt) || 0) - (Date.parse(a.occurredAt) || 0));
   }, [work, filter, query, locale]);
 
   // Group by the owner's local calendar day, not UTC or a rolling 24-hour window.
   const groups = new Map<string, Work[]>();
   for (const record of shown) {
     const date = new Date(record.occurredAt);
-    const day = Number.isNaN(date.getTime()) ? '' : date.toDateString();
+    const day = matches(record, 'review') ? 'review' : Number.isNaN(date.getTime()) ? '' : date.toDateString();
     groups.set(day, [...(groups.get(day) ?? []), record]);
   }
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
   function dateLabel(day: string) {
+    if (day === 'review') return t('activity.review');
     if (!day) return t('activity.undated');
     if (day === today.toDateString()) return t('activity.today');
     if (day === yesterday.toDateString()) return t('activity.yesterday');
@@ -180,7 +182,7 @@ export function ActivityHistory({
             </h3>
             <div className="activity-records">
               {records.map((record) => (
-                <div key={record.id}>{children(record)}</div>
+                <div className={`activity-inbox-row activity-inbox-row-${record.status}`} key={record.id}>{children(record)}</div>
               ))}
             </div>
           </section>

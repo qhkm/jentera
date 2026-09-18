@@ -84,3 +84,19 @@ describe('who asked for each piece of work', () => {
     expect(screen.queryByText(/by aisha/)).toBeNull();
   });
 });
+
+describe('compact work inbox', () => {
+  it('puts older work needing input before newer completed work', async () => {
+    await mount({
+      counters: { handled: 1, needsYou: 1, minutesSaved: 3, thisWeek: 2, connections: 1 },
+      work: [
+        done({ id: 'recent', objective: 'Recent finished report', occurredAt: '2026-09-18T04:00:00.000Z' }),
+        done({ id: 'waiting', objective: 'Waiting for your instructions', status: 'needs_input', occurredAt: '2026-09-12T04:00:00.000Z' }),
+      ],
+    });
+    await screen.findByText('Waiting for your instructions');
+    const rows = [...document.querySelectorAll('.activity-inbox-row')];
+    expect(rows[0]).toHaveTextContent('Waiting for your instructions');
+    expect(rows[1]).toHaveTextContent('Recent finished report');
+  });
+});

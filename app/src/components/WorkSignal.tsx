@@ -115,6 +115,7 @@ export function OutcomeReceipt({
   actionLabel,
   onAction,
   collapsibleOutcome = false,
+  compact = false,
   showMoreLabel = 'Show more',
   showLessLabel = 'Show less',
   children,
@@ -130,13 +131,14 @@ export function OutcomeReceipt({
   actionLabel?: string;
   onAction?: () => void;
   collapsibleOutcome?: boolean;
+  compact?: boolean;
   showMoreLabel?: string;
   showLessLabel?: string;
   children?: ReactNode;
 }) {
   const [outcomeOpen, setOutcomeOpen] = useState(false);
   const canCollapse = collapsibleOutcome && Boolean(outcome && (
-    outcome.length > 180 || (outcome.match(/\n/g)?.length ?? 0) > 2
+    outcome.length > (compact ? 80 : 180) || (outcome.match(/\n/g)?.length ?? 0) > (compact ? 0 : 2)
   ));
   return (
     <article className={`outcome-receipt outcome-receipt-${state}`}>

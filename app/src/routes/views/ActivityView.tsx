@@ -246,12 +246,13 @@ export default function ActivityView({
               statusTone={workTone(w.status)}
               state={workSignal(w.status)}
               collapsibleOutcome
+              compact
               showMoreLabel={t('activity.showMore')}
               showLessLabel={t('activity.showLess')}
             >
               {isRunId(w.runId) && w.canOpen !== false && onOpenTask && <div className="mt-2">
                 <button type="button" className="ask-inline-action" onClick={() => onOpenTask(w.runId!)}>
-                  {t('task.open')}<ArrowUpRight size={16} aria-hidden="true" />
+                  {['needs_approval', 'needs_input', 'needs_review'].includes(w.status) ? t('activity.review') : t('task.open')}<ArrowUpRight size={16} aria-hidden="true" />
                 </button>
               </div>}
               {/* Advanced mode only, and only where there is a run to

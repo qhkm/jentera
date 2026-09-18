@@ -135,6 +135,32 @@
   background: rgb(var(--border-ink) / .035);
 }
 /* Reduce nested boxes and roomy list cards across the remaining pages. */
+.dashboard-shell .activity-overview button {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+  min-height: 44px;
+}
+.dashboard-shell .activity-overview strong { font-size: 18px; }
+.dashboard-shell .activity-overview svg { width: 18px; height: 18px; }
+.dashboard-shell .activity-records { gap: 0; }
+.dashboard-shell .activity-inbox-row + .activity-inbox-row { border-top: 1px solid var(--rail); }
+.dashboard-shell .activity-inbox-row .outcome-receipt {
+  padding: 14px 12px;
+  gap: 8px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--bg-card);
+  box-shadow: none;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .activity-inbox-row .outcome-receipt {
+  background: transparent;
+}
+.dashboard-shell .activity-inbox-row .outcome-receipt-copy-collapsed { -webkit-line-clamp: 1; }
+.dashboard-shell .activity-inbox-row .outcome-receipt-proof { gap: 4px 12px; }
+.dashboard-shell .activity-inbox-row .outcome-receipt-proof > span:first-child { display: none; }
 .dashboard-shell
   :is(.library-card.card, .connector-card, .routine-card.card, .goal-card.card) {
   padding: 16px;
