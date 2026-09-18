@@ -247,13 +247,15 @@ export default function ActivityView({
               state={workSignal(w.status)}
               collapsibleOutcome
               compact
+              compactDate={new Date(w.occurredAt).toLocaleDateString()}
+              previewOnly={isRunId(w.runId) && w.canOpen !== false && Boolean(onOpenTask)}
               showMoreLabel={t('activity.showMore')}
               showLessLabel={t('activity.showLess')}
             >
               {isRunId(w.runId) && w.canOpen !== false && onOpenTask && <div className="mt-2">
-                <button type="button" className="ask-inline-action" onClick={() => onOpenTask(w.runId!)}>
-                  {['needs_approval', 'needs_input', 'needs_review'].includes(w.status) ? t('activity.review') : t('task.open')}<ArrowUpRight size={16} aria-hidden="true" />
-                </button>
+                <Button variant={['needs_approval', 'needs_input', 'needs_review'].includes(w.status) ? 'primary' : 'outline'} onClick={() => onOpenTask(w.runId!)}>
+                  {['needs_approval', 'needs_input', 'needs_review'].includes(w.status) ? t('activity.reviewTask') : t('task.open')}<ArrowUpRight size={16} aria-hidden="true" />
+                </Button>
               </div>}
               {/* Advanced mode only, and only where there is a run to
                     trace. Collapsed by default: the trace is for the

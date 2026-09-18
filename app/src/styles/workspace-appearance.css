@@ -160,6 +160,16 @@
 }
 .dashboard-shell .activity-inbox-row .outcome-receipt-copy-collapsed { -webkit-line-clamp: 1; }
 .dashboard-shell .activity-inbox-row .outcome-receipt-proof { gap: 4px 12px; }
+.dashboard-shell .activity-inbox-row .outcome-receipt-proof { display: none; }
+.dashboard-shell .activity-inbox-row .outcome-receipt-date {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: var(--workspace-support);
+}
+.dashboard-shell .activity-inbox-row .outcome-receipt > .mt-2:has(> .btn) {
+  align-self: flex-end;
+  margin-top: 0;
+}
 .dashboard-shell .activity-inbox-row .outcome-receipt-proof > span:first-child { display: none; }
 .dashboard-shell
   :is(.library-card.card, .connector-card, .routine-card.card, .goal-card.card) {

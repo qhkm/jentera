@@ -116,6 +116,8 @@ export function OutcomeReceipt({
   onAction,
   collapsibleOutcome = false,
   compact = false,
+  compactDate,
+  previewOnly = false,
   showMoreLabel = 'Show more',
   showLessLabel = 'Show less',
   children,
@@ -132,6 +134,8 @@ export function OutcomeReceipt({
   onAction?: () => void;
   collapsibleOutcome?: boolean;
   compact?: boolean;
+  compactDate?: string;
+  previewOnly?: boolean;
   showMoreLabel?: string;
   showLessLabel?: string;
   children?: ReactNode;
@@ -149,6 +153,7 @@ export function OutcomeReceipt({
             <h3 className="text-sm font-medium leading-snug text-text">
               {title}
             </h3>
+            {compactDate && <span className="outcome-receipt-date">{compactDate}</span>}
             <Tag tone={statusTone}>{statusLabel}</Tag>
           </div>
           {outcome ? (
@@ -156,7 +161,7 @@ export function OutcomeReceipt({
               <p className={`text-[13px] leading-relaxed text-text-secondary${canCollapse && !outcomeOpen ? ' outcome-receipt-copy-collapsed' : ''}`}>
                 {outcome}
               </p>
-              {canCollapse && <button type="button" className="outcome-receipt-expand" aria-expanded={outcomeOpen} onClick={() => setOutcomeOpen((open) => !open)}>
+              {canCollapse && !previewOnly && <button type="button" className="outcome-receipt-expand" aria-expanded={outcomeOpen} onClick={() => setOutcomeOpen((open) => !open)}>
                 {outcomeOpen ? showLessLabel : showMoreLabel}
               </button>}
             </>
