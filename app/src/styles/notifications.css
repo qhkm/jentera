@@ -31,6 +31,63 @@
 .notification-arrow { flex: 0 0 auto; margin-top: 9px; color: var(--text-muted); }
 .notification-empty.card { align-items: center; gap: 10px; padding: 36px 20px; text-align: center; color: var(--text-secondary); }
 .notification-empty h2 { color: var(--text); font-size: 1rem; }
+/* Light theme: a quiet inbox list, rather than nested cards. */
+:is(.theme-light, .site-theme-light) .dashboard-shell .notification-list {
+  gap: 0;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .notification-list > li + li {
+  border-top: 1px solid var(--rail);
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .notification-card.card {
+  align-items: flex-start;
+  padding: 16px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .notification-icon {
+  width: 30px;
+  height: 30px;
+  background: transparent;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .notification-summary-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  margin-top: 2px;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .notification-summary-metrics > span {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 4px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: var(--workspace-support);
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .notification-summary-metrics > span + span::before {
+  content: '·';
+  margin-inline: 8px;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .notification-summary-metrics strong {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 500;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .notification-summary-open {
+  display: none;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .notification-summary-card::after {
+  content: '→';
+  flex: 0 0 auto;
+  align-self: center;
+  color: var(--text-muted);
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .notification-body-preview {
+  -webkit-line-clamp: 2;
+}
 @media (max-width: 600px) {
   .notification-heading { flex-wrap: wrap; }
   .notification-actions { margin-left: auto; }

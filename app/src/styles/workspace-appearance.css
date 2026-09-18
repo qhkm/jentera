@@ -121,6 +121,19 @@
 :is(.theme-light, .site-theme-light) .dashboard-shell .home-view .daily-brief {
   box-shadow: none;
 }
+/* Page panels share the light-theme treatment, not overlay or form surfaces.
+   Keep tokens intact so inputs, menus, and selected states retain their fill. */
+:is(.theme-light, .site-theme-light) .dashboard-shell .dashboard-content
+  :is(.card, .activity-overview, .connector-card, .connector-inline-setup,
+      .business-identity:not(.business-identity-compact), .business-shortcuts > button,
+      .routine-starter, .workspace-empty):not(:where(dialog *, [role='dialog'] *, .ask-studio *)) {
+  background: transparent;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .dashboard-content
+  :is(.routine-card, .routine-starter:not(:disabled), .notification-card,
+      .business-shortcuts > button):hover {
+  background: rgb(var(--border-ink) / .035);
+}
 .dashboard-shell :is(.home-ask-launcher, .routine-starter:not(:disabled), .routine-card, .chat-task-card):hover {
   border-color: var(--rail);
   background: var(--bg-card-hover);
