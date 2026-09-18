@@ -23,6 +23,7 @@ import {
   Sparkle,
 } from "@phosphor-icons/react";
 import { Link, Navigate, useSearchParams } from "react-router";
+import { returnPath } from "@/lib/return-path";
 import { trackActivation } from "@/lib/analytics";
 import { useTurnstile } from "@/lib/turnstile";
 import { JenteraMark } from "@/components/JenteraMark";
@@ -107,6 +108,8 @@ export default function SignIn() {
 function BrowserSignIn() {
   const [inviteCode] = useState(pendingTrialInvite);
   const [params, setParams] = useSearchParams();
+  /* Only an in-app path travels onward; the worker checks it again. */
+  const returnTo = returnPath(params.get('next'));
   const nativeState = params.get('state') ?? '';
   const nativeChallenge = params.get('code_challenge') ?? '';
   const nativeHandoff = params.get('native') === '1' &&
@@ -425,6 +428,11 @@ function BrowserSignIn() {
 
             <form method={inviteCode ? 'post' : 'get'} action={`${API}/api/auth/google`} className="mt-6">
               {inviteCode ? <input type="hidden" name="inviteCode" value={inviteCode} /> : null}
+              {/* Where the owner was before they were asked to sign in.
+                  Sent for both methods: the GET form puts it in the query,
+                  the POST form in the body, and the worker checks it is one
+                  of ours before it redirects anywhere. */}
+              {returnTo ? <input type="hidden" name="next" value={returnTo} /> : null}
               {nativeHandoff ? <>
                 <input type="hidden" name="native" value="1" />
                 <input type="hidden" name="state" value={nativeHandoff.state} />

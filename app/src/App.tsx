@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router';
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router';
 import Access from './routes/Access';
 import Subscribe from './routes/Subscribe';
 import * as store from '@/lib/storage';
@@ -77,7 +77,13 @@ function SetupStage() {
  * yields an empty shell and a wall of 401s, not anyone's data.
  */
 function RequireAuth({ children }: { children: ReactElement }) {
-  return useSignedIn() ? children : <Navigate to="/signin" replace />;
+  const location = useLocation();
+  if (useSignedIn()) return children;
+  /* Carry where they were, so signing in returns them to the chat they were
+     reading rather than to the front of the app. The worker validates this
+     before it acts on it; sending it is not the same as trusting it. */
+  const here = `${location.pathname}${location.search}${location.hash}`;
+  return <Navigate to={`/signin?next=${encodeURIComponent(here)}`} replace />;
 }
 
 /* ============================================================

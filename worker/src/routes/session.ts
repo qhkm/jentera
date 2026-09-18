@@ -76,6 +76,35 @@ function readNamedCookie(request: Request, name: string): string | null {
 }
 
 /** Returns null when the path is not ours, so the caller can fall through. */
+/**
+ * Where to put the owner back after a sign-in, from what they asked for.
+ *
+ * A path only, and only one of ours. `//evil.example` is a protocol-relative
+ * URL a browser follows off-site, and a full URL is an open redirect —
+ * either turns our own sign-in into a way to land someone somewhere else
+ * wearing our address. Anything that is not plainly an in-app path is
+ * dropped rather than argued with.
+ */
+export function safeReturnPath(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const path = value.trim();
+  if (!path.startsWith('/') || path.startsWith('//') || path.startsWith('/\\')) return null;
+  if (path.length > 512 || /[\s\\]|[\u0000-\u001f]/.test(path)) return null;
+  /* The API is not a page, and the sign-in screen is where they came from. */
+  if (/^\/(api|signin|join)\b/.test(path)) return null;
+  return path;
+}
+
+/** Survives the dot-joined OAuth cookie, where a path's own dots would not. */
+const packPath = (path: string | null): string =>
+  path ? btoa(path).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') : '';
+
+function unpackPath(packed: string | undefined): string | null {
+  if (!packed) return null;
+  try { return safeReturnPath(atob(packed.replace(/-/g, '+').replace(/_/g, '/'))); }
+  catch { return null; }
+}
+
 export async function handleSession(
   request: Request,
   env: Env,
@@ -305,6 +334,9 @@ export async function handleSession(
     }
     if (session.created) await announce(session.email, 'magic-link');
     const invite = await openTrial(env, url.searchParams.get('invite'), `email:${token}`);
+    /* A magic link has no return path: the link is issued before the owner
+       is anywhere, and carrying one would mean putting it in the email. The
+       same gap as Google's was, and a larger change to close. */
     const landing = trialLanding(invite, await authLandingPath(env, session.userId));
     const location = session.native
       ? `${env.APP_ORIGIN}/signin?${new URLSearchParams({
@@ -482,6 +514,12 @@ export async function handleSession(
     const state = randomUrlSafe();
     const verifier = randomUrlSafe();
     const carry = await sealTrial(env, inviteCode, `google:${state}`);
+    /* Where the owner was when they were asked to sign in. Without it they
+       come back to the front of the app, having lost the chat they were
+       in the middle of. */
+    const back = safeReturnPath(request.method === 'POST'
+      ? (await request.clone().formData().catch(() => null))?.get('next')
+      : url.searchParams.get('next'));
 
     /* state and verifier ride back in a cookie rather than a server
        table: the callback is the same browser, and this keeps the flow
@@ -497,6 +535,7 @@ export async function handleSession(
           carry ?? '',
           requestedNative?.state ?? '',
           requestedNative?.codeChallenge ?? '',
+          packPath(back),
         ].join('.')}; HttpOnly; Secure; SameSite=Lax; Path=/api/auth; Max-Age=600`,
       },
     });
@@ -519,7 +558,7 @@ export async function handleSession(
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state');
     const stash = readNamedCookie(request, OAUTH_COOKIE);
-    const [wantState, verifier, carry, nativeState, nativeChallenge] = (stash ?? '').split('.');
+    const [wantState, verifier, carry, nativeState, nativeChallenge, back] = (stash ?? '').split('.');
 
     /* The CSRF check. Without it an attacker can hand a victim a
        callback URL carrying the ATTACKER's code, silently signing the
@@ -541,7 +580,12 @@ export async function handleSession(
     catch (error) { if (isBlockedAccountError(error)) return fail('google-failed'); throw error; }
     const invite = await openTrial(env, carry ?? null, `google:${state}`);
     if (session.created) await announce(profile.email, 'google');
-    const landing = trialLanding(invite, await authLandingPath(env, session.userId));
+    const gate = trialLanding(invite, await authLandingPath(env, session.userId));
+    /* The gates win. `/onboard`, `/setup` and `/access` are not detours on
+       the way somewhere — they are the somewhere, until they are done. Only
+       an owner already through them is put back where they were. */
+    const requested = unpackPath(back);
+    const landing = gate === '/app' && requested ? requested : gate;
     const location = NATIVE_STATE.test(nativeState ?? '') && PKCE_CHALLENGE.test(nativeChallenge ?? '')
       ? `${env.APP_ORIGIN}/signin?${new URLSearchParams({
           native: '1',
