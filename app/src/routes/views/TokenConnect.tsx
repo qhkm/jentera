@@ -17,13 +17,19 @@ import { useRepository } from '@/lib/repo';
 import type { ConnectionsState } from '@/hooks/useConnections';
 import { useT } from '@/i18n/I18nProvider';
 import { permitsTokenConnector } from '@/lib/connector-catalogue';
+import type { TokenConnectorOption } from '@/lib/repo/types';
 
 export default function TokenConnect({ rows, setRows, connector, id }: Pick<ConnectionsState, 'rows' | 'setRows'> & { connector?: string; id?: string }) {
   const repo = useRepository();
   const t = useT();
-  const [catalogue, setCatalogue] = useState<{ connector: string; label: string }[]>([]);
+  const [catalogue, setCatalogue] = useState<TokenConnectorOption[]>([]);
   const [chosen, setChosen] = useState('');
   const [token, setToken] = useState('');
+  /* The second value some providers need beside the token. Not a secret —
+     Bukku sends the company subdomain as a header on every request — so it
+     is a plain field, and it is cleared when the service changes rather
+     than carried to one that means something different by it. */
+  const [account, setAccount] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,19 +50,24 @@ export default function TokenConnect({ rows, setRows, connector, id }: Pick<Conn
 
   if (!catalogue.length) return null;
 
+  const entry = catalogue.find((item) => item.connector === chosen);
+  const needsAccount = Boolean(entry?.account);
+  const ready = Boolean(token.trim()) && (!needsAccount || Boolean(account.trim()));
+
   const connected = (rows ?? []).filter((row) =>
     catalogue.some((entry) => entry.connector === row.connector));
 
   async function connect() {
-    if (!chosen || !token.trim() || busy) return;
+    if (!chosen || !ready || busy) return;
     setBusy(true);
     setError(null);
     try {
-      const connection = await repo.connectToken(chosen, token.trim());
+      const connection = await repo.connectToken(chosen, token.trim(), account.trim() || undefined);
       setRows((prev) => [connection, ...(prev ?? []).filter((r) => r.id !== connection.id)]);
       /* Cleared on success. A live token has no reason to stay in a form
          field, where a screenshot or a shoulder would find it. */
       setToken('');
+      setAccount('');
     } catch (e) {
       setError(e instanceof Error ? e.message : t('connect.token.failed'));
     } finally {
@@ -90,7 +101,7 @@ export default function TokenConnect({ rows, setRows, connector, id }: Pick<Conn
           <select
             className="input"
             value={chosen}
-            onChange={(e) => setChosen(e.target.value)}
+            onChange={(e) => { setChosen(e.target.value); setAccount(''); }}
           >
             {catalogue.map((entry) => (
               <option key={entry.connector} value={entry.connector}>{entry.label}</option>
@@ -108,13 +119,31 @@ export default function TokenConnect({ rows, setRows, connector, id }: Pick<Conn
             spellCheck={false}
           />
         </label>
-        <Button onClick={connect} disabled={!token.trim() || busy}>
+        {entry?.account && (
+          <label className="flex flex-col gap-1 text-[13px]">
+            <span className="text-text-secondary">{entry.account.label}</span>
+            <Input
+              type="text"
+              value={account}
+              onChange={(e) => setAccount(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              aria-describedby={`${id ?? 'token'}-account-hint`}
+            />
+          </label>
+        )}
+        <Button onClick={connect} disabled={!ready || busy}>
           {busy ? t('connect.token.checking') : t('connect.token.connect')}
         </Button>
       </div>
 
       {/* Said plainly, because a token is a thing an owner can over-grant
           without noticing. */}
+      {entry?.account && (
+        <p id={`${id ?? 'token'}-account-hint`} className="max-w-[66ch] text-[12px] text-text-muted">
+          {entry.account.hint}
+        </p>
+      )}
       <p className="max-w-[66ch] text-[12px] text-text-muted">{t('connect.token.scope')}</p>
       {error && <p className="text-[13px] text-red-500" role="alert">{error}</p>}
     </Card>

@@ -9,6 +9,7 @@ import * as store from '@/lib/storage';
 import { KEYS } from '@/lib/storage';
 import type { Approval, CountryCode, Lang, Policy } from '@/lib/types';
 import type {
+  TokenConnectorOption,
   Artifact,
   Activity,
   BusinessSnapshot,
@@ -355,7 +356,7 @@ export class LocalRepository implements Repository {
   /* Nothing to connect without a backend: the demo has no provider to
      verify a token against, and inventing a connected state here would be
      the kind of lie the playbook figures already taught us not to tell. */
-  async tokenConnectors(): Promise<{ connector: string; label: string }[]> {
+  async tokenConnectors(): Promise<TokenConnectorOption[]> {
     return [];
   }
 

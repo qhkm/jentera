@@ -21,7 +21,7 @@ describe('Jentera connections', () => {
     expect(rows).toHaveLength(getConnectorCatalogue().length + 2);
     for (const row of rows) {
       const name = within(row).getByRole('heading').textContent;
-      const available = name === 'Web workspace' || name === 'Telegram';
+      const available = name === 'Web workspace' || name === 'Telegram' || name === 'Bukku';
       expect(within(row).getByText(name === 'Google Calendar' ? 'Pilot' : available ? 'Available now' : 'Planned')).toBeInTheDocument();
     }
     expect(screen.getByText(/review every event before it is added/i)).toBeInTheDocument();
@@ -39,11 +39,11 @@ describe('Jentera connections', () => {
     const user = userEvent.setup();
     mount();
     await user.click(screen.getByRole('button', { name: 'Available now' }));
-    expect(screen.getAllByRole('article')).toHaveLength(3);
+    expect(screen.getAllByRole('article')).toHaveLength(4);
     expect(screen.getByRole('heading', { name: 'Google Calendar' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'WhatsApp' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Planned' }));
-    expect(screen.getAllByRole('article')).toHaveLength(getConnectorCatalogue().length - 1);
+    expect(screen.getAllByRole('article')).toHaveLength(getConnectorCatalogue().length - 2);
     expect(screen.getByRole('button', { name: 'Planned' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByRole('heading', { name: 'Telegram' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Google Calendar' })).not.toBeInTheDocument();

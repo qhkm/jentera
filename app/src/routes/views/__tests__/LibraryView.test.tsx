@@ -25,9 +25,10 @@ describe('Library', () => {
     await user.click(screen.getAllByText('View instructions')[1]);
     expect(screen.getAllByText(/Research the topic specified below/)[0]).toBeVisible();
     await user.click(screen.getByRole('link', { name: 'Connectors' }));
-    expect(screen.getAllByText('Not connected')).toHaveLength(2);
+    expect(screen.getAllByText('Not connected')).toHaveLength(3);
     expect(screen.getByRole('button', { name: 'Connect Telegram' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Connect Google Calendar' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Connect Bukku' })).toBeEnabled();
     expect(screen.getAllByText('Not available yet').length).toBeGreaterThan(3);
     expect(onUse).not.toHaveBeenCalled();
   });
@@ -79,7 +80,7 @@ describe('Library', () => {
   it('filters available apps and closes credential fields when searching or changing category', async () => {
     const { user } = await mount('connectors');
     await user.click(screen.getByRole('button', { name: 'Available' }));
-    expect(screen.getAllByRole('article')).toHaveLength(2);
+    expect(screen.getAllByRole('article')).toHaveLength(3);
     await user.click(screen.getByRole('button', { name: 'Connect Telegram' }));
     await user.type(screen.getByLabelText('Your bot token'), 'fictional-secret');
     await user.selectOptions(screen.getByRole('combobox', { name: 'Category' }), 'google');
@@ -92,7 +93,7 @@ describe('Library', () => {
   });
   it('never shows stale connected rows while status is loading', async () => {
     const { user } = await mount('connectors', { ...connections, mode: 'pending', real: false, rows: null });
-    expect(screen.getAllByText('Checking connection…')).toHaveLength(2);
+    expect(screen.getAllByText('Checking connection…')).toHaveLength(3);
     await user.click(screen.getByRole('button', { name: 'Connected' }));
     expect(screen.getByRole('status')).toHaveTextContent('Connection status must be loaded');
   });

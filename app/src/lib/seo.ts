@@ -5,7 +5,7 @@ export const SOCIAL_IMAGE = `${SITE_URL}/social/jentera-v1.png`;
 export const SOCIAL_ALT = 'Jentera by AISAR. AI staff that works 24/7 for Malaysian businesses.';
 export const INDEXABLE_PATHS = [
   '/', '/ms', '/pricing', '/about',
-  '/connect', '/connect/telegram', '/connect/google-calendar',
+  '/connect', '/connect/telegram', '/connect/google-calendar', '/connect/bukku',
   '/privacy', '/terms',
 ] as const;
 export const PRIVATE_PATHS = ['/signin', '/onboard', '/setup', '/app', '/join', '/access', '/waitlist', '/subscribe', '/admin/launch'] as const;
@@ -88,6 +88,14 @@ export const INDEXABLE_PAGE_SOURCES: Record<IndexablePath, readonly string[]> = 
     'app/src/styles/connect.css',
     'app/src/lib/seo.ts',
   ],
+  '/connect/bukku': [
+    'app/src/routes/ConnectorPage.tsx',
+    'app/src/lib/connector-pages.ts',
+    'app/src/lib/live-connectors.ts',
+    ...CHROME,
+    'app/src/styles/connect.css',
+    'app/src/lib/seo.ts',
+  ],
   '/privacy': [
     'app/src/routes/Privacy.tsx',
     'app/src/components/landing/LandingChrome.tsx',
@@ -142,6 +150,10 @@ const PAGES: Record<string, Omit<PageSeo, 'canonical' | 'indexable' | 'lang'>> =
   '/connect/google-calendar': {
     title: 'Jentera for Google Calendar — Prepare events for review',
     description: 'Let Jentera check your primary Google Calendar and prepare events you approve before they are added. A pilot connection; Google permission verification is pending.',
+  },
+  '/connect/bukku': {
+    title: 'Jentera for Bukku — Ask who has not paid you',
+    description: 'Connect Bukku and ask Jentera who owes you money. It reads your outstanding and overdue invoices and your contacts. Reading only, and your token never leaves Jentera.',
   },
   '/privacy': {
     title: 'Privacy notice — Jentera',

@@ -46,6 +46,21 @@ export const CONNECTORS: Record<string, Connector> = {
     ],
     "meta": true
   },
+  "bukku": {
+    "n": "Bukku",
+    "e": "\ud83d\udcd2",
+    "tier": "T2",
+    "method": "link",
+    "flow": "Turn on API access in your own Bukku control panel and paste the token \u2014 no dealer, no install",
+    "category": "accounting",
+    "scope": [
+      "read unpaid and overdue invoices",
+      "read customer contacts"
+    ],
+    "countries": [
+      "MY"
+    ]
+  },
   "telegram": {
     "n": "Telegram",
     "e": "✈️",

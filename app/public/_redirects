@@ -7,6 +7,7 @@
 /connect/  /connect  301
 /connect/telegram/         /connect/telegram         301
 /connect/google-calendar/  /connect/google-calendar  301
+/connect/bukku/            /connect/bukku            301
 /privacy/  /privacy  301
 /terms/    /terms    301
 /signin/   /signin   301

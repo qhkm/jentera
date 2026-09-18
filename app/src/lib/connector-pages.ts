@@ -87,6 +87,55 @@ export const CONNECTOR_PAGES: ConnectorPage[] = [
     ],
   },
   {
+    slug: 'bukku',
+    name: 'Bukku',
+    icon: '📒',
+    availability: 'available',
+    eyebrow: 'Available now',
+    headline: 'Ask your accounts a question, get an answer.',
+    lede:
+      'Connect Bukku and Jentera can tell you who has not paid you, without you opening a ledger '
+      + 'or exporting a spreadsheet. It reads your books. It does not write to them.',
+    does: [
+      {
+        title: 'Who owes you money',
+        body:
+          'Ask in plain words and Jentera reads your outstanding and overdue invoices — who, how much, '
+          + 'and how long. Overdue is whatever Bukku says it is, not a date sum of ours, so the answer '
+          + 'matches what you would see if you opened Bukku yourself.',
+      },
+      {
+        title: 'Your customer list, when it is needed',
+        body:
+          'Looking up a contact while drafting a reply or a quotation no longer means switching apps and '
+          + 'copying a name across.',
+      },
+      {
+        title: 'Your token never leaves Jentera',
+        body:
+          'The credential stays in Jentera’s control plane. Your AI staff asks for a reading and receives '
+          + 'an answer in words — it never holds the key to your accounts, so nothing it reads on the web '
+          + 'can talk it into handing one over.',
+      },
+    ],
+    limits: [
+      'Reading only. Jentera cannot create, edit, send or void anything in Bukku.',
+      'Invoices and contacts. Bills, payments, journals and reports are not covered yet.',
+      'One Bukku company per business. Connect the company whose books you want it to read.',
+      'A token you can revoke. Turn API access off in Bukku and the connection stops working immediately.',
+    ],
+    steps: [
+      { title: 'Create your account', body: 'Sign up and verify your email address, then open your workspace.' },
+      { title: 'Turn on API access in Bukku', body: 'In Bukku, open Control Panel → Integrations and turn on API Access. Copy the token it generates, and note your company subdomain — the name in your Bukku address.' },
+      { title: 'Paste it into Connections', body: 'Choose Bukku in Connections, paste the token and the subdomain. Jentera checks both against Bukku before saving, and tells you which one is wrong if either is.' },
+    ],
+    related: [
+      { href: '/connect', label: 'Every connection, available and planned' },
+      { href: '/privacy', label: 'How your data is handled' },
+      { href: '/pricing', label: 'What the plan costs' },
+    ],
+  },
+  {
     slug: 'google-calendar',
     name: 'Google Calendar',
     icon: '📅',

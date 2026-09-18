@@ -52,6 +52,7 @@ import type {
   TraceEvent,
   WorkQuality,
   WarmSource,
+  TokenConnectorOption,
 } from './types';
 
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
@@ -592,17 +593,17 @@ export class RemoteRepository implements Repository {
     return connection;
   }
 
-  async tokenConnectors(): Promise<{ connector: string; label: string }[]> {
-    const { connectors } = await call<{ connectors: { connector: string; label: string }[] }>(
+  async tokenConnectors(): Promise<TokenConnectorOption[]> {
+    const { connectors } = await call<{ connectors: TokenConnectorOption[] }>(
       '/api/connections/token',
     );
     return connectors;
   }
 
-  async connectToken(connector: string, token: string): Promise<Connection> {
+  async connectToken(connector: string, token: string, account?: string): Promise<Connection> {
     const { connection } = await call<{ connection: Connection }>('/api/connections/token', {
       method: 'POST',
-      body: JSON.stringify({ connector, token }),
+      body: JSON.stringify({ connector, token, ...(account ? { account } : {}) }),
     });
     return connection;
   }

@@ -399,6 +399,14 @@ export class NeedsAccountError extends Error {
 
 export type WarmSource = 'chat_open' | 'focus' | 'typing' | 'attach' | 'send';
 
+export interface TokenConnectorOption {
+  connector: string;
+  label: string;
+  /** Declared by the provider, so the form can render a field it does not
+      know about without a release of its own. */
+  account?: { label: string; hint: string };
+}
+
 export interface Repository {
   /** Remote only; callers must also require /api/me v1 discovery. */
   routines?: import('@/lib/routines/types').RoutinesApi;
@@ -537,10 +545,12 @@ export interface Repository {
   /** Connect a Telegram bot the owner created. */
   connectTelegram(token: string): Promise<Connection>;
   /** Services that are connected by pasting a scoped token. Names only. */
-  tokenConnectors(): Promise<{ connector: string; label: string }[]>;
+  tokenConnectors(): Promise<TokenConnectorOption[]>;
   /** Connect one of them. The token is verified with the provider before
       it is stored, so a rejection arrives here rather than later. */
-  connectToken(connector: string, token: string): Promise<Connection>;
+  /** `account` is the second, non-secret value some providers need beside
+      the token — Bukku's company subdomain. Absent for the rest. */
+  connectToken(connector: string, token: string, account?: string): Promise<Connection>;
   disconnect(id: string): Promise<void>;
   /** What the far side thinks the connection is doing. The answer to
       "I messaged the bot and nothing happened". */

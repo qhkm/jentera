@@ -48,7 +48,7 @@ export interface Connector {
   countries: CountryCode[];
   /** Catalogue labels only; never enable an integration or grant permission. */
   availability?: 'planned' | 'pilot';
-  category?: 'google';
+  category?: 'google' | 'accounting';
   description?: Record<Lang, string>;
   meta?: boolean;
   fpga?: boolean;
