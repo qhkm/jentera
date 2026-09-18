@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { run } from '../bin/jentera-calendar.mjs';
+import { loadRuntimeEnv, run } from '../bin/jentera-calendar.mjs';
 
 const env = {
   OPENROUTER_BASE_URL: 'https://api.jentera.ai/v1/model',
@@ -48,4 +48,29 @@ test('refuses to derive the Calendar endpoint from an unrelated model host', asy
     }),
     /unavailable/,
   );
+});
+
+test('loads only missing model transport values from Hermes dotenv without evaluating it', async () => {
+  const loaded = await loadRuntimeEnv({ HERMES_HOME: '/test/hermes', OPENROUTER_API_KEY: 'inherited-key' }, async (path) => {
+    assert.equal(path, '/test/hermes/.env');
+    return 'OPENROUTER_API_KEY=file-key\nOPENROUTER_BASE_URL="https://api.jentera.ai/v1/model"\nGOOGLE_WORKSPACE_CLI_TOKEN=secret\nSURPRISE=$(touch /tmp/not-executed)\n';
+  });
+  assert.equal(loaded.OPENROUTER_API_KEY, 'inherited-key');
+  assert.equal(loaded.OPENROUTER_BASE_URL, env.OPENROUTER_BASE_URL);
+  assert.equal(loaded.GOOGLE_WORKSPACE_CLI_TOKEN, undefined);
+  assert.equal(loaded.SURPRISE, undefined);
+});
+
+test('missing dotenv remains a clear runtime refusal and complete inherited env needs no file', async () => {
+  const loaded = await loadRuntimeEnv({}, async () => { throw new Error('ENOENT'); });
+  await assert.rejects(run(['setup'], loaded), /unavailable/);
+  assert.equal(await loadRuntimeEnv(env, async () => { throw new Error('must not read'); }), env);
+});
+
+test('setup asks for a normal-browser link, not provider credentials', async () => {
+  await run(['setup'], env, async (url, init) => {
+    assert.equal(url, 'https://api.jentera.ai/v1/connectors/google-calendar/setup');
+    assert.equal(init.method, 'GET');
+    return Response.json({ ok: true, connectUrl: 'https://api.jentera.ai/api/connections/google-calendar/start' });
+  });
 });

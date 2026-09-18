@@ -6,6 +6,27 @@
 
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
+// Hermes terminal subprocesses need not inherit its model transport variables.
+// Read only these two bootstrap-owned values, never evaluate a dotenv as shell.
+export async function loadRuntimeEnv(env = process.env, reader = readFile) {
+  if (env.OPENROUTER_API_KEY?.trim() && env.OPENROUTER_BASE_URL?.trim()) return env;
+  const result = { ...env };
+  const body = await reader(join(env.HERMES_HOME || join(homedir(), '.hermes'), '.env'), 'utf8')
+    .catch(() => '');
+  for (const line of body.split(/\r?\n/)) {
+    const match = /^(OPENROUTER_API_KEY|OPENROUTER_BASE_URL)=(.*)$/.exec(line);
+    if (!match || result[match[1]]?.trim()) continue;
+    let value = match[2].trim();
+    if ((value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
+    result[match[1]] = value;
+  }
+  return result;
+}
 
 function endpoint(env = process.env) {
   const explicit = env.JENTERA_CALENDAR_API?.trim();
@@ -55,6 +76,7 @@ async function call(path, init, env = process.env, fetcher = fetch) {
 
 export async function run(argv, env = process.env, fetcher = fetch) {
   const [command, ...args] = argv;
+  if (command === 'setup' && !args.length) return call('/setup', { method: 'GET' }, env, fetcher);
   if (command === 'events') {
     if (args.length !== 2) throw new Error('Usage: jentera-calendar events <timeMin> <timeMax>');
     const query = new URLSearchParams({ timeMin: args[0], timeMax: args[1] });
@@ -69,12 +91,12 @@ export async function run(argv, env = process.env, fetcher = fetch) {
       : stableRequestId(event);
     return call('/proposals', { method: 'POST', body: JSON.stringify(event) }, env, fetcher);
   }
-  throw new Error('Usage: jentera-calendar <events|propose> …');
+  throw new Error('Usage: jentera-calendar <setup|events|propose> …');
 }
 
 async function main() {
   try {
-    const result = await run(process.argv.slice(2));
+    const result = await run(process.argv.slice(2), await loadRuntimeEnv());
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : 'Calendar command failed.'}\n`);

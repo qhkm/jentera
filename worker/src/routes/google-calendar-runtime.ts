@@ -49,7 +49,8 @@ export async function handleGoogleCalendarRuntime(
 ): Promise<Response | null> {
   const eventsPath = `${GOOGLE_CALENDAR_RUNTIME_PATH}/events`;
   const proposalsPath = `${GOOGLE_CALENDAR_RUNTIME_PATH}/proposals`;
-  if (url.pathname !== eventsPath && url.pathname !== proposalsPath) return null;
+  const setupPath = `${GOOGLE_CALENDAR_RUNTIME_PATH}/setup`;
+  if (![eventsPath, proposalsPath, setupPath].includes(url.pathname)) return null;
 
   let identity;
   try {
@@ -61,6 +62,16 @@ export async function handleGoogleCalendarRuntime(
 
   const burst = await env.RUNTIME_CONFIG_BURST.limit({ key: `calendar:${identity.claims.rid}` });
   if (!burst.success) return json({ ok: false, err: 'too many calendar requests' }, 429, headers);
+
+  if (url.pathname === setupPath) {
+    if (request.method !== 'GET') return json({ ok: false, err: 'setup only supports GET' }, 405, headers);
+    return json({
+      ok: true,
+      status: 'needs_owner_login',
+      connectUrl: `${env.API_ORIGIN}/api/connections/google-calendar/start`,
+      message: 'Open this link in your normal browser while signed in to Jentera. Approve Google Calendar access, then return to Chat. This is not event approval or proof of a successful connection.',
+    }, 200, headers);
+  }
 
   const connected = await withTenant(env, identity.businessId, (tx) =>
     findConnection(tx, GOOGLE_CALENDAR_CONNECTOR));
@@ -74,6 +85,12 @@ export async function handleGoogleCalendarRuntime(
 
   if (url.pathname === eventsPath) {
     if (request.method !== 'GET') return json({ ok: false, err: 'events only supports GET' }, 405, headers);
+    const policy = await withTenant(env, identity.businessId, (tx) =>
+      policyFor(tx, GOOGLE_CALENDAR_CONNECTOR, 'list_events'));
+    if (policy !== 'automatic') {
+      return json({ ok: false, code: policy === 'blocked' ? 'BLOCKED' : 'APPROVAL_REQUIRED',
+        err: 'Calendar reading is not enabled for automatic access by the owner.' }, 403, headers);
+    }
     let range;
     try {
       range = normaliseCalendarRange(url);

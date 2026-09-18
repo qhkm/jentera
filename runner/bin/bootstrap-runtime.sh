@@ -392,6 +392,13 @@ fi
   exit 1
 }
 
+# Install shared public tools before sealing a spare, so claims need no download.
+bash /home/sprite/aisar/runner/install-gws.sh
+install -d -m 755 /home/sprite/.local/bin
+ln -sf /home/sprite/.local/lib/jentera-gws/gws /home/sprite/.local/bin/gws
+install -m 755 /home/sprite/aisar/runner/jentera-calendar.mjs /home/sprite/.local/bin/jentera-calendar.mjs
+install -m 755 /home/sprite/aisar/runner/jentera-gws.mjs /home/sprite/.local/bin/jentera-gws
+
 stage_done playwright
 if [[ "$prepare_spare" == "1" ]]; then
   # Public packages only. Never configure a business, create profiles, start

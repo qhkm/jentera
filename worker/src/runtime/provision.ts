@@ -315,6 +315,8 @@ export async function downloadRuntimeBundle(
     'runner/bin/desktop-release-keys.py',
     'runner/bin/browser-smoke.mjs',
     'runner/bin/jentera-calendar.mjs',
+    'runner/bin/jentera-gws.mjs',
+    'runner/bin/install-gws.sh',
     'runner/bin/model-smoke.py',
     'runner/bin/web-search-smoke.py',
     'runner/bin/configure-model-provider.py',

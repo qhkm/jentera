@@ -130,6 +130,25 @@ test('runtime installs the narrow Calendar client on the Hermes PATH', async () 
   assert.match(provision, /runner\/bin\/jentera-calendar\.mjs/);
 });
 
+test('gws is pinned, checked, bundled and installed before sealing spares', async () => {
+  const bootstrap = await readFile(SCRIPT, 'utf8');
+  const provision = await readFile(PROVISION, 'utf8');
+  const workerProvision = await readFile(new URL('../../worker/src/runtime/provision.ts', import.meta.url), 'utf8');
+  const installer = await readFile(new URL('../bin/install-gws.sh', import.meta.url), 'utf8');
+  assert.match(installer, /releases\/download\/v0\.22\.5/);
+  assert.match(installer, /sha256sum --check --status/g);
+  assert.match(installer, /installed_sha%%/);
+  const installAt = bootstrap.indexOf('bash /home/sprite/aisar/runner/install-gws.sh');
+  const sealAt = bootstrap.indexOf('finish "$runtime_release"');
+  assert.ok(installAt > 0 && sealAt > installAt);
+  for (const name of ['install-gws.sh', 'jentera-gws.mjs']) {
+    assert.ok(provision.includes(`runner/bin/${name}`));
+    assert.ok(workerProvision.includes(`runner/bin/${name}`));
+  }
+  assert.match(bootstrap, /jentera-calendar\.mjs \/home\/sprite\/\.local\/bin\/jentera-calendar\.mjs/);
+  assert.match(bootstrap, /jentera-gws\.mjs \/home\/sprite\/\.local\/bin\/jentera-gws/);
+});
+
 test('operator provisioning includes the startup diagnostic patch module', async () => {
   const provision = await readFile(PROVISION, 'utf8');
   const patch = await readFile(new URL('../bin/patch-hermes-dependencies.mjs', import.meta.url), 'utf8');

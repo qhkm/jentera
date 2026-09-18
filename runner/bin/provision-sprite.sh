@@ -76,6 +76,8 @@ sprite file push -o "$sprite_org" -s "$sprite_name" -p \
   runner/src/browser-preview-stream.mjs \
   runner/bin/browser-smoke.mjs \
   runner/bin/jentera-calendar.mjs \
+  runner/bin/jentera-gws.mjs \
+  runner/bin/install-gws.sh \
   runner/bin/model-smoke.py \
   runner/bin/web-search-smoke.py \
   runner/bin/configure-model-provider.py \
