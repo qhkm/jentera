@@ -33,6 +33,29 @@ function mount(repo: LocalRepository) {
 }
 
 describe('connecting a service with a token', () => {
+  /* Every connector's Connect button points at this one card. Without the
+     fragment it offered whichever service sorted first, so asking for Bukku
+     landed on a form for Cloudflare. */
+  it('offers the service the owner actually clicked', async () => {
+    window.location.hash = '#connection-tokens-bukku';
+    const repo = new LocalRepository();
+    vi.spyOn(repo, 'tokenConnectors').mockResolvedValue([PLAIN, BUKKU]);
+    mount(repo);
+    const select = await screen.findByRole('combobox');
+    expect(select).toHaveValue('Bukku');
+    /* And the field only Bukku needs came with it. */
+    expect(screen.getByLabelText('Company subdomain')).toBeInTheDocument();
+    window.location.hash = '';
+  });
+
+  it('falls back to the first service when reached on its own', async () => {
+    window.location.hash = '';
+    const repo = new LocalRepository();
+    vi.spyOn(repo, 'tokenConnectors').mockResolvedValue([PLAIN, BUKKU]);
+    mount(repo);
+    expect(await screen.findByRole('combobox')).toHaveValue('Cloudflare');
+  });
+
   it('asks for the company as well, and sends both', async () => {
     const repo = new LocalRepository();
     vi.spyOn(repo, 'tokenConnectors').mockResolvedValue([BUKKU]);

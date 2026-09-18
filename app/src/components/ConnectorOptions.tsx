@@ -73,7 +73,7 @@ export function ConnectorOptions({ connections, setupMode = 'inline' }: { connec
       return <li key={item.id} className={open ? 'connector-option-open' : undefined}>
         <ConnectorCard entry={item} lang={lang} status={status} connected={supported && isConnected(item.id)}>
           {supported && (connections.mode === 'demo' ? <Link className="btn btn-outline" to="/signin">{t('connectors.signin')}</Link>
-            : setupMode === 'existing' && connections.mode === 'real' ? <a className="btn btn-outline" href={`#connection-${['telegram', 'google'].includes(item.id) ? item.id : 'tokens'}`} aria-label={`${action} ${item.name}`}>{action}</a>
+            : setupMode === 'existing' && connections.mode === 'real' ? <a className="btn btn-outline" href={`#connection-${['telegram', 'google'].includes(item.id) ? item.id : `tokens-${item.id}`}`} aria-label={`${action} ${item.name}`}>{action}</a>
               : <button type="button" className="btn btn-outline" disabled={connections.mode !== 'real'} aria-expanded={open} aria-controls={open ? `connector-${item.id}` : undefined}
                 aria-label={`${action} ${item.name}`} onClick={() => setSelected(open ? null : item.id)}>{action}</button>)}
         </ConnectorCard>

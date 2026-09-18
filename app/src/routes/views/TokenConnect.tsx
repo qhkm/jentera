@@ -19,6 +19,14 @@ import { useT } from '@/i18n/I18nProvider';
 import { permitsTokenConnector } from '@/lib/connector-catalogue';
 import type { TokenConnectorOption } from '@/lib/repo/types';
 
+/** `#connection-tokens-bukku` → `bukku`. Any other fragment means the card
+    was reached on its own, so nothing is preselected. */
+function connectorFromHash(): string {
+  if (typeof window === 'undefined') return '';
+  const match = /^#connection-tokens-([a-z0-9-]+)$/i.exec(window.location.hash);
+  return match ? match[1].toLowerCase() : '';
+}
+
 export default function TokenConnect({ rows, setRows, connector, id }: Pick<ConnectionsState, 'rows' | 'setRows'> & { connector?: string; id?: string }) {
   const repo = useRepository();
   const t = useT();
@@ -31,6 +39,11 @@ export default function TokenConnect({ rows, setRows, connector, id }: Pick<Conn
      than carried to one that means something different by it. */
   const [account, setAccount] = useState('');
   const [busy, setBusy] = useState(false);
+  /* Which service the owner clicked, carried in the fragment. Every
+     connector's Connect button used to point at this one card, which then
+     offered whichever service happened to sort first — so asking for Bukku
+     landed on a form for Cloudflare. */
+  const [asked, setAsked] = useState(() => connectorFromHash());
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -40,13 +53,23 @@ export default function TokenConnect({ rows, setRows, connector, id }: Pick<Conn
         if (cancelled) return;
         const available = list.filter(item => permitsTokenConnector(item.connector) && (!connector || item.connector === connector));
         setCatalogue(available);
-        setChosen((current) => available.some(item => item.connector === current) ? current : available[0]?.connector || '');
+        setChosen((current) => {
+          const wanted = available.find(item => item.connector.toLowerCase() === asked);
+          if (wanted) return wanted.connector;
+          return available.some(item => item.connector === current) ? current : available[0]?.connector || '';
+        });
       })
       /* Nothing to offer is a normal state, not an error to report: the
          local repository has no provider to verify against. */
       .catch(() => { if (!cancelled) setCatalogue([]); });
     return () => { cancelled = true; };
-  }, [repo, connector]);
+  }, [repo, connector, asked]);
+
+  useEffect(() => {
+    const onHash = () => setAsked(connectorFromHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
 
   if (!catalogue.length) return null;
 
@@ -77,6 +100,9 @@ export default function TokenConnect({ rows, setRows, connector, id }: Pick<Conn
 
   return (
     <Card id={id} tabIndex={id ? -1 : undefined} className="gap-4">
+      {catalogue.map((option) => (
+        <span key={option.connector} id={`connection-tokens-${option.connector.toLowerCase()}`} aria-hidden="true" />
+      ))}
       <div className="flex flex-col gap-1">
         <Eyebrow>{t('connect.token.title')}</Eyebrow>
         <p className="max-w-[66ch] text-[13px] text-text-secondary">
