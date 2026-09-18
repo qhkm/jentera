@@ -484,9 +484,16 @@ export async function handleSession(
   if (url.pathname === '/api/auth/google' && (request.method === 'GET' || request.method === 'POST')) {
     let inviteCode = '';
     let requestedNative: ReturnType<typeof nativeRequest>;
+    /* Where the owner was when they were asked to sign in. Without it they
+       come back to the front of the app, having lost the chat they were in
+       the middle of. */
+    let back: string | null = null;
     if (request.method === 'POST') {
       const form = await request.formData().catch(() => null);
       inviteCode = trialCode(form?.get('inviteCode'));
+      /* From the form already read: the body is a stream, so cloning the
+         request here fails with "unusable" once it has been consumed. */
+      back = safeReturnPath(form?.get('next'));
       requestedNative = nativeRequest({
         native: form?.get('native') === '1',
         state: form?.get('state'),
@@ -496,11 +503,14 @@ export async function handleSession(
          an authenticated mutation. OAuth state + PKCE protect the callback,
          and carrying an invite never redeems it. Do not origin-gate the POST:
          in-app browsers can report an opaque Origin and strand a real invite. */
-    } else requestedNative = nativeRequest({
-      native: url.searchParams.get('native') === '1',
-      state: url.searchParams.get('state'),
-      codeChallenge: url.searchParams.get('codeChallenge'),
-    });
+    } else {
+      requestedNative = nativeRequest({
+        native: url.searchParams.get('native') === '1',
+        state: url.searchParams.get('state'),
+        codeChallenge: url.searchParams.get('codeChallenge'),
+      });
+      back = safeReturnPath(url.searchParams.get('next'));
+    }
     /* This route is reached by a browser NAVIGATION, not by fetch, so
        an error body renders as raw JSON on a blank page. Bounce back to
        the sign-in screen instead and let it explain in words — the same
@@ -514,12 +524,6 @@ export async function handleSession(
     const state = randomUrlSafe();
     const verifier = randomUrlSafe();
     const carry = await sealTrial(env, inviteCode, `google:${state}`);
-    /* Where the owner was when they were asked to sign in. Without it they
-       come back to the front of the app, having lost the chat they were
-       in the middle of. */
-    const back = safeReturnPath(request.method === 'POST'
-      ? (await request.clone().formData().catch(() => null))?.get('next')
-      : url.searchParams.get('next'));
 
     /* state and verifier ride back in a cookie rather than a server
        table: the callback is the same browser, and this keeps the flow

@@ -280,16 +280,36 @@ describe('business profile', () => {
     );
   }
 
-  it('makes Google Calendar setup visible in the Connections destination used by Chat and OAuth callbacks', async () => {
+  /* Each connection is its own collapsed row since `cc91ee3`, so arriving
+     at Connections shows a list rather than every panel at once. What has to
+     stay true is that Calendar setup is reachable — and that a Google
+     callback lands on it already open, because someone returning from
+     Google's permission screen has not come to browse a list. */
+  it('offers Google Calendar as its own row, collapsed until it is asked for', async () => {
     const repo = new LocalRepository();
     await repo.setBizType('restaurant');
     mount(<Harness initialTab="connections" />, { repo });
+    const row = (await screen.findByText('Google Calendar', { selector: 'summary' })).closest('details');
+    expect(row).not.toBeNull();
+    expect(row).not.toHaveAttribute('open');
+    /* Present for the click, not shown before it. */
+    expect(screen.getByRole('link', { name: 'Connect Google Calendar →' })).not.toBeVisible();
+  });
+
+  /* The connector catalogue moved off this tab in `7ebcddc`, which separated
+     managing an account from discovering one. What it can and cannot connect
+     is asserted where it now lives, in `LibraryView.test.tsx`. */
+  it('opens Calendar setup for someone returning from Google', async () => {
+    const repo = new LocalRepository();
+    await repo.setBizType('restaurant');
+    mount(
+      <Harness initialTab="connections" initialUrl="/app?view=business&tab=connections&connector=google" />,
+      { repo },
+    );
     expect(await screen.findByRole('link', { name: 'Connect Google Calendar →' })).toBeVisible();
     expect(screen.getByText(/A draft is never added until/)).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Google Sheets' })).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Connect Google Calendar' })).toHaveAttribute('href', '#connection-google');
-    expect(screen.queryByRole('link', { name: 'Connect Google Sheets' })).toBeNull();
   });
+
 
   it('shows a failed Calendar callback on the actual Connections landing page', async () => {
     const repo = new LocalRepository();
