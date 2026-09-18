@@ -165,6 +165,9 @@ export async function handleConnect(
       connectors: Object.values(TOKEN_CONNECTORS).map((entry) => ({
         connector: entry.connector,
         label: entry.label,
+        /* So the page can render the second field, and its help, without
+           knowing which providers need one. */
+        ...(entry.account ? { account: { label: entry.account.label, hint: entry.account.hint } } : {}),
       })),
     }, {}, cors);
   }
@@ -178,6 +181,7 @@ export async function handleConnect(
     const body = (await request.json().catch(() => ({}))) as {
       connector?: string;
       token?: string;
+      account?: string;
     };
     const entry = tokenConnector(typeof body.connector === 'string' ? body.connector : '');
     if (!entry) {
@@ -194,13 +198,24 @@ export async function handleConnect(
         cors,
       );
     }
+    /* The second value is checked the same way and for the same reason: a
+       provider that needs it will refuse without it, and the owner should
+       hear that here rather than as a failure from the far side. */
+    const accountValue = typeof body.account === 'string' ? body.account.trim() : '';
+    if (entry.account && !entry.account.looksRight(accountValue)) {
+      return json(
+        { ok: false, err: `That does not look like a ${entry.label} ${entry.account.label.toLowerCase()}.` },
+        { status: 400 },
+        cors,
+      );
+    }
 
     /* Proven before it is stored. A credential that has never been used is
        a connection the owner believes in and a failure they meet later, in
        the middle of something else. */
     let account;
     try {
-      account = await entry.verify(token);
+      account = await entry.verify(token, accountValue);
     } catch (e) {
       return json(
         { ok: false, err: e instanceof Error ? e.message : `Could not reach ${entry.label}` },
