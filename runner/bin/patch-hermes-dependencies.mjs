@@ -2,6 +2,7 @@
 
 import { access, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { patchHermesStartupTiming } from './hermes-startup-timing.mjs';
 
 const root = process.argv[2];
 const verify = process.argv.includes('--verify');
@@ -185,6 +186,7 @@ if (!verify) {
   }
   await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`, { mode: 0o644 });
   await patchApiServer();
+  await patchHermesStartupTiming(root);
   await patchWebExtractResult();
   await removeRetiredWireOrder();
   process.stdout.write('pinned Hermes dependencies (nanoid, undici, postcss, react-router, react-router-dom, sanitize-html, dompurify, mermaid) and Jentera API-server patches\n');
@@ -205,6 +207,7 @@ if (vulnerablePinned.length > 0) {
   throw new Error(`vulnerable pinned dependency remains at ${vulnerablePinned.map(([path]) => path).join(', ')}`);
 }
 const apiServer = await readFile(apiServerPath, 'utf8');
+await patchHermesStartupTiming(root, { verify: true });
 if (!apiServer.includes(routingMarker) ||
     !apiServer.includes('provider_sort=provider_routing.get("sort"),') ||
     !apiServer.includes(runtimeMarker) ||

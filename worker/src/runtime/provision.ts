@@ -319,6 +319,7 @@ export async function downloadRuntimeBundle(
     'runner/bin/web-search-smoke.py',
     'runner/bin/configure-model-provider.py',
     'runner/bin/patch-hermes-dependencies.mjs',
+    'runner/bin/hermes-startup-timing.mjs',
     'runner/bin/hermes-service.sh',
     'runner/bin/runner-service.sh',
     'runner/bin/bootstrap-runtime.sh',

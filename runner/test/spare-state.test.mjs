@@ -7,6 +7,9 @@ import { spareState } from '../bin/spare-state.mjs';
 
 const RELEASE='2026.09.17-3';
 const BUNDLE='a'.repeat(40);
+const pinSource=await fs.readFile(new URL('../../worker/src/runtime/hermes-pin.ts',import.meta.url),'utf8');
+const HERMES=pinSource.match(/export const HERMES_COMMIT = '([0-9a-f]{40})'/)?.[1];
+assert.ok(HERMES,'spare fixtures must supply the current central Hermes pin');
 const A='11111111-1111-4111-8111-111111111111';
 const B='22222222-2222-4222-8222-222222222222';
 const fixtures=[];
@@ -26,7 +29,7 @@ async function installed(root) {
   }
   for(const name of ['.env','config.yaml','SOUL.md']) await fs.writeFile(path.join(root,'.hermes',name),'public installer template');
 }
-const operation=(root,mode,businessId)=>spareState(mode,RELEASE,BUNDLE,businessId,root);
+const operation=(root,mode,businessId)=>spareState(mode,RELEASE,BUNDLE,businessId,HERMES,root);
 
 test('prepares clean software, removes only new installer templates and claims once',async()=>{
   const root=await fixture(); await operation(root,'start'); await installed(root); await operation(root,'finish');
@@ -67,8 +70,8 @@ test('refuses histories or browser sessions without deleting any files',async()=
 test('rejects mismatched bundle/release and missing markers',async()=>{
   const root=await fixture(); await assert.rejects(operation(root,'claim',A),/ENOENT/);
   await operation(root,'start'); await installed(root); await operation(root,'finish');
-  await assert.rejects(spareState('claim',RELEASE,'b'.repeat(40),A,root),/pin mismatch/);
-  await assert.rejects(spareState('claim','2026.09.17-4',BUNDLE,A,root),/pin mismatch/);
+  await assert.rejects(spareState('claim',RELEASE,'b'.repeat(40),A,HERMES,root),/pin mismatch/);
+  await assert.rejects(spareState('claim','2026.09.17-4',BUNDLE,A,HERMES,root),/pin mismatch/);
   await assert.rejects(operation(root,'claim','invalid'),/invalid spare owner/);
 });
 
@@ -94,6 +97,6 @@ test('duplicate preparation and truncated state do not reset the computer',async
 });
 
 test('invalid metadata is rejected before any filesystem change',async()=>{
-  const root=await fixture(); await assert.rejects(spareState('start','release','main',undefined,root),/invalid/);
+  const root=await fixture(); await assert.rejects(spareState('start','release','main',undefined,HERMES,root),/invalid/);
   assert.deepEqual(await fs.readdir(path.join(root,'aisar')),['runner']);
 });

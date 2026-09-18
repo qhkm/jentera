@@ -4,6 +4,7 @@ import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
+import { INIT_CHECKPOINTS } from '../bin/hermes-startup-timing.mjs';
 
 const SCRIPT = new URL('../bin/patch-hermes-dependencies.mjs', import.meta.url).pathname;
 const scriptSource = await readFile(SCRIPT, 'utf8');
@@ -150,6 +151,26 @@ test('removes the retired wire-order patch from a tree that still carries it', a
   assert.ok(!verify.stdout.includes('wire-order'), verify.stdout);
 });
 
+test('startup timing verification rejects missing marks, correlation and changed helper bytes', async () => {
+  const root = await fixture('3.3.17', '3.3.17');
+  assert.equal(run(root).status, 0);
+  const initPath = join(root, 'agent/agent_init.py');
+  const init = await readFile(initPath, 'utf8');
+  await writeFile(initPath, init.replace('    _startup_mark("init.transport")\n', ''));
+  assert.notEqual(run(root, '--verify').status, 0);
+  assert.notEqual(run(root).status, 0, 'partial patches cannot silently skip the missing mark');
+  await writeFile(initPath, init);
+  const apiPath = join(root, 'gateway/platforms/api_server.py');
+  const api = await readFile(apiPath, 'utf8');
+  await writeFile(apiPath, api.replace('                        _jentera_run_id=run_id,\n', ''));
+  assert.notEqual(run(root, '--verify').status, 0);
+  await writeFile(apiPath, api);
+  await writeFile(join(root, 'agent/jentera_startup.py'), '# unexpected helper bytes\n');
+  assert.notEqual(run(root, '--verify').status, 0);
+  assert.equal(run(root).status, 0, 're-apply restores the exact reviewed helper');
+  assert.equal(run(root, '--verify').status, 0);
+});
+
 test('verify fails closed while the retired wire-order patch is still present', async () => {
   // A sprite patched by the retiring release: everything else current, the
   // wire stage still in place because nothing has run apply since.
@@ -255,8 +276,16 @@ async function fixture(override, locked, legacyReasoning = false, wiredOrder = f
     '        gateway_session_key: Optional[str] = None,',
     '        route: Optional[Dict[str, Any]] = None,',
     '    ) -> Any:',
+    '        from run_agent import AIAgent',
+    '        runtime_kwargs = _resolve_runtime_agent_kwargs()',
+    '        reasoning_config = GatewayRunner._load_reasoning_config()',
+    '        session_override = self._session_model_override_for(',
+    '            gateway_session_key or session_id',
+    '        )',
     '        user_config = _load_gateway_config()',
+    '        enabled_toolsets = sorted(_get_platform_tools(user_config, "api_server"))',
     '        max_iterations = _current_max_iterations()',
+    '        fallback_model = GatewayRunner._load_fallback_model()',
     '        agent = AIAgent(',
     '            model=model,',
     '            **runtime_kwargs,',
@@ -266,6 +295,7 @@ async function fixture(override, locked, legacyReasoning = false, wiredOrder = f
     '            reasoning_config=reasoning_config,',
     '            gateway_session_key=gateway_session_key,',
     '        )',
+    '        return agent',
     '        def _callback(event_type: str, tool_name: str = None, preview: str = None, args=None, **kwargs):',
     '            ts = time.time()',
     '            if event_type == "tool.started":',
@@ -312,6 +342,10 @@ async function fixture(override, locked, legacyReasoning = false, wiredOrder = f
   // Keepalive builders: the retired wire-order stage patched these exact
   // anchors; a wiredOrder fixture carries its output in place.
   await mkdir(join(root, 'agent'), { recursive: true });
+  // Synthetic anchor coverage; clean-install.test separately patches and
+  // compiles the real pinned constructor, so shared anchors cannot hide drift.
+  await writeFile(join(root, 'agent/agent_init.py'),
+    INIT_CHECKPOINTS.map(([anchor]) => anchor).join('\n'));
   const bootstrapSrc = [
     'def build_keepalive_http_client(',
     '    base_url: str = "",',

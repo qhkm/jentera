@@ -324,6 +324,58 @@ missing completion evidence for an ordinary conversational question, and the
 answer would be either to hold on the assessment's reason rather than the
 question's, or to accept the late notice.
 
+## Startup diagnostics, 2026-09-18
+
+A completed app reply (`f6edbc90…`, 53.1 s) reached Hermes in about 2 s,
+but its first `agent_init` client was not created until another 22 s had
+passed. Six neighbouring replies on the same Sprite took 0.3–0.6 s between
+Hermes admission and client creation. Its first tool completed at about
+35.9 s from intake but the durable `agent.tool` appeared at 40.5 s; an event's
+database timestamp is therefore **not** its execution timestamp. Final checks
+took only 1.65 s. This isolates an intermittent startup stall, not its exact
+function. Model proxy accounting also omits parts of the end-to-end request:
+the first call recorded 3.839 s there, versus 11.8 s in Hermes.
+
+`runner/bin/hermes-startup-timing.mjs` adds completed checkpoints to the
+pinned API agent factory and constructor. It is applied and verified by the
+existing dependency patcher, included in both bundle download and operator
+provisioning, and requires a normal **runtime release** before it is live.
+It does not change the Hermes pin, models, tools, prompts, safety checks,
+client configuration, threading or reply delivery. This is instrumentation,
+not a latency fix.
+
+The existing rotating `/home/sprite/.hermes/logs/agent.log` receives
+`jentera.startup: [hermes-startup]` records with exactly four fields:
+
+```json
+{"runtimeRunId":"run_0123456789abcdef0123456789abcdef","stage":"api.runtime_credentials","stageMs":22000.0,"elapsedMs":22010.0}
+```
+
+`runtimeRunId` is the opaque Hermes ID, matched to
+`runtime_task.remote_run_id`, **not** the app's `run.id`. `stageMs` is the
+monotonic interval since the preceding completed checkpoint; `elapsedMs` is
+cumulative startup time. The example points to credential/config resolution
+between `api.imports` and `api.runtime_credentials`, not model inference.
+Marks cover imports, configuration/route resolution, toolset selection,
+transport setup, client options, certificate validation, client creation,
+tool definitions, session/memory setup and context-engine initialization.
+Some client-specific marks are skipped by other provider branches; intervals
+always mean “since the previous emitted mark”, not a universal isolated span.
+
+For a slow reply, use a read-only task query to retrieve its remote ID and
+Sprite name, then read only records for that ID from the Sprite's agent log.
+The largest `stageMs` identifies the next step to investigate. If startup
+throws, `failed` records the interval since the last checkpoint without the
+exception text. `complete` is factory completion, **not** answer completion.
+Compare multiple slow and fast runs before claiming a cause or improvement.
+
+No prompts, credentials, emails, tool arguments, exception text or private
+session identifiers enter these records. Only server-format run IDs and
+allowlisted stage names are accepted. Other API callers without the run ID
+are untraced, context is reset on success/failure, concurrent runs keep their
+own correlation, and a failed log sink cannot fail initialization. Startup
+records stay operator-only; they are not chat progress events.
+
 ## Levers
 
 Done:

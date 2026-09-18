@@ -11,7 +11,9 @@ import { afterEach, before, test } from 'node:test';
  * REAL pinned Hermes commit — no fixtures, no network. Each test extracts the
  * pin from the read-only local clone (~/ios/hermes-agent) with `git archive`
  * and then drives the script as a subprocess, exactly as CI would. */
-const PIN = 'ff5b9fcfb029e230a2d3f90d1a3c06260ea1d413';
+const pinSource = readFileSync(new URL('../../worker/src/runtime/hermes-pin.ts', import.meta.url), 'utf8');
+const PIN = pinSource.match(/export const HERMES_COMMIT = '([0-9a-f]{40})'/)?.[1];
+assert.ok(PIN, 'clean-install must exercise the current central Hermes pin');
 const SCRIPT = new URL('../bin/patch-hermes-dependencies.mjs', import.meta.url).pathname;
 const HERMES_REPO = process.env.HERMES_AGENT_REPO || join(homedir(), 'ios', 'hermes-agent');
 
@@ -174,8 +176,89 @@ test('clean install of the pinned Hermes commit applies and verifies (B1 release
     '-m',
     'py_compile',
     join(root, 'gateway/platforms/api_server.py'),
+    join(root, 'agent/agent_init.py'),
+    join(root, 'agent/jentera_startup.py'),
   ], { encoding: 'utf8' });
   assert.equal(compile.status, 0, `patched api_server.py must compile: ${compile.stderr}`);
+
+  // Execute the real patched factory methods with inert dependencies. This
+  // checks correlation/argument forwarding without invoking a model, browser,
+  // credentials resolver or importing the rest of the gateway.
+  const factoryCheck = spawnSync('python3', ['-c', `
+import ast, json, logging, pathlib, sys, types
+sys.path.insert(0, sys.argv[1])
+from agent import jentera_startup as timing
+rows = []
+class Capture(logging.Handler):
+    def emit(self, record):
+        rows.append(json.loads(record.getMessage().split("[hermes-startup] ", 1)[1]))
+timing._logger.setLevel(logging.INFO)
+timing._logger.propagate = False
+timing._logger.handlers = [Capture()]
+original_error = RuntimeError("private failure details")
+class Agent:
+    fail = False
+    def __init__(self, **kwargs):
+        if self.fail:
+            raise original_error
+        self.kwargs = kwargs
+def module(name, **attrs):
+    obj = types.ModuleType(name)
+    for key, value in attrs.items():
+        setattr(obj, key, value)
+    sys.modules[name] = obj
+    return obj
+module("run_agent", AIAgent=Agent)
+class Runner:
+    _load_reasoning_config = staticmethod(lambda: {"effort": "high"})
+    _load_fallback_model = staticmethod(lambda: None)
+module("gateway.run", GatewayRunner=Runner,
+       _checkpoint_agent_kwargs=lambda config: {},
+       _current_max_iterations=lambda: 6,
+       _resolve_runtime_agent_kwargs=lambda: {"api_key": "private credential", "provider": "openrouter"},
+       _resolve_gateway_model=lambda: "test-model",
+       _load_gateway_config=lambda: {})
+module("hermes_cli.tools_config", _get_platform_tools=lambda config, platform: {"z", "a"})
+source = pathlib.Path(sys.argv[1], "gateway/platforms/api_server.py").read_text()
+tree = ast.parse(source)
+methods = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+           and node.name in {"_create_agent", "_jentera_create_agent_impl"}]
+assert len(methods) == 2
+factory = ast.ClassDef(name="Factory", bases=[], keywords=[], body=methods, decorator_list=[])
+unit = ast.Module(body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0), factory], type_ignores=[])
+scope = {"logger": logging.getLogger("test.factory")}
+exec(compile(ast.fix_missing_locations(unit), "factory-check", "exec"), scope)
+Factory = scope["Factory"]
+Factory._session_model_override_for = lambda self, key: None
+Factory._ensure_session_db = lambda self: None
+factory = Factory()
+run_id = "run_" + "a" * 32
+agent = factory._create_agent(ephemeral_system_prompt="private prompt", session_id="private session",
+                              max_iterations=2, _jentera_run_id=run_id)
+assert agent.kwargs["max_iterations"] == 2
+assert agent.kwargs["enabled_toolsets"] == ["a", "z"]
+assert agent.kwargs["ephemeral_system_prompt"] == "private prompt"
+assert agent.kwargs["session_id"] == "private session"
+assert "_jentera_run_id" not in agent.kwargs
+assert rows[0]["stage"] == "start" and rows[-1]["stage"] == "complete"
+assert all(r["runtimeRunId"] == run_id for r in rows)
+assert "private" not in json.dumps(rows)
+before = len(rows)
+agent = factory._create_agent("anonymous prompt")
+assert agent.kwargs["max_iterations"] == 6
+assert len(rows) == before
+Agent.fail = True
+try:
+    factory._create_agent(_jentera_run_id=run_id)
+except RuntimeError as error:
+    assert error is original_error
+else:
+    raise AssertionError("factory failure was swallowed")
+assert rows[-1]["stage"] == "failed"
+assert str(original_error) not in json.dumps(rows)
+assert timing._current.get() is None
+`, root], { encoding: 'utf8' });
+  assert.equal(factoryCheck.status, 0, `startup timing must preserve the real factory contract: ${factoryCheck.stderr}`);
 
   const verify = run(root, ['--verify']);
   assert.equal(verify.status, 0, `verify failed: ${verify.stderr}`);
@@ -208,6 +291,8 @@ test('re-applying the patch on a patched tree changes no file bytes', async () =
     'package.json',
     'package-lock.json',
     'gateway/platforms/api_server.py',
+    'agent/agent_init.py',
+    'agent/jentera_startup.py',
     'agent/process_bootstrap.py',
     'run_agent.py',
   ];

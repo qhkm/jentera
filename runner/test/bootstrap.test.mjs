@@ -84,6 +84,14 @@ test('runtime installs the narrow Calendar client on the Hermes PATH', async () 
   assert.match(provision, /runner\/bin\/jentera-calendar\.mjs/);
 });
 
+test('operator provisioning includes the startup diagnostic patch module', async () => {
+  const provision = await readFile(PROVISION, 'utf8');
+  const patch = await readFile(new URL('../bin/patch-hermes-dependencies.mjs', import.meta.url), 'utf8');
+  assert.match(provision, /runner\/bin\/hermes-startup-timing\.mjs/);
+  assert.match(patch, /await patchHermesStartupTiming\(root\)/);
+  assert.match(patch, /await patchHermesStartupTiming\(root, \{ verify: true \}\)/);
+});
+
 test('bootstrap reuses the exact browser revision before contacting the CDN', async () => {
   const bootstrap = await readFile(SCRIPT, 'utf8');
   assert.match(bootstrap, /chromium\.executablePath\(\)/);
@@ -519,10 +527,13 @@ test('spare filesystem attestation and preparation agree with the production Her
   const provision = await readFile(new URL('../../worker/src/runtime/provision.ts', import.meta.url), 'utf8');
   const helper = await readFile(new URL('../bin/spare-state.mjs', import.meta.url), 'utf8');
   const preparation = await readFile(new URL('../../worker/src/runtime/spare-worker.ts', import.meta.url), 'utf8');
-  const pin = provision.match(/field\('HERMES_COMMIT_B64', '([0-9a-f]{40})'\)/)?.[1];
-  assert.ok(pin);
-  assert.equal(helper.match(/HERMES_COMMIT = '([0-9a-f]{40})'/)?.[1], pin);
-  assert.equal(preparation.match(/body\.hermesCommit === '([0-9a-f]{40})'/)?.[1], pin);
+  // The pin is centralized now; expecting duplicated SHA literals made this
+  // test fail even when preparation and assignment used the same pin.
+  assert.match(provision, /import \{ HERMES_COMMIT, HERMES_TAG \} from '\.\/hermes-pin'/);
+  assert.match(provision, /field\('HERMES_COMMIT_B64', HERMES_COMMIT\)/);
+  assert.match(preparation, /import \{ HERMES_COMMIT \} from '\.\/hermes-pin'/);
+  assert.match(preparation, /body\.hermesCommit === HERMES_COMMIT/);
+  assert.match(helper, /record\.hermesCommit !== hermesCommit/);
 });
 
 test('tenant configuration recreates config and specialist homes after clean spare preparation', async () => {
