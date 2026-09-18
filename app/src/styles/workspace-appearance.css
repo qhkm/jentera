@@ -104,21 +104,21 @@
 .dashboard-shell .home-action {
   border-color: var(--rail);
 }
-/* Let the page show through the cards without changing the welcome banner. */
-.dashboard-shell .home-view {
+/* Light-theme cards let the page show through; dark surfaces stay unchanged. */
+:is(.theme-light, .site-theme-light) .dashboard-shell .home-view {
   --home-card: transparent;
   --home-card-hover: rgb(var(--border-ink) / .035);
 }
-.dashboard-shell .home-view :is(.home-action, .daily-brief, .home-ask-launcher, .home-notice, .home-next, .home-recent) {
+:is(.theme-light, .site-theme-light) .dashboard-shell .home-view :is(.home-action, .daily-brief, .home-ask-launcher, .home-notice, .home-next, .home-recent) {
   background: var(--home-card);
 }
-.dashboard-shell .home-view :is(.home-action, .home-ask-launcher):hover {
+:is(.theme-light, .site-theme-light) .dashboard-shell .home-view :is(.home-action, .home-ask-launcher):hover {
   background: var(--home-card-hover);
 }
-.dashboard-shell .home-view .brief-priority {
+:is(.theme-light, .site-theme-light) .dashboard-shell .home-view .brief-priority {
   background: transparent;
 }
-.dashboard-shell .home-view .daily-brief {
+:is(.theme-light, .site-theme-light) .dashboard-shell .home-view .daily-brief {
   box-shadow: none;
 }
 .dashboard-shell :is(.home-ask-launcher, .routine-starter:not(:disabled), .routine-card, .chat-task-card):hover {
