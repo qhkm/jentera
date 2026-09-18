@@ -1,5 +1,5 @@
 import type { Env } from '../env';
-import { getRuntime, getRuntimeRegion } from '../agent-runtime';
+import { getRuntime, getRuntimeRegion, recordPrewarm } from '../agent-runtime';
 import { withTenant } from '../db';
 import { publishRuntimeTask } from '../runtime';
 import { cancelRuntimeTask, findRuntimeApproval } from '../runtime/tasks';
@@ -21,6 +21,10 @@ function json(body: unknown, init: ResponseInit = {}, headers: Record<string, st
 }
 
 /** Owner-visible status and fail-closed runtime lifecycle controls. */
+/** Where a warm came from. Named by the client, so it is a closed set. */
+const PREWARM_SOURCES = ['chat_open', 'focus', 'typing', 'attach', 'send', 'telegram'] as const;
+type PrewarmSource = typeof PREWARM_SOURCES[number];
+
 export async function handleRuntime(
   request: Request,
   env: Env,
@@ -118,10 +122,21 @@ export async function handleRuntime(
     const warming = Boolean(
       ctx && token && runtime && runtime.provider === 'fly-sprite' && runtime.providerUrl,
     );
+    /* The caller names the trigger so "warmed on open" and "warmed on the
+       first keystroke" are distinguishable afterwards; anything else is
+       recorded as unknown rather than trusted. */
+    const body = await request.json().catch(() => null) as { source?: unknown } | null;
+    const source = typeof body?.source === 'string'
+      && PREWARM_SOURCES.includes(body.source as PrewarmSource) ? body.source : 'unknown';
     if (warming) {
-      ctx!.waitUntil(prewarmSprite(runtime!.providerUrl!, token!, (outcome, extra) => {
-        console.info('[runtime-latency]', JSON.stringify({ stage: outcome, source: 'chat_open', ...extra }));
-      }));
+      ctx!.waitUntil((async () => {
+        const result = await prewarmSprite(runtime!.providerUrl!, token!, (outcome, extra) => {
+          console.info('[runtime-latency]', JSON.stringify({ stage: outcome, source, ...extra }));
+        });
+        /* After the response, so recording never delays the page. */
+        await withTenant(env, identity.businessId, (tx) =>
+          recordPrewarm(tx, identity.businessId, result, source)).catch(() => undefined);
+      })());
     }
     return json({ ok: true, warming }, { status: 202 }, cors);
   }

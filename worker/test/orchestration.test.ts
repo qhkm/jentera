@@ -1239,6 +1239,10 @@ describe('the wait for an answer\u2019s checks', () => {
       }
       order.push('assessment.started');
       await Promise.race([delivered, new Promise((resolve) => setTimeout(resolve, 1_000))]);
+      /* The gate releases part-way through the send, so without this the two
+         timestamps land in the same millisecond and `deliveredBeforeChecks`
+         turns on a race in the harness rather than on the behaviour. */
+      await new Promise((resolve) => setTimeout(resolve, 40));
       order.push('assessment.finished');
       return { response: JSON.stringify({ kind: 'conversation', status: 'completed' }) };
     } } as unknown as Env['AI'];

@@ -9,6 +9,7 @@
 
 import type { Env } from '../env';
 import { withTenant } from '../db';
+import { recordPrewarm } from '../agent-runtime';
 import { prewarmSprite } from '../runtime/prewarm';
 import { hasBusiness, resolveTenant } from '../tenancy';
 import { can } from '../permissions';
@@ -706,11 +707,18 @@ async function telegramWebhook(
      so this adds no Neon round trip and never puts credentials on the Queue. */
   if (ctx && access.runtimeProvider === 'fly-sprite' && access.runtimeUrl &&
       env.SPRITES_TOKEN?.trim()) {
-    ctx.waitUntil(prewarmSprite(
-      access.runtimeUrl,
-      env.SPRITES_TOKEN,
-      (outcome, extra) => telegramWebhookLatency(outcome, requestedAtMs, extra),
-    ));
+    const runtimeUrl = access.runtimeUrl;
+    ctx.waitUntil((async () => {
+      const result = await prewarmSprite(
+        runtimeUrl,
+        env.SPRITES_TOKEN!,
+        (outcome, extra) => telegramWebhookLatency(outcome, requestedAtMs, extra),
+      );
+      /* Behind the response, so the webhook still reaches Telegram without a
+         Neon round trip on its own path. */
+      await withTenant(env, businessId, (tx) =>
+        recordPrewarm(tx, businessId, result, 'telegram')).catch(() => undefined);
+    })());
   }
 
   /* Queue first: once this resolves, the request survives this webhook

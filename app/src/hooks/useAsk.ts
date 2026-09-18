@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRepository } from '@/lib/repo';
+import type { WarmSource } from '@/lib/repo/types';
 import { useAccountKey, useSignedIn } from '@/lib/repo/gate';
 import { TEAM_GENERAL, TEAM_REPLIES } from '@/lib/data/conversations';
 import { TEAM_GENERAL_EN, TEAM_REPLIES_EN } from '@/i18n/agent-replies';
@@ -320,16 +321,16 @@ export function useAsk(
   /* Typing can begin long after the initial page-open wake has expired. Keep
      the agent warm while the owner is actively composing, at most once every
      seven seconds, without keeping idle businesses running. */
-  const warm = useCallback(() => {
+  const warm = useCallback((source: WarmSource = 'typing') => {
     if (!grounded || !repo.warmAgent) return;
     const now = Date.now();
     if (now - lastWarm.current < 7_000) return;
     lastWarm.current = now;
-    void repo.warmAgent().catch(() => undefined);
+    void repo.warmAgent(source).catch(() => undefined);
   }, [grounded, repo]);
   /* Wake the agent as the chat opens so the first message finds it warm. */
   useEffect(() => {
-    warm();
+    warm('chat_open');
   }, [warm]);
   /* Persist only when the account is known: a signed-in session without an
      id would otherwise fall back to one shared key, which is the leak. */
@@ -604,7 +605,7 @@ export function useAsk(
          backend to ask and no facts to ground an answer in. */
       if (grounded) {
         trackActivation(selectedMode === 'work' ? 'work_sent' : 'ask_sent');
-        if (selectedMode === 'work') warm();
+        if (selectedMode === 'work') warm('send');
         const pendingId = crypto.randomUUID();
         setState((prev) => {
           const index = prev.sessions.findIndex((s) => s.id === sessionId);

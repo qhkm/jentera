@@ -129,7 +129,18 @@ export async function startRun(
                 started_at, ended_at, created_at
     ), requested as (
       insert into run_event (run_id, business_id, seq, type, payload)
-      select id, ${businessId}, 1, 'work.requested', ${tx.json(requested as never)}
+      select id, ${businessId}, 1, 'work.requested',
+             ${tx.json(requested as never)}::jsonb || coalesce((
+               /* What the last warm attempt did, and how long before this
+                  ask — so a slow start can be told apart from a cold one. */
+               select jsonb_build_object('prewarm', jsonb_build_object(
+                        'outcome', r.last_prewarm_outcome,
+                        'ms', r.last_prewarm_ms,
+                        'source', r.last_prewarm_source,
+                        'ageMs', round(extract(epoch from now() - r.last_prewarm_at) * 1000)))
+                 from agent_runtime r
+                where r.business_id = ${businessId}
+                  and r.last_prewarm_at is not null), '{}'::jsonb)
         from started
       returning run_id
     )

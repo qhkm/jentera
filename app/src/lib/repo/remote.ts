@@ -51,6 +51,7 @@ import type {
   Workspaces,
   TraceEvent,
   WorkQuality,
+  WarmSource,
 } from './types';
 
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
@@ -521,9 +522,9 @@ export class RemoteRepository implements Repository {
     });
   }
 
-  async warmAgent(): Promise<void> {
+  async warmAgent(source: WarmSource): Promise<void> {
     /* Fire-and-forget: a failure here costs one cold wake, nothing else. */
-    await post('/api/runtime/wake', {}).catch(() => undefined);
+    await post('/api/runtime/wake', { source }).catch(() => undefined);
   }
 
   async connections(): Promise<Connection[]> {

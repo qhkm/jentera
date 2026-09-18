@@ -397,6 +397,8 @@ export class NeedsAccountError extends Error {
   }
 }
 
+export type WarmSource = 'chat_open' | 'focus' | 'typing' | 'attach' | 'send';
+
 export interface Repository {
   /** Remote only; callers must also require /api/me v1 discovery. */
   routines?: import('@/lib/routines/types').RoutinesApi;
@@ -501,7 +503,9 @@ export interface Repository {
       page away: progress resumes and the answer lands as if it had not. */
   resumeAsk?(runId: string, options?: ResumeAskOptions): Promise<AskAnswer>;
   /** Wake the business's agent ahead of the first message; best effort. */
-  warmAgent?(): Promise<void>;
+  /** Wake the business's runtime ahead of an ask. `source` names the
+      trigger so a slow first reply can be read against what warmed it. */
+  warmAgent?(source: WarmSource): Promise<void>;
 
   /** Shared business outcomes and the real work linked to each one. */
   goals?(): Promise<GoalsOverview>;

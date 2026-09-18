@@ -155,7 +155,7 @@ export default function AskJenteraView({
       setAttachmentError(t('ask.attachment.tooLarge'));
       return;
     }
-    if (file) ask.warm();
+    if (file) ask.warm('attach');
     setAttachments((current) => ({ ...current, [ask.activeId]: file }));
   }
 
@@ -476,13 +476,13 @@ export default function AskJenteraView({
               value={draft}
               onChange={(event) => {
                 setDraft(event.target.value);
-                if (event.target.value.trim()) ask.warm();
+                if (event.target.value.trim()) ask.warm('typing');
                 mentions.sync(
                   event.target.value,
                   event.target.selectionStart ?? event.target.value.length,
                 );
               }}
-              onFocus={ask.warm}
+              onFocus={() => ask.warm('focus')}
               onClick={(event) =>
                 mentions.sync(
                   event.currentTarget.value,

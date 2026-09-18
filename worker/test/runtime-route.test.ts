@@ -322,9 +322,42 @@ async function call(method: string, path: string, env: Env, cookie?: string) {
   return response;
 }
 
+describe('what a run remembers about its warm', () => {
+  it('stamps the last warm onto work.requested, so each run keeps its own', async () => {
+    await asOwner((sql) => sql`
+      insert into agent_runtime
+        (business_id, provider, provider_id, provider_name, provider_url, status,
+         desired_release, observed_release, last_prewarm_at, last_prewarm_outcome,
+         last_prewarm_ms, last_prewarm_source)
+      values (${A}, 'fly-sprite', 'sprite-1', 'aisar-b-alpha', 'https://aisar-b-alpha-x1.sprites.app',
+              'ready', '2026.09.01-1', '2026.09.01-1', now() - interval '4 seconds',
+              'prewarm_ready', 812, 'typing')`);
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const [row] = await asOwner((sql) => sql<{ prewarm: Record<string, unknown> | null }[]>`
+      select payload->'prewarm' as prewarm from run_event
+       where run_id = ${run.id} and type = 'work.requested'`);
+    expect(row.prewarm).toMatchObject({ outcome: 'prewarm_ready', ms: 812, source: 'typing' });
+    /* Age is what separates "warmed for this ask" from "warmed an hour ago". */
+    expect(Number(row.prewarm?.ageMs)).toBeGreaterThanOrEqual(3_500);
+    expect(Number(row.prewarm?.ageMs)).toBeLessThan(60_000);
+  });
+
+  it('leaves the payload alone when nothing has warmed the business', async () => {
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const [row] = await asOwner((sql) => sql<{ prewarm: unknown }[]>`
+      select payload->'prewarm' as prewarm from run_event
+       where run_id = ${run.id} and type = 'work.requested'`);
+    expect(row.prewarm).toBeNull();
+  });
+});
+
 describe('warming the agent when the chat opens', () => {
-  async function wake(env: Env, cookie: string, waited: Promise<unknown>[]) {
-    const { request, url } = req('POST', '/api/runtime/wake', { cookie });
+  async function wake(env: Env, cookie: string, waited: Promise<unknown>[], source?: string) {
+    const { request, url } = req('POST', '/api/runtime/wake', { cookie, body: source ? { source } : undefined });
     const response = await handleRuntime(request, env, url, {}, {
       waitUntil: (promise: Promise<unknown>) => { waited.push(promise); },
     });
@@ -348,6 +381,55 @@ describe('warming the agent when the chat opens', () => {
     const [url, init] = fetchSpy.mock.calls[0];
     expect(String(url)).toBe('https://aisar-b-alpha-x1.sprites.app/healthz');
     expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer sprite-token');
+  });
+
+  it('records what the warm did, so a slow first reply can be told from a cold one', async () => {
+    await asOwner((sql) => sql`
+      insert into agent_runtime
+        (business_id, provider, provider_id, provider_name, provider_url, status, desired_release, observed_release)
+      values (${A}, 'fly-sprite', 'sprite-1', 'aisar-b-alpha', 'https://aisar-b-alpha-x1.sprites.app', 'cold', '2026.09.01-1', '2026.09.01-1')`);
+    vi.stubGlobal('fetch', fetchFake(async () => new Response('{}', { status: 200 })));
+    const waited: Promise<unknown>[] = [];
+    await wake(testEnv({ SPRITES_TOKEN: 'sprite-token' }), staffCookie, waited, 'typing');
+    await Promise.all(waited);
+    const [row] = await asOwner((sql) => sql<{
+      outcome: string; source: string; ms: number; at: Date | null;
+    }[]>`select last_prewarm_outcome as outcome, last_prewarm_source as source,
+                last_prewarm_ms as ms, last_prewarm_at as at
+           from agent_runtime where business_id = ${A}`);
+    expect(row.outcome).toBe('prewarm_ready');
+    expect(row.source).toBe('typing');
+    expect(row.at).not.toBeNull();
+    expect(row.ms).toBeGreaterThanOrEqual(0);
+  });
+
+  it('records a refused probe rather than leaving it to a log line', async () => {
+    await asOwner((sql) => sql`
+      insert into agent_runtime
+        (business_id, provider, provider_id, provider_name, provider_url, status, desired_release, observed_release)
+      values (${A}, 'fly-sprite', 'sprite-1', 'aisar-b-alpha', 'https://aisar-b-alpha-x1.sprites.app', 'cold', '2026.09.01-1', '2026.09.01-1')`);
+    vi.stubGlobal('fetch', fetchFake(async () => new Response('no', { status: 503 })));
+    const waited: Promise<unknown>[] = [];
+    await wake(testEnv({ SPRITES_TOKEN: 'sprite-token' }), staffCookie, waited, 'chat_open');
+    await Promise.all(waited);
+    const [row] = await asOwner((sql) => sql<{ outcome: string }[]>`
+      select last_prewarm_outcome as outcome from agent_runtime where business_id = ${A}`);
+    expect(row.outcome).toBe('prewarm_rejected');
+  });
+
+  /* A client naming its own trigger is a client that can name anything. */
+  it('does not store a source it was not expecting', async () => {
+    await asOwner((sql) => sql`
+      insert into agent_runtime
+        (business_id, provider, provider_id, provider_name, provider_url, status, desired_release, observed_release)
+      values (${A}, 'fly-sprite', 'sprite-1', 'aisar-b-alpha', 'https://aisar-b-alpha-x1.sprites.app', 'cold', '2026.09.01-1', '2026.09.01-1')`);
+    vi.stubGlobal('fetch', fetchFake(async () => new Response('{}', { status: 200 })));
+    const waited: Promise<unknown>[] = [];
+    await wake(testEnv({ SPRITES_TOKEN: 'sprite-token' }), staffCookie, waited, 'x'.repeat(400));
+    await Promise.all(waited);
+    const [row] = await asOwner((sql) => sql<{ source: string }[]>`
+      select last_prewarm_source as source from agent_runtime where business_id = ${A}`);
+    expect(row.source).toBe('unknown');
   });
 
   it('has nothing to warm without a sprite runtime, and says so without an error', async () => {

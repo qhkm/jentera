@@ -143,6 +143,24 @@ export async function claimRuntime(
   return toRecord(row);
 }
 
+/** The warm attempts a run can later be judged against. One row per
+ *  business, overwritten each time: only the most recent matters, and
+ *  `startRun` copies it onto `work.requested` so each run keeps its own.
+ */
+export async function recordPrewarm(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  result: { outcome: string; ms: number },
+  source: string,
+): Promise<void> {
+  await tx`update agent_runtime
+              set last_prewarm_at = now(),
+                  last_prewarm_outcome = ${result.outcome},
+                  last_prewarm_ms = ${result.ms},
+                  last_prewarm_source = ${source}
+            where business_id = ${businessId}`;
+}
+
 export async function getRuntime(
   tx: postgres.TransactionSql,
   businessId: string,
