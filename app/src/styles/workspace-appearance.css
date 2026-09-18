@@ -104,6 +104,27 @@
 .dashboard-shell .home-action {
   border-color: var(--rail);
 }
+/* Keep the welcome banner accented and the cards below it neutral. */
+.dashboard-shell .home-view {
+  --home-card: #292929;
+  --home-card-hover: #323232;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .home-view {
+  --home-card: #fff;
+  --home-card-hover: #f5f5f5;
+}
+.dashboard-shell .home-view :is(.home-action, .daily-brief, .home-ask-launcher, .home-notice, .home-next, .home-recent) {
+  background: var(--home-card);
+}
+.dashboard-shell .home-view :is(.home-action, .home-ask-launcher):hover {
+  background: var(--home-card-hover);
+}
+.dashboard-shell .home-view .brief-priority {
+  background: transparent;
+}
+.dashboard-shell .home-view .daily-brief {
+  box-shadow: none;
+}
 .dashboard-shell :is(.home-ask-launcher, .routine-starter:not(:disabled), .routine-card, .chat-task-card):hover {
   border-color: var(--rail);
   background: var(--bg-card-hover);
