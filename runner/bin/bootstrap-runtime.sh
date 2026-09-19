@@ -560,22 +560,46 @@ fi
 for candidate in ${candidate_models[@]+"${candidate_models[@]}"}; do
   [[ " ${smoke_models[*]} " == *" $candidate "* ]] || smoke_models+=("$candidate")
 done
+# Each alias is an independent live inference against the same endpoint, and
+# they were run one after another: a sprite with three aliases paid three
+# round trips end to end. Run them together and judge them together.
+#
+# Fail closed, unchanged: every alias must pass or the runtime exits non-zero
+# and is never attested. Output is captured per alias rather than interleaved,
+# and only a failing alias's output is printed -- parallel stdout would
+# otherwise shuffle three tracebacks into one unreadable block.
+smoke_pids=()
+smoke_logs=()
+smoke_dir="$(mktemp -d)"
 for smoke_model in "${smoke_models[@]}"; do
-  model_ready=false
-  for _attempt in 1 2 3; do
-    if OPENROUTER_BASE_URL="$model_base" OPENROUTER_API_KEY="$model_key" \
-        AISAR_MODEL_NAME="$smoke_model" \
-        "$hermes_python" /home/sprite/aisar/runner/model-smoke.py; then
-      model_ready=true
-      break
-    fi
-    sleep 2
-  done
-  [[ "$model_ready" == "true" ]] || {
-    echo "model inference did not pass its live smoke test" >&2
+  smoke_log="$smoke_dir/$(printf '%s' "$smoke_model" | tr -c '[:alnum:]._-' '_').log"
+  (
+    for _attempt in 1 2 3; do
+      if OPENROUTER_BASE_URL="$model_base" OPENROUTER_API_KEY="$model_key" \
+          AISAR_MODEL_NAME="$smoke_model" \
+          "$hermes_python" /home/sprite/aisar/runner/model-smoke.py; then
+        exit 0
+      fi
+      sleep 2
+    done
     exit 1
-  }
+  ) >"$smoke_log" 2>&1 &
+  smoke_pids+=("$!")
+  smoke_logs+=("$smoke_log")
 done
+
+smoke_failed=()
+for _i in "${!smoke_pids[@]}"; do
+  if ! wait "${smoke_pids[$_i]}"; then
+    smoke_failed+=("${smoke_models[$_i]}")
+    cat "${smoke_logs[$_i]}" >&2
+  fi
+done
+rm -rf "$smoke_dir"
+if (( ${#smoke_failed[@]} > 0 )); then
+  echo "model inference did not pass its live smoke test: ${smoke_failed[*]}" >&2
+  exit 1
+fi
 
 # The pinned Hermes release supports DDGS as its keyless production search
 # provider, but does not install the optional package in its base environment.
@@ -784,7 +808,9 @@ for _attempt in 1 2 3; do
     | sed -n 's/.*"run_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
   if [[ -n "$gateway_id" ]]; then
     for _poll in $(seq 1 40); do
-      sleep 3
+      # Check before sleeping. "Reply with the single word: ready" usually
+      # completes in about a second, and sleeping first billed every sprite a
+      # flat three seconds for an answer that was already waiting.
       gateway_state="$(curl --silent --max-time 30 \
         "http://127.0.0.1:8642/v1/runs/$gateway_id" \
         -H "Authorization: Bearer $hermes_key" 2>/dev/null)"
@@ -796,6 +822,7 @@ for _attempt in 1 2 3; do
           echo "gateway inference failed: $(printf '%s' "$gateway_state" | head -c 300)" >&2
           break ;;
       esac
+      sleep 3
     done
   fi
   [[ "$gateway_ready" == "true" ]] && break
