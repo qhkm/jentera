@@ -45,7 +45,18 @@ bucket_name = "jentera-artifacts"
 enabled = true
 
 [vars]
-RUNTIME_SPARE_POOL_ENABLED = "true"
+# Paused 2026-09-19. Preparation failed four times out of four after the
+# pool was unblocked (migration 062), each attempt creating a Sprite that
+# never attested and had to be destroyed by hand. Signups fall back to cold
+# provisioning, which works, so the pool costs latency and nothing else
+# while it is off. Turning it back on needs a preparation watched live:
+# `spare-worker.ts` records no error by design, so nothing in the database
+# or the logs says why it failed.
+#
+# Note this also stops retirement — `spare-retirement.ts` requires a live
+# pool config — so any inventory quarantined while it is off must be
+# cleared by an operator. Nothing is outstanding as of this change.
+RUNTIME_SPARE_POOL_ENABLED = "false"
 RUNTIME_SPARE_POOL_TARGET = "2"
 # Apply migration 060 before enabling safe unused-spare retirement and alerts.
 RUNTIME_SPARE_POOL_RECOVERY_ENABLED = "true"
