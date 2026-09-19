@@ -145,7 +145,15 @@ describe('clean-spare inventory security and concurrency', () => {
     expect(await asTenant(A, tx => claimSpare(tx, { ...config, bundle: 'b'.repeat(40) }))).toBeNull();
     await asApp(sql => sql`select * from public.queue_runtime_spares('2026.09.17-4',${BUNDLE},2)`);
     expect((await inventory()).find(s => s.id === row.spare_id)).toMatchObject({ status: 'quarantined', problem: 'obsolete' });
-    expect(await inventory()).toHaveLength(2);
+    /* Replacements now follow. This assertion used to be `toHaveLength(2)`,
+       which was the blanket inventory count holding a slot for an entry
+       nothing had gone wrong with — and it left the pool permanently empty
+       after any release that outpaced a ready spare (migration 062). The
+       stale ones are still quarantined and still never handed out, which is
+       what this test is named for. */
+    const after = await inventory();
+    expect(after.filter(s => s.status === 'quarantined')).toHaveLength(2);
+    expect(after.filter(s => s.status === 'queued')).toHaveLength(2);
   });
 
   it('quarantines abandoned preparations without launching replacements', async () => {
@@ -387,3 +395,54 @@ class FakeSprite implements BootstrapRuntimeProvider {
     return { exitCode:0,stdout:'{"ok":true}',stderr:'' };
   }
 }
+
+/* ---- quarantine must not disable the pool ----------------------------
+   A ready spare is quarantined as `obsolete` by any release that outpaces
+   it, and 18 September had four. Counting quarantine toward the target
+   meant two of them stopped the pool refilling at all: it emptied on
+   17 September and was still empty two days later. */
+
+describe('a pool that has quarantined spares', () => {
+  async function quarantine(n: number, problem = 'obsolete') {
+    await asOwner(sql => sql`
+      insert into runtime_spare(id, provider_name, release, bundle_commit, status, problem)
+      select gen_random_uuid(), 'aisar-p-' || replace(gen_random_uuid()::text, '-', ''),
+             ${RELEASE}, ${BUNDLE}, 'quarantined', ${problem}
+        from generate_series(1, ${n})`);
+  }
+
+  it('still prepares replacements while a target’s worth sits quarantined', async () => {
+    await quarantine(2);
+    const rows = await queued();
+    /* The whole point: two quarantined entries used to make this zero. */
+    expect(rows.length).toBeGreaterThan(0);
+    const live = await asOwner(sql => sql<{ n: string }[]>`
+      select count(*)::text as n from runtime_spare where status = 'queued'`);
+    expect(Number(live[0].n)).toBe(2);
+  });
+
+  it('still holds the slot for a failure, so a failing preparation is not retried', async () => {
+    /* The distinction the first version of this missed: a spare quarantined
+       after a failure keeps its slot, or the pool retries the failure and
+       leaks a machine each time. Only `obsolete` is free. */
+    await quarantine(2, 'prepare_abandoned');
+    expect(await queued()).toEqual([]);
+  });
+
+  it('refuses once obsolete entries are genuinely accumulating unreviewed', async () => {
+    /* Each still owns a prepared machine until an operator clears it. */
+    await quarantine(4);
+    expect(await queued()).toEqual([]);
+    const live = await asOwner(sql => sql<{ n: string }[]>`
+      select count(*)::text as n from runtime_spare where status = 'queued'`);
+    expect(Number(live[0].n)).toBe(0);
+  });
+
+  it('does not free the slot for a failure disguised as churn', async () => {
+    /* Only `obsolete` is free, and only because nothing went wrong. Any
+       other problem keeps its slot however many of them there are. */
+    await quarantine(1, 'expired');
+    await quarantine(1, 'prepare_abandoned');
+    expect(await queued()).toEqual([]);
+  });
+});
