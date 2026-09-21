@@ -337,6 +337,18 @@ echo RESTORED
 find ${HERMES}/memories ${HERMES}/profiles -name '*.md' | wc -l`);
   if (!out.includes('RESTORED')) throw new Error('the sprite did not confirm the restore');
   console.log(`restored into ${spriteName}: ${out.trim().split('\n').pop()} memory files present`);
+
+  /* A write is not durable until it is checkpointed. A sprite that pauses
+     comes back from its last snapshot, and the first restore of Kitakod's
+     memory was lost exactly that way: written at 08:45, gone by 08:48, with
+     the snapshot it woke from dated 08:33. The restore had reported success,
+     because at the moment it looked, the files were there. */
+  const { stdout: made } = await sprite(spriteName, ['checkpoint', 'create',
+    '--comment', 'Jentera agent memory restored after region move']);
+  const version = made.match(/\bv\d+\b/)?.[0];
+  if (!version) throw new Error(`restore is not durable: no checkpoint was created (${made.trim().split('\n').pop()})`);
+  console.log(`checkpointed as ${version}`);
+  return version;
 }
 
 /** Back up one sprite, replace it, and put the memory back. The replacement
