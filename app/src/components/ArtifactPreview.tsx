@@ -175,7 +175,7 @@ export function ArtifactPreview({ artifact, onClose }: { artifact: Artifact; onC
             <X size={18} aria-hidden="true" />
           </Button>
         </header>
-        <div className="overflow-y-auto px-4 py-4">{body}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">{body}</div>
       </div>
     </div>
   );

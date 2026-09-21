@@ -70,9 +70,10 @@ describe('ArtifactPreview', () => {
   it('arrives as a sheet with a grab handle and, where motion is reduced or unavailable, leaves at once', async () => {
     const { onClose } = mount(file(), new Blob(['# Digest']));
     const dialog = await screen.findByRole('dialog', { name: 'tech-digest.md' });
-    expect(dialog).toHaveClass('file-preview-dialog');
+    expect(dialog).toHaveClass('file-preview-dialog', 'card');
     expect(dialog.parentElement).toHaveClass('file-preview-backdrop');
     expect(dialog.firstElementChild).toHaveClass('file-preview-handle');
+    expect(dialog.lastElementChild).toHaveClass('min-h-0', 'flex-1', 'overflow-y-auto');
     const user = userEvent.setup();
     await user.click(within(dialog).getByRole('button', { name: 'Close' }));
     expect(onClose).toHaveBeenCalledOnce();

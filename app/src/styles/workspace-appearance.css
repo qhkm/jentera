@@ -126,7 +126,7 @@
 :is(.theme-light, .site-theme-light) .dashboard-shell .dashboard-content
   :is(.card, .activity-overview, .connector-card, .connector-inline-setup,
       .business-identity:not(.business-identity-compact), .business-shortcuts > button,
-      .routine-starter, .workspace-empty):not(:where(dialog *, [role='dialog'] *, .ask-studio *)) {
+      .routine-starter, .workspace-empty):not(:where(dialog, dialog *, [role='dialog'], [role='dialog'] *, .ask-studio *)) {
   background: transparent;
 }
 :is(.theme-light, .site-theme-light) .dashboard-shell .dashboard-content
