@@ -59,6 +59,18 @@ describe('learning from a document', () => {
     expect(await screen.findByText('RM 100')).toBeInTheDocument();
     expect(screen.queryByText('RM 80')).toBeNull();
   });
+
+  it('presents fact editing and history as clear actions in a separate rail', async () => {
+    const local = new LocalRepository();
+    await local.setFact({ key: 'business.about', value: 'First description', source: 'owner' });
+    await local.setFact({ key: 'business.about', value: 'Current description', source: 'owner' });
+    mount();
+    const change = await screen.findByRole('button', { name: 'Change' });
+    const versions = screen.getByRole('button', { name: '2 versions' });
+    expect(change).toHaveClass('btn-outline');
+    expect(versions).toHaveClass('btn-outline');
+    expect(change.closest('.knowledge-fact-side')).toBe(versions.closest('.knowledge-fact-side'));
+  });
   it('offers an upload only where the repository can read one', async () => {
     mount();
     await screen.findByText(/Let Jentera read your website/);

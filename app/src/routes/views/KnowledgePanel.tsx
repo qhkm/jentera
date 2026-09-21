@@ -13,6 +13,7 @@
    ============================================================ */
 
 import { useState } from 'react';
+import { ClockCounterClockwise, PencilSimple } from '@phosphor-icons/react';
 import { renderSourceLink } from '@/lib/reply-markdown';
 import { Button, Card, Eyebrow, Input, LoadingState, Tag } from '@/components/ui';
 import { useMutate, useRefresh, useRepository, useSnapshot } from '@/lib/repo';
@@ -112,47 +113,49 @@ function FactRow({ fact, canManage }: { fact: Fact; canManage: boolean }) {
   }
 
   return (
-    <div className="flex flex-col gap-2 border-b border-rail py-3 last:border-b-0">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm">{label(fact.key)}</span>
-        <Tag tone={sourceTone(fact)}>{sourceLabel(fact)}</Tag>
+    <div className="knowledge-fact border-b border-rail py-3 last:border-b-0">
+      <div className="knowledge-fact-layout">
+        <div className="knowledge-fact-main">
+          <span className="text-sm font-medium text-text">{label(fact.key)}</span>
+          {fact.pending && <p className="text-sm text-text-secondary">{t('knowledge.currentValue', { value: show(fact.currentValue) })}</p>}
+          {fact.sourceRef && <p className="text-xs text-text-secondary">{t('knowledge.source', { source: '' })}{renderSourceLink(fact.sourceRef)}</p>}
+          {editing && canManage ? (
+            <Input
+              className="min-w-[12rem]"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              aria-label={`Value for ${label(fact.key)}`}
+            />
+          ) : <span className="text-sm text-text-secondary">{show(fact.value)}</span>}
+        </div>
+        <div className="knowledge-fact-side">
+          <Tag tone={sourceTone(fact)}>{sourceLabel(fact)}</Tag>
+          <div className="knowledge-fact-actions">
+            {editing && canManage ? <>
+              <Button onClick={save}>Save</Button>
+              <Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
+            </> : <>
+              {!fact.confirmed && canManage && (
+                <Button onClick={() => void mutate((r) => r.confirmFact(fact.key, fact.version)).catch(noop)}>
+                  That&rsquo;s right
+                </Button>
+              )}
+              {canManage && <Button variant="outline" onClick={() => { setDraft(show(fact.value)); setEditing(true); }}>
+                <PencilSimple size={16} aria-hidden="true" />
+                {fact.confirmed ? 'Change' : 'Fix it'}
+              </Button>}
+              {canManage && !fact.confirmed && <Button variant="outline"
+                onClick={() => void mutate((r) => r.forgetFact(fact.key, fact.version)).catch(noop)}>{t('knowledge.discard')}</Button>}
+              {fact.version > 1 && (
+                <Button variant="outline" onClick={() => void toggleHistory()}>
+                  <ClockCounterClockwise size={16} aria-hidden="true" />
+                  {history ? 'Hide history' : `${fact.version} versions`}
+                </Button>
+              )}
+            </>}
+          </div>
+        </div>
       </div>
-
-      {fact.pending && <p className="text-sm text-text-secondary">{t('knowledge.currentValue', { value: show(fact.currentValue) })}</p>}
-      {fact.sourceRef && <p className="text-xs text-text-secondary">{t('knowledge.source', { source: '' })}{renderSourceLink(fact.sourceRef)}</p>}
-      {editing && canManage ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <Input
-            className="min-w-[12rem] flex-1"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            aria-label={`Value for ${label(fact.key)}`}
-          />
-          <Button onClick={save}>Save</Button>
-          <Button variant="ghost" onClick={() => setEditing(false)}>
-            Cancel
-          </Button>
-        </div>
-      ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="flex-1 text-sm text-text-secondary">{show(fact.value)}</span>
-          {!fact.confirmed && canManage && (
-            <Button onClick={() => void mutate((r) => r.confirmFact(fact.key, fact.version)).catch(noop)}>
-              That&rsquo;s right
-            </Button>
-          )}
-          {canManage && <Button variant="ghost" onClick={() => { setDraft(show(fact.value)); setEditing(true); }}>
-            {fact.confirmed ? 'Change' : 'Fix it'}
-          </Button>}
-          {canManage && !fact.confirmed && <Button variant="ghost"
-            onClick={() => void mutate((r) => r.forgetFact(fact.key, fact.version)).catch(noop)}>{t('knowledge.discard')}</Button>}
-          {fact.version > 1 && (
-            <Button variant="ghost" onClick={() => void toggleHistory()}>
-              {history ? 'Hide history' : `${fact.version} versions`}
-            </Button>
-          )}
-        </div>
-      )}
 
       {history && (
         <ol className="flex flex-col gap-1 pl-3 text-xs text-text-secondary">

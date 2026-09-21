@@ -238,6 +238,20 @@
   .activity-fallback-side { align-items: flex-start; padding: 12px 0 0; border-top: 1px solid var(--rail); border-left: 0; }
   .activity-fallback-side > div { justify-content: flex-start; }
 }
+.knowledge-fact { display: flex; flex-direction: column; gap: 12px; }
+.knowledge-fact-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(260px, 30vw, 420px);
+  gap: clamp(24px, 4vw, 64px);
+}
+.knowledge-fact-main { display: flex; width: min(100%, 78ch); min-width: 0; flex-direction: column; gap: 10px; }
+.knowledge-fact-side { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 14px; padding-left: clamp(16px, 2vw, 28px); border-left: 1px solid var(--rail); }
+.knowledge-fact-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.knowledge-fact-actions .btn { gap: 7px; }
+@media (max-width: 720px) {
+  .knowledge-fact-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .knowledge-fact-side { padding: 12px 0 0; border-top: 1px solid var(--rail); border-left: 0; }
+}
 .dashboard-shell
   :is(.library-card.card, .connector-card, .routine-card.card, .goal-card.card) {
   padding: 16px;
