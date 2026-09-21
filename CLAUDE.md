@@ -439,6 +439,19 @@ restore to what the sprite holds now. The provider now keeps only
 which the tolerance above records as a warning. Rows written before the fix
 still say `Current` until the next release checkpoints them.
 
+**Replacing a sprite is a one-way door for most businesses.** Fly places a
+sprite near whoever created it — the queue consumer, which is why every
+sprite made before `3fbf487` (10 Sep) is in LAX or SJC and every one since
+is in `sin`. Moving one means deleting it and provisioning again, and while
+`ACCESS_MODE` is `waitlist` the control plane admits `delete` as maintenance
+but refuses `provision` for a business whose owner holds no
+`platform_access` grant, acking the refusal and leaving the row `queued` so
+it reads as a slow queue. A queued runtime task also waits for the
+quarter-hour cron, not the minute one, and a file written to a sprite is not
+durable until it is checkpointed. `docs/moving-a-sprite.md` is the procedure
+and the day those three were each learned the expensive way;
+`worker/scripts/move-runtime-region.mjs` is it as code.
+
 Nothing is applied to a sprite by hand. A sprite's Hermes checkout and
 runner directory survive re-bootstrap exactly as they are, so a hand-applied
 change is invisible to the next release and a removed one lingers:
