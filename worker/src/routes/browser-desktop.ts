@@ -116,11 +116,21 @@ export async function handleBrowserDesktop(request: Request, env: Env, url: URL)
     const { runtime, secrets } = await withTenant(env, identity.businessId, tx => getRuntimeAccess(env, tx, identity.businessId));
     if (runtime.provider !== 'fly-sprite' || !/^[a-z0-9][a-z0-9-]{0,62}$/.test(runtime.providerName) ||
         !env.SPRITES_TOKEN || !['ready', 'cold', 'idle'].includes(runtime.status)) return fail(503, 'Desktop unavailable');
-    // Fixed provider + port, never a client-selected URL, ID, host or service.
-    const response = await fetch(`https://api.sprites.dev/v1/sprites/${encodeURIComponent(runtime.providerName)}/proxy`, {
-      headers: { Upgrade: 'websocket', Authorization: `Bearer ${env.SPRITES_TOKEN}` },
-      redirect: 'manual', signal: AbortSignal.timeout(20000),
-    });
+    /* Fixed provider + port, never a client-selected URL, ID, host or service.
+       The timeout is for the upgrade handshake only. AbortSignal.timeout()
+       remains live after fetch resolves and was terminating the upgraded
+       WebSocket about twenty seconds into an otherwise healthy desktop. */
+    const controller = new AbortController();
+    const wakeTimeout = setTimeout(() => controller.abort(), 20_000);
+    let response: Response;
+    try {
+      response = await fetch(`https://api.sprites.dev/v1/sprites/${encodeURIComponent(runtime.providerName)}/proxy`, {
+        headers: { Upgrade: 'websocket', Authorization: `Bearer ${env.SPRITES_TOKEN}` },
+        redirect: 'manual', signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(wakeTimeout);
+    }
     upstream = response.webSocket ?? undefined;
     if (response.status !== 101 || !upstream) {
       try { upstream?.close(1011, 'Desktop unavailable'); } catch { /* already closed */ }

@@ -22,7 +22,7 @@ beforeEach(async () => {
   await ensureProviderRuntime(env, A, { provider: new LocalRuntimeProvider(), runnerKey: 'synthetic-runner-key', hermesApiKey: 'synthetic-model-key' });
   await asOwner(sql => sql`update agent_runtime set provider='fly-sprite', provider_name='alpha-desktop-test', provider_url='https://alpha.sprites.app', status='ready' where business_id=${A}`);
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 async function call({ cookie = ownerCookie, origin = 'http://localhost:5173', path = '/api/browser/desktop',
   protocols = `binary, jentera-control.${CONTROL}`, upgrade = 'websocket', config = env } = {}) {
   const { request, url } = req('GET', path, { cookie });
@@ -51,6 +51,8 @@ it('requires the pilot flag and exact server-resolved business allowlist, not a 
   expect(upstream).not.toHaveBeenCalled();
 });
 it('uses only the authenticated tenant runtime name and fixed provider proxy; never follows redirects or relays secrets', async () => {
+  const timers = vi.spyOn(globalThis, 'setTimeout');
+  const cleared = vi.spyOn(globalThis, 'clearTimeout');
   const upstream = fetchFake(async () => new Response('synthetic-provider-key synthetic-runner-key', {
     status: 302, headers: { Location: 'https://evil.test' },
   })); vi.stubGlobal('fetch', upstream);
@@ -61,6 +63,10 @@ it('uses only the authenticated tenant runtime name and fixed provider proxy; ne
   const [url, init] = upstream.mock.calls[0];
   expect(url).toBe('https://api.sprites.dev/v1/sprites/alpha-desktop-test/proxy');
   expect(init).toMatchObject({ redirect: 'manual', headers: { Upgrade: 'websocket', Authorization: 'Bearer synthetic-provider-key' } });
+  expect(init?.signal?.aborted).toBe(false);
+  const timerIndex = timers.mock.calls.findIndex(([, delay]) => delay === 20_000);
+  expect(timerIndex).toBeGreaterThanOrEqual(0);
+  expect(cleared).toHaveBeenCalledWith(timers.mock.results[timerIndex].value);
   expect(init?.body).toBeUndefined();
 });
 it('blocks busy runtimes and malformed stored provider names without opening a generic proxy', async () => {
