@@ -21,6 +21,7 @@ invitations.
 | Turnstile on the sign-in doors | Live since 13 Sep: site key in the app build, secret on the worker; a bare link request answers 400 `TURNSTILE` | A real signup from a fresh browser passes the check and lands in the signup notice; the worker logs no `[turnstile]` warnings for a day |
 | Signup notice | Shipped 13 Sep 10:27 MYT; two real accounts followed at 11:28 and 12:03 | Owner confirms two emails in qhkmdev90@gmail.com with door, verified state, MYT time and the account count |
 | Document upload | `POST /api/runs/ingest/file` shipped 12 Sep; the release was verified as served, the upload itself may not have been tried live | Upload one PDF and one CSV on production; facts land unconfirmed with the file name as source |
+| **Browser restart recovers a latched desktop (`23e7f7b`)** | The restart action first shipped in `2026.09.21-3` calling `changingControl()`, and a latched gateway throws from that listener — so the recovery failed in exactly the state it exists for, and the owner saw "The browser did not restart" on a healthy browser. The fix is inside the pin of `2026.09.21-4` (`e789c0b`), on 13 of 16 sprites, and has never been pressed against a genuinely latched gateway | Latch a desktop, press Restart browser, and get `desktopView: 1` rather than an error; the fallback if it still fails is `sprite-env services restart aisar-runner` |
 
 ## Next runtime release must carry
 
@@ -28,7 +29,6 @@ invitations.
 |---|---|---|
 | Hermes local cron removal on Kitakod's sprite | A one-off cleanup; sprites never own a local cron. Only the bundle makes it permanent | The release's bootstrap removes it; `fleet-exec.sh` finds none |
 | BoxCompute warning cleared | `last_error` holds the checkpoint warning while Fly's orphan `v31` exists | After Fly clears the directory, the next release checkpoints cleanly: `last_error` null, a real id |
-| Browser restart recovers a latched desktop (`23e7f7b`) | The restart action shipped in `2026.09.21-3` calls `changingControl()` first, and a latched gateway throws from that listener — so the recovery failed in exactly the state it exists for, and the owner saw "The browser did not restart" on a healthy browser. Until this ships, the only clear is `sprite-env services restart aisar-runner` | Pressing Restart browser on a latched sprite returns `desktopView: 1` instead of an error |
 | Browser tool calls fail fast while the owner holds the browser | **Hermes change, not this repo.** `runner/src/server.mjs:831` already refuses *admission* with 409 `business_browser_paused`, but a run that was admitted and then reaches for the browser blocks inside Hermes until the task expires. On 21 Sep run `2048b734` called `browser_console` at 13:52:21, produced nothing for five minutes and ended `work.failed` / `remoteStatus: expired`; the owner saw a timer and, until `9f08179`, nothing to press. Stop makes it survivable, not prevented. Needs a `hermes-agent` change, a tag (`vYYYY.M.P`, no suffix), a bundle pin and a release | A browser tool call made while the browser is paused returns "the owner has the browser" within seconds, and the run ends rather than expiring |
 
 
