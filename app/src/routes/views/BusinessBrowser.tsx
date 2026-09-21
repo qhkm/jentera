@@ -49,6 +49,7 @@ export default function BusinessBrowser({
   const [open, setOpen] = useState(false);
   const [controlled, setControlled] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [claiming, setClaiming] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusAttempt, setStatusAttempt] = useState(0);
   const [state, setState] = useState<BusinessBrowserState>({});
@@ -187,12 +188,14 @@ export default function BusinessBrowser({
 
   async function send(action: Action) {
     const generation = viewGeneration.current;
+    const takesControl = action.action === 'claim' || action.action === 'reclaim';
     const previous = actionChain.current;
     let finish!: () => void;
     actionChain.current = new Promise(resolve => { finish = resolve; });
     pendingActions.current++;
     actionBusy.current = true;
     setBusy(true);
+    if (takesControl) setClaiming(true);
     setError('');
     await previous;
     try {
@@ -203,7 +206,7 @@ export default function BusinessBrowser({
       inFlight.current = true;
       const next = await repo.businessBrowser({ ...action, controlId: controlId.current } as BrowserCommand);
       if (!live.current) return null;
-      if (action.action === 'claim' || action.action === 'reclaim') {
+      if (takesControl) {
         handBackNeeded.current = true;
         setControlConflict(false);
         setState(next); onPauseChange?.(true);
@@ -233,6 +236,7 @@ export default function BusinessBrowser({
     }
     finally {
       inFlight.current = false; pendingActions.current--; actionBusy.current = pendingActions.current > 0;
+      if (takesControl && live.current && generation === viewGeneration.current) setClaiming(false);
       finish(); if (live.current) setBusy(actionBusy.current);
     }
   }
@@ -259,7 +263,7 @@ export default function BusinessBrowser({
   }
 
   const openBrowser = () => { claimOnOpen.current = true; setError(''); setHandedBack(false); setOpen(true); };
-  const mode = statusLoading ? 'checking' : controlled ? 'control' : state.paused ? 'paused' : 'view';
+  const mode = statusLoading || claiming ? 'checking' : controlled ? 'control' : state.paused ? 'paused' : 'view';
   const tabName = (origin: string) => {
     try { return new URL(origin).hostname || t('browser.blank'); } catch { return t('browser.blank'); }
   };
@@ -339,13 +343,13 @@ export default function BusinessBrowser({
                 } else command({ action: 'click', x, y });
               }}>
               <img src={`data:image/jpeg;base64,${frame.image}`} alt={t('browser.screen')} draggable={false} />
-            </button></div> : <div className="business-browser-empty" role={controlled || statusLoading ? 'status' : undefined}>
+            </button></div> : <div className="business-browser-empty" role={controlled || statusLoading || claiming ? 'status' : undefined}>
               <span className="business-browser-empty-icon" aria-hidden="true">
-                {handedBack ? <CheckCircle size={38} weight="duotone" /> : controlled || statusLoading ? <Clock size={38} weight="duotone" /> : <CursorClick size={38} weight="duotone" />}
+                {handedBack ? <CheckCircle size={38} weight="duotone" /> : controlled || statusLoading || claiming ? <Clock size={38} weight="duotone" /> : <CursorClick size={38} weight="duotone" />}
               </span>
-              <h3>{t(handedBack ? 'browser.returned.title' : controlled || statusLoading ? 'browser.loading' : 'browser.welcome.title')}</h3>
-              <p>{t(handedBack ? 'browser.returned.detail' : controlled || statusLoading ? 'browser.loadingDetail' : 'browser.welcome.detail')}</p>
-              {!controlled && !handedBack && <ol className="business-browser-guide" aria-label={t('browser.guide')}>
+              <h3>{t(handedBack ? 'browser.returned.title' : controlled || statusLoading || claiming ? 'browser.loading' : 'browser.welcome.title')}</h3>
+              <p>{t(handedBack ? 'browser.returned.detail' : controlled || statusLoading || claiming ? 'browser.loadingDetail' : 'browser.welcome.detail')}</p>
+              {!controlled && !handedBack && !claiming && <ol className="business-browser-guide" aria-label={t('browser.guide')}>
                 {['takeControl', 'signIn', 'handBack'].map((step, i) => <li key={step}><span>{i + 1}</span>{t(`browser.step.${step}`)}</li>)}
               </ol>}
             </div>}
@@ -440,7 +444,7 @@ export default function BusinessBrowser({
             <p>{t(controlled || state.paused ? 'browser.footer.paused' : 'browser.available')}</p></div>
         </div>
         <div className="business-browser-control-actions">
-          {!controlled && <Button type="button" variant={state.paused ? 'outline' : 'primary'} disabled={busy || statusLoading}
+          {!controlled && !claiming && <Button type="button" variant={state.paused ? 'outline' : 'primary'} disabled={busy || statusLoading}
             onClick={() => command({ action: 'claim' })}><CursorClick size={18} aria-hidden="true" />{t('browser.takeControl')}</Button>}
           {/* The one recovery for a browser that has stopped responding. It
               keeps the profile, so every signed-in session survives, but it
@@ -451,7 +455,7 @@ export default function BusinessBrowser({
             onClick={() => { if (window.confirm(t('browser.restart.confirm'))) void command({ action: 'restart' }); }}>
             <ArrowClockwise size={18} aria-hidden="true" /><span>{t('browser.restart')}</span></Button>}
           {/* Also recover a durable pause left by an abandoned/expired controller. */}
-          {(controlled || state.paused) && <Button type="button" disabled={busy || statusLoading}
+          {(controlled || (state.paused && !claiming)) && <Button type="button" disabled={busy || statusLoading}
             onClick={() => command({ action: 'release' })}>{t('browser.handBack')}<ArrowRight size={18} aria-hidden="true" /></Button>}
         </div>
       </footer>
