@@ -9,6 +9,15 @@ import BusinessBrowser from '@/routes/views/BusinessBrowser';
 
 beforeEach(() => {
   localStorage.clear();
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: vi.fn().mockImplementation(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  });
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
 });
@@ -146,6 +155,24 @@ it('keeps native screen coordinates, ignores coordinate-free clicks, and provide
   expect(browser.mock.calls.some(([command]) => command?.action === 'key' && command.key === 'ControlOrMeta+A')).toBe(true);
   expect(browser.mock.calls.some(([command]) => command?.action === 'scroll' && command.deltaY === 500)).toBe(true);
   expect(browser.mock.calls.some(([command]) => command?.action === 'tab' && command.index === 1)).toBe(true);
+});
+
+it('starts the page-only viewer enlarged on phones and still offers a fitted overview', async () => {
+  window.matchMedia = vi.fn().mockImplementation(() => ({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  const user = userEvent.setup();
+  const browser = vi.fn(async (command?: BrowserCommand) => command?.action === 'frame' ? sampleFrame : { enabled: true, paused: true });
+  mountBrowser(browser);
+  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  await user.click(screen.getByRole('button', { name: 'Take control' }));
+  const remote = await screen.findByRole('button', { name: /^Business browser screen/ });
+  expect(remote).toHaveStyle({ width: '200%' });
+  expect(screen.getByRole('group', { name: 'Browser view zoom' })).toHaveTextContent('200%');
+  await user.click(screen.getByRole('button', { name: 'Fit view' }));
+  expect(remote).toHaveStyle({ width: '100%' });
 });
 
 it('does not restore a closed live view after an in-flight claim, but still reports the durable pause', async () => {

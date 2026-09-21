@@ -11,6 +11,10 @@ import DesktopViewer from './DesktopViewer';
 
 type Action = BrowserCommand extends infer C ? C extends BrowserCommand ? Omit<C, 'controlId'> : never : never;
 
+function defaultBrowserZoom() {
+  return typeof window !== 'undefined' && window.matchMedia?.('(max-width: 640px)').matches ? 2 : 1;
+}
+
 export default function BusinessBrowser({
   appearance = 'card',
   openRequest = 0,
@@ -52,7 +56,7 @@ export default function BusinessBrowser({
   const [text, setText] = useState('');
   const [showText, setShowText] = useState(false);
   const [handedBack, setHandedBack] = useState(false);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(defaultBrowserZoom);
   const [typingState, setTypingState] = useState<DirectInputState>({ phase: 'idle' });
   const direct = useRef<BrowserInput | null>(null);
   const dispatch = useRef(send);
@@ -211,7 +215,7 @@ export default function BusinessBrowser({
     // The local claim does not survive, though: it goes stale while the dialog
     // is shut, and reopening on a stale one showed a Hand back that could only
     // 409. Reopening re-reads the real state and offers both doors.
-    dialog.current?.close(); setOpen(false); setControlled(false); setControlConflict(false); setFrame(null); setText(''); setShowText(false); setUrl(''); setZoom(1);
+    dialog.current?.close(); setOpen(false); setControlled(false); setControlConflict(false); setFrame(null); setText(''); setShowText(false); setUrl(''); setZoom(defaultBrowserZoom());
   }
 
   const openBrowser = () => { setError(''); setHandedBack(false); setOpen(true); };
