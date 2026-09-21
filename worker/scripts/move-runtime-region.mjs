@@ -217,19 +217,28 @@ curl -s -o /dev/null -w "%{http_code}" --max-time 20 -H "Authorization: Bearer $
   }
 }
 
+/** Insert the task and nothing else. `runtime_task_queue_wake`, an AFTER
+ *  INSERT trigger on the table, writes the outbox row that the minute cron
+ *  drains — so adding one here collides with it on
+ *  `idx_runtime_task_outbox_one_pending` and rolls the whole thing back. */
 async function enqueue(sql, businessId, kind, dedupeKey) {
-  return sql.begin(async (tx) => {
-    const [task] = await tx`
-      insert into runtime_task (business_id, kind, payload, dedupe_key)
-      values (${businessId}, ${kind}, '{}'::jsonb, ${dedupeKey})
-      returning id`;
-    await tx`insert into runtime_task_outbox (business_id, task_id, not_before)
-             values (${businessId}, ${task.id}, now())`;
-    return task.id;
-  });
+  const [task] = await sql`
+    insert into runtime_task (business_id, kind, payload, dedupe_key)
+    values (${businessId}, ${kind}, '{}'::jsonb, ${dedupeKey})
+    returning id`;
+  const [wake] = await sql`select count(*)::int as n from runtime_task_outbox
+     where task_id = ${task.id} and sent_at is null`;
+  if (wake.n !== 1) throw new Error(`no queue wake was written for the ${kind} task`);
+  return task.id;
 }
 
-async function waitFor(label, check, timeoutMs = 15 * 60 * 1000) {
+/* The outbox that wakes a runtime task is drained by the quarter-hour cron,
+   not the minute one: the minute branch handles routines, spares and push and
+   returns before reaching the drain (`worker/src/index.ts`). So a task sits
+   queued for up to 15 minutes before anything picks it up, and a move pays
+   that twice — once for the delete, once for the provision. Waiting less than
+   that reports a failure that is only a clock. */
+async function waitFor(label, check, timeoutMs = 45 * 60 * 1000) {
   const started = Date.now();
   for (;;) {
     const done = await check();
@@ -326,6 +335,44 @@ async function moveOne(sql, spriteName, dir) {
   return ready;
 }
 
+/** The cohort moves a phase at a time rather than a sprite at a time. Every
+ *  queued task waits for the same quarter-hour tick, so twelve sequential
+ *  moves would pay that wait twenty-four times over; enqueued together they
+ *  ride two ticks between them. The cost is that every business in the cohort
+ *  is without a runtime for the same window, so the caller chooses the size. */
+async function moveCohort(sql, cohort, dirFor) {
+  console.log(`\nbacking up ${cohort.length} sprites`);
+  for (const row of cohort) {
+    console.log(`  ${row.provider_name} (${row.business_name})`);
+    await phaseBackup(row.provider_name, dirFor(row));
+  }
+
+  console.log('\nenqueuing deletes');
+  for (const row of cohort) await enqueue(sql, row.business_id, 'delete', `move-region-delete-${row.business_id}-${Date.now()}`);
+  await waitFor('every sprite to be deleted', async () => {
+    const [row] = await sql`select count(*)::int as n from agent_runtime
+       where business_id = any(${cohort.map((c) => c.business_id)}::uuid[])`;
+    return row.n === 0;
+  });
+
+  console.log('\ndeleted; enqueuing provisions');
+  for (const row of cohort) await enqueue(sql, row.business_id, 'provision', `move-region-provision-${row.business_id}-${Date.now()}`);
+  await waitFor('every new sprite to be ready', async () => {
+    const [row] = await sql`select count(*)::int as n from agent_runtime
+       where business_id = any(${cohort.map((c) => c.business_id)}::uuid[]) and status = 'ready'`;
+    return row.n === cohort.length;
+  });
+
+  console.log('\nprovisioned; restoring memory');
+  for (const row of cohort) {
+    const [fresh] = await sql`select provider_name from agent_runtime where business_id = ${row.business_id}`;
+    await phaseRestore(fresh.provider_name, dirFor(row));
+  }
+  console.log('\nconfirming where they landed');
+  await survey(sql, await sql`select provider_name from agent_runtime
+     where business_id = any(${cohort.map((c) => c.business_id)}::uuid[])`);
+}
+
 function report(rows) {
   for (const row of rows) {
     console.log([
@@ -364,10 +411,9 @@ async function main() {
         return;
       }
       const limit = Number(value('limit') ?? rows.length);
-      for (const [index, row] of rows.slice(0, limit).entries()) {
-        console.log(`\n=== ${index + 1}/${Math.min(limit, rows.length)} ===`);
-        await moveOne(sql, row.provider_name, path.join(value('dir') ?? '.runtime-moves', row.provider_name));
-      }
+      const cohort = rows.slice(0, limit);
+      const dirFor = (row) => path.join(value('dir') ?? '.runtime-moves', row.provider_name);
+      await moveCohort(sql, cohort, dirFor);
       console.log('\ndone. Remaining candidates:');
       report(await listCandidates(sql));
       return;
