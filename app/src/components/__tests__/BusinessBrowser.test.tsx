@@ -43,8 +43,6 @@ it('offers explicit window recovery after a conflict and keeps the agent paused 
   });
   mountBrowser(browser, pause);
   await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
-  expect(screen.queryByRole('button', { name: 'Use this window' })).toBeNull();
-  await user.click(screen.getByRole('button', { name: 'Take control' }));
   const recovery = await screen.findByRole('region', { name: 'Continue in this window?' });
   expect(recovery).toHaveTextContent('This disconnects your previous window.');
   expect(browser.mock.calls.some(([command]) => command?.action === 'reclaim')).toBe(false);
@@ -66,44 +64,53 @@ it('does not offer unsupported recovery on an older runtime', async () => {
   });
   mountBrowser(browser);
   await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
-  await user.click(screen.getByRole('button', { name: 'Take control' }));
   await screen.findByRole('alert');
   expect(screen.queryByRole('button', { name: 'Use this window' })).toBeNull();
   expect(browser.mock.calls.some(([command]) => command?.action === 'reclaim')).toBe(false);
+  await user.click(screen.getByRole('button', { name: 'Close browser view' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(false);
 });
 
-it('explains takeover before opening the live view, locks background scroll, and restores it on close', async () => {
+it('opens and claims in one action, locks background scroll, and hands back on close', async () => {
   const user = userEvent.setup();
   const priorOverflow = document.body.style.overflow;
   document.body.style.overflow = 'clip';
-  const browser = vi.fn(async (_command?: BrowserCommand) => ({ enabled: true, paused: false }));
+  let paused = false;
+  const browser = vi.fn(async (command?: BrowserCommand) => {
+    if (command?.action === 'claim') paused = true;
+    if (command?.action === 'release') paused = false;
+    return { enabled: true, paused };
+  });
   try {
     mountBrowser(browser);
     await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
-    expect(await screen.findByText('Take over when you’re ready')).toBeVisible();
-    expect(screen.getByRole('list', { name: 'Browser handoff steps' })).toHaveTextContent('Sign in or verify');
-    expect(screen.queryByRole('img')).toBeNull();
-    expect(browser.mock.calls.every(([command]) => !command)).toBe(true);
+    await waitFor(() => expect(browser.mock.calls.some(([command]) => command?.action === 'claim')).toBe(true));
+    expect(await screen.findByText('You’re in control')).toBeVisible();
     expect(document.body.style.overflow).toBe('hidden');
     await user.click(screen.getByRole('button', { name: 'Close browser view' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(true);
+    expect(paused).toBe(false);
     expect(document.body.style.overflow).toBe('clip');
   } finally { document.body.style.overflow = priorOverflow; }
 });
 
-it('requires status to finish and offers a read-only retry after a connection error', async () => {
+it('requires status to finish and automatically claims after a connection retry', async () => {
   const user = userEvent.setup();
   let finish: (value: BusinessBrowserState) => void = () => {};
   const browser = vi.fn<(command?: BrowserCommand) => Promise<BusinessBrowserState>>()
     .mockRejectedValueOnce(new Error('Computer unavailable.'))
-    .mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    .mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }))
+    .mockResolvedValue({ enabled: true, paused: true });
   mountBrowser(browser);
   await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Computer unavailable.');
   await user.click(screen.getByRole('button', { name: 'Try again' }));
   expect(screen.getByRole('button', { name: 'Take control' })).toBeDisabled();
   await act(async () => finish({ enabled: true, paused: false }));
-  expect(screen.getByRole('button', { name: 'Take control' })).toBeEnabled();
-  expect(browser.mock.calls.every(([command]) => !command)).toBe(true);
+  await waitFor(() => expect(browser.mock.calls.some(([command]) => command?.action === 'claim')).toBe(true));
+  expect(await screen.findByText('You’re in control')).toBeVisible();
 });
 
 it('masks text by default, reveals only on request, and clears both content and reveal state after sending', async () => {
@@ -111,7 +118,6 @@ it('masks text by default, reveals only on request, and clears both content and 
   const browser = vi.fn(async (command?: BrowserCommand) => command?.action === 'frame' ? sampleFrame : { enabled: true, paused: true });
   mountBrowser(browser);
   await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
-  await user.click(screen.getByRole('button', { name: 'Take control' }));
   await screen.findByRole('img');
   const input = screen.getByLabelText('Text or password for the selected field');
   expect(input).toHaveAttribute('type', 'password');
@@ -132,7 +138,6 @@ it('keeps native screen coordinates, ignores coordinate-free clicks, and provide
   const browser = vi.fn(async (command?: BrowserCommand) => command?.action === 'frame' ? sampleFrame : { enabled: true, paused: true });
   mountBrowser(browser);
   await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
-  await user.click(screen.getByRole('button', { name: 'Take control' }));
   await screen.findByRole('img');
   const remote = screen.getByRole('button', { name: /^Business browser screen/ });
   vi.spyOn(remote, 'getBoundingClientRect').mockReturnValue({ left: 20, top: 40, width: 640, height: 400 } as DOMRect);
@@ -167,7 +172,6 @@ it('starts the page-only viewer enlarged on phones and still offers a fitted ove
   const browser = vi.fn(async (command?: BrowserCommand) => command?.action === 'frame' ? sampleFrame : { enabled: true, paused: true });
   mountBrowser(browser);
   await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
-  await user.click(screen.getByRole('button', { name: 'Take control' }));
   const remote = await screen.findByRole('button', { name: /^Business browser screen/ });
   expect(remote).toHaveStyle({ width: '200%' });
   expect(screen.getByRole('group', { name: 'Browser view zoom' })).toHaveTextContent('200%');
@@ -175,30 +179,29 @@ it('starts the page-only viewer enlarged on phones and still offers a fitted ove
   expect(remote).toHaveStyle({ width: '100%' });
 });
 
-it('does not restore a closed live view after an in-flight claim, but still reports the durable pause', async () => {
+it('waits for an in-flight claim, hands back, and only then closes the view', async () => {
   const user = userEvent.setup();
   let finish: (value: BusinessBrowserState) => void = () => {};
   let paused = false;
   const browser = vi.fn(async (command?: BrowserCommand): Promise<BusinessBrowserState> => {
     if (command?.action === 'claim') return new Promise(resolve => { finish = value => { paused = true; resolve(value); }; });
+    if (command?.action === 'release') paused = false;
     return { enabled: true, paused };
   });
   const pause = vi.fn();
   mountBrowser(browser, pause);
   await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
-  await user.click(screen.getByRole('button', { name: 'Take control' }));
+  await waitFor(() => expect(finish).toBeTypeOf('function'));
   await user.click(screen.getByRole('button', { name: 'Close browser view' }));
+  expect(screen.getByRole('dialog')).toBeVisible();
   await act(async () => finish({ enabled: true, paused: true }));
-  expect(screen.queryByRole('dialog')).toBeNull();
-  expect(pause).toHaveBeenLastCalledWith(true);
-  await user.click(screen.getByRole('button', { name: 'Open business browser' }));
-  expect(await screen.findByRole('button', { name: 'Take control' })).toBeVisible();
-  expect(screen.getByRole('button', { name: 'Hand back to Jentera' })).toBeVisible();
-  expect(screen.queryByRole('img')).toBeNull();
-  expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(false);
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(pause).toHaveBeenLastCalledWith(false);
+  expect(paused).toBe(false);
+  expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(true);
 });
 
-it('takes control, keeps typed secrets out of storage, and only hands back explicitly', async () => {
+it('takes control in one click, keeps typed secrets out of storage, and hands back on close', async () => {
   const user = userEvent.setup();
   const repo = new LocalRepository();
   const calls: BrowserCommand[] = [];
@@ -217,7 +220,6 @@ it('takes control, keeps typed secrets out of storage, and only hands back expli
   repo.businessBrowser = browser;
   render(<RepositoryProvider repository={repo}><I18nProvider><BusinessBrowser /></I18nProvider></RepositoryProvider>);
   await user.click(await screen.findByRole('button', { name: /open business browser/i }));
-  await user.click(screen.getByRole('button', { name: /take control/i }));
   const input = await screen.findByLabelText(/text or password/i);
   await user.type(input, 'test-password');
   await user.click(screen.getByRole('button', { name: /type into browser/i }));
@@ -225,21 +227,30 @@ it('takes control, keeps typed secrets out of storage, and only hands back expli
   expect(input).toHaveValue('');
   expect(JSON.stringify(localStorage)).not.toContain('test-password');
   await user.click(screen.getByRole('button', { name: /close browser/i }));
-  expect(calls.some((c) => c.action === 'release')).toBe(false);
-  await user.click(screen.getByRole('button', { name: /open business browser/i }));
-  await user.click(screen.getByRole('button', { name: /hand back/i }));
   await waitFor(() => expect(calls.some((c) => c.action === 'release')).toBe(true));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(paused).toBe(false);
   expect(new Set(calls.map((c) => c.controlId)).size).toBe(1);
 });
 
-/* The trap this screen set on 15 September: an owner signing into Google ran
-   past the ten-minute lease and every action started failing. The runner fix
-   lets an expired controller hand back, but only if the screen offers the
-   button — and after a reload, which is what an owner reaches for when a page
-   seems stuck, it did not. `controlled` starts false, so the toolbar showed
-   Take control alone while the browser sat paused behind it, refusing every
-   task the agent was given. Paused is exactly when hand back has to be there. */
-it('offers hand back on a reloaded page when the browser is paused by nobody', async () => {
+it('keeps the modal open when hand-back fails during close', async () => {
+  const user = userEvent.setup();
+  let paused = false;
+  const browser = vi.fn(async (command?: BrowserCommand): Promise<BusinessBrowserState> => {
+    if (command?.action === 'claim') paused = true;
+    if (command?.action === 'release') throw new Error('Could not hand control back.');
+    return { enabled: true, paused };
+  });
+  mountBrowser(browser);
+  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  expect(await screen.findByText('You’re in control')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: 'Close browser view' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Could not hand control back.');
+  expect(screen.getByRole('dialog')).toBeVisible();
+  expect(paused).toBe(true);
+});
+
+it('claims a previously paused browser on open and releases it again on close', async () => {
   const user = userEvent.setup();
   const repo = new LocalRepository();
   const calls: BrowserCommand[] = [];
@@ -255,12 +266,10 @@ it('offers hand back on a reloaded page when the browser is paused by nobody', a
   repo.businessBrowser = browser;
   render(<RepositoryProvider repository={repo}><I18nProvider><BusinessBrowser /></I18nProvider></RepositoryProvider>);
   await user.click(await screen.findByRole('button', { name: /open business browser/i }));
-
-  // Without claiming anything first: the browser is stuck and this is the way out.
-  await user.click(await screen.findByRole('button', { name: /hand back/i }));
+  await waitFor(() => expect(calls.some((c) => c.action === 'claim')).toBe(true));
+  await user.click(screen.getByRole('button', { name: /close browser/i }));
   await waitFor(() => expect(calls.some((c) => c.action === 'release')).toBe(true));
   expect(paused).toBe(false);
-  expect(calls.some((c) => c.action === 'claim')).toBe(false);
 });
 
 it('clears unsent credentials after a lost lease and explains successful hand-back without claiming sign-in', async () => {
@@ -274,7 +283,6 @@ it('clears unsent credentials after a lost lease and explains successful hand-ba
   });
   mountBrowser(browser);
   await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
-  await user.click(screen.getByRole('button', { name: 'Take control' }));
   await screen.findByRole('img');
   await user.type(screen.getByLabelText('Text or password for the selected field'), 'synthetic-unsent-secret');
   await user.click(screen.getByRole('button', { name: 'Show typed text' }));
@@ -306,7 +314,6 @@ it('focuses the keyboard on screen tap, types/pastes directly, forwards keys and
   });
   mountBrowser(browser);
   await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
-  await user.click(screen.getByRole('button', { name: 'Take control' }));
   await screen.findByRole('img');
   const proxy = screen.getByLabelText('Live browser keyboard');
   expect(proxy).toHaveAttribute('readonly');
@@ -342,7 +349,6 @@ it('commits IME composition once and supports native mobile deletion without a T
   });
   mountBrowser(browser);
   await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
-  await user.click(screen.getByRole('button', { name: 'Take control' }));
   await screen.findByRole('img');
   fireEvent.click(screen.getByRole('button', { name: /^Business browser screen/ }), { detail: 1 });
   await screen.findByText('Keyboard connected — type or paste');
@@ -358,7 +364,7 @@ it('commits IME composition once and supports native mobile deletion without a T
   expect(browser.mock.calls.filter(([command]) => command?.action === 'input' && command.text === '你好')).toHaveLength(1);
 });
 
-it('does not send queued direct input or reopen a closed viewer after a slow selection', async () => {
+it('does not send queued direct input and hands back after a slow selection', async () => {
   const user = userEvent.setup();
   let finish!: (value: BusinessBrowserState) => void;
   const browser = vi.fn(async (command?: BrowserCommand): Promise<BusinessBrowserState> => {
@@ -367,16 +373,17 @@ it('does not send queued direct input or reopen a closed viewer after a slow sel
   });
   mountBrowser(browser);
   await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
-  await user.click(screen.getByRole('button', { name: 'Take control' }));
   await screen.findByRole('img');
   fireEvent.click(screen.getByRole('button', { name: /^Business browser screen/ }), { detail: 1 });
   await waitFor(() => expect(finish).toBeTypeOf('function'));
   const proxy = screen.getByLabelText('Live browser keyboard');
   fireEvent.input(proxy, { target: { value: '\u200bunsent-secret' } });
   await user.click(screen.getByRole('button', { name: 'Close browser view' }));
+  expect(screen.getByRole('dialog')).toBeVisible();
   await act(async () => finish(directFrame()));
-  expect(screen.queryByRole('dialog')).toBeNull();
-  expect(browser.mock.calls.some(([command]) => command?.action === 'input' || command?.action === 'release')).toBe(false);
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(browser.mock.calls.some(([command]) => command?.action === 'input')).toBe(false);
+  expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(true);
 });
 
 it('uses the same field guard for the paste box and clears direct typing on loss of control', async () => {
@@ -388,7 +395,6 @@ it('uses the same field guard for the paste box and clears direct typing on loss
   });
   mountBrowser(browser);
   await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
-  await user.click(screen.getByRole('button', { name: 'Take control' }));
   await screen.findByRole('img');
   await user.type(screen.getByLabelText('Text or password for the selected field'), 'guarded-paste');
   expect(screen.getByRole('button', { name: 'Type into browser' })).toBeDisabled();

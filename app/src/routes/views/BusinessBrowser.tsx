@@ -42,6 +42,7 @@ export default function BusinessBrowser({
   const actionBusy = useRef(false);
   const actionChain = useRef<Promise<void>>(Promise.resolve());
   const pendingActions = useRef(0);
+  const handBackNeeded = useRef(false);
   const closeRequested = useRef(false);
   const live = useRef(true);
   const viewGeneration = useRef(0);
@@ -180,11 +181,13 @@ export default function BusinessBrowser({
       const next = await repo.businessBrowser({ ...action, controlId: controlId.current } as BrowserCommand);
       if (!live.current) return null;
       if (action.action === 'claim' || action.action === 'reclaim') {
+        handBackNeeded.current = true;
         setControlConflict(false);
         setState(next); onPauseChange?.(true);
         if (generation === viewGeneration.current) { setControlled(true); setHandedBack(false); }
       }
       if (action.action === 'release') {
+        handBackNeeded.current = false;
         setState(next); setControlled(false); setFrame(null); setText(''); setShowText(false);
         if (generation === viewGeneration.current) setHandedBack(true);
         onPauseChange?.(false);
@@ -223,7 +226,7 @@ export default function BusinessBrowser({
     // Closing is also hand-back. If a claim is still in flight, release queues
     // behind it so a late successful claim cannot leave Jentera paused after
     // the modal disappears. A failed release keeps the modal visible.
-    if (controlled || state.paused || pendingActions.current > 0) {
+    if (handBackNeeded.current || pendingActions.current > 0) {
       const released = await send({ action: 'release' });
       if (!released) { closeRequested.current = false; return; }
     }

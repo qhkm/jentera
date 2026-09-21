@@ -292,12 +292,13 @@ describe('compose-first Ask Jentera', () => {
     await user.click(screen.getByRole('button', { name: 'Open business browser' }));
     expect(await screen.findByRole('heading', { name: 'Business browser' })).toBeVisible();
     expect(screen.getByRole('dialog').closest('form')).toBeNull();
+    await waitFor(() => expect(browser.mock.calls.some(([command]) => command?.action === 'claim')).toBe(true));
     await user.click(screen.getByRole('button', { name: 'Close browser view' }));
+    await waitFor(() => expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(true));
     expect(screen.getByRole('textbox')).toHaveValue('Review my business account');
     expect(openConnections).not.toHaveBeenCalled();
-    expect(browser.mock.calls.every(([command]) => !command)).toBe(true);
   });
-  it('opens the same browser from an agent handoff card without sending, claiming, or losing a draft', async () => {
+  it('opens the same browser from an agent handoff card without sending or losing a draft', async () => {
     const user = userEvent.setup();
     const repo = new LocalRepository();
     const browser = vi.fn(async (_command?: BrowserCommand) => ({ enabled: true, paused: false }));
@@ -312,15 +313,18 @@ describe('compose-first Ask Jentera', () => {
     await user.type(screen.getByRole('textbox'), 'My follow-up draft');
     await user.click(within(card).getByRole('button', { name: 'Open business browser' }));
     expect(await screen.findByRole('heading', { name: 'Business browser' })).toBeVisible();
+    await waitFor(() => expect(browser.mock.calls.some(([command]) => command?.action === 'claim')).toBe(true));
     await user.click(screen.getByRole('button', { name: 'Close browser view' }));
+    await waitFor(() => expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(true));
     expect(screen.getByRole('textbox')).toHaveValue('My follow-up draft');
-    expect(browser.mock.calls.every(([command]) => !command)).toBe(true);
     expect(repo.ask).toHaveBeenCalledOnce();
     expect(openConnections).not.toHaveBeenCalled();
     await user.click(within(document.querySelector('.ask-writing-pad') as HTMLElement).getByRole('button', { name: 'Open business browser' }));
     expect(await screen.findByRole('heading', { name: 'Business browser' })).toBeVisible();
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    await waitFor(() => expect(browser.mock.calls.filter(([command]) => command?.action === 'claim')).toHaveLength(2));
     await user.click(screen.getByRole('button', { name: 'Close browser view' }));
+    await waitFor(() => expect(browser.mock.calls.filter(([command]) => command?.action === 'release')).toHaveLength(2));
   });
   it('keeps the browser dialog mounted during takeover and never submits chat from browser forms', async () => {
     const user = userEvent.setup();
@@ -335,16 +339,13 @@ describe('compose-first Ask Jentera', () => {
     await mount(<Harness />, repo);
     await user.type(await screen.findByRole('textbox'), 'Continue after I sign in');
     await user.click(screen.getByRole('button', { name: 'Open business browser' }));
-    await user.click(screen.getByRole('button', { name: 'Take control' }));
     expect(await screen.findByText('Jentera is paused')).toBeVisible();
     await user.type(screen.getByLabelText('Website address'), 'https://example.com');
     await user.click(screen.getByRole('button', { name: 'Go' }));
     expect(repo.ask).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Close browser view' }));
-    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
-    await user.click(screen.getByRole('button', { name: 'Open Business Browser' }));
-    await user.click(screen.getByRole('button', { name: 'Hand back to Jentera' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled());
+    expect(repo.businessBrowser).toHaveBeenCalledWith(expect.objectContaining({ action: 'release' }));
     expect(screen.getByRole('textbox')).toHaveValue('Continue after I sign in');
   });
   it('explains owner browser control, blocks sending, and opens the hand-back control inline', async () => {
