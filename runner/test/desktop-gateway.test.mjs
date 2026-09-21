@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { createHmac, randomUUID } from 'node:crypto';
 import { createServer, connect } from 'node:net';
 import { once } from 'node:events';
-import { createDesktopGateway, desktopTicketValid } from '../src/desktop-gateway.mjs';
+import { createDesktopGateway, desktopTicketValid, DESKTOP_TTL_MS } from '../src/desktop-gateway.mjs';
 
 const businessId = '11111111-1111-4111-8111-111111111111';
 const ownerId = '22222222-2222-4222-8222-222222222222';
@@ -11,7 +11,7 @@ const controlId = '33333333-3333-4333-8333-333333333333';
 const runnerKey = 'isolated-desktop-runner-key-'.repeat(2);
 function signed(extra = {}, now = Date.now()) {
   const payload = { purpose: 'jentera-desktop-v1', businessId, ownerId, controlId,
-    nonce: randomUUID(), issuedAt: now, expiresAt: now + 60000, ...extra };
+    nonce: randomUUID(), issuedAt: now, expiresAt: now + DESKTOP_TTL_MS, ...extra };
   return { ...payload, signature: createHmac('sha256', runnerKey).update(JSON.stringify(payload)).digest('hex') };
 }
 async function fixture(t, { failCleanup = false, launchDelay = 0 } = {}) {
@@ -57,10 +57,10 @@ async function fixture(t, { failCleanup = false, launchDelay = 0 } = {}) {
   };
 }
 
-test('desktop tickets bind purpose, business, owner/window, nonce and short expiration', () => {
+test('desktop tickets bind purpose, business, owner/window, nonce and ten-minute expiration', () => {
   assert.ok(desktopTicketValid(signed(), { businessId, runnerKey }));
   for (const change of [{ purpose: 'run' }, { businessId: ownerId }, { expiresAt: Date.now() - 1 },
-    { expiresAt: Date.now() + 100000 }, { ownerId: 'invalid' }, { issuedAt: Date.now() + 10000 }, { signature: '0'.repeat(64) }]) {
+    { expiresAt: Date.now() + DESKTOP_TTL_MS + 1 }, { ownerId: 'invalid' }, { issuedAt: Date.now() + 10000 }, { signature: '0'.repeat(64) }]) {
     assert.equal(desktopTicketValid({ ...signed(), ...change }, { businessId, runnerKey }), false);
   }
 });

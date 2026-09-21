@@ -8,7 +8,11 @@ import { lstat, mkdir, chmod, unlink } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-export const DESKTOP_TTL_MS = 60_000;
+// Match the browser's ten-minute idle-control window. The gateway still
+// checks the live lease every 250 ms, so hand-back and displaced control close
+// immediately without forcing an otherwise healthy viewer to reconnect every
+// minute.
+export const DESKTOP_TTL_MS = 10 * 60_000;
 
 /** Tickets are purpose-bound, single-use and sent ONLY inside the server-side
  * Sprites tunnel, never a URL, client response, trace, or durable file. */

@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createHmac } from 'node:crypto';
-import { desktopControlProtocol, desktopEnabledFor, desktopTicket } from '../src/runtime/desktop';
+import { DESKTOP_TTL_MS, desktopControlProtocol, desktopEnabledFor, desktopTicket } from '../src/runtime/desktop';
 import { bridgeSpritesDesktop } from '../src/routes/browser-desktop';
 import type { Env } from '../src/env';
 
@@ -26,12 +26,12 @@ it('selects only a UUID window lease from the bounded protocol, never a URL/cred
   }
 });
 
-it('issues interoperable HMAC tickets with purpose, server identity, random nonce and one-minute expiry', async () => {
+it('issues interoperable HMAC tickets with purpose, server identity, random nonce and ten-minute expiry', async () => {
   const ticket = await desktopTicket(runnerKey, businessId, ownerId, controlId);
   const { signature, ...payload } = ticket;
   expect(signature).toBe(createHmac('sha256', runnerKey).update(JSON.stringify(payload)).digest('hex'));
   expect(ticket).toMatchObject({ purpose: 'jentera-desktop-v1', businessId, ownerId, controlId });
-  expect(ticket.expiresAt - ticket.issuedAt).toBe(60000);
+  expect(ticket.expiresAt - ticket.issuedAt).toBe(DESKTOP_TTL_MS);
   expect((await desktopTicket(runnerKey, businessId, ownerId, controlId)).nonce).not.toBe(ticket.nonce);
 });
 
@@ -93,10 +93,10 @@ it('bounds handshake lifetime, session lifetime and binary input size', async ()
   const next = new Socket(); const owner = new Socket();
   const ready = bridgeSpritesDesktop(next.socket(), owner.socket(), await desktopTicket(runnerKey, businessId, ownerId, controlId));
   next.message('{"status":"connected","target":"localhost:5901"}'); next.message(bytes('{"ok":true}\n')); await ready;
-  await vi.advanceTimersByTimeAsync(60001); expect(owner.closed).toBe(true);
+  await vi.advanceTimersByTimeAsync(DESKTOP_TTL_MS + 1); expect(owner.closed).toBe(true);
 });
 
-it('bounds admitted output and closes both peers instead of accumulating an unbounded slow-client queue', async () => {
+it('bounds each second of admitted output instead of imposing a normal-session lifetime byte cap', async () => {
   const upstream = new Socket(); const client = new Socket();
   const ready = bridgeSpritesDesktop(upstream.socket(), client.socket(), await desktopTicket(runnerKey, businessId, ownerId, controlId));
   upstream.message('{"status":"connected","target":"localhost:5901"}'); upstream.message(bytes('{"ok":true}\n')); await ready;

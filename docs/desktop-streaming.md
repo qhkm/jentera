@@ -112,7 +112,7 @@ require a controlled canary check. Responsive emulation is not device testing.
    using the published matching bundle. A global runtime release can upgrade
    other runtimes too; eligibility must remain owner-only, not fleet-wide.
 4. Verify actual Sprites WSS auth/proxy, sandbox, loopback ports, saved session,
-   direct typing/drag, minute renewal, stale-window rejection, durable pause,
+   direct typing/drag, ten-minute renewal, stale-window rejection, durable pause,
    physical mobile typing and explicit hand-back. Inspect logs for sensitive
    payload leakage without copying those payloads into diagnostics.
 5. Expand only after the canary passes. Do not turn on agent CUA as a side effect.

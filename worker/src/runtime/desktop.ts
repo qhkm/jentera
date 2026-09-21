@@ -1,7 +1,10 @@
 import type { Env } from '../env';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-export const DESKTOP_TTL_MS = 60_000;
+// Match the browser's ten-minute idle-control window. The runner continues
+// validating the live lease throughout the connection; this only reduces the
+// forced session-auth renewal interruption.
+export const DESKTOP_TTL_MS = 10 * 60_000;
 
 /** Deliberately no wildcard / fleet-wide default during the desktop pilot. */
 export function desktopEnabledFor(env: Env, businessId: string): boolean {

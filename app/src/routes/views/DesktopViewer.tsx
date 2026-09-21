@@ -63,7 +63,7 @@ export default function DesktopViewer({ controlId, onControlLost }: { controlId:
         rfb.current = current;
         current.scaleViewport = true; current.resizeSession = false; current.focusOnClick = true;
         current.qualityLevel = 7; current.compressionLevel = 2; current.background = '#101412';
-        // Authentication renews every minute. A reconnect never acquires a
+        // Authentication renews with the ten-minute idle-control window. A reconnect never acquires a
         // lease, claims another window, resumes the agent, or replays text.
         current.addEventListener('connect', () => {
           if (cancelled) return;

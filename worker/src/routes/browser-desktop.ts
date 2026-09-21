@@ -15,7 +15,6 @@ export function bridgeSpritesDesktop(upstream: WebSocket, downstream: WebSocket,
     let inputBytes = 0;
     let inputWindow = Date.now();
     let outputBytes = 0;
-    let outputTotal = 0;
     let outputWindow = Date.now();
     let handshake: ReturnType<typeof setTimeout>;
     let lifetime: ReturnType<typeof setTimeout>;
@@ -29,10 +28,12 @@ export function bridgeSpritesDesktop(upstream: WebSocket, downstream: WebSocket,
     const binary = (data: unknown): Uint8Array | null => data instanceof ArrayBuffer ? new Uint8Array(data) : null;
     const output = (bytes: Uint8Array) => {
       if (Date.now() - outputWindow >= 1000) { outputBytes = 0; outputWindow = Date.now(); }
-      outputBytes += bytes.byteLength; outputTotal += bytes.byteLength;
-      // Worker WebSockets have no application backpressure API. Bound the
-      // total admitted output as well as each message; no unbounded queue.
-      if (outputBytes > 8 * 1024 * 1024 || outputTotal > 64 * 1024 * 1024) { stop(1009); return; }
+      outputBytes += bytes.byteLength;
+      /* Bound every rolling second rather than total lifetime traffic. A
+         lifetime cap disconnected healthy, actively changing desktops after
+         64 MiB. workerd closes the socket itself if its outgoing buffer fills;
+         our message and rate caps keep one viewer from flooding the isolate. */
+      if (outputBytes > 8 * 1024 * 1024) { stop(1009); return; }
       downstream.send(bytes);
     };
     upstream.addEventListener('message', event => {
