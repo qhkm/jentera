@@ -59,8 +59,14 @@ it('uses only the authenticated tenant runtime name and fixed provider proxy; ne
   const response = await call();
   expect(response.status).toBe(503); expect(response.headers.get('Cache-Control')).toContain('no-store');
   expect(await response.text()).toBe('{"err":"Desktop unavailable"}');
-  expect(upstream).toHaveBeenCalledTimes(1);
-  const [url, init] = upstream.mock.calls[0];
+  expect(upstream).toHaveBeenCalledTimes(2);
+  const [leaseUrl, leaseInit] = upstream.mock.calls[0];
+  expect(String(leaseUrl)).toBe('https://alpha.sprites.app/v1/browser');
+  expect(leaseInit).toMatchObject({ method: 'POST', redirect: 'manual',
+    headers: { 'X-Aisar-Runner-Key': 'synthetic-runner-key', Authorization: 'Bearer synthetic-provider-key' } });
+  expect(JSON.parse(String(leaseInit?.body))).toEqual({ action: 'frame', businessId: A,
+    ownerId: expect.any(String), controlId: CONTROL });
+  const [url, init] = upstream.mock.calls[1];
   expect(url).toBe('https://api.sprites.dev/v1/sprites/alpha-desktop-test/proxy');
   expect(init).toMatchObject({ redirect: 'manual', headers: { Upgrade: 'websocket', Authorization: 'Bearer synthetic-provider-key' } });
   expect(init?.signal?.aborted).toBe(false);
