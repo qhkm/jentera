@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { claimRuntime, getRuntimeEgress, getRuntimeRegion } from '../src/agent-runtime';
-import { recordEgress, recordEgressForRider, seenEgress } from '../src/runtime/egress';
+import { forgetEgressMemory, recordEgress, recordEgressForRider, seenEgress } from '../src/runtime/egress';
 import { asOwner, asTenant, testEnv, truncateAll } from './harness';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -35,6 +35,9 @@ async function runtimeFor(businessId: string, providerName: string) {
 }
 
 beforeEach(async () => {
+  /* The interval is per isolate, not per test. Without this, the second
+     test to record a given sprite writes nothing and says nothing. */
+  forgetEgressMemory();
   await truncateAll();
   await asOwner(async (sql) => {
     await sql`insert into business (id, name, playbook_key)
@@ -104,8 +107,8 @@ describe('the region the app is shown', () => {
     /* What every business actually has today: a completed task carrying an
        empty region, because the runner reports an unset FLY_REGION. */
     await asOwner(async (sql) => {
-      await sql`insert into runtime_task (business_id, kind, status, result, completed_at)
-                values (${A}, 'provision', 'completed', ${sql.json({ region: '' })}, now())`;
+      await sql`insert into runtime_task (business_id, kind, status, dedupe_key, result, completed_at)
+                values (${A}, 'provision', 'completed', 'egress-test', ${sql.json({ region: '' })}, now())`;
     });
     expect(await asTenant(A, (tx) => getRuntimeRegion(tx, A))).toBeNull();
 

@@ -30,6 +30,13 @@ const RECORD_EVERY_MS = 6 * 60 * 60 * 1000;
  *  one redundant write, and coordinating it would cost a read per call. */
 const lastRecorded = new Map<string, number>();
 
+/** Only for tests: the interval below is isolate-local, so a suite that
+ *  records twice for one sprite would otherwise see the second call
+ *  silently do nothing. */
+export function forgetEgressMemory(): void {
+  lastRecorded.clear();
+}
+
 export interface EgressDeferral {
   waitUntil?: (promise: Promise<unknown>) => void;
 }
