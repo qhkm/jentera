@@ -40,6 +40,7 @@
     "db:migrate:goal-checkpoints": "node scripts/apply-goal-checkpoints.mjs",
     "db:migrate:vault-connection": "node scripts/apply-vault-connection.mjs",
     "db:migrate:chat-preview": "node scripts/apply-chat-preview.mjs",
+    "db:migrate:runtime-egress": "node scripts/apply-runtime-egress.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:stripe-canary": "vitest run --config vitest.stripe-canary.config.ts"
