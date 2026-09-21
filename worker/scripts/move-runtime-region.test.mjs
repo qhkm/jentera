@@ -93,3 +93,12 @@ test('a sprite that cannot be provisioned again is never moved, --force or not',
   assert.equal(refusals.length, 1);
   assert.match(refusals[0], /could not be undone/);
 });
+
+test('ids are bound as an array literal, not a bare comma list', async () => {
+  const { arrayParameter } = await import('./move-runtime-region.mjs');
+  assert.equal(arrayParameter(['a', 'b']), '{"a","b"}');
+  assert.equal(arrayParameter([]), '{}');
+  /* Postgres reads a bare comma list as a malformed array literal, which is
+     what every wait in this script did until the deletes were already sent. */
+  assert.notEqual(arrayParameter(['a', 'b']), 'a,b');
+});

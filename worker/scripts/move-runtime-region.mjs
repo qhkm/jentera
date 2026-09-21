@@ -53,6 +53,15 @@ import path from 'node:path';
 const run = promisify(execFile);
 
 export const SPRITE_NAME = /^aisar-[bp]-[0-9a-f]{20,32}$/;
+
+/* postgres.js is opened with fetch_types: false, so it has no array type OIDs
+   and serialises a JS array as a bare comma-joined string that Postgres reads
+   as a malformed array literal. Bind a quoted array literal instead, as
+   offboard-accounts.mjs does. Every backup had already been taken when this
+   threw, so the failure looked like a lost batch and was a lost progress bar. */
+export function arrayParameter(values) {
+  return `{${values.map((v) => `"${String(v).replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`).join(',')}}`;
+}
 export const HERMES = '/home/sprite/.hermes';
 
 /* The archive may contain these and nothing else. Anything outside the list
@@ -377,7 +386,7 @@ async function moveCohort(sql, cohort, dirFor) {
   for (const row of cohort) await enqueue(sql, row.business_id, 'delete', `move-region-delete-${row.business_id}-${Date.now()}`);
   await waitFor('every sprite to be deleted', async () => {
     const [row] = await sql`select count(*)::int as n from agent_runtime
-       where business_id = any(${cohort.map((c) => c.business_id)}::uuid[])`;
+       where business_id = any(${arrayParameter(cohort.map((c) => c.business_id))}::uuid[])`;
     return row.n === 0;
   });
 
@@ -385,7 +394,7 @@ async function moveCohort(sql, cohort, dirFor) {
   for (const row of cohort) await enqueue(sql, row.business_id, 'provision', `move-region-provision-${row.business_id}-${Date.now()}`);
   await waitFor('every new sprite to be ready', async () => {
     const [row] = await sql`select count(*)::int as n from agent_runtime
-       where business_id = any(${cohort.map((c) => c.business_id)}::uuid[]) and status = 'ready'`;
+       where business_id = any(${arrayParameter(cohort.map((c) => c.business_id))}::uuid[]) and status = 'ready'`;
     return row.n === cohort.length;
   });
 
@@ -396,7 +405,25 @@ async function moveCohort(sql, cohort, dirFor) {
   }
   console.log('\nconfirming where they landed');
   await survey(sql, await sql`select provider_name from agent_runtime
-     where business_id = any(${cohort.map((c) => c.business_id)}::uuid[])`);
+     where business_id = any(${arrayParameter(cohort.map((c) => c.business_id))}::uuid[])`);
+}
+
+/** Back up and delete, with no provision attempted. This is the one thing
+ *  that is right to do to a business whose owner holds no grant: its sprite
+ *  cannot run a message — the model proxy applies the same rule — so it is
+ *  cost with no use behind it. A fresh sprite provisions on their first
+ *  message once they are admitted, in whatever region we provision into then.
+ *  The memory is kept, so being admitted later costs them nothing. */
+async function retireOne(sql, row, dir) {
+  const state = await readState(sql, row.provider_name);
+  if (!state.runtime) throw new Error(`${row.provider_name}: no runtime row`);
+  if (state.activeRuns > 0 || state.openTasks > 0) {
+    throw new Error(`${row.provider_name}: busy (${state.activeRuns} runs, ${state.openTasks} tasks)`);
+  }
+  console.log(`\n${row.provider_name} (${row.business_name}) — backing up`);
+  await phaseBackup(row.provider_name, dir);
+  await enqueue(sql, state.runtime.business_id, 'delete', `retire-sprite-${state.runtime.business_id}-${Date.now()}`);
+  return state.runtime.business_id;
 }
 
 function report(rows) {
@@ -433,16 +460,34 @@ async function main() {
         console.log(`\n${unknown.length} have never told us where they are. Run --all --survey first.`);
         if (!flag('force')) { process.exitCode = 1; return; }
       }
-      if (!flag('yes')) {
-        console.log('\nplan only. Add --yes to move all of them, quietest business first.');
+      const stranded = rows.filter((row) => blockers(row).length);
+      if (flag('retire')) {
+        if (!stranded.length) { console.log('\nnothing to retire.'); return; }
+        console.log(`\n${stranded.length} sprites belong to businesses that cannot run work.`);
+        report(stranded);
+        if (!flag('yes')) { console.log('\nplan only. Add --yes to back up and delete these.'); return; }
+        const ids = [];
+        for (const row of stranded) {
+          ids.push(await retireOne(sql, row, path.join(value('dir') ?? '.runtime-moves', row.provider_name)));
+        }
+        console.log('\ndeletes enqueued; waiting');
+        await waitFor('every sprite to be deleted', async () => {
+          const [left] = await sql`select count(*)::int as n from agent_runtime
+             where business_id = any(${arrayParameter(ids)}::uuid[])`;
+          return left.n === 0;
+        });
+        console.log('\nretired. Their memory is kept; a new sprite provisions on their first message once admitted.');
         return;
       }
-      const stranded = rows.filter((row) => blockers(row).length);
       if (stranded.length) {
         console.log(`\n${stranded.length} are excluded and cannot be moved by anything here:`);
         report(stranded);
         console.log('  Their owners hold no platform_access grant, so the control plane would');
         console.log('  drop the provision and the delete could not be undone. Grant access first.');
+      }
+      if (!flag('yes')) {
+        console.log('\nplan only. Add --yes to move all of them, quietest business first.');
+        return;
       }
       const movable = rows.filter((row) => !blockers(row).length);
       const limit = Number(value('limit') ?? movable.length);
