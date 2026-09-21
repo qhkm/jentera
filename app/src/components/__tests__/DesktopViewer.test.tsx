@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '@/i18n/I18nProvider';
@@ -20,8 +20,11 @@ beforeEach(() => {
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
 });
+afterEach(() => vi.unstubAllGlobals());
 
-it('uses actual-size pixels and explicit pan mode on a phone', async () => {
+it('uses actual-size pixels, survives rotation, and keeps explicit pan mode on a phone', async () => {
+  const viewport = Object.assign(new EventTarget(), { width: 390, height: 844, offsetTop: 0, offsetLeft: 0, scale: 1 });
+  vi.stubGlobal('visualViewport', viewport);
   Object.defineProperty(window, 'matchMedia', { configurable: true, writable: true, value: vi.fn().mockImplementation(() => ({
     matches: true, media: '(max-width: 640px)', onchange: null, addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
   })) });
@@ -31,6 +34,17 @@ it('uses actual-size pixels and explicit pan mode on a phone', async () => {
   expect(mocks.clients[0].scaleViewport).toBe(false);
   expect(mocks.clients[0].clipViewport).toBe(true);
   expect(mocks.clients[0].dragViewport).toBe(false);
+  const modal = screen.getByRole('dialog');
+  expect(modal).toHaveStyle({ '--browser-vvw': '390px', '--browser-vvh': '844px' });
+  act(() => {
+    viewport.width = 844; viewport.height = 390;
+    window.dispatchEvent(new Event('orientationchange'));
+    viewport.dispatchEvent(new Event('resize'));
+  });
+  await waitFor(() => expect(modal).toHaveStyle({ '--browser-vvw': '844px', '--browser-vvh': '390px' }));
+  expect(mocks.clients).toHaveLength(1);
+  expect(mocks.clients[0].scaleViewport).toBe(false);
+  expect(mocks.clients[0].clipViewport).toBe(true);
   await user.click(screen.getByRole('button', { name: 'Pan screen' }));
   expect(mocks.clients[0].dragViewport).toBe(true);
   await user.click(screen.getByRole('button', { name: 'Interact with screen' }));

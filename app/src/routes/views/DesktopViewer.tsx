@@ -7,6 +7,16 @@ import { useT } from '@/i18n/I18nProvider';
 const SENTINEL = '\u200b';
 const KEYS: Record<string, number> = { Enter: 0xff0d, Tab: 0xff09, Backspace: 0xff08,
   Delete: 0xffff, Escape: 0xff1b, ArrowLeft: 0xff51, ArrowUp: 0xff52, ArrowRight: 0xff53, ArrowDown: 0xff54 };
+// A phone remains a phone after rotation. Width-only detection made an
+// 844px-wide landscape phone start in fit mode, shrinking 1280px controls
+// until they were too small to target.
+const PHONE_VIEWPORT = '(max-width: 640px), (pointer: coarse) and (max-width: 960px), (pointer: coarse) and (max-height: 960px)';
+
+function defaultFit() {
+  return typeof window === 'undefined' || !window.matchMedia
+    ? true
+    : !window.matchMedia(PHONE_VIEWPORT).matches;
+}
 
 /** Only mounted after an explicit successful owner claim. noVNC renders the
  * real Chrome window/taskbar and supplies native pointer/drag/wheel/keyboard.
@@ -27,9 +37,7 @@ export default function DesktopViewer({ controlId, onControlLost }: { controlId:
   // A 1280px desktop fitted into a phone is too small to target reliably.
   // Phones start at 1:1 and can pan the clipped viewport; larger screens keep
   // the convenient fit-to-window default.
-  const [fit, setFit] = useState(() => typeof window === 'undefined' || !window.matchMedia
-    ? true
-    : !window.matchMedia('(max-width: 640px)').matches);
+  const [fit, setFit] = useState(defaultFit);
   const [pan, setPan] = useState(false);
 
   function clearInput() {
@@ -91,10 +99,34 @@ export default function DesktopViewer({ controlId, onControlLost }: { controlId:
   }, [repo, controlId, attempt]);
 
   useEffect(() => {
-    if (!rfb.current) return;
-    rfb.current.scaleViewport = fit;
-    rfb.current.clipViewport = !fit;
-    rfb.current.dragViewport = !fit && pan;
+    let firstFrame = 0;
+    let secondFrame = 0;
+    const applyViewport = () => {
+      if (!rfb.current) return;
+      rfb.current.scaleViewport = fit;
+      rfb.current.clipViewport = !fit;
+      rfb.current.dragViewport = !fit && pan;
+    };
+    // noVNC observes its container too, but mobile browsers can emit the
+    // orientation event before CSS has settled. Reapply on the next two paint
+    // frames so clipping/scaling uses the rotated stage dimensions without
+    // reconnecting the desktop.
+    const refreshViewport = () => {
+      cancelAnimationFrame(firstFrame); cancelAnimationFrame(secondFrame);
+      firstFrame = requestAnimationFrame(() => {
+        secondFrame = requestAnimationFrame(applyViewport);
+      });
+    };
+    applyViewport();
+    window.addEventListener('resize', refreshViewport);
+    window.addEventListener('orientationchange', refreshViewport);
+    window.visualViewport?.addEventListener('resize', refreshViewport);
+    return () => {
+      cancelAnimationFrame(firstFrame); cancelAnimationFrame(secondFrame);
+      window.removeEventListener('resize', refreshViewport);
+      window.removeEventListener('orientationchange', refreshViewport);
+      window.visualViewport?.removeEventListener('resize', refreshViewport);
+    };
   }, [fit, pan, phase]);
 
   useEffect(() => {

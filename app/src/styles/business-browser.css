@@ -164,29 +164,69 @@
   .business-browser-controls { min-height: 0; gap: 12px; overflow: auto; overscroll-behavior: contain; }
   .business-browser-footer { gap: 12px; padding: 8px 16px; }
 }
-@media (max-width: 960px) {
+@media (max-width: 960px), (pointer: coarse) and (max-height: 640px) {
   .business-browser-dialog { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); border-radius: 20px; }
   .business-browser-workspace.is-controlled { grid-template-columns: minmax(0, 1fr); }
   .business-browser-controls { padding: 4px; }
   .business-browser-keys .btn { flex-grow: 0; }
-}
-@media (max-width: 640px) {
-  .business-browser-dialog.has-desktop { width: 100vw; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
-  .business-browser-dialog.has-desktop .business-browser-header { grid-template-columns: 32px minmax(0, 1fr) 44px; padding: 8px 10px; }
+  .business-browser-dialog.has-desktop {
+    position: fixed;
+    inset: var(--browser-vv-top, 0px) auto auto var(--browser-vv-left, 0px);
+    box-sizing: border-box;
+    width: var(--browser-vvw, 100vw);
+    height: var(--browser-vvh, 100dvh);
+    max-height: var(--browser-vvh, 100dvh);
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+  }
+  .business-browser-dialog.has-desktop .business-browser-header {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr) 44px;
+    gap: 8px;
+    padding: max(6px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 6px max(10px, env(safe-area-inset-left));
+  }
   .business-browser-dialog.has-desktop .business-browser-brand { width: 32px; height: 32px; flex-basis: 32px; border-radius: 10px; }
   .business-browser-dialog.has-desktop .business-browser-heading p,
   .business-browser-dialog.has-desktop .business-browser-state { display: none; }
+  .business-browser-dialog.has-desktop .business-browser-header > .business-browser-icon-button { grid-column: 3; grid-row: 1; }
   .business-browser-body.has-desktop { display: flex; flex: 1; min-height: 0; overflow: hidden; padding: 0; }
   .business-browser-body.has-desktop .business-desktop { border: 0; border-radius: 0; }
   .business-browser-body.has-desktop .business-desktop-stage { flex: 1; height: auto; min-height: 0; }
-  .business-browser-dialog.has-desktop .business-desktop-toolbar { gap: 4px; padding: 4px; }
+  .business-browser-dialog.has-desktop .business-desktop-toolbar {
+    gap: 4px;
+    padding: 4px max(4px, env(safe-area-inset-right)) 4px max(4px, env(safe-area-inset-left));
+  }
   .business-browser-dialog.has-desktop .business-desktop-toolbar > span { display: none; }
-  .business-browser-dialog.has-desktop .business-desktop-actions { flex-wrap: nowrap; gap: 2px; overflow-x: auto; justify-content: flex-start; }
-  .business-browser-dialog.has-desktop .business-desktop-actions > button { flex: 0 0 auto; }
-  .business-browser-dialog.has-desktop .business-desktop-mobile-keyboard { flex: 0 0 136px; width: 136px; }
+  .business-browser-dialog.has-desktop .business-desktop-actions {
+    width: 100%;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 4px;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .business-browser-dialog.has-desktop .business-desktop-actions::-webkit-scrollbar { display: none; }
+  .business-browser-dialog.has-desktop .business-desktop-actions > button {
+    flex: 0 0 auto;
+    border: 1px solid var(--rail);
+    background: var(--bg-card);
+  }
+  .business-browser-dialog.has-desktop .business-desktop-mobile-keyboard {
+    flex: 0 0 136px;
+    width: 136px;
+    border: 1px solid var(--rail);
+    background: var(--bg-card);
+  }
   .business-browser-dialog.has-desktop .business-browser-footer-note { display: none; }
-  .business-browser-dialog.has-desktop .business-browser-footer { padding: 6px 8px max(6px, env(safe-area-inset-bottom)); }
+  .business-browser-dialog.has-desktop .business-browser-footer {
+    padding: 6px max(8px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  }
   .business-browser-dialog.has-desktop .business-browser-control-actions { width: 100%; }
+}
+@media (max-width: 640px) {
   .business-browser-header { display: grid; grid-template-columns: 38px minmax(0, 1fr) 44px; gap: 9px; padding: 14px; }
   .business-browser-brand { width: 38px; height: 38px; flex-basis: 38px; border-radius: 12px; }
   .business-browser-heading h2 { font-size: 16px; }

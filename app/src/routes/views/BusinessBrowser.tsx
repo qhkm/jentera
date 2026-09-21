@@ -119,6 +119,29 @@ export default function BusinessBrowser({
   }, [openRequest]);
   useEffect(() => {
     if (!open) return;
+    const viewport = window.visualViewport;
+    const modal = dialog.current;
+    if (!viewport || !modal) return;
+    const apply = () => {
+      // Pinch zoom should magnify the desktop rather than reflow the modal.
+      if (Math.abs(viewport.scale - 1) > 0.01) return;
+      modal.style.setProperty('--browser-vvw', `${Math.round(viewport.width)}px`);
+      modal.style.setProperty('--browser-vvh', `${Math.round(viewport.height)}px`);
+      modal.style.setProperty('--browser-vv-top', `${Math.max(0, Math.round(viewport.offsetTop))}px`);
+      modal.style.setProperty('--browser-vv-left', `${Math.max(0, Math.round(viewport.offsetLeft))}px`);
+    };
+    apply();
+    viewport.addEventListener('resize', apply);
+    viewport.addEventListener('scroll', apply);
+    window.addEventListener('orientationchange', apply);
+    return () => {
+      viewport.removeEventListener('resize', apply);
+      viewport.removeEventListener('scroll', apply);
+      window.removeEventListener('orientationchange', apply);
+    };
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
     let cancelled = false;
     const priorOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
