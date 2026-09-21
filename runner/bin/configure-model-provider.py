@@ -281,6 +281,13 @@ def main() -> None:
     # takeover view. CDP never leaves the Sprite's loopback interface.
     browser = dict(config.get("browser") or {})
     browser["cdp_url"] = "http://127.0.0.1:9222"
+    # The same file the runner keeps the owner's claim in. Admission already
+    # refuses a task while the owner holds the browser, but a task admitted
+    # before the claim still reaches for it, and that call waited instead of
+    # failing: run 2048b734 called browser_console six seconds in and produced
+    # nothing until the task expired five minutes later. Hermes reads this
+    # before every browser command and refuses at once.
+    browser["hold_file"] = "/var/lib/aisar/browser-control.json"
     config["browser"] = browser
 
     # Production research must have a deterministic backend. DDGS is the

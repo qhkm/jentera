@@ -449,6 +449,8 @@ test('configure creates one isolated persistent profile for every business speci
   const config = JSON.parse(await readFile(configPath, 'utf8'));
   assert.equal(config.gateway.multiplex_profiles, true);
   assert.equal(config.browser.cdp_url, 'http://127.0.0.1:9222');
+  // Hermes refuses a browser command while this file says the owner has it.
+  assert.equal(config.browser.hold_file, '/var/lib/aisar/browser-control.json');
 
   for (const profile of ['operations', 'customers', 'growth', 'records']) {
     const root = join(home, 'profiles', profile);
