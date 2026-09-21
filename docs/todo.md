@@ -28,8 +28,8 @@ invitations.
 |---|---|---|
 | Hermes local cron removal on Kitakod's sprite | A one-off cleanup; sprites never own a local cron. Only the bundle makes it permanent | The release's bootstrap removes it; `fleet-exec.sh` finds none |
 | BoxCompute warning cleared | `last_error` holds the checkpoint warning while Fly's orphan `v31` exists | After Fly clears the directory, the next release checkpoints cleanly: `last_error` null, a real id |
+| Browser restart recovers a latched desktop (`23e7f7b`) | The restart action shipped in `2026.09.21-3` calls `changingControl()` first, and a latched gateway throws from that listener — so the recovery failed in exactly the state it exists for, and the owner saw "The browser did not restart" on a healthy browser. Until this ships, the only clear is `sprite-env services restart aisar-runner` | Pressing Restart browser on a latched sprite returns `desktopView: 1` instead of an error |
 
-| 12 sprites still in the US | All predate `3fbf487` (10 Sep), which moved provisioning to a placed invocation and with it the region Fly picks. Kitakod's canary is one of them, and is where the CAPTCHA complaint came from | Each is re-provisioned in `sin` and its recorded egress says so: `docs/sprite-egress-region-2026-09-21.md` |
 
 ## Waiting on someone else
 
@@ -37,7 +37,7 @@ invitations.
 |---|---|---|
 | Clear orphan `checkpoints/v31` on sprite `aisar-b-702bf940d4f6ac4a4f52` | Fly support; the owner sends the message drafted 12 Sep | Include the exact JuiceFS rename error and the NEOREKA ASIA precedent of 7 Sep, which cleared when Fly rebuilt the store |
 | Reply to Scott at Fly | Owner | Open since before 12 Sep |
-| Three sprites will not wake for release `2026.09.21-2` | Fly | `aisar-b-aef5c56aa41b50c19239` (My business), `aisar-b-05a921d0d21112fc3657` (SEIDO Coffee Roasters), `aisar-b-3d7d3328022863d0bd22` (Stickoworld). Shipped 21 Sep: 13 of 16 converged; these three are cold and Fly answers 502/503 to the runtime-file write, while `sprite exec` times out connecting. Not the bundle — the other 13 took the identical transfer. The drift sweep keeps re-arming them (24 tasks in 30 minutes), so they should converge on their next successful wake. Done when all three observe `2026.09.21-2` |
+| Three sprites will not wake for a release | Fly | `aisar-b-aef5c56aa41b50c19239` (My business), `aisar-b-05a921d0d21112fc3657` (SEIDO Coffee Roasters), `aisar-b-3d7d3328022863d0bd22` (Stickoworld). Shipped 21 Sep: 13 of 16 converged; these three are cold and Fly answers 502/503 to the runtime-file write, while `sprite exec` times out connecting. Not the bundle — the other 13 took the identical transfer. The drift sweep keeps re-arming them (24 tasks in 30 minutes), so they should converge on their next successful wake. Done when all three observe the current release (`2026.09.21-3` as of 21 Sep) |
 
 ## Review later
 
