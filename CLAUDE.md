@@ -390,6 +390,18 @@ exercised live, what the next release must carry, what waits on Fly or on the
 owner, and what was deferred. Read it before asking what is next; move an
 item to its Closed section when it is done.
 
+**`ship-runtime.sh` pins `origin/main`, not your HEAD.** A sprite downloads
+its bundle from GitHub, so an unpushed commit is one no sprite could fetch and
+the script refuses it by design. The failure that follows is silent rather than
+loud: work that is committed but not pushed simply is not in the release, the
+gate passes, convergence reports success, and the release commit carries
+whatever message you gave it — on 21 September `2026.09.21-2` went out titled
+"owner can restart a wedged business browser" pinned to a bundle six commits
+behind HEAD that contained no such thing, and thirteen sprites converged on it
+happily. Only calling the action on a live sprite found it: `invalid_command`
+from a runner reporting the new release. **Push first, and check the
+`RUNTIME_BUNDLE_COMMIT` the dry run prints is the commit you mean.**
+
 **A transfer field and its `case` arm ship in the same bundle.** The fields
 in `provision.ts`'s `transfer` are parsed by `bootstrap-runtime.sh` against a
 closed allowlist that exits 1 on anything else — and `bootstrapRuntime` curls
