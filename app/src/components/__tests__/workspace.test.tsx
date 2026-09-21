@@ -396,9 +396,7 @@ describe('business profile', () => {
     const panel = screen.getByRole('tabpanel');
     expect(within(panel).getByRole('heading', { name: 'Chief of Staff' })).toBeInTheDocument();
     expect(within(panel).getByRole('heading', { name: 'Operations' })).toBeInTheDocument();
-    expect(within(panel).getByRole('heading', { name: 'Available Hermes skills' })).toBeInTheDocument();
     expect(panel.querySelectorAll('.business-staff-capabilities li')).toHaveLength(4);
-    expect(panel.querySelectorAll('.business-vm-skills li')).toHaveLength(4);
     expect(panel.querySelectorAll('.card')).toHaveLength(1);
     expect(within(panel).getByText('Available now')).toBeInTheDocument();
     expect(within(panel).getByRole('note')).toHaveTextContent(

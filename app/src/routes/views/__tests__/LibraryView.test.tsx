@@ -21,6 +21,10 @@ describe('Library', () => {
     const { user, onUse } = await mount();
     await user.click(screen.getByRole('link', { name: 'Skills' }));
     expect(screen.getByRole('link', { name: 'Skills' })).toHaveAttribute('aria-current', 'page');
+    const vmSkills = screen.getByRole('heading', { name: 'Available Hermes skills' }).closest('section')!;
+    expect(within(vmSkills).getAllByRole('listitem')).toHaveLength(4);
+    expect(within(vmSkills).getByText('Managed')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Playbook instructions' })).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Web research' })).toBeInTheDocument();
     await user.click(screen.getAllByText('View instructions')[1]);
     expect(screen.getAllByText(/Research the topic specified below/)[0]).toBeVisible();
