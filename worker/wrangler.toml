@@ -169,6 +169,10 @@ AISAR_CANDIDATE_MODEL_NAMES = ""
 AISAR_EXTRACT_BASE = "https://extract.kitakod.com"
 # No tenant override is needed while quick and deep share the working default.
 AISAR_QUICK_MODEL_OVERRIDES = ""
+# Owner-only noVNC desktop canary. Keep the global gate and exact business
+# allowlist together; desktopEnabledFor rejects wildcards and malformed IDs.
+DESKTOP_VIEW_ENABLED = "true"
+DESKTOP_VIEW_BUSINESS_IDS = "4e8c2593-2af2-494f-b157-fec0295a50b5"
 # Routines (deterministic reports plus Sprite-backed agent tasks). Canary first.
 # Canary: Kitakod Ventures only, 2026-09-09. Empty allowlist = every business.
 ROUTINES_ENABLED = "true"
