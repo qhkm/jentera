@@ -42,7 +42,7 @@ export class BrowserProblem extends Error {
 
 export function browserCommandProblem(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return 'invalid_command';
-  if (!['claim', 'reclaim', 'frame', 'navigate', 'click', 'text', 'key', 'input', 'scroll', 'tab', 'release', 'harvest'].includes(body.action)) return 'invalid_command';
+  if (!['claim', 'reclaim', 'frame', 'navigate', 'click', 'text', 'key', 'input', 'scroll', 'tab', 'release', 'harvest', 'restart'].includes(body.action)) return 'invalid_command';
   if (!UUID.test(body.ownerId ?? '') || !UUID.test(body.controlId ?? '')) return 'invalid_controller';
   if (body.action === 'navigate') {
     try {
@@ -241,6 +241,34 @@ export function createBusinessBrowser(config, deps = {}) {
     await fs.rename(`${config.stateFile}.next`, config.stateFile);
     paused = value;
   }
+  /** Close the live browser and prove it went. `Browser.close` may reject
+   *  because its own transport dies with the shutdown it asked for, so the
+   *  `disconnected` event is the proof, not the call. Leaving `context` set
+   *  after a failed close would let the next `ensure()` launch a second
+   *  browser on the same profile directory. */
+  async function closeBrowser() {
+    if (!context) return;
+    const browser = context.browser?.() ?? null;
+    if (!browser) {
+      // A context with no browser handle cannot prove it went; closing the
+      // context is the strongest statement available.
+      await context.close?.().catch(() => {});
+      context = null; selected = null; desktopAttached = false;
+      return;
+    }
+    const closed = new Promise(resolve => browser.once('disconnected', resolve));
+    await browser.close().catch(() => {});
+    let timer;
+    try {
+      await Promise.race([closed, new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new BrowserProblem(503, 'browser_unavailable')), 10000);
+      })]);
+    } finally { clearTimeout(timer); }
+    context = null;
+    selected = null;
+    desktopAttached = false;
+  }
+
   async function ensure() {
     if (context && context.pages().some((p) => !p.isClosed()) &&
         (!config.desktopEnabled || desktopAttached || !paused)) return context;
@@ -366,6 +394,20 @@ export function createBusinessBrowser(config, deps = {}) {
       }
       // A displaced window must not invalidate the new controller's input.
       if (!paused || !controlledBy(body)) throw new BrowserProblem(409, 'browser_control_expired');
+      if (body.action === 'restart') {
+        /* Recovery, not a hand-back: the durable pause and the lease both
+           survive, so the owner still holds the browser they just repaired.
+           Order matters. Viewers go first, because desktop-gateway.mjs latches
+           cleanupBlocked on a failed teardown and that latch refuses every
+           future desktop stream until reviewed recovery -- a far worse state
+           than the wedged browser this is meant to fix. */
+        await changingControl();
+        await stopScreencast();
+        await clearInput();
+        await closeBrowser();
+        await ensure();
+        return status();
+      }
       /* Idle timeout, not a cap on the session. The lease used to be set at the
          claim and never extended, so control died ten minutes later however
          actively it was being used — and the sign-ins this browser exists for

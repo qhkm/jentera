@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Globe, ArrowDown, ArrowUp, ArrowRight, ArrowBendDownLeft, CheckCircle, Clock, Eye, EyeSlash, Keyboard, CursorClick, ShieldCheck, WarningCircle, Minus, Plus, X } from '@phosphor-icons/react';
+import { Globe, ArrowDown, ArrowUp, ArrowRight, ArrowBendDownLeft, CheckCircle, Clock, Eye, EyeSlash, Keyboard, CursorClick, ShieldCheck, WarningCircle, Minus, Plus, X, ArrowClockwise } from '@phosphor-icons/react';
 import { Button, Card, Eyebrow, Input } from '@/components/ui';
 import { useRepository } from '@/lib/repo';
 import type { BrowserCommand, BusinessBrowserState } from '@/lib/repo/types';
@@ -36,11 +36,13 @@ export default function BusinessBrowser({
   const dialog = useRef<HTMLDialogElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const controlId = useRef(crypto.randomUUID());
+  const claimOnOpen = useRef(false);
   const inFlight = useRef(false);
   const frameFlight = useRef<Promise<BusinessBrowserState> | null>(null);
   const actionBusy = useRef(false);
   const actionChain = useRef<Promise<void>>(Promise.resolve());
   const pendingActions = useRef(0);
+  const closeRequested = useRef(false);
   const live = useRef(true);
   const viewGeneration = useRef(0);
   const [open, setOpen] = useState(false);
@@ -111,6 +113,7 @@ export default function BusinessBrowser({
   useEffect(() => { live.current = true; return () => { live.current = false; resetTyping(); }; }, []);
   useEffect(() => {
     if (!openRequest) return;
+    claimOnOpen.current = true;
     setError(''); setHandedBack(false); setOpen(true);
   }, [openRequest]);
   useEffect(() => {
@@ -121,7 +124,10 @@ export default function BusinessBrowser({
     setStatusLoading(true);
     dialog.current?.showModal();
     void repo.businessBrowser().then((s) => {
-      if (!cancelled && live.current) { setState(s); if (typeof s.paused === 'boolean') onPauseChange?.(s.paused); }
+      if (!cancelled && live.current) {
+        setState(s); if (typeof s.paused === 'boolean') onPauseChange?.(s.paused);
+        if (claimOnOpen.current) { claimOnOpen.current = false; command({ action: 'claim' }); }
+      }
     })
       .catch((e: Error) => { if (!cancelled && live.current) setError(e.message); })
       .finally(() => { if (!cancelled && live.current) setStatusLoading(false); });
@@ -207,18 +213,26 @@ export default function BusinessBrowser({
 
   function command(action: Action) { resetTyping(); void send(action); }
 
-  function close() {
-    viewGeneration.current += 1;
+  async function close() {
+    if (closeRequested.current) return;
+    claimOnOpen.current = false;
+    closeRequested.current = true;
+    // Clear any local or queued typing immediately, even while hand-back waits
+    // for an in-flight screen action to finish.
     resetTyping();
-    // Closing the viewer does NOT silently hand a half-completed login to
-    // the agent. The durable pause remains until an explicit hand-back.
-    // The local claim does not survive, though: it goes stale while the dialog
-    // is shut, and reopening on a stale one showed a Hand back that could only
-    // 409. Reopening re-reads the real state and offers both doors.
+    // Closing is also hand-back. If a claim is still in flight, release queues
+    // behind it so a late successful claim cannot leave Jentera paused after
+    // the modal disappears. A failed release keeps the modal visible.
+    if (controlled || state.paused || pendingActions.current > 0) {
+      const released = await send({ action: 'release' });
+      if (!released) { closeRequested.current = false; return; }
+    }
+    viewGeneration.current += 1;
     dialog.current?.close(); setOpen(false); setControlled(false); setControlConflict(false); setFrame(null); setText(''); setShowText(false); setUrl(''); setZoom(defaultBrowserZoom());
+    closeRequested.current = false;
   }
 
-  const openBrowser = () => { setError(''); setHandedBack(false); setOpen(true); };
+  const openBrowser = () => { claimOnOpen.current = true; setError(''); setHandedBack(false); setOpen(true); };
   const mode = statusLoading ? 'checking' : controlled ? 'control' : state.paused ? 'paused' : 'view';
   const tabName = (origin: string) => {
     try { return new URL(origin).hostname || t('browser.blank'); } catch { return t('browser.blank'); }
@@ -241,7 +255,7 @@ export default function BusinessBrowser({
     {open && createPortal(<dialog ref={dialog} className={`business-browser-dialog${controlled && desktopEnabled ? ' has-desktop' : ''}`} aria-labelledby={titleId} aria-describedby={descriptionId}
       // Portals escape the composer DOM, but React events still bubble through it.
       onSubmit={(event) => event.stopPropagation()}
-      onCancel={(e) => { e.preventDefault(); close(); }}>
+      onCancel={(e) => { e.preventDefault(); void close(); }}>
       <header className="business-browser-header">
         <span className="business-browser-brand" aria-hidden="true"><Globe size={25} weight="duotone" /></span>
         <div className="business-browser-heading">
@@ -251,7 +265,7 @@ export default function BusinessBrowser({
         <span className={`business-browser-state is-${mode}`} role="status">
           <span aria-hidden="true" />{t(`browser.state.${mode}`)}
         </span>
-        <button type="button" className="business-browser-icon-button" aria-label={t('browser.close')} title={t('browser.close')} onClick={close}><X size={20} aria-hidden="true" /></button>
+        <button type="button" className="business-browser-icon-button" aria-label={t('browser.close')} title={t('browser.close')} onClick={() => void close()}><X size={20} aria-hidden="true" /></button>
       </header>
       <div className={`business-browser-body${controlled && desktopEnabled ? ' has-desktop' : ''}`}>
         {error && <div className="business-browser-error" role="alert">
@@ -402,6 +416,13 @@ export default function BusinessBrowser({
         <div className="business-browser-control-actions">
           {!controlled && <Button type="button" variant={state.paused ? 'outline' : 'primary'} disabled={busy || statusLoading}
             onClick={() => command({ action: 'claim' })}><CursorClick size={18} aria-hidden="true" />{t('browser.takeControl')}</Button>}
+          {/* The one recovery for a browser that has stopped responding. It
+              keeps the profile, so every signed-in session survives, but it
+              does lose whatever is typed into the current page -- hence the
+              confirmation rather than a bare button. */}
+          {controlled && <Button type="button" variant="outline" disabled={busy || statusLoading}
+            onClick={() => { if (window.confirm(t('browser.restart.confirm'))) void command({ action: 'restart' }); }}>
+            <ArrowClockwise size={18} aria-hidden="true" />{t('browser.restart')}</Button>}
           {/* Also recover a durable pause left by an abandoned/expired controller. */}
           {(controlled || state.paused) && <Button type="button" disabled={busy || statusLoading}
             onClick={() => command({ action: 'release' })}>{t('browser.handBack')}<ArrowRight size={18} aria-hidden="true" /></Button>}

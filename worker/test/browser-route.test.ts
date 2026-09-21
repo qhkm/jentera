@@ -199,3 +199,15 @@ it.each(['preview', 'preview-stream'])('%s retries a not-yet-admitted task and s
   expect(await (await call(ownerCookie, body)).json()).toEqual({ previewStatus: 'inactive' });
   expect(upstream).toHaveBeenCalledTimes(1);
 });
+
+it('admits restart as an owner command and refuses it from staff', async () => {
+  const upstream = fetchFake(async () => new Response(JSON.stringify({ paused: true, controlled: true })));
+  vi.stubGlobal('fetch', upstream);
+  /* The recovery for a browser that has stopped responding. It reaches the
+     runtime like any other command; what it must not do is become a way for
+     a colleague to pull the browser out from under the owner. */
+  expect((await call(ownerCookie, { action: 'restart', controlId: CONTROL })).status).toBe(200);
+  expect((await call(staffCookie, { action: 'restart', controlId: CONTROL })).status).toBe(403);
+  const sent = JSON.parse(String(upstream.mock.calls[0][1]?.body));
+  expect(sent.action).toBe('restart');
+});

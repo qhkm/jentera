@@ -5,7 +5,7 @@ import { hasBusiness, resolveTenant } from '../tenancy';
 import { can } from '../permissions';
 import { desktopEnabledFor } from '../runtime/desktop';
 
-const ACTIONS = new Set(['claim', 'reclaim', 'release', 'frame', 'navigate', 'click', 'text', 'key', 'input', 'scroll', 'tab', 'preview', 'preview-stream']);
+const ACTIONS = new Set(['claim', 'reclaim', 'release', 'frame', 'navigate', 'click', 'text', 'key', 'input', 'scroll', 'tab', 'preview', 'preview-stream', 'restart']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MESSAGES: Record<string, string> = {
   runtime_busy: 'Jentera is still working. Let the current task finish, then take control.',
@@ -15,6 +15,11 @@ const MESSAGES: Record<string, string> = {
   invalid_url: 'Enter a public HTTPS website address.',
   browser_input_changed: 'The selected field changed. Click the field again before typing.',
   browser_input_sequence: 'Typing was interrupted. Click the field again to continue.',
+  /* A runtime on a bundle older than the restart action answers
+     invalid_command, which is a clean refusal rather than a stranding --
+     but it needs to read as a version gap, not as the owner's mistake. */
+  invalid_command: 'This browser cannot be restarted yet. Its computer is still updating.',
+  browser_unavailable: 'The browser did not restart. Try again, and if it keeps failing, tell Jentera.',
 };
 
 /** Deliberately not a generic proxy. Identity selects both the business and

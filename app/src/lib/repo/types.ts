@@ -221,7 +221,7 @@ export interface AskAnswer {
 
 export type BrowserCommand = { controlId: string } & (
   | { action: 'preview'; runId: string }
-  | { action: 'claim' | 'reclaim' | 'release' | 'frame' }
+  | { action: 'claim' | 'reclaim' | 'release' | 'frame' | 'restart' }
   | { action: 'navigate'; url: string }
   | { action: 'click'; x: number; y: number }
   | { action: 'text'; text: string }

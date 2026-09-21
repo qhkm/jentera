@@ -557,3 +557,47 @@ test('harvest hands on nothing when the page has changed under it', async () => 
     );
   }
 });
+
+test('restart closes the browser and relaunches it on the same profile, keeping the owner in control', async () => {
+  const f = fixture();
+  let closed = 0;
+  f.context.browser = () => ({
+    once: (event, fn) => { if (event === 'disconnected') setImmediate(fn); },
+    close: async () => { closed += 1; },
+  });
+  await f.browser.command(command('claim'));
+  assert.equal(f.launches(), 1);
+  const before = await f.browser.status();
+  await f.browser.command(command('restart'));
+  assert.equal(closed, 1);
+  assert.equal(f.launches(), 2, 'the browser is launched again on the same profile');
+  const after = await f.browser.status();
+  /* Recovery, not a hand-back: the owner still holds the browser they
+     repaired, and the agent stays paused. */
+  assert.equal(await f.browser.isPaused(), true);
+  assert.equal(after.controlled, before.controlled);
+  assert.equal(f.browser.desktopControlValid(command('claim')), before.desktopView === 1);
+});
+
+test('restart disconnects viewers before the browser goes, not after', async () => {
+  const f = fixture(true);
+  const order = [];
+  f.context.browser = () => ({
+    once: (event, fn) => { if (event === 'disconnected') setImmediate(fn); },
+    close: async () => { order.push('browser-closed'); },
+  });
+  await f.browser.command(command('claim'));
+  f.browser.onControlChanging(async () => { order.push('viewers-disconnected'); });
+  await f.browser.command(command('restart'));
+  /* desktop-gateway.mjs latches cleanupBlocked on a failed teardown, and that
+     latch refuses every future desktop stream until reviewed recovery. A
+     restart that pulled the browser first would be a worse state than the
+     wedged browser it is fixing. */
+  assert.deepEqual(order, ['viewers-disconnected', 'browser-closed']);
+});
+
+test('restart needs a live owner lease, and is a known action', async () => {
+  assert.equal(browserCommandProblem(command('restart')), null);
+  const f = fixture();
+  await assert.rejects(() => f.browser.command(command('restart')), /browser_control_expired/);
+});
