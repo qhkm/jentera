@@ -585,7 +585,7 @@ export function useAsk(
   }, [persisted, repo, patchPending, settlePending, t]);
 
   const send = useCallback(
-    (raw: string, mode?: AskMode, attachment?: File) => {
+    (raw: string, mode?: AskMode, attachment?: File, selectedSkills: string[] = []) => {
       const question = raw.trim();
       if (!question) return;
       const sessionId = activeIdRef.current;
@@ -638,6 +638,7 @@ export function useAsk(
           ...(goalId ? { goalId } : {}),
           ...(goalCheckpointId ? { goalCheckpointId } : {}),
           ...(attachment ? { attachment } : {}),
+          ...(selectedSkills.length ? { selectedSkills } : {}),
           onRunCreated: (runId: string) => {
             if (!isRunId(runId)) return;
             patchPending(sessionId, pendingId, (message) => ({

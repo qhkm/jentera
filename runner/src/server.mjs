@@ -854,6 +854,12 @@ export function createRunner(input) {
             activeTaskStartedAt: typeof active?.startedAt === 'number' ? active.startedAt : null,
           });
         }
+        let skillInstructions = '';
+        try {
+          skillInstructions = await selectedSkillInstructions(config, body.selectedSkills ?? []);
+        } catch (error) {
+          return json(res, 400, { ok: false, error: boundedError(error) });
+        }
         admitting = true;
         admittingTaskId = body.taskId;
         try {
@@ -891,9 +897,11 @@ export function createRunner(input) {
           } catch {
             outputsDir = null;
           }
-          const instructions = outputsDir
-            ? `${body.instructions ? `${body.instructions}\n\n` : ''}${outputsInstruction(outputsDir)}`
-            : body.instructions;
+          const instructions = [
+            body.instructions,
+            skillInstructions,
+            outputsDir ? outputsInstruction(outputsDir) : '',
+          ].filter(Boolean).join('\n\n') || undefined;
 
           let started;
           try {
@@ -1232,12 +1240,19 @@ export function parseSkillSummary(source, dir = '', root = '') {
   const fallbackName = relative(root, dir).split(/[\\/]/).filter(Boolean).at(-1) ?? '';
   const name = safeSkillText(scalar('name') || fallbackName, 64);
   if (!name) return null;
+  const id = skillCommandId(name);
+  if (!id) return null;
   const firstBodyLine = body.split('\n').map(line => line.trim())
     .find(line => line && !line.startsWith('#') && line !== '---') ?? '';
   const description = safeSkillText(scalar('description') || firstBodyLine, 320);
   const parts = relative(root, dir).split(/[\\/]/).filter(Boolean);
   const category = safeSkillText(scalar('category') || (parts.length > 1 ? parts[0] : ''), 64) || null;
-  return { name, description, category };
+  return { id, name, description, category };
+}
+
+function skillCommandId(name) {
+  return String(name ?? '').toLowerCase().replace(/[ _]+/g, '-').replace(/[^a-z0-9-]+/g, '')
+    .replace(/-{2,}/g, '-').replace(/^-|-$/g, '').slice(0, 64);
 }
 
 function safeSkillText(value, limit) {
@@ -1273,6 +1288,50 @@ async function readDisabledSkills(configFile, read = readFile) {
     }
   }
   return disabled;
+}
+
+/** Load only explicitly selected, installed skills into this turn's ephemeral
+ * instructions. The raw skill body never crosses the runner API boundary. */
+export async function selectedSkillInstructions(config, ids, io = { readdir, readFile }) {
+  if (!Array.isArray(ids) || ids.length === 0) return '';
+  const wanted = new Set(ids);
+  const disabled = await readDisabledSkills(config.hermesConfigFile, io.readFile);
+  const loaded = new Map();
+  const root = config.hermesSkillsDir ?? '/home/sprite/.hermes/skills';
+  let visited = 0;
+
+  async function scan(dir, depth) {
+    if (depth > SKILL_SCAN_DEPTH || loaded.size >= wanted.size || visited >= 1024) return;
+    visited += 1;
+    let entries;
+    try { entries = await io.readdir(dir, { withFileTypes: true }); }
+    catch { return; }
+    if (entries.some(entry => entry.isFile() && entry.name === 'SKILL.md')) {
+      const source = String(await io.readFile(join(dir, 'SKILL.md'), 'utf8'));
+      if (source.length > 64 * 1024) return;
+      const summary = parseSkillSummary(source, dir, root);
+      if (summary && wanted.has(summary.id) && !disabled.has(summary.name)) {
+        loaded.set(summary.id, { summary, source, dir });
+      }
+      return;
+    }
+    for (const entry of entries) {
+      if (loaded.size >= wanted.size) break;
+      if (entry.isDirectory() && !entry.name.startsWith('.')) await scan(join(dir, entry.name), depth + 1);
+    }
+  }
+
+  await scan(root, 0);
+  const missing = ids.find(id => !loaded.has(id));
+  if (missing) throw new Error(`selected skill is unavailable: ${missing}`);
+  const blocks = ids.map(id => {
+    const skill = loaded.get(id);
+    return `[Owner-selected skill "${skill.summary.name}" is preloaded for this turn.\n` +
+      `Resolve relative paths against ${skill.dir}. Follow the skill instructions below.]\n\n${skill.source}`;
+  });
+  const result = blocks.join('\n\n---\n\n');
+  if (result.length > 192 * 1024) throw new Error('selected skills are too large to load together');
+  return result;
 }
 
 function validated(config) {
@@ -1403,6 +1462,12 @@ function taskProblem(body, config, specialistProfiles = STARTER_SPECIALIST_PROFI
   }
   if (body.instructions !== undefined && typeof body.instructions !== 'string') {
     return 'instructions must be a string';
+  }
+  if (body.selectedSkills !== undefined && (!Array.isArray(body.selectedSkills) ||
+      body.selectedSkills.length > 5 || body.selectedSkills.some(id =>
+        typeof id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(id)) ||
+      new Set(body.selectedSkills).size !== body.selectedSkills.length)) {
+    return 'selectedSkills must contain up to five unique skill ids';
   }
   if (body.profile !== undefined && !specialistProfiles.includes(body.profile)) {
     return 'profile is not an available Jentera specialist';

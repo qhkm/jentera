@@ -418,6 +418,7 @@ export async function handleRuntime(
 }
 
 export interface RuntimeSkillSummary {
+  id: string;
   name: string;
   description: string;
   category: string | null;
@@ -434,11 +435,12 @@ export function runtimeSkillList(value: unknown): RuntimeSkillSummary[] {
   return value.slice(0, 256).flatMap((entry) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
     const raw = entry as Record<string, unknown>;
+    const id = safe(raw.id, 64);
     const name = safe(raw.name, 64);
-    const identity = name.toLocaleLowerCase('en');
-    if (!name || seen.has(identity)) return [];
-    seen.add(identity);
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(id) || !name || seen.has(id)) return [];
+    seen.add(id);
     return [{
+      id,
       name,
       description: safe(raw.description, 320),
       category: safe(raw.category, 64) || null,

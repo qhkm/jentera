@@ -43,6 +43,7 @@ export interface RunnerTaskRequest {
   sessionId?: string;
   instructions?: string;
   responseMode?: ResponseMode;
+  selectedSkills?: string[];
   model?: string;
   /** HMAC-signed, task-bound, five-minute capability grant. */
   toolGrant: string;

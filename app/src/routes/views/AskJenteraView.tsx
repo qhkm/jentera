@@ -1,16 +1,17 @@
 /* The owner's private instruction channel. No customer-facing capabilities are implied. */
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { hasConfirmedValue } from '@/lib/knowledge';
 import {
   ArrowDown,
   ArrowRight,
   ArrowUp,
-  BookOpenText,
+  Check,
   ChatCircleText,
   ClipboardText,
   Globe,
+  Hammer,
   ListChecks,
   LockSimple,
+  MagnifyingGlass,
   Notepad,
   Paperclip,
   Plus,
@@ -35,7 +36,7 @@ import { ChatWorkspace } from '@/components/ChatWorkspace';
 import { AskReply } from '@/components/AskReply';
 import BusinessBrowser from './BusinessBrowser';
 import { useTeamEnabled, useSignedIn } from '@/lib/repo/gate';
-import { useSnapshot, type AskMode } from '@/lib/repo';
+import { type AskMode, type RuntimeSkill } from '@/lib/repo';
 import type { Business } from '@/lib/types';
 import { formatBytes } from '@/lib/artifacts';
 
@@ -59,7 +60,6 @@ export default function AskJenteraView({
   workspace = false,
   onOpenActivity,
   onOpenConnections,
-  onOpenKnowledge,
   taskDraft,
 }: {
   business: Business;
@@ -70,12 +70,10 @@ export default function AskJenteraView({
   workspace?: boolean;
   onOpenActivity?: (runId?: string, title?: string) => void;
   onOpenConnections?: () => void;
-  onOpenKnowledge?: () => void;
   taskDraft?: { text: string; key: number; sessionId?: string; goalId?: string; goalTitle?: string; goalCheckpointId?: string; goalCheckpointTitle?: string } | null;
 }) {
   const { t, lang } = useI18n();
   const compact = useIsCompact();
-  const snapshot = useSnapshot();
   const activity = useActivity();
   const onAskCompleted = useCallback(() => activity.reload(), [activity.reload]);
   const ask = useAsk(business, { handled, needs }, t, lang, onAskCompleted);
@@ -104,6 +102,16 @@ export default function AskJenteraView({
   const [attachments, setAttachments] = useState<Record<string, File | undefined>>({});
   const attachment = attachments[ask.activeId];
   const [attachmentError, setAttachmentError] = useState('');
+  const [skillPickerOpen, setSkillPickerOpen] = useState(false);
+  const [skillQuery, setSkillQuery] = useState('');
+  const [skillCatalogue, setSkillCatalogue] = useState<{
+    status: 'idle' | 'loading' | 'ready' | 'error'; skills: RuntimeSkill[];
+  }>({ status: 'idle', skills: [] });
+  const [skillSelections, setSkillSelections] = useState<Record<string, string[]>>({});
+  const selectedSkillIds = skillSelections[ask.activeId] ?? [];
+  const skillButton = useRef<HTMLButtonElement>(null);
+  const skillPicker = useRef<HTMLDivElement>(null);
+  const skillSearch = useRef<HTMLInputElement>(null);
   const signedIn = useSignedIn();
   const preview = useChatPreview(signedIn);
   const previewExhausted = preview?.remaining === 0;
@@ -135,7 +143,6 @@ export default function AskJenteraView({
   const hintId = useId();
   const browserPausedId = useId();
   const busy = ask.messages.some((message) => Boolean(message.pendingId));
-  const confirmed = snapshot.facts.filter(hasConfirmedValue).length;
   const recent = ask.sessions
     .filter((session) => session.id !== ask.activeId && session.messages.length > 0)
     .slice(0, 3);
@@ -143,6 +150,58 @@ export default function AskJenteraView({
     !previewExhausted && !busy && ask.messages.at(-1)?.from === 'ai' && !ask.messages.at(-1)?.failedQuestion;
 
   useEffect(() => setAttachmentError(''), [ask.activeId]);
+
+  const loadSkills = useCallback(async () => {
+    setSkillCatalogue(current => ({ status: 'loading', skills: current.skills }));
+    try {
+      setSkillCatalogue({ status: 'ready', skills: await repo.runtimeSkills() });
+    } catch {
+      setSkillCatalogue(current => ({ status: 'error', skills: current.skills }));
+    }
+  }, [repo]);
+
+  useEffect(() => {
+    if (!skillPickerOpen) return;
+    const close = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!skillPicker.current?.contains(target) && !skillButton.current?.contains(target)) {
+        setSkillPickerOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [skillPickerOpen]);
+
+  useEffect(() => {
+    setSkillPickerOpen(false);
+    setSkillQuery('');
+  }, [ask.activeId]);
+
+  const visibleSkills = skillCatalogue.skills.filter(skill => {
+    const query = skillQuery.trim().toLocaleLowerCase();
+    return !query || skill.name.toLocaleLowerCase().includes(query) ||
+      skill.description.toLocaleLowerCase().includes(query) ||
+      skill.category?.toLocaleLowerCase().includes(query);
+  });
+
+  function openSkillPicker() {
+    const next = !skillPickerOpen;
+    setSkillPickerOpen(next);
+    if (next) {
+      if (skillCatalogue.status === 'idle') void loadSkills();
+      requestAnimationFrame(() => skillSearch.current?.focus());
+    }
+  }
+
+  function toggleSkill(id: string) {
+    setSkillSelections(current => {
+      const selected = current[ask.activeId] ?? [];
+      const next = selected.includes(id)
+        ? selected.filter(value => value !== id)
+        : selected.length < 5 ? [...selected, id] : selected;
+      return { ...current, [ask.activeId]: next };
+    });
+  }
 
   function setDraft(value: string) {
     setDrafts((current) => ({ ...current, [ask.activeId]: value }));
@@ -245,9 +304,12 @@ export default function AskJenteraView({
     const body = text.trim() || (attachment ? t('ask.attachment.defaultPrompt') : '');
     if (!body || browserPaused || previewExhausted) return;
     scroll.jumpToLatest();
-    ask.send(body, preview ? 'work' : mode, attachment);
+    ask.send(body, preview ? 'work' : mode, attachment, selectedSkillIds);
     setDraft('');
     setAttachment(undefined);
+    setSkillSelections(current => ({ ...current, [ask.activeId]: [] }));
+    setSkillPickerOpen(false);
+    setSkillQuery('');
     if (filePicker.current) filePicker.current.value = '';
     mentions.close();
     if (compact) composer.current?.blur();
@@ -470,6 +532,14 @@ export default function AskJenteraView({
               </div>
             )}
             {attachmentError && <p className="ask-attachment-error" role="alert">{attachmentError}</p>}
+            {selectedSkillIds.length > 0 && <div className="ask-selected-skills" aria-label={t('ask.skills.selected', { n: selectedSkillIds.length })}>
+              {selectedSkillIds.map(id => {
+                const skill = skillCatalogue.skills.find(item => item.id === id);
+                return <button key={id} type="button" onClick={() => toggleSkill(id)} aria-label={`${t('ask.skills.remove')} ${skill?.name ?? id}`}>
+                  <Hammer size={13} aria-hidden="true" /><span>{skill?.name ?? id}</span><X size={12} aria-hidden="true" />
+                </button>;
+              })}
+            </div>}
             <textarea
               ref={composer}
               rows={ask.hasHistory ? 1 : 3}
@@ -540,24 +610,52 @@ export default function AskJenteraView({
                   <Paperclip size={15} aria-hidden="true" />
                   <span>{t(attachment ? 'ask.toolbar.replace' : 'ask.toolbar.attach')}</span>
                 </button>
-                {onOpenKnowledge ? (
+                {signedIn && <>
                   <button
+                    ref={skillButton}
                     type="button"
                     className="ask-context-link"
-                    onClick={onOpenKnowledge}
-                    aria-label={t(confirmed ? 'ask.studio.knowledge' : 'ask.studio.teach', { n: confirmed })}
-                    title={t(confirmed ? 'ask.studio.knowledge' : 'ask.studio.teach', { n: confirmed })}
+                    onClick={openSkillPicker}
+                    aria-haspopup="dialog"
+                    aria-expanded={skillPickerOpen}
+                    aria-label={t('ask.skills.open')}
+                    title={t('ask.skills.open')}
                   >
-                    <BookOpenText size={15} aria-hidden="true" />
-                    <span>{t('ask.toolbar.details')}</span>
-                    {confirmed > 0 && <span className="ask-context-count" aria-hidden="true">{confirmed}</span>}
+                    <Hammer size={15} aria-hidden="true" />
+                    <span>{t('ask.toolbar.skills')}</span>
+                    {selectedSkillIds.length > 0 && <span className="ask-context-count" aria-hidden="true">{selectedSkillIds.length}</span>}
                   </button>
-                ) : (
-                  <span className="ask-context-link" title={t('ask.private')}>
-                    <LockSimple size={14} aria-hidden="true" />
-                    <span>{t('ask.private')}</span>
-                  </span>
-                )}
+                  {skillPickerOpen && <div ref={skillPicker} className="ask-skill-picker" role="dialog" aria-label={t('ask.skills.title')}>
+                    <header>
+                      <div><strong>{t('ask.skills.title')}</strong><span>{t('ask.skills.limit')}</span></div>
+                      <button type="button" onClick={() => setSkillPickerOpen(false)} aria-label={t('ask.skills.close')}><X size={16} aria-hidden="true" /></button>
+                    </header>
+                    <label className="ask-skill-search">
+                      <MagnifyingGlass size={15} aria-hidden="true" />
+                      <input ref={skillSearch} type="search" value={skillQuery} onChange={event => setSkillQuery(event.target.value)}
+                        onKeyDown={event => { if (event.key === 'Escape') { setSkillPickerOpen(false); skillButton.current?.focus(); } }}
+                        placeholder={t('ask.skills.search')} aria-label={t('ask.skills.search')} />
+                    </label>
+                    <div className="ask-skill-options">
+                      {skillCatalogue.status === 'loading' && skillCatalogue.skills.length === 0 ? <p role="status">{t('ask.skills.loading')}</p>
+                        : skillCatalogue.status === 'error' && skillCatalogue.skills.length === 0 ? <div className="ask-skill-empty" role="alert"><span>{t('ask.skills.error')}</span><button type="button" onClick={() => void loadSkills()}>{t('skills.retry')}</button></div>
+                          : visibleSkills.length === 0 ? <p>{t(skillCatalogue.skills.length ? 'ask.skills.noneFound' : 'ask.skills.empty')}</p>
+                            : <ul>{visibleSkills.map(skill => {
+                              const checked = selectedSkillIds.includes(skill.id);
+                              const atLimit = selectedSkillIds.length >= 5 && !checked;
+                              return <li key={skill.id}>
+                                <label className={skill.disabled ? 'is-disabled' : undefined}>
+                                  <input type="checkbox" checked={checked} disabled={skill.disabled || atLimit} onChange={() => toggleSkill(skill.id)} />
+                                  <span><strong>{skill.name}</strong>{skill.description && <small>{skill.description}</small>}</span>
+                                  {checked ? <Check size={16} weight="bold" aria-hidden="true" />
+                                    : <em>{skill.disabled ? t('skills.disabled') : skill.category}</em>}
+                                </label>
+                              </li>;
+                            })}</ul>}
+                    </div>
+                    <footer><span>{t('ask.skills.selected', { n: selectedSkillIds.length })}</span><button type="button" onClick={() => setSkillPickerOpen(false)}>{t('ask.skills.done')}</button></footer>
+                  </div>}
+                </>}
                 {signedIn && (
                   <BusinessBrowser appearance="chat-tool" openRequest={browserOpenRequest} onPauseChange={(paused) => setBrowserControl(paused ? 'paused' : 'ready')} />
                 )}

@@ -450,12 +450,15 @@ export class RemoteRepository implements Repository {
         ...(options.goalId ? { goalId: options.goalId } : {}),
         ...(options.goalCheckpointId ? { goalCheckpointId: options.goalCheckpointId } : {}),
         ...(options.responseMode ? { responseMode: options.responseMode } : {}),
+        ...(options.selectedSkills?.length ? { selectedSkills: options.selectedSkills } : {}),
       };
       let path = '/api/runs/ask';
       let body: BodyInit = JSON.stringify(payload);
       if (options.attachment) {
         const form = new FormData();
-        for (const [key, value] of Object.entries(payload)) form.set(key, String(value));
+        for (const [key, value] of Object.entries(payload)) {
+          form.set(key, Array.isArray(value) ? JSON.stringify(value) : String(value));
+        }
         form.set('file', options.attachment, options.attachment.name);
         path = '/api/runs/ask/file';
         body = form;

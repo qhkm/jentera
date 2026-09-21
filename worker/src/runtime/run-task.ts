@@ -88,6 +88,7 @@ export interface RunPayload {
   factKeys?: string[];
   grounded?: boolean;
   responseMode?: ResponseMode;
+  selectedSkills?: string[];
   model?: string;
   requestedAtMs?: number;
   telegram?: {
@@ -267,6 +268,7 @@ export async function dispatchRuntimeRun(
     instructions: payload.instructions,
     profile: payload.profile,
     responseMode: payload.responseMode,
+    selectedSkills: payload.selectedSkills,
     // Existing runners admit only their bootstrapped model names. Let their
     // Quick/Deep default select that route; the proxy maps its legacy DeepSeek
     // alias to the canonical model. New runners already default to canonical.
@@ -479,6 +481,7 @@ function runPayload(value: unknown): RunPayload {
     responseMode: body.responseMode === 'quick' || body.responseMode === 'deep'
       ? body.responseMode
       : undefined,
+    selectedSkills: skillIds(body.selectedSkills),
     model: optional('model', 200),
     requestedAtMs: typeof body.requestedAtMs === 'number' &&
         Number.isFinite(body.requestedAtMs)
@@ -486,6 +489,16 @@ function runPayload(value: unknown): RunPayload {
       : undefined,
     telegram: telegramDelivery(body.telegram),
   };
+}
+
+function skillIds(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 5 || value.some(id =>
+    typeof id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(id)) ||
+    new Set(value).size !== value.length) {
+    throw new Error('runtime run selectedSkills is invalid');
+  }
+  return value as string[];
 }
 
 function telegramDelivery(value: unknown): RunPayload['telegram'] {

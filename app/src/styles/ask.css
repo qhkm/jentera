@@ -346,6 +346,110 @@ button.ask-context-link:hover {
   font-size: 9px;
   font-variant-numeric: tabular-nums;
 }
+.ask-selected-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.ask-selected-skills button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid rgb(var(--accent-green-rgb) / .24);
+  border-radius: 999px;
+  background: rgb(var(--accent-green-rgb) / .07);
+  color: var(--accent-green);
+  font-size: 10px;
+}
+.ask-selected-skills button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ask-skill-picker {
+  position: absolute;
+  z-index: 30;
+  left: 12px;
+  bottom: 64px;
+  display: flex;
+  flex-direction: column;
+  width: min(420px, calc(100% - 24px));
+  max-height: min(520px, 65vh);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--bg-card);
+  box-shadow: 0 18px 48px rgb(0 0 0 / .18);
+}
+.ask-skill-picker > header,
+.ask-skill-picker > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+}
+.ask-skill-picker > header { border-bottom: 1px solid var(--rail); }
+.ask-skill-picker > header > div { display: flex; flex-direction: column; min-width: 0; }
+.ask-skill-picker > header strong { font-size: 13px; font-weight: 650; }
+.ask-skill-picker > header span,
+.ask-skill-picker > footer span { color: var(--text-muted); font-size: 10px; }
+.ask-skill-picker > header > button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  color: var(--text-secondary);
+}
+.ask-skill-picker > header > button:hover { background: var(--workspace-control-hover); }
+.ask-skill-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  margin: 10px 12px 6px;
+  padding-inline: 11px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--workspace-control);
+  color: var(--text-muted);
+}
+.ask-skill-search:focus-within { border-color: var(--accent-green); }
+.ask-skill-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+}
+.ask-skill-options { min-height: 110px; overflow: auto; overscroll-behavior: contain; padding: 4px 8px 8px; }
+.ask-skill-options > p { padding: 24px 12px; color: var(--text-secondary); font-size: 12px; text-align: center; }
+.ask-skill-options ul { display: flex; flex-direction: column; gap: 2px; }
+.ask-skill-options label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 9px 8px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.ask-skill-options label:hover { background: var(--workspace-control); }
+.ask-skill-options label.is-disabled { cursor: not-allowed; opacity: .5; }
+.ask-skill-options input { margin-top: 3px; accent-color: var(--accent-green); }
+.ask-skill-options label > span { display: flex; flex-direction: column; min-width: 0; }
+.ask-skill-options strong { font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
+.ask-skill-options small { margin-top: 2px; color: var(--text-secondary); font-size: 10px; line-height: 1.4; }
+.ask-skill-options em { color: var(--text-muted); font-size: 9px; font-style: normal; }
+.ask-skill-options label > svg { margin-top: 2px; color: var(--accent-green); }
+.ask-skill-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 12px; color: var(--text-secondary); font-size: 11px; }
+.ask-skill-empty button,
+.ask-skill-picker > footer button { color: var(--accent-green); font-size: 11px; font-weight: 600; }
+.ask-skill-picker > footer { border-top: 1px solid var(--rail); }
 .ask-studio-send {
   display: grid;
   place-items: center;
@@ -1297,6 +1401,31 @@ button.ask-context-link:hover {
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
+  }
+  .ask-skill-picker {
+    position: fixed;
+    z-index: 80;
+    left: 10px;
+    right: 10px;
+    bottom: calc(74px + env(safe-area-inset-bottom));
+    width: auto;
+    max-height: min(540px, 68dvh);
+  }
+  .ask-skill-search input { font-size: 16px; }
+  .ask-writing-tools .ask-context-link { position: relative; }
+  .ask-writing-tools .ask-context-link .ask-context-count {
+    top: 1px;
+    right: 1px;
+    width: 16px;
+    height: 16px;
+    overflow: visible;
+    clip: auto;
+    clip-path: none;
+    border-radius: 999px;
+    background: var(--accent-green);
+    color: white;
+    line-height: 16px;
+    text-align: center;
   }
   .ask-studio-send {
     width: 44px;

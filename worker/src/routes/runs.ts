@@ -308,6 +308,7 @@ export async function handleRuns(
       mode?: unknown;
       sessionId?: unknown;
       responseMode?: unknown;
+      selectedSkills?: unknown;
       workspaceId?: unknown;
       goalId?: unknown;
       goalCheckpointId?: unknown;
@@ -329,6 +330,7 @@ export async function handleRuns(
         mode: field('mode'),
         sessionId: field('sessionId'),
         responseMode: field('responseMode'),
+        selectedSkills: parseSelectedSkillsField(field('selectedSkills')),
         workspaceId: field('workspaceId'),
         goalId: field('goalId'),
         goalCheckpointId: field('goalCheckpointId'),
@@ -417,6 +419,10 @@ export async function handleRuns(
       return json({ ok: false, err: 'response mode is invalid' }, { status: 400 }, cors);
     }
     const responseMode = body.responseMode as ResponseMode | undefined;
+    const selectedSkills = selectedSkillIds(body.selectedSkills);
+    if (selectedSkills === null) {
+      return json({ ok: false, err: 'choose up to five available skills' }, { status: 400 }, cors);
+    }
     if (goalId && mode !== 'work') {
       return json({ ok: false, err: 'goal work needs the durable agent' }, { status: 400 }, cors);
     }
@@ -442,6 +448,7 @@ export async function handleRuns(
         inputFile,
         goalId,
         goalCheckpointId,
+        selectedSkills,
       );
     }
 
@@ -785,6 +792,7 @@ async function startDurableAsk(
   inputFile?: ChatInputFile,
   goalId: string | null = null,
   goalCheckpointId: string | null = null,
+  selectedSkills: string[] = [],
 ): Promise<Response> {
   if (!env.RUNTIME_QUEUE || !env.AISAR_MODEL_NAME?.trim()) {
     return json({ ok: false, err: 'Jentera agent execution is unavailable' }, { status: 503 }, cors);
@@ -861,7 +869,8 @@ async function startDurableAsk(
     const run = await startRun(tx, businessId, {
       kind: 'ask',
       triggerShape: 'owner.ask',
-      triggerRef: { question, requestId, sessionId, ...(inputFile ? { file: inputFile.name } : {}) },
+      triggerRef: { question, requestId, sessionId, ...(inputFile ? { file: inputFile.name } : {}),
+        ...(selectedSkills.length ? { skills: selectedSkills } : {}) },
       requestedBy: userId,
       runtime: 'hermes-sprite',
       model,
@@ -889,6 +898,7 @@ async function startDurableAsk(
         responseMode,
         model,
         requestedAtMs: Date.now(),
+        ...(selectedSkills.length ? { selectedSkills } : {}),
       },
     });
     if (reservation?.kind === 'new') await bindPreview(tx, userId, businessId, requestId, run.id, task.id);
@@ -936,6 +946,19 @@ async function startDurableAsk(
     runId: created.runId,
     ...(reservation?.kind === 'new' ? { preview: reservation.preview } : {}),
   }, { status: 202 }, cors);
+}
+
+function parseSelectedSkillsField(value: string | undefined): unknown {
+  if (value === undefined) return undefined;
+  try { return JSON.parse(value); } catch { return value; }
+}
+
+export function selectedSkillIds(value: unknown): string[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 5) return null;
+  const ids = value.filter((id): id is string =>
+    typeof id === 'string' && /^[a-z0-9][a-z0-9-]{0,63}$/.test(id));
+  return ids.length === value.length && new Set(ids).size === ids.length ? ids : null;
 }
 
 

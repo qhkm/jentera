@@ -26,9 +26,8 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
-function Harness({ onOpenConnections, onOpenKnowledge, taskDraft }: {
+function Harness({ onOpenConnections, taskDraft }: {
   onOpenConnections?: () => void;
-  onOpenKnowledge?: () => void;
   taskDraft?: { text: string; key: number; sessionId?: string; goalId?: string; goalTitle?: string };
 } = {}) {
   const { business } = useBusiness();
@@ -37,7 +36,6 @@ function Harness({ onOpenConnections, onOpenKnowledge, taskDraft }: {
     handled={0}
     needs={0}
     onOpenConnections={onOpenConnections}
-    onOpenKnowledge={onOpenKnowledge}
     taskDraft={taskDraft}
   />;
 }
@@ -72,24 +70,49 @@ async function mount(children: ReactNode = <Harness />, repo = new LocalReposito
 describe('compose-first Ask Jentera', () => {
   it('uses concise toolbar labels while preserving descriptive accessible names and tooltips', async () => {
     const user = userEvent.setup();
-    const openKnowledge = vi.fn();
     const repo = new LocalRepository();
-    await repo.setFact({ key: 'business.name', value: 'Kedai Kita', source: 'owner' });
-    await mount(<Harness onOpenKnowledge={openKnowledge} />, repo);
+    repo.runtimeSkills = vi.fn(async () => [{ id: 'market-scan', name: 'Market scan', description: 'Compare sources.', category: 'Research', disabled: false }]);
+    await mount(<Harness />, repo);
     const toolbar = within(document.querySelector('.ask-writing-tools') as HTMLElement);
     const attach = toolbar.getByRole('button', { name: 'Add photo or file' });
     expect(attach).toHaveTextContent('Attach');
     expect(attach).toHaveAttribute('title', 'Add photo or file');
-    const details = toolbar.getByRole('button', { name: 'Business details · 1 confirmed' });
-    expect(details).toHaveTextContent('Details');
-    expect(details).not.toHaveTextContent('confirmed');
-    expect(details).toHaveAttribute('title', 'Business details · 1 confirmed');
-    await user.click(details);
-    expect(openKnowledge).toHaveBeenCalledOnce();
+    const skills = toolbar.getByRole('button', { name: 'Choose skills for this message' });
+    expect(skills).toHaveTextContent('Skills');
+    expect(skills).toHaveAttribute('title', 'Choose skills for this message');
+    await user.click(skills);
+    expect(await screen.findByRole('searchbox', { name: 'Search skills' })).toBeVisible();
     const browser = toolbar.getByRole('button', { name: 'Open business browser' });
     expect(browser).toHaveTextContent('Browser');
     expect(browser).not.toHaveTextContent('Business browser');
     expect(browser).toHaveAttribute('title', 'Open business browser');
+  });
+  it('searches VM skills and loads the selected skill for only the next message', async () => {
+    const user = userEvent.setup();
+    const repo = new LocalRepository();
+    repo.runtimeSkills = vi.fn(async () => [
+      { id: 'market-scan', name: 'Market scan', description: 'Compare public sources.', category: 'Research', disabled: false },
+      { id: 'pdf', name: 'PDF', description: 'Work with PDF files.', category: 'Documents', disabled: false },
+    ]);
+    repo.ask = vi.fn(async () => ({ text: 'Done', usedKeys: [], grounded: false }));
+    await mount(<Harness />, repo);
+
+    await user.click(screen.getByRole('button', { name: 'Choose skills for this message' }));
+    const search = await screen.findByRole('searchbox', { name: 'Search skills' });
+    await user.type(search, 'market');
+    expect(screen.getByText('Market scan')).toBeVisible();
+    expect(screen.queryByText('Work with PDF files.')).toBeNull();
+    await user.click(screen.getByRole('checkbox', { name: /Market scan/ }));
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    expect(screen.getByLabelText('1 of 5 selected')).toBeVisible();
+
+    await user.type(screen.getByRole('textbox'), 'Compare these suppliers');
+    await user.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(repo.ask).toHaveBeenCalledWith(
+      'Compare these suppliers',
+      expect.objectContaining({ selectedSkills: ['market-scan'] }),
+    ));
+    expect(screen.queryByLabelText('1 of 5 selected')).toBeNull();
   });
   it('shows the free-chat balance without changing the writing pad', async () => {
     vi.stubEnv('VITE_API_URL', 'https://fixture.invalid');

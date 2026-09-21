@@ -123,6 +123,8 @@ export interface AskOptions {
   onProgress?: (event: AskProgressEvent) => void;
   /** Quick is the default, as on Telegram; deep opts into the research loop. */
   responseMode?: 'quick' | 'deep';
+  /** Installed VM skills the owner explicitly chose for this one turn. */
+  selectedSkills?: string[];
   /** One transient file supplied with this turn. The server converts it to
       bounded text for the agent and does not retain the original bytes. */
   attachment?: File;
@@ -345,6 +347,8 @@ export interface RuntimeOverview {
 }
 
 export interface RuntimeSkill {
+  /** Hermes slash-command slug used to load this skill. */
+  id: string;
   name: string;
   description: string;
   category: string | null;

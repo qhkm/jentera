@@ -47,6 +47,7 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
       sessionId: 'chat-1',
       goalId: '22222222-2222-4222-8222-222222222222',
       goalCheckpointId: '33333333-3333-4333-8333-333333333333',
+      selectedSkills: ['market-scan'],
       onRunCreated: created,
     })).resolves.toEqual(ANSWER);
     expect(created).toHaveBeenCalledExactlyOnceWith(ANSWER.runId);
@@ -57,6 +58,7 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
     expect(sent.sessionId).toBe('chat-1');
     expect(sent.goalId).toBe('22222222-2222-4222-8222-222222222222');
     expect(sent.goalCheckpointId).toBe('33333333-3333-4333-8333-333333333333');
+    expect(sent.selectedSkills).toEqual(['market-scan']);
     expect(sent.requestId).toMatch(/^[0-9a-f-]{36}$/);
     expect(sent).not.toHaveProperty('businessId');
   });
@@ -74,6 +76,7 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
       goalId: '22222222-2222-4222-8222-222222222222',
       goalCheckpointId: '33333333-3333-4333-8333-333333333333',
       responseMode: 'quick',
+      selectedSkills: ['spreadsheet'],
     })).resolves.toEqual(ANSWER);
 
     expect(String(fetch.mock.calls[0][0])).toBe('/api/runs/ask/file');
@@ -84,6 +87,7 @@ describe('RemoteRepository durable Ask Jentera bridge', () => {
     expect(form.get('goalId')).toBe('22222222-2222-4222-8222-222222222222');
     expect(form.get('goalCheckpointId')).toBe('33333333-3333-4333-8333-333333333333');
     expect(form.get('responseMode')).toBe('quick');
+    expect(form.get('selectedSkills')).toBe('["spreadsheet"]');
     expect((form.get('file') as File).name).toBe('sales.xlsx');
   });
 

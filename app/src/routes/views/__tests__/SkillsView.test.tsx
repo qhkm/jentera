@@ -15,9 +15,9 @@ describe('SkillsView', () => {
   it('shows the VM inventory by category and filters it without exposing instructions', async () => {
     const repo = new LocalRepository();
     repo.runtimeSkills = vi.fn(async () => [
-      { name: 'Web research', description: 'Find and compare public sources.', category: 'Research', disabled: false },
-      { name: 'PDF reader', description: 'Read PDF documents.', category: 'Documents', disabled: false },
-      { name: 'Legacy export', description: 'Export an older format.', category: 'Documents', disabled: true },
+      { id: 'web-research', name: 'Web research', description: 'Find and compare public sources.', category: 'Research', disabled: false },
+      { id: 'pdf-reader', name: 'PDF reader', description: 'Read PDF documents.', category: 'Documents', disabled: false },
+      { id: 'legacy-export', name: 'Legacy export', description: 'Export an older format.', category: 'Documents', disabled: true },
     ]);
     const user = mount(repo);
 

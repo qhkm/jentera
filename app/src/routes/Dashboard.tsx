@@ -259,7 +259,6 @@ export default function Dashboard() {
               taskDraft={taskDraft}
               onOpenActivity={openTask}
               onOpenConnections={() => go('business', 'connections')}
-              onOpenKnowledge={() => go('business', 'knows')}
             />
           </div>
           {view === 'work' && <ActivityView
