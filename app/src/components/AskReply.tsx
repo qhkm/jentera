@@ -20,7 +20,6 @@ import { useT, useI18n } from '@/i18n/I18nProvider';
 import { displayWorkspacePaths, presentTaskSteps } from '@/lib/task-presentation';
 import { useDetailLevel } from '@/hooks/useDetailLevel';
 import type { AskMessage } from '@/hooks/useAsk';
-import { ChatTaskCard } from '@/components/ChatTaskCard';
 import { isRunId } from '@/lib/task';
 import { TaskCoordination } from './TaskCoordination';
 import { useRepository, type Artifact } from '@/lib/repo';
@@ -129,7 +128,13 @@ export function AskReply({
      business task. Keep interrupted accepted runs reachable to prevent resends. */
   const accepted = Boolean(message.failedQuestion) && isRunId(message.runId);
   const isWork = message.kind === 'work' || accepted;
-  const linkedTask = isWork && message.mode === 'work' && isRunId(message.runId) && Boolean(onOpenActivity);
+  /* Two things the task card carried had to survive its removal, and the
+     rest was furniture that made every exchange read as a tracked job. A
+     durable run may already have done part of its work, so a blind retry
+     could repeat it; and the reply has to stay a way into the run it
+     produced, which is why the links below carry the id rather than
+     landing on the whole of Activity. */
+  const durableWork = isWork && isRunId(message.runId);
   return (
     <article
       className={`ask-reply ${failed ? 'ask-reply-failed' : ''}`}
@@ -177,9 +182,7 @@ export function AskReply({
                 )}
             </>
           )
-          : linkedTask
-            ? <p className="sr-only" role="status">{message.text}</p>
-            : message.steps?.length
+          : message.steps?.length
               ? (
                 <>
                   <LiveTaskProgress taskLabel={message.taskProgressLabel} steps={message.steps} since={message.startedAt} lastProgressAt={message.lastProgressAt} connectionLabel={message.connectionStatus} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
@@ -202,8 +205,20 @@ export function AskReply({
             )}
           {files.length > 0 && <ArtifactList artifacts={files} inlineImages label={t('ask.files')} className="mt-3" />}
           {missingImages.length > 0 && <p className="task-recovery-note" role="status">Some images weren’t attached: {missingImages.join(', ')}. Ask Jentera to attach them again.</p>}
-          {failed && linkedTask ? (
-            <p className="task-recovery-note">{t('task.checkBeforeRetry')}</p>
+          {failed && durableWork ? (
+            <>
+              <p className="task-recovery-note">{t('task.checkBeforeRetry')}</p>
+              {onOpenActivity && (
+                <button
+                  type="button"
+                  className="ask-inline-action"
+                  onClick={() => onOpenActivity(message.runId, message.taskTitle)}
+                >
+                  {t('task.checkStatus')}
+                  <ArrowUpRight size={14} aria-hidden="true" />
+                </button>
+              )}
+            </>
           ) : failed ? (
             <button type="button" className="ask-inline-action" onClick={onRetry}>
               <WarningCircle size={16} aria-hidden="true" />
@@ -244,11 +259,11 @@ export function AskReply({
                   </p>
                 </details>
               )}
-              {message.state === 'done' && (isWork || message.kind === undefined) && onOpenActivity && !linkedTask && (
+              {message.state === 'done' && (isWork || message.kind === undefined) && onOpenActivity && (
                 <button
                   type="button"
                   className="ask-inline-action ask-reply-activity"
-                  onClick={() => onOpenActivity()}
+                  onClick={() => onOpenActivity(durableWork ? message.runId : undefined, durableWork ? message.taskTitle : undefined)}
                 >
                   {t('ask.receipt.activity')}
                   <ArrowUpRight size={14} aria-hidden="true" />
@@ -260,9 +275,6 @@ export function AskReply({
         </>
       )}
       {message.pendingId && message.state !== 'needs_approval' && isRunId(message.runId) && <ComputerPreview key={message.runId} runId={message.runId!} />}
-      {linkedTask && (
-        <ChatTaskCard message={message} onOpen={() => onOpenActivity?.(message.runId, message.taskTitle)} />
-      )}
     </article>
   );
 }

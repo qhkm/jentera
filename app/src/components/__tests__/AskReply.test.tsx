@@ -28,8 +28,10 @@ function mount(message: AskMessage, repo = new LocalRepository(), onOpenBusiness
   return render(<AskReply message={message} onOpenActivity={() => {}} onRetry={() => {}} onOpenBusinessBrowser={onOpenBusinessBrowser} />, { wrapper });
 }
 
-/* Every reply used to become a task card. Conversation reads as a reply;
-   only work, by request (deep) or by the server's verdict, gets the card. */
+/* The card is gone. It wrapped a two-minute exchange in a tracked job —
+   an eyebrow, a status, a View task link — and made every reply read as
+   administration. Work is still reachable from Activity; it is a line in
+   the reply's footer rather than a card beneath it. */
 describe('AskReply: conversation versus work', () => {
   it('offers the fixed Calendar OAuth route without any browser action or connection write', async () => {
     vi.stubEnv('VITE_API_URL', 'https://api.jentera.ai');
@@ -268,12 +270,16 @@ describe('AskReply: conversation versus work', () => {
     expect(container.querySelector('.ask-reply-activity')).toBeNull();
   });
 
-  it('shows the task card when the server called the run work', async () => {
+  it('reads as a reply, with work reachable from Activity rather than a card', async () => {
     const { container } = mount({
       from: 'ai', text: 'Sent the reminder.', mode: 'work', runId: RUN, state: 'done',
       depth: 'quick', kind: 'work', taskTitle: 'chase the late invoice',
     });
-    await waitFor(() => expect(container.querySelector('.chat-task-card')).not.toBeNull());
+    await waitFor(() => expect(container.textContent).toContain('Sent the reminder.'));
+    expect(container.querySelector('.chat-task-card')).toBeNull();
+    /* The link the card used to carry is in the footer, where every other
+       thing you can do with a reply already lives. */
+    expect(screen.getByRole('button', { name: /activity/i })).toBeInTheDocument();
   });
 
   it('does not infer a task from deep mode while the agent is running', async () => {
@@ -293,11 +299,14 @@ describe('AskReply: conversation versus work', () => {
     expect(container.querySelector('.ask-reply-ready')).toBeNull();
   });
 
-  it('shows Needs you instead of Done for a finished reply awaiting authorization', async () => {
+  it('does not call a reply awaiting authorization done', async () => {
     const { container } = mount({ from: 'ai', text: 'Authorize in your browser', mode: 'work', runId: RUN,
       state: 'done', kind: 'work', taskStatus: 'needs_input' });
-    await waitFor(() => expect(container.querySelector('.chat-task-card')).toHaveTextContent('Needs you'));
+    await waitFor(() => expect(container.textContent).toContain('Authorize in your browser'));
+    /* The Ready badge is the claim that matters, and it stays off. What is
+       outstanding is said in the reply, not in a status chip on a card. */
     expect(container.querySelector('.ask-reply-ready')).toBeNull();
+    expect(container.querySelector('.chat-task-card')).toBeNull();
   });
 });
 

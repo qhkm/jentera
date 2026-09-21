@@ -219,7 +219,9 @@ describe('workspace navigation', () => {
     await mount(<><Dashboard /><Location /></>, repo, '/app?view=chat');
     await user.type(await screen.findByRole('textbox'), 'Prepare a quotation');
     await user.click(screen.getByRole('button', { name: 'Send message' }));
-    const task = await screen.findByRole('button', { name: /Jentera task.*View task/ });
+    /* The card that used to carry this link is gone; the reply's own footer
+       opens the run it produced, rather than the whole Activity list. */
+    const task = await screen.findByRole('button', { name: 'View in Activity' });
     await user.type(screen.getByRole('textbox'), 'Draft for later');
     await user.click(task);
     expect(await screen.findByText('Full quotation, not sent.')).toBeInTheDocument();

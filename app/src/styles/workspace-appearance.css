@@ -237,7 +237,7 @@
   :is(.routine-notice, .goal-plan > header) {
   background: transparent;
 }
-.dashboard-shell :is(.home-ask-launcher, .routine-starter:not(:disabled), .routine-card, .chat-task-card):hover {
+.dashboard-shell :is(.home-ask-launcher, .routine-starter:not(:disabled), .routine-card):hover {
   border-color: var(--rail);
   background: var(--bg-card-hover);
 }
