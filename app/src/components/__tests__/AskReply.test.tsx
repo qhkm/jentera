@@ -270,6 +270,27 @@ describe('AskReply: conversation versus work', () => {
     expect(container.querySelector('.ask-reply-activity')).toBeNull();
   });
 
+  it('offers Stop on a reply still running, and cancels the run', async () => {
+    const cancelRun = vi.fn(async () => {});
+    const repo = new LocalRepository();
+    (repo as unknown as { cancelRun: (id: string) => Promise<void> }).cancelRun = cancelRun;
+    const { container } = mount(
+      { from: 'ai', text: 'Reading information', state: 'working', pendingId: 'p1', runId: RUN, kind: 'work' },
+      repo,
+    );
+    await userEvent.click(await screen.findByRole('button', { name: 'Stop' }));
+    expect(cancelRun).toHaveBeenCalledWith(RUN);
+    expect(container.textContent).toContain('Stopping');
+  });
+
+  it('hides Stop where the runtime cannot be asked to stop', async () => {
+    /* A Stop that does nothing is worse than none: the owner presses it, the
+       timer keeps counting, and they learn the product lies. */
+    mount({ from: 'ai', text: 'Reading information', state: 'working', pendingId: 'p1', runId: RUN, kind: 'work' });
+    await waitFor(() => expect(screen.getByText('Reading information')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+  });
+
   it('reads as a reply, with work reachable from Activity rather than a card', async () => {
     const { container } = mount({
       from: 'ai', text: 'Sent the reminder.', mode: 'work', runId: RUN, state: 'done',

@@ -240,6 +240,39 @@ describe('runtime provisioning route', () => {
     expect(count).toBe('1');
   });
 
+  it('cancels by run id, because the chat only ever knows the run', async () => {
+    const send = vi.fn(async () => {});
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'm',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `by-run:${run.id}`, payload: { input: 'hello' },
+    }));
+    await asTenant(A, (tx) => reserveRuntimeUsage(
+      tx, A, task.id, 'deepseek/deepseek-v4-flash-0731'));
+    await asOwner((sql) => sql`
+      update runtime_task set remote_run_id = 'run-hermes-2', remote_status = 'running'
+       where id = ${task.id}`);
+
+    const response = await call('POST', `/api/runs/${run.id}/cancel`, enabled(send), ownerCookie);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, taskId: task.id, status: 'cancelled' });
+    const [state] = await asOwner((sql) => sql<{ task_status: string; run_status: string }[]>`
+      select t.status as task_status, r.status as run_status
+        from runtime_task t join run r on r.id = t.run_id where t.id = ${task.id}`);
+    expect(state.task_status).toBe('cancelled');
+    expect(state.run_status).toBe('cancelled');
+  });
+
+  it('refuses a run with nothing left to stop', async () => {
+    const send = vi.fn(async () => {});
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'm',
+    }));
+    const response = await call('POST', `/api/runs/${run.id}/cancel`, enabled(send), ownerCookie);
+    expect(response.status).toBe(404);
+  });
+
   it('settles the admitted live bubble with a visible cancelled note for a queued Telegram run', async () => {
     const send = sendFake();
     const telegram = fetchFake(async () =>

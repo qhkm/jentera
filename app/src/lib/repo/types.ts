@@ -475,6 +475,9 @@ export interface Repository {
   runCoordination?(runId: string): Promise<RunCoordination>;
   runTrace(runId: string): Promise<TraceEvent[]>;
   runResult(runId: string): Promise<RunResult>;
+  /** Stop a reply that will not finish. Optional: a runtime that cannot be
+      asked to stop must not make the control appear. */
+  cancelRun?(runId: string): Promise<void>;
   taskReviewSummary?(runId: string): Promise<RunResult>;
   confirmTaskReview?(runId: string): Promise<void>;
   /** The people in this business and the invitations still open. Team plan

@@ -1031,6 +1031,9 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'ask.welcome.first':
       'Your Chief of Staff is ready. Choose a suggestion below or ask in your own words—Jentera will coordinate the work from what it knows about your business.',
     'ask.retry': 'Try this again',
+    'ask.stop': 'Stop',
+    'ask.stopping': 'Stopping…',
+    'ask.stop.failed': 'Could not stop this. Try again.',
     'ask.newChat': 'New chat',
     'ask.chat.untitled': 'New chat',
     'ask.deleteChat': 'Delete chat',
@@ -2211,6 +2214,9 @@ export const PAGE_MESSAGES: Record<Lang, Record<string, string>> = {
     'ask.welcome.first':
       'Ketua Staf anda sudah sedia. Pilih cadangan di bawah atau tanya dengan ayat sendiri—Jentera akan menyelaras kerja berdasarkan pengetahuan tentang perniagaan anda.',
     'ask.retry': 'Cuba soalan ini lagi',
+    'ask.stop': 'Henti',
+    'ask.stopping': 'Menghentikan…',
+    'ask.stop.failed': 'Tidak dapat dihentikan. Cuba lagi.',
     'ask.newChat': 'Chat baharu',
     'ask.chat.untitled': 'Chat baharu',
     'ask.deleteChat': 'Padam chat',

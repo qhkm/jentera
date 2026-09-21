@@ -33,7 +33,11 @@ export async function handleRuntime(
   cors: Record<string, string>,
   ctx?: Pick<ExecutionContext, 'waitUntil'>,
 ): Promise<Response | null> {
-  if (!url.pathname.startsWith('/api/runtime')) return null;
+  /* `/api/runs/:id/cancel` lives here rather than with the run routes: it is
+     the same cancellation, and splitting it would mean two paths into
+     cancelRuntimeTask that could drift apart. */
+  if (!url.pathname.startsWith('/api/runtime')
+    && !/^\/api\/runs\/[0-9a-f-]{36}\/cancel$/i.test(url.pathname)) return null;
   const identity = await resolveTenant(env, request);
   if (!identity) return json({ ok: false, err: 'not signed in' }, { status: 401 }, cors);
   if (!hasBusiness(identity)) {
@@ -296,13 +300,31 @@ export async function handleRuntime(
     return json({ ok: false, code: 'APPROVAL_NOT_PENDING' }, { status: 409, headers }, cors);
   }
 
+  /* Two ways in, one behaviour. An operator cancels the task it can see; the
+     owner's chat only ever knows the run — a reply that will not finish is a
+     run id on screen, not a runtime task id — and asking the app to carry an
+     internal id just to stop something it is already looking at would be a
+     worse boundary than resolving it here. */
   const cancel = url.pathname.match(/^\/api\/runtime\/tasks\/([0-9a-f-]{36})\/cancel$/i);
-  if (cancel && request.method === 'POST') {
+  const cancelRun = url.pathname.match(/^\/api\/runs\/([0-9a-f-]{36})\/cancel$/i);
+  if ((cancel || cancelRun) && request.method === 'POST') {
     if (!can(identity, 'runtime.manage')) {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
     }
     const cancelled = await withTenant(env, identity.businessId, async (tx) => {
-      const outcome = await cancelRuntimeTask(tx, identity.businessId, cancel[1]);
+      let taskId = cancel?.[1];
+      if (!taskId) {
+        /* The live one, not a finished sibling: a run that was resumed has
+           more than one task and only the open one can still be stopped. */
+        const [row] = await tx<{ id: string }[]>`
+          select id from runtime_task
+           where business_id = ${identity.businessId} and run_id = ${cancelRun![1]}
+             and status in ('queued', 'leased')
+           order by created_at desc limit 1`;
+        if (!row) return null;
+        taskId = row.id;
+      }
+      const outcome = await cancelRuntimeTask(tx, identity.businessId, taskId);
       if (!outcome) return null;
       if (outcome.changed && outcome.task.kind === 'run') {
         await finalizeRuntimeUsage(tx, identity.businessId, outcome.task.id, 'cancelled', {

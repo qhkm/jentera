@@ -7,6 +7,7 @@ import { browserHandoff, hideStreamingBrowserHandoff } from '@/lib/browser-hando
 import { BrowserHandoffCard } from './BrowserHandoffCard';
 import { connectionHandoff, hideStreamingConnectionHandoff } from '@/lib/connection-handoff';
 import { CalendarConnectCard } from '@/components/CalendarConnectCard';
+import { StopWork } from './StopWork';
 import { TaskRecoveryActions } from '@/components/TaskRecoveryActions';
 import { renderReplyMarkdown } from '@/lib/reply-markdown';
 import { ArrowUpRight, Check, Copy, Info, WarningCircle } from '@phosphor-icons/react';
@@ -152,11 +153,11 @@ export function AskReply({
         )}
       </header>
       {reminderDraft && <ReminderCard key={reminderDraft.id} draft={reminderDraft} />}
-      {message.pendingId ? (
-        /* Waiting on a person, not a machine — so no spinner. Any answer text
+      {message.pendingId ? (<>
+        {/* Waiting on a person, not a machine — so no spinner. Any answer text
            already streamed stays above the card: the agent often says what it
-           intends before asking, and that is the reason the owner needs. */
-        message.state === 'needs_approval' && message.approvalId
+           intends before asking, and that is the reason the owner needs. */}
+        {message.state === 'needs_approval' && message.approvalId
           ? (
             <>
               {message.text && message.state !== 'needs_approval'
@@ -189,7 +190,11 @@ export function AskReply({
                 </>
               )
               : <LiveTaskProgress steps={[]} label={message.text} since={message.startedAt} lastProgressAt={message.lastProgressAt} connectionLabel={message.connectionStatus} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
-      ) : (
+        }
+        {/* Not while it waits on a person: an approval is the owner's to
+            decide, and a Stop beside it would read as a third answer. */}
+        {message.state !== 'needs_approval' && <StopWork runId={message.runId} />}
+      </>) : (
         <>
           <div className="ask-reply-text" role={failed ? 'alert' : undefined}>
             {renderReplyMarkdown(displayWorkspacePaths(displayText))}

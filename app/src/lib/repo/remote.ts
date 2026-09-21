@@ -706,6 +706,11 @@ export class RemoteRepository implements Repository {
     return call<import('./types').RunCoordination>(`/api/runs/${encodeURIComponent(runId)}/coordination`);
   }
 
+  async cancelRun(runId: string): Promise<void> {
+    if (!isRunId(runId)) throw new Error('Invalid task link.');
+    await call<{ ok: boolean }>(`/api/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' });
+  }
+
   async runResult(runId: string): Promise<RunResult> {
     if (!isRunId(runId)) throw new Error('Invalid task link.');
     const result = await call<RunResult>(`/api/runs/${encodeURIComponent(runId)}`);
