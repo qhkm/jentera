@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Icon } from "@/components/Icon";
-import { Button, Tag, type Tone } from "@/components/ui";
+import { Button, Tag, type ButtonProps, type Tone } from "@/components/ui";
 
 export type WorkSignalState =
   | "ready"
@@ -114,6 +114,8 @@ export function OutcomeReceipt({
   state = "done",
   actionLabel,
   onAction,
+  actionVariant = "ghost",
+  actionIcon,
   collapsibleOutcome = false,
   compact = false,
   compactDate,
@@ -132,6 +134,8 @@ export function OutcomeReceipt({
   state?: WorkSignalState;
   actionLabel?: string;
   onAction?: () => void;
+  actionVariant?: ButtonProps['variant'];
+  actionIcon?: ReactNode;
   collapsibleOutcome?: boolean;
   compact?: boolean;
   compactDate?: string;
@@ -146,25 +150,33 @@ export function OutcomeReceipt({
   ));
   return (
     <article className={`outcome-receipt outcome-receipt-${state}`}>
-      <div className="flex items-start gap-3">
-        <WorkPulse state={state} />
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <h3 className="text-sm font-medium leading-snug text-text">
-              {title}
-            </h3>
+      <div className="outcome-receipt-layout">
+        <div className="outcome-receipt-main">
+          <WorkPulse state={state} />
+          <div className="outcome-receipt-copy">
+            <h3 className="text-sm font-medium leading-snug text-text">{title}</h3>
+            {outcome ? (
+              <>
+                <p className={`text-[13px] leading-relaxed text-text-secondary${canCollapse && !outcomeOpen ? ' outcome-receipt-copy-collapsed' : ''}`}>
+                  {outcome}
+                </p>
+                {canCollapse && !previewOnly && <button type="button" className="outcome-receipt-expand" aria-expanded={outcomeOpen} onClick={() => setOutcomeOpen((open) => !open)}>
+                  {outcomeOpen ? showLessLabel : showMoreLabel}
+                </button>}
+              </>
+            ) : null}
+          </div>
+        </div>
+        <div className="outcome-receipt-side">
+          <div className="outcome-receipt-status">
             {compactDate && <span className="outcome-receipt-date">{compactDate}</span>}
             <Tag tone={statusTone}>{statusLabel}</Tag>
           </div>
-          {outcome ? (
-            <>
-              <p className={`text-[13px] leading-relaxed text-text-secondary${canCollapse && !outcomeOpen ? ' outcome-receipt-copy-collapsed' : ''}`}>
-                {outcome}
-              </p>
-              {canCollapse && !previewOnly && <button type="button" className="outcome-receipt-expand" aria-expanded={outcomeOpen} onClick={() => setOutcomeOpen((open) => !open)}>
-                {outcomeOpen ? showLessLabel : showMoreLabel}
-              </button>}
-            </>
+          {actionLabel && onAction ? (
+            <Button variant={actionVariant} className="outcome-receipt-action" onClick={onAction}>
+              {actionLabel}
+              {actionIcon}
+            </Button>
           ) : null}
         </div>
       </div>
@@ -177,17 +189,6 @@ export function OutcomeReceipt({
         {meta ? <span>{meta}</span> : null}
       </div>
       {children}
-      {actionLabel && onAction ? (
-        <div>
-          <Button
-            variant="ghost"
-            className="min-h-0 px-3 py-2 text-[11px]"
-            onClick={onAction}
-          >
-            {actionLabel}
-          </Button>
-        </div>
-      ) : null}
     </article>
   );
 }

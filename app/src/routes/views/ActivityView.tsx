@@ -248,12 +248,13 @@ export default function ActivityView({
               previewOnly={isRunId(w.runId) && w.canOpen !== false && Boolean(onOpenTask)}
               showMoreLabel={t('activity.showMore')}
               showLessLabel={t('activity.showLess')}
+              actionLabel={isRunId(w.runId) && w.canOpen !== false && onOpenTask
+                ? ['needs_approval', 'needs_input', 'needs_review'].includes(w.status) ? t('activity.reviewTask') : t('task.open')
+                : undefined}
+              onAction={isRunId(w.runId) && w.canOpen !== false && onOpenTask ? () => onOpenTask(w.runId!) : undefined}
+              actionVariant={['needs_approval', 'needs_input', 'needs_review'].includes(w.status) ? 'primary' : 'outline'}
+              actionIcon={<ArrowUpRight size={16} aria-hidden="true" />}
             >
-              {isRunId(w.runId) && w.canOpen !== false && onOpenTask && <div className="mt-2">
-                <Button variant={['needs_approval', 'needs_input', 'needs_review'].includes(w.status) ? 'primary' : 'outline'} onClick={() => onOpenTask(w.runId!)}>
-                  {['needs_approval', 'needs_input', 'needs_review'].includes(w.status) ? t('activity.reviewTask') : t('task.open')}<ArrowUpRight size={16} aria-hidden="true" />
-                </Button>
-              </div>}
               {/* Advanced mode only, and only where there is a run to
                     trace. Collapsed by default: the trace is for the
                     moment something looks wrong, not for every glance. */}

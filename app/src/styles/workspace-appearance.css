@@ -184,19 +184,36 @@
 :is(.theme-light, .site-theme-light) .dashboard-shell .activity-inbox-row .outcome-receipt {
   background: transparent;
 }
-.dashboard-shell .activity-inbox-row .outcome-receipt-copy-collapsed { -webkit-line-clamp: 1; }
+.dashboard-shell .activity-inbox-row .outcome-receipt-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(220px, 20vw, 300px);
+  gap: clamp(24px, 4vw, 64px);
+}
+.dashboard-shell .activity-inbox-row .outcome-receipt-main { max-width: 78ch; }
+.dashboard-shell .activity-inbox-row .outcome-receipt-copy-collapsed { -webkit-line-clamp: 2; }
 .dashboard-shell .activity-inbox-row .outcome-receipt-proof { gap: 4px 12px; }
 .dashboard-shell .activity-inbox-row .outcome-receipt-proof { display: none; }
-.dashboard-shell .activity-inbox-row .outcome-receipt-date {
-  margin-left: auto;
-  color: var(--text-muted);
-  font-size: var(--workspace-support);
+.dashboard-shell .activity-inbox-row .outcome-receipt-date { color: var(--text-muted); font-size: var(--workspace-support); }
+.dashboard-shell .activity-inbox-row .outcome-receipt-side {
+  min-width: 0;
+  padding-left: clamp(16px, 2vw, 28px);
+  border-left: 1px solid var(--rail);
 }
-.dashboard-shell .activity-inbox-row .outcome-receipt > .mt-2:has(> .btn) {
-  align-self: flex-end;
-  margin-top: 0;
-}
+.dashboard-shell .activity-inbox-row .outcome-receipt-action { min-width: min(100%, 160px); justify-content: center; }
 .dashboard-shell .activity-inbox-row .outcome-receipt-proof > span:first-child { display: none; }
+@media (max-width: 720px) {
+  .dashboard-shell .activity-inbox-row .outcome-receipt-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .dashboard-shell .activity-inbox-row .outcome-receipt-side {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    padding: 12px 0 0;
+    border-top: 1px solid var(--rail);
+    border-left: 0;
+  }
+  .dashboard-shell .activity-inbox-row .outcome-receipt-action { min-width: 0; }
+}
 .dashboard-shell
   :is(.library-card.card, .connector-card, .routine-card.card, .goal-card.card) {
   padding: 16px;

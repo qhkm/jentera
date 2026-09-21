@@ -98,5 +98,8 @@ describe('compact work inbox', () => {
     const rows = [...document.querySelectorAll('.activity-inbox-row')];
     expect(rows[0]).toHaveTextContent('Waiting for your instructions');
     expect(rows[1]).toHaveTextContent('Recent finished report');
+    expect(rows[0].querySelector('.outcome-receipt-layout')).toBeInTheDocument();
+    expect(rows[0].querySelector('.outcome-receipt-main')).toHaveTextContent('Waiting for your instructions');
+    expect(rows[0].querySelector('.outcome-receipt-side')).toHaveTextContent('Needs you');
   });
 });
