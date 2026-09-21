@@ -7,18 +7,14 @@
 .ask-studio-topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
-  min-height: 54px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--rail);
+  min-height: 0;
+  padding-bottom: 0;
   flex-shrink: 0;
 }
 .ask-studio-topbar h1 {
-  flex-shrink: 0;
-  font-family: var(--font-pixel);
-  font-size: 22px;
-  letter-spacing: -0.025em;
+  display: none;
 }
 .ask-goal-badge {
   display: inline-flex;
@@ -1172,12 +1168,18 @@ button.ask-context-link:hover {
 }
 @media (max-width: 1023px) {
   .ask-studio-topbar {
+    justify-content: space-between;
     min-height: 56px;
     gap: 10px;
     padding: 8px 16px;
+    border-bottom: 1px solid var(--rail);
   }
   .ask-studio-topbar h1 {
+    display: block;
+    flex-shrink: 0;
+    font-family: var(--font-pixel);
     font-size: 17px;
+    letter-spacing: -0.025em;
   }
   .ask-studio-tools {
     gap: 10px;
