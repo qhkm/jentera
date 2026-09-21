@@ -643,6 +643,21 @@ button.ask-context-link:hover {
 .ask-inline-action:hover {
   color: var(--text);
 }
+.ask-live-current {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-width: 0;
+}
+.ask-live-current > .bubble { flex: 0 1 auto; }
+.ask-live-action {
+  flex: none;
+  margin-left: auto;
+}
+.stop-work { text-align: right; }
+.stop-work .task-recovery-note { margin-top: 6px; }
 .ask-reply-source {
   color: var(--text-muted);
   font-size: 11px;

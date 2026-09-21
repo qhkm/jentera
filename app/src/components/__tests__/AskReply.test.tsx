@@ -280,8 +280,9 @@ describe('AskReply: conversation versus work', () => {
       repo,
     );
     const stop = await screen.findByRole('button', { name: 'Stop' });
-    /* Beside the label and the clock, never after the history. Rendered below
-       the activity list it read as one more step in the log. */
+    /* Beside the label and the clock, aligned in its own right-hand column,
+       never after the history where it would read as another activity. */
+    expect(stop.closest('.ask-live-action')).not.toBeNull();
     expect(stop.closest('.ask-activity-list')).toBeNull();
     const history = container.querySelector('.ask-step-history');
     if (history) {

@@ -72,14 +72,19 @@ export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected, c
     : quiet ? (bm ? 'Menunggu kemas kini' : 'Waiting for an update')
     : safeTaskProgressLabel(taskLabel) || latest?.label || label || (bm ? 'Menjalankan tugasan' : 'Working on your task');
   return <div className="min-w-0">
-    {!latest ? <><TypingBubble label={currentLabel} since={since} active={active} />{action}</> : <div className="ask-steps">
-      <div className="flex min-w-0 items-start gap-2">
-        <span className={active ? 'ask-step-dot' : 'mt-2 h-2 w-2 shrink-0 rounded-full bg-text-muted'} aria-hidden="true" />
-        <div className="ask-step-content">
-          <span role="status" className={`ask-step-label${active ? ' ask-active-shimmer' : ''}`}>{currentLabel}</span>
-          {since !== undefined && <span className="ask-step-meta tabular-nums">{duration(Math.max(0, Math.floor((now - since) / 1000)))}</span>}
-          {action}
+    {!latest ? <div className="ask-live-current">
+      <TypingBubble label={currentLabel} since={since} active={active} />
+      {action && <div className="ask-live-action">{action}</div>}
+    </div> : <div className="ask-steps">
+      <div className="ask-live-current">
+        <div className="flex min-w-0 items-start gap-2">
+          <span className={active ? 'ask-step-dot' : 'mt-2 h-2 w-2 shrink-0 rounded-full bg-text-muted'} aria-hidden="true" />
+          <div className="ask-step-content">
+            <span role="status" className={`ask-step-label${active ? ' ask-active-shimmer' : ''}`}>{currentLabel}</span>
+            {since !== undefined && <span className="ask-step-meta tabular-nums">{duration(Math.max(0, Math.floor((now - since) / 1000)))}</span>}
+          </div>
         </div>
+        {action && <div className="ask-live-action">{action}</div>}
       </div>
     </div>}
     {quiet && !disconnected && <p className="mt-1 text-xs text-text-secondary">

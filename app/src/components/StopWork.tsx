@@ -20,9 +20,9 @@ export function StopWork({ runId }: { runId?: string }) {
   const t = useT();
   const [state, setState] = useState<'idle' | 'stopping' | 'failed'>('idle');
   if (!isRunId(runId) || !repo.cancelRun) return null;
-  if (state === 'stopping') return <p className="task-recovery-note" role="status">{t('ask.stopping')}</p>;
+  if (state === 'stopping') return <div className="stop-work"><p className="task-recovery-note" role="status">{t('ask.stopping')}</p></div>;
   return (
-    <div className="mt-2">
+    <div className="stop-work">
       <button
         type="button"
         className="ask-inline-action"
