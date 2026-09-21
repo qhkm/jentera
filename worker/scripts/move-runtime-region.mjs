@@ -118,9 +118,20 @@ echo "BYTES $(wc -c < ${tarPath})"
 tar -tzf ${tarPath}`;
 }
 
+/** The one refusal `--force` may not override. While ACCESS_MODE is waitlist,
+ *  `businessHasAccess` admits `delete` as maintenance but refuses `provision`
+ *  for a business whose owner holds no active grant — so deleting that sprite
+ *  destroys it for good. The consumer acks the dropped provision and leaves
+ *  the row queued, which looks exactly like a slow queue. */
+export function blockers(state) {
+  return state.canProvision === false
+    ? ['the owner holds no active platform_access grant, so a provision would be dropped and the delete could not be undone']
+    : [];
+}
+
 /** Reasons this sprite must not be moved right now. */
 export function preflightRefusals(state, placementChangedAt = Date.parse('2026-09-10T07:22:00Z')) {
-  const refusals = [];
+  const refusals = [...blockers(state)];
   if (!state.runtime) refusals.push('no runtime row for this business');
   else {
     if (state.runtime.status !== 'ready') refusals.push(`runtime is ${state.runtime.status}, not ready`);
@@ -184,13 +195,26 @@ async function readState(sql, spriteName) {
      where business_id = ${runtime.business_id} and status in ('queued','working','needs_approval')`;
   const [tasks] = await sql`select count(*)::int as n from runtime_task
      where business_id = ${runtime.business_id} and status in ('queued','leased')`;
-  return { runtime, activeRuns: runs.n, openTasks: tasks.n };
+  const [access] = await sql`select ${sql.unsafe(CAN_PROVISION)} as ok from business b where b.id = ${runtime.business_id}`;
+  return { runtime, activeRuns: runs.n, openTasks: tasks.n, canProvision: access?.ok === true };
 }
+
+/* businessHasAccess in worker/src/access.ts, as one fragment. Kept as SQL
+   rather than a second opinion about who is admitted: if the rule moves, this
+   refuses to move sprites it should have, which is the safe direction. */
+const CAN_PROVISION = `exists (
+  select 1 from membership m join app_user u on u.id = m.user_id
+  left join platform_access a on a.email = lower(u.email)
+   where m.business_id = b.id and m.role = 'owner' and u.email_verified
+     and (lower(u.email) = 'qhkmdev90@gmail.com'
+       or (a.revoked_at is null and a.email is not null
+           and (a.expires_at is null or a.expires_at > now()))))`;
 
 async function listCandidates(sql) {
   const rows = await sql`
     select r.provider_name, r.created_at, r.egress_colo, r.egress_country, r.status,
            b.name as business_name, b.id as business_id,
+           ${sql.unsafe(CAN_PROVISION)} as "canProvision",
            (select count(*)::int from run where business_id = b.id) as runs
       from agent_runtime r join business b on b.id = r.business_id
      where r.deleted_at is null
@@ -311,6 +335,8 @@ find ${HERMES}/memories ${HERMES}/profiles -name '*.md' | wc -l`);
 async function moveOne(sql, spriteName, dir) {
   const state = await readState(sql, spriteName);
   const refusals = preflightRefusals(state);
+  const blocked = blockers(state);
+  if (blocked.length) throw new Error(`${spriteName}: ${blocked.join('; ')}`);
   if (refusals.length && !flag('force')) throw new Error(`${spriteName}: ${refusals.join('; ')}`);
   const businessId = state.runtime.business_id;
 
@@ -380,7 +406,8 @@ function report(rows) {
       (row.business_name ?? '').slice(0, 28).padEnd(28),
       new Date(row.created_at).toISOString().slice(0, 10),
       `${row.egress_colo ?? '?'}/${row.egress_country ?? '?'}`.padEnd(8),
-      `runs=${row.runs ?? '?'}`,
+      `runs=${String(row.runs ?? '?').padEnd(3)}`,
+      row.canProvision === false ? 'CANNOT RETURN' : 'can return',
       row.status,
     ].join('  '));
   }
@@ -410,8 +437,17 @@ async function main() {
         console.log('\nplan only. Add --yes to move all of them, quietest business first.');
         return;
       }
-      const limit = Number(value('limit') ?? rows.length);
-      const cohort = rows.slice(0, limit);
+      const stranded = rows.filter((row) => blockers(row).length);
+      if (stranded.length) {
+        console.log(`\n${stranded.length} are excluded and cannot be moved by anything here:`);
+        report(stranded);
+        console.log('  Their owners hold no platform_access grant, so the control plane would');
+        console.log('  drop the provision and the delete could not be undone. Grant access first.');
+      }
+      const movable = rows.filter((row) => !blockers(row).length);
+      const limit = Number(value('limit') ?? movable.length);
+      const cohort = movable.slice(0, limit);
+      if (!cohort.length) { console.log('\nnothing movable.'); return; }
       const dirFor = (row) => path.join(value('dir') ?? '.runtime-moves', row.provider_name);
       await moveCohort(sql, cohort, dirFor);
       console.log('\ndone. Remaining candidates:');
@@ -436,6 +472,11 @@ async function main() {
     }, null, 2));
 
     if (flag('restore')) { await phaseRestore(spriteName, dir); return; }
+    if (blockers(state).length) {
+      console.error('\nblocked: ' + blockers(state).join('; '));
+      process.exitCode = 1;
+      return;
+    }
     if (refusals.length && !flag('force')) {
       console.error('\nrefusing: ' + refusals.join('; '));
       process.exitCode = 1;

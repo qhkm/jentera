@@ -81,3 +81,15 @@ test('a candidate is old and either known-US or not yet seen', async () => {
      invocation, wherever it happens to have landed. */
   assert.equal(isCandidate({ created_at: '2026-09-20T00:00:00Z', egress_country: 'US' }), false);
 });
+
+test('a sprite that cannot be provisioned again is never moved, --force or not', async () => {
+  const { blockers } = await import('./move-runtime-region.mjs');
+  const ready = { business_id: 'b', status: 'ready', created_at: '2026-08-28T00:00:00Z' };
+  assert.equal(blockers({ canProvision: true }).length, 0);
+  assert.match(blockers({ canProvision: false })[0], /platform_access/);
+  /* The blocker is inside the refusals too, so the single-sprite path reports
+     it even before it reaches the check that --force cannot bypass. */
+  const refusals = preflightRefusals({ runtime: ready, activeRuns: 0, openTasks: 0, canProvision: false });
+  assert.equal(refusals.length, 1);
+  assert.match(refusals[0], /could not be undone/);
+});
