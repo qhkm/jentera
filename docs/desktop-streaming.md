@@ -34,6 +34,39 @@ Each minute the viewer reconnects using a fresh authenticated Worker request and
 new ticket. It does not claim/reclaim control, replay keys/text, or resume the
 agent. Two brief failed retries return the user to explicit Take control.
 
+## When the desktop quietly stops being offered
+
+A failed teardown latches `cleanupBlocked` in `desktop-gateway.mjs`, which is
+deliberate: it refuses every later desktop stream rather than risk a half-
+released keyboard on a browser holding the business's live sessions.
+
+It is hard to recognise, because nothing names it. The flag is in memory and
+unexported, and the only symptom is `desktopView` disappearing from
+`/v1/browser` status — `status()` emits that field only when
+`config.desktopEnabled && desktopReady()`, and `desktopReady` is
+`server.listening && !closing && !cleanupBlocked`. So a latched gateway looks
+exactly like a disabled one, and on 21 September it was first read as a
+configuration mismatch between the worker and the sprite.
+
+**Check the two terms you can see before assuming the third.** If
+`AISAR_DESKTOP_VIEW=1` is in `runtime.env`, in the runner process's own
+environment (`/proc/<pid>/environ`) and on the `x11-display` service, and
+`127.0.0.1:5901` is listening, then `closing` is false and the latch is the
+only term left.
+
+Clearing it is the reviewed runtime recovery the design asks for, and in
+practice that is restarting the runner so the flag resets:
+
+```bash
+sprite-env services restart aisar-runner
+```
+
+What that costs, measured on Kitakod: the durable pause survives, because it
+is a file; the owner's control lease does not, because it is in memory, so
+they must take control again. Chromium is replaced rather than reattached —
+the PID changed — but the profile is on disk, so every signed-in session
+survives the new process.
+
 Hand-back/recovery waits for the old VNC process to exit and verifies native X11
 key/button release before changing the lease or clearing the durable pause.
 Cleanup failure blocks hand-back and further desktop streams until reviewed
