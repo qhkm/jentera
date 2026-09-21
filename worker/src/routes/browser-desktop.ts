@@ -8,7 +8,10 @@ import { DESKTOP_TTL_MS, desktopControlProtocol, desktopEnabledFor, desktopTicke
 /** Sprites owns the transport. We terminate the init/auth prefaces here so the
  * browser receives ONLY RFB bytes, never a provider token or runner ticket.
  * Both peers and all buffers have hard limits; failed handshakes fail closed. */
-export function bridgeSpritesDesktop(upstream: WebSocket, downstream: WebSocket, ticket: Awaited<ReturnType<typeof desktopTicket>>): Promise<void> {
+export function bridgeSpritesDesktop(upstream: WebSocket, downstream: WebSocket, ticket: Awaited<ReturnType<typeof desktopTicket>>,
+  diagnostic: (phase: string, reason: string) => void = (phase, reason) => {
+    console.warn('[business-desktop]', JSON.stringify({ stage: 'handshake', phase, reason }));
+  }): Promise<void> {
   return new Promise((resolve, reject) => {
     let phase: 'proxy' | 'lease' | 'ready' | 'closed' = 'proxy';
     let preface = new Uint8Array(0);
@@ -18,9 +21,11 @@ export function bridgeSpritesDesktop(upstream: WebSocket, downstream: WebSocket,
     let outputWindow = Date.now();
     let handshake: ReturnType<typeof setTimeout>;
     let lifetime: ReturnType<typeof setTimeout>;
-    const stop = (code = 1011) => {
+    const stop = (code = 1011, reason = 'unknown') => {
       if (phase === 'closed') return;
-      const pending = phase !== 'ready'; phase = 'closed'; preface = new Uint8Array(0);
+      const pending = phase !== 'ready';
+      if (pending) diagnostic(phase, reason);
+      phase = 'closed'; preface = new Uint8Array(0);
       clearTimeout(handshake); clearTimeout(lifetime);
       for (const socket of [upstream, downstream]) try { socket.close(code, 'Desktop disconnected'); } catch { /* already closed */ }
       if (pending) reject(new Error('Desktop unavailable'));
@@ -33,66 +38,75 @@ export function bridgeSpritesDesktop(upstream: WebSocket, downstream: WebSocket,
          lifetime cap disconnected healthy, actively changing desktops after
          64 MiB. workerd closes the socket itself if its outgoing buffer fills;
          our message and rate caps keep one viewer from flooding the isolate. */
-      if (outputBytes > 8 * 1024 * 1024) { stop(1009); return; }
+      if (outputBytes > 8 * 1024 * 1024) { stop(1009, 'output_rate'); return; }
       downstream.send(bytes);
     };
     upstream.addEventListener('message', event => {
       try {
         if (phase === 'closed') return;
         if (phase === 'proxy') {
-          if (typeof event.data !== 'string' || event.data.length > 256) { stop(); return; }
-          const ack = JSON.parse(event.data);
+          if (typeof event.data !== 'string') { stop(1011, 'proxy_ack_type'); return; }
+          if (event.data.length > 256) { stop(1011, 'proxy_ack_size'); return; }
+          let ack: unknown;
+          try { ack = JSON.parse(event.data); }
+          catch { stop(1011, 'proxy_ack_json'); return; }
           /* Sprites may report a resolved loopback address in `target`
              (for example 127.0.0.1 rather than the `localhost` we sent).
              Their official SDK treats that field as informational and
              admits the tunnel from `status` alone. The destination remains
              fixed by our server-authored init message immediately below; no
              browser-controlled host or port reaches this connection. */
-          if (ack.status !== 'connected') { stop(); return; }
+          if (!ack || typeof ack !== 'object' || (ack as { status?: unknown }).status !== 'connected') {
+            stop(1011, 'proxy_ack_status'); return;
+          }
           phase = 'lease';
           upstream.send(new TextEncoder().encode(`${JSON.stringify(ticket)}\n`));
           return;
         }
         const bytes = binary(event.data);
-        if (!bytes || bytes.byteLength > 256 * 1024) { stop(); return; }
+        if (!bytes) { stop(1011, phase === 'lease' ? 'lease_reply_type' : 'output_type'); return; }
+        if (bytes.byteLength > 256 * 1024) { stop(1009, phase === 'lease' ? 'lease_reply_size' : 'output_size'); return; }
         if (phase === 'lease') {
           const joined = new Uint8Array(preface.length + bytes.length);
-          if (joined.length > 256 * 1024) { stop(); return; }
+          if (joined.length > 256 * 1024) { stop(1009, 'lease_reply_size'); return; }
           joined.set(preface); joined.set(bytes, preface.length); preface = joined;
           const end = preface.indexOf(10);
-          if (end < 0) { if (preface.length > 32) stop(); return; }
-          if (end > 32 || new TextDecoder().decode(preface.slice(0, end)) !== '{"ok":true}') { stop(); return; }
+          if (end < 0) { if (preface.length > 32) stop(1011, 'lease_reply_prefix'); return; }
+          if (end > 32 || new TextDecoder().decode(preface.slice(0, end)) !== '{"ok":true}') {
+            stop(1011, 'lease_reply_invalid'); return;
+          }
           phase = 'ready'; clearTimeout(handshake);
           const remainder = preface.slice(end + 1); preface = new Uint8Array(0);
           if (remainder.length) output(remainder);
           resolve(); return;
         }
         output(bytes);
-      } catch { stop(); }
+      } catch { stop(1011, 'upstream_handler'); }
     });
     downstream.addEventListener('message', event => {
       try {
-        if (phase !== 'ready') { stop(); return; }
+        if (phase !== 'ready') { stop(1011, 'client_input_before_ready'); return; }
         const bytes = binary(event.data);
-        if (!bytes) { stop(); return; }
+        if (!bytes) { stop(1011, 'client_input_type'); return; }
         if (Date.now() - inputWindow >= 1000) { inputBytes = 0; inputWindow = Date.now(); }
         inputBytes += bytes.byteLength;
-        if (bytes.byteLength > 64 * 1024 || inputBytes > 256 * 1024) { stop(1009); return; }
+        if (bytes.byteLength > 64 * 1024 || inputBytes > 256 * 1024) { stop(1009, 'client_input_rate'); return; }
         upstream.send(bytes);
-      } catch { stop(); }
+      } catch { stop(1011, 'client_handler'); }
     });
-    for (const socket of [upstream, downstream]) {
-      socket.addEventListener('close', () => stop(1000));
-      socket.addEventListener('error', () => stop());
-    }
-    handshake = setTimeout(() => stop(), 8000);
+    upstream.addEventListener('close', () => stop(1000, 'upstream_close'));
+    upstream.addEventListener('error', () => stop(1011, 'upstream_error'));
+    downstream.addEventListener('close', () => stop(1000, 'client_close'));
+    downstream.addEventListener('error', () => stop(1011, 'client_error'));
+    handshake = setTimeout(() => stop(1011, 'timeout'), 8000);
     // Renewals re-run cookie/session, membership, pilot gate and runner lease.
     lifetime = setTimeout(() => stop(1000), Math.min(DESKTOP_TTL_MS, ticket.expiresAt - Date.now()));
     // Recent compatibility dates default to Blob. Decode synchronously and
     // preserve frame order rather than racing asynchronous Blob conversions.
     upstream.binaryType = 'arraybuffer'; downstream.binaryType = 'arraybuffer';
     upstream.accept(); downstream.accept();
-    try { upstream.send(JSON.stringify({ host: 'localhost', port: 5901 })); } catch { stop(); }
+    try { upstream.send(JSON.stringify({ host: 'localhost', port: 5901 })); }
+    catch { stop(1011, 'proxy_init_send'); }
   });
 }
 

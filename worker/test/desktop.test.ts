@@ -84,6 +84,33 @@ it('refuses input before authentication, failed proxy status and malformed prefa
   }
 });
 
+it('reports only bounded handshake phase and reason codes', async () => {
+  const cases: Array<[string | ArrayBuffer, string, string]> = [
+    [bytes('binary-ack'), 'proxy', 'proxy_ack_type'],
+    ['not-json', 'proxy', 'proxy_ack_json'],
+    ['{"status":"error"}', 'proxy', 'proxy_ack_status'],
+  ];
+  for (const [message, expectedPhase, expectedReason] of cases) {
+    const upstream = new Socket(); const client = new Socket();
+    const diagnostic = vi.fn();
+    const ready = bridgeSpritesDesktop(upstream.socket(), client.socket(),
+      await desktopTicket(runnerKey, businessId, ownerId, controlId), diagnostic);
+    const rejected = expect(ready).rejects.toThrow('Desktop unavailable');
+    upstream.message(message); await rejected;
+    expect(diagnostic).toHaveBeenCalledWith(expectedPhase, expectedReason);
+    expect(JSON.stringify(diagnostic.mock.calls)).not.toContain(businessId);
+  }
+
+  const upstream = new Socket(); const client = new Socket(); const diagnostic = vi.fn();
+  const ready = bridgeSpritesDesktop(upstream.socket(), client.socket(),
+    await desktopTicket(runnerKey, businessId, ownerId, controlId), diagnostic);
+  const rejected = expect(ready).rejects.toThrow('Desktop unavailable');
+  upstream.message('{"status":"connected"}'); upstream.message(bytes('{"ok":false}\nprivate'));
+  await rejected;
+  expect(diagnostic).toHaveBeenCalledWith('lease', 'lease_reply_invalid');
+  expect(JSON.stringify(diagnostic.mock.calls)).not.toContain('private');
+});
+
 it('bounds handshake lifetime, session lifetime and binary input size', async () => {
   vi.useFakeTimers();
   const upstream = new Socket(); const client = new Socket();
