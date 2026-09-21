@@ -62,13 +62,22 @@ it('consumes both private handshakes and relays only binary RFB bytes', async ()
   upstream.dispatchEvent(new Event('close')); expect(client.closed).toBe(true);
 });
 
-it('refuses input before authentication, wrong destinations and malformed prefacing data', async () => {
-  for (const attack of ['early-input', 'wrong-target', 'wrong-lease', 'huge']) {
+it('accepts Sprites resolved-target metadata because the requested destination is fixed server-side', async () => {
+  const upstream = new Socket(); const client = new Socket();
+  const ticket = await desktopTicket(runnerKey, businessId, ownerId, controlId);
+  const ready = bridgeSpritesDesktop(upstream.socket(), client.socket(), ticket);
+  upstream.message('{"status":"connected","target":"127.0.0.1:5901"}');
+  upstream.message(bytes('{"ok":true}\nRFB 003.008\n')); await ready;
+  expect(new TextDecoder().decode(client.sent[0] as Uint8Array)).toBe('RFB 003.008\n');
+});
+
+it('refuses input before authentication, failed proxy status and malformed prefacing data', async () => {
+  for (const attack of ['early-input', 'failed-proxy', 'wrong-lease', 'huge']) {
     const upstream = new Socket(); const client = new Socket();
     const ready = bridgeSpritesDesktop(upstream.socket(), client.socket(), await desktopTicket(runnerKey, businessId, ownerId, controlId));
     const rejected = expect(ready).rejects.toThrow('Desktop unavailable');
     if (attack === 'early-input') client.message(bytes('key'));
-    else if (attack === 'wrong-target') upstream.message('{"status":"connected","target":"localhost:8642"}');
+    else if (attack === 'failed-proxy') upstream.message('{"status":"error","target":"localhost:5901"}');
     else if (attack === 'huge') upstream.message('x'.repeat(257));
     else { upstream.message('{"status":"connected","target":"localhost:5901"}'); upstream.message(bytes('{"ok":false}\nprivate')); }
     await rejected; expect(client.closed).toBe(true); expect(upstream.closed).toBe(true); expect(client.sent).toHaveLength(0);

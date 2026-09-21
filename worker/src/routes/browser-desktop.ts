@@ -41,7 +41,13 @@ export function bridgeSpritesDesktop(upstream: WebSocket, downstream: WebSocket,
         if (phase === 'proxy') {
           if (typeof event.data !== 'string' || event.data.length > 256) { stop(); return; }
           const ack = JSON.parse(event.data);
-          if (ack.status !== 'connected' || ack.target !== 'localhost:5901') { stop(); return; }
+          /* Sprites may report a resolved loopback address in `target`
+             (for example 127.0.0.1 rather than the `localhost` we sent).
+             Their official SDK treats that field as informational and
+             admits the tunnel from `status` alone. The destination remains
+             fixed by our server-authored init message immediately below; no
+             browser-controlled host or port reaches this connection. */
+          if (ack.status !== 'connected') { stop(); return; }
           phase = 'lease';
           upstream.send(new TextEncoder().encode(`${JSON.stringify(ticket)}\n`));
           return;
