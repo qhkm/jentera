@@ -214,6 +214,30 @@
   }
   .dashboard-shell .activity-inbox-row .outcome-receipt-action { min-width: 0; }
 }
+.agent-memory-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 16px;
+}
+.agent-memory-copy { width: min(100%, 78ch); }
+.agent-memory-actions { min-width: 112px; justify-content: flex-end; padding-left: 16px; border-left: 1px solid var(--rail); }
+@media (max-width: 640px) {
+  .agent-memory-row { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .agent-memory-actions { min-width: 0; justify-content: flex-start; padding: 10px 0 0; border-top: 1px solid var(--rail); border-left: 0; }
+}
+.activity-fallback-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(220px, 20vw, 300px);
+  gap: clamp(24px, 4vw, 64px);
+}
+.activity-fallback-main { display: flex; width: min(100%, 78ch); min-width: 0; flex-direction: column; gap: 10px; }
+.activity-fallback-side { display: flex; min-width: 0; flex-direction: column; align-items: flex-end; gap: 14px; padding-left: clamp(16px, 2vw, 28px); border-left: 1px solid var(--rail); }
+@media (max-width: 720px) {
+  .activity-fallback-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .activity-fallback-side { align-items: flex-start; padding: 12px 0 0; border-top: 1px solid var(--rail); border-left: 0; }
+  .activity-fallback-side > div { justify-content: flex-start; }
+}
 .dashboard-shell
   :is(.library-card.card, .connector-card, .routine-card.card, .goal-card.card) {
   padding: 16px;

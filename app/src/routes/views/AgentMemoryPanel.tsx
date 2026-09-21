@@ -96,15 +96,15 @@ export default function AgentMemoryPanel() {
                     {file.entries.map((entry) => {
                       const key = `${profile.profile}:${file.file}:${entry.index}`;
                       return (
-                        <li key={key} className="flex flex-wrap items-start justify-between gap-2 rounded-item border border-border px-3 py-2">
-                          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[13px]">{entry.text}</span>
+                        <li key={key} className="agent-memory-row rounded-item border border-border px-3 py-2">
+                          <span className="agent-memory-copy min-w-0 whitespace-pre-wrap break-words text-[13px]">{entry.text}</span>
                           {repo.forgetAgentMemory && (confirming === key ? (
-                            <span className="flex items-center gap-1">
+                            <span className="agent-memory-actions flex items-center gap-1">
                               <Button variant="outline" onClick={() => setConfirming(null)}>Keep</Button>
                               <Button disabled={forgetting} onClick={() => void forget(profile.profile, file.file, entry.text)} aria-label={`Confirm forgetting: ${entry.text.slice(0, 40)}`}>Yes, forget</Button>
                             </span>
                           ) : (
-                            <Button variant="outline" onClick={() => setConfirming(key)} aria-label={`Forget: ${entry.text.slice(0, 40)}`}>Forget</Button>
+                            <span className="agent-memory-actions"><Button variant="outline" onClick={() => setConfirming(key)} aria-label={`Forget: ${entry.text.slice(0, 40)}`}>Forget</Button></span>
                           ))}
                         </li>
                       );

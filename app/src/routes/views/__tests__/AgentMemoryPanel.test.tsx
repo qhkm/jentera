@@ -43,13 +43,18 @@ describe('what Jentera has picked up', () => {
     ]);
     expect(screen.getByRole('region', { name: 'Growth and marketing' })).toHaveTextContent('Cron delivery has no platform here.');
     expect(screen.getByText('4 notes')).toBeInTheDocument();
+    const row = within(people).getAllByRole('listitem')[0];
+    expect(row).toHaveClass('agent-memory-row');
+    expect(row.querySelector('.agent-memory-copy')).toHaveTextContent('qhkm prefers English replies.');
   });
 
   it('forgets an entry after a confirm step and drops it from the list', async () => {
     const forgetAgentMemory = vi.fn(async () => {});
     mount(MEMORY, { forgetAgentMemory });
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'Forget: favourite colour: teal' }));
+    const forget = await screen.findByRole('button', { name: 'Forget: favourite colour: teal' });
+    expect(forget.closest('.agent-memory-actions')).toBeInTheDocument();
+    await user.click(forget);
     expect(forgetAgentMemory).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Confirm forgetting: favourite colour: teal' }));
     expect(forgetAgentMemory).toHaveBeenCalledWith({ profile: 'default', file: 'USER.md', text: 'favourite colour: teal' });

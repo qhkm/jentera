@@ -54,7 +54,6 @@ export default function NotificationsView({ state, onOpenTask, onOpenRoutine, on
               <span className="notification-title-row">
                 <strong>{summary ? t(`notifications.summary.${summary.period}`) : item.title}</strong>
                 {!item.readAt && <span className="notification-dot"><span className="sr-only">{t('notifications.unread')}</span></span>}
-                {summary && <time dateTime={item.createdAt}>{summaryDate(item.createdAt)}</time>}
               </span>
               {summary ? <>
                 <span className="notification-summary-metrics">
@@ -68,9 +67,12 @@ export default function NotificationsView({ state, onOpenTask, onOpenRoutine, on
                   {t(`notifications.summary.attention.${summary.failed === 1 ? 'one' : 'many'}`, { n: summary.failed })}
                 </span>}
                 <span className="notification-summary-open">{t('notifications.summary.open')}<ArrowRight size={15} aria-hidden="true" /></span>
-              </> : <><span className={item.runId || item.routineId ? 'notification-body-preview' : undefined}>{item.body}</span><time dateTime={item.createdAt}>{date(item.createdAt)}</time></>}
+              </> : <span className={item.runId || item.routineId ? 'notification-body-preview' : undefined}>{item.body}</span>}
             </span>
-            {!summary && <ArrowUpRight className="notification-arrow" size={18} aria-hidden="true" />}
+            <span className="notification-side">
+              <time dateTime={item.createdAt}>{summary ? summaryDate(item.createdAt) : date(item.createdAt)}</time>
+              {summary ? <ArrowRight className="notification-arrow" size={18} aria-hidden="true" /> : <ArrowUpRight className="notification-arrow" size={18} aria-hidden="true" />}
+            </span>
           </button>
         </li>;
       })}

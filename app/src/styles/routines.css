@@ -22,11 +22,14 @@
 .routine-link { display: inline-flex; gap: 8px; align-items: center; min-height: 44px; text-align: left; text-decoration: none; }
 .routine-link:hover { text-decoration: underline; text-underline-offset: 4px; }
 .routine-list, .routine-detail { display: flex; flex-direction: column; gap: 14px; }
-.routine-card.card { display: flex; flex-direction: row; align-items: flex-start; padding: 22px; gap: 18px; text-align: left; }
+.routine-card.card { display: grid; grid-template-columns: auto minmax(0, 1fr) clamp(220px, 22vw, 320px); align-items: flex-start; padding: 22px; gap: 18px; text-align: left; }
 .routine-job-icon { padding: 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg); flex-shrink: 0; }
 .routine-card-copy { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 7px; }
 .routine-card-copy strong { font-size: 1.125rem; overflow-wrap: anywhere; }
-.routine-card-arrow { margin-top: 5px; color: var(--text-muted); flex-shrink: 0; }
+.routine-card-side { display: flex; min-width: 0; flex-direction: column; align-items: flex-end; gap: 7px; padding-left: 20px; border-left: 1px solid var(--rail); }
+.routine-card-status { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; }
+.routine-card-side > span:not(.routine-card-status) { text-align: right; }
+.routine-card-arrow { color: var(--text-muted); flex-shrink: 0; }
 .routine-latest { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; padding-top: 4px; color: var(--text-secondary); }
 .routine-status { display: inline-flex; align-items: center; gap: 7px; font-size: var(--workspace-body); white-space: nowrap; color: var(--text-secondary); }
 .routine-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
@@ -118,6 +121,11 @@
 .bottom-nav-sheet li button[aria-current='page'] { color: var(--brand); }
 .bottom-nav-sheet li button .unread { margin-left: auto; position: static; }
 @media (max-width: 1100px) { .routine-starter-grid { grid-template-columns: 1fr; } }
+@media (max-width: 700px) {
+  .routine-card.card { grid-template-columns: auto minmax(0, 1fr); }
+  .routine-card-side { grid-column: 2; align-items: flex-start; padding: 12px 0 0; border-top: 1px solid var(--rail); border-left: 0; }
+  .routine-card-side > span:not(.routine-card-status) { text-align: left; }
+}
 @media (max-width: 600px) {
   .routines-view { gap: 20px; }
   .routine-page-heading { flex-wrap: wrap; }

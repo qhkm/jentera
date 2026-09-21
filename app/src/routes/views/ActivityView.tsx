@@ -368,39 +368,43 @@ export default function ActivityView({
             const args = Object.entries(a.args ?? {});
             const opLabel = t(`appr.op.${a.op}`);
             return (
-              <Card key={a.id}>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <Avatar>
-                      <Icon name="shield" size={17} />
-                    </Avatar>
-                    <div className="flex flex-col">
-                      <span className="text-sm">
-                        {opLabel === `appr.op.${a.op}` ? a.op : opLabel} · {a.conn}
-                      </span>
-                      <span className="text-[11px] text-text-muted">
-                        {new Date(a.ts).toLocaleString()}
-                      </span>
+              <Card key={a.id} className="activity-fallback-card">
+                <div className="activity-fallback-layout">
+                  <div className="activity-fallback-main">
+                    <div className="flex items-center gap-3">
+                      <Avatar>
+                        <Icon name="shield" size={17} />
+                      </Avatar>
+                      <div className="flex flex-col">
+                        <span className="text-sm">
+                          {opLabel === `appr.op.${a.op}` ? a.op : opLabel} · {a.conn}
+                        </span>
+                        <span className="text-[11px] text-text-muted">
+                          {new Date(a.ts).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                    {args.length ? (
+                      <p className="text-[12px] text-text-secondary">
+                        {args.map(([k, v]) => `${k}: ${String(v)}`).join(' · ')}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="activity-fallback-side">
+                    <Tag tone={riskTone(a.risk)}>{t(`appr.risk.${a.risk}`)}</Tag>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        className="px-4 py-1.5 text-xs"
+                        onClick={() => void decideTool(a, false)}
+                      >
+                        {t('appr.reject')}
+                      </Button>
+                      <Button className="px-4 py-1.5 text-xs" onClick={() => void decideTool(a, true)}>
+                        {t('appr.approve')}
+                      </Button>
                     </div>
                   </div>
-                  <Tag tone={riskTone(a.risk)}>{t(`appr.risk.${a.risk}`)}</Tag>
-                </div>
-                {args.length ? (
-                  <p className="text-[12px] text-text-secondary">
-                    {args.map(([k, v]) => `${k}: ${String(v)}`).join(' · ')}
-                  </p>
-                ) : null}
-                <div className="flex justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    className="px-4 py-1.5 text-xs"
-                    onClick={() => void decideTool(a, false)}
-                  >
-                    {t('appr.reject')}
-                  </Button>
-                  <Button className="px-4 py-1.5 text-xs" onClick={() => void decideTool(a, true)}>
-                    {t('appr.approve')}
-                  </Button>
                 </div>
               </Card>
             );
@@ -422,34 +426,38 @@ export default function ActivityView({
             const approved = b.workDone(i);
             const needsYou = !approved && w.tag === 'needs you';
             return (
-              <Card key={`${w.n}-${i}`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <Avatar emoji={w.e} />
-                    <div className="flex flex-col gap-1">
-                      <span className="text-sm font-semibold">{w.n}</span>
-                      <span className="text-[11px] text-text-muted">{w.t}</span>
+              <Card key={`${w.n}-${i}`} className="activity-fallback-card">
+                <div className="activity-fallback-layout">
+                  <div className="activity-fallback-main">
+                    <div className="flex items-start gap-3">
+                      <Avatar emoji={w.e} />
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm font-semibold">{w.n}</span>
+                        <span className="text-[11px] text-text-muted">{w.t}</span>
+                      </div>
                     </div>
+                    <p className="text-[13px] text-text-secondary">{w.d}</p>
                   </div>
-                  <Tag tone={approved ? 'green' : toneFor(w.tc)}>
-                    {approved ? 'approved ✓' : w.tag}
-                  </Tag>
+                  <div className="activity-fallback-side">
+                    <Tag tone={approved ? 'green' : toneFor(w.tc)}>
+                      {approved ? 'approved ✓' : w.tag}
+                    </Tag>
+                    {needsYou ? (
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button className="px-4 py-1.5 text-xs" onClick={() => approve(w, i)}>
+                          {t('work.approve')}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="px-4 py-1.5 text-xs"
+                          onClick={() => toast(t('uc.preparing'), 'neutral')}
+                        >
+                          {t('work.edit')}
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-                <p className="text-[13px] text-text-secondary">{w.d}</p>
-                {needsYou ? (
-                  <div className="flex flex-wrap gap-2">
-                    <Button className="px-4 py-1.5 text-xs" onClick={() => approve(w, i)}>
-                      {t('work.approve')}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="px-4 py-1.5 text-xs"
-                      onClick={() => toast(t('uc.preparing'), 'neutral')}
-                    >
-                      {t('work.edit')}
-                    </Button>
-                  </div>
-                ) : null}
               </Card>
             );
           })}

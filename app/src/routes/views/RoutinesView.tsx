@@ -325,12 +325,15 @@ export default function RoutinesView({ api, active, selectedId, onSelect, onOpen
           const Icon = JOB_ICONS[routine.task.kind];
           return <button type="button" className="routine-card card" key={routine.id} onClick={() => onSelect(routine.id)} aria-label={t('routines.open', { name: routine.name })}>
             <span className="routine-job-icon"><Icon size={24} weight="duotone" aria-hidden="true" /></span>
-            <span className="routine-card-copy"><span className="routine-row-heading"><strong>{routine.name}</strong><Status value={routine.status} routine /></span>
+            <span className="routine-card-copy"><strong>{routine.name}</strong>
               <span>{scheduleLabel(routine.schedule, lang, t)}</span>
+            </span>
+            <span className="routine-card-side">
+              <span className="routine-card-status"><Status value={routine.status} routine /><ArrowUpRight className="routine-card-arrow" size={18} aria-hidden="true" /></span>
               <span className="routine-muted">{routine.nextRunAt && routine.status === 'active' && caps?.canSchedule
                 ? `${t('routines.next')}: ${routineDate(routine.nextRunAt, lang)}` : t('routines.noNext')}</span>
               <span className="routine-latest">{routine.lastOccurrence ? <>{t('routines.latest')}<Status value={routine.lastOccurrence.status} /></> : t('routines.notRun')}</span>
-            </span><ArrowUpRight className="routine-card-arrow" size={18} aria-hidden="true" />
+            </span>
           </button>;
         })}
       </div>}

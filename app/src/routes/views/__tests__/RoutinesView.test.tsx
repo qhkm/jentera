@@ -71,6 +71,15 @@ async function startCreate(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('routine creation and confirmation', () => {
+  it('keeps routine details and operational metadata in separate blocks', async () => {
+    const { api } = fixture([routineFixture()]);
+    await mount(api);
+    const card = await screen.findByRole('button', { name: /Open.*Morning business summary/i });
+    expect(card).toHaveClass('routine-card');
+    expect(card.querySelector('.routine-card-copy')).toHaveTextContent('Morning business summary');
+    expect(card.querySelector('.routine-card-side')).toHaveTextContent('Active');
+  });
+
   it('accepts a library draft after capability loading and keeps it paused', async () => {
     const { api } = fixture();
     const consumed = vi.fn();
