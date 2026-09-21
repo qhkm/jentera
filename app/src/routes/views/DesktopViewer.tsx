@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, CornersIn, ArrowClockwise, HandPalm, Minus, Plus, CaretDown } from '@phosphor-icons/react';
+import { Keyboard, CornersIn, ArrowClockwise, HandPalm, Minus, Plus, CaretDown, ClipboardText } from '@phosphor-icons/react';
 import type RFB from '@novnc/novnc';
 import { useRepository } from '@/lib/repo';
 import { useT } from '@/i18n/I18nProvider';
@@ -130,15 +130,32 @@ export default function DesktopViewer({ controlId, onControlLost }: { controlId:
     composing.current = false; generation.current++;
     if (keyboard.current) { keyboard.current.value = SENTINEL; keyboard.current.blur(); }
   }
-  function consume(input: HTMLInputElement) {
-    const value = input.value.replaceAll(SENTINEL, ''); input.value = SENTINEL; input.setSelectionRange(1, 1);
-    if (!ready.current || value.length > 4096) return;
-    // Unicode key events, NOT remote clipboard insertion. Pasted newlines do
-    // not submit forms; use the explicit Enter control when ready to submit.
+  function typeText(value: string) {
+    if (!ready.current || !value || value.length > 4096) return false;
+    // Type the pasted value into the already-focused remote field. This is
+    // deliberately not clipboard sync: nothing is retained on either side,
+    // and a reconnect can never replay it.
     for (const char of value) {
       const point = char.codePointAt(0)!;
       if (point < 32 || point === 127) continue;
       rfb.current?.sendKey(point <= 255 ? point : 0x01000000 | point);
+    }
+    return true;
+  }
+  function consume(input: HTMLInputElement) {
+    const value = input.value.replaceAll(SENTINEL, ''); input.value = SENTINEL; input.setSelectionRange(1, 1);
+    // Pasted newlines do not submit forms; use the explicit Enter control.
+    typeText(value);
+  }
+  async function pasteLocalClipboard() {
+    if (!ready.current) return;
+    try {
+      const text = await navigator.clipboard.readText();
+      typeText(text);
+    } catch {
+      // Clipboard reads can be denied by iOS or browser permissions. Focus the
+      // input so the platform's native Paste menu remains a reliable fallback.
+      keyboard.current?.focus();
     }
   }
 
@@ -344,6 +361,12 @@ export default function DesktopViewer({ controlId, onControlLost }: { controlId:
           <input ref={keyboard} aria-label={t('browser.desktop.keyboard')} type="password" defaultValue={SENTINEL}
             disabled={phase !== 'ready'} autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false}
             onFocus={event => { setShowKeys(true); event.currentTarget.setSelectionRange(1, 1); }}
+            onPaste={event => {
+              const text = event.clipboardData.getData('text/plain');
+              if (!text) return;
+              event.preventDefault(); event.stopPropagation(); typeText(text);
+              event.currentTarget.value = SENTINEL; event.currentTarget.setSelectionRange(1, 1);
+            }}
             onInput={event => { event.stopPropagation(); if (!composing.current && !(event.nativeEvent as InputEvent).isComposing) consume(event.currentTarget); }}
             onCompositionStart={() => { composing.current = true; compositionGeneration.current = generation.current; }}
             onCompositionEnd={event => { composing.current = false; if (compositionGeneration.current === generation.current) consume(event.currentTarget); else event.currentTarget.value = SENTINEL; }}
@@ -360,13 +383,18 @@ export default function DesktopViewer({ controlId, onControlLost }: { controlId:
       </div>
       <div className={`business-desktop-secondary-actions${showKeys ? ' has-keys' : ''}`}>
         <span>{t(pan ? 'browser.desktop.hint.pan' : 'browser.desktop.hint.interact')}</span>
-        {showKeys && <div className="business-desktop-keys" role="group" aria-label={t('browser.keys')}>
-          {['Tab', 'Enter', 'Backspace'].map(key => <button type="button" key={key} disabled={phase !== 'ready'}
-            onClick={() => { if (ready.current) rfb.current?.sendKey(KEYS[key]); }}>{key}</button>)}
-          <button type="button" className="business-desktop-hide-keys" aria-label={t('browser.desktop.hideKeys')} onClick={() => {
-            keyboard.current?.blur(); setShowKeys(false);
-          }}><CaretDown size={17} aria-hidden="true" /></button>
-        </div>}
+        <div className="business-desktop-keys" role="group" aria-label={t('browser.keys')}>
+          <button type="button" className="business-desktop-paste" disabled={phase !== 'ready'} onClick={() => void pasteLocalClipboard()}>
+            <ClipboardText size={17} aria-hidden="true" /><span>{t('browser.desktop.paste')}</span>
+          </button>
+          {showKeys && <>
+            {['Tab', 'Enter', 'Backspace'].map(key => <button type="button" key={key} disabled={phase !== 'ready'}
+              onClick={() => { if (ready.current) rfb.current?.sendKey(KEYS[key]); }}>{key}</button>)}
+            <button type="button" className="business-desktop-hide-keys" aria-label={t('browser.desktop.hideKeys')} onClick={() => {
+              keyboard.current?.blur(); setShowKeys(false);
+            }}><CaretDown size={17} aria-hidden="true" /></button>
+          </>}
+        </div>
       </div>
     </div>
   </section>;

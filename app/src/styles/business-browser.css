@@ -261,6 +261,7 @@
   .business-browser-dialog.has-desktop .business-desktop-primary-actions { grid-template-columns: 44px minmax(126px, 1fr) 44px 44px; }
   .business-browser-dialog.has-desktop .business-desktop-fit > span,
   .business-browser-dialog.has-desktop .business-desktop-move > span { display: none; }
+  .business-browser-dialog.has-desktop .business-desktop-paste > span { display: none; }
   .business-browser-dialog.has-desktop .business-desktop-secondary-actions > span { overflow: hidden; text-overflow: ellipsis; }
 }
 @media (max-width: 640px) {

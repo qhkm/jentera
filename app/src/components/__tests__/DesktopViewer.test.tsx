@@ -161,6 +161,29 @@ it('types/pastes Unicode through native keys, clears ephemeral text and never tu
   fireEvent.input(input, { target: { value: 'never-replay' } });
   expect(mocks.clients[0].sendKey.mock.calls.length).toBe(count); expect(input).toHaveValue('\u200b');
 });
+it('handles the native paste event directly and offers an explicit local clipboard action', async () => {
+  const user = userEvent.setup(); mount();
+  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  const input = await screen.findByLabelText('Keyboard / paste'); await waitFor(() => expect(input).toBeEnabled());
+  fireEvent.paste(input, { clipboardData: { getData: (type: string) => type === 'text/plain' ? 'copy✓\n' : '' } });
+  expect(mocks.clients[0].sendKey.mock.calls.map(call => call[0])).toEqual([99, 111, 112, 121, 0x01002713]);
+  expect(input).toHaveValue('\u200b');
+
+  const descriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  const readText = vi.fn().mockResolvedValue('local paste');
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { readText } });
+  mocks.clients[0].sendKey.mockClear();
+  try {
+    await user.click(screen.getByRole('button', { name: 'Paste' }));
+    await waitFor(() => expect(readText).toHaveBeenCalledOnce());
+    expect(mocks.clients[0].sendKey.mock.calls.map(call => call[0])).toEqual(
+      Array.from('local paste', char => char.codePointAt(0)),
+    );
+  } finally {
+    if (descriptor) Object.defineProperty(navigator, 'clipboard', descriptor);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  }
+});
 it('disconnects the desktop before explicit hand-back and preserves the existing pause contract', async () => {
   const user = userEvent.setup(); const { browser } = mount();
   await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
