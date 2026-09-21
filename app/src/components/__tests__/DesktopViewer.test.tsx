@@ -7,10 +7,31 @@ import { LocalRepository } from '@/lib/repo/local';
 import type { Repository, BrowserCommand, BusinessBrowserState } from '@/lib/repo/types';
 import BusinessBrowser from '@/routes/views/BusinessBrowser';
 
-const mocks = vi.hoisted(() => ({ clients: [] as (EventTarget & { disconnect: ReturnType<typeof vi.fn>; sendKey: ReturnType<typeof vi.fn>; clipViewport: boolean; dragViewport: boolean; scaleViewport: boolean })[], calls: [] as unknown[][] }));
+const mocks = vi.hoisted(() => ({ clients: [] as (EventTarget & {
+  disconnect: ReturnType<typeof vi.fn>;
+  sendKey: ReturnType<typeof vi.fn>;
+  clipViewport: boolean;
+  dragViewport: boolean;
+  scaleViewport: boolean;
+  _canvas: HTMLCanvasElement;
+  _display: { scale: number; width: number; height: number };
+  _screen: HTMLDivElement;
+})[], calls: [] as unknown[][] }));
 vi.mock('@novnc/novnc', () => ({ default: class extends EventTarget {
-  disconnect = vi.fn(); sendKey = vi.fn(); clipViewport = false; dragViewport = false; scaleViewport = false;
-  constructor(...args: unknown[]) { super(); mocks.calls.push(args); mocks.clients.push(this); queueMicrotask(() => this.dispatchEvent(new Event('connect'))); }
+  disconnect = vi.fn(); sendKey = vi.fn(); dragViewport = false;
+  _clipViewport = false; _scaleViewport = false;
+  _canvas = document.createElement('canvas');
+  _display = { scale: 1, width: 1280, height: 720 };
+  _screen = document.createElement('div');
+  get clipViewport() { return this._clipViewport; }
+  set clipViewport(value: boolean) { this._clipViewport = value; }
+  get scaleViewport() { return this._scaleViewport; }
+  set scaleViewport(value: boolean) { this._scaleViewport = value; if (!value) this._display.scale = 1; }
+  constructor(...args: unknown[]) {
+    super(); mocks.calls.push(args);
+    this._screen.appendChild(this._canvas); (args[0] as HTMLElement).appendChild(this._screen);
+    mocks.clients.push(this); queueMicrotask(() => this.dispatchEvent(new Event('connect')));
+  }
 } }));
 beforeEach(() => {
   localStorage.clear(); mocks.clients.length = 0; mocks.calls.length = 0;
@@ -32,8 +53,13 @@ it('uses actual-size pixels, survives rotation, and keeps explicit pan mode on a
   await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
   await waitFor(() => expect(mocks.clients).toHaveLength(1));
   expect(mocks.clients[0].scaleViewport).toBe(false);
-  expect(mocks.clients[0].clipViewport).toBe(true);
+  expect(mocks.clients[0].clipViewport).toBe(false);
   expect(mocks.clients[0].dragViewport).toBe(false);
+  expect(screen.queryByRole('button', { name: 'Enter' })).toBeNull();
+  await user.click(screen.getByLabelText('Keyboard / paste'));
+  expect(screen.getByRole('button', { name: 'Enter' })).toBeVisible();
+  await user.click(screen.getByRole('button', { name: 'Hide keyboard shortcuts' }));
+  expect(screen.queryByRole('button', { name: 'Enter' })).toBeNull();
   const modal = screen.getByRole('dialog');
   expect(modal).toHaveStyle({ '--browser-vvw': '390px', '--browser-vvh': '844px' });
   act(() => {
@@ -44,14 +70,53 @@ it('uses actual-size pixels, survives rotation, and keeps explicit pan mode on a
   await waitFor(() => expect(modal).toHaveStyle({ '--browser-vvw': '844px', '--browser-vvh': '390px' }));
   expect(mocks.clients).toHaveLength(1);
   expect(mocks.clients[0].scaleViewport).toBe(false);
-  expect(mocks.clients[0].clipViewport).toBe(true);
-  await user.click(screen.getByRole('button', { name: 'Pan screen' }));
-  expect(mocks.clients[0].dragViewport).toBe(true);
+  expect(mocks.clients[0].clipViewport).toBe(false);
+  const move = screen.getByRole('button', { name: 'Pan screen' });
+  await user.click(move);
+  expect(move).toHaveAttribute('aria-pressed', 'true');
+  mocks.clients[0]._screen.scrollLeft = 100;
+  act(() => {
+    mocks.clients[0]._canvas.dispatchEvent(new CustomEvent('gesturestart', { detail: { type: 'drag', clientX: 100, clientY: 100 } }));
+    mocks.clients[0]._canvas.dispatchEvent(new CustomEvent('gesturemove', { detail: { type: 'drag', clientX: 50, clientY: 100 } }));
+    mocks.clients[0]._canvas.dispatchEvent(new CustomEvent('gestureend', { detail: { type: 'drag', clientX: 50, clientY: 100 } }));
+  });
+  expect(mocks.clients[0]._screen.scrollLeft).toBe(150);
   await user.click(screen.getByRole('button', { name: 'Interact with screen' }));
   expect(mocks.clients[0].dragViewport).toBe(false);
-  await user.click(screen.getByRole('button', { name: 'Fit view' }));
+  await user.click(screen.getByRole('button', { name: 'Fit' }));
   expect(mocks.clients[0].scaleViewport).toBe(true);
   expect(mocks.clients[0].clipViewport).toBe(false);
+});
+
+it('zooms the local desktop with pinch without leaking Ctrl-wheel to the remote browser', async () => {
+  const viewport = Object.assign(new EventTarget(), { width: 390, height: 844, offsetTop: 0, offsetLeft: 0, scale: 1 });
+  vi.stubGlobal('visualViewport', viewport);
+  Object.defineProperty(window, 'matchMedia', { configurable: true, writable: true, value: vi.fn().mockImplementation(() => ({
+    matches: true, media: '(max-width: 640px)', onchange: null, addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+  })) });
+  const user = userEvent.setup(); mount();
+  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  await waitFor(() => expect(mocks.clients).toHaveLength(1));
+  const client = mocks.clients[0];
+  const leakedGesture = vi.fn();
+  client._canvas.addEventListener('gesturemove', leakedGesture);
+
+  const gesture = (type: string, magnitude: number) => new CustomEvent(type, { detail: {
+    type: 'pinch', clientX: 120, clientY: 180, magnitudeX: magnitude, magnitudeY: 0,
+  } });
+  act(() => {
+    client._canvas.dispatchEvent(gesture('gesturestart', 100));
+    client._canvas.dispatchEvent(gesture('gesturemove', 150));
+    client._canvas.dispatchEvent(gesture('gestureend', 150));
+  });
+
+  expect(client._display.scale).toBe(1.5);
+  expect(screen.getByRole('button', { name: 'Actual size' })).toHaveTextContent('150%');
+  expect(leakedGesture).not.toHaveBeenCalled();
+  expect(client.sendKey).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button', { name: 'Zoom out' }));
+  expect(client._display.scale).toBe(1.25);
+  expect(screen.getByRole('button', { name: 'Actual size' })).toHaveTextContent('125%');
 });
 function mount(capability = true) {
   const browser = vi.fn(async (command?: BrowserCommand): Promise<BusinessBrowserState> => ({

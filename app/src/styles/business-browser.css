@@ -102,29 +102,46 @@
 .business-browser-control-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 8px; }
 .business-browser-control-actions .btn { min-height: 44px; padding-inline: 18px; font-size: 12px; }
 .business-desktop { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; border: 1px solid var(--rail); border-radius: 10px; overflow: hidden; background: #101412; }
-.business-desktop-stage { flex: 1; min-width: 0; min-height: 0; height: 65dvh; overflow: auto; overscroll-behavior: contain; }
+.business-desktop-stage-shell { position: relative; flex: 1; min-width: 0; min-height: 0; height: 65dvh; overflow: hidden; }
+.business-desktop-stage { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; overscroll-behavior: contain; touch-action: none; }
 .business-desktop-stage canvas { outline-offset: -3px; }
 .business-desktop.is-panning .business-desktop-stage { cursor: grab; touch-action: none; }
 .business-desktop.is-panning .business-desktop-stage:active { cursor: grabbing; }
 .business-desktop-stage canvas:focus-visible { outline: 2px solid var(--accent-green); }
-.business-desktop-status { position: absolute; inset: 0 0 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: #101412; color: #e4eae7; }
+.business-desktop-status { position: absolute; z-index: 2; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: #101412; color: #e4eae7; }
 .business-desktop-status p { font-size: 14px; }
 .business-desktop-status button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 14px; border: 1px solid var(--border-light); border-radius: 10px; }
 .business-desktop-toolbar { display: flex; flex: 0 0 auto; justify-content: space-between; align-items: center; gap: 12px; padding: 4px 8px; border-top: 1px solid var(--rail); background: var(--bg); }
-.business-desktop-toolbar > span { min-width: 0; color: var(--text-muted); font-size: 12px; }
-.business-desktop-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-.business-desktop-actions > button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 8px; border-radius: 8px; font-size: 12px; color: var(--text-secondary); }
-.business-desktop-actions > button:hover:not(:disabled) { background: var(--bg-card-hover); }
-.business-desktop-mobile-keyboard { display: flex; position: relative; align-items: center; gap: 6px; width: 152px; min-height: 44px; padding-left: 8px; border-radius: 8px; color: var(--text-secondary); }
-.business-desktop-mobile-keyboard:focus-within { outline: 1px solid var(--accent-green); }
+.business-desktop-primary-actions,
+.business-desktop-secondary-actions,
+.business-desktop-keys { display: flex; min-width: 0; align-items: center; gap: 4px; }
+.business-desktop-primary-actions > button,
+.business-desktop-zoom button,
+.business-desktop-keys button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 44px; min-height: 44px; padding: 7px 9px; border-radius: 8px; color: var(--text-secondary); font-size: 12px; }
+.business-desktop-primary-actions > button:hover:not(:disabled),
+.business-desktop-zoom button:hover:not(:disabled),
+.business-desktop-keys button:hover:not(:disabled) { background: var(--bg-card-hover); }
+.business-desktop-primary-actions > button[aria-pressed="true"] { background: rgb(var(--accent-green-rgb) / .1); color: var(--accent-green); box-shadow: inset 0 0 0 1px rgb(var(--accent-green-rgb) / .28); }
+.business-desktop-zoom { display: grid; flex: 0 0 auto; grid-template-columns: 44px minmax(50px, auto) 44px; align-items: stretch; border: 1px solid var(--rail); border-radius: 9px; overflow: hidden; background: var(--bg-card); }
+.business-desktop-zoom button { border-radius: 0; }
+.business-desktop-zoom button + button { border-left: 1px solid var(--rail); }
+.business-desktop-zoom .business-desktop-zoom-value { min-width: 50px; padding-inline: 6px; color: var(--text); font-variant-numeric: tabular-nums; }
+.business-desktop-secondary-actions { flex: 1; justify-content: flex-end; }
+.business-desktop-secondary-actions > span { min-width: 0; color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+.business-desktop-keys button { border: 1px solid var(--rail); background: var(--bg-card); }
+.business-desktop-keys .business-desktop-hide-keys { display: none; }
+.business-desktop-mobile-keyboard { display: flex; position: relative; align-items: center; justify-content: center; gap: 6px; min-width: 132px; min-height: 44px; padding-inline: 9px; border-radius: 8px; color: var(--text-secondary); }
+.business-desktop-mobile-keyboard:focus-within { color: var(--accent-green); outline: 1px solid var(--accent-green); background: rgb(var(--accent-green-rgb) / .1); }
 .business-desktop-mobile-keyboard input { position: absolute; inset: 0; width: 100%; min-height: 44px; padding: 8px; border: 0; background: transparent; color: transparent; caret-color: transparent; font-size: 16px; }
 .business-desktop-mobile-keyboard span { pointer-events: none; font-size: 12px; }
 @media (max-width: 960px) {
-  .business-desktop-stage { flex: none; height: min(58dvh, 560px); }
-  .business-desktop-toolbar { flex-wrap: wrap; }
-  .business-desktop-actions { width: 100%; justify-content: space-between; }
-  .business-desktop-toolbar > span { width: 100%; font-size: 11px; }
-  .business-desktop-status { inset-block-end: 100px; }
+  .business-desktop-stage-shell { flex: none; height: min(58dvh, 560px); }
+  .business-desktop-toolbar { flex-direction: column; gap: 3px; }
+  .business-desktop-primary-actions,
+  .business-desktop-secondary-actions { width: 100%; }
+  .business-desktop-primary-actions { justify-content: center; }
+  .business-desktop-secondary-actions { justify-content: space-between; }
+  .business-desktop-keys .business-desktop-hide-keys { display: inline-flex; }
 }
 @media (min-width: 961px) {
   .business-browser-dialog {
@@ -192,39 +209,59 @@
   .business-browser-dialog.has-desktop .business-browser-header > .business-browser-icon-button { grid-column: 3; grid-row: 1; }
   .business-browser-body.has-desktop { display: flex; flex: 1; min-height: 0; overflow: hidden; padding: 0; }
   .business-browser-body.has-desktop .business-desktop { border: 0; border-radius: 0; }
-  .business-browser-body.has-desktop .business-desktop-stage { flex: 1; height: auto; min-height: 0; }
+  .business-browser-body.has-desktop .business-desktop-stage-shell { flex: 1; height: auto; min-height: 0; }
   .business-browser-dialog.has-desktop .business-desktop-toolbar {
-    gap: 4px;
+    gap: 3px;
     padding: 4px max(4px, env(safe-area-inset-right)) 4px max(4px, env(safe-area-inset-left));
   }
-  .business-browser-dialog.has-desktop .business-desktop-toolbar > span { display: none; }
-  .business-browser-dialog.has-desktop .business-desktop-actions {
+  .business-browser-dialog.has-desktop .business-desktop-primary-actions {
+    display: grid;
+    grid-template-columns: auto minmax(126px, 1fr) auto auto;
     width: 100%;
-    flex-wrap: nowrap;
-    justify-content: flex-start;
     gap: 4px;
-    overflow-x: auto;
-    overscroll-behavior-inline: contain;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
   }
-  .business-browser-dialog.has-desktop .business-desktop-actions::-webkit-scrollbar { display: none; }
-  .business-browser-dialog.has-desktop .business-desktop-actions > button {
-    flex: 0 0 auto;
+  .business-browser-dialog.has-desktop .business-desktop-primary-actions > button,
+  .business-browser-dialog.has-desktop .business-desktop-keys button {
     border: 1px solid var(--rail);
     background: var(--bg-card);
   }
+  .business-browser-dialog.has-desktop .business-desktop-primary-actions > button[aria-pressed="true"] {
+    background: rgb(var(--accent-green-rgb) / .1);
+  }
+  .business-browser-dialog.has-desktop .business-desktop-fit,
+  .business-browser-dialog.has-desktop .business-desktop-move { padding-inline: 7px; }
   .business-browser-dialog.has-desktop .business-desktop-mobile-keyboard {
-    flex: 0 0 136px;
-    width: 136px;
+    min-width: 66px;
     border: 1px solid var(--rail);
     background: var(--bg-card);
   }
+  .business-browser-dialog.has-desktop .business-desktop-secondary-actions > span { padding-inline: 4px; }
+  .business-browser-dialog.has-desktop .business-desktop-secondary-actions.has-keys > span { display: none; }
+  .business-browser-dialog.has-desktop .business-desktop-keys { margin-left: auto; }
+  .business-browser-dialog.has-desktop .business-desktop-keys button:not(.business-desktop-hide-keys) { padding-inline: 10px; }
   .business-browser-dialog.has-desktop .business-browser-footer-note { display: none; }
   .business-browser-dialog.has-desktop .business-browser-footer {
     padding: 6px max(8px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
   }
   .business-browser-dialog.has-desktop .business-browser-control-actions { width: 100%; }
+  .business-browser-dialog.has-desktop .business-browser-restart { flex: 0 0 44px; width: 44px; padding: 0; }
+  .business-browser-dialog.has-desktop .business-browser-restart > span { display: none; }
+}
+@media (max-width: 400px) {
+  .business-browser-dialog.has-desktop .business-desktop-mobile-keyboard > span { display: none; }
+  .business-browser-dialog.has-desktop .business-desktop-mobile-keyboard { min-width: 44px; padding: 0; }
+}
+@media (pointer: coarse) and (max-height: 640px) and (min-width: 641px) {
+  .business-browser-dialog.has-desktop .business-desktop-toolbar { flex-direction: row; }
+  .business-browser-dialog.has-desktop .business-desktop-primary-actions { flex: 0 1 390px; width: auto; }
+  .business-browser-dialog.has-desktop .business-desktop-secondary-actions { flex: 1 1 auto; width: auto; }
+  .business-browser-dialog.has-desktop .business-desktop-secondary-actions > span { display: none; }
+}
+@media (max-width: 350px) {
+  .business-browser-dialog.has-desktop .business-desktop-primary-actions { grid-template-columns: 44px minmax(126px, 1fr) 44px 44px; }
+  .business-browser-dialog.has-desktop .business-desktop-fit > span,
+  .business-browser-dialog.has-desktop .business-desktop-move > span { display: none; }
+  .business-browser-dialog.has-desktop .business-desktop-secondary-actions > span { overflow: hidden; text-overflow: ellipsis; }
 }
 @media (max-width: 640px) {
   .business-browser-header { display: grid; grid-template-columns: 38px minmax(0, 1fr) 44px; gap: 9px; padding: 14px; }

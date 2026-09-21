@@ -446,9 +446,10 @@ export default function BusinessBrowser({
               keeps the profile, so every signed-in session survives, but it
               does lose whatever is typed into the current page -- hence the
               confirmation rather than a bare button. */}
-          {controlled && <Button type="button" variant="outline" disabled={busy || statusLoading}
+          {controlled && <Button type="button" className="business-browser-restart" variant="outline" disabled={busy || statusLoading}
+            aria-label={t('browser.restart')} title={t('browser.restart')}
             onClick={() => { if (window.confirm(t('browser.restart.confirm'))) void command({ action: 'restart' }); }}>
-            <ArrowClockwise size={18} aria-hidden="true" />{t('browser.restart')}</Button>}
+            <ArrowClockwise size={18} aria-hidden="true" /><span>{t('browser.restart')}</span></Button>}
           {/* Also recover a durable pause left by an abandoned/expired controller. */}
           {(controlled || state.paused) && <Button type="button" disabled={busy || statusLoading}
             onClick={() => command({ action: 'release' })}>{t('browser.handBack')}<ArrowRight size={18} aria-hidden="true" /></Button>}
