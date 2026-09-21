@@ -1,5 +1,5 @@
 import type { Env } from '../env';
-import { getRuntime, getRuntimeRegion, recordPrewarm } from '../agent-runtime';
+import { getRuntime, getRuntimeEgress, getRuntimeRegion, recordPrewarm } from '../agent-runtime';
 import { setupNotice } from '../runtime/setup-notice';
 import { withTenant } from '../db';
 import { publishRuntimeTask } from '../runtime';
@@ -41,13 +41,14 @@ export async function handleRuntime(
   }
 
   if (url.pathname === '/api/runtime' && request.method === 'GET') {
-    const { runtime, budget, observedRegion, setupStatus, setupProgress, activeWork } = await withTenant(
+    const { runtime, budget, observedRegion, egress, setupStatus, setupProgress, activeWork } = await withTenant(
       env,
       identity.businessId,
       async (tx) => ({
         runtime: await getRuntime(tx, identity.businessId),
         budget: await runtimeBudgetSnapshot(tx, identity.businessId),
         observedRegion: await getRuntimeRegion(tx, identity.businessId),
+        egress: await getRuntimeEgress(tx, identity.businessId),
         setupStatus: (await tx<{ status: string }[]>`select status from runtime_task
           where business_id = ${identity.businessId} and kind = 'provision'
           order by created_at desc limit 1`)[0]?.status ?? null,
@@ -109,6 +110,12 @@ export async function handleRuntime(
         regionStatus: !observedRegion || !expectedRegion
           ? 'unknown'
           : observedRegion === expectedRegion ? 'optimal' : 'different',
+        /* The edge a sprite reaches and the country its address belongs to
+           are different answers, and they do disagree. The country is the
+           one a website geolocates, so it is reported beside the region
+           rather than folded into it. */
+        egressCountry: egress.country,
+        egressSeenAt: egress.seenAt,
       } : null,
       budget,
     }, {}, { ...cors, 'Cache-Control': 'private, no-store' });

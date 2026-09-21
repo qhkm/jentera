@@ -25,6 +25,7 @@ import {
   renderRuntimeConfig,
 } from '../runtime/config-document';
 import { listSpecialists } from '../specialists';
+import { recordEgress, type EgressDeferral } from '../runtime/egress';
 
 export const RUNTIME_CONFIG_PATH = '/v1/runtime/config';
 
@@ -46,6 +47,7 @@ export async function handleRuntimeConfig(
   env: Env,
   url: URL,
   headers: Record<string, string>,
+  defer: EgressDeferral = {},
 ): Promise<Response | null> {
   if (url.pathname !== RUNTIME_CONFIG_PATH) return null;
   if (request.method !== 'GET') {
@@ -59,6 +61,8 @@ export async function handleRuntimeConfig(
     if (err instanceof RuntimeIdentityError) return json({ err: err.message }, err.status, headers);
     throw err;
   }
+
+  recordEgress(env, request, identity.businessId, defer);
 
   /* Keyed by rider, not IP: sprites share egress addresses, so an IP key
      would let one busy runtime brake the rest. Fails closed like AUTH_BURST. */

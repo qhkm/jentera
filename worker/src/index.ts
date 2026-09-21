@@ -139,7 +139,9 @@ export default {
 
     /* Runtime configuration, mounted here for the same reason: a sprite
        presents a runtime credential, not a session cookie. */
-    const runtimeConfig = await handleRuntimeConfig(request, env, url, headers);
+    const runtimeConfig = await handleRuntimeConfig(request, env, url, headers, {
+      waitUntil: (promise) => ctx.waitUntil(promise),
+    });
     if (runtimeConfig) return runtimeConfig;
     const calendarRuntime = await handleGoogleCalendarRuntime(request, env, url, headers);
     if (calendarRuntime) return calendarRuntime;
@@ -153,7 +155,9 @@ export default {
     if (runtimeConnect) return runtimeConnect;
     /* A task's output files, uploaded by the runner with the same credential. */
     if (url.pathname === RUNTIME_ARTIFACTS_PATH) {
-      const uploaded = await handleArtifacts(request, env, url, headers);
+      const uploaded = await handleArtifacts(request, env, url, headers, {
+      waitUntil: (promise) => ctx.waitUntil(promise),
+    });
       if (uploaded) return uploaded;
     }
 
@@ -190,7 +194,9 @@ export default {
 
     const push = await handlePush(request, env, url, headers, { ctx });
     if (push) return push;
-    const artifacts = await handleArtifacts(request, env, url, headers);
+    const artifacts = await handleArtifacts(request, env, url, headers, {
+      waitUntil: (promise) => ctx.waitUntil(promise),
+    });
     if (artifacts) return artifacts;
     /* Routines: owner-scheduled deterministic jobs, behind a flag. */
     const reminders = await handleReminders(request, env, url, headers);

@@ -49,6 +49,7 @@ import { fetchModelResponse } from '../model-fetch';
 import { runtimeModelBaseAllowed } from '../runtime/execution';
 import { getRuntime } from '../agent-runtime';
 import { connect, withTenant, withUser } from '../db';
+import { recordEgressForRider } from '../runtime/egress';
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_IMAGE_BODY_BYTES = 8 * 1024 * 1024;
@@ -91,6 +92,12 @@ export async function handleModelProxy(
     }
     throw err;
   }
+
+  /* A verified credential names its sprite, and the edge in front of this
+     request saw where that sprite is. Cheap enough to sit on the hot path:
+     an isolate-local interval keeps it to a few writes a day per sprite,
+     and everything after the check happens behind the response. */
+  recordEgressForRider(env, request, claims.rid, options);
 
   if (tail === '/models' || tail === '') {
     if (request.method !== 'GET') return jsonError(405, 'models only supports GET', headers);

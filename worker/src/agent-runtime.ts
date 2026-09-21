@@ -81,11 +81,32 @@ const toRecord = (row: RuntimeRow): AgentRuntimeRecord => ({
   observedRegion: null,
 });
 
-/** Latest authenticated region attested by a successful lifecycle task. */
+export interface RuntimeEgress {
+  /** The Cloudflare edge that took the sprite's own call: three letters,
+      comparable to a Fly region code. */
+  colo: string | null;
+  /** The country of the sprite's address, which is what a site geolocates.
+      It can disagree with the edge — one sprite answers at HKG on a
+      Singapore address. */
+  country: string | null;
+  seenAt: Date | null;
+}
+
+/** Where the sprite is, preferring what it showed us itself.
+ *
+ * The lifecycle task's `region` is kept as a fallback and nothing more: it
+ * reports `FLY_REGION`, which does not exist inside a sprite, so it has
+ * been the empty string for every business since it was written. See
+ * migration 063.
+ */
 export async function getRuntimeRegion(
   tx: postgres.TransactionSql,
   businessId: string,
 ): Promise<string | null> {
+  const [seen] = await tx<{ colo: string | null }[]>`
+    select egress_colo as colo from agent_runtime where business_id = ${businessId}`;
+  const observed = seen?.colo?.trim().toLowerCase() ?? '';
+  if (/^[a-z0-9]{3}$/.test(observed)) return observed;
   const [row] = await tx<{ region: string | null }[]>`
     select result->>'region' as region
       from runtime_task
@@ -98,6 +119,29 @@ export async function getRuntimeRegion(
      limit 1`;
   const region = row?.region?.trim().toLowerCase() ?? '';
   return /^[a-z0-9]{3}$/.test(region) ? region : null;
+}
+
+export async function getRuntimeEgress(
+  tx: postgres.TransactionSql,
+  businessId: string,
+): Promise<RuntimeEgress> {
+  const [row] = await tx<{ colo: string | null; country: string | null; seen_at: Date | null }[]>`
+    select egress_colo as colo, egress_country as country, egress_seen_at as seen_at
+      from agent_runtime where business_id = ${businessId}`;
+  return { colo: row?.colo ?? null, country: row?.country ?? null, seenAt: row?.seen_at ?? null };
+}
+
+/** Record what the edge saw of the caller. The caller is the sprite. */
+export async function recordRuntimeEgress(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  egress: { colo: string; country: string | null },
+): Promise<void> {
+  await tx`update agent_runtime
+              set egress_colo = ${egress.colo},
+                  egress_country = ${egress.country},
+                  egress_seen_at = now()
+            where business_id = ${businessId}`;
 }
 
 /** Stable, opaque, and free of customer-identifying text. */

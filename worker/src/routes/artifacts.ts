@@ -15,6 +15,7 @@ import type { Env } from '../env';
 import { withTenant } from '../db';
 import { hasBusiness, resolveTenant } from '../tenancy';
 import { resolveRuntimeIdentity, RuntimeIdentityError } from '../runtime/identity';
+import { recordEgress, type EgressDeferral } from '../runtime/egress';
 import { runVisibleTo } from '../chat-sessions';
 import {
   artifactJson,
@@ -49,6 +50,7 @@ export async function handleArtifacts(
   env: Env,
   url: URL,
   cors: Record<string, string>,
+  defer: EgressDeferral = {},
 ): Promise<Response | null> {
   if (url.pathname === RUNTIME_ARTIFACTS_PATH) {
     if (request.method !== 'POST') return json({ ok: false, err: 'artifacts only accept POST' }, { status: 405 }, cors);
@@ -59,6 +61,7 @@ export async function handleArtifacts(
       if (err instanceof RuntimeIdentityError) return json({ ok: false, err: err.message }, { status: err.status }, cors);
       throw err;
     }
+    recordEgress(env, request, identity.businessId, defer);
     if (!env.ARTIFACTS) return json({ ok: false, err: 'artifact storage is not configured' }, { status: 503 }, cors);
 
     const taskId = request.headers.get('X-Aisar-Task-Id') ?? '';
