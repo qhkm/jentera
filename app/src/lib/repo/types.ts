@@ -344,6 +344,13 @@ export interface RuntimeOverview {
   } | null;
 }
 
+export interface RuntimeSkill {
+  name: string;
+  description: string;
+  category: string | null;
+  disabled: boolean;
+}
+
 export type GoalStatus = 'active' | 'completed' | 'archived';
 export type GoalCheckpointStatus = 'todo' | 'working' | 'blocked' | 'completed';
 
@@ -561,6 +568,8 @@ export interface Repository {
 
   /** Owner-safe runtime state; provider ids, URLs and credentials are never returned. */
   runtimeStatus(): Promise<RuntimeOverview>;
+  /** Read-only public metadata for skills actually present on this VM. */
+  runtimeSkills(): Promise<RuntimeSkill[]>;
   businessBrowser(command?: BrowserCommand, signal?: AbortSignal): Promise<BusinessBrowserState>;
   desktopConnection?(controlId: string): { url: string; protocols: string[] };
   watchBrowser?(runId: string, onFrame: (frame: BusinessBrowserState) => void, signal: AbortSignal): Promise<void>;

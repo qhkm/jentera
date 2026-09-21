@@ -17,17 +17,11 @@ async function mount(tab = 'playbooks', state = connections, canSchedule = true,
 }
 
 describe('Library', () => {
-  it('navigates between independent sections and shows bundled skill instructions', async () => {
+  it('keeps playbooks and connectors as separate catalogue sections', async () => {
     const { user, onUse } = await mount();
-    await user.click(screen.getByRole('link', { name: 'Skills' }));
-    expect(screen.getByRole('link', { name: 'Skills' })).toHaveAttribute('aria-current', 'page');
-    const vmSkills = screen.getByRole('heading', { name: 'Available Hermes skills' }).closest('section')!;
-    expect(within(vmSkills).getAllByRole('listitem')).toHaveLength(4);
-    expect(within(vmSkills).getByText('Managed')).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Playbook instructions' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Web research' })).toBeInTheDocument();
-    await user.click(screen.getAllByText('View instructions')[1]);
-    expect(screen.getAllByText(/Research the topic specified below/)[0]).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Playbooks' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: /Daily business brief/ })).toBeVisible();
+    expect(screen.queryByRole('link', { name: 'Skills' })).toBeNull();
     await user.click(screen.getByRole('link', { name: 'Connectors' }));
     expect(screen.getAllByText('Not connected')).toHaveLength(3);
     expect(screen.getByRole('button', { name: 'Connect Telegram' })).toBeEnabled();

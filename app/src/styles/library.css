@@ -12,70 +12,6 @@
 .library-card p { color: var(--color-text-muted); font-size: 14px; line-height: 1.6; }
 .library-status { font-size: 12px; color: var(--color-text-muted); }
 .library-status.available { color: var(--color-brand); }
-.library-skills { display: flex; flex-direction: column; gap: 24px; }
-.library-skills > header { display: flex; flex-direction: column; }
-.library-vm-skills {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 22px 24px;
-  border: 1px solid var(--rail);
-  border-radius: 14px;
-  background: var(--bg-card);
-}
-.library-vm-skills-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-.library-kicker {
-  color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
-.library-vm-skills-heading h3,
-.library-playbook-skills > h3 {
-  margin-top: 4px;
-  font-size: 16px;
-  font-weight: 600;
-}
-.library-vm-skills > p,
-.library-vm-skills-note {
-  max-width: 68ch;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.6;
-}
-.library-vm-skills > ul {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-.library-vm-skills li {
-  display: flex;
-  gap: 10px;
-  padding: 13px;
-  border: 1px solid var(--rail);
-  border-radius: 10px;
-  background: var(--bg);
-}
-.library-vm-skills li > svg {
-  flex: 0 0 auto;
-  margin-top: 1px;
-  color: var(--accent-green);
-}
-.library-vm-skills li > span {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-.library-vm-skills li strong { font-size: 13px; font-weight: 500; }
-.library-vm-skills li small { color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
-.library-playbook-skills { padding-top: 4px; border-top: 1px solid var(--rail); }
 .library-card details { width: 100%; font-size: 14px; }
 .library-card summary { cursor: pointer; min-height: 44px; display: list-item; padding-top: 10px; }
 .library-card details h4 { margin: 12px 0 8px; font-weight: 600; }
@@ -113,8 +49,6 @@
 @media (max-width: 639px) {
   .library-view { gap: 16px; }
   .library-card { padding: 16px; gap: 8px; }
-  .library-vm-skills { padding: 18px; }
-  .library-vm-skills > ul { grid-template-columns: 1fr; }
   .library-view .routine-section-heading { align-items: flex-start; }
   .library-view .automation-playbook-card, .library-view .automation-playbook-detail { padding: 16px; }
   .library-view .automation-playbook-detail { overflow-wrap: anywhere; min-width: 0; }

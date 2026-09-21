@@ -10,7 +10,7 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { access, copyFile, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { createServer, request as httpRequest } from 'node:http';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createBusinessBrowser, BrowserProblem } from './business-browser.mjs';
 import { serveBrowserPreview } from './browser-preview-stream.mjs';
@@ -660,6 +660,16 @@ export function createRunner(input) {
         return json(res, 401, { ok: false, error: 'unauthorized' });
       }
 
+      /* Read-only skill inventory for the owner's Skills screen. Only bounded
+         frontmatter crosses this boundary: never paths, instruction bodies,
+         linked files or scripts. The directory belongs to this one runtime,
+         and nested symlinks are ignored rather than followed. */
+      if (url.pathname === '/v1/skills') {
+        res.setHeader('Cache-Control', 'no-store');
+        if (req.method !== 'GET') return json(res, 405, { error: 'method_not_allowed' });
+        return json(res, 200, { ok: true, skills: await readHermesSkills(config) });
+      }
+
       /* What the agent remembers, per profile: two small §-delimited files,
          readable as they are. Forgetting an entry rewrites the file without
          it, atomically, and only while no task is running — Hermes writes
@@ -1163,11 +1173,106 @@ export function configFromEnv(env = process.env) {
     outputsRoot: env.AISAR_OUTPUTS_DIR ?? OUTPUTS_ROOT_DEFAULT,
     hermesEnvFile: env.AISAR_HERMES_DOTENV ?? '/home/sprite/.hermes/.env',
     hermesConfigFile: env.AISAR_HERMES_CONFIG ?? '/home/sprite/.hermes/config.yaml',
+    hermesSkillsDir: env.AISAR_HERMES_SKILLS ?? '/home/sprite/.hermes/skills',
     hermesProfilesDir: env.AISAR_HERMES_PROFILES ?? '/home/sprite/.hermes/profiles',
     hermesMemoriesDir: env.AISAR_HERMES_MEMORIES ?? '/home/sprite/.hermes/memories',
     port: Number(env.PORT ?? 8080),
     watchdogMs: Number(env.AISAR_RUNNER_WATCHDOG_MS ?? WATCHDOG_INTERVAL_MS),
   };
+}
+
+const SKILL_LIMIT = 256;
+const SKILL_SCAN_DEPTH = 4;
+
+/** Hermes-compatible skill summaries without exposing instruction content. */
+export async function readHermesSkills(config, io = { readdir, readFile }) {
+  const root = config.hermesSkillsDir ?? '/home/sprite/.hermes/skills';
+  const disabled = await readDisabledSkills(config.hermesConfigFile, io.readFile);
+  const found = [];
+  let visited = 0;
+
+  async function scan(dir, depth) {
+    if (depth > SKILL_SCAN_DEPTH || found.length >= SKILL_LIMIT || visited >= 1024) return;
+    visited += 1;
+    let entries;
+    try { entries = await io.readdir(dir, { withFileTypes: true }); }
+    catch { return; }
+    const skillFile = entries.find(entry => entry.isFile() && entry.name === 'SKILL.md');
+    if (skillFile) {
+      try {
+        const source = String(await io.readFile(join(dir, 'SKILL.md'), 'utf8')).slice(0, 64 * 1024);
+        const parsed = parseSkillSummary(source, dir, root);
+        if (parsed && !found.some(skill => skill.name.toLowerCase() === parsed.name.toLowerCase())) {
+          found.push({ ...parsed, disabled: disabled.has(parsed.name) });
+        }
+      } catch { /* A malformed or unreadable skill is not available. */ }
+      return;
+    }
+    for (const entry of entries) {
+      if (found.length >= SKILL_LIMIT) break;
+      if (entry.isDirectory() && !entry.name.startsWith('.')) await scan(join(dir, entry.name), depth + 1);
+    }
+  }
+
+  await scan(root, 0);
+  return found.sort((a, b) => (a.category ?? '').localeCompare(b.category ?? '') || a.name.localeCompare(b.name));
+}
+
+export function parseSkillSummary(source, dir = '', root = '') {
+  if (typeof source !== 'string') return null;
+  const normalized = source.replace(/\r\n?/g, '\n');
+  const frontmatterMatch = normalized.match(/^---\n([\s\S]*?)\n---(?:\n|$)/);
+  const frontmatter = frontmatterMatch?.[1] ?? '';
+  const body = frontmatterMatch ? normalized.slice(frontmatterMatch[0].length) : normalized;
+  const scalar = key => {
+    const match = frontmatter.match(new RegExp(`^${key}\\s*:\\s*(.+)$`, 'mi'));
+    if (!match) return '';
+    return match[1].trim().replace(/^(?:"([\s\S]*)"|'([\s\S]*)')$/, '$1$2');
+  };
+  const fallbackName = relative(root, dir).split(/[\\/]/).filter(Boolean).at(-1) ?? '';
+  const name = safeSkillText(scalar('name') || fallbackName, 64);
+  if (!name) return null;
+  const firstBodyLine = body.split('\n').map(line => line.trim())
+    .find(line => line && !line.startsWith('#') && line !== '---') ?? '';
+  const description = safeSkillText(scalar('description') || firstBodyLine, 320);
+  const parts = relative(root, dir).split(/[\\/]/).filter(Boolean);
+  const category = safeSkillText(scalar('category') || (parts.length > 1 ? parts[0] : ''), 64) || null;
+  return { name, description, category };
+}
+
+function safeSkillText(value, limit) {
+  return String(value ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, limit);
+}
+
+async function readDisabledSkills(configFile, read = readFile) {
+  if (!configFile) return new Set();
+  let source;
+  try { source = String(await read(configFile, 'utf8')).replace(/\r\n?/g, '\n'); }
+  catch { return new Set(); }
+  const disabled = new Set();
+  const stack = [];
+  for (const raw of source.split('\n')) {
+    if (!raw.trim() || raw.trimStart().startsWith('#')) continue;
+    const indent = raw.length - raw.trimStart().length;
+    while (stack.length && stack.at(-1).indent >= indent) stack.pop();
+    const key = raw.trim().match(/^([A-Za-z0-9_-]+):(?:\s*(.*))?$/);
+    if (key) {
+      const path = [...stack.map(item => item.key), key[1]];
+      const inline = key[2]?.trim();
+      if ((path.join('.') === 'skills.disabled' || path.join('.') === 'skills.platform_disabled.api_server') && inline?.startsWith('[')) {
+        for (const name of inline.slice(1, -1).split(',')) if (safeSkillText(name.replace(/^['"]|['"]$/g, ''), 64)) disabled.add(safeSkillText(name.replace(/^['"]|['"]$/g, ''), 64));
+      }
+      stack.push({ indent, key: key[1] });
+      continue;
+    }
+    const item = raw.trim().match(/^-\s*['"]?([^'"#]+?)['"]?\s*(?:#.*)?$/);
+    const path = stack.map(value => value.key).join('.');
+    if (item && (path === 'skills.disabled' || path === 'skills.platform_disabled.api_server')) {
+      const name = safeSkillText(item[1], 64);
+      if (name) disabled.add(name);
+    }
+  }
+  return disabled;
 }
 
 function validated(config) {

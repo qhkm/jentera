@@ -341,6 +341,10 @@ export class LocalRepository implements Repository {
     return { runtime: null };
   }
 
+  async runtimeSkills(): Promise<import('./types').RuntimeSkill[]> {
+    return [];
+  }
+
   async provisionRuntime(): Promise<void> {
     throw new NeedsAccountError('Creating a private Jentera runtime');
   }

@@ -100,11 +100,11 @@ describe('workspace navigation', () => {
     expect(within(overview).getByRole('button', { name: 'Notifications' })).toBeInTheDocument();
     await waitFor(() => expect(within(work).getByRole('button', { name: /^Activity/ })).toHaveTextContent('2'));
     expect(within(work).getAllByRole('button')).toHaveLength(1);
-    for (const name of ['Library', 'Files', 'My Business']) expect(within(workspace).getByRole('button', { name })).toBeInTheDocument();
-    expect(within(nav).getAllByRole('button')).toHaveLength(6);
+    for (const name of ['Skills', 'Library', 'Files', 'My Business']) expect(within(workspace).getByRole('button', { name })).toBeInTheDocument();
+    expect(within(nav).getAllByRole('button')).toHaveLength(7);
     const mobile = document.querySelector('.dashboard-bottom-nav')!;
     expect([...mobile.querySelectorAll(':scope > button')].slice(0, 4).map(button => button.textContent))
-      .toEqual(['Home', 'Activity2', 'Chat', 'Library']);
+      .toEqual(['Home', 'Activity2', 'Chat', 'Skills']);
   });
   it('keeps grouped destinations keyboard-operable and on their existing URLs', async () => {
     function Location() { return <output data-testid="location">{useLocation().search}</output>; }

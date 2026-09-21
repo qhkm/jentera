@@ -1,4 +1,4 @@
-export type { Activity, AskAnswer, AskMode, AskOptions, AskProgress, AskProgressEvent, Connection, ConnectionHealth, BusinessSnapshot, Fact, Goal, GoalCheckpoint, GoalCheckpointStatus, GoalInput, GoalsOverview, GoalStatus, IngestResult, OnboardingCompletion, Repository, RunResult, RuntimeOverview, RuntimeState, RuntimeSummary, Theme, TraceEvent, WorkKind, WorkQuality, WorkSummary } from './types';
+export type { Activity, AskAnswer, AskMode, AskOptions, AskProgress, AskProgressEvent, Connection, ConnectionHealth, BusinessSnapshot, Fact, Goal, GoalCheckpoint, GoalCheckpointStatus, GoalInput, GoalsOverview, GoalStatus, IngestResult, OnboardingCompletion, Repository, RunResult, RuntimeOverview, RuntimeSkill, RuntimeState, RuntimeSummary, Theme, TraceEvent, WorkKind, WorkQuality, WorkSummary } from './types';
 export { NeedsAccountError } from './types';
 export type { Artifact, PushSubscriptionJson, Team, TeamInvitation, TeamMember, Workspace, WorkspaceMember, Workspaces, WorkspaceChat, ChatTurn, ChatTranscript, AgentMemory, AgentMemoryProfile, AgentMemoryFile, AgentMemoryEntry } from './types';
 export { LocalRepository } from './local';

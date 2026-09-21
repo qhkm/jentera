@@ -1,5 +1,5 @@
 import type { Env } from '../env';
-import { getRuntime, getRuntimeEgress, getRuntimeRegion, recordPrewarm } from '../agent-runtime';
+import { getRuntime, getRuntimeAccess, getRuntimeEgress, getRuntimeRegion, recordPrewarm } from '../agent-runtime';
 import { setupNotice } from '../runtime/setup-notice';
 import { withTenant } from '../db';
 import { publishRuntimeTask } from '../runtime';
@@ -42,6 +42,38 @@ export async function handleRuntime(
   if (!identity) return json({ ok: false, err: 'not signed in' }, { status: 401 }, cors);
   if (!hasBusiness(identity)) {
     return json({ ok: false, err: 'no business', code: 'NO_BUSINESS' }, { status: 404 }, cors);
+  }
+
+  if (url.pathname === '/api/runtime/skills' && request.method === 'GET') {
+    const headers = { ...cors, 'Cache-Control': 'private, no-store' };
+    try {
+      const { runtime, secrets } = await withTenant(env, identity.businessId, (tx) =>
+        getRuntimeAccess(env, tx, identity.businessId));
+      if (runtime.provider !== 'fly-sprite' || !runtime.providerUrl || !env.SPRITES_TOKEN ||
+          !['ready', 'cold', 'idle', 'busy'].includes(runtime.status)) {
+        return json({ ok: false, err: 'Skills are unavailable while the computer is being prepared.' }, { status: 503 }, headers);
+      }
+      const endpoint = new URL('/v1/skills', runtime.providerUrl);
+      if (endpoint.protocol !== 'https:') return json({ ok: false, err: 'Skills are unavailable.' }, { status: 503 }, headers);
+      const upstream = await fetch(endpoint, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(15_000),
+        headers: {
+          'X-Aisar-Runner-Key': secrets.runnerKey,
+          Authorization: `Bearer ${env.SPRITES_TOKEN}`,
+        },
+      });
+      if (!upstream.ok) {
+        await upstream.body?.cancel();
+        return json({ ok: false, err: upstream.status === 404
+          ? 'The computer is still updating its Skills catalogue.'
+          : 'Could not read Skills from the computer.' }, { status: 503 }, headers);
+      }
+      const body = await upstream.json().catch(() => null) as { skills?: unknown } | null;
+      return json({ ok: true, skills: runtimeSkillList(body?.skills) }, {}, headers);
+    } catch {
+      return json({ ok: false, err: 'Could not read Skills from the computer.' }, { status: 503 }, headers);
+    }
   }
 
   if (url.pathname === '/api/runtime' && request.method === 'GET') {
@@ -383,6 +415,36 @@ export async function handleRuntime(
   }
 
   return json({ ok: false, err: 'not found' }, { status: 404 }, cors);
+}
+
+export interface RuntimeSkillSummary {
+  name: string;
+  description: string;
+  category: string | null;
+  disabled: boolean;
+}
+
+/** Never relay arbitrary runner JSON or filesystem details to the app. */
+export function runtimeSkillList(value: unknown): RuntimeSkillSummary[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const safe = (text: unknown, limit: number) => typeof text === 'string'
+    ? text.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, limit)
+    : '';
+  return value.slice(0, 256).flatMap((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
+    const raw = entry as Record<string, unknown>;
+    const name = safe(raw.name, 64);
+    const identity = name.toLocaleLowerCase('en');
+    if (!name || seen.has(identity)) return [];
+    seen.add(identity);
+    return [{
+      name,
+      description: safe(raw.description, 320),
+      category: safe(raw.category, 64) || null,
+      disabled: raw.disabled === true,
+    }];
+  });
 }
 
 function validRegion(value: string | undefined): string | null {

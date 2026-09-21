@@ -40,6 +40,7 @@ import type {
   Repository,
   RunResult,
   RuntimeOverview,
+  RuntimeSkill,
   Specialist,
   Team,
   TeamInvitation,
@@ -621,6 +622,11 @@ export class RemoteRepository implements Repository {
 
   async runtimeStatus(): Promise<RuntimeOverview> {
     return call<RuntimeOverview>('/api/runtime');
+  }
+
+  async runtimeSkills(): Promise<RuntimeSkill[]> {
+    const response = await call<{ skills: RuntimeSkill[] }>('/api/runtime/skills');
+    return response.skills;
   }
 
   async provisionRuntime(): Promise<void> {

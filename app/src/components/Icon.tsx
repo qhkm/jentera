@@ -43,6 +43,7 @@ import {
   ForkKnife,
   Gift,
   Globe,
+  Hammer,
   House,
   Image as ImageIcon,
   Lightning,
@@ -79,6 +80,7 @@ import {
 
 const CHROME = {
   home: House,
+  skills: Hammer,
   library: Books,
   goals: Target,
   routines: ArrowsClockwise,

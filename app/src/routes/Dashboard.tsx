@@ -35,6 +35,7 @@ import RoutinesView from './views/RoutinesView';
 import NotificationsView from './views/NotificationsView';
 import FilesView from './views/FilesView';
 import LibraryView from './views/LibraryView';
+import SkillsView from './views/SkillsView';
 import GoalsView from './views/GoalsView';
 import type { RoutineConfig } from '@/lib/routines/types';
 import { BottomNav } from '@/components/BottomNav';
@@ -42,7 +43,7 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { ComputerStatus } from '@/components/ComputerStatus';
 import { isPwaStandalone } from '@/pwa/install';
 
-export type View = 'home' | 'chat' | 'work' | 'files' | 'library' | 'goals' | 'routines' | 'notifications' | 'business';
+export type View = 'home' | 'chat' | 'work' | 'files' | 'skills' | 'library' | 'goals' | 'routines' | 'notifications' | 'business';
 
 const BUSINESS_TABS: BizTab[] = ['profile', 'knows', 'handles', 'connections', 'permissions', 'team'];
 
@@ -56,6 +57,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { id: 'home', labelKey: 'nav.home', icon: 'home', section: 'overview' },
   { id: 'work', labelKey: 'nav.work', icon: 'activity', section: 'work' },
+  { id: 'skills', labelKey: 'nav.skills', icon: 'skills', section: 'workspace' },
   { id: 'library', labelKey: 'nav.library', icon: 'library', section: 'workspace' },
   { id: 'goals', labelKey: 'nav.goals', icon: 'goals', section: 'work' },
   { id: 'files', labelKey: 'nav.files', icon: 'files', section: 'workspace' },
@@ -273,6 +275,7 @@ export default function Dashboard() {
             onCloseTask={() => go('work')}
           />}
           {view === 'files' && <FilesView onOpenTask={(runId) => openTask(runId)} />}
+          {view === 'skills' && <SkillsView />}
           {view === 'library' && <LibraryView canSchedule={routinesEnabled} connections={connections} onUse={config => {
             setPlaybookDraft(config); go('routines');
           }} />}
