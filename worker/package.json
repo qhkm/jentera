@@ -41,6 +41,7 @@
     "db:migrate:vault-connection": "node scripts/apply-vault-connection.mjs",
     "db:migrate:chat-preview": "node scripts/apply-chat-preview.mjs",
     "db:migrate:runtime-egress": "node scripts/apply-runtime-egress.mjs",
+    "runtime:move-region": "node scripts/move-runtime-region.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:stripe-canary": "vitest run --config vitest.stripe-canary.config.ts"
