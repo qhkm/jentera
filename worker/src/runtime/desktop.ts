@@ -5,6 +5,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 // validating the live lease throughout the connection; this only reduces the
 // forced session-auth renewal interruption.
 export const DESKTOP_TTL_MS = 10 * 60_000;
+export const LEGACY_DESKTOP_TTL_MS = 60_000;
 
 /** Deliberately no wildcard / fleet-wide default during the desktop pilot. */
 export function desktopEnabledFor(env: Env, businessId: string): boolean {
@@ -13,10 +14,12 @@ export function desktopEnabledFor(env: Env, businessId: string): boolean {
     ids.length <= 10 && ids.every(id => UUID.test(id)) && ids.includes(businessId);
 }
 
-export async function desktopTicket(runnerKey: string, businessId: string, ownerId: string, controlId: string) {
+export async function desktopTicket(runnerKey: string, businessId: string, ownerId: string, controlId: string,
+  ttlMs: typeof DESKTOP_TTL_MS | typeof LEGACY_DESKTOP_TTL_MS = DESKTOP_TTL_MS) {
+  if (ttlMs !== DESKTOP_TTL_MS && ttlMs !== LEGACY_DESKTOP_TTL_MS) throw new Error('Invalid desktop ticket lifetime');
   const issuedAt = Date.now();
   const payload = { purpose: 'jentera-desktop-v1', businessId, ownerId, controlId,
-    nonce: crypto.randomUUID(), issuedAt, expiresAt: issuedAt + DESKTOP_TTL_MS };
+    nonce: crypto.randomUUID(), issuedAt, expiresAt: issuedAt + ttlMs };
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey('raw', encoder.encode(runnerKey), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const signature = [...new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(JSON.stringify(payload))))]

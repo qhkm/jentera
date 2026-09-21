@@ -3,7 +3,7 @@ import { withTenant } from '../db';
 import { getRuntimeAccess } from '../agent-runtime';
 import { hasBusiness, resolveTenant } from '../tenancy';
 import { can } from '../permissions';
-import { DESKTOP_TTL_MS, desktopControlProtocol, desktopEnabledFor, desktopTicket } from '../runtime/desktop';
+import { DESKTOP_TTL_MS, LEGACY_DESKTOP_TTL_MS, desktopControlProtocol, desktopEnabledFor, desktopTicket } from '../runtime/desktop';
 
 /** Sprites owns the transport. We terminate the init/auth prefaces here so the
  * browser receives ONLY RFB bytes, never a provider token or runner ticket.
@@ -130,30 +130,6 @@ export async function handleBrowserDesktop(request: Request, env: Env, url: URL)
     const { runtime, secrets } = await withTenant(env, identity.businessId, tx => getRuntimeAccess(env, tx, identity.businessId));
     if (runtime.provider !== 'fly-sprite' || !/^[a-z0-9][a-z0-9-]{0,62}$/.test(runtime.providerName) ||
         !env.SPRITES_TOKEN || !['ready', 'cold', 'idle'].includes(runtime.status)) return fail(503, 'Desktop unavailable');
-    /* Temporary, content-free canary diagnostic: validate the exact same
-       owner/window tuple through the runner immediately before tunnelling it.
-       The frame bytes are discarded and never decoded or logged. This tells
-       a live-lease mismatch from ticket/framing rejection without changing a
-       sprite or weakening the gateway's independent check. */
-    if (runtime.providerUrl) {
-      try {
-        const endpoint = new URL('/v1/browser', runtime.providerUrl);
-        if (endpoint.protocol === 'https:') {
-          const lease = await fetch(endpoint, {
-            method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(8000),
-            headers: { 'X-Aisar-Runner-Key': secrets.runnerKey, Authorization: `Bearer ${env.SPRITES_TOKEN}`,
-              'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'frame', businessId: identity.businessId,
-              ownerId: identity.userId, controlId }),
-          });
-          console.warn('[business-desktop]', JSON.stringify({ stage: 'lease_preflight',
-            result: lease.ok ? 'accepted' : 'refused', status: lease.status }));
-          await lease.body?.cancel();
-        }
-      } catch {
-        console.warn('[business-desktop]', JSON.stringify({ stage: 'lease_preflight', result: 'transport_error' }));
-      }
-    }
     /* Fixed provider + port, never a client-selected URL, ID, host or service.
        The timeout is for the upgrade handshake only. AbortSignal.timeout()
        remains live after fetch resolves and was terminating the upgraded
@@ -175,7 +151,12 @@ export async function handleBrowserDesktop(request: Request, env: Env, url: URL)
       return fail(503, 'Desktop unavailable');
     }
     const pair = new WebSocketPair();
-    const ticket = await desktopTicket(secrets.runnerKey, identity.businessId, identity.userId, controlId);
+    // The rolled-back 2026.09.18-6 runner enforces its original one-minute
+    // ticket contract. Mint that bounded lifetime until the runner receives
+    // the matching ten-minute gateway; otherwise every ticket is rejected
+    // before x11vnc starts. Reconnection revalidates the owner session/lease.
+    const ticketTtl = runtime.observedRelease === '2026.09.18-6' ? LEGACY_DESKTOP_TTL_MS : DESKTOP_TTL_MS;
+    const ticket = await desktopTicket(secrets.runnerKey, identity.businessId, identity.userId, controlId, ticketTtl);
     // Return the upgraded connection first. workerd dispatches WebSocket
     // events after this response; awaiting the private handshake here would
     // deadlock. The bridge emits NO pixels until the runner verifies the live

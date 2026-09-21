@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createHmac } from 'node:crypto';
-import { DESKTOP_TTL_MS, desktopControlProtocol, desktopEnabledFor, desktopTicket } from '../src/runtime/desktop';
+import { DESKTOP_TTL_MS, LEGACY_DESKTOP_TTL_MS, desktopControlProtocol, desktopEnabledFor, desktopTicket } from '../src/runtime/desktop';
 import { bridgeSpritesDesktop } from '../src/routes/browser-desktop';
 import type { Env } from '../src/env';
 
@@ -33,6 +33,13 @@ it('issues interoperable HMAC tickets with purpose, server identity, random nonc
   expect(ticket).toMatchObject({ purpose: 'jentera-desktop-v1', businessId, ownerId, controlId });
   expect(ticket.expiresAt - ticket.issuedAt).toBe(DESKTOP_TTL_MS);
   expect((await desktopTicket(runnerKey, businessId, ownerId, controlId)).nonce).not.toBe(ticket.nonce);
+});
+
+it('can mint the bounded legacy lifetime but refuses arbitrary ticket lifetimes', async () => {
+  const legacy = await desktopTicket(runnerKey, businessId, ownerId, controlId, LEGACY_DESKTOP_TTL_MS);
+  expect(legacy.expiresAt - legacy.issuedAt).toBe(60_000);
+  await expect(desktopTicket(runnerKey, businessId, ownerId, controlId, 30_000 as typeof DESKTOP_TTL_MS))
+    .rejects.toThrow('Invalid desktop ticket lifetime');
 });
 
 class Socket extends EventTarget {
