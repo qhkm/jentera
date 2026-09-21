@@ -234,7 +234,7 @@ export default function BusinessBrowser({
         <Globe size={18} aria-hidden="true" />{t('browser.open')}
       </Button></div>
     </Card> : trigger}
-    {open && createPortal(<dialog ref={dialog} className="business-browser-dialog" aria-labelledby={titleId} aria-describedby={descriptionId}
+    {open && createPortal(<dialog ref={dialog} className={`business-browser-dialog${controlled && desktopEnabled ? ' has-desktop' : ''}`} aria-labelledby={titleId} aria-describedby={descriptionId}
       // Portals escape the composer DOM, but React events still bubble through it.
       onSubmit={(event) => event.stopPropagation()}
       onCancel={(e) => { e.preventDefault(); close(); }}>
@@ -249,7 +249,7 @@ export default function BusinessBrowser({
         </span>
         <button type="button" className="business-browser-icon-button" aria-label={t('browser.close')} title={t('browser.close')} onClick={close}><X size={20} aria-hidden="true" /></button>
       </header>
-      <div className="business-browser-body">
+      <div className={`business-browser-body${controlled && desktopEnabled ? ' has-desktop' : ''}`}>
         {error && <div className="business-browser-error" role="alert">
           <WarningCircle size={20} aria-hidden="true" /><p>{error}</p>
           {!controlled && <button type="button" disabled={busy || statusLoading} onClick={() => { setError(''); setStatusAttempt(n => n + 1); }}>{t('loading.retry')}</button>}

@@ -7,15 +7,38 @@ import { LocalRepository } from '@/lib/repo/local';
 import type { Repository, BrowserCommand, BusinessBrowserState } from '@/lib/repo/types';
 import BusinessBrowser from '@/routes/views/BusinessBrowser';
 
-const mocks = vi.hoisted(() => ({ clients: [] as (EventTarget & { disconnect: ReturnType<typeof vi.fn>; sendKey: ReturnType<typeof vi.fn>; scaleViewport: boolean })[], calls: [] as unknown[][] }));
+const mocks = vi.hoisted(() => ({ clients: [] as (EventTarget & { disconnect: ReturnType<typeof vi.fn>; sendKey: ReturnType<typeof vi.fn>; clipViewport: boolean; dragViewport: boolean; scaleViewport: boolean })[], calls: [] as unknown[][] }));
 vi.mock('@novnc/novnc', () => ({ default: class extends EventTarget {
-  disconnect = vi.fn(); sendKey = vi.fn(); scaleViewport = false;
+  disconnect = vi.fn(); sendKey = vi.fn(); clipViewport = false; dragViewport = false; scaleViewport = false;
   constructor(...args: unknown[]) { super(); mocks.calls.push(args); mocks.clients.push(this); queueMicrotask(() => this.dispatchEvent(new Event('connect'))); }
 } }));
 beforeEach(() => {
   localStorage.clear(); mocks.clients.length = 0; mocks.calls.length = 0;
+  Object.defineProperty(window, 'matchMedia', { configurable: true, writable: true, value: vi.fn().mockImplementation(() => ({
+    matches: false, media: '', onchange: null, addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+  })) });
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
   HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
+});
+
+it('uses actual-size pixels and explicit pan mode on a phone', async () => {
+  Object.defineProperty(window, 'matchMedia', { configurable: true, writable: true, value: vi.fn().mockImplementation(() => ({
+    matches: true, media: '(max-width: 640px)', onchange: null, addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+  })) });
+  const user = userEvent.setup(); mount();
+  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  await user.click(screen.getByRole('button', { name: 'Take control' }));
+  await waitFor(() => expect(mocks.clients).toHaveLength(1));
+  expect(mocks.clients[0].scaleViewport).toBe(false);
+  expect(mocks.clients[0].clipViewport).toBe(true);
+  expect(mocks.clients[0].dragViewport).toBe(false);
+  await user.click(screen.getByRole('button', { name: 'Pan screen' }));
+  expect(mocks.clients[0].dragViewport).toBe(true);
+  await user.click(screen.getByRole('button', { name: 'Interact with screen' }));
+  expect(mocks.clients[0].dragViewport).toBe(false);
+  await user.click(screen.getByRole('button', { name: 'Fit view' }));
+  expect(mocks.clients[0].scaleViewport).toBe(true);
+  expect(mocks.clients[0].clipViewport).toBe(false);
 });
 function mount(capability = true) {
   const browser = vi.fn(async (command?: BrowserCommand): Promise<BusinessBrowserState> => ({

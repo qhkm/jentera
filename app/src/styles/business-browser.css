@@ -104,6 +104,8 @@
 .business-desktop { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; border: 1px solid var(--rail); border-radius: 10px; overflow: hidden; background: #101412; }
 .business-desktop-stage { flex: 1; min-width: 0; min-height: 0; height: 65dvh; overflow: auto; overscroll-behavior: contain; }
 .business-desktop-stage canvas { outline-offset: -3px; }
+.business-desktop.is-panning .business-desktop-stage { cursor: grab; touch-action: none; }
+.business-desktop.is-panning .business-desktop-stage:active { cursor: grabbing; }
 .business-desktop-stage canvas:focus-visible { outline: 2px solid var(--accent-green); }
 .business-desktop-status { position: absolute; inset: 0 0 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: #101412; color: #e4eae7; }
 .business-desktop-status p { font-size: 14px; }
@@ -169,6 +171,22 @@
   .business-browser-keys .btn { flex-grow: 0; }
 }
 @media (max-width: 640px) {
+  .business-browser-dialog.has-desktop { width: 100vw; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
+  .business-browser-dialog.has-desktop .business-browser-header { grid-template-columns: 32px minmax(0, 1fr) 44px; padding: 8px 10px; }
+  .business-browser-dialog.has-desktop .business-browser-brand { width: 32px; height: 32px; flex-basis: 32px; border-radius: 10px; }
+  .business-browser-dialog.has-desktop .business-browser-heading p,
+  .business-browser-dialog.has-desktop .business-browser-state { display: none; }
+  .business-browser-body.has-desktop { display: flex; flex: 1; min-height: 0; overflow: hidden; padding: 0; }
+  .business-browser-body.has-desktop .business-desktop { border: 0; border-radius: 0; }
+  .business-browser-body.has-desktop .business-desktop-stage { flex: 1; height: auto; min-height: 0; }
+  .business-browser-dialog.has-desktop .business-desktop-toolbar { gap: 4px; padding: 4px; }
+  .business-browser-dialog.has-desktop .business-desktop-toolbar > span { display: none; }
+  .business-browser-dialog.has-desktop .business-desktop-actions { flex-wrap: nowrap; gap: 2px; overflow-x: auto; justify-content: flex-start; }
+  .business-browser-dialog.has-desktop .business-desktop-actions > button { flex: 0 0 auto; }
+  .business-browser-dialog.has-desktop .business-desktop-mobile-keyboard { flex: 0 0 136px; width: 136px; }
+  .business-browser-dialog.has-desktop .business-browser-footer-note { display: none; }
+  .business-browser-dialog.has-desktop .business-browser-footer { padding: 6px 8px max(6px, env(safe-area-inset-bottom)); }
+  .business-browser-dialog.has-desktop .business-browser-control-actions { width: 100%; }
   .business-browser-header { display: grid; grid-template-columns: 38px minmax(0, 1fr) 44px; gap: 9px; padding: 14px; }
   .business-browser-brand { width: 38px; height: 38px; flex-basis: 38px; border-radius: 12px; }
   .business-browser-heading h2 { font-size: 16px; }

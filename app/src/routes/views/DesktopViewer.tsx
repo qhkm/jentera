@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, ArrowsOut, ArrowClockwise } from '@phosphor-icons/react';
+import { Keyboard, ArrowsOut, ArrowClockwise, HandPalm } from '@phosphor-icons/react';
 import type RFB from '@novnc/novnc';
 import { useRepository } from '@/lib/repo';
 import { useT } from '@/i18n/I18nProvider';
@@ -24,7 +24,13 @@ export default function DesktopViewer({ controlId, onControlLost }: { controlId:
   const lost = useRef(onControlLost); lost.current = onControlLost;
   const [phase, setPhase] = useState<'connecting' | 'ready' | 'reconnecting' | 'failed'>('connecting');
   const [attempt, setAttempt] = useState(0);
-  const [fit, setFit] = useState(true);
+  // A 1280px desktop fitted into a phone is too small to target reliably.
+  // Phones start at 1:1 and can pan the clipped viewport; larger screens keep
+  // the convenient fit-to-window default.
+  const [fit, setFit] = useState(() => typeof window === 'undefined' || !window.matchMedia
+    ? true
+    : !window.matchMedia('(max-width: 640px)').matches);
+  const [pan, setPan] = useState(false);
 
   function clearInput() {
     composing.current = false; generation.current++;
@@ -61,7 +67,8 @@ export default function DesktopViewer({ controlId, onControlLost }: { controlId:
         if (!connection) throw new Error('Desktop unavailable');
         current = new Client(canvas.current, connection.url, { wsProtocols: connection.protocols });
         rfb.current = current;
-        current.scaleViewport = true; current.resizeSession = false; current.focusOnClick = true;
+        current.scaleViewport = fit; current.clipViewport = !fit; current.dragViewport = !fit && pan;
+        current.resizeSession = false; current.focusOnClick = true;
         current.qualityLevel = 7; current.compressionLevel = 2; current.background = '#101412';
         // Authentication renews with the ten-minute idle-control window. A reconnect never acquires a
         // lease, claims another window, resumes the agent, or replays text.
@@ -84,8 +91,11 @@ export default function DesktopViewer({ controlId, onControlLost }: { controlId:
   }, [repo, controlId, attempt]);
 
   useEffect(() => {
-    if (rfb.current) rfb.current.scaleViewport = fit;
-  }, [fit, phase]);
+    if (!rfb.current) return;
+    rfb.current.scaleViewport = fit;
+    rfb.current.clipViewport = !fit;
+    rfb.current.dragViewport = !fit && pan;
+  }, [fit, pan, phase]);
 
   useEffect(() => {
     const input = keyboard.current;
@@ -100,7 +110,7 @@ export default function DesktopViewer({ controlId, onControlLost }: { controlId:
     return () => input.removeEventListener('beforeinput', beforeInput);
   }, []);
 
-  return <section className="business-desktop" aria-label={t('browser.desktop.screen')}
+  return <section className={`business-desktop${pan && !fit ? ' is-panning' : ''}`} aria-label={t('browser.desktop.screen')}
     onKeyDown={event => event.stopPropagation()} onKeyUp={event => event.stopPropagation()}>
     <div className="business-desktop-stage" ref={canvas} aria-label={t('browser.desktop.screen')} />
     {phase !== 'ready' && <div className="business-desktop-status" role="status">
@@ -110,7 +120,14 @@ export default function DesktopViewer({ controlId, onControlLost }: { controlId:
     <div className="business-desktop-toolbar">
       <span>{t('browser.desktop.hint')}</span>
       <div className="business-desktop-actions">
-        <button type="button" disabled={phase !== 'ready'} aria-pressed={!fit} onClick={() => setFit(value => !value)}><ArrowsOut size={17} />{t(fit ? 'browser.desktop.actualSize' : 'browser.fitView')}</button>
+        <button type="button" disabled={phase !== 'ready'} aria-pressed={!fit} onClick={() => setFit(value => {
+          const next = !value;
+          if (next) setPan(false);
+          return next;
+        })}><ArrowsOut size={17} />{t(fit ? 'browser.desktop.actualSize' : 'browser.fitView')}</button>
+        {!fit && <button type="button" disabled={phase !== 'ready'} aria-pressed={pan} onClick={() => setPan(value => !value)}>
+          <HandPalm size={17} />{t(pan ? 'browser.desktop.interact' : 'browser.desktop.pan')}
+        </button>}
         <div className="business-desktop-mobile-keyboard">
           <Keyboard size={17} aria-hidden="true" />
           <input ref={keyboard} aria-label={t('browser.desktop.keyboard')} type="password" defaultValue={SENTINEL}
