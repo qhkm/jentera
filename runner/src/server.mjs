@@ -577,7 +577,8 @@ export function createRunner(input) {
       profileDir: '/home/sprite/.jentera-browser',
       playwrightEntry: config.playwrightEntry,
       desktopEnabled: config.desktopEnabled,
-    }, { desktopReady: () => Boolean(desktopGateway?.desktopReady()) }) : null);
+    }, { desktopReady: () => Boolean(desktopGateway?.desktopReady()),
+      recoverDesktop: () => desktopGateway?.recoverDesktop() }) : null);
   const terminations = new RunTerminations(
     config,
     state,

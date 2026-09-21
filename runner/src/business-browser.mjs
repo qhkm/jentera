@@ -401,11 +401,19 @@ export function createBusinessBrowser(config, deps = {}) {
            cleanupBlocked on a failed teardown and that latch refuses every
            future desktop stream until reviewed recovery -- a far worse state
            than the wedged browser this is meant to fix. */
-        await changingControl();
+        /* Tolerated, not ignored: `disconnect()` throws once the gateway has
+           latched, and restart is the recovery for exactly that state — so
+           gating it on a clean teardown disabled the fix whenever it was
+           needed. The viewer's socket is destroyed by that call either way.
+           Other actions still fail closed on a latched gateway. */
+        await changingControl().catch(() => {});
         await stopScreencast();
         await clearInput();
         await closeBrowser();
         await ensure();
+        /* Only once a new browser is up: the native key release answers what
+           the latch guards, and clears it when it succeeds. */
+        await deps.recoverDesktop?.();
         return status();
       }
       /* Idle timeout, not a cap on the session. The lease used to be set at the

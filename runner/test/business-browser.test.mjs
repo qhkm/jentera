@@ -601,3 +601,32 @@ test('restart needs a live owner lease, and is a known action', async () => {
   const f = fixture();
   await assert.rejects(() => f.browser.command(command('restart')), /browser_control_expired/);
 });
+
+test('restart still works when the desktop teardown is already failing', async () => {
+  const f = fixture(true);
+  let closed = 0, recovered = 0;
+  f.context.browser = () => ({
+    once: (event, fn) => { if (event === 'disconnected') setImmediate(fn); },
+    close: async () => { closed += 1; },
+  });
+  await f.browser.command(command('claim'));
+  /* A latched gateway throws from its onControlChanging listener. Restart is
+     the recovery for that state, so gating it on a clean teardown disabled
+     the fix in exactly the case it exists for. */
+  f.browser.onControlChanging(async () => { throw new Error('Desktop cleanup unavailable'); });
+  await f.browser.command(command('restart'));
+  assert.equal(closed, 1, 'the browser is still replaced');
+  assert.equal(f.launches(), 2, 'and relaunched');
+});
+
+test('restart asks the gateway to recover only after a new browser is up', async () => {
+  const order = [];
+  const f = fixture(true, { recoverDesktop: async () => { order.push('recover'); return true; } });
+  f.context.browser = () => ({
+    once: (event, fn) => { if (event === 'disconnected') setImmediate(fn); },
+    close: async () => { order.push('closed'); },
+  });
+  await f.browser.command(command('claim'));
+  await f.browser.command(command('restart'));
+  assert.deepEqual(order, ['closed', 'recover']);
+});

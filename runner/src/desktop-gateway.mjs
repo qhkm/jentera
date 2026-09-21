@@ -202,6 +202,23 @@ export function createDesktopGateway(config, deps = {}) {
   });
   server.on('error', () => { closing = true; void disconnect().catch(() => {}); });
   server.desktopReady = () => server.listening && !closing && !cleanupBlocked;
+  /* The reviewed recovery the latch is waiting for, rather than a way around
+     it. What cleanupBlocked guards is a key or drag button left held by a
+     session nobody can see any more; a restart replaces the browser outright,
+     so the answer to that is the native reset, performed here and verified.
+     The latch clears only if the reset actually ran. */
+  server.recoverDesktop = async () => {
+    await disconnect().catch(() => {});
+    try {
+      const local = new URL('./desktop-release-keys.py', import.meta.url);
+      const script = existsSync(local) ? local : new URL('../bin/desktop-release-keys.py', import.meta.url);
+      await promisify(execFile)('/usr/bin/python3', [fileURLToPath(script)], {
+        timeout: 2000, maxBuffer: 1024, env: { ...process.env, DISPLAY: config.display ?? ':99' },
+      });
+    } catch { return false; }
+    cleanupBlocked = false;
+    return true;
+  };
   server.closeDesktop = async () => {
     closing = true; unsubscribe(); for (const socket of sockets) socket.destroy();
     try { await disconnect(); }
