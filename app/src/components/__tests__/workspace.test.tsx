@@ -162,7 +162,7 @@ describe('real work history', () => {
     await user.type(screen.getByRole('searchbox'), 'telegram');
     expect(screen.getByText('Task completed')).toBeInTheDocument();
     await user.type(screen.getByRole('searchbox'), 'missing');
-    expect(screen.getByText('No matching tasks')).toBeInTheDocument();
+    expect(screen.getByText('Nothing matches')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Show all work' }));
     expect(screen.getByRole('searchbox')).toHaveValue('');
     for (const record of work) expect(screen.getByText(record.objective)).toBeInTheDocument();
@@ -208,7 +208,7 @@ describe('real work history', () => {
       { repo },
     );
     await userEvent.type(await screen.findByRole('searchbox'), 'no such task');
-    expect(screen.getByText('No matching tasks')).toBeInTheDocument();
+    expect(screen.getByText('Nothing matches')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send it' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Don’t send' })).toBeInTheDocument();
   });

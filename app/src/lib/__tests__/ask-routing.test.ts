@@ -43,3 +43,29 @@ describe('automatic Ask routing', () => {
     expect(automaticResponseDepth('compare these suppliers')).toBe('quick');
   });
 });
+
+describe('setting a service up is a conversation, not a job to track', () => {
+  /* It fell through to `work` — not a greeting, not a status question, not a
+     question — and arrived as a task card with a status, for something that
+     takes two minutes and is then finished. */
+  it.each([
+    'i want to connect to my bukku account',
+    'I want to connect my Bukku account',
+    'help me connect Bukku',
+    'can you set up my accounting',
+    'disconnect telegram',
+    'saya nak sambung akaun Bukku saya',
+    'tolong sambungkan Bukku',
+  ])('routes %s as a conversation', (question) => {
+    expect(automaticAskMode(question)).toBe('ask');
+  });
+
+  /* And does not swallow the work that happens to mention a connection. */
+  it.each([
+    'send the invoice to my connected customer list',
+    'research which accounting software integrates with Shopee',
+    'draft an email about our new integration',
+  ])('leaves %s as work', (question) => {
+    expect(automaticAskMode(question)).toBe('work');
+  });
+});
