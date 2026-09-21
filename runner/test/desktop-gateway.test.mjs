@@ -58,10 +58,18 @@ async function fixture(t, { failCleanup = false, launchDelay = 0 } = {}) {
 }
 
 test('desktop tickets bind purpose, business, owner/window, nonce and ten-minute expiration', () => {
-  assert.ok(desktopTicketValid(signed(), { businessId, runnerKey }));
-  for (const change of [{ purpose: 'run' }, { businessId: ownerId }, { expiresAt: Date.now() - 1 },
-    { expiresAt: Date.now() + DESKTOP_TTL_MS + 1 }, { ownerId: 'invalid' }, { issuedAt: Date.now() + 10000 }, { signature: '0'.repeat(64) }]) {
-    assert.equal(desktopTicketValid({ ...signed(), ...change }, { businessId, runnerKey }), false);
+  /* One clock for the ticket, the mutations and the check. Reading Date.now()
+     separately made the over-long expiry a coincidence: the list was built at
+     T0 carrying T0 + TTL + 1, each ticket was signed later at T, and when
+     exactly one millisecond had passed the two expiries were equal, so the
+     spread overwrote nothing and a correctly valid ticket failed an assertion
+     that it was invalid. It needed that millisecond to land exactly, so it
+     only appeared under load. */
+  const now = Date.now();
+  assert.ok(desktopTicketValid(signed({}, now), { businessId, runnerKey }, now));
+  for (const change of [{ purpose: 'run' }, { businessId: ownerId }, { expiresAt: now - 1 },
+    { expiresAt: now + DESKTOP_TTL_MS + 1 }, { ownerId: 'invalid' }, { issuedAt: now + 10000 }, { signature: '0'.repeat(64) }]) {
+    assert.equal(desktopTicketValid({ ...signed({}, now), ...change }, { businessId, runnerKey }, now), false);
   }
 });
 
