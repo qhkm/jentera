@@ -275,10 +275,19 @@ describe('AskReply: conversation versus work', () => {
     const repo = new LocalRepository();
     (repo as unknown as { cancelRun: (id: string) => Promise<void> }).cancelRun = cancelRun;
     const { container } = mount(
-      { from: 'ai', text: 'Reading information', state: 'working', pendingId: 'p1', runId: RUN, kind: 'work' },
+      { from: 'ai', text: 'Reading information', state: 'working', pendingId: 'p1', runId: RUN, kind: 'work',
+        steps: ['Reading information', 'Reading information'], startedAt: Date.now() - 5000 },
       repo,
     );
-    await userEvent.click(await screen.findByRole('button', { name: 'Stop' }));
+    const stop = await screen.findByRole('button', { name: 'Stop' });
+    /* Beside the label and the clock, never after the history. Rendered below
+       the activity list it read as one more step in the log. */
+    expect(stop.closest('.ask-activity-list')).toBeNull();
+    const history = container.querySelector('.ask-step-history');
+    if (history) {
+      expect(stop.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    await userEvent.click(stop);
     expect(cancelRun).toHaveBeenCalledWith(RUN);
     expect(container.textContent).toContain('Stopping');
   });

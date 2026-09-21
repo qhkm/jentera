@@ -175,10 +175,10 @@ export function AskReply({
                 {renderReplyMarkdown(displayWorkspacePaths(displayText))}
               </div>
               {message.steps?.length
-                ? <LiveTaskProgress taskLabel={message.taskProgressLabel} steps={message.steps} since={message.startedAt} lastProgressAt={message.lastProgressAt} connectionLabel={message.connectionStatus} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
+                ? <LiveTaskProgress action={<StopWork runId={message.runId} />} taskLabel={message.taskProgressLabel} steps={message.steps} since={message.startedAt} lastProgressAt={message.lastProgressAt} connectionLabel={message.connectionStatus} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
                 : (
                   <div className="mt-2">
-                    <LiveTaskProgress steps={[]} label={message.liveStatus} since={message.startedAt} lastProgressAt={message.lastProgressAt} connectionLabel={message.connectionStatus} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
+                    <LiveTaskProgress action={<StopWork runId={message.runId} />} steps={[]} label={message.liveStatus} since={message.startedAt} lastProgressAt={message.lastProgressAt} connectionLabel={message.connectionStatus} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
                   </div>
                 )}
             </>
@@ -186,14 +186,11 @@ export function AskReply({
           : message.steps?.length
               ? (
                 <>
-                  <LiveTaskProgress taskLabel={message.taskProgressLabel} steps={message.steps} since={message.startedAt} lastProgressAt={message.lastProgressAt} connectionLabel={message.connectionStatus} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
+                  <LiveTaskProgress action={message.state !== 'needs_approval' ? <StopWork runId={message.runId} /> : undefined} taskLabel={message.taskProgressLabel} steps={message.steps} since={message.startedAt} lastProgressAt={message.lastProgressAt} connectionLabel={message.connectionStatus} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
                 </>
               )
-              : <LiveTaskProgress steps={[]} label={message.text} since={message.startedAt} lastProgressAt={message.lastProgressAt} connectionLabel={message.connectionStatus} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
+              : <LiveTaskProgress action={message.state !== 'needs_approval' ? <StopWork runId={message.runId} /> : undefined} steps={[]} label={message.text} since={message.startedAt} lastProgressAt={message.lastProgressAt} connectionLabel={message.connectionStatus} disconnected={Boolean(message.connectionStatus)} durable={isRunId(message.runId)} />
         }
-        {/* Not while it waits on a person: an approval is the owner's to
-            decide, and a Stop beside it would read as a third answer. */}
-        {message.state !== 'needs_approval' && <StopWork runId={message.runId} />}
       </>) : (
         <>
           <div className="ask-reply-text" role={failed ? 'alert' : undefined}>

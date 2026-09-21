@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Code, FileText, MagnifyingGlass, ListBullets } from '@phosphor-icons/react';
 import type { StepEntry } from '@/lib/task-presentation';
@@ -45,9 +46,13 @@ function ActivityRow({ entry, bm }: { entry: StepEntry; bm: boolean }) {
 }
 
 /** One current label and one flat history. Transport recovery is not activity. */
-export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected, connectionLabel, label, taskLabel }: {
+export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected, connectionLabel, label, taskLabel, action }: {
   steps: string[]; since?: number; lastProgressAt?: number; disconnected?: boolean;
   connectionLabel?: string; durable: boolean; label?: string; taskLabel?: string;
+  /** An action on the work in progress — Stop, today. It belongs beside the
+      label and the clock, because that is the thing it acts on. Rendered
+      after the history it read as one more step in the log. */
+  action?: ReactNode;
 }) {
   const { lang } = useI18n();
   const bm = lang === 'bm';
@@ -67,12 +72,13 @@ export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected, c
     : quiet ? (bm ? 'Menunggu kemas kini' : 'Waiting for an update')
     : safeTaskProgressLabel(taskLabel) || latest?.label || label || (bm ? 'Menjalankan tugasan' : 'Working on your task');
   return <div className="min-w-0">
-    {!latest ? <TypingBubble label={currentLabel} since={since} active={active} /> : <div className="ask-steps">
+    {!latest ? <><TypingBubble label={currentLabel} since={since} active={active} />{action}</> : <div className="ask-steps">
       <div className="flex min-w-0 items-start gap-2">
         <span className={active ? 'ask-step-dot' : 'mt-2 h-2 w-2 shrink-0 rounded-full bg-text-muted'} aria-hidden="true" />
         <div className="ask-step-content">
           <span role="status" className={`ask-step-label${active ? ' ask-active-shimmer' : ''}`}>{currentLabel}</span>
           {since !== undefined && <span className="ask-step-meta tabular-nums">{duration(Math.max(0, Math.floor((now - since) / 1000)))}</span>}
+          {action}
         </div>
       </div>
     </div>}
