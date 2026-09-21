@@ -172,6 +172,59 @@ Two things remain true and are worth knowing:
   being where we want it. `egress_country` is the field that answers "where
   does a website think this is"; `colo` is the one that approximates placement.
 
-Placement itself is still not ours to choose: `sprite create` has no region
-flag and the Sprites API returns none. That remains an ask to Fly.
+## Placement is ours after all, and was fixed by accident
+
+`sprite create` has no region flag and the Sprites API returns none, so the
+first reading of this was that placement is not ours to choose. That is wrong,
+and the correction came from asking a different question: not *where* is each
+sprite, but *when was it made*.
+
+| Created (MYT) | Sprite | Egress |
+|---|---|---|
+| 08-28 | `aisar-b-c679…` Kitakod, desktop canary | **SJC / US** |
+| 08-31 | `aisar-b-1f5e…` Warung Demo | **SJC / US** |
+| 09-03 | `aisar-b-1340…` SiiruApp | **LAX / US** |
+| 09-05 | `aisar-b-87c0…` NEOREKA ASIA | **LAX / US** |
+| 09-10 20:32 | `aisar-b-4906…` My business | SIN / SG |
+| 09-13 | `aisar-b-05a9…` SEIDO Coffee Roasters | SIN / SG |
+| 09-13 | `aisar-b-934f…` Batik People | HKG / SG |
+| 09-17 | `aisar-b-e7ff…` Aster Edu | SIN / SG |
+| 09-17 | `aisar-b-84fc…` Jentera | SIN / SG |
+| 09-18 | `aisar-b-4c2f…` Kitakod | SIN / SG |
+| 09-20 | `aisar-b-2f9b…` Parcel Tracker | SIN / SG |
+
+Eleven sprites, no exceptions, and the split is a date rather than a place.
+
+Fly's own account of this, as relayed from a community answer of 11 September,
+is that a sprite is placed in whatever region Fly considers closest to
+whoever created it. **The creator is our queue consumer.** `provision` is
+dispatched there (`worker/src/runtime/consumer.ts:1202`), and until
+10 September that consumer ran in **LAX and SJC** — the two colos every one of
+the old sprites is sitting in. `3fbf487`, committed 10 September 15:22 MYT,
+moved each queue message through the `SELF` binding into a placed invocation
+beside Neon in `ap-southeast-1`, for latency reasons that had nothing to do
+with this. Every sprite created after it is Singaporean, starting with one
+made five hours later.
+
+So the region has been controllable all along, by choosing where the call that
+creates the sprite runs. Nobody knew, because it was never visible: the
+instrument this document is about read blank until the same day this was
+found.
+
+**12 of 26 sprites predate the change and are still in the United States**,
+including Kitakod's — the 453-run sprite the owner tests with, and the one the
+CAPTCHA complaint came from. Three of the twelve have no runs at all. The
+other 14 are already where they should be.
+
+Moving one means re-provisioning it, because Fly offers no way to move a
+sprite. What is lost is what lives on the sprite's own disk: the business
+browser profile, and so every session the owner signed into, plus Hermes'
+`MEMORY.md` and `USER.md`. What survives is everything in the control plane —
+connections and their sealed credentials, knowledge, chats, runs, artifacts.
+The Bukku connection is a token in Postgres, not a browser session, so it is
+safe.
+
+A sprite's region still cannot be *requested*, so a future change to where the
+consumer runs would move new sprites again without anyone asking. That, rather
+than a region flag, is the thing to watch — and now it can be watched.
 
