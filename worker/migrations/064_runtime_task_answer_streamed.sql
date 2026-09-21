@@ -1,0 +1,23 @@
+-- Whether any slice of this task has put answer text on the owner's screen.
+--
+-- The reveal at completion exists for a run whose gate withheld every token:
+-- the chat is still showing a status line, so the durable answer is released
+-- then. It must not fire when partial text is already on screen, because the
+-- stream is append-only and the full answer would be stitched onto it.
+--
+-- That guard used `stream_seq = 0` as its test, but stream_seq is the last
+-- runner event a slice relayed — every tool call and step advances it. So it
+-- reads "this run has done something" rather than "the owner has seen answer
+-- text", and the two diverge for exactly the runs that use a tool and then
+-- resume. On 21 September a browser task completed with its answer written
+-- and never delivered: the gate held every token because the slice was
+-- resumed, `emitted` was false, stream_seq was past zero because of two
+-- browser events, and the chat waited for a reply that already existed.
+--
+-- The gate's own `emitted` cannot answer this: it belongs to one slice, and a
+-- later slice builds a new gate that cannot see what an earlier one let
+-- through. The run-stream Durable Object cannot answer it either -- it
+-- deliberately remembers no answer text. So the bit is kept here, where it
+-- survives the hand-off between slices.
+alter table runtime_task
+  add column if not exists answer_streamed boolean not null default false;

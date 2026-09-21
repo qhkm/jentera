@@ -1736,6 +1736,76 @@ describe('resuming a run stream across observation slices', () => {
     expect(deltaAt).toBeLessThan(completedAt);
   });
 
+  it('releases the answer of a resumed run that never put text on screen', async () => {
+    const published: Array<Record<string, unknown>> = [];
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.09.01-3',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+      RUN_STREAMS: {
+        idFromName: () => ({ toString: () => 'stream-id' }),
+        get: () => ({
+          fetch: async (_url: string, init?: RequestInit) => {
+            published.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+            return Response.json({ ok: true });
+          },
+        }),
+      },
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `resumed-reveal:${run.id}`,
+      payload: {
+        input: 'Explore that', model: 'MiniMax-M3',
+        objective: 'Explore that', function: 'ask', channel: 'app',
+      },
+    }));
+    /* A slice that used the browser and handed off: stream_seq is past zero
+       because tool events advanced it, and no answer text was ever emitted.
+       Reading stream_seq as "the owner has seen an answer" lost the reply. */
+    await asTenant(A, (tx) => tx`
+      update runtime_task set stream_seq = 6, answer_streamed = false
+       where id = ${task.id} and business_id = ${A}`);
+    const sse = (events: Array<Record<string, unknown>>) =>
+      events.map((event) => `data: ${JSON.stringify(event)}`).join('\n\n') + '\n\n';
+    const runnerFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return response({
+          ok: true, release: '2026.09.01-3',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-16' },
+          toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        return response({ ok: true, hermesRunId: 'resumed-run', status: 'running' }, 202);
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}/events`)) {
+        /* The replay resumes after seq 6 and carries no answer text — the
+           model answered in the slice that is finishing now. */
+        return new Response(sse([{ type: 'done' }]),
+          { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}`)) {
+        return response({ ok: true, status: 'completed', output: 'WebMCP exposes a JSON API.' });
+      }
+      return response({ error: 'not found' }, 404);
+    };
+    await expect(handleRuntimeMessage(
+      env, { version: 1 as const, businessId: A, taskId: task.id }, { provider, fetch: runnerFetch },
+    )).resolves.toEqual({ action: 'ack', reason: 'completed' });
+    expect(published.filter((event) => event.type === 'delta').map((event) => event.text).join(''))
+      .toBe('WebMCP exposes a JSON API.');
+  });
+
   it('persists the last relayed seq at the slice end and skips the replay on re-attach', async () => {
     const published: Array<Record<string, unknown>> = [];
     const env = testEnv({

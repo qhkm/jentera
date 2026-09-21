@@ -1659,6 +1659,10 @@ export async function handleRuntimeMessage(
                   remoteStatus: lease.task.remoteStatus ?? 'running',
                   delaySeconds: 2,
                   streamSeq,
+                  /* Carried forward because the gate is per-slice: a later slice cannot
+                     see what this one let through, and the reveal at completion must
+                     not append a full answer onto partial text already on screen. */
+                  answerStreamed: answerGate.emitted,
                 }));
               if (!deferred) {
                 return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
@@ -1835,6 +1839,10 @@ export async function handleRuntimeMessage(
               remoteRunId: outcome.remoteRunId,
               remoteStatus: outcome.remoteStatus,
               streamSeq,
+              /* Carried forward because the gate is per-slice: a later slice cannot
+                 see what this one let through, and the reveal at completion must
+                 not append a full answer onto partial text already on screen. */
+              answerStreamed: answerGate.emitted,
             });
           });
           if (!deferred) {
@@ -1964,13 +1972,19 @@ export async function handleRuntimeMessage(
         }
         /* The gate withheld every token of this answer, so the chat is still
            showing a status line. Release the durable text now rather than
-           after the checks — but only where this slice's gate is the whole
-           story. A resumed slice cannot see what an earlier one put on
-           screen, and stitching a replayed answer onto a partial one
-           duplicates it (`runtime-runner.test.ts`), so a run that has already
-           streamed anything keeps waiting for its answer at completion. */
+           after the checks — unless partial text is already on screen, since
+           the stream only appends and the full answer would be stitched onto
+           it (`runtime-runner.test.ts`).
+
+           That test is `answer_streamed`, not `stream_seq`. stream_seq is the
+           last runner event a slice relayed, so every tool call advances it:
+           it says the run has done something, not that the owner has seen an
+           answer. A browser task on 21 September completed with its reply
+           written and never delivered — gate held every token because the
+           slice was resumed, nothing emitted, and stream_seq past zero for
+           two browser events. The chat waited for an answer that existed. */
         if (!checked && successful && web && answerGate.reason
-          && !answerGate.emitted && (lease.task.streamSeq ?? 0) === 0) {
+          && !answerGate.emitted && !lease.task.answerStreamed) {
           publishStartedAt = Date.now();
           published = await web.reveal(assessmentAnswer(outcome.result)).catch(() => false);
         }
