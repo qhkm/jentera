@@ -35,6 +35,7 @@ invitations.
 |---|---|---|
 | Clear orphan `checkpoints/v31` on sprite `aisar-b-702bf940d4f6ac4a4f52` | Fly support; the owner sends the message drafted 12 Sep | Include the exact JuiceFS rename error and the NEOREKA ASIA precedent of 7 Sep, which cleared when Fly rebuilt the store |
 | Reply to Scott at Fly | Owner | Open since before 12 Sep |
+| Pin sprite placement to a region | Fly / Sprites | `sprite create` has no region flag and `GET /v1/sprites/<name>` returns none. `RUNTIME_EXPECTED_REGION` is `sin`; 4 of 10 sprites probed on 21 Sep egress from the US, including Kitakod's. `docs/sprite-egress-region-2026-09-21.md` |
 
 ## Review later
 

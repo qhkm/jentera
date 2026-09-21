@@ -1,7 +1,8 @@
 # Where the sprites actually are
 
 Recorded: 21 September 2026.
-Status: finding, not a change. Nothing was provisioned, purchased or moved.
+Status: **collection fixed the same day**; placement unchanged. Nothing was
+provisioned, purchased or moved.
 
 `RUNTIME_EXPECTED_REGION` has said `sin` for as long as it has existed, and
 `/api/runtime` reports every runtime's placement as optimal, different or
@@ -137,3 +138,40 @@ is not a thing we can promise away.
 4. Only then consider a customer-hosted connector — and scope it to a CONNECT
    proxy reachable on one port under a tailnet ACL, never exit-node routing,
    given who else is on the machine.
+
+## What was done about it
+
+Collection was fixed on 21 September, worker-side only, with no runner change
+and so no fleet release. `recordEgress` (`worker/src/runtime/egress.ts`) reads
+`request.cf` on the calls a sprite already makes to this worker — the model
+proxy, the artifact upload, the config channel — and writes `egress_colo`,
+`egress_country` and `egress_seen_at` to `agent_runtime` at most once every six
+hours per sprite, behind `waitUntil`. `getRuntimeRegion` prefers that value and
+keeps the old runner-reported one as a fallback. Migration 063, applier
+`worker/scripts/apply-runtime-egress.mjs`, applied to production the same day;
+the applier verifies `aisar_app` may update all three columns, because the
+route that writes them runs as `aisar_app` and a missing grant would surface
+only as a warning behind `waitUntil`.
+
+Verified end to end by calling `/v1/runtime/config` from two sprites with their
+own credentials:
+
+| Business | recorded | independent probe |
+|---|---|---|
+| Kitakod Ventures | `sjc` / `US` | SJC / US |
+| Jentera | `sin` / `SG` | SIN / SG |
+
+Two things remain true and are worth knowing:
+
+- **A sprite is unknown until it next calls.** Two of 26 rows are populated;
+  the rest fill as each sprite does work. An idle sprite reports nothing,
+  which is correct — it is not egressing anywhere.
+- **`egress_colo` is a Cloudflare edge, and `RUNTIME_EXPECTED_REGION` is a Fly
+  region code.** They coincide for the codes seen so far, but Batik People
+  answers at `hkg` on a Singapore address, so it will read as *different* while
+  being where we want it. `egress_country` is the field that answers "where
+  does a website think this is"; `colo` is the one that approximates placement.
+
+Placement itself is still not ours to choose: `sprite create` has no region
+flag and the Sprites API returns none. That remains an ask to Fly.
+
