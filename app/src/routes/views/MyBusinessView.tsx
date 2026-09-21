@@ -15,6 +15,9 @@ import {
   BookOpenText,
   Buildings,
   Check,
+  Desktop,
+  FileText,
+  Globe,
   Info,
   MapPin,
   PencilSimple,
@@ -444,6 +447,34 @@ export default function MyBusinessView({
                 <ArrowRight size={18} aria-hidden="true" />
               </Link>
             </Card>
+
+            <section className="business-vm-skills" aria-labelledby="vm-skills-title">
+              <header className="business-vm-skills-heading">
+                <div>
+                  <Eyebrow>{t('biz.vmSkills.eyebrow')}</Eyebrow>
+                  <h3 id="vm-skills-title">{t('biz.vmSkills.title')}</h3>
+                </div>
+                <Tag tone="green">{t('biz.vmSkills.managed')}</Tag>
+              </header>
+              <p>{t('biz.vmSkills.description')}</p>
+              <ul>
+                {[
+                  { key: 'web', icon: Globe },
+                  { key: 'browser', icon: Desktop },
+                  { key: 'files', icon: FileText },
+                  { key: 'memory', icon: BookOpenText },
+                ].map(({ key, icon: Icon }) => (
+                  <li key={key}>
+                    <Icon size={18} weight="duotone" aria-hidden="true" />
+                    <span>
+                      <strong>{t(`biz.vmSkills.${key}.title`)}</strong>
+                      <small>{t(`biz.vmSkills.${key}.description`)}</small>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <small className="business-vm-skills-note">{t('biz.vmSkills.note')}</small>
+            </section>
 
             <div className="flex flex-col gap-3">
               <div>
