@@ -33,7 +33,7 @@ const sampleFrame: BusinessBrowserState = { image: 'aW1hZ2U=', width: 1280, heig
   { index: 1, origin: 'null', selected: false },
 ] };
 
-it('offers explicit window recovery after a conflict and keeps the agent paused until hand-back', async () => {
+it('moves same-owner control from a previous window automatically and keeps the agent paused until hand-back', async () => {
   const user = userEvent.setup();
   const pause = vi.fn();
   const browser = vi.fn(async (command?: BrowserCommand): Promise<BusinessBrowserState> => {
@@ -43,13 +43,10 @@ it('offers explicit window recovery after a conflict and keeps the agent paused 
   });
   mountBrowser(browser, pause);
   await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
-  const recovery = await screen.findByRole('region', { name: 'Continue in this window?' });
-  expect(recovery).toHaveTextContent('This disconnects your previous window.');
-  expect(browser.mock.calls.some(([command]) => command?.action === 'reclaim')).toBe(false);
-  expect(screen.queryByRole('img')).toBeNull();
-  await user.click(within(recovery).getByRole('button', { name: 'Use this window' }));
   await screen.findByRole('img');
+  expect(browser.mock.calls.some(([command]) => command?.action === 'reclaim')).toBe(true);
   expect(screen.queryByRole('region', { name: 'Continue in this window?' })).toBeNull();
+  expect(screen.queryByRole('alert')).toBeNull();
   expect(pause).toHaveBeenLastCalledWith(true);
   expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(false);
   await user.click(screen.getByRole('button', { name: 'Hand back to Jentera' }));
@@ -192,6 +189,10 @@ it('waits for an in-flight claim, hands back, and only then closes the view', as
   mountBrowser(browser, pause);
   await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
   await waitFor(() => expect(finish).toBeTypeOf('function'));
+  expect(screen.getByText('Connecting to your business desktop…')).toBeVisible();
+  expect(screen.queryByText('Take over when you’re ready')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Take control' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Hand back to Jentera' })).toBeNull();
   await user.click(screen.getByRole('button', { name: 'Close browser view' }));
   expect(screen.getByRole('dialog')).toBeVisible();
   await act(async () => finish({ enabled: true, paused: true }));

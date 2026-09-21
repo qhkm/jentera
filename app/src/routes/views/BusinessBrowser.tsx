@@ -37,6 +37,7 @@ export default function BusinessBrowser({
   const viewport = useRef<HTMLDivElement>(null);
   const controlId = useRef(crypto.randomUUID());
   const claimOnOpen = useRef(false);
+  const recoverySupported = useRef(false);
   const inFlight = useRef(false);
   const frameFlight = useRef<Promise<BusinessBrowserState> | null>(null);
   const actionBusy = useRef(false);
@@ -150,6 +151,7 @@ export default function BusinessBrowser({
     dialog.current?.showModal();
     void repo.businessBrowser().then((s) => {
       if (!cancelled && live.current) {
+        recoverySupported.current = s.controlRecovery === 1;
         setState(s); if (typeof s.paused === 'boolean') onPauseChange?.(s.paused);
         if (claimOnOpen.current) { claimOnOpen.current = false; command({ action: 'claim' }); }
       }
@@ -189,6 +191,7 @@ export default function BusinessBrowser({
   async function send(action: Action) {
     const generation = viewGeneration.current;
     const takesControl = action.action === 'claim' || action.action === 'reclaim';
+    let autoReclaim = false;
     const previous = actionChain.current;
     let finish!: () => void;
     actionChain.current = new Promise(resolve => { finish = resolve; });
@@ -208,6 +211,7 @@ export default function BusinessBrowser({
       if (!live.current) return null;
       if (takesControl) {
         handBackNeeded.current = true;
+        recoverySupported.current = next.controlRecovery === 1 || recoverySupported.current;
         setControlConflict(false);
         setState(next); onPauseChange?.(true);
         if (generation === viewGeneration.current) { setControlled(true); setHandedBack(false); }
@@ -224,19 +228,28 @@ export default function BusinessBrowser({
     } catch (e) {
       if (live.current && generation === viewGeneration.current) {
         const message = (e as Error).message;
-        setError(message);
-        setControlConflict(/controlling this browser/i.test(message));
+        const controlledElsewhere = /controlling this browser/i.test(message);
+        // Opening the browser is one owner action. If an earlier window from
+        // this same authenticated owner still owns the lease, the runtime's
+        // narrowly-scoped reclaim command can safely move it here. Different
+        // owners and older runtimes still stop at the explicit error boundary.
+        autoReclaim = action.action === 'claim' && controlledElsewhere && recoverySupported.current;
+        setError(autoReclaim ? '' : message);
+        setControlConflict(!autoReclaim && controlledElsewhere);
         /* A lost lease is not a transient error, and treating it as one is what
            trapped the owner: the toolbar kept offering Hand back, the only
            button it had, and that button could now only fail. Dropping the
            local claim puts Take control back within reach. */
         if (/expired|controlling this browser/i.test(message)) { setControlled(false); setFrame(null); setText(''); setShowText(false); resetTyping(); }
+        if (autoReclaim) queueMicrotask(() => {
+          if (live.current && generation === viewGeneration.current && !closeRequested.current) command({ action: 'reclaim' });
+        });
       }
       return null;
     }
     finally {
       inFlight.current = false; pendingActions.current--; actionBusy.current = pendingActions.current > 0;
-      if (takesControl && live.current && generation === viewGeneration.current) setClaiming(false);
+      if (takesControl && !autoReclaim && live.current && generation === viewGeneration.current) setClaiming(false);
       finish(); if (live.current) setBusy(actionBusy.current);
     }
   }
@@ -347,7 +360,7 @@ export default function BusinessBrowser({
               <span className="business-browser-empty-icon" aria-hidden="true">
                 {handedBack ? <CheckCircle size={38} weight="duotone" /> : controlled || statusLoading || claiming ? <Clock size={38} weight="duotone" /> : <CursorClick size={38} weight="duotone" />}
               </span>
-              <h3>{t(handedBack ? 'browser.returned.title' : controlled || statusLoading || claiming ? 'browser.loading' : 'browser.welcome.title')}</h3>
+              <h3>{t(handedBack ? 'browser.returned.title' : claiming ? 'browser.desktop.connecting' : controlled || statusLoading ? 'browser.loading' : 'browser.welcome.title')}</h3>
               <p>{t(handedBack ? 'browser.returned.detail' : controlled || statusLoading || claiming ? 'browser.loadingDetail' : 'browser.welcome.detail')}</p>
               {!controlled && !handedBack && !claiming && <ol className="business-browser-guide" aria-label={t('browser.guide')}>
                 {['takeControl', 'signIn', 'handBack'].map((step, i) => <li key={step}><span>{i + 1}</span>{t(`browser.step.${step}`)}</li>)}
