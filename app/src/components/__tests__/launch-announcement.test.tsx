@@ -38,11 +38,11 @@ describe('public launch announcement', () => {
 });
 
 describe('signed-in welcome presentation', () => {
-  it('welcomes early users without claiming payment, subscription or computer readiness', () => {
+  it('welcomes signed-in users without claiming payment, subscription or computer readiness', () => {
     render(<AccountWelcome />);
     expect(screen.getByRole('region', { name: 'Welcome to Jentera!' })).toHaveTextContent('You’re signed in');
-    expect(screen.getByRole('region')).toHaveTextContent('invitation-only');
-    expect(screen.getByRole('region')).toHaveTextContent('does not start a subscription');
+    expect(screen.getByRole('region')).toHaveTextContent('prepare your first useful job');
+    expect(screen.getByRole('region')).not.toHaveTextContent('invitation-only');
     expect(screen.queryByRole('link')).toBeNull();
   });
   it('guides onboarding toward the first job in Bahasa Malaysia', () => {

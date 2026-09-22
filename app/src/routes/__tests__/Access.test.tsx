@@ -24,7 +24,7 @@ describe('waitlist and access page', () => {
   });
   it('keeps signed-out users at sign-in even when checkout is open', async () => {
     const { fetch } = mount(false, '/access?paid=true&checkoutEnabled=true', true);
-    expect(await screen.findByRole('link', { name: 'Get my AI staff' })).toHaveAttribute('href', '/signin');
+    expect(await screen.findByRole('link', { name: 'Get my AI staff' })).toHaveAttribute('href', '/signin?mode=signup');
     expect(screen.queryByRole('heading', { name: 'Choose your plan' })).not.toBeInTheDocument();
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -48,7 +48,7 @@ describe('waitlist and access page', () => {
   it('welcomes only a confirmed signed-in visitor, without granting access', async () => {
     const { fetch } = mount(true);
     expect(await screen.findByRole('region', { name: 'Welcome to Jentera!' })).toHaveTextContent('You’re signed in');
-    expect(screen.getByRole('region', { name: 'Welcome to Jentera!' })).toHaveTextContent('invitation-only');
+    expect(screen.getByRole('region', { name: 'Welcome to Jentera!' })).toHaveTextContent('prepare your first useful job');
     expect(fetch).toHaveBeenCalledTimes(1);
   });
   it('does not infer a welcome or paid access from crafted query parameters', async () => {

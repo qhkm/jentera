@@ -61,7 +61,7 @@ RUNTIME_SPARE_POOL_TARGET = "2"
 # Apply migration 060 before enabling safe unused-spare retirement and alerts.
 RUNTIME_SPARE_POOL_RECOVERY_ENABLED = "true"
 # Migration 041 must be applied before deploying this restriction.
-ACCESS_MODE = "waitlist"
+ACCESS_MODE = "open"
 # Apply migration 057 and verify trial + paid flows before opening the preview.
 # Separate from checkout: exhaustion blocks new chat work, not result/history reads.
 CHAT_PREVIEW_ENABLED = "true"

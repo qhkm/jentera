@@ -20,7 +20,7 @@ describe("Jentera landing experience", () => {
     expect(within(pricing).getByText("RM99")).toBeVisible();
     expect(within(pricing).getByText("/month")).toBeVisible();
     expect(pricing).not.toHaveTextContent("One computer task at a time");
-    expect(within(pricing).getByRole("link", { name: 'Get My AI Staff — RM99' })).toHaveAttribute("href", "/signin");
+    expect(within(pricing).getByRole("link", { name: 'Get My AI Staff — RM99' })).toHaveAttribute("href", "/signin?mode=signup");
     expect(pricing).not.toHaveTextContent("no payment today");
     expect(pricing).toHaveTextContent("Early-user launch offer");
     expect(pricing).not.toHaveTextContent("Purchases are not open yet.");
@@ -73,7 +73,7 @@ describe("Jentera landing experience", () => {
     for (const link of screen.getAllByRole("link", {
       name: 'Get My AI Staff — RM99',
     })) {
-      expect(link).toHaveAttribute("href", "/signin");
+      expect(link).toHaveAttribute("href", "/signin?mode=signup");
     }
     expect(
       screen.getByText(
@@ -94,7 +94,7 @@ describe("Jentera landing experience", () => {
     expect(hero).toHaveTextContent('Try 10 chats free.');
     expect(hero).toHaveTextContent('RM99/month for your first 3 months, RM199/month thereafter.');
     expect(hero?.querySelector('.lp-hero-benefits')).toBeNull();
-    expect(within(hero as HTMLElement).getByRole('link', { name: 'Try my AI staff — 10 free chats' })).toHaveAttribute('href', '/signin');
+    expect(within(hero as HTMLElement).getByRole('link', { name: 'Try my AI staff — 10 free chats' })).toHaveAttribute('href', '/signin?mode=signup');
     for (const notice of ['Purchases are not open yet', 'no payment today', 'will be published before checkout opens']) {
       expect(container).not.toHaveTextContent(notice);
     }

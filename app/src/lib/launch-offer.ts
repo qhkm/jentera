@@ -5,8 +5,8 @@ export const launchOffer = {
   renewalPrice: 199,
   cta: 'Get My AI Staff — RM99',
   // Establish identity before showing an account-bound plan or checkout.
-  href: '/signin',
-  availability: 'Joining the waitlist is free and does not start a subscription.',
+  href: '/signin?mode=signup',
+  availability: 'Create your account to choose the launch plan. You are not charged until checkout is confirmed.',
   terms: 'RM99/month for your first 3 monthly billing periods, then RM199/month from month 4. Standard AI usage included; fair-use limits apply. Review usage limits and cancellation terms before subscribing.',
 } as const;
 
