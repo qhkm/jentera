@@ -2,11 +2,16 @@
    What the owner reads under a reply while Jentera works.
 
    A step arrives as the agent's own line: `💻 terminal: "git"`,
-   `🔍 web_search: "…"`, or plain narration. Arguments never reach here
-   (the runner keeps only the program), and narration is never quoted,
-   because older traces carried passwords and internal paths. What is
-   shown is the kind of work, the program or subject when that is safe,
+   `🔍 web_search: "…"`, or plain narration. A command's arguments never
+   reach here (the runner keeps only the program) and narration is never
+   quoted, because older traces carried passwords and internal paths. What is
+   shown is the kind of work, a subject when that subject is safe — the
+   program, the search, the site, or a file's name without its directory —
    and how many steps of that kind ran in a row.
+
+   A file's name is the owner's own material, so it is shown; the directory
+   it sits in is the computer's business and is not. A path that resolves to
+   somewhere internal loses its subject entirely rather than naming it.
    ============================================================ */
 
 /** Presentation aliases only. These do not rename files or change download URLs. */
@@ -80,6 +85,28 @@ function programOf(command: string): string | undefined {
   return undefined;
 }
 
+/** Anything naming a credential is not a subject, whatever it is attached to. */
+const SECRETISH = /password|token|secret|credential|api.?key|bearer/i;
+
+/** A file's name without the directory that holds it. The owner knows their
+    own documents by name; the sprite's layout is not theirs to read, so an
+    internal path drops the subject rather than showing where it lives. */
+function fileNameOf(preview: string): string | undefined {
+  const first = displayWorkspacePaths(preview.trim().split(/\s+/)[0] ?? '');
+  if (!first || first.includes('[internal computer path]')) return undefined;
+  const name = first.slice(first.lastIndexOf('/') + 1).trim();
+  if (!name || name.length > MAX_SUBJECT_CHARS) return undefined;
+  if (/["'`<>|&;$\\=]/.test(name) || name.startsWith('-') || SECRETISH.test(name)) return undefined;
+  return name;
+}
+
+/** What was searched for, as typed. Bounded and never a credential. */
+function patternOf(preview: string): string | undefined {
+  const value = displayWorkspacePaths(preview).replace(/\s+/g, ' ').trim();
+  if (!value || SECRETISH.test(value)) return undefined;
+  return value.slice(0, MAX_SUBJECT_CHARS);
+}
+
 function hostOf(text: string): string | undefined {
   try {
     return new URL(text).host || undefined;
@@ -104,7 +131,9 @@ function classify(step: string): { kind: Kind; subject?: string } {
     return { kind: 'search', subject: displayWorkspacePaths(preview).slice(0, MAX_SUBJECT_CHARS) || undefined };
   }
   if (tool === 'web_extract' || tool.startsWith('browser_')) return { kind: 'read', subject: hostOf(preview) };
-  if (tool === 'read_file' || /extract|browse/.test(tool)) return { kind: 'read' };
+  if (tool === 'read_file') return { kind: 'read', subject: fileNameOf(preview) };
+  if (/extract|browse/.test(tool)) return { kind: 'read' };
+  if (tool === 'search_files') return { kind: 'file', subject: patternOf(preview) };
   if (/search/.test(tool)) return { kind: 'search' };
   if (tool === 'vision_analyze') return { kind: 'image' };
   if (tool === 'process') return { kind: 'process' };
@@ -117,7 +146,7 @@ function classify(step: string): { kind: Kind; subject?: string } {
   if (tool === 'memory') return { kind: 'memory' };
   if (tool === 'image_generate' || tool.startsWith('bfl_')) return { kind: 'create' };
   if (tool === 'delegate_task') return { kind: 'delegate' };
-  if (/^(?:write_file|patch|search_files)$/.test(tool)) return { kind: 'file' };
+  if (/^(?:write_file|patch)$/.test(tool)) return { kind: 'file', subject: fileNameOf(preview) };
   return { kind: 'computer' };
 }
 

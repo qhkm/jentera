@@ -45,6 +45,40 @@ describe('the steps under a reply', () => {
     expect(entries.every((e) => e.count === 1)).toBe(true);
   });
 
+  it('names the file being worked on, without the directory holding it', () => {
+    const steps = [
+      '\u{1F4D6} read_file: "/tmp/urs_etiket.txt"',
+      '\u{1F4C1} write_file: "/home/sprite/aisar/outputs/11111111-1111-4111-8111-111111111111/summary.md"',
+    ];
+    expect(presentTaskSteps(steps, 'en', { advanced: true }).map((e) => e.subject))
+      .toEqual(['urs_etiket.txt', 'summary.md']);
+  });
+
+  it('drops the subject when the path is the computer\'s own, rather than naming it', () => {
+    const steps = [
+      '\u{1F4D6} read_file: "/home/sprite/.hermes/config.yaml"',
+      '\u{1F4D6} read_file: "/var/lib/aisar/browser-control.json"',
+    ];
+    for (const entry of presentTaskSteps(steps, 'en', { advanced: true })) {
+      expect(entry.subject).toBeUndefined();
+    }
+  });
+
+  it('refuses a file name that names a credential', () => {
+    const [entry] = presentTaskSteps(['\u{1F4D6} read_file: "/tmp/api_key.txt"'], 'en', { advanced: true });
+    expect(entry.subject).toBeUndefined();
+  });
+
+  it('shows what was searched for and folds repeats into one line', () => {
+    const steps = [
+      '\u{1F4C1} search_files: "^===== PAGE (1[1-9]|2[0-9])"',
+      '\u{1F4C1} search_files: "etiket"',
+    ];
+    expect(presentTaskSteps(steps, 'en', { advanced: false })).toEqual([
+      { label: 'Working on a file', subject: '^===== PAGE (1[1-9]|2[0-9]), etiket', count: 2 },
+    ]);
+  });
+
   it('shows only the program of an older raw command, never its arguments', () => {
     const [entry] = presentTaskSteps(['💻 terminal: "TOKEN=abc curl -H \\"Authorization: Bearer x\\" https://example.com/login"'], 'en', { advanced: true });
     expect(entry).toEqual({ label: 'Running a command', subject: 'curl', count: 1 });
