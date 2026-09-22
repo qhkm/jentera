@@ -1449,12 +1449,19 @@ export async function handleRuntimeMessage(
         };
         if (liveStream) {
           await liveStream.setStatus(quickReply ? QUICK_REPLY_STATUS : DEEP_WORK_STATUS);
+        }
+        if (liveStream || web) {
           statusTimer = setInterval(() => {
-            if (firstVisibleDelta) return;
-            /* A quick reply should feel like one short wait, not a miniature
-               deep-research workflow. Only a real tool may replace its label. */
-            if (quickReply && !currentStepIsTool) return;
-            void liveStream.setStatus(timedStatus());
+            const tick = liveStatusTick({
+              elapsedMs: Date.now() - workingSince,
+              quickReply,
+              streaming: firstVisibleDelta,
+              toolRunning: currentStepIsTool,
+            });
+            if (!tick.telegram && !tick.web) return;
+            const status = timedStatus();
+            if (tick.telegram) void liveStream?.setStatus(status);
+            if (tick.web) void web?.status(status);
           }, 5_000);
         }
         if (!lease.task.remoteRunId) {
@@ -2900,6 +2907,36 @@ function statusLine(text: string): string {
  * comes from Hermes's own model-call step callback; it is never inferred from
  * timers or tool counts. The whole line remains within Telegram's status-lane
  * bound even when a model-authored activity label is long. */
+/** Which live channels the five-second tick refreshes.
+ *
+ * Telegram's bubble is static text, so without the tick its elapsed count
+ * stops moving. The web chat is event-driven and the page draws its own
+ * clock, so ticking it under the long-task threshold would spend a stream
+ * publish every five seconds on a second count the page already has.
+ *
+ * Past that threshold the line carries what the page cannot know on its own
+ * — the iteration and the tool still running — and the case that needs it is
+ * exactly the one that emits no events to carry it: a task sitting inside a
+ * single long tool call. Before this the web line simply froze at whatever
+ * the last event had said.
+ */
+export function liveStatusTick(state: {
+  elapsedMs: number;
+  quickReply: boolean;
+  streaming: boolean;
+  toolRunning: boolean;
+}): { telegram: boolean; web: boolean } {
+  /* A quick reply should feel like one short wait, not a miniature
+     deep-research workflow. Only a real tool may replace its label. */
+  if (state.streaming || (state.quickReply && !state.toolRunning)) {
+    return { telegram: false, web: false };
+  }
+  return {
+    telegram: true,
+    web: !state.quickReply && state.elapsedMs >= LONG_TASK_STATUS_AFTER_MS,
+  };
+}
+
 export function formatLongTaskStatus(
   elapsedMs: number,
   iteration?: { current: number; total: number },

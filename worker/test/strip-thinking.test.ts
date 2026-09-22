@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   finalDurableText,
   formatLongTaskStatus,
+  liveStatusTick,
   stripHermesThinking,
 } from '../src/runtime/consumer';
 
@@ -23,6 +24,33 @@ describe('formatLongTaskStatus', () => {
     expect(status).toMatch(/^⏳ Still working… \(3m 5s elapsed — running: /);
     expect(status).not.toContain('iteration');
     expect(status.length).toBeLessThanOrEqual(120);
+  });
+});
+
+describe('liveStatusTick', () => {
+  const working = { quickReply: false, streaming: false, toolRunning: false };
+
+  it('keeps the web line moving once a task is long enough to have gone quiet', () => {
+    // The case it exists for: one tool call running for minutes emits nothing,
+    // so the web bubble froze at whatever the last event said.
+    expect(liveStatusTick({ ...working, elapsedMs: 4 * 60_000 })).toEqual({ telegram: true, web: true });
+  });
+
+  it('leaves a short task to its own events and the page\'s own clock', () => {
+    expect(liveStatusTick({ ...working, elapsedMs: 20_000 })).toEqual({ telegram: true, web: false });
+  });
+
+  it('stops at the first answer text, on both channels', () => {
+    expect(liveStatusTick({ ...working, elapsedMs: 9 * 60_000, streaming: true }))
+      .toEqual({ telegram: false, web: false });
+  });
+
+  it('never turns a quick reply into a research ticker', () => {
+    expect(liveStatusTick({ ...working, elapsedMs: 5 * 60_000, quickReply: true }))
+      .toEqual({ telegram: false, web: false });
+    // A real tool may still relabel the Telegram bubble; the web line stays event-driven.
+    expect(liveStatusTick({ ...working, elapsedMs: 5 * 60_000, quickReply: true, toolRunning: true }))
+      .toEqual({ telegram: true, web: false });
   });
 });
 
