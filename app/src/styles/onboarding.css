@@ -1,7 +1,29 @@
 .business-onboarding { max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; padding: 24px 0 48px; }
+.business-onboarding--conversation { max-width: 900px; gap: 20px; }
 .business-onboarding h1 { font-family: var(--font-pixel); font-size: clamp(28px, 5vw, 42px); line-height: 1.2; letter-spacing: -0.025em; }
 .business-onboarding h1:focus { outline: none; }
 .business-onboarding header p, .first-job > p { margin-top: 12px; color: var(--text-secondary); line-height: 1.7; }
+.onboarding-conversation-heading { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.onboarding-conversation-heading p { max-width: 620px; color: var(--text-secondary); font-size: 13px; line-height: 1.7; }
+.onboarding-guide { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: end; gap: 18px; }
+.onboarding-guide__portrait { display: grid; place-items: center; width: 112px; aspect-ratio: 1; overflow: hidden; }
+.onboarding-guide__portrait img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 14px 18px rgb(0 0 0 / 0.16)); user-select: none; }
+.onboarding-guide__message { position: relative; display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 24px 26px; border: 1px solid var(--rail); border-radius: 26px 26px 26px 8px; background: var(--bg-card); box-shadow: 0 16px 42px rgb(0 0 0 / 0.06); }
+.onboarding-guide__message p { color: var(--text-secondary); font-size: 14px; line-height: 1.7; }
+.onboarding-guide__speaker, .onboarding-answer__speaker { font-family: var(--font-mono); color: var(--accent-green); font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
+.onboarding-guide.is-compact { grid-template-columns: 58px minmax(0, 1fr); align-items: center; }
+.onboarding-guide.is-compact .onboarding-guide__portrait { width: 58px; }
+.onboarding-guide.is-compact .onboarding-guide__message { padding: 16px 20px; border-radius: 20px 20px 20px 7px; }
+.onboarding-answer { display: flex; flex-direction: column; align-self: flex-end; gap: 7px; width: min(720px, calc(100% - 76px)); margin-left: auto; }
+.onboarding-answer__speaker { align-self: flex-end; color: var(--text-muted); }
+.onboarding-answer > div { padding: 20px; border: 1px solid rgb(var(--accent-green-rgb) / 0.28); border-radius: 22px 22px 7px 22px; background: rgb(var(--accent-green-rgb) / 0.08); }
+.onboarding-answer__edit { display: inline-flex; align-items: center; gap: 5px; margin-left: 14px; color: var(--text-secondary); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.onboarding-replies { width: min(720px, calc(100% - 76px)); margin-left: auto; }
+.onboarding-composer { position: relative; width: min(720px, calc(100% - 76px)); margin-left: auto; }
+.business-onboarding .onboarding-composer textarea { width: 100%; min-height: 104px; padding: 18px 64px 18px 20px; border: 1px solid var(--rail); border-radius: 24px; resize: vertical; background: var(--bg-card); line-height: 1.6; box-shadow: 0 16px 42px rgb(0 0 0 / 0.06); }
+.business-onboarding .onboarding-composer textarea:focus { border-color: var(--accent-green); outline: 2px solid rgb(var(--accent-green-rgb) / 0.18); outline-offset: 2px; }
+.onboarding-composer .btn { position: absolute; right: 12px; bottom: 12px; display: grid; place-items: center; width: 42px; height: 42px; padding: 0; border-radius: 50%; }
+.onboarding-privacy { width: min(720px, calc(100% - 76px)); margin: -12px 0 0 auto; color: var(--text-muted); font-size: 11px; line-height: 1.6; }
 .onboarding-moments { display: flex; gap: 16px; margin-bottom: 12px; }
 .onboarding-moments li { display: flex; align-items: center; gap: 8px; flex: 1; color: var(--text-muted); font-size: 12px; }
 .onboarding-moments li[aria-current] { color: var(--accent-green); }
@@ -10,6 +32,8 @@
 .onboarding-source-options button, .first-job-options button { padding: 18px; border: 1px solid var(--rail); border-radius: 14px; text-align: left; background: var(--bg-card); }
 .onboarding-source-options button[aria-pressed="true"], .first-job-options button[aria-pressed="true"] { border-color: var(--accent-green); background: rgb(var(--accent-green-rgb) / 0.08); }
 .onboarding-source-panel, .first-job { display: flex; flex-direction: column; gap: 20px; border: 1px solid var(--rail); border-radius: 20px; background: var(--bg-card); padding: 24px; }
+.onboarding-answer .onboarding-source-panel { padding: 0; border: 0; border-radius: 0; background: transparent; }
+.onboarding-send { align-self: flex-end; display: inline-flex; align-items: center; gap: 8px; }
 .onboarding-source-panel p, .onboarding-finding small { font-size: 12px; color: var(--text-secondary); line-height: 1.6; overflow-wrap: anywhere; }
 .business-onboarding label, .first-job label { display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
 .onboarding-source-panel input[type="file"] { width: 100%; min-width: 0; }
@@ -54,9 +78,17 @@
 .first-job-result { min-width: 0; padding-top: 20px; border-top: 1px solid var(--rail); }
 .first-job-result h3 { font-size: 20px; margin-bottom: 16px; }
 @media (max-width: 600px) {
+  .business-onboarding--conversation { gap: 16px; padding-top: 12px; }
+  .onboarding-guide { grid-template-columns: 64px minmax(0, 1fr); gap: 10px; align-items: center; }
+  .onboarding-guide__portrait { width: 64px; }
+  .onboarding-guide__message { padding: 18px; border-radius: 20px 20px 20px 7px; }
+  .onboarding-guide.is-compact { grid-template-columns: 44px minmax(0, 1fr); gap: 8px; }
+  .onboarding-guide.is-compact .onboarding-guide__portrait { width: 44px; }
+  .onboarding-answer, .onboarding-replies, .onboarding-composer, .onboarding-privacy { width: calc(100% - 28px); }
+  .onboarding-answer > div { padding: 16px; }
   .computer-ready-moment { padding: 20px; }
   .computer-ready-moment ul { grid-template-columns: 1fr; }
-  .first-workflow-categories { grid-template-columns: 1fr; gap: 8px; }
+  .first-workflow-categories { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .onboarding-moments { gap: 8px; }
   .onboarding-moments li { flex-direction: column; align-items: flex-start; font-size: 11px; }
   .onboarding-source-options { grid-template-columns: 1fr; gap: 8px; }
@@ -64,4 +96,7 @@
   .onboarding-findings, .first-job-options { grid-template-columns: 1fr; }
   .onboarding-source-panel, .first-job { padding: 18px; }
   .first-job-options button { min-height: 54px; }
+}
+@media (max-width: 360px) {
+  .first-workflow-categories { grid-template-columns: 1fr; }
 }

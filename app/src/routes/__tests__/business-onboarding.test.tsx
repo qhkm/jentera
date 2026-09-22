@@ -102,10 +102,11 @@ describe('workflow-first onboarding', () => {
   });
   it('requires a category and a nonblank task, while keeping other work describable', async () => {
     mount(new LocalRepository());
+    expect(screen.queryByLabelText('What is one task you repeat every day or every week?')).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: /Something else/ }));
     await userEvent.type(await screen.findByLabelText('What is one task you repeat every day or every week?'), '   ');
     await userEvent.click(screen.getByRole('button', { name: 'Use this as my first workflow' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Choose a category');
-    await userEvent.click(screen.getByRole('button', { name: /Something else/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Describe one repetitive task');
     await userEvent.clear(screen.getByLabelText('What is one task you repeat every day or every week?'));
     await userEvent.type(screen.getByLabelText('What is one task you repeat every day or every week?'), 'Prepare a packing checklist');
     await userEvent.click(screen.getByRole('button', { name: 'Use this as my first workflow' }));

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Shell } from '@/components/Shell';
-import { JenteraMark } from '@/components/JenteraMark';
 import { Button, Input } from '@/components/ui';
+import { ArrowUp, PencilSimple } from '@phosphor-icons/react';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useMutate, useRepository, useSnapshot } from '@/lib/repo';
 import { onboardingCopy } from '@/lib/onboarding-copy';
@@ -11,8 +11,7 @@ import { useNavigate } from 'react-router';
 import { renderSourceLink } from '@/lib/reply-markdown';
 import { firstWorkflowTask, workflowCategories, workflowCategoryKey, workflowTaskKey, type WorkflowCategory } from '@/lib/first-workflow';
 import { FounderGroupInvite } from '@/components/FounderGroupInvite';
-import { AccountWelcome } from '@/components/AccountWelcome';
-import { useSignedIn } from '@/lib/repo/gate';
+import { OnboardingAnswer, OnboardingGuide } from '@/components/OnboardingGuide';
 
 type Finding = { key: string; value: string; source: string; selected: boolean; original: string };
 
@@ -20,7 +19,6 @@ type Finding = { key: string; value: string; source: string; selected: boolean; 
 export default function BusinessOnboarding() {
   const { lang } = useI18n(); const c = onboardingCopy[lang];
   const repo = useRepository(); const mutate = useMutate(); const snap = useSnapshot();
-  const signedIn = useSignedIn();
   const navigate = useNavigate();
   const [saved] = useState(() => store.getJSON<{ url?: string; social?: string; desc?: string }>(store.KEYS.onboardingDraft, {}));
   const [mode, setMode] = useState<'website' | 'upload' | 'describe'>(saved.desc && !saved.url && !saved.social ? 'describe' : 'website');
@@ -120,46 +118,65 @@ export default function BusinessOnboarding() {
     finally { lock.current = false; if (mounted.current) setBusy(false); }
   }
 
-  if (choosingWorkflow) return <Shell><div className="business-onboarding">
-    {signedIn && !snap.onboarded && <AccountWelcome lang={lang} setup />}
-    <JenteraMark size={44} />
-    <header><h1>{c.workflowTitle}</h1><p>{c.workflowIntro}</p></header>
+  if (choosingWorkflow) return <Shell><div className="business-onboarding business-onboarding--conversation">
+    <div className="onboarding-conversation-heading" role="region" aria-label={c.welcomeTitle}>
+      <span className="eyebrow">{c.guideMeet}</span>
+      <p>{c.welcomeSetup}</p>
+    </div>
+    <OnboardingGuide>
+      <h1>{c.workflowTitle}</h1>
+      <p>{c.workflowIntro}</p>
+    </OnboardingGuide>
     <form className="first-workflow" onSubmit={event => {
       event.preventDefault();
-      if (!workflowCategory || !workflowTask.trim()) { setError(c.workflowMissing); return; }
+      if (!workflowCategory) { setError(c.workflowMissing); return; }
+      if (!workflowTask.trim()) { setError(c.workflowTaskMissing); return; }
       setError(''); setChoosingWorkflow(false);
     }}>
-      <div className="first-workflow-categories" role="group" aria-label={c.workflowCategoryField}>
+      {!workflowCategory ? <div className="first-workflow-categories onboarding-replies" role="group" aria-label={c.workflowCategoryField}>
         {workflowCategories.map(category => <button key={category} type="button" aria-pressed={workflowCategory === category} onClick={() => { setWorkflowCategory(category); setError(''); }}>
           <strong>{c.workflowCategories[category]}</strong><small>{c.workflowExamples[category]}</small>
         </button>)}
-      </div>
-      <label>{c.repeatedTask}<textarea required maxLength={2000} value={workflowTask} placeholder={c.repeatedPlaceholder} onChange={event => setWorkflowTask(event.target.value)} /></label>
-      <p>{c.workflowPrivacy}</p>
-      <Button type="submit">{c.workflowNext}</Button>
+      </div> : <>
+        <OnboardingAnswer speaker={c.you}>
+          <strong>{c.workflowCategories[workflowCategory]}</strong>
+          <button type="button" className="onboarding-answer__edit" onClick={() => { setWorkflowCategory(null); setError(''); }}>
+            <PencilSimple size={14} aria-hidden="true" />{c.change}
+          </button>
+        </OnboardingAnswer>
+        <OnboardingGuide compact><p>{c.repeatedTask}</p></OnboardingGuide>
+        <div className="onboarding-composer">
+          <label className="sr-only" htmlFor="first-workflow-task">{c.repeatedTask}</label>
+          <textarea id="first-workflow-task" required maxLength={2000} value={workflowTask} placeholder={c.repeatedPlaceholder} onChange={event => setWorkflowTask(event.target.value)} />
+          <Button type="submit" aria-label={c.workflowNext} title={c.workflowNext}><ArrowUp size={20} weight="bold" aria-hidden="true" /></Button>
+        </div>
+        <p className="onboarding-privacy">{c.workflowPrivacy}</p>
+      </>}
       {error && <p role="alert" className="onboarding-error">{error}</p>}
     </form>
     <FounderGroupInvite />
   </div></Shell>;
 
-  return <Shell><div className="business-onboarding">
+  return <Shell><div className="business-onboarding business-onboarding--conversation">
     <ol className="onboarding-moments" aria-label="Onboarding">{c.steps.map((step, i) => <li key={step} aria-current={i === (review ? 1 : 0) ? 'step' : undefined}><span>{i + 1}</span>{step}</li>)}</ol>
-    <JenteraMark size={44} />
-    <header><h1 ref={heading} tabIndex={-1}>{review ? c.review : c.title}</h1><p>{review ? c.reviewNote : c.intro}</p></header>
+    <OnboardingGuide>
+      <h1 ref={heading} tabIndex={-1}>{review ? c.review : c.title}</h1>
+      <p>{review ? c.reviewNote : c.intro}</p>
+    </OnboardingGuide>
     {!review ? <>
       {workflowCategory && <button type="button" className="ask-inline-action" disabled={busy} onClick={() => { setChoosingWorkflow(true); setError(''); }}>{c.changeWorkflow}</button>}
       {(saved.url || saved.social || saved.desc) && <p className="text-text-muted">{c.resume}</p>}
-      <div className="onboarding-source-options">{(['website', 'upload', 'describe'] as const).map(option => <button type="button" key={option} aria-pressed={mode === option} disabled={busy} onClick={() => { setMode(option); setError(''); }}>{c[option]}</button>)}</div>
-      <section className="onboarding-source-panel">
+      <div className="onboarding-source-options onboarding-replies">{(['website', 'upload', 'describe'] as const).map(option => <button type="button" key={option} aria-pressed={mode === option} disabled={busy} onClick={() => { setMode(option); setError(''); }}>{c[option]}</button>)}</div>
+      <OnboardingAnswer speaker={c.you}><section className="onboarding-source-panel">
         {mode === 'website' && <><label>{c.website}<Input value={url} disabled={busy} onChange={e => setUrl(e.target.value)} placeholder="yourbusiness.com" /></label><label>{c.social}<Input value={social} disabled={busy} onChange={e => setSocial(e.target.value)} /></label><p>{c.limit}</p></>}
         {mode === 'upload' && <><label>{c.upload}<input type="file" disabled={busy} accept=".pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.json,.png,.jpg,.jpeg,.webp" onChange={e => setFile(e.target.files?.[0] ?? null)} /></label><p>{c.fileNote}</p></>}
         {mode === 'describe' && <><label>{c.name}<Input value={name} disabled={busy} onChange={e => setName(e.target.value)} /></label><label>{c.about}<textarea value={about} disabled={busy} maxLength={12000} onChange={e => setAbout(e.target.value)} /></label></>}
-        <Button disabled={busy} onClick={() => void read()}>{busy ? c.reading : c.read}</Button>
+        <Button className="onboarding-send" disabled={busy} onClick={() => void read()}>{busy ? c.reading : c.read}<ArrowUp size={18} weight="bold" aria-hidden="true" /></Button>
         {busy && sources.length > 0 && <div className="onboarding-learning" role="status">
           <strong>{c.learning}</strong>
           <ul>{sources.map(item => <li key={item.source}><span>{item.source}</span><span>{c[item.state]}</span></li>)}</ul>
         </div>}
-      </section>
+      </section></OnboardingAnswer>
     </> : <>
       <section className="onboarding-business-preview" aria-label={c.readyToReview}>
         <span className="eyebrow">{c.readyToReview}</span>

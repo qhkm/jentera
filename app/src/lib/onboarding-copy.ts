@@ -1,6 +1,9 @@
 export const onboardingCopy = {
   en: {
     welcomeEyebrow: 'YOU’RE IN',
+    guideMeet: 'MEET JENTERA',
+    you: 'You',
+    change: 'Change',
     welcomeTitle: 'Welcome to Jentera!',
     welcomeSetup: 'Thanks for joining us early. Let’s give your AI Staff its first useful job and build something great together.',
     welcomeAccess: 'You’re signed in. Thanks for joining us early! Access is invitation-only for now; joining the waitlist does not start a subscription.',
@@ -16,6 +19,7 @@ export const onboardingCopy = {
     repeatedPlaceholder: 'Every Friday, I turn my sales spreadsheet into a weekly report…',
     workflowNext: 'Use this as my first workflow',
     workflowMissing: 'Choose a category and describe one repetitive task first.',
+    workflowTaskMissing: 'Describe one repetitive task first.',
     workflowPrivacy: 'Don’t include passwords or private customer details. Choosing a workflow does not run or schedule it.',
     changeWorkflow: 'Change my first workflow',
     workflowCategoryField: 'First workflow category', workflowTaskField: 'Your repetitive task',
@@ -65,6 +69,9 @@ export const onboardingCopy = {
   },
   bm: {
     welcomeEyebrow: 'ANDA SUDAH MASUK',
+    guideMeet: 'KENALI JENTERA',
+    you: 'Anda',
+    change: 'Tukar',
     welcomeTitle: 'Selamat datang ke Jentera!',
     welcomeSetup: 'Terima kasih kerana menyertai kami dari awal. Mari beri Staf AI anda tugas pertama dan bina produk yang hebat bersama.',
     welcomeAccess: 'Anda sudah log masuk. Terima kasih kerana menyertai kami dari awal! Akses buat masa ini melalui jemputan; menyertai senarai menunggu tidak memulakan langganan.',
@@ -80,6 +87,7 @@ export const onboardingCopy = {
     repeatedPlaceholder: 'Setiap Jumaat, saya tukar hamparan jualan kepada laporan mingguan…',
     workflowNext: 'Pilih sebagai aliran kerja pertama',
     workflowMissing: 'Pilih kategori dan terangkan satu kerja berulang dahulu.',
+    workflowTaskMissing: 'Terangkan satu kerja berulang dahulu.',
     workflowPrivacy: 'Jangan masukkan kata laluan atau butiran peribadi pelanggan. Pilihan ini tidak menjalankan atau menjadualkan kerja.',
     changeWorkflow: 'Tukar aliran kerja pertama',
     workflowCategoryField: 'Kategori aliran kerja pertama', workflowTaskField: 'Kerja berulang anda',
