@@ -25,6 +25,7 @@ import { ToastProvider } from '@/components/Toast';
 import { useBusiness } from '@/hooks/useBusiness';
 import type { Activity, Connection } from '@/lib/repo';
 import type { ConnectionsState } from '@/hooks/useConnections';
+import type { ChatPreview } from '@/hooks/useChatPreview';
 
 const NOTHING_YET: Activity = {
   counters: { handled: 0, needsYou: 0, minutesSaved: 0, thisWeek: 0, connections: 1 },
@@ -65,12 +66,13 @@ function connectionState(rows: Connection[], real = true): ConnectionsState {
   };
 }
 
-function Harness({ connections = connectionState([]), onNavigate = () => {} }: {
+function Harness({ connections = connectionState([]), preview = null, onNavigate = () => {} }: {
   connections?: ConnectionsState;
+  preview?: ChatPreview | null;
   onNavigate?: (view: string, tab?: string, runId?: string | null) => void;
 }) {
   const b = useBusiness();
-  return <HomeView b={b} connections={connections} goalsEnabled={false} onNavigate={onNavigate as never} />;
+  return <HomeView b={b} connections={connections} goalsEnabled={false} preview={preview} onNavigate={onNavigate as never} />;
 }
 
 async function mount(signedIn: boolean, activity: Activity | null, rows: Connection[] = [], onNavigate?: (view: string, tab?: string, runId?: string | null) => void) {
@@ -136,6 +138,22 @@ describe('a business that has handled something', () => {
 });
 
 describe('a business that has genuinely done nothing', () => {
+  it('offers the launch plan to free accounts without showing it to paid accounts', async () => {
+    const repo = new LocalRepository();
+    repo.activity = async () => NOTHING_YET;
+    const renderHome = (preview: ChatPreview | null) => render(
+      <MemoryRouter><SignedInProvider value><RepositoryProvider repository={repo}><I18nProvider><ToastProvider><ActivityProvider>
+        <Harness preview={preview} />
+      </ActivityProvider></ToastProvider></I18nProvider></RepositoryProvider></SignedInProvider></MemoryRouter>,
+    );
+    const free = renderHome({ limit: 10, used: 4, remaining: 6 });
+    expect(await screen.findByRole('region', { name: 'Become an early member.' })).toHaveTextContent('6 free chats left');
+    expect(screen.getByRole('link', { name: 'See launch offer' })).toHaveAttribute('href', '/subscribe');
+    free.unmount();
+    renderHome(null);
+    expect(screen.queryByRole('region', { name: 'Become an early member.' })).toBeNull();
+  });
+
   it('still gets told so', async () => {
     /* The line is not simply deleted — it is true here and it is the
        only thing on the card that says what to expect. */

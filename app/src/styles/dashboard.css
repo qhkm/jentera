@@ -306,6 +306,32 @@
 .home-notice {
   grid-column: 1 / -1;
 }
+.home-upgrade-banner {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  border: 1px solid rgb(var(--accent-green-rgb) / .25);
+  border-radius: var(--radius-card);
+  background: linear-gradient(110deg, rgb(var(--accent-green-rgb) / .1), transparent 65%);
+}
+.home-upgrade-icon {
+  display: grid;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgb(var(--accent-green-rgb) / .12);
+  color: var(--accent-green);
+}
+.home-upgrade-copy { flex: 1; min-width: 0; }
+.home-upgrade-copy h2 { margin: 3px 0 0; font-size: 18px; font-weight: 600; letter-spacing: -.025em; }
+.home-upgrade-copy p { margin: 5px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.home-upgrade-copy small { display: block; margin-top: 5px; color: var(--text-muted); font-size: 10px; line-height: 1.5; }
+.home-upgrade-action { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; }
+.home-upgrade-action .btn { min-height: 44px; white-space: nowrap; }
 .home-ask-launcher {
   grid-column: 1 / -1;
   display: flex;
@@ -664,6 +690,11 @@
     font-size: 10px;
     white-space: normal;
   }
+  .home-upgrade-banner { align-items: flex-start; flex-wrap: wrap; padding: 16px; }
+  .home-upgrade-icon { width: 36px; height: 36px; flex-basis: 36px; }
+  .home-upgrade-copy { flex-basis: calc(100% - 52px); }
+  .home-upgrade-action { width: 100%; justify-content: space-between; }
+  .home-upgrade-action .btn { flex: 1; }
   .home-ask-launcher {
     gap: 12px;
     padding: 20px 16px;

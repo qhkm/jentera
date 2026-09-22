@@ -19,6 +19,7 @@ import {
   Lightning,
   PlugsConnected,
   SquaresFour,
+  Sparkle,
 } from '@phosphor-icons/react';
 import { JenteraMascot } from '@/components/JenteraMascot';
 import { WorkPulse } from '@/components/WorkSignal';
@@ -35,6 +36,8 @@ import { BUSINESS_TIME_ZONE, malaysiaDay } from '@/lib/daily-brief';
 import { isRunId } from '@/lib/task';
 import type { View } from '../Dashboard';
 import type { BizTab } from './MyBusinessView';
+import type { ChatPreview } from '@/hooks/useChatPreview';
+import { launchOffer } from '@/lib/launch-offer';
 
 /** The three counters, in the order they are rendered when real. */
 const PENDING_STATS = ['handled', 'needs', 'saved'] as const;
@@ -44,11 +47,13 @@ export default function HomeView({
   b,
   connections,
   goalsEnabled,
+  preview,
   onNavigate,
 }: {
   b: ReturnType<typeof useBusiness>;
   connections: ConnectionsState;
   goalsEnabled: boolean;
+  preview?: ChatPreview | null;
   onNavigate: (v: View, businessTab?: BizTab, runId?: string) => void;
 }) {
   const { t, lang } = useI18n();
@@ -170,6 +175,24 @@ export default function HomeView({
           <span><strong>{t('home.action.business')}</strong><small>{t('home.action.business.detail')}</small></span>
         </button>
       </section>
+
+      {preview && <section className="home-upgrade-banner" aria-labelledby="home-upgrade-title">
+        <span className="home-upgrade-icon" aria-hidden="true"><Sparkle size={20} weight="fill" /></span>
+        <div className="home-upgrade-copy">
+          <Eyebrow>{t('home.upgrade.eyebrow')}</Eyebrow>
+          <h2 id="home-upgrade-title">{t('home.upgrade.title')}</h2>
+          <p>{t('home.upgrade.detail')}</p>
+          <small>{t('home.upgrade.terms', {
+            price: launchOffer.monthlyPrice,
+            months: launchOffer.introductoryMonths,
+            renewal: launchOffer.renewalPrice,
+          })}</small>
+        </div>
+        <div className="home-upgrade-action">
+          <Tag tone="neutral">{t('home.upgrade.remaining', { n: preview.remaining })}</Tag>
+          <Link className="btn btn-primary" to="/subscribe">{t('home.upgrade.cta')}<ArrowRight size={16} aria-hidden="true" /></Link>
+        </div>
+      </section>}
 
       {!demo && <DailyBrief activity={activity} snapshot={snap} now={now} onNavigate={onNavigate} />}
 

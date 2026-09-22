@@ -42,6 +42,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { useNotifications } from '@/hooks/useNotifications';
 import { ComputerStatus } from '@/components/ComputerStatus';
 import { isPwaStandalone } from '@/pwa/install';
+import { useChatPreview } from '@/hooks/useChatPreview';
 
 export type View = 'home' | 'chat' | 'work' | 'files' | 'skills' | 'library' | 'goals' | 'routines' | 'notifications' | 'business';
 
@@ -76,6 +77,7 @@ export default function Dashboard() {
   const sidebarId = useId();
   const repository = useRepository();
   const signedIn = useSignedIn();
+  const preview = useChatPreview(signedIn);
   const routinesEnabled = useRoutinesEnabled() && !!repository.routines;
   const goalsEnabled = signedIn && !!repository.goals;
   const availableNav = goalsEnabled ? NAV : NAV.filter((item) => item.id !== 'goals');
@@ -251,7 +253,7 @@ export default function Dashboard() {
 
         <div ref={contentRef} className="dashboard-content min-w-0 flex-1">
           <ComputerStatus mobileTarget={computerStatusTarget} onOpenChat={isChat ? undefined : () => go('chat')} onOpenKnowledge={() => go('business', 'knows')} onOpenActivity={openTask} />
-          {view === 'home' && <HomeView b={b} connections={connections} goalsEnabled={goalsEnabled} onNavigate={go} />}
+          {view === 'home' && <HomeView b={b} connections={connections} goalsEnabled={goalsEnabled} preview={preview} onNavigate={go} />}
           {/* Keep the owner conversation mounted while they inspect another
               section. Returning to Ask Jentera must not erase the exchange. */}
           <div className={isChat ? 'workspace-chat-panel' : 'hidden'} hidden={!isChat}>
