@@ -30,7 +30,41 @@ invitations.
 |---|---|---|
 | Hermes local cron removal on Kitakod's sprite | A one-off cleanup; sprites never own a local cron. Only the bundle makes it permanent | The release's bootstrap removes it; `fleet-exec.sh` finds none |
 | BoxCompute warning cleared | `last_error` holds the checkpoint warning while Fly's orphan `v31` exists | After Fly clears the directory, the next release checkpoints cleanly: `last_error` null, a real id |
+| `AISAR_KEEPALIVE_GRACE_HOURS` 0 -> 1 | Committed 22 Sep and inert until a Worker deploy. At 0 every run pays a 15-30 s wake; measured over 503 run tasks, 1 hour drops that to 23.5% of runs for about 118 extra awake sprite-hours a month. `ship-runtime.sh` deploys the Worker at step 4, so the next release carries it | A run following a gap of under an hour starts without a wake, and `stats.sh` shows no rise in stuck tasks |
 
+
+
+### Before any Worker deploy, check the tree
+
+As of 22 September `worker/src` carries uncommitted bot-preferences work
+(`routes/repo.ts`, `routes/runs.ts`, `specialists.ts`) that reads
+`specialist_profile.avatar` and writes `bot_preference`. **Production has
+neither** — migration 065 is unapplied there. `wrangler deploy` bundles
+`worker/src` from disk, so deploying while that is present ships code that
+fails on those paths. Order is migration, then Worker, then app
+(`docs/ai-bots-and-avatars.md`). `git status worker/` before any deploy.
+
+### Re-running the keepalive measurement
+
+```sql
+with d as (
+  select business_id, started_at,
+    started_at - lag(started_at) over (partition by business_id order by started_at) as gap
+  from runtime_task
+  where kind = 'run' and started_at is not null and started_at > now() - interval '30 days'
+)
+select n.hrs as keepalive_hours,
+  count(*) filter (where d.gap is null or d.gap > (n.hrs || ' hours')::interval) as wakes,
+  count(*) as runs,
+  round(100.0 * count(*) filter (where d.gap is null
+    or d.gap > (n.hrs || ' hours')::interval) / count(*), 1) as pct_paying_wake
+from d cross join (values (0.0),(0.5),(1.0),(2.0),(4.0),(8.0),(24.0)) as n(hrs)
+group by n.hrs order by n.hrs;
+```
+
+Peak concurrent run tasks over the same window was **4**, which is why
+`max_concurrency = 20` on the queue was left alone: it is nowhere near
+binding, and raising it would change nothing.
 
 ## Waiting on someone else
 

@@ -116,10 +116,27 @@ VAULT_DEPOSIT_ORIGIN = "https://aisar-vault-deposit.qhkmdev90.workers.dev"
 RUNTIME_RELEASE = "2026.09.22-3"
 RUNTIME_EXPECTED_REGION = "sin"
 # Keep a sprite awake this many hours after each dispatch. Launch posture
-# was 24 on every plan; since 2026-09-09 it is 0: an idle sprite pauses and
+# was 24 on every plan; from 2026-09-09 it was 0: an idle sprite pauses and
 # stops billing, and the first message after a pause pays a wake of roughly
 # 15-30 s (docs/reply-latency.md). Unset means 24.
-AISAR_KEEPALIVE_GRACE_HOURS = "0"
+#
+# 1 since 2026-09-22, chosen off the gap distribution of 503 run tasks in the
+# preceding 30 days rather than by feel. Share of runs that pay a wake, and
+# the extra awake sprite-hours each window costs across the whole fleet:
+#
+#   0h -> 100%  (+0)     0.5h -> 33%  (+83)     1h -> 23.5% (+118)
+#   2h -> 17.3% (+174)   4h  -> 12.3% (+248)   24h ->  5.6% (+672)
+#
+# The curve knees at 0.5-1h: the first hour buys 76.5 points of wake for 118
+# sprite-hours, the next 23 hours buy 18 more for 554. At the illustrative
+# rates in docs/sprites-vs-dedicated-vms.md (not our invoice) 118 hours is
+# roughly USD 12-23 a month at this fleet size. What it buys is the case
+# that matters most: a follow-up message inside a live conversation, which
+# is where a 15-30 s wake is most obvious.
+#
+# Re-run the query in docs/todo.md against fresh data before changing it;
+# the right answer moves with how people actually use the product.
+AISAR_KEEPALIVE_GRACE_HOURS = "1"
 SPRITES_API_ORIGIN = "https://api.sprites.dev"
 # Fail closed. Completing onboarding provisions one isolated runtime for the
 # new business only when the complete secure bootstrap chain is configured.
