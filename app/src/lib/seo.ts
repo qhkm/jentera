@@ -6,9 +6,9 @@ export const SOCIAL_ALT = 'Jentera by AISAR. AI staff that works 24/7 for Malays
 export const INDEXABLE_PATHS = [
   '/', '/ms', '/pricing', '/about',
   '/connect', '/connect/telegram', '/connect/google-calendar', '/connect/bukku',
-  '/privacy', '/terms',
+  '/privacy', '/terms', '/blog/meet-jentera',
 ] as const;
-export const PRIVATE_PATHS = ['/signin', '/onboard', '/setup', '/app', '/join', '/access', '/waitlist', '/subscribe', '/admin/launch', '/landing-v2', '/landing-v3'] as const;
+export const PRIVATE_PATHS = ['/signin', '/onboard', '/setup', '/app', '/join', '/access', '/waitlist', '/subscribe', '/admin/launch', '/landing-v1', '/landing-v2', '/landing-v3'] as const;
 
 export type IndexablePath = (typeof INDEXABLE_PATHS)[number];
 
@@ -27,7 +27,8 @@ const BM_PATHS = new Set<string>(['/ms']);
 const CHROME = ['app/src/components/landing/LandingChrome.tsx', 'app/src/lib/landing-content.ts'] as const;
 export const INDEXABLE_PAGE_SOURCES: Record<IndexablePath, readonly string[]> = {
   '/': [
-    'app/src/routes/Landing.tsx',
+    'app/src/routes/LandingV3.tsx',
+    'app/src/styles/landing-v3.css',
     'app/src/lib/landing-content.ts',
     'app/src/lib/launch-offer.ts',
     'app/src/components/landing/LandingChrome.tsx',
@@ -108,6 +109,12 @@ export const INDEXABLE_PAGE_SOURCES: Record<IndexablePath, readonly string[]> = 
     'app/src/styles/privacy.css',
     'app/src/lib/seo.ts',
   ],
+  '/blog/meet-jentera': [
+    'app/src/routes/LaunchPost.tsx',
+    'app/src/styles/launch-post.css',
+    'app/src/lib/launch-offer.ts',
+    'app/src/lib/seo.ts',
+  ],
 };
 
 export interface PageSeo {
@@ -163,6 +170,11 @@ const PAGES: Record<string, Omit<PageSeo, 'canonical' | 'indexable' | 'lang'>> =
     title: 'Terms of service — Jentera',
     description: 'Terms for using Jentera, including account responsibilities, AI outputs, connected services, approvals and your legal rights.',
   },
+  '/blog/meet-jentera': {
+    title: 'Meet Jentera — AI staff for real business work',
+    description: 'Meet Jentera: AI staff with a private business workspace, a business browser, visible activity and owner control, built in Malaysia.',
+  },
+  '/landing-v1': { title: 'Jentera — Landing design preview V1', description: 'The original Jentera landing page, retained for design review.' },
   '/landing-v2': { title: 'Jentera — Landing design preview V2', description: 'An alternative landing page for design review. Compare it with the original Jentera homepage.' },
   '/landing-v3': { title: 'Jentera — Landing design preview V3', description: 'A dark illustrated landing concept for Jentera. Compare all three design directions.' },
   '/signin': { title: 'Sign in to Jentera', description: 'Sign in to your private Jentera business workspace.' },

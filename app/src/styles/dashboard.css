@@ -209,6 +209,12 @@
 .home-heading .eyebrow {
   color: var(--accent-green);
 }
+.home-greeting { display: flex; align-items: center; gap: 12px; }
+.home-greeting .jentera-mascot { transform: rotate(-7deg); }
+@media (max-width: 639px) {
+  .home-greeting { gap: 8px; }
+  .home-greeting .jentera-mascot { max-width: 44px; max-height: 44px; }
+}
 .home-date {
   display: flex;
   gap: 8px;

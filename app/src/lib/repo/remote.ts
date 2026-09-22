@@ -242,6 +242,9 @@ export class RemoteRepository implements Repository {
       facts: (snapshot.facts as Fact[]) ?? [],
       canManageKnowledge: snapshot.canManageKnowledge === true,
       specialists: (snapshot.specialists as Specialist[]) ?? [],
+      canManageBots: snapshot.canManageBots === true,
+      defaultBotProfile: String(snapshot.defaultBotProfile ?? 'default'),
+      coordinatorAvatar: (snapshot.coordinatorAvatar as Specialist['avatar']) ?? 'original',
     };
   }
 
@@ -361,12 +364,15 @@ export class RemoteRepository implements Repository {
     return history;
   }
 
-  createSpecialist = (input: Pick<Specialist, 'name' | 'description' | 'instructions'>) =>
+  setBotPreference = (input: { defaultBotProfile: string; coordinatorAvatar: NonNullable<Specialist['avatar']> }) =>
+    post('/api/state/bot-preference', input);
+
+  createSpecialist = (input: Pick<Specialist, 'name' | 'description' | 'instructions' | 'avatar'>) =>
     post('/api/state/specialists', input);
 
   updateSpecialist = (
     id: string,
-    input: Pick<Specialist, 'name' | 'description' | 'instructions'>,
+    input: Pick<Specialist, 'name' | 'description' | 'instructions' | 'avatar'>,
   ) => post(`/api/state/specialists/${encodeURIComponent(id)}`, input);
 
   disableSpecialist = (id: string) =>
@@ -446,6 +452,7 @@ export class RemoteRepository implements Repository {
         requestId,
         mode: options.mode ?? 'work',
         ...(options.sessionId ? { sessionId: options.sessionId } : {}),
+        ...(options.botProfile ? { botProfile: options.botProfile } : {}),
         ...(options.workspaceId ? { workspaceId: options.workspaceId } : {}),
         ...(options.goalId ? { goalId: options.goalId } : {}),
         ...(options.goalCheckpointId ? { goalCheckpointId: options.goalCheckpointId } : {}),
@@ -753,7 +760,16 @@ export class RemoteRepository implements Repository {
       method: 'POST', body: JSON.stringify({ token }),
     });
 
-  agentMemory = () => call<AgentMemory>('/api/agent/memory');
+  agentMemory = async () => {
+    /* Older runtimes returned { available: false } without profiles. Keep the
+       repository boundary honest so a mixed-version local stack cannot crash
+       the view while the runner is starting or waiting for an upgrade. */
+    const memory = await call<Partial<AgentMemory>>('/api/agent/memory');
+    return {
+      available: memory.available === true,
+      profiles: Array.isArray(memory.profiles) ? memory.profiles : [],
+    };
+  };
 
   forgetAgentMemory = (entry: { profile: string; file: 'MEMORY.md' | 'USER.md'; text: string }) =>
     call<void>('/api/agent/memory/forget', { method: 'POST', body: JSON.stringify(entry) });

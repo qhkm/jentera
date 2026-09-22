@@ -28,6 +28,11 @@
 .lv3-hero { position: relative; padding-top: 35px; }
 .lv3-hero-copy { position: relative; z-index: 1; text-align: center; }
 .lv3-badge { display: inline-flex; gap: 8px; align-items: center; padding: 5px 12px; font-size: 12px; border: 1px solid #275747; border-radius: 999px; background: linear-gradient(125deg, #123328, #0e1b18); color: #dbefe6; }
+.lv3-launch-pill { display: inline-flex; align-items: center; gap: 7px; min-height: 42px; padding: 5px 6px 5px 8px; border: 1px solid #ffffff0f; border-radius: 999px; background: #151716; color: #d5d8d7; font-size: 13px; box-shadow: inset 0 1px 0 #ffffff0a; }
+.lv3-brand-emoji { display: block; width: 28px; height: 28px; object-fit: contain; transform: rotate(-7deg); filter: drop-shadow(0 3px 7px #0007); }
+.lv3-launch-pill strong { color: #fff; font-weight: 600; }
+.lv3-launch-pill-icon { display: grid; place-items: center; width: 30px; height: 30px; margin-left: 3px; border-radius: 50%; background: #242725; color: #fff; }
+.lv3-launch-pill:hover { background: #1b1e1c; border-color: #ffffff1c; }
 .lv3 h1 { font-size: clamp(42px, 5.3vw, 76px); line-height: 1.08; font-weight: 680; letter-spacing: -.055em; margin: 20px 0 18px; }
 .lv3-hero-copy > p { font-size: clamp(16px, 1.5vw, 21px); line-height: 1.5; max-width: 830px; margin-inline: auto; }
 .lv3-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; margin-top: 25px; }
@@ -46,7 +51,7 @@
 .lv3-staff h3 { font-size: 12px; font-weight: 550; line-height: 1.4; margin-top: 8px; }
 .lv3-staff > span { display: block; font-size: 10px; line-height: 1.5; color: #a0adb0; margin-top: 5px; }
 .lv3-team-note { text-align: center; font-size: 11px; padding: 20px 20px 0; }
-.lv3-capabilities { padding-top: 88px; }
+.lv3-capabilities { padding-top: 88px; scroll-margin-top: 24px; }
 .lv3-capabilities-heading { max-width: 710px; margin: auto; text-align: center; }
 .lv3-capabilities-heading h2 { font-size: clamp(32px, 3.7vw, 48px); line-height: 1.15; letter-spacing: -.04em; font-weight: 600; margin: 18px 0; }
 .lv3-capabilities-heading p { font-size: 16px; }
@@ -113,11 +118,30 @@
 .lv3-mini-team, .lv3-mini-tools { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-top: auto; min-height: 70px; }
 .lv3-mini-team .lv3-staff-avatar { flex: 1; max-width: 70px; margin: 0; }.lv3-mini-tools .lv3-tool-tile { width: 44px; height: 44px; border-radius: 13px; font-size: 26px; }.lv3-mini-tools svg { width: 25px; height: 25px; }
 .lv3-task-example { display: flex; align-items: center; gap: 10px; margin-top: auto; border: 1px solid #334a42; border-radius: 14px; padding: 14px; background: #0c1714; font-size: 12px; color: #c6d8d0; }.lv3-task-example svg { flex-shrink: 0; color: #71e8bf; }
+.lv3-pricing { padding-block: 88px 56px; scroll-margin-top: 24px; }
+.lv3-pricing-heading { max-width: 660px; margin: 0 auto 38px; text-align: center; }
+.lv3-pricing-heading h2 { margin: 14px 0 12px; font-size: clamp(32px, 3.7vw, 48px); font-weight: 600; line-height: 1.15; letter-spacing: -.04em; }
+.lv3-pricing-heading p { font-size: 16px; }
+.lv3-pricing-card { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); overflow: hidden; max-width: 980px; margin-inline: auto; border: 1px solid #2b3c35; border-radius: 26px; background: #111715; box-shadow: 0 20px 60px #0003; }
+.lv3-pricing-offer, .lv3-pricing-includes { padding: 40px; }
+.lv3-pricing-offer { border-right: 1px solid #2b3c35; background: radial-gradient(ellipse at 20% 0%, #194532, transparent 68%), #101916; }
+.lv3-price { display: flex; align-items: baseline; gap: 10px; margin-top: 24px; }
+.lv3-price strong { font-size: clamp(48px, 6vw, 72px); font-weight: 620; line-height: 1; letter-spacing: -.06em; }
+.lv3-price span { color: #a0adb0; font-size: 16px; }
+.lv3-pricing-offer > p { margin-top: 14px; font-size: 14px; line-height: 1.7; }
+.lv3-pricing-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; margin-top: 28px; }
+.lv3-pricing-details { display: inline-flex; align-items: center; gap: 7px; color: #a4ddc7 !important; font-size: 12px; text-decoration: underline !important; text-underline-offset: 4px; }
+.lv3-pricing-includes > span { display: block; margin-bottom: 20px; color: #f1f5f3; font-size: 14px; font-weight: 600; }
+.lv3-pricing-includes ul { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.lv3-pricing-includes li { display: flex; align-items: flex-start; gap: 11px; color: #bdc9c4; font-size: 14px; line-height: 1.5; }
+.lv3-pricing-includes li svg { flex: 0 0 17px; margin-top: 2px; color: #75ddb8; }
+.lv3-pricing-terms { grid-column: 1 / -1; padding: 17px 40px; border-top: 1px solid #2b3c35; background: #0d1211; color: #7f8e88 !important; font-size: 10px; line-height: 1.6; }
 .lv3-story { display: grid; grid-template-columns: 160px 1fr 190px; align-items: center; gap: 36px; padding: 36px; margin-block: 32px; border: 1px solid #294b3d; border-radius: 26px; background: radial-gradient(ellipse at 10% 40%, #1b4d38, transparent 65%), #10241c; }
-.lv3-story-art .lv3-mascot { width: 100%; transform: rotate(-10deg); }.lv3-story h2 { margin: 12px 0; font-size: clamp(28px, 3vw, 38px); line-height: 1.15; letter-spacing: -.035em; font-weight: 600; }.lv3-story p { max-width: 62ch; font-size: 15px; color: #b3ccc0; }.lv3-story-signature { display: block; font-size: 12px; color: #8cdabb; margin-top: 18px; }.lv3-story-note { color: #9ed8c2; font: italic 23px/1.5 Georgia, serif; transform: rotate(-9deg); }
+.lv3-story-art .lv3-mascot { width: 100%; transform: rotate(-10deg); }.lv3-story h2 { margin: 12px 0; font-size: clamp(28px, 3vw, 38px); line-height: 1.15; letter-spacing: -.035em; font-weight: 600; }.lv3-story p { max-width: 62ch; font-size: 15px; color: #b3ccc0; }.lv3-story-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 22px; margin-top: 20px; }.lv3-story-signature { display: block; font-size: 12px; color: #8cdabb; }.lv3-story-actions .lv3-button { padding: 10px 18px; }.lv3-story-note { color: #9ed8c2; font: italic 23px/1.5 Georgia, serif; transform: rotate(-9deg); }
 @media (max-width: 1100px) { .lv3-start-grid { grid-template-columns: repeat(3, 1fr); }.lv3-start-intro { grid-column: 1 / -1; max-width: 580px; padding-bottom: 14px; }.lv3-story { grid-template-columns: 120px 1fr; gap: 24px; }.lv3-story-note { display: none; } }
 @media (max-width: 800px) { .lv3-tools { padding-block: 60px 45px; }.lv3-tool-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px 12px; }.lv3-start-grid { grid-template-columns: 1fr; }.lv3-start-intro { grid-column: auto; }.lv3-start-card { padding: 26px; }.lv3-mini-team, .lv3-mini-tools { justify-content: flex-start; }.lv3-start-card p { max-width: 55ch; }.lv3-story { padding: 28px; } }
-@media (max-width: 480px) { .lv3-tool-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.lv3-tools > p { font-size: 14px; }.lv3-story { grid-template-columns: 1fr; gap: 10px; }.lv3-story-art { width: 100px; }.lv3-story p { font-size: 14px; } }
+@media (max-width: 800px) { .lv3-pricing { padding-block: 64px 36px; }.lv3-pricing-card { grid-template-columns: 1fr; }.lv3-pricing-offer { border-right: 0; border-bottom: 1px solid #2b3c35; }.lv3-pricing-offer, .lv3-pricing-includes { padding: 30px; } }
+@media (max-width: 480px) { .lv3-tool-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.lv3-tools > p { font-size: 14px; }.lv3-pricing-heading { margin-bottom: 26px; }.lv3-pricing-heading p { font-size: 14px; }.lv3-pricing-card { border-radius: 20px; }.lv3-pricing-offer, .lv3-pricing-includes { padding: 24px 20px; }.lv3-pricing-terms { padding: 15px 20px; }.lv3-price strong { font-size: 52px; }.lv3-story { grid-template-columns: 1fr; gap: 10px; }.lv3-story-art { width: 100px; }.lv3-story p { font-size: 14px; } }
 .lv3-how { padding-block: 100px 70px; scroll-margin-top: 30px; }
 .lv3-eyebrow { font-size: 10px; color: #79d6b6; letter-spacing: .16em; }
 .lv3-how > h2 { font-size: clamp(32px, 4vw, 48px); line-height: 1.15; letter-spacing: -.045em; font-weight: 600; margin-top: 16px; }
@@ -125,8 +149,6 @@
 .lv3-steps article { position: relative; padding: 28px; border: 1px solid #23352f; border-radius: 20px; background: linear-gradient(135deg, #13241d, #0d1414 80%); }
 .lv3-steps article > svg { color: #6ee2b7; }.lv3-steps article > span { position: absolute; right: 24px; top: 22px; color: #729187; font-size: 12px; }
 .lv3-steps h3 { font-size: 18px; font-weight: 550; margin: 20px 0 12px; }.lv3-steps p { font-size: 14px; }.lv3-steps a { display: inline-flex; align-items: center; gap: 8px; margin-top: 18px; font-size: 12px; color: #9ff0d2; }
-.lv3-closing { display: flex; align-items: center; gap: 26px; padding: 28px 36px; border: 1px solid #315046; border-radius: 24px; background: radial-gradient(ellipse at 5% 50%, #164330, #0e1917 70%); }
-.lv3-closing > .lv3-mascot { width: 110px; }.lv3-closing h2 { font-size: 30px; letter-spacing: -.04em; font-weight: 600; }.lv3-closing p { margin-top: 8px; font-size: 14px; }.lv3-closing .lv3-button { margin-left: auto; }
 .lv3-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 24px; padding-block: 45px; }.lv3-footer > span { font-size: 12px; color: #91a29c; }.lv3-footer nav { display: flex; gap: 22px; font-size: 12px; color: #c6d1cd; }
 @media (prefers-reduced-motion: no-preference) { .lv3-staff-avatar { transition: transform .25s ease; }.lv3-staff:hover .lv3-staff-avatar { transform: translateY(-7px) rotate(-5deg); }.lv3-button { transition: box-shadow .2s ease; }.lv3-button:hover { box-shadow: 0 0 26px #88edbc25; } }
 @media (prefers-reduced-motion: no-preference) {
@@ -140,5 +162,6 @@
   @keyframes lv3-glow-breathe { 0%, 100% { opacity: .25; transform: scale(.98); } 50% { opacity: .85; transform: scale(1.04); } }
 }
 @media (max-width: 1100px) { .lv3-nav { gap: 18px; }.lv3-login { display: none; }.lv3-team { grid-template-columns: 1fr; margin-top: -90px; }.lv3-team-intro { text-align: center; }.lv3-handnote { font-size: 17px; }.lv3-scene { margin-top: -40px; } }
-@media (max-width: 800px) { .lv3 .lv3-wrap { width: calc(100% - 40px); }.lv3-header { min-height: 78px; gap: 12px; }.lv3-nav { display: none; }.lv3-menu-button { display: flex; }.lv3-header-actions { margin-left: auto; }.lv3-hero { padding-top: 28px; }.lv3-desktop-break { display: none; }.lv3-handnote { display: none; }.lv3-scene { margin-top: -10px; }.lv3-team { margin-top: -30px; padding: 24px 18px; }.lv3-team-grid { grid-template-columns: repeat(3, 1fr); gap: 22px; }.lv3-staff h3 { font-size: 14px; }.lv3-staff > span { font-size: 12px; }.lv3-scene figcaption { bottom: 9%; }.lv3-how { padding-block: 70px 45px; }.lv3-steps { grid-template-columns: 1fr; gap: 16px; }.lv3-closing { flex-wrap: wrap; padding: 24px; }.lv3-closing .lv3-button { margin-left: 0; }.lv3-closing h2 { font-size: 27px; } }
-@media (max-width: 480px) { .lv3-header .lv3-brand { font-size: 25px; }.lv3-header .lv3-mascot { width: 38px; }.lv3-header-actions .lv3-button { font-size: 11px; padding: 10px 14px; }.lv3-header-actions svg { display: none; }.lv3-preview { gap: 16px; font-size: 10px; }.lv3-mobile-break { display: block; }.lv3 h1 { font-size: 43px; }.lv3-actions { gap: 10px; }.lv3-actions .lv3-button { padding: 12px 18px; font-size: 12px; }.lv3-scene { width: 120%; margin-left: -10%; margin-top: 0; }.lv3-team { margin-top: -10px; }.lv3-team-grid { grid-template-columns: repeat(2, 1fr); }.lv3-team h2 { font-size: 25px; }.lv3-closing > .lv3-mascot { width: 80px; }.lv3-footer { flex-direction: column; align-items: flex-start; } }
+@media (max-width: 800px) { .lv3 .lv3-wrap { width: calc(100% - 40px); }.lv3-header { min-height: 78px; gap: 12px; }.lv3-nav { display: none; }.lv3-menu-button { display: flex; }.lv3-header-actions { margin-left: auto; }.lv3-hero { padding-top: 28px; }.lv3-desktop-break { display: none; }.lv3-handnote { display: none; }.lv3-scene { margin-top: -10px; }.lv3-team { margin-top: -30px; padding: 24px 18px; }.lv3-team-grid { grid-template-columns: repeat(3, 1fr); gap: 22px; }.lv3-staff h3 { font-size: 14px; }.lv3-staff > span { font-size: 12px; }.lv3-scene figcaption { bottom: 9%; }.lv3-how { padding-block: 70px 45px; }.lv3-steps { grid-template-columns: 1fr; gap: 16px; } }
+@media (max-width: 480px) { .lv3-header .lv3-brand { font-size: 25px; }.lv3-header .lv3-mascot { width: 38px; }.lv3-header-actions .lv3-button { font-size: 11px; padding: 10px 14px; }.lv3-header-actions svg { display: none; }.lv3-preview { gap: 16px; font-size: 10px; }.lv3-mobile-break { display: block; }.lv3 h1 { font-size: 43px; }.lv3-actions { gap: 10px; }.lv3-actions .lv3-button { padding: 12px 18px; font-size: 12px; }.lv3-scene { width: 120%; margin-left: -10%; margin-top: 0; }.lv3-team { margin-top: -10px; }.lv3-team-grid { grid-template-columns: repeat(2, 1fr); }.lv3-team h2 { font-size: 25px; }.lv3-story-actions { align-items: flex-start; flex-direction: column; }.lv3-footer { flex-direction: column; align-items: flex-start; } }
+@media (max-width: 480px) { .lv3-launch-pill { min-height: 39px; padding-left: 7px; font-size: 11px; }.lv3-brand-emoji { width: 25px; height: 25px; }.lv3-launch-pill-icon { width: 27px; height: 27px; } }

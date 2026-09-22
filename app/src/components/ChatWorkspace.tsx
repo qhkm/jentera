@@ -4,6 +4,16 @@ import { useI18n } from '@/i18n/I18nProvider';
 import type { AskSession } from '@/hooks/useAsk';
 import type { SharedWorkspace } from '@/hooks/useSharedChats';
 import { UsersThree } from '@phosphor-icons/react';
+import { BotAvatar } from '@/components/BotAvatar';
+import type { BotAvatarId } from '../../../shared/bot-avatars';
+
+export interface ChatBot {
+  profile: string;
+  name: string;
+  description: string;
+  avatar: BotAvatarId;
+  isDefault?: boolean;
+}
 
 export interface SharedChats {
   workspaces: SharedWorkspace[];
@@ -20,11 +30,16 @@ interface ConversationsProps {
   onOpen: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
+  bots?: ChatBot[];
+  activeBotProfile?: string;
+  defaultBotProfile?: string;
+  onOpenBot?: (profile: string) => void;
+  onNewBot?: () => void;
   /** Present only on the team plan, for a person in at least one workspace. */
   shared?: SharedChats;
 }
 
-export function ConversationList({ sessions, activeId, businessName, onOpen, onNew, onDelete, shared }: ConversationsProps) {
+export function ConversationList({ sessions, activeId, businessName, onOpen, onNew, onDelete, bots, activeBotProfile, defaultBotProfile = 'default', onOpenBot, onNewBot, shared }: ConversationsProps) {
   const { t, lang } = useI18n();
   const [query, setQuery] = useState('');
   const [removing, setRemoving] = useState<string | null>(null);
@@ -42,6 +57,39 @@ export function ConversationList({ sessions, activeId, businessName, onOpen, onN
     setQuery('');
     setRemoving(null);
     onNew();
+  }
+
+  if (bots && onOpenBot && onNewBot) {
+    const botMatches = bots.filter(bot => !search || `${bot.name} ${bot.description}`.toLocaleLowerCase().includes(search));
+    return (
+      <div className="conversation-list bot-conversation-list">
+        <header className="conversation-list-heading">
+          <h2>{lang === 'bm' ? 'Bot anda' : 'Your bots'}</h2>
+          <p>{lang === 'bm' ? 'Satu ruang kerja bagi setiap bot' : 'One workspace for each bot'}</p>
+        </header>
+        <button className="conversation-new" type="button" ref={newChat} onClick={onNewBot}>
+          <Plus size={18} aria-hidden="true" />
+          {lang === 'bm' ? 'Bot baharu' : 'New bot'}
+        </button>
+        <label className="conversation-search">
+          <MagnifyingGlass size={17} aria-hidden="true" />
+          <input type="search" aria-label={lang === 'bm' ? 'Cari bot' : 'Search bots'} placeholder={lang === 'bm' ? 'Cari bot' : 'Search bots'} value={query} onChange={event => setQuery(event.target.value)} />
+        </label>
+        <div className="conversation-list-scroll">
+          <ul>{botMatches.map(bot => {
+            const session = sessions.find(item => (item.botProfile ?? defaultBotProfile) === bot.profile);
+            const preview = session?.messages.slice().reverse().find(message => message.text.trim())?.text ?? bot.description;
+            return <li key={bot.profile} className={bot.profile === activeBotProfile ? 'conversation-selected' : ''}>
+              <button type="button" className="conversation-open bot-conversation-open" aria-current={bot.profile === activeBotProfile ? 'page' : undefined} onClick={() => onOpenBot(bot.profile)}>
+                <BotAvatar avatar={bot.avatar} size={34} />
+                <span className="bot-conversation-copy"><span className="conversation-title"><strong>{bot.name}</strong>{bot.isDefault && <small>{lang === 'bm' ? 'Lalai' : 'Default'}</small>}</span><span className="conversation-preview">{preview}</span></span>
+              </button>
+            </li>;
+          })}</ul>
+        </div>
+        <p className="conversation-storage-note">{lang === 'bm' ? 'Setiap bot menyimpan konteks perbualannya.' : 'Each bot keeps its own conversation context.'}</p>
+      </div>
+    );
   }
 
   return (
@@ -216,6 +264,8 @@ export function ChatWorkspace({ active, children, ...conversations }: Conversati
             {...conversations}
             onOpen={(session) => { conversations.onOpen(session); close(); }}
             onNew={() => { conversations.onNew(); close(); }}
+            onOpenBot={conversations.onOpenBot ? profile => { conversations.onOpenBot?.(profile); close(); } : undefined}
+            onNewBot={conversations.onNewBot ? () => { close(); conversations.onNewBot?.(); } : undefined}
           />
         </div>
       </dialog>

@@ -26,7 +26,8 @@ import {
 import { signalRuntimeTask } from '../runtime';
 import { runtimeProvisioningProblem } from '../runtime/execution';
 import { enqueueRuntimeTask } from '../runtime/tasks';
-import { DEFAULT_SPECIALISTS, listSpecialists } from '../specialists';
+import { botPreference, DEFAULT_SPECIALISTS, listSpecialists } from '../specialists';
+import { isBotAvatar } from '../../../shared/bot-avatars';
 import {
   findConnectionById,
   markConnectionExpired,
@@ -123,6 +124,7 @@ async function loadSnapshot(env: Env, id: TenantIdentity) {
 
     const facts = await liveFacts(tx);
     const specialists = await listSpecialists(tx, { enabledOnly: true });
+    const preference = await botPreference(tx, id.userId);
 
     return {
       onboarded: biz.onboarded,
@@ -156,6 +158,10 @@ async function loadSnapshot(env: Env, id: TenantIdentity) {
       facts,
       canManageKnowledge: can(id, 'knowledge.manage'),
       specialists,
+      canManageBots: can(id, 'specialists.manage'),
+      ...preference,
+      defaultBotProfile: preference.defaultBotProfile === 'default' || specialists.some(s => s.profile === preference.defaultBotProfile)
+        ? preference.defaultBotProfile : 'default',
     };
   });
 }
@@ -255,6 +261,30 @@ export async function handleRepo(
   }
   const body = (await request.json().catch(() => ({}))) as Body;
 
+  if (url.pathname === '/api/state/bot-preference') {
+    const profile = body.defaultBotProfile;
+    if (typeof profile !== 'string' || profile.length > 48 || !isBotAvatar(body.coordinatorAvatar)) {
+      return badRequest(cors, 'invalid bot preference');
+    }
+    const saved = await withTenant(env, id.businessId, async tx => {
+      await tx`select pg_advisory_xact_lock(hashtextextended(${`specialists:${id.businessId}`}, 0))`;
+      if (profile !== 'default') {
+        const [bot] = await tx`select id from specialist_profile where profile_key = ${profile} and enabled = true`;
+        if (!bot) return false;
+      }
+      await tx`insert into bot_preference (business_id, user_id, default_profile, coordinator_avatar)
+        values (${id.businessId}, ${id.userId}, ${profile}, ${body.coordinatorAvatar as string})
+        on conflict (business_id, user_id) do update
+        set default_profile = excluded.default_profile, coordinator_avatar = excluded.coordinator_avatar`;
+      return true;
+    });
+    return saved ? noContent(cors) : badRequest(cors, 'bot is no longer available');
+  }
+
+  if (url.pathname.startsWith('/api/state/specialists') && body.avatar !== undefined && !isBotAvatar(body.avatar)) {
+    return badRequest(cors, 'invalid bot avatar');
+  }
+
   if (url.pathname === '/api/state/specialists') {
     if (!can(id, 'specialists.manage')) {
       return json({ ok: false, err: 'owner access required' }, { status: 403 }, cors);
@@ -277,11 +307,11 @@ export async function handleRepo(
       const profile = `sp-${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
       const [row] = await tx<{ id: string }[]>`
         insert into specialist_profile
-          (business_id, profile_key, name, description, instructions, sort_order)
-        values (${id.businessId}, ${profile}, ${name}, ${description}, ${instructions},
+          (business_id, profile_key, name, description, instructions, avatar, sort_order)
+        values (${id.businessId}, ${profile}, ${name}, ${description}, ${instructions}, ${body.avatar as string ?? 'original'},
                 ${(count.total + 1) * 10})
         returning id`;
-      return { id: row.id, profile, name, description, instructions, enabled: true };
+      return { id: row.id, profile, name, description, instructions, avatar: body.avatar ?? 'original', enabled: true };
     });
     if (!specialist) return badRequest(cors, 'a business can have at most 8 active specialists');
     return json({ ok: true, specialist }, {}, cors);
@@ -295,10 +325,12 @@ export async function handleRepo(
     const specialistId = specialistMatch[1];
     if (body.disable === true) {
       const changed = await withTenant(env, id.businessId, async (tx) => {
+        await tx`select pg_advisory_xact_lock(hashtextextended(${`specialists:${id.businessId}`}, 0))`;
         const rows = await tx`update specialist_profile
                                 set enabled = false, updated_at = now()
                               where id = ${specialistId} and enabled = true
-                              returning id`;
+                              returning id, profile_key`;
+        if (rows[0]) await tx`update bot_preference set default_profile = 'default' where default_profile = ${rows[0].profile_key}`;
         return rows.length > 0;
       });
       if (!changed) return json({ ok: false, err: 'specialist not found' }, { status: 404 }, cors);
@@ -317,7 +349,7 @@ export async function handleRepo(
     const changed = await withTenant(env, id.businessId, async (tx) => {
       const rows = await tx`update specialist_profile
                               set name = ${name}, description = ${description},
-                                  instructions = ${instructions}, updated_at = now()
+                                  instructions = ${instructions}, avatar = coalesce(${body.avatar as string ?? null}, avatar), updated_at = now()
                             where id = ${specialistId} and enabled = true
                             returning id`;
       return rows.length > 0;

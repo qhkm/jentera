@@ -48,7 +48,7 @@ describe('computer readiness', () => {
     try {
       const user = userEvent.setup();
       const button = await screen.findByRole('button', { name: 'Jentera’s computer · Ready for work' });
-      expect(view.container.querySelector('.computer-status')).toHaveClass('computer-status-header-hidden');
+      expect(view.container.querySelector('.computer-status')).toBeNull();
       await user.click(button);
       expect(button).toHaveAttribute('aria-expanded', 'true');
       await user.keyboard('{Escape}');
@@ -77,6 +77,18 @@ describe('computer readiness', () => {
   it('shows owner setup action without creating compute on mount', async () => {
     mount(async () => ({ runtime: null, canManage: true }));
     expect(await screen.findByRole('link', { name: 'Set up' })).toHaveAttribute('href', '/setup');
+  });
+  it('keeps missing-computer guidance in the header disclosure instead of the workspace', async () => {
+    const target = document.createElement('div'); document.body.append(target);
+    const view = mount(async () => ({ runtime: null, canManage: true }), true, vi.fn(), target);
+    try {
+      const trigger = await screen.findByRole('button', { name: 'Jentera’s computer · Not set up yet' });
+      expect(view.container.querySelector('.computer-status')).toBeNull();
+      await userEvent.click(trigger);
+      const popover = document.querySelector<HTMLElement>('.computer-status-popover')!;
+      expect(within(popover).getByText('Set up Jentera’s computer before giving it work.')).toBeVisible();
+      expect(within(popover).getByRole('link', { name: 'Set up' })).toHaveAttribute('href', '/setup');
+    } finally { view.unmount(); target.remove(); }
   });
   it('turns the header indicator into a useful link to the current task', async () => {
     const target = document.createElement('div'); document.body.append(target);

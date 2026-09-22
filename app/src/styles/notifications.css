@@ -1,6 +1,6 @@
 .notifications-view { display: flex; flex-direction: column; gap: 20px; font-size: var(--workspace-body); }
 .notifications-view :is(h1, h2, p, ol) { margin: 0; }
-.notifications-view h1 { font-family: var(--font-pixel); font-size: clamp(1.75rem, 3vw, 2.25rem); line-height: 1.25; }
+.notifications-view h1 { font-family: var(--font-sans); font-size: clamp(1.75rem, 3vw, 2.25rem); font-weight: 600; letter-spacing: -.035em; line-height: 1.2; }
 .notification-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .notification-heading p { max-width: 60ch; margin-top: 8px; color: var(--text-secondary); }
 .notification-actions { display: flex; align-items: center; gap: 8px; }
@@ -22,7 +22,7 @@
 .notification-summary-card .notification-title-row { justify-content: flex-start; }
 .notification-summary-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 7px; }
 .notification-summary-metrics > span { display: flex; min-width: 0; flex-direction: column; gap: 1px; padding: 9px 10px; border-radius: 9px; color: var(--text-muted); background: var(--workspace-control); font-size: 10px; }
-.notification-summary-metrics strong { color: var(--text); font-family: var(--font-mono); font-size: 15px; line-height: 1.2; }
+.notification-summary-metrics strong { color: var(--text); font-family: var(--font-sans); font-size: 15px; font-weight: 600; line-height: 1.2; }
 .notification-summary-metrics .notification-summary-issue strong { color: var(--color-red-400); }
 .notification-summary-attention { display: inline-flex; align-items: center; gap: 7px; margin-top: 3px; color: var(--color-amber-400); font-size: 11px; }
 .notification-summary-open { display: inline-flex; align-items: center; gap: 6px; margin-top: 3px; color: var(--accent-green); font-size: 11px; font-weight: 500; }

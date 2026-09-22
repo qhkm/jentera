@@ -1,0 +1,578 @@
+/* Optional application-wide preview of the V3 landing language. The class is
+   scoped to the workspace shell so the current interface remains available. */
+.workspace-header-accessories {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.workspace-design-toggle {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid var(--rail);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: border-color var(--dur-fast), color var(--dur-fast), background var(--dur-fast), transform var(--dur-press);
+}
+.workspace-design-toggle:hover {
+  border-color: rgb(var(--accent-green-rgb) / .45);
+  color: var(--text);
+}
+.workspace-design-toggle:active { transform: scale(.97); }
+.workspace-design-toggle[aria-pressed='true'] {
+  border-color: rgb(74 234 181 / .3);
+  color: #7bf0ca;
+  background: rgb(17 69 54 / .72);
+}
+
+.workspace-v3 {
+  color-scheme: dark;
+  --bg: #080808;
+  --bg-card: #181818;
+  --bg-card-hover: #222;
+  --text: #f2f2f2;
+  --text-secondary: #aaa;
+  --text-muted: #777;
+  --text-dim: #858585;
+  --border-ink: 255 255 255;
+  --border: rgb(255 255 255 / .055);
+  --rail: rgb(255 255 255 / .12);
+  --border-light: rgb(255 255 255 / .18);
+  --accent-green: #4aebb5;
+  --accent-green-rgb: 74 235 181;
+  --workspace-control: #242424;
+  --workspace-control-hover: #303030;
+  --workspace-primary: #f3f3f3;
+  --workspace-primary-hover: #fff;
+  --workspace-primary-ink: #111;
+  --workspace-focus: #72efc5;
+  --radius-card: 16px;
+  --radius-item: 13px;
+  /* V3 structural surfaces. Change these four tokens to restyle every page
+     panel; page CSS should only override genuine controls or overlays. */
+  --workspace-panel-bg: transparent;
+  --workspace-panel-border: var(--rail);
+  --workspace-panel-radius: var(--radius-card);
+  --workspace-panel-shadow: none;
+  --workspace-panel-hover: var(--bg-card-hover);
+  position: relative;
+  isolation: isolate;
+  background: var(--bg);
+}
+.theme-light .workspace-v3,
+.site-theme-light .workspace-v3 {
+  color-scheme: light;
+  --bg: #f4f7f5;
+  --bg-card: #fff;
+  --bg-card-hover: #edf4f1;
+  --text: #10201b;
+  --text-secondary: #4f625c;
+  --text-muted: #6e817b;
+  --text-dim: #6e817b;
+  --border-ink: 18 72 54;
+  --border: rgb(18 72 54 / .07);
+  --rail: rgb(18 72 54 / .12);
+  --border-light: rgb(18 72 54 / .18);
+  --workspace-control: #e8f0ed;
+  --workspace-control-hover: #dce9e4;
+  --workspace-primary: #123a2e;
+  --workspace-primary-hover: #09291f;
+  --workspace-primary-ink: #fff;
+  --workspace-panel-hover: rgb(18 72 54 / .035);
+}
+.workspace-v3::before {
+  content: none;
+}
+.workspace-v3 > header {
+  border-bottom-color: transparent;
+  background: rgb(8 8 8 / .9);
+  box-shadow: none;
+}
+.workspace-v3.workspace-chat > header {
+  /* Chat is one continuous workspace on phones. A darker global-header strip
+     made the upper controls look detached from the conversation canvas. */
+  background: #141414;
+}
+@media (min-width: 1024px) {
+  /* On desktop the conversations rail owns the full left edge, including the
+     brand area. The header continues over the working canvas to its right. */
+  .workspace-v3.workspace-chat > header {
+    background: rgb(20 20 20 / .96);
+  }
+  .workspace-v3.workspace-chat > header::after {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 248px;
+    width: 1px;
+    background: var(--rail);
+    pointer-events: none;
+  }
+}
+.workspace-v3 > header .jentera-wordmark {
+  color: #f5faf8;
+  font-family: var(--font-sans);
+  font-weight: 650;
+  letter-spacing: -.035em;
+}
+.workspace-v3 .jentera-mark { filter: drop-shadow(0 0 12px rgb(74 235 181 / .22)); }
+.workspace-v3 .workspace-mode-switch {
+  border-color: var(--rail);
+  background: #181818;
+  box-shadow: none;
+}
+.workspace-v3 .workspace-mode-switch > button[aria-current='page'] {
+  color: #f3f3f3;
+  background: #292929;
+  box-shadow: none;
+}
+.workspace-v3 .dashboard-sidebar {
+  padding: 6px 18px 6px 4px;
+  border: 0;
+  border-right: 1px solid var(--rail);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.workspace-v3 .dashboard-profile {
+  border-color: transparent;
+  background: transparent;
+}
+.workspace-v3 .dashboard-nav-section h2 {
+  color: #709188;
+  letter-spacing: .12em;
+}
+.workspace-v3 .dashboard-nav-item {
+  border: 1px solid transparent;
+}
+.workspace-v3 .dashboard-nav-item[aria-current='page'] {
+  border-color: var(--rail);
+  color: #f4f4f4;
+  background: #202020;
+}
+.workspace-v3 .dashboard-sidebar-note {
+  border-top-color: rgb(151 226 201 / .1);
+  color: #77958c;
+}
+.workspace-v3 .dashboard-content :is(.card, .home-ask-launcher, .home-notice, .home-next, .home-recent, .activity-overview, .workspace-empty, .business-identity:not(.business-identity-compact)) {
+  border: 1px solid var(--workspace-panel-border);
+  border-radius: var(--workspace-panel-radius);
+  background: var(--workspace-panel-bg);
+  box-shadow: var(--workspace-panel-shadow);
+}
+.workspace-v3 .dashboard-content :is(.card, .home-action, .home-ask-launcher, .routine-card, .business-shortcuts > button) {
+  transition: border-color var(--dur-base), background var(--dur-base), transform var(--dur-base), box-shadow var(--dur-base);
+}
+.workspace-v3 .dashboard-content :is(.home-action, .home-ask-launcher, .routine-card, .business-shortcuts > button):hover {
+  border-color: rgb(255 255 255 / .2);
+  background: var(--workspace-panel-hover);
+  box-shadow: none;
+  transform: none;
+}
+.workspace-v3 .chat-conversations {
+  flex-basis: 248px;
+  border-color: var(--rail);
+  background: #141414;
+}
+.workspace-v3 .conversation-list {
+  gap: 12px;
+  padding: 20px 12px 14px;
+}
+.workspace-v3 .conversation-list-heading { padding-inline: 4px; }
+.workspace-v3 .conversation-list-heading h2 { font-size: 15px; }
+.workspace-v3 .conversation-list-heading p { margin-top: 2px; font-size: 12px; }
+.workspace-v3 .conversation-list > .conversation-new {
+  justify-content: flex-start;
+  min-height: 38px;
+  padding-inline: 7px;
+  border-color: transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+}
+.workspace-v3 .conversation-list > .conversation-new:hover {
+  border-color: transparent;
+  background: #1d1d1d;
+  color: var(--text);
+}
+.workspace-v3 .conversation-search {
+  min-height: 40px;
+  padding-inline: 11px;
+  border-radius: 10px;
+  border-color: #292929;
+  background: #101010;
+}
+.workspace-v3 .conversation-list-scroll ul { gap: 3px; }
+.workspace-v3 .conversation-list-scroll li { border-radius: 9px; }
+.workspace-v3 .conversation-open { gap: 4px; padding: 10px; }
+.workspace-v3 .bot-conversation-open { gap: 10px; }
+.workspace-v3 .bot-conversation-open .bot-avatar { box-shadow: 0 5px 14px rgb(0 0 0 / .18); }
+.workspace-v3 .conversation-open[aria-current='page'] {
+  border-color: transparent;
+  background: #1d1d1d;
+}
+.workspace-v3 .chat-main {
+  background: #141414;
+}
+.workspace-v3 .ask-studio-emblem {
+  width: 92px;
+  height: 92px;
+  filter: drop-shadow(0 14px 22px rgb(0 0 0 / .38));
+}
+.workspace-v3 .ask-studio-emblem::after {
+  position: absolute;
+  inset: -20px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(255 255 255 / .06), transparent 68%);
+  content: '';
+  animation: workspace-v3-breathe 5s ease-in-out infinite;
+}
+.workspace-v3 .ask-studio-welcome h2 {
+  color: #f5faf8;
+  font-family: var(--font-sans);
+  font-weight: 680;
+  letter-spacing: -.045em;
+}
+.workspace-v3 .ask-writing-pad {
+  border-color: rgb(255 255 255 / .15);
+  background: #202020;
+  box-shadow: none;
+}
+.workspace-v3 .ask-writing-pad:focus-within {
+  border-color: rgb(255 255 255 / .38);
+  box-shadow: 0 0 0 3px rgb(255 255 255 / .04);
+}
+.workspace-v3 .ask-studio-send:not(:disabled) {
+  color: #062019;
+  background: linear-gradient(135deg, #91f6d4, #49dca9);
+  box-shadow: 0 8px 24px rgb(37 203 149 / .2);
+}
+.workspace-v3 :is(.ask-studio-starters > button, .conversation-new, .ask-composer-action) {
+  border-color: var(--rail);
+  background: #202020;
+}
+.workspace-v3 .dashboard-bottom-nav {
+  border-color: var(--rail);
+  background: rgb(10 10 10 / .96);
+  box-shadow: 0 -12px 40px rgb(0 0 0 / .3);
+}
+.workspace-v3 .bottom-nav-chat-icon {
+  color: var(--accent-green);
+  background: transparent;
+  box-shadow: none;
+}
+.workspace-v3 .bottom-nav-chat-icon::before { background: rgb(var(--accent-green-rgb) / .12); }
+
+/* V3 is a visual system, not a forced dark mode. The existing Appearance
+   choice switches the working canvas to a bright editorial treatment while
+   retaining the same shapes, spacing, and emerald identity. */
+.theme-light .workspace-v3,
+.site-theme-light .workspace-v3 {
+  background:
+    radial-gradient(ellipse 54% 34% at 50% -8%, rgb(76 222 171 / .16), transparent 72%),
+    radial-gradient(circle at 96% 76%, rgb(63 157 123 / .08), transparent 30%),
+    var(--bg);
+}
+.theme-light .workspace-v3 > header,
+.site-theme-light .workspace-v3 > header {
+  border-bottom-color: transparent;
+  background: rgb(250 253 251 / .86);
+  box-shadow: 0 12px 44px rgb(31 67 55 / .08);
+}
+@media (min-width: 1024px) {
+  :is(.theme-light, .site-theme-light) .workspace-v3.workspace-chat > header {
+    background: rgb(250 253 251 / .96);
+  }
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 > header .jentera-wordmark { color: #10201b; }
+:is(.theme-light, .site-theme-light) .workspace-v3 .workspace-design-toggle {
+  border-color: rgb(18 72 54 / .12);
+  background: #fff;
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 .workspace-design-toggle[aria-pressed='true'] {
+  border-color: rgb(0 121 86 / .18);
+  color: #087653;
+  background: #e5f5ef;
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 .workspace-mode-switch {
+  border-color: rgb(18 72 54 / .1);
+  background: rgb(255 255 255 / .9);
+  box-shadow: 0 6px 22px rgb(31 67 55 / .06);
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 .workspace-mode-switch > button[aria-current='page'] {
+  color: #087653;
+  background: #e5f5ef;
+  box-shadow: inset 0 0 0 1px rgb(0 121 86 / .07);
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 .dashboard-sidebar {
+  border-color: rgb(18 72 54 / .1);
+  background: linear-gradient(165deg, rgb(255 255 255 / .96), rgb(235 244 240 / .92));
+  box-shadow: 0 22px 60px rgb(31 67 55 / .08), inset 0 1px 0 #fff;
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 .dashboard-profile {
+  border-color: rgb(18 72 54 / .08);
+  background: rgb(255 255 255 / .74);
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 .dashboard-nav-item[aria-current='page'] {
+  border-color: rgb(0 121 86 / .12);
+  color: #087653;
+  background: linear-gradient(110deg, rgb(0 121 86 / .11), rgb(0 121 86 / .025));
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 .dashboard-content :is(.card, .home-ask-launcher, .home-notice, .home-next, .home-recent, .activity-overview, .workspace-empty, .business-identity:not(.business-identity-compact)) {
+  border-color: var(--workspace-panel-border);
+  background: var(--workspace-panel-bg);
+  box-shadow: var(--workspace-panel-shadow);
+}
+.workspace-v3 .dashboard-content .daily-brief {
+  border: 1px solid var(--workspace-panel-border);
+  border-radius: var(--workspace-panel-radius);
+  background: var(--workspace-panel-bg);
+  box-shadow: var(--workspace-panel-shadow);
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 .dashboard-content .daily-brief {
+  background: var(--workspace-panel-bg);
+  box-shadow: var(--workspace-panel-shadow);
+}
+
+/* Standalone panels that predate the shared Card component still used their
+   own 12/14/18/20px corners and weaker border tokens. Treat only their outer
+   shells as cards; inset plans, inputs, chips and icon controls stay smaller. */
+.workspace-v3 .dashboard-content :is(
+  .skills-list,
+  .skills-state,
+  .bot-card,
+  .bot-editor,
+  .routine-notice,
+  .computer-status,
+  .connector-card,
+  .connection-confirmation,
+  .goal-plan,
+  .routine-starter,
+  .notification-card,
+  .business-shortcuts > button,
+  .business-browser-recovery
+) {
+  border: 1px solid var(--workspace-panel-border);
+  border-radius: var(--workspace-panel-radius);
+  background: var(--workspace-panel-bg);
+  box-shadow: var(--workspace-panel-shadow);
+}
+.workspace-v3 .dashboard-content .connector-option-open > .connector-card {
+  border-radius: var(--workspace-panel-radius) var(--workspace-panel-radius) 0 0;
+}
+.workspace-v3 .dashboard-content .connector-inline-setup {
+  border: 1px solid var(--workspace-panel-border);
+  border-top: 0;
+  border-radius: 0 0 var(--workspace-panel-radius) var(--workspace-panel-radius);
+  background: var(--workspace-panel-bg);
+  box-shadow: var(--workspace-panel-shadow);
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 .dashboard-content :is(.home-action, .home-ask-launcher, .routine-card, .business-shortcuts > button):hover {
+  border-color: rgb(0 121 86 / .18);
+  background: linear-gradient(145deg, #fff, #edf7f3);
+  box-shadow: 0 18px 42px rgb(31 67 55 / .09);
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 .chat-conversations {
+  border-color: rgb(18 72 54 / .1);
+  background: #fafdfb;
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 .conversation-open[aria-current='page'] {
+  border-color: rgb(0 121 86 / .12);
+  background: rgb(255 255 255 / .76);
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 .chat-main {
+  background: #fafdfb;
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 .ask-studio-welcome h2 { color: #10201b; }
+:is(.theme-light, .site-theme-light) .workspace-v3 .ask-writing-pad {
+  border-color: rgb(0 121 86 / .2);
+  background: rgb(255 255 255 / .96);
+  box-shadow: 0 24px 60px rgb(31 67 55 / .1), inset 0 1px 0 #fff;
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 .ask-writing-pad:focus-within {
+  border-color: rgb(0 121 86 / .62);
+  box-shadow: 0 26px 70px rgb(31 67 55 / .12), 0 0 0 3px rgb(0 121 86 / .065);
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 :is(.ask-studio-starters > button, .conversation-new, .ask-composer-action) {
+  border-color: rgb(18 72 54 / .1);
+  background: rgb(255 255 255 / .66);
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 .dashboard-bottom-nav {
+  border-color: rgb(18 72 54 / .12);
+  background: rgb(250 253 251 / .95);
+  box-shadow: 0 -12px 36px rgb(31 67 55 / .1);
+}
+
+/* The two workspace modes form one segmented control. Section tabs below use
+   the quieter underline treatment. */
+.workspace-v3 .workspace-mode-switch {
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--rail);
+  border-radius: 14px;
+  background: #181818;
+  box-shadow: none;
+}
+.workspace-v3 .workspace-mode-switch > button {
+  min-height: 40px;
+  padding: 7px 15px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+}
+.workspace-v3 .workspace-mode-switch > button[aria-current='page'],
+:is(.theme-light, .site-theme-light) .workspace-v3 .workspace-mode-switch > button[aria-current='page'] {
+  color: var(--text);
+  background: #292929;
+  box-shadow: none;
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 .workspace-mode-switch { background: rgb(255 255 255 / .9); }
+:is(.theme-light, .site-theme-light) .workspace-v3 .workspace-mode-switch > button[aria-current='page'] { color: #087653; background: #e5f5ef; }
+.workspace-v3 .business-tabs {
+  gap: 24px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--rail);
+  border-radius: 0;
+  background: transparent;
+}
+.workspace-v3 .business-tabs > button {
+  margin: 0 0 -1px;
+  padding: 13px 2px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+}
+.workspace-v3 .business-tabs > button[aria-selected='true'],
+:is(.theme-light, .site-theme-light) .workspace-v3 .business-tabs > button[aria-selected='true'] {
+  border-bottom-color: var(--accent-green);
+  color: var(--text);
+  background: transparent;
+}
+.workspace-v3 .library-tabs {
+  gap: 24px;
+  padding-bottom: 0;
+}
+.workspace-v3 .library-tabs a {
+  min-height: 44px;
+  padding-inline: 2px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+}
+.workspace-v3 .library-tabs a[aria-current] {
+  border-bottom-color: var(--accent-green);
+  color: var(--text);
+  background: transparent;
+}
+
+/* Home uses spacing and dividers for hierarchy. Full cards are reserved for
+   substantial modules such as the daily brief and editable work panels. */
+.workspace-v3 .home-heading {
+  min-height: 118px;
+  margin: 0;
+  padding: 18px 4px 22px;
+  border-bottom: 1px solid var(--rail);
+  border-radius: 0;
+  background: transparent;
+}
+.workspace-v3 .home-heading::after { content: none; }
+.workspace-v3 .home-actions {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--workspace-panel-border);
+  border-radius: var(--workspace-panel-radius);
+}
+.workspace-v3 .home-action,
+.workspace-v3 .home-action:is(.home-action-activity, .home-action-alerts, .home-action-more) {
+  min-height: 76px;
+  padding: 13px 16px;
+  border: 0;
+  border-right: 1px solid var(--rail);
+  border-radius: 0;
+  background: transparent;
+  transform: none;
+}
+.workspace-v3 .home-action:last-child { border-right: 0; }
+.workspace-v3 .home-action:hover,
+.workspace-v3 .home-action:is(.home-action-activity, .home-action-alerts, .home-action-more):hover {
+  border-color: var(--rail);
+  background: rgb(255 255 255 / .035);
+  transform: none;
+}
+.workspace-v3 .home-action-icon,
+.workspace-v3 :is(.home-action-activity, .home-action-alerts, .home-action-more) .home-action-icon {
+  width: 34px;
+  height: 34px;
+  flex-basis: 34px;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  background: transparent;
+}
+.workspace-v3 .home-action:hover .home-action-icon { color: var(--accent-green); }
+.workspace-v3 .home-metrics {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--workspace-panel-border);
+  border-radius: var(--workspace-panel-radius);
+  background: var(--workspace-panel-bg);
+}
+.workspace-v3 .dashboard-content .home-stat.card {
+  min-width: 0;
+  border: 0;
+  border-right: 1px solid var(--rail);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.workspace-v3 .dashboard-content .home-stat.card:last-child { border-right: 0; }
+.workspace-v3 .dashboard-content .home-goals.card {
+  padding-inline: 4px;
+  border: 1px solid var(--workspace-panel-border);
+  border-radius: var(--workspace-panel-radius);
+  background: var(--workspace-panel-bg);
+  box-shadow: var(--workspace-panel-shadow);
+}
+.workspace-v3 .home-goals-icon {
+  background: transparent;
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 .home-action:hover { background: rgb(18 72 54 / .035); }
+:is(.theme-light, .site-theme-light) .workspace-v3 .home-metrics { background: var(--workspace-panel-bg); }
+
+@keyframes workspace-v3-breathe {
+  0%, 100% { opacity: .55; transform: scale(.94); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+
+@media (max-width: 767px) {
+  .workspace-design-toggle { display: none; }
+  .workspace-v3::before { inset-block-start: 64px; }
+  .workspace-v3 .ask-studio-emblem { width: 70px; height: 70px; }
+  .workspace-v3 .workspace-mode-switch { gap: 3px; }
+  .workspace-v3 .workspace-mode-switch > button { min-height: 38px; padding-inline: 10px; }
+  .workspace-v3 .business-tabs, .workspace-v3 .library-tabs { gap: 20px; }
+  .workspace-v3 .home-heading { min-height: 142px; padding: 18px 8px 22px; }
+  .workspace-v3 .home-action,
+  .workspace-v3 .home-action:is(.home-action-activity, .home-action-alerts, .home-action-more) {
+    min-height: 88px;
+    padding: 12px 6px;
+  }
+  .workspace-v3 .home-action-icon,
+  .workspace-v3 :is(.home-action-activity, .home-action-alerts, .home-action-more) .home-action-icon {
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+  }
+  .workspace-v3 .dashboard-content .home-stat.card { padding-inline: 12px; }
+  .workspace-v3 .dashboard-content .home-goals.card { padding-inline: 4px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-v3 .ask-studio-emblem::after { animation: none; }
+}

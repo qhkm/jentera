@@ -50,7 +50,7 @@ it('uses actual-size pixels, survives rotation, and keeps explicit pan mode on a
     matches: true, media: '(max-width: 640px)', onchange: null, addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
   })) });
   const user = userEvent.setup(); mount();
-  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  await user.click(await screen.findByRole('button', { name: 'Open Jentera’s computer' }));
   await waitFor(() => expect(mocks.clients).toHaveLength(1));
   expect(mocks.clients[0].scaleViewport).toBe(false);
   expect(mocks.clients[0].clipViewport).toBe(false);
@@ -95,7 +95,7 @@ it('zooms the local desktop with pinch without leaking Ctrl-wheel to the remote 
     matches: true, media: '(max-width: 640px)', onchange: null, addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
   })) });
   const user = userEvent.setup(); mount();
-  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  await user.click(await screen.findByRole('button', { name: 'Open Jentera’s computer' }));
   await waitFor(() => expect(mocks.clients).toHaveLength(1));
   const client = mocks.clients[0];
   const leakedGesture = vi.fn();
@@ -129,7 +129,7 @@ function mount(capability = true) {
 }
 it('claims on open and shows a full desktop without duplicate fake Chrome controls or sidebar', async () => {
   const user = userEvent.setup(); const { browser } = mount();
-  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  await user.click(await screen.findByRole('button', { name: 'Open Jentera’s computer' }));
   await screen.findByRole('region', { name: 'Live business desktop' });
   await waitFor(() => expect(mocks.clients).toHaveLength(1));
   expect(screen.queryByLabelText('Website address')).toBeNull();
@@ -137,19 +137,19 @@ it('claims on open and shows a full desktop without duplicate fake Chrome contro
   expect(browser.mock.calls.some(([command]) => command?.action === 'frame')).toBe(false);
   expect(mocks.calls[0][1]).toBe('wss://api.example.test/api/browser/desktop');
   expect(JSON.stringify(mocks.calls[0].slice(1))).not.toContain('runnerKey');
-  await user.click(screen.getByRole('button', { name: 'Close browser view' }));
+  await user.click(screen.getByRole('button', { name: 'Close computer view' }));
   await waitFor(() => expect(mocks.clients[0].disconnect).toHaveBeenCalled());
   expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(true);
 });
 it('keeps the page-only viewer on old runtimes', async () => {
   const user = userEvent.setup(); mount(false);
-  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  await user.click(await screen.findByRole('button', { name: 'Open Jentera’s computer' }));
   await waitFor(() => expect(screen.getByLabelText('Website address')).toBeVisible());
   expect(mocks.clients).toHaveLength(0); expect(screen.queryByRole('region', { name: 'Live business desktop' })).toBeNull();
 });
 it('types/pastes Unicode through native keys, clears ephemeral text and never turns pasted newlines into submission', async () => {
   const user = userEvent.setup(); mount();
-  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  await user.click(await screen.findByRole('button', { name: 'Open Jentera’s computer' }));
   const input = await screen.findByLabelText('Keyboard / paste'); await waitFor(() => expect(input).toBeEnabled());
   fireEvent.input(input, { target: { value: 'hi✓\n' } });
   expect(mocks.clients[0].sendKey.mock.calls.map(call => call[0])).toEqual([104, 105, 0x01002713]);
@@ -163,7 +163,7 @@ it('types/pastes Unicode through native keys, clears ephemeral text and never tu
 });
 it('handles the native paste event directly and offers an explicit local clipboard action', async () => {
   const user = userEvent.setup(); mount();
-  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  await user.click(await screen.findByRole('button', { name: 'Open Jentera’s computer' }));
   const input = await screen.findByLabelText('Keyboard / paste'); await waitFor(() => expect(input).toBeEnabled());
   fireEvent.paste(input, { clipboardData: { getData: (type: string) => type === 'text/plain' ? 'copy✓\n' : '' } });
   expect(mocks.clients[0].sendKey.mock.calls.map(call => call[0])).toEqual([99, 111, 112, 121, 0x01002713]);
@@ -186,7 +186,7 @@ it('handles the native paste event directly and offers an explicit local clipboa
 });
 it('disconnects the desktop before explicit hand-back and preserves the existing pause contract', async () => {
   const user = userEvent.setup(); const { browser } = mount();
-  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  await user.click(await screen.findByRole('button', { name: 'Open Jentera’s computer' }));
   await waitFor(() => expect(mocks.clients).toHaveLength(1));
   await user.click(screen.getByRole('button', { name: 'Hand back to Jentera' }));
   expect(mocks.clients[0].disconnect).toHaveBeenCalled(); expect(browser.mock.calls.filter(([command]) => command?.action === 'release')).toHaveLength(1);
@@ -194,7 +194,7 @@ it('disconnects the desktop before explicit hand-back and preserves the existing
 
 it('stops retrying after two brief reconnects without reclaiming or releasing the browser', async () => {
   const user = userEvent.setup(); const { browser } = mount();
-  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  await user.click(await screen.findByRole('button', { name: 'Open Jentera’s computer' }));
   await waitFor(() => expect(mocks.clients).toHaveLength(1));
   vi.useFakeTimers();
   try {

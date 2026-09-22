@@ -99,7 +99,6 @@
 .computer-status-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .computer-status-compact { padding: 10px 14px; align-items: center; }
 .computer-status-header-slot { display: block; }
-.computer-status-header-hidden { display: none; }
 .computer-status-disclosure { position: relative; }
 .computer-status-trigger { position: relative; display: grid; place-items: center; width: 36px; height: 40px; color: var(--text-secondary); border-radius: 10px; }
 .computer-status-trigger .jentera-mark { width: 22px; height: 22px; }
@@ -135,6 +134,48 @@ section.computer-status-setup-strip { display: block; padding: 4px 12px; border-
   .computer-status-setup-summary > span, .computer-status-setup-knowledge { display: none; }
 }
 @media (max-width: 767px) {
+  /* Mobile chrome is deliberately quiet: the conversation, not five framed
+     controls, is the primary surface. */
+  .workspace-shell > header {
+    border-bottom-color: transparent;
+    background: var(--bg);
+    backdrop-filter: none;
+  }
+  .workspace-shell .shell-header-row { height: 56px; }
+  .workspace-shell .shell-header-brand .jentera-mark { width: 34px; height: 34px; }
+  .workspace-shell .workspace-design-toggle { display: none; }
+  .workspace-shell .workspace-mode-switch {
+    gap: 0;
+    padding: 2px;
+    border: 0;
+    border-radius: 9px;
+    background: var(--workspace-control, var(--bg-card));
+  }
+  .workspace-shell .workspace-mode-switch > button {
+    min-height: 34px;
+    padding: 5px 10px;
+    border-radius: 7px;
+    font-size: 13px;
+  }
+  .dashboard-shell .workspace-mode-switch > button[aria-current='page'] {
+    border-radius: 7px;
+    background: var(--workspace-control-hover, var(--bg-card-hover));
+  }
+  .workspace-shell .computer-status-trigger {
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+    background: transparent;
+  }
+  .workspace-shell .computer-status-trigger:focus-visible { outline-color: var(--text-secondary); }
+  .workspace-shell .account-menu-trigger { min-width: 38px; min-height: 38px; padding: 2px; }
+  .workspace-shell .account-avatar {
+    width: 32px;
+    height: 32px;
+    border-color: var(--rail);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+  }
   /* Chat's setup banner must not compete with the conversation for height.
      Full guidance/actions remain in the computer icon's disclosure. */
   section.computer-status-setup { flex-wrap: nowrap; gap: 10px; padding: 12px 14px; }
@@ -297,6 +338,26 @@ section.computer-status-setup-strip { display: block; padding: 4px 12px; border-
   text-align: left;
   font-size: var(--workspace-body);
 }
+.bot-conversation-open {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+.bot-conversation-copy { display: block; min-width: 0; }
+.bot-conversation-open .conversation-title { gap: 7px; padding-right: 0; }
+.bot-conversation-open .conversation-title small {
+  flex-shrink: 0;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: rgb(var(--accent-green-rgb) / .1);
+  color: var(--accent-green);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.bot-conversation-open .conversation-preview { margin-top: 4px; }
 .conversation-title {
   display: flex;
   align-items: center;
@@ -491,23 +552,27 @@ section.computer-status-setup-strip { display: block; padding: 4px 12px; border-
   .chat-history-toggle {
     position: absolute;
     z-index: 1;
-    top: 10px;
-    left: 12px;
+    top: 7px;
+    left: 10px;
     display: grid;
     place-items: center;
-    width: 44px;
-    height: 44px;
-    border: 1px solid var(--rail);
-    border-radius: 10px;
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 9px;
+    background: var(--workspace-control, var(--bg-card));
     color: var(--text-secondary);
   }
   .workspace-chat .ask-studio-topbar {
-    padding: 10px 16px 10px 70px;
+    min-height: 50px;
+    padding: 7px 10px 7px 56px;
+    border-bottom-color: transparent;
   }
   .workspace-chat .ask-studio-new {
     display: inline-flex;
-    min-width: 44px;
-    min-height: 44px;
+    min-width: 36px;
+    min-height: 36px;
+    border-radius: 9px;
   }
 }
 @media (max-width: 639px) {

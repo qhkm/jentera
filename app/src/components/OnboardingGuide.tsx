@@ -9,7 +9,7 @@ export function OnboardingGuide({ children, compact = false }: {
 }) {
   return <section className={`onboarding-guide${compact ? ' is-compact' : ''}`} aria-label="Jentera">
     <div className="onboarding-guide__portrait" aria-hidden="true">
-      <img src="/images/jentera-guide-v1.webp" alt="" draggable={false} />
+      <img src="/images/jentera-character-glossy-v1.webp" alt="" width={112} height={112} draggable={false} />
     </div>
     <div className="onboarding-guide__message">
       <span className="onboarding-guide__speaker">Jentera</span>

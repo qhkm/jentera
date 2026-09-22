@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Globe, ArrowDown, ArrowUp, ArrowRight, ArrowBendDownLeft, CheckCircle, Clock, Eye, EyeSlash, Keyboard, CursorClick, ShieldCheck, WarningCircle, Minus, Plus, X, ArrowClockwise, Record, Stop, Sparkle } from '@phosphor-icons/react';
+import { Globe, Desktop, ArrowDown, ArrowUp, ArrowRight, ArrowBendDownLeft, CheckCircle, Clock, Eye, EyeSlash, Keyboard, CursorClick, ShieldCheck, WarningCircle, Minus, Plus, X, ArrowClockwise, Record, Stop, Sparkle } from '@phosphor-icons/react';
 import { Button, Card, Eyebrow, Input } from '@/components/ui';
 import { useRepository } from '@/lib/repo';
 import type { BrowserCommand, BusinessBrowserState, ProcedureDraft } from '@/lib/repo/types';
@@ -83,6 +83,9 @@ export default function BusinessBrowser({
   );
   const directEnabled = controlled && frame?.directTyping === 1;
   const desktopEnabled = state.desktopView === 1 && Boolean(repo.desktopConnection);
+  const drawerMode = appearance === 'chat-tool'
+    && typeof window !== 'undefined'
+    && window.matchMedia?.('(min-width: 1180px)').matches === true;
   // A zero-width sentinel lets mobile keyboards emit Backspace even though
   // the proxy never retains the remote field's value. Nothing is persisted.
   const sentinel = '\u200b';
@@ -150,9 +153,11 @@ export default function BusinessBrowser({
     if (!open) return;
     let cancelled = false;
     const priorOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    if (drawerMode) document.documentElement.classList.add('business-browser-drawer-open');
+    else document.body.style.overflow = 'hidden';
     setStatusLoading(true);
-    dialog.current?.showModal();
+    if (drawerMode && typeof dialog.current?.show === 'function') dialog.current.show();
+    else dialog.current?.showModal();
     void repo.businessBrowser().then((s) => {
       if (!cancelled && live.current) {
         recoverySupported.current = s.controlRecovery === 1;
@@ -162,8 +167,12 @@ export default function BusinessBrowser({
     })
       .catch((e: Error) => { if (!cancelled && live.current) setError(e.message); })
       .finally(() => { if (!cancelled && live.current) setStatusLoading(false); });
-    return () => { cancelled = true; document.body.style.overflow = priorOverflow; };
-  }, [open, repo, onPauseChange, statusAttempt]);
+    return () => {
+      cancelled = true;
+      document.documentElement.classList.remove('business-browser-drawer-open');
+      document.body.style.overflow = priorOverflow;
+    };
+  }, [drawerMode, open, repo, onPauseChange, statusAttempt]);
 
   useEffect(() => {
     if (!open || !controlled || desktopEnabled) return;
@@ -293,7 +302,7 @@ export default function BusinessBrowser({
   const trigger = appearance === 'chat-tool' ? (
     <button type="button" className="ask-context-link" onClick={openBrowser}
       aria-label={t('browser.open')} title={t('browser.open')}>
-      <Globe size={15} aria-hidden="true" /><span>{t('ask.toolbar.browser')}</span>
+      <Desktop size={15} aria-hidden="true" /><span>{t('ask.toolbar.browser')}</span>
     </button>
   ) : null;
 
@@ -302,15 +311,15 @@ export default function BusinessBrowser({
       <Eyebrow>{t('browser.title')}</Eyebrow>
       <p className="text-sm text-text-secondary">{t('browser.description')}</p>
       <div><Button variant="outline" onClick={openBrowser}>
-        <Globe size={18} aria-hidden="true" />{t('browser.open')}
+        <Desktop size={18} aria-hidden="true" />{t('browser.open')}
       </Button></div>
     </Card> : trigger}
-    {open && createPortal(<dialog ref={dialog} className={`business-browser-dialog${controlled && desktopEnabled ? ' has-desktop' : ''}`} aria-labelledby={titleId} aria-describedby={descriptionId}
+    {open && createPortal(<dialog ref={dialog} className={`business-browser-dialog${controlled && desktopEnabled ? ' has-desktop' : ''}${drawerMode ? ' is-chat-drawer' : ''}`} aria-labelledby={titleId} aria-describedby={descriptionId}
       // Portals escape the composer DOM, but React events still bubble through it.
       onSubmit={(event) => event.stopPropagation()}
       onCancel={(e) => { e.preventDefault(); void close(); }}>
       <header className="business-browser-header">
-        <span className="business-browser-brand" aria-hidden="true"><Globe size={25} weight="duotone" /></span>
+        <span className="business-browser-brand" aria-hidden="true"><Desktop size={25} weight="duotone" /></span>
         <div className="business-browser-heading">
           <h2 id={titleId}>{t('browser.title')}</h2>
           <p id={descriptionId}>{t('browser.subtitle')}</p>
@@ -399,9 +408,9 @@ export default function BusinessBrowser({
                 } else command({ action: 'click', x, y });
               }}>
               <img src={`data:image/jpeg;base64,${frame.image}`} alt={t('browser.screen')} draggable={false} />
-            </button></div> : <div className="business-browser-empty" role={controlled || statusLoading || claiming ? 'status' : undefined}>
+            </button></div> : <div className={`business-browser-empty${controlled || statusLoading || claiming ? ' is-loading' : ''}`} role={controlled || statusLoading || claiming ? 'status' : undefined}>
               <span className="business-browser-empty-icon" aria-hidden="true">
-                {handedBack ? <CheckCircle size={38} weight="duotone" /> : controlled || statusLoading || claiming ? <Clock size={38} weight="duotone" /> : <CursorClick size={38} weight="duotone" />}
+                {handedBack ? <CheckCircle size={30} weight="duotone" /> : controlled || statusLoading || claiming ? <span className="business-browser-loading-indicator" /> : <CursorClick size={30} weight="duotone" />}
               </span>
               <h3>{t(handedBack ? 'browser.returned.title' : claiming ? 'browser.desktop.connecting' : controlled || statusLoading ? 'browser.loading' : 'browser.welcome.title')}</h3>
               <p>{t(handedBack ? 'browser.returned.detail' : controlled || statusLoading || claiming ? 'browser.loadingDetail' : 'browser.welcome.detail')}</p>
@@ -456,7 +465,9 @@ export default function BusinessBrowser({
               </div>
             </div>}
           </div>
-          {controlled && <aside className="business-browser-controls" aria-label={t('browser.controls')}>
+          {controlled && <details className={`business-browser-tools-disclosure${drawerMode ? '' : ' is-static'}`} open={drawerMode ? undefined : true}>
+            <summary><Keyboard size={17} aria-hidden="true" /><span>{t('browser.controls')}</span></summary>
+            <aside className="business-browser-controls" aria-label={t('browser.controls')}>
             <div className="business-browser-controls-heading"><Keyboard size={20} aria-hidden="true" /><h3>{t('browser.controls')}</h3></div>
             <p id={typingId}>{t(directEnabled ? 'browser.direct.hint' : 'browser.typingHint')}</p>
             <form className="business-browser-typing" autoComplete="off" onSubmit={e => {
@@ -475,22 +486,26 @@ export default function BusinessBrowser({
               </div>
               <Button type="submit" variant="outline" disabled={busy || !text || !frame?.image || (directEnabled && (typingState.phase === 'idle' || typingState.kind === 'control'))}>{t('browser.sendText')}<ArrowRight size={16} aria-hidden="true" /></Button>
             </form>
-            <div className="business-browser-keys" role="group" aria-label={t('browser.keys')}>
+            {!drawerMode && <div className="business-browser-keys" role="group" aria-label={t('browser.keys')}>
               {['Tab', 'Enter', 'Backspace'].map(key => <Button key={key} type="button" variant="outline" disabled={busy || !frame?.image}
                 onClick={() => { if (directEnabled && typingState.phase !== 'idle') direct.current?.key(key); else command({ action: 'key', key }); }}>{key === 'Enter' && <ArrowBendDownLeft size={15} aria-hidden="true" />}{key}</Button>)}
-            </div>
+            </div>}
             <details className="business-browser-more">
               <summary>{t('browser.moreControls')}</summary>
               <div className="business-browser-keys">
-                {['Shift+Tab', 'Escape', 'ControlOrMeta+A'].map(key => <Button key={key} type="button" variant="outline" disabled={busy || !frame?.image}
+                {(drawerMode ? ['Tab', 'Enter', 'Backspace', 'Escape'] : ['Shift+Tab', 'Escape', 'ControlOrMeta+A']).map(key => <Button key={key} type="button" variant="outline" disabled={busy || !frame?.image}
                   onClick={() => { if (directEnabled && typingState.phase !== 'idle' && key !== 'Escape') direct.current?.key(key); else command({ action: 'key', key }); }}>{key === 'ControlOrMeta+A' ? t('browser.selectAll') : key}</Button>)}
                 <Button type="button" variant="outline" disabled={busy || !frame?.image} aria-label={t('browser.scrollUp')} onClick={() => void send({ action: 'scroll', deltaY: -500 })}><ArrowUp size={17} aria-hidden="true" />{t('browser.scrollUp')}</Button>
                 <Button type="button" variant="outline" disabled={busy || !frame?.image} aria-label={t('browser.scrollDown')} onClick={() => void send({ action: 'scroll', deltaY: 500 })}><ArrowDown size={17} aria-hidden="true" />{t('browser.scrollDown')}</Button>
+                {drawerMode && <Button type="button" variant="outline" disabled={busy || statusLoading}
+                  onClick={() => { if (window.confirm(t('browser.restart.confirm'))) void command({ action: 'restart' }); }}>
+                  <ArrowClockwise size={17} aria-hidden="true" />{t('browser.restart')}</Button>}
               </div>
             </details>
             <div className="business-browser-privacy"><ShieldCheck size={19} aria-hidden="true" /><p>{t('browser.privacyShort')}</p></div>
             <p className="business-browser-lease"><Clock size={15} aria-hidden="true" />{t('browser.expires')}</p>
-          </aside>}
+            </aside>
+          </details>}
         </div>}
       </div>
       <footer className="business-browser-footer">
@@ -506,7 +521,7 @@ export default function BusinessBrowser({
               keeps the profile, so every signed-in session survives, but it
               does lose whatever is typed into the current page -- hence the
               confirmation rather than a bare button. */}
-          {controlled && <Button type="button" className="business-browser-restart" variant="outline" disabled={busy || statusLoading}
+          {controlled && !drawerMode && <Button type="button" className="business-browser-restart" variant="outline" disabled={busy || statusLoading}
             aria-label={t('browser.restart')} title={t('browser.restart')}
             onClick={() => { if (window.confirm(t('browser.restart.confirm'))) void command({ action: 'restart' }); }}>
             <ArrowClockwise size={18} aria-hidden="true" /><span>{t('browser.restart')}</span></Button>}

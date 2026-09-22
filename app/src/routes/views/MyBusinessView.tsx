@@ -10,20 +10,14 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
-  ArrowRight,
   ArrowUpRight,
   BookOpenText,
   Buildings,
-  Check,
-  Info,
   MapPin,
-  PencilSimple,
   PlugsConnected,
-  Plus,
   Robot,
   ShieldCheck,
   UsersThree,
-  Trash,
 } from '@phosphor-icons/react';
 import { Button, Card, Eyebrow, Input, LoadingState, Tag } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
@@ -31,7 +25,7 @@ import { DataIcon } from '@/components/Icon';
 import { Tabs, type TabDef } from '@/components/Tabs';
 import { useTeamEnabled } from '@/lib/repo/gate';
 import TeamPanel from './TeamPanel';
-import { JenteraMark } from '@/components/JenteraMark';
+import BotsPanel from './BotsPanel';
 import { FounderGroupInvite } from '@/components/FounderGroupInvite';
 import PermissionsPanel from './PermissionsPanel';
 import KnowledgePanel from './KnowledgePanel';
@@ -68,7 +62,7 @@ export default function MyBusinessView({
   onTabChange?: (tab: BizTab) => void;
 }) {
   const [tab, setTab] = useState<BizTab>(initialTab);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const calendarFocus = searchParams.get('connector') === 'google'
     || ['connected', 'failed', 'unavailable', 'session'].includes(searchParams.get('calendar') ?? '');
   const teamEnabled = useTeamEnabled();
@@ -83,12 +77,6 @@ export default function MyBusinessView({
   const [name, setName] = useState(business.name);
   const [loc, setLoc] = useState(business.loc);
   const [savingProfile, setSavingProfile] = useState(false);
-  const [specialistForm, setSpecialistForm] = useState(false);
-  const [editingSpecialist, setEditingSpecialist] = useState<string | null>(null);
-  const [specialistName, setSpecialistName] = useState('');
-  const [specialistDescription, setSpecialistDescription] = useState('');
-  const [specialistInstructions, setSpecialistInstructions] = useState('');
-  const [savingSpecialist, setSavingSpecialist] = useState(false);
   const tabsId = useId();
 
   useEffect(() => setTab(initialTab), [initialTab]);
@@ -96,6 +84,12 @@ export default function MyBusinessView({
   function chooseTab(next: BizTab) {
     setTab(next);
     onTabChange?.(next);
+  }
+
+  function consumeNewBotRequest() {
+    const next = new URLSearchParams(searchParams);
+    next.delete('newBot');
+    setSearchParams(next, { replace: true });
   }
 
   /* One shared fetch for the whole dashboard. The Home notice, this badge,
@@ -119,45 +113,6 @@ export default function MyBusinessView({
       toast(error instanceof Error ? error.message : t('biz.profile.failed'), 'error');
     } finally {
       setSavingProfile(false);
-    }
-  }
-
-  function openSpecialist(id?: string) {
-    const specialist = id ? snap.specialists.find((item) => item.id === id) : undefined;
-    setEditingSpecialist(specialist?.id ?? null);
-    setSpecialistName(specialist?.name ?? '');
-    setSpecialistDescription(specialist?.description ?? '');
-    setSpecialistInstructions(specialist?.instructions ?? '');
-    setSpecialistForm(true);
-  }
-
-  async function saveSpecialist() {
-    const input = {
-      name: specialistName.trim(),
-      description: specialistDescription.trim(),
-      instructions: specialistInstructions.trim(),
-    };
-    if (!input.name || !input.description || savingSpecialist) return;
-    setSavingSpecialist(true);
-    try {
-      await mutate((repository) => editingSpecialist
-        ? repository.updateSpecialist(editingSpecialist, input)
-        : repository.createSpecialist(input));
-      setSpecialistForm(false);
-      toast(t(editingSpecialist ? 'biz.specialists.updated' : 'biz.specialists.created'));
-    } catch (error) {
-      toast(error instanceof Error ? error.message : t('biz.specialists.failed'), 'error');
-    } finally {
-      setSavingSpecialist(false);
-    }
-  }
-
-  async function disableSpecialist(id: string) {
-    try {
-      await mutate((repository) => repository.disableSpecialist(id));
-      toast(t('biz.specialists.removed'));
-    } catch (error) {
-      toast(error instanceof Error ? error.message : t('biz.specialists.failed'), 'error');
     }
   }
 
@@ -417,104 +372,7 @@ export default function MyBusinessView({
           </div>
         )}
 
-        {/* Only capabilities that exist today belong here. Industry playbooks
-          retain future customer-facing roles as product research data, but a
-          role is not active merely because it was suggested. */}
-        {tab === 'handles' && (
-          <section className="business-staff">
-            <Card className="business-staff-card">
-              <header className="business-staff-heading">
-                <div>
-                  <JenteraMark size={44} />
-                  <h2>{t('biz.private.title')}</h2>
-                </div>
-                <Tag tone="green">{t('biz.private.active')}</Tag>
-              </header>
-              <p className="business-staff-description">{t('biz.private.description')}</p>
-              <ul className="business-staff-capabilities">
-                {['research', 'planning', 'operations', 'memory'].map((capability) => (
-                  <li key={capability}>
-                    <Check size={18} weight="bold" aria-hidden="true" />
-                    {t(`biz.private.${capability}`)}
-                  </li>
-                ))}
-              </ul>
-              <Link className="btn btn-primary business-staff-ask" to="/app?view=chat">
-                {t('nav.chat')}
-                <ArrowRight size={18} aria-hidden="true" />
-              </Link>
-            </Card>
-
-            <div className="flex flex-col gap-3">
-              <div>
-                <Eyebrow>{t('biz.specialists.eyebrow')}</Eyebrow>
-                <p className="mt-1 max-w-[62ch] text-[13px] leading-relaxed text-text-secondary">
-                  {t('biz.specialists.body')}
-                </p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {snap.specialists.map((specialist) => (
-                  <div key={specialist.id} className="flex flex-col gap-2 rounded-card border border-border p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="text-[13px] font-medium">{specialist.name}</h3>
-                      <Tag>{t('biz.specialists.asNeeded')}</Tag>
-                    </div>
-                    <p className="text-[11px] leading-relaxed text-text-muted">
-                      {specialist.description}
-                    </p>
-                    <div className="mt-auto flex gap-2 pt-2">
-                      <Button type="button" variant="ghost" className="!min-h-8 !px-2" onClick={() => openSpecialist(specialist.id)}>
-                        <PencilSimple size={15} aria-hidden="true" />
-                        {t('biz.specialists.edit')}
-                      </Button>
-                      <Button type="button" variant="ghost" className="!min-h-8 !px-2" onClick={() => void disableSpecialist(specialist.id)}>
-                        <Trash size={15} aria-hidden="true" />
-                        {t('biz.specialists.remove')}
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {snap.specialists.length === 0 && (
-                <p className="text-[12px] text-text-muted">{t('biz.specialists.empty')}</p>
-              )}
-              {specialistForm ? (
-                <Card className="gap-3">
-                  <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
-                    {t('biz.specialists.name')}
-                    <Input maxLength={60} value={specialistName} onChange={(event) => setSpecialistName(event.target.value)} />
-                  </label>
-                  <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
-                    {t('biz.specialists.remit')}
-                    <textarea className="input min-h-20 w-full resize-y py-2" maxLength={500} value={specialistDescription} onChange={(event) => setSpecialistDescription(event.target.value)} />
-                  </label>
-                  <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
-                    {t('biz.specialists.instructions')}
-                    <textarea className="input min-h-24 w-full resize-y py-2" maxLength={4000} value={specialistInstructions} onChange={(event) => setSpecialistInstructions(event.target.value)} placeholder={t('biz.specialists.instructions.placeholder')} />
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" disabled={!specialistName.trim() || !specialistDescription.trim() || savingSpecialist} onClick={() => void saveSpecialist()}>
-                      {savingSpecialist ? t('biz.specialists.saving') : t('biz.specialists.save')}
-                    </Button>
-                    <Button type="button" variant="ghost" onClick={() => setSpecialistForm(false)}>{t('common.cancel')}</Button>
-                  </div>
-                </Card>
-              ) : (
-                <div>
-                  <Button type="button" variant="outline" disabled={snap.specialists.length >= 8} onClick={() => openSpecialist()}>
-                    <Plus size={16} aria-hidden="true" />
-                    {t('biz.specialists.add')}
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            <div className="business-staff-notice" role="note">
-              <Info size={19} aria-hidden="true" />
-              <p>{t('biz.customerFuture.notice')}</p>
-            </div>
-          </section>
-        )}
+          {tab === 'handles' && <BotsPanel startCreating={searchParams.get('newBot') === '1'} onCreatorOpened={consumeNewBotRequest} />}
 
         {/* ---- Connections (was its own view) ---- */}
         {tab === 'connections' && (

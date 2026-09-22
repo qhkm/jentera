@@ -29,6 +29,7 @@ export const KEYS = {
   /** Business facts in the anonymous demo, keyed by fact key. */
   facts: 'aisar-facts',
   specialists: 'aisar-specialists-v1',
+  botPreference: 'aisar-bot-preference-v1',
   /** First-run presentation state. Business answers still live in the repository. */
   onboardingDraft: 'aisar-onboarding-draft-v1',
   /** An invitation token waiting for its person to sign in. Cleared once

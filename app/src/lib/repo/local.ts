@@ -6,6 +6,7 @@
    ============================================================ */
 
 import * as store from '@/lib/storage';
+import { isBotAvatar } from '../../../../shared/bot-avatars';
 import { KEYS } from '@/lib/storage';
 import type { Approval, CountryCode, Lang, Policy } from '@/lib/types';
 import type {
@@ -63,11 +64,13 @@ function localSpecialists(): Specialist[] {
     .filter((specialist) => specialist.enabled);
 }
 
-function specialistInput(input: Pick<Specialist, 'name' | 'description' | 'instructions'>) {
+function specialistInput(input: Pick<Specialist, 'name' | 'description' | 'instructions' | 'avatar'>) {
+  if (input.avatar !== undefined && !isBotAvatar(input.avatar)) throw new Error('Invalid bot avatar.');
   const clean = {
     name: input.name.trim(),
     description: input.description.trim(),
     instructions: input.instructions.trim(),
+    avatar: input.avatar,
   };
   if (!clean.name || clean.name.length > 60) throw new Error('Specialist name must be 1 to 60 characters.');
   if (!clean.description || clean.description.length > 500) throw new Error('Specialist remit must be 1 to 500 characters.');
@@ -84,6 +87,7 @@ export class LocalRepository implements Repository {
     const channels = store.getJSON<string[]>(KEYS.channels, []);
     const conns = store.getJSON<unknown>(KEYS.conns, null);
     const theme = store.get(KEYS.theme, '');
+    const preference = store.getJSON<{ defaultBotProfile?: string; coordinatorAvatar?: Specialist['avatar'] }>(KEYS.botPreference, {});
     const workDoneRaw = collectPrefixed<unknown[]>(KEYS.workDone, []);
     const workDone: Record<string, string[]> = {};
     for (const [key, list] of Object.entries(workDoneRaw)) {
@@ -110,6 +114,9 @@ export class LocalRepository implements Repository {
       workDone,
       learn: collectPrefixed<Record<string, number>>(KEYS.learn, {}),
       specialists: localSpecialists(),
+      canManageBots: true,
+      defaultBotProfile: localSpecialists().some(s => s.profile === preference.defaultBotProfile) ? preference.defaultBotProfile : 'default',
+      coordinatorAvatar: isBotAvatar(preference.coordinatorAvatar) ? preference.coordinatorAvatar : 'original',
     };
   }
 
@@ -285,7 +292,13 @@ export class LocalRepository implements Repository {
       .sort((a, b) => b.version - a.version);
   }
 
-  async createSpecialist(input: Pick<Specialist, 'name' | 'description' | 'instructions'>): Promise<void> {
+  async setBotPreference(input: { defaultBotProfile: string; coordinatorAvatar: NonNullable<Specialist['avatar']> }): Promise<void> {
+    if (!isBotAvatar(input.coordinatorAvatar)) throw new Error('Invalid bot avatar.');
+    if (input.defaultBotProfile !== 'default' && !localSpecialists().some(s => s.profile === input.defaultBotProfile)) throw new Error('Bot not found.');
+    store.setJSON(KEYS.botPreference, input);
+  }
+
+  async createSpecialist(input: Pick<Specialist, 'name' | 'description' | 'instructions' | 'avatar'>): Promise<void> {
     const specialists = localSpecialists();
     if (specialists.length >= 8) throw new Error('A business can have at most 8 active specialists.');
     const id = crypto.randomUUID();
@@ -297,13 +310,13 @@ export class LocalRepository implements Repository {
 
   async updateSpecialist(
     id: string,
-    input: Pick<Specialist, 'name' | 'description' | 'instructions'>,
+    input: Pick<Specialist, 'name' | 'description' | 'instructions' | 'avatar'>,
   ): Promise<void> {
     const specialists = localSpecialists();
     if (!specialists.some((specialist) => specialist.id === id)) throw new Error('Specialist not found.');
     const clean = specialistInput(input);
     store.setJSON(KEYS.specialists, specialists.map((specialist) =>
-      specialist.id === id ? { ...specialist, ...clean } : specialist));
+      specialist.id === id ? { ...specialist, ...clean, avatar: clean.avatar ?? specialist.avatar } : specialist));
   }
 
   async disableSpecialist(id: string): Promise<void> {

@@ -1,6 +1,6 @@
 import { ArrowClockwise, ArrowRight, ArrowUpRight, Bell, BookOpen, ChatCircle, CheckCircle, Clock, WarningCircle } from '@phosphor-icons/react';
 import { Button, Eyebrow, LoadingState } from '@/components/ui';
-import { JenteraMark } from '@/components/JenteraMark';
+import { JenteraMascot } from '@/components/JenteraMascot';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { ActivityState } from '@/hooks/useActivity';
 import type { BusinessSnapshot, WorkSummary } from '@/lib/repo';
@@ -40,7 +40,7 @@ export function DailyBrief({ activity, snapshot, now, onNavigate }: {
   return (
     <section className="daily-brief" aria-labelledby="daily-brief-heading" aria-busy={activity.loading}>
       <header className="daily-brief-header">
-        <div className="daily-brief-identity"><JenteraMark size={32} /><h2 id="daily-brief-heading">{t('brief.title')}</h2></div>
+        <div className="daily-brief-identity"><JenteraMascot size={38} /><h2 id="daily-brief-heading">{t('brief.title')}</h2></div>
         <button type="button" className="brief-refresh" onClick={activity.reload} disabled={activity.loading}>
           <ArrowClockwise size={17} aria-hidden="true" />{t('brief.refresh')}
         </button>

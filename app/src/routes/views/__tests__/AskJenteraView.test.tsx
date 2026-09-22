@@ -82,10 +82,10 @@ describe('compose-first Ask Jentera', () => {
     expect(skills).toHaveAttribute('title', 'Choose skills for this message');
     await user.click(skills);
     expect(await screen.findByRole('searchbox', { name: 'Search skills' })).toBeVisible();
-    const browser = toolbar.getByRole('button', { name: 'Open business browser' });
-    expect(browser).toHaveTextContent('Browser');
-    expect(browser).not.toHaveTextContent('Business browser');
-    expect(browser).toHaveAttribute('title', 'Open business browser');
+    const browser = toolbar.getByRole('button', { name: 'Open Jentera’s computer' });
+    expect(browser).toHaveTextContent('Computer');
+    expect(browser).not.toHaveTextContent('Jentera’s computer');
+    expect(browser).toHaveAttribute('title', 'Open Jentera’s computer');
   });
   it('searches VM skills and loads the selected skill for only the next message', async () => {
     const user = userEvent.setup();
@@ -248,7 +248,7 @@ describe('compose-first Ask Jentera', () => {
     await mount(<Harness />, repo);
 
     expect(await screen.findByText(/could not check/i)).toBeVisible();
-    expect(screen.queryByText(/still under owner control/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/still under your control/i)).not.toBeInTheDocument();
 
     vi.mocked(repo.businessBrowser).mockResolvedValue({ enabled: true, paused: false });
     await user.click(screen.getByRole('button', { name: /check again/i }));
@@ -261,10 +261,10 @@ describe('compose-first Ask Jentera', () => {
     repo.businessBrowser = vi.fn(async () => ({ enabled: true, paused: true }));
     await mount(<Harness />, repo);
 
-    expect(await screen.findByText(/still under owner control/i)).toBeVisible();
+    expect(await screen.findByText(/still under your control/i)).toBeVisible();
     /* The chat tool offers the same action, so more than one button carries
        this name; the panel having one is what matters. */
-    expect(screen.getAllByRole('button', { name: /open business browser/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: /computer/i }).length).toBeGreaterThan(0);
     expect(screen.queryByText(/could not check/i)).not.toBeInTheDocument();
   });
 
@@ -341,11 +341,11 @@ describe('compose-first Ask Jentera', () => {
     const openConnections = vi.fn();
     await mount(<Harness onOpenConnections={openConnections} />, repo);
     await user.type(await screen.findByRole('textbox'), 'Review my business account');
-    await user.click(screen.getByRole('button', { name: 'Open business browser' }));
-    expect(await screen.findByRole('heading', { name: 'Business browser' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Open Jentera’s computer' }));
+    expect(await screen.findByRole('heading', { name: 'Jentera’s computer' })).toBeVisible();
     expect(screen.getByRole('dialog').closest('form')).toBeNull();
     await waitFor(() => expect(browser.mock.calls.some(([command]) => command?.action === 'claim')).toBe(true));
-    await user.click(screen.getByRole('button', { name: 'Close browser view' }));
+    await user.click(screen.getByRole('button', { name: 'Close computer view' }));
     await waitFor(() => expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(true));
     expect(screen.getByRole('textbox')).toHaveValue('Review my business account');
     expect(openConnections).not.toHaveBeenCalled();
@@ -363,19 +363,19 @@ describe('compose-first Ask Jentera', () => {
     await user.click(screen.getByRole('button', { name: 'Send message' }));
     const card = await screen.findByRole('region', { name: 'Sign in to continue' });
     await user.type(screen.getByRole('textbox'), 'My follow-up draft');
-    await user.click(within(card).getByRole('button', { name: 'Open business browser' }));
-    expect(await screen.findByRole('heading', { name: 'Business browser' })).toBeVisible();
+    await user.click(within(card).getByRole('button', { name: 'Open Jentera’s computer' }));
+    expect(await screen.findByRole('heading', { name: 'Jentera’s computer' })).toBeVisible();
     await waitFor(() => expect(browser.mock.calls.some(([command]) => command?.action === 'claim')).toBe(true));
-    await user.click(screen.getByRole('button', { name: 'Close browser view' }));
+    await user.click(screen.getByRole('button', { name: 'Close computer view' }));
     await waitFor(() => expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(true));
     expect(screen.getByRole('textbox')).toHaveValue('My follow-up draft');
     expect(repo.ask).toHaveBeenCalledOnce();
     expect(openConnections).not.toHaveBeenCalled();
-    await user.click(within(document.querySelector('.ask-writing-pad') as HTMLElement).getByRole('button', { name: 'Open business browser' }));
-    expect(await screen.findByRole('heading', { name: 'Business browser' })).toBeVisible();
+    await user.click(within(document.querySelector('.ask-writing-pad') as HTMLElement).getByRole('button', { name: 'Open Jentera’s computer' }));
+    expect(await screen.findByRole('heading', { name: 'Jentera’s computer' })).toBeVisible();
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
     await waitFor(() => expect(browser.mock.calls.filter(([command]) => command?.action === 'claim')).toHaveLength(2));
-    await user.click(screen.getByRole('button', { name: 'Close browser view' }));
+    await user.click(screen.getByRole('button', { name: 'Close computer view' }));
     await waitFor(() => expect(browser.mock.calls.filter(([command]) => command?.action === 'release')).toHaveLength(2));
   });
   it('keeps the browser dialog mounted during takeover and never submits chat from browser forms', async () => {
@@ -390,12 +390,12 @@ describe('compose-first Ask Jentera', () => {
     repo.ask = vi.fn();
     await mount(<Harness />, repo);
     await user.type(await screen.findByRole('textbox'), 'Continue after I sign in');
-    await user.click(screen.getByRole('button', { name: 'Open business browser' }));
+    await user.click(screen.getByRole('button', { name: 'Open Jentera’s computer' }));
     expect(await screen.findByText('Jentera is paused')).toBeVisible();
     await user.type(screen.getByLabelText('Website address'), 'https://example.com');
     await user.click(screen.getByRole('button', { name: 'Go' }));
     expect(repo.ask).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: 'Close browser view' }));
+    await user.click(screen.getByRole('button', { name: 'Close computer view' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled());
     expect(repo.businessBrowser).toHaveBeenCalledWith(expect.objectContaining({ action: 'release' }));
     expect(screen.getByRole('textbox')).toHaveValue('Continue after I sign in');
@@ -412,15 +412,15 @@ describe('compose-first Ask Jentera', () => {
     await mount(<Harness />, repo);
 
     expect(await screen.findByText('Jentera is paused')).toBeVisible();
-    expect(screen.getByText(/Business Browser is still under owner control/)).toBeVisible();
+    expect(screen.getByText(/Jentera’s computer is still under your control/)).toBeVisible();
     const input = screen.getByRole('textbox');
     await user.type(input, 'Prepare a reply');
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
     await user.keyboard('{Meta>}{Enter}{/Meta}');
     expect(repo.ask).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole('button', { name: 'Open Business Browser' }));
-    expect(await screen.findByRole('heading', { name: 'Business browser' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Return to Jentera’s computer' }));
+    expect(await screen.findByRole('heading', { name: 'Jentera’s computer' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Hand back to Jentera' }));
     await waitFor(() => expect(screen.queryByText('Jentera is paused')).toBeNull());
     expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled();

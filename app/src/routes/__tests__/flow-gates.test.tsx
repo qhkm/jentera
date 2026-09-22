@@ -294,6 +294,8 @@ describe('what onboarding writes', () => {
 
     await chooseFirstWorkflow();
     expect(await screen.findByText('Where can I learn about your business?')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Learn about my business' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Website or public page' }));
     expect(screen.getByRole('button', { name: 'Learn about my business' })).toBeInTheDocument();
     expect((await repo.load()).onboarded).toBe(false);
   });
@@ -328,7 +330,7 @@ describe('what onboarding writes', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Learn about my business' }));
     expect(await screen.findByText('Here’s what I understood.')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Change source' }));
-    expect(await screen.findByText('Where can I learn about your business?')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Describe your business' })).toBeInTheDocument();
     expect(screen.getByDisplayValue('I run a restaurant in Kuala Lumpur')).toBeInTheDocument();
   });
 

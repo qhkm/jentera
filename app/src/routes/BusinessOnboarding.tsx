@@ -166,7 +166,7 @@ export default function BusinessOnboarding() {
         <div className="onboarding-discovery__halo" />
         <div className="onboarding-discovery__orbit" />
         <div className="onboarding-discovery__page"><FileText size={28} /><i /><i /><i /></div>
-        <img src="/images/jentera-guide-v1.webp" alt="" draggable={false} />
+        <img src="/images/jentera-character-glossy-v1.webp" alt="" width={170} height={170} draggable={false} />
         <span className="onboarding-discovery__spark">✦</span>
       </div>
       <span className="eyebrow">Jentera</span>

@@ -1,5 +1,9 @@
 # Jentera Product Vision
 
+22 September UI update: owners can optionally create named bots, choose avatars
+and select personal defaults for new chats. See [AI bots and avatars](docs/ai-bots-and-avatars.md).
+This supersedes the earlier prohibition on a bot roster, not the managed-service boundary.
+
 ## Current positioning — 11 September 2026
 
 > Jentera automates the day-to-day work businesses still do manually.

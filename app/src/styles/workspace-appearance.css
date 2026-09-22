@@ -18,7 +18,9 @@
   --ov-line-3: var(--border-light);
   --radius-card: 22px;
   --radius-item: 12px;
-  --radius-control: 999px;
+  /* Standard actions use the same rounded rectangle everywhere. Pills are
+     reserved for tags, status chips and segmented controls. */
+  --radius-control: 12px;
   --workspace-control: #343434;
   --workspace-control-hover: #3d3d3d;
   --workspace-primary: #e6e6e6;
@@ -39,6 +41,84 @@
   --color-border-light: var(--border-light);
 }
 
+/* V1 keeps its familiar layout but shares the public V3 site's deep ink
+   canvas, so moving from the landing page into the product feels continuous. */
+.dashboard-shell.workspace-current {
+  --bg: #080d0e;
+  --bg-card: #151b19;
+  --bg-card-hover: #1b2420;
+  --text: #eef4f1;
+  --text-secondary: #abb8b3;
+  --text-muted: #84938e;
+  --text-dim: var(--text-muted);
+  --border-ink: 155 190 177;
+  --workspace-control: #1c2522;
+  --workspace-control-hover: #26312d;
+  --color-bg: var(--bg);
+  --color-bg-card: var(--bg-card);
+  --color-bg-card-hover: var(--bg-card-hover);
+  --color-text: var(--text);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+}
+
+/* The signed-in transition is part of the product, not a generic card. Keep
+   it on the same deep canvas as the landing page and current workspace. */
+.workspace-loading {
+  --bg: #080d0e;
+  --bg-card: #111715;
+  --text: #eef4f1;
+  --text-secondary: #9aa7a2;
+  --text-muted: #71807b;
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  padding: 32px 20px;
+  background: var(--bg);
+  color: var(--text);
+}
+.workspace-loading-panel { width: min(420px, 100%); text-align: center; }
+.workspace-loading-mascot { position: relative; width: 168px; height: 172px; margin: 0 auto 20px; }
+.workspace-loading-mascot img { position: relative; z-index: 1; display: block; width: 144px; height: 144px; margin: auto; object-fit: contain; animation: workspace-mascot-float 3s ease-in-out infinite; }
+.workspace-loading-shadow { position: absolute; bottom: 10px; left: 44px; width: 80px; height: 12px; border-radius: 50%; background: rgb(56 210 163 / .16); filter: blur(7px); animation: workspace-mascot-shadow 3s ease-in-out infinite; }
+.workspace-loading-brand { font-size: 26px; font-weight: 650; letter-spacing: -.05em; }
+.workspace-loading-status { margin-top: 18px; }
+.workspace-loading-status h1 { margin: 0; color: var(--text); font-size: 16px; font-weight: 550; line-height: 1.4; letter-spacing: -.015em; }
+.workspace-loading-status p { max-width: 46ch; margin: 9px auto 0; color: var(--text-secondary); font-size: 12px; line-height: 1.65; }
+.workspace-loading-dots { display: flex; justify-content: center; gap: 7px; margin-top: 24px; }
+.workspace-loading-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--text-secondary); animation: workspace-loading-hop 1.4s ease-in-out infinite; }
+.workspace-loading-dots i:nth-child(2) { animation-delay: .16s; }
+.workspace-loading-dots i:nth-child(3) { animation-delay: .32s; }
+@keyframes workspace-mascot-float { 0%, 100% { transform: translateY(0) rotate(-5deg); } 50% { transform: translateY(-10px) rotate(5deg); } }
+@keyframes workspace-mascot-shadow { 0%, 100% { transform: scale(1); opacity: .8; } 50% { transform: scale(.75); opacity: .4; } }
+@keyframes workspace-loading-hop { 0%, 60%, 100% { transform: translateY(0); opacity: .35; } 30% { transform: translateY(-4px); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .workspace-loading-mascot img,
+  .workspace-loading-shadow,
+  .workspace-loading-dots i { animation: none; }
+}
+
+@media (min-width: 1024px) {
+  /* Continue the conversations rail through the brand area instead of
+     starting a second surface below the global header. */
+  .dashboard-shell.workspace-current.workspace-chat > header {
+    border-bottom-color: transparent;
+    background: linear-gradient(
+      to right,
+      var(--bg-card) 0 256px,
+      var(--bg) 256px 100%
+    );
+  }
+  .dashboard-shell.workspace-current.workspace-chat > header::after {
+    position: absolute;
+    inset: 0 auto 0 256px;
+    width: 1px;
+    background: var(--rail);
+    content: '';
+    pointer-events: none;
+  }
+}
+
 :is(.theme-light, .site-theme-light) :is(.dashboard-shell, .workspace-loading) {
   --bg: #faf9f7;
   --bg-card: #f2f1ee;
@@ -54,6 +134,10 @@
   --workspace-primary-hover: #242424;
   --workspace-primary-ink: #fff;
   --workspace-focus: #397663;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell.workspace-current {
+  --bg: #faf9f7;
+  --color-bg: var(--bg);
 }
 
 /* Rounded, tonal controls keep the label as the strongest visual cue. */
@@ -100,6 +184,13 @@
   border-color: var(--border);
   border-radius: var(--radius-card);
   background: var(--bg-card);
+}
+/* The brief is a framed region of the page, not another elevated card. Keep
+   this outside the V3-only layer so the treatment is identical while the
+   design preview toggle is changed or restored from local storage. */
+.dashboard-shell .home-view .daily-brief {
+  background: transparent;
+  box-shadow: none;
 }
 .dashboard-shell .home-action {
   border-color: var(--rail);

@@ -52,7 +52,7 @@ import { artifactsForRun } from '../artifacts';
 import { runtimeExecutionEnabled, runtimeReady } from '../runtime/execution';
 import { modelForResponseMode, responseModeFor } from '../runtime/response-mode';
 import type { ResponseMode } from '../runtime/response-mode';
-import { listSpecialists, specialistForTurn } from '../specialists';
+import { botPreference, listSpecialists, specialistForTurn, specialistProfileValid } from '../specialists';
 import { runCoordination } from '../coordination';
 import { ensureChatSession, isChatSessionId, isWorkspaceMember, runVisibleTo } from '../chat-sessions';
 import { answerText } from '../runtime/answer-text';
@@ -307,6 +307,7 @@ export async function handleRuns(
       requestId?: unknown;
       mode?: unknown;
       sessionId?: unknown;
+      botProfile?: unknown;
       responseMode?: unknown;
       selectedSkills?: unknown;
       workspaceId?: unknown;
@@ -329,6 +330,7 @@ export async function handleRuns(
         requestId: field('requestId'),
         mode: field('mode'),
         sessionId: field('sessionId'),
+        botProfile: field('botProfile'),
         responseMode: field('responseMode'),
         selectedSkills: parseSelectedSkillsField(field('selectedSkills')),
         workspaceId: field('workspaceId'),
@@ -369,6 +371,15 @@ export async function handleRuns(
         : null;
     if (sessionId === null) {
       return json({ ok: false, err: 'session id is invalid' }, { status: 400 }, cors);
+    }
+    const botProfile = body.botProfile === undefined ? undefined
+      : body.botProfile === 'default' || specialistProfileValid(body.botProfile)
+        ? body.botProfile : null;
+    if (botProfile === null) return json({ ok: false, err: 'bot profile is invalid' }, { status: 400 }, cors);
+    if (botProfile && botProfile !== 'default') {
+      const exists = await withTenant(env, id.businessId, async tx =>
+        (await listSpecialists(tx, { enabledOnly: true })).some(bot => bot.profile === botProfile));
+      if (!exists) return json({ ok: false, err: 'that bot is no longer available' }, { status: 400 }, cors);
     }
     /* A chat opened inside a workspace: the person must be in it, and the
        chat must be a real chat id, or there is nothing for the workspace to
@@ -427,6 +438,17 @@ export async function handleRuns(
       return json({ ok: false, err: 'goal work needs the durable agent' }, { status: 400 }, cors);
     }
 
+    // A short greeting must still reach the selected bot's instructions and
+    // memory. Only coordinator chats can use the lightweight answer path.
+    if (mode === 'ask') {
+      const hasBot = await withTenant(env, id.businessId, async tx => {
+        const preference = await botPreference(tx, id.userId);
+        const specialists = await listSpecialists(tx, { enabledOnly: true });
+        return !!await specialistForTurn(tx, id.businessId, sessionId, question, specialists, botProfile ?? preference.defaultBotProfile);
+      });
+      if (hasBot) mode = 'work';
+    }
+
     if (mode === 'work') {
       if (!runtimeExecutionEnabled(env)) {
         return json({ ok: false, err: 'Jentera agent work is not available yet' }, { status: 403 }, cors);
@@ -449,6 +471,7 @@ export async function handleRuns(
         goalId,
         goalCheckpointId,
         selectedSkills,
+        botProfile,
       );
     }
 
@@ -793,6 +816,7 @@ async function startDurableAsk(
   goalId: string | null = null,
   goalCheckpointId: string | null = null,
   selectedSkills: string[] = [],
+  botProfile?: string,
 ): Promise<Response> {
   if (!env.RUNTIME_QUEUE || !env.AISAR_MODEL_NAME?.trim()) {
     return json({ ok: false, err: 'Jentera agent execution is unavailable' }, { status: 503 }, cors);
@@ -834,12 +858,13 @@ async function startDurableAsk(
     }
   }
 
-  /* Same retrieval and the same agent prompt as a Telegram message, so a
-     question gets one answer regardless of where the owner typed it. */
+  /* Shared retrieval and prompt construction with Telegram; web chats use
+     the speaker's chosen bot for new sessions and retain it on follow-ups. */
   const { facts, work, specialist } = await withTenant(env, businessId, async (tx) => {
     const context = await retrieveHermesContext(tx, question);
     const specialists = await listSpecialists(tx, { enabledOnly: true });
-    return { ...context, specialist: await specialistForTurn(tx, businessId, sessionId, question, specialists) };
+    const preference = await botPreference(tx, userId);
+    return { ...context, specialist: await specialistForTurn(tx, businessId, sessionId, question, specialists, botProfile ?? preference.defaultBotProfile) };
   });
   /* Quick by default, as on Telegram; a typed /deep or /research opts in
      to the research loop. Chat was hard-wired to deep until 2026-09-10 and
@@ -869,7 +894,7 @@ async function startDurableAsk(
     const run = await startRun(tx, businessId, {
       kind: 'ask',
       triggerShape: 'owner.ask',
-      triggerRef: { question, requestId, sessionId, ...(inputFile ? { file: inputFile.name } : {}),
+      triggerRef: { question, requestId, sessionId, ...(botProfile ? { botProfile } : {}), ...(inputFile ? { file: inputFile.name } : {}),
         ...(selectedSkills.length ? { skills: selectedSkills } : {}) },
       requestedBy: userId,
       runtime: 'hermes-sprite',

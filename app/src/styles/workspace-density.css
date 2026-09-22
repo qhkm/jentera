@@ -55,6 +55,23 @@
   padding: 8px 10px;
   gap: 3px 8px;
 }
+.workspace-chat .conversation-open.bot-conversation-open {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.workspace-chat .bot-conversation-open .bot-avatar {
+  flex: 0 0 34px;
+}
+.workspace-chat .bot-conversation-open .bot-conversation-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+.workspace-chat .bot-conversation-open .conversation-title {
+  padding-right: 0;
+}
 .workspace-chat .conversation-title {
   grid-column: 1 / -1;
   padding-right: 30px;
@@ -92,6 +109,14 @@
 .workspace-chat .ask-writing-pad textarea { min-height: 56px; }
 .workspace-chat .ask-studio-starters { margin-top: 16px; }
 .workspace-chat .ask-recent-chats { margin-top: 28px; }
+
+@media (min-width: 701px) {
+  .workspace-chat .ask-studio-welcome h2 {
+    max-width: none;
+    white-space: nowrap;
+    text-wrap: nowrap;
+  }
+}
 
 @media (max-width: 360px) {
   .workspace-chat .ask-writing-pad { padding-inline: 12px; }

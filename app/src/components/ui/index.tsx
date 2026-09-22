@@ -11,7 +11,6 @@
 import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode, Ref } from 'react';
 import type { Tone } from '@/lib/types';
 import { DataIcon } from '@/components/Icon';
-import { JenteraMark } from '@/components/JenteraMark';
 
 export type { Tone };
 
@@ -119,14 +118,21 @@ export function Progress({ value, label }: { value: number; label?: string }) {
 /** Route and session loading share the workspace's surface treatment. */
 export function PageLoading({ title, detail }: { title: string; detail?: string }) {
   return (
-    <main className="workspace-loading flex min-h-dvh items-center justify-center bg-bg px-4 py-8 text-text sm:px-6">
-      <Card className="w-full max-w-md gap-4 p-6 sm:p-8">
-        <div className="flex items-center gap-3 text-xl font-medium tracking-tight">
-          <JenteraMark size={32} />
-          <span>Jentera</span>
+    <main className="workspace-loading">
+      <section className="workspace-loading-panel" aria-labelledby="workspace-loading-title">
+        <div className="workspace-loading-mascot" aria-hidden="true">
+          <img src="/images/jentera-character-glossy-v1.webp" alt="" width={144} height={144} />
+          <span className="workspace-loading-shadow" />
         </div>
-        <LoadingState title={title} detail={detail} />
-      </Card>
+        <div className="workspace-loading-brand">Jentera</div>
+        <div className="workspace-loading-status" role="status" aria-live="polite" aria-atomic="true">
+          <div>
+            <h1 id="workspace-loading-title">{title}</h1>
+            {detail ? <p>{detail}</p> : null}
+          </div>
+        </div>
+        <span className="workspace-loading-dots" aria-hidden="true"><i /><i /><i /></span>
+      </section>
     </main>
   );
 }

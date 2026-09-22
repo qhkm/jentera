@@ -20,7 +20,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { useI18n } from '@/i18n/I18nProvider';
-import { useRepository } from '@/lib/repo';
+import { useRepository, useSnapshot } from '@/lib/repo';
 import { useSharedChats } from '@/hooks/useSharedChats';
 import { useAsk } from '@/hooks/useAsk';
 import { useChatPreview } from '@/hooks/useChatPreview';
@@ -30,11 +30,12 @@ import { useConversationScroll } from '@/hooks/useConversationScroll';
 import { useMentions } from '@/hooks/useMentions';
 import { useActivity } from '@/hooks/useActivity';
 import { DataIcon } from '@/components/Icon';
-import { JenteraMark } from '@/components/JenteraMark';
+import { BotAvatar } from '@/components/BotAvatar';
 import { ChatHistory } from '@/components/ChatHistory';
-import { ChatWorkspace } from '@/components/ChatWorkspace';
+import { ChatWorkspace, type ChatBot } from '@/components/ChatWorkspace';
 import { AskReply } from '@/components/AskReply';
 import BusinessBrowser from './BusinessBrowser';
+import BotCreatorDialog from './BotCreatorDialog';
 import { useTeamEnabled, useSignedIn } from '@/lib/repo/gate';
 import { type AskMode, type RuntimeSkill } from '@/lib/repo';
 import type { Business } from '@/lib/types';
@@ -73,6 +74,7 @@ export default function AskJenteraView({
   taskDraft?: { text: string; key: number; sessionId?: string; goalId?: string; goalTitle?: string; goalCheckpointId?: string; goalCheckpointTitle?: string } | null;
 }) {
   const { t, lang } = useI18n();
+  const snapshot = useSnapshot();
   const compact = useIsCompact();
   const activity = useActivity();
   const onAskCompleted = useCallback(() => activity.reload(), [activity.reload]);
@@ -96,6 +98,13 @@ export default function AskJenteraView({
     onNewIn: (workspaceId: string) => { ask.newSession(undefined, workspaceId); },
   } : undefined;
   const activeSession = ask.sessions.find((session) => session.id === ask.activeId);
+  const currentDefaultProfile = snapshot.defaultBotProfile ?? 'default';
+  const chatBots: ChatBot[] = [
+    { profile: 'default', name: 'Jentera', description: lang === 'bm' ? 'Ketua staf untuk kerja harian perniagaan anda.' : 'Chief of Staff for everyday work across your business.', avatar: snapshot.coordinatorAvatar ?? 'original', isDefault: currentDefaultProfile === 'default' },
+    ...snapshot.specialists.filter(bot => bot.enabled).map(bot => ({ profile: bot.profile, name: bot.name, description: bot.description, avatar: bot.avatar ?? 'original' as const, isDefault: currentDefaultProfile === bot.profile })),
+  ];
+  const activeBotProfile = activeSession?.botProfile ?? currentDefaultProfile;
+  const activeBot = chatBots.find(bot => bot.profile === activeBotProfile) ?? chatBots[0];
   const activeWorkspace = sharedChats.workspaces.find((w) => w.id === activeSession?.workspaceId);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const draft = drafts[ask.activeId] ?? '';
@@ -103,6 +112,7 @@ export default function AskJenteraView({
   const attachment = attachments[ask.activeId];
   const [attachmentError, setAttachmentError] = useState('');
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
+  const [botCreatorOpen, setBotCreatorOpen] = useState(false);
   const [skillQuery, setSkillQuery] = useState('');
   const [skillCatalogue, setSkillCatalogue] = useState<{
     status: 'idle' | 'loading' | 'ready' | 'error'; skills: RuntimeSkill[];
@@ -341,6 +351,12 @@ export default function AskJenteraView({
     else composer.current?.focus();
   }
 
+  function openBot(profile: string) {
+    const existing = ask.sessions.find(session => (session.botProfile ?? currentDefaultProfile) === profile);
+    if (existing) ask.openSession(existing.id);
+    else ask.newSession(undefined, undefined, undefined, undefined, undefined, undefined, profile);
+  }
+
   const conversation = (
     <div
       className={`chat-shell ask-studio ${ask.hasHistory ? 'ask-studio-conversation' : 'ask-studio-start'}`}
@@ -371,11 +387,11 @@ export default function AskJenteraView({
           <button
             type="button"
             className="ask-studio-new"
-            onClick={() => ask.newSession()}
-            aria-label={t('ask.newChat')}
+            onClick={() => workspace ? setBotCreatorOpen(true) : ask.newSession()}
+            aria-label={workspace ? (lang === 'bm' ? 'Tambah bot' : 'Add bot') : t('ask.newChat')}
           >
             <Plus size={17} aria-hidden="true" />
-            <span>{t('ask.newChat')}</span>
+            <span>{workspace ? (lang === 'bm' ? 'Tambah bot' : 'Add bot') : t('ask.newChat')}</span>
           </button>
         </div>
       </header>
@@ -426,11 +442,14 @@ export default function AskJenteraView({
           ) : (
             <div className="ask-studio-welcome">
               <div className="ask-studio-emblem" aria-hidden="true">
-                <JenteraMark size={48} />
+                <BotAvatar avatar={activeBot.avatar} size={64} />
                 <span />
                 <span />
               </div>
               <p className="ask-studio-business">{business.name}</p>
+              <Link className="ask-default-bot" to="/app?view=business&tab=handles">
+                {activeBot.name} · {lang === 'bm' ? 'Urus bot' : 'Manage bot'}
+              </Link>
               <h2>{t('ask.studio.title')}</h2>
               <p className="ask-studio-intro">
                 {t(firstRun ? 'ask.welcome.first' : 'ask.studio.detail')}
@@ -764,7 +783,7 @@ export default function AskJenteraView({
     </div>
   );
 
-  return workspace ? (
+  return workspace ? (<>
     <ChatWorkspace
       active={active}
       businessName={business.name}
@@ -773,9 +792,19 @@ export default function AskJenteraView({
       onNew={ask.newSession}
       onOpen={ask.openSession}
       onDelete={ask.deleteSession}
+      bots={chatBots}
+      activeBotProfile={activeBotProfile}
+      defaultBotProfile={currentDefaultProfile}
+      onOpenBot={openBot}
+      onNewBot={() => setBotCreatorOpen(true)}
       shared={shared}
     >
       {conversation}
     </ChatWorkspace>
-  ) : conversation;
+    <BotCreatorDialog
+      open={botCreatorOpen}
+      onClose={() => setBotCreatorOpen(false)}
+      onCreated={profile => { setBotCreatorOpen(false); openBot(profile); }}
+    />
+  </>) : conversation;
 }

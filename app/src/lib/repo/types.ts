@@ -1,4 +1,5 @@
 import type { Approval, CountryCode, Lang, Policy } from '@/lib/types';
+import type { BotAvatarId } from '../../../../shared/bot-avatars';
 
 export type Theme = 'dark' | 'light';
 
@@ -28,6 +29,7 @@ export interface Fact {
 }
 
 export interface Specialist {
+  avatar?: BotAvatarId;
   id: string;
   /** Stable internal profile id. Owners edit the role, never this key. */
   profile: string;
@@ -45,6 +47,9 @@ export interface Specialist {
  * swap in a network-backed implementation without touching consumers.
  */
 export interface BusinessSnapshot {
+  defaultBotProfile?: string;
+  coordinatorAvatar?: BotAvatarId;
+  canManageBots?: boolean;
   canManageKnowledge?: boolean;
   onboarded: boolean;
   setupDone: boolean;
@@ -118,6 +123,9 @@ export interface AskOptions {
   mode?: AskMode;
   /** Stable conversation id so Hermes can keep context per chat, like Telegram. */
   sessionId?: string;
+  /** Explicit bot for a newly-created conversation. The server keeps the
+      first bot sticky for subsequent turns in the same session. */
+  botProfile?: string;
   /** Emitted once the server has accepted a real run, before its answer arrives. */
   onRunCreated?: (runId: string) => void;
   onProgress?: (event: AskProgressEvent) => void;
@@ -522,10 +530,11 @@ export interface Repository {
   /** Every version of one key, newest first. */
   factHistory(key: string): Promise<Fact[]>;
 
-  createSpecialist(input: Pick<Specialist, 'name' | 'description' | 'instructions'>): Promise<void>;
+  setBotPreference(input: { defaultBotProfile: string; coordinatorAvatar: BotAvatarId }): Promise<void>;
+  createSpecialist(input: Pick<Specialist, 'name' | 'description' | 'instructions' | 'avatar'>): Promise<void>;
   updateSpecialist(
     id: string,
-    input: Pick<Specialist, 'name' | 'description' | 'instructions'>,
+    input: Pick<Specialist, 'name' | 'description' | 'instructions' | 'avatar'>,
   ): Promise<void>;
   disableSpecialist(id: string): Promise<void>;
 

@@ -66,4 +66,10 @@ describe('what Jentera has picked up', () => {
     mount({ available: false, profiles: [] });
     expect(await screen.findByText(/Not available yet/)).toBeInTheDocument();
   });
+
+  it('does not crash when an older runtime omits the profiles array', async () => {
+    mount({ available: false } as AgentMemory);
+    expect(await screen.findByText(/Not available yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/notes$/)).toBeNull();
+  });
 });

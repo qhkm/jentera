@@ -86,6 +86,9 @@ export interface AskSession {
   createdAt: number;
   updatedAt: number;
   messages: AskMessage[];
+  /** The one bot this conversation belongs to. Missing on legacy sessions,
+      which resolve to the person's current default bot. */
+  botProfile?: string;
   /** Set when the chat was opened inside a workspace: every member of it
       may read and continue the chat, and each turn is sent with it. */
   workspaceId?: string;
@@ -273,6 +276,7 @@ function loadSessions(account: string): AskSession[] {
           createdAt: typeof s.createdAt === 'number' ? s.createdAt : 0,
           updatedAt: typeof s.updatedAt === 'number' ? s.updatedAt : 0,
           messages: s.messages.filter(isMessage).slice(-40),
+          ...(typeof s.botProfile === 'string' ? { botProfile: s.botProfile } : {}),
           ...(typeof s.workspaceId === 'string' ? { workspaceId: s.workspaceId } : {}),
           ...(typeof s.goalId === 'string' ? { goalId: s.goalId } : {}),
           ...(typeof s.goalTitle === 'string' ? { goalTitle: s.goalTitle } : {}),
@@ -389,7 +393,7 @@ export function useAsk(
     [business.sug, counts, t],
   );
 
-  const newSession = useCallback((resumeId?: string, workspaceId?: string, goalId?: string, goalTitle?: string, goalCheckpointId?: string, goalCheckpointTitle?: string) => {
+  const newSession = useCallback((resumeId?: string, workspaceId?: string, goalId?: string, goalTitle?: string, goalCheckpointId?: string, goalCheckpointTitle?: string, botProfile?: string) => {
     const session = freshSession();
     if (resumeId) session.id = resumeId;
     if (workspaceId) session.workspaceId = workspaceId;
@@ -397,6 +401,7 @@ export function useAsk(
     if (goalTitle) session.goalTitle = goalTitle;
     if (goalCheckpointId) session.goalCheckpointId = goalCheckpointId;
     if (goalCheckpointTitle) session.goalCheckpointTitle = goalCheckpointTitle;
+    if (botProfile) session.botProfile = botProfile;
     setState((prev) => ({
       sessions: prev.sessions.some((s) => s.id === session.id) ? prev.sessions : [session, ...prev.sessions].slice(0, MAX_SESSIONS),
       activeId: session.id,
@@ -635,6 +640,7 @@ export function useAsk(
           mode: selectedMode,
           sessionId,
           ...(workspaceId ? { workspaceId } : {}),
+          ...(session?.botProfile ? { botProfile: session.botProfile } : {}),
           ...(goalId ? { goalId } : {}),
           ...(goalCheckpointId ? { goalCheckpointId } : {}),
           ...(attachment ? { attachment } : {}),

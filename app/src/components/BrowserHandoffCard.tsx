@@ -1,4 +1,4 @@
-import { ArrowUpRight, Globe } from '@phosphor-icons/react';
+import { ArrowUpRight, Desktop } from '@phosphor-icons/react';
 import { useT } from '@/i18n/I18nProvider';
 import type { BrowserHandoffReason } from '@/lib/browser-handoff';
 import { TaskRecoveryActions } from '@/components/TaskRecoveryActions';
@@ -17,7 +17,7 @@ export function BrowserHandoffCard({ reason, onOpen, runId, title: taskTitle, on
   return (
     <section className="card ask-browser-handoff" aria-label={title}>
       <header>
-        <span className="ask-browser-handoff-icon" aria-hidden="true"><Globe size={22} weight="duotone" /></span>
+        <span className="ask-browser-handoff-icon" aria-hidden="true"><Desktop size={22} weight="duotone" /></span>
         <div>
           <p>{t('browser.title')}</p>
           <h3>{title}</h3>

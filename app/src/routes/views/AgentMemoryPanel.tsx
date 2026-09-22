@@ -47,7 +47,7 @@ export default function AgentMemoryPanel() {
       setConfirming(null);
       setMemory((prev) => prev ? {
         ...prev,
-        profiles: prev.profiles.map((p) => p.profile !== profile ? p : {
+        profiles: (Array.isArray(prev.profiles) ? prev.profiles : []).map((p) => p.profile !== profile ? p : {
           ...p, files: p.files.map((f) => f.file !== file ? f : { ...f, entries: f.entries.filter((e) => e.text !== text) }),
         }),
       } : prev);
@@ -60,7 +60,8 @@ export default function AgentMemoryPanel() {
   }
 
   if (!repo.agentMemory) return null;
-  const total = memory?.profiles.reduce((n, p) => n + p.files.reduce((m, f) => m + f.entries.length, 0), 0) ?? 0;
+  const profiles = Array.isArray(memory?.profiles) ? memory.profiles : [];
+  const total = profiles.reduce((n, p) => n + p.files.reduce((m, f) => m + f.entries.length, 0), 0);
 
   return (
     <Card>
@@ -86,7 +87,7 @@ export default function AgentMemoryPanel() {
         <p className="mt-3 text-sm text-text-secondary">Nothing noted yet.</p>
       ) : (
         <div className="mt-3 flex flex-col gap-4">
-          {memory.profiles.map((profile) => (
+          {profiles.map((profile) => (
             <section key={profile.profile} aria-label={PROFILE_LABEL[profile.profile] ?? profile.profile}>
               <h4 className="m-0 text-[13px] font-medium">{PROFILE_LABEL[profile.profile] ?? profile.profile}</h4>
               {profile.files.filter((f) => f.entries.length).map((file) => (

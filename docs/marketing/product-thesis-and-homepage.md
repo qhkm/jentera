@@ -2,6 +2,11 @@
 
 Agreed direction: 11 September 2026.
 
+22 September update: optional named bots, avatars and personal chat defaults
+are now an owner-requested configuration surface under My Business. See
+[AI bots and avatars](../ai-bots-and-avatars.md). This supersedes the earlier
+no-roster UI rule without requiring customers to manage infrastructure.
+
 This is the current reference for product positioning, homepage messaging, and
 customer-facing UX. It supersedes earlier workforce-management framing in the
 product vision. It describes the product direction, not a claim that every

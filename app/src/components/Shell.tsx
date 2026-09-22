@@ -22,9 +22,9 @@ const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
 export function Logo({ suffix }: { suffix?: string }) {
   return (
-    <Link to="/" aria-label="Jentera home" className="inline-flex items-center gap-2">
-      <JenteraMark size={32} />
-      <span className="jentera-wordmark font-pixel text-xl tracking-wide text-brand md:text-2xl">Jentera</span>
+    <Link to="/" aria-label="Jentera home" className="inline-flex items-center gap-2.5">
+      <JenteraMark size={36} />
+      <span className="jentera-wordmark font-sans text-[26px] font-semibold tracking-[-0.06em] text-text md:text-[29px]">Jentera</span>
       {suffix ? (
         <span className="hidden font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted md:inline">
           {suffix}

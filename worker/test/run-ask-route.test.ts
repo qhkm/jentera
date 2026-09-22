@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { claimRuntime, markRuntimeReady } from '../src/agent-runtime';
 import type { Env } from '../src/env';
 import { handleRuns } from '../src/routes/runs';
+import { handleRepo } from '../src/routes/repo';
 import { CREDIT_CAP_NOTICE } from '../src/runtime/consumer';
 import { FAILURE_NOTICES } from '../src/runtime/failure-notice';
 import { append, recordWork } from '../src/runs';
@@ -35,6 +36,11 @@ beforeEach(async () => {
   cookieA = await signIn(userA);
   cookieB = await signIn(userB);
 });
+
+async function chooseDefault(profile: string) {
+  const incoming = req('POST', '/api/state/bot-preference', { cookie: cookieA, body: { defaultBotProfile: profile, coordinatorAvatar: 'original' } });
+  expect((await handleRepo(incoming.request, testEnv(), incoming.url, {}))?.status).toBe(204);
+}
 
 describe('Ask Jentera runtime bridge', () => {
   it.each([
@@ -251,15 +257,16 @@ describe('Ask Jentera runtime bridge', () => {
     expect(row.payload.instructions).toContain('Who is speaking: a@example.com, the owner of this business');
   });
 
-  it('routes clear work to this business’s persistent specialist profile', async () => {
+  it('routes new work to the user’s selected persistent bot profile', async () => {
     await readyRuntime(A);
     await asTenant(A, (tx) => tx`
       insert into specialist_profile
         (business_id, profile_key, name, description)
       values (${A}, 'customers', 'Customer communications',
               'Customer complaints, enquiries, replies and bookings')`);
+    await chooseDefault('customers');
     const response = await call('POST', '/api/runs/ask', durableEnv(vi.fn(async () => {})), cookieA, {
-      question: 'Draft a reply to this customer complaint',
+      question: 'Help me plan tomorrow',
       requestId: crypto.randomUUID(),
       mode: 'work',
       sessionId: 'customer-thread',
@@ -275,19 +282,91 @@ describe('Ask Jentera runtime bridge', () => {
     expect(row.payload.instructions).toContain('do not expose internal profile names');
   });
 
+  it('routes a new conversation to the bot explicitly chosen in the app', async () => {
+    await readyRuntime(A);
+    await asTenant(A, (tx) => tx`
+      insert into specialist_profile (business_id, profile_key, name, description) values
+        (${A}, 'customers', 'Customer communications', 'Customer replies'),
+        (${A}, 'growth', 'Marketing', 'Campaigns and content')`);
+    await chooseDefault('customers');
+    const response = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
+      question: 'Plan next week’s campaign',
+      requestId: crypto.randomUUID(),
+      mode: 'work',
+      sessionId: 'marketing-bot-thread',
+      botProfile: 'growth',
+    });
+    expect(response.status).toBe(202);
+    const { runId } = await response.json() as { runId: string };
+    const [task] = await asTenant(A, tx => tx<{
+      profile: string;
+      trigger_ref: { botProfile?: string };
+    }[]>`select payload->>'profile' as profile, trigger_ref from run
+         join runtime_task on runtime_task.run_id = run.id where run.id = ${runId}`);
+    expect(task.profile).toBe('growth');
+    expect(task.trigger_ref.botProfile).toBe('growth');
+  });
+
+  it('rejects a bot that is not available to this business', async () => {
+    await readyRuntime(A);
+    const response = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
+      question: 'Do this work',
+      requestId: crypto.randomUUID(),
+      mode: 'work',
+      sessionId: 'missing-bot-thread',
+      botProfile: 'missing',
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ err: 'that bot is no longer available' });
+  });
+
+  it('sends lightweight greetings to the selected bot instead of bypassing its instructions', async () => {
+    await readyRuntime(A);
+    await asTenant(A, tx => tx`insert into specialist_profile (business_id, profile_key, name, description)
+      values (${A}, 'customers', 'Customer communications', 'Customer replies')`);
+    await chooseDefault('customers');
+    const response = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
+      question: 'Hello', requestId: crypto.randomUUID(), mode: 'ask', sessionId: 'bot-greeting',
+    });
+    expect(response.status).toBe(202);
+    const { runId } = await response.json() as { runId: string };
+    const [task] = await asTenant(A, tx => tx`select payload->>'profile' as profile from runtime_task where run_id = ${runId}`);
+    expect(task.profile).toBe('customers');
+  });
+
+  it('keeps a lightweight coordinator conversation on Jentera after changing the default', async () => {
+    await readyRuntime(A);
+    await asTenant(A, tx => tx`insert into specialist_profile (business_id, profile_key, name, description)
+      values (${A}, 'customers', 'Customer communications', 'Customer replies')`);
+    const greeting = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
+      question: 'Hello', requestId: crypto.randomUUID(), mode: 'ask', sessionId: 'coordinator-greeting',
+    });
+    expect(greeting.status).toBe(200);
+    await chooseDefault('customers');
+    const response = await call('POST', '/api/runs/ask', durableEnv(), cookieA, {
+      question: 'Draft a customer reply', requestId: crypto.randomUUID(), mode: 'work', sessionId: 'coordinator-greeting',
+    });
+    expect(response.status).toBe(202);
+    const { runId } = await response.json() as { runId: string };
+    const [task] = await asTenant(A, tx => tx`select payload->>'profile' as profile from runtime_task where run_id = ${runId}`);
+    expect(task.profile).toBeNull();
+  });
+
   it('keeps a follow-up in the same chat with the specialist that answered the previous turn', async () => {
     await readyRuntime(A);
     await asTenant(A, (tx) => tx`
       insert into specialist_profile (business_id, profile_key, name, description) values
         (${A}, 'customers', 'Customer communications', 'Customer complaints, enquiries, replies and bookings'),
         (${A}, 'growth', 'Growth and marketing', 'Research, campaigns, content, sales and retention')`);
+    await chooseDefault('customers');
     const env = durableEnv(vi.fn(async () => {}));
     const ask = (question: string, sessionId: string) => call('POST', '/api/runs/ask', env, cookieA, {
       question, requestId: crypto.randomUUID(), mode: 'work', sessionId,
     });
     const first = await ask('Draft a reply to this customer complaint', 'one-thread');
-    /* Scored on its own this goes to growth; in the same chat it follows
-       the turn before it, so the specialist that holds the context answers. */
+    await chooseDefault('growth');
+    /* A new default applies only to a new chat. The previous bot keeps
+       the existing conversation and its context. */
     const second = await ask('Now plan a marketing campaign around that research', 'one-thread');
     const fresh = await ask('Now plan a marketing campaign around that research', 'another-thread');
     expect([first.status, second.status, fresh.status]).toEqual([202, 202, 202]);

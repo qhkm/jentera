@@ -72,7 +72,6 @@ export function ComputerStatus({ onOpenChat, onOpenKnowledge, onOpenActivity, mo
   const activeWork = error ? null : data?.activeWork ?? null;
   const compact = Boolean(activeWork) || ['ready', 'asleep', 'busy'].includes(state);
   const manage = data?.canManage === true;
-  const headerOnly = Boolean(activeWork) || ['ready', 'asleep', 'busy', 'checking', 'waking', 'updating'].includes(state);
   const settingUp = ['settingUp', 'updating'].includes(state);
   const workState = activeWork?.status === 'needs_approval' ? 'needsApproval'
     : activeWork?.status === 'queued' ? 'queued' : 'working';
@@ -106,7 +105,7 @@ export function ComputerStatus({ onOpenChat, onOpenKnowledge, onOpenActivity, mo
       </div>
   </>;
   return <>
-    <section className={`computer-status ${settingUp ? 'computer-status-setup' : ''} ${settingUp && !activeWork ? 'computer-status-setup-strip' : ''} ${activeWork ? 'computer-status-active' : ''} ${compact ? 'computer-status-compact' : ''} ${mobileTarget && headerOnly ? 'computer-status-header-hidden' : ''}`} aria-label={title}>
+    {!mobileTarget && <section className={`computer-status ${settingUp ? 'computer-status-setup' : ''} ${settingUp && !activeWork ? 'computer-status-setup-strip' : ''} ${activeWork ? 'computer-status-active' : ''} ${compact ? 'computer-status-compact' : ''}`} aria-label={title}>
       {settingUp && !activeWork ? <>
         <div className="computer-status-setup-row">
           <Desktop size={18} aria-hidden="true" />
@@ -126,7 +125,7 @@ export function ComputerStatus({ onOpenChat, onOpenKnowledge, onOpenActivity, mo
           <button type="button" className="ask-inline-action" onClick={onOpenKnowledge}>{t('computer.knowledge')}</button>
         </div>}
       </> : content}
-    </section>
+    </section>}
     {mobileTarget && createPortal(<div ref={disclosure} className="computer-status-disclosure">
       <button ref={trigger} type="button" className="computer-status-trigger" data-state={activeWork?.status ?? state}
         aria-label={`${title} · ${status}${activeWork ? ` · ${activeWork.objective}` : ''}`}

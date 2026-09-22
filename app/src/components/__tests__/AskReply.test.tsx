@@ -78,7 +78,7 @@ describe('AskReply: conversation versus work', () => {
     const view = mount({ from: 'ai', state: 'done', runId: RUN,
       text: 'Connect first.\n```jentera-connect\n{"connector":"google_calendar"}\n```\n```jentera-browser\n{"reason":"sign_in"}\n```' }, new LocalRepository(), vi.fn());
     expect(await screen.findByRole('link', { name: 'Connect Google Calendar' })).toBeVisible();
-    expect(screen.queryByRole('button', { name: 'Open business browser' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open Jentera’s computer' })).toBeNull();
     expect(view.container.textContent).not.toContain('jentera-');
   });
   it.each([true, false])('hides %s-complete streamed Calendar setup without offering a link', async complete => {
@@ -151,7 +151,7 @@ describe('AskReply: conversation versus work', () => {
     expect(view.container.textContent).not.toContain('jentera-browser');
     expect(view.container.textContent).not.toContain('"reason"');
     expect(open).not.toHaveBeenCalled();
-    await user.click(within(card).getByRole('button', { name: 'Open business browser' }));
+    await user.click(within(card).getByRole('button', { name: 'Open Jentera’s computer' }));
     expect(open).toHaveBeenCalledOnce();
     expect(browser).not.toHaveBeenCalled();
   });
@@ -159,7 +159,7 @@ describe('AskReply: conversation versus work', () => {
     const text = 'Please sign in.\n```jentera-browser\n{"reason":"sign_in"}' + (complete ? '\n```' : '');
     const view = mount({ from: 'ai', text, state: 'streaming', pendingId: 'p1', runId: RUN }, new LocalRepository(), vi.fn());
     expect(await screen.findByText('Please sign in.')).toBeVisible();
-    expect(screen.queryByRole('button', { name: 'Open business browser' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open Jentera’s computer' })).toBeNull();
     expect(view.container.textContent).not.toContain('jentera-browser');
     expect(view.container.textContent).not.toContain('"reason"');
   });
@@ -168,14 +168,14 @@ describe('AskReply: conversation versus work', () => {
     await repo.setLang('bm');
     mount({ from: 'ai', state: 'done', runId: RUN, text: 'Sila log masuk.\n```jentera-browser\n{"reason":"sign_in"}\n```' }, repo, vi.fn());
     const card = await screen.findByRole('region', { name: 'Log masuk untuk meneruskan' });
-    expect(within(card).getByRole('button', { name: 'Buka pelayar bisnes' })).toBeVisible();
+    expect(within(card).getByRole('button', { name: 'Buka komputer Jentera' })).toBeVisible();
     expect(card).toHaveTextContent('Serah kembali kepada Jentera');
     expect(card).toHaveTextContent('bukan dalam Chat');
   });
   it('does not offer an unusable viewer button when browser access is unavailable', async () => {
     const view = mount({ from: 'ai', state: 'done', runId: RUN, text: 'Please sign in.\n```jentera-browser\n{"reason":"sign_in"}\n```' });
     expect(await screen.findByText('Please sign in.')).toBeVisible();
-    expect(screen.queryByRole('button', { name: 'Open business browser' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open Jentera’s computer' })).toBeNull();
     expect(view.container.textContent).not.toContain('jentera-browser');
   });
   it.each([
@@ -186,7 +186,7 @@ describe('AskReply: conversation versus work', () => {
   ])('does not offer handoff for a non-completed agent request: %j', async overrides => {
     mount({ from: 'ai', state: 'done', runId: RUN, text: '```jentera-browser\n{"reason":"sign_in"}\n```', ...overrides }, new LocalRepository(), vi.fn());
     await waitFor(() => expect(screen.getByRole('article', { name: 'Jentera' })).toBeVisible());
-    expect(screen.queryByRole('button', { name: 'Open business browser' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open Jentera’s computer' })).toBeNull();
   });
   it.each(['done', 'streaming'] as const)('hides internal markers in %s replies', async state => {
     const view = mount({ from: 'ai', text: '@step: Susun ringkasan dan sumber\n\nSiap boss.', state,

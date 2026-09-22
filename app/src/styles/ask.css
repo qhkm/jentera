@@ -106,14 +106,14 @@
   z-index: 1;
   border-radius: 13px;
 }
-.ask-studio-emblem > span {
+.ask-studio-emblem > span:not(.bot-avatar) {
   position: absolute;
   inset: 9px;
   border: 1px solid rgb(var(--accent-green-rgb) / 0.2);
   border-radius: 18px;
   transform: rotate(-12deg);
 }
-.ask-studio-emblem > span:last-child {
+.ask-studio-emblem > span:not(.bot-avatar):last-child {
   inset: 0;
   opacity: 0.5;
   transform: rotate(12deg);
@@ -125,6 +125,8 @@
   letter-spacing: 0.04em;
   overflow-wrap: anywhere;
 }
+.ask-studio-emblem .bot-avatar { position: relative; z-index: 1; }
+.ask-default-bot { display: inline-block; margin-bottom: 12px; color: var(--text-secondary); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
 .ask-studio-welcome h2 {
   max-width: 17ch;
   margin: 12px auto 0;
@@ -598,7 +600,7 @@ button.ask-context-link:hover {
 .ask-transcript {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 24px;
 }
 .ask-owner-message {
   display: flex;
@@ -613,13 +615,13 @@ button.ask-context-link:hover {
 }
 .ask-owner-message > p {
   max-width: 90%;
-  padding: 13px 17px;
-  border: 1px solid var(--rail);
-  border-radius: 16px 16px 4px 16px;
-  background: var(--bg-card);
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 13px 13px 4px 13px;
+  background: #1a1d1b;
   color: var(--text);
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -644,7 +646,7 @@ button.ask-context-link:hover {
   display: flex;
   align-items: center;
   gap: 9px;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 .ask-reply > header > strong {
   font-size: 12px;
@@ -664,7 +666,7 @@ button.ask-context-link:hover {
 .ask-reply-text {
   color: var(--text);
   font-size: 14px;
-  line-height: 1.9;
+  line-height: 1.72;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -940,12 +942,18 @@ button.ask-context-link:hover {
 .ask-step-card .ask-steps { margin-top: 8px; }
 .ask-step-card .ask-step-more { padding-bottom: 0; }
 .ask-reply-failed {
-  padding: 16px;
-  border: 1px solid rgb(255 101 104 / 0.3);
-  border-radius: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
 }
+.ask-reply-failed .ask-reply-text { color: var(--text-secondary); }
 .ask-reply-failed .ask-inline-action {
-  margin-top: 10px;
+  min-height: 32px;
+  margin-top: 8px;
+  padding: 5px 9px;
+  border: 1px solid var(--rail);
+  border-radius: 8px;
+  background: #151716;
   color: var(--text);
 }
 .ask-reply .bubble {
@@ -1010,9 +1018,11 @@ button.ask-context-link:hover {
 .ask-browser-handoff {
   max-width: 620px;
   margin-top: 14px;
-  gap: 12px;
-  border-color: var(--border-light);
-  background: var(--bg-card);
+  gap: 10px;
+  padding: 14px;
+  border-color: var(--rail);
+  border-radius: 12px;
+  background: #151716;
 }
 .ask-browser-handoff > header {
   display: flex;
@@ -1026,8 +1036,8 @@ button.ask-context-link:hover {
   height: 38px;
   flex: 0 0 38px;
   border-radius: 12px;
-  background: rgb(var(--accent-green-rgb) / .12);
-  color: var(--accent-green);
+  background: #202321;
+  color: var(--text-secondary);
 }
 .ask-browser-handoff > header > div { min-width: 0; }
 .ask-browser-handoff > header p {
@@ -1050,7 +1060,13 @@ button.ask-context-link:hover {
 .ask-browser-handoff > button,
 .ask-browser-handoff > a.btn {
   align-self: flex-start;
-  min-height: 44px;
+  min-height: 36px;
+  padding-inline: 12px;
+  border: 1px solid #343735;
+  border-radius: 9px;
+  background: #202321;
+  color: var(--text);
+  box-shadow: none;
   gap: 8px;
   white-space: normal;
 }
@@ -1330,6 +1346,23 @@ button.ask-context-link:hover {
   }
   .ask-studio-conversation .ask-writing-zone {
     padding: 0 16px max(10px, env(safe-area-inset-bottom));
+  }
+  /* An empty chat already has a selected Chat mode and a welcome heading.
+     Keep the history/new-chat controls, but remove the redundant full-width
+     “Ask Jentera” toolbar and its divider. */
+  .ask-studio-start .ask-studio-topbar {
+    position: relative;
+    z-index: 2;
+    min-height: 0;
+    height: 0;
+    padding: 0;
+    border: 0;
+  }
+  .ask-studio-start .ask-studio-topbar h1 { display: none; }
+  .ask-studio-start .ask-studio-tools {
+    position: absolute;
+    top: 12px;
+    right: 16px;
   }
 }
 @media (max-width: 639px) {

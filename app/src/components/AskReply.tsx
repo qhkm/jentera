@@ -11,7 +11,7 @@ import { StopWork } from './StopWork';
 import { TaskRecoveryActions } from '@/components/TaskRecoveryActions';
 import { renderReplyMarkdown } from '@/lib/reply-markdown';
 import { ArrowUpRight, Check, Copy, Info, WarningCircle } from '@phosphor-icons/react';
-import { JenteraMark } from '@/components/JenteraMark';
+import { JenteraMascot } from '@/components/JenteraMascot';
 import { ElapsedSince } from '@/components/WorkSignal';
 import { ArtifactList } from '@/components/ArtifactList';
 import { LiveTaskProgress } from '@/components/LiveTaskProgress';
@@ -153,7 +153,7 @@ export function AskReply({
       aria-label={message.agent ?? 'Jentera'}
     >
       <header>
-        <JenteraMark size={25} />
+        <JenteraMascot size={30} />
         <strong>{message.agent ?? 'Jentera'}</strong>
         {isRunId(message.runId) && <TaskCoordination key={message.runId} runId={message.runId!} live={Boolean(message.pendingId)} />}
         {message.state === 'done' && message.kind === 'work' && message.taskStatus === 'completed' && (

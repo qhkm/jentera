@@ -36,7 +36,7 @@ describe('exact task details', () => {
     const open = vi.fn();
     const view = mount(repo, { onOpenAsk: open });
     const card = await screen.findByRole('region', { name: 'Sign in to continue' });
-    expect(within(card).getByRole('button', { name: 'Open business browser' })).toBeVisible();
+    expect(within(card).getByRole('button', { name: 'Open Jentera’s computer' })).toBeVisible();
     expect(within(card).getByRole('button', { name: 'Check setup' })).toBeVisible();
     expect(view.container.textContent).not.toContain('jentera-browser');
     expect(screen.queryByRole('button', { name: 'Provide details in Chat' })).toBeNull();
@@ -50,7 +50,7 @@ describe('exact task details', () => {
         text: '```jentera-browser\n{"reason":"sign_in"}\n```', ...overrides }));
       mount(repo, { onOpenAsk: vi.fn() });
       await screen.findByText('{"reason":"sign_in"}', { selector: 'code' });
-      expect(screen.queryByRole('button', { name: 'Open business browser' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Open Jentera’s computer' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Check setup' })).toBeNull();
     });
   it('formats Markdown, lists, code and tables using the safe Chat renderer', async () => {
@@ -156,7 +156,7 @@ describe('exact task details', () => {
       text: 'Connect first.\n```jentera-connect\n{"connector":"google_calendar"}\n```\n```jentera-browser\n{"reason":"sign_in"}\n```' }));
     const view = mount(repo);
     await screen.findByRole('link', { name: 'Connect Google Calendar' });
-    expect(screen.queryByRole('button', { name: 'Open business browser' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open Jentera’s computer' })).toBeNull();
     expect(view.container.textContent).not.toContain('jentera-');
   });
   it('localizes the Calendar connection card in Bahasa Malaysia', async () => {

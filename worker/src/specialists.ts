@@ -1,6 +1,7 @@
 /* Customer-defined specialist profiles. `profile` is an internal, immutable
    Hermes directory key; the owner controls every other field. */
 import type postgres from 'postgres';
+import type { BotAvatarId } from '../../shared/bot-avatars';
 
 export interface SpecialistDefinition {
   id: string;
@@ -9,6 +10,7 @@ export interface SpecialistDefinition {
   description: string;
   instructions: string;
   enabled: boolean;
+  avatar?: BotAvatarId;
 }
 
 export type SpecialistProfile = string;
@@ -28,10 +30,10 @@ export async function listSpecialists(
   options: { enabledOnly?: boolean } = {},
 ): Promise<SpecialistDefinition[]> {
   const rows = options.enabledOnly
-    ? await tx`select id, profile_key, name, description, instructions, enabled
+    ? await tx`select id, profile_key, name, description, instructions, enabled, avatar
                  from specialist_profile where enabled = true
                 order by sort_order, created_at`
-    : await tx`select id, profile_key, name, description, instructions, enabled
+    : await tx`select id, profile_key, name, description, instructions, enabled, avatar
                  from specialist_profile order by enabled desc, sort_order, created_at`;
   return rows.map((row: Record<string, unknown>) => ({
     id: String(row.id),
@@ -40,6 +42,7 @@ export async function listSpecialists(
     description: String(row.description),
     instructions: String(row.instructions ?? ''),
     enabled: Boolean(row.enabled),
+    avatar: row.avatar as BotAvatarId,
   }));
 }
 
@@ -107,35 +110,46 @@ export async function previousProfileInSession(
   businessId: string,
   sessionId: string,
   now = new Date(),
+  allHistory = false,
 ): Promise<string | null | undefined> {
-  const since = new Date(now.getTime() - STICKY_SPECIALIST_WINDOW_MS);
+  const since = new Date(allHistory ? 0 : now.getTime() - STICKY_SPECIALIST_WINDOW_MS);
   const [row] = await tx<{ profile: string | null }[]>`
     select t.payload->>'profile' as profile
-      from run r join runtime_task t on t.run_id = r.id and t.business_id = r.business_id
+      from run r left join runtime_task t on t.run_id = r.id and t.business_id = r.business_id
      where r.business_id = ${businessId} and r.trigger_ref->>'sessionId' = ${sessionId}
        and r.created_at > ${since}
+       and (t.id is not null or ${allHistory})
      order by r.created_at desc limit 1`;
   if (!row) return undefined;
   return row.profile ?? null;
 }
 
-/** Who answers this turn: the specialist that answered the previous turn of
-    the same chat, so the conversation stays in one memory; otherwise, and
-    for a chat that has gone quiet, the request is scored on its own. */
+/** Web chats supply a personal default and keep their previous profile
+    regardless of age. Telegram callers omit the preference and retain
+    six-hour sticky routing followed by request scoring. */
 export async function specialistForTurn(
   tx: postgres.TransactionSql,
   businessId: string,
   sessionId: string | undefined,
   input: string,
   specialists: readonly SpecialistDefinition[],
+  preferredProfile?: string,
 ): Promise<SpecialistDefinition | undefined> {
   if (sessionId) {
-    const previous = await previousProfileInSession(tx, businessId, sessionId);
+    const previous = await previousProfileInSession(tx, businessId, sessionId, new Date(), preferredProfile !== undefined);
     if (previous === null) return undefined;
     if (previous) {
       const same = specialists.find((specialist) => specialist.enabled && specialist.profile === previous);
       if (same) return same;
+      if (preferredProfile !== undefined) return undefined;
     }
   }
+  if (preferredProfile === 'default') return undefined;
+  if (preferredProfile !== undefined) return specialists.find(s => s.enabled && s.profile === preferredProfile);
   return specialistProfileForRequest(input, specialists);
+}
+
+export async function botPreference(tx: postgres.TransactionSql, userId: string) {
+  const [row] = await tx`select default_profile, coordinator_avatar from bot_preference where user_id = ${userId}`;
+  return { defaultBotProfile: String(row?.default_profile ?? 'default'), coordinatorAvatar: String(row?.coordinator_avatar ?? 'original') };
 }

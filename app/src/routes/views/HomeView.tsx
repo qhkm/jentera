@@ -20,7 +20,7 @@ import {
   PlugsConnected,
   SquaresFour,
 } from '@phosphor-icons/react';
-import { JenteraMark } from '@/components/JenteraMark';
+import { JenteraMascot } from '@/components/JenteraMascot';
 import { WorkPulse } from '@/components/WorkSignal';
 import { DataIcon } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
@@ -124,7 +124,7 @@ export default function HomeView({
       <header className="home-heading">
         <div>
           <Eyebrow>{business.name}</Eyebrow>
-          <h1 className="font-pixel tracking-tight">{t(`home.greeting.${greeting}`)}</h1>
+          <div className="home-greeting"><JenteraMascot size={58} /><h1 className="font-pixel tracking-tight">{t(`home.greeting.${greeting}`)}</h1></div>
           <p className="text-sm text-text-secondary">
             {stage === 'setup'
               ? t('sub.step1')
@@ -228,7 +228,7 @@ export default function HomeView({
       ) : null}
 
       {demo && <button type="button" className="home-ask-launcher" onClick={() => onNavigate('chat')}>
-        <JenteraMark size={56} />
+        <JenteraMascot size={56} />
         <span>
           <strong>{t('home.ask.title')}</strong>
           <span>{t('home.ask.detail')}</span>

@@ -338,6 +338,7 @@ export default function DesktopViewer({ controlId, onControlLost }: { controlId:
     <div className="business-desktop-stage-shell">
       <div className="business-desktop-stage" ref={canvas} aria-label={t('browser.desktop.screen')} />
       {phase !== 'ready' && <div className="business-desktop-status" role="status">
+        {phase !== 'failed' && <span className="business-desktop-loading-indicator" aria-hidden="true" />}
         <p>{t(`browser.desktop.${phase}`)}</p>
         {phase === 'failed' && <button type="button" onClick={() => setAttempt(value => value + 1)}><ArrowClockwise size={17} />{t('loading.retry')}</button>}
       </div>}

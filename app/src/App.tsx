@@ -9,7 +9,7 @@ import { ToastProvider } from '@/components/Toast';
 import { DetailLevelProvider } from '@/hooks/useDetailLevel';
 import { ActivityProvider } from '@/hooks/useActivity';
 import { isOnboarded, isSetupDone } from '@/lib/business';
-import Landing from '@/routes/Landing';
+import LandingV3 from '@/routes/LandingV3';
 import SignIn from '@/routes/SignIn';
 import Join from '@/routes/Join';
 import Connect from '@/routes/Connect';
@@ -20,6 +20,7 @@ import LandingMs from '@/routes/LandingMs';
 import NotFound from '@/routes/NotFound';
 import Privacy from '@/routes/Privacy';
 import Terms from '@/routes/Terms';
+import LaunchPost from '@/routes/LaunchPost';
 import { PageMetadata } from '@/components/PageMetadata';
 import { GoogleAnalytics } from '@/components/GoogleAnalytics';
 import { PageLoading } from '@/components/ui';
@@ -29,8 +30,8 @@ import { lazy, Suspense, type ReactElement } from 'react';
 // Keep sign-in eager: it is the primary CTA and the release verifier checks
 // the entry bundle for its auth endpoint.
 const Onboard = lazy(() => import('@/routes/Onboard'));
+const Landing = lazy(() => import('@/routes/Landing'));
 const LandingV2 = lazy(() => import('@/routes/LandingV2'));
-const LandingV3 = lazy(() => import('@/routes/LandingV3'));
 const Setup = lazy(() => import('@/routes/Setup'));
 const Dashboard = lazy(() => import('@/routes/Dashboard'));
 const LaunchAdmin = lazy(() => import('@/routes/LaunchAdmin'));
@@ -127,9 +128,11 @@ export function AppRoutes() {
       <Suspense fallback={<RouteLoading />}>
         <Routes>
           {/* Public, and free of any provider dependency. */}
-          <Route path="/" element={<Landing />} />
+          <Route path="/" element={<LandingV3 />} />
+          <Route path="/landing-v1" element={<Landing />} />
           <Route path="/landing-v2" element={<LandingV2 />} />
           <Route path="/landing-v3" element={<LandingV3 />} />
+          <Route path="/blog/meet-jentera" element={<LaunchPost />} />
           <Route path="/ms" element={<LandingMs />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/about" element={<About />} />

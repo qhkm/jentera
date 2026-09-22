@@ -377,7 +377,7 @@ describe('business profile', () => {
     expect(screen.getByRole('textbox', { name: 'Business name' })).toHaveValue('Unsaved shop name');
   });
 
-  it('compacts the identity outside Profile and gives the Chief of Staff one clear card', async () => {
+  it('compacts the identity outside Profile and separates AI bots from the human team', async () => {
     const repo = new LocalRepository();
     await repo.setBizType('restaurant');
     await repo.setBizProfile({ name: 'Kedai Kita', loc: 'Shah Alam' });
@@ -388,24 +388,17 @@ describe('business profile', () => {
       'Profile',
       'Knowledge',
       'Connections0',
-      'Your team',
+      'AI bots',
       'Controls',
     ]);
-    await userEvent.click(screen.getByRole('tab', { name: 'Your team' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'AI bots' }));
     expect(identity).toHaveClass('business-identity-compact');
     const panel = screen.getByRole('tabpanel');
-    expect(within(panel).getByRole('heading', { name: 'Chief of Staff' })).toBeInTheDocument();
+    expect(within(panel).getByRole('heading', { name: 'Jentera' })).toBeInTheDocument();
     expect(within(panel).getByRole('heading', { name: 'Operations' })).toBeInTheDocument();
-    expect(panel.querySelectorAll('.business-staff-capabilities li')).toHaveLength(4);
-    expect(panel.querySelectorAll('.card')).toHaveLength(1);
-    expect(within(panel).getByText('Available now')).toBeInTheDocument();
-    expect(within(panel).getByRole('note')).toHaveTextContent(
-      'Customer-facing agents aren’t available yet. Telegram is for your private chat.',
-    );
-    expect(within(panel).getByRole('link', { name: 'Ask Jentera' })).toHaveAttribute(
-      'href',
-      '/app?view=chat',
-    );
+    expect(within(panel).getAllByRole('article')).toHaveLength(5);
+    expect(within(panel).getByText('Your default')).toBeInTheDocument();
+    expect(within(panel).getByText(/Bots share your business connections and permissions/)).toBeInTheDocument();
     expect(screen.queryByText('Your Chief of Staff')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('tab', { name: 'Profile' }));
     expect(identity).not.toHaveClass('business-identity-compact');
@@ -416,22 +409,23 @@ describe('business profile', () => {
     const repo = new LocalRepository();
     const create = vi.spyOn(repo, 'createSpecialist');
     mount(<Harness initialTab="handles" />, { repo });
-    await userEvent.click(await screen.findByRole('button', { name: 'Add specialist' }));
-    await userEvent.type(screen.getByRole('textbox', { name: 'Role name' }), 'Pastry R&D');
+    await userEvent.click(await screen.findByRole('button', { name: 'Add bot' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Bot name' }), 'Pastry R&D');
     await userEvent.type(
-      screen.getByRole('textbox', { name: 'What should this specialist own?' }),
+      screen.getByRole('textbox', { name: 'What does this bot help with?' }),
       'Develop recipes and test lamination.',
     );
     await userEvent.type(
-      screen.getByRole('textbox', { name: 'Instructions (optional)' }),
+      screen.getByRole('textbox', { name: 'Instructions' }),
       'Prefer local ingredients.',
     );
-    await userEvent.click(screen.getByRole('button', { name: 'Save specialist' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save bot' }));
     await screen.findByRole('heading', { name: 'Pastry R&D' });
     expect(create).toHaveBeenCalledWith({
       name: 'Pastry R&D',
       description: 'Develop recipes and test lamination.',
       instructions: 'Prefer local ingredients.',
+      avatar: 'original',
     });
   });
 
@@ -440,14 +434,12 @@ describe('business profile', () => {
     await repo.setBizType('restaurant');
     await repo.setLang('bm');
     mount(<Harness initialTab="handles" />, { repo });
-    expect(await screen.findByRole('tab', { name: 'Pasukan anda' })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByRole('tab', { name: 'Bot AI' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'Pengetahuan' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Kawalan' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Ketua Staf' })).toBeInTheDocument();
-    expect(screen.getByRole('note')).toHaveTextContent(
-      'Ejen untuk pelanggan belum tersedia. Telegram adalah untuk chat peribadi anda.',
-    );
-    expect(screen.getByRole('link', { name: 'Tanya Jentera' })).toHaveAttribute('href', '/app?view=chat');
+    expect(screen.getByRole('heading', { name: 'Jentera' })).toBeInTheDocument();
+    expect(screen.getByText(/Bot berkongsi sambungan dan kebenaran perniagaan anda/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tambah bot' })).toBeInTheDocument();
   });
 });
 

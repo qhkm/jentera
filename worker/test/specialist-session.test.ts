@@ -41,6 +41,24 @@ beforeEach(async () => {
 });
 
 describe('which specialist answers a turn', () => {
+  it('uses a personal default for a new web chat rather than scoring the question', async () => {
+    expect((await asTenant(A, tx => specialistForTurn(tx, A, 'new', MARKETING, specialists, 'records')))?.profile).toBe('records');
+    expect(await asTenant(A, tx => specialistForTurn(tx, A, 'new', MARKETING, specialists, 'default'))).toBeUndefined();
+    expect(await asTenant(A, tx => specialistForTurn(tx, A, 'new', MARKETING, specialists, 'missing'))).toBeUndefined();
+  });
+
+  it('keeps an existing web chat on its bot even after six hours and a default change', async () => {
+    await previousTurn('thread', 'operations', STICKY_SPECIALIST_WINDOW_MS + 60_000);
+    expect((await asTenant(A, tx => specialistForTurn(tx, A, 'thread', MARKETING, specialists, 'records')))?.profile).toBe('operations');
+    await previousTurn('chief', undefined, STICKY_SPECIALIST_WINDOW_MS + 60_000);
+    expect(await asTenant(A, tx => specialistForTurn(tx, A, 'chief', MARKETING, specialists, 'records'))).toBeUndefined();
+  });
+
+  it('falls back to the coordinator when a web chat bot is disabled, not to an unrelated new default', async () => {
+    await previousTurn('thread', 'operations');
+    const enabled = specialists.filter(s => s.profile !== 'operations');
+    expect(await asTenant(A, tx => specialistForTurn(tx, A, 'thread', MARKETING, enabled, 'records'))).toBeUndefined();
+  });
   it('scores the request when the chat has no earlier turn', async () => {
     expect((await route('new-chat'))?.profile).toBe('growth');
     expect((await route(undefined))?.profile).toBe('growth');
