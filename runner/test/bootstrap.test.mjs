@@ -127,7 +127,7 @@ test('bootstrap and model config pin the reviewed plus customer-router endpoints
    would become Ultra's hardcoded 300s with nothing to notice it. */
 const ULTRA_READS = new Set([
   'model', 'llm_providers', 'terminal', 'web', 'agent', 'auxiliary',
-  'platform_toolsets', 'platforms', 'gateway',
+  'platform_toolsets', 'platforms', 'gateway', 'delegation',
 ]);
 
 /* Keys Ultra does not read, each verified against the Ultra tree rather than
@@ -407,6 +407,13 @@ test('configured model routes pin provider, base_url and env key for quick and d
       base_url: 'https://openrouter.ai/api/v1',
       api_key: '${OPENROUTER_API_KEY}',
     },
+  });
+  assert.deepStrictEqual(config.delegation, {
+    model: primary,
+    provider: 'openrouter',
+    base_url: 'https://openrouter.ai/api/v1',
+    api_key: '${OPENROUTER_API_KEY}',
+    api_mode: 'chat_completions',
   });
   // No literal key material may ever reach the written config file.
   assert.doesNotMatch(JSON.stringify(config), /sk-[A-Za-z0-9]+/);

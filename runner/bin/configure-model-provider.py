@@ -277,6 +277,22 @@ def main() -> None:
     provider_routing["allow_fallbacks"] = True
     provider_routing["require_parameters"] = True
     config["provider_routing"] = provider_routing
+    # Gateway runs use model_routes below, but delegate_task creates a fresh
+    # child from the profile's top-level defaults. Without an explicit route,
+    # that child can fall back to openrouter.ai while holding Jentera's proxy
+    # credential and fail with HTTP 401. Pin delegated children to the same
+    # reviewed proxy and environment-backed key while preserving their limits.
+    delegation = dict(config.get("delegation") or {})
+    delegation.update(
+        {
+            "model": model_name,
+            "provider": provider,
+            "base_url": base_url.rstrip("/"),
+            "api_key": f"${{{key_env}}}",
+            "api_mode": "chat_completions",
+        }
+    )
+    config["delegation"] = delegation
     # One persistent browser per business, shared with the owner's private
     # takeover view. CDP never leaves the Sprite's loopback interface.
     browser = dict(config.get("browser") or {})
