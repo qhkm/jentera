@@ -237,6 +237,16 @@ What advanced mode does **not** unlock for ordinary customers in the first relea
 
 Phase 4 converts successful repeated runs into versioned business procedures. It has no separate source of truth: it mines the work records and traces that Phase 2 writes. Anything not captured then cannot be recovered later, so the recording requirements below belong to Phase 2 even though nothing consumes them until Phase 4.
 
+Explicit owner demonstrations add a second evidence source. The trusted browser
+runtime may inspect bounded request values transiently so it can replace every
+scalar with a typed input slot and every credential-shaped field with an opaque
+vault-or-session reference. Only that parameterized contract may cross into
+Control or a model context; raw bodies, cookie values, authorization values,
+passwords, API keys and one-time codes may not. Execution later resolves the
+credential after the model boundary under a short-lived tenant, run and
+operation-scoped grant. Unknown request formats remain browser-only, and any
+contract drift stops for review rather than inviting the agent to guess.
+
 Each run should additionally record:
 
 - **Trigger shape.** Not only the channel and customer, but what pattern caused the run — an inbound enquiry about pricing, a scheduled weekly report, a direct owner instruction. Two runs belong to the same candidate procedure when their trigger shapes match, so this is the grouping key.

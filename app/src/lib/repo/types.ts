@@ -270,6 +270,8 @@ export interface ProcedureDraft {
     capturedValues: false;
     capturedRequestBodies: false;
     capturedHeaders: false;
+    transientParameterization?: true;
+    credentialBoundary?: 'opaque_reference_only';
     activation: 'review_required';
   };
   steps: {
@@ -287,8 +289,23 @@ export interface ProcedureDraft {
     queryKeys: string[];
     resourceType: 'document' | 'xhr' | 'fetch';
     evidence: string;
+    compilation?: 'review_required';
+    requestTemplate?: ProcedureRequestTemplate;
   }[];
   truncated: boolean;
+}
+export type ProcedureTemplateNode =
+  | { kind: 'slot'; name: string; valueType: 'string' | 'number' | 'boolean' | 'null' }
+  | { kind: 'credential'; source: 'vault_or_browser_session'; valueType: 'string' | 'number' | 'boolean' | 'null' }
+  | { kind: 'omitted' }
+  | { kind: 'array'; items: ProcedureTemplateNode[] }
+  | { kind: 'object'; fields: { key: string; value: ProcedureTemplateNode }[] };
+export interface ProcedureRequestTemplate {
+  authentication: { source: 'vault_or_browser_session'; exposedToModel: false };
+  query: { key: string; value: ProcedureTemplateNode }[];
+  body?:
+    | { format: 'json' | 'form'; root: ProcedureTemplateNode }
+    | { format: 'opaque'; replay: 'browser_only' };
 }
 export interface BrowserInputTarget {
   id: string;

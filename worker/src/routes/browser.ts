@@ -150,9 +150,70 @@ export function browserInputTarget(value: unknown): { id: string; kind: string; 
   return { id: target.id, kind: String(target.kind), nextSequence: Number(target.nextSequence) };
 }
 
-/** The runner already strips values, bodies, headers and raw URLs. Rebuild
+/** The runner already strips raw values, bodies, headers and URLs. Rebuild
  * the DTO here instead of trusting that private boundary: a compromised or
  * drifting runtime must not turn Procedure Lab into an arbitrary data proxy. */
+function procedureTemplateNode(value: unknown, depth = 0, budget = { remaining: 240 }): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || depth > 7 || budget.remaining-- <= 0) return null;
+  const node = value as Record<string, unknown>;
+  if (node.kind === 'slot') {
+    if (typeof node.name !== 'string' || !/^[A-Za-z][A-Za-z0-9_]{0,95}$/.test(node.name) ||
+        !['string', 'number', 'boolean', 'null'].includes(String(node.valueType))) return null;
+    return { kind: 'slot', name: node.name, valueType: node.valueType };
+  }
+  if (node.kind === 'credential') {
+    if (node.source !== 'vault_or_browser_session' ||
+        !['string', 'number', 'boolean', 'null'].includes(String(node.valueType))) return null;
+    return { kind: 'credential', source: 'vault_or_browser_session', valueType: node.valueType };
+  }
+  if (node.kind === 'omitted') return { kind: 'omitted' };
+  if (node.kind === 'array') {
+    if (!Array.isArray(node.items) || node.items.length > 80) return null;
+    const items = node.items.map(item => procedureTemplateNode(item, depth + 1, budget));
+    return items.some(item => !item) ? null : { kind: 'array', items };
+  }
+  if (node.kind === 'object') {
+    if (!Array.isArray(node.fields) || node.fields.length > 80) return null;
+    const fields = node.fields.map((raw) => {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+      const field = raw as Record<string, unknown>;
+      if (typeof field.key !== 'string' || !/^[A-Za-z][A-Za-z0-9_.-]{0,79}$/.test(field.key)) return null;
+      const child = procedureTemplateNode(field.value, depth + 1, budget);
+      return child ? { key: field.key, value: child } : null;
+    });
+    return fields.some(field => !field) ? null : { kind: 'object', fields };
+  }
+  return null;
+}
+
+function procedureRequestTemplate(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const template = value as Record<string, unknown>;
+  const authentication = template.authentication as Record<string, unknown> | undefined;
+  if (!authentication || authentication.source !== 'vault_or_browser_session' || authentication.exposedToModel !== false ||
+      !Array.isArray(template.query) || template.query.length > 20) return null;
+  const query = template.query.map((raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const parameter = raw as Record<string, unknown>;
+    if (typeof parameter.key !== 'string' || !/^[A-Za-z][A-Za-z0-9_.-]{0,79}$/.test(parameter.key)) return null;
+    const valueNode = procedureTemplateNode(parameter.value);
+    return valueNode ? { key: parameter.key, value: valueNode } : null;
+  });
+  if (query.some(parameter => !parameter)) return null;
+  let body: Record<string, unknown> | undefined;
+  if (template.body !== undefined) {
+    if (!template.body || typeof template.body !== 'object' || Array.isArray(template.body)) return null;
+    const rawBody = template.body as Record<string, unknown>;
+    if (rawBody.format === 'opaque' && rawBody.replay === 'browser_only') body = { format: 'opaque', replay: 'browser_only' };
+    else if (['json', 'form'].includes(String(rawBody.format))) {
+      const root = procedureTemplateNode(rawBody.root);
+      if (!root) return null;
+      body = { format: rawBody.format, root };
+    } else return null;
+  }
+  return { authentication: { source: 'vault_or_browser_session', exposedToModel: false }, query, ...(body ? { body } : {}) };
+}
+
 export function procedureDraftResponse(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const draft = value as Record<string, unknown>;
@@ -194,22 +255,35 @@ export function procedureDraftResponse(value: unknown): Record<string, unknown> 
         !candidate.path.startsWith('/') || candidate.path.length > 400 || /[?#]/.test(candidate.path) ||
         !Array.isArray(candidate.queryKeys) || candidate.queryKeys.length > 20 || candidate.queryKeys.some(key => typeof key !== 'string' || !key || key.length > 60) ||
         !['document', 'xhr', 'fetch'].includes(String(candidate.resourceType)) ||
+        (candidate.compilation !== undefined && candidate.compilation !== 'review_required') ||
         typeof candidate.evidence !== 'string' || !/^event-[1-9][0-9]{0,2}$/.test(candidate.evidence)) return null;
     try {
       const origin = new URL(candidate.origin);
       if (origin.protocol !== 'https:' || origin.origin !== candidate.origin || origin.username || origin.password) return null;
     } catch { return null; }
+    let requestTemplate: Record<string, unknown> | undefined;
+    if (candidate.requestTemplate !== undefined) {
+      requestTemplate = procedureRequestTemplate(candidate.requestTemplate) ?? undefined;
+      if (!requestTemplate) return null;
+    }
     return { method: candidate.method, origin: candidate.origin, path: candidate.path,
-      queryKeys: candidate.queryKeys, resourceType: candidate.resourceType, evidence: candidate.evidence };
+      queryKeys: candidate.queryKeys, resourceType: candidate.resourceType, evidence: candidate.evidence,
+      ...(candidate.compilation === 'review_required' ? { compilation: 'review_required' } : {}),
+      ...(requestTemplate ? { requestTemplate } : {}) };
   });
   if (connectorCandidates.some(candidate => !candidate)) return null;
   const safety = draft.safety as Record<string, unknown> | undefined;
   if (!safety || safety.capturedValues !== false || safety.capturedRequestBodies !== false ||
-      safety.capturedHeaders !== false || safety.activation !== 'review_required') return null;
+      safety.capturedHeaders !== false || safety.activation !== 'review_required' ||
+      (safety.transientParameterization !== undefined && safety.transientParameterization !== true) ||
+      (safety.credentialBoundary !== undefined && safety.credentialBoundary !== 'opaque_reference_only')) return null;
   return {
     schemaVersion: 1, id: draft.id, version: 1, status: 'draft', objective: draft.objective,
     startedAt: draft.startedAt, endedAt: draft.endedAt,
-    safety: { capturedValues: false, capturedRequestBodies: false, capturedHeaders: false, activation: 'review_required' },
+    safety: { capturedValues: false, capturedRequestBodies: false, capturedHeaders: false,
+      ...(safety.transientParameterization === true ? { transientParameterization: true } : {}),
+      ...(safety.credentialBoundary === 'opaque_reference_only' ? { credentialBoundary: 'opaque_reference_only' } : {}),
+      activation: 'review_required' },
     steps, connectorCandidates, truncated: draft.truncated === true,
   };
 }

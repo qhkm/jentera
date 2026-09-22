@@ -31,18 +31,37 @@ it('rebuilds procedure drafts from the narrow value-free contract', () => {
   const draft = {
     schemaVersion: 1, id: CONTROL, version: 1, status: 'draft', objective: 'Match a payment',
     startedAt: 10, endedAt: 20, truncated: false,
-    safety: { capturedValues: false, capturedRequestBodies: false, capturedHeaders: false, activation: 'review_required' },
+    safety: { capturedValues: false, capturedRequestBodies: false, capturedHeaders: false,
+      transientParameterization: true, credentialBoundary: 'opaque_reference_only', activation: 'review_required' },
     steps: [{ id: 'step-1', kind: 'input', label: 'Enter information in Invoice number', execution: 'browser', evidence: 'event-1',
       target: { tag: 'input', type: 'text', name: 'Invoice number', value: 'never relay' } }],
     connectorCandidates: [{ method: 'POST', origin: 'https://books.example.test', path: '/api/invoices/:id',
-      queryKeys: ['mode'], resourceType: 'fetch', evidence: 'event-2', headers: { authorization: 'never relay' } }],
+      queryKeys: ['mode'], resourceType: 'fetch', evidence: 'event-2', headers: { authorization: 'never relay' },
+      requestTemplate: {
+        authentication: { source: 'vault_or_browser_session', exposedToModel: false, cookie: 'never relay' },
+        query: [{ key: 'mode', value: { kind: 'slot', name: 'query_mode', valueType: 'string', rawValue: 'never relay' } }],
+        body: { format: 'json', root: { kind: 'object', fields: [
+          { key: 'password', value: { kind: 'credential', source: 'vault_or_browser_session', valueType: 'string', rawValue: 'never relay' } },
+        ] } },
+      } }],
     rawEvents: [{ value: 'never relay' }],
   };
   const result = procedureDraftResponse(draft);
   expect(result).toMatchObject({ objective: 'Match a payment', truncated: false });
   expect(JSON.stringify(result)).not.toContain('never relay');
+  expect(result).toMatchObject({
+    safety: { transientParameterization: true, credentialBoundary: 'opaque_reference_only' },
+    connectorCandidates: [{ requestTemplate: {
+      authentication: { source: 'vault_or_browser_session', exposedToModel: false },
+      body: { format: 'json', root: { kind: 'object', fields: [
+        { key: 'password', value: { kind: 'credential', source: 'vault_or_browser_session', valueType: 'string' } },
+      ] } },
+    } }],
+  });
   expect(procedureDraftResponse({ ...draft, safety: { ...draft.safety, capturedValues: true } })).toBeNull();
   expect(procedureDraftResponse({ ...draft, connectorCandidates: [{ ...draft.connectorCandidates[0], path: '/api?token=secret' }] })).toBeNull();
+  expect(procedureDraftResponse({ ...draft, connectorCandidates: [{ ...draft.connectorCandidates[0],
+    requestTemplate: { ...draft.connectorCandidates[0].requestTemplate, authentication: { source: 'raw_password', exposedToModel: false } } }] })).toBeNull();
 });
 const env = testEnv({ SPRITES_TOKEN: 'sprite-secret', RUNTIME_RELEASE: '2026.09.11-3' });
 let ownerId: string;
