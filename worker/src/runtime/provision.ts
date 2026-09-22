@@ -308,6 +308,7 @@ export async function downloadRuntimeBundle(
   const assets = [
     'runner/src/server.mjs',
     'runner/src/business-browser.mjs',
+    'runner/src/procedure-recorder.mjs',
     'runner/src/browser-recipes.mjs',
     'runner/src/browser-preview-stream.mjs',
     'runner/src/desktop-gateway.mjs',

@@ -5,7 +5,8 @@ import { hasBusiness, resolveTenant } from '../tenancy';
 import { can } from '../permissions';
 import { desktopEnabledFor } from '../runtime/desktop';
 
-const ACTIONS = new Set(['claim', 'reclaim', 'release', 'frame', 'navigate', 'click', 'text', 'key', 'input', 'scroll', 'tab', 'preview', 'preview-stream', 'restart']);
+const ACTIONS = new Set(['claim', 'reclaim', 'release', 'frame', 'navigate', 'click', 'text', 'key', 'input', 'scroll', 'tab', 'preview', 'preview-stream', 'restart',
+  'record_start', 'record_stop', 'record_cancel']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MESSAGES: Record<string, string> = {
   runtime_busy: 'Jentera is still working. Let the current task finish, then take control.',
@@ -20,6 +21,9 @@ const MESSAGES: Record<string, string> = {
      but it needs to read as a version gap, not as the owner's mistake. */
   invalid_command: 'This browser cannot be restarted yet. Its computer is still updating.',
   browser_unavailable: 'The browser did not restart. Try again, and if it keeps failing, tell Jentera.',
+  invalid_objective: 'Describe the task you want to teach Jentera.',
+  procedure_recording_active: 'Jentera is already learning this demonstration.',
+  procedure_recording_inactive: 'Start teaching Jentera before stopping the demonstration.',
 };
 
 /** Deliberately not a generic proxy. Identity selects both the business and
@@ -47,6 +51,9 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
       if (raw.length > 12000) return json({ err: 'command too large' }, 413);
       const body = JSON.parse(raw);
       if (!body || !ACTIONS.has(body.action) || !UUID.test(body.controlId ?? '')) return json({ err: 'invalid command' }, 400);
+      if (body.action === 'record_start' && (typeof body.objective !== 'string' || !body.objective.trim() || body.objective.trim().length > 240)) {
+        return json({ err: 'invalid objective' }, 400);
+      }
       command = { action: body.action, controlId: body.controlId, ownerId: identity.userId, businessId: identity.businessId };
       if (body.action === 'input' && (!UUID.test(body.inputId ?? '') || !Number.isSafeInteger(body.sequence) || body.sequence < 1 ||
           (typeof body.text === 'string') === (typeof body.key === 'string') ||
@@ -70,7 +77,7 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
         if (['completed', 'failed', 'cancelled', 'exhausted'].includes(tasks[0].status)) return json({ previewStatus: 'inactive' });
         command.taskId = tasks[0].id;
       }
-      for (const field of ['url', 'x', 'y', 'text', 'key', 'deltaY', 'index', 'inputId', 'sequence']) {
+      for (const field of ['url', 'x', 'y', 'text', 'key', 'deltaY', 'index', 'inputId', 'sequence', 'objective']) {
         if (body[field] !== undefined) command[field] = body[field];
       }
     } catch { return json({ err: 'invalid command' }, 400); }
@@ -113,10 +120,15 @@ export async function handleBrowser(request: Request, env: Env, url: URL, cors: 
     }
     const body = await upstream.json() as Record<string, unknown>;
     if (command?.action === 'preview') return json(previewResponse(body, true));
+    const procedureDraft = procedureDraftResponse(body.procedureDraft);
     return json({ ...Object.fromEntries(['enabled', 'paused', 'controlled', 'expiresAt', 'image', 'width', 'height', 'tabs', 'ok', 'previewStatus', 'capturedAt']
       .filter((key) => body[key] !== undefined).map((key) => [key, body[key]])),
       ...(body.directTyping === 1 ? { directTyping: 1, inputTarget: browserInputTarget(body.inputTarget) } : {}),
       ...(body.controlRecovery === 1 ? { controlRecovery: 1 } : {}),
+      ...(body.procedureCapture === 1 ? { procedureCapture: 1 } : {}),
+      ...(typeof body.recording === 'boolean' ? { recording: body.recording } : {}),
+      ...(typeof body.recordingStartedAt === 'number' && Number.isFinite(body.recordingStartedAt) ? { recordingStartedAt: body.recordingStartedAt } : {}),
+      ...(procedureDraft ? { procedureDraft } : {}),
       ...(body.desktopView === 1 && desktopEnabledFor(env, identity.businessId) ? { desktopView: 1 } : {}),
     });
   } catch (error) {
@@ -136,6 +148,70 @@ export function browserInputTarget(value: unknown): { id: string; kind: string; 
   if (typeof target.id !== 'string' || !UUID.test(target.id) || !['text', 'password', 'multiline', 'control'].includes(String(target.kind)) ||
       !Number.isSafeInteger(target.nextSequence) || Number(target.nextSequence) < 1) return null;
   return { id: target.id, kind: String(target.kind), nextSequence: Number(target.nextSequence) };
+}
+
+/** The runner already strips values, bodies, headers and raw URLs. Rebuild
+ * the DTO here instead of trusting that private boundary: a compromised or
+ * drifting runtime must not turn Procedure Lab into an arbitrary data proxy. */
+export function procedureDraftResponse(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const draft = value as Record<string, unknown>;
+  if (draft.schemaVersion !== 1 || draft.version !== 1 || draft.status !== 'draft' || !UUID.test(String(draft.id)) ||
+      typeof draft.objective !== 'string' || !draft.objective.trim() || draft.objective.length > 240 ||
+      !Number.isFinite(draft.startedAt) || !Number.isFinite(draft.endedAt) || Number(draft.endedAt) < Number(draft.startedAt) ||
+      !Array.isArray(draft.steps) || draft.steps.length > 200 ||
+      !Array.isArray(draft.connectorCandidates) || draft.connectorCandidates.length > 100) return null;
+
+  const steps = draft.steps.map((raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const step = raw as Record<string, unknown>;
+    if (typeof step.id !== 'string' || !/^step-[1-9][0-9]{0,2}$/.test(step.id) ||
+        !['navigate', 'input', 'interact'].includes(String(step.kind)) || typeof step.label !== 'string' ||
+        !step.label.trim() || step.label.length > 560 || step.execution !== 'browser' ||
+        typeof step.evidence !== 'string' || !/^event-[1-9][0-9]{0,2}$/.test(step.evidence)) return null;
+    let target: Record<string, string> | undefined;
+    if (step.target !== undefined) {
+      if (!step.target || typeof step.target !== 'object' || Array.isArray(step.target)) return null;
+      const rawTarget = step.target as Record<string, unknown>;
+      if (typeof rawTarget.tag !== 'string' || !/^[a-z][a-z0-9-]{0,19}$/.test(rawTarget.tag)) return null;
+      target = { tag: rawTarget.tag };
+      for (const [key, limit] of [['type', 30], ['role', 40], ['name', 120]] as const) {
+        if (rawTarget[key] !== undefined) {
+          if (typeof rawTarget[key] !== 'string' || !rawTarget[key] || rawTarget[key].length > limit) return null;
+          target[key] = rawTarget[key];
+        }
+      }
+    }
+    return { id: step.id, kind: step.kind, label: step.label, execution: 'browser', evidence: step.evidence, ...(target ? { target } : {}) };
+  });
+  if (steps.some(step => !step)) return null;
+
+  const connectorCandidates = draft.connectorCandidates.map((raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const candidate = raw as Record<string, unknown>;
+    if (typeof candidate.method !== 'string' || !/^[A-Z]{3,12}$/.test(candidate.method) ||
+        typeof candidate.origin !== 'string' || candidate.origin.length > 255 || typeof candidate.path !== 'string' ||
+        !candidate.path.startsWith('/') || candidate.path.length > 400 || /[?#]/.test(candidate.path) ||
+        !Array.isArray(candidate.queryKeys) || candidate.queryKeys.length > 20 || candidate.queryKeys.some(key => typeof key !== 'string' || !key || key.length > 60) ||
+        !['document', 'xhr', 'fetch'].includes(String(candidate.resourceType)) ||
+        typeof candidate.evidence !== 'string' || !/^event-[1-9][0-9]{0,2}$/.test(candidate.evidence)) return null;
+    try {
+      const origin = new URL(candidate.origin);
+      if (origin.protocol !== 'https:' || origin.origin !== candidate.origin || origin.username || origin.password) return null;
+    } catch { return null; }
+    return { method: candidate.method, origin: candidate.origin, path: candidate.path,
+      queryKeys: candidate.queryKeys, resourceType: candidate.resourceType, evidence: candidate.evidence };
+  });
+  if (connectorCandidates.some(candidate => !candidate)) return null;
+  const safety = draft.safety as Record<string, unknown> | undefined;
+  if (!safety || safety.capturedValues !== false || safety.capturedRequestBodies !== false ||
+      safety.capturedHeaders !== false || safety.activation !== 'review_required') return null;
+  return {
+    schemaVersion: 1, id: draft.id, version: 1, status: 'draft', objective: draft.objective,
+    startedAt: draft.startedAt, endedAt: draft.endedAt,
+    safety: { capturedValues: false, capturedRequestBodies: false, capturedHeaders: false, activation: 'review_required' },
+    steps, connectorCandidates, truncated: draft.truncated === true,
+  };
 }
 
 /** Bound framing and revalidate every image. Never relay arbitrary runtime data. */

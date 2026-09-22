@@ -35,6 +35,7 @@ export async function desktopBrowserArguments(io = { readdir, readFile }) {
 }
 
 import { browserRecipe, recipeProblem, recipeUrl } from './browser-recipes.mjs';
+import { createProcedureRecorder } from './procedure-recorder.mjs';
 
 export class BrowserProblem extends Error {
   constructor(status, code) { super(code); this.status = status; }
@@ -42,7 +43,8 @@ export class BrowserProblem extends Error {
 
 export function browserCommandProblem(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return 'invalid_command';
-  if (!['claim', 'reclaim', 'frame', 'navigate', 'click', 'text', 'key', 'input', 'scroll', 'tab', 'release', 'harvest', 'restart'].includes(body.action)) return 'invalid_command';
+  if (!['claim', 'reclaim', 'frame', 'navigate', 'click', 'text', 'key', 'input', 'scroll', 'tab', 'release', 'harvest', 'restart',
+    'record_start', 'record_stop', 'record_cancel'].includes(body.action)) return 'invalid_command';
   if (!UUID.test(body.ownerId ?? '') || !UUID.test(body.controlId ?? '')) return 'invalid_controller';
   if (body.action === 'navigate') {
     try {
@@ -64,6 +66,7 @@ export function browserCommandProblem(body) {
   }
   if (body.action === 'scroll' && (!Number.isFinite(body.deltaY) || Math.abs(body.deltaY) > 1600)) return 'invalid_scroll';
   if (body.action === 'tab' && (!Number.isInteger(body.index) || body.index < 0 || body.index > 50)) return 'invalid_tab';
+  if (body.action === 'record_start' && (typeof body.objective !== 'string' || !body.objective.trim() || body.objective.trim().length > 240)) return 'invalid_objective';
   /* The caller names a recipe, never a selector or a script. */
   if (body.action === 'harvest' && !browserRecipe(body.connector)) return 'invalid_connector';
   return null;
@@ -86,8 +89,10 @@ export function createBusinessBrowser(config, deps = {}) {
   let controlRevision = 0;
   let cast = null;
   let input = null;
+  const procedureRecorder = createProcedureRecorder({ now });
   const controlListeners = new Set();
   async function changingControl() {
+    procedureRecorder.cancel();
     // Desktop keys are released BEFORE the durable pause can be cleared.
     for (const listener of controlListeners) await listener();
   }
@@ -347,6 +352,7 @@ export function createBusinessBrowser(config, deps = {}) {
   async function status() {
     await loaded;
     return { enabled: true, paused, controlled: Boolean(lease && lease.expiresAt > now()), directTyping: 1, controlRecovery: 1,
+      procedureCapture: 1, ...procedureRecorder.status(),
       ...(config.desktopEnabled && (deps.desktopReady?.() ?? true) ? { desktopView: 1 } : {}) };
   }
   async function isPaused() { await loaded; return paused || busy; }
@@ -425,6 +431,19 @@ export function createBusinessBrowser(config, deps = {}) {
       const ctx = await ensure();
       const pages = ctx.pages().filter((p) => !p.isClosed());
       const page = selected && !selected.isClosed() ? selected : pages[0];
+      if (body.action === 'record_start') {
+        try { await procedureRecorder.start(ctx, body.objective); }
+        catch (error) { throw new BrowserProblem(409, error.message); }
+        return { ok: true, ...(await status()) };
+      }
+      if (body.action === 'record_stop') {
+        try { return { ok: true, ...(await status()), recording: false, procedureDraft: procedureRecorder.stop() }; }
+        catch (error) { throw new BrowserProblem(409, error.message); }
+      }
+      if (body.action === 'record_cancel') {
+        procedureRecorder.cancel();
+        return { ok: true, ...(await status()) };
+      }
       if (['navigate', 'click', 'tab', 'text', 'key'].includes(body.action)) await clearInput();
       if (body.action === 'tab') {
         if (!pages[body.index]) throw new BrowserProblem(400, 'invalid_tab');

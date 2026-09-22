@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
-import { browserInputTarget, handleBrowser, previewResponse } from '../src/routes/browser';
+import { browserInputTarget, handleBrowser, previewResponse, procedureDraftResponse } from '../src/routes/browser';
 import { ensureProviderRuntime, LocalRuntimeProvider } from '../src/runtime';
 import { asOwner, asTenant, fetchFake, req, signIn, testEnv, truncateAll } from './harness';
 import { startRun } from '../src/runs';
@@ -25,6 +25,24 @@ it('sanitizes typing targets without exposing values, labels or selectors', () =
   for (const value of [null, [], {}, { ...target, id: 'invalid' }, { ...target, kind: 'script' }, { ...target, nextSequence: 0 }, { ...target, nextSequence: 1.5 }]) {
     expect(browserInputTarget(value)).toBeNull();
   }
+});
+
+it('rebuilds procedure drafts from the narrow value-free contract', () => {
+  const draft = {
+    schemaVersion: 1, id: CONTROL, version: 1, status: 'draft', objective: 'Match a payment',
+    startedAt: 10, endedAt: 20, truncated: false,
+    safety: { capturedValues: false, capturedRequestBodies: false, capturedHeaders: false, activation: 'review_required' },
+    steps: [{ id: 'step-1', kind: 'input', label: 'Enter information in Invoice number', execution: 'browser', evidence: 'event-1',
+      target: { tag: 'input', type: 'text', name: 'Invoice number', value: 'never relay' } }],
+    connectorCandidates: [{ method: 'POST', origin: 'https://books.example.test', path: '/api/invoices/:id',
+      queryKeys: ['mode'], resourceType: 'fetch', evidence: 'event-2', headers: { authorization: 'never relay' } }],
+    rawEvents: [{ value: 'never relay' }],
+  };
+  const result = procedureDraftResponse(draft);
+  expect(result).toMatchObject({ objective: 'Match a payment', truncated: false });
+  expect(JSON.stringify(result)).not.toContain('never relay');
+  expect(procedureDraftResponse({ ...draft, safety: { ...draft.safety, capturedValues: true } })).toBeNull();
+  expect(procedureDraftResponse({ ...draft, connectorCandidates: [{ ...draft.connectorCandidates[0], path: '/api?token=secret' }] })).toBeNull();
 });
 const env = testEnv({ SPRITES_TOKEN: 'sprite-secret', RUNTIME_RELEASE: '2026.09.11-3' });
 let ownerId: string;
@@ -210,4 +228,27 @@ it('admits restart as an owner command and refuses it from staff', async () => {
   expect((await call(staffCookie, { action: 'restart', controlId: CONTROL })).status).toBe(403);
   const sent = JSON.parse(String(upstream.mock.calls[0][1]?.body));
   expect(sent.action).toBe('restart');
+});
+
+it('admits explicit procedure recording and relays only a sanitized draft', async () => {
+  const raw = {
+    schemaVersion: 1, id: CONTROL, version: 1, status: 'draft', objective: 'Reconcile a payment', startedAt: 10, endedAt: 20,
+    safety: { capturedValues: false, capturedRequestBodies: false, capturedHeaders: false, activation: 'review_required' },
+    steps: [{ id: 'step-1', kind: 'interact', label: 'Select Find invoice', execution: 'browser', evidence: 'event-1',
+      target: { tag: 'button', name: 'Find invoice', value: 'private' } }],
+    connectorCandidates: [], truncated: false, private: 'never relay',
+  };
+  const upstream = fetchFake(async () => new Response(JSON.stringify({ ok: true, procedureCapture: 1, recording: false, procedureDraft: raw })));
+  vi.stubGlobal('fetch', upstream);
+  expect((await call(staffCookie, { action: 'record_start', controlId: CONTROL, objective: 'Reconcile a payment' })).status).toBe(403);
+  expect((await call(ownerCookie, { action: 'record_start', controlId: CONTROL, objective: '' })).status).toBe(400);
+  const start = await call(ownerCookie, { action: 'record_start', controlId: CONTROL, objective: 'Reconcile a payment', secret: 'ignored' });
+  expect(start.status).toBe(200);
+  const sent = JSON.parse(String(upstream.mock.calls[0][1]?.body));
+  expect(sent).toMatchObject({ action: 'record_start', objective: 'Reconcile a payment', ownerId, businessId: A });
+  expect(sent.secret).toBeUndefined();
+  const body = await start.json() as Record<string, unknown>;
+  expect(body.procedureCapture).toBe(1);
+  expect(JSON.stringify(body)).not.toContain('private');
+  expect(JSON.stringify(body)).not.toContain('never relay');
 });

@@ -73,6 +73,7 @@ sprite exec -o "$sprite_org" -s "$sprite_name" -- mkdir -p /home/sprite/aisar/ru
 sprite file push -o "$sprite_org" -s "$sprite_name" -p \
   runner/src/server.mjs \
   runner/src/business-browser.mjs \
+  runner/src/procedure-recorder.mjs \
   runner/src/browser-recipes.mjs \
   runner/src/browser-preview-stream.mjs \
   runner/src/desktop-gateway.mjs \

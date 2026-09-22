@@ -1,9 +1,9 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Globe, ArrowDown, ArrowUp, ArrowRight, ArrowBendDownLeft, CheckCircle, Clock, Eye, EyeSlash, Keyboard, CursorClick, ShieldCheck, WarningCircle, Minus, Plus, X, ArrowClockwise } from '@phosphor-icons/react';
+import { Globe, ArrowDown, ArrowUp, ArrowRight, ArrowBendDownLeft, CheckCircle, Clock, Eye, EyeSlash, Keyboard, CursorClick, ShieldCheck, WarningCircle, Minus, Plus, X, ArrowClockwise, Record, Stop, Sparkle } from '@phosphor-icons/react';
 import { Button, Card, Eyebrow, Input } from '@/components/ui';
 import { useRepository } from '@/lib/repo';
-import type { BrowserCommand, BusinessBrowserState } from '@/lib/repo/types';
+import type { BrowserCommand, BusinessBrowserState, ProcedureDraft } from '@/lib/repo/types';
 import { BrowserInput, type DirectInputState } from '@/lib/browser-input';
 import { useT } from '@/i18n/I18nProvider';
 import '@/styles/business-browser.css';
@@ -63,6 +63,10 @@ export default function BusinessBrowser({
   const [handedBack, setHandedBack] = useState(false);
   const [zoom, setZoom] = useState(defaultBrowserZoom);
   const [typingState, setTypingState] = useState<DirectInputState>({ phase: 'idle' });
+  const [teachSetup, setTeachSetup] = useState(false);
+  const [objective, setObjective] = useState('');
+  const [recording, setRecording] = useState(false);
+  const [procedureDraft, setProcedureDraft] = useState<ProcedureDraft | null>(null);
   const direct = useRef<BrowserInput | null>(null);
   const dispatch = useRef(send);
   dispatch.current = send;
@@ -152,7 +156,7 @@ export default function BusinessBrowser({
     void repo.businessBrowser().then((s) => {
       if (!cancelled && live.current) {
         recoverySupported.current = s.controlRecovery === 1;
-        setState(s); if (typeof s.paused === 'boolean') onPauseChange?.(s.paused);
+        setState(s); setRecording(s.recording === true); if (typeof s.paused === 'boolean') onPauseChange?.(s.paused);
         if (claimOnOpen.current) { claimOnOpen.current = false; command({ action: 'claim' }); }
       }
     })
@@ -209,6 +213,8 @@ export default function BusinessBrowser({
       inFlight.current = true;
       const next = await repo.businessBrowser({ ...action, controlId: controlId.current } as BrowserCommand);
       if (!live.current) return null;
+      if (typeof next.recording === 'boolean') setRecording(next.recording);
+      if (next.procedureDraft) { setProcedureDraft(next.procedureDraft); setTeachSetup(false); }
       if (takesControl) {
         handBackNeeded.current = true;
         recoverySupported.current = next.controlRecovery === 1 || recoverySupported.current;
@@ -219,6 +225,7 @@ export default function BusinessBrowser({
       if (action.action === 'release') {
         handBackNeeded.current = false;
         setState(next); setControlled(false); setFrame(null); setText(''); setShowText(false);
+        setRecording(false); setTeachSetup(false);
         if (generation === viewGeneration.current) setHandedBack(true);
         onPauseChange?.(false);
       }
@@ -258,6 +265,7 @@ export default function BusinessBrowser({
 
   async function close() {
     if (closeRequested.current) return;
+    if (recording && !window.confirm(t('browser.teach.discardConfirm'))) return;
     claimOnOpen.current = false;
     closeRequested.current = true;
     // Clear any local or queued typing immediately, even while hand-back waits
@@ -266,12 +274,14 @@ export default function BusinessBrowser({
     // Closing is also hand-back. If a claim is still in flight, release queues
     // behind it so a late successful claim cannot leave Jentera paused after
     // the modal disappears. A failed release keeps the modal visible.
+    if (recording) await send({ action: 'record_cancel' });
     if (handBackNeeded.current || pendingActions.current > 0) {
       const released = await send({ action: 'release' });
       if (!released) { closeRequested.current = false; return; }
     }
     viewGeneration.current += 1;
     dialog.current?.close(); setOpen(false); setControlled(false); setControlConflict(false); setFrame(null); setText(''); setShowText(false); setUrl(''); setZoom(defaultBrowserZoom());
+    setTeachSetup(false); setRecording(false); setProcedureDraft(null); setObjective('');
     closeRequested.current = false;
   }
 
@@ -315,6 +325,39 @@ export default function BusinessBrowser({
           <WarningCircle size={20} aria-hidden="true" /><p>{error}</p>
           {!controlled && <button type="button" disabled={busy || statusLoading} onClick={() => { setError(''); setStatusAttempt(n => n + 1); }}>{t('loading.retry')}</button>}
         </div>}
+        {teachSetup && !recording && <form className="business-browser-teach-panel" aria-labelledby={`${titleId}-teach`} onSubmit={async event => {
+          event.preventDefault();
+          const result = await send({ action: 'record_start', objective: objective.trim() });
+          if (result) { setTeachSetup(false); setProcedureDraft(null); }
+        }}>
+          <span className="business-browser-teach-icon" aria-hidden="true"><Sparkle size={22} weight="duotone" /></span>
+          <div className="business-browser-teach-copy">
+            <h3 id={`${titleId}-teach`}>{t('browser.teach.title')}</h3>
+            <p>{t('browser.teach.detail')}</p>
+            <label htmlFor={`${titleId}-objective`}>{t('browser.teach.objective')}</label>
+            <Input id={`${titleId}-objective`} value={objective} maxLength={240} autoFocus
+              placeholder={t('browser.teach.placeholder')} onChange={event => setObjective(event.target.value)} />
+            <p className="business-browser-teach-privacy"><ShieldCheck size={15} aria-hidden="true" />{t('browser.teach.privacy')}</p>
+          </div>
+          <div className="business-browser-teach-actions">
+            <Button type="button" variant="outline" disabled={busy} onClick={() => { setTeachSetup(false); setObjective(''); }}>{t('connectors.cancel')}</Button>
+            <Button type="submit" disabled={busy || !objective.trim()}><Record size={17} weight="fill" aria-hidden="true" />{t('browser.teach.start')}</Button>
+          </div>
+        </form>}
+        {procedureDraft && <section className="business-browser-teach-panel is-result" aria-labelledby={`${titleId}-draft`}>
+          <span className="business-browser-teach-icon" aria-hidden="true"><CheckCircle size={22} weight="duotone" /></span>
+          <div className="business-browser-teach-copy">
+            <Eyebrow>{t('browser.teach.draftEyebrow')}</Eyebrow>
+            <h3 id={`${titleId}-draft`}>{procedureDraft.objective}</h3>
+            <p>{t('browser.teach.summary', { steps: procedureDraft.steps.length, requests: procedureDraft.connectorCandidates.length })}</p>
+            <ol className="business-browser-teach-steps">
+              {procedureDraft.steps.slice(0, 5).map(step => <li key={step.id}>{step.label}</li>)}
+            </ol>
+            {procedureDraft.steps.length > 5 && <p>{t('browser.teach.more', { count: procedureDraft.steps.length - 5 })}</p>}
+            <p className="business-browser-teach-privacy"><ShieldCheck size={15} aria-hidden="true" />{t('browser.teach.captured')}</p>
+          </div>
+          <div className="business-browser-teach-actions"><Button type="button" onClick={() => setProcedureDraft(null)}>{t('browser.teach.done')}</Button></div>
+        </section>}
         {!controlled && controlConflict && state.controlRecovery === 1 && <div className="business-browser-recovery" role="region" aria-label={t('browser.recover.title')}>
           <div><strong>{t('browser.recover.title')}</strong><p>{t('browser.recover.detail')}</p></div>
           <Button type="button" disabled={busy || statusLoading} onClick={() => command({ action: 'reclaim' })}>{t('browser.recover.action')}<ArrowRight size={16} aria-hidden="true" /></Button>
@@ -467,8 +510,14 @@ export default function BusinessBrowser({
             aria-label={t('browser.restart')} title={t('browser.restart')}
             onClick={() => { if (window.confirm(t('browser.restart.confirm'))) void command({ action: 'restart' }); }}>
             <ArrowClockwise size={18} aria-hidden="true" /><span>{t('browser.restart')}</span></Button>}
+          {controlled && state.procedureCapture === 1 && !recording && <Button type="button" className="business-browser-teach" variant="outline"
+            disabled={busy || statusLoading || teachSetup} onClick={() => setTeachSetup(true)}>
+            <Sparkle size={18} aria-hidden="true" /><span>{t('browser.teach.action')}</span></Button>}
+          {controlled && recording && <Button type="button" className="business-browser-teach is-recording" variant="outline"
+            disabled={busy || statusLoading} onClick={() => command({ action: 'record_stop' })}>
+            <Stop size={18} weight="fill" aria-hidden="true" /><span>{t('browser.teach.stop')}</span></Button>}
           {/* Also recover a durable pause left by an abandoned/expired controller. */}
-          {(controlled || (state.paused && !claiming)) && <Button type="button" disabled={busy || statusLoading}
+          {(controlled || (state.paused && !claiming)) && <Button type="button" disabled={busy || statusLoading || recording}
             onClick={() => command({ action: 'release' })}>{t('browser.handBack')}<ArrowRight size={18} aria-hidden="true" /></Button>}
         </div>
       </footer>

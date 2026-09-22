@@ -224,6 +224,8 @@ export interface AskAnswer {
 export type BrowserCommand = { controlId: string } & (
   | { action: 'preview'; runId: string }
   | { action: 'claim' | 'reclaim' | 'release' | 'frame' | 'restart' }
+  | { action: 'record_start'; objective: string }
+  | { action: 'record_stop' | 'record_cancel' }
   | { action: 'navigate'; url: string }
   | { action: 'click'; x: number; y: number }
   | { action: 'text'; text: string }
@@ -239,6 +241,11 @@ export interface BusinessBrowserState {
   controlRecovery?: 1;
   /** Owner-only full desktop pilot; absent unless enabled on both server layers. */
   desktopView?: 1;
+  /** Explicit owner-started, value-free demonstration capture. */
+  procedureCapture?: 1;
+  recording?: boolean;
+  recordingStartedAt?: number;
+  procedureDraft?: ProcedureDraft;
   inputTarget?: BrowserInputTarget | null;
   previewStatus?: 'ready' | 'inactive' | 'paused' | 'private' | 'unavailable' | 'waiting' | 'loading' | 'navigating';
   capturedAt?: number;
@@ -250,6 +257,38 @@ export interface BusinessBrowserState {
   width?: number;
   height?: number;
   tabs?: { index: number; origin: string; selected: boolean }[];
+}
+export interface ProcedureDraft {
+  schemaVersion: 1;
+  id: string;
+  version: 1;
+  status: 'draft';
+  objective: string;
+  startedAt: number;
+  endedAt: number;
+  safety: {
+    capturedValues: false;
+    capturedRequestBodies: false;
+    capturedHeaders: false;
+    activation: 'review_required';
+  };
+  steps: {
+    id: string;
+    kind: 'navigate' | 'input' | 'interact';
+    label: string;
+    execution: 'browser';
+    evidence: string;
+    target?: { tag: string; type?: string; role?: string; name?: string };
+  }[];
+  connectorCandidates: {
+    method: string;
+    origin: string;
+    path: string;
+    queryKeys: string[];
+    resourceType: 'document' | 'xhr' | 'fetch';
+    evidence: string;
+  }[];
+  truncated: boolean;
 }
 export interface BrowserInputTarget {
   id: string;

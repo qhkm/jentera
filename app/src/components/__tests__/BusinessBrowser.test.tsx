@@ -93,6 +93,41 @@ it('opens and claims in one action, locks background scroll, and hands back on c
   } finally { document.body.style.overflow = priorOverflow; }
 });
 
+it('captures an explicit value-free demonstration and shows its draft procedure', async () => {
+  const user = userEvent.setup();
+  let recording = false;
+  const draft = {
+    schemaVersion: 1 as const, id: '33333333-3333-4333-8333-333333333333', version: 1 as const, status: 'draft' as const,
+    objective: 'Match a payment to its invoice', startedAt: 10, endedAt: 20,
+    safety: { capturedValues: false as const, capturedRequestBodies: false as const, capturedHeaders: false as const, activation: 'review_required' as const },
+    steps: [{ id: 'step-1', kind: 'interact' as const, label: 'Select Find invoice', execution: 'browser' as const, evidence: 'event-1' }],
+    connectorCandidates: [{ method: 'POST', origin: 'https://books.example.test', path: '/api/invoices/:id', queryKeys: [], resourceType: 'fetch' as const, evidence: 'event-2' }],
+    truncated: false,
+  };
+  const browser = vi.fn(async (command?: BrowserCommand): Promise<BusinessBrowserState> => {
+    if (command?.action === 'record_start') { recording = true; return { procedureCapture: 1, paused: true, recording }; }
+    if (command?.action === 'record_stop') { recording = false; return { procedureCapture: 1, paused: true, recording, procedureDraft: draft }; }
+    if (command?.action === 'frame') return sampleFrame;
+    return { enabled: true, procedureCapture: 1, paused: command?.action !== 'release', recording };
+  });
+  mountBrowser(browser);
+  await user.click(await screen.findByRole('button', { name: 'Open business browser' }));
+  await screen.findByRole('img');
+  await user.click(screen.getByRole('button', { name: 'Teach Jentera' }));
+  const objective = screen.getByLabelText('What should Jentera learn?');
+  await user.type(objective, draft.objective);
+  await user.click(screen.getByRole('button', { name: 'Start teaching' }));
+  await waitFor(() => expect(browser.mock.calls.some(([command]) => command?.action === 'record_start' && command.objective === draft.objective)).toBe(true));
+  expect(screen.getByRole('button', { name: 'Hand back to Jentera' })).toBeDisabled();
+  await user.click(screen.getByRole('button', { name: 'Stop teaching' }));
+  expect(await screen.findByRole('heading', { name: draft.objective })).toBeVisible();
+  expect(screen.getByText('1 observed steps · 1 possible system connections')).toBeVisible();
+  expect(screen.getByText('Select Find invoice')).toBeVisible();
+  expect(screen.getByText(/No typed values, passwords, request bodies or headers were saved/)).toBeVisible();
+  await user.click(screen.getByRole('button', { name: 'Done' }));
+  expect(screen.queryByRole('heading', { name: draft.objective })).toBeNull();
+});
+
 it('requires status to finish and automatically claims after a connection retry', async () => {
   const user = userEvent.setup();
   let finish: (value: BusinessBrowserState) => void = () => {};

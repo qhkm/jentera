@@ -201,6 +201,32 @@ test('direct typing rejects malformed sessions, mixed commands and unapproved sh
   }
 });
 
+test('owner can explicitly capture and stop a bounded procedure demonstration', async () => {
+  const f = fixture(true);
+  await f.browser.command(command('claim'));
+  assert.equal((await f.browser.status()).procedureCapture, 1);
+  assert.equal((await f.browser.status()).recording, false);
+  const started = await f.browser.command(command('record_start', { objective: 'Reconcile one payment' }));
+  assert.equal(started.recording, true);
+  const stopped = await f.browser.command(command('record_stop'));
+  assert.equal(stopped.recording, false);
+  assert.equal(stopped.procedureDraft.objective, 'Reconcile one payment');
+  assert.equal(stopped.procedureDraft.status, 'draft');
+  assert.equal(stopped.procedureDraft.safety.capturedValues, false);
+  await f.browser.command(command('release'));
+});
+
+test('procedure capture needs a live owner lease and is cancelled on hand-back', async () => {
+  const f = fixture(true);
+  await assert.rejects(f.browser.command(command('record_start', { objective: 'Never starts' })), /browser_control_expired/);
+  await f.browser.command(command('claim'));
+  await f.browser.command(command('record_start', { objective: 'Temporary recording' }));
+  await f.browser.command(command('release'));
+  assert.equal((await f.browser.status()).recording, false);
+  assert.equal(browserCommandProblem(command('record_start', { objective: '' })), 'invalid_objective');
+  assert.equal(browserCommandProblem(command('record_start', { objective: 'x'.repeat(241) })), 'invalid_objective');
+});
+
 test('a hung focus inspection times out, permits hand-back and discards a late field handle', { timeout: 5000 }, async () => {
   const f = typingFixture();
   let finish;
