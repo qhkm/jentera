@@ -121,6 +121,58 @@ test('bootstrap and model config pin the reviewed plus customer-router endpoints
   assert.match(configure, /https:\/\/api\.jentera\.ai\/v1\/model/);
 });
 
+/* Config keys Hermes Ultra reads. Ultra has no deny_unknown_fields, so anything
+   absent from both of these lists is written by this runner, accepted without
+   complaint, and then silently dropped -- which is how `approvals.timeout: 90`
+   would become Ultra's hardcoded 300s with nothing to notice it. */
+const ULTRA_READS = new Set([
+  'model', 'llm_providers', 'terminal', 'web', 'agent', 'auxiliary',
+  'platform_toolsets', 'platforms', 'gateway',
+]);
+
+/* Keys Ultra does not read, each verified against the Ultra tree rather than
+   assumed. Entries here are deliberate gaps, not permission to add more: a new
+   unclassified key fails the test below until someone decides which list it
+   belongs in. */
+const ULTRA_IGNORES = new Map([
+  ['provider_routing', 'no equivalent anywhere in Ultra; OpenRouter-specific routing'],
+  ['browser', 'cdp_url maps to Ultra\'s CHROME_CDP_URL env; hold_file has no equivalent, '
+    + 'so the owner-holds-the-browser guard would be lost'],
+  ['computer_use', 'cua_telemetry and permissions have no Ultra settings'],
+  ['approvals', 'Ultra hardcodes a 300s gateway approval timeout with no config path'],
+]);
+
+test('every config key this runner writes is one Ultra reads, or a known gap', async () => {
+  /* The migration hazard is silence. Ultra accepts a config written for Python
+     and ignores what it does not recognise, so a setting can be present, correct
+     and inert. This is the ratchet: it cannot tell whether Ultra grew support for
+     something, but it does refuse to let a NEW unsupported key arrive unnoticed. */
+  const configured = await runConfigure(
+    ['openrouter', 'https://router.fmcv.my', 'MiniMax-M3', 'OPENROUTER_API_KEY', '1', 'deepseek-v4-flash'],
+    {},
+    { FIRECRAWL_API_URL: 'https://extract.example.com', FIRECRAWL_API_KEY: 'k'.repeat(40) },
+  );
+  assert.equal(configured.status, 0, configured.stderr);
+  const config = JSON.parse(await readFile(configured.configPath, 'utf8'));
+
+  /* cua_enabled=1 above on purpose: computer_use is only written then, and a
+     ratchet that never sees the key cannot protect it. */
+  assert.ok('computer_use' in config, 'the CUA path must be exercised here');
+
+  const unclassified = Object.keys(config)
+    .filter((key) => !ULTRA_READS.has(key) && !ULTRA_IGNORES.has(key));
+  assert.deepEqual(unclassified, [],
+    `new config key(s) ${unclassified.join(', ')} are neither known-read by Ultra nor `
+    + 'listed as a known gap. Decide which, and say why in ULTRA_IGNORES.');
+
+  /* Guards the other direction: if a gap is closed in Ultra and someone deletes
+     the entry here without the generator changing, that is also worth catching. */
+  for (const key of ULTRA_IGNORES.keys()) {
+    assert.ok(key in config,
+      `${key} is listed as a known Ultra gap but this runner no longer writes it`);
+  }
+});
+
 test('the gateway keeps a rotating log on disk instead of writing into a dead pipe', async () => {
   /* Nothing retained the gateway's output: stdout and stderr went to a pipe with no
      reader, journalctl was empty, and the only file was a list of restart timestamps.

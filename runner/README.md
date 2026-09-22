@@ -108,6 +108,33 @@ behind production-bootstrap, secure transport, provisioning, provider-credential
 global execution gates. This operator path remains useful for a non-customer smoke;
 normal customer provisioning is created durably by onboarding completion.
 
+## Config coverage against Hermes Ultra
+
+The sprites run Python Hermes. Hermes Ultra reads the same `config.yaml`, but it
+has no `deny_unknown_fields`: it accepts a config written for Python and silently
+ignores what it does not recognise. A setting can therefore be present, correct
+and inert.
+
+Four sections this runner writes are not read by Ultra today, each checked
+against the Ultra tree rather than assumed:
+
+| section | Ultra |
+|---|---|
+| `provider_routing` | no equivalent; OpenRouter-specific routing |
+| `browser.cdp_url` | reads `CHROME_CDP_URL` from the environment instead |
+| `browser.hold_file` | no equivalent — the owner-holds-the-browser guard would be lost |
+| `computer_use` | `cua_telemetry` and `permissions` have no Ultra settings |
+| `approvals.timeout` | hardcodes a 300s gateway approval timeout |
+
+`browser.hold_file` is the one with teeth: it is what stops a task reaching for a
+browser the owner has claimed, and without it a call waits until the task expires
+rather than failing at once.
+
+The `every config key this runner writes is one Ultra reads, or a known gap` test
+is the ratchet. It cannot tell whether Ultra has grown support for something, but
+it does fail when a new key is added that is neither known-read nor listed as a
+known gap — so this class of silent drop cannot grow unnoticed.
+
 ## Reading the gateway log
 
 Hermes writes to `~/.hermes/logs/gateway.log` on the sprite, rotated on start at
