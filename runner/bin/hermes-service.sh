@@ -69,4 +69,46 @@ fi
 
 # `--replace` closes the narrow race between the PID preflight and exec. Each
 # Sprite has exactly one Hermes profile, so replacement cannot cross tenants.
+# --- persistent gateway log --------------------------------------------------
+#
+# Nothing retained this process's output. stdout and stderr went to a pipe with
+# no reader, journalctl was empty, there were no systemd units, and the only
+# file on disk was a list of restart timestamps. A failed task left no evidence
+# on a live sprite, so "why did this break?" could only be answered by reading
+# SQLite tables after the fact.
+#
+# An exec redirect rather than a pipe: the service manager tracks the pid it
+# spawned and signals it on stop and restart, so the gateway has to stay this
+# script's exec'd process rather than become a child of a pipeline.
+# Overridable so this is testable off a sprite, and so an operator can move the
+# log to a larger volume without editing the service.
+log_dir="${AISAR_GATEWAY_LOG_DIR:-${HERMES_HOME:-/home/sprite/.hermes}/logs}"
+log_file="$log_dir/gateway.log"
+mkdir -p "$log_dir"
+
+# Rotate on start, keeping three generations. There is no logrotate and no cron
+# on a sprite, so start-up is the only moment this can reliably happen -- which
+# means a gateway that never restarts can still outgrow the cap. That is the
+# accepted limit of a dependency-free approach; 95G free and a restart-heavy
+# service make it a safe one.
+gateway_log_max_bytes=$((64 * 1024 * 1024))
+if [[ -f "$log_file" ]]; then
+  gateway_log_size=$(wc -c < "$log_file" 2>/dev/null || echo 0)
+  if (( gateway_log_size > gateway_log_max_bytes )); then
+    # Written as if/then, not `[[ -f x ]] && mv`: under `set -e` an && list whose
+    # test fails is tolerated only by a subtlety of bash's rules, and a later edit
+    # that turned it into a plain command would abort the gateway on first start.
+    rm -f "$log_file.3"
+    if [[ -f "$log_file.2" ]]; then mv "$log_file.2" "$log_file.3"; fi
+    if [[ -f "$log_file.1" ]]; then mv "$log_file.1" "$log_file.2"; fi
+    mv "$log_file" "$log_file.1"
+  fi
+fi
+
+# Redirected here, at the end: the checks above this point still report to the
+# service manager, so a sprite that cannot start at all fails visibly rather
+# than into a file nobody is watching yet.
+printf '=== gateway start %s ===\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$log_file"
+exec >>"$log_file" 2>&1
+
 exec /home/sprite/.hermes/hermes-agent/venv/bin/hermes gateway run --replace

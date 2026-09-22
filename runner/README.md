@@ -108,6 +108,27 @@ behind production-bootstrap, secure transport, provisioning, provider-credential
 global execution gates. This operator path remains useful for a non-customer smoke;
 normal customer provisioning is created durably by onboarding completion.
 
+## Reading the gateway log
+
+Hermes writes to `~/.hermes/logs/gateway.log` on the sprite, rotated on start at
+64 MiB with three generations kept.
+
+```sh
+sprite exec -s <sprite> -- tail -n 200 /home/sprite/.hermes/logs/gateway.log
+sprite exec -s <sprite> -- grep -c 429 /home/sprite/.hermes/logs/gateway.log
+```
+
+Before this existed, the gateway's stdout and stderr went to a pipe with no
+reader: `journalctl` was empty, there were no systemd units, and the only file on
+disk was `gateway-starts.log`, a list of restart timestamps. A failed task left
+no evidence, so "why did this break?" could only be answered by reading SQLite
+tables after the fact.
+
+Two limits worth knowing. Rotation happens at start-up, because a sprite has
+neither `logrotate` nor `cron`, so a gateway that never restarts can outgrow the
+cap. And `AISAR_GATEWAY_LOG_DIR` moves the log elsewhere if a sprite ever needs
+it on a different volume.
+
 ## Key co-residency and runtime boundary
 
 The Sprite's mode-0600 environment file holds `AISAR_RUNNER_KEY`, `HERMES_API_KEY`,

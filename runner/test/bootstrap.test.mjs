@@ -121,6 +121,66 @@ test('bootstrap and model config pin the reviewed plus customer-router endpoints
   assert.match(configure, /https:\/\/api\.jentera\.ai\/v1\/model/);
 });
 
+test('the gateway keeps a rotating log on disk instead of writing into a dead pipe', async () => {
+  /* Nothing retained the gateway's output: stdout and stderr went to a pipe with no
+     reader, journalctl was empty, and the only file was a list of restart timestamps.
+     A failed task left no evidence on a live sprite. This runs the real service script
+     and checks the log survives, rather than matching a regex that a refactor could
+     satisfy while writing nothing. */
+  const { mkdtemp, writeFile, readFile: read, stat } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = await mkdtemp(join(tmpdir(), 'gateway-log-'));
+  directories.push(dir);
+  const runtimeEnv = join(dir, 'runtime.env');
+  const hermesEnv = join(dir, 'hermes.env');
+  await writeFile(runtimeEnv, 'AISAR_CUA_ENABLED=0\n');
+  await writeFile(hermesEnv, 'HERMES_API_KEY=x\n');
+  const logDir = join(dir, 'logs');
+
+  const run = () => spawnSync('bash', [HERMES_SERVICE], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      AISAR_RUNTIME_ENV_FILE: runtimeEnv,
+      AISAR_HERMES_ENV_FILE: hermesEnv,
+      AISAR_DISPLAY_ENV_FILE: join(dir, 'absent.env'),
+      AISAR_GATEWAY_LOG_DIR: logDir,
+    },
+  });
+
+  /* The final exec fails here because no Hermes is installed in a temp dir. That is
+     the point: everything up to and including the redirect must already have run, so
+     even a gateway that cannot start leaves its reason on disk. */
+  const result = run();
+  const logFile = join(logDir, 'gateway.log');
+  const first = await read(logFile, 'utf8');
+  assert.match(first, /=== gateway start \d{4}-\d{2}-\d{2}T/);
+  /* The assertions that matter. The start marker alone proves nothing -- it is written
+     by a plain append and survives even if the redirect is deleted. What proves the
+     redirect works is that the failure text is IN the file and NOT on the stream the
+     service manager throws away. */
+  assert.match(first, /hermes|No such file|not found/i,
+    'the reason the gateway could not start must be in the log');
+  assert.equal((result.stderr || '').trim(), '',
+    'nothing may escape to the pipe the service manager does not read');
+
+  /* Past the cap it rotates, and it keeps at most three generations so a long-lived
+     sprite cannot fill its disk with history nobody reads. */
+  await writeFile(logFile, 'x'.repeat(70 * 1024 * 1024));
+  run();
+  await stat(join(logDir, 'gateway.log.1'));
+  const rotated = await read(logFile, 'utf8');
+  assert.ok(!rotated.includes('xxxx'), 'the fresh log starts empty, not appended to the old one');
+
+  for (let i = 0; i < 3; i += 1) {
+    await writeFile(logFile, 'x'.repeat(70 * 1024 * 1024));
+    run();
+  }
+  await stat(join(logDir, 'gateway.log.3'));
+  await assert.rejects(stat(join(logDir, 'gateway.log.4')), 'generations are capped at three');
+});
+
 test('runtime installs the narrow Calendar client on the Hermes PATH', async () => {
   const bootstrap = await readFile(SCRIPT, 'utf8');
   const hermes = await readFile(HERMES_SERVICE, 'utf8');
