@@ -370,7 +370,10 @@ test('model routes merge with, and never clobber, existing api_server settings',
       api_key: '${OPENROUTER_API_KEY}',
     },
   });
-  assert.equal(config.gateway.api_server.max_concurrent_runs, 1);
+  // Provisioning owns this key and overwrites the operator's 4, while the
+  // neighbouring settings below survive. 10 covers a Chief plus the 8 specialists
+  // a document may declare, each of which is its own run on the shared gateway.
+  assert.equal(config.gateway.api_server.max_concurrent_runs, 10);
   assert.equal(config.gateway.api_server.other, 'preserved');
   assert.equal(config.gateway.api_server.extra.keep, 'me');
 });

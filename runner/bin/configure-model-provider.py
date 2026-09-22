@@ -351,7 +351,17 @@ def main() -> None:
     # /p/<profile>/ routes; there is still one external Jentera identity.
     gateway["multiplex_profiles"] = True
     api_server = dict(gateway.get("api_server") or {})
-    api_server["max_concurrent_runs"] = 1
+    # The runner admits one user task per sprite, so this was 1 to match. Under
+    # multiplex_profiles that is too low: a Chief task fans out to its specialists
+    # over /p/<profile>/, and each of those is another concurrent run on this same
+    # gateway. At 1 the Chief holds the only slot and every specialist call it makes
+    # is refused with 429.
+    #
+    # 10 is upstream's default and covers the most a sprite can ever need: one Chief
+    # plus the 8 specialists server.mjs allows a document to declare, with margin.
+    # It is a ceiling that protects the box, not a throughput target -- the runner's
+    # own single-slot admission still decides how much work starts.
+    api_server["max_concurrent_runs"] = 10
     extra = dict(api_server.get("extra") or {})
     model_routes = dict(extra.get("model_routes") or {})
     # Merge, never clobber: operator-written routes survive provisioning, and
