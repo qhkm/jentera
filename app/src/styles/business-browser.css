@@ -279,10 +279,21 @@
   .business-browser-dialog.has-desktop .business-desktop-mobile-keyboard { min-width: 44px; padding: 0; }
 }
 @media (pointer: coarse) and (max-height: 640px) and (min-width: 641px) {
-  .business-browser-dialog.has-desktop .business-desktop-toolbar { flex-direction: row; }
-  .business-browser-dialog.has-desktop .business-desktop-primary-actions { flex: 0 1 390px; width: auto; }
-  .business-browser-dialog.has-desktop .business-desktop-secondary-actions { flex: 1 1 auto; width: auto; }
+  .business-browser-dialog.has-desktop .business-desktop-toolbar { flex-direction: row; overflow: hidden; }
+  .business-browser-dialog.has-desktop .business-desktop-primary-actions {
+    flex: 0 1 286px;
+    width: auto;
+    grid-template-columns: 44px minmax(126px, 150px) 44px 44px;
+  }
+  .business-browser-dialog.has-desktop .business-desktop-fit > span,
+  .business-browser-dialog.has-desktop .business-desktop-move > span,
+  .business-browser-dialog.has-desktop .business-desktop-mobile-keyboard > span,
+  .business-browser-dialog.has-desktop .business-desktop-paste > span { display: none; }
+  .business-browser-dialog.has-desktop .business-desktop-mobile-keyboard { min-width: 44px; padding: 0; }
+  .business-browser-dialog.has-desktop .business-desktop-secondary-actions { flex: 1 1 220px; width: auto; overflow: hidden; }
   .business-browser-dialog.has-desktop .business-desktop-secondary-actions > span { display: none; }
+  .business-browser-dialog.has-desktop .business-desktop-keys { display: grid; grid-template-columns: repeat(5, minmax(40px, 1fr)); width: 100%; }
+  .business-browser-dialog.has-desktop .business-desktop-keys button { min-width: 0; padding-inline: 5px; }
 }
 @media (max-width: 350px) {
   .business-browser-dialog.has-desktop .business-desktop-primary-actions { grid-template-columns: 44px minmax(126px, 1fr) 44px 44px; }
@@ -290,6 +301,19 @@
   .business-browser-dialog.has-desktop .business-desktop-move > span { display: none; }
   .business-browser-dialog.has-desktop .business-desktop-paste > span { display: none; }
   .business-browser-dialog.has-desktop .business-desktop-secondary-actions > span { overflow: hidden; text-overflow: ellipsis; }
+}
+@media (max-width: 480px) {
+  .business-browser-dialog.has-desktop .business-desktop-primary-actions { grid-template-columns: 44px minmax(126px, 1fr) 44px 44px; }
+  .business-browser-dialog.has-desktop .business-desktop-fit > span,
+  .business-browser-dialog.has-desktop .business-desktop-move > span { display: none; }
+  .business-browser-dialog.has-desktop .business-desktop-secondary-actions.has-keys { overflow: hidden; }
+  .business-browser-dialog.has-desktop .business-desktop-secondary-actions.has-keys .business-desktop-keys {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(40px, 1fr));
+    width: 100%;
+  }
+  .business-browser-dialog.has-desktop .business-desktop-secondary-actions.has-keys .business-desktop-keys button { min-width: 0; padding-inline: 5px; }
+  .business-browser-dialog.has-desktop .business-desktop-paste > span { display: none; }
 }
 @media (max-width: 640px) {
   .business-browser-teach-panel { inset: auto 10px max(76px, calc(62px + env(safe-area-inset-bottom))) 10px; grid-template-columns: auto minmax(0, 1fr); max-height: calc(100% - 120px); padding: 14px; }
