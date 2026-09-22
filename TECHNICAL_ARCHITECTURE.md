@@ -1,5 +1,11 @@
 # Jentera Managed Agent Architecture
 
+> **This document is intent, not inventory.** It was written before the
+> backend existed — hence "the current repository is a static product
+> prototype" below — and it remains the reference for product and platform
+> boundaries, the MVP phases and the open questions. For the system as it
+> actually runs today, read [`docs/architecture.md`](docs/architecture.md).
+
 ## Product Boundary
 
 Jentera provides autonomous-agent capability as a managed business service. The owner describes an outcome, connects existing accounts, and approves sensitive decisions. Jentera chooses and operates the models, tools, skills, schedules, and infrastructure.

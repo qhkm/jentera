@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `AGENTS.md` carries the same house rules in shorter form. `PRODUCT_VISION.md`, `DISCUSSION_SUMMARY.md` and `TECHNICAL_ARCHITECTURE.md` carry product direction — read those before changing what the product *does*, not just how it's built.
 
+[`docs/architecture.md`](docs/architecture.md) is the system as built: the five deployables, the tenancy invariants, the path a message takes, the fleet, and where the design has slack. This file stays the authority on any conflict — it is maintained edit by edit — but that one is where to start on a system you have not seen before.
+
 For current positioning and customer-facing UX, follow
 [`docs/marketing/product-thesis-and-homepage.md`](docs/marketing/product-thesis-and-homepage.md).
 Jentera automates everyday business work; “AI staff” is the explanation, not a
