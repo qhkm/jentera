@@ -507,6 +507,34 @@ It connects as `neondb_owner` on purpose — RLS scopes every tenant table to
 session sets `default_transaction_read_only`, so the owner connection cannot
 write; that's a server-side guard, not a regex over the query.
 
+### Running the worker locally
+
+```bash
+worker/scripts/dev-db.sh            # local Postgres, every migration, aisar_app
+worker/scripts/dev-db.sh --reset    # rebuild it from empty
+```
+
+Hyperdrive has no local target of its own. `wrangler dev` starts happily with
+nothing behind the binding and the first query is where that surfaces, so the
+connection string goes on the command line — it is a process variable, not a
+`.dev.vars` entry:
+
+```bash
+cd worker && WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="$(worker/scripts/dev-db.sh --url)" pnpm dev
+cd app && VITE_API_URL=http://localhost:8787 pnpm dev
+```
+
+Connect as `aisar_app`, which is what the script creates and what production
+uses. As the owner every policy is still there and enforcing nothing, so a
+local run would behave correctly while production leaked — the same reason
+the test harness hands out both roles.
+
+This database persists; the test suite's is a throwaway container per run, so
+the two never meet. Without `RESEND_API_KEY` a magic link is logged rather
+than sent, which leaves the password door as the one that works end to end
+locally, and without `TURNSTILE_SECRET` that check is skipped rather than
+refusing every door.
+
 ### Testing the worker
 
 ```bash
