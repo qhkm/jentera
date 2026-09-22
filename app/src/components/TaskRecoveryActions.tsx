@@ -64,19 +64,25 @@ export function TaskRecoveryActions({ runId, request, title, onContinue }: {
   }
 
   const ready = status === 'ready';
+  // Missing details do not have a setup flow. Validate the durable task and
+  // open its reviewable draft in one click instead of making the owner press
+  // a misleading "Check setup" button first.
+  const directInput = request === 'input' && status === 'idle';
+  const showContinue = ready || directInput;
+  const showCheck = request !== 'input' || (!ready && !directInput);
   const statusKey = ready
     ? request === 'input' ? 'task.recovery.readyInput' : request === 'google_calendar' ? 'task.recovery.readyCalendar' : 'task.recovery.readyBrowser'
     : status === 'idle' && request === 'input' ? 'task.recovery.idleInput' : `task.recovery.${status}`;
   return <div className="task-recovery-actions" aria-busy={status === 'checking'}>
     <p role="status">{t(statusKey)}</p>
     <div>
-      {ready && <button type="button" className="btn btn-primary" onClick={() => void check(true)}>
+      {showContinue && <button type="button" className="btn btn-primary" onClick={() => void check(true)}>
         {t('task.recovery.continue')}<ArrowRight size={17} aria-hidden="true" />
       </button>}
-      <button type="button" className={`btn ${ready ? 'btn-ghost' : 'btn-outline'}`} disabled={status === 'checking'} onClick={() => void check()}>
+      {showCheck && <button type="button" className={`btn ${ready ? 'btn-ghost' : 'btn-outline'}`} disabled={status === 'checking'} onClick={() => void check()}>
         <ArrowClockwise size={17} aria-hidden="true" />
         {t(status === 'checking' ? 'task.recovery.checking' : status === 'idle' ? 'task.recovery.check' : 'task.recovery.checkAgain')}
-      </button>
+      </button>}
     </div>
     {ready && <small>{t('task.recovery.draftOnly')}</small>}
   </div>;

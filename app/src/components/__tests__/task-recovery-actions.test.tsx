@@ -60,6 +60,21 @@ describe('explicit task setup recovery', () => {
     expect(ask).not.toHaveBeenCalled();
     expect(disconnect).not.toHaveBeenCalled();
   });
+  it('continues a missing-input task directly without calling it setup', async () => {
+    const user = userEvent.setup();
+    const repo = fixture();
+    vi.mocked(repo.runResult).mockResolvedValue({ runId: RUN, status: 'completed', pending: false,
+      taskStatus: 'needs_input', text: 'Please add the missing order number.', sessionId: 'original-chat' });
+    const onContinue = vi.fn();
+    mount(repo, onContinue, true, 'input');
+    expect(await screen.findByRole('button', { name: 'Continue in Chat' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Check setup' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Continue in Chat' }));
+    await waitFor(() => expect(onContinue).toHaveBeenCalledWith(expect.stringContaining('My additional details:'), 'original-chat'));
+    expect(repo.runResult).toHaveBeenCalledOnce();
+    expect(repo.connections).not.toHaveBeenCalled();
+    expect(repo.businessBrowser).not.toHaveBeenCalled();
+  });
   it('does not prepare a draft if browser control changes after a successful check', async () => {
     const user = userEvent.setup();
     const { repo, onContinue } = mount();
