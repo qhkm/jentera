@@ -2,6 +2,11 @@ export const onboardingCopy = {
   en: {
     welcomeEyebrow: 'YOU’RE IN',
     guideMeet: 'MEET JENTERA',
+    chooseFile: 'Choose a file', changeFile: 'Change file',
+    uploadPrompt: 'Add a document about your business', uploadHint: 'Choose a file from your device to get started.',
+    learningNote: 'I’m reading your source and gathering the details that will help me understand your business.',
+    learningHint: 'This can take a little while. You’ll review what I find next.',
+    sourcePrompts: { website: 'Share a public page about your business. I’ll read it and bring back the details for you to check.', upload: 'Choose a document that introduces your business. I’ll pull out the useful details for your review.', describe: 'A few sentences are enough to get started. Tell me what your business does.' },
     you: 'You',
     change: 'Change',
     welcomeTitle: 'Welcome to Jentera!',
@@ -70,6 +75,11 @@ export const onboardingCopy = {
   bm: {
     welcomeEyebrow: 'ANDA SUDAH MASUK',
     guideMeet: 'KENALI JENTERA',
+    chooseFile: 'Pilih fail', changeFile: 'Tukar fail',
+    uploadPrompt: 'Tambah dokumen tentang bisnes anda', uploadHint: 'Pilih fail daripada peranti anda untuk bermula.',
+    learningNote: 'Saya sedang membaca sumber anda dan mengumpulkan butiran untuk memahami bisnes anda.',
+    learningHint: 'Ini mungkin mengambil sedikit masa. Selepas ini, anda boleh semak butiran yang saya temui.',
+    sourcePrompts: { website: 'Kongsi halaman awam tentang bisnes anda. Saya akan baca dan bawa butirannya untuk anda semak.', upload: 'Pilih dokumen yang memperkenalkan bisnes anda. Saya akan susun butiran berguna untuk semakan anda.', describe: 'Beberapa ayat sudah cukup untuk bermula. Ceritakan apa yang bisnes anda lakukan.' },
     you: 'Anda',
     change: 'Tukar',
     welcomeTitle: 'Selamat datang ke Jentera!',

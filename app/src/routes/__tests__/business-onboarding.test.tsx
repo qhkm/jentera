@@ -25,6 +25,24 @@ async function chooseWorkflow(task = 'Prepare my weekly sales report') {
 }
 
 describe('real business onboarding', () => {
+  it('shows a dedicated reading state until ingestion finishes, then opens review', async () => {
+    const repo = new LocalRepository();
+    let finish!: (value: { facts: number; suggestions: { key: string; value: string; confidence: number }[] }) => void;
+    repo.ingest = vi.fn().mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    mount(repo);
+    await chooseWorkflow();
+    await userEvent.click(screen.getByRole('button', { name: 'Website or public page' }));
+    await userEvent.type(screen.getByPlaceholderText('yourbusiness.com'), 'example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Learn about my business' }));
+    expect(await screen.findByRole('heading', { name: 'Building your business picture' })).toHaveFocus();
+    expect(screen.getByRole('status', { name: 'Reading your source…' })).toHaveTextContent('https://example.com');
+    expect(screen.getByRole('status', { name: 'Reading your source…' })).toHaveTextContent('Reading');
+    expect(screen.queryByRole('button', { name: 'Learn about my business' })).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('yourbusiness.com')).not.toBeInTheDocument();
+    finish({ facts: 1, suggestions: [{ key: 'business.name', value: 'Example Business', confidence: 0.9 }] });
+    expect(await screen.findByRole('heading', { name: 'Here’s what I understood.' })).toHaveFocus();
+    expect(screen.queryByRole('heading', { name: 'Building your business picture' })).not.toBeInTheDocument();
+  });
   it('welcomes the signed-in owner before selecting the first workflow without running it', async () => {
     const repo = new LocalRepository();
     repo.ask = vi.fn();
@@ -90,6 +108,26 @@ describe('real business onboarding', () => {
 });
 
 describe('workflow-first onboarding', () => {
+  it('replaces each prompt and preserves answers when changing earlier choices', async () => {
+    mount(new LocalRepository());
+    await userEvent.click(await screen.findByRole('button', { name: /Reports/ }));
+    expect(screen.queryByRole('heading', { name: 'What would you like your AI Staff to help with first?' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'First workflow category' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'What is one task you repeat every day or every week?' })).toHaveFocus();
+    await userEvent.type(screen.getByLabelText('What is one task you repeat every day or every week?'), 'Prepare weekly figures');
+    await userEvent.click(screen.getByRole('button', { name: /Reports.*Change/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Reports/ }));
+    expect(screen.getByLabelText('What is one task you repeat every day or every week?')).toHaveValue('Prepare weekly figures');
+    await userEvent.click(screen.getByRole('button', { name: 'Use this as my first workflow' }));
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Website or public page' }));
+    expect(screen.queryByRole('button', { name: 'Upload a document' })).not.toBeInTheDocument();
+    await userEvent.type(screen.getByPlaceholderText('yourbusiness.com'), 'example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Change source' }));
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Website or public page' }));
+    expect(screen.getByPlaceholderText('yourbusiness.com')).toHaveValue('example.com');
+  });
   it('starts with six outcome choices and does not save or execute an unconfirmed task', async () => {
     const repo = new LocalRepository(); repo.ask = vi.fn(); repo.setFact = vi.fn(); repo.provisionRuntime = vi.fn();
     mount(repo);
