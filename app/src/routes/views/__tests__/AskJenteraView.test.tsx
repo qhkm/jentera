@@ -114,6 +114,35 @@ describe('compose-first Ask Jentera', () => {
     ));
     expect(screen.queryByLabelText('1 of 5 selected')).toBeNull();
   });
+  it('keeps the mobile skill sheet inside the visible viewport', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })));
+    const viewport = {
+      offsetTop: 12,
+      height: 360,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    vi.stubGlobal('visualViewport', viewport);
+    const repo = new LocalRepository();
+    repo.runtimeSkills = vi.fn(async () => [
+      { id: 'market-scan', name: 'Market scan', description: 'Compare public sources.', category: 'Research', disabled: false },
+    ]);
+    await mount(<Harness />, repo);
+
+    await user.click(screen.getByRole('button', { name: 'Choose skills for this message' }));
+    const picker = await screen.findByRole('dialog', { name: 'Load skills' });
+    await waitFor(() => {
+      expect(picker.style.getPropertyValue('--skill-viewport-top')).toBe('20px');
+      expect(picker.style.getPropertyValue('--skill-viewport-height')).toBe('344px');
+    });
+    expect(screen.getByRole('searchbox', { name: 'Search skills' })).not.toHaveFocus();
+    expect(viewport.addEventListener).toHaveBeenCalledWith('resize', expect.any(Function));
+  });
   it('shows the free-chat balance without changing the writing pad', async () => {
     vi.stubEnv('VITE_API_URL', 'https://fixture.invalid');
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ signedIn: true, access: { kind: 'preview', preview: { limit: 10, used: 3, remaining: 7 } } })));

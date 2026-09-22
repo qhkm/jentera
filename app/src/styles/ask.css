@@ -1405,12 +1405,18 @@ button.ask-context-link:hover {
   .ask-skill-picker {
     position: fixed;
     z-index: 80;
+    top: var(--skill-viewport-top, max(8px, env(safe-area-inset-top)));
     left: 10px;
     right: 10px;
-    bottom: calc(74px + env(safe-area-inset-bottom));
+    bottom: auto;
     width: auto;
-    max-height: min(540px, 68dvh);
+    height: var(--skill-viewport-height, calc(100dvh - 16px));
+    max-height: none;
   }
+  .ask-skill-picker > header,
+  .ask-skill-picker > footer,
+  .ask-skill-search { flex: none; }
+  .ask-skill-options { flex: 1; min-height: 0; }
   .ask-skill-search input { font-size: 16px; }
   .ask-writing-tools .ask-context-link { position: relative; }
   .ask-writing-tools .ask-context-link .ask-context-count {

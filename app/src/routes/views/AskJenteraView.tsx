@@ -177,6 +177,28 @@ export default function AskJenteraView({
     setSkillQuery('');
   }, [ask.activeId]);
 
+  useEffect(() => {
+    if (!skillPickerOpen || !compact) return;
+    const viewport = window.visualViewport;
+    const fitPickerToVisibleScreen = () => {
+      const picker = skillPicker.current;
+      if (!picker) return;
+      const top = viewport?.offsetTop ?? 0;
+      const height = viewport?.height ?? window.innerHeight;
+      picker.style.setProperty('--skill-viewport-top', `${Math.max(8, top + 8)}px`);
+      picker.style.setProperty('--skill-viewport-height', `${Math.max(1, height - 16)}px`);
+    };
+    fitPickerToVisibleScreen();
+    viewport?.addEventListener('resize', fitPickerToVisibleScreen);
+    viewport?.addEventListener('scroll', fitPickerToVisibleScreen);
+    window.addEventListener('orientationchange', fitPickerToVisibleScreen);
+    return () => {
+      viewport?.removeEventListener('resize', fitPickerToVisibleScreen);
+      viewport?.removeEventListener('scroll', fitPickerToVisibleScreen);
+      window.removeEventListener('orientationchange', fitPickerToVisibleScreen);
+    };
+  }, [compact, skillPickerOpen]);
+
   const visibleSkills = skillCatalogue.skills.filter(skill => {
     const query = skillQuery.trim().toLocaleLowerCase();
     return !query || skill.name.toLocaleLowerCase().includes(query) ||
@@ -189,7 +211,10 @@ export default function AskJenteraView({
     setSkillPickerOpen(next);
     if (next) {
       if (skillCatalogue.status === 'idle') void loadSkills();
-      requestAnimationFrame(() => skillSearch.current?.focus());
+      // Opening the software keyboard immediately can shrink the visual
+      // viewport before the sheet is positioned. Let phone owners see the
+      // whole picker first; tapping Search still focuses it normally.
+      if (!compact) requestAnimationFrame(() => skillSearch.current?.focus());
     }
   }
 
