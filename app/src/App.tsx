@@ -29,6 +29,8 @@ import { lazy, Suspense, type ReactElement } from 'react';
 // Keep sign-in eager: it is the primary CTA and the release verifier checks
 // the entry bundle for its auth endpoint.
 const Onboard = lazy(() => import('@/routes/Onboard'));
+const LandingV2 = lazy(() => import('@/routes/LandingV2'));
+const LandingV3 = lazy(() => import('@/routes/LandingV3'));
 const Setup = lazy(() => import('@/routes/Setup'));
 const Dashboard = lazy(() => import('@/routes/Dashboard'));
 const LaunchAdmin = lazy(() => import('@/routes/LaunchAdmin'));
@@ -126,6 +128,8 @@ export function AppRoutes() {
         <Routes>
           {/* Public, and free of any provider dependency. */}
           <Route path="/" element={<Landing />} />
+          <Route path="/landing-v2" element={<LandingV2 />} />
+          <Route path="/landing-v3" element={<LandingV3 />} />
           <Route path="/ms" element={<LandingMs />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/about" element={<About />} />

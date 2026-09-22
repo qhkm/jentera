@@ -8,7 +8,7 @@ export const INDEXABLE_PATHS = [
   '/connect', '/connect/telegram', '/connect/google-calendar', '/connect/bukku',
   '/privacy', '/terms',
 ] as const;
-export const PRIVATE_PATHS = ['/signin', '/onboard', '/setup', '/app', '/join', '/access', '/waitlist', '/subscribe', '/admin/launch'] as const;
+export const PRIVATE_PATHS = ['/signin', '/onboard', '/setup', '/app', '/join', '/access', '/waitlist', '/subscribe', '/admin/launch', '/landing-v2', '/landing-v3'] as const;
 
 export type IndexablePath = (typeof INDEXABLE_PATHS)[number];
 
@@ -163,6 +163,8 @@ const PAGES: Record<string, Omit<PageSeo, 'canonical' | 'indexable' | 'lang'>> =
     title: 'Terms of service — Jentera',
     description: 'Terms for using Jentera, including account responsibilities, AI outputs, connected services, approvals and your legal rights.',
   },
+  '/landing-v2': { title: 'Jentera — Landing design preview V2', description: 'An alternative landing page for design review. Compare it with the original Jentera homepage.' },
+  '/landing-v3': { title: 'Jentera — Landing design preview V3', description: 'A dark illustrated landing concept for Jentera. Compare all three design directions.' },
   '/signin': { title: 'Sign in to Jentera', description: 'Sign in to your private Jentera business workspace.' },
   '/onboard': { title: 'Introduce your business — Jentera', description: 'Tell Jentera about your business and the work you need help with.' },
   '/setup': { title: 'Set up your workspace — Jentera', description: 'Review your business details and prepare your private Jentera workspace.' },
