@@ -187,11 +187,16 @@ would leak third-party activity. `MAX_OUTSTANDING` in `auth.ts` is a
 separate, stricter short-range brake on concurrent live links.
 
 **Still missing, and known:** connector execution is stubbed in
-`src/connectors.ts` for everything but Telegram, pending OAuth
-registrations. `app/src/lib/live-connectors.ts` mirrors that list, and
-its test reads this directory rather than restating it, so the
-Connections tab offers a working button only where something is behind
-it.
+`src/connectors.ts` for everything outside `worker/src/connectors/`,
+pending OAuth registrations. Three are real as of 23 September —
+Telegram, Google Calendar and Bukku; this line said Telegram alone until
+the other two shipped past it. `app/src/lib/live-connectors.ts` is the
+authority the app reads, and its test reads that directory rather than
+restating it, so the Connections tab offers a working button only where
+something is behind it. Adding one is three steps in order: the execute
+body in the Worker, a connect flow, then the name in `LIVE_CONNECTORS` —
+a name without the other two puts back the lie that turned a tag green
+for a connector that did nothing.
 
 Webhook verification is done — this line used to say it was not.
 `verifyWebhook` compares a stored per-connection secret in constant

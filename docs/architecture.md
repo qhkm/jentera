@@ -1,6 +1,6 @@
 # Jentera architecture, as built
 
-Dated 22 September 2026. This describes the system that is deployed and
+Dated 23 September 2026. This describes the system that is deployed and
 serving traffic, read off the code rather than recalled.
 
 `TECHNICAL_ARCHITECTURE.md` at the repository root is the other half of the
@@ -60,23 +60,9 @@ built code. `future/` holds work parked before it was wired up.
 
 ### The web app
 
-React + Vite + TypeScript. Public marketing pages are prerendered;
-`INDEXABLE_PATHS` in `lib/seo.ts` is the list, and adding a path there is
-what prerenders it, sitemaps it and puts it under `check-seo.mjs`.
-
-It runs fully without a backend. `app/src/lib/repo/` is a `Repository`
-interface with two implementations: `LocalRepository` (browser storage, the
-anonymous demo) and `RemoteRepository` (the Worker). `VITE_API_URL` chooses.
-This is why the marketing site can demonstrate the product to a stranger
-with no account, and it is also the source of a recurring class of bug —
-**playbook figures are demo-only and have been shown to real owners three
-times as if they were theirs.** `useActivity` answers `real` / `pending` /
-`demo` for that reason; a boolean is what caused the bug.
-
-Installed as a PWA it updates on a prompt, never mid-reply
-(`registerType: 'prompt'`). `pwa/update-checks.ts` asks on every return to
-the foreground and hourly while open, because a browser otherwise looks for
-a new service worker only on navigation and at most daily.
+React + Vite + TypeScript, and it runs fully without a backend — the
+`Repository` interface has a browser-storage implementation as well as a
+remote one. The next section covers it properly.
 
 ### The control plane
 
@@ -105,7 +91,56 @@ agent loop. Its release is pinned in exactly one file,
 Hermes SHA written anywhere else — the pin used to be a literal in eight
 places and missing one failed silently rather than loudly.
 
-## 3. Tenancy: the invariant everything else rests on
+## 3. The web app in detail
+
+React, Vite and `react-router`, with the heavy routes lazy-loaded. Public
+marketing pages, the sign-in doors and `/join` are plain routes; everything
+behind `AppShell` is gated.
+
+**The Repository seam is the important one.** `app/src/lib/repo/` defines
+one interface with two implementations — `LocalRepository` (browser storage)
+and `RemoteRepository` (the Worker) — and `VITE_API_URL` chooses between
+them at build time. That is what lets the marketing site demonstrate a
+working product to a stranger with no account, and it is also the source of
+a recurring class of bug: **playbook figures are demo-only and were shown to
+real owners as their own three times.** `useActivity` answers `real` /
+`pending` / `demo` for exactly that reason — a boolean conflates "not real
+yet" with "show the demo", and that conflation is what caused it.
+
+**Flow gates live in localStorage**, and changing one changes who sees what:
+`aisar-onboarded-v1` and `aisar-setup-done-v1` drive the stage machine,
+`aisar-biz-type` picks the playbook, `aisar-join-token` diverts a new arrival
+to `/join`. `CLAUDE.md` carries the full table; it is short and worth
+keeping that way.
+
+**State is hooks, not a store.** `useAsk` (the chat and its live stream),
+`useActivity`, `useBusiness`, `useConnections`, `useChat`, `useNotifications`
+and a dozen smaller ones. `useDetailLevel` is shared through context rather
+than held per call site — the first version was a plain hook, so the header
+toggle flipped and the traces below it did not, because nothing told them.
+
+**Two languages, one pair of pages.** `/` is English and `/ms` its Bahasa
+Malaysia twin, linked by hreflang. Prices and limits on `/ms` come from
+`launch-offer.ts` through `landing-content-ms.ts` so they cannot drift, and
+`seo.test.tsx` fails if an English chrome string reaches the Malay page.
+
+**Prerendering is a list.** `INDEXABLE_PATHS` in `lib/seo.ts` is what
+prerenders a path, sitemaps it, and puts it under `check-seo.mjs`. A new
+public page also needs its trailing-slash redirect in `public/_redirects`
+and a cache rule in `public/_headers`; the tests check both against that
+same list.
+
+**PWA and native.** The installed app updates on a prompt, never mid-reply.
+`pwa/` holds install, manifest, push, service-worker registration and the
+update checks. `lib/native/` is the only platform boundary — PWA install,
+web push and service-worker updates stay inert inside the Capacitor shell.
+
+One styling rule earns its place here because it broke three screens:
+controls share `--control-h` and `--control-pad-y`, and a `text-*` or `py-*`
+utility on a `.btn` or `.input` overrides the component and breaks the shared
+height. Let components own their type and padding.
+
+## 4. Tenancy: the invariant everything else rests on
 
 Two rules, both load-bearing:
 
@@ -175,7 +210,7 @@ Cross-tenant scans — the routine due-scan, `invitation_by_token`,
 `business_plan(uuid)` — are `SECURITY DEFINER` functions that return ids
 only. That is the only sanctioned way to look across tenants.
 
-## 4. A message, end to end
+## 5. A message, end to end
 
 This is the path that matters most and the one most shaped by measurement.
 
@@ -259,7 +294,7 @@ turn cannot see what came before it — which is how "yes run the test run"
 once reached a Chief of Staff who had never seen the digest request Growth
 had just scheduled.
 
-## 5. The fleet
+## 6. The fleet
 
 One Fly Sprite per business, region `sin`. `RuntimeProvider`
 (`runtime/provider.ts`) is compute lifecycle — create, wake, stop, status,
@@ -314,7 +349,7 @@ The quarter-hour cron publishes upgrade tasks for any sprite not on the
 pinned release. A release bump therefore converges by itself; no per-business
 message and no operator trigger.
 
-## 6. Doors, sessions and the edge
+## 7. Doors, sessions and the edge
 
 Three doors — magic link, password, Google — converging on one session
 cookie, so nothing downstream distinguishes them. `email_verified` is what
@@ -356,7 +391,7 @@ address. The per-address one answers **204, not 429**, because its counter
 includes requests made by anyone for that address and a 429 would leak
 third-party activity.
 
-## 7. Permissions, plans and who can read what
+## 8. Permissions, plans and who can read what
 
 Roles are decided in one place, `permissions.ts`, where a permission is a
 row; `permissions.test.ts` fails on any `role !== 'owner'` that appears at a
@@ -384,7 +419,7 @@ Removing a member ends everything that lets them in or reaches them in one
 transaction: membership, sessions, devices, pending pushes, workspace seats,
 open invitations. Their chats and the work they asked for stay as history.
 
-## 8. The agent boundary
+## 9. The agent boundary
 
 `RuntimeAdapter` is documented in `runtime/types.ts` with the constraint
 stated outright:
@@ -420,7 +455,143 @@ Jentera has picked up" with a Forget on each entry. The agent is told every
 turn not to copy business facts it was handed into that memory, so the few
 kilobytes it has stay for what Jentera cannot tell it.
 
-## 9. Storage and side channels
+## 10. Connectors and credentials
+
+A connection is a business's own account at some other service, and the
+design rule is one sentence: **the credential is loaded only at the moment
+of use and never returned upward.** `listConnections` deliberately reads a
+table with no secret in it, so the screen showing what is connected cannot
+accidentally show what opens it.
+
+At rest they are sealed by `vault.ts` with AES-GCM under a key the database
+never holds — a dump is worth nothing without the Worker's key, and the key
+is worth nothing without a dump. AES-GCM rather than CBC because it
+authenticates as well as encrypts: a tampered ciphertext fails to decrypt
+rather than yielding plausible garbage that gets sent to Telegram as a
+token. `KEY_VERSION` rides on each row, so a key can be retired without a
+flag day.
+
+**Three ways to connect, and the owner chooses**, because they grant
+different things (`connect-methods.ts`):
+
+| Method | What it costs the owner | What it grants |
+|---|---|---|
+| `mcp` | nothing held by us | whatever grant they make to the service's own MCP server |
+| `api_token` | a short errand in another app | a token held in the control plane; a sprite never sees it |
+| `browser` | quickest — they sign in through Jentera's browser | a session in a browser the agent shares |
+
+`browser` is offered only where a recipe exists in the runner bundle, so the
+list of methods is a claim the bundle has to back.
+
+**Telegram is the strictest path and the template for the rest.** The
+browser asks the Worker for a short-lived deposit ticket, then sends the bot
+token *directly* to a separate `aisar-vault-deposit` Worker with cookies and
+referrer disabled. The control plane receives only a one-time receipt, the
+bot id and an opaque vault secret id. Every later Telegram API call goes
+over the private `VAULT` service binding, which decrypts only for an
+allow-listed request. The old `POST /api/connections/telegram` token
+endpoint is permanently `410 Gone`.
+
+**Webhooks verify against a stored per-connection secret** compared in
+constant time — stored rather than derived from `CREDENTIAL_KEY`, because
+deriving it would break every live webhook on a key rotation.
+
+**The agent never holds any of this.** `POST /v1/runtime/connector` is the
+seam: the agent names a connector and an operation, the Worker holds the
+secret, makes the call and hands back a sentence. The tenant comes from the
+runtime credential and from nothing else — no field of that request selects
+a business, which was the hole the tenancy model was rebuilt to close.
+`risk.ts` scores `read`, `list` and `export` as low and everything else at
+least medium, and **anything above low is refused rather than executed
+unapproved**, because an action needing an owner's decision needs somewhere
+for the agent to wait while they make it, and that machinery is not wired to
+this path yet.
+
+Three connectors are real — Telegram, Google Calendar, Bukku. The rest are
+stubbed in `src/connectors.ts` pending OAuth registrations.
+
+## 11. The shared browser, and the desktop
+
+A sprite has one Chromium, and **the agent and the owner share it.** That
+sharing is the whole design problem.
+
+`routes/browser.ts` is the owner's side: `claim` / `reclaim` / `release` for
+control, `navigate`, `click`, `text`, `key`, `input`, `scroll`, `tab` for
+driving, `frame`, `preview` and `preview-stream` for seeing, plus `restart`
+for a wedged gateway and `record_start` / `record_stop` / `record_cancel`
+for teaching. Control is a ten-minute lease at a fixed 1280×800 viewport,
+and the refusals are written as sentences an owner can act on rather than
+codes — "Another window is controlling this browser", not `browser_busy`.
+
+**While the owner holds it, the agent's browser tools fail fast.** The hold
+is a file on the sprite (`/var/lib/aisar/browser-control.json`) that Hermes
+checks before any browser work, returning a refusal that tells the model to
+finish with what it has rather than retry. Before that guard, an agent that
+asked for the browser mid-hold simply hung — one run called `browser_console`
+six seconds in and produced nothing for five minutes before expiring.
+
+**The desktop is a noVNC view of the same machine**, owner-only and behind
+both a global flag and an exact business allowlist (`DESKTOP_VIEW_ENABLED`,
+`DESKTOP_VIEW_BUSINESS_IDS`; `desktopEnabledFor` rejects wildcards). Fly
+owns the transport, so the Worker terminates the init and auth prefaces
+itself and the browser receives **only RFB bytes, never a provider token or
+runner ticket**. Both peers have hard byte limits and a failed handshake
+fails closed.
+
+`procedure-recorder.mjs` watches a recorded session to derive a repeatable
+procedure. It is bounded on every axis — 400 events, 20 minutes, four
+allowed DOM event types, three resource types, and field names that must
+match a safe pattern — because it is turning someone's live session into a
+stored artifact.
+
+## 12. Knowledge: what Jentera knows about a business
+
+Three stores, deliberately not one.
+
+**Business facts** (`facts.ts`) carry a source: `owner`, `import`, `agent`
+or `connector`. Anything the agent proposes lands **unconfirmed**, and the
+product does not act on it until a person says it is right.
+
+**Ingest** is how facts arrive in bulk. `ingest.ts` reads a public page and
+proposes facts from it — deliberately the run type with zero external side
+effects: it reads, thinks, and writes rows. Nothing is sent, charged or
+posted, so a wrong extraction costs a suggestion the owner declines rather
+than a message to a customer. An uploaded document takes the same path:
+text, Markdown, CSV and JSON up to 1 MiB read as they are; PDF, Office
+documents and images up to 8 MiB go through Workers AI's `toMarkdown` first.
+**The file itself is not kept** — only what was extracted from it.
+
+**Agent memory is a different store and stays that way.** Hermes keeps two
+small files per profile on the sprite, and the agent is told every turn not
+to copy the business facts it was handed into them, so the few kilobytes it
+has stay for what Jentera cannot tell it. Covered under the agent boundary
+above.
+
+## 13. Billing and metering
+
+`business.plan` is `free | pro | team`, and nothing sets it automatically.
+
+Stripe sits behind **three independent gates** —
+`STRIPE_BILLING_LIVE_ENABLED`, `STRIPE_BILLING_SANDBOX_ENABLED` and
+`STRIPE_CHECKOUT_ENABLED` — because closing new purchases must not close
+fulfilment of ones already made. The webhook handles twelve event types
+across checkout, subscription, invoice, refund and dispute.
+`billing/readiness.ts` is operator setup only and refuses to run unless
+purchases are already closed; it never opens checkout or touches endpoint
+URLs, signing keys, the catalog or customer state.
+
+**Model spend is metered per run.** `model_call` records what each run cost;
+the FMCV rider budget is enforced at the model proxy before a request is
+forwarded, so a runaway agent hits a ceiling in the control plane rather
+than on an invoice.
+
+**Chat preview is a separate meter from billing.** While `ACCESS_MODE` is
+`waitlist`, an account gets ten chat requests. Exhaustion blocks new chat
+work only — reading results and history still works, because taking away
+what someone already produced is a different and worse thing than declining
+to produce more.
+
+## 14. Storage and side channels
 
 - **R2 `jentera-artifacts`** — files the agent hands the owner. Keys are
   `<business>/<run>/<artifact id>/<name>`; `GET /api/artifacts/:id` resolves
@@ -436,7 +607,7 @@ kilobytes it has stay for what Jentera cannot tell it.
 - **Workers Logs** — invocation telemetry. Note that `wrangler tail` returns
   nothing on this Worker; verify through Postgres or the response instead.
 
-## 10. Notifications
+## 15. Notifications
 
 Web push is RFC 8291 payload encryption and RFC 8292 VAPID on Web Crypto,
 held to the RFC's worked example byte for byte by `test/push-crypto.test.ts`
@@ -459,7 +630,7 @@ so a leak cannot send as the other domains on that account. Every new
 account sends one plain-text notice to `SIGNUP_NOTICE_TO` behind the
 response via `ctx.waitUntil`, so Resend being slow cannot delay a sign-in.
 
-## 11. Scheduling
+## 16. Scheduling
 
 Postgres is the scheduler. `routine.next_run_at` is the clock, the
 one-minute cron calls `dispatchDueRoutines`, and the cross-tenant due scan
@@ -469,7 +640,7 @@ inside `withTenant` under a row lock. Sprites never own a local cron.
 Two cron expressions, both firing at :00, :15, :30, :45 — `index.ts`
 branches on `controller.cron` so the fleet sweep never runs every minute.
 
-## 12. Testing architecture
+## 17. Testing architecture
 
 `pnpm test` in `worker/` runs a throwaway Postgres in Docker and applies
 `migrations/` in order. The container is named and ported per run, so two
@@ -498,7 +669,7 @@ line — a process variable, not a `.dev.vars` entry. Connect as `aisar_app`;
 as the owner every policy is present and enforcing nothing, so a local run
 would behave correctly while production leaked.
 
-## 13. Where the design has slack
+## 18. Where the design has slack
 
 Honest list. Each is something measured or read, not a style preference.
 
@@ -555,7 +726,7 @@ It has `readPage` and `answerQuestion`, and `runtimeFor()` returns
 interface does not model. The interface is honest about deferring lifecycle
 methods until something needed them — something now does.
 
-## 14. What is deliberately not built
+## 19. What is deliberately not built
 
 - **Connector execution is stubbed** in `src/connectors.ts` for everything
   but Telegram, pending OAuth registrations. `app/src/lib/live-connectors.ts`
@@ -575,7 +746,7 @@ methods until something needed them — something now does.
 production, what the next release must carry, what waits on Fly or on the
 owner. Read it before asking what is next.
 
-## 15. Where to look next
+## 20. Where to look next
 
 | Question | File |
 |---|---|
