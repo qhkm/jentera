@@ -105,6 +105,10 @@ Public references used for the product boundary:
 
 ## Next gates
 
+The owner-visible execution and audit contract is specified separately in
+[`2026-09-22-procedure-observability.md`](2026-09-22-procedure-observability.md).
+It must land before supervised execution.
+
 1. Exercise capture against a synthetic site, then a real Bukku demonstration
    using non-production records.
 2. Measure missing, duplicated and incorrectly grouped steps.
