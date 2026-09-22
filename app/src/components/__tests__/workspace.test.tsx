@@ -52,6 +52,7 @@ describe('account menu', () => {
     expect(screen.queryByText('previous@business.example')).not.toBeInTheDocument();
     expect(screen.getByRole('menu')).toHaveAccessibleDescription(email);
     expect(screen.queryByRole('menuitem', { name: email })).not.toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /Plan & billing.*Launch offer/ })).toHaveAttribute('href', '/subscribe');
   });
 
   it('does not expose an email in demo preferences or invent one when it is missing', async () => {

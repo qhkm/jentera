@@ -12,8 +12,8 @@
    ============================================================ */
 
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router';
-import { ArrowRight } from '@phosphor-icons/react';
+import { Link, useSearchParams } from 'react-router';
+import { ArrowRight, Sparkle } from '@phosphor-icons/react';
 import { Shell } from '@/components/Shell';
 import { WorkspaceModeSwitch, type WorkspaceMode } from '@/components/WorkspaceModeSwitch';
 import { Avatar, Tag } from '@/components/ui';
@@ -217,6 +217,10 @@ export default function Dashboard() {
   return (
     <Shell
       accountAccessory={<div className="workspace-header-accessories">
+        {signedIn && <Link className="workspace-upgrade-link" to="/subscribe">
+          <Sparkle size={15} weight="fill" aria-hidden="true" />
+          <span>{t('account.earlyMember')}</span>
+        </Link>}
         <div className="computer-status-header-slot" ref={setComputerStatusTarget} />
       </div>}
       className={`dashboard-shell workspace-shell workspace-current ${isChat ? 'dashboard-chat workspace-chat' : 'workspace-dashboard'}`}

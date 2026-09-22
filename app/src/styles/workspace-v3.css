@@ -6,6 +6,25 @@
   gap: 6px;
 }
 
+.workspace-upgrade-link {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid rgb(var(--accent-green-rgb) / .28);
+  border-radius: 999px;
+  background: rgb(var(--accent-green-rgb) / .08);
+  color: var(--accent-green);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.workspace-upgrade-link:hover { background: rgb(var(--accent-green-rgb) / .13); color: var(--text); }
+@media (max-width: 767px) {
+  .workspace-upgrade-link { display: none; }
+}
+
 .workspace-design-toggle {
   display: inline-flex;
   min-height: 36px;

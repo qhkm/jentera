@@ -104,6 +104,13 @@
   color: var(--text);
   background: rgb(var(--border-ink) / 0.05);
 }
+.account-menu-plan { color: var(--text); }
+.account-menu-plan > svg { color: var(--accent-green); }
+.account-menu-plan .account-menu-value {
+  border-color: rgb(var(--accent-green-rgb) / .22);
+  background: rgb(var(--accent-green-rgb) / .08);
+  color: var(--accent-green);
+}
 .account-menu-item:focus-visible {
   outline-offset: -2px;
 }

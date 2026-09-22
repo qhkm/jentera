@@ -4,6 +4,7 @@ import {
   CaretDown,
   DeviceMobile,
   Moon,
+  Sparkle,
   SignOut,
   SlidersHorizontal,
   Sun,
@@ -45,7 +46,7 @@ export function AccountMenu({
 
   useEffect(() => {
     if (!open) return;
-    const items = menu.current?.querySelectorAll<HTMLButtonElement>(
+    const items = menu.current?.querySelectorAll<HTMLElement>(
       '[role="menuitem"]:not(:disabled)',
     );
     (focusLast.current ? items?.[items.length - 1] : items?.[0])?.focus();
@@ -108,10 +109,10 @@ export function AccountMenu({
     } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
       event.preventDefault();
       const items = Array.from(
-        menu.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [],
+        menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? [],
       );
       if (!items.length) return;
-      const current = items.indexOf(document.activeElement as HTMLButtonElement);
+      const current = items.indexOf(document.activeElement as HTMLElement);
       const next =
         event.key === 'Home'
           ? 0
@@ -255,6 +256,17 @@ export function AccountMenu({
             ) : null}
             {signedIn ? (
               <>
+                <a
+                  role="menuitem"
+                  tabIndex={-1}
+                  className="account-menu-item account-menu-plan"
+                  href="/subscribe"
+                  onClick={() => setOpen(false)}
+                >
+                  <Sparkle size={18} weight="duotone" aria-hidden="true" />
+                  <span>{t('account.plan')}</span>
+                  <span className="account-menu-value">{t('account.launchOffer')}</span>
+                </a>
                 <div className="account-menu-divider" role="separator" />
                 <button
                   type="button"
