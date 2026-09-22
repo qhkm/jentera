@@ -656,6 +656,270 @@
   font-size: 12px;
 }
 
+/* The sign-in door belongs to the same visual world as Landing V3: calm,
+   dark and character-led, while the actual form remains deliberately plain. */
+.auth-entrance--v3 {
+  color-scheme: dark;
+  background: #080d0e;
+  color: #f5f8f7;
+}
+.auth-entrance--v3 .auth-atmosphere {
+  background:
+    radial-gradient(circle at 18% 42%, rgb(40 221 158 / 0.09), transparent 34%),
+    radial-gradient(circle at 72% 18%, rgb(132 181 255 / 0.05), transparent 32%);
+}
+.auth-entrance--v3 .auth-atmosphere::after {
+  display: none;
+}
+.auth-entrance--v3 .auth-atmosphere > span {
+  display: none;
+}
+.auth-entrance--v3 .auth-header {
+  min-height: 80px;
+  padding: 18px clamp(20px, 4vw, 56px);
+}
+.auth-entrance--v3 .auth-header > a:first-child {
+  gap: 10px;
+  color: #f5f8f7;
+  font-family: var(--font-sans);
+  font-size: 25px;
+  font-weight: 650;
+  letter-spacing: -0.045em;
+}
+.auth-entrance--v3 .auth-header .jentera-mark {
+  width: 34px;
+  height: 34px;
+}
+.auth-entrance--v3 .auth-parent {
+  color: #71817b;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.auth-entrance--v3 .auth-header .lp-text-link {
+  min-height: 40px;
+  padding: 9px 17px;
+  border: 1px solid #293632;
+  border-radius: 999px;
+  color: #d9e2de;
+  text-decoration: none;
+}
+.auth-entrance--v3 .auth-layout {
+  display: grid;
+  grid-template-columns: minmax(330px, 0.9fr) minmax(360px, 0.72fr);
+  align-items: stretch;
+  gap: clamp(24px, 4vw, 64px);
+  width: min(1100px, calc(100% - 48px));
+  margin-inline: auto;
+  padding: 24px 0 54px;
+}
+.auth-showcase {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  min-height: 620px;
+  flex-direction: column;
+  overflow: hidden;
+  padding: clamp(28px, 4vw, 52px);
+  border: 1px solid #263b33;
+  border-radius: 30px;
+  background:
+    radial-gradient(circle at 50% 40%, rgb(40 221 158 / 0.18), transparent 34%),
+    linear-gradient(145deg, #14231d, #0d1513 72%);
+  box-shadow: 0 28px 80px rgb(0 0 0 / 0.28);
+}
+.auth-showcase::after {
+  position: absolute;
+  z-index: -1;
+  inset: auto -20% -32% 22%;
+  aspect-ratio: 1;
+  border: 1px solid rgb(123 229 191 / 0.14);
+  border-radius: 50%;
+  content: '';
+}
+.auth-showcase-eyebrow {
+  color: #78d9b6;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+}
+.auth-showcase-art {
+  position: relative;
+  display: grid;
+  flex: 1;
+  place-items: center;
+  min-height: 280px;
+}
+.auth-showcase-art img {
+  position: relative;
+  z-index: 1;
+  width: min(78%, 350px);
+  height: auto;
+  filter: drop-shadow(0 24px 35px rgb(0 0 0 / 0.36));
+  transform: rotate(-7deg);
+}
+.auth-showcase-orbit {
+  position: absolute;
+  width: min(78%, 340px);
+  aspect-ratio: 1;
+  border: 1px solid rgb(115 230 188 / 0.18);
+  border-radius: 34%;
+  transform: rotate(12deg);
+}
+.auth-showcase-copy h2 {
+  margin: 0;
+  color: #f4f7f6;
+  font-family: var(--font-sans);
+  font-size: clamp(32px, 3.5vw, 48px);
+  font-weight: 620;
+  line-height: 1.08;
+  letter-spacing: -0.045em;
+}
+.auth-showcase-copy p {
+  max-width: 46ch;
+  margin: 18px 0 0;
+  color: #9fafa8;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.auth-showcase-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 30px;
+  color: #90a19a;
+  font-size: 11px;
+}
+.auth-showcase-status span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #37dfa4;
+  box-shadow: 0 0 16px rgb(55 223 164 / 0.7);
+}
+.auth-entrance--v3 .auth-card {
+  align-self: center;
+  max-width: 440px;
+  padding: clamp(28px, 4vw, 44px);
+  border: 1px solid #25312e;
+  border-radius: 26px;
+  background: rgb(16 22 21 / 0.94);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 0.25);
+}
+.auth-entrance--v3 .auth-emblem {
+  width: 58px;
+  height: 58px;
+  margin-bottom: 18px;
+}
+.auth-entrance--v3 .auth-card-eyebrow {
+  color: #78d9b6;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+}
+.auth-entrance--v3 .auth-card h1 {
+  margin-top: 12px;
+  color: #f4f7f6;
+  font-family: var(--font-sans);
+  font-size: 36px;
+  font-weight: 620;
+  letter-spacing: -0.045em;
+  -webkit-text-stroke: 0;
+}
+.auth-entrance--v3 .auth-card-description,
+.auth-entrance--v3 .text-text-secondary {
+  color: #95a49e;
+}
+.auth-entrance--v3 .input {
+  min-height: 50px;
+  border-color: #31403b;
+  border-radius: 13px;
+  background: #0a100f;
+  color: #f3f6f5;
+}
+.auth-entrance--v3 .input::placeholder {
+  color: #65716d;
+}
+.auth-entrance--v3 .btn {
+  min-height: 48px;
+  border-radius: 999px;
+}
+.auth-entrance--v3 .btn-primary {
+  border-color: #f3f7f5;
+  background: #f3f7f5;
+  color: #101514;
+}
+.auth-entrance--v3 .btn-outline {
+  border-color: #33423d;
+  background: #121a18;
+  color: #e8eeeb;
+}
+.auth-entrance--v3 .auth-private {
+  color: #75857e;
+}
+.auth-entrance--v3 .auth-footer {
+  border-top-color: #17201e;
+  padding-inline: clamp(20px, 4vw, 56px);
+}
+.auth-entrance--v3 .auth-footer .lp-text-link {
+  color: #8f9d98;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .auth-showcase-art img {
+    animation: auth-mascot-float 6s ease-in-out infinite;
+  }
+  .auth-showcase-orbit {
+    animation: auth-orbit-drift 10s ease-in-out infinite;
+  }
+  @keyframes auth-mascot-float {
+    0%, 100% { transform: translateY(0) rotate(-7deg); }
+    50% { transform: translateY(-10px) rotate(-4deg); }
+  }
+  @keyframes auth-orbit-drift {
+    0%, 100% { transform: rotate(12deg) scale(1); }
+    50% { transform: rotate(18deg) scale(1.04); }
+  }
+}
+
+@media (max-width: 860px) {
+  .auth-entrance--v3 .auth-layout {
+    display: flex;
+    width: min(480px, calc(100% - 32px));
+    padding-top: 16px;
+  }
+  .auth-showcase {
+    display: none;
+  }
+  .auth-entrance--v3 .auth-card {
+    max-width: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .auth-entrance--v3 .auth-header {
+    min-height: 68px;
+    padding-inline: 18px;
+  }
+  .auth-entrance--v3 .auth-parent {
+    display: none;
+  }
+  .auth-entrance--v3 .auth-layout {
+    width: 100%;
+    padding: 8px 14px 28px;
+  }
+  .auth-entrance--v3 .auth-card {
+    padding: 26px 20px;
+    border-radius: 22px;
+  }
+  .auth-entrance--v3 .auth-card h1 {
+    font-size: 32px;
+  }
+  .auth-entrance--v3 .auth-footer {
+    padding-inline: 18px;
+  }
+}
+
 @media (max-width: 800px) {
   .lp-work-list {
     grid-template-columns: 1fr;

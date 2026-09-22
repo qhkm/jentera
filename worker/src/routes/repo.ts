@@ -231,9 +231,9 @@ export async function handleRepo(
                values (${identity.userId}, ${businessId}, 'owner')`;
       for (const [sort, specialist] of DEFAULT_SPECIALISTS.entries()) {
         await tx`insert into specialist_profile
-          (business_id, profile_key, name, description, sort_order)
+          (business_id, profile_key, name, description, avatar, sort_order)
           values (${businessId}, ${specialist.profile}, ${specialist.name},
-                  ${specialist.description}, ${(sort + 1) * 10})`;
+                  ${specialist.description}, ${specialist.avatar}, ${(sort + 1) * 10})`;
       }
       return true;
     });

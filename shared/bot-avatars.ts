@@ -3,3 +3,11 @@ export const BOT_AVATAR_IDS = ['original', 'wing', 'operator', 'cat', 'cube', 'b
 export type BotAvatarId = typeof BOT_AVATAR_IDS[number];
 export const isBotAvatar = (value: unknown): value is BotAvatarId =>
   typeof value === 'string' && (BOT_AVATAR_IDS as readonly string[]).includes(value);
+
+/** Role-aligned faces for the editable starter team. */
+export const STARTER_BOT_AVATARS = {
+  operations: 'purple',
+  customers: 'pink',
+  growth: 'yellow',
+  records: 'orange',
+} as const satisfies Record<string, BotAvatarId>;

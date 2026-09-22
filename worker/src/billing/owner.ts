@@ -22,8 +22,8 @@ export async function ensureBillingOwner(env: Env, identity: Identity): Promise<
       values (${candidate}, 'My business', 'generic', 'MY', 'en')`;
     await tx`insert into membership (business_id, user_id, role) values (${candidate}, ${identity.userId}, 'owner')`;
     for (const [sort, specialist] of DEFAULT_SPECIALISTS.entries()) {
-      await tx`insert into specialist_profile (business_id, profile_key, name, description, sort_order)
-        values (${candidate}, ${specialist.profile}, ${specialist.name}, ${specialist.description}, ${(sort + 1) * 10})`;
+      await tx`insert into specialist_profile (business_id, profile_key, name, description, avatar, sort_order)
+        values (${candidate}, ${specialist.profile}, ${specialist.name}, ${specialist.description}, ${specialist.avatar}, ${(sort + 1) * 10})`;
     }
     return candidate;
   });

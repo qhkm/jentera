@@ -6,7 +6,7 @@
    ============================================================ */
 
 import * as store from '@/lib/storage';
-import { isBotAvatar } from '../../../../shared/bot-avatars';
+import { isBotAvatar, STARTER_BOT_AVATARS } from '../../../../shared/bot-avatars';
 import { KEYS } from '@/lib/storage';
 import type { Approval, CountryCode, Lang, Policy } from '@/lib/types';
 import type {
@@ -53,15 +53,21 @@ interface StoredFact extends Fact {
 }
 
 const STARTER_SPECIALISTS: Specialist[] = [
-  { id: 'operations', profile: 'operations', name: 'Operations', description: 'Processes, planning, stock, suppliers and follow-through.', instructions: '', enabled: true },
-  { id: 'customers', profile: 'customers', name: 'Customer communications', description: 'Enquiries, replies, bookings and service recovery.', instructions: '', enabled: true },
-  { id: 'growth', profile: 'growth', name: 'Growth and marketing', description: 'Research, campaigns, content, sales and retention.', instructions: '', enabled: true },
-  { id: 'records', profile: 'records', name: 'Finance and records', description: 'Invoices, expenses, cash flow, documents and summaries.', instructions: '', enabled: true },
+  { id: 'operations', profile: 'operations', name: 'Operations', description: 'Processes, planning, stock, suppliers and follow-through.', instructions: '', enabled: true, avatar: STARTER_BOT_AVATARS.operations },
+  { id: 'customers', profile: 'customers', name: 'Customer communications', description: 'Enquiries, replies, bookings and service recovery.', instructions: '', enabled: true, avatar: STARTER_BOT_AVATARS.customers },
+  { id: 'growth', profile: 'growth', name: 'Growth and marketing', description: 'Research, campaigns, content, sales and retention.', instructions: '', enabled: true, avatar: STARTER_BOT_AVATARS.growth },
+  { id: 'records', profile: 'records', name: 'Finance and records', description: 'Invoices, expenses, cash flow, documents and summaries.', instructions: '', enabled: true, avatar: STARTER_BOT_AVATARS.records },
 ];
 
 function localSpecialists(): Specialist[] {
   return store.getJSON<Specialist[]>(KEYS.specialists, STARTER_SPECIALISTS)
-    .filter((specialist) => specialist.enabled);
+    .filter((specialist) => specialist.enabled)
+    .map((specialist) => ({
+      ...specialist,
+      avatar: specialist.avatar ?? STARTER_BOT_AVATARS[
+        specialist.profile as keyof typeof STARTER_BOT_AVATARS
+      ],
+    }));
 }
 
 function specialistInput(input: Pick<Specialist, 'name' | 'description' | 'instructions' | 'avatar'>) {

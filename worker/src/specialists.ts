@@ -1,7 +1,7 @@
 /* Customer-defined specialist profiles. `profile` is an internal, immutable
    Hermes directory key; the owner controls every other field. */
 import type postgres from 'postgres';
-import type { BotAvatarId } from '../../shared/bot-avatars';
+import { STARTER_BOT_AVATARS, type BotAvatarId } from '../../shared/bot-avatars';
 
 export interface SpecialistDefinition {
   id: string;
@@ -16,10 +16,10 @@ export interface SpecialistDefinition {
 export type SpecialistProfile = string;
 
 export const DEFAULT_SPECIALISTS = [
-  { profile: 'operations', name: 'Operations', description: 'Processes, planning, stock, suppliers and follow-through.' },
-  { profile: 'customers', name: 'Customer communications', description: 'Enquiries, replies, bookings and service recovery.' },
-  { profile: 'growth', name: 'Growth and marketing', description: 'Research, campaigns, content, sales and retention.' },
-  { profile: 'records', name: 'Finance and records', description: 'Invoices, expenses, cash flow, documents and summaries.' },
+  { profile: 'operations', name: 'Operations', description: 'Processes, planning, stock, suppliers and follow-through.', avatar: STARTER_BOT_AVATARS.operations },
+  { profile: 'customers', name: 'Customer communications', description: 'Enquiries, replies, bookings and service recovery.', avatar: STARTER_BOT_AVATARS.customers },
+  { profile: 'growth', name: 'Growth and marketing', description: 'Research, campaigns, content, sales and retention.', avatar: STARTER_BOT_AVATARS.growth },
+  { profile: 'records', name: 'Finance and records', description: 'Invoices, expenses, cash flow, documents and summaries.', avatar: STARTER_BOT_AVATARS.records },
 ] as const;
 
 export const specialistProfileValid = (value: unknown): value is string =>

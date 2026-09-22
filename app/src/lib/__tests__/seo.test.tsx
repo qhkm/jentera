@@ -84,8 +84,8 @@ describe('public SEO and social previews', () => {
   it('provides meaningful public HTML without running an API request', () => {
     const fetch = vi.fn(() => { throw new Error('No network in prerender'); }); vi.stubGlobal('fetch', fetch);
     const landing = renderPublic('/');
-    expect(landing).toContain('AI staff that works');
-    expect(landing).toContain('hero-hours');
+    expect(landing).toContain('Your AI staff');
+    expect(landing).toContain('lv3-hero');
     expect(landing).not.toContain('Purchases are not open yet');
     expect(pageSeo('/').description).not.toContain('Purchases not open yet');
     expect(landing).toContain('RM199');

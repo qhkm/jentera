@@ -42,7 +42,6 @@ import { BottomNav } from '@/components/BottomNav';
 import { useNotifications } from '@/hooks/useNotifications';
 import { ComputerStatus } from '@/components/ComputerStatus';
 import { isPwaStandalone } from '@/pwa/install';
-import { initialWorkspaceV3, WorkspaceDesignToggle } from '@/components/WorkspaceDesignToggle';
 
 export type View = 'home' | 'chat' | 'work' | 'files' | 'skills' | 'library' | 'goals' | 'routines' | 'notifications' | 'business';
 
@@ -215,14 +214,12 @@ export default function Dashboard() {
   );
 
   const [computerStatusTarget, setComputerStatusTarget] = useState<HTMLDivElement | null>(null);
-  const [workspaceV3, setWorkspaceV3] = useState(initialWorkspaceV3);
   return (
     <Shell
       accountAccessory={<div className="workspace-header-accessories">
-        <WorkspaceDesignToggle enabled={workspaceV3} onChange={setWorkspaceV3} />
         <div className="computer-status-header-slot" ref={setComputerStatusTarget} />
       </div>}
-      className={`dashboard-shell workspace-shell ${workspaceV3 ? 'workspace-v3' : 'workspace-current'} ${isChat ? 'dashboard-chat workspace-chat' : 'workspace-dashboard'}`}
+      className={`dashboard-shell workspace-shell workspace-current ${isChat ? 'dashboard-chat workspace-chat' : 'workspace-dashboard'}`}
       navigation={<WorkspaceModeSwitch mode={isChat ? 'chat' : 'dashboard'} onChange={switchMode} needsAttention={needsAttention} />}
       fullBleed={isChat}
     >

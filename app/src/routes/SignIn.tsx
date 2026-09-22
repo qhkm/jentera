@@ -41,6 +41,28 @@ const PKCE_VALUE = /^[A-Za-z0-9._~-]{43,128}$/;
 type Mode = "signin" | "signup";
 type BusyAction = "password" | "link" | null;
 
+function AuthShowcase() {
+  return (
+    <aside className="auth-showcase" aria-label="Meet Jentera">
+      <span className="auth-showcase-eyebrow">YOUR AI STAFF</span>
+      <div className="auth-showcase-art" aria-hidden="true">
+        <span className="auth-showcase-orbit" />
+        <img
+          src="/images/jentera-character-glossy-v1.webp"
+          alt=""
+          width={512}
+          height={512}
+        />
+      </div>
+      <div className="auth-showcase-copy">
+        <h2>Your business,<br />ready when you are.</h2>
+        <p>Pick up your work, your context, and your AI team from one private workspace.</p>
+      </div>
+      <div className="auth-showcase-status"><span /> Private to you and your business</div>
+    </aside>
+  );
+}
+
 /* Errors the server can put in the query string when it bounces the
    browser back here. Mapped rather than printed, so a crafted ?error=
    cannot render arbitrary text on a sign-in page. */
@@ -73,9 +95,10 @@ function NativeSignIn() {
   }
 
   return (
-    <div className="marketing-page auth-entrance min-h-dvh bg-bg text-text">
+    <div className="marketing-page auth-entrance auth-entrance--v3 min-h-dvh bg-bg text-text">
       <div className="auth-atmosphere" aria-hidden="true"><span>Jentera</span></div>
       <main id="main-content" className="auth-layout">
+        <AuthShowcase />
         <div className="auth-card">
           <div className="auth-emblem"><JenteraMark size={64} /></div>
           <span className="auth-card-eyebrow">Secure sign-in</span>
@@ -311,7 +334,7 @@ function BrowserSignIn() {
   if (mode === 'signup' && import.meta.env.VITE_ACCESS_MODE === 'waitlist') return <Navigate to="/waitlist" replace />;
 
   return (
-    <div className="marketing-page auth-entrance min-h-dvh bg-bg text-text">
+    <div className="marketing-page auth-entrance auth-entrance--v3 min-h-dvh bg-bg text-text">
       <LaunchAnnouncement />
       <div className="auth-atmosphere" aria-hidden="true">
         <span>Jentera</span>
@@ -334,6 +357,7 @@ function BrowserSignIn() {
         </Link>
       </header>
       <main id="main-content" className="auth-layout">
+        <AuthShowcase />
         {sent ? (
           <div className="auth-card auth-confirmation" role="status">
             {sent === 'verify' && <span className="auth-signup-celebration"><Sparkle size={18} aria-hidden="true" /> A great start. You’re one step away!</span>}

@@ -109,6 +109,10 @@
   Cache-Control: no-cache, no-store, must-revalidate
   X-Robots-Tag: noindex, nofollow
 # Alternate landing concept: review only, not a search landing page.
+/landing-v1
+  Cache-Control: no-cache
+  X-Robots-Tag: noindex, nofollow
+
 /landing-v2
   Cache-Control: no-cache
   X-Robots-Tag: noindex, nofollow

@@ -28,6 +28,7 @@
     "db:migrate:runtime-identity": "node scripts/apply-runtime-identity.mjs",
     "db:migrate:specialist-profiles": "node scripts/apply-specialist-profiles.mjs",
     "db:migrate:bot-preferences": "node scripts/apply-bot-preferences.mjs",
+    "db:migrate:specialist-role-avatars": "node scripts/apply-specialist-role-avatars.mjs",
     "db:migrate:notifications": "node scripts/apply-notifications-and-agent-routines.mjs",
     "db:migrate:business-plan-team": "node scripts/apply-business-plan-team.mjs",
     "db:migrate:chat-session": "node scripts/apply-chat-session.mjs",
