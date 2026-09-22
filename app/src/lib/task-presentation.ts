@@ -181,3 +181,20 @@ export function presentTaskSteps(
     count,
   }));
 }
+
+/** How many lines of the trail show before the rest waits behind a button.
+    Enough to read what happened at a glance; short enough that the answer
+    itself is still the first thing on the screen. */
+export const INLINE_STEPS = 6;
+
+/** The end of the list, which is where the work is. Shown inline under a
+    reply, a long run would otherwise push the answer off the screen, so the
+    earlier lines wait behind a button rather than being dropped. */
+export function stepTail(
+  entries: StepEntry[],
+  limit: number,
+  expanded: boolean,
+): { shown: StepEntry[]; hidden: number } {
+  if (expanded || entries.length <= limit) return { shown: entries, hidden: 0 };
+  return { shown: entries.slice(entries.length - limit), hidden: entries.length - limit };
+}

@@ -2,8 +2,8 @@ import type { ReactNode } from 'react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Code, FileText, MagnifyingGlass, ListBullets } from '@phosphor-icons/react';
 import type { StepEntry } from '@/lib/task-presentation';
-import { presentTaskSteps, safeTaskProgressLabel } from '@/lib/task-presentation';
-import { useI18n } from '@/i18n/I18nProvider';
+import { INLINE_STEPS, presentTaskSteps, safeTaskProgressLabel, stepTail } from '@/lib/task-presentation';
+import { useI18n, useT } from '@/i18n/I18nProvider';
 import { useDetailLevel } from '@/hooks/useDetailLevel';
 import { TypingBubble } from '@/components/WorkSignal';
 
@@ -55,14 +55,17 @@ export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected, c
   action?: ReactNode;
 }) {
   const { lang } = useI18n();
+  const t = useT();
   const bm = lang === 'bm';
   const { advanced } = useDetailLevel();
+  const [trailOpen, setTrailOpen] = useState(false);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
   const history = presentTaskSteps(steps, lang, { advanced });
+  const trail = stepTail(history, INLINE_STEPS, trailOpen);
   const latest = presentTaskSteps(steps, lang, { advanced: true }).at(-1);
   const quietFor = Math.max(0, Math.floor((now - (lastProgressAt ?? since ?? now)) / 1000));
   const quiet = quietFor >= 60;
@@ -90,11 +93,14 @@ export function LiveTaskProgress({ steps, since, lastProgressAt, disconnected, c
     {quiet && !disconnected && <p className="mt-1 text-xs text-text-secondary">
       {bm ? `Tiada kemas kini baharu selama ${duration(quietFor)}.` : `No new progress update for ${duration(quietFor)}.`}
     </p>}
-    {history.length > 0 && <details className="ask-step-history">
-      <summary>{bm ? 'Lihat aktiviti' : 'View activity'} · {steps.length}</summary>
+    {history.length > 0 && <div className="ask-step-trail">
       <ol className="ask-steps ask-activity-list" aria-label={bm ? 'Aktiviti direkodkan' : 'Recorded activity'}>
-        {history.map((entry, i) => <ActivityRow key={`${i}-${entry.label}`} entry={entry} bm={bm} />)}
+        {trail.shown.map((entry, i) => <ActivityRow key={`${i}-${entry.label}`} entry={entry} bm={bm} />)}
       </ol>
-    </details>}
+      {(trail.hidden > 0 || trailOpen) && <button type="button" className="ask-step-more" aria-expanded={trailOpen}
+        onClick={() => setTrailOpen(value => !value)}>
+        {trailOpen ? t('ask.steps.fewer') : t('ask.steps.earlier', { n: trail.hidden })}
+      </button>}
+    </div>}
   </div>;
 }

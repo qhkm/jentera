@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { displayWorkspacePaths, presentTaskSteps, safeTaskProgressLabel } from '@/lib/task-presentation';
+import { displayWorkspacePaths, presentTaskSteps, safeTaskProgressLabel, stepTail } from '@/lib/task-presentation';
 
 it('accepts bounded public task labels but rejects technical details and outcome claims', () => {
   expect(safeTaskProgressLabel('Comparing the documented options')).toBe('Comparing the documented options');
@@ -143,5 +143,23 @@ describe('the steps under a reply', () => {
   it('speaks Malay too', () => {
     expect(presentTaskSteps(['💻 terminal: "git"', '🔍 web_search: "kopi"'], 'bm', { advanced: false }).map((e) => e.label))
       .toEqual(['Menjalankan arahan', 'Mencari maklumat']);
+  });
+});
+
+describe('stepTail', () => {
+  const entries = ['a', 'b', 'c', 'd'].map(label => ({ label, count: 1 }));
+
+  it('keeps a short trail whole', () => {
+    expect(stepTail(entries, 6, false)).toEqual({ shown: entries, hidden: 0 });
+  });
+
+  it('keeps the end of a long trail, which is what led to the answer', () => {
+    const { shown, hidden } = stepTail(entries, 2, false);
+    expect(shown.map(entry => entry.label)).toEqual(['c', 'd']);
+    expect(hidden).toBe(2);
+  });
+
+  it('shows everything once the earlier steps are asked for', () => {
+    expect(stepTail(entries, 2, true)).toEqual({ shown: entries, hidden: 0 });
   });
 });

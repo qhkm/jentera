@@ -284,7 +284,7 @@ describe('AskReply: conversation versus work', () => {
        never after the history where it would read as another activity. */
     expect(stop.closest('.ask-live-action')).not.toBeNull();
     expect(stop.closest('.ask-activity-list')).toBeNull();
-    const history = container.querySelector('.ask-step-history');
+    const history = container.querySelector('.ask-step-trail');
     if (history) {
       expect(stop.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
@@ -391,22 +391,49 @@ describe('AskReply: the agent\'s steps', () => {
       expect.arrayContaining([expect.stringContaining('Continuing the task'), expect.stringContaining('Reading information')]),
     );
     expect(container.querySelector('article [role="status"]')).toHaveTextContent('Reading information');
-    expect(container.querySelector('details')).not.toHaveAttribute('open');
+    /* The trail is read, not opened: nothing to click before it can be seen. */
+    expect(container.querySelector('.ask-step-trail')).not.toBeNull();
+    expect(container.querySelector('details')).toBeNull();
   });
 
-  it('keeps the steps as a collapsed receipt under the finished answer', async () => {
+  it('shows what it did as a card above the finished answer', async () => {
     const { container } = mount({
       from: 'ai', text: 'Top stories today: …', mode: 'work', runId: RUN, state: 'done',
       depth: 'quick', kind: 'work', taskTitle: 'news', steps: ['Searching', 'Reading Malay Mail', 'Summarising'],
     });
     await waitFor(() => expect(container.textContent).toContain('Top stories today'));
-    const receipt = container.querySelector('details.ask-reply-steps');
-    expect(receipt).not.toBeNull();
-    expect(receipt?.querySelector('summary')?.textContent).toContain('3');
+    const card = container.querySelector('.ask-step-card');
+    expect(card).not.toBeNull();
+    /* Read without being asked for: the work stands above the answer it produced. */
+    const answer = container.querySelector('.ask-reply-text')!;
+    expect(card!.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(card?.querySelector('.ask-step-card-title')?.textContent).toContain('3');
     /* Three narration lines are one kind of work; the count survives on the line. */
-    const items = receipt?.querySelectorAll('li') ?? [];
+    const items = card?.querySelectorAll('li') ?? [];
     expect(items).toHaveLength(1);
     expect(items[0].textContent).toContain('3');
+  });
+
+  it('keeps a long trail short, and reveals the earlier steps on request', async () => {
+    /* Ten kinds of work would push the answer off a phone screen. The tail is
+       what led to the answer, so that is what stands; the rest waits. */
+    const steps = ['\u{1F50D} web_search: "one"', '\u{1F4D6} read_file: "a.txt"', '\u{1F50D} web_search: "two"',
+      '\u{1F4D6} read_file: "b.txt"', '\u{1F50D} web_search: "three"', '\u{1F4D6} read_file: "c.txt"',
+      '\u{1F50D} web_search: "four"', '\u{1F4D6} read_file: "d.txt"'];
+    const { container } = mount({
+      from: 'ai', text: 'Done.', mode: 'work', runId: RUN, state: 'done',
+      depth: 'quick', kind: 'work', taskTitle: 'research', steps,
+    });
+    await waitFor(() => expect(container.querySelector('.ask-step-card')).not.toBeNull());
+    const card = container.querySelector('.ask-step-card')!;
+    expect(card.querySelectorAll('li')).toHaveLength(6);
+    expect(card.textContent).not.toContain('one');
+    const more = await screen.findByRole('button', { name: 'Show 2 earlier steps' });
+    await userEvent.click(more);
+    expect(card.querySelectorAll('li')).toHaveLength(8);
+    expect(card.textContent).toContain('one');
+    await userEvent.click(screen.getByRole('button', { name: 'Show fewer' }));
+    expect(card.querySelectorAll('li')).toHaveLength(6);
   });
 
   it('names the programs behind a run of computer steps, once', async () => {
@@ -434,8 +461,9 @@ describe('AskReply: the agent\'s steps', () => {
     await waitFor(() => expect(container.querySelector('.ask-step-content')).not.toBeNull());
     const content = container.querySelector('.ask-step-content')!;
     expect(content.querySelector('.ask-step-label')).toHaveTextContent('Searching for information');
-    expect(container.querySelector('details .ask-step-subject')).toHaveTextContent(query);
-    expect(container.querySelector('summary')).toHaveTextContent('View activity · 2');
+    expect(container.querySelector('.ask-step-trail .ask-step-subject')).toHaveTextContent(query);
+    /* Two identical searches are one line of work, and the trail needs no opening. */
+    expect(container.querySelectorAll('.ask-step-trail li')).toHaveLength(1);
     expect(content.querySelector('.ask-step-meta')).toHaveTextContent('8s');
   });
 });

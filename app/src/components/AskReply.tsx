@@ -18,7 +18,7 @@ import { LiveTaskProgress } from '@/components/LiveTaskProgress';
 import { ComputerPreview } from '@/components/ComputerPreview';
 import { useToast } from '@/components/Toast';
 import { useT, useI18n } from '@/i18n/I18nProvider';
-import { displayWorkspacePaths, presentTaskSteps } from '@/lib/task-presentation';
+import { INLINE_STEPS, displayWorkspacePaths, presentTaskSteps, stepTail } from '@/lib/task-presentation';
 import { useDetailLevel } from '@/hooks/useDetailLevel';
 import type { AskMessage } from '@/hooks/useAsk';
 import { isRunId } from '@/lib/task';
@@ -29,29 +29,40 @@ import { useRepository, type Artifact } from '@/lib/repo';
     current one moving with the seconds since the message was sent. */
 function StepsList({ steps, live, since }: { steps: string[]; live: boolean; since?: number }) {
   const { lang } = useI18n();
+  const t = useT();
   const { advanced } = useDetailLevel();
+  const [expanded, setExpanded] = useState(false);
   const entries = presentTaskSteps(steps, lang, { advanced });
+  const { shown, hidden } = stepTail(entries, INLINE_STEPS, expanded);
   return (
-    <ol className="ask-steps" aria-label="Steps">
-      {entries.map((entry, index) => {
-        const current = live && index === entries.length - 1;
-        return (
-          <li key={`${index}-${entry.label}`} aria-current={current ? 'step' : undefined}>
-            {current
-              ? <span className="ask-step-dot" aria-hidden="true" />
-              : <Check size={13} aria-hidden="true" className="ask-step-done" />}
-            <div className="ask-step-content">
-              <span className="ask-step-label">{entry.label}</span>
-              {entry.subject && <span className="ask-step-subject">{entry.subject}</span>}
-              {(entry.count > 1 || current) && <div className="ask-step-meta">
-                {entry.count > 1 && <span className="ask-step-count">{lang === 'bm' ? `${entry.count} langkah` : `${entry.count} steps`}</span>}
-                {current && <ElapsedSince since={since} separator={entry.count > 1} />}
-              </div>}
-            </div>
-          </li>
-        );
-      })}
-    </ol>
+    <>
+      <ol className="ask-steps" aria-label="Steps">
+        {shown.map((entry, index) => {
+          const current = live && index === shown.length - 1;
+          return (
+            <li key={`${index}-${entry.label}`} aria-current={current ? 'step' : undefined}>
+              {current
+                ? <span className="ask-step-dot" aria-hidden="true" />
+                : <Check size={13} aria-hidden="true" className="ask-step-done" />}
+              <div className="ask-step-content">
+                <span className="ask-step-label">{entry.label}</span>
+                {entry.subject && <span className="ask-step-subject">{entry.subject}</span>}
+                {(entry.count > 1 || current) && <div className="ask-step-meta">
+                  {entry.count > 1 && <span className="ask-step-count">{lang === 'bm' ? `${entry.count} langkah` : `${entry.count} steps`}</span>}
+                  {current && <ElapsedSince since={since} separator={entry.count > 1} />}
+                </div>}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+      {(hidden > 0 || expanded) && (
+        <button type="button" className="ask-step-more" aria-expanded={expanded}
+          onClick={() => setExpanded(value => !value)}>
+          {expanded ? t('ask.steps.fewer') : t('ask.steps.earlier', { n: hidden })}
+        </button>
+      )}
+    </>
   );
 }
 
@@ -193,6 +204,14 @@ export function AskReply({
         }
       </>) : (
         <>
+          {message.steps && message.steps.length > 0 && (
+            <section className="ask-step-card" aria-label={t('ask.steps.title')}>
+              <p className="ask-step-card-title">
+                {t('ask.steps.title')} · {t('ask.steps.count', { n: message.steps.length })}
+              </p>
+              <StepsList steps={message.steps} live={false} />
+            </section>
+          )}
           <div className="ask-reply-text" role={failed ? 'alert' : undefined}>
             {renderReplyMarkdown(displayWorkspacePaths(displayText))}
           </div>
@@ -237,15 +256,6 @@ export function AskReply({
                 )}
                 {t(copied ? 'ask.reply.copied' : 'ask.reply.copy')}
               </button>
-              {message.steps && message.steps.length > 0 && (
-                <details className="ask-reply-source ask-reply-steps">
-                  <summary>
-                    <Info size={15} aria-hidden="true" />
-                    {t('ask.steps.title')} · {t('ask.steps.count', { n: message.steps.length })}
-                  </summary>
-                  <StepsList steps={message.steps} live={false} />
-                </details>
-              )}
               {message.grounded !== undefined && (
                 <details className="ask-reply-source">
                   <summary>

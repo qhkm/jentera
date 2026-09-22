@@ -845,7 +845,7 @@ button.ask-context-link:hover {
   animation: ask-step-pulse 1.2s ease-in-out infinite;
 }
 .ask-active-shimmer { color: var(--text-secondary); }
-.ask-step-history { margin-top: 8px; }
+.ask-step-trail { margin-top: 8px; }
 .ask-activity-list { gap: 14px; margin: 6px 0 4px; }
 .ask-activity-icon { flex-shrink: 0; margin-top: 3px; color: var(--text-secondary); }
 .ask-activity-heading { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
@@ -884,14 +884,18 @@ button.ask-context-link:hover {
 }
 .ask-activity-expand:hover { color: var(--accent-green); }
 .ask-activity-expand:focus-visible { outline: 2px solid var(--accent-green); outline-offset: 2px; border-radius: 3px; }
-.ask-step-history summary {
-  cursor: pointer;
+/* Earlier lines of a long trail, revealed in place. */
+.ask-step-more {
+  border: 0;
+  background: none;
   color: var(--text-secondary);
   font-size: 12px;
-  padding: 8px 0;
   min-height: 36px;
+  padding: 8px 2px;
+  cursor: pointer;
 }
-.ask-step-history summary:focus-visible {
+.ask-step-more:hover { color: var(--accent-green); }
+.ask-step-more:focus-visible {
   outline: 2px solid var(--accent-green);
   outline-offset: 3px;
   border-radius: 4px;
@@ -920,12 +924,21 @@ button.ask-context-link:hover {
   0%, 100% { opacity: 0.75; }
   50% { opacity: 1; }
 }
-.ask-reply-steps .ask-steps {
-  margin: 8px 0 0;
+/* What Jentera did, inline above the answer it produced. */
+.ask-step-card {
+  margin: 2px 0 12px;
   padding: 10px 12px;
   border: 1px solid var(--rail);
   border-radius: 8px;
 }
+.ask-step-card-title {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.ask-step-card .ask-steps { margin-top: 8px; }
+.ask-step-card .ask-step-more { padding-bottom: 0; }
 .ask-reply-failed {
   padding: 16px;
   border: 1px solid rgb(255 101 104 / 0.3);

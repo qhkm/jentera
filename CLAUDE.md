@@ -37,7 +37,14 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
   (`lib/task-presentation.ts`) turns each step into a kind of work with a
   safe subject — the program, a search, a site's host — folds consecutive
   steps of one kind into one line with a count, and shows every step only
-  at the advanced level. Narration is never shown verbatim: older traces
+  at the advanced level. That trail stands inline — a card above a finished
+  answer, the live list under a running one — rather than behind the
+  disclosure it sat in until 22 September, which nobody opened. Only its
+  tail shows (`INLINE_STEPS`, `stepTail`); earlier lines wait behind a
+  button so a long run cannot push the answer off a phone screen. It says
+  what was done and to what, never what came back: tool *results* are
+  stripped before they leave the sprite, so a line reading "52 accounts"
+  would be invented. Narration is never shown verbatim: older traces
   carried passwords and internal paths. Until 13 September every terminal
   step read "[Command arguments hidden]" and a task showed the same line
   eight times.
