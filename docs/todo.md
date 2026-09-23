@@ -30,7 +30,8 @@ invitations.
 |---|---|---|
 | Hermes local cron removal on Kitakod's sprite | A one-off cleanup; sprites never own a local cron. Only the bundle makes it permanent | The release's bootstrap removes it; `fleet-exec.sh` finds none |
 | BoxCompute warning cleared | `last_error` holds the checkpoint warning while Fly's orphan `v31` exists | After Fly clears the directory, the next release checkpoints cleanly: `last_error` null, a real id |
-| `AISAR_KEEPALIVE_GRACE_HOURS` 0 -> 1 | Committed 22 Sep and inert until a Worker deploy. At 0 every run pays a 15-30 s wake; measured over 503 run tasks, 1 hour drops that to 23.5% of runs for about 118 extra awake sprite-hours a month. `ship-runtime.sh` deploys the Worker at step 4, so the next release carries it | A run following a gap of under an hour starts without a wake, and `stats.sh` shows no rise in stuck tasks |
+| ~~`AISAR_KEEPALIVE_GRACE_HOURS` 0 -> 1~~ | **Deployed in `2026.09.23-2`**, 23 Sep — the Worker deploy at step 4 of that release is what finally activated it after a day inert in the tree | Still to confirm: a run following a gap of under an hour starts without a wake, and `stats.sh` shows no rise in stuck tasks |
+| Observe session watched on the canary | `2026.09.23-2` shipped the view-only desktop (`docs/plans/2026-09-23-desktop-observe.md`). x11vnc polls the framebuffer while the agent works and the cost is unmeasured; the plan's acceptance gate asks for a reading before the pilot widens | A 10-minute observe session on `4e8c2593…` is recorded with sprite CPU alongside, and bandwidth replaces the estimate in the plan |
 
 
 
