@@ -21,6 +21,7 @@ if ((target.protocol !== 'postgresql:' && target.protocol !== 'postgres:') ||
 // excess grant (e.g. DELETE) sitting alongside it undetected.
 const TABLES = {
   app_installation: ['select', 'insert', 'update'],
+  app_slug: ['select', 'insert'],
   booking_settings: ['select', 'insert', 'update'],
   booking_service: ['select', 'insert', 'update', 'delete'],
   booking_hours: ['select', 'insert', 'update', 'delete'],
@@ -62,6 +63,7 @@ try {
     const [fn] = await tx`
       select
         has_function_privilege('aisar_app', 'public.bookings_by_slug(text)', 'execute') as slug_fn,
+        pg_get_function_result('public.bookings_by_slug(text)'::regprocedure) as slug_fn_result,
         has_function_privilege('aisar_app', 'public.booking_calendar_due(timestamptz, integer)', 'execute') as due_fn,
         (select count(*) = 1 from information_schema.columns
           where table_schema = 'public' and table_name = 'notification' and column_name = 'url') as notification_url,
@@ -71,6 +73,9 @@ try {
           where conrelid = 'public.notification'::regclass and conname = 'notification_url_check') as url_check_def`;
     for (const key of ['slug_fn', 'due_fn', 'notification_url', 'booking_kind']) {
       if (!fn[key]) throw new Error(`apps migration verification failed: ${key}`);
+    }
+    if (fn.slug_fn_result !== 'TABLE(business_id uuid, current_slug text)') {
+      throw new Error(`apps migration verification failed: bookings_by_slug returns ${fn.slug_fn_result}`);
     }
     if (!fn.url_check_def || !fn.url_check_def.includes('300') || !fn.url_check_def.includes('^/app([/?#]|$)')) {
       throw new Error('apps migration verification failed: notification_url_check does not carry the expected pattern and length bound');

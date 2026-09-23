@@ -27,6 +27,26 @@ create policy app_installation_tenant on app_installation
 grant select, insert, update on app_installation to aisar_app;
 revoke delete, truncate, references, trigger on app_installation from aisar_app;
 
+-- Every link name a business has published. A name stays with the business
+-- that first used it, so a link shared before a rename can only ever reach
+-- the same business (the public page redirects it to the current name) and
+-- never another one. Rows are never updated or deleted.
+create table if not exists app_slug (
+  public_slug text primary key check (public_slug ~ '^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$'),
+  business_id uuid not null references business(id) on delete cascade,
+  app_key     text not null check (app_key in ('bookings')),
+  created_at  timestamptz not null default now()
+);
+create index if not exists app_slug_business on app_slug (business_id);
+alter table app_slug enable row level security;
+alter table app_slug force row level security;
+drop policy if exists app_slug_tenant on app_slug;
+create policy app_slug_tenant on app_slug
+  using (business_id = nullif(current_setting('app.business_id', true), '')::uuid)
+  with check (business_id = nullif(current_setting('app.business_id', true), '')::uuid);
+grant select, insert on app_slug to aisar_app;
+revoke update, delete, truncate, references, trigger on app_slug from aisar_app;
+
 create table if not exists booking_settings (
   business_id                  uuid primary key references business(id) on delete cascade,
   accepting                    boolean not null default true,
@@ -159,17 +179,23 @@ create policy booking_calendar_job_tenant on booking_calendar_job
 grant select, insert, update on booking_calendar_job to aisar_app;
 revoke delete, truncate, references, trigger on booking_calendar_job from aisar_app;
 
--- The public page has no tenant. Like invitation_by_token (035), this returns
--- an id and nothing else; paused installations resolve so the page can say
+-- The public page has no tenant. Like invitation_by_token (035) this returns
+-- an id — plus the business's current link name, which is public anyway, so
+-- a held name can redirect. Paused installations resolve so the page can say
 -- "not taking bookings". The pilot flag is checked in the Worker.
-create or replace function public.bookings_by_slug(p_slug text)
-returns table (business_id uuid)
+drop function if exists public.bookings_by_slug(text);
+create function public.bookings_by_slug(p_slug text)
+returns table (business_id uuid, current_slug text)
 language sql stable security definer
 set search_path = pg_catalog, public, pg_temp
 as $$
-  select a.business_id from public.app_installation a
+  select a.business_id, a.public_slug from public.app_installation a
    where a.public_slug = p_slug and a.app_key = 'bookings'
-   limit 1
+  union all
+  select a.business_id, a.public_slug from public.app_slug s
+    join public.app_installation a on a.business_id = s.business_id and a.app_key = s.app_key
+   where s.public_slug = p_slug and s.app_key = 'bookings'
+  limit 1
 $$;
 revoke all on function public.bookings_by_slug(text) from public;
 grant execute on function public.bookings_by_slug(text) to aisar_app;

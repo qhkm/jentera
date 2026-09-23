@@ -143,6 +143,21 @@ describe('apps route: config', () => {
     expect(row).toEqual({ public_slug: 'kedai-aisyah', config_version: 1 });
   });
 
+  it('keeps a renamed link name with its business: another business cannot take it, the owner can return to it', async () => {
+    const first = await jsonOf<Saved>(await call('PUT', '/api/apps/bookings/config', ownerA, config()));
+    const svc = first.config.services[0].id;
+    expect((await call('PUT', '/api/apps/bookings/config', ownerA,
+      config({ version: 1, slug: 'kedai-baru', services: [service({ id: svc })] }))).status).toBe(200);
+    const taken = await call('PUT', '/api/apps/bookings/config', ownerB, config());
+    expect(taken.status).toBe(409);
+    expect(await taken.json()).toMatchObject({ code: 'SLUG_TAKEN' });
+    expect((await call('PUT', '/api/apps/bookings/config', ownerA,
+      config({ version: 2, slug: 'kedai-aisyah', services: [service({ id: svc })] }))).status).toBe(200);
+    const names = await asOwner((sql) => sql<{ public_slug: string }[]>`
+      select public_slug from app_slug where business_id = ${A} order by public_slug`);
+    expect(names.map((n) => n.public_slug)).toEqual(['kedai-aisyah', 'kedai-baru']);
+  });
+
   it('refuses a service id that belongs to another business', async () => {
     const other = await jsonOf<Saved>(await call('PUT', '/api/apps/bookings/config', ownerB, config({ slug: 'beta-salon' })));
     const res = await call('PUT', '/api/apps/bookings/config', ownerA,

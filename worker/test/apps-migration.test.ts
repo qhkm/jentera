@@ -11,6 +11,8 @@ beforeEach(async () => {
       values (${A}, 'Alpha', 'services', true), (${B}, 'Beta', 'salon', true)`;
     await sql`insert into app_installation (business_id, app_key, public_slug)
       values (${A}, 'bookings', 'alpha-studio'), (${B}, 'bookings', 'beta-salon')`;
+    await sql`insert into app_slug (public_slug, business_id, app_key)
+      values ('alpha-studio', ${A}, 'bookings'), ('beta-salon', ${B}, 'bookings')`;
   });
 });
 
@@ -27,12 +29,25 @@ describe('apps and bookings schema', () => {
   it('resolves a public slug to a business id and nothing else', async () => {
     const [found] = await asApp((sql) => sql<{ business_id: string }[]>`
       select * from public.bookings_by_slug('alpha-studio')`);
-    expect(found).toEqual({ business_id: A });
+    expect(found).toEqual({ business_id: A, current_slug: 'alpha-studio' });
     const missing = await asApp((sql) => sql`select * from public.bookings_by_slug('nobody')`);
     expect(missing).toHaveLength(0);
     await asOwner((sql) => sql`update app_installation set state = 'paused' where business_id = ${A}`);
     const paused = await asApp((sql) => sql`select * from public.bookings_by_slug('alpha-studio')`);
     expect(paused).toHaveLength(1);
+  });
+
+  it('resolves a name the business used before to its current name', async () => {
+    await asOwner((sql) => sql`insert into app_slug (public_slug, business_id, app_key)
+      values ('alpha-old', ${A}, 'bookings')`);
+    const [found] = await asApp((sql) => sql`select * from public.bookings_by_slug('alpha-old')`);
+    expect(found).toEqual({ business_id: A, current_slug: 'alpha-studio' });
+  });
+
+  it('never lets a second business register a name another business holds', async () => {
+    await expect(asTenant(B, (tx) => tx`
+      insert into app_slug (public_slug, business_id, app_key) values ('alpha-studio', ${B}, 'bookings')`))
+      .rejects.toThrow(/app_slug_pkey|duplicate key/);
   });
 
   it('refuses slugs outside the pattern, and duplicates across businesses', async () => {
@@ -104,6 +119,7 @@ describe('notification url constraint', () => {
 describe('grants and row-level security on the Bookings tables', () => {
   const EXPECTED: Record<string, string[]> = {
     app_installation: ['select', 'insert', 'update'],
+    app_slug: ['select', 'insert'],
     booking_settings: ['select', 'insert', 'update'],
     booking_service: ['select', 'insert', 'update', 'delete'],
     booking_hours: ['select', 'insert', 'update', 'delete'],

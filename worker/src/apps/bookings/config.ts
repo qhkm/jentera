@@ -185,6 +185,21 @@ export async function readConfig(tx: postgres.TransactionSql, businessId: string
   };
 }
 
+/** Record a link name for this business. A name any business has published
+    stays with it: another business gets SLUG_TAKEN, and a business may go
+    back to one of its own earlier names. Row-level security hides other
+    businesses' names, so a row this query can see is this business's own. */
+async function claimName(tx: postgres.TransactionSql, businessId: string, slug: string): Promise<void> {
+  const [claimed] = await tx<{ public_slug: string }[]>`
+    insert into app_slug (public_slug, business_id, app_key)
+    values (${slug}, ${businessId}, 'bookings')
+    on conflict (public_slug) do nothing
+    returning public_slug`;
+  if (claimed) return;
+  const [own] = await tx`select 1 from app_slug where public_slug = ${slug} and business_id = ${businessId}`;
+  if (!own) throw new ConfigError('SLUG_TAKEN');
+}
+
 async function claimSlug<T>(tx: postgres.TransactionSql, write: (sql: postgres.TransactionSql) => Promise<T>): Promise<T> {
   try {
     return (await tx.savepoint((sp) => write(sp))) as T;
@@ -203,6 +218,7 @@ export async function saveConfig(tx: postgres.TransactionSql, businessId: string
   if (!existing) {
     if (input.version !== null) throw new ConfigError('CONFIG_CHANGED');
     if (!input.acknowledgeAvailabilityLimits) throw new ConfigError('ACK_REQUIRED');
+    await claimName(tx, businessId, input.slug);
     const inserted = await claimSlug(tx, (sp) => sp<{ business_id: string }[]>`
       insert into app_installation (business_id, app_key, public_slug)
       values (${businessId}, 'bookings', ${input.slug})
@@ -215,6 +231,7 @@ export async function saveConfig(tx: postgres.TransactionSql, businessId: string
   } else {
     if (input.version !== existing.config_version) throw new ConfigError('CONFIG_CHANGED');
     if (input.slug !== existing.public_slug) {
+      await claimName(tx, businessId, input.slug);
       await claimSlug(tx, (sp) => sp`update app_installation set public_slug = ${input.slug}
         where business_id = ${businessId} and app_key = 'bookings'`);
     }
