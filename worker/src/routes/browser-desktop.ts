@@ -1,14 +1,18 @@
 import type { Env } from '../env';
+
+/** The release that taught the runner's gateway the observe purpose. */
+const OBSERVE_MIN_RELEASE = '2026.09.23-2';
 import { withTenant } from '../db';
 import { getRuntimeAccess } from '../agent-runtime';
 import { hasBusiness, resolveTenant } from '../tenancy';
 import { can } from '../permissions';
-import { DESKTOP_TTL_MS, LEGACY_DESKTOP_TTL_MS, desktopControlProtocol, desktopEnabledFor, desktopTicket } from '../runtime/desktop';
+import { DESKTOP_TTL_MS, LEGACY_DESKTOP_TTL_MS, desktopControlProtocol, desktopEnabledFor, desktopObserveProtocol,
+  desktopObserveTicket, desktopTicket, releaseAtLeast, type DesktopTicket } from '../runtime/desktop';
 
 /** Sprites owns the transport. We terminate the init/auth prefaces here so the
  * browser receives ONLY RFB bytes, never a provider token or runner ticket.
  * Both peers and all buffers have hard limits; failed handshakes fail closed. */
-export function bridgeSpritesDesktop(upstream: WebSocket, downstream: WebSocket, ticket: Awaited<ReturnType<typeof desktopTicket>>,
+export function bridgeSpritesDesktop(upstream: WebSocket, downstream: WebSocket, ticket: DesktopTicket,
   diagnostic: (phase: string, reason: string) => void = (phase, reason) => {
     console.warn('[business-desktop]', JSON.stringify({ stage: 'handshake', phase, reason }));
   }): Promise<void> {
@@ -168,6 +172,64 @@ export async function handleBrowserDesktop(request: Request, env: Env, url: URL)
     try { upstream?.close(1011, 'Desktop unavailable'); } catch { /* already closed */ }
     // Fixed label only: no exception, endpoint, identity, ticket, input or pixels.
     console.warn('[business-desktop] connection unavailable');
+    return fail(503, 'Desktop unavailable');
+  }
+}
+
+/** Watching the agent work, beside `handleBrowserDesktop` rather than a mode
+ * inside it. A separate path and a separate subprotocol mean a control socket
+ * cannot be opened by relabelling a request, and the owner gates are identical
+ * — what it drops is the lease, because an observer commands nothing and the
+ * agent is not paused. `docs/plans/2026-09-23-desktop-observe.md`. */
+export async function handleBrowserObserve(request: Request, env: Env, url: URL): Promise<Response | null> {
+  if (url.pathname !== '/api/browser/observe') return null;
+  const fail = (status: number, err: string) => new Response(JSON.stringify({ err }), { status,
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer' } });
+  if (request.method !== 'GET' || request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') return fail(426, 'WebSocket required');
+  const origin = request.headers.get('Origin');
+  if (!origin || !env.ALLOWED_ORIGINS.split(',').map(value => value.trim()).includes(origin)) return fail(403, 'origin not allowed');
+  if (url.search) return fail(400, 'invalid connection');
+  const runId = desktopObserveProtocol(request.headers.get('Sec-WebSocket-Protocol'));
+  if (!runId) return fail(400, 'invalid connection');
+  const identity = await resolveTenant(env, request);
+  if (!identity) return fail(401, 'not signed in');
+  if (!hasBusiness(identity)) return fail(404, 'no business');
+  if (!can(identity, 'browser.control')) return fail(403, 'owner access required');
+  if (!desktopEnabledFor(env, identity.businessId)) return fail(404, 'Desktop pilot is not enabled');
+  let upstream: WebSocket | undefined;
+  try {
+    const { runtime, secrets } = await withTenant(env, identity.businessId, tx => getRuntimeAccess(env, tx, identity.businessId));
+    if (runtime.provider !== 'fly-sprite' || !/^[a-z0-9][a-z0-9-]{0,62}$/.test(runtime.providerName) ||
+        !env.SPRITES_TOKEN || !['ready', 'cold', 'idle'].includes(runtime.status)) return fail(503, 'Desktop unavailable');
+    /* The runner gained the observe purpose in 2026.09.23-2. An older fleet
+       member refuses the ticket before x11vnc starts, which would read to an
+       owner as a broken feature; refuse here instead so the app falls back to
+       the page preview it already has. */
+    if (!releaseAtLeast(runtime.observedRelease, OBSERVE_MIN_RELEASE)) return fail(503, 'Desktop unavailable');
+    const controller = new AbortController();
+    const wakeTimeout = setTimeout(() => controller.abort(), 20_000);
+    let response: Response;
+    try {
+      response = await fetch(`https://api.sprites.dev/v1/sprites/${encodeURIComponent(runtime.providerName)}/proxy`, {
+        headers: { Upgrade: 'websocket', Authorization: `Bearer ${env.SPRITES_TOKEN}` },
+        redirect: 'manual', signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(wakeTimeout);
+    }
+    upstream = response.webSocket ?? undefined;
+    if (response.status !== 101 || !upstream) {
+      try { upstream?.close(1011, 'Desktop unavailable'); } catch { /* already closed */ }
+      return fail(503, 'Desktop unavailable');
+    }
+    const pair = new WebSocketPair();
+    const ticket = await desktopObserveTicket(secrets.runnerKey, identity.businessId, identity.userId, runId);
+    void bridgeSpritesDesktop(upstream, pair[1], ticket).catch(() => {});
+    return new Response(null, { status: 101, webSocket: pair[0],
+      headers: { 'Sec-WebSocket-Protocol': 'binary', 'Cache-Control': 'private, no-store' } });
+  } catch {
+    try { upstream?.close(1011, 'Desktop unavailable'); } catch { /* already closed */ }
+    console.warn('[business-observe] connection unavailable');
     return fail(503, 'Desktop unavailable');
   }
 }
