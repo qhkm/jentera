@@ -18,15 +18,17 @@
   --ov-line-3: var(--border-light);
   --radius-card: 22px;
   --radius-item: 12px;
-  /* Standard actions use the same rounded rectangle everywhere. Pills are
-     reserved for tags, status chips and segmented controls. */
-  --radius-control: 12px;
-  --workspace-control: #343434;
-  --workspace-control-hover: #3d3d3d;
-  --workspace-primary: #e6e6e6;
-  --workspace-primary-hover: #fff;
-  --workspace-primary-ink: #252525;
-  --workspace-focus: #8fbfae;
+  /* Match the public V3 and sign-in action language. Buttons are soft pills;
+     panels and form fields keep their own, tighter radii. */
+  --radius-control: var(--action-radius);
+  --control-h: var(--action-min-height);
+  --workspace-control: var(--action-secondary-bg);
+  --workspace-control-hover: var(--action-secondary-hover);
+  --workspace-control-border: var(--action-secondary-border);
+  --workspace-primary: var(--action-primary-bg);
+  --workspace-primary-hover: var(--action-primary-hover);
+  --workspace-primary-ink: var(--action-primary-ink);
+  --workspace-focus: var(--action-focus);
 
   /* Tailwind's semantic aliases also resolve where they are declared. */
   --color-bg: var(--bg);
@@ -52,8 +54,9 @@
   --text-muted: #84938e;
   --text-dim: var(--text-muted);
   --border-ink: 155 190 177;
-  --workspace-control: #1c2522;
-  --workspace-control-hover: #26312d;
+  --workspace-control: var(--action-secondary-bg);
+  --workspace-control-hover: var(--action-secondary-hover);
+  --workspace-control-border: var(--action-secondary-border);
   --color-bg: var(--bg);
   --color-bg-card: var(--bg-card);
   --color-bg-card-hover: var(--bg-card-hover);
@@ -130,6 +133,7 @@
   --rail: rgb(var(--border-ink) / .055);
   --workspace-control: #e9e8e5;
   --workspace-control-hover: #deddd9;
+  --workspace-control-border: #cdd5d1;
   --workspace-primary: #343434;
   --workspace-primary-hover: #242424;
   --workspace-primary-ink: #fff;
@@ -140,9 +144,12 @@
   --color-bg: var(--bg);
 }
 
-/* Rounded, tonal controls keep the label as the strongest visual cue. */
+/* One action system across landing, sign-in and the private workspace. */
 .dashboard-shell .btn {
   border-radius: var(--radius-control);
+  padding-inline: var(--action-padding-x);
+  font-weight: 600;
+  letter-spacing: 0;
 }
 .dashboard-shell .btn-primary {
   border-color: transparent;
@@ -158,11 +165,12 @@
    workspace's tonal shape reaches it and the two cannot drift. */
 .dashboard-shell :is(.btn-outline, .btn-ghost, .btn-reco),
 .dashboard-shell .btn:not(:where(.btn-primary, .btn-outline, .btn-ghost, .btn-reco)) {
-  border-color: transparent;
+  border-color: var(--workspace-control-border);
   background: var(--workspace-control);
   color: var(--text);
 }
 .dashboard-shell .btn-ghost {
+  border-color: transparent;
   background: transparent;
   color: var(--text-secondary);
 }
@@ -172,6 +180,10 @@
   background: var(--workspace-control-hover);
   color: var(--text);
   opacity: 1;
+}
+.dashboard-shell .btn:focus-visible {
+  outline: 2px solid var(--workspace-focus);
+  outline-offset: 4px;
 }
 .dashboard-shell :is(.input, .workspace-search, .conversation-search) {
   border-radius: 14px;

@@ -377,9 +377,9 @@
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  border-radius: 10px;
-  background: var(--text);
-  color: var(--bg);
+  border-radius: var(--action-radius);
+  background: var(--workspace-primary);
+  color: var(--workspace-primary-ink);
   font-size: 12px;
   white-space: nowrap;
 }

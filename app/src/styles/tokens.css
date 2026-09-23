@@ -87,6 +87,19 @@
   --radius-3xl:   1.5rem;
   --radius-pill:  999px;
 
+  /* Primary action language shared by the V3 landing page, sign-in and the
+     private workspace. Keep these together so product buttons cannot drift. */
+  --action-radius: var(--radius-pill);
+  --action-min-height: 3rem;
+  --action-padding-x: 1.5rem;
+  --action-primary-bg: #f3f7f5;
+  --action-primary-hover: #fff;
+  --action-primary-ink: #101514;
+  --action-secondary-bg: #121a18;
+  --action-secondary-hover: #19231f;
+  --action-secondary-border: #33423d;
+  --action-focus: #6aebc2;
+
   /* ---- Controls ----
      Buttons and inputs must line up when stacked. Giving them one
      height and one block-padding rule makes that structural instead

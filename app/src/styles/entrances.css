@@ -841,17 +841,20 @@
   color: #65716d;
 }
 .auth-entrance--v3 .btn {
-  min-height: 48px;
-  border-radius: 999px;
+  min-height: var(--action-min-height);
+  padding-inline: var(--action-padding-x);
+  border-radius: var(--action-radius);
+  font-weight: 600;
+  letter-spacing: 0;
 }
 .auth-entrance--v3 .btn-primary {
-  border-color: #f3f7f5;
-  background: #f3f7f5;
-  color: #101514;
+  border-color: var(--action-primary-bg);
+  background: var(--action-primary-bg);
+  color: var(--action-primary-ink);
 }
 .auth-entrance--v3 .btn-outline {
-  border-color: #33423d;
-  background: #121a18;
+  border-color: var(--action-secondary-border);
+  background: var(--action-secondary-bg);
   color: #e8eeeb;
 }
 .auth-entrance--v3 .auth-private {
