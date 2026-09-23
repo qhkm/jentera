@@ -3,6 +3,10 @@
 Dated 23 September 2026. This describes the system that is deployed and
 serving traffic, read off the code rather than recalled.
 
+For a presentation-ready overview with system, container, sequence, trust,
+data, and deployment diagrams, see
+[`system-architecture-design.md`](system-architecture-design.md).
+
 `TECHNICAL_ARCHITECTURE.md` at the repository root is the other half of the
 pair and is **not** superseded by this: it holds the product and platform
 boundary thinking — what Jentera is for, where Compute / Connect / Control /
