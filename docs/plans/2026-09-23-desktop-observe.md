@@ -78,10 +78,17 @@ request exactly as control does.
 - `openDesktop({ viewOnly })` adds `-viewonly` to the x11vnc argument list.
   x11vnc discards client input itself; this is not the gateway choosing not to
   forward.
-- An observe session never writes client bytes to the desktop stream. The
-  `onInput` path is not reached: after authentication the socket is read for
-  liveness and close only, and any inbound RFB payload beyond the handshake
-  closes the connection.
+- **Client bytes still flow, and must.** RFB is two-way for its whole life:
+  the protocol handshake, `SetEncodings` and every `FramebufferUpdateRequest`
+  travel client to server, and noVNC's own `viewOnly` suppresses key and
+  pointer *events* while still driving the protocol. A gateway that dropped
+  client bytes would never deliver a frame. `-viewonly` is therefore the
+  single enforcement point, in x11vnc, which processes those messages and
+  discards `KeyEvent` and `PointerEvent`. An earlier draft of this plan
+  claimed a second lock at the byte level; that is not implementable without
+  an RFB message parser, and was removed rather than left as a comfortable
+  fiction. The existing byte-rate cap still applies, and an observer never
+  touches a control lease because there is none to extend.
 - An observe session validates the ticket signature, purpose, expiry and nonce,
   and `config.desktopEnabled`. It does **not** call `desktopControlValid` or
   `touchDesktopControl`.

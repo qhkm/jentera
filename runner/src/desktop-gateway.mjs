@@ -50,8 +50,9 @@ export function desktopArgs({ display = ':99', socketPath, viewOnly = false } = 
     '-display', display, '-unixsock', socketPath, '-rfbport', '0',
     '-once', '-nopw', '-quiet', '-noremote', '-nolookup', '-no6',
     '-nosel', '-noclipboard', '-nosetclipboard', '-nosetprimary', '-clear_keys', '-norepeat',
-    /* Watching only. x11vnc discards every client input event itself, so a
-       gateway bug that forwarded bytes still could not move the pointer. */
+    /* The enforcement point for watching. x11vnc still speaks the whole RFB
+       protocol with the client — it must, or no frames are ever requested —
+       and discards KeyEvent and PointerEvent instead. */
     ...(viewOnly ? ['-viewonly'] : []),
   ];
 }
@@ -184,13 +185,15 @@ export function createDesktopGateway(config, deps = {}) {
     });
     const onInput = chunk => {
       if (!valid()) { reject(); return; }
-      /* Watching only. x11vnc already discards client input under -viewonly;
-         refusing to forward it is the second of the two locks, and anything
-         arriving after the handshake is treated as a protocol error. */
-      if (observing) { reject(); return; }
       if (now() - windowAt >= 1000) { bytes = 0; windowAt = now(); }
       bytes += chunk.length;
-      if (bytes > 256 * 1024 || !config.browser.touchDesktopControl(ticket)) { reject(); return; }
+      /* Client bytes must flow even when watching: RFB carries its handshake,
+         SetEncodings and every FramebufferUpdateRequest this way, so a viewer
+         that sent nothing would receive nothing. `-viewonly` is what makes it
+         safe — x11vnc processes those messages and discards KeyEvent and
+         PointerEvent — and it is x11vnc's own enforcement, not ours. There is
+         no lease to extend, so an observer never touches one. */
+      if (bytes > 256 * 1024 || (!observing && !config.browser.touchDesktopControl(ticket))) { reject(); return; }
       if (!viewer.desktop.stream.write(chunk)) client.pause();
     };
     client.on('data', async function authenticate(chunk) {

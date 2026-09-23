@@ -37,6 +37,7 @@ async function fixture(t, { paused = false } = {}) {
   const input = [];
   const options = [];
   let releases = 0;
+  let touches = 0;
   const vnc = createServer(socket => {
     socket.on('error', () => {});
     socket.write('RFB 003.008\n'); socket.on('data', bytes => input.push(bytes));
@@ -44,7 +45,7 @@ async function fixture(t, { paused = false } = {}) {
   vnc.listen(0, '127.0.0.1'); await once(vnc, 'listening');
   const browser = {
     desktopControlValid: ticket => live && ticket.ownerId === lease.ownerId && ticket.controlId === lease.controlId,
-    touchDesktopControl: () => true,
+    touchDesktopControl: () => { touches++; return live; },
     desktopObserveValid: () => !live,
     onControlChanging: listener => { changes.add(listener); return () => changes.delete(listener); },
   };
@@ -70,7 +71,7 @@ async function fixture(t, { paused = false } = {}) {
     }
     assert.match(Buffer.concat(c.data).toString(), /^\{"ok":true\}\nRFB 003\.008\n/);
   }
-  return { client, ready, input, options, releases: () => releases, gateway,
+  return { client, ready, input, options, releases: () => releases, touches: () => touches, gateway,
     takeControl: async () => { live = true; for (const listener of changes) await listener(); } };
 }
 
@@ -115,13 +116,28 @@ test('an observe session runs while the agent works — no pause, no lease', asy
   assert.equal(f.options[0].viewOnly, true);
 });
 
-test('nothing an observer types reaches the desktop', async t => {
+/* RFB is two-way for its whole life: the handshake, SetEncodings and every
+   FramebufferUpdateRequest travel client to server, so a viewer whose bytes
+   were dropped would simply never receive a frame. Watching is enforced by
+   x11vnc's -viewonly discarding KeyEvent and PointerEvent, asserted above on
+   the argument list. What must be true here is narrower and still worth
+   pinning: an observer drives the protocol but never touches a lease. */
+test('an observer drives the RFB protocol but never extends a control lease', async t => {
   const f = await fixture(t);
   const c = await f.client(observeTicket());
   await f.ready(c);
-  c.socket.write('synthetic-input');
+  c.socket.write('RFB 003.008\n');
   await new Promise(resolve => setTimeout(resolve, 40));
-  assert.equal(Buffer.concat(f.input).length, 0);
+  assert.equal(Buffer.concat(f.input).toString(), 'RFB 003.008\n');
+  assert.equal(f.touches(), 0);
+});
+
+test('a flooding observer is still cut off', async t => {
+  const f = await fixture(t);
+  const c = await f.client(observeTicket());
+  await f.ready(c);
+  c.socket.write(Buffer.alloc(300 * 1024, 1));
+  await c.closed;
 });
 
 test('observing stops when the owner takes control, and is refused while they hold it', async t => {
