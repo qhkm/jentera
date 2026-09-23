@@ -36,6 +36,8 @@
 .lv3 h1 { font-size: clamp(42px, 5.3vw, 76px); line-height: 1.08; font-weight: 680; letter-spacing: -.055em; margin: 20px 0 18px; }
 .lv3-hero-copy > p { font-size: clamp(16px, 1.5vw, 21px); line-height: 1.5; max-width: 830px; margin-inline: auto; }
 .lv3-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; margin-top: 25px; }
+.lv3-hero-copy > .lv3-yc-note { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 18px; color: #7f8e89; font-size: 12px; }
+.lv3-yc-mark { display: grid; place-items: center; width: 21px; height: 21px; background: #ff6600; color: #fff; font-family: Arial, sans-serif; font-size: 13px; line-height: 1; }
 .lv3-mobile-break { display: none; }
 .lv3-scene { position: relative; max-width: 1480px; margin: -80px auto 0; scroll-margin-top: 20px; }
 .lv3-scene > img { display: block; width: 100%; height: auto; mask-image: linear-gradient(to bottom, transparent, black 12%, black 85%, transparent); }

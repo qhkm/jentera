@@ -49,6 +49,7 @@ export default function LandingV3() {
           <h1 id="lv3-title">Your AI staff,<br className="lv3-mobile-break" /> ready for work.</h1>
           <p>Give Jentera real work to do. It uses your business workspace and connected tools,<br className="lv3-desktop-break" /> prepares the work, and brings it back for your review.</p>
           <div className="lv3-actions"><Link className="lv3-button" to={launchOffer.href}>Get started <ArrowRight size={18} /></Link><a className="lv3-button lv3-button-secondary" href="#lv3-how"><Play size={16} weight="fill" />See how it works</a></div>
+          <p className="lv3-yc-note"><span className="lv3-yc-mark" aria-hidden="true">Y</span><span>Not backed by Y Combinator.</span></p>
         </div>
         <figure className="lv3-scene">
           <img src="/images/jentera-landing-v3-background-v1.webp" width={1536} height={1024} fetchPriority="high" alt="Illustrated Jentera workspace with a smiling emerald character, a supplier comparison and floating tool icons." />
