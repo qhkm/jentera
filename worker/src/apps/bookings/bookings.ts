@@ -249,9 +249,14 @@ export async function retryCalendar(
   if (row.status !== 'confirmed' && row.status !== 'cancelled') return { ok: false, code: 'NOT_RETRYABLE' };
   const desired = row.status === 'confirmed' ? 'present' : 'absent';
   const unchanged: DecideResult = { ok: true, row, changed: false, calendarQueued: false };
-  const [job] = await tx<{ revision: number; completed_revision: number | null; attempts: number }[]>`
-    select revision, completed_revision, attempts from booking_calendar_job
+  const [job] = await tx<{ revision: number; completed_revision: number | null; attempts: number; lease_expires_at: Date | null }[]>`
+    select revision, completed_revision, attempts, lease_expires_at from booking_calendar_job
      where business_id = ${businessId} and booking_id = ${id} for update`;
+  // A live lease means an attempt is out at Google right now; claim() already
+  // counted it against attempts, so it can look maxed out while still
+  // running. Never re-queue under it — that would discard its real result as
+  // stale. An expired lease is an orphan and falls through like any other.
+  if (job?.lease_expires_at && job.lease_expires_at.getTime() > now.getTime()) return unchanged;
   if (job && job.completed_revision !== job.revision && job.attempts < CALENDAR_MAX_ATTEMPTS) return unchanged;
   if (job && job.completed_revision === job.revision && row.calendar_status !== 'failed') return unchanged;
   const [pin] = await tx<{ calendar_connection_id: string | null }[]>`

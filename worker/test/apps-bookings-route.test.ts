@@ -364,4 +364,63 @@ describe('Calendar sync from the owner side', () => {
     expect(await calendarRow(id)).toMatchObject({ calendar_status: 'pending', calendar_error: null });
     await Promise.all(r.scheduled);
   });
+
+  it('leaves a job whose last attempt still holds a live lease alone', async () => {
+    await connectGoogle();
+    const id = await booking(inDays(2));
+    await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
+    await asOwner((sql) => sql`update booking_calendar_job set attempts = 8, lease_token = gen_random_uuid(),
+      lease_expires_at = now() + interval '1 minute'`);
+    const before = await jobRow();
+    const r = recorder();
+    const res = await call('POST', `/api/apps/bookings/bookings/${id}/calendar/retry`, ownerA, undefined, true, r.execution);
+    expect(res.status).toBe(200);
+    expect(r.scheduled).toHaveLength(0);
+    expect(await jobRow()).toEqual(before);
+  });
+
+  it('re-queues an orphaned job whose lease has expired', async () => {
+    await connectGoogle();
+    const id = await booking(inDays(2));
+    await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
+    await asOwner((sql) => sql`update booking_calendar_job set attempts = 8, lease_token = gen_random_uuid(),
+      lease_expires_at = now() - interval '1 second'`);
+    const before = await jobRow();
+    const r = recorder();
+    const res = await call('POST', `/api/apps/bookings/bookings/${id}/calendar/retry`, ownerA, undefined, true, r.execution);
+    expect(res.status).toBe(200);
+    expect(r.scheduled).toHaveLength(1);
+    const after = await jobRow();
+    expect(after[0].revision).toBeGreaterThan(before[0].revision);
+    expect(after[0].attempts).toBe(0);
+    await Promise.all(r.scheduled);
+  });
+
+  it('retries a cancelled booking whose cleanup was given up on', async () => {
+    const [connection] = await connectGoogle();
+    const id = await booking(inDays(2));
+    await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
+    await call('POST', `/api/apps/bookings/bookings/${id}/cancel`, ownerA);
+    await asOwner(async (sql) => {
+      await sql`update booking_calendar_job set attempts = 8`;
+      await sql`update booking set calendar_status = 'failed' where id = ${id}`;
+    });
+    const before = await jobRow();
+    const r = recorder();
+    const res = await call('POST', `/api/apps/bookings/bookings/${id}/calendar/retry`, ownerA, undefined, true, r.execution);
+    expect(res.status).toBe(200);
+    expect(r.scheduled).toHaveLength(1);
+    const after = await jobRow();
+    expect(after[0].desired).toBe('absent');
+    expect(after[0].revision).toBeGreaterThan(before[0].revision);
+    expect(await calendarRow(id)).toMatchObject({ calendar_connection_id: connection.id });
+    await Promise.all(r.scheduled);
+  });
+
+  it('refuses another business\'s booking with a plain 404', async () => {
+    await connectGoogle();
+    const id = await booking(inDays(2));
+    await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
+    expect((await call('POST', `/api/apps/bookings/bookings/${id}/calendar/retry`, ownerB)).status).toBe(404);
+  });
 });
