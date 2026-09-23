@@ -25,6 +25,7 @@ create policy app_installation_tenant on app_installation
   using (business_id = nullif(current_setting('app.business_id', true), '')::uuid)
   with check (business_id = nullif(current_setting('app.business_id', true), '')::uuid);
 grant select, insert, update on app_installation to aisar_app;
+revoke delete, truncate, references, trigger on app_installation from aisar_app;
 
 create table if not exists booking_settings (
   business_id                  uuid primary key references business(id) on delete cascade,
@@ -41,6 +42,7 @@ create policy booking_settings_tenant on booking_settings
   using (business_id = nullif(current_setting('app.business_id', true), '')::uuid)
   with check (business_id = nullif(current_setting('app.business_id', true), '')::uuid);
 grant select, insert, update on booking_settings to aisar_app;
+revoke delete, truncate, references, trigger on booking_settings from aisar_app;
 
 create table if not exists booking_service (
   business_id      uuid not null references business(id) on delete cascade,
@@ -60,6 +62,7 @@ create policy booking_service_tenant on booking_service
   using (business_id = nullif(current_setting('app.business_id', true), '')::uuid)
   with check (business_id = nullif(current_setting('app.business_id', true), '')::uuid);
 grant select, insert, update, delete on booking_service to aisar_app;
+revoke truncate, references, trigger on booking_service from aisar_app;
 
 create table if not exists booking_hours (
   business_id uuid not null,
@@ -78,6 +81,7 @@ create policy booking_hours_tenant on booking_hours
   using (business_id = nullif(current_setting('app.business_id', true), '')::uuid)
   with check (business_id = nullif(current_setting('app.business_id', true), '')::uuid);
 grant select, insert, update, delete on booking_hours to aisar_app;
+revoke truncate, references, trigger on booking_hours from aisar_app;
 
 create table if not exists booking (
   business_id            uuid not null,
@@ -124,6 +128,7 @@ create policy booking_tenant on booking
   using (business_id = nullif(current_setting('app.business_id', true), '')::uuid)
   with check (business_id = nullif(current_setting('app.business_id', true), '')::uuid);
 grant select, insert, update on booking to aisar_app;
+revoke delete, truncate, references, trigger on booking from aisar_app;
 
 -- One row per booking: the Calendar state the booking wants. The executor
 -- (plan 3) claims a row with a lease, acts outside the transaction, and
@@ -152,6 +157,7 @@ create policy booking_calendar_job_tenant on booking_calendar_job
   using (business_id = nullif(current_setting('app.business_id', true), '')::uuid)
   with check (business_id = nullif(current_setting('app.business_id', true), '')::uuid);
 grant select, insert, update on booking_calendar_job to aisar_app;
+revoke delete, truncate, references, trigger on booking_calendar_job from aisar_app;
 
 -- The public page has no tenant. Like invitation_by_token (035), this returns
 -- an id and nothing else; paused installations resolve so the page can say
