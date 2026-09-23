@@ -31,13 +31,29 @@
 .access-launch__signin { text-align: center; color: #aebbb4; font-size: 13px; }
 .access-launch__signin span { color: #e2eae6; }
 .access-launch__notice { color: #e2eee7; font-size: 14px; line-height: 1.6; margin-top: 18px; }
-.subscribe-page__layout { max-width: 560px; margin: 54px auto; }
-.subscribe-page h1 { margin-top: 26px; font-size: clamp(30px, 6vw, 40px); }
-.subscribe-page__price { margin: 24px 0 8px; font-size: 44px; font-weight: 650; letter-spacing: -.04em; }
-.subscribe-page__price > span { font-size: 16px; font-weight: 400; color: #bac9c1; letter-spacing: 0; }
-.subscribe-page__benefits { display: grid; gap: 10px; padding-left: 20px; margin: 24px 0; color: #dbe7df; font-size: 14px; list-style: disc; }
+.subscribe-page__layout { max-width: 720px; margin: 54px auto; }
+.subscribe-page .access-launch__card { padding: 44px; border-color: #273b34; background: #101714; box-shadow: 0 28px 80px #0002; }
+.subscribe-page .access-launch__card-top { justify-content: flex-start; width: fit-content; padding: 6px 11px; border: 1px solid #295043; border-radius: 999px; background: #14241f; color: #82cdb2; white-space: nowrap; }
+.subscribe-page h1 { max-width: 560px; margin-top: 22px; font-size: clamp(34px, 6vw, 48px); }
+.subscribe-page .access-launch__card-copy { max-width: 570px; margin-bottom: 30px; font-size: 16px; }
+.subscribe-page__offer { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; padding: 24px 0; border-top: 1px solid #ffffff10; border-bottom: 1px solid #ffffff10; }
+.subscribe-page__offer > p:last-child { margin: 0 0 8px; color: #8fa099; font-size: 13px; }
+.subscribe-page__price { margin: 0; font-size: 50px; line-height: 1; font-weight: 650; letter-spacing: -.055em; }
+.subscribe-page__price > span { margin-left: 4px; font-size: 15px; font-weight: 400; color: #9fafaa; letter-spacing: 0; }
+.subscribe-page__benefits { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px 24px; padding: 0; margin: 28px 0; color: #dbe7df; font-size: 14px; list-style: none; }
+.subscribe-page__benefits li { display: flex; align-items: flex-start; gap: 9px; }
+.subscribe-page__benefits svg { flex: 0 0 auto; margin-top: 2px; color: #43d8a6; }
 .subscribe-page .access-launch__consent a { color: #dbe7df; text-decoration: underline; }
 .subscribe-page button, .subscribe-page .btn { margin-top: 16px; }
+.subscribe-page__terms-summary { margin: 16px 2px 0; color: #82918c; font-size: 11px; line-height: 1.55; }
+.subscribe-page__terms-summary a { color: #bdcbc5; text-decoration: underline; text-underline-offset: 2px; }
+.subscribe-page__details { margin-top: 24px; border-top: 1px solid #ffffff10; border-bottom: 1px solid #ffffff10; color: #9fafaa; font-size: 12px; }
+.subscribe-page__details summary { padding: 15px 2px; color: #c4d0cb; font-size: 13px; cursor: pointer; }
+.subscribe-page__details > div { display: grid; gap: 10px; padding: 0 2px 17px; line-height: 1.6; }
+.subscribe-page__details p { margin: 0; }
+.subscribe-page__details a { color: #dbe7df; text-decoration: underline; }
+.subscribe-page .subscribe-page__status-action { display: block; min-height: 44px; margin: 10px auto -10px; padding: 8px 12px; color: #91a19b; font-size: 13px; text-decoration: underline; text-underline-offset: 4px; }
+.subscribe-page .subscribe-page__status-action:hover:not(:disabled) { color: #e1eae6; }
 .subscribe-page__navigation { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
 .subscribe-page__navigation a, .subscribe-page__navigation button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 8px; margin-top: 0; border-radius: 6px; }
 .subscribe-page__navigation a:hover, .subscribe-page__navigation button:hover:not(:disabled) { color: #e2eae6; }
@@ -55,4 +71,11 @@
   .access-launch__jobs span { font-size: 11px; padding: 6px 9px; }
   .access-launch__card { padding: 22px; border-radius: 20px; }
   .access-launch h2 { font-size: 30px; margin-top: 22px; }
+  .subscribe-page__layout { margin-top: 28px; }
+  .subscribe-page .access-launch__card { padding: 26px 22px; }
+  .subscribe-page h1 { font-size: 40px; }
+  .subscribe-page__offer { display: block; }
+  .subscribe-page__offer > p:last-child { margin: 9px 0 0; }
+  .subscribe-page__price { font-size: 44px; }
+  .subscribe-page__benefits { grid-template-columns: minmax(0, 1fr); }
 }

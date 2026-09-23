@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { ArrowLeft, SignOut } from '@phosphor-icons/react';
+import { ArrowLeft, Check, SignOut } from '@phosphor-icons/react';
 import { JenteraMark } from '@/components/JenteraMark';
 import { clearTrialInvite } from '@/lib/trial-link';
 import { clearAskStorage } from '@/hooks/useAsk';
@@ -106,7 +106,7 @@ export default function Subscribe() {
         {!signedOut && <button type="button" className="access-launch__signin" disabled={loggingOut || busy} onClick={() => void logout()} title="Signing out does not cancel your subscription."><SignOut size={16} aria-hidden="true" />{loggingOut ? 'Signing out…' : 'Sign out'}</button>}
       </nav>
       <section className="access-launch__card" aria-labelledby="subscribe-title">
-        <div className="access-launch__card-top"><span>JENTERA LAUNCH PLAN</span><span aria-hidden="true">↗</span></div>
+        <div className="access-launch__card-top"><span>LAUNCH OFFER</span></div>
         <h1 id="subscribe-title">{status?.activation === 'active' ? 'Your account is active.' : review ? 'Your payment needs a review.' : preview?.remaining === 0 ? 'Your free chats are complete.' : 'Put your AI staff to work.'}</h1>
         <p className="access-launch__card-copy">Just hand the work to Jentera. Your AI staff has its own computer for research, admin, reports and everyday business tasks.</p>
         {loading && <p role="status">Checking your account…</p>}
@@ -114,23 +114,29 @@ export default function Subscribe() {
         {status && <>
           {status.mode === 'sandbox' && <p role="status">Test checkout only — no real payment.</p>}
           {canPreview && <><Link className="btn btn-primary min-h-11 access-launch__submit" to="/app">Try Jentera — {preview.remaining} free chats left<span aria-hidden="true">→</span></Link><p className="access-launch__consent">No payment needed for your free chats. Upgrade when you’re ready for more.</p></>}
-          <p className="subscribe-page__price">RM{status.offer.initialMonthlyAmount}<span>/month</span></p>
-          <p className="access-launch__consent">{status.offer.introductoryMonths > 0 ? `RM99/month for your first ${status.offer.introductoryMonths} monthly billing periods, then RM199/month from month 4. The introductory offer is for first purchases only.` : 'RM199/month. Your account has already used the introductory offer.'} Cancel future renewals through your Stripe billing portal.</p>
-          <ul className="subscribe-page__benefits" aria-label="Launch plan inclusions">{launchPlanBenefits.map(benefit => <li key={benefit}>{benefit}</li>)}</ul>
-          <p className="access-launch__consent">Your private founder-group invitation appears in the platform after payment is confirmed. Ask questions, share feedback and help shape Jentera with us.</p>
-          <p className="access-launch__consent">Recurring routines are currently in a limited pilot and are not enabled for every account.</p>
-          <p className="access-launch__consent">Standard AI usage is subject to fair-use limits, not unlimited compute. Review our <Link to="/terms">terms</Link> and <Link to="/privacy">privacy notice</Link> before subscribing. Stripe securely handles payment details.</p>
+          <div className="subscribe-page__offer">
+            <p className="subscribe-page__price">RM{status.offer.initialMonthlyAmount}<span>/month</span></p>
+            <p>{status.offer.introductoryMonths > 0 ? `For your first ${status.offer.introductoryMonths} months` : 'Your standard monthly plan'}</p>
+          </div>
+          <ul className="subscribe-page__benefits" aria-label="Launch plan inclusions">{launchPlanBenefits.map(benefit => <li key={benefit}><Check size={17} weight="bold" aria-hidden="true" /><span>{benefit}</span></li>)}</ul>
           {returning && status.activation !== 'active' && !review && <p role="status" className="access-launch__notice">Waiting for Stripe’s payment confirmation. Closing this page does not stop activation. You can check again or return after your payment is confirmed.</p>}
           {status.activation === 'active' && <Link className="btn btn-primary min-h-11 access-launch__submit" to="/app">Go to my workspace <span aria-hidden="true">→</span></Link>}
           {review && <p role="status" className="access-launch__notice">Access is paused while a refund or payment dispute is reviewed. Please contact support; subscribing again will not remove this hold.</p>}
           {!status.checkoutEnabled && status.activation !== 'active' && !existing && <p role="status" className="access-launch__notice">Secure checkout is being configured. No payment can be taken from this page yet.</p>}
           {status.checkoutEnabled && !existing && !review && !returning && status.activation !== 'active' && <button className={`btn ${canPreview ? 'btn-outline' : 'btn-primary'} min-h-11 access-launch__submit w-full`} disabled={busy || loggingOut} onClick={() => void openCheckout()}>{busy ? 'Opening secure checkout…' : `Subscribe — RM${status.offer.initialMonthlyAmount}/month`}<span aria-hidden="true">→</span></button>}
           {status.portalEnabled && existing && <button className="btn btn-outline min-h-11 w-full" disabled={busy || loggingOut} onClick={() => void openCheckout(true)}>{busy ? 'Opening billing…' : 'Manage subscription'}</button>}
+          <p className="subscribe-page__terms-summary">{status.offer.introductoryMonths > 0 ? `RM99/month for your first ${status.offer.introductoryMonths} monthly billing periods, then RM199/month from month 4. The introductory offer is for first purchases only.` : 'RM199/month. Your account has already used the introductory offer.'} Cancel future renewals through your Stripe billing portal. Standard AI usage is subject to fair-use limits, not unlimited compute. Review our <Link to="/terms">terms</Link> and <Link to="/privacy">privacy notice</Link> before subscribing.</p>
+          <details className="subscribe-page__details">
+            <summary>More about the launch plan</summary>
+            <div>
+              <p>Your private founder-group invitation appears after payment is confirmed. Recurring routines are in a limited pilot and are not enabled for every account.</p>
+              <p>Stripe securely handles payment details. Ask questions, share feedback and help shape Jentera with us.</p>
+            </div>
+          </details>
         </>}
         {notice && <p role="alert" className="access-launch__notice">{notice}</p>}
         {logoutNotice && <p role="alert" className="access-launch__notice">{logoutNotice}</p>}
-        {!loading && !signedOut && <button className="btn btn-outline min-h-11 w-full" disabled={busy || loggingOut} onClick={() => setCheck(value => value + 1)}>Check payment status</button>}
-        <div className="access-launch__card-footer">Thank you for supporting us early. We’re building Jentera together and want to hear your feedback.</div>
+        {!loading && !signedOut && <button className="subscribe-page__status-action" disabled={busy || loggingOut} onClick={() => setCheck(value => value + 1)}>Check payment status</button>}
       </section>
     </div>
   </main>;
