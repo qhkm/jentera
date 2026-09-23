@@ -173,10 +173,22 @@ function openSecret(raw: string): GoogleCalendarSecret {
   throw new GoogleCalendarError('Reconnect Google Calendar to continue.', true);
 }
 
+/** The provider id for one Jentera request. Deterministic, so a retried
+    create and a later delete address the same event even when an earlier
+    response was lost. Google accepts lowercase a-v and 0-9; this is
+    "jentera" and hex. */
+export function calendarEventId(requestId: string): string {
+  const encoded = [...new TextEncoder().encode(requestId)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+  return `jentera${encoded}`;
+}
+
 async function accessToken(
   env: Env,
   rawSecret: string,
   fetcher: typeof fetch,
+  signal?: AbortSignal,
 ): Promise<string> {
   const oauth = client(env);
   if (!oauth) throw new GoogleCalendarError('Google Calendar is not configured.');
@@ -190,6 +202,7 @@ async function accessToken(
       refresh_token: stored.refreshToken,
       grant_type: 'refresh_token',
     }),
+    ...(signal ? { signal } : {}),
   });
   if (!response.ok) {
     throw new GoogleCalendarError('Google Calendar access expired. Reconnect it to continue.', true);
@@ -306,13 +319,12 @@ export async function createGoogleCalendarEvent(
   rawSecret: string,
   event: CalendarEventInput,
   fetcher: typeof fetch = fetch,
+  signal?: AbortSignal,
 ): Promise<CalendarEventView> {
-  const token = await accessToken(env, rawSecret, fetcher);
+  const budget = signal ? { signal } : {};
+  const token = await accessToken(env, rawSecret, fetcher, signal);
   // A stable provider id makes a retry safe even if the first response is lost.
-  const encodedRequest = [...new TextEncoder().encode(event.requestId)]
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('');
-  const id = `jentera${encodedRequest}`;
+  const id = calendarEventId(event.requestId);
   const response = await fetcher(`${API}/calendars/primary/events?sendUpdates=none`, {
     method: 'POST',
     headers: {
@@ -327,13 +339,16 @@ export async function createGoogleCalendarEvent(
       ...(event.location ? { location: event.location } : {}),
       ...(event.description ? { description: event.description } : {}),
     }),
+    ...budget,
   });
   if (response.status === 409) {
     /* The deterministic id makes an uncertain retry safe. A 409 means Google
-       already has this exact Jentera request; read it back and treat that as
-       success instead of inviting the owner to create a duplicate. */
+       has, or had, this exact Jentera request: read it back. A `cancelled`
+       status there is a deletion marker, not a live event, and is returned
+       as is. The caller must not record it as created. */
     const existing = await fetcher(`${API}/calendars/primary/events/${id}`, {
       headers: { Authorization: `Bearer ${token}` },
+      ...budget,
     });
     if (!existing.ok) throw providerError(existing);
     const body = await existing.json().catch(() => null) as Record<string, unknown> | null;
@@ -344,6 +359,27 @@ export async function createGoogleCalendarEvent(
   const body = await response.json().catch(() => null) as Record<string, unknown> | null;
   if (!body) throw new GoogleCalendarError('Google Calendar returned an incomplete event.');
   return view(body);
+}
+
+/** Remove the event a Jentera request created. An event that is already
+    gone counts as success. It may never have been created, the owner may
+    have deleted it, or an earlier attempt's answer may have been lost; 404
+    and 410 both mean there is nothing left to remove. */
+export async function deleteGoogleCalendarEvent(
+  env: Env,
+  rawSecret: string,
+  requestId: string,
+  fetcher: typeof fetch = fetch,
+  signal?: AbortSignal,
+): Promise<'deleted' | 'already_absent'> {
+  const token = await accessToken(env, rawSecret, fetcher, signal);
+  const response = await fetcher(
+    `${API}/calendars/primary/events/${calendarEventId(requestId)}?sendUpdates=none`,
+    { method: 'DELETE', headers: { Authorization: `Bearer ${token}` }, ...(signal ? { signal } : {}) },
+  );
+  if (response.status === 404 || response.status === 410) return 'already_absent';
+  if (!response.ok) throw providerError(response);
+  return 'deleted';
 }
 
 export async function revokeGoogleCalendar(

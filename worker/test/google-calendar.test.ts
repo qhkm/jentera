@@ -2,8 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Env } from '../src/env';
 import {
   GOOGLE_CALENDAR_SCOPES,
+  GoogleCalendarError,
+  calendarEventId,
   calendarSecret,
   createGoogleCalendarEvent,
+  deleteGoogleCalendarEvent,
   exchangeGoogleCalendarCode,
   googleCalendarAuthorizeUrl,
   listGoogleCalendarEvents,
@@ -123,5 +126,81 @@ describe('Google Calendar operations', () => {
     expect(ids[0]).toBe(ids[1]);
     expect(ids[0]).toMatch(/^jentera[a-f0-9]+$/);
     expect(retried.id).toBe(ids[0]);
+  });
+});
+
+describe('Google Calendar budget and removal', () => {
+  const secret = calendarSecret(profile);
+  const event = {
+    requestId: '0f4c9b7e-1111-4111-8111-111111111111',
+    summary: 'Cupping class · Aisyah (2)',
+    start: '2026-10-06T10:00:00+08:00',
+    end: '2026-10-06T11:00:00+08:00',
+    timeZone: 'Asia/Kuala_Lumpur',
+  };
+
+  function google(answer: (url: string, init?: RequestInit) => Response | Promise<Response>) {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    const fetcher = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      calls.push({ url, init });
+      if (url === 'https://oauth2.googleapis.com/token') return Response.json({ access_token: 'access' });
+      return answer(url, init);
+    });
+    return { fetcher, calls };
+  }
+
+  it('addresses one event per request id, for create and delete alike', async () => {
+    const { fetcher, calls } = google(() => Response.json({ id: calendarEventId(event.requestId), status: 'confirmed' }));
+    await createGoogleCalendarEvent(env, secret, event, fetcher);
+    expect(JSON.parse(String(calls[1].init?.body)).id).toBe(calendarEventId(event.requestId));
+    expect(calendarEventId(event.requestId)).toMatch(/^jentera[0-9a-f]+$/);
+  });
+
+  it('passes one budget signal to the token refresh, the create and the read-back', async () => {
+    const { fetcher, calls } = google((url, init) => (init?.method === 'POST'
+      ? new Response('{}', { status: 409 })
+      : Response.json({ id: calendarEventId(event.requestId), status: 'confirmed' })));
+    const signal = AbortSignal.timeout(5_000);
+    await createGoogleCalendarEvent(env, secret, event, fetcher, signal);
+    expect(calls).toHaveLength(3);
+    for (const call of calls) expect(call.init?.signal).toBe(signal);
+  });
+
+  it('gives up when the budget runs out instead of waiting on Google', async () => {
+    const { fetcher } = google((_url, init) => new Promise<Response>((_, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(init.signal!.reason));
+    }));
+    await expect(createGoogleCalendarEvent(env, secret, event, fetcher, AbortSignal.timeout(20))).rejects.toThrow();
+  });
+
+  it('reports a read-back of a deleted event as cancelled, for the caller to refuse', async () => {
+    const { fetcher } = google((_url, init) => (init?.method === 'POST'
+      ? new Response('{}', { status: 409 })
+      : Response.json({ id: calendarEventId(event.requestId), status: 'cancelled' })));
+    expect((await createGoogleCalendarEvent(env, secret, event, fetcher)).status).toBe('cancelled');
+  });
+
+  it('removes the event, and treats an event that is already gone as removed', async () => {
+    const removed = google(() => new Response(null, { status: 204 }));
+    expect(await deleteGoogleCalendarEvent(env, secret, event.requestId, removed.fetcher)).toBe('deleted');
+    expect(removed.calls[1].url).toBe(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${calendarEventId(event.requestId)}?sendUpdates=none`);
+    expect(removed.calls[1].init?.method).toBe('DELETE');
+    for (const status of [404, 410]) {
+      const gone = google(() => new Response('{}', { status }));
+      expect(await deleteGoogleCalendarEvent(env, secret, event.requestId, gone.fetcher)).toBe('already_absent');
+    }
+  });
+
+  it('turns other delete failures into errors the caller can act on', async () => {
+    const broken = google(() => new Response('{}', { status: 500 }));
+    await expect(deleteGoogleCalendarEvent(env, secret, event.requestId, broken.fetcher))
+      .rejects.toMatchObject({ auth: false });
+    const refused = google(() => new Response('{}', { status: 401 }));
+    await expect(deleteGoogleCalendarEvent(env, secret, event.requestId, refused.fetcher))
+      .rejects.toBeInstanceOf(GoogleCalendarError);
+    await expect(deleteGoogleCalendarEvent(env, secret, event.requestId, refused.fetcher))
+      .rejects.toMatchObject({ auth: true });
   });
 });
