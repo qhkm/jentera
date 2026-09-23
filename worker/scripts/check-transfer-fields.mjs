@@ -2,9 +2,9 @@
 /**
  * check-transfer-fields.mjs — predeploy guard for the sprite bootstrap contract.
  *
- * `bootstrapRuntime` (worker/src/runtime/provision.ts) curls the runner assets,
- * `runner/bin/bootstrap-runtime.sh` among them, from RUNTIME_BUNDLE_COMMIT and
- * executes that copy. So the pinned commit decides what can be parsed, not
+ * `bootstrapRuntime` (worker/src/runtime/provision.ts) downloads the runner
+ * bundle, `runner/bin/bootstrap-runtime.sh` among its files, packed from
+ * RUNTIME_BUNDLE_COMMIT, and executes that copy. So the pinned commit decides what can be parsed, not
  * whatever a sprite happens to have on disk — and the bootstrap rejects any
  * transfer field outside its closed `case`, exiting 1.
  *
@@ -24,8 +24,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { assertBootstrapAcceptsHermesTag } from './bootstrap-contract.mjs';
-
-const RAW = 'https://raw.githubusercontent.com/qhkm/jentera';
+import { readAtCommit } from './bundle-pack.mjs';
 
 const wrangler = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8');
 const provision = readFileSync(new URL('../src/runtime/provision.ts', import.meta.url), 'utf8');
@@ -42,14 +41,17 @@ if (sent.length < 5) {
   process.exit(1);
 }
 
-const res = await fetch(`${RAW}/${commit}/runner/bin/bootstrap-runtime.sh`, {
-  redirect: 'follow', signal: AbortSignal.timeout(15000),
-});
-if (!res.ok) {
-  console.error(`FAIL  bootstrap at ${commit} unreadable (HTTP ${res.status}); cannot prove deployment compatibility. Retry rather than skipping the guard.`);
+/* Read from the local object store, not over HTTP. A commit is
+   content-addressed, so these are the same bytes; ship-runtime.sh already
+   refuses a bundle that is not an ancestor of origin/main. It is also what
+   lets this repository be private — the whole point of the R2 bundle. */
+const bootstrapBytes = readAtCommit(commit, 'runner/bin/bootstrap-runtime.sh');
+if (!bootstrapBytes) {
+  console.error(`FAIL  bootstrap at ${commit} unreadable; cannot prove deployment compatibility.
+      Fetch the commit (git fetch origin ${commit}) rather than skipping the guard.`);
   process.exit(1);
 }
-const bootstrap = await res.text();
+const bootstrap = bootstrapBytes.toString('utf8');
 const pinSource = readFileSync(new URL('../src/runtime/hermes-pin.ts', import.meta.url), 'utf8');
 const hermesTag = pinSource.match(/HERMES_TAG\s*=\s*'([^']+)'/)?.[1];
 if (!hermesTag) {

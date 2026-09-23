@@ -25,12 +25,19 @@ when GitHub is reachable, do not skip the check or hand-patch a Sprite.
 
 ## The moving parts
 
-- **`worker/wrangler.toml`** — `RUNTIME_RELEASE` (fleet target) and
-  `RUNTIME_BUNDLE_COMMIT` (runner asset pin, 40-hex, must exist on GitHub).
-- **`worker/src/runtime/provision.ts`** — `HERMES_TAG_B64` / `HERMES_COMMIT_B64`
-  (hermes pin), model pins, and the asset list downloaded from
-  `raw.githubusercontent.com/qhkm/jentera/<bundle-commit>/...` on **every**
-  provision/upgrade run (never cached).
+- **`worker/wrangler.toml`** — `RUNTIME_RELEASE` (fleet target),
+  `RUNTIME_BUNDLE_COMMIT` (runner asset pin, 40-hex, must be an ancestor of
+  `origin/main`) and `RUNTIME_BUNDLE_SHA256` (the digest of that commit
+  packed; every sprite asserts it). `ship-runtime.sh` writes all three.
+- **`worker/src/runtime/provision.ts`** — `HERMES_TAG_B64` /
+  `HERMES_COMMIT_B64` (hermes pin), model pins, and `RUNTIME_BUNDLE_ASSETS`,
+  the manifest `bundle-pack.mjs` builds the archive from and the gate reads.
+  The bundle is downloaded on **every** provision/upgrade run (never cached).
+- **`jentera-runtime-bundles`** (R2) — one gzipped object per commit at
+  `bundles/<commit>.tar.gz`, served by `worker/src/routes/runtime-bundle.ts`
+  on a 15-minute ticket minted into the command that fetches it. This
+  replaced 24 anonymous curls against `raw.githubusercontent.com` on
+  2026-09-23; that source is why the repository could not be private.
 - **`runner/bin/bootstrap-runtime.sh`** — sprite-side bootstrap; bakes
   `hermes_installer_sha256` pin for the installer fetched from hermes commit.
 - **Drift sweep** (`*/15 * * * *`) — publishes `upgrade:<biz>:<release>` tasks
@@ -45,12 +52,15 @@ when GitHub is reachable, do not skip the check or hand-patch a Sprite.
    the installer changed (run step 3 to find out).
 2. **Commit** — conventional prefix (`fix(runtime):`, `chore(release):`).
 3. **Run the gate**: `node worker/scripts/validate-release.mjs` — MUST print
-   `GATE PASSED`. It verifies: bundle commit exists, Herbs tag resolves to the
-   pinned commit, installer sha256 matches the bootstrap pin, and every flag
-   the bootstrap passes is accepted by the pinned installer (the
-   `--force-commit` bug class fails here).
-4. **Push the branch.** Note: raw.githubusercontent.com can 404 new SHAs for
-   ~2 min after push (object index lag) — re-run the gate if it 404s.
+   `GATE PASSED`. It verifies: the bundle packs from the pinned commit and its
+   digest matches `RUNTIME_BUNDLE_SHA256`, those exact bytes round-trip out of
+   R2, the hermes tag resolves to the pinned commit, the installer sha256
+   matches the bootstrap pin, and every flag the bootstrap passes is accepted
+   by the pinned installer (the `--force-commit` bug class fails here).
+4. **Push the branch.** The jentera checks read the local git object store, so
+   they no longer wait on GitHub; the hermes-agent checks still do, and
+   raw.githubusercontent.com can 404 new SHAs for ~2 min after a push to that
+   repository (object index lag) — re-run the gate if it 404s.
 5. **Deploy**: `cd worker && pnpm exec wrangler deploy`.
 6. **Reset exhausted tasks if a previous attempt of this release blocked**:
    ```sql

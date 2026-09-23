@@ -264,7 +264,10 @@ test('gws is pinned, checked, bundled and installed before sealing spares', asyn
 test('both provisioning paths include every first-party module imported by the flat runtime bundle', async () => {
   const worker = await readFile(new URL('../../worker/src/runtime/provision.ts', import.meta.url), 'utf8');
   const operator = await readFile(PROVISION, 'utf8');
-  const body = worker.match(/const assets = \[([\s\S]*?)\n  \];/)?.[1];
+  /* The manifest moved out of downloadRuntimeBundle on 2026-09-23, when the
+     bundle became one R2 object instead of 24 curls. bundle-pack.mjs and the
+     release gate read the same literals. */
+  const body = worker.match(/export const RUNTIME_BUNDLE_ASSETS = \[([\s\S]*?)\n\] as const;/)?.[1];
   assert.ok(body, 'production asset list must be inspectable');
   const assets = [...body.matchAll(/'(runner\/(?:src|bin)\/[^']+)'/g)].map((match) => match[1]);
   assert.ok(assets.length > 15);

@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "predeploy": "node --test scripts/bootstrap-contract.test.mjs && node scripts/check-transfer-fields.mjs",
+    "predeploy": "node --test scripts/bootstrap-contract.test.mjs scripts/bundle-pack.test.mjs && node scripts/check-transfer-fields.mjs && node scripts/check-bundle-pin.mjs",
     "deploy": "wrangler deploy",
     "waf:dry-run": "node scripts/apply-waf.mjs",
     "waf:apply": "node scripts/apply-waf.mjs --apply",

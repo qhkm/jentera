@@ -271,6 +271,11 @@ export function testEnv(over: Partial<Record<string, unknown>> = {}): import('..
     APP_ORIGIN: 'http://localhost:5173',
     API_ORIGIN: 'http://localhost:8787',
     CREDENTIAL_KEY: btoa(String.fromCharCode(...new Uint8Array(32).fill(5))),
+    /* Provisioning refuses to run without this: the sprite is made to check
+       the bundle it downloaded against it, so a missing pin is a fleet that
+       would accept anything. Tests never download, but they do build the
+       command that would. */
+    RUNTIME_BUNDLE_SHA256: '0'.repeat(64),
     RESEND_API_KEY: '',
     AI: { run: async (_model: string, input: { messages?: { content: string }[] }) => ({
       response: input.messages?.[0]?.content.startsWith('Classify an agent turn')

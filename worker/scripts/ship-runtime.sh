@@ -76,12 +76,16 @@ else
   BUNDLE="$(git -C "$ROOT" rev-parse --verify "$BUNDLE^{commit}" 2>/dev/null)" \
     || die "bundle commit not found locally"
   git -C "$ROOT" merge-base --is-ancestor "$BUNDLE" origin/main \
-    || die "bundle $BUNDLE is not on origin/main; sprites download from GitHub, so push it first"
+    || die "bundle $BUNDLE is not on origin/main; a release must be reproducible from main, so push it first"
 fi
 CURRENT_TOML="$(git -C "$ROOT" show origin/main:worker/wrangler.toml)"
 CURRENT_RELEASE="$(sed -n 's/^RUNTIME_RELEASE = "\(.*\)"$/\1/p' <<<"$CURRENT_TOML")"
 CURRENT_BUNDLE="$(sed -n 's/^RUNTIME_BUNDLE_COMMIT = "\(.*\)"$/\1/p' <<<"$CURRENT_TOML")"
+CURRENT_SHA="$(sed -n 's/^RUNTIME_BUNDLE_SHA256 = "\(.*\)"$/\1/p' <<<"$CURRENT_TOML")"
 [[ -n "$CURRENT_RELEASE" && -n "$CURRENT_BUNDLE" ]] || die "could not read the pins from origin/main's wrangler.toml"
+# Added with the R2 bundle. A main without it predates that change, and the
+# pin rewrite below would silently match nothing.
+[[ -n "$CURRENT_SHA" ]] || die "RUNTIME_BUNDLE_SHA256 is missing from origin/main's wrangler.toml; land the R2 bundle change before shipping a release"
 API_ORIGIN="$(sed -n 's/^API_ORIGIN = "\(.*\)"$/\1/p' <<<"$CURRENT_TOML")"
 
 if [[ $RESUME == 1 ]]; then
@@ -122,13 +126,36 @@ git -C "$ROOT" worktree add -q --detach "$WT" origin/main || die "worktree add f
 RELEASE_SHA="$MAIN_SHA"
 if [[ $RESUME == 0 ]]; then
 TOML="$WT/worker/wrangler.toml"
+# The digest every sprite will be made to assert. Packing reads each asset out
+# of the commit, so a bundle that cannot be built fails here rather than on
+# thirteen sprites.
+BUNDLE_SHA="$(node "$WT/worker/scripts/bundle-pack.mjs" "$BUNDLE" \
+  | sed -n 's/.*"sha256":"\([0-9a-f]\{64\}\)".*/\1/p')"
+[[ "$BUNDLE_SHA" =~ ^[0-9a-f]{64}$ ]] || die "could not pack the bundle at $BUNDLE"
 sed -i.bak \
   -e "s/^RUNTIME_RELEASE = \"$CURRENT_RELEASE\"\$/RUNTIME_RELEASE = \"$RELEASE\"/" \
   -e "s/^RUNTIME_BUNDLE_COMMIT = \"$CURRENT_BUNDLE\"\$/RUNTIME_BUNDLE_COMMIT = \"$BUNDLE\"/" \
+  -e "s/^RUNTIME_BUNDLE_SHA256 = \"$CURRENT_SHA\"\$/RUNTIME_BUNDLE_SHA256 = \"$BUNDLE_SHA\"/" \
   "$TOML" && rm -f "$TOML.bak"
 grep -q "^RUNTIME_RELEASE = \"$RELEASE\"\$" "$TOML" || die "RUNTIME_RELEASE edit did not take"
 grep -q "^RUNTIME_BUNDLE_COMMIT = \"$BUNDLE\"\$" "$TOML" || die "RUNTIME_BUNDLE_COMMIT edit did not take"
+grep -q "^RUNTIME_BUNDLE_SHA256 = \"$BUNDLE_SHA\"\$" "$TOML" || die "RUNTIME_BUNDLE_SHA256 edit did not take"
 echo "pins written to $TOML"
+echo "bundle:   $BUNDLE_SHA"
+
+# ---- 1b. put the bundle where sprites can get it ---------------------------
+#
+# A sprite downloads one object from R2 rather than 24 anonymous curls against
+# raw.githubusercontent.com. That is what lets this repository be private: raw
+# .github serves public repositories and nothing else, so making it private
+# answered 404 to every bootstrap and killed the next fresh provision with
+# curl exit 22.
+#
+# Before the gate, so the gate is the last word: it reads the bytes back out
+# of the bucket and checks them against the pin. Content-addressed, so
+# re-running a release or a dry run just rewrites identical bytes.
+step "upload bundle to R2"
+node "$WT/worker/scripts/bundle-upload.mjs" "$BUNDLE" || die "bundle upload failed; not shipping"
 
 # ---- 2. the gate: bundle, installer pin, flags, assets, all against GitHub ---
 step "bootstrap contract regression tests"
@@ -139,7 +166,7 @@ gate_ok=0
 for attempt in 1 2 3; do
   if node "$WT/worker/scripts/validate-release.mjs"; then gate_ok=1; break; fi
   if [[ $attempt -lt 3 ]]; then
-    echo "gate failed (attempt $attempt); raw.githubusercontent lags new SHAs and throttles bursts, retrying in 45s"
+    echo "gate failed (attempt $attempt); the hermes-agent checks still read raw.githubusercontent, which throttles bursts, retrying in 45s"
     sleep 45
   fi
 done

@@ -250,7 +250,13 @@ describe('preparation, refill and tenant activation', () => {
       c.env?.includes('AISAR_BOOTSTRAP_PREPARE_SPARE=1'))).toBe(true);
     const downloads = provider.commands.find(c => c.args[1]?.includes('timeout -k 10 180'))!;
     expect(downloads.args[2]).toBe('--');
-    expect(downloads.args[3]).toContain(`https://raw.githubusercontent.com/qhkm/jentera/${BUNDLE}/runner/bin/spare-state.mjs`);
+    /* One authenticated object from R2 since 2026-09-23, not 24 anonymous
+       curls against raw.githubusercontent.com — the change that lets this
+       repository be private. A spare's download still names the pinned
+       bundle and still carries nothing tenant-specific. */
+    expect(downloads.args[3]).toContain(`/v1/runtime/bundle/${BUNDLE}.tar.gz`);
+    expect(downloads.args[3]).toContain('Authorization: Bearer ');
+    expect(downloads.args[3]).not.toContain('githubusercontent');
     // Exercise the real nested-shell argument binding, independently of
     // the provider fake and without a download or filesystem write.
     const shell = downloads.args[1].replace('timeout -k 10 180 ', '');

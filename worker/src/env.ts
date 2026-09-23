@@ -85,8 +85,15 @@ export interface Env {
   MODEL_TRANSPORT_READY?: string;
   /** Fleet-wide emergency brake. A ready tenant runtime remains required. */
   RUNTIME_EXECUTION_ENABLED?: string;
-  /** Immutable public Git commit containing runner release assets. */
+  /** Immutable Git commit containing runner release assets. No longer public:
+      the bundle is served from R2 by routes/runtime-bundle.ts, which is what
+      lets this repository be private. */
   RUNTIME_BUNDLE_COMMIT?: string;
+  /** sha256 of that commit's packed bundle, written by ship-runtime.sh.
+      Pinned beside the commit rather than read back from the bucket, so the
+      sprite's check is the control plane asserting what it expects instead of
+      the bucket agreeing with itself. */
+  RUNTIME_BUNDLE_SHA256?: string;
   /** Second half of provisioning; false leaves raw provider compute unselected. */
   RUNTIME_BOOTSTRAP_ENABLED?: string;
   /** Clean, never-used Sprite inventory. Apply migration 059 and run a canary
@@ -160,6 +167,11 @@ export interface Env {
       Keys are `<business>/<run>/<artifact id>/<name>`; nothing reads the
       bucket without first resolving the artifact row under RLS. */
   ARTIFACTS?: R2Bucket;
+  /** R2 bucket holding the runner bundle, one gzipped object per commit at
+      `bundles/<commit>.tar.gz` (routes/runtime-bundle.ts). Separate from
+      ARTIFACTS on purpose: that bucket holds tenant bytes reached only after
+      an RLS-resolved row, and release artifacts have no tenant at all. */
+  RUNTIME_BUNDLES?: R2Bucket;
   AISAR_MODEL_NAME?: string;
   /** Optional heavier model used only for explicit deep/research work. */
   AISAR_DEEP_MODEL_NAME?: string;

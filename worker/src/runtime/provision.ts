@@ -8,6 +8,7 @@
    ============================================================ */
 
 import { HERMES_COMMIT, HERMES_TAG } from './hermes-pin';
+import { issueBundleTicket } from './bundle-token';
 import type { Env } from '../env';
 import { candidateModelNames } from './response-mode';
 import { withTenant } from '../db';
@@ -244,7 +245,7 @@ async function bootstrapRuntime(
   } as const;
   await provider.writeFile(observed, '/home/sprite/aisar/bootstrap.env.in', transfer, 0o600);
 
-  await downloadRuntimeBundle(provider, observed, commit);
+  await downloadRuntimeBundle(env, provider, observed, commit);
   const bootstrapped = await provider.exec(
     observed,
     '/home/sprite/aisar/runner/bootstrap-runtime.sh',
@@ -295,48 +296,89 @@ async function bootstrapRuntime(
   return { ...ready, observedRegion: readiness.region, ...bootstrapReport(bootstrapped.stdout) };
 }
 
-/** Both clean preparation and tenant bootstrap download exactly this bundle.
- * Keep the asset list here: validate-release.mjs also reads it as a gate. */
+/**
+ * Every file that becomes /home/sprite/aisar/runner on a sprite.
+ *
+ * This is the manifest, and it is read rather than restated: bundle-pack.mjs
+ * builds the archive from it and validate-release.mjs gates on it, both by
+ * parsing these literals out of this file. A second copy anywhere is a list
+ * that keeps passing its own tests while the real one drifts.
+ */
+export const RUNTIME_BUNDLE_ASSETS = [
+  'runner/src/server.mjs',
+  'runner/src/business-browser.mjs',
+  'runner/src/procedure-recorder.mjs',
+  'runner/src/browser-recipes.mjs',
+  'runner/src/browser-preview-stream.mjs',
+  'runner/src/desktop-gateway.mjs',
+  'runner/bin/display-service.sh',
+  'runner/bin/desktop-smoke.mjs',
+  'runner/bin/desktop-release-keys.py',
+  'runner/bin/browser-smoke.mjs',
+  'runner/bin/jentera-calendar.mjs',
+  'runner/bin/jentera-gws.mjs',
+  'runner/bin/install-gws.sh',
+  'runner/bin/model-smoke.py',
+  'runner/bin/web-search-smoke.py',
+  'runner/bin/configure-model-provider.py',
+  'runner/bin/patch-hermes-dependencies.mjs',
+  'runner/bin/hermes-startup-timing.mjs',
+  'runner/bin/hermes-service.sh',
+  'runner/bin/runner-service.sh',
+  'runner/bin/bootstrap-runtime.sh',
+  'runner/bin/spare-state.mjs',
+] as const;
+
+/**
+ * Both clean preparation and tenant bootstrap download exactly this bundle.
+ *
+ * It arrives as one authenticated object from R2 rather than 24 anonymous
+ * curls against raw.githubusercontent.com. That source is the single reason
+ * this repository could not be private: raw.github serves public repositories
+ * anonymously and nothing else, so making it private answered 404 to every
+ * bootstrap and the next fresh provision died with curl exit 22.
+ *
+ * What it contains is RUNTIME_BUNDLE_ASSETS above; the archive is built from
+ * that manifest, not from anything decided here.
+ *
+ * The sha256 is pinned in wrangler.toml beside the commit rather than read
+ * back from the bucket, so the check is the control plane asserting what it
+ * expects rather than the bucket agreeing with itself. That is what catches
+ * the right key holding the wrong bytes.
+ */
 export async function downloadRuntimeBundle(
+  env: Env,
   provider: BootstrapRuntimeProvider,
   observed: ObservedRuntime,
   commit: string,
   boundedPreparation = false,
 ): Promise<void> {
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error('runtime bundle commit is invalid');
-  const raw = `https://raw.githubusercontent.com/qhkm/jentera/${commit}`;
-  const assets = [
-    'runner/src/server.mjs',
-    'runner/src/business-browser.mjs',
-    'runner/src/procedure-recorder.mjs',
-    'runner/src/browser-recipes.mjs',
-    'runner/src/browser-preview-stream.mjs',
-    'runner/src/desktop-gateway.mjs',
-    'runner/bin/display-service.sh',
-    'runner/bin/desktop-smoke.mjs',
-    'runner/bin/desktop-release-keys.py',
-    'runner/bin/browser-smoke.mjs',
-    'runner/bin/jentera-calendar.mjs',
-    'runner/bin/jentera-gws.mjs',
-    'runner/bin/install-gws.sh',
-    'runner/bin/model-smoke.py',
-    'runner/bin/web-search-smoke.py',
-    'runner/bin/configure-model-provider.py',
-    'runner/bin/patch-hermes-dependencies.mjs',
-    'runner/bin/hermes-startup-timing.mjs',
-    'runner/bin/hermes-service.sh',
-    'runner/bin/runner-service.sh',
-    'runner/bin/bootstrap-runtime.sh',
-    'runner/bin/spare-state.mjs',
-  ];
+  const origin = (env.API_ORIGIN ?? '').replace(/\/+$/, '');
+  if (!origin) throw new Error('API_ORIGIN is required to download the runtime bundle');
+  const digest = (env.RUNTIME_BUNDLE_SHA256 ?? '').trim();
+  if (!/^[0-9a-f]{64}$/.test(digest)) {
+    throw new Error('RUNTIME_BUNDLE_SHA256 is missing or malformed');
+  }
+  /* Minted into the command rather than presented from the sprite: the
+     download happens before the runner exists, on a machine that holds no
+     credential of its own. */
+  const ticket = await issueBundleTicket(env, commit);
+  const archive = '/home/sprite/aisar/runner-bundle.tar.gz';
   const downloads = [
     'set -euo pipefail',
     'install -d -m 700 /home/sprite/aisar/runner',
-    ...assets.map((asset) => {
-      const target = asset.replace(/^runner\/(?:src|bin)\//, '');
-      return `curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 ` +
-        `'${raw}/${asset}' --output '/home/sprite/aisar/runner/${target}'`;
-    }),
+    `curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 ` +
+      `--retry 3 --retry-connrefused --max-time 120 ` +
+      `--header 'Authorization: Bearer ${ticket}' ` +
+      `'${origin}/v1/runtime/bundle/${commit}.tar.gz' --output '${archive}'`,
+    /* TLS already rules out tampering, so this is here for the failures TLS
+       does not see: a truncated body, and the right key holding the wrong
+       bundle. Both would otherwise surface much later as a runner that
+       starts and misbehaves. */
+    `echo '${digest}  ${archive}' | sha256sum -c - >/dev/null`,
+    `tar -xzf '${archive}' -C /home/sprite/aisar/runner`,
+    `rm -f '${archive}'`,
     'chmod 755 /home/sprite/aisar/runner/configure-model-provider.py ' +
       '/home/sprite/aisar/runner/model-smoke.py ' +
       '/home/sprite/aisar/runner/jentera-calendar.mjs ' +

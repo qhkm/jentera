@@ -462,9 +462,10 @@ exercised live, what the next release must carry, what waits on Fly or on the
 owner, and what was deferred. Read it before asking what is next; move an
 item to its Closed section when it is done.
 
-**`ship-runtime.sh` pins `origin/main`, not your HEAD.** A sprite downloads
-its bundle from GitHub, so an unpushed commit is one no sprite could fetch and
-the script refuses it by design. The failure that follows is silent rather than
+**`ship-runtime.sh` pins `origin/main`, not your HEAD.** A release has to be
+reproducible from main — the bundle is packed from the pinned commit and its
+digest is written into `wrangler.toml` — so an unpushed commit is one nobody
+else could rebuild, and the script refuses it by design. The failure that follows is silent rather than
 loud: work that is committed but not pushed simply is not in the release, the
 gate passes, convergence reports success, and the release commit carries
 whatever message you gave it — on 21 September `2026.09.21-2` went out titled
@@ -473,6 +474,26 @@ behind HEAD that contained no such thing, and thirteen sprites converged on it
 happily. Only calling the action on a live sprite found it: `invalid_command`
 from a runner reporting the new release. **Push first, and check the
 `RUNTIME_BUNDLE_COMMIT` the dry run prints is the commit you mean.**
+
+**The bundle comes from R2, not GitHub.** A sprite used to build its runner
+directory from 24 anonymous curls against `raw.githubusercontent.com`, which
+serves public repositories and nothing else — the single reason this
+repository could not be private. Making it private on 23 September answered
+404 to every bootstrap and killed the next fresh provision with `curl: (22)`;
+visibility was reverted the same day. `ship-runtime.sh` now packs the pinned
+commit into one gzipped object (`bundle-pack.mjs`, deterministic, so the gate
+verifies it by rebuilding it), uploads it to `jentera-runtime-bundles` and
+writes its sha256 to `RUNTIME_BUNDLE_SHA256` beside the commit. The sprite
+fetches `/v1/runtime/bundle/<commit>.tar.gz` on a 15-minute ticket the control
+plane mints into the command that runs it — the download happens before the
+runner exists, so the sprite has no credential of its own — and checks the
+bytes against the pin. The pin rather than a digest from the bucket, because
+that is what catches the right key holding the wrong bytes. Two guards run as
+`predeploy`: `check-bundle-pin.mjs` refuses a deploy whose pinned commit has
+no object or whose digest disagrees with a local repack, and the release gate
+makes the same check with the bytes pulled back out of the bucket. `qhkm/hermes-agent`
+is a separate repository and is still fetched from GitHub anonymously, so it
+stays public.
 
 **A transfer field and its `case` arm ship in the same bundle.** The fields
 in `provision.ts`'s `transfer` are parsed by `bootstrap-runtime.sh` against a

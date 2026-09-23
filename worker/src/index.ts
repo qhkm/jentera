@@ -40,6 +40,7 @@ import { handleRoutines } from './routes/routines';
 import { handleReminders, dispatchDueReminders } from './reminders';
 import { handlePush } from './routes/push';
 import { handleArtifacts, RUNTIME_ARTIFACTS_PATH } from './routes/artifacts';
+import { handleRuntimeBundle } from './routes/runtime-bundle';
 import { handleRuntimeConnector } from './routes/runtime-connector';
 import { handleRuntimeConnect } from './routes/runtime-connect';
 import { sweepPushOutbox } from './push/outbox';
@@ -154,6 +155,12 @@ export default {
        using one they have already connected. */
     const runtimeConnect = await handleRuntimeConnect(request, env, url, headers);
     if (runtimeConnect) return runtimeConnect;
+    /* The runner bundle itself, on a ticket the control plane minted into the
+       command that fetches it. Mounted here, ahead of guardApiRequest, for the
+       same reason as the rest of /v1/runtime: the caller is a sprite, and this
+       one does not even have a credential yet. */
+    const runtimeBundle = await handleRuntimeBundle(request, env, url);
+    if (runtimeBundle) return runtimeBundle;
     /* A task's output files, uploaded by the runner with the same credential. */
     if (url.pathname === RUNTIME_ARTIFACTS_PATH) {
       const uploaded = await handleArtifacts(request, env, url, headers, {

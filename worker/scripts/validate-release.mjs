@@ -9,9 +9,14 @@
  * that changes the hermes pin or the runner bundle MUST pass this gate
  * before shipping.
  *
- * Checks (all against the actual repo state on GitHub):
+ * Checks. The jentera half reads the local git object store — a commit is
+ * content-addressed, so it is the same bytes GitHub served, and ship-runtime
+ * .sh already refuses a bundle that is not an ancestor of origin/main. That
+ * is also what lets this repository be private. The hermes-agent half still
+ * reads GitHub, because that is a different, still-public repository.
  *   1. bootstrap-runtime.sh exists at RUNTIME_BUNDLE_COMMIT (worker pin).
- *   2. Every runner asset provision.ts downloads exists at that commit.
+ *   2. The bundle packs from that commit, its digest matches the pin every
+ *      sprite is made to assert, and those bytes are in R2.
  *   3. hermes install.sh at the provision.ts HERMES_COMMIT hash-matches the
  *      sha256 pin baked into bootstrap-runtime.sh.
  *   4. Every flag the bootstrap passes to the installer is accepted by the
@@ -33,11 +38,14 @@
  * Run from the repo root (reads worker/wrangler.toml + worker/src/runtime/provision.ts).
  * Exit 0 = gate passed. Exit 1 = release-blocking.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { assertBootstrapAcceptsHermesTag } from './bootstrap-contract.mjs';
+import { bundleKey, packBundle, readAtCommit } from './bundle-pack.mjs';
 
-const REPO = 'qhkm/jentera';
 const HERMES_REPO = 'qhkm/hermes-agent';
 const RAW = 'https://raw.githubusercontent.com';
 
@@ -86,8 +94,12 @@ const assets = [...provision.matchAll(/'(runner\/(?:src|bin)\/[^']+)'/g)].map((m
 if (!assets.length) { fail('no runner assets found in provision.ts'); process.exit(1); }
 
 // ---- 2. Bootstrap script at the pinned bundle commit --------------------
-const bootstrap = await readRaw(REPO, bundleCommit, 'runner/bin/bootstrap-runtime.sh');
-if (!bootstrap) { fail(`bootstrap-runtime.sh missing at ${bundleCommit}`); process.exit(1); }
+/* Read from the local object store. A commit is content-addressed, so this
+   is the same file raw.githubusercontent used to serve, and ship-runtime.sh
+   already refuses a bundle that is not an ancestor of origin/main. It also
+   removes this half of the gate's dependence on a public repository. */
+const bootstrap = readAtCommit(bundleCommit, 'runner/bin/bootstrap-runtime.sh')?.toString('utf8');
+if (!bootstrap) { fail(`bootstrap-runtime.sh unreadable at ${bundleCommit}; git fetch origin ${bundleCommit}`); process.exit(1); }
 ok('bootstrap-runtime.sh present at bundle commit');
 
 // 2026-09-18: a real tag resolved to the correct commit, but the bootstrap
@@ -163,11 +175,57 @@ try {
   fail('GitHub API unreachable; cannot prove the installer tag resolves to the pinned commit');
 }
 
-// ---- 6. Runner assets exist at the bundle commit --------------------------
-for (const asset of assets) {
-  const res = await httpGet(`${RAW}/${REPO}/${bundleCommit}/${asset}`);
-  if (res.ok) ok(`asset ${asset}`);
-  else fail(`asset missing at ${bundleCommit}: ${asset}`);
+// ---- 6. The bundle a sprite will actually download -------------------------
+//
+// Until 2026-09-23 this fetched each asset from raw.githubusercontent.com one
+// at a time, which proved only that a public URL resolved. A sprite now
+// downloads one object from R2 — the change that lets this repository be
+// private — so what has to be proven is different and stronger: that packing
+// the pinned commit works at all, that the digest the control plane will make
+// every sprite assert matches it, and that those exact bytes are in the
+// bucket. Packing reads every asset out of the commit, so a missing file
+// fails here as loudly as a missing URL used to.
+let packed;
+try {
+  packed = packBundle(bundleCommit);
+  ok(`bundle packs from ${bundleCommit.slice(0, 12)}: ${packed.assets.length} files, ${packed.bytes.length} bytes`);
+  for (const asset of assets) {
+    if (!packed.assets.includes(asset)) fail(`asset not in the packed bundle: ${asset}`);
+  }
+} catch (error) {
+  fail(`bundle could not be packed at ${bundleCommit}: ${error.message}`);
+}
+
+const pinnedSha = wrangler.match(/RUNTIME_BUNDLE_SHA256\s*=\s*"([0-9a-f]{64})"/)?.[1];
+if (!pinnedSha) {
+  fail('RUNTIME_BUNDLE_SHA256 not found in wrangler.toml; provisioning refuses to run without it');
+} else if (packed && pinnedSha !== packed.sha256) {
+  fail(`RUNTIME_BUNDLE_SHA256 is ${pinnedSha} but packing ${bundleCommit} produces ${packed.sha256}; every sprite would reject a correct bundle`);
+} else if (packed) {
+  ok(`pin matches the packed bundle (${pinnedSha.slice(0, 16)}\u2026)`);
+}
+
+/* Round-trip the bytes rather than trusting an exit code. `wrangler r2 object
+   get` without --remote reads a local miniflare store and exits 0; twelve
+   uploads once "succeeded" that way against a bucket that never changed. */
+const bucketName = wrangler.match(/binding\s*=\s*"RUNTIME_BUNDLES"\s*\nbucket_name\s*=\s*"([^"]+)"/)?.[1];
+if (!bucketName) {
+  fail('the RUNTIME_BUNDLES r2_buckets binding is missing from wrangler.toml');
+} else if (packed) {
+  const dir = mkdtempSync(join(tmpdir(), 'release-bundle-'));
+  try {
+    const out = join(dir, 'bundle.tar.gz');
+    execFileSync('pnpm', ['exec', 'wrangler', 'r2', 'object', 'get',
+      `${bucketName}/${bundleKey(bundleCommit)}`, '--file', out, '--remote'],
+      { stdio: 'pipe', cwd: new URL('..', import.meta.url).pathname });
+    const got = createHash('sha256').update(readFileSync(out)).digest('hex');
+    if (got === packed.sha256) ok(`${bucketName}/${bundleKey(bundleCommit)} round-trips to the pin`);
+    else fail(`${bucketName}/${bundleKey(bundleCommit)} hashes to ${got}, not ${packed.sha256}; the right key holds the wrong bytes`);
+  } catch (error) {
+    fail(`${bucketName}/${bundleKey(bundleCommit)} could not be read back; upload it before shipping (${String(error.stderr ?? error.message).trim().split('\n').slice(-1)[0]})`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 // ---- 7. The pinned bootstrap can parse every field provision.ts sends -----

@@ -31,7 +31,7 @@ export async function prepareRuntimeSpare(
         !/^https:\/\/[a-zA-Z0-9.-]+\.sprites\.app$/.test(observed.url)) {
       throw new Error('spare identity is invalid');
     }
-    await downloadRuntimeBundle(provider, observed, spare.bundle_commit, true);
+    await downloadRuntimeBundle(env, provider, observed, spare.bundle_commit, true);
     await provider.writeFile(observed, '/home/sprite/aisar/bootstrap.env.in',
       sparePreparationTransfer(spare.release), 0o600);
     // The process-group deadline is on the Sprite itself, not just on the

@@ -317,7 +317,8 @@ Worker, triggers the drift sweep, waits for convergence, and runs
 Three rules that were each learned expensively:
 
 - **`ship-runtime.sh` pins `origin/main`, not your HEAD.** A sprite
-  downloads its bundle from GitHub, so an unpushed commit is one no sprite
+  downloads its bundle from R2, packed from the pinned commit, so an
+  unpushed commit is one nobody could rebuild and no sprite
   could fetch. The failure is silent: on 21 September a release went out
   titled "owner can restart a wedged business browser", pinned six commits
   behind HEAD, containing no such thing — and thirteen sprites converged on
