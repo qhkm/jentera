@@ -91,7 +91,9 @@
 .computer-setup-progress { margin-top: 12px; max-width: 460px; }
 .computer-setup-stage { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 12px; }
 .computer-setup-stage span { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
-.computer-setup-progress progress { display: block; appearance: none; width: 100%; height: 5px; margin-top: 8px; border: 0; border-radius: 8px; overflow: hidden; background: var(--rail); accent-color: var(--accent-green); }
+.computer-setup-meter { position: relative; width: 100%; height: 5px; margin-top: 8px; overflow: hidden; border-radius: 8px; background: var(--rail); }
+.computer-setup-meter::after { position: absolute; inset: 0 auto 0 0; width: 24%; border-radius: inherit; background: linear-gradient(90deg, transparent, rgb(255 255 255 / .42), transparent); content: ''; pointer-events: none; animation: computer-setup-scan 1.55s var(--ease-in-out) infinite; }
+.computer-setup-progress progress { display: block; appearance: none; width: 100%; height: 5px; margin: 0; border: 0; border-radius: 8px; overflow: hidden; background: transparent; accent-color: var(--accent-green); }
 .computer-setup-progress progress::-webkit-progress-bar { background: var(--rail); }
 .computer-setup-progress progress::-webkit-progress-value { background: var(--accent-green); border-radius: 8px; }
 .computer-setup-progress progress::-moz-progress-bar { background: var(--accent-green); }
@@ -118,11 +120,16 @@ section.computer-status-setup-strip { display: block; padding: 4px 12px; border-
 .computer-status-setup-summary strong { font-weight: 550; }
 .computer-setup-inline { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 420px; flex: 1; color: var(--text-secondary); font-size: 12px; }
 .computer-setup-inline > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.computer-setup-inline progress { appearance: none; flex: 1; min-width: 32px; max-width: 100px; height: 3px; border: 0; border-radius: 6px; overflow: hidden; background: var(--rail); accent-color: var(--accent-green); }
+.computer-setup-inline .computer-setup-meter { flex: 1; min-width: 32px; max-width: 100px; height: 3px; margin: 0; border-radius: 6px; }
+.computer-setup-inline progress { appearance: none; width: 100%; height: 3px; border: 0; border-radius: 6px; overflow: hidden; background: transparent; accent-color: var(--accent-green); }
 .computer-setup-inline progress::-webkit-progress-bar { background: var(--rail); }
 .computer-setup-inline progress::-webkit-progress-value { background: var(--accent-green); }
 .computer-setup-inline progress::-moz-progress-bar { background: var(--accent-green); }
 .computer-setup-inline small { flex-shrink: 0; font-size: 11px; font-variant-numeric: tabular-nums; }
+@keyframes computer-setup-scan {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(420%); }
+}
 .computer-status-setup-actions { display: flex; align-items: center; gap: 12px; margin-left: auto; flex-shrink: 0; }
 .computer-status-details { display: flex; align-items: center; gap: 6px; min-height: 40px; color: var(--text-secondary); font-size: 12px; }
 .computer-status-details[aria-expanded='true'] svg { transform: rotate(180deg); }
@@ -193,12 +200,15 @@ section.computer-status-setup-strip { display: block; padding: 4px 12px; border-
   .computer-status-setup-row { gap: 8px; }
   .computer-status-setup-summary { font-size: 11px; }
   .computer-setup-inline { gap: 6px; font-size: 11px; }
-  .computer-setup-inline progress { display: none; }
+  .computer-setup-inline .computer-setup-meter { display: none; }
   .computer-status-details { width: 32px; justify-content: center; min-height: 44px; }
   .computer-status-details > span { display: none; }
   .computer-status-setup-details { padding-left: 0; }
   .workspace-shell .shell-mode-navigation { position: static; transform: none; margin-left: auto; }
   .workspace-shell .workspace-mode-switch > button { padding-inline: 7px; gap: 4px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .computer-setup-meter::after { display: none; animation: none; }
 }
 .workspace-chat .dashboard-content { display: flex; flex-direction: column; }
 .workspace-chat .computer-status { margin: 8px 12px; }

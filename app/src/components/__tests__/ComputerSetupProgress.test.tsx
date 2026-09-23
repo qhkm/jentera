@@ -7,6 +7,7 @@ describe('setup progress', () => {
     render(<ComputerSetupProgress compact progress={{ stage: 'install', startedAt: '2026-09-17T08:00:00Z', updatedAt: '2026-09-17T08:01:00Z' }} />);
     expect(screen.getByText('Installing the workspace')).toBeInTheDocument();
     expect(screen.getByRole('progressbar')).toHaveAttribute('value', '25');
+    expect(screen.getByRole('progressbar').parentElement).toHaveClass('computer-setup-meter');
     expect(screen.queryByText(/estimate|longer than expected/)).not.toBeInTheDocument();
   });
   it('uses confirmed stages and holds the percentage when the estimate overruns', () => {

@@ -14,14 +14,18 @@ export function ComputerSetupProgress({ progress, now = Date.now(), compact = fa
   const [low, high] = minutes[index];
   const stalled = now - Date.parse(progress.updatedAt) > high * 60_000;
   const label = (lang === 'bm' ? bm : en)[index];
+  const progressLabel = lang === 'bm' ? 'Kemajuan persediaan anggaran' : 'Approximate setup progress';
+  const meter = <div className="computer-setup-meter">
+    <progress max={100} value={percent} aria-label={progressLabel} />
+  </div>;
   if (compact) return <div className="computer-setup-inline" title={label}>
     <span>{label}</span>
-    <progress max={100} value={percent} aria-label={lang === 'bm' ? 'Kemajuan persediaan anggaran' : 'Approximate setup progress'} />
+    {meter}
     <small>~{percent}%</small>
   </div>;
   return <div className="computer-setup-progress">
     <div className="computer-setup-stage"><strong>{label}</strong><span>~{percent}%</span></div>
-    <progress max={100} value={percent} aria-label={lang === 'bm' ? 'Kemajuan persediaan anggaran' : 'Approximate setup progress'} />
+    {meter}
     <p>{stalled ? (lang === 'bm' ? 'Mengambil masa lebih lama daripada jangkaan. Menunggu kemas kini langkah seterusnya.' : 'Taking longer than expected. Waiting for the next stage update.')
       : lang === 'bm' ? `Anggaran awal: ${low}–${high} minit lagi.` : `Rough estimate: ${low}–${high} minutes left.`}</p>
     <small>{lang === 'bm' ? 'Kemajuan berdasarkan langkah yang disahkan.' : 'Progress reflects confirmed setup stages.'}</small>
