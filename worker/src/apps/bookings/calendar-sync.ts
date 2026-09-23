@@ -2,6 +2,7 @@ import type postgres from 'postgres';
 import type { Env } from '../../env';
 import { connect, withTenant } from '../../db';
 import {
+  type ConnectionRow,
   findConnectionById,
   markConnectionExpired,
   markConnectionHealthy,
@@ -55,10 +56,21 @@ const SWEEP_ERROR_DEFER_MS = 5 * 60_000;
 export const CALENDAR_RECONNECT = 'Reconnect Google Calendar, then retry.';
 export const CALENDAR_REMOVED_IN_GOOGLE =
   'This event was deleted in Google Calendar, so Jentera did not add it again.';
+export const CALENDAR_DISCONNECTED_ADD =
+  'Google Calendar was disconnected before this booking was added. Reconnect the same Google account, then retry.';
 export const CALENDAR_DISCONNECTED_CLEANUP =
-  'Google Calendar was disconnected, so this event could not be removed. Delete it in Google Calendar.';
+  'Google Calendar was disconnected, so this event could not be removed. Reconnect the same Google account and retry, or delete it in Google Calendar.';
 export const CALENDAR_UNCONFIRMED =
   'Jentera could not confirm this with Google Calendar. Retry to check again.';
+
+/** Why booking.calendar_status is 'failed', for the app to branch on instead of the English in
+    calendar_error. Every write of 'failed' sets one; every other status clears it.
+      reconnect         - Google refused the grant, or the connection or its credential is unusable
+      disconnected      - no connection of the booking's own Google account exists any more
+      removed_in_google - the owner deleted the event in Google; final, never re-added
+      unconfirmed       - the last attempt never came back, so the outcome is unknown
+      provider          - Google kept failing until the attempts ran out */
+export type CalendarReason = 'reconnect' | 'disconnected' | 'removed_in_google' | 'unconfirmed' | 'provider';
 
 /** What one call did. 'created', 'removed' and 'retrying' always called Google. 'stale' always
     called Google too — it is returned only by complete(), which runs after callGoogle — and
@@ -87,6 +99,7 @@ interface SyncBooking {
   note: string | null;
   status: 'pending' | 'confirmed' | 'declined' | 'cancelled';
   calendar_connection_id: string | null;
+  calendar_account: string | null;
 }
 
 interface SyncJob {
@@ -141,7 +154,7 @@ async function lockJob(
   if (!installed) return null;
   const [booking] = await tx<SyncBooking[]>`
     select id, reference, service_name, starts_at, ends_at, party_size, customer_name, customer_phone, note,
-           status, calendar_connection_id
+           status, calendar_connection_id, calendar_account
       from booking where business_id = ${businessId} and id = ${bookingId} for update`;
   if (!booking) return null;
   const [job] = await tx<SyncJob[]>`
@@ -156,6 +169,7 @@ async function giveUp(
   businessId: string,
   bookingId: string,
   why: string,
+  reason: CalendarReason,
   now: Date,
 ): Promise<void> {
   const message = why.slice(0, 300);
@@ -163,8 +177,34 @@ async function giveUp(
     set attempts = ${CALENDAR_MAX_ATTEMPTS}, lease_token = null, lease_expires_at = null,
         last_error = ${message}, updated_at = ${now}
     where business_id = ${businessId} and booking_id = ${bookingId}`;
-  await tx`update booking set calendar_status = 'failed', calendar_error = ${message}
+  await tx`update booking set calendar_status = 'failed', calendar_error = ${message}, calendar_reason = ${reason}
     where business_id = ${businessId} and id = ${bookingId}`;
+}
+
+/** The connected Google Calendar connection of one Google account (a connection's external_id is
+    the Google subject), or null. RLS scopes it to the tenant, and (business, connector,
+    external_id) is unique, so there is at most one. This is the only way a booking whose
+    connection went away is pinned again: never to a different account, which would add or remove
+    an event in someone else's calendar. */
+export async function sameAccountConnection(
+  tx: postgres.TransactionSql,
+  account: string,
+): Promise<Pick<ConnectionRow, 'id' | 'externalId' | 'displayName'> | null> {
+  const [row] = await tx<{ id: string; external_id: string; display_name: string | null }[]>`
+    select id, external_id, display_name from connection
+     where connector = ${GOOGLE_CALENDAR_CONNECTOR} and external_id = ${account} and status = 'connected'
+     limit 1`;
+  return row ? { id: row.id, externalId: row.external_id, displayName: row.display_name } : null;
+}
+
+/** What a booking records about the connection it is pinned to. The account is left empty rather
+    than truncated if it will not fit: a cut-down Google subject would match nothing, or the wrong
+    account. */
+export function calendarPin(connection: Pick<ConnectionRow, 'id' | 'externalId' | 'displayName'>): {
+  id: string; account: string | null; label: string | null;
+} {
+  const account = connection.externalId && connection.externalId.length <= 200 ? connection.externalId : null;
+  return { id: connection.id, account, label: connection.displayName?.slice(0, 320) ?? null };
 }
 
 async function claim(
@@ -184,7 +224,7 @@ async function claim(
          the isolate died, the database call failed, whatever. Left alone this job would sit
          forever: attempts >= CALENDAR_MAX_ATTEMPTS excludes it from the due scan, and a direct
          call would fall through to the idle return below without telling the owner anything. */
-      await giveUp(tx, businessId, bookingId, CALENDAR_UNCONFIRMED, now);
+      await giveUp(tx, businessId, bookingId, CALENDAR_UNCONFIRMED, 'unconfirmed', now);
       return { kind: 'done', outcome: 'failed' };
     }
     if (job.completed_revision === job.revision || job.attempts >= CALENDAR_MAX_ATTEMPTS) {
@@ -206,21 +246,35 @@ async function claim(
         where business_id = ${businessId} and booking_id = ${bookingId}`;
       return { kind: 'done', outcome: 'idle' };
     }
-    const connection = booking.calendar_connection_id
+    const pinned = booking.calendar_connection_id
       ? await findConnectionById(tx, booking.calendar_connection_id)
       : null;
-    if (!connection || connection.connector !== GOOGLE_CALENDAR_CONNECTOR) {
-      // Never pick another connection: that could create or delete in a different account.
-      await giveUp(tx, businessId, bookingId, job.desired === 'absent' ? CALENDAR_DISCONNECTED_CLEANUP : CALENDAR_RECONNECT, now);
-      return { kind: 'done', outcome: 'failed' };
-    }
-    if (connection.status !== 'connected') {
-      await giveUp(tx, businessId, bookingId, CALENDAR_RECONNECT, now);
-      return { kind: 'done', outcome: 'failed' };
+    const google = pinned && pinned.connector === GOOGLE_CALENDAR_CONNECTOR ? pinned : null;
+    let connectionId = google?.status === 'connected' ? google.id : null;
+    if (!connectionId) {
+      /* The pinned connection is gone (a disconnect nulls the pin) or not usable. The same Google
+         account connected again is a new row, or the same row working again; re-pin to it. Never
+         pick any other connection: that could create or delete in a different account. */
+      const same = booking.calendar_account ? await sameAccountConnection(tx, booking.calendar_account) : null;
+      if (!same) {
+        if (google) {
+          // The pinned row is still there, just not connected: reconnecting the account fixes it.
+          await giveUp(tx, businessId, bookingId, CALENDAR_RECONNECT, 'reconnect', now);
+        } else {
+          await giveUp(tx, businessId, bookingId,
+            job.desired === 'absent' ? CALENDAR_DISCONNECTED_CLEANUP : CALENDAR_DISCONNECTED_ADD, 'disconnected', now);
+        }
+        return { kind: 'done', outcome: 'failed' };
+      }
+      const pin = calendarPin(same);
+      await tx`update booking
+        set calendar_connection_id = ${pin.id}, calendar_account_label = coalesce(${pin.label}, calendar_account_label)
+        where business_id = ${businessId} and id = ${bookingId}`;
+      connectionId = pin.id;
     }
     let secret: string;
     try {
-      secret = await useCredential(env, tx, connection.id);
+      secret = await useCredential(env, tx, connectionId);
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
       const name = error instanceof Error ? error.name : '';
@@ -231,7 +285,7 @@ async function claim(
          taken, and runCalendarJob (or the sweep) logs it. */
       if (message === 'that connection has no credential' || name === 'OperationError') {
         console.warn(`[bookings-calendar] business=${businessId} booking=${bookingId} credential ${errorLabel(error)}`);
-        await giveUp(tx, businessId, bookingId, CALENDAR_RECONNECT, now);
+        await giveUp(tx, businessId, bookingId, CALENDAR_RECONNECT, 'reconnect', now);
         return { kind: 'done', outcome: 'failed' };
       }
       throw error;
@@ -245,7 +299,7 @@ async function claim(
       kind: 'claimed',
       claim: {
         token, revision: job.revision, desired: job.desired, attempts: job.attempts + 1,
-        connectionId: connection.id, secret, booking,
+        connectionId, secret, booking,
       },
     };
   });
@@ -323,18 +377,20 @@ async function complete(
     switch (result.kind) {
       case 'created':
         await done(null);
-        await tx`update booking set calendar_status = 'created', calendar_event_id = ${result.eventId}, calendar_error = null
+        await tx`update booking set calendar_status = 'created', calendar_event_id = ${result.eventId},
+            calendar_error = null, calendar_reason = null
           where business_id = ${businessId} and id = ${bookingId}`;
         return { outcome: 'created', connectionAction: 'healthy' };
       case 'removed':
         await done(null);
-        await tx`update booking set calendar_status = 'removed', calendar_error = null
+        await tx`update booking set calendar_status = 'removed', calendar_error = null, calendar_reason = null
           where business_id = ${businessId} and id = ${bookingId}`;
         return { outcome: 'removed', connectionAction: 'healthy' };
       case 'removed_in_google':
         // Final: the same id cannot come back, and a new id would be a second event.
         await done(CALENDAR_REMOVED_IN_GOOGLE);
-        await tx`update booking set calendar_status = 'failed', calendar_error = ${CALENDAR_REMOVED_IN_GOOGLE}
+        await tx`update booking set calendar_status = 'failed', calendar_error = ${CALENDAR_REMOVED_IN_GOOGLE},
+            calendar_reason = 'removed_in_google'
           where business_id = ${businessId} and id = ${bookingId}`;
         return { outcome: 'failed', connectionAction: 'healthy' };
       case 'error': {
@@ -343,11 +399,11 @@ async function complete(
         // transaction holds. Only giving up (a job-table write already inside this lock set)
         // stays here.
         if (result.auth) {
-          await giveUp(tx, businessId, bookingId, result.message, now);
+          await giveUp(tx, businessId, bookingId, result.message, 'reconnect', now);
           return { outcome: 'failed', connectionAction: { expired: result.message } };
         }
         if (work.attempts >= CALENDAR_MAX_ATTEMPTS) {
-          await giveUp(tx, businessId, bookingId, result.message, now);
+          await giveUp(tx, businessId, bookingId, result.message, 'provider', now);
           return { outcome: 'failed', connectionAction: { problem: result.message } };
         }
         await tx`update booking_calendar_job

@@ -1,7 +1,7 @@
 import type postgres from 'postgres';
 import { findConnection } from '../../connections';
 import { GOOGLE_CALENDAR_CONNECTOR } from '../../connectors/google-calendar';
-import { CALENDAR_MAX_ATTEMPTS } from './calendar-sync';
+import { CALENDAR_MAX_ATTEMPTS, calendarPin, sameAccountConnection, type CalendarReason } from './calendar-sync';
 import { bookingMessage, whatsappUrl, type Lang, type MessageKind } from './messages';
 import { addDays, myInstant } from './time';
 
@@ -29,6 +29,8 @@ export interface BookingRow {
   cancelled_at: Date | null;
   calendar_status: CalendarStatus;
   calendar_error: string | null;
+  calendar_reason: CalendarReason | null;
+  calendar_account_label: string | null;
   created_at: Date;
 }
 
@@ -50,7 +52,17 @@ export interface BookingJson {
   expired: boolean;
   decidedAt: string | null;
   cancelledAt: string | null;
-  calendar: { status: CalendarStatus; error: string | null };
+  calendar: {
+    status: CalendarStatus;
+    error: string | null;
+    /** Why a failed sync failed; null unless status is 'failed'. Branch on this, not on error. */
+    reason: CalendarReason | null;
+    /** Whether the owner's retry can do anything: a failure other than an event deleted in
+        Google (final), or a booking confirmed while nothing was connected. */
+    canRetry: boolean;
+    /** The Google account (its email) the event lives in, kept across a disconnect. */
+    account: string | null;
+  };
   /** A prefilled message for the owner to send; never proof it was sent. */
   whatsappUrl: string | null;
   createdAt: string;
@@ -65,7 +77,8 @@ export type DecideResult =
 // A plain string[]: postgres.js's identifier helper, tx(COLUMNS), does not accept a readonly tuple.
 const COLUMNS: string[] = [
   'id', 'reference', 'service_id', 'service_name', 'starts_at', 'ends_at', 'party_size', 'customer_name',
-  'customer_phone', 'note', 'status', 'decided_at', 'cancelled_at', 'calendar_status', 'calendar_error', 'created_at',
+  'customer_phone', 'note', 'status', 'decided_at', 'cancelled_at', 'calendar_status', 'calendar_error',
+  'calendar_reason', 'calendar_account_label', 'created_at',
 ];
 
 function messageKind(status: BookingStatus): MessageKind | null {
@@ -89,7 +102,14 @@ export function bookingJson(row: BookingRow, ctx: BookingContext): BookingJson {
     expired: row.status === 'pending' && row.starts_at.getTime() <= ctx.now.getTime(),
     decidedAt: row.decided_at?.toISOString() ?? null,
     cancelledAt: row.cancelled_at?.toISOString() ?? null,
-    calendar: { status: row.calendar_status, error: row.calendar_error },
+    calendar: {
+      status: row.calendar_status,
+      error: row.calendar_error,
+      reason: row.calendar_reason,
+      canRetry: (row.calendar_status === 'failed' && row.calendar_reason !== 'removed_in_google') ||
+        row.calendar_status === 'not_connected',
+      account: row.calendar_account_label,
+    },
     whatsappUrl: kind ? whatsappUrl(row.customer_phone, bookingMessage({
       kind, lang: ctx.lang, customerName: row.customer_name, serviceName: row.service_name,
       partySize: row.party_size, startsAt: row.starts_at, reference: row.reference,
@@ -195,19 +215,22 @@ export async function decideBooking(
   if (row.status !== 'pending') return { ok: false, code: 'ALREADY_DECIDED' };
   if (row.starts_at.getTime() <= now.getTime()) return { ok: false, code: 'EXPIRED' };
   let calendarStatus: CalendarStatus = 'none';
-  let connectionId: string | null = null;
+  let pin: ReturnType<typeof calendarPin> | null = null;
   if (target === 'confirmed') {
     const connection = await findConnection(tx, GOOGLE_CALENDAR_CONNECTOR);
-    connectionId = connection?.id ?? null;
+    pin = connection ? calendarPin(connection) : null;
     calendarStatus = connection ? 'pending' : 'not_connected';
   }
+  // The account is recorded beside the connection so that a disconnect, which nulls the
+  // connection, still says which Google account the event belongs in.
   const [updated] = await tx<BookingRow[]>`update booking
     set status = ${target}, decided_at = ${now}, decided_by = ${userId},
-        calendar_status = ${calendarStatus}, calendar_connection_id = ${connectionId}
+        calendar_status = ${calendarStatus}, calendar_reason = null, calendar_connection_id = ${pin?.id ?? null},
+        calendar_account = ${pin?.account ?? null}, calendar_account_label = ${pin?.label ?? null}
     where business_id = ${businessId} and id = ${id} and status = 'pending'
     returning ${tx(COLUMNS)}`;
-  if (connectionId) await queueCalendarJob(tx, businessId, id, 'present', now);
-  return { ok: true, row: updated, changed: true, calendarQueued: connectionId !== null };
+  if (pin) await queueCalendarJob(tx, businessId, id, 'present', now);
+  return { ok: true, row: updated, changed: true, calendarQueued: pin !== null };
 }
 
 export async function cancelBooking(
@@ -228,7 +251,8 @@ export async function cancelBooking(
   const [updated] = await tx<BookingRow[]>`update booking
     set status = 'cancelled', cancelled_at = ${now}, cancelled_by = ${userId},
         calendar_status = ${eventMayExist ? 'pending' : row.calendar_status},
-        calendar_error = ${eventMayExist ? null : row.calendar_error}
+        calendar_error = ${eventMayExist ? null : row.calendar_error},
+        calendar_reason = ${eventMayExist ? null : row.calendar_reason}
     where business_id = ${businessId} and id = ${id} and status = 'confirmed'
     returning ${tx(COLUMNS)}`;
   if (eventMayExist) await queueCalendarJob(tx, businessId, id, 'absent', now);
@@ -259,22 +283,30 @@ export async function retryCalendar(
   if (job?.lease_expires_at && job.lease_expires_at.getTime() > now.getTime()) return unchanged;
   if (job && job.completed_revision !== job.revision && job.attempts < CALENDAR_MAX_ATTEMPTS) return unchanged;
   if (job && job.completed_revision === job.revision && row.calendar_status !== 'failed') return unchanged;
-  const [pin] = await tx<{ calendar_connection_id: string | null }[]>`
-    select calendar_connection_id from booking where business_id = ${businessId} and id = ${id}`;
-  let connectionId = pin.calendar_connection_id;
+  const [pinned] = await tx<{ calendar_connection_id: string | null; calendar_account: string | null; calendar_account_label: string | null }[]>`
+    select calendar_connection_id, calendar_account, calendar_account_label from booking
+     where business_id = ${businessId} and id = ${id}`;
+  let pin = {
+    id: pinned.calendar_connection_id, account: pinned.calendar_account, label: pinned.calendar_account_label,
+  };
   if (!job) {
     // No job means no event could exist: a cancel has nothing to clean, and
     // only a booking confirmed while nothing was connected can be added now.
     if (desired === 'absent' || row.calendar_status !== 'not_connected') return unchanged;
     const connection = await findConnection(tx, GOOGLE_CALENDAR_CONNECTOR);
     if (!connection) return unchanged;
-    connectionId = connection.id;
-  } else if (!connectionId) {
-    // The account this booking used is gone; never switch to another one.
-    return { ok: false, code: 'CALENDAR_DISCONNECTED' };
+    pin = calendarPin(connection);
+  } else if (!pin.id) {
+    // The connection this booking used is gone. Only the same Google account,
+    // connected again, may take it over; never switch to another one.
+    const same = pin.account ? await sameAccountConnection(tx, pin.account) : null;
+    if (!same) return { ok: false, code: 'CALENDAR_DISCONNECTED' };
+    const repinned = calendarPin(same);
+    pin = { id: repinned.id, account: pin.account, label: repinned.label ?? pin.label };
   }
   const [updated] = await tx<BookingRow[]>`update booking
-    set calendar_status = 'pending', calendar_error = null, calendar_connection_id = ${connectionId}
+    set calendar_status = 'pending', calendar_error = null, calendar_reason = null,
+        calendar_connection_id = ${pin.id}, calendar_account = ${pin.account}, calendar_account_label = ${pin.label}
     where business_id = ${businessId} and id = ${id}
     returning ${tx(COLUMNS)}`;
   await queueCalendarJob(tx, businessId, id, desired, now);

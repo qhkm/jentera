@@ -127,10 +127,21 @@ create table if not exists booking (
   calendar_status        text not null default 'none'
                          check (calendar_status in ('none', 'pending', 'created', 'failed', 'not_connected', 'removed')),
   -- connection.id is a single-column key; a composite tenant key is not
-  -- available. The value is only ever set from findConnection under RLS.
+  -- available. The value is only ever set under RLS, from findConnection
+  -- or from a connection of the same Google account (sameAccountConnection).
   calendar_connection_id uuid references connection(id) on delete set null,
   calendar_event_id      text check (char_length(calendar_event_id) <= 1024),
   calendar_error         text check (char_length(calendar_error) <= 300),
+  -- Which Google account the event lives in: the pinned connection's
+  -- external_id (the Google subject) and display name (its email). Kept
+  -- when a disconnect nulls calendar_connection_id, so the same account
+  -- connected again can be re-pinned, and never a different one.
+  calendar_account       text check (char_length(calendar_account) <= 200),
+  calendar_account_label text check (char_length(calendar_account_label) <= 320),
+  -- Why calendar_status is 'failed', for the app to act on without
+  -- reading the English in calendar_error. Null for every other status.
+  calendar_reason        text check (calendar_reason in
+                         ('reconnect', 'disconnected', 'removed_in_google', 'unconfirmed', 'provider')),
   created_at             timestamptz not null default now(),
   check (ends_at > starts_at),
   primary key (business_id, id),

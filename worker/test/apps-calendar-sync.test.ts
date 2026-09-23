@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cancelBooking } from '../src/apps/bookings/bookings';
 import {
-  CALENDAR_DISCONNECTED_CLEANUP, CALENDAR_MAX_ATTEMPTS, CALENDAR_RECONNECT, CALENDAR_REMOVED_IN_GOOGLE,
-  CALENDAR_UNCONFIRMED, processBookingCalendarJob, sweepBookingCalendar,
+  CALENDAR_DISCONNECTED_ADD, CALENDAR_DISCONNECTED_CLEANUP, CALENDAR_MAX_ATTEMPTS, CALENDAR_RECONNECT,
+  CALENDAR_REMOVED_IN_GOOGLE, CALENDAR_UNCONFIRMED, processBookingCalendarJob, sweepBookingCalendar,
 } from '../src/apps/bookings/calendar-sync';
 import { saveConnection } from '../src/connections';
 import { GOOGLE_CALENDAR_SCOPES, calendarEventId, calendarSecret } from '../src/connectors/google-calendar';
@@ -45,10 +45,10 @@ beforeEach(async () => {
   bookingId = await asOwner(async (sql) => {
     const [b] = await sql<{ id: string }[]>`insert into booking (business_id, reference, submission_key, submission_hash,
         service_id, service_name, starts_at, ends_at, party_size, customer_name, customer_phone, note, status,
-        decided_at, decided_by, calendar_status, calendar_connection_id)
+        decided_at, decided_by, calendar_status, calendar_connection_id, calendar_account, calendar_account_label)
       values (${A}, 'K7Q2MP', gen_random_uuid(), 'h', ${service}, 'Cupping class',
         '2026-10-06T02:00:00Z', '2026-10-06T03:00:00Z', 2, 'Aisyah', '60123456789', 'Window seat', 'confirmed',
-        ${NOW}, ${owner}, 'pending', ${connectionId})
+        ${NOW}, ${owner}, 'pending', ${connectionId}, 'account-1', 'owner@example.com')
       returning id`;
     await sql`insert into booking_calendar_job (business_id, booking_id, desired, next_attempt_at)
       values (${A}, ${b.id}, 'present', ${NOW})`;
@@ -81,16 +81,32 @@ function google(over: { token?: Handler; create?: Handler; read?: Handler; remov
 
 async function state() {
   const [row] = await asOwner((sql) => sql<{
-    calendar_status: string; calendar_error: string | null; calendar_event_id: string | null;
+    calendar_status: string; calendar_error: string | null; calendar_reason: string | null;
+    calendar_event_id: string | null; calendar_connection_id: string | null; calendar_account: string | null;
     desired: string; attempts: number; revision: number; completed_revision: number | null;
     next_attempt_at: Date; lease_token: string | null; last_error: string | null;
   }[]>`
-    select b.calendar_status, b.calendar_error, b.calendar_event_id, j.desired, j.attempts, j.revision,
-           j.completed_revision, j.next_attempt_at, j.lease_token, j.last_error
+    select b.calendar_status, b.calendar_error, b.calendar_reason, b.calendar_event_id, b.calendar_connection_id,
+           b.calendar_account, j.desired, j.attempts, j.revision, j.completed_revision, j.next_attempt_at,
+           j.lease_token, j.last_error
       from booking b join booking_calendar_job j on j.business_id = b.business_id and j.booking_id = b.id
      where b.id = ${bookingId}`);
   return row;
 }
+
+/** Connect a Google account the way the OAuth callback does: one row per account. */
+function connectAccount(account: string, email: string) {
+  return asTenant(A, (tx) => saveConnection(ENV, tx, A, {
+    connector: 'google', method: 'oauth', externalId: account, displayName: email,
+    secret: calendarSecret({
+      subject: account, email, name: null, refreshToken: `refresh-${account}`, scopes: [...GOOGLE_CALENDAR_SCOPES],
+    }),
+    connectedBy: owner, scopes: [...GOOGLE_CALENDAR_SCOPES],
+  }));
+}
+
+/** Disconnecting deletes the row; the booking's pin falls to null with it. */
+const disconnect = (id: string) => asOwner((sql) => sql`delete from connection where id = ${id}`);
 
 async function cancelInDatabase() {
   await asOwner(async (sql) => {
@@ -104,7 +120,7 @@ describe('processBookingCalendarJob', () => {
     const g = google();
     expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('created');
     expect(await state()).toMatchObject({
-      calendar_status: 'created', calendar_error: null, calendar_event_id: calendarEventId(bookingId),
+      calendar_status: 'created', calendar_error: null, calendar_reason: null, calendar_event_id: calendarEventId(bookingId),
       attempts: 1, revision: 1, completed_revision: 1, lease_token: null,
     });
     const sent = JSON.parse(g.creates()[0].body!);
@@ -125,7 +141,7 @@ describe('processBookingCalendarJob', () => {
     expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('removed');
     expect(g.calls.find((c) => c.method === 'DELETE')!.url)
       .toContain(`/events/${calendarEventId(bookingId)}?sendUpdates=none`);
-    expect(await state()).toMatchObject({ calendar_status: 'removed', calendar_error: null, completed_revision: 2 });
+    expect(await state()).toMatchObject({ calendar_status: 'removed', calendar_error: null, calendar_reason: null, completed_revision: 2 });
     expect(g.creates()).toHaveLength(0);
 
     await cancelInDatabase();   // another revision to reconcile
@@ -221,7 +237,7 @@ describe('processBookingCalendarJob', () => {
     await asOwner((sql) => sql`update booking_calendar_job set attempts = ${CALENDAR_MAX_ATTEMPTS - 1}, next_attempt_at = ${NOW}`);
     expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('failed');
     expect(await state()).toMatchObject({
-      calendar_status: 'failed', attempts: CALENDAR_MAX_ATTEMPTS,
+      calendar_status: 'failed', attempts: CALENDAR_MAX_ATTEMPTS, calendar_reason: 'provider',
       calendar_error: 'Google Calendar could not complete that request (500).',
     });
     const due = await asApp((sql) => sql`select * from public.booking_calendar_due(${new Date(NOW.getTime() + 86_400_000)}, 50)`);
@@ -236,7 +252,7 @@ describe('processBookingCalendarJob', () => {
     const g = google({ token: () => new Response('{}', { status: 400 }) });
     expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('failed');
     expect(await state()).toMatchObject({
-      calendar_status: 'failed', attempts: CALENDAR_MAX_ATTEMPTS,
+      calendar_status: 'failed', attempts: CALENDAR_MAX_ATTEMPTS, calendar_reason: 'reconnect',
       calendar_error: 'Google Calendar access expired. Reconnect it to continue.',
     });
     const [connection] = await asOwner((sql) => sql<{ status: string }[]>`select status from connection where id = ${connectionId}`);
@@ -271,17 +287,22 @@ describe('processBookingCalendarJob', () => {
     });
     expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('failed');
     expect(await state()).toMatchObject({
-      calendar_status: 'failed', calendar_error: CALENDAR_REMOVED_IN_GOOGLE, calendar_event_id: null, completed_revision: 1,
+      calendar_status: 'failed', calendar_error: CALENDAR_REMOVED_IN_GOOGLE, calendar_reason: 'removed_in_google',
+      calendar_event_id: null, completed_revision: 1,
     });
     expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at(1_000) })).toBe('idle');
   });
 
   it('never removes through another account once the original connection is gone', async () => {
     await cancelInDatabase();
-    await asOwner((sql) => sql`update booking set calendar_connection_id = null where id = ${bookingId}`);
+    await disconnect(connectionId);
+    await connectAccount('account-2', 'other@example.com');
     const g = google();
     expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('failed');
-    expect(await state()).toMatchObject({ calendar_status: 'failed', calendar_error: CALENDAR_DISCONNECTED_CLEANUP });
+    expect(await state()).toMatchObject({
+      calendar_status: 'failed', calendar_error: CALENDAR_DISCONNECTED_CLEANUP, calendar_reason: 'disconnected',
+      calendar_connection_id: null, calendar_account: 'account-1',
+    });
     expect(g.calls).toHaveLength(0);
   });
 
@@ -289,7 +310,9 @@ describe('processBookingCalendarJob', () => {
     await asOwner((sql) => sql`update connection set status = 'expired' where id = ${connectionId}`);
     const g = google();
     expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('failed');
-    expect(await state()).toMatchObject({ calendar_status: 'failed', calendar_error: CALENDAR_RECONNECT });
+    expect(await state()).toMatchObject({
+      calendar_status: 'failed', calendar_error: CALENDAR_RECONNECT, calendar_reason: 'reconnect', calendar_connection_id: connectionId,
+    });
     expect(g.calls).toHaveLength(0);
   });
 
@@ -303,7 +326,7 @@ describe('processBookingCalendarJob', () => {
     });
     const g = google();
     expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('failed');
-    expect(await state()).toMatchObject({ calendar_status: 'failed', calendar_error: CALENDAR_RECONNECT });
+    expect(await state()).toMatchObject({ calendar_status: 'failed', calendar_error: CALENDAR_RECONNECT, calendar_reason: 'reconnect' });
     expect(g.calls).toHaveLength(0);
   });
 
@@ -315,7 +338,7 @@ describe('processBookingCalendarJob', () => {
     const g = google();
     expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('failed');
     expect(await state()).toMatchObject({
-      calendar_status: 'failed', calendar_error: CALENDAR_UNCONFIRMED, attempts: CALENDAR_MAX_ATTEMPTS,
+      calendar_status: 'failed', calendar_error: CALENDAR_UNCONFIRMED, calendar_reason: 'unconfirmed', attempts: CALENDAR_MAX_ATTEMPTS,
     });
     expect(g.calls).toHaveLength(0);
     expect(await asApp((sql) => sql`select * from public.booking_calendar_due(${NOW}, 50)`)).toHaveLength(0);
@@ -338,6 +361,45 @@ describe('processBookingCalendarJob', () => {
     // The orphan branch's own limit, pinned separately: lowering CALENDAR_MAX_ATTEMPTS without
     // updating the SQL (or vice versa) must fail here, not just leave a job due forever.
     expect(def).toContain(`attempts >= ${CALENDAR_MAX_ATTEMPTS}`);
+  });
+});
+
+describe('the Google account a booking lives in', () => {
+  it('re-pins to the same account after a disconnect and reconnect, and adds the event there', async () => {
+    await disconnect(connectionId);
+    const again = await connectAccount('account-1', 'owner@example.com');
+    expect(again.id).not.toBe(connectionId);
+    const g = google();
+    expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('created');
+    expect(await state()).toMatchObject({
+      calendar_status: 'created', calendar_reason: null, calendar_connection_id: again.id, calendar_account: 'account-1',
+    });
+    expect(g.creates()).toHaveLength(1);
+  });
+
+  it('never adds the event to a different account: it gives up as disconnected and keeps no pin', async () => {
+    await disconnect(connectionId);
+    await connectAccount('account-2', 'other@example.com');
+    const g = google();
+    expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('failed');
+    expect(await state()).toMatchObject({
+      calendar_status: 'failed', calendar_reason: 'disconnected', calendar_error: CALENDAR_DISCONNECTED_ADD,
+      calendar_connection_id: null, calendar_account: 'account-1',
+    });
+    expect(g.calls).toHaveLength(0);
+  });
+
+  it('removes a cancelled booking\'s event through the same account connected again', async () => {
+    const g = google();
+    expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('created');
+    await disconnect(connectionId);
+    const again = await connectAccount('account-1', 'owner@example.com');
+    await asTenant(A, (tx) => cancelBooking(tx, A, bookingId, owner, NOW));
+    expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at(1_000) })).toBe('removed');
+    expect(g.calls.filter((c) => c.method === 'DELETE')).toHaveLength(1);
+    expect(await state()).toMatchObject({
+      calendar_status: 'removed', calendar_reason: null, calendar_connection_id: again.id,
+    });
   });
 });
 
@@ -369,9 +431,9 @@ describe('sweepBookingCalendar', () => {
     const g = google();
     const summary = await sweepBookingCalendar(both, { fetch: g.fetch, now: at(1_000) });
     expect(summary).toEqual({ processed: 2, created: 1, removed: 0, retrying: 0, failed: 1, errors: 0 });
-    const [row] = await asOwner((sql) => sql<{ calendar_error: string | null }[]>`
-      select calendar_error from booking where id = ${other}`);
-    expect(row.calendar_error).toBe(CALENDAR_RECONNECT);
+    const [row] = await asOwner((sql) => sql<{ calendar_error: string | null; calendar_reason: string | null }[]>`
+      select calendar_error, calendar_reason from booking where id = ${other}`);
+    expect(row).toEqual({ calendar_error: CALENDAR_DISCONNECTED_ADD, calendar_reason: 'disconnected' });
     expect((await sweepBookingCalendar(both, { fetch: g.fetch, now: at(2_000) })).processed).toBe(0);
   });
 

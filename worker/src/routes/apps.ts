@@ -161,7 +161,9 @@ export async function handleApps(
          in this invocation near the database, without holding the answer for
          it. The minute cron is the backstop if this never runs. */
       if (outcome.calendarQueued) execution?.waitUntil(runCalendarJob(env, businessId, id));
-      return json({ ok: true, booking: outcome.booking, whatsappUrl: outcome.booking.whatsappUrl }, {}, cors);
+      return json({
+        ok: true, booking: outcome.booking, whatsappUrl: outcome.booking.whatsappUrl, calendarQueued: outcome.calendarQueued,
+      }, {}, cors);
     }
   }
 

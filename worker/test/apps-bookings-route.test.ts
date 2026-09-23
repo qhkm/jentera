@@ -1,21 +1,31 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { handleApps } from '../src/routes/apps';
 import { myDate } from '../src/apps/bookings/time';
 import {
-  CALENDAR_DISCONNECTED_CLEANUP, CALENDAR_RECONNECT, processBookingCalendarJob,
+  CALENDAR_DISCONNECTED_ADD, CALENDAR_DISCONNECTED_CLEANUP, CALENDAR_RECONNECT, processBookingCalendarJob,
 } from '../src/apps/bookings/calendar-sync';
-import { asOwner, jsonOf, req, signIn, testEnv, truncateAll } from './harness';
+import { saveConnection } from '../src/connections';
+import { GOOGLE_CALENDAR_SCOPES, calendarSecret } from '../src/connectors/google-calendar';
+import { asOwner, asTenant, fetchFake, jsonOf, req, signIn, testEnv, truncateAll } from './harness';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
 const CORS = { 'Access-Control-Allow-Origin': 'http://localhost:5173' };
-const ENV = testEnv({ APPS_ENABLED: 'true', APPS_BUSINESS_IDS: `${A},${B}`, SITES_ORIGIN: 'https://sites.test' });
+const ENV = testEnv({
+  APPS_ENABLED: 'true', APPS_BUSINESS_IDS: `${A},${B}`, SITES_ORIGIN: 'https://sites.test',
+  GOOGLE_CLIENT_ID: 'google-client', GOOGLE_CLIENT_SECRET: 'google-secret',
+});
 let ownerA = '';
+let ownerAId = '';
 let ownerB = '';
 let staffA = '';
 let serviceA = '';
 
-type Json = { ok: boolean; code?: string; booking: { id: string; status: string; expired: boolean; calendar: { status: string }; whatsappUrl: string | null }; whatsappUrl: string | null };
+type Calendar = { status: string; error: string | null; reason: string | null; canRetry: boolean; account: string | null };
+type Json = {
+  ok: boolean; code?: string; calendarQueued?: boolean; whatsappUrl: string | null;
+  booking: { id: string; status: string; expired: boolean; calendar: Calendar; whatsappUrl: string | null };
+};
 
 beforeEach(async () => {
   await truncateAll();
@@ -42,6 +52,7 @@ beforeEach(async () => {
       values (${A}, 'cupping class', 60, 4) returning id`;
     return { ...byEmail, service: s.id };
   });
+  ownerAId = ids['a@example.com'];
   ownerA = await signIn(ids['a@example.com']);
   ownerB = await signIn(ids['b@example.com']);
   staffA = await signIn(ids['s@example.com']);
@@ -78,6 +89,37 @@ const calendarRow = async (id: string) => {
   return row;
 };
 const jobRow = () => asOwner((sql) => sql`select desired, revision, attempts from booking_calendar_job`);
+
+/** A Google account connected the way the OAuth callback does it, with a real sealed credential. */
+const connectAccount = (account: string, email: string) => asTenant(A, (tx) => saveConnection(ENV, tx, A, {
+  connector: 'google', method: 'oauth', externalId: account, displayName: email,
+  secret: calendarSecret({
+    subject: account, email, name: null, refreshToken: `refresh-${account}`, scopes: [...GOOGLE_CALENDAR_SCOPES],
+  }),
+  connectedBy: ownerAId, scopes: [...GOOGLE_CALENDAR_SCOPES],
+}));
+
+/** Stands in for Google on the global fetch the route's Calendar attempt uses; anything else
+    it is asked for fails the attempt rather than leaving the machine. */
+function stubGoogle() {
+  const calls: { method: string; url: string }[] = [];
+  vi.stubGlobal('fetch', fetchFake(async (input, init) => {
+    const url = String(input);
+    const method = init?.method ?? 'GET';
+    calls.push({ method, url });
+    if (url === 'https://oauth2.googleapis.com/token') return Response.json({ access_token: 'access' });
+    if (method === 'POST' && url.startsWith('https://www.googleapis.com/calendar/v3/calendars/primary/events')) {
+      const sent = JSON.parse(String(init?.body)) as { id: string };
+      return Response.json({ id: sent.id, status: 'confirmed' });
+    }
+    return new Response(null, { status: 599 });
+  }));
+  return { calls, creates: () => calls.filter((c) => c.method === 'POST' && c.url.includes('/events')) };
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 async function booking(startsAt: string, over: { status?: string; party?: number; ref?: string; minutes?: number } = {}) {
   const [row] = await asOwner((sql) => sql<{ id: string }[]>`
@@ -356,10 +398,12 @@ describe('Calendar sync from the owner side', () => {
     await connectGoogle();
     const id = await booking(inDays(2));
     await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
-    await asOwner((sql) => sql`update booking set calendar_status = 'failed',
+    await asOwner((sql) => sql`update booking set calendar_status = 'failed', calendar_reason = 'provider',
       calendar_error = 'Google Calendar could not complete that request (500).' where id = ${id}`);
     const r = recorder();
-    await call('POST', `/api/apps/bookings/bookings/${id}/cancel`, ownerA, undefined, true, r.execution);
+    const body = await jsonOf<Json>(await call('POST', `/api/apps/bookings/bookings/${id}/cancel`, ownerA, undefined, true, r.execution));
+    expect(body.calendarQueued).toBe(true);
+    expect(body.booking.calendar).toMatchObject({ status: 'pending', error: null, reason: null });
     expect(r.scheduled).toHaveLength(1);
     expect(await calendarRow(id)).toMatchObject({ calendar_status: 'pending', calendar_error: null });
     await Promise.all(r.scheduled);
@@ -422,5 +466,70 @@ describe('Calendar sync from the owner side', () => {
     const id = await booking(inDays(2));
     await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
     expect((await call('POST', `/api/apps/bookings/bookings/${id}/calendar/retry`, ownerB)).status).toBe(404);
+  });
+
+  it('adds the event end to end: the confirm hands the first attempt on, and it creates the event', async () => {
+    const google = stubGoogle();
+    const connection = await connectAccount('account-1', 'owner@example.com');
+    const id = await booking(inDays(2));
+    const r = recorder();
+    const body = await jsonOf<Json>(await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA,
+      { decision: 'confirm' }, true, r.execution));
+    expect(body.calendarQueued).toBe(true);
+    expect(body.booking.calendar).toEqual({
+      status: 'pending', error: null, reason: null, canRetry: false, account: 'owner@example.com',
+    });
+    expect(r.scheduled).toHaveLength(1);
+    await Promise.all(r.scheduled);
+    expect(await calendarRow(id)).toMatchObject({ calendar_status: 'created', calendar_error: null, calendar_connection_id: connection.id });
+    expect(google.creates()).toHaveLength(1);
+  });
+
+  it('says why a sync failed, and lets the owner retry once the same Google account is back, never another', async () => {
+    const google = stubGoogle();
+    const first = await connectAccount('account-1', 'owner@example.com');
+    const id = await booking(inDays(2));
+    await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
+    await asOwner((sql) => sql`delete from connection where id = ${first.id}`);
+    await connectAccount('account-2', 'other@example.com');
+    expect(await processBookingCalendarJob(ENV, A, id)).toBe('failed');
+    expect(google.calls).toHaveLength(0);
+
+    const failed = await jsonOf<Json>(await call('GET', `/api/apps/bookings/bookings/${id}`, ownerA));
+    expect(failed.booking.calendar).toEqual({
+      status: 'failed', error: CALENDAR_DISCONNECTED_ADD, reason: 'disconnected', canRetry: true, account: 'owner@example.com',
+    });
+    // Only the other account is connected: retry is refused rather than switching accounts.
+    const refused = await call('POST', `/api/apps/bookings/bookings/${id}/calendar/retry`, ownerA);
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({ code: 'CALENDAR_DISCONNECTED' });
+    expect(await calendarRow(id)).toMatchObject({ calendar_connection_id: null });
+
+    const again = await connectAccount('account-1', 'owner@example.com');
+    const res = await call('POST', `/api/apps/bookings/bookings/${id}/calendar/retry`, ownerA);
+    expect(res.status).toBe(200);
+    const retried = await jsonOf<Json>(res);
+    expect(retried.calendarQueued).toBe(true);
+    expect(retried.booking.calendar).toEqual({
+      status: 'pending', error: null, reason: null, canRetry: false, account: 'owner@example.com',
+    });
+    expect(await calendarRow(id)).toMatchObject({ calendar_status: 'pending', calendar_connection_id: again.id });
+    expect(await jobRow()).toEqual([{ desired: 'present', revision: 2, attempts: 0 }]);
+  });
+
+  it('offers no retry for an event the owner deleted in Google, and says nothing was queued', async () => {
+    await connectGoogle();
+    const id = await booking(inDays(2));
+    const confirmed = await jsonOf<Json>(await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' }));
+    expect(confirmed.calendarQueued).toBe(true);
+    await asOwner((sql) => sql`update booking set calendar_status = 'failed', calendar_reason = 'removed_in_google',
+      calendar_error = 'x' where id = ${id}`);
+    const shown = await jsonOf<Json>(await call('GET', `/api/apps/bookings/bookings/${id}`, ownerA));
+    expect(shown.booking.calendar).toMatchObject({ status: 'failed', reason: 'removed_in_google', canRetry: false });
+    const again = await jsonOf<Json>(await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' }));
+    expect(again.calendarQueued).toBe(false);
+    const notConnected = await booking(inDays(3), { ref: 'QQQQQQ' });
+    const unpinned = await jsonOf<Json>(await call('POST', `/api/apps/bookings/bookings/${notConnected}/decide`, ownerA, { decision: 'decline' }));
+    expect(unpinned).toMatchObject({ calendarQueued: false, booking: { calendar: { status: 'none', canRetry: false, account: null } } });
   });
 });
