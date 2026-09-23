@@ -290,19 +290,6 @@ export default {
       } catch (err) {
         console.error(`[push-outbox] ${String(err)}`);
       }
-      /* Booking Calendar jobs the first attempt did not finish: retries,
-         a cancel that raced its create, and anything a crash left leased. */
-      try {
-        const calendar = await sweepBookingCalendar(env);
-        if (calendar.processed || calendar.errors) {
-          console.log(
-            `[bookings-calendar] processed=${calendar.processed} created=${calendar.created} ` +
-            `removed=${calendar.removed} retrying=${calendar.retrying} failed=${calendar.failed} errors=${calendar.errors}`,
-          );
-        }
-      } catch (err) {
-        console.error(`[bookings-calendar] sweep ${err instanceof Error ? err.name : 'error'}`);
-      }
       /* Liveness. Work waiting while nothing finishes is the shape of every
          wedge this system has had, whatever the cause — a paused browser
          refusing tasks, a lease nobody reclaims, a runner that will not admit.
@@ -332,6 +319,22 @@ export default {
         }
       } catch (err) {
         console.error(`[runtime-liveness] ${String(err)}`);
+      }
+      /* Booking Calendar jobs the first attempt did not finish: retries,
+         a cancel that raced its create, and anything a crash left leased.
+         Last on the tick, after liveness: it calls Google and may take up to
+         its 40-second budget, which must not delay the liveness check. */
+      try {
+        const calendar = await sweepBookingCalendar(env);
+        if (calendar.processed || calendar.errors) {
+          console.log(
+            `[bookings-calendar] processed=${calendar.processed} created=${calendar.created} ` +
+            `removed=${calendar.removed} retrying=${calendar.retrying} failed=${calendar.failed} ` +
+            `skipped=${calendar.skipped} errors=${calendar.errors}`,
+          );
+        }
+      } catch (err) {
+        console.error(`[bookings-calendar] sweep ${err instanceof Error ? err.name : 'error'}`);
       }
       return;
     }

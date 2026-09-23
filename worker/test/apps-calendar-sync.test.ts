@@ -157,7 +157,7 @@ describe('processBookingCalendarJob', () => {
     expect(await state()).toMatchObject({ calendar_status: 'removed', completed_revision: 2 });
   });
 
-  it('never records a create that a cancel overtook, and removes the event on the next attempt', async () => {
+  it('never records a create that a cancel overtook, and removes the event in the same call', async () => {
     const g = google({
       create: async () => {
         // The owner cancels while Google is still answering the create.
@@ -165,14 +165,16 @@ describe('processBookingCalendarJob', () => {
         return Response.json({ id: calendarEventId(bookingId), status: 'confirmed' });
       },
     });
-    expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('stale');
-    expect(await state()).toMatchObject({
-      calendar_status: 'pending', calendar_event_id: null, desired: 'absent', revision: 2,
-      completed_revision: null, lease_token: null,
-    });
-    expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at(1_000) })).toBe('removed');
+    // The create's result is stale, so the call goes round once more at once and removes it,
+    // rather than leaving the event in the owner's calendar until the next cron tick.
+    expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('removed');
+    expect(g.creates()).toHaveLength(1);
     expect(g.calls.filter((c) => c.method === 'DELETE')).toHaveLength(1);
-    expect(await state()).toMatchObject({ calendar_status: 'removed', completed_revision: 2 });
+    expect(await state()).toMatchObject({
+      calendar_status: 'removed', calendar_event_id: null, desired: 'absent', revision: 2, completed_revision: 2,
+      lease_token: null,
+    });
+    expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at(1_000) })).toBe('idle');
   });
 
   it('picks up a job whose executor died holding the lease, and syncs even while bookings are paused', async () => {
@@ -211,10 +213,12 @@ describe('processBookingCalendarJob', () => {
         return Response.json({ id: calendarEventId(bookingId), status: 'confirmed' });
       },
     });
-    expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('stale');
+    // Stale, so it goes round once more — and finds the other executor's lease still live.
+    expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('busy');
     expect(await state()).toMatchObject({
       calendar_status: 'pending', calendar_event_id: null, lease_token: stolen,
     });
+    expect(g.creates()).toHaveLength(1);
   });
 
   it('abandons a slow Google at the budget and tries again later', async () => {
@@ -354,6 +358,40 @@ describe('processBookingCalendarJob', () => {
     expect(g.calls).toHaveLength(0);
   });
 
+  it('keeps an orphan of a business off the pilot for later instead of failing it', async () => {
+    const off = testEnv({ ...ENV, APPS_BUSINESS_IDS: '22222222-2222-4222-8222-222222222222' });
+    await asOwner((sql) => sql`update booking_calendar_job
+      set attempts = ${CALENDAR_MAX_ATTEMPTS}, lease_token = gen_random_uuid(),
+          lease_expires_at = ${new Date(NOW.getTime() - 1_000)}`);
+    const g = google();
+    expect(await processBookingCalendarJob(off, A, bookingId, { fetch: g.fetch, now: at() })).toBe('deferred');
+    const row = await state();
+    expect(row).toMatchObject({ calendar_status: 'pending', calendar_reason: null, attempts: CALENDAR_MAX_ATTEMPTS });
+    expect(row.next_attempt_at.toISOString()).toBe(new Date(NOW.getTime() + 3_600_000).toISOString());
+    // Deferred means out of the due scan until then, orphan or not.
+    expect(await asApp((sql) => sql`select * from public.booking_calendar_due(${NOW}, 50)`)).toHaveLength(0);
+    const later = new Date(NOW.getTime() + 3_600_000);
+    expect(await asApp((sql) => sql`select * from public.booking_calendar_due(${later}, 50)`)).toHaveLength(1);
+    // Back on the pilot, the orphan is reported as before.
+    expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: () => later })).toBe('failed');
+    expect(await state()).toMatchObject({ calendar_status: 'failed', calendar_reason: 'unconfirmed' });
+    expect(g.calls).toHaveLength(0);
+  });
+
+  it('logs an unexpected Google failure with the business and booking ids and nothing about the customer', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const g = google({ create: () => { throw new TypeError('network down'); } });
+      expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('retrying');
+      const lines = errSpy.mock.calls.map((call) => call.map(String).join(' '));
+      const line = lines.find((l) => l.includes(' google '));
+      expect(line).toBe(`[bookings-calendar] business=${A} booking=${bookingId} google TypeError`);
+      expect(lines.join('\n')).not.toMatch(/Aisyah|60123456789|Window seat/);
+    } finally {
+      errSpy.mockRestore();
+    }
+  });
+
   it('matches the due scan on the attempt limit', async () => {
     const [{ def }] = await asOwner((sql) => sql<{ def: string }[]>`
       select pg_get_functiondef('public.booking_calendar_due(timestamptz, integer)'::regprocedure) as def`);
@@ -430,7 +468,7 @@ describe('sweepBookingCalendar', () => {
     const other = await secondBusiness(NOW);
     const g = google();
     const summary = await sweepBookingCalendar(both, { fetch: g.fetch, now: at(1_000) });
-    expect(summary).toEqual({ processed: 2, created: 1, removed: 0, retrying: 0, failed: 1, errors: 0 });
+    expect(summary).toEqual({ processed: 2, created: 1, removed: 0, retrying: 0, failed: 1, skipped: 0, errors: 0 });
     const [row] = await asOwner((sql) => sql<{ calendar_error: string | null; calendar_reason: string | null }[]>`
       select calendar_error, calendar_reason from booking where id = ${other}`);
     expect(row).toEqual({ calendar_error: CALENDAR_DISCONNECTED_ADD, calendar_reason: 'disconnected' });
@@ -443,10 +481,22 @@ describe('sweepBookingCalendar', () => {
     await secondBusiness(new Date(NOW.getTime() + 500));
     const g = google();
     const first = await sweepBookingCalendar(onlyB, { fetch: g.fetch, now: at(1_000), limit: 1 });
-    expect(first).toMatchObject({ processed: 1, failed: 0 });   // A was deferred an hour
+    expect(first).toMatchObject({ processed: 1, failed: 0, skipped: 1 });   // A was deferred an hour
     const second = await sweepBookingCalendar(onlyB, { fetch: g.fetch, now: at(1_000), limit: 1 });
-    expect(second).toMatchObject({ processed: 1, failed: 1 });  // B's turn
+    expect(second).toMatchObject({ processed: 1, failed: 1, skipped: 0 });  // B's turn
     expect(g.calls).toHaveLength(0);
+  });
+
+  it('starts no new job once the sweep has run for 40 seconds, leaving the rest due', async () => {
+    const both = testEnv({ ...ENV, APPS_BUSINESS_IDS: `${A},${B}` });
+    const other = await secondBusiness(new Date(NOW.getTime() + 500));   // due after A's
+    const g = google();
+    // A clock that has moved 40 s on by the time A's job is done.
+    const clock = () => (g.calls.length ? 40_000 : 0);
+    const summary = await sweepBookingCalendar(both, { fetch: g.fetch, now: at(1_000), clock });
+    expect(summary).toEqual({ processed: 1, created: 1, removed: 0, retrying: 0, failed: 0, skipped: 0, errors: 0 });
+    expect(await asApp((sql) => sql`select booking_id from public.booking_calendar_due(${new Date(NOW.getTime() + 1_000)}, 50)`))
+      .toEqual([{ booking_id: other }]);
   });
 
   it('leaves a job alone while another executor holds its lease', async () => {
@@ -462,7 +512,9 @@ describe('sweepBookingCalendar', () => {
       APPS_ENABLED: 'false',
       HYPERDRIVE: { connectionString: 'postgres://nobody:nothing@127.0.0.1:1/none' },
     });
-    expect(await sweepBookingCalendar(off)).toEqual({ processed: 0, created: 0, removed: 0, retrying: 0, failed: 0, errors: 0 });
+    expect(await sweepBookingCalendar(off)).toEqual({
+      processed: 0, created: 0, removed: 0, retrying: 0, failed: 0, skipped: 0, errors: 0,
+    });
   });
 
   it('defers a job whose processing throws, so it does not sit at the head of every sweep', async () => {
@@ -477,7 +529,7 @@ describe('sweepBookingCalendar', () => {
       const g = google();
       const now = at(1_000);
       const summary = await sweepBookingCalendar(ENV, { fetch: g.fetch, now });
-      expect(summary).toEqual({ processed: 0, created: 0, removed: 0, retrying: 0, failed: 0, errors: 1 });
+      expect(summary).toEqual({ processed: 0, created: 0, removed: 0, retrying: 0, failed: 0, skipped: 0, errors: 1 });
       const row = await state();
       expect(row.attempts).toBe(0);
       expect(row.lease_token).toBeNull();
@@ -485,7 +537,7 @@ describe('sweepBookingCalendar', () => {
       expect(g.calls).toHaveLength(0);
 
       const again = await sweepBookingCalendar(ENV, { fetch: g.fetch, now });
-      expect(again).toEqual({ processed: 0, created: 0, removed: 0, retrying: 0, failed: 0, errors: 0 });
+      expect(again).toEqual({ processed: 0, created: 0, removed: 0, retrying: 0, failed: 0, skipped: 0, errors: 0 });
     } finally {
       errSpy.mockRestore();
       warnSpy.mockRestore();

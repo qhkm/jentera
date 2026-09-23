@@ -220,7 +220,8 @@ grant execute on function public.bookings_by_slug(text) to aisar_app;
 -- the attempt that used it up never came back to record anything. Without
 -- the second clause an orphan would sit forever: attempts < 8 excludes it
 -- permanently, so neither the sweep nor a direct call would ever revisit it
--- to tell the owner it failed.
+-- to tell the owner it failed. An orphan also waits out next_attempt_at, so
+-- deferring it (a business off the apps pilot) takes it out of the scan.
 create or replace function public.booking_calendar_due(p_now timestamptz, p_limit integer default 50)
 returns table (business_id uuid, booking_id uuid)
 language sql stable security definer
@@ -230,7 +231,8 @@ as $$
    where j.completed_revision is distinct from j.revision
      and (
        (j.attempts < 8 and j.next_attempt_at <= p_now and (j.lease_expires_at is null or j.lease_expires_at <= p_now))
-       or (j.attempts >= 8 and j.lease_expires_at is not null and j.lease_expires_at <= p_now)
+       or (j.attempts >= 8 and j.next_attempt_at <= p_now
+           and j.lease_expires_at is not null and j.lease_expires_at <= p_now)
      )
    order by j.next_attempt_at, j.booking_id
    limit greatest(1, least(p_limit, 200))

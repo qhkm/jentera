@@ -427,8 +427,10 @@ describe('Calendar sync from the owner side', () => {
     await connectGoogle();
     const id = await booking(inDays(2));
     await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
+    // A Worker-clock date well in the past, so clock skew between the test and Postgres cannot
+    // make the lease look live to retryCalendar, which compares it with the Worker's clock.
     await asOwner((sql) => sql`update booking_calendar_job set attempts = 8, lease_token = gen_random_uuid(),
-      lease_expires_at = now() - interval '1 second'`);
+      lease_expires_at = ${new Date(Date.now() - 5 * 60_000)}`);
     const before = await jobRow();
     const r = recorder();
     const res = await call('POST', `/api/apps/bookings/bookings/${id}/calendar/retry`, ownerA, undefined, true, r.execution);
@@ -531,5 +533,17 @@ describe('Calendar sync from the owner side', () => {
     const notConnected = await booking(inDays(3), { ref: 'QQQQQQ' });
     const unpinned = await jsonOf<Json>(await call('POST', `/api/apps/bookings/bookings/${notConnected}/decide`, ownerA, { decision: 'decline' }));
     expect(unpinned).toMatchObject({ calendarQueued: false, booking: { calendar: { status: 'none', canRetry: false, account: null } } });
+  });
+});
+
+describe('route dispatch', () => {
+  it('reads the action whatever its case, and never hands a decision to retry or cancel', async () => {
+    const id = await booking(inDays(2));
+    const res = await call('POST', `/api/apps/bookings/bookings/${id}/DECIDE`, ownerA, { decision: 'confirm' });
+    expect(res.status).toBe(200);
+    expect((await jsonOf<Json>(res)).booking.status).toBe('confirmed');
+    const retry = await call('POST', `/api/apps/bookings/bookings/${id}/Calendar/Retry`, ownerA);
+    expect(retry.status).toBe(200);
+    expect((await jsonOf<Json>(retry)).booking.status).toBe('confirmed');
   });
 });

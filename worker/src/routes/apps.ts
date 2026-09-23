@@ -5,7 +5,10 @@ import { hasBusiness, resolveTenant } from '../tenancy';
 import { can } from '../permissions';
 import { appsEnabledFor } from '../apps/gating';
 import { ConfigError, parseConfigInput, publicBookingUrl, readConfig, saveConfig } from '../apps/bookings/config';
-import { bookingJson, cancelBooking, decideBooking, decodeCursor, getBooking, listBookings, retryCalendar, type BookingContext } from '../apps/bookings/bookings';
+import {
+  bookingJson, cancelBooking, decideBooking, decodeCursor, getBooking, listBookings, retryCalendar,
+  type BookingContext, type DecideResult,
+} from '../apps/bookings/bookings';
 import { runCalendarJob } from '../apps/bookings/calendar-sync';
 import { isDate, myDate } from '../apps/bookings/time';
 import type { Lang } from '../apps/bookings/messages';
@@ -123,7 +126,9 @@ export async function handleApps(
 
     const match = url.pathname.match(/^\/api\/apps\/bookings\/bookings\/([0-9a-f-]{36})(?:\/(decide|cancel|calendar\/retry))?$/i);
     if (!match) return notFound(cors);
-    const [, id, action] = match;
+    const [, id, rawAction] = match;
+    // The pattern is case-insensitive, so dispatch on one spelling, by name.
+    const action = rawAction?.toLowerCase();
 
     if (!action && request.method === 'GET') {
       const found = await withTenant(env, businessId, async (tx) => {
@@ -135,20 +140,24 @@ export async function handleApps(
     }
 
     if (action && request.method === 'POST') {
-      let decision: 'confirm' | 'decline' | null = null;
+      // One named action each; anything else is not a route.
+      let run: (tx: postgres.TransactionSql) => Promise<DecideResult>;
       if (action === 'decide') {
         const body = (await request.json().catch(() => null)) as { decision?: unknown } | null;
-        decision = body?.decision === 'confirm' || body?.decision === 'decline' ? body.decision : null;
+        const decision = body?.decision === 'confirm' || body?.decision === 'decline' ? body.decision : null;
         if (!decision) return json({ ok: false, err: 'decision must be confirm or decline' }, { status: 400 }, cors);
+        run = (tx) => decideBooking(tx, businessId, id, decision, identity.userId, now);
+      } else if (action === 'cancel') {
+        run = (tx) => cancelBooking(tx, businessId, id, identity.userId, now);
+      } else if (action === 'calendar/retry') {
+        run = (tx) => retryCalendar(tx, businessId, id, now);
+      } else {
+        return notFound(cors);
       }
       const outcome = await withTenant(env, businessId, async (tx) => {
         const ctx = await context(tx);
         if (!ctx) return { ok: false as const, code: 'NOT_FOUND' as const };
-        const result = decision
-          ? await decideBooking(tx, businessId, id, decision, identity.userId, now)
-          : action === 'cancel'
-            ? await cancelBooking(tx, businessId, id, identity.userId, now)
-            : await retryCalendar(tx, businessId, id, now);
+        const result = await run(tx);
         return result.ok
           ? { ok: true as const, booking: bookingJson(result.row, ctx), calendarQueued: result.calendarQueued }
           : result;

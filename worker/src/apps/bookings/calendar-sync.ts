@@ -52,6 +52,9 @@ const SWEEP_LIMIT = 10;
    sweep — with enough of them, other tenants' due jobs never get a turn. The sweep pushes such a
    job's next_attempt_at forward by this much; see sweepBookingCalendar. */
 const SWEEP_ERROR_DEFER_MS = 5 * 60_000;
+/* The sweep stops starting jobs this long after it began, and leaves the rest due for the next
+   minute: it runs far from Neon, and a slow Google must not keep one tick running into the next. */
+const SWEEP_TIME_BUDGET_MS = 40_000;
 
 export const CALENDAR_RECONNECT = 'Reconnect Google Calendar, then retry.';
 export const CALENDAR_REMOVED_IN_GOOGLE =
@@ -72,13 +75,14 @@ export const CALENDAR_UNCONFIRMED =
       provider          - Google kept failing until the attempts ran out */
 export type CalendarReason = 'reconnect' | 'disconnected' | 'removed_in_google' | 'unconfirmed' | 'provider';
 
-/** What one call did. 'created', 'removed' and 'retrying' always called Google. 'stale' always
+/** What one attempt did. 'created', 'removed' and 'retrying' always called Google. 'stale' always
     called Google too — it is returned only by complete(), which runs after callGoogle — and
     spent an attempt; it just recorded nothing, because the lease or revision had moved while
     Google was answering. 'failed' may or may not have: claim can give up before ever calling it
     (no usable connection, an expired grant, an orphaned attempt whose executor never returned),
-    or complete can record a provider failure after calling it. Only 'busy', 'idle' and 'deferred'
-    never call Google. */
+    or complete can record a provider failure after calling it. 'busy', 'idle' and 'deferred'
+    never call Google in that attempt — but processBookingCalendarJob follows a 'stale' attempt
+    with one more and returns the second's outcome, so from it any outcome may follow a call. */
 export type CalendarOutcome = 'created' | 'removed' | 'retrying' | 'failed' | 'stale' | 'busy' | 'idle' | 'deferred';
 
 export interface CalendarDeps {
@@ -218,26 +222,29 @@ async function claim(
     if (!locked) return { kind: 'done', outcome: 'idle' };
     const { booking, job } = locked;
     const notCompleted = job.completed_revision !== job.revision;
-    if (notCompleted && job.attempts >= CALENDAR_MAX_ATTEMPTS &&
-        job.lease_expires_at && job.lease_expires_at.getTime() <= now.getTime()) {
-      /* The attempt that reached the limit took a lease and never came back to record anything —
-         the isolate died, the database call failed, whatever. Left alone this job would sit
-         forever: attempts >= CALENDAR_MAX_ATTEMPTS excludes it from the due scan, and a direct
-         call would fall through to the idle return below without telling the owner anything. */
-      await giveUp(tx, businessId, bookingId, CALENDAR_UNCONFIRMED, 'unconfirmed', now);
-      return { kind: 'done', outcome: 'failed' };
+    /* An orphan: the attempt that reached the limit took a lease and never came back to record
+       anything — the isolate died, the database call failed, whatever. Left alone it would sit
+       forever: attempts >= CALENDAR_MAX_ATTEMPTS excludes it from the ordinary due scan, and
+       would send it to the idle return below without telling the owner anything. */
+    const orphan = notCompleted && job.attempts >= CALENDAR_MAX_ATTEMPTS &&
+      job.lease_expires_at !== null && job.lease_expires_at.getTime() <= now.getTime();
+    if (!orphan) {
+      if (!notCompleted || job.attempts >= CALENDAR_MAX_ATTEMPTS) return { kind: 'done', outcome: 'idle' };
+      if (job.lease_expires_at && job.lease_expires_at.getTime() > now.getTime()) return { kind: 'done', outcome: 'busy' };
     }
-    if (job.completed_revision === job.revision || job.attempts >= CALENDAR_MAX_ATTEMPTS) {
-      return { kind: 'done', outcome: 'idle' };
-    }
-    if (job.lease_expires_at && job.lease_expires_at.getTime() > now.getTime()) return { kind: 'done', outcome: 'busy' };
+    // Like the due scan, an orphan too waits out a deferral.
     if (job.next_attempt_at.getTime() > now.getTime()) return { kind: 'done', outcome: 'idle' };
     if (!appsEnabledFor(env, businessId)) {
-      // Kept for when the pilot comes back, and moved out of the due scan's way meanwhile.
+      /* Kept for when the pilot comes back, and moved out of the due scan's way meanwhile. Checked
+         before the orphan give-up, so an off-pilot business's orphan is kept too, not failed. */
       await tx`update booking_calendar_job
         set next_attempt_at = ${new Date(now.getTime() + DISABLED_DEFER_MS)}, updated_at = ${now}
         where business_id = ${businessId} and booking_id = ${bookingId}`;
       return { kind: 'done', outcome: 'deferred' };
+    }
+    if (orphan) {
+      await giveUp(tx, businessId, bookingId, CALENDAR_UNCONFIRMED, 'unconfirmed', now);
+      return { kind: 'done', outcome: 'failed' };
     }
     if (booking.status !== (job.desired === 'present' ? 'confirmed' : 'cancelled')) {
       // Only a confirmed booking has an event to add and only a cancelled one has one to remove.
@@ -320,7 +327,7 @@ function bookingEvent(booking: SyncBooking): CalendarEventInput {
   });
 }
 
-async function callGoogle(env: Env, work: Claim, deps: CalendarDeps): Promise<ProviderResult> {
+async function callGoogle(env: Env, businessId: string, work: Claim, deps: CalendarDeps): Promise<ProviderResult> {
   const signal = AbortSignal.timeout(deps.budgetMs ?? CALENDAR_BUDGET_MS);
   const fetcher = deps.fetch ?? fetch;
   try {
@@ -335,7 +342,9 @@ async function callGoogle(env: Env, work: Claim, deps: CalendarDeps): Promise<Pr
     if (error instanceof GoogleCalendarError) return { kind: 'error', auth: error.auth, message: error.message };
     // The budget abort is expected and already explained to the owner; anything else is a
     // surprise (a network failure, a parse error) worth a line in the logs to chase later.
-    if (!signal.aborted) console.error(`[bookings-calendar] booking=${work.booking.id} google ${errorLabel(error)}`);
+    if (!signal.aborted) {
+      console.error(`[bookings-calendar] business=${businessId} booking=${work.booking.id} google ${errorLabel(error)}`);
+    }
     return {
       kind: 'error',
       auth: false,
@@ -416,20 +425,34 @@ async function complete(
   });
 }
 
-/** One attempt at the booking's Calendar job. Safe to call from anywhere, any
-    number of times: the lease, the revision and the backoff decide whether it
-    does anything. May throw on a database error; callers that must not throw
-    use runCalendarJob. */
+/** One attempt at the booking's Calendar job — or two, when the first comes back stale. Safe to
+    call from anywhere, any number of times: the lease, the revision and the backoff decide whether
+    it does anything. May throw on a database error; callers that must not throw use
+    runCalendarJob. */
 export async function processBookingCalendarJob(
   env: Env,
   businessId: string,
   bookingId: string,
   deps: CalendarDeps = {},
 ): Promise<CalendarOutcome> {
+  const first = await attempt(env, businessId, bookingId, deps);
+  /* Stale: the booking wanted something else by the time Google answered — typically a cancel
+     that overtook a create, which has just left an event in the owner's calendar. Go round once
+     more now rather than on the next cron tick. Once only: a second stale answer waits its turn. */
+  return first === 'stale' ? attempt(env, businessId, bookingId, deps) : first;
+}
+
+/** claim, Google, complete: one pass, with no network call inside a transaction. */
+async function attempt(
+  env: Env,
+  businessId: string,
+  bookingId: string,
+  deps: CalendarDeps,
+): Promise<CalendarOutcome> {
   const now = () => deps.now?.() ?? new Date();
   const claimed = await claim(env, businessId, bookingId, now());
   if (claimed.kind === 'done') return claimed.outcome;
-  const result = await callGoogle(env, claimed.claim, deps);
+  const result = await callGoogle(env, businessId, claimed.claim, deps);
   const { outcome, connectionAction } = await complete(env, businessId, bookingId, claimed.claim, result, now());
   if (connectionAction) await applyConnectionAction(env, businessId, bookingId, claimed.claim.connectionId, connectionAction);
   return outcome;
@@ -477,6 +500,8 @@ export interface CalendarSweepSummary {
   removed: number;
   retrying: number;
   failed: number;
+  /** Processed but nothing to record: deferred, busy, stale or idle. */
+  skipped: number;
   errors: number;
 }
 
@@ -502,9 +527,11 @@ async function deferSweepError(env: Env, businessId: string, bookingId: string, 
     small because the cron runs far from Neon. */
 export async function sweepBookingCalendar(
   env: Env,
-  deps: CalendarDeps & { limit?: number } = {},
+  deps: CalendarDeps & { limit?: number; clock?: () => number } = {},
 ): Promise<CalendarSweepSummary> {
-  const summary: CalendarSweepSummary = { processed: 0, created: 0, removed: 0, retrying: 0, failed: 0, errors: 0 };
+  const summary: CalendarSweepSummary = {
+    processed: 0, created: 0, removed: 0, retrying: 0, failed: 0, skipped: 0, errors: 0,
+  };
   if (env.APPS_ENABLED !== 'true') return summary;
   const now = deps.now?.() ?? new Date();
   const sql = connect(env);
@@ -516,12 +543,20 @@ export async function sweepBookingCalendar(
   } finally {
     await sql.end();
   }
+  // Wall-clock time, not deps.now: `now` is the scan's notion of the present, this is how long
+  // the sweep itself has been running.
+  const clock = deps.clock ?? Date.now;
+  const started = clock();
   for (const job of due) {
+    // Whatever is left stays due and is picked up by the next tick.
+    if (clock() - started >= SWEEP_TIME_BUDGET_MS) break;
     try {
       const outcome = await processBookingCalendarJob(env, job.business_id, job.booking_id, deps);
       summary.processed += 1;
       if (outcome === 'created' || outcome === 'removed' || outcome === 'retrying' || outcome === 'failed') {
         summary[outcome] += 1;
+      } else {
+        summary.skipped += 1;
       }
     } catch (error) {
       summary.errors += 1;
