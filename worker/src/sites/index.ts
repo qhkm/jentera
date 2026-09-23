@@ -57,26 +57,26 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
   /* Everything before resolvePublicSlug costs no database. The sites deploy
      shares the production Hyperdrive pool with the main API, so the switch,
      the brakes and the body guards all answer from here. */
-  const asked = langOf(url, null);
-  if (env.APPS_ENABLED !== 'true') return notFound(asked);
+  const earlyLang = langOf(url, null);
+  if (env.APPS_ENABLED !== 'true') return notFound(earlyLang);
   const ip = clientIp(request);
-  if (env.SITES_BURST && !(await env.SITES_BURST.limit({ key: `site:${ip}` })).success) return plain('busy', asked, 429);
+  if (env.SITES_BURST && !(await env.SITES_BURST.limit({ key: `site:${ip}` })).success) return plain('busy', earlyLang, 429);
   let form: URLSearchParams | null = null;
   if (sub === '/request' && request.method === 'POST') {
-    const read = await readForm(request, asked);
+    const read = await readForm(request, earlyLang);
     if (read instanceof Response) return read;
     form = read;
-    if (env.BOOKING_BURST && !(await env.BOOKING_BURST.limit({ key: `book:${ip}` })).success) return plain('busy', asked, 429);
+    if (env.BOOKING_BURST && !(await env.BOOKING_BURST.limit({ key: `book:${ip}` })).success) return plain('busy', earlyLang, 429);
   }
 
   const found = await resolvePublicSlug(env, slug);
-  if (!found || !appsEnabledFor(env, found.businessId)) return notFound(asked);
+  if (!found || !appsEnabledFor(env, found.businessId)) return notFound(earlyLang);
   if (found.currentSlug !== slug) {
     return redirect(`/b/${found.currentSlug}${sub}${url.search}`, 301);
   }
   const businessId = found.businessId;
   const info = await loadPublicPage(env, businessId);
-  if (!info) return notFound(asked);
+  if (!info) return notFound(earlyLang);
   const lang = langOf(url, info);
   const base = { slug, lang, businessName: info.businessName };
 
@@ -86,23 +86,9 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
     return page(donePage({ ...base, reference }));
   }
 
-  if (!info.open) return page(messagePage({ ...base, kind: 'unavailable' }), request.method === 'POST' ? 409 : 200);
-
+  const unavailable = (status: number) => page(messagePage({ ...base, kind: 'unavailable' }), status);
   const timesUrl = (serviceId: string, date: string, taken: boolean) =>
     `/b/${slug}?${new URLSearchParams({ service: serviceId, date, lang, ...(taken ? { notice: 'taken' } : {}) })}`;
-
-  if (sub === '' && request.method === 'GET') {
-    const serviceId = url.searchParams.get('service');
-    if (!serviceId) return page(servicesPage({ ...base, services: info.services }));
-    const asked = url.searchParams.get('date');
-    const from = asked && isDate(asked) ? asked : myDate(now);
-    const times = await loadOpenTimes(env, businessId, serviceId, from, DAYS_SHOWN, now);
-    if (!times) return redirect(`/b/${slug}?lang=${lang}`, 303);
-    return page(timesPage({
-      ...base, service: times.service, days: times.days, selected: times.days[0]?.date ?? from,
-      notice: url.searchParams.get('notice') === 'taken' ? 'taken' : null,
-    }));
-  }
 
   /** The form for one offered start, or a redirect back to the times. */
   async function showForm(serviceId: string, startIso: string, values: { name: string; phone: string; note: string; party: string },
@@ -120,32 +106,37 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
     }), status);
   }
 
-  if (sub === '/request' && request.method === 'GET') {
-    return showForm(url.searchParams.get('service') ?? '', url.searchParams.get('start') ?? '',
-      { name: '', phone: '', note: '', party: '1' }, [], crypto.randomUUID(), 200);
-  }
-
   if (form) {
     const parsed = parseRequestForm(form);
     const values = {
       name: form.get('name') ?? '', phone: form.get('phone') ?? '',
       note: form.get('note') ?? '', party: form.get('party') ?? '1',
     };
-    // A malformed key is replaced, so the form shown again can still be sent.
-    const key = parsed.ok ? parsed.value.submissionKey
-      : parsed.errors.includes('submission') ? crypto.randomUUID() : form.get('submission_key') ?? '';
     const serviceId = form.get('service') ?? '';
     const start = form.get('start') ?? '';
-    if (!parsed.ok) return showForm(serviceId, start, values, parsed.errors, key, 400);
+    if (!parsed.ok) {
+      if (!info.open) return unavailable(409);
+      // A malformed key is replaced, so the form shown again can still be sent.
+      const key = parsed.errors.includes('submission') ? crypto.randomUUID() : form.get('submission_key') ?? '';
+      return showForm(serviceId, start, values, parsed.errors, key, 400);
+    }
 
     const input = parsed.value;
+    const key = input.submissionKey;
     const digest = await submissionDigest(input);
-    const earlier = await findSubmission(env, businessId, input.submissionKey, digest);
+    /* A form already committed keeps its receipt, even once the owner has
+       paused: the customer did send it. So the lookup runs before the open
+       gate, and before Turnstile, since the original token may be spent. */
+    const earlier = await findSubmission(env, businessId, key, digest);
     if (earlier?.kind === 'replayed') return redirect(`/b/${slug}/done?ref=${earlier.reference}&lang=${lang}`, 303);
     if (earlier?.kind === 'changed') return page(messagePage({ ...base, kind: 'changed' }), 409);
+    if (!info.open) return unavailable(409);
 
-    const verdict = await verifyTurnstile(env, form.get('cf-turnstile-response'), ip, deps.fetchImpl ?? fetch,
-      { action: 'booking', hostnames: new Set([new URL(env.SITES_ORIGIN ?? 'https://invalid.invalid').hostname]) });
+    // Both taps of a double-tap carry one token; the key lets it verify twice.
+    const verdict = await verifyTurnstile(env, form.get('cf-turnstile-response'), ip, deps.fetchImpl ?? fetch, {
+      action: 'booking', hostnames: new Set([new URL(env.SITES_ORIGIN ?? 'https://invalid.invalid').hostname]),
+      idempotencyKey: key,
+    });
     if (verdict === 'missing' || verdict === 'rejected') return showForm(serviceId, start, values, ['turnstile'], key, 400);
 
     const result = await createBookingRequest(env, businessId, input, digest, now);
@@ -156,7 +147,7 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
       case 'changed':
         return page(messagePage({ ...base, kind: 'changed' }), 409);
       case 'unavailable':
-        return page(messagePage({ ...base, kind: 'unavailable' }), 409);
+        return unavailable(409);
       case 'daily_cap':
         return showForm(serviceId, start, values, ['daily_cap'], key, 429);
       case 'service_gone':
@@ -164,6 +155,26 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
       case 'taken':
         return redirect(timesUrl(input.serviceId, myDate(input.startsAt), true), 303);
     }
+  }
+
+  if (!info.open) return unavailable(request.method === 'POST' ? 409 : 200);
+
+  if (sub === '' && request.method === 'GET') {
+    const serviceId = url.searchParams.get('service');
+    if (!serviceId) return page(servicesPage({ ...base, services: info.services }));
+    const asked = url.searchParams.get('date');
+    const from = asked && isDate(asked) ? asked : myDate(now);
+    const times = await loadOpenTimes(env, businessId, serviceId, from, DAYS_SHOWN, now);
+    if (!times) return redirect(`/b/${slug}?lang=${lang}`, 303);
+    return page(timesPage({
+      ...base, service: times.service, days: times.days, selected: times.days[0]?.date ?? from,
+      notice: url.searchParams.get('notice') === 'taken' ? 'taken' : null,
+    }));
+  }
+
+  if (sub === '/request' && request.method === 'GET') {
+    return showForm(url.searchParams.get('service') ?? '', url.searchParams.get('start') ?? '',
+      { name: '', phone: '', note: '', party: '1' }, [], crypto.randomUUID(), 200);
   }
 
   return notFound(lang);

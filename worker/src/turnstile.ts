@@ -12,8 +12,11 @@
 type TurnstileEnv = { TURNSTILE_SECRET?: string; ALLOWED_ORIGINS?: string };
 
 /** What a token must say to count: the action its widget was rendered with
-    and the hostnames it may have been minted on. */
-export interface TurnstileExpectation { action: string; hostnames: ReadonlySet<string> }
+    and the hostnames it may have been minted on. `idempotencyKey`, a UUID,
+    lets the same token be verified again with the same answer — a form sent
+    twice carries one token, and without it the second check would read as
+    `timeout-or-duplicate`. The sign-in doors send none. */
+export interface TurnstileExpectation { action: string; hostnames: ReadonlySet<string>; idempotencyKey?: string }
 
 export const SITEVERIFY = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 
@@ -60,6 +63,7 @@ export async function verifyTurnstile(
 
   const form = new URLSearchParams({ secret: env.TURNSTILE_SECRET!.trim(), response: token });
   if (ip && ip !== 'unknown') form.set('remoteip', ip);
+  if (expected?.idempotencyKey) form.set('idempotency_key', expected.idempotencyKey);
   try {
     const res = await fetchImpl(SITEVERIFY, {
       method: 'POST',

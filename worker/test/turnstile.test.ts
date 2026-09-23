@@ -168,6 +168,23 @@ describe('verifyTurnstile for another page', () => {
       outbound(true, { action: 'booking', hostname: 'jentera.ai' }))).toBe('rejected');
   });
 
+  it('sends an idempotency key only when the page gives one', async () => {
+    const keyed = outbound(true, { action: 'booking', hostname: 'sites.test' });
+    expect(await verifyTurnstile(env(), 'token', '203.0.113.9', keyed,
+      { ...booking, idempotencyKey: '33333333-3333-4333-8333-333333333333' })).toBe('ok');
+    const sent = new URLSearchParams(String(keyed.mock.calls[0][1]?.body));
+    expect(sent.get('idempotency_key')).toBe('33333333-3333-4333-8333-333333333333');
+    expect(sent.get('response')).toBe('token');
+
+    const unkeyed = outbound(true, { action: 'booking', hostname: 'sites.test' });
+    await verifyTurnstile(env(), 'token', '203.0.113.9', unkeyed, booking);
+    expect(new URLSearchParams(String(unkeyed.mock.calls[0][1]?.body)).has('idempotency_key')).toBe(false);
+
+    const signin = outbound(true);
+    expect(await verifyTurnstile(env(), 'token', '203.0.113.9', signin)).toBe('ok');
+    expect(new URLSearchParams(String(signin.mock.calls[0][1]?.body)).has('idempotency_key')).toBe(false);
+  });
+
   it('needs no ALLOWED_ORIGINS when an expectation is passed', async () => {
     const sitesOnly = { TURNSTILE_SECRET: 'ts-secret' };
     const fetchMock = outbound(true, { action: 'booking', hostname: 'sites.test' });

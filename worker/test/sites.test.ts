@@ -190,12 +190,86 @@ describe('sites: sending a request', () => {
   it('refuses politely when paused after the form was opened, and when the time was taken', async () => {
     await asOwner((sql) => sql`update booking_settings set accepting = false where business_id = ${A}`);
     const paused = await post(form());
+    expect(paused.status).toBe(409);
     expect(await paused.text()).toContain('Not taking bookings right now');
     await asOwner((sql) => sql`update booking_settings set accepting = true where business_id = ${A}`);
     await post(form({ party: '2', submission_key: '77777777-7777-4777-8777-777777777777' }));
     const taken = await post(form({ submission_key: '88888888-8888-4888-8888-888888888888' }));
     expect(taken.status).toBe(303);
     expect(taken.headers.get('Location')).toContain('notice=taken');
+  });
+});
+
+describe('sites: a form sent twice', () => {
+  const bookingToken = () => Response.json({ success: true, action: 'booking', hostname: 'sites.test' });
+
+  it('returns the receipt for a form already sent, even after the owner pauses', async () => {
+    const first = await post(form());
+    expect(first.status).toBe(303);
+    await asOwner((sql) => sql`update booking_settings set accepting = false where business_id = ${A}`);
+    const replay = await post(form());
+    expect(replay.status).toBe(303);
+    expect(replay.headers.get('Location')).toBe(first.headers.get('Location'));
+    await asOwner((sql) => sql`update app_installation set state = 'paused' where business_id = ${A}`);
+    const pausedApp = await post(form());
+    expect(pausedApp.headers.get('Location')).toBe(first.headers.get('Location'));
+
+    const changed = await post(form({ name: 'Someone else' }));
+    expect(changed.status).toBe(409);
+    expect(await changed.text()).toContain('Please start a fresh request');
+    const fresh = await post(form({ submission_key: '99999999-9999-4999-8999-999999999999' }));
+    expect(fresh.status).toBe(409);
+    expect(await fresh.text()).toContain('Not taking bookings right now');
+
+    expect(await asOwner((sql) => sql`select 1 from booking`)).toHaveLength(1);
+    const perOwner = await asOwner((sql) => sql<{ n: number }[]>`
+      select count(*)::int as n from notification where kind = 'booking_requested' group by recipient_user_id`);
+    expect(perOwner).toEqual([{ n: 1 }]);
+  });
+
+  it('asks Cloudflare with the submission key as the idempotency key', async () => {
+    const cloudflare = fetchFake(async () => bookingToken());
+    const res = await post({ ...form(), 'cf-turnstile-response': 'tok' }, env({ TURNSTILE_SECRET: 'ts-secret' }),
+      cloudflare as unknown as typeof fetch);
+    expect(res.status).toBe(303);
+    const [url, init] = cloudflare.mock.calls[0];
+    expect(String(url)).toBe(SITEVERIFY);
+    expect(new URLSearchParams(String(init?.body)).get('idempotency_key')).toBe(form().submission_key);
+  });
+
+  it('lands both taps of a double-tap on the same receipt with the check on', async () => {
+    /* Cloudflare as documented: a token verifies once; verifying it again
+       answers the same only under the idempotency key it was first sent
+       with, and timeout-or-duplicate otherwise. Both taps are held at the
+       check until both have arrived, so both are past the replay lookup. */
+    const spent = new Map<string, string | null>();
+    let arrived = 0;
+    let bothArrived!: () => void;
+    const gate = new Promise<void>((resolve) => { bothArrived = resolve; });
+    const cloudflare = fetchFake(async (_input, init) => {
+      const body = new URLSearchParams(String(init?.body));
+      arrived += 1;
+      if (arrived === 2) bothArrived();
+      await gate;
+      const token = body.get('response') ?? '';
+      const key = body.get('idempotency_key');
+      if (!spent.has(token)) {
+        spent.set(token, key);
+        return bookingToken();
+      }
+      return key !== null && spent.get(token) === key
+        ? bookingToken() : Response.json({ success: false, 'error-codes': ['timeout-or-duplicate'] });
+    });
+    const secret = env({ TURNSTILE_SECRET: 'ts-secret' });
+    const tapped = { ...form(), 'cf-turnstile-response': 'tok' };
+    const taps = await Promise.all([
+      post(tapped, secret, cloudflare as unknown as typeof fetch),
+      post(tapped, secret, cloudflare as unknown as typeof fetch),
+    ]);
+    expect(taps.map((r) => r.status)).toEqual([303, 303]);
+    expect(taps[1].headers.get('Location')).toBe(taps[0].headers.get('Location'));
+    expect(cloudflare).toHaveBeenCalledTimes(2);
+    expect(await asOwner((sql) => sql`select 1 from booking`)).toHaveLength(1);
   });
 });
 
