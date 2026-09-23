@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { handleApps } from '../src/routes/apps';
+import { myDate } from '../src/apps/bookings/time';
 import { asOwner, jsonOf, req, signIn, testEnv, truncateAll } from './harness';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -8,6 +9,7 @@ const CORS = { 'Access-Control-Allow-Origin': 'http://localhost:5173' };
 const ENV = testEnv({ APPS_ENABLED: 'true', APPS_BUSINESS_IDS: `${A},${B}`, SITES_ORIGIN: 'https://sites.test' });
 let ownerA = '';
 let ownerB = '';
+let staffA = '';
 let serviceA = '';
 
 type Json = { ok: boolean; code?: string; booking: { id: string; status: string; expired: boolean; calendar: { status: string }; whatsappUrl: string | null }; whatsappUrl: string | null };
@@ -17,19 +19,29 @@ beforeEach(async () => {
   const ids = await asOwner(async (sql): Promise<Record<string, string> & { service: string }> => {
     await sql`insert into business (id, name, playbook_key, onboarded)
       values (${A}, 'SEIDO Coffee', 'services', true), (${B}, 'Beta', 'salon', true)`;
+    // Team plan so the staff membership below actually resolves (verifySession
+    // skips staff memberships on a non-team business).
+    await sql`update business set plan = 'team' where id = ${A}`;
     const users = await sql<{ id: string; email: string }[]>`insert into app_user (email, email_verified)
-      values ('a@example.com', true), ('b@example.com', true) returning id, email`;
+      values ('a@example.com', true), ('b@example.com', true), ('s@example.com', true) returning id, email`;
     const byEmail = Object.fromEntries(users.map((u) => [u.email, u.id]));
     await sql`insert into membership (user_id, business_id, role) values
-      (${byEmail['a@example.com']}, ${A}, 'owner'), (${byEmail['b@example.com']}, ${B}, 'owner')`;
-    await sql`insert into app_installation (business_id, app_key, public_slug) values (${A}, 'bookings', 'seido')`;
-    await sql`insert into booking_settings (business_id, availability_acknowledged_at) values (${A}, now())`;
+      (${byEmail['a@example.com']}, ${A}, 'owner'), (${byEmail['b@example.com']}, ${B}, 'owner'),
+      (${byEmail['s@example.com']}, ${A}, 'staff')`;
+    // B is installed too, so a cross-tenant request genuinely reaches the
+    // business_id-scoped queries (and RLS) instead of short-circuiting on
+    // "not installed".
+    await sql`insert into app_installation (business_id, app_key, public_slug) values
+      (${A}, 'bookings', 'seido'), (${B}, 'bookings', 'beta')`;
+    await sql`insert into booking_settings (business_id, availability_acknowledged_at) values
+      (${A}, now()), (${B}, now())`;
     const [s] = await sql<{ id: string }[]>`insert into booking_service (business_id, name, duration_minutes, capacity)
       values (${A}, 'cupping class', 60, 4) returning id`;
     return { ...byEmail, service: s.id };
   });
   ownerA = await signIn(ids['a@example.com']);
   ownerB = await signIn(ids['b@example.com']);
+  staffA = await signIn(ids['s@example.com']);
   serviceA = ids.service;
 });
 
@@ -184,5 +196,41 @@ describe('cancelling', () => {
     await booking(new Date(Date.now() - 3_600_000).toISOString(), { ref: 'LDLDLD' });
     const listed = await jsonOf<{ apps: Array<{ pending: number }> }>(await call('GET', '/api/apps', ownerA));
     expect(listed.apps[0].pending).toBe(1);
+  });
+});
+
+describe('tenant isolation', () => {
+  it('lets a second, installed business neither read nor change another business\'s bookings or jobs', async () => {
+    // Business B is installed too (see beforeEach), so these requests reach
+    // the real business_id-scoped queries and RLS rather than stopping at
+    // "app not installed" — the gap the review flagged.
+    await asOwner((sql) => sql`insert into connection (business_id, connector, method, status) values (${A}, 'google', 'oauth', 'connected')`);
+    const id = await booking(inDays(2));
+    await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
+
+    const from = myDate(new Date());
+    const list = await jsonOf<{ bookings: Array<{ id: string }> }>(
+      await call('GET', `/api/apps/bookings/bookings?from=${from}&days=31`, ownerB));
+    expect(list.bookings).toEqual([]);
+    expect((await call('GET', `/api/apps/bookings/bookings/${id}`, ownerB)).status).toBe(404);
+    expect((await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerB, { decision: 'confirm' })).status).toBe(404);
+    expect((await call('POST', `/api/apps/bookings/bookings/${id}/cancel`, ownerB)).status).toBe(404);
+
+    const [row] = await asOwner((sql) => sql<{ status: string; decided_at: Date | null; cancelled_at: Date | null }[]>`
+      select status, decided_at, cancelled_at from booking where id = ${id}`);
+    expect(row.status).toBe('confirmed');
+    expect(row.decided_at).not.toBeNull();
+    expect(row.cancelled_at).toBeNull();
+    const jobs = await asOwner((sql) => sql<{ desired: string; revision: number }[]>`select desired, revision from booking_calendar_job`);
+    expect(jobs).toEqual([{ desired: 'present', revision: 1 }]);
+  });
+
+  it('refuses a staff member on every bookings route', async () => {
+    const id = await booking(inDays(2));
+    const from = myDate(new Date());
+    expect((await call('GET', `/api/apps/bookings/bookings?from=${from}&days=31`, staffA)).status).toBe(403);
+    expect((await call('GET', `/api/apps/bookings/bookings/${id}`, staffA)).status).toBe(403);
+    expect((await call('POST', `/api/apps/bookings/bookings/${id}/decide`, staffA, { decision: 'confirm' })).status).toBe(403);
+    expect((await call('POST', `/api/apps/bookings/bookings/${id}/cancel`, staffA)).status).toBe(403);
   });
 });
