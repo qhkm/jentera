@@ -411,6 +411,72 @@
   .business-browser-dialog.is-chat-drawer .business-browser-address .input { min-height: 36px; border: 1px solid transparent; border-radius: 9px; background: #191b1a; }
   .business-browser-dialog.is-chat-drawer .business-browser-address .btn { min-height: 36px; padding-inline: 11px; border-color: #343735; border-radius: 9px; color: #c3c7c5; background: #151716; }
   .business-browser-dialog.is-chat-drawer .business-browser-view-hint { display: none; }
+  .business-browser-dialog.is-chat-drawer .business-desktop-toolbar {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 8px 10px;
+    border-color: #292c2a;
+    background: #0d0f0e;
+  }
+  .business-browser-dialog.is-chat-drawer .business-desktop-primary-actions {
+    display: flex;
+    flex: 0 0 auto;
+    width: auto;
+    gap: 5px;
+  }
+  .business-browser-dialog.is-chat-drawer .business-desktop-primary-actions > button,
+  .business-browser-dialog.is-chat-drawer .business-desktop-keys button,
+  .business-browser-dialog.is-chat-drawer .business-desktop-mobile-keyboard {
+    width: 38px;
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+  }
+  .business-browser-dialog.is-chat-drawer .business-desktop-primary-actions > button:hover:not(:disabled),
+  .business-browser-dialog.is-chat-drawer .business-desktop-keys button:hover:not(:disabled),
+  .business-browser-dialog.is-chat-drawer .business-desktop-mobile-keyboard:hover {
+    border-color: #303633;
+    background: #191d1b;
+  }
+  .business-browser-dialog.is-chat-drawer .business-desktop-fit > span,
+  .business-browser-dialog.is-chat-drawer .business-desktop-move > span,
+  .business-browser-dialog.is-chat-drawer .business-desktop-mobile-keyboard > span,
+  .business-browser-dialog.is-chat-drawer .business-desktop-paste > span { display: none; }
+  .business-browser-dialog.is-chat-drawer .business-desktop-zoom {
+    grid-template-columns: 38px minmax(54px, auto) 38px;
+    border-color: #303633;
+    border-radius: 11px;
+    background: #151816;
+  }
+  .business-browser-dialog.is-chat-drawer .business-desktop-zoom button {
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0;
+    font-size: 11px;
+  }
+  .business-browser-dialog.is-chat-drawer .business-desktop-zoom .business-desktop-zoom-value { min-width: 54px; }
+  .business-browser-dialog.is-chat-drawer .business-desktop-secondary-actions {
+    flex: 1 1 auto;
+    width: auto;
+    justify-content: flex-end;
+  }
+  .business-browser-dialog.is-chat-drawer .business-desktop-secondary-actions > span { display: none; }
+  .business-browser-dialog.is-chat-drawer .business-desktop-secondary-actions.has-keys {
+    flex-basis: 100%;
+    order: 2;
+  }
+  .business-browser-dialog.is-chat-drawer .business-desktop-secondary-actions.has-keys .business-desktop-keys {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .business-browser-dialog.is-chat-drawer .business-desktop-secondary-actions.has-keys .business-desktop-keys button:not(.business-desktop-paste) {
+    width: auto;
+    padding-inline: 11px;
+  }
   .business-browser-dialog.is-chat-drawer .business-browser-empty { gap: 10px; padding: 24px 18px; background: #101211; }
   .business-browser-dialog.is-chat-drawer .business-browser-empty-icon { width: 52px; height: 52px; border-color: #2b3933; border-radius: 16px; background: #18201d; }
   .business-browser-dialog.is-chat-drawer .business-browser-empty h3 { font-size: 17px; font-weight: 500; }
@@ -474,13 +540,19 @@
   .business-browser-dialog.is-chat-drawer .business-browser-control-actions { width: 100%; justify-content: flex-end; }
   .business-browser-dialog.is-chat-drawer .business-browser-control-actions .business-browser-teach { display: none; }
   .business-browser-dialog.is-chat-drawer .business-browser-control-actions .btn {
-    min-height: 36px;
-    padding-inline: 13px;
+    min-height: 40px;
+    padding-inline: 14px;
     border: 1px solid #343735;
-    border-radius: 9px;
-    background: #202321;
-    color: #f2f4f3;
+    border-radius: var(--action-radius);
+    background: #171a18;
+    color: #c9cfcc;
     box-shadow: none;
+  }
+  .business-browser-dialog.is-chat-drawer .business-browser-control-actions .btn:last-child {
+    padding-inline: 17px;
+    border-color: var(--action-primary-bg);
+    background: var(--action-primary-bg);
+    color: var(--action-primary-ink);
   }
 }
 
