@@ -2211,3 +2211,95 @@ Plan 2 (public pages) built on branch bookings-v1: <last commit>.
 ```
 
   Commit it by named path.
+
+---
+
+## As built
+
+Built on branch `bookings-v1`, commits `cef81d7..d365c5d`. Every task and
+the final fix round were reviewed. The full worker suite passed at
+`4b9321b`: 132 files, 1581 tests. The fix at `d365c5d` passed its focused
+tests and typecheck. Nothing is deployed, and `APPS_ENABLED` is `"false"` in
+both deploys.
+
+**Where the build differs from the task text above:**
+- **Hours are read in one place.** `src/apps/bookings/hours.ts`
+  (`readHours`, `hoursFor`) is shared by `readConfig`, `readPublicPage` and
+  `createBookingRequest`, instead of three copies of one query.
+- **Dates and times are formatted in one place.** `messages.ts` exports
+  `dateText` and `clockText`. `whenText` and `render.ts` both use them.
+- **Requests are turned away before the database.** The sites handler
+  answers 404 when `APPS_ENABLED` is not `"true"`. It then checks
+  `SITES_BURST` for every request (60 per 60 s per address, namespace
+  `1008`). For a form post, it then reads the body (form-encoded only, at
+  most 8 KiB, read with a cap) and checks `BOOKING_BURST`. Only then does it
+  resolve the link name. A braked request gets a static 429 page. So the
+  burst limit now runs before validation, not after it.
+- **A form already sent keeps its receipt.** The replay check runs before the
+  paused gate. Turnstile gets an `idempotency_key` derived from the
+  submission key and the token (`turnstileIdempotencyKey`), so a double-tap
+  gets one booking and one receipt.
+- **An old link name gets 307, not 301.** A business may return to an old
+  name, and 307 keeps a form post's body.
+- **Names and notes refuse control and bidi characters.** Tab, LF and CR are
+  still allowed in notes.
+- **Form fields with errors carry `aria-invalid` and `aria-describedby`.**
+- **Any thrown error gets a plain 500.** It carries the security headers. The
+  log line holds only the error's name and SQLSTATE.
+- **`check-apps-flags.mjs` checks more than the plan asked.** It fails the
+  deploy if either deploy's `SITES_ORIGIN` is not `https`, if
+  `TURNSTILE_SITE_KEY` is empty, or if the `BOOKING_BURST` or `SITES_BURST`
+  block is missing.
+
+**Before the first `deploy:sites` (the release):**
+- **Apply 065–068 in production before merging `bookings-v1`.** After 068,
+  run a smoke test that resolves a held name through `bookings_by_slug`.
+- **Set `TURNSTILE_SECRET` on `jentera-sites` before `APPS_ENABLED` flips.**
+  Deploy the site key first, then the secret, as with the sign-in doors.
+- **Consider a Hyperdrive config of the sites deploy's own.** Disable caching
+  and set a low origin-connection cap, so a public flood cannot use up the
+  pool `aisar-api` depends on.
+- **Nothing in the release path runs the flags check except `deploy:sites`.**
+  - `ship-runtime.sh` and the release playbook deploy `aisar-api` with
+    `pnpm exec wrangler deploy`, which skips `predeploy`.
+  - `pnpm deploy` is pnpm's own built-in command, not the script; use
+    `pnpm run deploy`.
+  - Add `node scripts/check-apps-flags.mjs` to the release gate.
+  - A `ship-runtime.sh` release never deploys `jentera-sites`. Changes to
+    shared code reach it only through `pnpm deploy:sites`.
+- **Expect a conflict when merging.** `main` has since added
+  `check-bundle-pin` to `predeploy`. Keep both.
+
+**Plan 4 (owner UI and docs) must:**
+- **Document the second deploy.** Put it in `CLAUDE.md`,
+  `docs/architecture.md` and `docs/todo.md`:
+  - `deploy:sites`
+  - the Turnstile `booking` action
+  - the two rate-limit bindings
+  - the flag check
+  - the PDPA retention row
+- **Word `service_gone` and the paused state for owners** where they appear
+  in the owner screens.
+
+**Deferred minors, none blocking:**
+- A link with capitals (`/b/SEIDO`) and HEAD requests answer 404.
+- After choosing a later day, the day strip no longer shows earlier days.
+- `service_gone` returns the customer to the list with no reason.
+- Name and note lengths count UTF-16 units, so the check errs strict.
+- The character guard misses U+061C, which matters for Jawi and Arabic
+  names, and U+2028/U+2029.
+- A POST to an old link name spends both brakes twice, once per hop.
+- Times and form pages read the page twice, costing 3 DB connections.
+- Tests missing:
+  - the Malaysian day boundary for the daily cap
+  - the reference-retry path
+  - `sourceKey`, the title and the Malay notice
+  - headers on a redirect or a 404
+- Small cleanups:
+  - `TurnstileEnv` restates two `Env` fields;
+  - `/* */` is used where the neighbouring code uses `/** */`;
+  - dense one-line templates in `render.ts`;
+  - the notice text is built twice;
+  - `readPublicPage` reads inactive services' hours;
+  - the prefix match for rate-limit blocks has no boundary;
+  - no test covers a `TURNSTILE_SITE_KEY` that is set but empty.
