@@ -19,7 +19,7 @@ const PROFILE_LABEL: Record<string, string> = {
   default: 'Chief of Staff', operations: 'Operations', customers: 'Customer communications', growth: 'Growth and marketing', records: 'Finance and records',
 };
 
-export default function AgentMemoryPanel() {
+export default function AgentMemoryPanel({ embedded = false }: { embedded?: boolean }) {
   const repo = useRepository();
   const toast = useToast();
   const [memory, setMemory] = useState<AgentMemory | null>(null);
@@ -63,10 +63,9 @@ export default function AgentMemoryPanel() {
   const profiles = Array.isArray(memory?.profiles) ? memory.profiles : [];
   const total = profiles.reduce((n, p) => n + p.files.reduce((m, f) => m + f.entries.length, 0), 0);
 
-  return (
-    <Card>
+  const content = <>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Eyebrow>What Jentera has picked up</Eyebrow>
+        {!embedded && <Eyebrow>What Jentera has picked up</Eyebrow>}
         {memory?.available && <Tag>{total} {total === 1 ? 'note' : 'notes'}</Tag>}
       </div>
       <p className="mt-2 text-sm text-text-secondary">
@@ -117,6 +116,6 @@ export default function AgentMemoryPanel() {
           ))}
         </div>
       )}
-    </Card>
-  );
+    </>;
+  return embedded ? <section className="agent-memory-panel">{content}</section> : <Card>{content}</Card>;
 }

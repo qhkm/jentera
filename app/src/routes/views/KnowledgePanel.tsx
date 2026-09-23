@@ -13,7 +13,7 @@
    ============================================================ */
 
 import { useState } from 'react';
-import { ClockCounterClockwise, PencilSimple } from '@phosphor-icons/react';
+import { CaretDown, ClockCounterClockwise, PencilSimple, Plus, UploadSimple } from '@phosphor-icons/react';
 import { renderSourceLink } from '@/lib/reply-markdown';
 import { Button, Card, Eyebrow, Input, LoadingState, Tag } from '@/components/ui';
 import { useMutate, useRefresh, useRepository, useSnapshot } from '@/lib/repo';
@@ -98,6 +98,7 @@ function FactRow({ fact, canManage }: { fact: Fact; canManage: boolean }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(show(fact.value));
   const [history, setHistory] = useState<Fact[] | null>(null);
+  const [details, setDetails] = useState(false);
 
   function save() {
     // Typed by a person, so it is owner-sourced and self-confirming.
@@ -113,12 +114,14 @@ function FactRow({ fact, canManage }: { fact: Fact; canManage: boolean }) {
   }
 
   return (
-    <div className="knowledge-fact border-b border-rail py-3 last:border-b-0">
+    <div className={`knowledge-fact ${fact.confirmed ? '' : 'knowledge-fact-review'} border-b border-rail py-3 last:border-b-0`}>
       <div className="knowledge-fact-layout">
         <div className="knowledge-fact-main">
-          <span className="text-sm font-medium text-text">{label(fact.key)}</span>
+          <div className="knowledge-fact-heading">
+            <span className="text-sm font-medium text-text">{label(fact.key)}</span>
+            {!fact.confirmed && <Tag tone={sourceTone(fact)}>Needs review</Tag>}
+          </div>
           {fact.pending && <p className="text-sm text-text-secondary">{t('knowledge.currentValue', { value: show(fact.currentValue) })}</p>}
-          {fact.sourceRef && <p className="text-xs text-text-secondary">{t('knowledge.source', { source: '' })}{renderSourceLink(fact.sourceRef)}</p>}
           {editing && canManage ? (
             <Input
               className="min-w-[12rem]"
@@ -127,46 +130,48 @@ function FactRow({ fact, canManage }: { fact: Fact; canManage: boolean }) {
               aria-label={`Value for ${label(fact.key)}`}
             />
           ) : <span className="text-sm text-text-secondary">{show(fact.value)}</span>}
+          {!fact.confirmed && !editing && <span className="knowledge-fact-source">{sourceLabel(fact)}</span>}
         </div>
-        <div className="knowledge-fact-side">
-          <Tag tone={sourceTone(fact)}>{sourceLabel(fact)}</Tag>
-          <div className="knowledge-fact-actions">
-            {editing && canManage ? <>
-              <Button onClick={save}>Save</Button>
-              <Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
-            </> : <>
-              {!fact.confirmed && canManage && (
-                <Button onClick={() => void mutate((r) => r.confirmFact(fact.key, fact.version)).catch(noop)}>
-                  That&rsquo;s right
-                </Button>
-              )}
-              {canManage && <Button variant="outline" onClick={() => { setDraft(show(fact.value)); setEditing(true); }}>
-                <PencilSimple size={16} aria-hidden="true" />
-                {fact.confirmed ? 'Change' : 'Fix it'}
-              </Button>}
-              {canManage && !fact.confirmed && <Button variant="outline"
-                onClick={() => void mutate((r) => r.forgetFact(fact.key, fact.version)).catch(noop)}>{t('knowledge.discard')}</Button>}
-              {fact.version > 1 && (
-                <Button variant="outline" onClick={() => void toggleHistory()}>
-                  <ClockCounterClockwise size={16} aria-hidden="true" />
-                  {history ? 'Hide history' : `${fact.version} versions`}
-                </Button>
-              )}
-            </>}
-          </div>
+        <div className="knowledge-fact-actions">
+          {editing && canManage ? <>
+            <Button onClick={save}>Save</Button>
+            <Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
+          </> : <>
+            {!fact.confirmed && canManage && (
+              <Button onClick={() => void mutate((r) => r.confirmFact(fact.key, fact.version)).catch(noop)}>
+                That&rsquo;s right
+              </Button>
+            )}
+            {canManage && <Button variant="outline" onClick={() => { setDraft(show(fact.value)); setEditing(true); }}>
+              <PencilSimple size={16} aria-hidden="true" />
+              {fact.confirmed ? 'Change' : 'Fix it'}
+            </Button>}
+          </>}
         </div>
       </div>
 
-      {history && (
-        <ol className="flex flex-col gap-1 pl-3 text-xs text-text-secondary">
-          {history.map((h) => (
-            <li key={h.version}>
-              <span className="opacity-60">v{h.version}</span> {show(h.value)}{' '}
-              <span className="opacity-60">— {sourceLabel(h)}</span>
-            </li>
-          ))}
-        </ol>
-      )}
+      {(fact.sourceRef || fact.confirmed || fact.version > 1 || (!fact.confirmed && canManage)) && <div className="knowledge-fact-details">
+        <button type="button" className="knowledge-details-toggle" aria-expanded={details} onClick={() => setDetails(value => !value)}>
+          {details ? 'Hide details' : 'Details'}<CaretDown size={14} aria-hidden="true" />
+        </button>
+        {details && <div className="knowledge-fact-details-body">
+          <p>{sourceLabel(fact)}</p>
+          {fact.sourceRef && <p>{t('knowledge.source', { source: '' })}{renderSourceLink(fact.sourceRef)}</p>}
+          <div className="knowledge-detail-actions">
+            {fact.version > 1 && <Button variant="ghost" onClick={() => void toggleHistory()}>
+              <ClockCounterClockwise size={16} aria-hidden="true" />
+              {history ? 'Hide history' : `${fact.version} versions`}
+            </Button>}
+            {canManage && !fact.confirmed && <Button variant="ghost"
+              onClick={() => void mutate((r) => r.forgetFact(fact.key, fact.version)).catch(noop)}>{t('knowledge.discard')}</Button>}
+          </div>
+          {history && <ol className="knowledge-history">
+            {history.map((h) => <li key={h.version}>
+              <span>v{h.version}</span> {show(h.value)} <span>— {sourceLabel(h)}</span>
+            </li>)}
+          </ol>}
+        </div>}
+      </div>}
     </div>
   );
 }
@@ -181,6 +186,7 @@ export default function KnowledgePanel() {
   const [site, setSite] = useState('');
   const [reading, setReading] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [memoryOpen, setMemoryOpen] = useState(false);
   const repo = useRepository();
   const refresh = useRefresh();
 
@@ -238,27 +244,22 @@ export default function KnowledgePanel() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {unconfirmed > 0 && (
-        <Card>
-          <Eyebrow>Needs your eye</Eyebrow>
-          <p className="mt-2 text-sm text-text-secondary">
-            {unconfirmed === 1
-              ? 'One thing Jentera worked out for itself and has not had confirmed.'
-              : `${unconfirmed} things Jentera worked out for itself and has not had confirmed.`}{' '}
-            It will not rely on them with customers until you say they are right.
-          </p>
-        </Card>
-      )}
-
-      <Card>
-        <Eyebrow>What Jentera knows</Eyebrow>
+    <div className="knowledge-view">
+      <Card className="knowledge-overview">
+        <div className="knowledge-overview-heading">
+          <div><Eyebrow>Knowledge</Eyebrow><h2>Business brief</h2><p>One place for the details Jentera uses when working for you.</p></div>
+          <Tag tone={unconfirmed > 0 ? 'amber' : 'neutral'}>{facts.length} {facts.length === 1 ? 'item' : 'items'}</Tag>
+        </div>
+        {unconfirmed > 0 && <p className="knowledge-review-note">
+          {unconfirmed === 1 ? 'One item needs your review.' : `${unconfirmed} items need your review.`}
+          {' '}Jentera will not use them with customers until you confirm them.
+        </p>}
         {facts.length === 0 ? (
-          <p className="mt-2 text-sm text-text-secondary">
-            Nothing yet. Add something below, or point Jentera at your website and let it read.
+          <p className="knowledge-empty">
+            Nothing here yet. Add a useful detail, or let Jentera read your website or a document.
           </p>
         ) : (
-          <div className="mt-2 flex flex-col">
+          <div className="knowledge-facts">
             {facts.map((f) => (
               <FactRow key={`${f.key}:${f.version}`} fact={f} canManage={canManage} />
             ))}
@@ -266,78 +267,39 @@ export default function KnowledgePanel() {
         )}
       </Card>
 
-      {canManage && <Card>
-        <Eyebrow>Let Jentera read your website or a document</Eyebrow>
-        <p className="mt-2 text-sm text-text-secondary">
-          Paste the address, or upload a document, and Jentera will read it and suggest what it
-          learned. Suggestions wait for your confirmation; existing confirmed values stay in use.
-        </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Input
-            className="min-w-[14rem] flex-1"
-            placeholder="https://yourbusiness.com"
-            value={site}
-            onChange={(e) => setSite(e.target.value)}
-            aria-label="Your website address"
-            disabled={reading}
-          />
-          <Button onClick={() => void read()} disabled={reading || !site.trim()}>
-            {reading ? 'Reading website…' : 'Read it'}
-          </Button>
-        </div>
-        {repo.ingestFile && (
-          <label className="mt-3 flex flex-wrap items-center gap-2 text-sm text-text-secondary">
-            <span>or upload a document</span>
-            <input
-              type="file"
-              aria-label="Upload a document"
-              className="text-[13px]"
-              accept=".txt,.md,.csv,.json,.pdf,.docx,.xlsx,.pptx,.html,.png,.jpg,.jpeg,.webp"
-              disabled={reading}
-              onChange={(e) => { void readFile(e.target.files?.[0]); e.target.value = ''; }}
-            />
-            <span className="text-[12px] text-text-muted">Text, PDF, Word, Excel or an image. The file is not kept.</span>
-          </label>
-        )}
-        {reading ? (
-          <LoadingState
-            compact
-            className="mt-3"
-            title="Reading your website…"
-            detail="Extracting suggestions for review. Existing confirmed values stay in use."
-          />
-        ) : null}
-        {note && (
-          <p role="status" className="mt-3 text-sm text-text-secondary">
-            {note}
-          </p>
-        )}
-      </Card>}
+      {canManage && <Card className="knowledge-tools">
+        <Eyebrow>Add knowledge</Eyebrow>
+        <div className="knowledge-tool-list">
+          <details className="knowledge-tool">
+            <summary><span><Plus size={19} aria-hidden="true" /><span><strong>Add something yourself</strong><small>Hours, prices, services, policies, or anything Jentera should know.</small></span></span><CaretDown size={16} aria-hidden="true" /></summary>
+            <div className="knowledge-tool-body">
+              <div className="knowledge-add-form">
+                <Input placeholder="What is this about? e.g. Monday hours" value={key} onChange={(e) => setKey(e.target.value)} aria-label="What kind of fact" />
+                <Input placeholder="What should Jentera know? e.g. 9am – 6pm" value={value} onChange={(e) => setValue(e.target.value)} aria-label="Value" />
+                <Button onClick={add} disabled={!key.trim() || !value.trim()}>Add</Button>
+              </div>
+            </div>
+          </details>
 
-      {canManage && <Card>
-        <Eyebrow>Tell Jentera something</Eyebrow>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Input
-            className="min-w-[10rem] flex-1"
-            placeholder="hours.monday"
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-            aria-label="What kind of fact"
-          />
-          <Input
-            className="min-w-[10rem] flex-[2]"
-            placeholder="9am – 6pm"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            aria-label="Value"
-          />
-          <Button onClick={add} disabled={!key.trim() || !value.trim()}>
-            Add
-          </Button>
+          <details className="knowledge-tool">
+            <summary><span><UploadSimple size={19} aria-hidden="true" /><span><strong>Import from a source</strong><small>Let Jentera suggest useful details from a website or document.</small></span></span><CaretDown size={16} aria-hidden="true" /></summary>
+            <div className="knowledge-tool-body">
+              <div className="knowledge-import-form">
+                <Input placeholder="https://yourbusiness.com" value={site} onChange={(e) => setSite(e.target.value)} aria-label="Your website address" disabled={reading} />
+                <Button onClick={() => void read()} disabled={reading || !site.trim()}>{reading ? 'Reading…' : 'Read website'}</Button>
+              </div>
+              {repo.ingestFile && <label className="knowledge-file-input"><span>Or choose a document</span><input type="file" aria-label="Upload a document" accept=".txt,.md,.csv,.json,.pdf,.docx,.xlsx,.pptx,.html,.png,.jpg,.jpeg,.webp" disabled={reading} onChange={(e) => { void readFile(e.target.files?.[0]); e.target.value = ''; }} /><small>Text, PDF, Word, Excel, PowerPoint, or an image. The file is not kept.</small></label>}
+              {reading && <LoadingState compact title="Reading your source…" detail="Preparing suggestions for you to review." />}
+              {note && <p role="status" className="knowledge-import-note">{note}</p>}
+            </div>
+          </details>
+
+          {repo.agentMemory && <details className="knowledge-tool" onToggle={(event) => setMemoryOpen(event.currentTarget.open)}>
+            <summary><span><ClockCounterClockwise size={19} aria-hidden="true" /><span><strong>Things Jentera picked up while working</strong><small>Review or remove informal notes from your bots.</small></span></span><CaretDown size={16} aria-hidden="true" /></summary>
+            <div className="knowledge-tool-body">{memoryOpen && <AgentMemoryPanel embedded />}</div>
+          </details>}
         </div>
       </Card>}
-
-      {canManage && <AgentMemoryPanel />}
     </div>
   );
 }
