@@ -7,8 +7,8 @@ const base = process.env.SEO_BASE?.replace(/\/$/, '');
 const dist = new URL('../dist/', import.meta.url);
 const publicRoutes = [
   '/', '/ms', '/pricing', '/about',
-  '/connect', '/connect/telegram', '/connect/google-calendar',
-  '/privacy', '/terms',
+  '/connect', '/connect/telegram', '/connect/google-calendar', '/connect/bukku',
+  '/privacy', '/terms', '/blog/meet-jentera',
 ];
 /* Every member of a translated pair must carry the whole pair plus
    x-default, and a page with no translation must carry none. Google drops
@@ -43,7 +43,7 @@ for (const path of [...publicRoutes, ...privateRoutes, '/404']) {
   assert.equal(doc.querySelector('meta[property="og:title"]').content, doc.title);
   assert.equal(doc.querySelector('meta[name="twitter:title"]').content, doc.title);
   assert.equal(doc.querySelector('meta[name="twitter:card"]').content, 'summary_large_image');
-  assert.equal(doc.querySelector('meta[property="og:image"]').content, 'https://jentera.ai/social/jentera-v1.png');
+  assert.equal(doc.querySelector('meta[property="og:image"]').content, 'https://jentera.ai/social/jentera-v2.png');
   assert.equal(doc.querySelector('meta[property="og:image:width"]').content, '1200');
   assert.equal(doc.querySelector('meta[property="og:image:height"]').content, '630');
   assert(doc.querySelector('meta[property="og:image:alt"]').content.length > 20);
@@ -70,11 +70,11 @@ for (const path of [...publicRoutes, ...privateRoutes, '/404']) {
   console.log(`${path}: ${response?.status ?? 'built'} · ${indexable ? 'public HTML + canonical' : 'noindex'}`);
   dom.window.close();
 }
-const image = base ? (await request('/social/jentera-v1.png')) : { bytes: await read('social/jentera-v1.png') };
+const image = base ? (await request('/social/jentera-v2.png')) : { bytes: await read('social/jentera-v2.png') };
 if (image.response) { assert.equal(image.response.status, 200); assert.match(image.response.headers.get('content-type'), /image\/png/); }
 assert.equal(image.bytes.subarray(1, 4).toString(), 'PNG');
 assert.equal(image.bytes.readUInt32BE(16), 1200); assert.equal(image.bytes.readUInt32BE(20), 630);
-const expected = await read('social/jentera-v1.png');
+const expected = await read('social/jentera-v2.png');
 assert.equal(createHash('sha256').update(image.bytes).digest('hex'), createHash('sha256').update(expected).digest('hex'));
 const sitemapResult = base ? await request('/sitemap.xml') : { bytes: await read('sitemap.xml') };
 if (sitemapResult.response) {

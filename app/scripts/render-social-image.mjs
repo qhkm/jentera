@@ -2,13 +2,13 @@ import { chromium } from 'playwright';
 import { readFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-// Deterministic typography/vector artwork using the app's existing mark and
-// fonts. No external images, screenshot of business data, or build-time network.
+// Deterministic artwork using the app's existing mark, mascot and Geist font.
+// No external images, business data, or build-time network.
 const files = {
   '/': [new URL('./social-card.html', import.meta.url), 'text/html'],
   '/mark.svg': [new URL('../public/favicon.svg', import.meta.url), 'image/svg+xml'],
+  '/mascot.webp': [new URL('../public/images/jentera-character-glossy-v1.webp', import.meta.url), 'image/webp'],
   '/sans.woff2': [new URL('../node_modules/geist/dist/fonts/geist-sans/Geist-Regular.woff2', import.meta.url), 'font/woff2'],
-  '/pixel.woff2': [new URL('../node_modules/geist/dist/fonts/geist-pixel/GeistPixel-Square.woff2', import.meta.url), 'font/woff2'],
 };
 const output = new URL('../public/social/', import.meta.url);
 await mkdir(output, { recursive: true });
@@ -24,8 +24,8 @@ try {
   await page.goto('https://social.jentera.test/');
   await page.evaluate(async () => {
     await document.fonts.ready;
-    if (!document.fonts.check('65px Pixel') || !document.fonts.check('20px Geist')) throw new Error('Artwork fonts did not load');
+    if (!document.fonts.check('20px Geist')) throw new Error('Artwork font did not load');
   });
-  await page.screenshot({ path: fileURLToPath(new URL('jentera-v1.png', output)), type: 'png' });
-  console.log('Rendered public/social/jentera-v1.png (1200 × 630). Review it before committing.');
+  await page.screenshot({ path: fileURLToPath(new URL('jentera-v2.png', output)), type: 'png' });
+  console.log('Rendered public/social/jentera-v2.png (1200 × 630). Review it before committing.');
 } finally { await browser.close(); }

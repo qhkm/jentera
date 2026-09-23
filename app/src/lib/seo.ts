@@ -1,8 +1,8 @@
 /** Shared by the static build and client navigation. Never derive public URLs
  * or metadata from account data, query strings, or the current preview host. */
 export const SITE_URL = 'https://jentera.ai';
-export const SOCIAL_IMAGE = `${SITE_URL}/social/jentera-v1.png`;
-export const SOCIAL_ALT = 'Jentera by AISAR. AI staff that works 24/7 for Malaysian businesses.';
+export const SOCIAL_IMAGE = `${SITE_URL}/social/jentera-v2.png`;
+export const SOCIAL_ALT = 'Jentera. Your AI staff, ready for work.';
 export const INDEXABLE_PATHS = [
   '/', '/ms', '/pricing', '/about',
   '/connect', '/connect/telegram', '/connect/google-calendar', '/connect/bukku',

@@ -4,44 +4,63 @@
   <meta charset="utf-8" />
   <title>Jentera social preview artwork</title>
   <style>
-    @font-face { font-family: Geist; src: url('/sans.woff2') format('woff2'); font-weight: 400; }
-    @font-face { font-family: Pixel; src: url('/pixel.woff2') format('woff2'); font-weight: 400; }
+    @font-face { font-family: Geist; src: url('/sans.woff2') format('woff2'); font-weight: 100 900; }
     * { box-sizing: border-box; }
-    body { margin: 0; width: 1200px; height: 630px; background: #1f1f1f; color: #fff; font-family: Geist, sans-serif; overflow: hidden; }
-    .frame { position: absolute; inset: 24px; border: 1px solid #414b46; border-radius: 28px; }
-    .brand { position: absolute; left: 64px; top: 57px; display: flex; align-items: center; gap: 16px; }
-    .brand img { width: 55px; height: 55px; }
-    .wordmark { font-family: Pixel, monospace; font-size: 42px; color: #00d294; letter-spacing: -1px; }
-    .parent { position: absolute; right: 64px; top: 75px; font-size: 21px; color: #b4b4b4; }
-    .eyebrow { position: absolute; left: 67px; top: 166px; font-size: 17px; letter-spacing: 3px; text-transform: uppercase; color: #b4b4b4; }
-    h1 { position: absolute; left: 64px; top: 212px; margin: 0; font-family: Pixel, monospace; font-size: 65px; line-height: 1.11; font-weight: 400; letter-spacing: -1.5px; }
-    h1 span { color: #00d294; }
-    .footer { position: absolute; left: 66px; right: 65px; bottom: 62px; padding-top: 22px; border-top: 1px solid #414b46; display: flex; justify-content: space-between; align-items: center; }
-    .footer p { margin: 0; color: #b4b4b4; font-size: 20px; }
-    .url { font-size: 22px; color: #fff; }
-    .clock { position: absolute; right: 63px; top: 192px; width: 235px; height: 235px; }
-    .clock svg { width: 100%; height: 100%; }
-    .clock-label { position: absolute; width: 235px; right: 63px; top: 441px; text-align: center; font-size: 17px; letter-spacing: 1.5px; color: #a4f4cf; }
+    body {
+      margin: 0;
+      width: 1200px;
+      height: 630px;
+      overflow: hidden;
+      color: #f5f8f7;
+      font-family: Geist, Arial, sans-serif;
+      background:
+        radial-gradient(circle at 82% 44%, rgba(28, 211, 151, .17), transparent 31%),
+        radial-gradient(circle at 10% 8%, rgba(28, 211, 151, .08), transparent 25%),
+        #080d0e;
+    }
+    .grain {
+      position: absolute;
+      inset: 0;
+      opacity: .22;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.05'/%3E%3C/svg%3E");
+    }
+    .brand { position: absolute; left: 64px; top: 52px; display: flex; align-items: center; gap: 13px; }
+    .brand img { width: 44px; height: 44px; }
+    .wordmark { font-size: 29px; font-weight: 650; letter-spacing: -1.7px; }
+    .launch { position: absolute; right: 64px; top: 56px; padding: 8px 15px; border: 1px solid #285546; border-radius: 999px; color: #bcebd8; background: #10231d; font-size: 14px; }
+    .copy { position: absolute; left: 64px; top: 157px; width: 690px; }
+    .eyebrow { color: #65ddb4; font-size: 15px; font-weight: 600; letter-spacing: 2.3px; text-transform: uppercase; }
+    h1 { margin: 18px 0 19px; max-width: 690px; font-size: 67px; line-height: .99; font-weight: 670; letter-spacing: -4.2px; }
+    .intro { margin: 0; max-width: 625px; color: #a9b5b1; font-size: 21px; line-height: 1.5; letter-spacing: -.25px; }
+    .actions { display: flex; align-items: center; gap: 22px; margin-top: 27px; }
+    .button { padding: 14px 22px; border-radius: 999px; color: #102019; background: #f1f7f4; font-size: 16px; font-weight: 650; }
+    .url { color: #9be6c9; font-size: 16px; }
+    .visual { position: absolute; right: 39px; top: 115px; width: 385px; height: 420px; }
+    .halo { position: absolute; left: 42px; top: 22px; width: 330px; height: 330px; border: 1px solid rgba(80, 222, 173, .2); border-radius: 50%; background: radial-gradient(circle, rgba(31, 202, 144, .17), rgba(12, 29, 24, .2) 55%, transparent 71%); }
+    .mascot { position: absolute; z-index: 2; left: 71px; top: 65px; width: 265px; height: 265px; object-fit: contain; filter: drop-shadow(0 24px 38px rgba(0, 218, 157, .17)); transform: rotate(-3deg); }
+    .task { position: absolute; z-index: 3; display: flex; align-items: center; gap: 10px; min-width: 174px; padding: 12px 15px; border: 1px solid #2a4039; border-radius: 15px; color: #d9e4e0; background: rgba(15, 25, 22, .94); box-shadow: 0 14px 32px rgba(0, 0, 0, .24); font-size: 14px; }
+    .task::before { content: '✓'; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: #091511; background: #4ee0ae; font-weight: 800; }
+    .task-one { left: -4px; top: 302px; }
+    .task-two { right: 0; top: 348px; }
+    .footer { position: absolute; left: 64px; right: 64px; bottom: 43px; padding-top: 18px; border-top: 1px solid #24322f; color: #758681; font-size: 14px; }
   </style>
 </head>
 <body>
-  <div class="frame"></div>
+  <div class="grain"></div>
   <div class="brand"><img src="/mark.svg" alt="" /><span class="wordmark">Jentera</span></div>
-  <span class="parent">by AISAR</span>
-  <div class="eyebrow">Built for business here</div>
-  <h1>AI staff that<br />works <span>24/7</span> for<br /><span>Malaysian businesses.</span></h1>
-  <div class="clock" aria-hidden="true">
-    <svg viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="1" y="1" width="238" height="238" rx="40" fill="#25312b" stroke="#406b56"/>
-      <circle cx="120" cy="120" r="86" stroke="#406b56" stroke-width="2" stroke-dasharray="2 10"/>
-      <path d="M120 35a85 85 0 1 1-85 85" stroke="#00d294" stroke-width="3" stroke-linecap="round"/>
-      <path d="m26 127 9-12 10 10" stroke="#00d294" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M120 63v57l36 24" stroke="#a4f4cf" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="120" cy="120" r="7" fill="#00d294"/>
-      <rect x="115" y="24" width="10" height="10" rx="2" fill="#00d294"/>
-    </svg>
+  <span class="launch">Jentera is here</span>
+  <main class="copy">
+    <div class="eyebrow">Your work, moving forward</div>
+    <h1>Your AI staff,<br />ready for work.</h1>
+    <p class="intro">Give Jentera real work to do. It prepares the work and brings it back for your review.</p>
+    <div class="actions"><span class="button">Get started&nbsp; →</span><span class="url">jentera.ai</span></div>
+  </main>
+  <div class="visual" aria-hidden="true">
+    <div class="halo"></div>
+    <img class="mascot" src="/mascot.webp" alt="" />
+    <div class="task task-one">Research ready</div>
+    <div class="task task-two">Draft prepared</div>
   </div>
-  <div class="clock-label">ENGLISH +<br />BAHASA MALAYSIA</div>
-  <div class="footer"><p>Replies. Follow-ups. Paperwork. Everyday work.</p><span class="url">jentera.ai ↗</span></div>
+  <div class="footer">A little help. A lot less busywork.</div>
 </body>
 </html>

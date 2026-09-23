@@ -26,7 +26,7 @@ describe('public SEO and social previews', () => {
     expect(document.querySelector('meta[name="twitter:card"]')?.getAttribute('content')).toBe('summary_large_image');
     expect(document.querySelector('meta[property="og:image:width"]')?.getAttribute('content')).toBe('1200');
     expect(document.querySelector('meta[property="og:image:height"]')?.getAttribute('content')).toBe('630');
-    expect(document.querySelector('meta[property="og:image:alt"]')?.getAttribute('content')).toContain('Malaysian businesses');
+    expect(document.querySelector('meta[property="og:image:alt"]')?.getAttribute('content')).toContain('ready for work');
     expect(document.querySelectorAll('link[rel=canonical]')).toHaveLength(1);
     expect(JSON.parse(document.getElementById('jentera-structured-data')!.textContent!)).toEqual(structuredData(path));
   });
@@ -73,7 +73,7 @@ describe('public SEO and social previews', () => {
   });
 
   it('uses a real 1200×630 PNG, not an SVG or HTML fallback', () => {
-    const image = readFileSync('public/social/jentera-v1.png');
+    const image = readFileSync('public/social/jentera-v2.png');
     expect(image.subarray(1, 4).toString()).toBe('PNG');
     expect(image.readUInt32BE(16)).toBe(1200);
     expect(image.readUInt32BE(20)).toBe(630);
