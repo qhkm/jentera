@@ -335,3 +335,43 @@ max_concurrency = 5
 # */15: fleet drift sweep. * * * * *: owner routines dispatcher (index.ts
 # branches on controller.cron, so the sweep never runs every minute).
 crons = ["*/15 * * * *", "* * * * *"]
+
+# ---------------------------------------------------------------------------
+# jentera-sites: the public Bookings pages, a second deploy of this code.
+# docs/plans/2026-09-23-apps-shell-and-bookings-v1.md, "Public pages".
+# Own origin, so the owner's session cookie is never in scope; no credential,
+# vault, email, billing or runtime secret. Its only secret is TURNSTILE_SECRET
+# (set it only after the sites hostname is added to the Turnstile widget).
+# Deploy with `pnpm deploy:sites`, which first checks the apps flags below
+# still match [vars] (scripts/check-apps-flags.mjs).
+[env.sites]
+name = "jentera-sites"
+main = "src/sites/index.ts"
+workers_dev = true
+# Durable Object migrations are inherited too. This entry exports no
+# RunStream class, so inheriting run-stream-v1 would fail the upload.
+migrations = []
+
+# Triggers are inherited, and the sites entry has no scheduled handler.
+[env.sites.triggers]
+crons = []
+
+[env.sites.placement]
+region = "aws:ap-southeast-1"
+
+[[env.sites.hyperdrive]]
+binding = "HYPERDRIVE"
+id = "f77c72f8d6614bb0b6955170caadad07"
+
+[env.sites.vars]
+APPS_ENABLED = "false"
+APPS_BUSINESS_IDS = "4e8c2593-2af2-494f-b157-fec0295a50b5"
+SITES_ORIGIN = "https://jentera-sites.qhkmdev90.workers.dev"
+TURNSTILE_SITE_KEY = "0x4AAAAAAEyClnNFPsv8OJBY"
+
+[[env.sites.ratelimits]]
+name = "BOOKING_BURST"
+namespace_id = "1007"
+  [env.sites.ratelimits.simple]
+  limit = 10
+  period = 60
