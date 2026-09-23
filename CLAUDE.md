@@ -73,6 +73,28 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
   eight times.
 - `app/src/lib/data/` is hand-maintained TypeScript. Add a playbook with `scripts/add-playbook.mjs`, which edits `playbooks.ts` directly — don't hand-merge.
 - Controls share `--control-h` / `--control-pad-y`. A `text-*` or `py-*` utility on a `.btn`/`.input` overrides the component and breaks the shared height — this caused three separate visual bugs. Let components own their type and padding.
+- **The workspace type bridge in `styles/dashboard-type.css` outweighs your
+  component rule.** Its `:is()` lists include `.btn`, and `:is()` takes the
+  specificity of its *most* specific argument and applies it to all of them —
+  one compound entry lifts the body rule to (0,3,1) and the small rule to
+  (0,3,0). So `.some-view .btn { font-size: … }` at (0,2,0) loses, silently:
+  on 23 September the Skills refresh button's `font-size: 0` lost exactly
+  this way while `width` and `padding` from the same block applied, leaving a
+  14px label in a 44px box that pushed the page wider than the phone. Change
+  a property the bridge does not set — hide the label element rather than
+  shrink its text. Lowering the bridge with `:where()` was tried and measured
+  the same day and is not safe: 4 of 92 probed selectors moved, including
+  `.btn` line-height across the whole workspace. The file's header comment
+  carries the numbers.
+- **A `.btn` with no variant class has no visible surface of its own.**
+  `.btn` supplies shape, type and padding; `.btn-primary`/`-outline`/`-ghost`/
+  `-reco` supply fill, border and colour. A bare `.btn` was transparent in
+  both until 23 September, so it rendered as plain text — seventeen call
+  sites had drifted into it. There is now a fallback that renders it as
+  `.btn-outline` in both themes, but prefer `<Button>` from
+  `@/components/ui`: it defaults to primary and cannot produce a bare
+  control. Anchors still need the classes written out, since `Button`
+  renders a `button`.
 - The old static engine wrote work-done indices as **strings**; the app reads either format and writes strings, so existing users' approvals survive the cutover.
 - **Playbook figures are for the anonymous demo only.** Every playbook carries plausible counters, work items and customer conversations; they are the same for every business of a type and move for nobody. Shown to a signed-in owner they are lies, and they were shipped as lies three times: a "4 connections" badge for an account with one, a dashboard that read 82% handled, and an inbox naming customers who do not exist. `useActivity` answers `real` / `pending` / `demo` — branch on `demo` before borrowing anything, and treat `pending` as the real layout with nothing in it. A boolean is what caused this: "not real yet" and "show the demo" are different answers.
 

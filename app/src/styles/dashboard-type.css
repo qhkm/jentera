@@ -1,5 +1,23 @@
 /* A compact workspace type scale, independent of the marketing pages.
-   Bridge utility-sized panels and named components across all sections. */
+   Bridge utility-sized panels and named components across all sections.
+
+   These rules weigh more than they look. `:is()` takes the specificity of
+   its MOST specific argument and applies it to every argument, so one
+   compound entry lifts the whole list: `.business-detail-row >
+   span:last-child` makes the body rule below (0,3,1), and
+   `.ask-studio-tools .ask-history-trigger` makes the small rule (0,3,0).
+   A plain `.btn` in that list therefore beats a component's own
+   `.some-view .btn` at (0,2,0) — which is how the Skills refresh button's
+   `font-size: 0` silently lost and overflowed the screen on 23 September.
+
+   Do not "fix" that by wrapping the compound arguments in `:where()`.
+   It was tried and measured the same day: of 92 probed selectors, 4
+   changed — `.btn` line-height 22.4px to 21px across the workspace,
+   `.business-detail-row > span:last-child` 14px to 13px, and
+   `.dashboard-sidebar-note` 13px to 12px. The inflated weight is load
+   bearing now, whatever it was when it was written. Override these rules
+   with a property they do not set (hide an element rather than shrink its
+   text), or reach (0,3,2) deliberately. */
 .dashboard-shell {
   --font-body-size: .875rem;
   --workspace-caption: 0.75rem;
