@@ -24,7 +24,10 @@ export function page(html: string, status = 200): Response {
   return new Response(html, { status, headers: { 'Content-Type': 'text/html; charset=utf-8', ...SECURITY_HEADERS } });
 }
 
-export function redirect(location: string, status: 301 | 303): Response {
+/** 303 after a POST or to send a customer back a step; 307 for a link name
+    the business used before, which it may take up again and which must keep
+    a POST a POST. */
+export function redirect(location: string, status: 303 | 307): Response {
   return new Response(null, { status, headers: { Location: location, ...SECURITY_HEADERS } });
 }
 
@@ -155,6 +158,12 @@ export function formPage(input: Base & {
 }): string {
   const t = T[input.lang];
   const err = (field: FormError) => (input.errors.includes(field) ? `<p class="error">${t.errors[field]}</p>` : '');
+  /* A field's own error is tied to it, so a screen reader announces the
+     field as invalid and reads the reason with it. */
+  const invalid = (field: RequestField, id: string) =>
+    (input.errors.includes(field) ? ` aria-invalid="true" aria-describedby="${id}-error"` : '');
+  const fieldErr = (field: RequestField, id: string) =>
+    (input.errors.includes(field) ? `<p class="error" id="${id}-error">${t.errors[field]}</p>` : '');
   const max = Math.min(input.remaining, 50);
   const options = Array.from({ length: max }, (_, i) => i + 1)
     .map((n) => `<option value="${n}"${String(n) === input.values.party ? ' selected' : ''}>${n}</option>`).join('');
@@ -169,10 +178,10 @@ ${general}<form method="post" action="${href(input.slug, '/request', { lang: inp
 <input type="hidden" name="service" value="${escapeHtml(input.service.id)}"><input type="hidden" name="start" value="${escapeHtml(date)}">
 <input type="hidden" name="submission_key" value="${escapeHtml(input.submissionKey)}">
 <h2>${t.yourDetails}</h2>
-<label for="name">${t.name}</label><input id="name" name="name" autocomplete="name" maxlength="80" required value="${escapeHtml(input.values.name)}">${err('name')}
-<label for="phone">${t.phone}</label><input id="phone" name="phone" type="tel" autocomplete="tel" inputmode="tel" required value="${escapeHtml(input.values.phone)}">${err('phone')}
-<label for="party">${t.party}</label><select id="party" name="party">${options}</select>${err('partySize')}
-<label for="note">${t.note}</label><textarea id="note" name="note" maxlength="500" rows="3">${escapeHtml(input.values.note)}</textarea>${err('note')}
+<label for="name">${t.name}</label><input id="name" name="name" autocomplete="name" maxlength="80" required${invalid('name', 'name')} value="${escapeHtml(input.values.name)}">${fieldErr('name', 'name')}
+<label for="phone">${t.phone}</label><input id="phone" name="phone" type="tel" autocomplete="tel" inputmode="tel" required${invalid('phone', 'phone')} value="${escapeHtml(input.values.phone)}">${fieldErr('phone', 'phone')}
+<label for="party">${t.party}</label><select id="party" name="party"${invalid('partySize', 'party')}>${options}</select>${fieldErr('partySize', 'party')}
+<label for="note">${t.note}</label><textarea id="note" name="note" maxlength="500" rows="3"${invalid('note', 'note')}>${escapeHtml(input.values.note)}</textarea>${fieldErr('note', 'note')}
 ${input.siteKey ? `<div class="cf-turnstile" data-sitekey="${escapeHtml(input.siteKey)}" data-action="booking" data-language="${input.lang === 'bm' ? 'ms' : 'en'}"></div>` : ''}${err('turnstile')}
 <p class="muted">${escapeHtml(t.privacy(input.businessName))} <a href="https://jentera.ai/privacy">${t.privacyLink}</a></p>
 <button type="submit">${t.send}</button></form>`,

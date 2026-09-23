@@ -111,11 +111,11 @@ describe('notification url constraint', () => {
   });
 });
 
-/** The six Bookings tables: every row is invisible to another tenant, and
+/** The seven Bookings tables: every row is invisible to another tenant, and
     aisar_app holds exactly the privileges the routes use — no more. Only
     booking_service (unused services are deleted) and booking_hours (hours
     are replaced) get DELETE; booking records are retained, so the other
-    four tables must not. */
+    five tables must not. */
 describe('grants and row-level security on the Bookings tables', () => {
   const EXPECTED: Record<string, string[]> = {
     app_installation: ['select', 'insert', 'update'],
@@ -194,7 +194,7 @@ describe('grants and row-level security on the Bookings tables', () => {
       .rejects.toThrow(/permission denied/);
   });
 
-  it('refuses to truncate any of the six tables as the tenant', async () => {
+  it('refuses to truncate any of the seven tables as the tenant', async () => {
     for (const table of Object.keys(EXPECTED)) {
       await expect(asTenant(A, (tx) => tx.unsafe(`truncate ${table}`)))
         .rejects.toThrow(/permission denied/);

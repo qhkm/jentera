@@ -108,10 +108,15 @@ describe('sites: pages', () => {
     expect((await get('/b/seido/done?ref=K7Q2MP', off)).status).toBe(404);
   });
 
-  it('sends a name used before to the current page', async () => {
+  it('sends a name used before to the current page, for now and keeping the method', async () => {
     const res = await get('/b/seido-lama?service=x&lang=bm');
-    expect(res.status).toBe(301);
+    expect(res.status).toBe(307);
     expect(res.headers.get('Location')).toBe('/b/seido?service=x&lang=bm');
+    expectSecurityHeaders(res);
+    const sent = await post(form(), env(), undefined, '/b/seido-lama/request?lang=en');
+    expect(sent.status).toBe(307);
+    expect(sent.headers.get('Location')).toBe('/b/seido/request?lang=en');
+    expect(await asOwner((sql) => sql`select 1 from booking`)).toHaveLength(0);
   });
 
   it('shows open times and keeps the language through the steps', async () => {
@@ -354,16 +359,21 @@ describe('sites: default export', () => {
 
   it('carries the security headers and never a cookie even when the request throws', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const sitesModule = await import('../src/sites/index');
-    const brokenEnv: SitesEnv = {
-      ...env(),
-      HYPERDRIVE: { connectionString: 'postgres://nobody:nothing@127.0.0.1:1/none' } as SitesEnv['HYPERDRIVE'],
-    };
-    const res = await sitesModule.default.fetch(new Request('https://sites.test/b/seido'), brokenEnv);
+    const res = await sites.fetch(new Request('https://sites.test/b/seido'), env({ HYPERDRIVE: NOWHERE }));
     expect(res.status).toBe(500);
-    expect(res.headers.get('Content-Security-Policy')).toBeTruthy();
-    expect(res.headers.get('X-Robots-Tag')).toBe('noindex');
-    expect(res.headers.get('Set-Cookie')).toBeNull();
-    expect(spy.mock.calls[0]?.[0]).toBe('sites: request failed');
+    expectSecurityHeaders(res);
+    expect(spy.mock.calls).toEqual([['sites: request failed', 'Error', expect.stringMatching(/^[A-Z0-9_]+$/)]]);
+  });
+
+  it('logs the error\'s name and code only, never what the customer typed', async () => {
+    /* A booking POST passes the brakes and the body guards before the
+       database, so the throw happens with the customer's values in hand. */
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await sites.fetch(rawPost(new URLSearchParams(form({ note: 'Window seat' })).toString(),
+      'application/x-www-form-urlencoded'), env({ HYPERDRIVE: NOWHERE }));
+    expect(res.status).toBe(500);
+    expect(spy.mock.calls).toEqual([['sites: request failed', 'Error', expect.stringMatching(/^[A-Z0-9_]+$/)]]);
+    const logged = JSON.stringify(spy.mock.calls);
+    for (const value of ['Aisyah', '345', 'Window seat', form().submission_key]) expect(logged).not.toContain(value);
   });
 });

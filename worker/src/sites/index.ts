@@ -71,9 +71,8 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
 
   const found = await resolvePublicSlug(env, slug);
   if (!found || !appsEnabledFor(env, found.businessId)) return notFound(earlyLang);
-  if (found.currentSlug !== slug) {
-    return redirect(`/b/${found.currentSlug}${sub}${url.search}`, 301);
-  }
+  // Not permanent: the business may take this name up again. 307 keeps a POST a POST.
+  if (found.currentSlug !== slug) return redirect(`/b/${found.currentSlug}${sub}${url.search}`, 307);
   const businessId = found.businessId;
   const info = await loadPublicPage(env, businessId);
   if (!info) return notFound(earlyLang);

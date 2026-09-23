@@ -18,8 +18,8 @@ describe('escaping and responses', () => {
     expect(res.headers.get('X-Robots-Tag')).toBe('noindex');
     expect(res.headers.get('Cache-Control')).toBe('no-store');
     expect(res.headers.get('Set-Cookie')).toBeNull();
-    const moved = redirect('/b/seido', 301);
-    expect(moved.status).toBe(301);
+    const moved = redirect('/b/seido', 307);
+    expect(moved.status).toBe(307);
     expect(moved.headers.get('Location')).toBe('/b/seido');
     expect(moved.headers.get('X-Robots-Tag')).toBe('noindex');
   });
@@ -78,6 +78,34 @@ describe('pages', () => {
     expect(html).toContain('Please enter your name.');
     expect(html).toContain('Please enter a Malaysian phone number.');
     expect(html).toContain('Please complete the check before sending.');
+  });
+
+  it('ties each field error to its field for assistive technology', () => {
+    const tag = (html: string, id: string) => html.match(new RegExp(`<(?:input|select|textarea) id="${id}"[^>]*>`))?.[0] ?? '';
+    const input = { ...base, service, startsAt: new Date('2026-10-06T02:00:00Z'), remaining: 2, submissionKey: 'k',
+      values: { name: '', phone: '123', note: '', party: '1' }, siteKey: undefined };
+    const html = formPage({ ...input, errors: ['name', 'phone', 'turnstile'] });
+    expect(tag(html, 'name')).toContain('aria-invalid="true" aria-describedby="name-error"');
+    expect(html).toContain('<p class="error" id="name-error">Please enter your name.</p>');
+    expect(tag(html, 'phone')).toContain('aria-invalid="true" aria-describedby="phone-error"');
+    expect(html).toContain('<p class="error" id="phone-error">Please enter a Malaysian phone number.</p>');
+    for (const clean of ['party', 'note']) {
+      expect(tag(html, clean)).not.toContain('aria-invalid');
+      expect(tag(html, clean)).not.toContain('aria-describedby');
+      expect(html).not.toContain(`id="${clean}-error"`);
+    }
+    expect(html.match(/aria-invalid/g)).toHaveLength(2);
+
+    const other = formPage({ ...input, errors: ['partySize', 'note'] });
+    expect(tag(other, 'party')).toContain('aria-invalid="true" aria-describedby="party-error"');
+    expect(other).toContain('<p class="error" id="party-error">Please choose how many people.</p>');
+    expect(tag(other, 'note')).toContain('aria-invalid="true" aria-describedby="note-error"');
+    expect(other).toContain('<p class="error" id="note-error">Please keep the note under 500 characters.</p>');
+    expect(tag(other, 'name')).not.toContain('aria-invalid');
+
+    const none = formPage({ ...input, errors: [] });
+    expect(none).not.toContain('aria-invalid');
+    expect(none).not.toContain('aria-describedby');
   });
 
   it('gives a generic receipt and plain messages', () => {

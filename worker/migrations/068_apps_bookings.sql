@@ -1,8 +1,9 @@
 -- Apps (migration 068). The first app is Bookings: a public page where a
 -- business's customers request a time, and the owner's list behind it.
 -- Every table is tenant-scoped under forced RLS. The public page finds a
--- business only through bookings_by_slug, a security definer that returns an
--- id and nothing else; everything after that runs inside withTenant.
+-- business only through bookings_by_slug, a security definer that returns the
+-- business id and its current (public) link name and nothing else; everything
+-- after that runs inside withTenant.
 -- Spec: docs/plans/2026-09-23-apps-shell-and-bookings-v1.md
 
 create table if not exists app_installation (
