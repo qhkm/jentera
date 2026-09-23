@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import sites, { handleSites } from '../src/sites/index';
 import type { SitesEnv } from '../src/sites/env';
 import { SECURITY_HEADERS } from '../src/sites/render';
-import { SITEVERIFY } from '../src/turnstile';
+import { SITEVERIFY, turnstileIdempotencyKey } from '../src/turnstile';
 import { asOwner, fetchFake, testEnv, truncateAll } from './harness';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -242,14 +242,39 @@ describe('sites: a form sent twice', () => {
     expect(perOwner).toEqual([{ n: 1 }]);
   });
 
-  it('asks Cloudflare with the submission key as the idempotency key', async () => {
+  it('asks Cloudflare with an idempotency key made from the form and its token', async () => {
     const cloudflare = fetchFake(async () => bookingToken());
     const res = await post({ ...form(), 'cf-turnstile-response': 'tok' }, env({ TURNSTILE_SECRET: 'ts-secret' }),
       cloudflare as unknown as typeof fetch);
     expect(res.status).toBe(303);
     const [url, init] = cloudflare.mock.calls[0];
     expect(String(url)).toBe(SITEVERIFY);
-    expect(new URLSearchParams(String(init?.body)).get('idempotency_key')).toBe(form().submission_key);
+    const sent = new URLSearchParams(String(init?.body)).get('idempotency_key');
+    expect(sent).toBe(await turnstileIdempotencyKey(form().submission_key, 'tok'));
+    expect(sent).not.toBe(form().submission_key);
+  });
+
+  it('lets a fresh token through after a real failure, even if Cloudflare remembers answers by key alone', async () => {
+    /* The pessimistic reading of the docs: an answer is remembered under its
+       idempotency key, whatever token comes with it. The first token is a
+       real failure; the form shown again keeps its submission key, and the
+       customer's next token must not meet the remembered failure. */
+    const remembered = new Map<string, Response>();
+    const cloudflare = fetchFake(async (_input, init) => {
+      const body = new URLSearchParams(String(init?.body));
+      const key = body.get('idempotency_key') ?? '';
+      const answer = remembered.get(key) ?? (body.get('response') === 'expired'
+        ? Response.json({ success: false, 'error-codes': ['timeout-or-duplicate'] }) : bookingToken());
+      remembered.set(key, answer.clone());
+      return answer;
+    });
+    const secret = env({ TURNSTILE_SECRET: 'ts-secret' });
+    const first = await post({ ...form(), 'cf-turnstile-response': 'expired' }, secret, cloudflare as unknown as typeof fetch);
+    expect(first.status).toBe(400);
+    expect(await first.text()).toContain(`name="submission_key" value="${form().submission_key}"`);
+    const second = await post({ ...form(), 'cf-turnstile-response': 'fresh' }, secret, cloudflare as unknown as typeof fetch);
+    expect(second.status).toBe(303);
+    expect(await asOwner((sql) => sql`select 1 from booking`)).toHaveLength(1);
   });
 
   it('lands both taps of a double-tap on the same receipt with the check on', async () => {
@@ -342,6 +367,43 @@ describe('sites: turned away before the database', () => {
     const declared = await sendRaw('a=b', 'application/x-www-form-urlencoded', { 'Content-Length': '9000' });
     expect(declared.status).toBe(413);
     expect(await asOwner((sql) => sql`select 1 from booking`)).toHaveLength(0);
+  });
+
+  it('stops reading a body with no declared length as soon as it passes 8 KiB', async () => {
+    /* 64 chunks of 1 KiB, and no Content-Length: a stream has none. The
+       reader must give up after the ninth chunk, not buffer all 64. */
+    let pulled = 0;
+    let cancelled = false;
+    const chunk = new TextEncoder().encode('a'.repeat(1024));
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        if (pulled > 64) controller.close();
+        else controller.enqueue(chunk);
+      },
+      cancel() { cancelled = true; },
+    });
+    const request = new Request('https://sites.test/b/seido/request?lang=en', {
+      method: 'POST', body, duplex: 'half',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'CF-Connecting-IP': '203.0.113.9' },
+    } as RequestInit);
+    expect(request.headers.get('Content-Length')).toBeNull();
+    const res = await handleSites(request, env(), { now: () => NOW });
+    expect(res.status).toBe(413);
+    expectSecurityHeaders(res);
+    expect(cancelled).toBe(true);
+    expect(pulled).toBeLessThan(16);
+  });
+
+  it('counts the limit in bytes: 8192 is read, 8193 is refused', async () => {
+    const at = (bytes: number) => {
+      const text = new URLSearchParams(form()).toString() + '&pad=';
+      return text + 'x'.repeat(bytes - text.length);
+    };
+    const exact = await sites.fetch(rawPost(at(8192), 'application/x-www-form-urlencoded'), env());
+    expect(exact.status).not.toBe(413);
+    const over = await sites.fetch(rawPost(at(8193), 'application/x-www-form-urlencoded'), env());
+    expect(over.status).toBe(413);
   });
 
   it('reads a form whose type carries a parameter or capitals', async () => {

@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { asOwner, fetchFake, req, testEnv, truncateAll } from './harness';
 import { handleSession } from '../src/routes/session';
-import { SITEVERIFY, verifyTurnstile } from '../src/turnstile';
+import { SITEVERIFY, turnstileIdempotencyKey, verifyTurnstile } from '../src/turnstile';
 
 const cors = { 'Access-Control-Allow-Origin': 'https://jentera.ai' };
 
@@ -183,6 +183,19 @@ describe('verifyTurnstile for another page', () => {
     const signin = outbound(true);
     expect(await verifyTurnstile(env(), 'token', '203.0.113.9', signin)).toBe('ok');
     expect(new URLSearchParams(String(signin.mock.calls[0][1]?.body)).has('idempotency_key')).toBe(false);
+  });
+
+  it('derives one idempotency key per form and token, as a version 4 UUID', async () => {
+    const form = '33333333-3333-4333-8333-333333333333';
+    // SHA-256("<form>:tok"), first 16 bytes, version nibble 4, variant 10xx.
+    expect(await turnstileIdempotencyKey(form, 'tok')).toBe('4e866874-52bb-4410-ac37-379ad9ea1b5a');
+    expect(await turnstileIdempotencyKey(form, 'tok')).toBe(await turnstileIdempotencyKey(form, 'tok'));
+    const keys = await Promise.all([
+      turnstileIdempotencyKey(form, 'tok'), turnstileIdempotencyKey(form, 'tok-2'),
+      turnstileIdempotencyKey('44444444-4444-4444-8444-444444444444', 'tok'),
+    ]);
+    for (const key of keys) expect(key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(new Set(keys).size).toBe(3);
   });
 
   it('needs no ALLOWED_ORIGINS when an expectation is passed', async () => {

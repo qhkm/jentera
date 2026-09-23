@@ -18,6 +18,21 @@ type TurnstileEnv = { TURNSTILE_SECRET?: string; ALLOWED_ORIGINS?: string };
     `timeout-or-duplicate`. The sign-in doors send none. */
 export interface TurnstileExpectation { action: string; hostnames: ReadonlySet<string>; idempotencyKey?: string }
 
+/** The idempotency key for one form and one token: a version 4 UUID from the
+    first 16 bytes of SHA-256("<submissionKey>:<token>"). A double-tap sends
+    the same token and so the same key; a fresh token after a real failure
+    gets a fresh key. Cloudflare does not say whether it remembers an answer
+    per key alone, so the token is part of the key and a remembered failure
+    can never meet a new token. */
+export async function turnstileIdempotencyKey(submissionKey: string, token: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${submissionKey}:${token}`));
+  const bytes = new Uint8Array(digest).slice(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export const SITEVERIFY = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 
 export type TurnstileVerdict = 'ok' | 'missing' | 'rejected' | 'unavailable';

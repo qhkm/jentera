@@ -5,7 +5,7 @@ import { REFERENCE } from '../apps/bookings/reference';
 import { createBookingRequest, findSubmission, parseRequestForm, submissionDigest } from '../apps/bookings/request';
 import { isDate, myDate } from '../apps/bookings/time';
 import { clientIp } from '../ratelimit';
-import { verifyTurnstile } from '../turnstile';
+import { turnstileIdempotencyKey, verifyTurnstile } from '../turnstile';
 import type { SitesEnv } from './env';
 import { donePage, formPage, messagePage, page, redirect, servicesPage, timesPage, SECURITY_HEADERS, type FormError, type MessageKind } from './render';
 
@@ -35,6 +35,33 @@ function notFound(lang: Lang): Response {
   return plain('not_found', lang, 404);
 }
 
+/** The body as UTF-8, or null once more than BODY_MAX bytes have arrived.
+    A body with no Content-Length (a chunked upload) is never buffered past
+    the limit: the reader is cancelled on the chunk that crosses it. */
+async function readCapped(request: Request): Promise<string | null> {
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > BODY_MAX) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 /** The booking form's fields, or the refusal. Only a small urlencoded body is
     read at all: FormData would throw on anything else and buffer a multipart
     body of any size first. */
@@ -42,8 +69,8 @@ async function readForm(request: Request, lang: Lang): Promise<URLSearchParams |
   const type = (request.headers.get('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
   if (type !== FORM_TYPE) return plain('bad_request', lang, 400);
   if (Number(request.headers.get('Content-Length')) > BODY_MAX) return plain('bad_request', lang, 413);
-  const text = await request.text();
-  if (text.length > BODY_MAX) return plain('bad_request', lang, 413);
+  const text = await readCapped(request);
+  if (text === null) return plain('bad_request', lang, 413);
   return new URLSearchParams(text);
 }
 
@@ -131,10 +158,11 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
     if (earlier?.kind === 'changed') return page(messagePage({ ...base, kind: 'changed' }), 409);
     if (!info.open) return unavailable(409);
 
-    // Both taps of a double-tap carry one token; the key lets it verify twice.
-    const verdict = await verifyTurnstile(env, form.get('cf-turnstile-response'), ip, deps.fetchImpl ?? fetch, {
+    // Both taps of a double-tap carry one token, so one key lets it verify twice.
+    const token = form.get('cf-turnstile-response');
+    const verdict = await verifyTurnstile(env, token, ip, deps.fetchImpl ?? fetch, {
       action: 'booking', hostnames: new Set([new URL(env.SITES_ORIGIN ?? 'https://invalid.invalid').hostname]),
-      idempotencyKey: key,
+      idempotencyKey: token ? await turnstileIdempotencyKey(key, token) : undefined,
     });
     if (verdict === 'missing' || verdict === 'rejected') return showForm(serviceId, start, values, ['turnstile'], key, 400);
 
