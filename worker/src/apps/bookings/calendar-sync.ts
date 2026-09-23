@@ -54,10 +54,13 @@ export const CALENDAR_DISCONNECTED_CLEANUP =
 export const CALENDAR_UNCONFIRMED =
   'Jentera could not confirm this with Google Calendar. Retry to check again.';
 
-/** What one call did. 'created', 'removed' and 'retrying' always called Google. 'failed' may or
-    may not have: claim can give up before ever calling it (no usable connection, an expired
-    grant, an orphaned attempt whose executor never returned), or complete can record a provider
-    failure after calling it. The rest — 'stale', 'busy', 'idle', 'deferred' — never called Google. */
+/** What one call did. 'created', 'removed' and 'retrying' always called Google. 'stale' always
+    called Google too — it is returned only by complete(), which runs after callGoogle — and
+    spent an attempt; it just recorded nothing, because the lease or revision had moved while
+    Google was answering. 'failed' may or may not have: claim can give up before ever calling it
+    (no usable connection, an expired grant, an orphaned attempt whose executor never returned),
+    or complete can record a provider failure after calling it. Only 'busy', 'idle' and 'deferred'
+    never call Google. */
 export type CalendarOutcome = 'created' | 'removed' | 'retrying' | 'failed' | 'stale' | 'busy' | 'idle' | 'deferred';
 
 export interface CalendarDeps {

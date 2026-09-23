@@ -314,5 +314,8 @@ describe('processBookingCalendarJob', () => {
     const [{ def }] = await asOwner((sql) => sql<{ def: string }[]>`
       select pg_get_functiondef('public.booking_calendar_due(timestamptz, integer)'::regprocedure) as def`);
     expect(def).toContain(`attempts < ${CALENDAR_MAX_ATTEMPTS}`);
+    // The orphan branch's own limit, pinned separately: lowering CALENDAR_MAX_ATTEMPTS without
+    // updating the SQL (or vice versa) must fail here, not just leave a job due forever.
+    expect(def).toContain(`attempts >= ${CALENDAR_MAX_ATTEMPTS}`);
   });
 });
