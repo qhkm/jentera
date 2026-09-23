@@ -2681,3 +2681,65 @@ flips only in the spec's release step, after plans 2–4.
   line of `docs/plans/2026-09-23-apps-shell-and-bookings-v1.md`:
   `Plan 1 (worker foundation) built on branch bookings-v1: <last commit>.`
   Then commit it by named path.
+
+---
+
+## As built (23 September 2026): notes for plans 2–4
+
+Plan 1 is complete on branch `bookings-v1` (`2cfb989..1af6d05`). Every task
+was reviewed. The final whole-branch review found no remaining issues after
+one fix pass.
+
+- **The migration is `068_apps_bookings.sql`,** because 067 was taken.
+  `aisar_app` holds exactly the grants the routes use: delete only on
+  `booking_service` and `booking_hours`. The apply script verifies each
+  privilege exactly.
+- **Do not merge `bookings-v1` into `main` before 068 is in production.** The
+  notification store now reads and writes `notification.url`
+  unconditionally, and other sessions deploy the Worker from `main` through
+  `ship-runtime.sh`. The order at release is: apply 065 to 068, merge, then
+  deploy.
+
+**Plan 2 (public pages) must:**
+- Lock `app_installation` first in request creation. The config save's
+  capacity and removal checks read bookings without row locks, and rely on
+  this. Test it.
+- Hold link names that have been released. After a rename, an old shared
+  link must not reach a business that later claims the name. A slug history
+  that blocks reuse is enough.
+- Guard `durationMinutes > 0` when building a `SlotService` from database
+  rows. `openSlots` would loop forever on zero.
+- Write start times that are exact to the minute. The bookings cursor keeps
+  milliseconds only.
+- In the flag-drift check, also require `SITES_ORIGIN` in both deploys.
+  Unset, it produces relative public links.
+
+**Plan 3 (Calendar sync) must:**
+- Lock the installation, then the booking, then the job. The processor's
+  claim must never lock the job row first, or it deadlocks against
+  `cancelBooking`.
+- Check the job's revision under the lock before writing
+  `booking.calendar_status`. Otherwise a late `created` can overwrite a
+  cancellation.
+- Keep the due scan from starving. Jobs skipped for a disabled pilot must
+  have `next_attempt_at` pushed forward.
+- Treat a job whose `calendar_connection_id` is null (the connection was
+  disconnected) as needing the owner's attention. Never pick a new
+  connection to remove an event.
+- Give the retry route its own de-duplicating path. `queueCalendarJob` resets
+  attempts and backoff on every call.
+- Match the attempt limit to `booking_calendar_due`'s hard-coded
+  `attempts < 8`.
+- Clear a stale `booking.calendar_error` when cleanup is queued.
+
+**Deferred minors, none blocking:**
+- A crafted booking id, cursor, or a `from` far in the future answers 500
+  instead of 400 or 404. The fix is to reuse `config.ts`'s strict UUID
+  pattern.
+- `ConfigError` responses carry `code` but no `err` text. Plan 4 maps the
+  codes to copy.
+- With the flag off, an anonymous request gets 401 rather than 404.
+- In Malay, a booking at midnight reads "12.00 pagi".
+- A deactivated service keeps its old sort position.
+- `not_connected` also covers expired and revoked connections. Plan 4
+  should word it accordingly.
