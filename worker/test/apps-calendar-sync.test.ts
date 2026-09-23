@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { cancelBooking } from '../src/apps/bookings/bookings';
 import {
-  CALENDAR_DISCONNECTED_CLEANUP, CALENDAR_MAX_ATTEMPTS, CALENDAR_REMOVED_IN_GOOGLE, processBookingCalendarJob,
+  CALENDAR_DISCONNECTED_CLEANUP, CALENDAR_MAX_ATTEMPTS, CALENDAR_RECONNECT, CALENDAR_REMOVED_IN_GOOGLE,
+  CALENDAR_UNCONFIRMED, processBookingCalendarJob,
 } from '../src/apps/bookings/calendar-sync';
 import { saveConnection } from '../src/connections';
 import { GOOGLE_CALENDAR_SCOPES, calendarEventId, calendarSecret } from '../src/connectors/google-calendar';
@@ -130,6 +131,14 @@ describe('processBookingCalendarJob', () => {
     await cancelInDatabase();   // another revision to reconcile
     const gone = google({ remove: () => new Response('{}', { status: 410 }) });
     expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: gone.fetch, now: at(1_000) })).toBe('removed');
+    expect(await state()).toMatchObject({ calendar_status: 'removed', completed_revision: 3 });
+  });
+
+  it('treats a 404 delete the same as a 410: the event is already gone', async () => {
+    await cancelInDatabase();
+    const g = google({ remove: () => new Response(null, { status: 404 }) });
+    expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('removed');
+    expect(await state()).toMatchObject({ calendar_status: 'removed', completed_revision: 2 });
   });
 
   it('never records a create that a cancel overtook, and removes the event on the next attempt', async () => {
@@ -173,6 +182,23 @@ describe('processBookingCalendarJob', () => {
     expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('created');
     expect(second).toBe('busy');
     expect(g.creates()).toHaveLength(1);
+  });
+
+  it('records nothing when another executor has taken the lease while Google was answering', async () => {
+    let stolen = '';
+    const g = google({
+      create: async () => {
+        // Simulates a second executor claiming the job after this lease looked expired.
+        const [row] = await asOwner((sql) => sql<{ lease_token: string }[]>`update booking_calendar_job
+          set lease_token = gen_random_uuid() where booking_id = ${bookingId} returning lease_token`);
+        stolen = row.lease_token;
+        return Response.json({ id: calendarEventId(bookingId), status: 'confirmed' });
+      },
+    });
+    expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('stale');
+    expect(await state()).toMatchObject({
+      calendar_status: 'pending', calendar_event_id: null, lease_token: stolen,
+    });
   });
 
   it('abandons a slow Google at the budget and tries again later', async () => {
@@ -236,6 +262,42 @@ describe('processBookingCalendarJob', () => {
     expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('failed');
     expect(await state()).toMatchObject({ calendar_status: 'failed', calendar_error: CALENDAR_DISCONNECTED_CLEANUP });
     expect(g.calls).toHaveLength(0);
+  });
+
+  it('gives up without a fetch when the pinned connection is already expired', async () => {
+    await asOwner((sql) => sql`update connection set status = 'expired' where id = ${connectionId}`);
+    const g = google();
+    expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('failed');
+    expect(await state()).toMatchObject({ calendar_status: 'failed', calendar_error: CALENDAR_RECONNECT });
+    expect(g.calls).toHaveLength(0);
+  });
+
+  it('gives up without a fetch when the pinned connection has no credential row', async () => {
+    await asOwner(async (sql) => {
+      const [c] = await sql<{ id: string }[]>`insert into connection
+          (business_id, connector, method, status, external_id, display_name)
+        values (${A}, 'google', 'oauth', 'connected', 'account-2', 'owner2@example.com')
+        returning id`;
+      await sql`update booking set calendar_connection_id = ${c.id} where id = ${bookingId}`;
+    });
+    const g = google();
+    expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('failed');
+    expect(await state()).toMatchObject({ calendar_status: 'failed', calendar_error: CALENDAR_RECONNECT });
+    expect(g.calls).toHaveLength(0);
+  });
+
+  it('gives up on an orphaned job whose executor never returned, without calling Google', async () => {
+    await asOwner((sql) => sql`update booking_calendar_job
+      set attempts = ${CALENDAR_MAX_ATTEMPTS}, lease_token = gen_random_uuid(),
+          lease_expires_at = ${new Date(NOW.getTime() - 1_000)}`);
+    expect(await asApp((sql) => sql`select * from public.booking_calendar_due(${NOW}, 50)`)).toHaveLength(1);
+    const g = google();
+    expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('failed');
+    expect(await state()).toMatchObject({
+      calendar_status: 'failed', calendar_error: CALENDAR_UNCONFIRMED, attempts: CALENDAR_MAX_ATTEMPTS,
+    });
+    expect(g.calls).toHaveLength(0);
+    expect(await asApp((sql) => sql`select * from public.booking_calendar_due(${NOW}, 50)`)).toHaveLength(0);
   });
 
   it('waits for a pilot that is switched off without spending an attempt', async () => {

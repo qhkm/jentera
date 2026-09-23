@@ -202,6 +202,14 @@ revoke all on function public.bookings_by_slug(text) from public;
 grant execute on function public.bookings_by_slug(text) to aisar_app;
 
 -- The cron has no tenant either. Ids only, like push_outbox_due (031).
+--
+-- Two kinds of job are due: an ordinary one below its attempt limit whose
+-- backoff has elapsed and whose lease (if any) has expired, and an orphan —
+-- one that reached the limit while still holding an expired lease, meaning
+-- the attempt that used it up never came back to record anything. Without
+-- the second clause an orphan would sit forever: attempts < 8 excludes it
+-- permanently, so neither the sweep nor a direct call would ever revisit it
+-- to tell the owner it failed.
 create or replace function public.booking_calendar_due(p_now timestamptz, p_limit integer default 50)
 returns table (business_id uuid, booking_id uuid)
 language sql stable security definer
@@ -209,9 +217,10 @@ set search_path = pg_catalog, public, pg_temp
 as $$
   select j.business_id, j.booking_id from public.booking_calendar_job j
    where j.completed_revision is distinct from j.revision
-     and j.next_attempt_at <= p_now
-     and j.attempts < 8
-     and (j.lease_expires_at is null or j.lease_expires_at <= p_now)
+     and (
+       (j.attempts < 8 and j.next_attempt_at <= p_now and (j.lease_expires_at is null or j.lease_expires_at <= p_now))
+       or (j.attempts >= 8 and j.lease_expires_at is not null and j.lease_expires_at <= p_now)
+     )
    order by j.next_attempt_at, j.booking_id
    limit greatest(1, least(p_limit, 200))
 $$;

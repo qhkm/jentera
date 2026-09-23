@@ -16,7 +16,10 @@ function reachable(entry: string): Set<string> {
     for (const match of text.matchAll(/^(?:import|export)\s+(?!type\s)[^;]*?from\s+'(\.{1,2}\/[^']+)'/gms)) {
       const base = resolve(dirname(file), match[1]);
       const next = [`${base}.ts`, `${base}/index.ts`, base].find((candidate) => existsSync(candidate) && candidate.endsWith('.ts'));
-      if (next) visit(next);
+      // An unresolved relative specifier is a gap in this walk, not a file the bundle really
+      // lacks: silently skipping it would let a real import go unchecked by the guard below.
+      if (!next) throw new Error(`sites-bundle: cannot resolve '${match[1]}' imported from ${file}`);
+      visit(next);
     }
   };
   visit(entry);

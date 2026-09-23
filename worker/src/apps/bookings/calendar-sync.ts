@@ -51,8 +51,13 @@ export const CALENDAR_REMOVED_IN_GOOGLE =
   'This event was deleted in Google Calendar, so Jentera did not add it again.';
 export const CALENDAR_DISCONNECTED_CLEANUP =
   'Google Calendar was disconnected, so this event could not be removed. Delete it in Google Calendar.';
+export const CALENDAR_UNCONFIRMED =
+  'Jentera could not confirm this with Google Calendar. Retry to check again.';
 
-/** What one call did. The first four ran an attempt; the rest recorded nothing about Google. */
+/** What one call did. 'created', 'removed' and 'retrying' always called Google. 'failed' may or
+    may not have: claim can give up before ever calling it (no usable connection, an expired
+    grant, an orphaned attempt whose executor never returned), or complete can record a provider
+    failure after calling it. The rest — 'stale', 'busy', 'idle', 'deferred' — never called Google. */
 export type CalendarOutcome = 'created' | 'removed' | 'retrying' | 'failed' | 'stale' | 'busy' | 'idle' | 'deferred';
 
 export interface CalendarDeps {
@@ -100,6 +105,10 @@ type ProviderResult =
   | { kind: 'removed' }
   | { kind: 'removed_in_google' }
   | { kind: 'error'; auth: boolean; message: string };
+
+/** What complete() found out about the connection, decided while it still holds every lock. The
+    write itself happens afterwards, in its own short transaction — see processBookingCalendarJob. */
+type ConnectionAction = 'healthy' | { problem: string } | { expired: string } | null;
 
 /** 1, 2, 4 … minutes, capped at an hour: the push outbox's schedule. */
 function retryDelayMs(attempts: number): number {
@@ -159,6 +168,16 @@ async function claim(
     const locked = await lockJob(tx, businessId, bookingId);
     if (!locked) return { kind: 'done', outcome: 'idle' };
     const { booking, job } = locked;
+    const notCompleted = job.completed_revision !== job.revision;
+    if (notCompleted && job.attempts >= CALENDAR_MAX_ATTEMPTS &&
+        job.lease_expires_at && job.lease_expires_at.getTime() <= now.getTime()) {
+      /* The attempt that reached the limit took a lease and never came back to record anything —
+         the isolate died, the database call failed, whatever. Left alone this job would sit
+         forever: attempts >= CALENDAR_MAX_ATTEMPTS excludes it from the due scan, and a direct
+         call would fall through to the idle return below without telling the owner anything. */
+      await giveUp(tx, businessId, bookingId, CALENDAR_UNCONFIRMED, now);
+      return { kind: 'done', outcome: 'failed' };
+    }
     if (job.completed_revision === job.revision || job.attempts >= CALENDAR_MAX_ATTEMPTS) {
       return { kind: 'done', outcome: 'idle' };
     }
@@ -193,9 +212,20 @@ async function claim(
     let secret: string;
     try {
       secret = await useCredential(env, tx, connection.id);
-    } catch {
-      await giveUp(tx, businessId, bookingId, CALENDAR_RECONNECT, now);
-      return { kind: 'done', outcome: 'failed' };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      const name = error instanceof Error ? error.name : '';
+      /* Only the credential itself being missing or unreadable is the owner's problem to fix by
+         reconnecting. Anything else — a missing CREDENTIAL_KEY version, a truncated ciphertext
+         read, a connection error — is ours, and must not be spent as a failed attempt or mistaken
+         for a broken grant: rethrow so the transaction rolls back before any lease or attempt is
+         taken, and runCalendarJob (or the sweep) logs it. */
+      if (message === 'that connection has no credential' || name === 'OperationError') {
+        console.warn(`[bookings-calendar] business=${businessId} booking=${bookingId} credential ${errorLabel(error)}`);
+        await giveUp(tx, businessId, bookingId, CALENDAR_RECONNECT, now);
+        return { kind: 'done', outcome: 'failed' };
+      }
+      throw error;
     }
     const token = crypto.randomUUID();
     await tx`update booking_calendar_job
@@ -240,6 +270,9 @@ async function callGoogle(env: Env, work: Claim, deps: CalendarDeps): Promise<Pr
     return { kind: 'removed' };
   } catch (error) {
     if (error instanceof GoogleCalendarError) return { kind: 'error', auth: error.auth, message: error.message };
+    // The budget abort is expected and already explained to the owner; anything else is a
+    // surprise (a network failure, a parse error) worth a line in the logs to chase later.
+    if (!signal.aborted) console.error(`[bookings-calendar] booking=${work.booking.id} google ${errorLabel(error)}`);
     return {
       kind: 'error',
       auth: false,
@@ -255,10 +288,10 @@ async function complete(
   work: Claim,
   result: ProviderResult,
   now: Date,
-): Promise<CalendarOutcome> {
+): Promise<{ outcome: CalendarOutcome; connectionAction: ConnectionAction }> {
   return withTenant(env, businessId, async (tx) => {
     const locked = await lockJob(tx, businessId, bookingId);
-    if (!locked) return 'stale';
+    if (!locked) return { outcome: 'stale', connectionAction: null };
     const { job } = locked;
     const ours = job.lease_token === work.token;
     if (!ours || job.revision !== work.revision) {
@@ -270,7 +303,7 @@ async function complete(
           set lease_token = null, lease_expires_at = null, next_attempt_at = ${now}, updated_at = ${now}
           where business_id = ${businessId} and booking_id = ${bookingId}`;
       }
-      return 'stale';
+      return { outcome: 'stale', connectionAction: null };
     }
     const done = async (lastError: string | null) => {
       await tx`update booking_calendar_job
@@ -283,37 +316,36 @@ async function complete(
         await done(null);
         await tx`update booking set calendar_status = 'created', calendar_event_id = ${result.eventId}, calendar_error = null
           where business_id = ${businessId} and id = ${bookingId}`;
-        await markConnectionHealthy(tx, work.connectionId);
-        return 'created';
+        return { outcome: 'created', connectionAction: 'healthy' };
       case 'removed':
         await done(null);
         await tx`update booking set calendar_status = 'removed', calendar_error = null
           where business_id = ${businessId} and id = ${bookingId}`;
-        await markConnectionHealthy(tx, work.connectionId);
-        return 'removed';
+        return { outcome: 'removed', connectionAction: 'healthy' };
       case 'removed_in_google':
         // Final: the same id cannot come back, and a new id would be a second event.
         await done(CALENDAR_REMOVED_IN_GOOGLE);
         await tx`update booking set calendar_status = 'failed', calendar_error = ${CALENDAR_REMOVED_IN_GOOGLE}
           where business_id = ${businessId} and id = ${bookingId}`;
-        await markConnectionHealthy(tx, work.connectionId);
-        return 'failed';
+        return { outcome: 'failed', connectionAction: 'healthy' };
       case 'error': {
+        // The connection write happens after this transaction commits — see
+        // processBookingCalendarJob — so it never competes for the booking/job locks this
+        // transaction holds. Only giving up (a job-table write already inside this lock set)
+        // stays here.
         if (result.auth) {
-          await markConnectionExpired(tx, work.connectionId, result.message);
           await giveUp(tx, businessId, bookingId, result.message, now);
-          return 'failed';
+          return { outcome: 'failed', connectionAction: { expired: result.message } };
         }
-        await markConnectionProblem(tx, work.connectionId, result.message);
         if (work.attempts >= CALENDAR_MAX_ATTEMPTS) {
           await giveUp(tx, businessId, bookingId, result.message, now);
-          return 'failed';
+          return { outcome: 'failed', connectionAction: { problem: result.message } };
         }
         await tx`update booking_calendar_job
           set lease_token = null, lease_expires_at = null, last_error = ${result.message.slice(0, 300)},
               next_attempt_at = ${new Date(now.getTime() + retryDelayMs(work.attempts))}, updated_at = ${now}
           where business_id = ${businessId} and booking_id = ${bookingId}`;
-        return 'retrying';
+        return { outcome: 'retrying', connectionAction: { problem: result.message } };
       }
     }
   });
@@ -333,7 +365,31 @@ export async function processBookingCalendarJob(
   const claimed = await claim(env, businessId, bookingId, now());
   if (claimed.kind === 'done') return claimed.outcome;
   const result = await callGoogle(env, claimed.claim, deps);
-  return complete(env, businessId, bookingId, claimed.claim, result, now());
+  const { outcome, connectionAction } = await complete(env, businessId, bookingId, claimed.claim, result, now());
+  if (connectionAction) await applyConnectionAction(env, businessId, bookingId, claimed.claim.connectionId, connectionAction);
+  return outcome;
+}
+
+/** The connection write complete() decided on, made after it has released every lock. Best
+    effort and isolated: a failure here must not turn a real outcome into an error, and must not
+    contend with the next claim for the same rows — so it logs and moves on rather than
+    retrying or propagating. */
+async function applyConnectionAction(
+  env: Env,
+  businessId: string,
+  bookingId: string,
+  connectionId: string,
+  action: 'healthy' | { problem: string } | { expired: string },
+): Promise<void> {
+  try {
+    await withTenant(env, businessId, (tx) => {
+      if (action === 'healthy') return markConnectionHealthy(tx, connectionId);
+      if ('expired' in action) return markConnectionExpired(tx, connectionId, action.expired);
+      return markConnectionProblem(tx, connectionId, action.problem);
+    });
+  } catch (error) {
+    console.error(`[bookings-calendar] business=${businessId} booking=${bookingId} connection ${errorLabel(error)}`);
+  }
 }
 
 /** For ctx.waitUntil: never rejects, and logs ids and the error's name only. */
