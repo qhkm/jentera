@@ -37,7 +37,16 @@
 @media (max-width: 639px) {
   .skills-view { gap: 18px; }
   .skills-header { align-items: center; }
-  .skills-header .btn { width: var(--control-h); min-width: var(--control-h); padding: 0; font-size: 0; }
+  /* Collapse to an icon. This used to hide the label with `font-size: 0`
+     and silently lost: dashboard-type.css reaches `.btn` through an :is()
+     whose most specific argument is `.business-detail-row > span:last-child`,
+     so that whole list weighs (0,3,1) and outranks this rule's (0,2,0). The
+     label kept its 14px inside a 44px box with no padding, overflowed the
+     button and pushed the page wider than the screen. Hiding the element is
+     not a specificity contest, and the name is on aria-label regardless.
+     Round, because at 44x44 the 12px control radius reads as a box. */
+  .skills-header .btn { width: var(--control-h); min-width: var(--control-h); padding: 0; border-radius: 50%; }
+  .skills-header .btn > span { display: none; }
   .skills-header .btn svg { width: 18px; height: 18px; }
   .skills-search { width: 100%; }
   .skills-search input { font-size: 16px; }

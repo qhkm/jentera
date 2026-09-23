@@ -57,9 +57,12 @@ export default function SkillsView() {
         <h1 id="skills-title">{t('skills.title')}</h1>
         <p>{t('skills.description')}</p>
       </div>
-      <Button type="button" variant="outline" onClick={() => void load()} disabled={state.status === 'loading'}>
+      {/* The label is its own element so the mobile rule can drop it and
+          leave an icon. aria-label carries the name at every width. */}
+      <Button type="button" variant="outline" aria-label={t('skills.refresh')}
+        onClick={() => void load()} disabled={state.status === 'loading'}>
         <ArrowClockwise size={16} aria-hidden="true" />
-        {t('skills.refresh')}
+        <span>{t('skills.refresh')}</span>
       </Button>
     </header>
 
