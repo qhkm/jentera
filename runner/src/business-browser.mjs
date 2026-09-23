@@ -7,7 +7,10 @@ const KEYS = new Set(['Enter', 'Tab', 'Shift+Tab', 'Backspace', 'Delete', 'Escap
   'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'ControlOrMeta+A',
   'Shift+ArrowLeft', 'Shift+ArrowRight', 'Shift+ArrowUp', 'Shift+ArrowDown', 'Shift+Home', 'Shift+End']);
 const LEASE_MS = 10 * 60 * 1000;
-export const BROWSER_VIEWPORT = Object.freeze({ width: 1280, height: 800 });
+export /* Where a blank tab goes. `app/src/routes/views/BusinessBrowser.tsx` shows
+   the same address as its placeholder. */
+const BROWSER_HOME = 'https://www.google.com';
+const BROWSER_VIEWPORT = Object.freeze({ width: 1280, height: 800 });
 
 /** Linux fallback for Chrome builds that don't expose command-line CDP.
  * Identify ONE native browser using the fixed loopback debugging port, then
@@ -333,6 +336,17 @@ export function createBusinessBrowser(config, deps = {}) {
       }
       if (!context) throw new BrowserProblem(503, 'browser_unavailable');
       if (!context.pages().length) await context.newPage();
+      /* A fresh tab lands on about:blank, which shows the owner a white page
+         and reports its origin as the string "null". Send a blank startup tab
+         somewhere usable instead. Best effort on purpose: a slow or failed
+         navigation must not delay or fail the browser the agent is waiting
+         for, and a tab the session restored is left where it was. */
+      if (didLaunch) {
+        for (const page of context.pages()) {
+          if (page.url() !== 'about:blank') continue;
+          await page.goto(BROWSER_HOME, { waitUntil: 'commit', timeout: 5000 }).catch(() => {});
+        }
+      }
       context.setDefaultTimeout(5000);
       observeContext(context);
       if (config.desktopEnabled && paused && didLaunch) {

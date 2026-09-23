@@ -447,3 +447,21 @@ it('uses the same field guard for the paste box and clears direct typing on loss
   expect(screen.getByRole('button', { name: 'Take control' })).toBeEnabled();
   expect(JSON.stringify(localStorage)).not.toContain('guarded-paste');
 });
+
+/* Chromium reports about:blank's origin as the string "null", which is
+   truthy, so `origin || fallback` printed the word null into the address bar
+   where a hint belongs. The tab label already guarded the same value. */
+it('never offers the word null as an address hint', async () => {
+  const user = userEvent.setup();
+  const blankTab: BusinessBrowserState = { image: 'aW1hZ2U=', width: 1280, height: 800,
+    tabs: [{ index: 0, origin: 'null', selected: true }] };
+  const browser = vi.fn(async (command?: BrowserCommand): Promise<BusinessBrowserState> => {
+    if (command?.action === 'frame') return blankTab;
+    return { enabled: true, controlRecovery: 1, paused: command?.action !== 'release' };
+  });
+  mountBrowser(browser);
+  await user.click(await screen.findByRole('button', { name: 'Open Jentera’s computer' }));
+  await screen.findByRole('img');
+  const address = await screen.findByRole('textbox', { name: 'Website address' });
+  expect(address).toHaveAttribute('placeholder', 'https://www.google.com');
+});

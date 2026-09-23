@@ -15,6 +15,10 @@ function defaultBrowserZoom() {
   return typeof window !== 'undefined' && window.matchMedia?.('(max-width: 640px)').matches ? 2 : 1;
 }
 
+/* Where a blank tab goes. The runner opens the same page when it launches
+   Chromium, so this is the fallback label rather than a second opinion. */
+const BROWSER_HOME = 'https://www.google.com';
+
 export default function BusinessBrowser({
   appearance = 'card',
   openRequest = 0,
@@ -83,6 +87,9 @@ export default function BusinessBrowser({
   );
   const directEnabled = controlled && frame?.directTyping === 1;
   const desktopEnabled = state.desktopView === 1 && Boolean(repo.desktopConnection);
+  /* "null" is a real origin string for about:blank, not an absent one. */
+  const rawOrigin = frame?.tabs?.find(tab => tab.selected)?.origin;
+  const selectedOrigin = rawOrigin && rawOrigin !== 'null' ? rawOrigin : null;
   const drawerMode = appearance === 'chat-tool'
     && typeof window !== 'undefined'
     && window.matchMedia?.('(min-width: 1180px)').matches === true;
@@ -385,7 +392,11 @@ export default function BusinessBrowser({
             </div>}
             {controlled ? <form className="business-browser-address" onSubmit={e => { e.preventDefault(); command({ action: 'navigate', url }); }}>
               <Globe size={17} aria-hidden="true" />
-              <Input aria-label={t('browser.address')} placeholder={frame?.tabs?.find(tab => tab.selected)?.origin || 'https://example.com'} type="url" value={url}
+              {/* Chromium reports about:blank's origin as the string "null",
+                  which is truthy, so `origin || fallback` printed the word
+                  null into the address bar. The tab label above already
+                  guards the same value. */}
+              <Input aria-label={t('browser.address')} placeholder={selectedOrigin ?? BROWSER_HOME} type="url" value={url}
                 disabled={busy} onChange={e => setUrl(e.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} />
               <Button type="submit" variant="outline" disabled={busy || !url}>{t('browser.go')}<ArrowRight size={16} aria-hidden="true" /></Button>
             </form> : <div className="business-browser-window-label"><Globe size={16} aria-hidden="true" />{t('browser.windowLabel')}</div>}

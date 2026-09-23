@@ -17,7 +17,8 @@ function fixture(desktopEnabled = false, extras = {}) {
     goto: async () => {}, mouse: { click: async () => {}, wheel: async () => {} },
     keyboard: { insertText: async (value) => typed.push(value), press: async () => {} },
   };
-  const context = { pages: () => [page], setDefaultTimeout: () => {}, on: () => {} };
+  const pages = extras.pages ?? [page];
+  const context = { pages: () => pages, setDefaultTimeout: () => {}, on: () => {} };
   const deps = {
     now: () => clock,
     chromium: {
@@ -655,4 +656,38 @@ test('restart asks the gateway to recover only after a new browser is up', async
   await f.browser.command(command('claim'));
   await f.browser.command(command('restart'));
   assert.deepEqual(order, ['closed', 'recover']);
+});
+
+/* A fresh tab lands on about:blank: a white page for the owner, and an origin
+   Chromium reports as the string "null". A startup tab is sent somewhere
+   usable; a tab the persistent session restored is left where it was. */
+test('a blank startup tab opens the browser home, and a restored tab is left alone', async () => {
+  const goneTo = [];
+  const blank = {
+    isClosed: () => false, url: () => 'about:blank',
+    setViewportSize: async () => {}, screenshot: async () => Buffer.from('s'),
+    goto: async (url) => { goneTo.push(url); }, mouse: { click: async () => {}, wheel: async () => {} },
+    keyboard: { insertText: async () => {}, press: async () => {} },
+  };
+  const f = fixture(false, { pages: [blank] });
+  await f.browser.ensure();
+  assert.deepEqual(goneTo, ['https://www.google.com']);
+
+  // A second ensure() reuses the live context and must not re-navigate.
+  goneTo.length = 0;
+  await f.browser.ensure();
+  assert.deepEqual(goneTo, []);
+});
+
+test('a session-restored page is never sent to the browser home', async () => {
+  const goneTo = [];
+  const restored = {
+    isClosed: () => false, url: () => 'https://mail.google.com/mail/u/0',
+    setViewportSize: async () => {}, screenshot: async () => Buffer.from('s'),
+    goto: async (url) => { goneTo.push(url); }, mouse: { click: async () => {}, wheel: async () => {} },
+    keyboard: { insertText: async () => {}, press: async () => {} },
+  };
+  const f = fixture(false, { pages: [restored] });
+  await f.browser.ensure();
+  assert.deepEqual(goneTo, []);
 });
