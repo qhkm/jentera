@@ -111,6 +111,51 @@ describe('notification url constraint', () => {
   });
 });
 
+/** What the migration relies on beyond its tables, each fact checked the way
+    scripts/apply-apps-bookings.mjs checks it before it commits. */
+describe('what the apply script verifies', () => {
+  const FUNCTIONS = ['public.bookings_by_slug(text)', 'public.booking_calendar_due(timestamptz, integer)'];
+
+  it('keeps both security definers pinned to a safe search path and closed to PUBLIC', async () => {
+    for (const fn of FUNCTIONS) {
+      const [row] = await asOwner((sql) => sql<{ definer: boolean; config: string[] | null; public_exec: boolean }[]>`
+        select p.prosecdef as definer, p.proconfig as config,
+               has_function_privilege('public', ${fn}::regprocedure, 'execute') as public_exec
+          from pg_proc p where p.oid = ${fn}::regprocedure`);
+      expect(row.definer, fn).toBe(true);
+      expect(row.config, fn).toContain('search_path=pg_catalog, public, pg_temp');
+      expect(row.public_exec, fn).toBe(false);
+    }
+  });
+
+  it('carries the orphan clause in the due scan', async () => {
+    const [{ def }] = await asOwner((sql) => sql<{ def: string }[]>`
+      select pg_get_functiondef('public.booking_calendar_due(timestamptz, integer)'::regprocedure) as def`);
+    expect(def).toContain('attempts >= 8');
+  });
+
+  it('admits booking_requested and work_finished, whichever of 068 and 069 is applied last', async () => {
+    const [{ def }] = await asOwner((sql) => sql<{ def: string }[]>`
+      select pg_get_constraintdef(oid) as def from pg_constraint
+       where conrelid = 'public.notification'::regclass and conname = 'notification_kind_check'`);
+    expect(def).toContain('booking_requested');
+    expect(def).toContain('work_finished');
+    const [user] = await asOwner((sql) => sql<{ id: string }[]>`
+      insert into app_user (email, email_verified) values ('o@example.com', true) returning id`);
+    await asOwner((sql) => sql`
+      insert into notification (business_id, recipient_user_id, kind, title, body, source_key)
+      values (${A}, ${user.id}, 'work_finished', 'Done', 'Your task finished', 'work:1')`);
+  });
+
+  it('has the booking columns the Calendar sync writes', async () => {
+    const rows = await asOwner((sql) => sql<{ column_name: string }[]>`
+      select column_name from information_schema.columns
+       where table_schema = 'public' and table_name = 'booking'
+         and column_name in ('calendar_account', 'calendar_account_label', 'calendar_reason')`);
+    expect(rows.map((r) => r.column_name).sort()).toEqual(['calendar_account', 'calendar_account_label', 'calendar_reason']);
+  });
+});
+
 /** The seven Bookings tables: every row is invisible to another tenant, and
     aisar_app holds exactly the privileges the routes use — no more. Only
     booking_service (unused services are deleted) and booking_hours (hours

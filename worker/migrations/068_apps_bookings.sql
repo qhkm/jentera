@@ -246,8 +246,13 @@ alter table notification drop constraint if exists notification_url_check;
 alter table notification add constraint notification_url_check check (
   url is null or (char_length(url) <= 300 and url ~ '^/app([/?#]|$)'));
 
+-- Every kind from 040_reminders.sql, plus booking_requested, plus
+-- work_finished (069_work_finished_notification.sql on main). A check
+-- constraint is replaced whole, so whichever of 068 and 069 is applied last
+-- decides the list; both name both new kinds so the order does not matter.
 alter table notification drop constraint if exists notification_kind_check;
 alter table notification add constraint notification_kind_check check (kind in (
   'routine_completed', 'routine_failed', 'routine_skipped', 'routine_needs_approval',
-  'work_needs_you', 'approval_requested', 'reminder_due', 'booking_requested'
+  'work_needs_you', 'approval_requested', 'reminder_due', 'booking_requested',
+  'work_finished'
 ));

@@ -80,7 +80,44 @@ try {
     if (!fn.url_check_def || !fn.url_check_def.includes('300') || !fn.url_check_def.includes('^/app([/?#]|$)')) {
       throw new Error('apps migration verification failed: notification_url_check does not carry the expected pattern and length bound');
     }
-    return { ...checks, ...fn };
+
+    // Both security definers: definer rights, the search_path 068 pins, and
+    // no EXECUTE for PUBLIC (a function is executable by PUBLIC by default).
+    const definers = {};
+    for (const signature of ['public.bookings_by_slug(text)', 'public.booking_calendar_due(timestamptz, integer)']) {
+      const [row] = await tx`
+        select p.prosecdef as definer,
+               coalesce(p.proconfig, '{}'::text[]) @> array['search_path=pg_catalog, public, pg_temp'] as search_path,
+               has_function_privilege('public', ${signature}::regprocedure, 'execute') as public_execute
+          from pg_proc p where p.oid = ${signature}::regprocedure`;
+      if (!row?.definer) throw new Error(`apps migration verification failed: ${signature} is not security definer`);
+      if (!row.search_path) throw new Error(`apps migration verification failed: ${signature} search_path is not pinned`);
+      if (row.public_execute) throw new Error(`apps migration verification failed: PUBLIC can execute ${signature}`);
+      definers[signature] = row;
+    }
+    const [more] = await tx`
+      select
+        position('attempts >= 8' in
+          pg_get_functiondef('public.booking_calendar_due(timestamptz, integer)'::regprocedure)) > 0 as orphan_clause,
+        (select pg_get_constraintdef(oid) from pg_constraint
+          where conrelid = 'public.notification'::regclass and conname = 'notification_kind_check') as kind_check_def,
+        (select string_agg(column_name::text, ',' order by column_name) from information_schema.columns
+          where table_schema = 'public' and table_name = 'booking'
+            and column_name in ('calendar_account', 'calendar_account_label', 'calendar_reason')) as calendar_columns`;
+    if (!more.orphan_clause) {
+      throw new Error('apps migration verification failed: booking_calendar_due has no orphan clause (attempts >= 8)');
+    }
+    // 069 on main adds work_finished; whichever migration runs last must keep both kinds.
+    for (const kind of ['booking_requested', 'work_finished']) {
+      if (!more.kind_check_def?.includes(kind)) {
+        throw new Error(`apps migration verification failed: notification_kind_check does not admit ${kind}`);
+      }
+    }
+    // A string, not an array: this connection runs with fetch_types off, so arrays are not parsed.
+    if (more.calendar_columns !== 'calendar_account,calendar_account_label,calendar_reason') {
+      throw new Error(`apps migration verification failed: booking calendar columns are ${more.calendar_columns}`);
+    }
+    return { ...checks, ...fn, definers, ...more };
   });
   process.stdout.write(`${JSON.stringify({ ok: true, migration: '068_apps_bookings', verified })}\n`);
 } finally {
