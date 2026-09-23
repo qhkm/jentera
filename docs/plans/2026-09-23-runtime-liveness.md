@@ -123,6 +123,40 @@ This also interacts with a change made the same day:
 cold and make probes cheaper. Measuring before that change had settled would
 have produced the wrong number.
 
+## Where this runs, and where it must not
+
+The alerting belongs in the Worker's quarter-hour cron, beside the detection,
+and **not** on anyone's laptop.
+
+`worker/scripts/health-alert.sh` already exists, already pings Telegram on
+failure, and `~/Library/LaunchAgents/com.kitakod.jentera-health.plist` already
+configures it to run every 900 seconds. On 23 September it was found **not
+loaded**, so it had never run — which is part of why three sprites went five
+days unnoticed. Loading it is worth one command, but it is not the answer:
+launchd runs only while that Mac is awake, unlocked and online, and the outage
+it needed to catch lasted five days.
+
+`health.sh` would not have caught it either, even running. Its fleet check
+reads `agent_runtime: N release-matched, 0 mismatched` — release match, not
+liveness. Between 18 and 23 September those three sprites were dead *on the
+correct release* and passed. They became visible only when a new release
+created a mismatch, five days late and by accident. That is the same flaw as
+`status`: it asks whether the record looks right, never whether the thing
+works.
+
+What the Worker already has, and needs no new infrastructure:
+
+- the `*/15 * * * *` trigger, which calls `sweepRuntimeDrift` over the whole
+  fleet with provider credentials in hand;
+- `signup-notice.ts`, a working operator-mail path through Resend behind
+  `ctx.waitUntil`, addressed by `SIGNUP_NOTICE_TO`. A slow or refusing Resend
+  cannot delay or fail the cron, which is the property that matters here too.
+
+So the whole of this is one probe in a cron that already runs and one notice on
+a path that already sends. `health.sh` should still gain a liveness check, but
+for answering "is the fleet fine right now" on demand — a different job from
+noticing while nobody is looking.
+
 ## Saying so
 
 `computer.unknown` ("Could not check readiness") already exists; the problem is
