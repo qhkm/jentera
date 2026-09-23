@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
 /* move-runtime-region.mjs — move one tenant's sprite to the region the
    control plane now provisions into, keeping the agent's memory.
  *
@@ -131,16 +132,42 @@ tar -tzf ${tarPath}`;
  *  `businessHasAccess` admits `delete` as maintenance but refuses `provision`
  *  for a business whose owner holds no active grant — so deleting that sprite
  *  destroys it for good. The consumer acks the dropped provision and leaves
- *  the row queued, which looks exactly like a slow queue. */
-export function blockers(state) {
+ *  the row queued, which looks exactly like a slow queue.
+ *
+ *  The grant only decides that while the mode is waitlist. `access.ts` reads
+ *  `restrictedAccess = env.ACCESS_MODE === 'waitlist'`, and `businessHasAccess`
+ *  returns true before looking at anything else otherwise. This check outlived
+ *  that: on 23 September it refused to move three sprites whose businesses the
+ *  control plane would have re-provisioned without complaint, and `--force`
+ *  could not override it. An unreadable mode is treated as waitlist — the cost
+ *  of a needless refusal is a delay, the cost of a wrong admission is a
+ *  destroyed workspace. */
+export function blockers(state, accessMode = deployedAccessMode()) {
+  /* null means we could not read the mode. Treat that as waitlist. */
+  const restricted = accessMode === null || accessMode === 'waitlist';
+  if (!restricted) return [];
   return state.canProvision === false
     ? ['the owner holds no active platform_access grant, so a provision would be dropped and the delete could not be undone']
     : [];
 }
 
+/** What the deployed Worker will actually do, read from the file that is
+ *  deployed rather than assumed. Unreadable or absent means waitlist. */
+export function deployedAccessMode(toml = readWranglerToml()) {
+  const match = /^\s*ACCESS_MODE\s*=\s*"([^"]*)"/m.exec(toml ?? '');
+  return match ? match[1] : null;
+}
+
+function readWranglerToml() {
+  try {
+    return readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8');
+  } catch { return null; }
+}
+
 /** Reasons this sprite must not be moved right now. */
-export function preflightRefusals(state, placementChangedAt = Date.parse('2026-09-10T07:22:00Z')) {
-  const refusals = [...blockers(state)];
+export function preflightRefusals(state, placementChangedAt = Date.parse('2026-09-10T07:22:00Z'),
+  accessMode = deployedAccessMode()) {
+  const refusals = [...blockers(state, accessMode)];
   if (!state.runtime) refusals.push('no runtime row for this business');
   else {
     if (state.runtime.status !== 'ready') refusals.push(`runtime is ${state.runtime.status}, not ready`);
@@ -353,6 +380,18 @@ find ${HERMES}/memories ${HERMES}/profiles -name '*.md' | wc -l`);
 
 /** Back up one sprite, replace it, and put the memory back. The replacement
  *  carries the same name, because the name is a hash of the business id. */
+/** Whether a failed backup may be treated as acceptable, and why not if not.
+ *  `moveOne` backs up before it deletes so nothing is destroyed that was not
+ *  first saved. A sprite that cannot answer cannot be backed up — which is
+ *  exactly the sprite most likely to need replacing. Skipping that is a
+ *  separate decision from `--force`: one says "I read the refusals", the other
+ *  says "I accept losing this sprite's agent memory". Both, or neither. */
+export function backupRefusal({ force, skipBackup }) {
+  if (!skipBackup) return 'the backup failed; pass --skip-backup to delete without one';
+  if (!force) return '--skip-backup destroys the agent memory, so it also needs --force';
+  return null;
+}
+
 async function moveOne(sql, spriteName, dir) {
   const state = await readState(sql, spriteName);
   const refusals = preflightRefusals(state);
@@ -362,7 +401,14 @@ async function moveOne(sql, spriteName, dir) {
   const businessId = state.runtime.business_id;
 
   console.log(`\n${spriteName} (${state.runtime.business_name}) — backing up`);
-  await phaseBackup(spriteName, dir);
+  try {
+    await phaseBackup(spriteName, dir);
+  } catch (error) {
+    const refusal = backupRefusal({ force: flag('force'), skipBackup: flag('skip-backup') });
+    if (refusal) throw new Error(`${spriteName}: ${refusal} (${error.message ?? error})`);
+    console.log(`  BACKUP FAILED — continuing without one: ${error.message ?? error}`);
+    console.log('  the agent memory on this sprite is being discarded, not saved');
+  }
 
   console.log('enqueuing delete');
   await enqueue(sql, businessId, 'delete', `move-region-delete-${Date.now()}`);
