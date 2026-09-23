@@ -210,6 +210,12 @@ export interface Env {
       check is skipped, which is how tests and local runs work. Set it only
       after the app ships with its site key, or every door refuses. */
   TURNSTILE_SECRET?: string;
+  /* Sites deploy only (jentera-sites, [env.sites]). The public Turnstile
+     site key the booking form renders; the same value as the app's
+     VITE_TURNSTILE_SITE_KEY. */
+  TURNSTILE_SITE_KEY?: string;
+  /* Sites deploy only: 10 booking-form posts per 60 s per address. */
+  BOOKING_BURST?: RateLimit;
   /** How long any dispatch keeps the Sprite held active past the dispatch
       (hours) — all plans since 2026-09-01 (launch posture). Refreshed on
       every dispatch; a silent business releases itself after this window.

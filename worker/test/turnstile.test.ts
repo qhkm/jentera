@@ -147,3 +147,30 @@ describe('the doors with no secret configured', () => {
     expect(await accounts()).toBe(1);
   });
 });
+
+describe('verifyTurnstile for another page', () => {
+  const booking = { action: 'booking', hostnames: new Set(['sites.test']) };
+
+  it('accepts a token minted on the booking page', async () => {
+    const fetchMock = outbound(true, { action: 'booking', hostname: 'sites.test' });
+    expect(await verifyTurnstile(env(), 'token', '203.0.113.9', fetchMock, booking)).toBe('ok');
+  });
+
+  it('refuses a sign-in token on the booking page, and a booking token from another host', async () => {
+    expect(await verifyTurnstile(env(), 'token', '203.0.113.9', outbound(true), booking)).toBe('rejected');
+    expect(await verifyTurnstile(env(), 'token', '203.0.113.9',
+      outbound(true, { action: 'booking', hostname: 'jentera.ai' }), booking)).toBe('rejected');
+  });
+
+  it('keeps the sign-in check unchanged when no expectation is passed', async () => {
+    expect(await verifyTurnstile(env(), 'token', '203.0.113.9', outbound(true))).toBe('ok');
+    expect(await verifyTurnstile(env(), 'token', '203.0.113.9',
+      outbound(true, { action: 'booking', hostname: 'jentera.ai' }))).toBe('rejected');
+  });
+
+  it('needs no ALLOWED_ORIGINS when an expectation is passed', async () => {
+    const sitesOnly = { TURNSTILE_SECRET: 'ts-secret' };
+    const fetchMock = outbound(true, { action: 'booking', hostname: 'sites.test' });
+    expect(await verifyTurnstile(sitesOnly, 'token', '203.0.113.9', fetchMock, booking)).toBe('ok');
+  });
+});

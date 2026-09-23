@@ -9,7 +9,9 @@
 import postgres from 'postgres';
 import type { Env } from './env';
 
-export function connect(env: Env): postgres.Sql<{}> {
+export type DatabaseEnv = Pick<Env, 'HYPERDRIVE'>;
+
+export function connect(env: DatabaseEnv): postgres.Sql<{}> {
   /* A postgres.js client owns live I/O objects. Cloudflare may reuse this
      isolate for another request, but it forbids that later request from
      touching streams created by the first one. Hyperdrive already pools the
@@ -31,7 +33,7 @@ export function connect(env: Env): postgres.Sql<{}> {
  * after COMMIT, while the same call with local=false persists.
  */
 export async function withTenant<T>(
-  env: Env,
+  env: DatabaseEnv,
   businessId: string,
   fn: (tx: postgres.TransactionSql) => Promise<T>,
 ): Promise<T> {
@@ -49,7 +51,7 @@ export async function withTenant<T>(
 
 /** For queries that precede tenant resolution: login, session lookup. */
 export async function withUser<T>(
-  env: Env,
+  env: DatabaseEnv,
   fn: (sql: postgres.Sql) => Promise<T>,
 ): Promise<T> {
   const sql = connect(env);

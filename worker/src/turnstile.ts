@@ -9,7 +9,11 @@
    underneath still hold and an outage at the checker must not close
    every door.
    ============================================================ */
-import type { Env } from './env';
+type TurnstileEnv = { TURNSTILE_SECRET?: string; ALLOWED_ORIGINS?: string };
+
+/** What a token must say to count: the action its widget was rendered with
+    and the hostnames it may have been minted on. */
+export interface TurnstileExpectation { action: string; hostnames: ReadonlySet<string> }
 
 export const SITEVERIFY = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 
@@ -28,7 +32,7 @@ const SITEVERIFY_TIMEOUT_MS = 10_000;
 
 /** The hostnames a token may have been minted on: the same list the
     browser is allowed to call us from, so one setting names both. */
-function allowedHostnames(env: Env): Set<string> {
+function allowedHostnames(env: TurnstileEnv): Set<string> {
   const hosts = new Set<string>();
   for (const origin of (env.ALLOWED_ORIGINS ?? '').split(',')) {
     try {
@@ -40,15 +44,16 @@ function allowedHostnames(env: Env): Set<string> {
   return hosts;
 }
 
-export function turnstileConfigured(env: Env): boolean {
+export function turnstileConfigured(env: Pick<TurnstileEnv, 'TURNSTILE_SECRET'>): boolean {
   return Boolean(env.TURNSTILE_SECRET?.trim());
 }
 
 export async function verifyTurnstile(
-  env: Env,
+  env: TurnstileEnv,
   token: unknown,
   ip: string,
   fetchImpl: Fetcher = fetch,
+  expected?: TurnstileExpectation,
 ): Promise<TurnstileVerdict> {
   if (!turnstileConfigured(env)) return 'ok';
   if (typeof token !== 'string' || !token.trim() || token.length > TOKEN_MAX) return 'missing';
@@ -69,8 +74,9 @@ export async function verifyTurnstile(
     if (!verdict.success) return 'rejected';
     /* A real token, but was it made on our page? One widget can be
        embedded on any hostname it lists, under any action. */
-    if (verdict.action !== TURNSTILE_ACTION) return 'rejected';
-    if (typeof verdict.hostname !== 'string' || !allowedHostnames(env).has(verdict.hostname)) return 'rejected';
+    const wanted = expected ?? { action: TURNSTILE_ACTION, hostnames: allowedHostnames(env) };
+    if (verdict.action !== wanted.action) return 'rejected';
+    if (typeof verdict.hostname !== 'string' || !wanted.hostnames.has(verdict.hostname)) return 'rejected';
     return 'ok';
   } catch {
     return 'unavailable';
