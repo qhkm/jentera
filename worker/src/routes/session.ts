@@ -1,4 +1,6 @@
 import { routinesEnabledFor } from '../routines/gating';
+import { appsEnabledFor } from '../apps/gating';
+import { can } from '../permissions';
 import { openTrial, sealTrial, trialCode, trialLanding } from '../trial-auth';
 import type { Env } from '../env';
 import { withTenant } from '../db';
@@ -625,6 +627,10 @@ export async function handleSession(
     const features = {
       ...(businessId && routinesEnabledFor(env, businessId) ? { routines: { apiVersion: 1 } } : {}),
       ...(plan === 'team' ? { team: { apiVersion: 1 } } : {}),
+      /* Owners only: staff never learn the feature exists, so the app needs
+         no role check of its own (spec D3). */
+      ...(businessId && appsEnabledFor(env, businessId) && can(identity, 'apps.manage')
+        ? { apps: { apiVersion: 1 } } : {}),
     };
     return json({ ok: true, ...identity, ...(Object.keys(features).length ? { features } : {}) }, {}, cors);
   }

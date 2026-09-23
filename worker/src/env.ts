@@ -75,6 +75,13 @@ export interface Env {
   /** Disabled by default. Both flag and explicit business UUID pilot list required. */
   DESKTOP_VIEW_ENABLED?: string;
   DESKTOP_VIEW_BUSINESS_IDS?: string;
+  /* Apps pilot (docs/plans/2026-09-23-apps-shell-and-bookings-v1.md).
+     Exact business ids only, like desktop view: an empty list is nobody. */
+  APPS_ENABLED?: string;
+  APPS_BUSINESS_IDS?: string;
+  /* The public origin of the sites deploy, e.g.
+     https://jentera-sites.qhkmdev90.workers.dev — used to build booking links. */
+  SITES_ORIGIN?: string;
   /** Immutable runner + Hermes + browser release identifier. */
   RUNTIME_RELEASE?: string;
   /** Preferred Fly region for diagnostics. Sprites cannot currently be pinned. */

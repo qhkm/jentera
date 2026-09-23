@@ -45,6 +45,10 @@ export const PERMISSIONS = {
   'goals.manage': ['owner'],
   /** See and forget what the agent remembers; it holds notes about people. */
   'agent.memory': ['owner'],
+  /** Install, configure and pause business apps, and see their public links. */
+  'apps.manage': ['owner'],
+  /** Confirm, decline and cancel booking requests from customers. */
+  'bookings.decide': ['owner'],
 } as const satisfies Record<string, readonly ('owner' | 'staff')[]>;
 
 export type Permission = keyof typeof PERMISSIONS;
