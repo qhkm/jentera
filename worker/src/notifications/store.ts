@@ -10,7 +10,9 @@ export type NotificationKind =
   /* A colleague's task ended waiting on the owner (migration 037). */
   | 'work_needs_you'
   /* An action awaits an owner's decision, asked for by someone else. */
-  | 'approval_requested';
+  | 'approval_requested'
+  /* A customer asked for a booking on a Bookings page (migration 068). */
+  | 'booking_requested';
 
 export interface NotificationRow {
   id: string;
@@ -20,6 +22,7 @@ export interface NotificationRow {
   run_id: string | null;
   routine_id: string | null;
   occurrence_id: string | null;
+  url: string | null;
   read_at: Date | null;
   created_at: Date;
 }
@@ -32,11 +35,12 @@ export interface NotificationJson {
   runId: string | null;
   routineId: string | null;
   occurrenceId: string | null;
+  url: string | null;
   readAt: string | null;
   createdAt: string;
 }
 
-const COLUMNS = 'id, kind, title, body, run_id, routine_id, occurrence_id, read_at, created_at';
+const COLUMNS = 'id, kind, title, body, run_id, routine_id, occurrence_id, url, read_at, created_at';
 
 export function notificationJson(row: NotificationRow): NotificationJson {
   return {
@@ -47,6 +51,7 @@ export function notificationJson(row: NotificationRow): NotificationJson {
     runId: row.run_id,
     routineId: row.routine_id,
     occurrenceId: row.occurrence_id,
+    url: row.url,
     readAt: row.read_at?.toISOString() ?? null,
     createdAt: row.created_at.toISOString(),
   };
@@ -65,6 +70,14 @@ export interface NotificationInput {
   url?: string;
 }
 
+/** Where a notification may lead: a workspace path and nothing else. The
+    target is a navigation hint, never authorization; the destination
+    checks tenant, permission and feature again. */
+export function workspaceTarget(url: string | undefined): string | null {
+  if (!url || url.length > 300 || url.includes('\\')) return null;
+  return /^\/app([/?#]|$)/.test(url) ? url : null;
+}
+
 /** One notification for one person, and the push that mirrors it. The
     source key makes it idempotent per recipient: the same event told twice
     is one row and one push. */
@@ -73,13 +86,14 @@ export async function createNotification(
   businessId: string,
   input: NotificationInput,
 ): Promise<boolean> {
+  const target = workspaceTarget(input.url);
   const [inserted] = await tx<{ id: string }[]>`
     insert into notification
       (business_id, recipient_user_id, kind, title, body, source_key,
-       run_id, routine_id, occurrence_id)
+       run_id, routine_id, occurrence_id, url)
     values (${businessId}, ${input.recipientUserId}, ${input.kind},
             ${input.title.slice(0, 160)}, ${input.body.slice(0, 500)}, ${input.sourceKey},
-            ${input.runId ?? null}, ${input.routineId ?? null}, ${input.occurrenceId ?? null})
+            ${input.runId ?? null}, ${input.routineId ?? null}, ${input.occurrenceId ?? null}, ${target})
     on conflict (business_id, recipient_user_id, source_key) do nothing
     returning id`;
   /* Every notification also reaches the person's devices: queued in this
@@ -89,7 +103,7 @@ export async function createNotification(
   await enqueuePush(tx, businessId, input.recipientUserId, {
     title: input.title,
     body: input.body,
-    url: input.url ?? '/app?view=notifications',
+    url: target ?? '/app?view=notifications',
     tag: `notification:${input.sourceKey}`,
   });
   return true;
