@@ -1708,3 +1708,114 @@ Plan 3 (durable Calendar sync) built on branch bookings-v1: <last commit>. Befor
 ```
 
   Commit it by named path.
+
+---
+
+## As built
+
+Built on branch `bookings-v1`, commits `4fa8e60..19708e3`. Every task and
+the final fix round were reviewed. The full worker suite passed at
+`19708e3`: 134 files, 1642 tests, both typecheck passes, with the Docker VM
+clock checked first. Nothing is deployed.
+
+**Where the build differs from the task text above:**
+- **An attempt that dies at the limit is recovered.**
+  - A final attempt that dies between claim and completion (`attempts = 8`
+    with a lease) is an *orphan*.
+  - `booking_calendar_due` also returns such a job once its lease has
+    expired and `next_attempt_at` has passed. `claim` then gives up with
+    `CALENDAR_UNCONFIRMED`, reason `unconfirmed`.
+  - A test pins both SQL literals, `attempts < 8` and `attempts >= 8`, to
+    `CALENDAR_MAX_ATTEMPTS`.
+- **Credential faults are loud.**
+  - Only a missing or undecryptable credential gives up as `reconnect`.
+    Any other error, such as a missing key version, is rethrown and logged
+    before a lease is taken.
+  - The sweep defers a job that throws by 5 minutes, without spending an
+    attempt, so it cannot hold the head of the due scan.
+- **Connection health is written after completion commits,** in its own
+  transaction, never while the booking is locked. This avoids a deadlock
+  with disconnect's `on delete set null`.
+- **Transient Google errors retry instead of asking for a reconnect.**
+  - The token endpoint's 400/401 means auth. Anything else is transient.
+  - An API 401 means auth. A 403 with `rateLimitExceeded`,
+    `userRateLimitExceeded` or `quotaExceeded` is transient, as is a 403
+    whose body cannot be read. Any other 403 means auth.
+- **A booking remembers its Google account.**
+  - `booking.calendar_account` holds the Google subject and
+    `calendar_account_label` holds the email.
+  - `claim` and `retryCalendar` re-pin to a connected connection of the
+    **same** account after a disconnect and reconnect. They never pin
+    another account.
+- **A failed sync says why, in a machine-readable form.**
+  - `booking.calendar_reason` is one of `reconnect`, `disconnected`,
+    `removed_in_google`, `unconfirmed` or `provider`, and is null unless
+    the status is `failed`.
+  - `BookingJson.calendar` is `{ status, error, reason, canRetry, account }`.
+  - The decide, cancel and retry responses carry `calendarQueued`.
+- **Retry leaves a job alone while it holds a live lease,** including the
+  final attempt in flight.
+- **A cancel that overtakes a create finishes in the same call.** After a
+  `stale` outcome the processor runs once more at once, so the event is
+  removed without waiting for the cron.
+- **An off-pilot business keeps its orphans.** The pilot-off deferral runs
+  before the orphan give-up.
+- **The sweep is bounded.**
+  - It starts no new job after 40 s. This is a soft bound: a started job
+    can run past it.
+  - It reports a `skipped` count.
+  - It runs after the liveness block in the minute cron.
+- **Route actions are lower-cased and dispatched explicitly.**
+- **The release script checks more.** `apply-apps-bookings.mjs` verifies:
+  - `prosecdef`, the pinned `search_path` and no PUBLIC execute, for both
+    security definers;
+  - the orphan clause;
+  - `booking_requested` and `work_finished` in `notification_kind_check`;
+  - the three new `booking` columns.
+
+  068 admits `work_finished` for another session's migration 069, which
+  adds the same kind on main.
+
+**Plan 4 (owner UI) must:**
+- **Add `booking_requested` to the app's `KINDS` allowlist and follow the
+  notification `url`.** Ship that app change before `APPS_ENABLED` flips,
+  and ideally before the Worker deploy. `fetchNotifications` rejects the
+  whole inbox on an unknown kind.
+- **Render Calendar state from `calendar.reason` and `canRetry`,** in both
+  languages, never by matching the English `error` text.
+- **Tighten `canRetry`.** It is true today in two cases where retry can
+  never succeed:
+  - a cancelled booking that is `not_connected`;
+  - a `disconnected` failure with no recorded account.
+- **Decide whether to show the job's `last_error` while it retries.** Today
+  it is hidden, and the booking reads `pending` for up to about 2 hours.
+- **Add `dailyLimitExceeded` to `RATE_LIMIT_REASONS`** in
+  `src/connectors/google-calendar.ts`. The project's daily quota is still
+  read as auth.
+- **Correct two comments that overstate the sweep's 40 s bound:**
+  `src/index.ts`, and the constant's comment in `calendar-sync.ts`.
+
+**Before release:**
+- **Run the deleted-id experiment** in the spec's "Calendar deleted-id
+  verification" against a disposable test calendar.
+- **Measure the processor's installation lock** from the cron (IAD, about
+  1.5 s per claim) during the pilot. It blocks public requests and owner
+  decisions for that business while held.
+- **Watch the sweep's cost.** Consider handing jobs to the placed invocation
+  through `SELF`, as the queue consumer does.
+- **Consider stuck-Calendar counts for operators** in `stats.sh` or the
+  liveness line: the oldest unfinished job's age, and the number given up.
+
+**Deferred minors, none blocking:**
+- A permanent Google 4xx is retried 8 times over about 2 hours before the
+  owner learns of it.
+- The healthy-connection write is unconditional on every success.
+- Given-up jobs stay in the partial due index until an owner retries.
+- A final attempt in flight reads `idle` rather than `busy`.
+- No database constraint ties `calendar_reason` to `failed`.
+- The defensive status-mismatch path completes a job without touching
+  `calendar_status`. It cannot be reached today.
+- A local `normaliseCalendarEvent` failure is retried and recorded as a
+  connection problem.
+- The route test "without waiting for it" cannot prove the route does not
+  await the scheduled promise.
