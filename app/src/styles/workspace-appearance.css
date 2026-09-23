@@ -144,18 +144,6 @@
 .dashboard-shell .btn {
   border-radius: var(--radius-control);
 }
-/* The variantless fallback, in the workspace's tonal shape rather than
-   theme.css's bordered one. Same :where() trick: this weighs
-   `.dashboard-shell .btn`, so the variants below still win on order. */
-.dashboard-shell .btn:not(:where(.btn-primary, .btn-outline, .btn-ghost, .btn-reco)) {
-  border-color: transparent;
-  background: var(--workspace-control);
-  color: var(--text);
-}
-.dashboard-shell .btn:not(:where(.btn-primary, .btn-outline, .btn-ghost, .btn-reco)):hover:not(:where(:disabled, [aria-disabled='true'])) {
-  background: var(--workspace-control-hover);
-  opacity: 1;
-}
 .dashboard-shell .btn-primary {
   border-color: transparent;
   background: var(--workspace-primary);
@@ -166,7 +154,10 @@
   background: var(--workspace-primary-hover);
   opacity: 1;
 }
-.dashboard-shell :is(.btn-outline, .btn-ghost, .btn-reco) {
+/* A .btn naming no variant rides with .btn-outline here too, so the
+   workspace's tonal shape reaches it and the two cannot drift. */
+.dashboard-shell :is(.btn-outline, .btn-ghost, .btn-reco),
+.dashboard-shell .btn:not(:where(.btn-primary, .btn-outline, .btn-ghost, .btn-reco)) {
   border-color: transparent;
   background: var(--workspace-control);
   color: var(--text);
@@ -175,7 +166,8 @@
   background: transparent;
   color: var(--text-secondary);
 }
-.dashboard-shell :is(.btn-outline, .btn-ghost, .btn-reco):hover:not(:where(:disabled, [aria-disabled='true'])) {
+.dashboard-shell :is(.btn-outline, .btn-ghost, .btn-reco):hover:not(:where(:disabled, [aria-disabled='true'])),
+.dashboard-shell .btn:not(:where(.btn-primary, .btn-outline, .btn-ghost, .btn-reco)):hover:not(:where(:disabled, [aria-disabled='true'])) {
   border-color: transparent;
   background: var(--workspace-control-hover);
   color: var(--text);
