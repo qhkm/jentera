@@ -156,6 +156,26 @@ neither `logrotate` nor `cron`, so a gateway that never restarts can outgrow the
 cap. And `AISAR_GATEWAY_LOG_DIR` moves the log elsewhere if a sprite ever needs
 it on a different volume.
 
+### Warnings that look worse than they are
+
+**`Failed to resolve CDP endpoint http://127.0.0.1:9222` — six at a time, right
+after a gateway start.** Expected, and not a fault.
+
+Chrome is launched at *task admission* (`businessBrowser.ensure()` in
+`src/server.mjs`), not at boot, so on a sprite with no task in flight there is
+correctly no browser listening. Hermes probes the endpoint during start-up
+anyway and logs a 300-character warning each time. Checked on three sprites: both
+bursts landed within seven seconds of a gateway start, with nothing running.
+
+The same message *during* a task is a different matter — that would mean
+admission ran `ensure()` and the browser still was not there.
+
+Before chasing anything in this log, check what else is around the same
+timestamp. This one cost an afternoon: `pgrep -fc chrome` reports its own pattern
+as a match, `AISAR_BUSINESS_BROWSER` lives in `runtime.env` and not `runner.env`,
+and `platform_toolsets` is long enough that `head` hides the entry you wanted.
+All three produced a confident wrong reading on the way to a benign answer.
+
 ## Key co-residency and runtime boundary
 
 The Sprite's mode-0600 environment file holds `AISAR_RUNNER_KEY`, `HERMES_API_KEY`,
