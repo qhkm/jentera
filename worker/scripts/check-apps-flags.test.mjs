@@ -4,12 +4,15 @@ import { readFileSync } from 'node:fs';
 import { appsFlagProblems } from './check-apps-flags.mjs';
 
 // Builds a document with [vars] (aisar-api) and [env.sites.vars] (jentera-sites).
-// TURNSTILE_SITE_KEY and a BOOKING_BURST ratelimit are present by default —
-// pass { turnstileKey: '' } or { ratelimit: false } to omit either one.
-const toml = (api, sites, { turnstileKey = 'k', ratelimit = true } = {}) =>
+// TURNSTILE_SITE_KEY and both sites ratelimits (BOOKING_BURST, SITES_BURST) are
+// present by default — pass { turnstileKey: '' } to omit the key, or
+// { ratelimits: [...] } to name only the ratelimits the document should carry.
+const NAMESPACES = { BOOKING_BURST: '1007', SITES_BURST: '1008' };
+const toml = (api, sites, { turnstileKey = 'k', ratelimits = ['BOOKING_BURST', 'SITES_BURST'] } = {}) =>
   `name = "aisar-api"\n[vars]\n${api}\n\n[env.sites]\nname = "jentera-sites"\n\n[env.sites.vars]\n${sites}\n` +
   (turnstileKey ? `TURNSTILE_SITE_KEY = "${turnstileKey}"\n` : '') +
-  (ratelimit ? `\n[[env.sites.ratelimits]]\nname = "BOOKING_BURST"\nnamespace_id = "1007"\n` : '');
+  ratelimits.map((name) =>
+    `\n[[env.sites.ratelimits]]\nname = "${name}"\nnamespace_id = "${NAMESPACES[name]}"\n  [env.sites.ratelimits.simple]\n  limit = 10\n  period = 60\n`).join('');
 const A = '4e8c2593-2af2-494f-b157-fec0295a50b5';
 const B = '11111111-1111-4111-8111-111111111111';
 const vars = (enabled, ids, origin = 'https://s.test') =>
@@ -42,7 +45,20 @@ test('reports a missing or empty TURNSTILE_SITE_KEY on the sites deploy', () => 
 });
 
 test('reports a missing BOOKING_BURST ratelimit on the sites deploy', () => {
-  assert.equal(appsFlagProblems(toml(vars('false', A), vars('false', A), { ratelimit: false })).length, 1);
+  assert.deepEqual(appsFlagProblems(toml(vars('false', A), vars('false', A), { ratelimits: ['SITES_BURST'] })),
+    ['[[env.sites.ratelimits]] has no BOOKING_BURST entry']);
+});
+
+test('reports a missing SITES_BURST ratelimit on the sites deploy', () => {
+  assert.deepEqual(appsFlagProblems(toml(vars('false', A), vars('false', A), { ratelimits: ['BOOKING_BURST'] })),
+    ['[[env.sites.ratelimits]] has no SITES_BURST entry']);
+  assert.equal(appsFlagProblems(toml(vars('false', A), vars('false', A), { ratelimits: [] })).length, 2);
+});
+
+test('does not count a ratelimit named on the main deploy as the sites one', () => {
+  const text = toml(vars('false', A), vars('false', A), { ratelimits: ['BOOKING_BURST'] }) +
+    '\n[[ratelimits]]\nname = "SITES_BURST"\nnamespace_id = "1008"\n';
+  assert.deepEqual(appsFlagProblems(text), ['[[env.sites.ratelimits]] has no SITES_BURST entry']);
 });
 
 test('the real wrangler.toml agrees, and is fully configured', () => {

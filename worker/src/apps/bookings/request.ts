@@ -43,7 +43,11 @@ export type CreateResult =
   | { kind: 'service_gone' }
   | { kind: 'taken' };
 
-export function parseRequestForm(form: FormData): ParsedRequest {
+/** Anything with a `get` by field name: the sites handler's URLSearchParams,
+    or a FormData. Only string values count. */
+export interface FormFields { get(name: string): unknown }
+
+export function parseRequestForm(form: FormFields): ParsedRequest {
   const raw: Record<string, string> = {};
   for (const key of ['service', 'start', 'party', 'name', 'phone', 'note', 'submission_key']) {
     const value = form.get(key);

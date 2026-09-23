@@ -7,7 +7,7 @@ import { isDate, myDate } from '../apps/bookings/time';
 import { clientIp } from '../ratelimit';
 import { verifyTurnstile } from '../turnstile';
 import type { SitesEnv } from './env';
-import { donePage, formPage, messagePage, page, redirect, servicesPage, timesPage, SECURITY_HEADERS, type FormError } from './render';
+import { donePage, formPage, messagePage, page, redirect, servicesPage, timesPage, SECURITY_HEADERS, type FormError, type MessageKind } from './render';
 
 /* The public booking pages: the whole of the jentera-sites deploy. It never
    reads or sets a cookie and holds no credential; a business is found only
@@ -15,6 +15,9 @@ import { donePage, formPage, messagePage, page, redirect, servicesPage, timesPag
 
 const PATH = /^\/b\/([a-z0-9][a-z0-9-]{1,38}[a-z0-9])(\/request|\/done)?\/?$/;
 const DAYS_SHOWN = 7;
+/** A booking form is a few hundred bytes; a body past this is not one. */
+const BODY_MAX = 8192;
+const FORM_TYPE = 'application/x-www-form-urlencoded';
 
 interface Deps { now?: () => Date; fetchImpl?: typeof fetch }
 
@@ -23,8 +26,25 @@ function langOf(url: URL, info: PublicPage | null): Lang {
   return asked === 'en' || asked === 'bm' ? asked : info?.lang ?? 'en';
 }
 
+/** A page for a business not yet known: no name, no way back. */
+function plain(kind: MessageKind, lang: Lang, status: number): Response {
+  return page(messagePage({ slug: null, lang, businessName: null, kind }), status);
+}
+
 function notFound(lang: Lang): Response {
-  return page(messagePage({ slug: null, lang, businessName: null, kind: 'not_found' }), 404);
+  return plain('not_found', lang, 404);
+}
+
+/** The booking form's fields, or the refusal. Only a small urlencoded body is
+    read at all: FormData would throw on anything else and buffer a multipart
+    body of any size first. */
+async function readForm(request: Request, lang: Lang): Promise<URLSearchParams | Response> {
+  const type = (request.headers.get('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
+  if (type !== FORM_TYPE) return plain('bad_request', lang, 400);
+  if (Number(request.headers.get('Content-Length')) > BODY_MAX) return plain('bad_request', lang, 413);
+  const text = await request.text();
+  if (text.length > BODY_MAX) return plain('bad_request', lang, 413);
+  return new URLSearchParams(text);
 }
 
 export async function handleSites(request: Request, env: SitesEnv, deps: Deps = {}): Promise<Response> {
@@ -34,14 +54,29 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
   if (!match || (request.method !== 'GET' && request.method !== 'POST')) return notFound('en');
   const [, slug, sub = ''] = match;
 
+  /* Everything before resolvePublicSlug costs no database. The sites deploy
+     shares the production Hyperdrive pool with the main API, so the switch,
+     the brakes and the body guards all answer from here. */
+  const asked = langOf(url, null);
+  if (env.APPS_ENABLED !== 'true') return notFound(asked);
+  const ip = clientIp(request);
+  if (env.SITES_BURST && !(await env.SITES_BURST.limit({ key: `site:${ip}` })).success) return plain('busy', asked, 429);
+  let form: URLSearchParams | null = null;
+  if (sub === '/request' && request.method === 'POST') {
+    const read = await readForm(request, asked);
+    if (read instanceof Response) return read;
+    form = read;
+    if (env.BOOKING_BURST && !(await env.BOOKING_BURST.limit({ key: `book:${ip}` })).success) return plain('busy', asked, 429);
+  }
+
   const found = await resolvePublicSlug(env, slug);
-  if (!found || !appsEnabledFor(env, found.businessId)) return notFound(langOf(url, null));
+  if (!found || !appsEnabledFor(env, found.businessId)) return notFound(asked);
   if (found.currentSlug !== slug) {
     return redirect(`/b/${found.currentSlug}${sub}${url.search}`, 301);
   }
   const businessId = found.businessId;
   const info = await loadPublicPage(env, businessId);
-  if (!info) return notFound(langOf(url, null));
+  if (!info) return notFound(asked);
   const lang = langOf(url, info);
   const base = { slug, lang, businessName: info.businessName };
 
@@ -90,22 +125,18 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
       { name: '', phone: '', note: '', party: '1' }, [], crypto.randomUUID(), 200);
   }
 
-  if (sub === '/request' && request.method === 'POST') {
-    const form = await request.formData();
+  if (form) {
     const parsed = parseRequestForm(form);
     const values = {
-      name: String(form.get('name') ?? ''), phone: String(form.get('phone') ?? ''),
-      note: String(form.get('note') ?? ''), party: String(form.get('party') ?? '1'),
+      name: form.get('name') ?? '', phone: form.get('phone') ?? '',
+      note: form.get('note') ?? '', party: form.get('party') ?? '1',
     };
     // A malformed key is replaced, so the form shown again can still be sent.
     const key = parsed.ok ? parsed.value.submissionKey
-      : parsed.errors.includes('submission') ? crypto.randomUUID() : String(form.get('submission_key'));
-    const serviceId = String(form.get('service') ?? '');
-    const start = String(form.get('start') ?? '');
+      : parsed.errors.includes('submission') ? crypto.randomUUID() : form.get('submission_key') ?? '';
+    const serviceId = form.get('service') ?? '';
+    const start = form.get('start') ?? '';
     if (!parsed.ok) return showForm(serviceId, start, values, parsed.errors, key, 400);
-
-    const burst = env.BOOKING_BURST ? await env.BOOKING_BURST.limit({ key: `book:${clientIp(request)}` }) : { success: true };
-    if (!burst.success) return showForm(serviceId, start, values, ['busy'], key, 429);
 
     const input = parsed.value;
     const digest = await submissionDigest(input);
@@ -113,7 +144,7 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
     if (earlier?.kind === 'replayed') return redirect(`/b/${slug}/done?ref=${earlier.reference}&lang=${lang}`, 303);
     if (earlier?.kind === 'changed') return page(messagePage({ ...base, kind: 'changed' }), 409);
 
-    const verdict = await verifyTurnstile(env, form.get('cf-turnstile-response'), clientIp(request), deps.fetchImpl ?? fetch,
+    const verdict = await verifyTurnstile(env, form.get('cf-turnstile-response'), ip, deps.fetchImpl ?? fetch,
       { action: 'booking', hostnames: new Set([new URL(env.SITES_ORIGIN ?? 'https://invalid.invalid').hostname]) });
     if (verdict === 'missing' || verdict === 'rejected') return showForm(serviceId, start, values, ['turnstile'], key, 400);
 

@@ -216,6 +216,8 @@ export interface Env {
   TURNSTILE_SITE_KEY?: string;
   /* Sites deploy only: 10 booking-form posts per 60 s per address. */
   BOOKING_BURST?: RateLimit;
+  /* Sites deploy only: 60 page requests per 60 s per address. */
+  SITES_BURST?: RateLimit;
   /** How long any dispatch keeps the Sprite held active past the dispatch
       (hours) — all plans since 2026-09-01 (launch posture). Refreshed on
       every dispatch; a silent business releases itself after this window.

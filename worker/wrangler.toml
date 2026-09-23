@@ -369,9 +369,20 @@ APPS_BUSINESS_IDS = "4e8c2593-2af2-494f-b157-fec0295a50b5"
 SITES_ORIGIN = "https://jentera-sites.qhkmdev90.workers.dev"
 TURNSTILE_SITE_KEY = "0x4AAAAAAEyClnNFPsv8OJBY"
 
+# Booking-form posts per address, after the body is read and before the
+# database is touched.
 [[env.sites.ratelimits]]
 name = "BOOKING_BURST"
 namespace_id = "1007"
   [env.sites.ratelimits.simple]
   limit = 10
+  period = 60
+
+# Every /b/ request per address, before the database is touched: the sites
+# deploy shares the production Hyperdrive pool with aisar-api.
+[[env.sites.ratelimits]]
+name = "SITES_BURST"
+namespace_id = "1008"
+  [env.sites.ratelimits.simple]
+  limit = 60
   period = 60

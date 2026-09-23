@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { handleSites } from '../src/sites/index';
+import sites, { handleSites } from '../src/sites/index';
 import type { SitesEnv } from '../src/sites/env';
+import { SECURITY_HEADERS } from '../src/sites/render';
 import { SITEVERIFY } from '../src/turnstile';
 import { asOwner, fetchFake, testEnv, truncateAll } from './harness';
 
@@ -9,6 +10,17 @@ const NOW = new Date('2026-10-05T00:00:00Z'); // Mon 08:00 Malaysia
 const TEN = '2026-10-06T02:00:00.000Z';       // Tue 10:00 Malaysia
 let service = '';
 let burstOk = true;
+let sitesBurstOk = true;
+let brakeKeys: string[] = [];
+/** A database that refuses every connection: reaching it throws. */
+const NOWHERE = { connectionString: 'postgres://nobody:nothing@127.0.0.1:1/none' } as SitesEnv['HYPERDRIVE'];
+
+const brake = (ok: () => boolean) => ({
+  limit: async ({ key }: { key: string }) => {
+    brakeKeys.push(key);
+    return { success: ok() };
+  },
+}) as unknown as RateLimit;
 
 const env = (over: Partial<SitesEnv> = {}): SitesEnv => ({
   HYPERDRIVE: testEnv().HYPERDRIVE,
@@ -16,12 +28,15 @@ const env = (over: Partial<SitesEnv> = {}): SitesEnv => ({
   APPS_BUSINESS_IDS: A,
   SITES_ORIGIN: 'https://sites.test',
   TURNSTILE_SITE_KEY: 'site-key',
-  BOOKING_BURST: { limit: async () => ({ success: burstOk }) } as unknown as RateLimit,
+  BOOKING_BURST: brake(() => burstOk),
+  SITES_BURST: brake(() => sitesBurstOk),
   ...over,
 });
 
 beforeEach(async () => {
   burstOk = true;
+  sitesBurstOk = true;
+  brakeKeys = [];
   await truncateAll();
   service = await asOwner(async (sql) => {
     await sql`insert into business (id, name, playbook_key, onboarded, lang) values (${A}, 'SEIDO <Coffee>', 'services', true, 'en')`;
@@ -48,6 +63,23 @@ function post(fields: Record<string, string>, e = env(), fetchImpl?: typeof fetc
     method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'CF-Connecting-IP': '203.0.113.9' },
   });
   return handleSites(request, e, { now: () => NOW, fetchImpl });
+}
+
+/** A POST whose body and type the test chooses. */
+function rawPost(body: string, contentType: string, headers: Record<string, string> = {}) {
+  return new Request('https://sites.test/b/seido/request?lang=en', {
+    method: 'POST', body, headers: { 'Content-Type': contentType, 'CF-Connecting-IP': '203.0.113.9', ...headers },
+  });
+}
+
+/** Through the deployed entry, so a throw would show as its 500 and its log. */
+function sendRaw(body: string, contentType: string, headers: Record<string, string> = {}) {
+  return sites.fetch(rawPost(body, contentType, headers), env());
+}
+
+function expectSecurityHeaders(res: Response) {
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) expect(res.headers.get(name)).toBe(value);
+  expect(res.headers.get('Set-Cookie')).toBeNull();
 }
 
 const form = (over: Record<string, string> = {}) => ({
@@ -149,7 +181,9 @@ describe('sites: sending a request', () => {
     const wrongToken = await post({ ...form({ submission_key: '55555555-5555-4555-8555-555555555555' }), 'cf-turnstile-response': 'tok' }, secret, signin as unknown as typeof fetch);
     expect(wrongToken.status).toBe(400);
     burstOk = false;
-    expect((await post(form({ submission_key: '66666666-6666-4666-8666-666666666666' }))).status).toBe(429);
+    const braked = await post(form({ submission_key: '66666666-6666-4666-8666-666666666666' }));
+    expect(braked.status).toBe(429);
+    expect(await braked.text()).toContain('Please try again shortly');
     expect(await asOwner((sql) => sql`select 1 from booking`)).toHaveLength(0);
   });
 
@@ -162,6 +196,70 @@ describe('sites: sending a request', () => {
     const taken = await post(form({ submission_key: '88888888-8888-4888-8888-888888888888' }));
     expect(taken.status).toBe(303);
     expect(taken.headers.get('Location')).toContain('notice=taken');
+  });
+});
+
+describe('sites: turned away before the database', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('answers 404 with the apps switch off, without a database', async () => {
+    const off = env({ APPS_ENABLED: 'false', HYPERDRIVE: NOWHERE });
+    const page = await get('/b/seido?lang=bm', off);
+    expect(page.status).toBe(404);
+    expect(await page.text()).toContain('Halaman tidak dijumpai');
+    expectSecurityHeaders(page);
+    expect((await post(form(), off)).status).toBe(404);
+    expect(brakeKeys).toEqual([]);
+  });
+
+  it('answers 429 from the page brake, keyed by address, without a database', async () => {
+    sitesBurstOk = false;
+    const res = await get('/b/seido?lang=bm', env({ HYPERDRIVE: NOWHERE }));
+    expect(res.status).toBe(429);
+    expect(await res.text()).toContain('Sila cuba sebentar lagi');
+    expectSecurityHeaders(res);
+    expect((await post(form(), env({ HYPERDRIVE: NOWHERE }))).status).toBe(429);
+    expect(brakeKeys).toEqual(['site:unknown', 'site:203.0.113.9']);
+  });
+
+  it('answers 429 from the booking brake, keyed by address, without a database', async () => {
+    burstOk = false;
+    const res = await post(form(), env({ HYPERDRIVE: NOWHERE }));
+    expect(res.status).toBe(429);
+    expect(await res.text()).toContain('Please try again shortly');
+    expectSecurityHeaders(res);
+    expect(brakeKeys).toEqual(['site:203.0.113.9', 'book:203.0.113.9']);
+  });
+
+  it('refuses a body that is not a form with 400, and never as a failure', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const json = await sendRaw(JSON.stringify(form()), 'application/json');
+    expect(json.status).toBe(400);
+    expect(await json.text()).toContain('Please start again');
+    expectSecurityHeaders(json);
+    const multipart = await sendRaw('--x\r\n', 'multipart/form-data; boundary=x');
+    expect(multipart.status).toBe(400);
+    expect(spy).not.toHaveBeenCalled();
+    expect(await asOwner((sql) => sql`select 1 from booking`)).toHaveLength(0);
+  });
+
+  it('refuses a body over 8 KiB with 413, by its declared length or its real one', async () => {
+    const big = await sendRaw(new URLSearchParams(form({ note: 'x'.repeat(9000) })).toString(), 'application/x-www-form-urlencoded');
+    expect(big.status).toBe(413);
+    expect(await big.text()).toContain('Please start again');
+    expectSecurityHeaders(big);
+    const declared = await sendRaw('a=b', 'application/x-www-form-urlencoded', { 'Content-Length': '9000' });
+    expect(declared.status).toBe(413);
+    expect(await asOwner((sql) => sql`select 1 from booking`)).toHaveLength(0);
+  });
+
+  it('reads a form whose type carries a parameter or capitals', async () => {
+    const res = await handleSites(rawPost(new URLSearchParams(form()).toString(),
+      'Application/X-WWW-Form-Urlencoded; charset=UTF-8'), env(), { now: () => NOW });
+    expect(res.status).toBe(303);
+    expect(await asOwner((sql) => sql`select 1 from booking`)).toHaveLength(1);
   });
 });
 

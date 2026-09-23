@@ -28,7 +28,11 @@ export function redirect(location: string, status: 301 | 303): Response {
   return new Response(null, { status, headers: { Location: location, ...SECURITY_HEADERS } });
 }
 
-export type FormError = RequestField | 'turnstile' | 'busy' | 'daily_cap';
+export type FormError = RequestField | 'turnstile' | 'daily_cap';
+
+/** The whole-page messages. `busy` and `bad_request` are answered before the
+    business is known, so they carry no name and no way back. */
+export type MessageKind = 'not_found' | 'unavailable' | 'changed' | 'busy' | 'bad_request';
 
 const T = {
   en: {
@@ -39,19 +43,19 @@ const T = {
     privacy: (b: string) => `Your name and phone number go to ${b} to handle this booking.`, privacyLink: 'Privacy',
     receivedTitle: 'Request received', received: (b: string) => `${b} will confirm on WhatsApp.`, reference: 'Reference',
     taken: 'That time was just taken. Please choose another.',
-    titles: { not_found: 'Page not found', unavailable: 'Not taking bookings right now', changed: 'Please start a fresh request', busy: 'Please try again shortly', daily_cap: 'Please try again later' },
+    titles: { not_found: 'Page not found', unavailable: 'Not taking bookings right now', changed: 'Please start a fresh request', busy: 'Please try again shortly', bad_request: 'Please start again' },
     bodies: {
       not_found: 'This booking page does not exist.',
       unavailable: 'Please check back later.',
       changed: 'This form was already sent with different details. Start again to send a new request.',
       busy: 'Too many requests from this connection. Wait a minute and try again.',
-      daily_cap: 'This business has received many requests today. Please try again tomorrow.',
+      bad_request: 'This form could not be read. Go back and try again.',
     },
     errors: {
       service: 'Please choose a service again.', start: 'Please choose a time again.', name: 'Please enter your name.',
       phone: 'Please enter a Malaysian phone number.', partySize: 'Please choose how many people.',
       note: 'Please keep the note under 500 characters.', submission: 'Please reload the page and try again.',
-      turnstile: 'Please complete the check before sending.', busy: 'Too many requests. Please wait a minute and try again.',
+      turnstile: 'Please complete the check before sending.',
       daily_cap: 'This business has received many requests today. Please try again tomorrow.',
     },
   },
@@ -63,19 +67,19 @@ const T = {
     privacy: (b: string) => `Nama dan nombor telefon anda dihantar kepada ${b} untuk menguruskan tempahan ini.`, privacyLink: 'Privasi',
     receivedTitle: 'Permintaan diterima', received: (b: string) => `${b} akan mengesahkan melalui WhatsApp.`, reference: 'Rujukan',
     taken: 'Masa itu baru sahaja diambil. Sila pilih masa lain.',
-    titles: { not_found: 'Halaman tidak dijumpai', unavailable: 'Tidak menerima tempahan buat masa ini', changed: 'Sila mulakan permintaan baharu', busy: 'Sila cuba sebentar lagi', daily_cap: 'Sila cuba lagi kemudian' },
+    titles: { not_found: 'Halaman tidak dijumpai', unavailable: 'Tidak menerima tempahan buat masa ini', changed: 'Sila mulakan permintaan baharu', busy: 'Sila cuba sebentar lagi', bad_request: 'Sila mulakan semula' },
     bodies: {
       not_found: 'Halaman tempahan ini tidak wujud.',
       unavailable: 'Sila cuba lagi kemudian.',
       changed: 'Borang ini sudah dihantar dengan butiran lain. Mulakan semula untuk menghantar permintaan baharu.',
       busy: 'Terlalu banyak permintaan dari sambungan ini. Tunggu seminit dan cuba lagi.',
-      daily_cap: 'Perniagaan ini telah menerima banyak permintaan hari ini. Sila cuba lagi esok.',
+      bad_request: 'Borang ini tidak dapat dibaca. Kembali dan cuba lagi.',
     },
     errors: {
       service: 'Sila pilih perkhidmatan semula.', start: 'Sila pilih masa semula.', name: 'Sila masukkan nama anda.',
       phone: 'Sila masukkan nombor telefon Malaysia.', partySize: 'Sila pilih bilangan orang.',
       note: 'Sila pastikan nota kurang daripada 500 aksara.', submission: 'Sila muat semula halaman dan cuba lagi.',
-      turnstile: 'Sila lengkapkan semakan sebelum menghantar.', busy: 'Terlalu banyak permintaan. Sila tunggu seminit dan cuba lagi.',
+      turnstile: 'Sila lengkapkan semakan sebelum menghantar.',
       daily_cap: 'Perniagaan ini telah menerima banyak permintaan hari ini. Sila cuba lagi esok.',
     },
   },
@@ -154,7 +158,7 @@ export function formPage(input: Base & {
   const max = Math.min(input.remaining, 50);
   const options = Array.from({ length: max }, (_, i) => i + 1)
     .map((n) => `<option value="${n}"${String(n) === input.values.party ? ' selected' : ''}>${n}</option>`).join('');
-  const general = (['service', 'start', 'submission', 'busy', 'daily_cap'] as FormError[]).map(err).join('');
+  const general = (['service', 'start', 'submission', 'daily_cap'] as FormError[]).map(err).join('');
   const date = input.startsAt.toISOString();
   return layout({
     lang: input.lang, title: `${input.service.name} · ${input.businessName}`, widget: Boolean(input.siteKey),
@@ -185,7 +189,7 @@ export function donePage(input: Base & { reference: string }): string {
   });
 }
 
-export function messagePage(input: { slug: string | null; lang: Lang; businessName: string | null; kind: 'not_found' | 'unavailable' | 'changed' | 'busy' | 'daily_cap' }): string {
+export function messagePage(input: { slug: string | null; lang: Lang; businessName: string | null; kind: MessageKind }): string {
   const t = T[input.lang];
   const heading = input.businessName ? `<p class="muted">${escapeHtml(input.businessName)}</p>` : '';
   const back = input.slug && input.kind !== 'not_found' ? `<a href="${href(input.slug, '', { lang: input.lang })}">${t.back}</a>` : '';

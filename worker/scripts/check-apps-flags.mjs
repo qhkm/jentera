@@ -7,7 +7,8 @@
  * while the owner routes answer 404, or the reverse. It also catches three
  * ways the sites deploy can be misconfigured and fail silently in
  * production: a SITES_ORIGIN that does not parse as an https URL, a missing
- * Turnstile site key, and a missing BOOKING_BURST ratelimit binding.
+ * Turnstile site key, and a missing BOOKING_BURST or SITES_BURST ratelimit
+ * binding (either one missing means that brake is silently skipped).
  * Runs in `predeploy` and in `deploy:sites`. Exit 0 = the two deploys agree
  * and jentera-sites is configured; exit 1 = do not deploy.
  */
@@ -44,13 +45,17 @@ function isHttpsUrl(value) {
   }
 }
 
+/** The ratelimits jentera-sites must carry: the booking-form brake and the
+    per-address page brake in front of the database. */
+const SITES_RATELIMITS = ['BOOKING_BURST', 'SITES_BURST'];
+
 /** Does the text contain a `[[env.sites.ratelimits]]` array-of-tables entry
-    named BOOKING_BURST? A focused line scan rather than a full TOML parser:
-    it tracks whether the current header's dotted path starts with
+    with this name? A focused line scan rather than a full TOML parser: it
+    tracks whether the current header's dotted path starts with
     "env.sites.ratelimits" — true for the array header itself and for its
     `[env.sites.ratelimits.simple]` sub-table — and looks for a `name = "…"`
     line while that holds. */
-function hasBookingBurstRatelimit(text) {
+function hasSitesRatelimit(text, name) {
   let inRatelimit = false;
   for (const raw of text.split('\n')) {
     const line = raw.trim();
@@ -59,7 +64,8 @@ function hasBookingBurstRatelimit(text) {
       inRatelimit = header[1].trim().startsWith('env.sites.ratelimits');
       continue;
     }
-    if (inRatelimit && /^name\s*=\s*"BOOKING_BURST"/.test(line)) return true;
+    const named = line.match(/^name\s*=\s*"([^"]*)"/);
+    if (inRatelimit && named?.[1] === name) return true;
   }
   return false;
 }
@@ -86,7 +92,9 @@ export function appsFlagProblems(text) {
   if (apiOrigin && sitesOrigin && apiOrigin !== sitesOrigin) problems.push('SITES_ORIGIN differs between [vars] and [env.sites.vars]');
 
   if (!sites.get('TURNSTILE_SITE_KEY')) problems.push('TURNSTILE_SITE_KEY is missing from [env.sites.vars]');
-  if (!hasBookingBurstRatelimit(text)) problems.push('[[env.sites.ratelimits]] has no BOOKING_BURST entry');
+  for (const name of SITES_RATELIMITS) {
+    if (!hasSitesRatelimit(text, name)) problems.push(`[[env.sites.ratelimits]] has no ${name} entry`);
+  }
 
   return problems;
 }

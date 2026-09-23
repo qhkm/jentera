@@ -6,4 +6,4 @@ import type { Env } from '../env';
     error, not a secret that happens to be unset. */
 export type SitesEnv = Pick<Env,
   'HYPERDRIVE' | 'APPS_ENABLED' | 'APPS_BUSINESS_IDS' | 'SITES_ORIGIN' |
-  'TURNSTILE_SECRET' | 'TURNSTILE_SITE_KEY' | 'BOOKING_BURST'>;
+  'TURNSTILE_SECRET' | 'TURNSTILE_SITE_KEY' | 'BOOKING_BURST' | 'SITES_BURST'>;

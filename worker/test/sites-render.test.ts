@@ -86,5 +86,12 @@ describe('pages', () => {
     expect(done).toContain('will confirm on WhatsApp.');
     expect(messagePage({ ...base, kind: 'unavailable' })).toContain('Not taking bookings right now');
     expect(messagePage({ slug: null, lang: 'en', businessName: null, kind: 'not_found' })).toContain('Page not found');
+    const unreadable = messagePage({ slug: null, lang: 'en', businessName: null, kind: 'bad_request' });
+    expect(unreadable).toContain('Please start again');
+    expect(unreadable).toContain('This form could not be read. Go back and try again.');
+    const unreadableBm = messagePage({ slug: null, lang: 'bm', businessName: null, kind: 'bad_request' });
+    expect(unreadableBm).toContain('Sila mulakan semula');
+    expect(unreadableBm).toContain('Borang ini tidak dapat dibaca. Kembali dan cuba lagi.');
+    expect(messagePage({ slug: null, lang: 'en', businessName: null, kind: 'busy' })).toContain('Please try again shortly');
   });
 });
