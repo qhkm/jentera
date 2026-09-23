@@ -5,7 +5,8 @@ import { hasBusiness, resolveTenant } from '../tenancy';
 import { can } from '../permissions';
 import { appsEnabledFor } from '../apps/gating';
 import { ConfigError, parseConfigInput, publicBookingUrl, readConfig, saveConfig } from '../apps/bookings/config';
-import { bookingJson, cancelBooking, decideBooking, decodeCursor, getBooking, listBookings, type BookingContext } from '../apps/bookings/bookings';
+import { bookingJson, cancelBooking, decideBooking, decodeCursor, getBooking, listBookings, retryCalendar, type BookingContext } from '../apps/bookings/bookings';
+import { runCalendarJob } from '../apps/bookings/calendar-sync';
 import { isDate, myDate } from '../apps/bookings/time';
 import type { Lang } from '../apps/bookings/messages';
 
@@ -38,6 +39,7 @@ export async function handleApps(
   env: Env,
   url: URL,
   cors: Record<string, string>,
+  execution?: { waitUntil(promise: Promise<unknown>): void },
 ): Promise<Response | null> {
   if (url.pathname !== '/api/apps' && !url.pathname.startsWith('/api/apps/')) return null;
   const identity = await resolveTenant(env, request);
@@ -119,7 +121,7 @@ export async function handleApps(
       return json({ ok: true, ...result }, {}, cors);
     }
 
-    const match = url.pathname.match(/^\/api\/apps\/bookings\/bookings\/([0-9a-f-]{36})(?:\/(decide|cancel))?$/i);
+    const match = url.pathname.match(/^\/api\/apps\/bookings\/bookings\/([0-9a-f-]{36})(?:\/(decide|cancel|calendar\/retry))?$/i);
     if (!match) return notFound(cors);
     const [, id, action] = match;
 
@@ -144,13 +146,21 @@ export async function handleApps(
         if (!ctx) return { ok: false as const, code: 'NOT_FOUND' as const };
         const result = decision
           ? await decideBooking(tx, businessId, id, decision, identity.userId, now)
-          : await cancelBooking(tx, businessId, id, identity.userId, now);
-        return result.ok ? { ok: true as const, booking: bookingJson(result.row, ctx) } : result;
+          : action === 'cancel'
+            ? await cancelBooking(tx, businessId, id, identity.userId, now)
+            : await retryCalendar(tx, businessId, id, now);
+        return result.ok
+          ? { ok: true as const, booking: bookingJson(result.row, ctx), calendarQueued: result.calendarQueued }
+          : result;
       });
       if (!outcome.ok) {
         return outcome.code === 'NOT_FOUND' ? notFound(cors)
           : json({ ok: false, code: outcome.code }, { status: 409 }, cors);
       }
+      /* The transaction has committed: start the first Calendar attempt now,
+         in this invocation near the database, without holding the answer for
+         it. The minute cron is the backstop if this never runs. */
+      if (outcome.calendarQueued) execution?.waitUntil(runCalendarJob(env, businessId, id));
       return json({ ok: true, booking: outcome.booking, whatsappUrl: outcome.booking.whatsappUrl }, {}, cors);
     }
   }

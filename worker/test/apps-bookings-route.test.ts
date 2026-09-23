@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { handleApps } from '../src/routes/apps';
 import { myDate } from '../src/apps/bookings/time';
+import {
+  CALENDAR_DISCONNECTED_CLEANUP, CALENDAR_RECONNECT, processBookingCalendarJob,
+} from '../src/apps/bookings/calendar-sync';
 import { asOwner, jsonOf, req, signIn, testEnv, truncateAll } from './harness';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -45,14 +48,36 @@ beforeEach(async () => {
   serviceA = ids.service;
 });
 
-async function call(method: string, path: string, cookie: string, body?: unknown, withOrigin = true) {
+async function call(
+  method: string,
+  path: string,
+  cookie: string,
+  body?: unknown,
+  withOrigin = true,
+  execution?: { waitUntil(promise: Promise<unknown>): void },
+) {
   const shaped = req(method, path, { cookie, body });
   const headers = new Headers(shaped.request.headers);
   if (withOrigin) headers.set('Origin', CORS['Access-Control-Allow-Origin']);
-  const res = await handleApps(new Request(shaped.request, { headers }), ENV, shaped.url, CORS);
+  const res = await handleApps(new Request(shaped.request, { headers }), ENV, shaped.url, CORS, execution);
   if (!res) throw new Error('apps route did not handle the request');
   return res;
 }
+
+/** Collects what a route hands to waitUntil, without waiting for it. */
+function recorder() {
+  const scheduled: Promise<unknown>[] = [];
+  return { execution: { waitUntil: (promise: Promise<unknown>) => { scheduled.push(promise); } }, scheduled };
+}
+
+const connectGoogle = () => asOwner((sql) => sql<{ id: string }[]>`insert into connection (business_id, connector, method, status)
+  values (${A}, 'google', 'oauth', 'connected') returning id`);
+const calendarRow = async (id: string) => {
+  const [row] = await asOwner((sql) => sql<{ calendar_status: string; calendar_error: string | null; calendar_connection_id: string | null }[]>`
+    select calendar_status, calendar_error, calendar_connection_id from booking where id = ${id}`);
+  return row;
+};
+const jobRow = () => asOwner((sql) => sql`select desired, revision, attempts from booking_calendar_job`);
 
 async function booking(startsAt: string, over: { status?: string; party?: number; ref?: string; minutes?: number } = {}) {
   const [row] = await asOwner((sql) => sql<{ id: string }[]>`
@@ -232,5 +257,111 @@ describe('tenant isolation', () => {
     expect((await call('GET', `/api/apps/bookings/bookings/${id}`, staffA)).status).toBe(403);
     expect((await call('POST', `/api/apps/bookings/bookings/${id}/decide`, staffA, { decision: 'confirm' })).status).toBe(403);
     expect((await call('POST', `/api/apps/bookings/bookings/${id}/cancel`, staffA)).status).toBe(403);
+  });
+});
+
+describe('Calendar sync from the owner side', () => {
+  it('starts the first attempt after the decision commits, without waiting for it', async () => {
+    await connectGoogle();
+    const id = await booking(inDays(2));
+    const r = recorder();
+    const res = await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' }, true, r.execution);
+    expect((await jsonOf<Json>(res)).booking.calendar.status).toBe('pending');
+    expect(r.scheduled).toHaveLength(1);
+    await Promise.all(r.scheduled);
+    // This connection has no stored credential, so the attempt asks for a reconnect.
+    expect(await calendarRow(id)).toMatchObject({ calendar_status: 'failed', calendar_error: CALENDAR_RECONNECT });
+
+    const repeat = recorder();
+    await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' }, true, repeat.execution);
+    expect(repeat.scheduled).toHaveLength(0);
+    const declined = await booking(inDays(3), { ref: 'QQQQQQ' });
+    const d = recorder();
+    await call('POST', `/api/apps/bookings/bookings/${declined}/decide`, ownerA, { decision: 'decline' }, true, d.execution);
+    expect(d.scheduled).toHaveLength(0);
+  });
+
+  it('retries a failed sync once, leaves a queued one alone, and does nothing for finished work', async () => {
+    await connectGoogle();
+    const id = await booking(inDays(2));
+    await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
+    await asOwner(async (sql) => {
+      await sql`update booking_calendar_job set attempts = 8, last_error = 'x'`;
+      await sql`update booking set calendar_status = 'failed', calendar_error = 'x' where id = ${id}`;
+    });
+    const r = recorder();
+    const res = await call('POST', `/api/apps/bookings/bookings/${id}/calendar/retry`, ownerA, undefined, true, r.execution);
+    expect(res.status).toBe(200);
+    expect((await jsonOf<Json>(res)).booking.calendar.status).toBe('pending');
+    expect(r.scheduled).toHaveLength(1);
+    await Promise.all(r.scheduled);
+
+    // Queued and not yet attempted: a second tap changes nothing.
+    await asOwner((sql) => sql`update booking_calendar_job set attempts = 0, completed_revision = null`);
+    const before = await jobRow();
+    const twice = recorder();
+    expect((await call('POST', `/api/apps/bookings/bookings/${id}/calendar/retry`, ownerA, undefined, true, twice.execution)).status).toBe(200);
+    expect(twice.scheduled).toHaveLength(0);
+    expect(await jobRow()).toEqual(before);
+
+    // Done: the event exists.
+    await asOwner(async (sql) => {
+      await sql`update booking_calendar_job set completed_revision = revision`;
+      await sql`update booking set calendar_status = 'created', calendar_error = null where id = ${id}`;
+    });
+    const done = recorder();
+    await call('POST', `/api/apps/bookings/bookings/${id}/calendar/retry`, ownerA, undefined, true, done.execution);
+    expect(done.scheduled).toHaveLength(0);
+    expect((await calendarRow(id)).calendar_status).toBe('created');
+  });
+
+  it('pins a Calendar connected after the booking was confirmed', async () => {
+    const id = await booking(inDays(2));
+    await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
+    expect((await call('POST', `/api/apps/bookings/bookings/${id}/calendar/retry`, ownerA)).status).toBe(200);
+    expect(await calendarRow(id)).toMatchObject({ calendar_status: 'not_connected', calendar_connection_id: null });
+    expect(await jobRow()).toHaveLength(0);
+
+    const [connection] = await connectGoogle();
+    const res = await call('POST', `/api/apps/bookings/bookings/${id}/calendar/retry`, ownerA);
+    expect((await jsonOf<Json>(res)).booking.calendar.status).toBe('pending');
+    expect(await calendarRow(id)).toMatchObject({ calendar_status: 'pending', calendar_connection_id: connection.id });
+    expect(await jobRow()).toEqual([{ desired: 'present', revision: 1, attempts: 0 }]);
+  });
+
+  it('refuses retry for bookings that cannot have an event, and cleanup whose connection is gone', async () => {
+    const pending = await booking(inDays(2));
+    const notRetryable = await call('POST', `/api/apps/bookings/bookings/${pending}/calendar/retry`, ownerA);
+    expect(notRetryable.status).toBe(409);
+    expect(await notRetryable.json()).toMatchObject({ code: 'NOT_RETRYABLE' });
+
+    await connectGoogle();
+    const id = await booking(inDays(3), { ref: 'QQQQQQ' });
+    await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
+    await asOwner(async (sql) => {
+      await sql`update booking_calendar_job set completed_revision = revision`;
+      await sql`update booking set calendar_status = 'created' where id = ${id}`;
+      await sql`delete from connection`;   // the pin becomes null
+    });
+    await call('POST', `/api/apps/bookings/bookings/${id}/cancel`, ownerA);
+    expect(await processBookingCalendarJob(ENV, A, id)).toBe('failed');
+    expect((await calendarRow(id)).calendar_error).toBe(CALENDAR_DISCONNECTED_CLEANUP);
+    const refused = await call('POST', `/api/apps/bookings/bookings/${id}/calendar/retry`, ownerA);
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({ code: 'CALENDAR_DISCONNECTED' });
+    expect((await call('POST', `/api/apps/bookings/bookings/${id}/calendar/retry`, staffA)).status).toBe(403);
+  });
+
+  it('clears an old Calendar error when a cancel queues cleanup', async () => {
+    await connectGoogle();
+    const id = await booking(inDays(2));
+    await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
+    await asOwner((sql) => sql`update booking set calendar_status = 'failed',
+      calendar_error = 'Google Calendar could not complete that request (500).' where id = ${id}`);
+    const r = recorder();
+    await call('POST', `/api/apps/bookings/bookings/${id}/cancel`, ownerA, undefined, true, r.execution);
+    expect(r.scheduled).toHaveLength(1);
+    expect(await calendarRow(id)).toMatchObject({ calendar_status: 'pending', calendar_error: null });
+    await Promise.all(r.scheduled);
   });
 });

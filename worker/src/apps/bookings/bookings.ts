@@ -1,6 +1,7 @@
 import type postgres from 'postgres';
 import { findConnection } from '../../connections';
 import { GOOGLE_CALENDAR_CONNECTOR } from '../../connectors/google-calendar';
+import { CALENDAR_MAX_ATTEMPTS } from './calendar-sync';
 import { bookingMessage, whatsappUrl, type Lang, type MessageKind } from './messages';
 import { addDays, myInstant } from './time';
 
@@ -59,7 +60,7 @@ export interface BookingCursor { d: string; p: 0 | 1; s: string; id: string }
 
 export type DecideResult =
   | { ok: true; row: BookingRow; changed: boolean; calendarQueued: boolean }
-  | { ok: false; code: 'NOT_FOUND' | 'ALREADY_DECIDED' | 'EXPIRED' };
+  | { ok: false; code: 'NOT_FOUND' | 'ALREADY_DECIDED' | 'EXPIRED' | 'NOT_RETRYABLE' | 'CALENDAR_DISCONNECTED' };
 
 // A plain string[]: postgres.js's identifier helper, tx(COLUMNS), does not accept a readonly tuple.
 const COLUMNS: string[] = [
@@ -226,9 +227,51 @@ export async function cancelBooking(
   const eventMayExist = Boolean(job) || row.calendar_status === 'created';
   const [updated] = await tx<BookingRow[]>`update booking
     set status = 'cancelled', cancelled_at = ${now}, cancelled_by = ${userId},
-        calendar_status = ${eventMayExist ? 'pending' : row.calendar_status}
+        calendar_status = ${eventMayExist ? 'pending' : row.calendar_status},
+        calendar_error = ${eventMayExist ? null : row.calendar_error}
     where business_id = ${businessId} and id = ${id} and status = 'confirmed'
     returning ${tx(COLUMNS)}`;
   if (eventMayExist) await queueCalendarJob(tx, businessId, id, 'absent', now);
   return { ok: true, row: updated, changed: true, calendarQueued: eventMayExist };
+}
+
+/** The owner's retry: queue the Calendar state the booking should be in
+    again, but only when nothing is already on its way. A queued or in-flight
+    job keeps its backoff; a finished one is left alone. */
+export async function retryCalendar(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  id: string,
+  now: Date,
+): Promise<DecideResult> {
+  const row = await lockForChange(tx, businessId, id);
+  if (!row) return { ok: false, code: 'NOT_FOUND' };
+  if (row.status !== 'confirmed' && row.status !== 'cancelled') return { ok: false, code: 'NOT_RETRYABLE' };
+  const desired = row.status === 'confirmed' ? 'present' : 'absent';
+  const unchanged: DecideResult = { ok: true, row, changed: false, calendarQueued: false };
+  const [job] = await tx<{ revision: number; completed_revision: number | null; attempts: number }[]>`
+    select revision, completed_revision, attempts from booking_calendar_job
+     where business_id = ${businessId} and booking_id = ${id} for update`;
+  if (job && job.completed_revision !== job.revision && job.attempts < CALENDAR_MAX_ATTEMPTS) return unchanged;
+  if (job && job.completed_revision === job.revision && row.calendar_status !== 'failed') return unchanged;
+  const [pin] = await tx<{ calendar_connection_id: string | null }[]>`
+    select calendar_connection_id from booking where business_id = ${businessId} and id = ${id}`;
+  let connectionId = pin.calendar_connection_id;
+  if (!job) {
+    // No job means no event could exist: a cancel has nothing to clean, and
+    // only a booking confirmed while nothing was connected can be added now.
+    if (desired === 'absent' || row.calendar_status !== 'not_connected') return unchanged;
+    const connection = await findConnection(tx, GOOGLE_CALENDAR_CONNECTOR);
+    if (!connection) return unchanged;
+    connectionId = connection.id;
+  } else if (!connectionId) {
+    // The account this booking used is gone; never switch to another one.
+    return { ok: false, code: 'CALENDAR_DISCONNECTED' };
+  }
+  const [updated] = await tx<BookingRow[]>`update booking
+    set calendar_status = 'pending', calendar_error = null, calendar_connection_id = ${connectionId}
+    where business_id = ${businessId} and id = ${id}
+    returning ${tx(COLUMNS)}`;
+  await queueCalendarJob(tx, businessId, id, desired, now);
+  return { ok: true, row: updated, changed: true, calendarQueued: true };
 }

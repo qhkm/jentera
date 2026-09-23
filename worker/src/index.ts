@@ -221,7 +221,9 @@ export default {
     if (agentMemory) return agentMemory;
     const goals = await handleGoals(request, env, url, headers);
     if (goals) return goals;
-    const apps = await handleApps(request, env, url, headers);
+    const apps = await handleApps(request, env, url, headers, {
+      waitUntil: (promise) => ctx.waitUntil(promise),
+    });
     if (apps) return apps;
 
     /* Connections, and the Telegram webhook — the one route here that
