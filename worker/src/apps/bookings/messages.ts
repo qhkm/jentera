@@ -24,15 +24,30 @@ const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'
 const BM_DAYS = ['Ahad', 'Isnin', 'Selasa', 'Rabu', 'Khamis', 'Jumaat', 'Sabtu'];
 const BM_MONTHS = ['Jan', 'Feb', 'Mac', 'Apr', 'Mei', 'Jun', 'Jul', 'Ogo', 'Sep', 'Okt', 'Nov', 'Dis'];
 
-export function whenText(startsAt: Date, lang: Lang): string {
-  const p = myParts(startsAt);
+/** The Malaysian calendar date, as a person reads it: en `Tue 6 Oct`, bm `Selasa 6 Okt`. */
+export function dateText(instant: Date, lang: Lang): string {
+  const p = myParts(instant);
+  return lang === 'bm'
+    ? `${BM_DAYS[p.weekday]} ${p.day} ${BM_MONTHS[p.month]}`
+    : `${EN_DAYS[p.weekday]} ${p.day} ${EN_MONTHS[p.month]}`;
+}
+
+/** The Malaysian wall clock, as a person reads it: en `10:00 am`, bm `10.00 pagi`. */
+export function clockText(instant: Date, lang: Lang): string {
+  const p = myParts(instant);
   const hour12 = p.hour % 12 === 0 ? 12 : p.hour % 12;
   const minutes = String(p.minute).padStart(2, '0');
   if (lang === 'bm') {
     const period = p.hour < 12 ? 'pagi' : p.hour < 14 ? 'tengah hari' : p.hour < 19 ? 'petang' : 'malam';
-    return `${BM_DAYS[p.weekday]} ${p.day} ${BM_MONTHS[p.month]}, ${hour12}.${minutes} ${period}`;
+    return `${hour12}.${minutes} ${period}`;
   }
-  return `${EN_DAYS[p.weekday]} ${p.day} ${EN_MONTHS[p.month]} at ${hour12}:${minutes} ${p.hour < 12 ? 'am' : 'pm'}`;
+  return `${hour12}:${minutes} ${p.hour < 12 ? 'am' : 'pm'}`;
+}
+
+export function whenText(startsAt: Date, lang: Lang): string {
+  const date = dateText(startsAt, lang);
+  const clock = clockText(startsAt, lang);
+  return lang === 'bm' ? `${date}, ${clock}` : `${date} at ${clock}`;
 }
 
 export function bookingMessage(m: MessageInput): string {
