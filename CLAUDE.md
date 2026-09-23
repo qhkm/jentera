@@ -32,6 +32,20 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
   prompt within minutes rather than at the next launch. The 4-hour cache
   header the zone puts on `/sw.js` is not a factor: browsers bypass the
   HTTP cache for a service worker's main script on update checks.
+- **The Reload on that prompt is ours, not the plugin's**
+  (`pwa/apply-update.ts`). `updateServiceWorker(true)` does less than its
+  name and its argument suggest: vite-plugin-pwa ignores `reloadPage` and
+  only posts SKIP_WAITING, reloading from a separate listener that fires
+  on `controlling` and *only when it saw a controller at registration
+  time*. So a page that was not under a worker when it registered — the
+  session that first installs one, or any load after a hard refresh —
+  swapped workers and then sat on the old bundle with the notice still on
+  screen. Measured both sides on a real build-to-build swap on 23
+  September: controlled at register time reloaded, uncontrolled did not.
+  `applyUpdate` reloads when the new worker takes control, and after
+  `TAKEOVER_GRACE_MS` regardless — which also covers the other dead end,
+  where nothing is waiting because another tab already took the update and
+  SKIP_WAITING lands nowhere.
 - The steps under a reply are read, not quoted. The runner keeps only the
   program of a command (`git`, never `git push …`), nothing for code, and
   the action word for a process; the runtime's and the host's own names are

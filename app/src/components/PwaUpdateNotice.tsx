@@ -1,7 +1,9 @@
 import { ArrowsClockwise } from '@phosphor-icons/react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Button } from '@/components/ui';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useRegisterSW } from '@/pwa/register';
+import { applyUpdate } from '@/pwa/apply-update';
 import { startUpdateChecks } from '@/pwa/update-checks';
 import { isNative } from '@/lib/native';
 
@@ -12,6 +14,7 @@ import { isNative } from '@/lib/native';
 function WebPwaUpdateNotice() {
   const { t } = useI18n();
   const stopChecks = useRef<(() => void) | null>(null);
+  const [applying, setApplying] = useState(false);
   const { needRefresh: [needRefresh, setNeedRefresh], updateServiceWorker } = useRegisterSW({
     onRegisteredSW(_url, registration) {
       stopChecks.current?.();
@@ -28,9 +31,13 @@ function WebPwaUpdateNotice() {
     >
       <ArrowsClockwise size={18} weight="duotone" aria-hidden="true" className="text-brand" />
       <span className="min-w-0 flex-1 text-[13px]">{t('pwa.update')}</span>
-      <button type="button" className="btn" onClick={() => void updateServiceWorker(true)}>
+      <Button
+        type="button"
+        disabled={applying}
+        onClick={() => { setApplying(true); applyUpdate(updateServiceWorker); }}
+      >
         {t('pwa.reload')}
-      </button>
+      </Button>
       <button type="button" className="nav-link text-sm normal-case tracking-normal" onClick={() => setNeedRefresh(false)}>
         {t('pwa.later')}
       </button>
