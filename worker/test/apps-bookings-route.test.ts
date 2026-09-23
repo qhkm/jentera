@@ -1,0 +1,188 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import { handleApps } from '../src/routes/apps';
+import { asOwner, jsonOf, req, signIn, testEnv, truncateAll } from './harness';
+
+const A = '11111111-1111-4111-8111-111111111111';
+const B = '22222222-2222-4222-8222-222222222222';
+const CORS = { 'Access-Control-Allow-Origin': 'http://localhost:5173' };
+const ENV = testEnv({ APPS_ENABLED: 'true', APPS_BUSINESS_IDS: `${A},${B}`, SITES_ORIGIN: 'https://sites.test' });
+let ownerA = '';
+let ownerB = '';
+let serviceA = '';
+
+type Json = { ok: boolean; code?: string; booking: { id: string; status: string; expired: boolean; calendar: { status: string }; whatsappUrl: string | null }; whatsappUrl: string | null };
+
+beforeEach(async () => {
+  await truncateAll();
+  const ids = await asOwner(async (sql): Promise<Record<string, string> & { service: string }> => {
+    await sql`insert into business (id, name, playbook_key, onboarded)
+      values (${A}, 'SEIDO Coffee', 'services', true), (${B}, 'Beta', 'salon', true)`;
+    const users = await sql<{ id: string; email: string }[]>`insert into app_user (email, email_verified)
+      values ('a@example.com', true), ('b@example.com', true) returning id, email`;
+    const byEmail = Object.fromEntries(users.map((u) => [u.email, u.id]));
+    await sql`insert into membership (user_id, business_id, role) values
+      (${byEmail['a@example.com']}, ${A}, 'owner'), (${byEmail['b@example.com']}, ${B}, 'owner')`;
+    await sql`insert into app_installation (business_id, app_key, public_slug) values (${A}, 'bookings', 'seido')`;
+    await sql`insert into booking_settings (business_id, availability_acknowledged_at) values (${A}, now())`;
+    const [s] = await sql<{ id: string }[]>`insert into booking_service (business_id, name, duration_minutes, capacity)
+      values (${A}, 'cupping class', 60, 4) returning id`;
+    return { ...byEmail, service: s.id };
+  });
+  ownerA = await signIn(ids['a@example.com']);
+  ownerB = await signIn(ids['b@example.com']);
+  serviceA = ids.service;
+});
+
+async function call(method: string, path: string, cookie: string, body?: unknown, withOrigin = true) {
+  const shaped = req(method, path, { cookie, body });
+  const headers = new Headers(shaped.request.headers);
+  if (withOrigin) headers.set('Origin', CORS['Access-Control-Allow-Origin']);
+  const res = await handleApps(new Request(shaped.request, { headers }), ENV, shaped.url, CORS);
+  if (!res) throw new Error('apps route did not handle the request');
+  return res;
+}
+
+async function booking(startsAt: string, over: { status?: string; party?: number; ref?: string; minutes?: number } = {}) {
+  const [row] = await asOwner((sql) => sql<{ id: string }[]>`
+    insert into booking (business_id, reference, submission_key, submission_hash, service_id, service_name,
+      starts_at, ends_at, party_size, customer_name, customer_phone, status)
+    values (${A}, ${over.ref ?? 'K7Q2MP'}, gen_random_uuid(), 'h', ${serviceA}, 'cupping class',
+      ${startsAt}::timestamptz, ${startsAt}::timestamptz + make_interval(mins => ${over.minutes ?? 60}),
+      ${over.party ?? 2}, 'Aisyah', '60123456789', ${over.status ?? 'pending'})
+    returning id`);
+  return row.id;
+}
+const inDays = (days: number, hourUtc = 7) => {
+  const d = new Date(Date.now() + days * 86_400_000);
+  d.setUTCHours(hourUtc, 0, 0, 0);
+  return d.toISOString();
+};
+
+describe('listing bookings', () => {
+  it('groups by Malaysian date, pending first, and pages with a cursor', async () => {
+    // 00:30 on 27 Sep in Malaysia is 16:30 UTC on 26 Sep.
+    await asOwner((sql) => sql`insert into booking (business_id, reference, submission_key, submission_hash, service_id,
+      service_name, starts_at, ends_at, party_size, customer_name, customer_phone, status)
+      values
+      (${A}, 'AAAAAA', gen_random_uuid(), 'h', ${serviceA}, 'cupping class', '2026-09-26T16:30:00Z', '2026-09-26T17:30:00Z', 1, 'Late', '60123456789', 'confirmed'),
+      (${A}, 'BBBBBB', gen_random_uuid(), 'h', ${serviceA}, 'cupping class', '2026-09-27T05:00:00Z', '2026-09-27T06:00:00Z', 1, 'Pending', '60123456789', 'pending'),
+      (${A}, 'CCCCCC', gen_random_uuid(), 'h', ${serviceA}, 'cupping class', '2026-09-26T08:00:00Z', '2026-09-26T09:00:00Z', 1, 'Earlier', '60123456789', 'confirmed')`);
+    const day = await jsonOf<{ bookings: Array<{ customerName: string }> }>(
+      await call('GET', '/api/apps/bookings/bookings?from=2026-09-27&days=1', ownerA));
+    expect(day.bookings.map((b) => b.customerName)).toEqual(['Pending', 'Late']);
+    const first = await jsonOf<{ bookings: Array<{ customerName: string }>; nextCursor: string | null }>(
+      await call('GET', '/api/apps/bookings/bookings?from=2026-09-26&days=2&limit=2', ownerA));
+    expect(first.bookings.map((b) => b.customerName)).toEqual(['Earlier', 'Pending']);
+    const rest = await jsonOf<{ bookings: Array<{ customerName: string }>; nextCursor: string | null }>(
+      await call('GET', `/api/apps/bookings/bookings?from=2026-09-26&days=2&limit=2&cursor=${first.nextCursor}`, ownerA));
+    expect(rest.bookings.map((b) => b.customerName)).toEqual(['Late']);
+    expect(rest.nextCursor).toBeNull();
+  });
+
+  it('refuses a bad window and hides another business', async () => {
+    expect((await call('GET', '/api/apps/bookings/bookings?from=2026-02-30', ownerA)).status).toBe(400);
+    expect((await call('GET', '/api/apps/bookings/bookings?from=2026-09-27&days=32', ownerA)).status).toBe(400);
+    const id = await booking(inDays(2));
+    expect((await call('GET', `/api/apps/bookings/bookings/${id}`, ownerA)).status).toBe(200);
+    expect((await call('GET', `/api/apps/bookings/bookings/${id}`, ownerB)).status).toBe(404);
+  });
+});
+
+describe('deciding', () => {
+  it('confirms, queues a Calendar job when Google is connected, and repeats safely', async () => {
+    await asOwner((sql) => sql`insert into connection (business_id, connector, method, status) values (${A}, 'google', 'oauth', 'connected')`);
+    const id = await booking(inDays(2));
+    const res = await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
+    expect(res.status).toBe(200);
+    const body = await jsonOf<Json>(res);
+    expect(body.booking).toMatchObject({ status: 'confirmed', calendar: { status: 'pending' } });
+    expect(decodeURIComponent(body.whatsappUrl!)).toContain('is confirmed. Ref K7Q2MP. See you at SEIDO Coffee.');
+    const again = await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
+    expect(again.status).toBe(200);
+    const jobs = await asOwner((sql) => sql<{ desired: string; revision: number }[]>`select desired, revision from booking_calendar_job`);
+    expect(jobs).toEqual([{ desired: 'present', revision: 1 }]);
+  });
+
+  it('marks Calendar not connected when there is no Google connection', async () => {
+    const id = await booking(inDays(2));
+    const body = await jsonOf<Json>(await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' }));
+    expect(body.booking.calendar.status).toBe('not_connected');
+    expect(await asOwner((sql) => sql`select 1 from booking_calendar_job`)).toHaveLength(0);
+  });
+
+  it('refuses a conflicting decision, an expired request, and another business', async () => {
+    const id = await booking(inDays(2));
+    await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'decline' });
+    const conflict = await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toMatchObject({ code: 'ALREADY_DECIDED' });
+    const past = await booking(new Date(Date.now() - 3_600_000).toISOString(), { ref: 'PPPPPP' });
+    const expired = await call('POST', `/api/apps/bookings/bookings/${past}/decide`, ownerA, { decision: 'confirm' });
+    expect(expired.status).toBe(409);
+    expect(await expired.json()).toMatchObject({ code: 'EXPIRED' });
+    expect((await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerB, { decision: 'confirm' })).status).toBe(404);
+    expect((await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'maybe' })).status).toBe(400);
+  });
+
+  it('lets exactly one of two concurrent decisions win', async () => {
+    const id = await booking(inDays(2));
+    const [a, b] = await Promise.all([
+      call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' }),
+      call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'decline' }),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+  });
+
+  it('writes the WhatsApp text in Malay for a Malay business', async () => {
+    await asOwner((sql) => sql`update business set lang = 'bm' where id = ${A}`);
+    const id = await booking(inDays(2));
+    const body = await jsonOf<Json>(await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' }));
+    expect(decodeURIComponent(body.whatsappUrl!)).toContain('telah disahkan');
+  });
+
+  it('refuses a decision with no Origin header', async () => {
+    const id = await booking(inDays(2));
+    const res = await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' }, false);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('cancelling', () => {
+  it('releases the place, keeps the confirmation, and queues removal when an event may exist', async () => {
+    await asOwner((sql) => sql`insert into connection (business_id, connector, method, status) values (${A}, 'google', 'oauth', 'connected')`);
+    const id = await booking(inDays(2));
+    await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
+    const res = await call('POST', `/api/apps/bookings/bookings/${id}/cancel`, ownerA);
+    expect(res.status).toBe(200);
+    const body = await jsonOf<Json>(res);
+    expect(body.booking).toMatchObject({ status: 'cancelled', calendar: { status: 'pending' } });
+    expect(decodeURIComponent(body.whatsappUrl!)).toContain('has been cancelled');
+    const [row] = await asOwner((sql) => sql<{ decided_at: Date | null; cancelled_at: Date | null }[]>`
+      select decided_at, cancelled_at from booking where id = ${id}`);
+    expect(row.decided_at).not.toBeNull();
+    expect(row.cancelled_at).not.toBeNull();
+    expect(await asOwner((sql) => sql`select desired, revision from booking_calendar_job`)).toEqual([{ desired: 'absent', revision: 2 }]);
+    expect((await call('POST', `/api/apps/bookings/bookings/${id}/cancel`, ownerA)).status).toBe(200);
+    expect(await asOwner((sql) => sql`select revision from booking_calendar_job`)).toEqual([{ revision: 2 }]);
+  });
+
+  it('needs no Calendar cleanup when none was ever connected, and refuses pending or started bookings', async () => {
+    const id = await booking(inDays(2));
+    await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
+    await call('POST', `/api/apps/bookings/bookings/${id}/cancel`, ownerA);
+    expect(await asOwner((sql) => sql`select 1 from booking_calendar_job`)).toHaveLength(0);
+    const pending = await booking(inDays(3), { ref: 'QQQQQQ' });
+    expect((await call('POST', `/api/apps/bookings/bookings/${pending}/cancel`, ownerA)).status).toBe(409);
+    const started = await booking(new Date(Date.now() - 600_000).toISOString(), { ref: 'RRRRRR', status: 'confirmed' });
+    const res = await call('POST', `/api/apps/bookings/bookings/${started}/cancel`, ownerA);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: 'EXPIRED' });
+  });
+
+  it('counts only future pending requests on the apps list', async () => {
+    await booking(inDays(2));
+    await booking(new Date(Date.now() - 3_600_000).toISOString(), { ref: 'LDLDLD' });
+    const listed = await jsonOf<{ apps: Array<{ pending: number }> }>(await call('GET', '/api/apps', ownerA));
+    expect(listed.apps[0].pending).toBe(1);
+  });
+});
