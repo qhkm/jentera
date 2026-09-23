@@ -55,7 +55,15 @@ Each of these is a later project:
 - shared staff/resource scheduling, nightly rentals, and checking existing
   Google Calendar events for availability
 - editing the page by chat, and any agent tool for bookings (reading or
-  writing)
+  writing). Scheduled as **plan 5**, after the owner screens (plan 4):
+  chat proposes a change to the same structured settings the owner screen
+  edits (services, hours, capacity, notice, pause, link name), shown as a
+  diff the owner approves through the existing approval gate, and saved
+  through the same versioned config write. A few safe presentation fields
+  (a welcome line, a logo, an accent from a fixed palette) may join it as
+  structured, escaped settings. The prompt never generates the page's HTML,
+  CSS or script: that would be the general builder this direction rejects,
+  and it would break the escaping, CSP and no-cookie guarantees.
 - staff access to bookings (owner only)
 - rows in Activity for bookings
 - a custom domain, and a subdomain per business
