@@ -176,6 +176,77 @@ missing.
 - `status` keeps its present meaning and every existing reader behaves as
   before.
 
+## The second half: making recreation lossless
+
+Detection tells you a sprite is dead. It does not get the customer working
+again, and today showed why that second step is the one that actually decides
+how long an outage lasts.
+
+**The backup is taken at the moment of failure, which is exactly when it
+cannot be taken.** `move-runtime-region.mjs` backs a sprite up by exec-ing into
+it and tarring `~/.hermes`. That works on a healthy sprite and fails on every
+sprite worth recovering. On 23 September it failed on all three, because they
+were unreachable — which was the whole reason for recovering them.
+
+So recreation is always lossy, which makes it a last resort, which is why three
+sprites sat dead for five days rather than being rebuilt on day one. The cost
+was not technical difficulty: once we accepted the loss, each rebuild took
+about ten minutes and all three verified clean.
+
+Invert it. **Back up while healthy, so recreation is cheap.**
+
+What a sprite holds that Postgres does not is small and already enumerated by
+the existing allowlist:
+
+```
+memories/MEMORY.md, memories/USER.md      what Hermes learned
+profiles/*/memories/*.md                   per-specialist memory
+profiles/*/sessions, profiles/*/state.db   conversation state
+```
+
+Kilobytes, not gigabytes. The browser profile is deliberately excluded and
+should stay excluded: it holds live cookies, and a copy of it in R2 is a
+credential store nobody asked for. A recreated sprite asks the owner to sign in
+again, which is the honest trade.
+
+The change: the same collection runs on a schedule while the sprite is healthy
+— the quarter-hour sweep already visits every sprite — and lands in R2 beside
+the artifacts bucket, one object per business, overwritten. Recreation then
+restores from the most recent good copy instead of from a backup that cannot be
+taken.
+
+This is what turns the remediation ladder from theory into something safe to
+automate:
+
+1. **Restore the newest versioned checkpoint.** Worked in seconds on
+   `…d6decbeda` this morning. Requires Fly's API to answer for that sprite.
+2. **Recreate and restore from R2.** Requires nothing from the dead sprite at
+   all — which is the point. Today this step was lossy; with continuous backup
+   it costs the owner a re-login and minutes of agent memory.
+3. **Tell somebody.** Only when both fail.
+
+Nothing above should run automatically until detection has been observed for a
+week, for the reason in the acceptance gate: a remediation that fires on a
+false positive deletes a healthy customer's sprite.
+
+## Prerequisite: the bundle cannot live in a private repo
+
+Worth recording because it cost an outage on 23 September. `bootstrap-runtime.sh`
+fetches the pinned bundle from `raw.githubusercontent.com`, which serves
+**anonymously only**. Making the repository private returned 404 to every
+bootstrap, and the first fresh provision after that failed with `curl: (22)`.
+Visibility was reverted to restore service.
+
+So "the repo should be private" and "sprites can bootstrap" are currently
+incompatible. The fix is to publish the bundle to R2 at release time —
+`ship-runtime.sh` already knows the pinned commit, and `jentera-artifacts`
+already exists — and have the bootstrap fetch from there. The bundle stays
+public because sprites need it; the control plane, the docs and the incident
+history become private, which is what was wanted.
+
+This also removes GitHub from the provisioning path, which today was a single
+point of failure for creating any new customer's computer.
+
 ## Open
 
 - **Does Fly expose corruption as an event rather than a checkpoint name?**
