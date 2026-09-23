@@ -102,7 +102,15 @@ function applyView(client: RFB, zoom: number | null, anchor?: ZoomAnchor | null)
 /** Only mounted after an explicit successful owner claim. noVNC renders the
  * real Chrome window/taskbar and supplies native pointer/drag/wheel/keyboard.
  * Never sync either clipboard or replay input across a dropped connection. */
-export default function DesktopViewer({ controlId, onControlLost }: { controlId: string; onControlLost: () => void }) {
+/** Two shapes, one screen. `controlId` is a takeover: the agent is paused and
+    this viewer drives the desktop. `observe` is watching a run while the agent
+    works — noVNC is put in viewOnly, the connection carries no lease, and every
+    control that would send something to the desktop is not rendered. Zoom, fit
+    and pan stay: they move this canvas, not the sprite. */
+export default function DesktopViewer({ controlId, observe, onControlLost }: {
+  controlId?: string; observe?: { runId: string }; onControlLost: () => void;
+}) {
+  const watching = Boolean(observe);
   const repo = useRepository();
   const t = useT();
   const canvas = useRef<HTMLDivElement>(null);
@@ -174,10 +182,14 @@ export default function DesktopViewer({ controlId, onControlLost }: { controlId:
       try {
         const { default: Client } = await import('@novnc/novnc');
         if (cancelled || !canvas.current) return;
-        const connection = repo.desktopConnection?.(controlId);
+        const connection = observe ? repo.observeConnection?.(observe.runId)
+          : controlId ? repo.desktopConnection?.(controlId) : undefined;
         if (!connection) throw new Error('Desktop unavailable');
         current = new Client(canvas.current, connection.url, { wsProtocols: connection.protocols });
         rfb.current = current;
+        /* The client's own refusal to send key and pointer events. x11vnc is
+           told the same thing independently; neither relies on the other. */
+        current.viewOnly = watching;
         applyView(current, zoomRef.current);
         current.resizeSession = false; current.focusOnClick = true;
         current.qualityLevel = 7; current.compressionLevel = 2; current.background = '#101412';
@@ -199,7 +211,10 @@ export default function DesktopViewer({ controlId, onControlLost }: { controlId:
     }
     setPhase('connecting'); void connect();
     return () => { cancelled = true; clearTimeout(timer); disconnect(); };
-  }, [repo, controlId, attempt]);
+    /* The run id, not the object: a caller writing `observe={{ runId }}`
+       inline hands us a new object every render, and depending on it would
+       tear down and redial the connection each time. */
+  }, [repo, controlId, observe?.runId, watching, attempt]);
 
   useEffect(() => {
     let firstFrame = 0;
@@ -354,10 +369,10 @@ export default function DesktopViewer({ controlId, onControlLost }: { controlId:
           <button type="button" aria-label={t('browser.zoomIn')} disabled={phase !== 'ready' || (zoom !== null && zoom >= MAX_ZOOM)} onClick={() => nudgeZoom(1)}><Plus size={16} aria-hidden="true" /></button>
         </div>
         <button className="business-desktop-move" type="button" disabled={phase !== 'ready' || zoom === null} aria-pressed={pan}
-          aria-label={t(pan ? 'browser.desktop.interact' : 'browser.desktop.pan')} onClick={() => setPan(value => !value)}>
+          aria-label={t(pan && !watching ? 'browser.desktop.interact' : 'browser.desktop.pan')} onClick={() => setPan(value => !value)}>
           <HandPalm size={18} aria-hidden="true" /><span>{t('browser.desktop.move')}</span>
         </button>
-        <div className="business-desktop-mobile-keyboard">
+        {!watching && <div className="business-desktop-mobile-keyboard">
           <Keyboard size={18} aria-hidden="true" />
           <input ref={keyboard} aria-label={t('browser.desktop.keyboard')} type="password" defaultValue={SENTINEL}
             disabled={phase !== 'ready'} autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false}
@@ -380,9 +395,11 @@ export default function DesktopViewer({ controlId, onControlLost }: { controlId:
               if (KEYS[event.key]) { event.preventDefault(); if (ready.current) rfb.current?.sendKey(KEYS[event.key]); }
             }} />
           <span aria-hidden="true">{t('browser.desktop.keyboard')}</span>
-        </div>
+        </div>}
       </div>
-      <div className={`business-desktop-secondary-actions${showKeys ? ' has-keys' : ''}`}>
+      {/* Paste and the key row send to the desktop, and the hint describes
+          interacting with it. None of that is true while watching. */}
+      {!watching && <div className={`business-desktop-secondary-actions${showKeys ? ' has-keys' : ''}`}>
         <span>{t(pan ? 'browser.desktop.hint.pan' : 'browser.desktop.hint.interact')}</span>
         <div className="business-desktop-keys" role="group" aria-label={t('browser.keys')}>
           <button type="button" className="business-desktop-paste" disabled={phase !== 'ready'} onClick={() => void pasteLocalClipboard()}>
@@ -396,7 +413,7 @@ export default function DesktopViewer({ controlId, onControlLost }: { controlId:
             }}><CaretDown size={17} aria-hidden="true" /></button>
           </>}
         </div>
-      </div>
+      </div>}
     </div>
   </section>;
 }

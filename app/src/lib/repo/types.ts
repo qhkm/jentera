@@ -641,6 +641,10 @@ export interface Repository {
   runtimeSkills(): Promise<RuntimeSkill[]>;
   businessBrowser(command?: BrowserCommand, signal?: AbortSignal): Promise<BusinessBrowserState>;
   desktopConnection?(controlId: string): { url: string; protocols: string[] };
+  /** Watching the agent work: no lease, no pause, and no input. Absent on a
+      repository that cannot reach a sprite, which is what makes the page
+      preview the fallback rather than an error. */
+  observeConnection?(runId: string): { url: string; protocols: string[] };
   watchBrowser?(runId: string, onFrame: (frame: BusinessBrowserState) => void, signal: AbortSignal): Promise<void>;
   /** Idempotently create or re-signal this business's provisioning task. */
   provisionRuntime(): Promise<void>;

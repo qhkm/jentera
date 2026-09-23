@@ -2,10 +2,29 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { ComputerPreview } from '../ComputerPreview';
 import type { BusinessBrowserState } from '@/lib/repo/types';
-const { preview } = vi.hoisted(() => ({ preview: vi.fn() }));
+const { preview, status } = vi.hoisted(() => ({ preview: vi.fn(), status: vi.fn() }));
 vi.mock('@/lib/repo', () => ({ useRepository: () => repo }));
-const repo: { businessBrowser: typeof preview; watchBrowser?: (runId: string, callback: (frame: BusinessBrowserState) => void, signal: AbortSignal) => Promise<void> } = { businessBrowser: preview };
-afterEach(() => { vi.useRealTimers(); preview.mockReset(); delete repo.watchBrowser; });
+const { lost } = vi.hoisted(() => ({ lost: { current: null as null | (() => void) } }));
+vi.mock('@/routes/views/DesktopViewer', () => ({
+  default: ({ observe, onControlLost }: { observe?: { runId: string }; onControlLost: () => void }) => {
+    lost.current = onControlLost;
+    return <div data-testid="desktop">watching {observe?.runId}</div>;
+  },
+}));
+/* Opening the panel asks once whether this computer can be watched live, then
+   either mounts the desktop or runs the page preview. Keeping the two calls
+   apart means `preview` still counts only real preview requests, so the
+   backoff and cadence assertions below mean what they always did. */
+const repo: {
+  businessBrowser: (command?: unknown, signal?: AbortSignal) => unknown;
+  observeConnection?: (runId: string) => { url: string; protocols: string[] };
+  watchBrowser?: (runId: string, callback: (frame: BusinessBrowserState) => void, signal: AbortSignal) => Promise<void>;
+} = { businessBrowser: (command?: unknown, signal?: AbortSignal) => command === undefined ? status() : preview(command, signal) };
+afterEach(() => {
+  vi.useRealTimers(); preview.mockReset(); status.mockReset();
+  status.mockResolvedValue({}); delete repo.watchBrowser; delete repo.observeConnection;
+});
+status.mockResolvedValue({});
 describe('computer preview', () => {
   it.each([
     ['paused', 'under owner control'],
@@ -164,5 +183,54 @@ describe('computer preview', () => {
     preview.mockResolvedValue({ previewStatus: 'inactive' });
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Retry preview' })));
     expect(preview).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe('watching the computer live', () => {
+  const connection = { url: 'wss://api.jentera.ai/api/browser/observe', protocols: ['binary', 'jentera-observe.run-1'] };
+
+  it('stays on the page preview when the repository cannot watch', async () => {
+    preview.mockResolvedValue({ previewStatus: 'ready', image: 'AAAA', capturedAt: Date.now() });
+    render(<ComputerPreview runId="run-1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Preview computer' }));
+    await waitFor(() => expect(preview).toHaveBeenCalled());
+    // Nothing asks about a capability the repository does not expose.
+    expect(status).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('desktop')).toBeNull();
+  });
+
+  it('stays on the page preview when this business is not in the pilot', async () => {
+    repo.observeConnection = () => connection;
+    status.mockResolvedValue({});
+    preview.mockResolvedValue({ previewStatus: 'ready', image: 'AAAA', capturedAt: Date.now() });
+    render(<ComputerPreview runId="run-1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Preview computer' }));
+    await waitFor(() => expect(status).toHaveBeenCalled());
+    expect(screen.queryByTestId('desktop')).toBeNull();
+    expect(screen.getByText(/Sensitive pages are hidden/)).toBeVisible();
+  });
+
+  it('swaps to the live computer, and says it hides nothing', async () => {
+    repo.observeConnection = () => connection;
+    status.mockResolvedValue({ desktopView: 1 });
+    preview.mockResolvedValue({ previewStatus: 'waiting' });
+    render(<ComputerPreview runId="run-1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Preview computer' }));
+    expect(await screen.findByTestId('desktop')).toHaveTextContent('watching run-1');
+    // The page filter's promise must not be repeated over a whole screen.
+    expect(screen.queryByText(/Sensitive pages are hidden/)).toBeNull();
+    expect(screen.getByText(/shows whatever is on screen/)).toBeVisible();
+  });
+
+  it('falls back to the page preview when the watch cannot hold', async () => {
+    repo.observeConnection = () => connection;
+    status.mockResolvedValue({ desktopView: 1 });
+    preview.mockResolvedValue({ previewStatus: 'ready', image: 'AAAA', capturedAt: Date.now() });
+    render(<ComputerPreview runId="run-1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Preview computer' }));
+    await screen.findByTestId('desktop');
+    await act(async () => { lost.current?.(); });
+    expect(screen.queryByTestId('desktop')).toBeNull();
+    await waitFor(() => expect(screen.getByText(/Sensitive pages are hidden/)).toBeVisible());
   });
 });

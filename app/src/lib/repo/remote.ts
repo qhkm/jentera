@@ -271,6 +271,9 @@ export class RemoteRepository implements Repository {
   desktopConnection(controlId: string) {
     return { url: websocketUrl('/api/browser/desktop'), protocols: ['binary', `jentera-control.${controlId}`] };
   }
+  observeConnection(runId: string) {
+    return { url: websocketUrl('/api/browser/observe'), protocols: ['binary', `jentera-observe.${runId}`] };
+  }
   async watchBrowser(runId: string, onFrame: (frame: BusinessBrowserState) => void, signal: AbortSignal): Promise<void> {
     const response = await sessionFetch(`${BASE}/api/browser`, {
       method: 'POST', credentials: 'include', signal,

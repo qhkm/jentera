@@ -71,6 +71,21 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
   carried passwords and internal paths. Until 13 September every terminal
   step read "[Command arguments hidden]" and a task showed the same line
   eight times.
+- **Watching the agent work is a second desktop mode, not the page preview.**
+  The desktop viewer was built as a takeover: `desktopControlValid` wants a
+  durable owner pause and a live control lease, so seeing the screen meant
+  stopping the agent. An *observe* session injects nothing, so it needs
+  neither, and runs while the agent works. The two are kept apart by the
+  ticket `purpose`, which the HMAC covers, plus a separate route
+  (`/api/browser/observe`) and subprotocol (`jentera-observe.`) that each
+  refuse the other's. `-viewonly` in x11vnc is the single enforcement point —
+  RFB is two-way for its whole life, so a gateway that dropped client bytes
+  would never deliver a frame. Because nothing is injected, observe skips the
+  native key release and therefore cannot latch `cleanupBlocked`. The page
+  preview stays as the fallback and starts first, so opening the panel never
+  waits on a capability only the pilot has.
+  `docs/plans/2026-09-23-desktop-observe.md` is the contract; it is behind
+  `DESKTOP_VIEW_BUSINESS_IDS` and not enabled for customers.
 - `app/src/lib/data/` is hand-maintained TypeScript. Add a playbook with `scripts/add-playbook.mjs`, which edits `playbooks.ts` directly — don't hand-merge.
 - Controls share `--control-h` / `--control-pad-y`. A `text-*` or `py-*` utility on a `.btn`/`.input` overrides the component and breaks the shared height — this caused three separate visual bugs. Let components own their type and padding.
 - **The workspace type bridge in `styles/dashboard-type.css` outweighs your

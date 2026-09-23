@@ -1,7 +1,11 @@
-import { useEffect, useId, useState } from 'react';
+import { lazy, Suspense, useEffect, useId, useState } from 'react';
 import { Desktop } from '@phosphor-icons/react';
 import { useRepository } from '@/lib/repo';
 import type { BusinessBrowserState } from '@/lib/repo/types';
+
+/* The desktop viewer carries noVNC, which is large and is only reached by a
+   business in the pilot. Everyone else never downloads it. */
+const DesktopViewer = lazy(() => import('@/routes/views/DesktopViewer'));
 
 /** Frames are memory-only, opt-in and discarded on collapse/visibility loss. */
 export function ComputerPreview({ runId }: { runId: string }) {
@@ -9,6 +13,12 @@ export function ComputerPreview({ runId }: { runId: string }) {
   const id = useId();
   const [expanded, setExpanded] = useState(false);
   const [open, setOpen] = useState(false);
+  /* The page preview is the default and starts at once, so opening the panel
+     never waits on a round trip that only a pilot business can benefit from.
+     Whether this computer can be watched live is asked alongside it, and only
+     an answer of yes swaps the panel over. Ineligible businesses, older
+     runners, refusals and failures all simply stay here. */
+  const [mode, setMode] = useState<'desktop' | 'screenshot'>('screenshot');
   const [frame, setFrame] = useState<BusinessBrowserState | null>(null);
   const [failure, setFailure] = useState('');
   const [retry, setRetry] = useState(0);
@@ -16,7 +26,22 @@ export function ComputerPreview({ runId }: { runId: string }) {
   const [transportError, setTransportError] = useState(false);
   const [displayError, setDisplayError] = useState(false);
   useEffect(() => {
-    if (!open) { setFrame(null); return; }
+    if (!open || !repo.observeConnection) { setMode('screenshot'); return; }
+    let cancelled = false;
+    const decide = new AbortController();
+    void (async () => {
+      try {
+        const status = await repo.businessBrowser(undefined, decide.signal);
+        // Not knowing is the same as not having it; the page preview is
+        // already running either way.
+        if (!cancelled && status?.desktopView === 1) setMode('desktop');
+      } catch { /* stay on the page preview */ }
+    })();
+    return () => { cancelled = true; decide.abort(); };
+  }, [open, repo]);
+
+  useEffect(() => {
+    if (!open || mode !== 'screenshot') { setFrame(null); return; }
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
     let flight: AbortController | undefined;
@@ -104,13 +129,23 @@ export function ComputerPreview({ runId }: { runId: string }) {
     }
     void poll();
     return () => { cancelled = true; flight?.abort(); clearTimeout(timer); document.removeEventListener('visibilitychange', resume); window.removeEventListener('offline', hide); window.removeEventListener('online', resume); };
-  }, [open, runId, repo, retry]);
+  }, [open, mode, runId, repo, retry]);
   const image = frame?.previewStatus === 'ready' && frame.image && frame.capturedAt;
   return <div className="computer-preview">
     <button type="button" className="ask-inline-action" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
       <Desktop size={16} aria-hidden="true" />{open ? 'Hide computer preview' : 'Preview computer'}
     </button>
     {open && <div id={id} className={`computer-preview-panel${expanded ? ' is-expanded' : ''}`}>
+      {mode === 'desktop' ? <>
+        {/* The whole screen, not one page, so nothing is filtered out of it. */}
+        <p>Live view of this computer · visible only to the owner. It shows whatever is on screen, including any page Jentera has signed in to.</p>
+        <Suspense fallback={<p role="status">Connecting to the computer…</p>}>
+          {/* A watch that cannot hold is not an error worth showing. Losing it
+              returns this panel to the page preview, which is the other
+              branch and needs nothing from the owner. */}
+          <DesktopViewer observe={{ runId }} onControlLost={() => setMode('screenshot')} />
+        </Suspense>
+      </> : <>
       <p>Read-only browser preview · visible only to the owner. Sensitive pages are hidden where detected; detection is not guaranteed.</p>
       {image ? <>
         <button type="button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} aria-label={expanded ? 'Shrink browser preview' : 'Expand browser preview'}>
@@ -128,6 +163,7 @@ export function ComputerPreview({ runId }: { runId: string }) {
                   : transportError ? 'Preview connection interrupted. Reconnecting without stopping the task…'
                     : 'The live browser feed is unavailable. Retrying without stopping the task…')}</p>}
       {failure && <button type="button" className="ask-inline-action" onClick={() => setRetry(n => n + 1)}>Retry preview</button>}
+      </>}
     </div>}
   </div>;
 }
