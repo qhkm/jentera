@@ -114,7 +114,7 @@ every app:
    and hosting have been proven on real apps. This defers the long-tail idea;
    it does not drop it.
 
-   *Proposed, 23 Sep:* **templates you customise by chatting.** This is
+   *TBD (raised 23 Sep):* **templates you customise by chatting.** This is
    Shopify's "start from a theme that works" with Lovable's "change it by
    asking".
    - **The agent may change** text, images, products and services, form
@@ -277,7 +277,7 @@ they do not need are simply off.
 |---|---|---|
 | **Core** | Home, Chat, Work (Activity, Approvals, Routines), Business (Knowledge, Connections, Team, Permissions) | always on |
 | **Apps** | Bookings, Orders, Checklists and the rest of the catalogue | off until the owner, or Jentera, turns one on |
-| **Power features** | Goals, Skills, Library, Files, Bots, Workspaces, Business Browser | *proposed:* off for new businesses; on under Business → Modules |
+| **Power features** | Goals, Skills, Library, Files, Bots, Workspaces, Business Browser | *TBD:* off for new businesses; on under Business → Modules |
 
 - **Jentera suggests, the owner switches on.** When an owner asks "can
   customers book online?", Jentera offers the add-on at that moment. The
@@ -296,7 +296,7 @@ they do not need are simply off.
 extras bought at the moment of need. Including everything in the plan was
 rejected because cost would be hard to control.
 
-*Proposed, awaiting confirmation:*
+*TBD, not yet decided:*
 
 - **Two dials.** Add-ons price **value**. Usage (AI credits in the plan, plus
   top-ups) prices **cost**. Jentera's real cost is agent work, sprite time and
@@ -334,7 +334,7 @@ need to come down once apps become extras.
 
 ### Where each audience works
 
-*Proposed:* separate by **audience**, not by feature. Only the business's
+*TBD:* separate by **audience**, not by feature. Only the business's
 customers need their own domain.
 
 ```
@@ -442,7 +442,7 @@ Internal only. Staff use these on their phones, which makes them daily habits.
 
 ### G. Team and knowledge (the "internal ChatGPT")
 
-*Proposed.* Don't sell a separate "internal ChatGPT"; generic staff chat is a
+*TBD.* Don't sell a separate "internal ChatGPT"; generic staff chat is a
 commodity (ChatGPT Business, Gemini in Google Workspace). Position the team
 plan as one that knows *this* business and can act on it: "what's Puan
 Aisyah's balance?", then "send her a reminder", which becomes an approval. Most
