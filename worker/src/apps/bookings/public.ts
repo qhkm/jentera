@@ -1,5 +1,6 @@
 import type postgres from 'postgres';
 import { withTenant, withUser, type DatabaseEnv } from '../../db';
+import { hoursFor, readHours } from './hours';
 import type { Lang } from './messages';
 import { openSlots, type OpenSlot, type Reservation } from './slots';
 import { addDays, myDate, myInstant } from './time';
@@ -46,9 +47,7 @@ export async function readPublicPage(tx: postgres.TransactionSql, businessId: st
     select id, name, duration_minutes, capacity, price_label from booking_service
      where business_id = ${businessId} and active and duration_minutes > 0
      order by sort, name, id`;
-  const hours = await tx<{ service_id: string; weekday: number; opens: string; closes: string }[]>`
-    select service_id, weekday, to_char(opens, 'HH24:MI') as opens, to_char(closes, 'HH24:MI') as closes
-      from booking_hours where business_id = ${businessId} order by weekday, opens`;
+  const hours = await readHours(tx, businessId);
   return {
     businessName: business.name,
     lang: business.lang,
@@ -56,7 +55,7 @@ export async function readPublicPage(tx: postgres.TransactionSql, businessId: st
     settings: { minNoticeMinutes: settings.min_notice_minutes, horizonDays: settings.horizon_days },
     services: services.map((s) => ({
       id: s.id, name: s.name, durationMinutes: s.duration_minutes, capacity: s.capacity, priceLabel: s.price_label,
-      hours: hours.filter((h) => h.service_id === s.id).map(({ weekday, opens, closes }) => ({ weekday, opens, closes })),
+      hours: hoursFor(hours, s.id),
     })),
   };
 }

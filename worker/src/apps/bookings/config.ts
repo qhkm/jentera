@@ -1,4 +1,5 @@
 import type postgres from 'postgres';
+import { hoursFor, readHours } from './hours';
 import { peakReserved } from './slots';
 import { clockMinutes, isClock } from './time';
 
@@ -161,9 +162,7 @@ export async function readConfig(tx: postgres.TransactionSql, businessId: string
   const services = await tx<{ id: string; name: string; duration_minutes: number; capacity: number; price_label: string | null; active: boolean }[]>`
     select id, name, duration_minutes, capacity, price_label, active from booking_service
      where business_id = ${businessId} order by sort, name, id`;
-  const hours = await tx<{ service_id: string; weekday: number; opens: string; closes: string }[]>`
-    select service_id, weekday, to_char(opens, 'HH24:MI') as opens, to_char(closes, 'HH24:MI') as closes
-      from booking_hours where business_id = ${businessId} order by weekday, opens`;
+  const hours = await readHours(tx, businessId);
   return {
     installation: {
       slug: installation.public_slug,
@@ -180,7 +179,7 @@ export async function readConfig(tx: postgres.TransactionSql, businessId: string
     services: services.map((s) => ({
       id: s.id, name: s.name, durationMinutes: s.duration_minutes, capacity: s.capacity,
       priceLabel: s.price_label, active: s.active,
-      hours: hours.filter((h) => h.service_id === s.id).map(({ weekday, opens, closes }) => ({ weekday, opens, closes })),
+      hours: hoursFor(hours, s.id),
     })),
   };
 }

@@ -56,10 +56,17 @@ describe('public reads', () => {
   it('offers open times with places left, minus held places, per Malaysian day', async () => {
     await asOwner((sql) => sql`insert into booking (business_id, reference, submission_key, submission_hash, service_id,
       service_name, starts_at, ends_at, party_size, customer_name, customer_phone, status)
-      values (${A}, 'K7Q2MP', gen_random_uuid(), 'h', ${serviceA}, 'Cupping class',
-        '2026-10-06T02:00:00Z', '2026-10-06T03:00:00Z', 2, 'Aisyah', '60123456789', 'pending')`);
+      values
+        (${A}, 'K7Q2MP', gen_random_uuid(), 'h', ${serviceA}, 'Cupping class',
+          '2026-10-06T02:00:00Z', '2026-10-06T03:00:00Z', 2, 'Aisyah', '60123456789', 'pending'),
+        (${A}, 'M3RT9X', gen_random_uuid(), 'h', ${serviceA}, 'Cupping class',
+          '2026-10-06T03:00:00Z', '2026-10-06T04:00:00Z', 2, 'Farah', '60123456780', 'declined'),
+        (${A}, 'Q8LB4Z', gen_random_uuid(), 'h', ${serviceA}, 'Cupping class',
+          '2026-10-06T03:00:00Z', '2026-10-06T04:00:00Z', 2, 'Hakim', '60123456781', 'cancelled')`);
     const times = await loadOpenTimes(ENV, A, serviceA, '2026-10-06', 1, NOW);
     expect(times!.days).toHaveLength(1);
+    // The 11:00 slot overlaps a declined and a cancelled booking, both for
+    // its full capacity: neither holds a place, so it still shows 2 left.
     expect(times!.days[0].slots.map((s) => [s.startsAt.toISOString(), s.remaining])).toEqual([
       ['2026-10-06T03:00:00.000Z', 2], ['2026-10-06T04:00:00.000Z', 2],
     ]);
