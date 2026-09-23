@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cancelBooking } from '../src/apps/bookings/bookings';
 import {
   CALENDAR_DISCONNECTED_CLEANUP, CALENDAR_MAX_ATTEMPTS, CALENDAR_RECONNECT, CALENDAR_REMOVED_IN_GOOGLE,
-  CALENDAR_UNCONFIRMED, processBookingCalendarJob,
+  CALENDAR_UNCONFIRMED, processBookingCalendarJob, sweepBookingCalendar,
 } from '../src/apps/bookings/calendar-sync';
 import { saveConnection } from '../src/connections';
 import { GOOGLE_CALENDAR_SCOPES, calendarEventId, calendarSecret } from '../src/connectors/google-calendar';
@@ -317,5 +317,95 @@ describe('processBookingCalendarJob', () => {
     // The orphan branch's own limit, pinned separately: lowering CALENDAR_MAX_ATTEMPTS without
     // updating the SQL (or vice versa) must fail here, not just leave a job due forever.
     expect(def).toContain(`attempts >= ${CALENDAR_MAX_ATTEMPTS}`);
+  });
+});
+
+describe('sweepBookingCalendar', () => {
+  const B = '22222222-2222-4222-8222-222222222222';
+
+  /** Business B, with a confirmed booking whose connection is gone:
+      processing it asks for a reconnect without calling Google. */
+  async function secondBusiness(dueAt: Date) {
+    return asOwner(async (sql) => {
+      await sql`insert into business (id, name, playbook_key, onboarded) values (${B}, 'Beta', 'salon', true)`;
+      await sql`insert into app_installation (business_id, app_key, public_slug) values (${B}, 'bookings', 'beta')`;
+      const [s] = await sql<{ id: string }[]>`insert into booking_service (business_id, name, duration_minutes, capacity)
+        values (${B}, 'Haircut', 30, 1) returning id`;
+      const [b] = await sql<{ id: string }[]>`insert into booking (business_id, reference, submission_key, submission_hash,
+          service_id, service_name, starts_at, ends_at, party_size, customer_name, customer_phone, status, calendar_status)
+        values (${B}, 'M8R3NQ', gen_random_uuid(), 'h', ${s.id}, 'Haircut',
+          '2026-10-06T02:00:00Z', '2026-10-06T02:30:00Z', 1, 'Aina', '60123456780', 'confirmed', 'pending')
+        returning id`;
+      await sql`insert into booking_calendar_job (business_id, booking_id, desired, next_attempt_at)
+        values (${B}, ${b.id}, 'present', ${dueAt})`;
+      return b.id;
+    });
+  }
+
+  it('works through due jobs across businesses', async () => {
+    const both = testEnv({ ...ENV, APPS_BUSINESS_IDS: `${A},${B}` });
+    const other = await secondBusiness(NOW);
+    const g = google();
+    const summary = await sweepBookingCalendar(both, { fetch: g.fetch, now: at(1_000) });
+    expect(summary).toEqual({ processed: 2, created: 1, removed: 0, retrying: 0, failed: 1, errors: 0 });
+    const [row] = await asOwner((sql) => sql<{ calendar_error: string | null }[]>`
+      select calendar_error from booking where id = ${other}`);
+    expect(row.calendar_error).toBe(CALENDAR_RECONNECT);
+    expect((await sweepBookingCalendar(both, { fetch: g.fetch, now: at(2_000) })).processed).toBe(0);
+  });
+
+  it('takes a bounded batch, and a switched-off pilot does not block the others', async () => {
+    // A (off the list) is due first; B (on it) second. One job per sweep.
+    const onlyB = testEnv({ ...ENV, APPS_BUSINESS_IDS: B });
+    await secondBusiness(new Date(NOW.getTime() + 500));
+    const g = google();
+    const first = await sweepBookingCalendar(onlyB, { fetch: g.fetch, now: at(1_000), limit: 1 });
+    expect(first).toMatchObject({ processed: 1, failed: 0 });   // A was deferred an hour
+    const second = await sweepBookingCalendar(onlyB, { fetch: g.fetch, now: at(1_000), limit: 1 });
+    expect(second).toMatchObject({ processed: 1, failed: 1 });  // B's turn
+    expect(g.calls).toHaveLength(0);
+  });
+
+  it('leaves a job alone while another executor holds its lease', async () => {
+    await asOwner((sql) => sql`update booking_calendar_job
+      set lease_token = gen_random_uuid(), lease_expires_at = ${new Date(NOW.getTime() + 60_000)}`);
+    const g = google();
+    expect((await sweepBookingCalendar(ENV, { fetch: g.fetch, now: at(1_000) })).processed).toBe(0);
+    expect(g.calls).toHaveLength(0);
+  });
+
+  it('does not touch the database while apps are switched off', async () => {
+    const off = testEnv({
+      APPS_ENABLED: 'false',
+      HYPERDRIVE: { connectionString: 'postgres://nobody:nothing@127.0.0.1:1/none' },
+    });
+    expect(await sweepBookingCalendar(off)).toEqual({ processed: 0, created: 0, removed: 0, retrying: 0, failed: 0, errors: 0 });
+  });
+
+  it('defers a job whose processing throws, so it does not sit at the head of every sweep', async () => {
+    // A credential row with a key version this env cannot decrypt: vault.ts throws
+    // `no credential key for version 99`, which claim() rethrows (Task 2) rather
+    // than treating it as a broken grant — a database/credential fault, not the
+    // owner's problem, and not a spent attempt.
+    await asOwner((sql) => sql`update credential set key_version = 99 where connection_id = ${connectionId}`);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const g = google();
+      const now = at(1_000);
+      const summary = await sweepBookingCalendar(ENV, { fetch: g.fetch, now });
+      expect(summary).toEqual({ processed: 0, created: 0, removed: 0, retrying: 0, failed: 0, errors: 1 });
+      const row = await state();
+      expect(row.attempts).toBe(0);
+      expect(row.lease_token).toBeNull();
+      expect(row.next_attempt_at.toISOString()).toBe(new Date(now().getTime() + 5 * 60_000).toISOString());
+      expect(g.calls).toHaveLength(0);
+
+      const again = await sweepBookingCalendar(ENV, { fetch: g.fetch, now });
+      expect(again).toEqual({ processed: 0, created: 0, removed: 0, retrying: 0, failed: 0, errors: 0 });
+    } finally {
+      errSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
   });
 });

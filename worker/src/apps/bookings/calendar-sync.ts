@@ -1,6 +1,6 @@
 import type postgres from 'postgres';
 import type { Env } from '../../env';
-import { withTenant } from '../../db';
+import { connect, withTenant } from '../../db';
 import {
   findConnectionById,
   markConnectionExpired,
@@ -45,6 +45,12 @@ export const CALENDAR_MAX_ATTEMPTS = 8;
 export const CALENDAR_BUDGET_MS = 8_000;
 const LEASE_MS = 120_000;
 const DISABLED_DEFER_MS = 60 * 60_000;
+const SWEEP_LIMIT = 10;
+/* A job whose processing threw (a rethrown credential fault, a database error) keeps its old
+   next_attempt_at, so left alone it would sit at the head of the due scan and be retried every
+   sweep — with enough of them, other tenants' due jobs never get a turn. The sweep pushes such a
+   job's next_attempt_at forward by this much; see sweepBookingCalendar. */
+const SWEEP_ERROR_DEFER_MS = 5 * 60_000;
 
 export const CALENDAR_RECONNECT = 'Reconnect Google Calendar, then retry.';
 export const CALENDAR_REMOVED_IN_GOOGLE =
@@ -407,4 +413,65 @@ export async function runCalendarJob(
   } catch (error) {
     console.error(`[bookings-calendar] business=${businessId} booking=${bookingId} ${errorLabel(error)}`);
   }
+}
+
+export interface CalendarSweepSummary {
+  processed: number;
+  created: number;
+  removed: number;
+  retrying: number;
+  failed: number;
+  errors: number;
+}
+
+/** Best effort: push a job that threw out of the due scan's way, without spending an attempt.
+    Only when nothing currently holds a live lease on it — a thrown claim rolls its own
+    transaction back before ever taking one, so this only ever competes with a lease that expired
+    on its own. Its own failure must not turn a real outcome into a second error for the same job,
+    so it is logged and swallowed rather than propagated. */
+async function deferSweepError(env: Env, businessId: string, bookingId: string, now: Date): Promise<void> {
+  try {
+    await withTenant(env, businessId, (tx) => tx`update booking_calendar_job
+      set next_attempt_at = ${new Date(now.getTime() + SWEEP_ERROR_DEFER_MS)}, updated_at = ${now}
+      where business_id = ${businessId} and booking_id = ${bookingId}
+        and (lease_token is null or lease_expires_at <= ${now})`);
+  } catch (error) {
+    console.error(`[bookings-calendar] business=${businessId} booking=${bookingId} defer ${errorLabel(error)}`);
+  }
+}
+
+/** The minute cron's part: retries, and whatever a crash or a lost
+    waitUntil left due. One cross-tenant read of ids through the security
+    definer; each job is then claimed inside its own tenant. The batch is
+    small because the cron runs far from Neon. */
+export async function sweepBookingCalendar(
+  env: Env,
+  deps: CalendarDeps & { limit?: number } = {},
+): Promise<CalendarSweepSummary> {
+  const summary: CalendarSweepSummary = { processed: 0, created: 0, removed: 0, retrying: 0, failed: 0, errors: 0 };
+  if (env.APPS_ENABLED !== 'true') return summary;
+  const now = deps.now?.() ?? new Date();
+  const sql = connect(env);
+  let due: { business_id: string; booking_id: string }[];
+  try {
+    due = await sql<{ business_id: string; booking_id: string }[]>`
+      select business_id, booking_id
+        from public.booking_calendar_due(${now.toISOString()}::timestamptz, ${deps.limit ?? SWEEP_LIMIT})`;
+  } finally {
+    await sql.end();
+  }
+  for (const job of due) {
+    try {
+      const outcome = await processBookingCalendarJob(env, job.business_id, job.booking_id, deps);
+      summary.processed += 1;
+      if (outcome === 'created' || outcome === 'removed' || outcome === 'retrying' || outcome === 'failed') {
+        summary[outcome] += 1;
+      }
+    } catch (error) {
+      summary.errors += 1;
+      console.error(`[bookings-calendar] business=${job.business_id} booking=${job.booking_id} ${errorLabel(error)}`);
+      await deferSweepError(env, job.business_id, job.booking_id, now);
+    }
+  }
+  return summary;
 }
