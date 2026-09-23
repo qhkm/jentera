@@ -56,6 +56,10 @@ export interface CalendarEventView {
   htmlLink: string | null;
 }
 
+const ACCESS_EXPIRED = 'Google Calendar access expired. Reconnect it to continue.';
+const UNREACHABLE = 'Google Calendar could not be reached.';
+const BUSY = 'Google Calendar is busy. Jentera will try again.';
+
 export class GoogleCalendarError extends Error {
   constructor(message: string, readonly auth = false) {
     super(message);
@@ -205,17 +209,52 @@ async function accessToken(
     ...(signal ? { signal } : {}),
   });
   if (!response.ok) {
-    throw new GoogleCalendarError('Google Calendar access expired. Reconnect it to continue.', true);
+    /* Only Google refusing the grant itself (400 invalid_grant, 401 invalid_client) means the
+       owner has to reconnect. A 429 or a 5xx is Google busy or down: retried like any other
+       outage, never read as a broken connection — that would fail every booking at once. */
+    if (response.status === 400 || response.status === 401) {
+      throw new GoogleCalendarError(ACCESS_EXPIRED, true);
+    }
+    throw new GoogleCalendarError(UNREACHABLE);
   }
   const body = await response.json().catch(() => null) as { access_token?: string } | null;
-  if (!body?.access_token) throw new GoogleCalendarError('Google Calendar could not be reached.');
+  if (!body?.access_token) throw new GoogleCalendarError(UNREACHABLE);
   return body.access_token;
 }
 
-function providerError(response: Response): GoogleCalendarError {
-  return response.status === 401 || response.status === 403
-    ? new GoogleCalendarError('Google Calendar access expired. Reconnect it to continue.', true)
-    : new GoogleCalendarError(`Google Calendar could not complete that request (${response.status}).`);
+/** Google's reasons for a 403 that is throttling, not a refusal of the grant. */
+const RATE_LIMIT_REASONS = new Set(['rateLimitExceeded', 'userRateLimitExceeded', 'quotaExceeded']);
+
+/** Google's machine-readable reason from an error body: error.errors[0].reason, else error.status. */
+function errorReason(text: string): string | null {
+  try {
+    const body = JSON.parse(text) as { error?: { status?: unknown; errors?: Array<{ reason?: unknown }> } } | null;
+    const reason = body?.error?.errors?.[0]?.reason ?? body?.error?.status;
+    return typeof reason === 'string' ? reason : null;
+  } catch {
+    return null;   // Not JSON: a plain refusal.
+  }
+}
+
+/** A failed Calendar API response as an error the caller can act on. The body is read only for
+    Google's machine-readable reason and never copied into the message. */
+async function providerError(response: Response): Promise<GoogleCalendarError> {
+  if (response.status === 401) return new GoogleCalendarError(ACCESS_EXPIRED, true);
+  if (response.status === 403) {
+    let text: string;
+    try {
+      text = await response.text();
+    } catch {
+      // The body never arrived (the budget ran out, the connection dropped): we cannot tell a
+      // throttle from a refusal, so retry rather than expire a connection that may be fine.
+      return new GoogleCalendarError(UNREACHABLE);
+    }
+    const reason = errorReason(text);
+    return reason && RATE_LIMIT_REASONS.has(reason)
+      ? new GoogleCalendarError(BUSY)
+      : new GoogleCalendarError(ACCESS_EXPIRED, true);
+  }
+  return new GoogleCalendarError(`Google Calendar could not complete that request (${response.status}).`);
 }
 
 function view(raw: Record<string, unknown>): CalendarEventView {
@@ -309,7 +348,7 @@ export async function listGoogleCalendarEvents(
   const response = await fetcher(`${API}/calendars/primary/events?${params}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!response.ok) throw providerError(response);
+  if (!response.ok) throw await providerError(response);
   const body = await response.json().catch(() => null) as { items?: Record<string, unknown>[] } | null;
   return (body?.items ?? []).map(view).filter((event) => event.id && event.start && event.end);
 }
@@ -350,12 +389,12 @@ export async function createGoogleCalendarEvent(
       headers: { Authorization: `Bearer ${token}` },
       ...budget,
     });
-    if (!existing.ok) throw providerError(existing);
+    if (!existing.ok) throw await providerError(existing);
     const body = await existing.json().catch(() => null) as Record<string, unknown> | null;
     if (!body) throw new GoogleCalendarError('Google Calendar returned an incomplete event.');
     return view(body);
   }
-  if (!response.ok) throw providerError(response);
+  if (!response.ok) throw await providerError(response);
   const body = await response.json().catch(() => null) as Record<string, unknown> | null;
   if (!body) throw new GoogleCalendarError('Google Calendar returned an incomplete event.');
   return view(body);
@@ -378,7 +417,7 @@ export async function deleteGoogleCalendarEvent(
     { method: 'DELETE', headers: { Authorization: `Bearer ${token}` }, ...(signal ? { signal } : {}) },
   );
   if (response.status === 404 || response.status === 410) return 'already_absent';
-  if (!response.ok) throw providerError(response);
+  if (!response.ok) throw await providerError(response);
   return 'deleted';
 }
 

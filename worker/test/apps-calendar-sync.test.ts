@@ -243,6 +243,27 @@ describe('processBookingCalendarJob', () => {
     expect(connection.status).toBe('expired');
   });
 
+  it('retries a rate-limited create without asking for a reconnect', async () => {
+    const g = google({
+      create: () => Response.json({ error: { errors: [{ reason: 'rateLimitExceeded' }] } }, { status: 403 }),
+    });
+    expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('retrying');
+    expect(await state()).toMatchObject({
+      calendar_status: 'pending', attempts: 1, lease_token: null,
+      last_error: 'Google Calendar is busy. Jentera will try again.',
+    });
+    const [connection] = await asOwner((sql) => sql<{ status: string }[]>`select status from connection where id = ${connectionId}`);
+    expect(connection.status).toBe('connected');
+  });
+
+  it('retries when the token endpoint is down, without expiring the connection', async () => {
+    const g = google({ token: () => new Response('{}', { status: 503 }) });
+    expect(await processBookingCalendarJob(ENV, A, bookingId, { fetch: g.fetch, now: at() })).toBe('retrying');
+    expect(await state()).toMatchObject({ calendar_status: 'pending', last_error: 'Google Calendar could not be reached.' });
+    const [connection] = await asOwner((sql) => sql<{ status: string }[]>`select status from connection where id = ${connectionId}`);
+    expect(connection.status).toBe('connected');
+  });
+
   it('does not re-add an event the owner deleted in Google', async () => {
     const g = google({
       create: () => new Response('{}', { status: 409 }),

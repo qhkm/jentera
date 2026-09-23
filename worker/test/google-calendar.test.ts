@@ -193,6 +193,45 @@ describe('Google Calendar budget and removal', () => {
     }
   });
 
+  it('reads only a refused grant at the token endpoint as a reconnect', async () => {
+    const token = (status: number) => vi.fn<typeof fetch>(async () => new Response('{}', { status }));
+    for (const status of [400, 401]) {
+      await expect(createGoogleCalendarEvent(env, secret, event, token(status))).rejects.toMatchObject({
+        auth: true, message: 'Google Calendar access expired. Reconnect it to continue.',
+      });
+    }
+    // Google down or throttling us is not the owner's grant going bad.
+    for (const status of [429, 500, 503]) {
+      await expect(createGoogleCalendarEvent(env, secret, event, token(status))).rejects.toMatchObject({
+        auth: false, message: 'Google Calendar could not be reached.',
+      });
+    }
+  });
+
+  it('reads a rate-limit 403 as busy and any other 403 as a reconnect', async () => {
+    const refused = (reason: string) => google(() => Response.json(
+      { error: { code: 403, message: 'secret detail from Google', errors: [{ reason }] } }, { status: 403 }));
+    for (const reason of ['rateLimitExceeded', 'userRateLimitExceeded', 'quotaExceeded']) {
+      const error = await createGoogleCalendarEvent(env, secret, event, refused(reason).fetcher).catch((e: unknown) => e);
+      expect(error).toMatchObject({ auth: false, message: 'Google Calendar is busy. Jentera will try again.' });
+    }
+    const denied = await createGoogleCalendarEvent(env, secret, event, refused('insufficientPermissions').fetcher)
+      .catch((e: unknown) => e);
+    expect(denied).toMatchObject({ auth: true, message: 'Google Calendar access expired. Reconnect it to continue.' });
+    // A body that is not JSON, or carries no reason, is a plain refusal.
+    const blank = google(() => new Response('forbidden', { status: 403 }));
+    await expect(deleteGoogleCalendarEvent(env, secret, event.requestId, blank.fetcher)).rejects.toMatchObject({ auth: true });
+    // The same reading applies to the read-back after a 409 and to a delete.
+    const readBack = google((_url, init) => (init?.method === 'POST'
+      ? new Response('{}', { status: 409 })
+      : Response.json({ error: { errors: [{ reason: 'rateLimitExceeded' }] } }, { status: 403 })));
+    await expect(createGoogleCalendarEvent(env, secret, event, readBack.fetcher)).rejects.toMatchObject({ auth: false });
+    await expect(deleteGoogleCalendarEvent(env, secret, event.requestId, refused('quotaExceeded').fetcher))
+      .rejects.toMatchObject({ auth: false });
+    // Never the provider's own words.
+    expect(String((denied as Error).message)).not.toContain('secret detail');
+  });
+
   it('turns other delete failures into errors the caller can act on', async () => {
     const broken = google(() => new Response('{}', { status: 500 }));
     await expect(deleteGoogleCalendarEvent(env, secret, event.requestId, broken.fetcher))
