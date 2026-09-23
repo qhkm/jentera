@@ -168,7 +168,7 @@ adapter reads and reasons, and never writes or sends on its own.
 
 | # | Project | Depends on | Kill criterion |
 |---|---|---|---|
-| 1 | **Bookings app**: public booking page, internal bookings list, owner approval, Google Calendar event, day-before reminder routine. Customer replies go out through a `wa.me` link the owner taps. | nothing | 3 pilot businesses have not taken one real customer booking within 2 weeks of going live: stop before project 2 |
+| 1 | **Bookings app**: public booking page, internal bookings list, owner approval, Google Calendar event, day-before reminder routine. Customer replies go out through a `wa.me` link the owner taps. Spec: [apps shell and Bookings v1](2026-09-23-apps-shell-and-bookings-v1.md), which moves the reminder routine out of v1. | nothing | 3 pilot businesses have not taken one real customer booking within 2 weeks of going live: stop before project 2 |
 | 2 | **WhatsApp channel**: port the minimum from Loyca, tested on Kitakod's own number | nothing; runs alongside 1 | set in its spec |
 | 3 | **Jentera Meta App Review**: a separate Meta app under the same verified business, screencasting the booking flow | 1 and 2 working; Loyca's review done first | none |
 | 4 | *Only with pilot evidence:* a second app (Orders/Shop), with the **payments port** alongside it; then extract the platform; then generated apps | pilots from 1 | set per step |
@@ -289,6 +289,38 @@ they do not need are simply off.
   allowance. A pack is a price that grants several modules.
 - **Switching off a paid add-on keeps its data.** Its public page says "not
   taking bookings right now" rather than breaking.
+
+### Home on the phone
+
+*Decided 23 Sep (option B), after comparing mockups drawn from the current
+Home.* Today's Home has a hero card and then four tiles: Chat, Activity,
+Alerts and Business (`HomeView.tsx`, `.home-actions`). Every one of them is
+already reachable another way, so the apps take that row.
+
+- **The tile row becomes the business's apps.** It keeps the same style and
+  place: a coloured icon square with the label under it. The row shows
+  installed apps plus **Add app**, and an app waiting on the owner shows a red
+  count.
+- **Nothing becomes unreachable:**
+  - Chat and Activity stay in the bottom bar.
+  - Business stays in More.
+  - Alerts moves to a bell with a count in the top bar, beside the computer
+    and profile icons.
+- **The bottom bar becomes** Home · Activity · Chat · **Apps** · More.
+  Skills moves into More.
+- **The daily brief carries what the apps need from the owner,** each with its
+  action inline ("Aisyah · Sat 3:00 pm → Confirm", "Friday promo · 240 people
+  → Send"). These are the same approvals as in Activity, not a second queue.
+- **Tapping an app opens one more screen inside the workspace,** not a
+  separate app:
+  - tabs for Today, Upcoming, Page and Settings
+  - the list, with Confirm and Decline inline
+  - the public link, to copy or share
+  - a box for asking Jentera to change the page
+- **Still open:** what the row shows once there are more than three apps.
+  One option is the three most used plus **All apps**. Another is a
+  horizontal scroll, as Agoda does. Also still open is what a business with no
+  apps sees there, probably suggested apps from its playbook.
 
 ### Pricing: low base, paid add-ons
 
