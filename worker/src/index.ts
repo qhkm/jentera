@@ -72,6 +72,7 @@ import {
   sweepRuntimeTaskRecovery,
   type RuntimeQueueMessage,
 } from './runtime/consumer';
+import { sweepRuntimeLiveness } from './runtime/liveness';
 import { guardApiRequest } from './request-guard';
 
 export { RunStream } from './run-stream';
@@ -326,9 +327,14 @@ export default {
       const published = await sweepRuntimeDrift(env);
       const drainedAfter = await drainRuntimeTaskOutbox(env);
       const sweptCalls = await sweepModelCalls(env);
+      /* Looks at every sprite and records what it saw. Acts on nothing yet:
+         the thresholds come from a week of these outcomes. Its own failure
+         must not cost the sweep that publishes upgrade work. */
+      const looked = await sweepRuntimeLiveness(env).catch(() => -1);
       console.log(
         `[drift-sweep] recovered=${recovered} published=${published} ` +
         `drained=${drainedBefore + drainedAfter} model_calls_swept=${sweptCalls} ` +
+        `liveness_looked=${looked} ` +
         `took=${Date.now() - started}ms`,
       );
     } catch (err) {
