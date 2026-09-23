@@ -6,6 +6,7 @@ and decided D9. Implementation has not started. This is project 1 of
 document for the why, the catalogue and the rules against bloat.
 
 Plan 1 (worker foundation) built on branch bookings-v1: f7b8d00.
+Plan 2 (public pages) built on branch bookings-v1: addd6c5.
 
 Written to be built by an agent that has not seen the conversation behind it.
 Everything in this repo's `CLAUDE.md` applies, in particular:
