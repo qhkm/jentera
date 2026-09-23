@@ -187,6 +187,16 @@ describe('sites: sending a request', () => {
     expect(await asOwner((sql) => sql`select 1 from booking`)).toHaveLength(0);
   });
 
+  it('shows the form again for a NUL or a direction override, never a failure', async () => {
+    const nul = await post(form({ name: 'Ais\u0000yah' }));
+    expect(nul.status).toBe(400);
+    expect(await nul.text()).toContain('Please enter your name.');
+    const note = await post(form({ note: 'Window\u202Eseat' }));
+    expect(note.status).toBe(400);
+    expect(await note.text()).toContain('Please keep the note under 500 characters.');
+    expect(await asOwner((sql) => sql`select 1 from booking`)).toHaveLength(0);
+  });
+
   it('refuses politely when paused after the form was opened, and when the time was taken', async () => {
     await asOwner((sql) => sql`update booking_settings set accepting = false where business_id = ${A}`);
     const paused = await post(form());

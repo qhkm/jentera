@@ -69,6 +69,31 @@ describe('parseRequestForm', () => {
     } });
   });
 
+  it('reads URLSearchParams exactly as FormData', () => {
+    expect(parseRequestForm(new URLSearchParams(good))).toEqual(parseRequestForm(form(good)));
+  });
+
+  it('refuses control and direction characters in the name', () => {
+    /* A NUL reaches Postgres as SQLSTATE 22021, a 500; the rest reach the
+       owner's push and WhatsApp text, where a direction override can make a
+       name read as something else. */
+    for (const name of ['Ais\u0000yah', 'Ais\u0007yah', 'Ais\tyah', 'Ais\nyah', 'Aisyah\u001F', 'Aisyah\u007F',
+      'Ais\u0085yah', 'Ais\u009Fyah', 'Ais\u200Eyah', 'Ais\u200Fyah', '\u202Ehaysia', 'Ais\u202Ayah', 'Ais\u2066yah', 'Ais\u2069yah']) {
+      const parsed = parseRequestForm(form({ ...good, name }));
+      expect(parsed.ok ? [] : parsed.errors, JSON.stringify(name)).toEqual(['name']);
+    }
+    expect(parseRequestForm(form({ ...good, name: 'Siti Nur\u2019aini \u0639\u0627\u0626\u0634\u0629' })).ok).toBe(true);
+  });
+
+  it('refuses the same characters in the note, except tabs and line breaks', () => {
+    for (const note of ['a\u0000b', 'a\u0008b', 'a\u000Bb', 'a\u001Bb', 'a\u007Fb', 'a\u0080b', 'a\u202Eb', 'a\u200Eb', 'a\u2068b']) {
+      const parsed = parseRequestForm(form({ ...good, note }));
+      expect(parsed.ok ? [] : parsed.errors, JSON.stringify(note)).toEqual(['note']);
+    }
+    const lines = parseRequestForm(form({ ...good, note: 'Window seat\r\nNo sugar,\tplease' }));
+    expect(lines.ok && lines.value.note).toBe('Window seat\r\nNo sugar,\tplease');
+  });
+
   it('names every bad field', () => {
     const parsed = parseRequestForm(form({ ...good, name: ' ', phone: '12345', party: '0', note: 'x'.repeat(501), start: 'tomorrow' }));
     expect(parsed.ok).toBe(false);
@@ -131,6 +156,26 @@ describe('createBookingRequest', () => {
     await asOwner((sql) => sql`update app_installation set state = 'paused' where business_id = ${A}`);
     expect((await send(input())).kind).toBe('unavailable');
     expect(await asOwner((sql) => sql`select 1 from booking`)).toHaveLength(0);
+  });
+
+  it('never books another business\'s service, and writes nothing for either', async () => {
+    const B = '22222222-2222-4222-8222-222222222222';
+    const theirs = await asOwner(async (sql) => {
+      await sql`insert into business (id, name, playbook_key, onboarded, lang) values (${B}, 'Other Barber', 'services', true, 'en')`;
+      await sql`insert into app_installation (business_id, app_key, public_slug) values (${B}, 'bookings', 'other-barber')`;
+      await sql`insert into booking_settings (business_id, availability_acknowledged_at, min_notice_minutes, horizon_days)
+        values (${B}, now(), 120, 30)`;
+      const [s] = await sql<{ id: string }[]>`insert into booking_service (business_id, name, duration_minutes, capacity)
+        values (${B}, 'Haircut', 60, 5) returning id`;
+      await sql`insert into booking_hours (business_id, service_id, weekday, opens, closes) values (${B}, ${s.id}, 2, '10:00', '13:00')`;
+      return s.id;
+    });
+    expect(await send(input({ serviceId: theirs }))).toEqual({ kind: 'service_gone' });
+    expect(await asOwner((sql) => sql`select business_id from booking`)).toHaveLength(0);
+    expect(await asOwner((sql) => sql`select 1 from notification`)).toHaveLength(0);
+    // The same request is bookable at its own business: only the tenant boundary refused it.
+    const own = input({ serviceId: theirs });
+    expect((await createBookingRequest(ENV, B, own, await submissionDigest(own), NOW)).kind).toBe('created');
   });
 
   it('refuses a service that is no longer offered', async () => {

@@ -16,6 +16,12 @@ import { addDays, myDate, myInstant } from './time';
    makes a retried or double-tapped form one request, not two. */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+/** C0 and C1 controls, and the bidi marks, embeddings, overrides and
+    isolates. A NUL is refused by Postgres (a 500); the rest would reach the
+    owner's push and WhatsApp text, where an override can disguise a name. */
+const CONTROL_IN_NAME = /[\u0000-\u001F\u007F-\u009F\u200E\u200F\u202A-\u202E\u2066-\u2069]/;
+/** The same, less tab, line feed and carriage return: a note may have lines. */
+const CONTROL_IN_NOTE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200E\u200F\u202A-\u202E\u2066-\u2069]/;
 export const DAILY_CAP = 200;
 const REFERENCE_ATTEMPTS = 5;
 
@@ -62,11 +68,11 @@ export function parseRequestForm(form: FormFields): ParsedRequest {
   const partySize = /^\d{1,2}$/.test(raw.party) ? Number(raw.party) : 0;
   if (partySize < 1 || partySize > 50) errors.push('partySize');
   const name = raw.name.replace(/\s+/g, ' ').trim();
-  if (name.length < 1 || name.length > 80) errors.push('name');
+  if (name.length < 1 || name.length > 80 || CONTROL_IN_NAME.test(raw.name)) errors.push('name');
   const phone = normalizeMyPhone(raw.phone);
   if (!phone) errors.push('phone');
   const noteText = raw.note.trim();
-  if (noteText.length > 500) errors.push('note');
+  if (noteText.length > 500 || CONTROL_IN_NOTE.test(raw.note)) errors.push('note');
   const submissionKey = UUID.test(raw.submission_key) ? raw.submission_key.toLowerCase() : '';
   if (!submissionKey) errors.push('submission');
   if (errors.length > 0) return { ok: false, errors, raw };
