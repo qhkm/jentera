@@ -569,6 +569,10 @@ export function createBusinessBrowser(config, deps = {}) {
   }
   return { ensure, status, isPaused, command, preview, stopScreencast,
     desktopControlValid: body => Boolean(config.desktopEnabled && paused && controlledBy(body)),
+    /* Watching, which is the mirror image: it needs the agent to be running,
+       not stopped, and refuses while anyone holds the desktop for control. It
+       takes no body because an observer commands nothing. */
+    desktopObserveValid: () => Boolean(config.desktopEnabled && !paused && !(lease && lease.expiresAt > now())),
     touchDesktopControl: body => {
       if (!config.desktopEnabled || !paused || !controlledBy(body)) return false;
       lease.expiresAt = now() + LEASE_MS; return true;

@@ -15,10 +15,16 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 export const DESKTOP_TTL_MS = 10 * 60_000;
 
 /** Tickets are purpose-bound, single-use and sent ONLY inside the server-side
- * Sprites tunnel, never a URL, client response, trace, or durable file. */
-export function desktopTicketValid(ticket, config, now = Date.now()) {
-  if (!ticket || ticket.purpose !== 'jentera-desktop-v1' || ticket.businessId !== config.businessId ||
-      ![ticket.ownerId, ticket.controlId, ticket.nonce].every(value => typeof value === 'string' && UUID.test(value)) ||
+ * Sprites tunnel, never a URL, client response, trace, or durable file.
+ *
+ * Two purposes exist and neither validator accepts the other's ticket. The
+ * purpose is inside the signed payload, so a watcher cannot become a
+ * controller by editing a field in flight. A control ticket names the lease it
+ * belongs to (`controlId`); an observe ticket names the run being watched
+ * (`runId`) and must carry no lease at all, because it commands nothing. */
+function ticketValid(ticket, config, now, purpose, subject) {
+  if (!ticket || ticket.purpose !== purpose || ticket.businessId !== config.businessId ||
+      ![ticket.ownerId, ticket[subject], ticket.nonce].every(value => typeof value === 'string' && UUID.test(value)) ||
       !Number.isSafeInteger(ticket.issuedAt) || !Number.isSafeInteger(ticket.expiresAt) ||
       ticket.issuedAt > now + 5000 || ticket.issuedAt < now - DESKTOP_TTL_MS ||
       ticket.expiresAt <= now || ticket.expiresAt - ticket.issuedAt > DESKTOP_TTL_MS ||
@@ -28,28 +34,55 @@ export function desktopTicketValid(ticket, config, now = Date.now()) {
   return timingSafeEqual(Buffer.from(signature, 'hex'), expected);
 }
 
+export function desktopTicketValid(ticket, config, now = Date.now()) {
+  return ticketValid(ticket, config, now, 'jentera-desktop-v1', 'controlId');
+}
+
+/** Watching only. Refuses a ticket carrying a control lease outright rather
+ * than ignoring it, so a malformed or repurposed ticket fails closed. */
+export function desktopObserveTicketValid(ticket, config, now = Date.now()) {
+  if (ticket?.controlId !== undefined) return false;
+  return ticketValid(ticket, config, now, 'jentera-desktop-observe-v1', 'runId');
+}
+
+export function desktopArgs({ display = ':99', socketPath, viewOnly = false } = {}) {
+  return [
+    '-display', display, '-unixsock', socketPath, '-rfbport', '0',
+    '-once', '-nopw', '-quiet', '-noremote', '-nolookup', '-no6',
+    '-nosel', '-noclipboard', '-nosetclipboard', '-nosetprimary', '-clear_keys', '-norepeat',
+    /* Watching only. x11vnc discards every client input event itself, so a
+       gateway bug that forwarded bytes still could not move the pointer. */
+    ...(viewOnly ? ['-viewonly'] : []),
+  ];
+}
+
 /** VNC is a per-viewer process and a private UNIX socket, not a public TCP
  * listener. Normal shutdown runs x11vnc's -clear_keys before agent hand-back.
  * No desktop stdout/stderr, key data or screenshots are logged or stored. */
 export async function openDesktop(config) {
   const socketPath = config.socketPath ?? '/home/sprite/aisar/desktop.sock';
+  const viewOnly = config.viewOnly === true;
   await mkdir(dirname(socketPath), { recursive: true, mode: 0o700 });
   try {
     const previous = await lstat(socketPath);
     if (!previous.isSocket()) throw new Error('Desktop socket unavailable');
     await unlink(socketPath);
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  const child = spawn('/usr/bin/x11vnc', [
-    '-display', config.display ?? ':99', '-unixsock', socketPath, '-rfbport', '0',
-    '-once', '-nopw', '-quiet', '-noremote', '-nolookup', '-no6',
-    '-nosel', '-noclipboard', '-nosetclipboard', '-nosetprimary', '-clear_keys', '-norepeat',
-  ], { stdio: 'ignore' });
+  const child = spawn('/usr/bin/x11vnc',
+    desktopArgs({ display: config.display ?? ':99', socketPath, viewOnly }), { stdio: 'ignore' });
   let exited = false;
   let spawnFailed = false;
   const done = new Promise(resolve => {
     child.once('error', () => { spawnFailed = true; exited = true; resolve(); });
     child.once('exit', () => { exited = true; resolve(); });
   });
+  const releaseKeys = async () => {
+    const local = new URL('./desktop-release-keys.py', import.meta.url);
+    const script = existsSync(local) ? local : new URL('../bin/desktop-release-keys.py', import.meta.url);
+    await promisify(execFile)('/usr/bin/python3', [fileURLToPath(script)], {
+      timeout: 2000, maxBuffer: 1024, env: { ...process.env, DISPLAY: config.display ?? ':99' },
+    });
+  };
   const stop = async () => {
     if (!exited) child.kill('SIGTERM');
     let timer;
@@ -67,11 +100,12 @@ export async function openDesktop(config) {
     // Native reset is verified AFTER the sole input producer has stopped.
     // x11vnc's cleanup is not sufficient on all Linux builds and doesn't
     // release a held drag button. Failure keeps the durable agent pause.
-    const local = new URL('./desktop-release-keys.py', import.meta.url);
-    const script = existsSync(local) ? local : new URL('../bin/desktop-release-keys.py', import.meta.url);
-    await promisify(execFile)('/usr/bin/python3', [fileURLToPath(script)], {
-      timeout: 2000, maxBuffer: 1024, env: { ...process.env, DISPLAY: config.display ?? ':99' },
-    });
+    //
+    // A view-only session was never an input producer, so there is nothing to
+    // release and nothing to verify. Skipping it is the point rather than an
+    // optimisation: this script failing is what latches `cleanupBlocked`, and
+    // a latched gateway is indistinguishable from a disabled one.
+    if (!viewOnly) await releaseKeys();
     try { await unlink(socketPath); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   };
   try {
@@ -103,7 +137,7 @@ export async function openDesktop(config) {
  * for every input chunk. No generic destination or shell command is accepted. */
 export function createDesktopGateway(config, deps = {}) {
   const now = deps.now ?? Date.now;
-  const launch = deps.openDesktop ?? (() => openDesktop(config));
+  const launch = deps.openDesktop ?? (options => openDesktop({ ...config, ...options }));
   const seen = new Map();
   const sockets = new Set();
   let viewer = null;
@@ -132,12 +166,16 @@ export function createDesktopGateway(config, deps = {}) {
     let preface = Buffer.alloc(0);
     let authorized = false;
     let ticket;
+    let observing = false;
     let heartbeat;
     let deadline;
     let bytes = 0;
     let windowAt = now();
+    /* An observe session holds no lease, so there is none to re-check. What
+       keeps it honest instead: it ends the moment the owner takes control,
+       through the same onControlChanging teardown a control session uses. */
     const valid = () => authorized && !closing && !cleanupBlocked && viewer?.client === client &&
-      ticket.expiresAt > now() && config.browser.desktopControlValid(ticket);
+      ticket.expiresAt > now() && (observing || config.browser.desktopControlValid(ticket));
     const reject = () => client.destroy();
     client.on('error', () => {});
     client.once('close', () => {
@@ -146,6 +184,10 @@ export function createDesktopGateway(config, deps = {}) {
     });
     const onInput = chunk => {
       if (!valid()) { reject(); return; }
+      /* Watching only. x11vnc already discards client input under -viewonly;
+         refusing to forward it is the second of the two locks, and anything
+         arriving after the handshake is treated as a protocol error. */
+      if (observing) { reject(); return; }
       if (now() - windowAt >= 1000) { bytes = 0; windowAt = now(); }
       bytes += chunk.length;
       if (bytes > 256 * 1024 || !config.browser.touchDesktopControl(ticket)) { reject(); return; }
@@ -162,8 +204,15 @@ export function createDesktopGateway(config, deps = {}) {
       try { ticket = JSON.parse(preface.subarray(0, end).toString('utf8')); } catch { reject(); return; }
       preface = Buffer.alloc(0);
       for (const [nonce, expires] of seen) if (expires <= now()) seen.delete(nonce);
-      if (!desktopTicketValid(ticket, config, now()) || seen.has(ticket.nonce) || seen.size >= 128 ||
-          !config.browser.desktopControlValid(ticket)) { reject(); return; }
+      observing = ticket?.purpose === 'jentera-desktop-observe-v1';
+      const admitted = observing
+        /* Watching needs neither the durable pause nor a lease, but it must
+           not race a controller: while the owner holds the desktop, theirs is
+           the only session. */
+        ? desktopObserveTicketValid(ticket, config, now()) &&
+          typeof config.browser.desktopObserveValid === 'function' && config.browser.desktopObserveValid()
+        : desktopTicketValid(ticket, config, now()) && config.browser.desktopControlValid(ticket);
+      if (!admitted || seen.has(ticket.nonce) || seen.size >= 128) { reject(); return; }
       seen.set(ticket.nonce, ticket.expiresAt);
       client.setTimeout(8000);
       const current = { client, desktop: null, opening: null };
@@ -172,7 +221,7 @@ export function createDesktopGateway(config, deps = {}) {
       try {
         await pendingCleanup;
         if (closing || cleanupBlocked || client.destroyed || viewer !== current) { reject(); return; }
-        current.opening = launch();
+        current.opening = launch({ viewOnly: observing });
         current.desktop = await current.opening;
         authorized = true;
         if (!valid() || client.destroyed) {
