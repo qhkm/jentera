@@ -6,6 +6,7 @@ import { useSnapshot } from '@/lib/repo';
 import { RepositoryGate, useSignedIn } from '@/lib/repo/gate';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { ToastProvider } from '@/components/Toast';
+import { ServiceWorkerRegistration } from '@/components/ServiceWorkerRegistration';
 import { DetailLevelProvider } from '@/hooks/useDetailLevel';
 import { ActivityProvider } from '@/hooks/useActivity';
 import { isOnboarded, isSetupDone } from '@/lib/business';
@@ -125,6 +126,13 @@ export function AppRoutes() {
     <>
       <PageMetadata />
       <GoogleAnalytics />
+      {/* Every route, not only the ones that show the update notice. It
+          lived on the old landing page until 23 September, which the `/`
+          route stopped rendering when LandingV3 took over — so no public
+          page registered a worker at all, and an owner arriving through
+          /signin reached the app on a page no worker controlled. That is
+          the state in which the plugin refuses to reload on an update. */}
+      <ServiceWorkerRegistration />
       <Suspense fallback={<RouteLoading />}>
         <Routes>
           {/* Public, and free of any provider dependency. */}

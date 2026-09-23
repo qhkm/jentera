@@ -23,7 +23,6 @@ import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { JenteraMark } from "@/components/JenteraMark";
 import { ProductTour } from "@/components/landing/ProductTour";
 import { LandingInstallNudge } from "@/components/InstallNudge";
-import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import {
   BUSINESS_EXAMPLES,
   EVERYDAY_WORK,
@@ -484,7 +483,6 @@ export default function Landing() {
       </main>
       <LandingFooter />
       <LandingInstallNudge />
-      <ServiceWorkerRegistration />
     </div>
   );
 }

@@ -46,6 +46,13 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
   `TAKEOVER_GRACE_MS` regardless — which also covers the other dead end,
   where nothing is waiting because another tab already took the update and
   SKIP_WAITING lands nowhere.
+- **The worker is registered from `AppRoutes`, for every route.**
+  `<ServiceWorkerRegistration />` sat in `routes/Landing.tsx` until 23
+  September, which `/` stopped rendering when LandingV3 took over
+  (`App.tsx`): no public page registered a worker, so an owner arriving
+  through `/signin` reached the app on a page no worker controlled — the
+  one state in which the reload above refuses. `src/__tests__/service-worker-registration.test.tsx`
+  walks every public path and fails if one registers nothing.
 - The steps under a reply are read, not quoted. The runner keeps only the
   program of a command (`git`, never `git push …`), nothing for code, and
   the action word for a process; the runtime's and the host's own names are
