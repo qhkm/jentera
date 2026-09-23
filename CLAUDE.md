@@ -668,6 +668,17 @@ from a made-up address would damage the sending reputation being tested.
 
 ## Conventions
 
+- **Several agents work in this one checkout at once.** Someone else's
+  uncommitted work is usually sitting in the tree beside yours, and it moves
+  between one command and the next. Stage **named paths**; never `git add -A`
+  or `git add .`. On 23 September that swept 536 lines of another session's
+  in-flight plan into an unrelated commit. The same care applies outward:
+  `./deploy.sh` publishes the **working tree**, not HEAD, so anyone's
+  unfinished `app/` work ships with it — check `git status` first. And
+  `git push` sends all of main, so read `origin/main..main` and know whose
+  commits you are publishing before you do. `ship-runtime.sh` is the exception
+  that needs no care: it commits only `worker/wrangler.toml`, in a scratch
+  worktree detached from `origin/main`.
 - TypeScript + React under `app/`, two-space indent, semicolons, single quotes, camelCase.
 - Import shared modules via the `@/` alias rather than long relative paths.
 - Preserve `prefers-reduced-motion` handling and accessibility labels.
