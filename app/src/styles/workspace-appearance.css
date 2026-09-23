@@ -264,10 +264,13 @@
   color: var(--text);
   font-weight: 500;
 }
-.dashboard-shell .business-connection-row > .card { border: 0; padding: 12px 4px; }
+.dashboard-shell .business-connection-row > .card { border: 0; padding: 24px; }
 .dashboard-shell .business-connections .connector-category { display: none; }
 .dashboard-shell .business-connections .connector-card-footer { flex-direction: row; align-items: center; flex-wrap: wrap; }
 .dashboard-shell .business-connections .connector-card-footer .btn { width: auto; margin-left: auto; }
+@media (max-width: 720px) {
+  .dashboard-shell .business-connection-row > .card { padding: 18px; }
+}
 .dashboard-shell .activity-overview button {
   display: flex;
   align-items: center;
