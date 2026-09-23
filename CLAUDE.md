@@ -433,6 +433,13 @@ comparison: retain Sprites, with an Alibaba 4 GB pilot proposed for sustained
 browser workloads. Its costs are illustrative, not our invoice. Read it before
 proposing a provider migration; model-loop cost work is a separate plan.
 
+`docs/openmausbot-comparison.md` records the 23 September 2026 comparison
+with OpenMausBot (Apache-2.0, except its `enterprise/`, which nothing may be
+copied from): four gaps it exposed in our live code, what is worth taking by
+area, what is kept for expansion (specialists working together, Composio)
+with the preconditions, and where Jentera is already ahead. Read it before
+proposing a feature "like OpenMausBot's" or porting its code.
+
 `docs/provisioning-time.md` is where cold-provision and upgrade time live: the
 measured cost of each bootstrap stage, the 160 s around the bootstrap that
 nothing times yet, why the script-level speedups were not taken, and what Fly

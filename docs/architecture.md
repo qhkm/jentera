@@ -759,6 +759,7 @@ owner. Read it before asking what is next.
 | How to ship to the fleet, and roll back | `docs/release-playbook.md` |
 | Cold provision and upgrade cost | `docs/provisioning-time.md` |
 | Compute provider comparison | `docs/sprites-vs-dedicated-vms.md` |
+| OpenMausBot comparison: gaps, ideas, expansion | `docs/openmausbot-comparison.md` |
 | Teams: roles, tables, joining, offboarding | `docs/team-plan.md` |
 | Routines contract and acceptance gate | `docs/plans/2026-09-09-routines-api-v1.md` |
 | Cloudflare surface and account asks | `docs/cloudflare-account-review-2026-09-23.md` |

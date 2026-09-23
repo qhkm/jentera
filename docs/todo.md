@@ -165,7 +165,8 @@ separate source-available licence: copy nothing from it.** The same
 post-launch rule as the section above applies. Where an item overlaps a
 Grok Bot row it is marked; build it as that row, using the OpenMausBot file
 as a reference. The gaps this comparison found in live code are under
-"Gaps in what is live" above.
+"Gaps in what is live" above. The full reasoning, area by area, is in
+[`openmausbot-comparison.md`](openmausbot-comparison.md).
 
 | Priority | Item | Why | Done when |
 |---|---|---|---|
