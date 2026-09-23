@@ -112,6 +112,16 @@ describe('Library', () => {
     await user.click(screen.getByRole('button', { name: 'Choose schedule' }));
     expect(onUse).toHaveBeenCalledWith(expect.objectContaining({ name: 'Daily business brief', task: { kind: 'business_summary' } }));
   });
+  /* A bare `btn` is transparent in fill and in border, so it renders as
+     plain text — and as faint text while disabled, which is how the form's
+     own action first appears. The variant is what makes it read as a
+     button at all. */
+  it('gives the schedule action a button shape, not a bare control', async () => {
+    const { user } = await mount();
+    await user.click(screen.getByRole('button', { name: /Daily business brief/ }));
+    const schedule = screen.getByRole('button', { name: 'Choose schedule' });
+    expect(schedule).toHaveClass('btn', 'btn-primary');
+  });
   it('blocks scheduling when routines are unavailable', async () => {
     const { user, onUse } = await mount('playbooks', connections, false);
     await user.click(screen.getByRole('button', { name: /Daily business brief/ }));

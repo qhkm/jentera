@@ -37,10 +37,10 @@ export default function FilesView({ onOpenTask }: { onOpenTask: (runId: string) 
         <Eyebrow>{t('files.title')}</Eyebrow>
         <h1 id="files-heading" className="font-pixel text-3xl tracking-tight">{t('files.title')}</h1>
         <p className="text-text-secondary">{t('files.intro')}</p>
-        <button type="button" role="switch" aria-checked={advanced} onClick={() => setAdvanced(!advanced)} className="btn self-start">
+        <Button type="button" variant="outline" role="switch" aria-checked={advanced} onClick={() => setAdvanced(!advanced)} className="self-start">
           {lang === 'bm' ? 'Paparan lanjutan' : 'Advanced view'}
           <span aria-hidden="true" className={advanced ? 'text-brand' : 'text-text-muted'}>{advanced ? (lang === 'bm' ? 'Aktif' : 'On') : (lang === 'bm' ? 'Tidak aktif' : 'Off')}</span>
-        </button>
+        </Button>
       </header>
       {failed && <p role="alert" className="text-[var(--color-red-400)]">{t('files.error')}</p>}
       {files === null ? (
@@ -67,7 +67,7 @@ export default function FilesView({ onOpenTask }: { onOpenTask: (runId: string) 
               </div>
               <div className="flex items-center gap-2">
                 <a
-                  className="btn"
+                  className="btn btn-primary"
                   href={repo.artifactUrl?.(file.id) ?? '#'}
                   download={file.name}
                   target="_blank"

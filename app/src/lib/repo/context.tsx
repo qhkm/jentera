@@ -10,6 +10,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from 'react';
 import { LocalRepository } from './local';
 import type { BusinessSnapshot, Repository } from './types';
+import { Button } from '@/components/ui';
 
 interface Ctx {
   repository: Repository;
@@ -98,9 +99,9 @@ export function RepositoryProvider({
       ) : status === 'error' ? (
         <div role="alert" className="card" style={{ margin: '2rem', padding: '1.5rem' }}>
           <p>Could not load your business. {error?.message}</p>
-          <button className="btn" onClick={retry} type="button">
+          <Button onClick={retry} type="button">
             Try again
-          </button>
+          </Button>
         </div>
       ) : null}
     </StatusContext.Provider>

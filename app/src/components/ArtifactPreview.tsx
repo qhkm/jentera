@@ -167,7 +167,7 @@ export function ArtifactPreview({ artifact, onClose }: { artifact: Artifact; onC
             <strong className="block truncate text-[14px]">{artifact.name}</strong>
             <span className="text-[12px] text-text-muted">{formatBytes(artifact.size)}</span>
           </div>
-          <a className="btn" href={repo.artifactUrl?.(artifact.id) ?? '#'} download={artifact.name} target="_blank" rel="noopener">
+          <a className="btn btn-primary" href={repo.artifactUrl?.(artifact.id) ?? '#'} download={artifact.name} target="_blank" rel="noopener">
             <DownloadSimple size={16} aria-hidden="true" />
             {t('files.download')}
           </a>

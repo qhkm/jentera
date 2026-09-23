@@ -113,6 +113,20 @@
      specificity. Same dim as .input:disabled, which had both problems. */
   .btn:disabled,
   .btn[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+
+  /* A .btn that names no variant used to be transparent in fill AND in
+     border, so it rendered as plain text — the Library's "Choose schedule"
+     read as a heading, and as faint grey text while disabled, which is the
+     state it starts in. Seventeen call sites had drifted into it. The
+     argument sits in :where(), contributing no specificity, so this rule
+     weighs exactly `.btn` and every variant below overrides it on source
+     order alone. Reach for `<Button>` rather than these classes; it
+     defaults to primary and cannot produce a bare control. */
+  .btn:not(:where(.btn-primary, .btn-outline, .btn-ghost, .btn-reco)) {
+    background: transparent;
+    color: var(--text);
+    border-color: rgb(var(--border-ink) / .2);
+  }
   /* Same rule for both control types, so a stacked input and button
      stay the same height at every breakpoint. */
   .btn.py-4,

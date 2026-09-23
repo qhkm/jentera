@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Folder, FileText } from '@phosphor-icons/react';
+import { Button } from '@/components/ui';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useRepository, type Artifact } from '@/lib/repo';
 import { formatBytes } from '@/lib/artifacts';
@@ -34,7 +35,7 @@ export function FileExplorer({ files, onOpen, onOpenTask }: {
       ? 'Baca sahaja · Folder maya untuk output tersimpan, bukan cakera komputer. Memaparkan sehingga 100 fail terkini.'
       : 'Read-only · Virtual folders for saved outputs, not the computer’s disk. Showing up to 100 latest files.'}</p>
     <div className="flex flex-wrap items-center gap-2">
-      <button type="button" className="btn explorer-folder-toggle" aria-expanded={foldersOpen} aria-controls="explorer-folders" onClick={() => setFoldersOpen(!foldersOpen)}><Folder size={18} />{bm ? 'Folder' : 'Folders'}</button>
+      <Button type="button" variant="outline" className="explorer-folder-toggle" aria-expanded={foldersOpen} aria-controls="explorer-folders" onClick={() => setFoldersOpen(!foldersOpen)}><Folder size={18} />{bm ? 'Folder' : 'Folders'}</Button>
       <nav aria-label={bm ? 'Lokasi folder' : 'Folder location'} className="flex min-w-0 items-center gap-2 text-sm">
         <button type="button" className="hover:underline" onClick={() => chooseFolder('outputs')}>outputs</button>
         {folder !== 'outputs' && <><span aria-hidden="true">/</span><span aria-current="page">{categories.find(c => c.id === folder)?.label}</span></>}

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { ArrowLeft, ArrowUpRight, BookOpen, Check, Lock } from '@phosphor-icons/react';
+import { Button } from '@/components/ui';
 import { AUTOMATION_PLAYBOOKS, playbookConfig, type AutomationPlaybook } from '@/lib/routines/playbooks';
 import type { RoutineConfig } from '@/lib/routines/types';
 
@@ -13,7 +14,7 @@ export function AutomationPlaybooks({ canUse, onUse, onClose }: {
   const [reviewed, setReviewed] = useState(false);
   return <section className="automation-playbooks" aria-labelledby="playbooks-heading">
     <div className="routine-section-heading"><div><h2 id="playbooks-heading">Automation Playbooks</h2><p>Choose a job. Review what it needs. Make it a routine.</p></div>
-      {onClose && <button type="button" className="btn btn-outline" onClick={onClose}>Close library</button>}</div>
+      {onClose && <Button type="button" variant="outline" onClick={onClose}>Close library</Button>}</div>
     {!selected ? <div className="automation-playbook-grid">{AUTOMATION_PLAYBOOKS.map(playbook => <button type="button" className="automation-playbook-card card" key={playbook.id} onClick={() => { setSelected(playbook); setBrief(''); setReviewed(false); }}>
       <span className="playbook-card-heading"><BookOpen size={20} className="text-brand" aria-hidden="true" /><strong>{playbook.name}</strong></span>
       <span>{playbook.description}</span>
@@ -40,7 +41,10 @@ export function AutomationPlaybooks({ canUse, onUse, onClose }: {
         <Link className="routine-link" to="/app?view=business&tab=permissions">Review action controls<ArrowUpRight size={15} /></Link>
         <label className="routine-checkbox"><input type="checkbox" checked={reviewed} onChange={event => setReviewed(event.target.checked)} required />I have reviewed the steps, connections and approval boundaries.</label>
         {!canUse && <p role="status">Scheduling is unavailable or you do not have permission to add another routine.</p>}
-        <button type="submit" className="btn" disabled={!canUse || !reviewed || (selected.kind === 'agent_task' && !brief.trim())}>Choose schedule</button>
+        {/* The form's own action, so it carries the filled primary shape.
+            A bare `btn` is transparent in fill and border alike — it was
+            reading as plain text, and faint text at that while disabled. */}
+        <Button type="submit" disabled={!canUse || !reviewed || (selected.kind === 'agent_task' && !brief.trim())}>Choose schedule</Button>
         <p className="routine-muted">Nothing is enabled yet. Next, review the schedule and confirm. New playbooks start paused so you can test them first.</p>
       </form>}
     </div>}

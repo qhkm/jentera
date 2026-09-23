@@ -1,4 +1,5 @@
 import { CheckCircle, Clock, ShieldCheck, XCircle } from '@phosphor-icons/react';
+import { Button } from '@/components/ui';
 
 export type HumanApprovalStatus = 'pending' | 'deciding' | 'approved' | 'denied' | 'expired';
 
@@ -89,14 +90,14 @@ export function HumanApprovalCard({
         </p>
       ) : (
         <div className="ask-approval-actions">
-          <button
+          <Button
             type="button"
-            className="btn"
+            variant="outline"
             disabled={status === 'deciding'}
             onClick={() => onDecision('deny')}
           >
             {denyLabel}
-          </button>
+          </Button>
           <button
             type="button"
             className="btn btn-primary"

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { JenteraMark } from '@/components/JenteraMark';
+import { Button } from '@/components/ui';
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 type Person = {
@@ -111,8 +112,8 @@ export default function LaunchAdmin() {
         <code className="select-all break-all rounded-lg bg-bg-card p-3">{invite.code}</code>
         <p className="text-sm">Redeem by {date(invite.expiresAt)} MYT</p>
         <p className="text-sm text-text-secondary">Ask the recipient to sign in, then open <Link className="text-brand" to="/access?invite=1">the invite redemption page</Link>.</p>
-        <button className="btn" onClick={() => { void navigator.clipboard.writeText(`Sign in to Jentera, then open https://jentera.ai/access?invite=1\nYour code: ${invite.code}\nUse the account ${invite.email}. Redeem by ${date(invite.expiresAt)} MYT. Your 3-day trial starts when you redeem.`).then(() => setCopied(true)).catch(() => setError('Could not copy. Select the code and copy it manually.')); }}>{copied ? 'Copied' : 'Copy invitation'}</button>
-        <button className="btn" onClick={() => setInvite(null)}>Hide code</button>
+        <Button onClick={() => { void navigator.clipboard.writeText(`Sign in to Jentera, then open https://jentera.ai/access?invite=1\nYour code: ${invite.code}\nUse the account ${invite.email}. Redeem by ${date(invite.expiresAt)} MYT. Your 3-day trial starts when you redeem.`).then(() => setCopied(true)).catch(() => setError('Could not copy. Select the code and copy it manually.')); }}>{copied ? 'Copied' : 'Copy invitation'}</Button>
+        <Button variant="outline" onClick={() => setInvite(null)}>Hide code</Button>
       </section>}
       {data && <section className="my-6 grid gap-3 rounded-xl border border-border p-4" aria-labelledby="announcement-title">
         <h2 id="announcement-title" className="text-lg font-medium">Email the waiting list</h2>
@@ -121,13 +122,13 @@ export default function LaunchAdmin() {
         <label className="grid gap-2 text-sm">Subject<input className="input w-full" required maxLength={150} value={notice.subject} onChange={e => edit('subject', e.target.value)} disabled={busy} /></label>
         <label className="grid gap-2 text-sm">Message<textarea className="input min-h-40 w-full" required maxLength={4000} value={notice.text} onChange={e => edit('text', e.target.value)} disabled={busy} /></label>
         <div className="flex flex-wrap gap-3">
-          <button type="button" className="btn" disabled={busy || !notice.key || !notice.subject || !notice.text} onClick={() => void announce(true)}>{busy && !preview ? 'Checking…' : 'Preview recipients'}</button>
+          <Button type="button" variant="outline" disabled={busy || !notice.key || !notice.subject || !notice.text} onClick={() => void announce(true)}>{busy && !preview ? 'Checking…' : 'Preview recipients'}</Button>
           {preview && <button type="button" className="btn btn-primary" disabled={busy || preview.recipients === 0} onClick={() => void announce(false)}>{busy ? 'Sending…' : `Send to ${preview.recipients} ${preview.recipients === 1 ? 'person' : 'people'}`}</button>}
         </div>
         {preview && <p className="text-sm" role="status">{preview.recipients} people have not had this announcement. Nothing has been sent yet.{preview.remaining > 0 && ` ${preview.remaining} more will wait for a second run.`}</p>}
         {delivery && <p className="text-sm" role="status">Sent to {delivery.sent}.{delivery.failed > 0 && ` ${delivery.failed} were refused and stay unmarked—run it again to reach them.`}{delivery.remaining > 0 && ` ${delivery.remaining} still waiting; run it again.`}</p>}
       </section>}
-      <div className="my-4 flex items-center justify-between"><h2 className="text-lg font-medium">People</h2><button className="btn" onClick={() => setRefresh(value => value + 1)}>Refresh</button></div>
+      <div className="my-4 flex items-center justify-between"><h2 className="text-lg font-medium">People</h2><Button variant="outline" onClick={() => setRefresh(value => value + 1)}>Refresh</Button></div>
       {!data && !error && <p role="status">Loading launch data…</p>}
       {data?.rows.length === 0 && <p className="py-6 text-text-secondary">No waitlist signups or invitations yet.</p>}
       <div className="grid gap-3">{data?.rows.map(person => {
@@ -156,10 +157,10 @@ export default function LaunchAdmin() {
         </li>)}</ol>
         {person.lastPushAcceptedAt && <p className="mt-3 text-xs text-text-muted">Last push accepted by a device service: {date(person.lastPushAcceptedAt)}</p>}
         {person.lastPushIssue && <p className="mt-2 rounded-lg border border-danger/40 px-3 py-2 text-xs text-danger">Latest push retry issue: {person.lastPushIssue}</p>}
-        <button className="btn mt-3" disabled={!!person.redeemed_at} onClick={() => { setEmail(person.email); window.scrollTo({ top: 0, behavior: 'instant' }); }}>Prepare invitation</button>
+        <Button variant="outline" className="mt-3" disabled={!!person.redeemed_at} onClick={() => { setEmail(person.email); window.scrollTo({ top: 0, behavior: 'instant' }); }}>Prepare invitation</Button>
       </article>})}</div>
       <p className="my-4 text-xs text-text-muted">“First task done” means a chat request finished after trial redemption—not a verified business outcome. “Push accepted” means the device’s push service accepted delivery; browsers provide no proof that a person saw it. Creating a code does not mean an invitation was sent.</p>
-      {data && <nav className="flex justify-between gap-3" aria-label="People pages"><button className="btn" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 25))}>Previous</button><button className="btn" disabled={!data.hasMore} onClick={() => setOffset(offset + 25)}>Next</button></nav>}
+      {data && <nav className="flex justify-between gap-3" aria-label="People pages"><Button variant="outline" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 25))}>Previous</Button><Button variant="outline" disabled={!data.hasMore} onClick={() => setOffset(offset + 25)}>Next</Button></nav>}
     </>}
     {error && <p className="mt-4" role="alert">{error}</p>}
   </main>;

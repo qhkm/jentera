@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSignedInRedirect } from "@/hooks/useSignedInRedirect";
 import { clearAskStorage } from "@/hooks/useAsk";
 import { pendingTrialInvite } from '@/lib/trial-link';
+import { Button } from '@/components/ui';
 import {
   ArrowUpRight,
   EnvelopeSimple,
@@ -439,14 +440,14 @@ function BrowserSignIn() {
                   If you are already signed in here, this hands your session to the app on
                   this device. Only continue if you opened this page from Jentera yourself.
                 </p>
-                <button
+                <Button
                   type="button"
-                  className="btn mt-3"
+                  className="mt-3"
                   disabled={handoffBusy}
                   onClick={() => { void returnToApp(); }}
                 >
                   {handoffBusy ? 'Returning…' : 'Return to the Jentera app'}
-                </button>
+                </Button>
               </section>
             ) : null}
 
