@@ -485,6 +485,8 @@ export interface TokenConnectorOption {
 export interface Repository {
   /** Remote only; callers must also require /api/me v1 discovery. */
   routines?: import('@/lib/routines/types').RoutinesApi;
+  /** Remote only; callers must also require /api/me apps discovery. */
+  apps?: import('@/lib/apps/types').AppsApi;
   load(): Promise<BusinessSnapshot>;
   /** Read-only, remote-only support invitation; server checks verified paid access. */
   founderGroup?(): Promise<{ url: string } | null>;

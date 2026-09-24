@@ -27,6 +27,7 @@ const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 type Chosen = {
   routinesVersion?: number;
   teamVersion?: number;
+  appsVersion?: number;
   repo: LocalRepository | RemoteRepository;
   mode: 'local' | 'remote';
   /** Session user id when remote; null for the demo. */
@@ -46,6 +47,9 @@ const RoutinesContext = createContext(false);
 /* Team is a plan. The flag says the Team tab may show; every team write is
    checked again by the routes. */
 const TeamContext = createContext(false);
+/* Apps (Bookings) is a pilot. The Worker sends the flag to owners only, so
+   staff never learn the feature exists. */
+const AppsContext = createContext(false);
 
 /** Discovery only. Live permissions come from /api/routines on every visit. */
 export function useRoutinesEnabled(): boolean {
@@ -55,6 +59,11 @@ export function useRoutinesEnabled(): boolean {
 /** Discovery only: whether this business is on the Team plan. */
 export function useTeamEnabled(): boolean {
   return useContext(TeamContext);
+}
+
+/** Discovery only: whether the apps pilot is on for this owner. */
+export function useAppsEnabled(): boolean {
+  return useContext(AppsContext);
 }
 
 /**
@@ -73,6 +82,7 @@ export function SignedInProvider({
   email = null,
   routinesVersion,
   teamVersion,
+  appsVersion,
   children,
 }: {
   value: boolean;
@@ -82,6 +92,7 @@ export function SignedInProvider({
   email?: string | null;
   routinesVersion?: number;
   teamVersion?: number;
+  appsVersion?: number;
   children: ReactNode;
 }) {
   return (
@@ -89,7 +100,9 @@ export function SignedInProvider({
       <AccountContext.Provider value={value ? account : null}>
         <AccountEmailContext.Provider value={value ? email : null}>
           <RoutinesContext.Provider value={value && routinesVersion === 1}>
-            <TeamContext.Provider value={value && teamVersion === 1}>{children}</TeamContext.Provider>
+            <TeamContext.Provider value={value && teamVersion === 1}>
+              <AppsContext.Provider value={value && appsVersion === 1}>{children}</AppsContext.Provider>
+            </TeamContext.Provider>
           </RoutinesContext.Provider>
         </AccountEmailContext.Provider>
       </AccountContext.Provider>
@@ -189,6 +202,7 @@ async function choose(): Promise<Chosen> {
     email: typeof me?.email === 'string' && me.email.trim() ? me.email.trim() : null,
     routinesVersion: me?.features?.routines?.apiVersion,
     teamVersion: me?.features?.team?.apiVersion,
+    appsVersion: me?.features?.apps?.apiVersion,
   };
 }
 
@@ -220,7 +234,7 @@ export function RepositoryGate({ children }: { children: ReactNode }) {
   }
 
   return (
-    <SignedInProvider value={chosen.mode === 'remote'} account={chosen.account} email={chosen.email} routinesVersion={chosen.routinesVersion} teamVersion={chosen.teamVersion}>
+    <SignedInProvider value={chosen.mode === 'remote'} account={chosen.account} email={chosen.email} routinesVersion={chosen.routinesVersion} teamVersion={chosen.teamVersion} appsVersion={chosen.appsVersion}>
       <RepositoryProvider repository={chosen.repo}>{children}</RepositoryProvider>
     </SignedInProvider>
   );

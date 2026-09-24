@@ -12,6 +12,7 @@ import type { Approval, CountryCode, Lang, Policy } from '@/lib/types';
 import { isRunId } from '@/lib/task';
 import { isArtifact } from '@/lib/artifacts';
 import { RemoteRoutinesApi } from '@/lib/routines/api';
+import { RemoteAppsApi } from '@/lib/apps/api';
 import { nativeAuthorizationHeaders } from '@/lib/native';
 import { parseFounderGroup } from '@/lib/founder-group';
 import type {
@@ -75,7 +76,7 @@ export class NotSignedInError extends Error {
 export interface MeResponse {
   /** Server-confirmed session email; display only, never an authorization key. */
   email?: string;
-  features?: { routines?: { apiVersion?: number }; team?: { apiVersion?: number } };
+  features?: { routines?: { apiVersion?: number }; team?: { apiVersion?: number }; apps?: { apiVersion?: number } };
   detailLevel?: string;
   /** Opaque account id from the session; scopes per-browser state such as
       Ask history so two accounts sharing a browser never see each other's. */
@@ -170,6 +171,7 @@ interface WireApproval {
 
 export class RemoteRepository implements Repository {
   readonly routines = new RemoteRoutinesApi();
+  readonly apps = new RemoteAppsApi();
 
   async founderGroup(): Promise<{ url: string } | null> {
     const response = await call<{ founderGroup?: unknown }>('/api/access');
