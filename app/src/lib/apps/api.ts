@@ -1,5 +1,6 @@
 import type {
-  AppsApi, AppsList, Booking, BookingActionResult, BookingsConfig, BookingsConfigInput, BookingsPage, BookingsQuery, InstalledApp,
+  AppKey, AppsApi, AppsList, Booking, BookingActionResult, BookingsConfig, BookingsConfigInput, BookingsPage, BookingsQuery,
+  InstalledApp,
 } from './types';
 
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
@@ -54,13 +55,24 @@ async function call(path: string, write?: { method: 'POST' | 'PUT'; body: unknow
   return data;
 }
 
+const APP_KEYS: readonly AppKey[] = ['bookings'];
+const APP_STATES: readonly InstalledApp['state'][] = ['active', 'paused'];
+
+/** An app key or state this build does not know yet is skipped rather than
+    failing the whole list — otherwise a Worker that adds an app before the
+    app ships would take Home and Apps down with it (the trap an unknown
+    notification kind is). */
+function known(value: unknown): boolean {
+  return object(value) && (APP_KEYS as readonly unknown[]).includes(value.key)
+    && (APP_STATES as readonly unknown[]).includes(value.state);
+}
+
 /** One installed app, with `accepting` defaulted for a Worker that predates it. */
-function installedApp(value: unknown): InstalledApp | null {
-  if (!object(value) || value.key !== 'bookings' || (value.state !== 'active' && value.state !== 'paused')
-    || typeof value.publicUrl !== 'string' || !Number.isInteger(value.pending) || Number(value.pending) < 0
+function installedApp(value: Record<string, unknown>): InstalledApp | null {
+  if (typeof value.publicUrl !== 'string' || !Number.isInteger(value.pending) || Number(value.pending) < 0
     || !(value.accepting === undefined || typeof value.accepting === 'boolean')) return null;
   return {
-    key: value.key, state: value.state, accepting: value.accepting ?? true,
+    key: value.key as AppKey, state: value.state as InstalledApp['state'], accepting: value.accepting ?? true,
     publicUrl: value.publicUrl, pending: value.pending as number,
   };
 }
@@ -100,9 +112,13 @@ function action(data: Record<string, unknown>): BookingActionResult {
 export class RemoteAppsApi implements AppsApi {
   async list(): Promise<AppsList> {
     const data = await call('');
-    const apps = Array.isArray(data.apps) ? data.apps.map(installedApp) : null;
-    if (!apps || apps.some((app) => app === null) || !Array.isArray(data.available)) throw new AppsError('INVALID_RESPONSE');
-    return { apps: apps as InstalledApp[], available: data.available as AppsList['available'] };
+    if (!Array.isArray(data.apps) || !data.apps.every(object) || !Array.isArray(data.available)) throw new AppsError('INVALID_RESPONSE');
+    const apps = data.apps.filter(known).map(installedApp);
+    if (apps.some((app) => app === null)) throw new AppsError('INVALID_RESPONSE');
+    return {
+      apps: apps as InstalledApp[],
+      available: data.available.filter((key): key is AppKey => (APP_KEYS as readonly unknown[]).includes(key)),
+    };
   }
 
   async bookingsConfig(): Promise<BookingsConfig> {

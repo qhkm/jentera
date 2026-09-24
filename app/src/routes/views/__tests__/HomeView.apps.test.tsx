@@ -90,22 +90,55 @@ describe('Home with apps', () => {
     await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
   });
 
-  it('re-reads a request decided elsewhere and takes it out of Needs you', async () => {
+  it('re-reads a request decided elsewhere and keeps it, as it stands, with its WhatsApp link', async () => {
     const pending = bookingFixture({ startsAt: new Date(Date.now() + 3 * 86_400_000).toISOString() });
     const api = fakeAppsApi({
       list: installed(1),
-      // Still listed as pending: the line must leave because of the re-read, not a lucky refresh.
+      // Still listed as pending: the line must change because of the re-read, not a lucky refresh.
       bookings: vi.fn(async (query: BookingsQuery) => ({ bookings: query.status === 'pending' ? [pending] : [], nextCursor: null })),
       decide: vi.fn(async () => { throw new AppsError('ALREADY_DECIDED', 409); }),
-      booking: vi.fn(async () => ({ ...pending, status: 'declined' as const })),
+      booking: vi.fn(async () => ({ ...pending, status: 'declined' as const, whatsappUrl: WA })),
+    });
+    const { user } = await mount(api);
+    await user.click(await screen.findByRole('button', { name: 'Confirm Aisyah' }));
+    expect(await screen.findByRole('link', { name: /Send decline on WhatsApp/ })).toHaveAttribute('href', WA);
+    expect(screen.getByText('Already decided elsewhere. This is the booking as it stands.')).toBeInTheDocument();
+    expect(api.booking).toHaveBeenCalledWith(pending.id);
+    expect(screen.queryByRole('button', { name: 'Confirm Aisyah' })).toBeNull();
+    expect(screen.queryByText(/no longer needs you/)).toBeNull();
+    expect(screen.getByRole('button', { name: /See all requests \(0\)/ })).toBeInTheDocument();
+    await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+  });
+
+  it('keeps the WhatsApp link when a confirm whose answer was lost turns out to have landed', async () => {
+    const pending = bookingFixture({ startsAt: new Date(Date.now() + 3 * 86_400_000).toISOString() });
+    const api = fakeAppsApi({
+      list: installed(1),
+      bookings: vi.fn(async (query: BookingsQuery) => ({ bookings: query.status === 'pending' ? [pending] : [], nextCursor: null })),
+      decide: vi.fn(async () => { throw new AppsError('NETWORK', 0, true); }),
+      booking: vi.fn(async () => ({ ...pending, status: 'confirmed' as const, whatsappUrl: WA })),
+    });
+    const { user } = await mount(api);
+    await user.click(await screen.findByRole('button', { name: 'Confirm Aisyah' }));
+    expect(await screen.findByRole('link', { name: /Send confirmation on WhatsApp/ })).toHaveAttribute('href', WA);
+    expect(screen.getByText('We did not hear back. This is the booking as it stands now.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Confirm Aisyah' })).toBeNull();
+    expect(screen.getByRole('button', { name: /See all requests \(0\)/ })).toBeInTheDocument();
+  });
+
+  it('takes a request whose time passed out of Needs you, and says so', async () => {
+    const pending = bookingFixture({ startsAt: new Date(Date.now() + 3 * 86_400_000).toISOString() });
+    const api = fakeAppsApi({
+      list: installed(1),
+      bookings: vi.fn(async (query: BookingsQuery) => ({ bookings: query.status === 'pending' ? [pending] : [], nextCursor: null })),
+      decide: vi.fn(async () => { throw new AppsError('EXPIRED', 409); }),
+      booking: vi.fn(async () => ({ ...pending, expired: true })),
     });
     const { user } = await mount(api);
     await user.click(await screen.findByRole('button', { name: 'Confirm Aisyah' }));
     expect(await screen.findByText(/Aisyah's request no longer needs you/)).toBeInTheDocument();
-    expect(api.booking).toHaveBeenCalledWith(pending.id);
     expect(screen.queryByRole('button', { name: 'Confirm Aisyah' })).toBeNull();
-    expect(screen.queryByText(/as it stands/)).toBeNull();
-    await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('button', { name: /See all requests \(0\)/ })).toBeInTheDocument();
   });
 
   it('keeps a request whose answer was lost, and claims nothing it could not re-read', async () => {

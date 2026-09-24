@@ -30,6 +30,18 @@ describe('RemoteAppsApi', () => {
     expect((await new RemoteAppsApi().list()).apps[0].accepting).toBe(true);
   });
 
+  it('skips an app or a state it does not know yet, keeping the rest of the list', async () => {
+    answer(200, { ok: true, apps: [
+      { key: 'invoices', state: 'active', accepting: true, publicUrl: 'https://s.test/i/x', pending: 0 },
+      { key: 'bookings', state: 'suspended', accepting: true, publicUrl: 'https://s.test/b/y', pending: 0 },
+      { key: 'bookings', state: 'active', accepting: true, publicUrl: 'https://s.test/b/seido', pending: 1 },
+    ], available: ['bookings', 'invoices'] });
+    expect(await new RemoteAppsApi().list()).toEqual({
+      apps: [{ key: 'bookings', state: 'active', accepting: true, publicUrl: 'https://s.test/b/seido', pending: 1 }],
+      available: ['bookings'],
+    });
+  });
+
   it('rejects an installed app that is not what the Worker promises', async () => {
     answer(200, { ok: true, apps: [{ key: 'bookings', state: 'active', accepting: 'no', publicUrl: 'https://s.test/b/seido', pending: 0 }], available: ['bookings'] });
     await expect(new RemoteAppsApi().list()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });

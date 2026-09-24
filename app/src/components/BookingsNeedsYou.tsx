@@ -19,9 +19,10 @@ export function BookingsNeedsYou({ items, onConfirm, onReread, onOpenAll }: {
   /* A confirmed request leaves the pending list on the next refresh; keep it
      here for this visit so its WhatsApp link stays one tap away. */
   const [done, setDone] = useState<Booking[]>([]);
-  /* Requests a re-read showed no longer wait on the owner (decided
-     elsewhere, or their time has passed). They leave at once rather than at
-     the next refresh, which could fail and leave a Confirm that only 409s. */
+  /* Requests a re-read showed no longer wait on the owner (decided, or their
+     time has passed). They stop counting as waiting at once rather than at
+     the next refresh, which could fail and leave a Confirm that only 409s;
+     a decided one stays shown through `done`, an expired one leaves. */
   const [gone, setGone] = useState<string[]>([]);
   const [moved, setMoved] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -44,7 +45,15 @@ export function BookingsNeedsYou({ items, onConfirm, onReread, onOpenAll }: {
       try {
         const fresh = await onReread(booking.id);
         if (fresh.status === 'pending' && !fresh.expired) setProblem({ id: booking.id, key });
-        else {
+        else if (fresh.status !== 'pending') {
+          /* Decided — by this confirm whose answer was lost, or elsewhere.
+             Either way the customer may not have been told yet, so keep the
+             line as it now stands, with its WhatsApp link, like a success. */
+          setDone((list) => [fresh, ...list.filter((item) => item.id !== booking.id)]);
+          setGone((list) => [...list, booking.id]);
+          setProblem({ id: booking.id, key });
+        } else {
+          /* Its time has passed: nothing left to decide or send. */
           setGone((list) => [...list, booking.id]);
           setMoved(booking.customerName);
         }
