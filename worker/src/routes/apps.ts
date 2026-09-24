@@ -62,10 +62,18 @@ export async function handleApps(
       const [installed] = await tx<{ public_slug: string; state: 'active' | 'paused' }[]>`
         select public_slug, state from app_installation where business_id = ${businessId} and app_key = 'bookings'`;
       if (!installed) return [];
+      // The owner's own switch (Taking bookings) lives here, not in `state`,
+      // which only an operator changes. Read as the public page reads it: no
+      // row is not accepting (apps/bookings/public.ts, request.ts).
+      const [settings] = await tx<{ accepting: boolean }[]>`
+        select accepting from booking_settings where business_id = ${businessId}`;
       const [{ pending }] = await tx<{ pending: number }[]>`
         select count(*)::int as pending from booking
          where business_id = ${businessId} and status = 'pending' and starts_at > ${now}`;
-      return [{ key: 'bookings', state: installed.state, publicUrl: publicBookingUrl(sitesOrigin, installed.public_slug), pending }];
+      return [{
+        key: 'bookings', state: installed.state, accepting: settings?.accepting ?? false,
+        publicUrl: publicBookingUrl(sitesOrigin, installed.public_slug), pending,
+      }];
     });
     return json({ ok: true, apps, available: ['bookings'] }, {}, cors);
   }

@@ -75,7 +75,21 @@ describe('apps route: config', () => {
     expect(saved.config.version).toBe(1);
     expect(saved.config.installation).toMatchObject({ slug: 'kedai-aisyah', publicUrl: 'https://sites.test/b/kedai-aisyah' });
     const listed = await jsonOf<{ apps: unknown[] }>(await call('GET', '/api/apps', ownerA));
-    expect(listed.apps).toEqual([{ key: 'bookings', state: 'active', publicUrl: 'https://sites.test/b/kedai-aisyah', pending: 0 }]);
+    expect(listed.apps).toEqual([{ key: 'bookings', state: 'active', accepting: true, publicUrl: 'https://sites.test/b/kedai-aisyah', pending: 0 }]);
+  });
+
+  it('says on the apps list when the owner has stopped taking bookings', async () => {
+    // The owner's switch lives in booking_settings, not app_installation:
+    // Home and Apps read the list, so the list has to carry it.
+    const first = await jsonOf<Saved>(await call('PUT', '/api/apps/bookings/config', ownerA, config()));
+    await call('PUT', '/api/apps/bookings/config', ownerA,
+      config({ version: first.config.version, accepting: false, services: [service({ id: first.config.services[0].id })] }));
+    const paused = await jsonOf<{ apps: Array<{ state: string; accepting: boolean }> }>(await call('GET', '/api/apps', ownerA));
+    expect(paused.apps[0]).toMatchObject({ state: 'active', accepting: false });
+    // A settings row this business cannot see (RLS) never reads as its own.
+    await jsonOf<Saved>(await call('PUT', '/api/apps/bookings/config', ownerB, config({ slug: 'kedai-beta' })));
+    const again = await jsonOf<{ apps: Array<{ accepting: boolean }> }>(await call('GET', '/api/apps', ownerA));
+    expect(again.apps[0].accepting).toBe(false);
   });
 
   it('versions every save and refuses a stale one', async () => {
