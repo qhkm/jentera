@@ -21,7 +21,7 @@ import { useBusiness } from '@/hooks/useBusiness';
 import { useActivity } from '@/hooks/useActivity';
 import { useConnections } from '@/hooks/useConnections';
 import { useRepository } from '@/lib/repo';
-import { useRoutinesEnabled, useSignedIn } from '@/lib/repo/gate';
+import { useAppsEnabled, useRoutinesEnabled, useSignedIn } from '@/lib/repo/gate';
 import { useT } from '@/i18n/I18nProvider';
 import { Icon, type IconName } from '@/components/Icon';
 import { useVisualViewport } from '@/hooks/useVisualViewport';
@@ -37,6 +37,8 @@ import FilesView from './views/FilesView';
 import LibraryView from './views/LibraryView';
 import SkillsView from './views/SkillsView';
 import GoalsView from './views/GoalsView';
+import AppsView from './views/AppsView';
+import { AppsProvider } from '@/lib/apps/useApps';
 import type { RoutineConfig } from '@/lib/routines/types';
 import { BottomNav } from '@/components/BottomNav';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -44,7 +46,7 @@ import { ComputerStatus } from '@/components/ComputerStatus';
 import { isPwaStandalone } from '@/pwa/install';
 import { useChatPreview } from '@/hooks/useChatPreview';
 
-export type View = 'home' | 'chat' | 'work' | 'files' | 'skills' | 'library' | 'goals' | 'routines' | 'notifications' | 'business';
+export type View = 'home' | 'chat' | 'work' | 'files' | 'skills' | 'library' | 'goals' | 'apps' | 'routines' | 'notifications' | 'business';
 
 const BUSINESS_TABS: BizTab[] = ['profile', 'knows', 'handles', 'connections', 'permissions', 'team'];
 
@@ -58,6 +60,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { id: 'home', labelKey: 'nav.home', icon: 'home', section: 'overview' },
   { id: 'work', labelKey: 'nav.work', icon: 'activity', section: 'work' },
+  { id: 'apps', labelKey: 'nav.apps', icon: 'apps', section: 'work' },
   { id: 'skills', labelKey: 'nav.skills', icon: 'skills', section: 'workspace' },
   { id: 'library', labelKey: 'nav.library', icon: 'library', section: 'workspace' },
   { id: 'goals', labelKey: 'nav.goals', icon: 'goals', section: 'work' },
@@ -80,7 +83,8 @@ export default function Dashboard() {
   const preview = useChatPreview(signedIn);
   const routinesEnabled = useRoutinesEnabled() && !!repository.routines;
   const goalsEnabled = signedIn && !!repository.goals;
-  const availableNav = goalsEnabled ? NAV : NAV.filter((item) => item.id !== 'goals');
+  const appsEnabled = useAppsEnabled() && !!repository.apps;
+  const availableNav = NAV.filter((item) => (item.id !== 'goals' || goalsEnabled) && (item.id !== 'apps' || appsEnabled));
   const nav: NavItem[] = routinesEnabled
     ? [...availableNav.slice(0, 3), { id: 'routines', labelKey: 'routines.title', icon: 'routines', section: 'work' }, ...availableNav.slice(3)]
     : availableNav;
@@ -160,6 +164,11 @@ export default function Dashboard() {
     }
   }
 
+  function openApps(params: Record<string, string> = {}) {
+    setSearchParams({ view: 'apps', ...params });
+    if (!window.matchMedia('(min-width: 1024px)').matches) window.scrollTo({ top: 0, behavior: 'instant' });
+  }
+
   function switchMode(mode: WorkspaceMode) {
     if ((mode === 'chat') === isChat) return;
     if (mode === 'chat') go('chat');
@@ -217,6 +226,7 @@ export default function Dashboard() {
 
   const [computerStatusTarget, setComputerStatusTarget] = useState<HTMLDivElement | null>(null);
   return (
+    <AppsProvider api={appsEnabled ? repository.apps ?? null : null}>
     <Shell
       accountAccessory={<div className="workspace-header-accessories">
         {signedIn && <Link className="workspace-upgrade-link" to="/subscribe">
@@ -318,6 +328,13 @@ export default function Dashboard() {
               onTabChange={(tab) => setSearchParams({ view: 'business', tab })}
             />
           )}
+          {view === 'apps' && appsEnabled && repository.apps && <AppsView
+            app={searchParams.get('app')}
+            bookingId={searchParams.get('booking')}
+            section={searchParams.get('section')}
+            onOpen={openApps}
+            onConnectCalendar={() => go('business', 'connections')}
+          />}
           {routinesEnabled && repository.routines && <div hidden={view !== 'routines'} className={view === 'routines' ? '' : 'hidden'}>
             <RoutinesView api={repository.routines} active={view === 'routines'}
               playbookDraft={playbookDraft} onDraftConsumed={() => setPlaybookDraft(null)}
@@ -342,5 +359,6 @@ export default function Dashboard() {
         }))}
       />}
     </Shell>
+    </AppsProvider>
   );
 }

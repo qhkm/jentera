@@ -16,6 +16,7 @@ import type { AskSession } from '@/hooks/useAsk';
 import type { AskAnswer } from '@/lib/repo';
 import type { RoutinesApi } from '@/lib/routines/types';
 import { listFixture } from '@/lib/routines/__tests__/fixtures';
+import { fakeAppsApi } from '@/lib/apps/__tests__/fixtures';
 
 beforeEach(() => {
   localStorage.clear();
@@ -25,13 +26,13 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 async function mount(children: ReactNode, repo = new LocalRepository(), entry = '/app',
-  options: { signedIn?: boolean; routinesVersion?: number } = {}) {
+  options: { signedIn?: boolean; routinesVersion?: number; appsVersion?: number } = {}) {
   await repo.setBizType('restaurant');
   await repo.setBizProfile({ name: 'Kedai Kita', loc: 'Shah Alam' });
   repo.activity = async () => ({ counters: { handled: 0, needsYou: 2, minutesSaved: 0, thisWeek: 0, connections: 0 }, work: [] });
   return render(
     <MemoryRouter initialEntries={[entry]}>
-      <SignedInProvider value={options.signedIn ?? true} account="workspace-modes-test" routinesVersion={options.routinesVersion}>
+      <SignedInProvider value={options.signedIn ?? true} account="workspace-modes-test" routinesVersion={options.routinesVersion} appsVersion={options.appsVersion}>
         <RepositoryProvider repository={repo}>
           <I18nProvider>
             <ToastProvider>
@@ -270,6 +271,44 @@ describe('workspace navigation', () => {
     await user.click(screen.getByRole('button', { name: /Check task status/ }));
     expect(await screen.findByText('The task did finish.')).toBeInTheDocument();
     expect(repo.ask).toHaveBeenCalledOnce();
+  });
+
+  it('adds Apps after Activity, and to the phone bar before More, when apps are on', async () => {
+    const repo = Object.assign(new LocalRepository(), { apps: fakeAppsApi() });
+    await mount(<Dashboard />, repo, '/app', { appsVersion: 1 });
+    const work = (await sidebarQueries()).getByRole('group', { name: 'Work' });
+    expect(within(work).getAllByRole('button').map(button => button.textContent?.replace(/\d+$/, ''))).toEqual(['Activity', 'Apps']);
+    const mobile = document.querySelector('.dashboard-bottom-nav')!;
+    expect([...mobile.querySelectorAll(':scope > button')].slice(0, 4).map(button => button.textContent))
+      .toEqual(['Home', 'Activity2', 'Chat', 'Apps']);
+  });
+  it.each([undefined, 2])('keeps Apps hidden without supported discovery: %s', async appsVersion => {
+    const apps = fakeAppsApi();
+    const repo = Object.assign(new LocalRepository(), { apps });
+    await mount(<Dashboard />, repo, '/app', { appsVersion });
+    const work = (await sidebarQueries()).getByRole('group', { name: 'Work' });
+    expect(within(work).queryByRole('button', { name: 'Apps' })).toBeNull();
+    expect(apps.list).not.toHaveBeenCalled();
+  });
+  it('keeps Apps out of the anonymous demo', async () => {
+    const apps = fakeAppsApi();
+    const repo = Object.assign(new LocalRepository(), { apps });
+    await mount(<Dashboard />, repo, '/app', { signedIn: false, appsVersion: 1 });
+    const work = (await sidebarQueries()).getByRole('group', { name: 'Work' });
+    expect(within(work).queryByRole('button', { name: 'Apps' })).toBeNull();
+    expect(apps.list).not.toHaveBeenCalled();
+  });
+  it('falls back to Home when a link asks for apps that are not on', async () => {
+    const apps = fakeAppsApi();
+    await mount(<Dashboard />, Object.assign(new LocalRepository(), { apps }), '/app?view=apps&app=bookings', {});
+    const sidebar = await sidebarQueries();
+    expect(sidebar.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
+    expect(apps.list).not.toHaveBeenCalled();
+  });
+  it('opens the Apps list from view=apps', async () => {
+    const repo = Object.assign(new LocalRepository(), { apps: fakeAppsApi() });
+    await mount(<Dashboard />, repo, '/app?view=apps', { appsVersion: 1 });
+    expect(await screen.findByRole('heading', { name: 'Apps', level: 1 })).toBeInTheDocument();
   });
 });
 
