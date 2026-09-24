@@ -30,9 +30,10 @@
  * today's on-disk state exactly is worth more than folding one command in.
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
+import { fileURLToPath } from 'node:url';
 
 /** Where the repo root is, relative to this script. */
 export const repoRoot = () => new URL('../../', import.meta.url).pathname;
@@ -132,7 +133,14 @@ export function packBundle(commit, options = {}) {
 /** Where a commit's bundle lives in the bucket. */
 export const bundleKey = (commit) => `bundles/${commit}.tar.gz`;
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// macOS exposes /tmp and /var through /private symlinks. Comparing the raw
+// argv path with import.meta.url therefore makes direct execution look like an
+// import inside the detached worktree used by ship-runtime.sh. Canonicalise
+// both sides so the CLI works from any real or symlinked checkout path.
+const isDirectExecution = process.argv[1]
+  && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+
+if (isDirectExecution) {
   const [commit, out] = process.argv.slice(2);
   if (!commit) {
     console.error('usage: bundle-pack.mjs <commit> [output.tar.gz]');
