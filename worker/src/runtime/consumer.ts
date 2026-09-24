@@ -94,6 +94,7 @@ import {
   sendMessage,
   sendTyping,
   TelegramLiveStream,
+  withUnseenMediaNote,
 } from '../connectors/telegram';
 import { runtimeModelKeyNeedsRotation } from './openrouter-keys';
 import { RunnerClient, RuntimeBusyError } from './runner-client';
@@ -109,7 +110,12 @@ import { modelForResponseMode, responseModeFor } from './response-mode';
 import { sanitizePublicRuntimeText } from './public-output';
 import { listSpecialists, specialistForTurn } from '../specialists';
 import { recordDelegation } from '../coordination';
-import { notifyOwnersApprovalRequested, notifyOwnersWorkNeedsYou } from '../notifications/work';
+import {
+  notifyOwnersApprovalRequested,
+  notifyOwnersWorkNeedsYou,
+  notifyRequesterWorkFinished,
+} from '../notifications/work';
+import { deliverPendingPushes } from '../push/outbox';
 import {
   cancelRoutineRuntimeOccurrence,
   finishRoutineRuntimeOccurrence,
@@ -229,6 +235,10 @@ export interface TelegramIntakeQueueMessage {
     from: string;
     text: string;
     privateChat: true;
+    /** A photo or file came with the caption in `text` and was not delivered.
+        A string, not `UnseenKind`: a message can outlive the worker that
+        queued it, and a kind this version does not know still runs. */
+    unseen?: string;
   };
 }
 
@@ -704,7 +714,9 @@ export async function handleRuntimeQueueMessage(
         await listSpecialists(tx, { enabledOnly: true }),
       );
       const prepared = prepareHermesAgent(
-        message.incoming.text,
+        /* The note goes to the agent only. The run, the task's `telegram`
+           block, retrieval and specialist routing all keep the caption. */
+        withUnseenMediaNote(message.incoming.text, message.incoming.unseen),
         facts,
         work,
         new Date(),
@@ -1704,6 +1716,7 @@ export async function handleRuntimeMessage(
              by a question, the pause is durable, and the trace says what was
              actually asked. */
           if (!telegram?.privateChat) {
+            let pushesQueued = 0;
             const parked = await withTenant(env, message.businessId, async (tx) => {
               const paused = await pauseRuntimeTaskForApproval(
                 tx,
@@ -1729,10 +1742,12 @@ export async function handleRuntimeMessage(
                   message: paused.message,
                   surface: 'web',
                 });
-                /* Owners other than the asker hear about it; alone, nobody does. */
-                await notifyOwnersApprovalRequested(tx, message.businessId, {
+                /* The other owners hear about it, and so does an owner who
+                   asked in the app and may have left the chat. */
+                pushesQueued = await notifyOwnersApprovalRequested(tx, message.businessId, {
                   runId: lease.task.runId,
                   objective: outcome.payload.objective ?? outcome.payload.input.slice(0, 200),
+                  channel: outcome.payload.channel,
                 });
                 await markRoutineNeedsApproval(
                   tx, message.businessId, lease.task.payload, lease.task.runId,
@@ -1743,6 +1758,9 @@ export async function handleRuntimeMessage(
             if (!parked) {
               return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
             }
+            /* The approval waits about a minute; the cron could take as long
+               to send its push. Send it now. */
+            if (pushesQueued > 0) await deliverPendingPushes(env, message.businessId, { fetch: options.fetch });
             if (lease.task.runId) {
               /* A lifecycle event, so a tab that connects late still learns
                  the run is waiting on a person rather than showing a spinner
@@ -1782,6 +1800,7 @@ export async function handleRuntimeMessage(
               approvalMessageId,
             );
           }
+          let pushesQueued = 0;
           const approval = await withTenant(env, message.businessId, async (tx) => {
             const paused = await pauseRuntimeTaskForApproval(
               tx,
@@ -1808,9 +1827,10 @@ export async function handleRuntimeMessage(
                 requestId: paused.requestId,
                 tool: paused.tool,
               });
-              await notifyOwnersApprovalRequested(tx, message.businessId, {
+              pushesQueued = await notifyOwnersApprovalRequested(tx, message.businessId, {
                 runId: lease.task.runId,
                 objective: outcome.payload.objective ?? outcome.payload.input.slice(0, 200),
+                channel: outcome.payload.channel,
               });
               await markRoutineNeedsApproval(
                 tx, message.businessId, lease.task.payload, lease.task.runId,
@@ -1821,6 +1841,7 @@ export async function handleRuntimeMessage(
           if (!approval) {
             return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
           }
+          if (pushesQueued > 0) await deliverPendingPushes(env, message.businessId, { fetch: options.fetch });
           await editMessageText(
             token,
             telegram.chatId,
@@ -2063,6 +2084,7 @@ export async function handleRuntimeMessage(
           outcome.result = lateAnswer.result;
           outcome.summary = assessmentAnswer(outcome.result).slice(0, 500);
         }
+        let pushesQueued = 0;
         const completed = await withTenant(env, message.businessId, async (tx) => {
           /* Both branches record here, after delivery, so `deliveredAt` is
              known for either and the two are described the same way. */
@@ -2100,11 +2122,12 @@ export async function handleRuntimeMessage(
             outcome.usage,
           );
           if (!lease.task.runId || (successful && outcome.payload.telegram)) return done;
+          const workKind = routineRuntimeMeta(lease.task.payload)
+            ? 'work'
+            : await workKindForRun(tx, message.businessId, lease.task.runId);
           await recordWork(tx, message.businessId, {
             runId: lease.task.runId,
-            kind: routineRuntimeMeta(lease.task.payload)
-              ? 'work'
-              : await workKindForRun(tx, message.businessId, lease.task.runId),
+            kind: workKind,
             objective: outcome.payload.objective ?? outcome.payload.input.slice(0, 1_000),
             /* A failure stores the owner-facing notice; the raw provider
                detail stays on the task's terminal outcome for us. */
@@ -2118,15 +2141,30 @@ export async function handleRuntimeMessage(
               grounded: outcome.payload.grounded ?? false,
             },
           });
-          /* A colleague's task that ends waiting on the owner reaches the
-             owners' inbox and devices; the asker is watching it land. Routines
-             have their own notifications. */
-          if (successful && !routineRuntimeMeta(lease.task.payload)) {
-            await notifyOwnersWorkNeedsYou(tx, message.businessId, {
-              runId: lease.task.runId,
-              status: assessment?.status ?? 'needs_review',
-              objective: outcome.payload.objective ?? outcome.payload.input.slice(0, 200),
-            });
+          /* A task that ends waiting on an owner reaches the other owners, and
+             the person who asked in the app; a long work task that finished
+             or failed reaches that person alone. Routines have their own
+             notifications, and a task someone stopped needs no telling. */
+          const stopped = outcome.remoteStatus === 'cancelled' || outcome.remoteStatus === 'stopped';
+          if (!routineRuntimeMeta(lease.task.payload) && !stopped) {
+            const objective = outcome.payload.objective ?? outcome.payload.input.slice(0, 200);
+            const status = successful ? assessment?.status ?? 'needs_review' : 'failed';
+            if (status === 'completed' || status === 'failed') {
+              pushesQueued = await notifyRequesterWorkFinished(tx, message.businessId, {
+                runId: lease.task.runId,
+                status,
+                objective,
+                channel: outcome.payload.channel,
+                kind: workKind,
+              });
+            } else {
+              pushesQueued = await notifyOwnersWorkNeedsYou(tx, message.businessId, {
+                runId: lease.task.runId,
+                status,
+                objective,
+                channel: outcome.payload.channel,
+              });
+            }
           }
           await finishRun(
             tx,
@@ -2155,6 +2193,7 @@ export async function handleRuntimeMessage(
             : outcome.remoteStatus === 'completed' ? 'completed' : 'failed';
           await publishRunProgressSafely(env, message.businessId, lease.task.runId, progress);
         }
+        if (pushesQueued > 0) await deliverPendingPushes(env, message.businessId, { fetch: options.fetch });
         await wakeNextRuntimeTask(env, message.businessId);
         return { action: 'ack', reason: 'completed' };
       }
@@ -2811,7 +2850,9 @@ function validTelegramIntake(
     Number.isSafeInteger(incoming.messageId) &&
     typeof incoming.from === 'string' && incoming.from.length > 0 && incoming.from.length <= 256 &&
     typeof incoming.text === 'string' && incoming.text.trim().length > 0 &&
-    incoming.text.length <= 4_000 && incoming.privateChat === true;
+    incoming.text.length <= 4_000 && incoming.privateChat === true &&
+    (incoming.unseen === undefined ||
+      (typeof incoming.unseen === 'string' && /^[a-z_]{1,32}$/.test(incoming.unseen)));
 }
 
 /** Durable final message: Hermes's `💭 **Reasoning:**` block (mirrored from

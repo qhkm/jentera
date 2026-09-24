@@ -13,6 +13,10 @@ source "$runtime_env"
 source "$hermes_env"
 set +a
 
+export HERMES_HOME="/home/sprite/.hermes"
+export PATH="/home/sprite/.local/bin:$PATH"
+export CUA_DRIVER_RS_TELEMETRY_ENABLED=0
+
 # Computer-use capability: the x11-display service publishes the virtual
 # display and session bus handles. When the runtime attests AISAR_CUA_ENABLED,
 # a missing display contract means the capability cannot actually run — fail
@@ -26,14 +30,25 @@ if [[ "${AISAR_CUA_ENABLED:-0}" == "1" ]]; then
   set -a
   source "$display_env"
   set +a
+  [[ -n "${DISPLAY:-}" && -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]] || {
+    echo "computer-use runtime has an incomplete display environment" >&2
+    exit 1
+  }
+  # The install-time doctor proves the pinned driver and stack in isolation.
+  # This second check proves the exact DISPLAY/session bus inherited by the
+  # long-running gateway. A green test on a throwaway Xvfb must never attest a
+  # broken service environment as healthy.
+  if ! timeout --foreground -k 5 120 \
+      /home/sprite/.hermes/hermes-agent/venv/bin/hermes computer-use doctor \
+      >/dev/null 2>&1; then
+    echo "computer-use doctor failed in the gateway display environment" >&2
+    exit 1
+  fi
 elif [[ -r "$display_env" ]]; then
   set -a
   source "$display_env"
   set +a
 fi
-
-export HERMES_HOME="/home/sprite/.hermes"
-export PATH="/home/sprite/.local/bin:$PATH"
 export API_SERVER_HOST="127.0.0.1"
 export API_SERVER_PORT="${HERMES_PORT:-8642}"
 unset API_SERVER_CORS_ORIGINS

@@ -138,7 +138,7 @@ const ULTRA_IGNORES = new Map([
   ['provider_routing', 'no equivalent anywhere in Ultra; OpenRouter-specific routing'],
   ['browser', 'cdp_url maps to Ultra\'s CHROME_CDP_URL env; hold_file has no equivalent, '
     + 'so the owner-holds-the-browser guard would be lost'],
-  ['computer_use', 'cua_telemetry and permissions have no Ultra settings'],
+  ['computer_use', 'cua_telemetry has no Ultra setting'],
   ['approvals', 'Ultra hardcodes a 300s gateway approval timeout with no config path'],
 ]);
 
@@ -158,6 +158,8 @@ test('every config key this runner writes is one Ultra reads, or a known gap', a
   /* cua_enabled=1 above on purpose: computer_use is only written then, and a
      ratchet that never sees the key cannot protect it. */
   assert.ok('computer_use' in config, 'the CUA path must be exercised here');
+  assert.deepEqual(config.computer_use, { cua_telemetry: false },
+    'do not claim a permission policy that the pinned Hermes release ignores');
 
   const unclassified = Object.keys(config)
     .filter((key) => !ULTRA_READS.has(key) && !ULTRA_IGNORES.has(key));
@@ -264,7 +266,10 @@ test('gws is pinned, checked, bundled and installed before sealing spares', asyn
 test('both provisioning paths include every first-party module imported by the flat runtime bundle', async () => {
   const worker = await readFile(new URL('../../worker/src/runtime/provision.ts', import.meta.url), 'utf8');
   const operator = await readFile(PROVISION, 'utf8');
-  const body = worker.match(/const assets = \[([\s\S]*?)\n  \];/)?.[1];
+  /* The manifest moved out of downloadRuntimeBundle on 2026-09-23, when the
+     bundle became one R2 object instead of 24 curls. bundle-pack.mjs and the
+     release gate read the same literals. */
+  const body = worker.match(/export const RUNTIME_BUNDLE_ASSETS = \[([\s\S]*?)\n\] as const;/)?.[1];
   assert.ok(body, 'production asset list must be inspectable');
   const assets = [...body.matchAll(/'(runner\/(?:src|bin)\/[^']+)'/g)].map((match) => match[1]);
   assert.ok(assets.length > 15);
@@ -661,6 +666,17 @@ test('computer use is gated, pinned, and proven before the runtime attests it', 
   assert.match(source, /hermes" computer-use doctor/);
   assert.match(source, /cua_doctor_ready/);
 
+  // Bootstrap proves the binary in isolation; the service then repeats the
+  // doctor against the exact DISPLAY/session bus inherited by the gateway.
+  // Otherwise a throwaway Xvfb can be green while real computer use is dead.
+  const hermesService = await readFile(HERMES_SERVICE, 'utf8');
+  const sourceDisplayAt = hermesService.indexOf('source "$display_env"');
+  const serviceDoctorAt = hermesService.indexOf('/venv/bin/hermes computer-use doctor');
+  const gatewayAt = hermesService.indexOf('gateway run --replace');
+  assert.ok(sourceDisplayAt > 0 && serviceDoctorAt > sourceDisplayAt && gatewayAt > serviceDoctorAt);
+  assert.match(hermesService, /CUA_DRIVER_RS_TELEMETRY_ENABLED=0/);
+  assert.match(hermesService, /computer-use doctor failed in the gateway display environment/);
+
   // The capability is attested only after the doctor passes on the same run,
   // and the display service is created only when enabled.
   assert.match(source, /AISAR_CUA_ENABLED=%q\\n' '1' >> "\$runtime_env"/);
@@ -691,7 +707,7 @@ test('owner desktop is opt-in and proves sandboxed Chrome/RFB before enabling th
   const source = await readFile(SCRIPT, 'utf8');
   assert.match(source, /DESKTOP_ENABLED_B64\) DESKTOP_ENABLED_B64="\$value" ;;/);
   assert.match(source, /\$\{DESKTOP_ENABLED_B64:-\}/);
-  assert.match(source, /x11vnc tint2 xauth python3 libxtst6/);
+  assert.match(source, /x11vnc tint2 xterm xauth python3 libxtst6/);
   assert.ok(source.indexOf('node /home/sprite/aisar/runner/desktop-smoke.mjs') < source.indexOf("'AISAR_DESKTOP_VIEW=%q\\n' '1'"));
   const smoke = await readFile(new URL('../bin/desktop-smoke.mjs', import.meta.url), 'utf8');
   assert.match(smoke, /chromiumSandbox: true/);
@@ -700,6 +716,16 @@ test('owner desktop is opt-in and proves sandboxed Chrome/RFB before enabling th
   assert.match(runner, /AISAR_DESKTOP_VIEW:-0/); assert.match(runner, /source "\$display_env"/);
   const display = await readFile(DISPLAY_SERVICE, 'utf8');
   assert.match(display, /-nolisten tcp/); assert.match(display, /tint2/);
+  assert.match(display, /jentera-tint2rc/);
+  const panel = await readFile(new URL('../bin/jentera-tint2rc', import.meta.url), 'utf8');
+  const terminal = await readFile(new URL('../bin/jentera-terminal.desktop', import.meta.url), 'utf8');
+  const terminalShell = await readFile(new URL('../bin/jentera-terminal.sh', import.meta.url), 'utf8');
+  assert.match(panel, /panel_items = LT/);
+  assert.match(panel, /panel_dock = 0/);
+  assert.match(panel, /launcher_item_app = jentera-terminal\.desktop/);
+  assert.match(terminal, /Exec=\/usr\/bin\/xterm .*jentera-terminal\.sh/);
+  assert.match(terminalShell, /PS1='jentera@computer:/);
+  assert.doesNotMatch(terminalShell, /sprite@/);
 });
 
 test('invalid owner desktop gate is rejected before installing or changing any runtime', async () => {

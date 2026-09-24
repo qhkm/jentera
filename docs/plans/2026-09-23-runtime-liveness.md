@@ -263,23 +263,36 @@ Nothing above should run automatically until detection has been observed for a
 week, for the reason in the acceptance gate: a remediation that fires on a
 false positive deletes a healthy customer's sprite.
 
-## Prerequisite: the bundle cannot live in a private repo
+## Prerequisite: the bundle cannot live in a private repo — done
 
-Worth recording because it cost an outage on 23 September. `bootstrap-runtime.sh`
-fetches the pinned bundle from `raw.githubusercontent.com`, which serves
-**anonymously only**. Making the repository private returned 404 to every
-bootstrap, and the first fresh provision after that failed with `curl: (22)`.
-Visibility was reverted to restore service.
+Worth recording because it cost an outage on 23 September. `downloadRuntimeBundle`
+built 24 curls against `raw.githubusercontent.com`, which serves **anonymously
+only**. Making the repository private returned 404 to every bootstrap, and the
+first fresh provision after that failed with `curl: (22)`. Visibility was
+reverted to restore service.
 
-So "the repo should be private" and "sprites can bootstrap" are currently
-incompatible. The fix is to publish the bundle to R2 at release time —
-`ship-runtime.sh` already knows the pinned commit, and `jentera-artifacts`
-already exists — and have the bootstrap fetch from there. The bundle stays
-public because sprites need it; the control plane, the docs and the incident
-history become private, which is what was wanted.
+Built the same day. The bundle is now one gzipped object per commit in
+`jentera-runtime-bundles`, packed deterministically by `bundle-pack.mjs`,
+uploaded by `ship-runtime.sh`, and served by `routes/runtime-bundle.ts` on a
+15-minute ticket the control plane mints into the command that fetches it. The
+sprite checks the bytes against `RUNTIME_BUNDLE_SHA256`, pinned in
+`wrangler.toml` beside the commit.
 
-This also removes GitHub from the provisioning path, which today was a single
-point of failure for creating any new customer's computer.
+Two things were decided against. A public bucket: the URL would be
+world-readable at an unguessable key, which is no worse than today but gives
+up a property for nothing when the Worker already writes the exact command
+and can put a ticket in it. And a GitHub fallback: one that is never
+exercised is its own liability, and the case it would catch — a pinned commit
+nobody packed — is caught earlier and more loudly by `check-bundle-pin.mjs`
+as a `predeploy` guard, which fails on a laptop instead of on thirteen
+sprites.
+
+Not yet done: flipping visibility. That waits for one real release to converge
+with R2 serving the bundle, and is its own change.
+
+This also removes GitHub from the provisioning path for jentera, which was a
+single point of failure for creating any new customer's computer. It remains
+in the path for `qhkm/hermes-agent`, a separate repository that stays public.
 
 ## Open
 

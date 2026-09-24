@@ -658,10 +658,11 @@ done
 #   2. cua-driver is installed from the pinned release asset and its SHA-256
 #      matches the digest recorded when this release was reviewed. A live
 #      installer script is never fetched.
-#   3. `hermes computer-use doctor` passes against the same display stack the
-#      x11-display service will run. AISAR_CUA_ENABLED is written to
-#      runtime.env only after this — fail-closed: a broken display or driver
-#      can never be attested as ready.
+#   3. `hermes computer-use doctor` passes against an isolated copy of the
+#      display stack. The Hermes service repeats the doctor against the exact
+#      DISPLAY and session bus it will inherit before the gateway starts.
+#      AISAR_CUA_ENABLED is written only after the isolated check passes, and
+#      the service-level check remains fail-closed.
 if [[ "$cua_enabled" == "1" || "$desktop_enabled" == "1" ]]; then
   # The sprite user is non-root; apt-get needs sudo (passwordless on sprites).
   DEBIAN_FRONTEND=noninteractive sudo apt-get update -qq
@@ -674,7 +675,7 @@ fi
 # a reviewed OS viewer and taskbar; no floating JS daemon or public VNC port.
 if [[ "$desktop_enabled" == "1" ]]; then
   DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends \
-    x11vnc tint2 xauth python3 libxtst6 >/dev/null
+    x11vnc tint2 xterm xauth python3 libxtst6 >/dev/null
   PLAYWRIGHT_ENTRY="$playwright_dir/index.mjs" \
     timeout --foreground -k 5 60 xvfb-run -a \
     node /home/sprite/aisar/runner/desktop-smoke.mjs >/dev/null
@@ -717,7 +718,8 @@ if [[ "$cua_enabled" == "1" ]]; then
 
   cua_doctor_ready=false
   for _attempt in 1 2 3; do
-    if timeout --foreground -k 5 120 \
+    if CUA_DRIVER_RS_TELEMETRY_ENABLED=0 PATH="/home/sprite/.local/bin:$PATH" \
+        timeout --foreground -k 5 120 \
         dbus-run-session -- xvfb-run -a \
         "$install_dir/venv/bin/hermes" computer-use doctor >/dev/null 2>&1; then
       cua_doctor_ready=true

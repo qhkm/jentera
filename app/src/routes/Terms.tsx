@@ -104,7 +104,7 @@ export default function Terms() {
   }, [malay]);
 
   return (
-    <div className="marketing-page privacy-page min-h-dvh bg-bg text-text">
+    <div className="marketing-page marketing-page--v3 privacy-page min-h-dvh bg-bg text-text">
       <LandingHeader navLinks={[{ href: '/', label: malay ? 'Laman utama' : 'Home' }, { href: '/privacy', label: malay ? 'Privasi' : 'Privacy' }]} />
       <main id="main-content" className="lp-container privacy-main" lang={malay ? 'ms' : 'en'}>
         <header className="privacy-hero">

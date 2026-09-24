@@ -55,6 +55,23 @@ export async function admitPaidAgentRun(env: Env, identities: string[]): Promise
   }
 }
 
+/** Whether this album item may speak. Telegram sends an album as one webhook
+    per item, so without this five receipts draw five identical "can't open
+    photos" replies. Approximate, like any edge limiter, and it fails open:
+    an outage costs duplicate replies, never silence. */
+export async function claimTelegramAlbumReply(
+  env: Env,
+  connectionId: string,
+  albumId: string,
+): Promise<boolean> {
+  try {
+    const key = await opaqueKey(env, `telegram-album:${connectionId}:${albumId}`);
+    return (await env.TELEGRAM_ALBUM_REPLY.limit({ key })).success;
+  } catch {
+    return true;
+  }
+}
+
 function response(
   status: number,
   err: string,

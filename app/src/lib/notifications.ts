@@ -8,7 +8,17 @@ export type NotificationKind =
   | 'routine_needs_approval'
   | 'work_needs_you'
   | 'approval_requested'
-  | 'booking_requested';
+  | 'booking_requested'
+  | 'work_finished';
+
+/* The kinds this app can show. A row of any other kind is left out of the
+   list rather than rejecting it (`fetchNotifications`), so a Worker that
+   writes a new kind before this app ships it hides that one row and nothing
+   else. It still belongs here first, or its owners never see it. */
+const KINDS: readonly NotificationKind[] = [
+  'reminder_due', 'routine_completed', 'routine_failed', 'routine_skipped', 'routine_needs_approval',
+  'work_needs_you', 'approval_requested', 'booking_requested', 'work_finished',
+];
 
 export interface AppNotification {
   id: string;
@@ -34,26 +44,23 @@ const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
-/* One unknown kind rejects the whole list (`fetchNotifications`), so a new
-   kind ships here before the Worker writes it. */
-const KINDS: readonly NotificationKind[] = [
-  'reminder_due', 'routine_completed', 'routine_failed', 'routine_skipped', 'routine_needs_approval',
-  'work_needs_you', 'approval_requested', 'booking_requested',
-];
 const WORKSPACE_URL = /^\/app([/?#]|$)/;
 
 /** A stored link only if it stays inside the workspace; anything else is
-    read as no link, so one bad row cannot empty the inbox the way an unknown
-    kind does. Navigation is guarded again by `workspaceParams`. */
+    read as no link, so one bad row cannot hide the rest. Navigation is
+    guarded again by `workspaceParams`. */
 function workspaceUrl(value: unknown): string | null {
   return typeof value === 'string' && value.length <= 300 && WORKSPACE_URL.test(value) && !value.includes('\\')
     ? value : null;
 }
 
-function notification(value: unknown): value is AppNotification {
+const knownKind = (item: { kind: string }): item is AppNotification =>
+  (KINDS as readonly string[]).includes(item.kind);
+
+/** Well formed, whatever its kind; `knownKind` decides whether it is shown. */
+function notification(value: unknown): value is Omit<AppNotification, 'kind'> & { kind: string } {
   if (!object(value)) return false;
   return isRunId(value.id) && typeof value.kind === 'string' &&
-    (KINDS as readonly string[]).includes(value.kind) &&
     typeof value.title === 'string' && typeof value.body === 'string' &&
     (value.runId === null || isRunId(value.runId)) &&
     (value.routineId === null || isRunId(value.routineId)) &&
@@ -84,9 +91,12 @@ export async function fetchNotifications(cursor?: string): Promise<NotificationP
       !(data.nextCursor === null || typeof data.nextCursor === 'string')) {
     throw new Error('Jentera returned an invalid notification list.');
   }
+  const notifications = data.notifications.filter(knownKind);
+  const unknown = data.notifications.length - notifications.length;
+  if (unknown > 0) console.warn(`[notifications] left out ${unknown} of an unknown kind`);
   return {
-    notifications: (data.notifications as AppNotification[]).map((item) => ({ ...item, url: workspaceUrl(item.url) })),
-    unread: data.unread as number,
+    notifications: notifications.map((item) => ({ ...item, url: workspaceUrl(item.url) })),
+    unread: Number(data.unread),
     nextCursor: data.nextCursor as string | null,
   };
 }

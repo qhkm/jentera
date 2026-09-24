@@ -339,15 +339,14 @@ def main() -> None:
     platform_toolsets["api_server"] = ["hermes-api-server", "homeassistant"]
     # Computer use is an operator-granted capability (CUA_ENABLED=1 in the
     # bootstrap handoff). It is not part of the API-server composite, so it is
-    # added explicitly when granted. Production always pins `bounded`
-    # permissions — the POC's `unrestricted` value is dev-only — and disables
-    # cua-driver telemetry. Destructive key combinations are hard-blocked by
-    # the pinned Hermes release regardless of this value.
+    # added explicitly when granted. The production pin predates Hermes'
+    # permission_mode/capability_manifest contract, so do not write a setting
+    # that this release would silently ignore. Driver telemetry is explicitly
+    # disabled; the pinned release still hard-blocks destructive key chords.
     if cua_enabled == "1":
         platform_toolsets["api_server"].append("computer_use")
         config["computer_use"] = {
             "cua_telemetry": False,
-            "permissions": "bounded",
         }
     config["platform_toolsets"] = platform_toolsets
 

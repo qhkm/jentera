@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, useNavigate } from 'react-router';
 import { PageMetadata } from '@/components/PageMetadata';
-import { INDEXABLE_PAGE_SOURCES, INDEXABLE_PATHS, PRIVATE_PATHS, SOCIAL_IMAGE, alternateLinks, escapeXml, metaEntries, pageSeo, seoHead, structuredData } from '../seo';
+import { INDEXABLE_PAGE_SOURCES, INDEXABLE_PATHS, PRIMARY_SITELINKS, PRIVATE_PATHS, SOCIAL_IMAGE, alternateLinks, escapeXml, metaEntries, pageSeo, seoHead, structuredData } from '../seo';
 import { CONNECTOR_PAGES, unbackedConnectorPages } from '@/lib/connector-pages';
 import { PRICING_QUESTIONS, pricingFaqs } from '@/routes/Pricing';
 import { PLAN_BENEFITS_MS } from '@/lib/landing-content-ms';
@@ -91,6 +91,7 @@ describe('public SEO and social previews', () => {
     expect(landing).toContain('RM199');
     expect(landing).not.toContain('chat.whatsapp.com/');
     expect(landing).toContain('href="/connect"');
+    for (const link of PRIMARY_SITELINKS) expect(landing).toContain(`href="${link.href}"`);
     expect(landing).toContain('<h1');
     expect(renderPublic('/connect')).toContain('MyInvois submission and e-invoicing are not currently available');
     expect(renderPublic('/privacy')).toContain('Privacy notice');
@@ -161,6 +162,20 @@ describe('secondary public pages', () => {
       expect(pageSeo(path).title).not.toBe('Page not found — Jentera');
       expect(pageSeo(path).description.length).toBeGreaterThan(60);
       expect(pageSeo(path).description.length).toBeLessThan(320);
+    }
+  });
+
+  it('makes the primary branded-search destinations visible and structured', () => {
+    for (const link of PRIMARY_SITELINKS) expect(INDEXABLE_PATHS).toContain(link.href);
+    const landing = renderPublic('/');
+    const graph = structuredData('/')!['@graph'] as Record<string, unknown>[];
+    const navigation = graph.filter((node) => node['@type'] === 'SiteNavigationElement');
+    expect(navigation.map((node) => ({ name: node.name, url: node.url }))).toEqual(
+      PRIMARY_SITELINKS.map((link) => ({ name: link.label, url: `https://jentera.ai${link.href}` })),
+    );
+    for (const link of PRIMARY_SITELINKS) {
+      expect(landing).toContain(`href="${link.href}"`);
+      expect(landing).toContain(`>${link.label}<`);
     }
   });
 

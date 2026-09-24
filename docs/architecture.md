@@ -318,7 +318,8 @@ Worker, triggers the drift sweep, waits for convergence, and runs
 Three rules that were each learned expensively:
 
 - **`ship-runtime.sh` pins `origin/main`, not your HEAD.** A sprite
-  downloads its bundle from GitHub, so an unpushed commit is one no sprite
+  downloads its bundle from R2, packed from the pinned commit, so an
+  unpushed commit is one nobody could rebuild and no sprite
   could fetch. The failure is silent: on 21 September a release went out
   titled "owner can restart a wedged business browser", pinned six commits
   behind HEAD, containing no such thing — and thirteen sprites converged on
@@ -759,6 +760,7 @@ owner. Read it before asking what is next.
 | How to ship to the fleet, and roll back | `docs/release-playbook.md` |
 | Cold provision and upgrade cost | `docs/provisioning-time.md` |
 | Compute provider comparison | `docs/sprites-vs-dedicated-vms.md` |
+| OpenMausBot comparison: gaps, ideas, expansion | `docs/openmausbot-comparison.md` |
 | Teams: roles, tables, joining, offboarding | `docs/team-plan.md` |
 | Routines contract and acceptance gate | `docs/plans/2026-09-09-routines-api-v1.md` |
 | Cloudflare surface and account asks | `docs/cloudflare-account-review-2026-09-23.md` |

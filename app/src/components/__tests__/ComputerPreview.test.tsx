@@ -210,7 +210,7 @@ describe('watching the computer live', () => {
     expect(screen.getByText(/Sensitive pages are hidden/)).toBeVisible();
   });
 
-  it('swaps to the live computer, and says it hides nothing', async () => {
+  it('swaps to the live computer and labels the broadcast read-only', async () => {
     repo.observeConnection = () => connection;
     status.mockResolvedValue({ desktopView: 1 });
     preview.mockResolvedValue({ previewStatus: 'waiting' });
@@ -219,7 +219,23 @@ describe('watching the computer live', () => {
     expect(await screen.findByTestId('desktop')).toHaveTextContent('watching run-1');
     // The page filter's promise must not be repeated over a whole screen.
     expect(screen.queryByText(/Sensitive pages are hidden/)).toBeNull();
-    expect(screen.getByText(/shows whatever is on screen/)).toBeVisible();
+    expect(screen.getByText(/Live read-only view/)).toBeVisible();
+  });
+
+  it('ends the read-only broadcast before handing off to interactive control', async () => {
+    const takeControl = vi.fn();
+    repo.observeConnection = () => connection;
+    status.mockResolvedValue({ desktopView: 1 });
+    preview.mockResolvedValue({ previewStatus: 'waiting' });
+    render(<ComputerPreview runId="run-1" onTakeControl={takeControl} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Preview computer' }));
+    expect(await screen.findByTestId('desktop')).toHaveTextContent('watching run-1');
+    expect(screen.getByText(/Live read-only view/)).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Take control' }));
+
+    expect(takeControl).toHaveBeenCalledOnce();
+    expect(screen.queryByTestId('desktop')).toBeNull();
   });
 
   it('falls back to the page preview when the watch cannot hold', async () => {

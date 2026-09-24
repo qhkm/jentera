@@ -1,8 +1,8 @@
 /* Who a notification is for, by role. Owners decide approvals and settle
-   tasks that wait on the owner, so owner-facing events go to every owner —
-   except the one who asked, who is watching the answer land. In a business
-   of one person that leaves nobody, which is the point: nothing here makes
-   noise for the businesses that exist today. */
+   tasks that wait on the owner, so owner-facing events go to every owner.
+   The one who asked is left out here and told separately by `work.ts`,
+   with their own wording, and only when they asked in the app: in a
+   business of one person that is the only person told. */
 import type postgres from 'postgres';
 
 export async function ownersOf(

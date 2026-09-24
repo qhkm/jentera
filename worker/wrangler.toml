@@ -38,6 +38,22 @@ id = "f77c72f8d6614bb0b6955170caadad07"
 binding = "ARTIFACTS"
 bucket_name = "jentera-artifacts"
 
+# The runner bundle a sprite downloads at bootstrap: one gzipped object per
+# commit at `bundles/<commit>.tar.gz`, written by ship-runtime.sh and served
+# by routes/runtime-bundle.ts on a short-lived ticket.
+#
+# This bucket is what lets the repository be private. Sprites used to build
+# their runner directory from 24 anonymous curls against raw.githubusercontent
+# .com, which serves public repositories and nothing else, so flipping
+# visibility answered 404 to every bootstrap and killed the next fresh
+# provision with curl exit 22.
+#
+# Separate from ARTIFACTS deliberately: that bucket holds tenant bytes reached
+# only after an RLS-resolved row, and a release artifact has no tenant at all.
+[[r2_buckets]]
+binding = "RUNTIME_BUNDLES"
+bucket_name = "jentera-runtime-bundles"
+
 # Workers Logs. Without this, invocation-level telemetry (status codes,
 # subrequests, exceptions) is not retained and post-incident diagnosis of
 # runtime stalls (e.g. 2026-09-03 12:10 clientDisconnected) is guesswork.
@@ -113,7 +129,7 @@ VAULT_DEPOSIT_ORIGIN = "https://aisar-vault-deposit.qhkmdev90.workers.dev"
 # The immutable runner/Hermes/browser bundle requested for newly
 # provisioned runtimes. Changing this asks reconciliation to upgrade;
 # it must never silently track "latest".
-RUNTIME_RELEASE = "2026.09.23-2"
+RUNTIME_RELEASE = "2026.09.24-3"
 RUNTIME_EXPECTED_REGION = "sin"
 # Keep a sprite awake this many hours after each dispatch. Launch posture
 # was 24 on every plan; from 2026-09-09 it was 0: an idle sprite pauses and
@@ -146,7 +162,14 @@ MODEL_TRANSPORT_READY = "true"
 # business to own a fully bootstrapped, release-matched runtime row.
 RUNTIME_EXECUTION_ENABLED = "true"
 RUNTIME_BOOTSTRAP_ENABLED = "true"
-RUNTIME_BUNDLE_COMMIT = "81cd9c1cb6148df1d7043d340121aa25b3101367"
+RUNTIME_BUNDLE_COMMIT = "7df7bfb064183d3defb6b403eb3fcfd4a83b8105"
+# sha256 of that commit packed by worker/scripts/bundle-pack.mjs. The sprite
+# checks the bundle it downloaded against this, so the assertion is the
+# control plane stating what it expects rather than the bucket agreeing with
+# itself — which is what catches the right key holding the wrong bytes.
+# ship-runtime.sh writes both pins together; check-transfer-fields.mjs refuses
+# a deploy where this does not match a local repack of the pinned commit.
+RUNTIME_BUNDLE_SHA256 = "58b79f7708e774d5f6d9e33d527f89e4a7208782be176be77a4a11bc56eeb29c"
 AISAR_MODEL_PROVIDER = "openrouter"
 # The UPSTREAM model gateway the proxy forwards to (allowlisted, see
 # worker/src/runtime/execution.ts). The credential presented to it is the
@@ -257,6 +280,17 @@ namespace_id = "1004"
 
   [ratelimits.simple]
   limit = 10
+  period = 60
+
+# One "can't read this yet" reply per Telegram album. An album arrives as
+# one webhook per item; the first item the limiter admits speaks for it.
+# Keyed by an HMAC of connection and album id. Fails open in code.
+[[ratelimits]]
+name = "TELEGRAM_ALBUM_REPLY"
+namespace_id = "1007"
+
+  [ratelimits.simple]
+  limit = 1
   period = 60
 
 # WebSocket handshakes are long-lived resource admission, not ordinary reads.

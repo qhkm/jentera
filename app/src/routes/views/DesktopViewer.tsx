@@ -33,6 +33,8 @@ type NoVncGesture = Event & { detail?: {
   magnitudeY?: number;
 } };
 
+export type DesktopConnectionPhase = 'connecting' | 'ready' | 'reconnecting' | 'failed';
+
 function defaultFit() {
   return typeof window === 'undefined' || !window.matchMedia
     ? true
@@ -107,8 +109,11 @@ function applyView(client: RFB, zoom: number | null, anchor?: ZoomAnchor | null)
     works — noVNC is put in viewOnly, the connection carries no lease, and every
     control that would send something to the desktop is not rendered. Zoom, fit
     and pan stay: they move this canvas, not the sprite. */
-export default function DesktopViewer({ controlId, observe, onControlLost }: {
-  controlId?: string; observe?: { runId: string }; onControlLost: () => void;
+export default function DesktopViewer({ controlId, observe, onControlLost, onPhaseChange }: {
+  controlId?: string;
+  observe?: { runId: string };
+  onControlLost: () => void;
+  onPhaseChange?: (phase: DesktopConnectionPhase) => void;
 }) {
   const watching = Boolean(observe);
   const repo = useRepository();
@@ -121,7 +126,8 @@ export default function DesktopViewer({ controlId, observe, onControlLost }: {
   const generation = useRef(0);
   const compositionGeneration = useRef(0);
   const lost = useRef(onControlLost); lost.current = onControlLost;
-  const [phase, setPhase] = useState<'connecting' | 'ready' | 'reconnecting' | 'failed'>('connecting');
+  const [phase, setPhase] = useState<DesktopConnectionPhase>('connecting');
+  const phaseListener = useRef(onPhaseChange); phaseListener.current = onPhaseChange;
   const [attempt, setAttempt] = useState(0);
   // A 1280px desktop fitted into a phone is too small to target reliably.
   // Phones start at 1:1 and can move around the scrollable desktop; larger screens keep
@@ -133,6 +139,8 @@ export default function DesktopViewer({ controlId, observe, onControlLost }: {
   const panRef = useRef(pan); panRef.current = pan;
   const pinch = useRef<{ magnitude: number; zoom: number; anchor: ZoomAnchor } | null>(null);
   const panGesture = useRef<{ clientX: number; clientY: number; scrollLeft: number; scrollTop: number } | null>(null);
+
+  useEffect(() => { phaseListener.current?.(phase); }, [phase]);
 
   function clearInput() {
     composing.current = false; generation.current++;
@@ -351,7 +359,16 @@ export default function DesktopViewer({ controlId, observe, onControlLost }: {
   return <section className={`business-desktop${pan && zoom !== null ? ' is-panning' : ''}`} aria-label={t('browser.desktop.screen')}
     onKeyDown={event => event.stopPropagation()} onKeyUp={event => event.stopPropagation()}>
     <div className="business-desktop-stage-shell">
-      <div className="business-desktop-stage" ref={canvas} aria-label={t('browser.desktop.screen')} />
+      <div className="business-desktop-stage" ref={canvas} aria-label={t('browser.desktop.screen')}
+        onPointerDownCapture={() => {
+          // noVNC normally focuses its canvas from `mousedown`. Pointer
+          // capture makes the ownership transition reliable as well: after a
+          // read-only observer unmounts, the first click in the newly-created
+          // control viewer always gives physical-keyboard focus to that
+          // viewer before the browser or dialog can retain it. Pan mode is a
+          // local gesture and must not steal keyboard focus from the toolbar.
+          if (!watching && !panRef.current && ready.current) rfb.current?.focus({ preventScroll: true });
+        }} />
       {phase !== 'ready' && <div className="business-desktop-status" role="status">
         {phase !== 'failed' && <span className="business-desktop-loading-indicator" aria-hidden="true" />}
         <p>{t(`browser.desktop.${phase}`)}</p>

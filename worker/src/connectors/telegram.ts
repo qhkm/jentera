@@ -600,12 +600,45 @@ export async function withTypingIndicator<T>(
   }
 }
 
+/** Content a Telegram message can carry that the agent cannot read yet.
+    Anything not listed — service messages, edits — stays silent. */
+export const UNSEEN_KINDS = [
+  'photo',
+  'document',
+  'voice',
+  'audio',
+  'video',
+  'video_note',
+  'sticker',
+  'animation',
+  'location',
+  'contact',
+  'poll',
+  'dice',
+  'story',
+  'game',
+  'paid_media',
+] as const;
+export type UnseenKind = typeof UNSEEN_KINDS[number];
+
+/** Only these have their caption read as the request; any other caption is
+    about something the agent cannot see at all. */
+const CAPTION_READ: ReadonlySet<UnseenKind> = new Set(['photo', 'document']);
+
 export interface IncomingMessage {
   chatId: number;
   messageId: number;
   from: string;
   text: string;
   privateChat: boolean;
+  /** Set when the message carried content the agent is not given. `text` is
+      then the caption of a photo or file, or empty. */
+  unseen?: UnseenKind;
+  /** Telegram sends an album as one update per item, all sharing this id. */
+  mediaGroupId?: string;
+  /** The owner typed a caption on content whose caption is not read (a voice
+      note, a video), so the reply asks for those words on their own. */
+  captionIgnored?: true;
 }
 
 export interface IncomingCallbackQuery {
@@ -647,10 +680,12 @@ export function parseCallbackQuery(body: unknown): IncomingCallbackQuery | null 
 /**
  * Pull the one update shape we handle out of a webhook body.
  *
- * Returns null for everything else — edits, joins, stickers, channel
- * posts. Silence is correct: Telegram retries on a non-2xx, so
- * treating an unhandled update as an error would have it redelivered
- * forever.
+ * A text message comes back as its text. A photo, file, voice note or other
+ * content the agent cannot read yet comes back with `unseen` set, so the
+ * webhook can say so instead of going silent — which made a working bot look
+ * broken (24 September). Returns null for everything else: edits, joins,
+ * channel posts, service messages. Silence is right for those: Telegram
+ * retries on a non-2xx, so an error would have them redelivered forever.
  */
 export function parseUpdate(body: unknown): IncomingMessage | null {
   if (typeof body !== 'object' || body === null) return null;
@@ -659,19 +694,91 @@ export function parseUpdate(body: unknown): IncomingMessage | null {
 
   const chat = msg.chat as { id?: number; type?: string } | undefined;
   const from = msg.from as { first_name?: string; username?: string } | undefined;
-  const text = msg.text;
+  if (typeof chat?.id !== 'number' || typeof msg.message_id !== 'number') return null;
 
-  if (typeof chat?.id !== 'number' || typeof text !== 'string' || text.trim() === '') return null;
-  if (typeof msg.message_id !== 'number') return null;
-
-  return {
+  const base = {
     chatId: chat.id,
     messageId: msg.message_id,
     from: from?.first_name ?? from?.username ?? 'Someone',
-    // Long enough for a real question, short enough not to be a payload.
-    text: text.slice(0, 4000),
     privateChat: chat.type === 'private',
   };
+
+  const text = msg.text;
+  if (typeof text === 'string' && text.trim() !== '') {
+    // Long enough for a real question, short enough not to be a payload.
+    return { ...base, text: text.slice(0, 4000) };
+  }
+
+  const unseen = unseenKind(msg);
+  if (!unseen) return null;
+  const captioned = typeof msg.caption === 'string' && msg.caption.trim() !== '';
+  const read = captioned && CAPTION_READ.has(unseen);
+  return {
+    ...base,
+    text: read ? (msg.caption as string).slice(0, 4000) : '',
+    unseen,
+    ...(typeof msg.media_group_id === 'string' ? { mediaGroupId: msg.media_group_id } : {}),
+    ...(captioned && !read ? { captionIgnored: true as const } : {}),
+  };
+}
+
+function unseenKind(msg: Record<string, unknown>): UnseenKind | null {
+  // A GIF also carries `document`; it must not read as a file.
+  if (msg.animation) return 'animation';
+  // A venue carries `location` as well, and reads as one.
+  return UNSEEN_KINDS.find((kind) => kind !== 'animation' && Boolean(msg[kind])) ?? null;
+}
+
+const RESEND_CAPTION = 'Send the words you typed as their own message and I’ll answer them.';
+
+/** The owner's answer when a message held nothing the agent can read. A
+    caption the agent was not given is acknowledged, so the owner does not
+    read the reply as their words being ignored. */
+export function unreadableReply(kind: UnseenKind, captionIgnored = false): string {
+  if (kind === 'photo' || kind === 'document') {
+    return 'I can’t open photos or files here yet. Type what you need, or send the file in the Jentera app chat.';
+  }
+  if (kind === 'voice') {
+    return captionIgnored
+      ? `I can’t listen to voice notes yet. ${RESEND_CAPTION}`
+      : 'I can’t listen to voice notes yet. Please type your message.';
+  }
+  return captionIgnored
+    ? `I can only read text messages for now. ${RESEND_CAPTION}`
+    : 'I can only read text messages for now.';
+}
+
+const UNSEEN_NOUN: Record<UnseenKind, string> = {
+  photo: 'a photo',
+  document: 'a file',
+  voice: 'a voice note',
+  audio: 'an audio file',
+  video: 'a video',
+  video_note: 'a video message',
+  sticker: 'a sticker',
+  animation: 'a GIF',
+  location: 'a location',
+  contact: 'a contact card',
+  poll: 'a poll',
+  dice: 'a dice roll',
+  story: 'a story',
+  game: 'a game',
+  paid_media: 'paid media',
+};
+
+/** The agent's input when the owner's message came with something it is not
+    given. Without this it answers "record this receipt" as though it had read
+    the receipt. The note is for the agent only; the run keeps the caption. */
+export function withUnseenMediaNote(text: string, unseen?: string): string {
+  if (!unseen) return text;
+  /* A kind a newer worker queued before a rollback is "something"; its name
+     comes from the queue, never from this list, so it never reaches the prompt. */
+  const noun = Object.hasOwn(UNSEEN_NOUN, unseen) ? UNSEEN_NOUN[unseen as UnseenKind] : 'something';
+  return `${text}\n\n` +
+    `The owner sent this message with ${noun} attached. It was not delivered ` +
+    'to you and is not on your filesystem, so do not search for it or guess what it shows. ' +
+    'If the request depends on it, say you cannot see it yet and ask them to type the details ' +
+    'or send the file in the Jentera app chat.';
 }
 
 export interface WebhookHealth {

@@ -22,7 +22,9 @@ import {
   sendHermesMessage,
   TelegramLiveStream,
   setWebhook,
+  unreadableReply,
   withTypingIndicator,
+  withUnseenMediaNote,
 } from '../src/connectors/telegram';
 import type { Env } from '../src/env';
 
@@ -210,9 +212,109 @@ describe('reading an update', () => {
     expect(long?.text).toHaveLength(4000);
   });
 
-  it('does not mistake a caption or a sticker for text', () => {
+  it('does not mistake a bare caption for text, and marks a sticker as unseen', () => {
+    /* A caption with nothing it captions cannot happen in Telegram, and
+       must not become a question if it does. */
     expect(parseUpdate(message({ text: undefined, caption: 'a photo' }))).toBeNull();
-    expect(parseUpdate(message({ text: undefined, sticker: { emoji: '👍' } }))).toBeNull();
+    expect(parseUpdate(message({ text: undefined, sticker: { emoji: '👍' } })))
+      .toMatchObject({ text: '', unseen: 'sticker' });
+  });
+
+  it('reads a captioned photo or file as its caption, marked unseen', () => {
+    expect(parseUpdate(message({
+      text: undefined,
+      caption: 'Record this receipt',
+      photo: [{ file_id: 'small' }, { file_id: 'large' }],
+    }))).toEqual({
+      chatId: 42,
+      messageId: 5,
+      from: 'Aminah',
+      text: 'Record this receipt',
+      privateChat: true,
+      unseen: 'photo',
+    });
+    expect(parseUpdate(message({
+      text: undefined,
+      caption: 'Summarise this',
+      document: { file_id: 'd', file_name: 'contract.pdf' },
+    }))).toMatchObject({ text: 'Summarise this', unseen: 'document' });
+  });
+
+  it('reads media with nothing to answer as empty text, marked unseen', () => {
+    expect(parseUpdate(message({ text: undefined, photo: [{ file_id: 'p' }] })))
+      .toMatchObject({ text: '', unseen: 'photo' });
+    expect(parseUpdate(message({ text: undefined, caption: '   ', document: { file_id: 'd' } })))
+      .toMatchObject({ text: '', unseen: 'document' });
+    /* Only photos and files have their caption read in the stopgap. */
+    expect(parseUpdate(message({
+      text: undefined,
+      caption: 'listen to this',
+      voice: { file_id: 'v', duration: 4 },
+    }))).toMatchObject({ text: '', unseen: 'voice' });
+    expect(parseUpdate(message({ text: undefined, caption: 'watch', video: { file_id: 'x' } })))
+      .toMatchObject({ text: '', unseen: 'video' });
+  });
+
+  it('calls a GIF a GIF, though Telegram also sends it as a document', () => {
+    expect(parseUpdate(message({
+      text: undefined,
+      caption: 'lol',
+      animation: { file_id: 'g' },
+      document: { file_id: 'g' },
+    }))).toMatchObject({ text: '', unseen: 'animation' });
+  });
+
+  it('notes a caption it did not read, on a voice note or video', () => {
+    expect(parseUpdate(message({ text: undefined, caption: 'listen to this', voice: { file_id: 'v' } })))
+      .toMatchObject({ text: '', unseen: 'voice', captionIgnored: true });
+    expect(parseUpdate(message({ text: undefined, caption: 'watch', video: { file_id: 'x' } })))
+      .toMatchObject({ text: '', unseen: 'video', captionIgnored: true });
+    expect(parseUpdate(message({ text: undefined, voice: { file_id: 'v' } })))
+      .not.toHaveProperty('captionIgnored');
+    expect(parseUpdate(message({ text: undefined, caption: '   ', video: { file_id: 'x' } })))
+      .not.toHaveProperty('captionIgnored');
+    /* A photo's caption is read, so nothing was ignored. */
+    expect(parseUpdate(message({ text: undefined, caption: 'Record this', photo: [{ file_id: 'p' }] })))
+      .not.toHaveProperty('captionIgnored');
+  });
+
+  it('recognises polls, dice, stories, games and paid media', () => {
+    const shapes: [string, Record<string, unknown>][] = [
+      ['poll', { id: '1', question: 'Lunch?', options: [] }],
+      ['dice', { emoji: '🎲', value: 4 }],
+      ['story', { chat: { id: 1 }, id: 2 }],
+      ['game', { title: 'Snake' }],
+      ['paid_media', { star_count: 5, paid_media: [] }],
+    ];
+    for (const [field, value] of shapes) {
+      expect(parseUpdate(message({ text: undefined, [field]: value })))
+        .toMatchObject({ text: '', unseen: field });
+    }
+  });
+
+  it('keeps the album an item belongs to', () => {
+    expect(parseUpdate(message({
+      text: undefined,
+      media_group_id: '13579',
+      photo: [{ file_id: 'p' }],
+    }))).toMatchObject({ text: '', unseen: 'photo', mediaGroupId: '13579' });
+    expect(parseUpdate(message({ text: undefined, photo: [{ file_id: 'p' }] })))
+      .not.toHaveProperty('mediaGroupId');
+  });
+
+  it('reads a venue as a location, and stays silent on service messages', () => {
+    expect(parseUpdate(message({
+      text: undefined,
+      venue: { title: 'Kedai', address: 'Jalan 1', location: { latitude: 3.1, longitude: 101.7 } },
+      location: { latitude: 3.1, longitude: 101.7 },
+    }))).toMatchObject({ text: '', unseen: 'location' });
+    for (const service of [
+      { pinned_message: { message_id: 4 } },
+      { message_auto_delete_timer_changed: { message_auto_delete_time: 86400 } },
+      { new_chat_members: [{ id: 7 }] },
+    ]) {
+      expect(parseUpdate(message({ text: undefined, ...service }))).toBeNull();
+    }
   });
 
   it('reads only a private owner callback with a bounded approval token', () => {
@@ -242,6 +344,49 @@ describe('reading an update', () => {
       ...update,
       callback_query: { ...update.callback_query, data: `har:x:${approvalId}` },
     })).toBeNull();
+  });
+});
+
+describe('answering what the agent cannot read', () => {
+  it('points photos and files at the app, voice at the keyboard, and the rest at text', () => {
+    expect(unreadableReply('photo')).toBe(
+      'I can’t open photos or files here yet. Type what you need, or send the file in the Jentera app chat.',
+    );
+    expect(unreadableReply('document')).toBe(unreadableReply('photo'));
+    expect(unreadableReply('voice')).toBe('I can’t listen to voice notes yet. Please type your message.');
+    for (const kind of [
+      'audio', 'video', 'video_note', 'sticker', 'animation', 'location', 'contact',
+      'poll', 'dice', 'story', 'game', 'paid_media',
+    ] as const) {
+      expect(unreadableReply(kind)).toBe('I can only read text messages for now.');
+    }
+  });
+
+  it('asks for a caption it could not read to be sent on its own', () => {
+    expect(unreadableReply('voice', true)).toBe(
+      'I can’t listen to voice notes yet. Send the words you typed as their own message and I’ll answer them.',
+    );
+    expect(unreadableReply('video', true)).toBe(
+      'I can only read text messages for now. Send the words you typed as their own message and I’ll answer them.',
+    );
+  });
+
+  it('tells the agent what it was not given, and leaves plain text alone', () => {
+    expect(withUnseenMediaNote('Record this receipt')).toBe('Record this receipt');
+    const noted = withUnseenMediaNote('Record this receipt', 'photo');
+    expect(noted.startsWith('Record this receipt\n\n')).toBe(true);
+    expect(noted).toMatch(/with a photo attached/);
+    expect(noted).toMatch(/not on your filesystem/);
+    expect(noted).toMatch(/say you cannot see it/);
+    expect(withUnseenMediaNote('Summarise this', 'document')).toMatch(/with a file attached/);
+  });
+
+  it('calls a kind this version does not know "something", and never names it', () => {
+    for (const kind of ['hologram', 'constructor', 'to_string']) {
+      const noted = withUnseenMediaNote('Check this', kind);
+      expect(noted).toMatch(/with something attached/);
+      expect(noted).not.toContain(kind);
+    }
   });
 });
 

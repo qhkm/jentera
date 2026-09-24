@@ -223,6 +223,7 @@ export const FOOTER_MS = {
     { href: '/pricing', label: 'Harga' },
     { href: '/connect', label: 'Sambungan' },
     { href: '/about', label: 'Tentang kami' },
+    { href: '/blog/meet-jentera', label: 'Kenali Jentera' },
     { href: '/privacy', label: 'Privasi' },
     { href: '/terms', label: 'Terma' },
     { href: '/', label: 'English' },

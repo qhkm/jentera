@@ -11,7 +11,7 @@ const RELATIONSHIP = FAQS.find((faq) => faq.question === 'What is the relationsh
 
 export default function About() {
   return (
-    <div className="marketing-page min-h-dvh bg-bg text-text">
+    <div className="marketing-page marketing-page--v3 min-h-dvh bg-bg text-text">
       <LandingHeader />
       <main id="main-content">
         <section className="lp-container lp-section">

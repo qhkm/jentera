@@ -331,6 +331,7 @@ it('clears unsent credentials after a lost lease and explains successful hand-ba
   expect(screen.getByLabelText('Text or password for the selected field')).toHaveAttribute('type', 'password');
   await user.click(screen.getByRole('button', { name: 'Hand back to Jentera' }));
   expect(await screen.findByText('Control handed back')).toBeVisible();
+  expect(screen.getByRole('status')).toHaveTextContent('Ready for Jentera');
   expect(screen.getByText(/It will re-check access/)).toBeVisible();
   expect(screen.queryByRole('img')).toBeNull();
   expect(JSON.stringify(localStorage)).not.toContain('synthetic-unsent-secret');

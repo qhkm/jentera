@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { RepositoryProvider } from '@/lib/repo/context';
@@ -10,6 +10,7 @@ import BusinessBrowser from '@/routes/views/BusinessBrowser';
 const mocks = vi.hoisted(() => ({ clients: [] as (EventTarget & {
   disconnect: ReturnType<typeof vi.fn>;
   sendKey: ReturnType<typeof vi.fn>;
+  focus: ReturnType<typeof vi.fn>;
   clipViewport: boolean;
   dragViewport: boolean;
   scaleViewport: boolean;
@@ -18,7 +19,7 @@ const mocks = vi.hoisted(() => ({ clients: [] as (EventTarget & {
   _screen: HTMLDivElement;
 })[], calls: [] as unknown[][] }));
 vi.mock('@novnc/novnc', () => ({ default: class extends EventTarget {
-  disconnect = vi.fn(); sendKey = vi.fn(); dragViewport = false;
+  disconnect = vi.fn(); sendKey = vi.fn(); focus = vi.fn(); dragViewport = false;
   _clipViewport = false; _scaleViewport = false;
   _canvas = document.createElement('canvas');
   _display = { scale: 1, width: 1280, height: 720 };
@@ -137,9 +138,55 @@ it('claims on open and shows a full desktop without duplicate fake Chrome contro
   expect(browser.mock.calls.some(([command]) => command?.action === 'frame')).toBe(false);
   expect(mocks.calls[0][1]).toBe('wss://api.example.test/api/browser/desktop');
   expect(JSON.stringify(mocks.calls[0].slice(1))).not.toContain('runnerKey');
+  await user.click(await screen.findByText('You’re in control'));
+  const health = screen.getByLabelText('Computer status');
+  expect(within(health).getByText('Private computer').nextSibling).toHaveTextContent('Ready');
+  expect(within(health).getByText('Live screen').nextSibling).toHaveTextContent('Connected');
+  expect(within(health).getByText('Control').nextSibling).toHaveTextContent('Yours');
+  expect(within(health).getByText('Your input').nextSibling).toHaveTextContent('Ready');
   await user.click(screen.getByRole('button', { name: 'Close computer view' }));
   await waitFor(() => expect(mocks.clients[0].disconnect).toHaveBeenCalled());
   expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(true);
+});
+it('expands the controlled desktop to full screen and restores it without handing control back', async () => {
+  const user = userEvent.setup(); const { browser } = mount();
+  let active: Element | null = null;
+  const fullscreenDescriptor = Object.getOwnPropertyDescriptor(document, 'fullscreenElement');
+  const exitDescriptor = Object.getOwnPropertyDescriptor(document, 'exitFullscreen');
+  const requestDescriptor = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'requestFullscreen');
+  Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => active });
+  Object.defineProperty(document, 'exitFullscreen', { configurable: true, value: vi.fn(async () => {
+    active = null; document.dispatchEvent(new Event('fullscreenchange'));
+  }) });
+  Object.defineProperty(HTMLDialogElement.prototype, 'requestFullscreen', { configurable: true, value: vi.fn(async function (this: HTMLDialogElement) {
+    active = this; document.dispatchEvent(new Event('fullscreenchange'));
+  }) });
+  try {
+    await user.click(await screen.findByRole('button', { name: 'Open Jentera’s computer' }));
+    const modal = await screen.findByRole('dialog');
+    await user.click(await screen.findByRole('button', { name: 'Enter full screen' }));
+    expect(modal).toHaveClass('is-fullscreen');
+    expect(document.documentElement).toHaveClass('business-browser-fullscreen-open');
+    await user.click(screen.getByRole('button', { name: 'Exit full screen' }));
+    expect(modal).not.toHaveClass('is-fullscreen');
+    expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(false);
+  } finally {
+    if (fullscreenDescriptor) Object.defineProperty(document, 'fullscreenElement', fullscreenDescriptor);
+    else Reflect.deleteProperty(document, 'fullscreenElement');
+    if (exitDescriptor) Object.defineProperty(document, 'exitFullscreen', exitDescriptor);
+    else Reflect.deleteProperty(document, 'exitFullscreen');
+    if (requestDescriptor) Object.defineProperty(HTMLDialogElement.prototype, 'requestFullscreen', requestDescriptor);
+    else Reflect.deleteProperty(HTMLDialogElement.prototype, 'requestFullscreen');
+  }
+});
+it('hands physical-keyboard focus to the controlled canvas on its first pointer interaction', async () => {
+  const user = userEvent.setup(); mount();
+  await user.click(await screen.findByRole('button', { name: 'Open Jentera’s computer' }));
+  const desktop = await screen.findByRole('region', { name: 'Live business desktop' });
+  await waitFor(() => expect(mocks.clients).toHaveLength(1));
+
+  fireEvent.pointerDown(desktop.querySelector('.business-desktop-stage')!);
+  expect(mocks.clients[0].focus).toHaveBeenCalledWith({ preventScroll: true });
 });
 it('keeps the page-only viewer on old runtimes', async () => {
   const user = userEvent.setup(); mount(false);

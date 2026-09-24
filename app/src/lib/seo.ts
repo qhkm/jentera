@@ -10,6 +10,16 @@ export const INDEXABLE_PATHS = [
 ] as const;
 export const PRIVATE_PATHS = ['/signin', '/onboard', '/setup', '/app', '/join', '/access', '/waitlist', '/subscribe', '/admin/launch', '/landing-v1', '/landing-v2', '/landing-v3'] as const;
 
+/** The pages people should be able to reach directly from a branded search.
+ * Keep this list aligned with the homepage navigation: Google generates
+ * sitelinks from a site's visible hierarchy and concise internal anchors. */
+export const PRIMARY_SITELINKS = [
+  { href: '/pricing', label: 'Pricing' },
+  { href: '/connect', label: 'Connections' },
+  { href: '/about', label: 'About Jentera' },
+  { href: '/blog/meet-jentera', label: 'Meet Jentera' },
+] as const satisfies readonly { href: IndexablePath; label: string }[];
+
 export type IndexablePath = (typeof INDEXABLE_PATHS)[number];
 
 /** Pages that exist in both languages. Every member of a pair must list the
@@ -285,16 +295,24 @@ function pageGraph(path: string): Record<string, unknown>[] {
     }];
   }
   if (path === '/') {
-    return [{
-      '@type': 'SoftwareApplication',
-      name: 'Jentera',
-      url: `${SITE_URL}/`,
-      applicationCategory: 'BusinessApplication',
-      operatingSystem: 'Web',
-      description: PAGES['/'].description,
-      provider: { '@id': ORGANIZATION },
-      image: SOCIAL_IMAGE,
-    }];
+    return [
+      {
+        '@type': 'SoftwareApplication',
+        name: 'Jentera',
+        url: `${SITE_URL}/`,
+        applicationCategory: 'BusinessApplication',
+        operatingSystem: 'Web',
+        description: PAGES['/'].description,
+        provider: { '@id': ORGANIZATION },
+        image: SOCIAL_IMAGE,
+      },
+      ...PRIMARY_SITELINKS.map((link) => ({
+        '@type': 'SiteNavigationElement',
+        '@id': `${SITE_URL}${link.href}#navigation`,
+        name: link.label,
+        url: `${SITE_URL}${link.href}`,
+      })),
+    ];
   }
   return [];
 }

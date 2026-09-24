@@ -9,10 +9,12 @@ export type NotificationKind =
   | 'routine_needs_approval'
   /* A colleague's task ended waiting on the owner (migration 037). */
   | 'work_needs_you'
-  /* An action awaits an owner's decision, asked for by someone else. */
+  /* An action awaits an owner's decision. */
   | 'approval_requested'
   /* A customer asked for a booking on a Bookings page (migration 068). */
-  | 'booking_requested';
+  | 'booking_requested'
+  /* A long work task asked for in the app finished or failed (migration 069). */
+  | 'work_finished';
 
 export interface NotificationRow {
   id: string;

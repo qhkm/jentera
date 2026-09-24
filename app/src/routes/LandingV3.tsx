@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { ArrowRight, ArrowUpRight, List, X, Play, PaperPlaneTilt, CalendarBlank, Browser, Check, Clock, FileText } from '@phosphor-icons/react';
 import { launchOffer, launchPlanBenefits } from '@/lib/launch-offer';
+import { PRIMARY_SITELINKS } from '@/lib/seo';
 import { JenteraMark } from '@/components/JenteraMark';
 import '@/styles/landing-v3.css';
 
@@ -37,11 +38,11 @@ export default function LandingV3() {
     <a href="#lv3-main" className="lv3-skip">Skip to content</a>
     <header className="lv3-header lv3-wrap">
       <Link className="lv3-brand lv3-original-brand" to="/" aria-label="Jentera home"><JenteraMark size={36} /><span>Jentera</span></Link>
-      <nav className="lv3-nav" aria-label="Main navigation"><a href="#lv3-product">Product</a><a href="#lv3-team">Use cases</a><a href="#lv3-how">How it works</a><a href="#lv3-pricing">Pricing</a></nav>
+      <nav className="lv3-nav" aria-label="Main navigation"><a href="#lv3-product">Product</a>{PRIMARY_SITELINKS.slice(0, 3).map(link => <Link key={link.href} to={link.href}>{link.label}</Link>)}</nav>
       <div className="lv3-header-actions"><Link className="lv3-login" to="/signin">Log in</Link><Link className="lv3-button" to={launchOffer.href}>Get started <ArrowRight size={15} /></Link></div>
       <button className="lv3-menu-button" ref={menuButton} type="button" aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={menuOpen} aria-controls="lv3-mobile-menu" onClick={() => setMenuOpen(value => !value)}>{menuOpen ? <X size={24} /> : <List size={24} />}</button>
     </header>
-    {menuOpen && <nav className="lv3-mobile-menu" id="lv3-mobile-menu" aria-label="Mobile navigation" onClick={() => setMenuOpen(false)} onKeyDown={event => { if (event.key === 'Escape') { setMenuOpen(false); menuButton.current?.focus(); } }}><a href="#lv3-product">Product</a><a href="#lv3-team">Use cases</a><a href="#lv3-how">How it works</a><a href="#lv3-pricing">Pricing</a><Link to="/signin">Log in</Link></nav>}
+    {menuOpen && <nav className="lv3-mobile-menu" id="lv3-mobile-menu" aria-label="Mobile navigation" onClick={() => setMenuOpen(false)} onKeyDown={event => { if (event.key === 'Escape') { setMenuOpen(false); menuButton.current?.focus(); } }}><a href="#lv3-product">Product</a>{PRIMARY_SITELINKS.map(link => <Link key={link.href} to={link.href}>{link.label}</Link>)}<Link to="/signin">Log in</Link></nav>}
     <main id="lv3-main">
       <section className="lv3-hero" aria-labelledby="lv3-title">
         <div className="lv3-hero-copy lv3-wrap">
@@ -101,6 +102,6 @@ export default function LandingV3() {
       </section>
       <section className="lv3-story lv3-wrap" aria-labelledby="lv3-story-title"><div className="lv3-story-art"><Mascot /></div><div><span className="lv3-eyebrow">A LITTLE HELP, EVERY DAY</span><h2 id="lv3-story-title">Less busywork.<br />More of what matters.</h2><p>Give Jentera the research, the first draft, and the details to organise. Keep your time for your customers, your ideas, and the decisions only you can make.</p><div className="lv3-story-actions"><span className="lv3-story-signature">Your next pair of helping hands.</span><Link className="lv3-button" to={launchOffer.href}>Get started <ArrowRight size={18} /></Link></div></div><span className="lv3-story-note" aria-hidden="true">Pass je kerja<br />dekat Jentera.</span></section>
     </main>
-    <footer className="lv3-footer lv3-wrap"><Link className="lv3-brand" to="/"><Mascot /><span>Jentera</span></Link><span>Built in 🇲🇾.</span><nav aria-label="Footer navigation"><a href="#lv3-pricing">Pricing</a><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link></nav></footer>
+    <footer className="lv3-footer lv3-wrap"><Link className="lv3-brand" to="/"><Mascot /><span>Jentera</span></Link><span>Built in 🇲🇾.</span><nav aria-label="Footer navigation">{PRIMARY_SITELINKS.map(link => <Link key={link.href} to={link.href}>{link.label}</Link>)}<Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link></nav></footer>
   </div>;
 }

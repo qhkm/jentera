@@ -276,7 +276,8 @@ export const FOOTER = {
   links: [
     { href: "/pricing", label: "Pricing" },
     { href: "/connect", label: "Connections" },
-    { href: "/about", label: "About" },
+    { href: "/about", label: "About Jentera" },
+    { href: "/blog/meet-jentera", label: "Meet Jentera" },
     { href: "/privacy", label: "Privacy" },
     { href: "/terms", label: "Terms" },
     { href: "/ms", label: "Bahasa Malaysia" },

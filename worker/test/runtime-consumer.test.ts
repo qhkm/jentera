@@ -29,6 +29,8 @@ import { bindTelegramInternalChat, saveConnection } from '../src/connections';
 import { reserveRuntimeUsage } from '../src/runtime/usage';
 import { previewForEmail, previewModelAccess } from '../src/chat-preview';
 import { businessHasAccess } from '../src/access';
+import { generateVapidJwk } from '../src/push/crypto';
+import { savePushSubscription } from '../src/push/subscriptions';
 
 const A = '11111111-1111-4111-8111-111111111111';
 
@@ -1153,6 +1155,74 @@ describe('the runtime queue consumer', () => {
       expect(second).toHaveLength(2);
       expect(new Set([...first, ...second].map((row) => row.business_id)).size).toBe(27);
     });
+  });
+});
+
+describe('telling the owner who asked in the app', () => {
+  it('pushes a long work task\'s result to the owner who asked, at once', async () => {
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.09.01-3', AISAR_DEEP_MODEL_NAME: 'deepseek-v4-flash',
+      VAPID_PRIVATE_JWK: await generateVapidJwk(), VAPID_SUBJECT: 'mailto:admin@kitakodventures.com',
+      /* A work verdict the assessor will stand behind: intent quoted from
+         the question, completion quoted from the answer. */
+      AI: { run: async () => ({ response: JSON.stringify({
+        kind: 'work', status: 'completed', effect: 'deliverable', completionSource: 'answer',
+        intentEvidence: 'Chase the late invoices', completionCriteria: 'Reminders sent',
+        completionEvidence: 'Sent reminders to three customers.',
+      }) }) },
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, { provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64) });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const owner = await asOwner(async (sql) => {
+      const [user] = await sql<{ id: string }[]>`
+        insert into app_user (email, email_verified) values ('solo@example.com', true) returning id`;
+      await sql`insert into membership (user_id, business_id, role) values (${user.id}, ${A}, 'owner')`;
+      return user.id;
+    });
+    await asTenant(A, (tx) => savePushSubscription(tx, A, owner, {
+      endpoint: 'https://push.example/owner',
+      p256dh: 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4',
+      auth: 'BTBZMqHH6r4Tts7J_aSIgg',
+    }));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'deepseek-v4-flash', requestedBy: owner,
+    }));
+    /* Asked three minutes ago: long enough that the owner has put the phone down. */
+    await asOwner((sql) => sql`update run set created_at = now() - interval '3 minutes' where id = ${run.id}`);
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `finished:${run.id}`,
+      payload: {
+        input: 'Chase the late invoices', objective: 'Chase the late invoices',
+        channel: 'app', responseMode: 'quick', model: 'deepseek-v4-flash',
+      },
+    }));
+    const pushed: string[] = [];
+    const runnerFetch: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.startsWith('https://push.example/')) {
+        pushed.push(url);
+        return new Response(null, { status: 201 });
+      }
+      if (url.endsWith('/readyz')) return jsonResponse({ ok: true, release: '2026.09.01-3',
+        runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+        hermes: { jenteraPatch: 'jentera-runtime-2026-09-16' },
+        toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false });
+      if (url.endsWith('/v1/tasks')) return jsonResponse({ ok: true, hermesRunId: 'finished-run', status: 'started' }, 202);
+      if (url.endsWith('/events')) return new Response([
+        { type: 'delta', delta: 'Sent reminders to three customers.' }, { type: 'done' },
+      ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), { headers: { 'Content-Type': 'text/event-stream' } });
+      return jsonResponse({ ok: true, status: 'completed', output: 'Sent reminders to three customers.', usage: { input_tokens: 20, output_tokens: 10 } });
+    };
+    expect(await handleRuntimeMessage(env, { version: 1, businessId: A, taskId: task.id }, { provider, fetch: runnerFetch }))
+      .toEqual({ action: 'ack', reason: 'completed' });
+    const notes = await asTenant(A, (tx) => tx<{ recipient_user_id: string; kind: string; title: string }[]>`
+      select recipient_user_id, kind, title from notification`);
+    expect(notes).toEqual([{ recipient_user_id: owner, kind: 'work_finished', title: 'Chase the late invoices — done' }]);
+    /* Sent before the consumer acknowledged, not left for the minute cron. */
+    expect(pushed).toEqual(['https://push.example/owner']);
+    const [outbox] = await asTenant(A, (tx) => tx<{ delivered_at: Date | null }[]>`select delivered_at from push_outbox`);
+    expect(outbox.delivered_at).not.toBeNull();
   });
 });
 

@@ -1,13 +1,13 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Globe, Desktop, ArrowDown, ArrowUp, ArrowRight, ArrowBendDownLeft, CheckCircle, Clock, Eye, EyeSlash, Keyboard, CursorClick, ShieldCheck, WarningCircle, Minus, Plus, X, ArrowClockwise, Record, Stop, Sparkle } from '@phosphor-icons/react';
+import { Globe, Desktop, ArrowDown, ArrowUp, ArrowRight, ArrowBendDownLeft, CheckCircle, Clock, Eye, EyeSlash, Keyboard, CursorClick, ShieldCheck, WarningCircle, Minus, Plus, X, ArrowClockwise, Record, Stop, Sparkle, CornersOut, CornersIn } from '@phosphor-icons/react';
 import { Button, Card, Eyebrow, Input } from '@/components/ui';
 import { useRepository } from '@/lib/repo';
 import type { BrowserCommand, BusinessBrowserState, ProcedureDraft } from '@/lib/repo/types';
 import { BrowserInput, type DirectInputState } from '@/lib/browser-input';
 import { useT } from '@/i18n/I18nProvider';
 import '@/styles/business-browser.css';
-import DesktopViewer from './DesktopViewer';
+import DesktopViewer, { type DesktopConnectionPhase } from './DesktopViewer';
 
 type Action = BrowserCommand extends infer C ? C extends BrowserCommand ? Omit<C, 'controlId'> : never : never;
 
@@ -71,6 +71,8 @@ export default function BusinessBrowser({
   const [objective, setObjective] = useState('');
   const [recording, setRecording] = useState(false);
   const [procedureDraft, setProcedureDraft] = useState<ProcedureDraft | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [desktopPhase, setDesktopPhase] = useState<DesktopConnectionPhase | 'idle'>('idle');
   const direct = useRef<BrowserInput | null>(null);
   const dispatch = useRef(send);
   dispatch.current = send;
@@ -128,6 +130,18 @@ export default function BusinessBrowser({
   }, [directEnabled]);
 
   useEffect(() => { live.current = true; return () => { live.current = false; resetTyping(); }; }, []);
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      if (!dialog.current) return;
+      setFullscreen(document.fullscreenElement === dialog.current);
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
+  useEffect(() => {
+    document.documentElement.classList.toggle('business-browser-fullscreen-open', fullscreen);
+    return () => document.documentElement.classList.remove('business-browser-fullscreen-open');
+  }, [fullscreen]);
   useEffect(() => {
     if (!openRequest) return;
     claimOnOpen.current = true;
@@ -235,12 +249,14 @@ export default function BusinessBrowser({
         handBackNeeded.current = true;
         recoverySupported.current = next.controlRecovery === 1 || recoverySupported.current;
         setControlConflict(false);
+        setDesktopPhase(next.desktopView === 1 ? 'connecting' : 'idle');
         setState(next); onPauseChange?.(true);
         if (generation === viewGeneration.current) { setControlled(true); setHandedBack(false); }
       }
       if (action.action === 'release') {
         handBackNeeded.current = false;
         setState(next); setControlled(false); setFrame(null); setText(''); setShowText(false);
+        setDesktopPhase('idle');
         setRecording(false); setTeachSetup(false);
         if (generation === viewGeneration.current) setHandedBack(true);
         onPauseChange?.(false);
@@ -295,14 +311,44 @@ export default function BusinessBrowser({
       const released = await send({ action: 'release' });
       if (!released) { closeRequested.current = false; return; }
     }
+    if (document.fullscreenElement === dialog.current) {
+      try { await document.exitFullscreen(); } catch { /* The dialog can still close safely. */ }
+    }
+    setFullscreen(false);
     viewGeneration.current += 1;
     dialog.current?.close(); setOpen(false); setControlled(false); setControlConflict(false); setFrame(null); setText(''); setShowText(false); setUrl(''); setZoom(defaultBrowserZoom());
+    setDesktopPhase('idle');
     setTeachSetup(false); setRecording(false); setProcedureDraft(null); setObjective('');
     closeRequested.current = false;
   }
 
+  async function toggleFullscreen() {
+    const modal = dialog.current;
+    if (!modal) return;
+    if (fullscreen) {
+      if (document.fullscreenElement === modal) {
+        try { await document.exitFullscreen(); } catch { /* CSS fallback below. */ }
+      }
+      setFullscreen(false);
+      return;
+    }
+    // The class is also a deliberate fallback for iOS and embedded browsers
+    // that do not expose the Fullscreen API for dialog elements.
+    setFullscreen(true);
+    try { await modal.requestFullscreen?.(); } catch { /* Keep the viewport-filling fallback. */ }
+  }
+
   const openBrowser = () => { claimOnOpen.current = true; setError(''); setHandedBack(false); setOpen(true); };
-  const mode = statusLoading || claiming ? 'checking' : controlled ? 'control' : state.paused ? 'paused' : 'view';
+  const mode = statusLoading || claiming || (controlled && desktopEnabled && desktopPhase === 'connecting') ? 'checking'
+    : controlled && desktopEnabled && desktopPhase === 'reconnecting' ? 'reconnecting'
+      : controlled ? 'control' : state.paused ? 'paused' : 'view';
+  const screenHealth = !desktopEnabled ? 'browser'
+    : controlled ? desktopPhase === 'ready' ? 'connected'
+      : desktopPhase === 'failed' ? 'attention'
+        : desktopPhase === 'reconnecting' ? 'reconnecting' : 'connecting'
+      : 'ready';
+  const controlHealth = controlled ? 'yours' : state.paused ? 'waiting' : 'jentera';
+  const inputHealth = controlled && (!desktopEnabled || desktopPhase === 'ready') ? 'ready' : 'off';
   const tabName = (origin: string) => {
     try { return new URL(origin).hostname || t('browser.blank'); } catch { return t('browser.blank'); }
   };
@@ -321,20 +367,31 @@ export default function BusinessBrowser({
         <Desktop size={18} aria-hidden="true" />{t('browser.open')}
       </Button></div>
     </Card> : trigger}
-    {open && createPortal(<dialog ref={dialog} className={`business-browser-dialog${controlled && desktopEnabled ? ' has-desktop' : ''}${drawerMode ? ' is-chat-drawer' : ''}`} aria-labelledby={titleId} aria-describedby={descriptionId}
+    {open && createPortal(<dialog ref={dialog} className={`business-browser-dialog${controlled && desktopEnabled ? ' has-desktop' : ''}${drawerMode ? ' is-chat-drawer' : ''}${fullscreen ? ' is-fullscreen' : ''}`} aria-labelledby={titleId} aria-describedby={descriptionId}
       // Portals escape the composer DOM, but React events still bubble through it.
       onSubmit={(event) => event.stopPropagation()}
-      onCancel={(e) => { e.preventDefault(); void close(); }}>
+      onCancel={(e) => { e.preventDefault(); if (fullscreen) void toggleFullscreen(); else void close(); }}>
       <header className="business-browser-header">
         <span className="business-browser-brand" aria-hidden="true"><Desktop size={25} weight="duotone" /></span>
         <div className="business-browser-heading">
           <h2 id={titleId}>{t('browser.title')}</h2>
           <p id={descriptionId}>{t('browser.subtitle')}</p>
         </div>
-        <span className={`business-browser-state is-${mode}`} role="status">
-          <span aria-hidden="true" />{t(`browser.state.${mode}`)}
-        </span>
-        <button type="button" className="business-browser-icon-button" aria-label={t('browser.close')} title={t('browser.close')} onClick={() => void close()}><X size={20} aria-hidden="true" /></button>
+        <details className="business-browser-health">
+          <summary className={`business-browser-state is-${mode}`}>
+            <span aria-hidden="true" /><span role="status">{t(`browser.state.${mode}`)}</span>
+          </summary>
+          <div className="business-browser-health-panel" aria-label={t('browser.health.label')}>
+            <p><span>{t('browser.health.computer')}</span><strong>{t(`browser.health.${desktopEnabled ? 'ready' : state.enabled ? 'browser' : 'checking'}`)}</strong></p>
+            <p><span>{t('browser.health.screen')}</span><strong className={`is-${screenHealth}`}>{t(`browser.health.${screenHealth}`)}</strong></p>
+            <p><span>{t('browser.health.control')}</span><strong>{t(`browser.health.${controlHealth}`)}</strong></p>
+            <p><span>{t('browser.health.input')}</span><strong>{t(`browser.health.${inputHealth}`)}</strong></p>
+          </div>
+        </details>
+        {controlled && desktopEnabled && <button type="button" className="business-browser-icon-button business-browser-fullscreen" aria-label={t(fullscreen ? 'browser.fullscreen.exit' : 'browser.fullscreen.enter')} title={t(fullscreen ? 'browser.fullscreen.exit' : 'browser.fullscreen.enter')} onClick={() => void toggleFullscreen()}>
+          {fullscreen ? <CornersIn size={20} aria-hidden="true" /> : <CornersOut size={20} aria-hidden="true" />}
+        </button>}
+        <button type="button" className="business-browser-icon-button business-browser-close" aria-label={t('browser.close')} title={t('browser.close')} onClick={() => void close()}><X size={20} aria-hidden="true" /></button>
       </header>
       <div className={`business-browser-body${controlled && desktopEnabled ? ' has-desktop' : ''}`}>
         {error && <div className="business-browser-error" role="alert">
@@ -378,8 +435,9 @@ export default function BusinessBrowser({
           <div><strong>{t('browser.recover.title')}</strong><p>{t('browser.recover.detail')}</p></div>
           <Button type="button" disabled={busy || statusLoading} onClick={() => command({ action: 'reclaim' })}>{t('browser.recover.action')}<ArrowRight size={16} aria-hidden="true" /></Button>
         </div>}
-        {controlled && desktopEnabled ? <DesktopViewer controlId={controlId.current} onControlLost={() => {
+        {controlled && desktopEnabled ? <DesktopViewer controlId={controlId.current} onPhaseChange={setDesktopPhase} onControlLost={() => {
           resetTyping(); setControlled(false); setFrame(null); setText(''); setShowText(false);
+          setDesktopPhase('failed');
           setError(t('browser.desktop.lost'));
         }} /> : <div className={`business-browser-workspace ${controlled ? 'is-controlled' : ''}`}>
           <div className="business-browser-window">

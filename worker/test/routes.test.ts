@@ -117,6 +117,26 @@ async function telegramHook(
   return response;
 }
 
+async function telegramUpdate(
+  connectionId: string,
+  secret: string,
+  message: Record<string, unknown>,
+  ctx?: Pick<ExecutionContext, 'waitUntil'>,
+) {
+  const url = new URL(`https://api.test/api/webhooks/telegram/${A}/${connectionId}`);
+  const request = new Request(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Telegram-Bot-Api-Secret-Token': secret,
+    },
+    body: JSON.stringify({ update_id: Number(message.message_id), message: { date: 1, ...message } }),
+  });
+  const response = await handleConnect(request, env, url, cors, ctx);
+  if (!response) throw new Error('Telegram webhook did not match');
+  return response;
+}
+
 async function telegramApprovalCallback(
   connectionId: string,
   secret: string,
@@ -1203,6 +1223,174 @@ describe('connections', () => {
     expect({ runs, tasks }).toEqual({ runs: '0', tasks: '0' });
   });
 
+  it('answers a photo, voice note or sticker it cannot read, and starts no run', async () => {
+    const fetch = fetchFake(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
+    vi.stubGlobal('fetch', fetch);
+    const paired = await pairTelegramChat(42);
+    const queued: unknown[] = [];
+    env = automaticRuntimeEnv(async (message) => { queued.push(message); });
+
+    const owner = { chat: { id: 42, type: 'private' }, from: { id: 42, first_name: 'Owner' } };
+    const cases: [Record<string, unknown>, string][] = [
+      [{ message_id: 40, photo: [{ file_id: 'p' }] },
+        'I can’t open photos or files here yet. Type what you need, or send the file in the Jentera app chat.'],
+      [{ message_id: 41, voice: { file_id: 'v', duration: 3 } },
+        'I can’t listen to voice notes yet. Please type your message.'],
+      [{ message_id: 42, sticker: { emoji: '👍' } }, 'I can only read text messages for now.'],
+    ];
+    for (const [message, reply] of cases) {
+      fetch.mockClear();
+      const response = await telegramUpdate(paired.connectionId, paired.secret, { ...owner, ...message });
+      expect(response.status).toBe(200);
+      const sends = fetch.mock.calls.filter(([input]) => String(input).includes('/sendMessage'));
+      expect(sends).toHaveLength(1);
+      expect(JSON.parse(String(sends[0][1]?.body))).toMatchObject({ chat_id: 42, text: reply });
+    }
+    expect(queued).toHaveLength(0);
+    expect(await asTenant(A, (tx) => tx`select id from run`)).toHaveLength(0);
+  });
+
+  it('runs a captioned photo as its caption, flagged as unseen', async () => {
+    const fetch = fetchFake(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
+    vi.stubGlobal('fetch', fetch);
+    const paired = await pairTelegramChat(42);
+    const queued: unknown[] = [];
+    env = automaticRuntimeEnv(async (message) => { queued.push(message); });
+    fetch.mockClear();
+
+    const response = await telegramUpdate(paired.connectionId, paired.secret, {
+      message_id: 43,
+      chat: { id: 42, type: 'private' },
+      from: { id: 42, first_name: 'Owner' },
+      photo: [{ file_id: 'p' }],
+      caption: 'Record this receipt',
+    });
+    expect(response.status).toBe(200);
+    expect(queued).toHaveLength(1);
+    expect(queued[0]).toMatchObject({
+      kind: 'telegram_intake',
+      incoming: { chatId: 42, text: 'Record this receipt', unseen: 'photo' },
+    });
+    expect(fetch.mock.calls.filter(([input]) => String(input).includes('/sendMessage')))
+      .toHaveLength(0);
+  });
+
+  it('asks the owner to resend a caption it could not read', async () => {
+    const fetch = fetchFake(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
+    vi.stubGlobal('fetch', fetch);
+    const paired = await pairTelegramChat(42);
+    const queued: unknown[] = [];
+    env = automaticRuntimeEnv(async (message) => { queued.push(message); });
+    fetch.mockClear();
+
+    await telegramUpdate(paired.connectionId, paired.secret, {
+      message_id: 80,
+      chat: { id: 42, type: 'private' },
+      from: { id: 42, first_name: 'Owner' },
+      voice: { file_id: 'v', duration: 2 },
+      caption: 'Remind me to call Ali',
+    });
+    const sends = fetch.mock.calls.filter(([input]) => String(input).includes('/sendMessage'));
+    expect(sends).toHaveLength(1);
+    expect(JSON.parse(String(sends[0][1]?.body))).toMatchObject({
+      chat_id: 42,
+      text: 'I can’t listen to voice notes yet. Send the words you typed as their own message and I’ll answer them.',
+    });
+    expect(queued).toHaveLength(0);
+  });
+
+  it('answers an album once, not once per photo', async () => {
+    const fetch = fetchFake(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
+    vi.stubGlobal('fetch', fetch);
+    const paired = await pairTelegramChat(42);
+    const queued: unknown[] = [];
+    env = automaticRuntimeEnv(async (message) => { queued.push(message); });
+    env.TELEGRAM_ALBUM_REPLY = oncePerKey();
+    fetch.mockClear();
+
+    const owner = { chat: { id: 42, type: 'private' }, from: { id: 42, first_name: 'Owner' } };
+    for (const messageId of [60, 61, 62]) {
+      const response = await telegramUpdate(paired.connectionId, paired.secret, {
+        ...owner,
+        message_id: messageId,
+        media_group_id: 'receipts',
+        photo: [{ file_id: `p${messageId}` }],
+      });
+      expect(response.status).toBe(200);
+    }
+    expect(fetch.mock.calls.filter(([input]) => String(input).includes('/sendMessage')))
+      .toHaveLength(1);
+    expect(queued).toHaveLength(0);
+  });
+
+  it('keeps a captioned album’s other photos quiet while its caption runs', async () => {
+    const fetch = fetchFake(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
+    vi.stubGlobal('fetch', fetch);
+    const paired = await pairTelegramChat(42);
+    const queued: unknown[] = [];
+    env = automaticRuntimeEnv(async (message) => { queued.push(message); });
+    env.TELEGRAM_ALBUM_REPLY = oncePerKey();
+    fetch.mockClear();
+
+    const owner = { chat: { id: 42, type: 'private' }, from: { id: 42, first_name: 'Owner' } };
+    await telegramUpdate(paired.connectionId, paired.secret, {
+      ...owner,
+      message_id: 70,
+      media_group_id: 'invoices',
+      photo: [{ file_id: 'p70' }],
+      caption: 'Total these up',
+    });
+    for (const messageId of [71, 72]) {
+      await telegramUpdate(paired.connectionId, paired.secret, {
+        ...owner,
+        message_id: messageId,
+        media_group_id: 'invoices',
+        photo: [{ file_id: `p${messageId}` }],
+      });
+    }
+    expect(queued).toHaveLength(1);
+    expect(queued[0]).toMatchObject({ incoming: { text: 'Total these up', unseen: 'photo' } });
+    expect(fetch.mock.calls.filter(([input]) => String(input).includes('/sendMessage')))
+      .toHaveLength(0);
+  });
+
+  it('gives a stranger’s photo the pairing refusal, and a group’s photo nothing', async () => {
+    const fetch = fetchFake(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
+    vi.stubGlobal('fetch', fetch);
+    const paired = await pairTelegramChat(42);
+    fetch.mockClear();
+
+    await telegramUpdate(paired.connectionId, paired.secret, {
+      message_id: 50,
+      chat: { id: 999, type: 'private' },
+      from: { id: 999, first_name: 'Stranger' },
+      photo: [{ file_id: 'p' }],
+    });
+    const toStranger = fetch.mock.calls.filter(([input]) => String(input).includes('/sendMessage'));
+    expect(toStranger).toHaveLength(1);
+    expect(JSON.parse(String(toStranger[0][1]?.body))).toMatchObject({
+      chat_id: 999,
+      text: expect.stringMatching(/not authorised/i),
+    });
+    fetch.mockClear();
+
+    await telegramUpdate(paired.connectionId, paired.secret, {
+      message_id: 51,
+      chat: { id: -100123, type: 'group' },
+      from: { id: 42, first_name: 'Owner' },
+      photo: [{ file_id: 'p' }],
+    });
+    expect(fetch.mock.calls.filter(([input]) => String(input).includes('/sendMessage')))
+      .toHaveLength(0);
+    expect(await asTenant(A, (tx) => tx`select id from run`)).toHaveLength(0);
+  });
+
   it('returns 503 when the webhook authentication lookup fails', async () => {
     const paired = await pairTelegramChat(42);
     env = testEnv({
@@ -1402,6 +1590,18 @@ describe('connections', () => {
     expect(mine.body?.connections).toHaveLength(1);
   });
 });
+
+/** Admits each key once, as a limit-1 binding does inside its period. */
+function oncePerKey(): Env['TELEGRAM_ALBUM_REPLY'] {
+  const seen = new Set<string>();
+  return {
+    limit: async ({ key }: { key: string }) => {
+      const first = !seen.has(key);
+      seen.add(key);
+      return { success: first };
+    },
+  };
+}
 
 function automaticRuntimeEnv(send: (message: unknown) => Promise<void>): Env {
   return testEnv({
