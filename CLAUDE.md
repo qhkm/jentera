@@ -573,7 +573,7 @@ must do.
 
 It is a pilot. `APPS_ENABLED` and `APPS_BUSINESS_IDS` (exact UUIDs, at most
 20, empty means nobody) sit in both `[vars]` and `[env.sites.vars]` of
-`worker/wrangler.toml`, and `scripts/check-apps-flags.mjs` fails a deploy
+`worker/wrangler.toml`, and `worker/scripts/check-apps-flags.mjs` fails a deploy
 when the two drift. Off the list, every owner and public path answers 404,
 and `/api/me` sends `features.apps` to owners only, so staff never see it.
 
@@ -594,7 +594,9 @@ booking, the order every writer shares), capped at 200 per business per
 Malaysian day, and made idempotent by a submission key; it notifies every
 owner with `booking_requested`, whose `url` is
 `/app?view=apps&app=bookings&booking=<id>`. **The app must know a kind
-before the Worker writes it** — see Web push above.
+before the Worker writes it**: `fetchNotifications` rejects the whole list
+over one kind missing from `KINDS` in `app/src/lib/notifications.ts`, so an
+app without `booking_requested` would empty every pilot owner's inbox.
 
 Google Calendar sync is durable: the decision commits a
 `booking_calendar_job`, `processBookingCalendarJob`

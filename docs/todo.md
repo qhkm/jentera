@@ -113,8 +113,8 @@ Decided on 12 September to wait for a request before building. Reasoning in
 - Agent memory per person. Hermes keeps one memory per business; a tier
   split on the Hermes side was proposed, not built.
 
-Bookings v1, out of scope for the pilot per its spec
-(`docs/plans/2026-09-23-apps-shell-and-bookings-v1.md`):
+Bookings v1, left out of the pilot (spec:
+`docs/plans/2026-09-23-apps-shell-and-bookings-v1.md`):
 
 - Customer data retention (PDPA). Bookings keeps customers' names, phone
   numbers and notes with no retention period or deletion route. A retention
