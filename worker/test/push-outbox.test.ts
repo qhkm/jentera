@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { connect } from '../src/db';
 import { generateVapidJwk } from '../src/push/crypto';
-import { enqueuePush, PUSH_OUTBOX_MAX_ATTEMPTS, sweepPushOutbox } from '../src/push/outbox';
+import { deliverPendingPushes, enqueuePush, PUSH_OUTBOX_MAX_ATTEMPTS, sweepPushOutbox } from '../src/push/outbox';
 import { savePushSubscription } from '../src/push/subscriptions';
 import { asOwner, asTenant, fetchFake, testEnv, truncateAll } from './harness';
 
@@ -119,5 +119,77 @@ describe('push outbox', () => {
     expect(fetch).not.toHaveBeenCalled();
     expect((await outboxRows(A))[0].delivered_at).toBeNull();
     expect(userB).toBeTruthy();
+  });
+});
+
+describe('sending a business\'s pushes now, not at the next cron tick', () => {
+  const subscribe = (business: string, user: string, endpoint: string) => asTenant(business, async (tx) => {
+    await savePushSubscription(tx, business, user, { endpoint, ...KEYS });
+    await enqueuePush(tx, business, user, NOTE);
+  });
+
+  it('delivers what that business has queued, and leaves nothing for the cron', async () => {
+    await subscribe(A, userA, 'https://push.example/a1');
+    const fetch = fetchFake(() => new Response(null, { status: 201 }));
+    expect(await deliverPendingPushes(pushEnv(), A, { fetch })).toEqual({ delivered: 1, retried: 0, gaveUp: 0 });
+    expect(fetch).toHaveBeenCalledOnce();
+    expect((await outboxRows(A))[0].delivered_at).not.toBeNull();
+    expect(await sweepPushOutbox(pushEnv(), { fetch })).toEqual({ delivered: 0, retried: 0, gaveUp: 0 });
+  });
+
+  it('touches no other business', async () => {
+    await subscribe(B, userB, 'https://push.example/b1');
+    const fetch = fetchFake(() => new Response(null, { status: 201 }));
+    expect(await deliverPendingPushes(pushEnv(), A, { fetch })).toEqual({ delivered: 0, retried: 0, gaveUp: 0 });
+    expect(fetch).not.toHaveBeenCalled();
+    expect((await outboxRows(B))[0].delivered_at).toBeNull();
+  });
+
+  it('sends a push once when the cron sweeps at the same moment', async () => {
+    await subscribe(A, userA, 'https://push.example/a1');
+    const fetch = fetchFake(async () => {
+      /* Hold the send open so both paths are in flight together. */
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return new Response(null, { status: 201 });
+    });
+    const [now, cron] = await Promise.all([
+      deliverPendingPushes(pushEnv(), A, { fetch }),
+      sweepPushOutbox(pushEnv(), { fetch }),
+    ]);
+    expect(now.delivered + cron.delivered).toBe(1);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('hands a failed send back to the cron to retry', async () => {
+    await subscribe(A, userA, 'https://push.example/a1');
+    const down = fetchFake(() => new Response('try later', { status: 503 }));
+    expect(await deliverPendingPushes(pushEnv(), A, { fetch: down })).toEqual({ delivered: 0, retried: 1, gaveUp: 0 });
+    const [row] = await outboxRows(A);
+    expect(row.delivered_at).toBeNull();
+    expect(row.attempts).toBe(1);
+    const later = new Date(Date.now() + 10 * 60_000);
+    const up = fetchFake(() => new Response(null, { status: 201 }));
+    expect(await sweepPushOutbox(pushEnv(), { fetch: up, now: later })).toEqual({ delivered: 1, retried: 0, gaveUp: 0 });
+  });
+
+  it('judges due by the database clock, so a Worker clock running behind still sends at once', async () => {
+    await subscribe(A, userA, 'https://push.example/a1');
+    /* The row was stamped by the database; this Worker's clock reads five
+       seconds earlier, so by its reckoning the push is not due yet. */
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() - 5_000);
+    try {
+      const fetch = fetchFake(() => new Response(null, { status: 201 }));
+      expect(await deliverPendingPushes(pushEnv(), A, { fetch })).toEqual({ delivered: 1, retried: 0, gaveUp: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does nothing when push is not configured', async () => {
+    await subscribe(A, userA, 'https://push.example/a1');
+    const fetch = fetchFake(() => new Response(null, { status: 201 }));
+    expect(await deliverPendingPushes(testEnv(), A, { fetch })).toEqual({ delivered: 0, retried: 0, gaveUp: 0 });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

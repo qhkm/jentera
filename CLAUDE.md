@@ -282,13 +282,30 @@ delays and giving up after eight tries with the error on the row
 returning ids only, like the routines one). Nothing is sent from inside a
 transaction, and a request that dies after the insert loses nothing. The
 notification insert in `src/notifications/store.ts` is the one caller;
-the confirmation push on subscribe is sent directly. On a team, two more
-kinds reach owners (`work_needs_you`, `approval_requested`, migration 037):
-a colleague's task that ended waiting on the owner, or an action awaiting an
-owner's decision, told to every owner except the one who asked
-(`notifications/recipients.ts`, `notifications/work.ts`, called from the
-consumer at outcome and approval time). A business of one, where the owner
-asks everything, receives none of them.
+the confirmation push on subscribe is sent directly. Three kinds are about
+work someone asked for (`notifications/work.ts`, called from the consumer at
+approval and outcome time). `approval_requested` and `work_needs_you`
+(migration 037) go to every other owner, and to the person who asked when
+they asked in the app and can act on it: an approval only to an owner, a
+review or a block only to an owner, missing input to whoever asked.
+`work_finished` (migration 069) goes to the person who asked alone, for a
+work task asked in the app that finished or failed two minutes or more
+after it was asked (`FINISHED_PUSH_AFTER_SECONDS`). Quick chat replies,
+Telegram (which carries its own reply and buttons) and routines (which have
+their own kinds) get none of these. Every business was a business of one on
+24 September, and until then these reached nobody at all. The consumer
+sends what it queued at once with `deliverPendingPushes`, because an
+approval waits about a minute and the cron could take as long; the cron
+stays the backstop. Both paths claim a row by moving `deliver_after`
+forward before sending, so they never send one push twice, and the
+immediate path judges "due" by the database's clock, not the Worker's.
+**A new notification kind ships in the app before the Worker writes it.**
+`fetchNotifications` leaves out a row of a kind it does not know (`KINDS` in
+`app/src/lib/notifications.ts`) and warns. Until 24 September it rejected the
+whole list instead, which would have emptied the inbox of every owner who
+received one. The other order no longer breaks anything, but those rows stay
+invisible until the app catches up. The order is app, then migration, then
+Worker.
 
 Artifacts are files the agent hands the owner. The runner gives each task
 a folder (`/home/sprite/aisar/outputs/<task>`), appends an instruction
