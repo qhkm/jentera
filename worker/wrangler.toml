@@ -129,7 +129,7 @@ VAULT_DEPOSIT_ORIGIN = "https://aisar-vault-deposit.qhkmdev90.workers.dev"
 # The immutable runner/Hermes/browser bundle requested for newly
 # provisioned runtimes. Changing this asks reconciliation to upgrade;
 # it must never silently track "latest".
-RUNTIME_RELEASE = "2026.09.24-2"
+RUNTIME_RELEASE = "2026.09.24-3"
 RUNTIME_EXPECTED_REGION = "sin"
 # Keep a sprite awake this many hours after each dispatch. Launch posture
 # was 24 on every plan; from 2026-09-09 it was 0: an idle sprite pauses and
@@ -162,14 +162,14 @@ MODEL_TRANSPORT_READY = "true"
 # business to own a fully bootstrapped, release-matched runtime row.
 RUNTIME_EXECUTION_ENABLED = "true"
 RUNTIME_BOOTSTRAP_ENABLED = "true"
-RUNTIME_BUNDLE_COMMIT = "b51639dcae92728575c47dd7d3f0a00724a58722"
+RUNTIME_BUNDLE_COMMIT = "7df7bfb064183d3defb6b403eb3fcfd4a83b8105"
 # sha256 of that commit packed by worker/scripts/bundle-pack.mjs. The sprite
 # checks the bundle it downloaded against this, so the assertion is the
 # control plane stating what it expects rather than the bucket agreeing with
 # itself — which is what catches the right key holding the wrong bytes.
 # ship-runtime.sh writes both pins together; check-transfer-fields.mjs refuses
 # a deploy where this does not match a local repack of the pinned commit.
-RUNTIME_BUNDLE_SHA256 = "50bfd2626ebf3a4d0e49629e26f0615215a4d45bbcfae54c5bf86a30c7d5057b"
+RUNTIME_BUNDLE_SHA256 = "58b79f7708e774d5f6d9e33d527f89e4a7208782be176be77a4a11bc56eeb29c"
 AISAR_MODEL_PROVIDER = "openrouter"
 # The UPSTREAM model gateway the proxy forwards to (allowlisted, see
 # worker/src/runtime/execution.ts). The credential presented to it is the
