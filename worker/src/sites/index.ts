@@ -13,7 +13,10 @@ import { donePage, formPage, messagePage, page, redirect, servicesPage, timesPag
    reads or sets a cookie and holds no credential; a business is found only
    through bookings_by_slug and everything after runs under withTenant. */
 
-const PATH = /^\/b\/([a-z0-9][a-z0-9-]{1,38}[a-z0-9])(\/request|\/done)?\/?$/;
+/* Case-insensitive on purpose: a customer typing the link, or a phone
+   capitalising its first letter, still reaches the page. Names are stored
+   lower-case, so a capital is answered with a redirect before any lookup. */
+const PATH = /^\/b\/([a-z0-9][a-z0-9-]{1,38}[a-z0-9])(\/request|\/done)?\/?$/i;
 const DAYS_SHOWN = 7;
 /** A booking form is a few hundred bytes; a body past this is not one. */
 const BODY_MAX = 8192;
@@ -79,13 +82,17 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
   const url = new URL(request.url);
   const match = url.pathname.match(PATH);
   if (!match || (request.method !== 'GET' && request.method !== 'POST')) return notFound('en');
-  const [, slug, sub = ''] = match;
+  const [, typed, typedSub = ''] = match;
+  const slug = typed.toLowerCase();
+  const sub = typedSub.toLowerCase();
 
   /* Everything before resolvePublicSlug costs no database. The sites deploy
      shares the production Hyperdrive pool with the main API, so the switch,
      the brakes and the body guards all answer from here. */
   const earlyLang = langOf(url, null);
   if (env.APPS_ENABLED !== 'true') return notFound(earlyLang);
+  // 307 like an old name's redirect, so a form post stays a post.
+  if (typed !== slug || typedSub !== sub) return redirect(`/b/${slug}${sub}${url.search}`, 307);
   const ip = clientIp(request);
   if (env.SITES_BURST && !(await env.SITES_BURST.limit({ key: `site:${ip}` })).success) return plain('busy', earlyLang, 429);
   let form: URLSearchParams | null = null;

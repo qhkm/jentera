@@ -119,6 +119,19 @@ describe('sites: pages', () => {
     expect(await asOwner((sql) => sql`select 1 from booking`)).toHaveLength(0);
   });
 
+  it('sends a link name typed with capitals to its lower-case page, before the database', async () => {
+    const res = await get('/b/SEIDO?service=x&lang=bm', env({ HYPERDRIVE: NOWHERE }));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('Location')).toBe('/b/seido?service=x&lang=bm');
+    expectSecurityHeaders(res);
+    const sent = await post(form(), env({ HYPERDRIVE: NOWHERE }), undefined, '/b/Seido/request?lang=en');
+    expect(sent.status).toBe(307);
+    expect(sent.headers.get('Location')).toBe('/b/seido/request?lang=en');
+    const done = await get('/b/Seido-Lama/done?ref=K7Q2MP', env({ HYPERDRIVE: NOWHERE }));
+    expect(done.headers.get('Location')).toBe('/b/seido-lama/done?ref=K7Q2MP');
+    expect((await get('/b/Seido', env({ APPS_ENABLED: 'false', HYPERDRIVE: NOWHERE }))).status).toBe(404);
+  });
+
   it('shows open times and keeps the language through the steps', async () => {
     const html = await (await get(`/b/seido?service=${service}&date=2026-10-06&lang=bm`)).text();
     expect(html).toContain('<html lang="ms">');
