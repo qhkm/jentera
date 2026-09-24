@@ -1,6 +1,7 @@
 import { ArrowClockwise, ArrowRight, ArrowUpRight, Bell, BookOpen, ChatCircle, CheckCircle, Clock, WarningCircle } from '@phosphor-icons/react';
 import { Button, Eyebrow, LoadingState } from '@/components/ui';
 import { JenteraMascot } from '@/components/JenteraMascot';
+import { BookingsNeedsYou } from '@/components/BookingsNeedsYou';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { ActivityState } from '@/hooks/useActivity';
 import type { BusinessSnapshot, WorkSummary } from '@/lib/repo';
@@ -8,6 +9,7 @@ import { BUSINESS_TIME_ZONE, dailyBrief } from '@/lib/daily-brief';
 import { isRunId } from '@/lib/task';
 import type { View } from '@/routes/Dashboard';
 import type { BizTab } from '@/routes/views/MyBusinessView';
+import type { Booking } from '@/lib/apps/types';
 
 const STATUS: Record<string, string> = {
   completed: 'work.done', failed: 'work.failed', blocked: 'work.blocked',
@@ -15,11 +17,12 @@ const STATUS: Record<string, string> = {
   queued: 'task.queued', working: 'work.inprogress', running: 'work.inprogress',
 };
 
-export function DailyBrief({ activity, snapshot, now, onNavigate }: {
+export function DailyBrief({ activity, snapshot, now, onNavigate, bookings }: {
   activity: ActivityState;
   snapshot: BusinessSnapshot;
   now: Date;
   onNavigate: (view: View, tab?: BizTab, runId?: string) => void;
+  bookings?: { items: Booking[]; onConfirm: (id: string) => Promise<Booking>; onOpenAll: () => void } | null;
 }) {
   const { t, lang } = useI18n();
   const brief = activity.real && activity.data ? dailyBrief(activity.data, snapshot, now) : null;
@@ -45,6 +48,7 @@ export function DailyBrief({ activity, snapshot, now, onNavigate }: {
           <ArrowClockwise size={17} aria-hidden="true" />{t('brief.refresh')}
         </button>
       </header>
+      {bookings && <BookingsNeedsYou items={bookings.items} onConfirm={bookings.onConfirm} onOpenAll={bookings.onOpenAll} />}
       {activity.mode === 'error' ? (
         <div className="brief-state" role="alert"><WarningCircle size={24} aria-hidden="true" />
           <p>{t('brief.error')}</p>

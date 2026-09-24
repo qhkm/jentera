@@ -11,6 +11,7 @@ import {
   ArrowUpRight,
   Bell,
   CalendarBlank,
+  CalendarCheck,
   CheckCircle,
   Clock,
   ArrowRight,
@@ -18,6 +19,7 @@ import {
   ChatCircle,
   Lightning,
   PlugsConnected,
+  Plus,
   SquaresFour,
   Sparkle,
 } from '@phosphor-icons/react';
@@ -29,6 +31,7 @@ import type { useBusiness } from '@/hooks/useBusiness';
 import { useActivity } from '@/hooks/useActivity';
 import type { ConnectionsState } from '@/hooks/useConnections';
 import { useSnapshot } from '@/lib/repo';
+import { useApps, useHomeApps } from '@/lib/apps/useApps';
 import { DailyBrief } from '@/components/DailyBrief';
 import { HomeGoals } from '@/components/HomeGoals';
 import { useBusinessClock } from '@/hooks/useBusinessClock';
@@ -49,18 +52,22 @@ export default function HomeView({
   goalsEnabled,
   preview,
   onNavigate,
+  onOpenApp,
 }: {
   b: ReturnType<typeof useBusiness>;
   connections: ConnectionsState;
   goalsEnabled: boolean;
   preview?: ChatPreview | null;
   onNavigate: (v: View, businessTab?: BizTab, runId?: string) => void;
+  onOpenApp?: (app: string) => void;
 }) {
   const { t, lang } = useI18n();
   const now = useBusinessClock();
   const hour = Number(new Intl.DateTimeFormat('en-MY', { timeZone: BUSINESS_TIME_ZONE, hour: 'numeric', hourCycle: 'h23' }).format(now));
   const greeting = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
   const activity = useActivity();
+  const apps = useApps();
+  const homeApps = useHomeApps();
   const snap = useSnapshot();
   /* The illustration belongs to the anonymous demo alone. While a
      signed-in owner's figures are still in flight the layout is the
@@ -153,28 +160,54 @@ export default function HomeView({
         </span>
       </header>
 
-      <section className="home-actions" aria-label={t('home.actions')}>
-        <button type="button" className="home-action home-action-chat" onClick={() => onNavigate('chat')}>
-          <span className="home-action-icon"><ChatCircle size={22} weight="duotone" aria-hidden="true" /></span>
-          <span><strong>{t('home.action.chat')}</strong><small>{t('home.action.chat.detail')}</small></span>
-        </button>
-        <button type="button" className="home-action home-action-activity" onClick={() => onNavigate('work')}>
-          <span className="home-action-icon"><Lightning size={22} weight="duotone" aria-hidden="true" /></span>
-          <span><strong>{t('home.action.activity')}</strong><small>{t('home.action.activity.detail')}</small></span>
-        </button>
-        <button
-          type="button"
-          className="home-action home-action-alerts"
-          onClick={() => onNavigate('notifications')}
-        >
-          <span className="home-action-icon"><Bell size={22} weight="duotone" aria-hidden="true" /></span>
-          <span><strong>{t('home.action.alerts')}</strong><small>{t('home.action.alerts.detail')}</small></span>
-        </button>
-        <button type="button" className="home-action home-action-more" onClick={() => onNavigate('business')}>
-          <span className="home-action-icon"><SquaresFour size={22} weight="duotone" aria-hidden="true" /></span>
-          <span><strong>{t('home.action.business')}</strong><small>{t('home.action.business.detail')}</small></span>
-        </button>
-      </section>
+      {homeApps ? (
+        <section className="home-actions home-actions-apps" aria-label={t('home.apps')}>
+          {homeApps.slice(0, 3).map((app) => (
+            <button key={app.key} type="button" className={`home-action home-action-${app.key}`} onClick={() => onOpenApp?.(app.key)}>
+              <span className="home-action-icon">
+                <CalendarCheck size={22} weight="duotone" aria-hidden="true" />
+                {app.pending > 0 && <span className="home-action-count" aria-hidden="true">{app.pending}</span>}
+              </span>
+              <span><strong>{t(`apps.${app.key}.name`)}</strong>
+                <small>{app.pending > 0 ? t('apps.pending', { n: app.pending }) : t(app.state === 'paused' ? 'apps.paused' : 'apps.ready')}</small></span>
+            </button>
+          ))}
+          {homeApps.length > 3 ? (
+            <button type="button" className="home-action home-action-more" onClick={() => onNavigate('apps')}>
+              <span className="home-action-icon"><SquaresFour size={22} weight="duotone" aria-hidden="true" /></span>
+              <span><strong>{t('home.apps.all')}</strong><small>{t('home.apps.all.detail')}</small></span>
+            </button>
+          ) : (
+            <button type="button" className="home-action home-action-add" onClick={() => onNavigate('apps')}>
+              <span className="home-action-icon"><Plus size={22} weight="bold" aria-hidden="true" /></span>
+              <span><strong>{t('home.apps.add')}</strong><small>{t('home.apps.add.detail')}</small></span>
+            </button>
+          )}
+        </section>
+      ) : (
+        <section className="home-actions" aria-label={t('home.actions')}>
+          <button type="button" className="home-action home-action-chat" onClick={() => onNavigate('chat')}>
+            <span className="home-action-icon"><ChatCircle size={22} weight="duotone" aria-hidden="true" /></span>
+            <span><strong>{t('home.action.chat')}</strong><small>{t('home.action.chat.detail')}</small></span>
+          </button>
+          <button type="button" className="home-action home-action-activity" onClick={() => onNavigate('work')}>
+            <span className="home-action-icon"><Lightning size={22} weight="duotone" aria-hidden="true" /></span>
+            <span><strong>{t('home.action.activity')}</strong><small>{t('home.action.activity.detail')}</small></span>
+          </button>
+          <button
+            type="button"
+            className="home-action home-action-alerts"
+            onClick={() => onNavigate('notifications')}
+          >
+            <span className="home-action-icon"><Bell size={22} weight="duotone" aria-hidden="true" /></span>
+            <span><strong>{t('home.action.alerts')}</strong><small>{t('home.action.alerts.detail')}</small></span>
+          </button>
+          <button type="button" className="home-action home-action-more" onClick={() => onNavigate('business')}>
+            <span className="home-action-icon"><SquaresFour size={22} weight="duotone" aria-hidden="true" /></span>
+            <span><strong>{t('home.action.business')}</strong><small>{t('home.action.business.detail')}</small></span>
+          </button>
+        </section>
+      )}
 
       {preview && <section className="home-upgrade-banner" aria-labelledby="home-upgrade-title">
         <span className="home-upgrade-icon" aria-hidden="true"><Sparkle size={20} weight="fill" /></span>
@@ -194,7 +227,16 @@ export default function HomeView({
         </div>
       </section>}
 
-      {!demo && <DailyBrief activity={activity} snapshot={snap} now={now} onNavigate={onNavigate} />}
+      {!demo && <DailyBrief activity={activity} snapshot={snap} now={now} onNavigate={onNavigate}
+        bookings={homeApps && apps.api && apps.pending ? {
+          items: apps.pending,
+          onConfirm: async (id) => {
+            const result = await apps.api!.decide(id, 'confirm');
+            void apps.refresh();
+            return result.booking;
+          },
+          onOpenAll: () => onOpenApp?.('bookings'),
+        } : null} />}
 
       {goalsEnabled && <HomeGoals onOpen={() => onNavigate('goals')} />}
 

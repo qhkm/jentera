@@ -39,6 +39,7 @@ import SkillsView from './views/SkillsView';
 import GoalsView from './views/GoalsView';
 import AppsView from './views/AppsView';
 import { AppsProvider } from '@/lib/apps/useApps';
+import { AlertsBell } from '@/components/AlertsBell';
 import type { RoutineConfig } from '@/lib/routines/types';
 import { BottomNav } from '@/components/BottomNav';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -234,6 +235,7 @@ export default function Dashboard() {
           <Sparkle size={15} weight="fill" aria-hidden="true" />
           <span>{t('account.earlyMember')}</span>
         </Link>}
+        <AlertsBell unread={notifications.unread} onOpen={() => go('notifications')} />
         <div className="computer-status-header-slot" ref={setComputerStatusTarget} />
       </div>}
       className={`dashboard-shell workspace-shell workspace-current ${isChat ? 'dashboard-chat workspace-chat' : 'workspace-dashboard'}`}
@@ -264,7 +266,7 @@ export default function Dashboard() {
 
         <div ref={contentRef} className="dashboard-content min-w-0 flex-1">
           <ComputerStatus mobileTarget={computerStatusTarget} onOpenChat={isChat ? undefined : () => go('chat')} onOpenKnowledge={() => go('business', 'knows')} onOpenActivity={openTask} />
-          {view === 'home' && <HomeView b={b} connections={connections} goalsEnabled={goalsEnabled} preview={preview} onNavigate={go} />}
+          {view === 'home' && <HomeView b={b} connections={connections} goalsEnabled={goalsEnabled} preview={preview} onNavigate={go} onOpenApp={(app) => openApps({ app })} />}
           {/* Keep the owner conversation mounted while they inspect another
               section. Returning to Ask Jentera must not erase the exchange. */}
           <div className={isChat ? 'workspace-chat-panel' : 'hidden'} hidden={!isChat}>

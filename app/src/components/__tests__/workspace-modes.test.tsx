@@ -321,6 +321,20 @@ describe('workspace navigation', () => {
     expect(within(pinned).getByRole('article', { name: 'Aisyah' })).toBeInTheDocument();
     expect(apps.booking).toHaveBeenCalledWith(BOOKING_ID);
   });
+  it('puts an Alerts bell in the top bar only once an app is installed', async () => {
+    const withApp = fakeAppsApi({
+      list: vi.fn(async () => ({ apps: [{ key: 'bookings' as const, state: 'active' as const, publicUrl: 'https://s.test/b/x', pending: 0 }], available: ['bookings' as const] })),
+    });
+    await mount(<Dashboard />, Object.assign(new LocalRepository(), { apps: withApp }), '/app', { appsVersion: 1 });
+    expect(await screen.findByRole('button', { name: 'Alerts' })).toBeInTheDocument();
+  });
+  it('shows no bell while nothing is installed', async () => {
+    const empty = fakeAppsApi();
+    await mount(<Dashboard />, Object.assign(new LocalRepository(), { apps: empty }), '/app', { appsVersion: 1 });
+    await waitFor(() => expect(empty.list).toHaveBeenCalled());
+    // The Home tile is named "Alerts" plus its detail, so only the bell matches exactly.
+    expect(screen.queryByRole('button', { name: 'Alerts' })).toBeNull();
+  });
 });
 
 describe('conversation sidebar', () => {
