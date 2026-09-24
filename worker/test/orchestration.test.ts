@@ -476,11 +476,26 @@ describe('durable Hermes Telegram replies', () => {
     expect(run.question).toBe('Record this receipt');
   });
 
-  it('refuses an intake naming an attachment kind it does not know', async () => {
+  it('still runs a caption whose attachment kind a newer worker added, as something attached', async () => {
+    /* Version skew: a newer worker queues a kind, then a rollback consumes
+       it. Dropping the owner's request would be silent; running it with a
+       generic note is not. */
+    await setPolicy('automatic');
+    const provider = new LocalRuntimeProvider();
     const durableEnv = testEnv({
+      RUNTIME_RELEASE: '2026.08.28-4',
       RUNTIME_EXECUTION_ENABLED: 'true',
       AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
     });
+    await ensureProviderRuntime(durableEnv, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.28-4', 'v1'));
+
+    const starts: { input?: string }[] = [];
+    const runner = successfulRunner('I can’t see it yet.');
     await expect(handleRuntimeQueueMessage(durableEnv, {
       version: 2,
       kind: 'telegram_intake',
@@ -491,11 +506,47 @@ describe('durable Hermes Telegram replies', () => {
         chatId: 42,
         messageId: 778,
         from: 'Aminah',
-        text: 'hello',
+        text: 'What is in this?',
         privateChat: true,
         unseen: 'hologram',
       },
-    } as unknown as RuntimeQueueMessage)).resolves.toEqual({ action: 'ack', reason: 'missing' });
+    } as unknown as RuntimeQueueMessage, {
+      provider,
+      fetch: async (input, init) => {
+        if (String(input).endsWith('/v1/tasks') && init?.method === 'POST') {
+          starts.push(JSON.parse(String(init.body)) as { input?: string });
+        }
+        return runner(input, init);
+      },
+    })).resolves.toEqual({ action: 'ack', reason: 'completed' });
+
+    expect(starts).toHaveLength(1);
+    expect(starts[0].input).toMatch(/with something attached/);
+    expect(starts[0].input).not.toContain('hologram');
+  });
+
+  it('refuses an intake whose attachment kind is malformed', async () => {
+    const durableEnv = testEnv({
+      RUNTIME_EXECUTION_ENABLED: 'true',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+    });
+    for (const unseen of [42, 'Hologram!', 'x'.repeat(33), '']) {
+      await expect(handleRuntimeQueueMessage(durableEnv, {
+        version: 2,
+        kind: 'telegram_intake',
+        businessId: A,
+        connectionId: connId,
+        requestedAtMs: Date.now(),
+        incoming: {
+          chatId: 42,
+          messageId: 779,
+          from: 'Aminah',
+          text: 'hello',
+          privateChat: true,
+          unseen,
+        },
+      } as unknown as RuntimeQueueMessage)).resolves.toEqual({ action: 'ack', reason: 'missing' });
+    }
   });
 
   it('delivers the final Hermes answer and does not retain it on the runtime task', async () => {

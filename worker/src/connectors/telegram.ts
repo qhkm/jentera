@@ -769,10 +769,13 @@ const UNSEEN_NOUN: Record<UnseenKind, string> = {
 /** The agent's input when the owner's message came with something it is not
     given. Without this it answers "record this receipt" as though it had read
     the receipt. The note is for the agent only; the run keeps the caption. */
-export function withUnseenMediaNote(text: string, unseen?: UnseenKind): string {
+export function withUnseenMediaNote(text: string, unseen?: string): string {
   if (!unseen) return text;
+  /* A kind a newer worker queued before a rollback is "something"; its name
+     comes from the queue, never from this list, so it never reaches the prompt. */
+  const noun = Object.hasOwn(UNSEEN_NOUN, unseen) ? UNSEEN_NOUN[unseen as UnseenKind] : 'something';
   return `${text}\n\n` +
-    `The owner sent this message with ${UNSEEN_NOUN[unseen]} attached. It was not delivered ` +
+    `The owner sent this message with ${noun} attached. It was not delivered ` +
     'to you and is not on your filesystem, so do not search for it or guess what it shows. ' +
     'If the request depends on it, say you cannot see it yet and ask them to type the details ' +
     'or send the file in the Jentera app chat.';

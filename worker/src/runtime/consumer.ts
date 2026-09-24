@@ -94,9 +94,7 @@ import {
   sendMessage,
   sendTyping,
   TelegramLiveStream,
-  UNSEEN_KINDS,
   withUnseenMediaNote,
-  type UnseenKind,
 } from '../connectors/telegram';
 import { runtimeModelKeyNeedsRotation } from './openrouter-keys';
 import { RunnerClient, RuntimeBusyError } from './runner-client';
@@ -232,8 +230,10 @@ export interface TelegramIntakeQueueMessage {
     from: string;
     text: string;
     privateChat: true;
-    /** A photo or file came with the caption in `text` and was not delivered. */
-    unseen?: UnseenKind;
+    /** A photo or file came with the caption in `text` and was not delivered.
+        A string, not `UnseenKind`: a message can outlive the worker that
+        queued it, and a kind this version does not know still runs. */
+    unseen?: string;
   };
 }
 
@@ -2820,7 +2820,7 @@ function validTelegramIntake(
     typeof incoming.text === 'string' && incoming.text.trim().length > 0 &&
     incoming.text.length <= 4_000 && incoming.privateChat === true &&
     (incoming.unseen === undefined ||
-      (UNSEEN_KINDS as readonly string[]).includes(incoming.unseen));
+      (typeof incoming.unseen === 'string' && /^[a-z_]{1,32}$/.test(incoming.unseen)));
 }
 
 /** Durable final message: Hermes's `💭 **Reasoning:**` block (mirrored from

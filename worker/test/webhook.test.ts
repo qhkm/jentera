@@ -380,6 +380,14 @@ describe('answering what the agent cannot read', () => {
     expect(noted).toMatch(/say you cannot see it/);
     expect(withUnseenMediaNote('Summarise this', 'document')).toMatch(/with a file attached/);
   });
+
+  it('calls a kind this version does not know "something", and never names it', () => {
+    for (const kind of ['hologram', 'constructor', 'to_string']) {
+      const noted = withUnseenMediaNote('Check this', kind);
+      expect(noted).toMatch(/with something attached/);
+      expect(noted).not.toContain(kind);
+    }
+  });
 });
 
 describe('webhook registration', () => {
