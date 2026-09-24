@@ -19,6 +19,7 @@ screen_geometry="${AISAR_DISPLAY_GEOMETRY:-1280x800x24}"
 state_dir="$(dirname "$display_env")"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 tint2_config="${AISAR_TINT2_CONFIG:-$script_dir/jentera-tint2rc}"
+openbox_config="$state_dir/openbox-rc.xml"
 install -d -m 700 "$state_dir"
 dbus_address_file="$state_dir/.dbus.address"
 dbus_pid_file="$state_dir/.dbus.pid"
@@ -67,7 +68,21 @@ start_openbox() {
   if is_alive "$openbox_pid_file"; then
     return 0
   fi
-  DISPLAY=":$display" openbox >/dev/null 2>&1 &
+  # Openbox treats tint2 as a dock application and its packaged default puts
+  # every dock at TopLeft, overriding tint2's own bottom-panel position. Build
+  # a private config from the installed defaults so keyboard/mouse behaviour
+  # stays native while the terminal launcher remains visible at the bottom.
+  local packaged=/etc/xdg/openbox/rc.xml tmp="${openbox_config}.$$"
+  [[ -r "$packaged" ]] || { echo "Openbox defaults are unavailable" >&2; return 1; }
+  sed 's#<position>TopLeft</position>#<position>BottomLeft</position>#' "$packaged" > "$tmp"
+  grep -q '<position>BottomLeft</position>' "$tmp" || {
+    rm -f "$tmp"
+    echo "Openbox dock position could not be configured" >&2
+    return 1
+  }
+  chmod 600 "$tmp"
+  mv -f "$tmp" "$openbox_config"
+  DISPLAY=":$display" openbox --config-file "$openbox_config" >/dev/null 2>&1 &
   echo $! > "$openbox_pid_file"
 }
 

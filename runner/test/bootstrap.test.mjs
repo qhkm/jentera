@@ -704,6 +704,8 @@ test('owner desktop is opt-in and proves sandboxed Chrome/RFB before enabling th
   const display = await readFile(DISPLAY_SERVICE, 'utf8');
   assert.match(display, /-nolisten tcp/); assert.match(display, /tint2/);
   assert.match(display, /jentera-tint2rc/);
+  assert.match(display, /<position>BottomLeft<\/position>/);
+  assert.match(display, /openbox --config-file "\$openbox_config"/);
   const panel = await readFile(new URL('../bin/jentera-tint2rc', import.meta.url), 'utf8');
   const terminal = await readFile(new URL('../bin/jentera-terminal.desktop', import.meta.url), 'utf8');
   assert.match(panel, /panel_items = LT/);
