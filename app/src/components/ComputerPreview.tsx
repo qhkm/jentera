@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useId, useState } from 'react';
-import { Desktop } from '@phosphor-icons/react';
+import { CursorClick, Desktop } from '@phosphor-icons/react';
 import { useRepository } from '@/lib/repo';
 import type { BusinessBrowserState } from '@/lib/repo/types';
 
@@ -8,7 +8,11 @@ import type { BusinessBrowserState } from '@/lib/repo/types';
 const DesktopViewer = lazy(() => import('@/routes/views/DesktopViewer'));
 
 /** Frames are memory-only, opt-in and discarded on collapse/visibility loss. */
-export function ComputerPreview({ runId }: { runId: string }) {
+export function ComputerPreview({ runId, onTakeControl, takeControlLabel = 'Take control' }: {
+  runId: string;
+  onTakeControl?: () => void;
+  takeControlLabel?: string;
+}) {
   const repo = useRepository();
   const id = useId();
   const [expanded, setExpanded] = useState(false);
@@ -138,7 +142,17 @@ export function ComputerPreview({ runId }: { runId: string }) {
     {open && <div id={id} className={`computer-preview-panel${expanded ? ' is-expanded' : ''}`}>
       {mode === 'desktop' ? <>
         {/* The whole screen, not one page, so nothing is filtered out of it. */}
-        <p>Live view of this computer · visible only to the owner. It shows whatever is on screen, including any page Jentera has signed in to.</p>
+        <div className="computer-preview-live-header">
+          <p>Live read-only view · visible only to the owner. Take control to click and type while Jentera pauses.</p>
+          {onTakeControl && <button type="button" className="ask-inline-action" onClick={() => {
+            // Tear down the observer before the control dialog claims its
+            // exclusive lease. The two sockets must never drive one desktop.
+            setOpen(false);
+            onTakeControl();
+          }}>
+            <CursorClick size={15} aria-hidden="true" />{takeControlLabel}
+          </button>}
+        </div>
         <Suspense fallback={<p role="status">Connecting to the computer…</p>}>
           {/* A watch that cannot hold is not an error worth showing. Losing it
               returns this panel to the page preview, which is the other

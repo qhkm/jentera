@@ -25,7 +25,7 @@ export default function LandingMs() {
   const saving = (launchOffer.renewalPrice - launchOffer.monthlyPrice) * launchOffer.introductoryMonths;
 
   return (
-    <div className="marketing-page min-h-dvh bg-bg text-text" lang="ms">
+    <div className="marketing-page marketing-page--v3 min-h-dvh bg-bg text-text" lang="ms">
       <LandingHeader
         navLinks={NAV_LINKS_MS}
         primaryAction={{ href: '/signin?mode=signup', label: 'Mula sekarang' }}

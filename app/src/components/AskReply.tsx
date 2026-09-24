@@ -286,7 +286,10 @@ export function AskReply({
           )}
         </>
       )}
-      {message.pendingId && message.state !== 'needs_approval' && isRunId(message.runId) && <ComputerPreview key={message.runId} runId={message.runId!} />}
+      {message.pendingId && message.state !== 'needs_approval' && isRunId(message.runId) && (
+        <ComputerPreview key={message.runId} runId={message.runId!} onTakeControl={onOpenBusinessBrowser}
+          takeControlLabel={t('browser.takeControl')} />
+      )}
     </article>
   );
 }

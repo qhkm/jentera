@@ -484,6 +484,12 @@ button.ask-context-link:hover {
 .computer-preview-panel img { display: block; width: 100%; height: auto; border-radius: 10px; }
 .computer-preview-panel p { color: var(--text-secondary); font-size: 11px; line-height: 1.5; margin: 6px 0; }
 .computer-preview-panel.is-expanded { max-width: 100%; }
+.computer-preview-live-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.computer-preview-live-header p { flex: 1; }
+.computer-preview-live-header .ask-inline-action { flex: none; margin: 0; white-space: nowrap; }
+@media (max-width: 520px) {
+  .computer-preview-live-header { align-items: flex-start; flex-direction: column; }
+}
 .ask-writing-hint.ask-ai-disclaimer {
   color: var(--text-secondary);
   font-size: 11px;

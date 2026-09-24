@@ -13,7 +13,7 @@ export default function ConnectorPage() {
   if (!page) return <NotFound />;
 
   return (
-    <div className="marketing-page min-h-dvh bg-bg text-text">
+    <div className="marketing-page marketing-page--v3 min-h-dvh bg-bg text-text">
       <LandingHeader />
       <main id="main-content">
         <section className="connections-hero lp-container lp-section">
