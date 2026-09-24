@@ -51,6 +51,9 @@ export interface Env {
   /** Paid agent-run admission. Separate from lifecycle mutations so
       normal conversation does not share a three-per-minute bucket with provisioning. */
   AGENT_RUN_BURST: RateLimit;
+  /** One "can't read this yet" reply per Telegram album, limit 1 a minute per
+      album. Fails open: an outage costs duplicate replies, never silence. */
+  TELEGRAM_ALBUM_REPLY: RateLimit;
   /** New realtime connection admission. Fail closed before session/Neon/DO work. */
   RUN_STREAM_BURST: RateLimit;
   /** Key for the IP HMAC in the rate-limit ledger. A Worker secret;

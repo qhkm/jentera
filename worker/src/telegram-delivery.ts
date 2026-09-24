@@ -7,6 +7,7 @@ import {
   editMessageText,
   sendHermesMessage,
   TelegramLiveStream,
+  type UnseenKind,
 } from './connectors/telegram';
 import { policyFor, type Policy } from './policy';
 import { append, finishRun, recordWork, updateWorkForRun, workKindForRun } from './runs';
@@ -19,6 +20,8 @@ export interface TelegramIncoming {
   from: string;
   text: string;
   privateChat?: boolean;
+  /** Content the agent was not given (connectors/telegram.ts). */
+  unseen?: UnseenKind;
 }
 
 /** Deliver a Telegram response. Internal paired chats pass a known automatic

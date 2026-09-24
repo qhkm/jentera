@@ -94,6 +94,9 @@ import {
   sendMessage,
   sendTyping,
   TelegramLiveStream,
+  UNSEEN_KINDS,
+  withUnseenMediaNote,
+  type UnseenKind,
 } from '../connectors/telegram';
 import { runtimeModelKeyNeedsRotation } from './openrouter-keys';
 import { RunnerClient, RuntimeBusyError } from './runner-client';
@@ -229,6 +232,8 @@ export interface TelegramIntakeQueueMessage {
     from: string;
     text: string;
     privateChat: true;
+    /** A photo or file came with the caption in `text` and was not delivered. */
+    unseen?: UnseenKind;
   };
 }
 
@@ -704,7 +709,9 @@ export async function handleRuntimeQueueMessage(
         await listSpecialists(tx, { enabledOnly: true }),
       );
       const prepared = prepareHermesAgent(
-        message.incoming.text,
+        /* The note goes to the agent only. The run, the task's `telegram`
+           block, retrieval and specialist routing all keep the caption. */
+        withUnseenMediaNote(message.incoming.text, message.incoming.unseen),
         facts,
         work,
         new Date(),
@@ -2811,7 +2818,9 @@ function validTelegramIntake(
     Number.isSafeInteger(incoming.messageId) &&
     typeof incoming.from === 'string' && incoming.from.length > 0 && incoming.from.length <= 256 &&
     typeof incoming.text === 'string' && incoming.text.trim().length > 0 &&
-    incoming.text.length <= 4_000 && incoming.privateChat === true;
+    incoming.text.length <= 4_000 && incoming.privateChat === true &&
+    (incoming.unseen === undefined ||
+      (UNSEEN_KINDS as readonly string[]).includes(incoming.unseen));
 }
 
 /** Durable final message: Hermes's `💭 **Reasoning:**` block (mirrored from

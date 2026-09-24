@@ -278,6 +278,17 @@ namespace_id = "1004"
   limit = 10
   period = 60
 
+# One "can't read this yet" reply per Telegram album. An album arrives as
+# one webhook per item; the first item the limiter admits speaks for it.
+# Keyed by an HMAC of connection and album id. Fails open in code.
+[[ratelimits]]
+name = "TELEGRAM_ALBUM_REPLY"
+namespace_id = "1007"
+
+  [ratelimits.simple]
+  limit = 1
+  period = 60
+
 # WebSocket handshakes are long-lived resource admission, not ordinary reads.
 # Exact per-run and per-user concurrency caps also live inside the Durable Object.
 [[ratelimits]]

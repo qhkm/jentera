@@ -285,6 +285,7 @@ export function testEnv(over: Partial<Record<string, unknown>> = {}): import('..
     API_BURST: { limit: async () => ({ success: true }) },
     RUNTIME_MUTATION_BURST: { limit: async () => ({ success: true }) },
     AGENT_RUN_BURST: { limit: async () => ({ success: true }) },
+    TELEGRAM_ALBUM_REPLY: { limit: async () => ({ success: true }) },
     RUN_STREAM_BURST: { limit: async () => ({ success: true }) },
     RUNTIME_CONFIG_BURST: { limit: async () => ({ success: true }) },
     ...over,

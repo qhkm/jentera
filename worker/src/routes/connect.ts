@@ -43,8 +43,10 @@ import {
   sendMessage,
   sendTyping,
   setWebhook,
+  unreadableReply,
   webhookHealth,
   withTypingIndicator,
+  withUnseenMediaNote,
 } from '../connectors/telegram';
 import { finishRun, recordWork, startRun } from '../runs';
 import { retrieve } from '../ask';
@@ -70,7 +72,7 @@ import {
   settleCancelledDraft,
   type TelegramIncoming,
 } from '../telegram-delivery';
-import { admitPaidAgentRun } from '../request-guard';
+import { admitPaidAgentRun, claimTelegramAlbumReply } from '../request-guard';
 import {
   telegramPairingUrl,
   validTelegramPairingCode,
@@ -646,6 +648,24 @@ async function telegramWebhook(
     ).catch(() => {});
   }
 
+  /* Nothing here the agent can read: a photo or file with no caption, a voice
+     note, a sticker. Say so. Silence made a working bot look broken on
+     24 September. This is after the pairing check, so only the owner is
+     answered, and before admission, so it never costs a paid run. */
+  if (incoming.unseen) {
+    /* An album is one update per item. One item speaks for it; a captioned
+       item claims that turn as well, so its silent siblings do not answer
+       "can't open photos" beside the run the caption starts. */
+    const speaks = !incoming.mediaGroupId ||
+      await claimTelegramAlbumReply(env, connectionId, incoming.mediaGroupId);
+    if (incoming.text.trim() === '') {
+      if (speaks) {
+        await sendMessage(token, incoming.chatId, unreadableReply(incoming.unseen)).catch(() => {});
+      }
+      return ok;
+    }
+  }
+
   if (/^\/(stop|cancel)(?:@[A-Za-z0-9_]+)?$/.test(incoming.text.trim())) {
     const cancelled = await withTenant(env, businessId, async (tx) => {
       const active = await activeRuntimeRunTask(tx, businessId, incoming.chatId);
@@ -807,6 +827,7 @@ export async function handleIncoming(
       from: incoming.from,
       text: incoming.text,
       privateChat: true as const,
+      ...(incoming.unseen ? { unseen: incoming.unseen } : {}),
     };
     /* The webhook is a placed HTTP handler and the queue consumer is not
        (see inline-slice.ts): admission, dispatch and the first slice of the
@@ -846,7 +867,7 @@ export async function handleIncoming(
     const draft = await withTypingIndicator(
       automaticToken,
       incoming.chatId,
-      () => runtime.answerQuestion(incoming.text, facts, []),
+      () => runtime.answerQuestion(withUnseenMediaNote(incoming.text, incoming.unseen), facts, []),
     );
 
     await deliverTelegramDraft(

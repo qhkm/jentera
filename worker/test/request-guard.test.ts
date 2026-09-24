@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { admitPaidAgentRun, guardApiRequest, MAX_API_BODY_BYTES } from '../src/request-guard';
+import {
+  admitPaidAgentRun,
+  claimTelegramAlbumReply,
+  guardApiRequest,
+  MAX_API_BODY_BYTES,
+} from '../src/request-guard';
 import { INGEST_FILE_PATH } from '../src/routes/runs';
 import { testEnv } from './harness';
 
@@ -291,5 +296,33 @@ describe('pre-route API request guard', () => {
     const req = request(path);
 
     expect((await guardApiRequest(req, env, new URL(req.url), cors))?.status).toBe(503);
+  });
+});
+
+describe('one reply per Telegram album', () => {
+  it('lets the first item of an album speak and quiets the rest, per connection', async () => {
+    const seen = new Set<string>();
+    const env = testEnv({
+      TELEGRAM_ALBUM_REPLY: {
+        limit: async ({ key }: { key: string }) => {
+          const first = !seen.has(key);
+          seen.add(key);
+          return { success: first };
+        },
+      },
+    });
+
+    expect(await claimTelegramAlbumReply(env, 'conn-1', 'album-9')).toBe(true);
+    expect(await claimTelegramAlbumReply(env, 'conn-1', 'album-9')).toBe(false);
+    expect(await claimTelegramAlbumReply(env, 'conn-2', 'album-9')).toBe(true);
+    expect([...seen].every((key) => /^[0-9a-f]{64}$/.test(key))).toBe(true);
+  });
+
+  it('replies when the limiter is unavailable rather than going silent', async () => {
+    const env = testEnv({
+      TELEGRAM_ALBUM_REPLY: { limit: async () => { throw new Error('binding failed'); } },
+    });
+
+    expect(await claimTelegramAlbumReply(env, 'conn-1', 'album-9')).toBe(true);
   });
 });

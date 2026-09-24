@@ -422,6 +422,82 @@ describe('durable Hermes Telegram replies', () => {
       .toHaveLength(1);
   });
 
+  it('tells the agent about a photo it was not given, and keeps only the caption on the run', async () => {
+    await setPolicy('automatic');
+    const provider = new LocalRuntimeProvider();
+    const queued: RuntimeQueueMessage[] = [];
+    const durableEnv = testEnv({
+      RUNTIME_RELEASE: '2026.08.28-4',
+      RUNTIME_EXECUTION_ENABLED: 'true',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+      RUNTIME_QUEUE: {
+        send: async (message: RuntimeQueueMessage) => {
+          queued.push(message);
+        },
+      },
+    });
+    await ensureProviderRuntime(durableEnv, A, {
+      provider,
+      runnerKey: 'r'.repeat(64),
+      hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.08.28-4', 'v1'));
+
+    await handleIncoming(durableEnv, A, connId, {
+      ...incoming,
+      messageId: 777,
+      text: 'Record this receipt',
+      unseen: 'photo',
+    });
+    expect(queued).toHaveLength(1);
+    expect(queued[0]).toMatchObject({
+      kind: 'telegram_intake',
+      incoming: { text: 'Record this receipt', unseen: 'photo' },
+    });
+
+    const starts: { input?: string }[] = [];
+    const runner = successfulRunner('I can’t see the photo yet.');
+    await expect(handleRuntimeQueueMessage(durableEnv, queued[0], {
+      provider,
+      fetch: async (input, init) => {
+        if (String(input).endsWith('/v1/tasks') && init?.method === 'POST') {
+          starts.push(JSON.parse(String(init.body)) as { input?: string });
+        }
+        return runner(input, init);
+      },
+    })).resolves.toEqual({ action: 'ack', reason: 'completed' });
+
+    expect(starts).toHaveLength(1);
+    expect(starts[0].input).toContain('Record this receipt');
+    expect(starts[0].input).toMatch(/with a photo attached/);
+    const [run] = await asTenant(A, (tx) => tx<{ question: string }[]>`
+      select trigger_ref->>'question' as question from run
+       order by created_at desc limit 1`);
+    expect(run.question).toBe('Record this receipt');
+  });
+
+  it('refuses an intake naming an attachment kind it does not know', async () => {
+    const durableEnv = testEnv({
+      RUNTIME_EXECUTION_ENABLED: 'true',
+      AISAR_MODEL_NAME: 'deepseek/deepseek-v4-flash-0731',
+    });
+    await expect(handleRuntimeQueueMessage(durableEnv, {
+      version: 2,
+      kind: 'telegram_intake',
+      businessId: A,
+      connectionId: connId,
+      requestedAtMs: Date.now(),
+      incoming: {
+        chatId: 42,
+        messageId: 778,
+        from: 'Aminah',
+        text: 'hello',
+        privateChat: true,
+        unseen: 'hologram',
+      },
+    } as unknown as RuntimeQueueMessage)).resolves.toEqual({ action: 'ack', reason: 'missing' });
+  });
+
   it('delivers the final Hermes answer and does not retain it on the runtime task', async () => {
     await setPolicy('automatic');
     const provider = new LocalRuntimeProvider();
