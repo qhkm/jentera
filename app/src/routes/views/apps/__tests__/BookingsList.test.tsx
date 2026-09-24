@@ -163,8 +163,13 @@ describe('BookingsList', () => {
     await mount(api, null, { delay: null });
     await screen.findByRole('article', { name: 'Aisyah' });
     expect(api.booking).not.toHaveBeenCalled();
+    const listCallsBefore = api.bookings.mock.calls.length;
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
     await waitFor(() => expect(api.booking).toHaveBeenCalledWith(BOOKING_ID));
+    // Fix round 2, item D: prove the list itself was not re-queried by the
+    // poll — the previous version of this test asserted only that
+    // `api.booking` was called, never that `api.bookings` (the list) wasn't.
+    expect(api.bookings).toHaveBeenCalledTimes(listCallsBefore);
   });
 
   /* Fix round 1, item 1 (both bullets): confirming a request must not lose
@@ -373,5 +378,150 @@ describe('BookingsList', () => {
     });
     expect(await screen.findByText('Could not load bookings.')).toBeInTheDocument();
     releaseInitial!();
+  });
+
+  /* Fix round 2, item A: a discarded load has no other trigger to retry it
+     once the action it raced settles — unlike round 1's order (the load
+     outlives the action), where the immediate `actionsInFlight === 0` retry
+     already applies. Owner path: open a notification, the pinned card
+     arrives before the list finishes loading, tap Confirm on it — the list
+     load resolves (stale) while the action is still in flight, gets
+     discarded, and previously nothing ever asked again. */
+  it('does not leave the list loading forever when an action outlives a discarded reload', async () => {
+    let releaseList: (() => void) | null = null;
+    let listCalls = 0;
+    const bookings = vi.fn(async (query: BookingsQuery) => {
+      if (query.status === 'pending') return { bookings: [], nextCursor: null };
+      listCalls += 1;
+      if (listCalls === 1) await new Promise<void>((resolve) => { releaseList = resolve; });
+      return { bookings: [], nextCursor: null };
+    });
+    const confirmed = bookingFixture({ status: 'confirmed', whatsappUrl: WA });
+    let releaseAction: ((value: { booking: Booking; whatsappUrl: string | null; calendarQueued: boolean }) => void) | null = null;
+    const api = fakeAppsApi({
+      list: installed(0), bookings,
+      booking: vi.fn(async () => bookingFixture()),
+      decide: vi.fn(() => new Promise((resolve) => { releaseAction = resolve; })),
+    });
+    const { user } = await mount(api, BOOKING_ID);
+    // The pinned card resolves quickly; the Today list load is still in
+    // flight (held open), so its own section is still showing the spinner.
+    const pinned = await screen.findByRole('region', { name: 'From your notification' });
+    await waitFor(() => expect(listCalls).toBe(1));
+
+    // Confirm the pinned card while the list load is still in flight (the
+    // action itself is held open too, so the button stays present —
+    // disabled — rather than disappearing).
+    await user.click(within(pinned).getByRole('button', { name: 'Confirm' }));
+    await waitFor(() => expect(within(pinned).getByRole('button', { name: 'Confirm' })).toBeDisabled());
+
+    // The list load resolves — still while the action is in flight — and
+    // must be discarded without retrying yet (an action is still acting).
+    // A macrotask boundary (not just a microtask flush) lets the whole
+    // await chain the mock's release triggers fully settle.
+    releaseList!();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(listCalls).toBe(1);
+
+    // Now the action settles: its own `finally` must pick up the owed reload.
+    releaseAction!({ booking: confirmed, whatsappUrl: WA, calendarQueued: false });
+    await waitFor(() => expect(listCalls).toBe(2));
+    expect(await screen.findByText('No bookings today.')).toBeInTheDocument();
+    expect(screen.queryByText('Loading bookings…')).toBeNull();
+  });
+
+  /* Fix round 2, item A (order coverage): the round-1 order — the stale
+     load outlives the action — must still recover immediately (not rely on
+     the owed flag), including with a pinned card in play. */
+  it('still recovers immediately when a stale reload outlives the action, with a pinned card too', async () => {
+    let releaseList: (() => void) | null = null;
+    let listCalls = 0;
+    const bookings = vi.fn(async (query: BookingsQuery) => {
+      if (query.status === 'pending') return { bookings: [], nextCursor: null };
+      listCalls += 1;
+      if (listCalls === 1) await new Promise<void>((resolve) => { releaseList = resolve; });
+      return { bookings: [], nextCursor: null };
+    });
+    const confirmed = bookingFixture({ status: 'confirmed', whatsappUrl: WA });
+    const api = fakeAppsApi({
+      list: installed(0), bookings,
+      booking: vi.fn(async () => bookingFixture()),
+      decide: vi.fn(async () => ({ booking: confirmed, whatsappUrl: WA, calendarQueued: false })),
+    });
+    const { user } = await mount(api, BOOKING_ID);
+    const pinned = await screen.findByRole('region', { name: 'From your notification' });
+    await waitFor(() => expect(listCalls).toBe(1));
+
+    // The action starts and fully settles while the list load is still held open.
+    await user.click(within(pinned).getByRole('button', { name: 'Confirm' }));
+    await waitFor(() => expect(within(pinned).getByText('Confirmed')).toBeInTheDocument());
+
+    // Now the stale reload resolves — nothing is acting any more, so it
+    // retries immediately rather than waiting on the owed flag.
+    releaseList!();
+    await waitFor(() => expect(listCalls).toBe(2));
+    expect(await screen.findByText('No bookings today.')).toBeInTheDocument();
+  });
+
+  /* Fix round 2, item C: `failed` was only ever cleared at the top of a
+     non-quiet load, so once a quiet reload set it (round-1 item 10's own
+     scenario: failing while `rows` is still null), no later success ever
+     cleared it again — the failed card kept showing over the now-correctly
+     loaded list. */
+  it('clears the failed state once a later quiet load succeeds', async () => {
+    let releaseInitial: (() => void) | null = null;
+    let calls = 0;
+    const bookings = vi.fn(async (query: BookingsQuery) => {
+      if (query.status === 'pending') return { bookings: [], nextCursor: null };
+      calls += 1;
+      if (calls === 1) {
+        // The initial load never gets to apply its rows — a newer load (the
+        // visibilitychange reload below) always supersedes it first, so it
+        // is released only for cleanliness, not relied on for an assertion.
+        await new Promise<void>((resolve) => { releaseInitial = resolve; });
+        return { bookings: [], nextCursor: null };
+      }
+      if (calls === 2) throw new AppsError('NETWORK', 0, false);
+      return { bookings: [], nextCursor: null };
+    });
+    const api = fakeAppsApi({ list: installed(0), bookings });
+    await mount(api);
+    await waitFor(() => expect(calls).toBe(1));
+
+    // A foreground reload fires and fails while rows is still null — the
+    // failed card appears.
+    await act(async () => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    expect(await screen.findByText('Could not load bookings.')).toBeInTheDocument();
+
+    // A further foreground reload succeeds — the failed card must go away.
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    await waitFor(() => expect(screen.queryByText('Could not load bookings.')).toBeNull());
+    expect(screen.getByText('No bookings today.')).toBeInTheDocument();
+    releaseInitial!();
+  });
+
+  /* Fix round 2, item E: a deep-link fetch that failed for a reason other
+     than 404 (which would not change on retry) is retried on the next
+     foreground return. */
+  it('retries a non-404 deep-link failure on a foreground reload', async () => {
+    let calls = 0;
+    const booking = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) throw new AppsError('NETWORK', 0, true);
+      return bookingFixture();
+    });
+    const api = fakeAppsApi({ list: installed(0), bookings: serve([], []), booking });
+    await mount(api, BOOKING_ID);
+    expect(await screen.findByText('Could not load bookings.')).toBeInTheDocument();
+
+    await act(async () => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await waitFor(() => expect(screen.getByRole('region', { name: 'From your notification' })).toBeInTheDocument());
+    expect(screen.queryByText('Could not load bookings.')).toBeNull();
   });
 });

@@ -37,6 +37,8 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
   const focusedRef = useRef<Booking | null>(null);
   focusedRef.current = focused;
   const [focusedError, setFocusedError] = useState<string | null>(null);
+  const focusedErrorRef = useRef<string | null>(null);
+  focusedErrorRef.current = focusedError;
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [messages, setMessages] = useState<Record<string, string>>({});
@@ -50,6 +52,12 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
       already in flight can tell a stale read from a trustworthy one. */
   const actionEpoch = useRef(0);
   const actionsInFlight = useRef(0);
+  /** Set when a load (or the pinned card's re-read) is discarded as stale
+      while an action is still in flight — there is no other trigger left to
+      pick it up, since the action that raced it does not itself reload.
+      `act`'s `finally` consumes these once nothing is acting any more. */
+  const reloadOwed = useRef(false);
+  const refetchFocusedOwed = useRef(false);
 
   /* Needs you when requests wait, otherwise Today — decided once, so
      confirming the last request does not pull the view away from it. Also
@@ -79,11 +87,17 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
       if (epoch !== actionEpoch.current) {
         /* An action started or settled while this fetch was in flight, so it
            may already be stale relative to what the owner just did. Drop it
-           rather than risk overwriting a fresher result, and once nothing is
-           acting, ask again. */
-        if (actionsInFlight.current === 0) void load(true);
+           rather than risk overwriting a fresher result. If nothing is
+           acting right now, ask again immediately (through the ref, so a
+           filter/offset/date change since this call started is not lost);
+           otherwise nothing else will retry this once the action settles
+           except `act`'s own `finally`, so mark it owed. */
+        if (actionsInFlight.current === 0) void loadRef.current(true);
+        else reloadOwed.current = true;
         return;
       }
+      reloadOwed.current = false;
+      setFailed(false);
       setRows((current) => {
         const byId = new Map((current ?? []).map((booking) => [booking.id, booking] as const));
         const freshIds = new Set(next.map((booking) => booking.id));
@@ -96,16 +110,22 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
       if (mine === generation.current && (!quiet || rowsRef.current === null)) setFailed(true);
     }
   }, [api, filter, offset, date]);
+  const loadRef = useRef(load);
+  loadRef.current = load;
 
   useEffect(() => {
     /* Nothing to fetch yet: the default filter (Needs you vs Today) is
-       still undecided, so a fetch here would be for the wrong filter and
-       flash Today before Needs you takes over. Deliberately not watching
-       `apps.pending`/`apps.error` themselves here — refresh() (run after
-       every action) hands back a new array each time even when nothing
-       about the count changed, and watching it would re-run this load on
-       every action instead of only once, when `chosen` first resolves. */
-    if (chosen === null && apps.pending === null && !apps.error) return;
+       still undecided. Gate on `chosen` alone — the effect above already
+       resolves it to a real filter exactly once `apps.pending`/`apps.error`
+       are known, so re-checking those here either let a Today request
+       through the moment they were already resolved at mount, or fired a
+       second, identical Today request when the default landed on Today
+       anyway (same value as the pre-decision fallback, but a different
+       `chosen`). Also deliberately not watching `apps.pending`/`apps.error`
+       directly — refresh() (run after every action) hands back a new array
+       each time even when nothing about the count changed, and watching it
+       would re-run this load on every action instead of only once. */
+    if (chosen === null) return;
     void load();
   }, [load, chosen]);
 
@@ -128,12 +148,21 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
 
   /* Re-reads one booking without trusting the result if an action started
      or settled meanwhile — or if, by the time it resolves, that id is no
-     longer the row (row or pinned card) it was fetched for. */
+     longer the row (row or pinned card) it was fetched for. A discarded
+     re-read of the pinned card specifically has nowhere else to be retried
+     from (unlike a row's poll, which just tries again next tick), so it is
+     marked owed when that happens while an action is in flight. */
   const refetch = useCallback(async (id: string) => {
     const epoch = actionEpoch.current;
     try {
       const fresh = await api.booking(id);
-      if (epoch !== actionEpoch.current) return;
+      if (epoch !== actionEpoch.current) {
+        if (id === focusedRef.current?.id) {
+          if (actionsInFlight.current === 0) void refetch(id);
+          else refetchFocusedOwed.current = true;
+        }
+        return;
+      }
       setRows((list) => list?.map((booking) => (booking.id === fresh.id ? fresh : booking)) ?? list);
       setFocused((booking) => (booking?.id === fresh.id ? fresh : booking));
     } catch {
@@ -159,14 +188,24 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
   }, [syncingKey, refetch]);
 
   useEffect(() => {
+    let live = true;
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
       void load(true);
-      if (focusedRef.current) void refetch(focusedRef.current.id);
+      if (focusedRef.current) {
+        void refetch(focusedRef.current.id);
+      } else if (bookingId && focusedErrorRef.current && focusedErrorRef.current !== 'bookings.error.notFound') {
+        /* The deep link failed for a reason that might not still hold —
+           unlike a 404, which will not change on retry — so try it again. */
+        api.booking(bookingId).then(
+          (booking) => { if (live) { setFocused(booking); setFocusedError(null); } },
+          (error) => { if (live) setFocusedError(error instanceof AppsError && error.status === 404 ? 'bookings.error.notFound' : 'bookings.error.load'); },
+        );
+      }
     };
     document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [load, refetch]);
+    return () => { live = false; document.removeEventListener('visibilitychange', onVisible); };
+  }, [load, refetch, api, bookingId]);
 
   function replace(next: Booking) {
     setRows((list) => list?.map((booking) => (booking.id === next.id ? next : booking)) ?? list);
@@ -208,6 +247,19 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
         next.delete(booking.id);
         return next;
       });
+      if (actionsInFlight.current === 0) {
+        /* Pick up whatever a discarded load or pinned-card re-read left
+           owed while this (or another overlapping) action was in flight —
+           nothing else was going to retry either of them. */
+        if (reloadOwed.current) {
+          reloadOwed.current = false;
+          void loadRef.current(true);
+        }
+        if (refetchFocusedOwed.current) {
+          refetchFocusedOwed.current = false;
+          if (focusedRef.current) void refetch(focusedRef.current.id);
+        }
+      }
       void apps.refresh();
     }
   }
