@@ -39,7 +39,7 @@ async function call(path: string, write?: { method: 'POST' | 'PUT'; body: unknow
     throw new AppsError('NETWORK', 0, write !== undefined);
   }
   const data: unknown = await response.json().catch(() => null);
-  if (!response.ok || !object(data) || data.ok !== true) {
+  if (!response.ok || (object(data) && data.ok === false)) {
     const body = object(data) ? data : {};
     throw new AppsError(
       typeof body.code === 'string' ? body.code : response.status === 404 ? 'NOT_FOUND' : 'REQUEST_FAILED',
@@ -49,6 +49,8 @@ async function call(path: string, write?: { method: 'POST' | 'PUT'; body: unknow
       typeof body.err === 'string' ? body.err : undefined,
     );
   }
+  /* A success we cannot read: a write may have happened (as Routines). */
+  if (!object(data) || data.ok !== true) throw new AppsError('INVALID_RESPONSE', response.status, write !== undefined);
   return data;
 }
 

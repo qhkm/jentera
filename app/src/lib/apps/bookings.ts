@@ -70,7 +70,11 @@ export function calendarTag(booking: Booking): { key: string; tone: Tone } | nul
   }
 }
 
-export function calendarReasonKey(reason: CalendarReason | null): string {
+/** Why Calendar needs attention. A disconnect with no Google account on
+    record cannot be retried (the server says so through `canRetry`), so its
+    words do not promise one. */
+export function calendarReasonKey(reason: CalendarReason | null, canRetry = true): string {
+  if (reason === 'disconnected' && !canRetry) return 'bookings.calendar.reason.disconnectedNoAccount';
   return `bookings.calendar.reason.${reason ?? 'provider'}`;
 }
 

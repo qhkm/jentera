@@ -55,6 +55,9 @@ describe('labels', () => {
     expect(tag({ status: 'confirmed', calendar: cal('failed') })).toEqual({ key: 'bookings.calendar.attention', tone: 'red' });
     expect(calendarReasonKey('removed_in_google')).toBe('bookings.calendar.reason.removed_in_google');
     expect(calendarReasonKey(null)).toBe('bookings.calendar.reason.provider');
+    // Disconnected with no Google account on record: nothing to reconnect, so no retry to promise.
+    expect(calendarReasonKey('disconnected', true)).toBe('bookings.calendar.reason.disconnected');
+    expect(calendarReasonKey('disconnected', false)).toBe('bookings.calendar.reason.disconnectedNoAccount');
   });
 
   it('names status and the WhatsApp action by what was decided', () => {

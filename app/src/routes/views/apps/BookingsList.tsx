@@ -226,6 +226,11 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
       const result = action === 'confirm' || action === 'decline' ? await api.decide(booking.id, action)
         : action === 'cancel' ? await api.cancel(booking.id) : await api.retryCalendar(booking.id);
       replace(result.booking);
+      if (action === 'retry' && !result.calendarQueued && result.booking.calendar.status === 'not_connected') {
+        /* Retry answers "nothing to do" while no Calendar is connected; say so
+           rather than let the tap look ignored. */
+        setMessages((current) => ({ ...current, [booking.id]: 'bookings.calendar.stillNotConnected' }));
+      }
     } catch (error) {
       const key = actionErrorKey(error);
       /* Someone else decided, or the answer was lost: show the booking as the server has it now. */

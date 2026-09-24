@@ -58,7 +58,7 @@ describe('BookingsList', () => {
     expect(within(after).queryByRole('button', { name: 'Confirm' })).toBeNull();
   });
 
-  it('shows the booking as it stands when another device decided first', async () => {
+  it('shows the booking as it stands when it was decided elsewhere first', async () => {
     const api = fakeAppsApi({
       list: installed(1), bookings: serve([bookingFixture()]),
       decide: vi.fn().mockRejectedValue(new AppsError('ALREADY_DECIDED', 409)),
@@ -68,7 +68,7 @@ describe('BookingsList', () => {
     await user.click(within(await screen.findByRole('article', { name: 'Aisyah' })).getByRole('button', { name: 'Confirm' }));
     const card = await screen.findByRole('article', { name: 'Aisyah' });
     await waitFor(() => expect(within(card).getByText('Declined')).toBeInTheDocument());
-    expect(within(card).getByRole('alert')).toHaveTextContent('Already decided on another device');
+    expect(within(card).getByRole('alert')).toHaveTextContent('Already decided elsewhere. This is the booking as it stands.');
     expect(within(card).getByRole('link', { name: /Send decline on WhatsApp/ })).toBeInTheDocument();
   });
 
@@ -94,7 +94,22 @@ describe('BookingsList', () => {
     });
     const { user } = await mount(api);
     await user.click(within(await screen.findByRole('article', { name: 'Aisyah' })).getByRole('button', { name: 'Confirm' }));
-    expect(await screen.findByText(/This time has passed/)).toBeInTheDocument();
+    expect(await screen.findByText('The booking time has passed, so it can no longer be changed.')).toBeInTheDocument();
+  });
+
+  it('says a cancel came too late without talking about confirming', async () => {
+    const confirmed = bookingFixture({ status: 'confirmed', startsAt: '2026-10-05T00:30:00.000Z' });
+    const api = fakeAppsApi({
+      list: installed(0), bookings: serve([], [confirmed]),
+      cancel: vi.fn().mockRejectedValue(new AppsError('EXPIRED', 409)),
+      booking: vi.fn(async () => confirmed),
+    });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { user } = await mount(api);
+    await user.click(within(await screen.findByRole('article', { name: 'Aisyah' })).getByRole('button', { name: 'Cancel booking' }));
+    const alert = await within(screen.getByRole('article', { name: 'Aisyah' })).findByRole('alert');
+    expect(alert).toHaveTextContent('The booking time has passed, so it can no longer be changed.');
+    expect(alert.textContent).not.toMatch(/confirm/i);
   });
 
   it('asks before cancelling, and shows cleanup still running afterwards', async () => {
@@ -128,6 +143,30 @@ describe('BookingsList', () => {
     await user.click(within(card).getByRole('button', { name: 'Retry' }));
     expect(api.retryCalendar).toHaveBeenCalledWith(BOOKING_ID);
     await user.click(within(screen.getByRole('article', { name: 'Aina' })).getByRole('button', { name: 'Connect Google Calendar' }));
+    expect(onConnectCalendar).toHaveBeenCalled();
+  });
+
+  it('says why a retry changed nothing while no Calendar is connected', async () => {
+    const waiting = bookingFixture({ status: 'confirmed', calendar: calendar('not_connected', { canRetry: true }) });
+    const api = fakeAppsApi({
+      list: installed(0), bookings: serve([], [waiting]),
+      retryCalendar: vi.fn(async () => ({ booking: waiting, whatsappUrl: null, calendarQueued: false })),
+    });
+    const { user } = await mount(api);
+    const card = await screen.findByRole('article', { name: 'Aisyah' });
+    await user.click(within(card).getByRole('button', { name: 'Retry' }));
+    expect(await within(card).findByRole('alert')).toHaveTextContent('Google Calendar is not connected yet. Connect it, then retry.');
+  });
+
+  it('does not promise a retry for a Calendar disconnected with no account on record', async () => {
+    const lost = bookingFixture({ status: 'confirmed', calendar: calendar('failed', { reason: 'disconnected', canRetry: false, account: null }) });
+    const api = fakeAppsApi({ list: installed(0), bookings: serve([], [lost]) });
+    const { onConnectCalendar, user } = await mount(api);
+    const card = await screen.findByRole('article', { name: 'Aisyah' });
+    expect(within(card).getByText(/Connect Google Calendar to sync new decisions/)).toBeInTheDocument();
+    expect(within(card).queryByText(/then retry/)).toBeNull();
+    expect(within(card).queryByRole('button', { name: 'Retry' })).toBeNull();
+    await user.click(within(card).getByRole('button', { name: 'Connect Google Calendar' }));
     expect(onConnectCalendar).toHaveBeenCalled();
   });
 

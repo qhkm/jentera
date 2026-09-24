@@ -112,6 +112,19 @@ describe('BookingsSettings', () => {
     expect(screen.queryByText(kept)).toBeNull();
   });
 
+  it('does not show a link as if it were live before the page is published', async () => {
+    await mount(NEW);
+    expect(screen.getByText('Once published, your link will end in /b/kedai-kita')).toBeInTheDocument();
+    expect(screen.queryByText('…/b/kedai-kita')).toBeNull();
+  });
+
+  it('still renders when the saved link is not a full address', async () => {
+    const config = configFixture({ installation: { slug: 'seido', state: 'active', publicUrl: '/b/seido' } });
+    await mount(config);
+    expect(screen.getByText('…/b/seido')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save settings' })).toBeInTheDocument();
+  });
+
   it('keeps advanced settings folded and shows the link it will publish', async () => {
     await mount(configFixture());
     expect(screen.getByText('Advanced settings').closest('details')).not.toHaveAttribute('open');

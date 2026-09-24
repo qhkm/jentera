@@ -23,6 +23,9 @@ export default function BookingCard({ booking, busy, message, now, onAct, onConn
   const whatsapp = whatsappKey(booking);
   const future = Date.parse(booking.startsAt) > now.getTime();
   const titleId = `booking-${booking.id}`;
+  /* Disconnected with no Google account on record: this booking cannot be
+     synced again, but connecting Calendar covers new decisions. */
+  const noAccount = booking.calendar.status === 'failed' && booking.calendar.reason === 'disconnected' && !booking.calendar.canRetry;
   return <article className="booking-card card" aria-labelledby={titleId}>
     <header className="booking-card-header">
       <h3 id={titleId}>{booking.customerName}</h3>
@@ -36,9 +39,9 @@ export default function BookingCard({ booking, busy, message, now, onAct, onConn
     {calendar && <div className="booking-card-calendar">
       <Tag tone={calendar.tone}>{t(calendar.key)}</Tag>
       {booking.calendar.status === 'failed' && <span>
-        {t(calendarReasonKey(booking.calendar.reason), { account: booking.calendar.account ?? t('bookings.calendar.sameAccount') })}
+        {t(calendarReasonKey(booking.calendar.reason, booking.calendar.canRetry), { account: booking.calendar.account ?? t('bookings.calendar.sameAccount') })}
       </span>}
-      {booking.calendar.status === 'not_connected' && booking.status === 'confirmed' && <Button variant="ghost" onClick={onConnectCalendar}>
+      {((booking.calendar.status === 'not_connected' && booking.status === 'confirmed') || noAccount) && <Button variant="ghost" onClick={onConnectCalendar}>
         {t('bookings.calendar.connect')}
       </Button>}
       {booking.calendar.canRetry && <Button variant="ghost" disabled={busy} onClick={() => onAct('retry')}>

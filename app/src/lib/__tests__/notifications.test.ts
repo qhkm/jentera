@@ -25,8 +25,20 @@ describe('notifications', () => {
     expect((await fetchNotifications()).notifications[0].url).toBeNull();
   });
 
-  it('refuses a link out of the workspace', async () => {
-    serve([item({ url: 'https://evil.test/app' })]);
+  it('drops a link out of the workspace to none, and keeps the rest of the inbox', async () => {
+    const other = '22222222-2222-4222-8222-222222222222';
+    serve([
+      item({ url: 'https://evil.test/app' }),
+      item({ id: other, url: '/app/\\evil.test' }),
+      item({ id: '33333333-3333-4333-8333-333333333333', url: 42 }),
+      item({ id: '44444444-4444-4444-8444-444444444444' }),
+    ]);
+    const page = await fetchNotifications();
+    expect(page.notifications.map((entry) => entry.url)).toEqual([null, null, null, `/app?view=apps&app=bookings&booking=${ID}`]);
+  });
+
+  it('still refuses a kind it does not know', async () => {
+    serve([item({ kind: 'something_new' })]);
     await expect(fetchNotifications()).rejects.toThrow();
   });
 

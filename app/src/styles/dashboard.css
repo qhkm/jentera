@@ -802,7 +802,8 @@
 .booking-card-when, .booking-card-meta { color: var(--text-secondary); font-size: 13px; }
 .booking-card-note { font-size: 13px; }
 .booking-card-calendar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
-.booking-card-message, .field-error { color: var(--color-red-400); font-size: 13px; }
+/* --danger is the theme-aware error ink: red-400 is 2.5:1 on the light card. */
+.booking-card-message, .field-error { color: var(--danger); font-size: 13px; }
 .booking-card-actions, .booking-page-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .booking-card-whatsapp, .booking-page-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
 .bookings-settings { display: grid; gap: 16px; }
@@ -820,6 +821,8 @@
 .booking-page-url { font-family: var(--font-mono); overflow-wrap: anywhere; }
 .booking-page-live { color: var(--accent-green); }
 .booking-page-paused { color: var(--color-amber-400); }
+/* amber-400 is 1.5:1 on the light card; amber-800 is 6.1:1 (dark stays 8.8:1). */
+.theme-light .booking-page-paused { color: var(--color-amber-800); }
 .booking-page-preview ul { display: grid; gap: 6px; }
 .booking-page-preview li { display: flex; justify-content: space-between; gap: 8px; }
 @media (max-width: 640px) {
@@ -837,7 +840,7 @@
 .home-action-add { border-style: dashed; background: var(--bg-card); }
 .home-action-count, .workspace-bell-count {
   position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;
-  background: var(--color-red-400); color: #fff; font-size: 11px; font-weight: 700; line-height: 20px; text-align: center;
+  background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; line-height: 20px; text-align: center;
 }
 .workspace-bell {
   position: relative; display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid var(--rail);

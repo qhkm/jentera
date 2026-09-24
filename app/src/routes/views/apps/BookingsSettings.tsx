@@ -35,6 +35,17 @@ export function slugFrom(name: string): string {
   return SLUG.test(slug) && !RESERVED.has(slug) ? slug : '';
 }
 
+/** The web origin of the saved public link, or null when it is not a full
+    http(s) address (a Worker without SITES_ORIGIN serves a relative one). */
+function originOf(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.origin : null;
+  } catch {
+    return null;
+  }
+}
+
 function newService(): ServiceDraft {
   return {
     key: `new-${++draftKeys}`, id: null, name: '', durationMinutes: 60, capacity: 1, priceLabel: '', active: true,
@@ -79,7 +90,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
     // 4 October 2026 was a Sunday, so day d is 4 + d October.
     return (day: number) => format.format(new Date(Date.UTC(2026, 9, 4 + day)));
   }, [lang]);
-  const origin = config.installation ? new URL(config.installation.publicUrl).origin : null;
+  const origin = config.installation ? originOf(config.installation.publicUrl) : null;
   const notices = [...new Set([...NOTICE, minNotice])].sort((a, b) => a - b);
 
   function update(key: string, change: Partial<ServiceDraft>) {
@@ -218,7 +229,9 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
     <label>{t('bookings.settings.slug')}
       <Input value={slug} maxLength={40} aria-invalid={Boolean(errors.slug)} onChange={(event) => setSlugInput(event.target.value.toLowerCase())} />
     </label>
-    <p className="bookings-link-preview">{origin ? `${origin}/b/${slug}` : `…/b/${slug}`}</p>
+    {/* Before the first publish there is no page yet, so only say where it will be. */}
+    <p className="bookings-link-preview">{!installed ? t('bookings.settings.link.future', { path: `/b/${slug}` })
+      : origin ? `${origin}/b/${slug}` : `…/b/${slug}`}</p>
     {error('slug')}
     <details className="bookings-advanced">
       <summary>{t('bookings.settings.advanced')}</summary>

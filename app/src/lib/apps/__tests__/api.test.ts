@@ -73,6 +73,20 @@ describe('RemoteAppsApi', () => {
     await expect(new RemoteAppsApi().list()).rejects.toMatchObject({ code: 'NETWORK', uncertain: false });
   });
 
+  it('marks a successful write whose answer cannot be read as uncertain: it may have happened', async () => {
+    const garbled = () => vi.stubGlobal('fetch', vi.fn(async () => new Response('{"ok":tr', { status: 200 })));
+    garbled();
+    await expect(new RemoteAppsApi().saveBookingsConfig({
+      version: 3, slug: 'seido', accepting: true, minNoticeMinutes: 120, horizonDays: 30,
+      acknowledgeAvailabilityLimits: true, services: [],
+    })).rejects.toMatchObject({ code: 'INVALID_RESPONSE', status: 200, uncertain: true });
+    await expect(new RemoteAppsApi().decide(ID, 'confirm')).rejects.toMatchObject({ code: 'INVALID_RESPONSE', uncertain: true });
+    await expect(new RemoteAppsApi().list()).rejects.toMatchObject({ code: 'INVALID_RESPONSE', uncertain: false });
+    // A refusal that says so is still a refusal, whatever its status.
+    answer(200, { ok: false, code: 'CONFIG_CHANGED' });
+    await expect(new RemoteAppsApi().decide(ID, 'confirm')).rejects.toMatchObject({ code: 'CONFIG_CHANGED', uncertain: false });
+  });
+
   it('refuses a malformed id without calling the server', async () => {
     const fake = answer(200, { ok: true });
     await expect(new RemoteAppsApi().booking('not-an-id')).rejects.toBeInstanceOf(AppsError);

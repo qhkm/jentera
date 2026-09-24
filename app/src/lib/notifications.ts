@@ -42,12 +42,18 @@ const KINDS: readonly NotificationKind[] = [
 ];
 const WORKSPACE_URL = /^\/app([/?#]|$)/;
 
+/** A stored link only if it stays inside the workspace; anything else is
+    read as no link, so one bad row cannot empty the inbox the way an unknown
+    kind does. Navigation is guarded again by `workspaceParams`. */
+function workspaceUrl(value: unknown): string | null {
+  return typeof value === 'string' && value.length <= 300 && WORKSPACE_URL.test(value) && !value.includes('\\')
+    ? value : null;
+}
+
 function notification(value: unknown): value is AppNotification {
   if (!object(value)) return false;
   return isRunId(value.id) && typeof value.kind === 'string' &&
     (KINDS as readonly string[]).includes(value.kind) &&
-    (value.url === undefined || value.url === null ||
-      (typeof value.url === 'string' && value.url.length <= 300 && WORKSPACE_URL.test(value.url) && !value.url.includes('\\'))) &&
     typeof value.title === 'string' && typeof value.body === 'string' &&
     (value.runId === null || isRunId(value.runId)) &&
     (value.routineId === null || isRunId(value.routineId)) &&
@@ -79,7 +85,7 @@ export async function fetchNotifications(cursor?: string): Promise<NotificationP
     throw new Error('Jentera returned an invalid notification list.');
   }
   return {
-    notifications: (data.notifications as AppNotification[]).map((item) => ({ ...item, url: typeof item.url === 'string' ? item.url : null })),
+    notifications: (data.notifications as AppNotification[]).map((item) => ({ ...item, url: workspaceUrl(item.url) })),
     unread: data.unread as number,
     nextCursor: data.nextCursor as string | null,
   };
