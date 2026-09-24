@@ -23,6 +23,8 @@ invitations.
 | Document upload | `POST /api/runs/ingest/file` shipped 12 Sep; the release was verified as served, the upload itself may not have been tried live | Upload one PDF and one CSV on production; facts land unconfirmed with the file name as source |
 | **Browser restart recovers a latched desktop (`23e7f7b`)** | The restart action first shipped in `2026.09.21-3` calling `changingControl()`, and a latched gateway throws from that listener — so the recovery failed in exactly the state it exists for, and the owner saw "The browser did not restart" on a healthy browser. The fix is inside the pin of `2026.09.21-4` (`e789c0b`), on 13 of 16 sprites, and has never been pressed against a genuinely latched gateway | Latch a desktop, press Restart browser, and get `desktopView: 1` rather than an error; the fallback if it still fails is `sprite-env services restart aisar-runner` |
 | **Browser tool calls fail fast while the owner holds the browser** | Shipped 22 Sep in `2026.09.22-2` (Hermes `v2026.9.22`). Admission already refused a task with 409 `business_browser_paused`, but a task admitted *before* the claim still reached for the browser and waited: run `2048b734` called `browser_console` six seconds in, produced nothing for five minutes and ended `expired`. Hermes now reads `browser.hold_file` — the runner's own `/var/lib/aisar/browser-control.json` — before every browser command and before raw CDP, and refuses at once. It fails open, so a hold file it cannot read would be a fix that silently does nothing — checked on 22 Sep and it is not: `guard=True`, the config resolves, and on the two sprites that have ever claimed a browser the Hermes interpreter reads the file (0600 `sprite:sprite`, uid 1001 on both sides). The file only exists once a browser has been claimed, so most sprites show nothing to read yet | Take the browser on a sprite mid-run and ask for something that needs it: the reply says the owner has the browser within seconds and the run ends `completed`, not `expired` |
+| Bookings v1 end to end | Plans 1–4 built on branch `bookings-v1` (not merged, nothing applied). Release order and checks are in each plan's "As built" | On Kitakod: apply 065–068 (`pnpm db:migrate:apps-bookings`), merge, deploy the app first, then `aisar-api`, then `pnpm deploy:sites`, set `TURNSTILE_SECRET` on sites, add Kitakod's id to both flag lists and flip `APPS_ENABLED`; set up a service, book from a phone, confirm from the notification, see the event in Google Calendar, cancel, see it removed |
+| Calendar deleted-id behaviour | The spec's "Calendar deleted-id verification" was never run live; the code treats a 409 plus a `cancelled` read-back as deleted either way | In a disposable test calendar: insert with a deterministic id, delete, insert again, fetch; record status codes and event status (no customer data) |
 
 ## Next runtime release must carry
 
@@ -96,6 +98,7 @@ binding, and raising it would change nothing.
 - DMARC aggregate reports at admin@kitakodventures.com since the flip to `p=quarantine` on 9 Sep.
 - The poc sprite counts against the 10 concurrent-sprite org limit alongside 13 business sprites; decide whether it stays.
 - The installed PWA on a phone keeps the old bundle until its update prompt is accepted; the crowded bottom bar fix from 12 Sep shows only after that.
+- Turnstile on the booking page. The sites deploy checks Turnstile only once `TURNSTILE_SECRET` is set there, and the widget must list the sites hostname. Add `jentera-sites.qhkmdev90.workers.dev` to the widget, then `wrangler secret put TURNSTILE_SECRET --env sites`; do both before `APPS_ENABLED` is true.
 
 ## Deferred product decisions
 
@@ -109,6 +112,24 @@ Decided on 12 September to wait for a request before building. Reasoning in
 - Deleting a workspace.
 - Agent memory per person. Hermes keeps one memory per business; a tier
   split on the Hermes side was proposed, not built.
+
+Bookings v1, out of scope for the pilot per its spec
+(`docs/plans/2026-09-23-apps-shell-and-bookings-v1.md`):
+
+- Customer data retention (PDPA). Bookings keeps customers' names, phone
+  numbers and notes with no retention period or deletion route. A retention
+  period and a way to act on a customer's deletion request are decided and
+  built **before the pilot widens beyond the first businesses**.
+- Bookings, later projects. Out of scope for v1: automatic WhatsApp,
+  payments or deposits, customer reminders, customer cancel/reschedule,
+  shared staff or resource scheduling, availability from existing Calendar
+  events, staff access, Activity rows, a custom domain, businesses outside
+  Malaysia, and editing the page by chat (plan 5). Each is its own plan when
+  chosen.
+- Bookings on its own Hyperdrive config. The sites deploy shares
+  `aisar-api`'s Hyperdrive pool; a public flood is braked before the
+  database but still shares the origin connections. Decide before widening
+  the pilot: a separate config with caching off and a low connection cap.
 
 ## Proposed, not started
 

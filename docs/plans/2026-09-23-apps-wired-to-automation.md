@@ -1,7 +1,7 @@
 # Apps wired to automation: direction and catalogue
 
-Status: direction agreed in a product brainstorm on 23 September 2026.
-Planning only. No code, no migrations, no customer-facing promise. Each
+Status: direction agreed in a product brainstorm on 23 September 2026. Project 1 (Bookings v1) is built on branch `bookings-v1` as plans 1–4, not yet released; see `2026-09-23-apps-shell-and-bookings-v1.md`.
+Planning only otherwise. No code, no migrations, no customer-facing promise. Each
 project below gets its own spec before any build starts.
 
 This supersedes the choice of first app in

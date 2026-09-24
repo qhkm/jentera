@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `AGENTS.md` carries the same house rules in shorter form. `PRODUCT_VISION.md`, `DISCUSSION_SUMMARY.md` and `TECHNICAL_ARCHITECTURE.md` carry product direction — read those before changing what the product *does*, not just how it's built.
 
-[`docs/architecture.md`](docs/architecture.md) is the system as built: the five deployables, the tenancy invariants, the path a message takes, the fleet, and where the design has slack. This file stays the authority on any conflict — it is maintained edit by edit — but that one is where to start on a system you have not seen before.
+[`docs/architecture.md`](docs/architecture.md) is the system as built: the six deployables, the tenancy invariants, the path a message takes, the fleet, and where the design has slack. This file stays the authority on any conflict — it is maintained edit by edit — but that one is where to start on a system you have not seen before.
 
 For current positioning and customer-facing UX, follow
 [`docs/marketing/product-thesis-and-homepage.md`](docs/marketing/product-thesis-and-homepage.md).
@@ -560,6 +560,59 @@ onto the occurrence. Scheduled outcomes create recipient-scoped rows in
 `notification`; Sprites still never own a local cron.
 Behind `ROUTINES_ENABLED` and `AISAR_ROUTINES_BUSINESS_IDS`; the contract,
 amendments and acceptance gate live in `docs/plans/2026-09-09-routines-api-v1.md`.
+
+### Business apps (Bookings)
+
+Bookings is the first of the apps in
+`docs/plans/2026-09-23-apps-wired-to-automation.md`: a public page where a
+customer asks for a time, and one tap for the owner to confirm, decline or
+cancel, with a prepared WhatsApp message and the event kept in Google
+Calendar. The spec is `docs/plans/2026-09-23-apps-shell-and-bookings-v1.md`;
+plans 1–4 beside it end with "As built" notes that carry what the release
+must do.
+
+It is a pilot. `APPS_ENABLED` and `APPS_BUSINESS_IDS` (exact UUIDs, at most
+20, empty means nobody) sit in both `[vars]` and `[env.sites.vars]` of
+`worker/wrangler.toml`, and `scripts/check-apps-flags.mjs` fails a deploy
+when the two drift. Off the list, every owner and public path answers 404,
+and `/api/me` sends `features.apps` to owners only, so staff never see it.
+
+The public pages are a second deploy of `worker/`, `jentera-sites`
+(`pnpm deploy:sites`), on its own origin: it never reads or sets a cookie,
+holds no credential secret (only `TURNSTILE_SECRET`), and answers 404
+outside `/b/…`. Its entry is `src/sites/index.ts`, typed against `SitesEnv`,
+and `test/sites-bundle.test.ts` fails if its import graph ever reaches
+connections, connectors or the Calendar executor. Two brakes run before the
+database: `SITES_BURST` (60/min per address) on every page and
+`BOOKING_BURST` (10/min) on a request. Turnstile there uses action `booking`
+and the sites host, through `verifyTurnstile`'s expectation argument; the
+sign-in doors keep `signin`. A link name a business used before stays with it
+(`app_slug`) and redirects with 307.
+
+A request is created under the installation lock (installation → service →
+booking, the order every writer shares), capped at 200 per business per
+Malaysian day, and made idempotent by a submission key; it notifies every
+owner with `booking_requested`, whose `url` is
+`/app?view=apps&app=bookings&booking=<id>`. **The app must know a kind
+before the Worker writes it** — see Web push above.
+
+Google Calendar sync is durable: the decision commits a
+`booking_calendar_job`, `processBookingCalendarJob`
+(`src/apps/bookings/calendar-sync.ts`) claims it with a lease, calls Google
+outside any transaction within 8 s, and records the result only if the lease
+and revision still hold. The first attempt runs from `ctx.waitUntil` after
+the owner's tap; the minute cron's `sweepBookingCalendar` retries (8 tries,
+up to an hour apart) and recovers orphaned attempts. A booking remembers its
+Google account and never touches another one; a failure carries a
+machine-readable `calendar.reason` and `canRetry` for the app to word.
+
+In the app, `useAppsEnabled() && repository.apps` gates everything
+(`LocalRepository` has no `apps`, so the demo never shows it); `AppsProvider`
+in `Dashboard` holds the installed apps and waiting requests for Home, the
+bell, the daily brief and `view=apps`. Home switches to option B — apps in
+the tile row, Alerts as a bell — only once an app is installed.
+`app/src/i18n/__tests__/pages-parity.test.ts` keeps English and Malay in
+step.
 
 ### Looking at production
 
