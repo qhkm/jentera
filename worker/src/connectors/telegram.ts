@@ -601,7 +601,7 @@ export async function withTypingIndicator<T>(
 }
 
 /** Content a Telegram message can carry that the agent cannot read yet.
-    Anything not listed — service messages, polls, edits — stays silent. */
+    Anything not listed — service messages, edits — stays silent. */
 export const UNSEEN_KINDS = [
   'photo',
   'document',
@@ -613,6 +613,11 @@ export const UNSEEN_KINDS = [
   'animation',
   'location',
   'contact',
+  'poll',
+  'dice',
+  'story',
+  'game',
+  'paid_media',
 ] as const;
 export type UnseenKind = typeof UNSEEN_KINDS[number];
 
@@ -631,6 +636,9 @@ export interface IncomingMessage {
   unseen?: UnseenKind;
   /** Telegram sends an album as one update per item, all sharing this id. */
   mediaGroupId?: string;
+  /** The owner typed a caption on content whose caption is not read (a voice
+      note, a video), so the reply asks for those words on their own. */
+  captionIgnored?: true;
 }
 
 export interface IncomingCallbackQuery {
@@ -703,14 +711,14 @@ export function parseUpdate(body: unknown): IncomingMessage | null {
 
   const unseen = unseenKind(msg);
   if (!unseen) return null;
-  const caption = CAPTION_READ.has(unseen) && typeof msg.caption === 'string' && msg.caption.trim() !== ''
-    ? msg.caption.slice(0, 4000)
-    : '';
+  const captioned = typeof msg.caption === 'string' && msg.caption.trim() !== '';
+  const read = captioned && CAPTION_READ.has(unseen);
   return {
     ...base,
-    text: caption,
+    text: read ? (msg.caption as string).slice(0, 4000) : '',
     unseen,
     ...(typeof msg.media_group_id === 'string' ? { mediaGroupId: msg.media_group_id } : {}),
+    ...(captioned && !read ? { captionIgnored: true as const } : {}),
   };
 }
 
@@ -721,13 +729,23 @@ function unseenKind(msg: Record<string, unknown>): UnseenKind | null {
   return UNSEEN_KINDS.find((kind) => kind !== 'animation' && Boolean(msg[kind])) ?? null;
 }
 
-/** The owner's answer when a message held nothing the agent can read. */
-export function unreadableReply(kind: UnseenKind): string {
+const RESEND_CAPTION = 'Send the words you typed as their own message and I’ll answer them.';
+
+/** The owner's answer when a message held nothing the agent can read. A
+    caption the agent was not given is acknowledged, so the owner does not
+    read the reply as their words being ignored. */
+export function unreadableReply(kind: UnseenKind, captionIgnored = false): string {
   if (kind === 'photo' || kind === 'document') {
     return 'I can’t open photos or files here yet. Type what you need, or send the file in the Jentera app chat.';
   }
-  if (kind === 'voice') return 'I can’t listen to voice notes yet. Please type your message.';
-  return 'I can only read text messages for now.';
+  if (kind === 'voice') {
+    return captionIgnored
+      ? `I can’t listen to voice notes yet. ${RESEND_CAPTION}`
+      : 'I can’t listen to voice notes yet. Please type your message.';
+  }
+  return captionIgnored
+    ? `I can only read text messages for now. ${RESEND_CAPTION}`
+    : 'I can only read text messages for now.';
 }
 
 const UNSEEN_NOUN: Record<UnseenKind, string> = {
@@ -741,6 +759,11 @@ const UNSEEN_NOUN: Record<UnseenKind, string> = {
   animation: 'a GIF',
   location: 'a location',
   contact: 'a contact card',
+  poll: 'a poll',
+  dice: 'a dice roll',
+  story: 'a story',
+  game: 'a game',
+  paid_media: 'paid media',
 };
 
 /** The agent's input when the owner's message came with something it is not

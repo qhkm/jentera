@@ -660,7 +660,11 @@ async function telegramWebhook(
       await claimTelegramAlbumReply(env, connectionId, incoming.mediaGroupId);
     if (incoming.text.trim() === '') {
       if (speaks) {
-        await sendMessage(token, incoming.chatId, unreadableReply(incoming.unseen)).catch(() => {});
+        await sendMessage(
+          token,
+          incoming.chatId,
+          unreadableReply(incoming.unseen, incoming.captionIgnored),
+        ).catch(() => {});
       }
       return ok;
     }

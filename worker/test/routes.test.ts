@@ -1277,6 +1277,31 @@ describe('connections', () => {
       .toHaveLength(0);
   });
 
+  it('asks the owner to resend a caption it could not read', async () => {
+    const fetch = fetchFake(async () =>
+      new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));
+    vi.stubGlobal('fetch', fetch);
+    const paired = await pairTelegramChat(42);
+    const queued: unknown[] = [];
+    env = automaticRuntimeEnv(async (message) => { queued.push(message); });
+    fetch.mockClear();
+
+    await telegramUpdate(paired.connectionId, paired.secret, {
+      message_id: 80,
+      chat: { id: 42, type: 'private' },
+      from: { id: 42, first_name: 'Owner' },
+      voice: { file_id: 'v', duration: 2 },
+      caption: 'Remind me to call Ali',
+    });
+    const sends = fetch.mock.calls.filter(([input]) => String(input).includes('/sendMessage'));
+    expect(sends).toHaveLength(1);
+    expect(JSON.parse(String(sends[0][1]?.body))).toMatchObject({
+      chat_id: 42,
+      text: 'I can’t listen to voice notes yet. Send the words you typed as their own message and I’ll answer them.',
+    });
+    expect(queued).toHaveLength(0);
+  });
+
   it('answers an album once, not once per photo', async () => {
     const fetch = fetchFake(async () =>
       new Response(JSON.stringify({ ok: true, result: { message_id: 99 } })));

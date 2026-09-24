@@ -264,6 +264,34 @@ describe('reading an update', () => {
     }))).toMatchObject({ text: '', unseen: 'animation' });
   });
 
+  it('notes a caption it did not read, on a voice note or video', () => {
+    expect(parseUpdate(message({ text: undefined, caption: 'listen to this', voice: { file_id: 'v' } })))
+      .toMatchObject({ text: '', unseen: 'voice', captionIgnored: true });
+    expect(parseUpdate(message({ text: undefined, caption: 'watch', video: { file_id: 'x' } })))
+      .toMatchObject({ text: '', unseen: 'video', captionIgnored: true });
+    expect(parseUpdate(message({ text: undefined, voice: { file_id: 'v' } })))
+      .not.toHaveProperty('captionIgnored');
+    expect(parseUpdate(message({ text: undefined, caption: '   ', video: { file_id: 'x' } })))
+      .not.toHaveProperty('captionIgnored');
+    /* A photo's caption is read, so nothing was ignored. */
+    expect(parseUpdate(message({ text: undefined, caption: 'Record this', photo: [{ file_id: 'p' }] })))
+      .not.toHaveProperty('captionIgnored');
+  });
+
+  it('recognises polls, dice, stories, games and paid media', () => {
+    const shapes: [string, Record<string, unknown>][] = [
+      ['poll', { id: '1', question: 'Lunch?', options: [] }],
+      ['dice', { emoji: '🎲', value: 4 }],
+      ['story', { chat: { id: 1 }, id: 2 }],
+      ['game', { title: 'Snake' }],
+      ['paid_media', { star_count: 5, paid_media: [] }],
+    ];
+    for (const [field, value] of shapes) {
+      expect(parseUpdate(message({ text: undefined, [field]: value })))
+        .toMatchObject({ text: '', unseen: field });
+    }
+  });
+
   it('keeps the album an item belongs to', () => {
     expect(parseUpdate(message({
       text: undefined,
@@ -326,9 +354,21 @@ describe('answering what the agent cannot read', () => {
     );
     expect(unreadableReply('document')).toBe(unreadableReply('photo'));
     expect(unreadableReply('voice')).toBe('I can’t listen to voice notes yet. Please type your message.');
-    for (const kind of ['audio', 'video', 'video_note', 'sticker', 'animation', 'location', 'contact'] as const) {
+    for (const kind of [
+      'audio', 'video', 'video_note', 'sticker', 'animation', 'location', 'contact',
+      'poll', 'dice', 'story', 'game', 'paid_media',
+    ] as const) {
       expect(unreadableReply(kind)).toBe('I can only read text messages for now.');
     }
+  });
+
+  it('asks for a caption it could not read to be sent on its own', () => {
+    expect(unreadableReply('voice', true)).toBe(
+      'I can’t listen to voice notes yet. Send the words you typed as their own message and I’ll answer them.',
+    );
+    expect(unreadableReply('video', true)).toBe(
+      'I can only read text messages for now. Send the words you typed as their own message and I’ll answer them.',
+    );
   });
 
   it('tells the agent what it was not given, and leaves plain text alone', () => {
