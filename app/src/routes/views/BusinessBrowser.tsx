@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Globe, Desktop, ArrowDown, ArrowUp, ArrowRight, ArrowBendDownLeft, CheckCircle, Clock, Eye, EyeSlash, Keyboard, CursorClick, ShieldCheck, WarningCircle, Minus, Plus, X, ArrowClockwise, Record, Stop, Sparkle } from '@phosphor-icons/react';
+import { Globe, Desktop, ArrowDown, ArrowUp, ArrowRight, ArrowBendDownLeft, CheckCircle, Clock, Eye, EyeSlash, Keyboard, CursorClick, ShieldCheck, WarningCircle, Minus, Plus, X, ArrowClockwise, Record, Stop, Sparkle, CornersOut, CornersIn } from '@phosphor-icons/react';
 import { Button, Card, Eyebrow, Input } from '@/components/ui';
 import { useRepository } from '@/lib/repo';
 import type { BrowserCommand, BusinessBrowserState, ProcedureDraft } from '@/lib/repo/types';
@@ -71,6 +71,7 @@ export default function BusinessBrowser({
   const [objective, setObjective] = useState('');
   const [recording, setRecording] = useState(false);
   const [procedureDraft, setProcedureDraft] = useState<ProcedureDraft | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
   const direct = useRef<BrowserInput | null>(null);
   const dispatch = useRef(send);
   dispatch.current = send;
@@ -128,6 +129,18 @@ export default function BusinessBrowser({
   }, [directEnabled]);
 
   useEffect(() => { live.current = true; return () => { live.current = false; resetTyping(); }; }, []);
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      if (!dialog.current) return;
+      setFullscreen(document.fullscreenElement === dialog.current);
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
+  useEffect(() => {
+    document.documentElement.classList.toggle('business-browser-fullscreen-open', fullscreen);
+    return () => document.documentElement.classList.remove('business-browser-fullscreen-open');
+  }, [fullscreen]);
   useEffect(() => {
     if (!openRequest) return;
     claimOnOpen.current = true;
@@ -295,10 +308,30 @@ export default function BusinessBrowser({
       const released = await send({ action: 'release' });
       if (!released) { closeRequested.current = false; return; }
     }
+    if (document.fullscreenElement === dialog.current) {
+      try { await document.exitFullscreen(); } catch { /* The dialog can still close safely. */ }
+    }
+    setFullscreen(false);
     viewGeneration.current += 1;
     dialog.current?.close(); setOpen(false); setControlled(false); setControlConflict(false); setFrame(null); setText(''); setShowText(false); setUrl(''); setZoom(defaultBrowserZoom());
     setTeachSetup(false); setRecording(false); setProcedureDraft(null); setObjective('');
     closeRequested.current = false;
+  }
+
+  async function toggleFullscreen() {
+    const modal = dialog.current;
+    if (!modal) return;
+    if (fullscreen) {
+      if (document.fullscreenElement === modal) {
+        try { await document.exitFullscreen(); } catch { /* CSS fallback below. */ }
+      }
+      setFullscreen(false);
+      return;
+    }
+    // The class is also a deliberate fallback for iOS and embedded browsers
+    // that do not expose the Fullscreen API for dialog elements.
+    setFullscreen(true);
+    try { await modal.requestFullscreen?.(); } catch { /* Keep the viewport-filling fallback. */ }
   }
 
   const openBrowser = () => { claimOnOpen.current = true; setError(''); setHandedBack(false); setOpen(true); };
@@ -321,10 +354,10 @@ export default function BusinessBrowser({
         <Desktop size={18} aria-hidden="true" />{t('browser.open')}
       </Button></div>
     </Card> : trigger}
-    {open && createPortal(<dialog ref={dialog} className={`business-browser-dialog${controlled && desktopEnabled ? ' has-desktop' : ''}${drawerMode ? ' is-chat-drawer' : ''}`} aria-labelledby={titleId} aria-describedby={descriptionId}
+    {open && createPortal(<dialog ref={dialog} className={`business-browser-dialog${controlled && desktopEnabled ? ' has-desktop' : ''}${drawerMode ? ' is-chat-drawer' : ''}${fullscreen ? ' is-fullscreen' : ''}`} aria-labelledby={titleId} aria-describedby={descriptionId}
       // Portals escape the composer DOM, but React events still bubble through it.
       onSubmit={(event) => event.stopPropagation()}
-      onCancel={(e) => { e.preventDefault(); void close(); }}>
+      onCancel={(e) => { e.preventDefault(); if (fullscreen) void toggleFullscreen(); else void close(); }}>
       <header className="business-browser-header">
         <span className="business-browser-brand" aria-hidden="true"><Desktop size={25} weight="duotone" /></span>
         <div className="business-browser-heading">
@@ -334,7 +367,10 @@ export default function BusinessBrowser({
         <span className={`business-browser-state is-${mode}`} role="status">
           <span aria-hidden="true" />{t(`browser.state.${mode}`)}
         </span>
-        <button type="button" className="business-browser-icon-button" aria-label={t('browser.close')} title={t('browser.close')} onClick={() => void close()}><X size={20} aria-hidden="true" /></button>
+        {controlled && desktopEnabled && <button type="button" className="business-browser-icon-button business-browser-fullscreen" aria-label={t(fullscreen ? 'browser.fullscreen.exit' : 'browser.fullscreen.enter')} title={t(fullscreen ? 'browser.fullscreen.exit' : 'browser.fullscreen.enter')} onClick={() => void toggleFullscreen()}>
+          {fullscreen ? <CornersIn size={20} aria-hidden="true" /> : <CornersOut size={20} aria-hidden="true" />}
+        </button>}
+        <button type="button" className="business-browser-icon-button business-browser-close" aria-label={t('browser.close')} title={t('browser.close')} onClick={() => void close()}><X size={20} aria-hidden="true" /></button>
       </header>
       <div className={`business-browser-body${controlled && desktopEnabled ? ' has-desktop' : ''}`}>
         {error && <div className="business-browser-error" role="alert">

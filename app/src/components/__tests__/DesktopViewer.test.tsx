@@ -142,6 +142,37 @@ it('claims on open and shows a full desktop without duplicate fake Chrome contro
   await waitFor(() => expect(mocks.clients[0].disconnect).toHaveBeenCalled());
   expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(true);
 });
+it('expands the controlled desktop to full screen and restores it without handing control back', async () => {
+  const user = userEvent.setup(); const { browser } = mount();
+  let active: Element | null = null;
+  const fullscreenDescriptor = Object.getOwnPropertyDescriptor(document, 'fullscreenElement');
+  const exitDescriptor = Object.getOwnPropertyDescriptor(document, 'exitFullscreen');
+  const requestDescriptor = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'requestFullscreen');
+  Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => active });
+  Object.defineProperty(document, 'exitFullscreen', { configurable: true, value: vi.fn(async () => {
+    active = null; document.dispatchEvent(new Event('fullscreenchange'));
+  }) });
+  Object.defineProperty(HTMLDialogElement.prototype, 'requestFullscreen', { configurable: true, value: vi.fn(async function (this: HTMLDialogElement) {
+    active = this; document.dispatchEvent(new Event('fullscreenchange'));
+  }) });
+  try {
+    await user.click(await screen.findByRole('button', { name: 'Open Jentera’s computer' }));
+    const modal = await screen.findByRole('dialog');
+    await user.click(await screen.findByRole('button', { name: 'Enter full screen' }));
+    expect(modal).toHaveClass('is-fullscreen');
+    expect(document.documentElement).toHaveClass('business-browser-fullscreen-open');
+    await user.click(screen.getByRole('button', { name: 'Exit full screen' }));
+    expect(modal).not.toHaveClass('is-fullscreen');
+    expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(false);
+  } finally {
+    if (fullscreenDescriptor) Object.defineProperty(document, 'fullscreenElement', fullscreenDescriptor);
+    else Reflect.deleteProperty(document, 'fullscreenElement');
+    if (exitDescriptor) Object.defineProperty(document, 'exitFullscreen', exitDescriptor);
+    else Reflect.deleteProperty(document, 'exitFullscreen');
+    if (requestDescriptor) Object.defineProperty(HTMLDialogElement.prototype, 'requestFullscreen', requestDescriptor);
+    else Reflect.deleteProperty(HTMLDialogElement.prototype, 'requestFullscreen');
+  }
+});
 it('hands physical-keyboard focus to the controlled canvas on its first pointer interaction', async () => {
   const user = userEvent.setup(); mount();
   await user.click(await screen.findByRole('button', { name: 'Open Jentera’s computer' }));
