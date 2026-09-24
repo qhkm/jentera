@@ -3,13 +3,14 @@ import { Button, Card, LoadingState } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
 import { useApps } from '@/lib/apps/useApps';
 import type { AppKey } from '@/lib/apps/types';
+import BookingsApp from './apps/BookingsApp';
 
 /* The owner's apps: what is installed, and what can be added. Only apps the
    Worker says exist are offered (`available`). */
 
 const ICONS: Record<AppKey, typeof CalendarCheck> = { bookings: CalendarCheck };
 
-export default function AppsView({ onOpen }: {
+export default function AppsView({ app, bookingId, section, onOpen, onConnectCalendar }: {
   app: string | null;
   bookingId: string | null;
   section: string | null;
@@ -18,6 +19,17 @@ export default function AppsView({ onOpen }: {
 }) {
   const t = useT();
   const apps = useApps();
+
+  if (app === 'bookings' && apps.api) {
+    return <BookingsApp
+      bookingId={bookingId}
+      section={section}
+      onSection={(next, booking) => onOpen({ app: 'bookings', ...(next === 'bookings' ? {} : { section: next }), ...(booking ? { booking } : {}) })}
+      onBack={() => onOpen({})}
+      onConnectCalendar={onConnectCalendar}
+    />;
+  }
+
   const installed = apps.list?.apps ?? [];
   const addable = (apps.list?.available ?? []).filter((key) => !installed.some((app) => app.key === key));
 

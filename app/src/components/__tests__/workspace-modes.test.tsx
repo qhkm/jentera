@@ -16,7 +16,7 @@ import type { AskSession } from '@/hooks/useAsk';
 import type { AskAnswer } from '@/lib/repo';
 import type { RoutinesApi } from '@/lib/routines/types';
 import { listFixture } from '@/lib/routines/__tests__/fixtures';
-import { fakeAppsApi } from '@/lib/apps/__tests__/fixtures';
+import { bookingFixture, BOOKING_ID, fakeAppsApi } from '@/lib/apps/__tests__/fixtures';
 
 beforeEach(() => {
   localStorage.clear();
@@ -309,6 +309,17 @@ describe('workspace navigation', () => {
     const repo = Object.assign(new LocalRepository(), { apps: fakeAppsApi() });
     await mount(<Dashboard />, repo, '/app?view=apps', { appsVersion: 1 });
     expect(await screen.findByRole('heading', { name: 'Apps', level: 1 })).toBeInTheDocument();
+  });
+  it('opens a booking straight from its notification link', async () => {
+    const apps = fakeAppsApi({
+      list: vi.fn(async () => ({ apps: [{ key: 'bookings' as const, state: 'active' as const, publicUrl: 'https://s.test/b/x', pending: 0 }], available: ['bookings' as const] })),
+      booking: vi.fn(async () => bookingFixture({ startsAt: '2026-12-04T02:00:00.000Z' })),
+    });
+    const repo = Object.assign(new LocalRepository(), { apps });
+    await mount(<Dashboard />, repo, `/app?view=apps&app=bookings&booking=${BOOKING_ID}`, { appsVersion: 1 });
+    const pinned = await screen.findByRole('region', { name: 'From your notification' });
+    expect(within(pinned).getByRole('article', { name: 'Aisyah' })).toBeInTheDocument();
+    expect(apps.booking).toHaveBeenCalledWith(BOOKING_ID);
   });
 });
 

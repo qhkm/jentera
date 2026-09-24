@@ -773,3 +773,59 @@
     font-size: 10px;
   }
 }
+/* ── Apps and Bookings ─────────────────────────────────────────────── */
+.apps-view, .bookings-app { display: grid; gap: 20px; }
+.apps-heading h1, .bookings-app-heading h1 { font-size: 24px; font-weight: 650; }
+.apps-heading p, .bookings-lead, .bookings-more p, .booking-page-preview p, .apps-none, .bookings-empty { color: var(--text-secondary); }
+.apps-section { display: grid; gap: 12px; }
+.apps-section h2 { font-size: 15px; font-weight: 600; }
+.apps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 12px; }
+.apps-tile { display: flex; align-items: center; gap: 13px; min-height: 84px; padding: 16px; border: 1px solid var(--rail); border-radius: 18px; background: var(--bg-card); text-align: left; }
+.apps-tile:hover { background: var(--bg-card-hover); }
+.apps-tile-copy { display: grid; gap: 2px; }
+.apps-tile-copy small { color: var(--text-secondary); }
+.apps-tile-icon { display: grid; flex: 0 0 42px; width: 42px; height: 42px; place-items: center; border-radius: 14px; background: rgb(244 114 182 / 0.14); color: rgb(244 114 182); }
+.apps-offer { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; padding: 16px; }
+.apps-offer h3 { font-weight: 600; }
+.apps-offer p { color: var(--text-secondary); font-size: 13px; }
+.apps-state, .bookings-state { display: grid; gap: 10px; padding: 16px; }
+.bookings-app-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.bookings-panel, .bookings-list { display: grid; gap: 14px; }
+.bookings-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.bookings-date { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 13px; color: var(--text-secondary); }
+.bookings-cards, .bookings-day-group, .bookings-focused { display: grid; gap: 10px; }
+.bookings-day-group h3, .bookings-focused h2 { font-size: 14px; font-weight: 600; color: var(--text-secondary); }
+.bookings-window { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--text-secondary); }
+.booking-card { display: grid; gap: 8px; padding: 16px; }
+.booking-card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.booking-card-header h3 { font-weight: 600; }
+.booking-card-when, .booking-card-meta { color: var(--text-secondary); font-size: 13px; }
+.booking-card-note { font-size: 13px; }
+.booking-card-calendar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.booking-card-message, .field-error { color: var(--color-red-400); font-size: 13px; }
+.booking-card-actions, .booking-page-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.booking-card-whatsapp, .booking-page-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.bookings-settings { display: grid; gap: 16px; }
+.bookings-settings label { display: grid; gap: 6px; font-size: 13px; }
+.bookings-settings .bookings-check, .booking-page .bookings-check { display: flex; align-items: center; gap: 8px; }
+.bookings-service { display: grid; gap: 12px; padding: 16px; }
+.bookings-hours { display: grid; gap: 8px; }
+.bookings-hours-title { font-size: 13px; font-weight: 600; }
+.bookings-day { display: grid; grid-template-columns: minmax(110px, 1fr) auto auto; align-items: center; gap: 8px; }
+.bookings-advanced summary { cursor: pointer; font-weight: 600; }
+.bookings-link-preview { font-family: var(--font-mono); font-size: 13px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.bookings-problem { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: rgb(249 156 0 / 0.1); }
+.booking-page { display: grid; gap: 16px; }
+.booking-page-link, .booking-page-preview { display: grid; gap: 12px; padding: 18px; }
+.booking-page-url { font-family: var(--font-mono); overflow-wrap: anywhere; }
+.booking-page-live { color: var(--accent-green); }
+.booking-page-paused { color: var(--color-amber-400); }
+.booking-page-preview ul { display: grid; gap: 6px; }
+.booking-page-preview li { display: flex; justify-content: space-between; gap: 8px; }
+@media (max-width: 640px) {
+  .bookings-day { grid-template-columns: 1fr 1fr; }
+  .bookings-day-open { grid-column: 1 / -1; }
+  .bookings-date { margin-left: 0; }
+  .apps-offer { grid-template-columns: auto 1fr; }
+  .apps-offer .btn { grid-column: 1 / -1; }
+}
