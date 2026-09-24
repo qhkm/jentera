@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { assertBootstrapAcceptsHermesTag } from './bootstrap-contract.mjs';
 
@@ -54,8 +56,25 @@ function runGuardScript(script, source, httpStatus = 200, tagStatus = 200) {
     if (url.endsWith('/scripts/install.sh')) return new Response(${JSON.stringify(installer)});
     return new Response('public runner asset');
   };`;
-  return spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(mock)}`,
-    new URL(script, import.meta.url).pathname], { encoding: 'utf8', timeout: 15000, maxBuffer: 64000 });
+  const dir = mkdtempSync(join(tmpdir(), 'bootstrap-contract-'));
+  const fixturePath = join(dir, 'bootstrap-runtime.sh');
+  if (httpStatus === 200) writeFileSync(fixturePath, fixture);
+  try {
+    return spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(mock)}`,
+      new URL(script, import.meta.url).pathname], {
+      encoding: 'utf8',
+      timeout: 15000,
+      maxBuffer: 64000,
+      env: {
+        ...process.env,
+        NODE_ENV: 'test',
+        JENTERA_TEST_BOOTSTRAP_PATH: fixturePath,
+        JENTERA_TEST_SKIP_BUNDLE_BUCKET_CHECK: '1',
+      },
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 test('predeploy exercises the pinned guard and blocks mismatches and unavailable bootstrap', () => {

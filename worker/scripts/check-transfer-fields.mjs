@@ -45,7 +45,15 @@ if (sent.length < 5) {
    content-addressed, so these are the same bytes; ship-runtime.sh already
    refuses a bundle that is not an ancestor of origin/main. It is also what
    lets this repository be private — the whole point of the R2 bundle. */
-const bootstrapBytes = readAtCommit(commit, 'runner/bin/bootstrap-runtime.sh');
+const bootstrapBytes = process.env.NODE_ENV === 'test' && process.env.JENTERA_TEST_BOOTSTRAP_PATH
+  ? (() => {
+      try {
+        return readFileSync(process.env.JENTERA_TEST_BOOTSTRAP_PATH);
+      } catch {
+        return null;
+      }
+    })()
+  : readAtCommit(commit, 'runner/bin/bootstrap-runtime.sh');
 if (!bootstrapBytes) {
   console.error(`FAIL  bootstrap at ${commit} unreadable; cannot prove deployment compatibility.
       Fetch the commit (git fetch origin ${commit}) rather than skipping the guard.`);

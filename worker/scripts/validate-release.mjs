@@ -39,12 +39,12 @@
  * Exit 0 = gate passed. Exit 1 = release-blocking.
  */
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { assertBootstrapAcceptsHermesTag } from './bootstrap-contract.mjs';
 import { bundleKey, packBundle, readAtCommit } from './bundle-pack.mjs';
+import { execWrangler } from './wrangler-cli.mjs';
 
 const HERMES_REPO = 'qhkm/hermes-agent';
 const RAW = 'https://raw.githubusercontent.com';
@@ -98,7 +98,16 @@ if (!assets.length) { fail('no runner assets found in provision.ts'); process.ex
    is the same file raw.githubusercontent used to serve, and ship-runtime.sh
    already refuses a bundle that is not an ancestor of origin/main. It also
    removes this half of the gate's dependence on a public repository. */
-const bootstrap = readAtCommit(bundleCommit, 'runner/bin/bootstrap-runtime.sh')?.toString('utf8');
+const bootstrapBytes = process.env.NODE_ENV === 'test' && process.env.JENTERA_TEST_BOOTSTRAP_PATH
+  ? (() => {
+      try {
+        return readFileSync(process.env.JENTERA_TEST_BOOTSTRAP_PATH);
+      } catch {
+        return null;
+      }
+    })()
+  : readAtCommit(bundleCommit, 'runner/bin/bootstrap-runtime.sh');
+const bootstrap = bootstrapBytes?.toString('utf8');
 if (!bootstrap) { fail(`bootstrap-runtime.sh unreadable at ${bundleCommit}; git fetch origin ${bundleCommit}`); process.exit(1); }
 ok('bootstrap-runtime.sh present at bundle commit');
 
@@ -211,13 +220,14 @@ if (!pinnedSha) {
 const bucketName = wrangler.match(/binding\s*=\s*"RUNTIME_BUNDLES"\s*\nbucket_name\s*=\s*"([^"]+)"/)?.[1];
 if (!bucketName) {
   fail('the RUNTIME_BUNDLES r2_buckets binding is missing from wrangler.toml');
+} else if (process.env.NODE_ENV === 'test' && process.env.JENTERA_TEST_SKIP_BUNDLE_BUCKET_CHECK === '1') {
+  warn('bundle bucket round-trip skipped by the hermetic release-gate test');
 } else if (packed) {
   const dir = mkdtempSync(join(tmpdir(), 'release-bundle-'));
   try {
     const out = join(dir, 'bundle.tar.gz');
-    execFileSync('pnpm', ['exec', 'wrangler', 'r2', 'object', 'get',
-      `${bucketName}/${bundleKey(bundleCommit)}`, '--file', out, '--remote'],
-      { stdio: 'pipe', cwd: new URL('..', import.meta.url).pathname });
+    execWrangler(['r2', 'object', 'get', `${bucketName}/${bundleKey(bundleCommit)}`,
+      '--file', out, '--remote'], { stdio: 'pipe' });
     const got = createHash('sha256').update(readFileSync(out)).digest('hex');
     if (got === packed.sha256) ok(`${bucketName}/${bundleKey(bundleCommit)} round-trips to the pin`);
     else fail(`${bucketName}/${bundleKey(bundleCommit)} hashes to ${got}, not ${packed.sha256}; the right key holds the wrong bytes`);

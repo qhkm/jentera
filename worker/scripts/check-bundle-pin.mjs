@@ -23,11 +23,11 @@
  * Exit 0 = safe to deploy. Exit 1 = the deploy would strand provisioning.
  */
 import { readFileSync, mkdtempSync, readFileSync as read, rmSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bundleKey, packBundle } from './bundle-pack.mjs';
+import { execWrangler } from './wrangler-cli.mjs';
 
 const fail = (msg) => { console.error(`FAIL  ${msg}`); process.exit(1); };
 
@@ -64,8 +64,8 @@ const dir = mkdtempSync(join(tmpdir(), 'bundle-pin-'));
 try {
   const out = join(dir, 'bundle.tar.gz');
   try {
-    execFileSync('pnpm', ['exec', 'wrangler', 'r2', 'object', 'get', `${bucket}/${bundleKey(commit)}`,
-      '--file', out, '--remote'], { stdio: 'pipe', cwd: new URL('..', import.meta.url).pathname });
+    execWrangler(['r2', 'object', 'get', `${bucket}/${bundleKey(commit)}`,
+      '--file', out, '--remote'], { stdio: 'pipe' });
   } catch (error) {
     fail(`${bucket}/${bundleKey(commit)} could not be read back.\n` +
          `      ${String(error.stderr ?? error.message).trim().split('\n').slice(-2).join(' ')}\n` +
