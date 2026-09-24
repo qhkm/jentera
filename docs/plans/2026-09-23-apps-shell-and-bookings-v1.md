@@ -8,7 +8,7 @@ document for the why, the catalogue and the rules against bloat.
 Plan 1 (worker foundation) built on branch bookings-v1: f7b8d00.
 Plan 2 (public pages) built on branch bookings-v1: addd6c5.
 Plan 3 (durable Calendar sync) built on branch bookings-v1: 7a05379. Before release: run the deleted-id experiment in "Calendar deleted-id verification" against a disposable test calendar.
-Plan 4 (owner screens) built on branch bookings-v1: 69d4211. Plans 1–4 complete; release per the "As built" notes of plans 2–4.
+Plan 4 (owner screens) built on branch bookings-v1: 90e657a. Plans 1–4 complete; release per the "As built" notes of plans 2–4.
 
 Written to be built by an agent that has not seen the conversation behind it.
 Everything in this repo's `CLAUDE.md` applies, in particular:

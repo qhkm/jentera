@@ -3989,3 +3989,91 @@ Plan 4 (owner screens) built on branch bookings-v1: <last commit>. Plans 1–4 c
 ```
 
   Commit it by named path, with subject `docs: plan 4 of Bookings v1 built`.
+
+## As built
+
+Built on branch `bookings-v1`, commits `9067ac0..90e657a`. Every task, the
+final whole-branch review and its fix wave were reviewed. At `9e5ad13` the
+app suite passed (133 files, 1311 tests; 1314 at `90e657a`), `pnpm build` prerendered the public pages,
+and the worker suite passed (134 files, 1645 tests) with the Docker VM clock checked
+first. Nothing is deployed and nothing is merged.
+
+**Where the build differs from the task text above:**
+- **The Bookings list survives its own refreshes.** Two review rounds on
+  Task 7 changed how `BookingsList` reloads:
+  - The Calendar poll re-reads each syncing booking (`api.booking(id)`)
+    every 10 s while one is syncing and the tab is visible. It no longer
+    re-runs the filter query, which on Needs you dropped the card the owner
+    had just confirmed, WhatsApp link and all.
+  - A card decided in the view stays through quiet reloads (`decidedHere`),
+    until the filter or date changes.
+  - A load that overlaps an action is discarded (an action epoch) and run
+    again once no action is in flight, so a stale read cannot put a decided
+    card back to pending. The pinned card follows the same rule.
+  - Busy state is per booking; the empty text follows the loaded rows, not
+    the rows left after the pinned card; a deep-link failure other than 404
+    is retried on return to the foreground.
+- **The daily brief keeps what the owner still has to do.** A Confirm there
+  that fails re-reads the booking. Still waiting: the error stays on the
+  line. Decided (by this confirm or elsewhere): the line stays, decided,
+  with its WhatsApp link. Only an expired request leaves with a note. Every
+  confirm, failed or not, refreshes the shared apps state.
+- **`/api/apps` says whether bookings are being taken.** Each installed
+  Bookings entry carries `accepting`, read in the same tenant transaction as
+  the list. Home and the Apps list show "Paused" from it. The app reads a
+  missing field as `true`, so the app and Worker can deploy in either
+  order.
+- **Apps state follows new alerts.** It refreshes when the unread count
+  rises (once per rise), from the brief's Refresh button, on return to the
+  foreground and after every action.
+- **Settings says that existing bookings are kept** when hours change or a
+  service is turned off (installed mode only), as the spec requires. The
+  plan's text had dropped it.
+- **Smaller promises tightened.** An unreadable 2xx on a write reads as
+  uncertain, not failed. One notification with an unsafe `url` reads as
+  having no link instead of emptying the inbox (an unknown *kind* still
+  rejects the list). An apps list entry with an unknown key or state is
+  skipped. Retry is not offered where it cannot work. "Another device"
+  reads "elsewhere". Error text uses the theme-aware `--danger` token.
+- **Test mounts wrap `RepositoryProvider`.** The real `I18nProvider` reads
+  the repository snapshot, so every screen test renders inside
+  `RepositoryProvider` and flushes one `act` before asserting.
+
+**Merging `bookings-v1` into `main`:**
+- **`app/src/lib/notifications.ts` conflicts.** Another session on `main` is
+  adding `work_finished` to the same `KINDS` list, and has an untracked
+  `app/src/lib/__tests__/notifications.test.ts` at the path this branch
+  creates. Keep **both** kinds, keep this branch's `workspaceUrl()` check
+  and `url` field, merge both test files' cases, and run both notification
+  test files before deploying the app. A dropped kind empties the affected
+  owners' inboxes.
+- **`worker/src/notifications/store.ts` may conflict** on the same kinds.
+- **`predeploy`** (see plan 2): keep both `check-bundle-pin` and
+  `check-apps-flags`.
+
+**Release order (all of it waits on the owner):**
+1. Apply `068_apps_bookings.sql` in production (`pnpm db:migrate:apps-bookings`),
+   after checking that `main`'s own 065–067 are applied. Plan 2's smoke test
+   applies.
+2. Merge.
+3. Deploy the app first: it must know `booking_requested` before the Worker
+   writes it.
+4. Deploy `aisar-api`, then `pnpm deploy:sites`.
+5. Set `TURNSTILE_SECRET` on `jentera-sites`.
+6. Flip `APPS_ENABLED`. Kitakod Ventures' id is already in both
+   `APPS_BUSINESS_IDS` lists.
+7. Run plan 3's deleted-id experiment and the walk-through in `docs/todo.md`.
+
+**Deferred, none blocking:**
+- The apps client sends no native bearer token, so the native shell would
+  show Apps and fail to load them (Routines has the same gap; native is not
+  shipped).
+- Returning from Chat lands on the Apps list rather than Bookings.
+- The dark-theme count badge is about 2.9:1; it is `aria-hidden` and the
+  count is in the bell's name.
+- A deep-link retry can be dropped by a filter tap mid-retry; a quiet load
+  failing after an earlier success shows no message.
+- `BookingsApp` lets `section` outrank a deep-linked `booking` if a URL
+  ever carries both; no app or Worker link does.
+- The Home tile icon and its positioning rule assume Bookings is the only
+  app.
