@@ -10,6 +10,7 @@ import BusinessBrowser from '@/routes/views/BusinessBrowser';
 const mocks = vi.hoisted(() => ({ clients: [] as (EventTarget & {
   disconnect: ReturnType<typeof vi.fn>;
   sendKey: ReturnType<typeof vi.fn>;
+  focus: ReturnType<typeof vi.fn>;
   clipViewport: boolean;
   dragViewport: boolean;
   scaleViewport: boolean;
@@ -18,7 +19,7 @@ const mocks = vi.hoisted(() => ({ clients: [] as (EventTarget & {
   _screen: HTMLDivElement;
 })[], calls: [] as unknown[][] }));
 vi.mock('@novnc/novnc', () => ({ default: class extends EventTarget {
-  disconnect = vi.fn(); sendKey = vi.fn(); dragViewport = false;
+  disconnect = vi.fn(); sendKey = vi.fn(); focus = vi.fn(); dragViewport = false;
   _clipViewport = false; _scaleViewport = false;
   _canvas = document.createElement('canvas');
   _display = { scale: 1, width: 1280, height: 720 };
@@ -140,6 +141,15 @@ it('claims on open and shows a full desktop without duplicate fake Chrome contro
   await user.click(screen.getByRole('button', { name: 'Close computer view' }));
   await waitFor(() => expect(mocks.clients[0].disconnect).toHaveBeenCalled());
   expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(true);
+});
+it('hands physical-keyboard focus to the controlled canvas on its first pointer interaction', async () => {
+  const user = userEvent.setup(); mount();
+  await user.click(await screen.findByRole('button', { name: 'Open Jentera’s computer' }));
+  const desktop = await screen.findByRole('region', { name: 'Live business desktop' });
+  await waitFor(() => expect(mocks.clients).toHaveLength(1));
+
+  fireEvent.pointerDown(desktop.querySelector('.business-desktop-stage')!);
+  expect(mocks.clients[0].focus).toHaveBeenCalledWith({ preventScroll: true });
 });
 it('keeps the page-only viewer on old runtimes', async () => {
   const user = userEvent.setup(); mount(false);

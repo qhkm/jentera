@@ -312,6 +312,8 @@ export const RUNTIME_BUNDLE_ASSETS = [
   'runner/src/browser-preview-stream.mjs',
   'runner/src/desktop-gateway.mjs',
   'runner/bin/display-service.sh',
+  'runner/bin/jentera-tint2rc',
+  'runner/bin/jentera-terminal.desktop',
   'runner/bin/desktop-smoke.mjs',
   'runner/bin/desktop-release-keys.py',
   'runner/bin/browser-smoke.mjs',

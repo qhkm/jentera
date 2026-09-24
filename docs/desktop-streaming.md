@@ -95,8 +95,10 @@ OAuth verification, bot detection, or website security restrictions.
 - Readiness: the runner advertises `desktopView:1` only when its gateway is ready,
   and the Worker relays it only to eligible owners.
 
-Bootstrap installs Xvfb/Openbox/dbus, tint2, x11vnc, xauth, Python and XTEST from
-the OS package manager and starts the supervised display before Hermes/runner.
+Bootstrap installs Xvfb/Openbox/dbus, tint2, xterm, x11vnc, xauth, Python and
+XTEST from the OS package manager and starts the supervised display before
+Hermes/runner. The reviewed tint2 panel exposes Terminal as a visible launcher;
+it accepts input only in the existing owner-control mode, never while observing.
 CUA/driver attestation stays independently gated. Hermes remains pinned to
 `v2026.9.8` at `ff5b9fcfb029e230a2d3f90d1a3c06260ea1d413`.
 

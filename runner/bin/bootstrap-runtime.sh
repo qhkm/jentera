@@ -674,7 +674,7 @@ fi
 # a reviewed OS viewer and taskbar; no floating JS daemon or public VNC port.
 if [[ "$desktop_enabled" == "1" ]]; then
   DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends \
-    x11vnc tint2 xauth python3 libxtst6 >/dev/null
+    x11vnc tint2 xterm xauth python3 libxtst6 >/dev/null
   PLAYWRIGHT_ENTRY="$playwright_dir/index.mjs" \
     timeout --foreground -k 5 60 xvfb-run -a \
     node /home/sprite/aisar/runner/desktop-smoke.mjs >/dev/null

@@ -694,7 +694,7 @@ test('owner desktop is opt-in and proves sandboxed Chrome/RFB before enabling th
   const source = await readFile(SCRIPT, 'utf8');
   assert.match(source, /DESKTOP_ENABLED_B64\) DESKTOP_ENABLED_B64="\$value" ;;/);
   assert.match(source, /\$\{DESKTOP_ENABLED_B64:-\}/);
-  assert.match(source, /x11vnc tint2 xauth python3 libxtst6/);
+  assert.match(source, /x11vnc tint2 xterm xauth python3 libxtst6/);
   assert.ok(source.indexOf('node /home/sprite/aisar/runner/desktop-smoke.mjs') < source.indexOf("'AISAR_DESKTOP_VIEW=%q\\n' '1'"));
   const smoke = await readFile(new URL('../bin/desktop-smoke.mjs', import.meta.url), 'utf8');
   assert.match(smoke, /chromiumSandbox: true/);
@@ -703,6 +703,12 @@ test('owner desktop is opt-in and proves sandboxed Chrome/RFB before enabling th
   assert.match(runner, /AISAR_DESKTOP_VIEW:-0/); assert.match(runner, /source "\$display_env"/);
   const display = await readFile(DISPLAY_SERVICE, 'utf8');
   assert.match(display, /-nolisten tcp/); assert.match(display, /tint2/);
+  assert.match(display, /jentera-tint2rc/);
+  const panel = await readFile(new URL('../bin/jentera-tint2rc', import.meta.url), 'utf8');
+  const terminal = await readFile(new URL('../bin/jentera-terminal.desktop', import.meta.url), 'utf8');
+  assert.match(panel, /panel_items = LT/);
+  assert.match(panel, /launcher_item_app = jentera-terminal\.desktop/);
+  assert.match(terminal, /Exec=\/usr\/bin\/xterm/);
 });
 
 test('invalid owner desktop gate is rejected before installing or changing any runtime', async () => {

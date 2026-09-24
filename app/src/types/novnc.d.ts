@@ -11,7 +11,7 @@ declare module '@novnc/novnc' {
     compressionLevel: number;
     background: string;
     disconnect(): void;
-    focus(): void;
+    focus(options?: FocusOptions): void;
     blur(): void;
     sendKey(keysym: number, code?: string, down?: boolean): void;
   }

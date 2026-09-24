@@ -351,7 +351,16 @@ export default function DesktopViewer({ controlId, observe, onControlLost }: {
   return <section className={`business-desktop${pan && zoom !== null ? ' is-panning' : ''}`} aria-label={t('browser.desktop.screen')}
     onKeyDown={event => event.stopPropagation()} onKeyUp={event => event.stopPropagation()}>
     <div className="business-desktop-stage-shell">
-      <div className="business-desktop-stage" ref={canvas} aria-label={t('browser.desktop.screen')} />
+      <div className="business-desktop-stage" ref={canvas} aria-label={t('browser.desktop.screen')}
+        onPointerDownCapture={() => {
+          // noVNC normally focuses its canvas from `mousedown`. Pointer
+          // capture makes the ownership transition reliable as well: after a
+          // read-only observer unmounts, the first click in the newly-created
+          // control viewer always gives physical-keyboard focus to that
+          // viewer before the browser or dialog can retain it. Pan mode is a
+          // local gesture and must not steal keyboard focus from the toolbar.
+          if (!watching && !panRef.current && ready.current) rfb.current?.focus({ preventScroll: true });
+        }} />
       {phase !== 'ready' && <div className="business-desktop-status" role="status">
         {phase !== 'failed' && <span className="business-desktop-loading-indicator" aria-hidden="true" />}
         <p>{t(`browser.desktop.${phase}`)}</p>

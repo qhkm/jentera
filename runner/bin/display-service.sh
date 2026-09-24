@@ -17,6 +17,8 @@ display="${AISAR_DISPLAY_NUM:-99}"
 screen_geometry="${AISAR_DISPLAY_GEOMETRY:-1280x800x24}"
 
 state_dir="$(dirname "$display_env")"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+tint2_config="${AISAR_TINT2_CONFIG:-$script_dir/jentera-tint2rc}"
 install -d -m 700 "$state_dir"
 dbus_address_file="$state_dir/.dbus.address"
 dbus_pid_file="$state_dir/.dbus.pid"
@@ -82,7 +84,12 @@ publish() {
 start_panel() {
   [[ "${AISAR_DESKTOP_VIEW:-0}" == "1" ]] || return 0
   is_alive "$tint2_pid_file" && return 0
-  DISPLAY=":$display" tint2 >/dev/null 2>&1 &
+  # Use the reviewed panel instead of tint2's first-run generated config. It
+  # keeps the desktop compact while exposing the installed Terminal as a real
+  # application beside the running-browser task button.
+  install -d -m 700 "$state_dir/applications"
+  install -m 600 "$script_dir/jentera-terminal.desktop" "$state_dir/applications/jentera-terminal.desktop"
+  XDG_DATA_HOME="$state_dir" DISPLAY=":$display" tint2 -c "$tint2_config" >/dev/null 2>&1 &
   echo $! > "$tint2_pid_file"
 }
 
