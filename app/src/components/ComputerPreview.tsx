@@ -143,7 +143,7 @@ export function ComputerPreview({ runId, onTakeControl, takeControlLabel = 'Take
       {mode === 'desktop' ? <>
         {/* The whole screen, not one page, so nothing is filtered out of it. */}
         <div className="computer-preview-live-header">
-          <p>Live read-only view · visible only to the owner. Take control to click and type while Jentera pauses.</p>
+          <div><strong>Jentera is working · Live read-only view</strong><p>Watch without interrupting it. Take control only when you need to click or type.</p></div>
           {onTakeControl && <button type="button" className="ask-inline-action" onClick={() => {
             // Tear down the observer before the control dialog claims its
             // exclusive lease. The two sockets must never drive one desktop.

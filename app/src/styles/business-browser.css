@@ -34,7 +34,7 @@
 }
 .business-browser-dialog[open] { display: flex; flex-direction: column; }
 .business-browser-dialog::backdrop { background: rgb(0 0 0 / .72); backdrop-filter: blur(6px); }
-.business-browser-header { display: flex; flex: 0 0 auto; align-items: center; gap: 12px; padding: 20px 24px; border-bottom: 1px solid var(--rail); }
+.business-browser-header { position: relative; display: flex; flex: 0 0 auto; align-items: center; gap: 12px; padding: 20px 24px; border-bottom: 1px solid var(--rail); }
 .business-browser-brand,
 .business-browser-empty-icon { display: grid; place-items: center; color: var(--accent-green); background: rgb(var(--accent-green-rgb) / .1); }
 .business-browser-brand { width: 44px; height: 44px; flex: 0 0 44px; border-radius: 14px; }
@@ -42,9 +42,21 @@
 .business-browser-heading h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.025em; }
 .business-browser-heading p { margin: 3px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.4; }
 .business-browser-state { display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; border-radius: 999px; background: var(--bg-card); color: var(--text-secondary); font-size: 11px; white-space: nowrap; }
-.business-browser-state > span { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: currentColor; }
+.business-browser-state > span:first-child { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: currentColor; }
 .business-browser-state.is-control,
 .business-browser-state.is-paused { background: rgb(var(--accent-green-rgb) / .1); color: var(--accent-green); }
+.business-browser-state.is-reconnecting { background: rgb(226 166 55 / .1); color: rgb(226 166 55); }
+.business-browser-health { position: relative; flex: 0 0 auto; }
+.business-browser-health > summary { list-style: none; cursor: pointer; }
+.business-browser-health > summary::-webkit-details-marker { display: none; }
+.business-browser-health-panel { position: absolute; z-index: 12; top: calc(100% + 8px); right: 0; width: min(280px, calc(100vw - 28px)); padding: 8px 12px; border: 1px solid var(--border-light); border-radius: 12px; background: color-mix(in srgb, var(--bg-card) 97%, transparent); box-shadow: 0 14px 40px rgb(0 0 0 / .32); backdrop-filter: blur(16px); }
+.business-browser-health-panel p { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 30px; margin: 0; color: var(--text-muted); font-size: 11px; }
+.business-browser-health-panel p + p { border-top: 1px solid var(--rail); }
+.business-browser-health-panel strong { color: var(--text-secondary); font-weight: 500; text-align: right; }
+.business-browser-health-panel strong.is-connected,
+.business-browser-health-panel strong.is-ready { color: var(--accent-green); }
+.business-browser-health-panel strong.is-reconnecting { color: rgb(226 166 55); }
+.business-browser-health-panel strong.is-attention { color: rgb(229 95 95); }
 .business-browser-icon-button { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 44px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--text-secondary); }
 .business-browser-icon-button:hover:not(:disabled) { background: var(--bg-card-hover); color: var(--text); }
 .business-browser-dialog.is-fullscreen { position: fixed; z-index: 300; inset: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; border: 0; border-radius: 0; }
@@ -234,7 +246,7 @@
   }
   .business-browser-dialog.has-desktop .business-browser-brand { width: 32px; height: 32px; flex-basis: 32px; border-radius: 10px; }
   .business-browser-dialog.has-desktop .business-browser-heading p,
-  .business-browser-dialog.has-desktop .business-browser-state { display: none; }
+  .business-browser-dialog.has-desktop .business-browser-health { display: none; }
   .business-browser-dialog.has-desktop .business-browser-fullscreen { grid-column: 3; grid-row: 1; }
   .business-browser-dialog.has-desktop .business-browser-close { grid-column: 4; grid-row: 1; }
   .business-browser-body.has-desktop { display: flex; flex: 1; min-height: 0; overflow: hidden; padding: 0; }

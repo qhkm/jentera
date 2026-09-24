@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { RepositoryProvider } from '@/lib/repo/context';
@@ -138,6 +138,12 @@ it('claims on open and shows a full desktop without duplicate fake Chrome contro
   expect(browser.mock.calls.some(([command]) => command?.action === 'frame')).toBe(false);
   expect(mocks.calls[0][1]).toBe('wss://api.example.test/api/browser/desktop');
   expect(JSON.stringify(mocks.calls[0].slice(1))).not.toContain('runnerKey');
+  await user.click(await screen.findByText('You’re in control'));
+  const health = screen.getByLabelText('Computer status');
+  expect(within(health).getByText('Private computer').nextSibling).toHaveTextContent('Ready');
+  expect(within(health).getByText('Live screen').nextSibling).toHaveTextContent('Connected');
+  expect(within(health).getByText('Control').nextSibling).toHaveTextContent('Yours');
+  expect(within(health).getByText('Your input').nextSibling).toHaveTextContent('Ready');
   await user.click(screen.getByRole('button', { name: 'Close computer view' }));
   await waitFor(() => expect(mocks.clients[0].disconnect).toHaveBeenCalled());
   expect(browser.mock.calls.some(([command]) => command?.action === 'release')).toBe(true);

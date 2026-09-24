@@ -138,7 +138,7 @@ const ULTRA_IGNORES = new Map([
   ['provider_routing', 'no equivalent anywhere in Ultra; OpenRouter-specific routing'],
   ['browser', 'cdp_url maps to Ultra\'s CHROME_CDP_URL env; hold_file has no equivalent, '
     + 'so the owner-holds-the-browser guard would be lost'],
-  ['computer_use', 'cua_telemetry and permissions have no Ultra settings'],
+  ['computer_use', 'cua_telemetry has no Ultra setting'],
   ['approvals', 'Ultra hardcodes a 300s gateway approval timeout with no config path'],
 ]);
 
@@ -158,6 +158,8 @@ test('every config key this runner writes is one Ultra reads, or a known gap', a
   /* cua_enabled=1 above on purpose: computer_use is only written then, and a
      ratchet that never sees the key cannot protect it. */
   assert.ok('computer_use' in config, 'the CUA path must be exercised here');
+  assert.deepEqual(config.computer_use, { cua_telemetry: false },
+    'do not claim a permission policy that the pinned Hermes release ignores');
 
   const unclassified = Object.keys(config)
     .filter((key) => !ULTRA_READS.has(key) && !ULTRA_IGNORES.has(key));
@@ -663,6 +665,17 @@ test('computer use is gated, pinned, and proven before the runtime attests it', 
   assert.match(source, /xvfb openbox dbus at-spi2-core/);
   assert.match(source, /hermes" computer-use doctor/);
   assert.match(source, /cua_doctor_ready/);
+
+  // Bootstrap proves the binary in isolation; the service then repeats the
+  // doctor against the exact DISPLAY/session bus inherited by the gateway.
+  // Otherwise a throwaway Xvfb can be green while real computer use is dead.
+  const hermesService = await readFile(HERMES_SERVICE, 'utf8');
+  const sourceDisplayAt = hermesService.indexOf('source "$display_env"');
+  const serviceDoctorAt = hermesService.indexOf('/venv/bin/hermes computer-use doctor');
+  const gatewayAt = hermesService.indexOf('gateway run --replace');
+  assert.ok(sourceDisplayAt > 0 && serviceDoctorAt > sourceDisplayAt && gatewayAt > serviceDoctorAt);
+  assert.match(hermesService, /CUA_DRIVER_RS_TELEMETRY_ENABLED=0/);
+  assert.match(hermesService, /computer-use doctor failed in the gateway display environment/);
 
   // The capability is attested only after the doctor passes on the same run,
   // and the display service is created only when enabled.

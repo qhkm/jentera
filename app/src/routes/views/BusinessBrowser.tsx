@@ -7,7 +7,7 @@ import type { BrowserCommand, BusinessBrowserState, ProcedureDraft } from '@/lib
 import { BrowserInput, type DirectInputState } from '@/lib/browser-input';
 import { useT } from '@/i18n/I18nProvider';
 import '@/styles/business-browser.css';
-import DesktopViewer from './DesktopViewer';
+import DesktopViewer, { type DesktopConnectionPhase } from './DesktopViewer';
 
 type Action = BrowserCommand extends infer C ? C extends BrowserCommand ? Omit<C, 'controlId'> : never : never;
 
@@ -72,6 +72,7 @@ export default function BusinessBrowser({
   const [recording, setRecording] = useState(false);
   const [procedureDraft, setProcedureDraft] = useState<ProcedureDraft | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [desktopPhase, setDesktopPhase] = useState<DesktopConnectionPhase | 'idle'>('idle');
   const direct = useRef<BrowserInput | null>(null);
   const dispatch = useRef(send);
   dispatch.current = send;
@@ -248,12 +249,14 @@ export default function BusinessBrowser({
         handBackNeeded.current = true;
         recoverySupported.current = next.controlRecovery === 1 || recoverySupported.current;
         setControlConflict(false);
+        setDesktopPhase(next.desktopView === 1 ? 'connecting' : 'idle');
         setState(next); onPauseChange?.(true);
         if (generation === viewGeneration.current) { setControlled(true); setHandedBack(false); }
       }
       if (action.action === 'release') {
         handBackNeeded.current = false;
         setState(next); setControlled(false); setFrame(null); setText(''); setShowText(false);
+        setDesktopPhase('idle');
         setRecording(false); setTeachSetup(false);
         if (generation === viewGeneration.current) setHandedBack(true);
         onPauseChange?.(false);
@@ -314,6 +317,7 @@ export default function BusinessBrowser({
     setFullscreen(false);
     viewGeneration.current += 1;
     dialog.current?.close(); setOpen(false); setControlled(false); setControlConflict(false); setFrame(null); setText(''); setShowText(false); setUrl(''); setZoom(defaultBrowserZoom());
+    setDesktopPhase('idle');
     setTeachSetup(false); setRecording(false); setProcedureDraft(null); setObjective('');
     closeRequested.current = false;
   }
@@ -335,7 +339,16 @@ export default function BusinessBrowser({
   }
 
   const openBrowser = () => { claimOnOpen.current = true; setError(''); setHandedBack(false); setOpen(true); };
-  const mode = statusLoading || claiming ? 'checking' : controlled ? 'control' : state.paused ? 'paused' : 'view';
+  const mode = statusLoading || claiming || (controlled && desktopEnabled && desktopPhase === 'connecting') ? 'checking'
+    : controlled && desktopEnabled && desktopPhase === 'reconnecting' ? 'reconnecting'
+      : controlled ? 'control' : state.paused ? 'paused' : 'view';
+  const screenHealth = !desktopEnabled ? 'browser'
+    : controlled ? desktopPhase === 'ready' ? 'connected'
+      : desktopPhase === 'failed' ? 'attention'
+        : desktopPhase === 'reconnecting' ? 'reconnecting' : 'connecting'
+      : 'ready';
+  const controlHealth = controlled ? 'yours' : state.paused ? 'waiting' : 'jentera';
+  const inputHealth = controlled && (!desktopEnabled || desktopPhase === 'ready') ? 'ready' : 'off';
   const tabName = (origin: string) => {
     try { return new URL(origin).hostname || t('browser.blank'); } catch { return t('browser.blank'); }
   };
@@ -364,9 +377,17 @@ export default function BusinessBrowser({
           <h2 id={titleId}>{t('browser.title')}</h2>
           <p id={descriptionId}>{t('browser.subtitle')}</p>
         </div>
-        <span className={`business-browser-state is-${mode}`} role="status">
-          <span aria-hidden="true" />{t(`browser.state.${mode}`)}
-        </span>
+        <details className="business-browser-health">
+          <summary className={`business-browser-state is-${mode}`}>
+            <span aria-hidden="true" /><span role="status">{t(`browser.state.${mode}`)}</span>
+          </summary>
+          <div className="business-browser-health-panel" aria-label={t('browser.health.label')}>
+            <p><span>{t('browser.health.computer')}</span><strong>{t(`browser.health.${desktopEnabled ? 'ready' : state.enabled ? 'browser' : 'checking'}`)}</strong></p>
+            <p><span>{t('browser.health.screen')}</span><strong className={`is-${screenHealth}`}>{t(`browser.health.${screenHealth}`)}</strong></p>
+            <p><span>{t('browser.health.control')}</span><strong>{t(`browser.health.${controlHealth}`)}</strong></p>
+            <p><span>{t('browser.health.input')}</span><strong>{t(`browser.health.${inputHealth}`)}</strong></p>
+          </div>
+        </details>
         {controlled && desktopEnabled && <button type="button" className="business-browser-icon-button business-browser-fullscreen" aria-label={t(fullscreen ? 'browser.fullscreen.exit' : 'browser.fullscreen.enter')} title={t(fullscreen ? 'browser.fullscreen.exit' : 'browser.fullscreen.enter')} onClick={() => void toggleFullscreen()}>
           {fullscreen ? <CornersIn size={20} aria-hidden="true" /> : <CornersOut size={20} aria-hidden="true" />}
         </button>}
@@ -414,8 +435,9 @@ export default function BusinessBrowser({
           <div><strong>{t('browser.recover.title')}</strong><p>{t('browser.recover.detail')}</p></div>
           <Button type="button" disabled={busy || statusLoading} onClick={() => command({ action: 'reclaim' })}>{t('browser.recover.action')}<ArrowRight size={16} aria-hidden="true" /></Button>
         </div>}
-        {controlled && desktopEnabled ? <DesktopViewer controlId={controlId.current} onControlLost={() => {
+        {controlled && desktopEnabled ? <DesktopViewer controlId={controlId.current} onPhaseChange={setDesktopPhase} onControlLost={() => {
           resetTyping(); setControlled(false); setFrame(null); setText(''); setShowText(false);
+          setDesktopPhase('failed');
           setError(t('browser.desktop.lost'));
         }} /> : <div className={`business-browser-workspace ${controlled ? 'is-controlled' : ''}`}>
           <div className="business-browser-window">
