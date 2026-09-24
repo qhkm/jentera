@@ -26,13 +26,21 @@ describe('AppsView', () => {
 
   it('lists an installed app with its waiting requests, and does not offer it again', async () => {
     const api = fakeAppsApi({
-      list: vi.fn(async () => ({ apps: [{ key: 'bookings' as const, state: 'active' as const, publicUrl: 'https://s.test/b/x', pending: 2 }], available: ['bookings' as const] })),
+      list: vi.fn(async () => ({ apps: [{ key: 'bookings' as const, state: 'active' as const, accepting: true, publicUrl: 'https://s.test/b/x', pending: 2 }], available: ['bookings' as const] })),
     });
     const { onOpen, user } = mount(api);
     await user.click(await screen.findByRole('button', { name: /Bookings.*2 waiting/ }));
     expect(onOpen).toHaveBeenCalledWith({ app: 'bookings' });
     expect(screen.queryByRole('button', { name: /Set up/ })).toBeNull();
     expect(screen.getByText('Every available app is set up.')).toBeInTheDocument();
+  });
+
+  it('says Paused, not live, once the owner has stopped taking bookings', async () => {
+    mount(fakeAppsApi({
+      list: vi.fn(async () => ({ apps: [{ key: 'bookings' as const, state: 'active' as const, accepting: false, publicUrl: 'https://s.test/b/x', pending: 0 }], available: ['bookings' as const] })),
+    }));
+    expect(await screen.findByRole('button', { name: /Bookings.*Paused/ })).toBeInTheDocument();
+    expect(screen.queryByText('Your booking page is live')).toBeNull();
   });
 
   it('says so when the apps cannot be loaded, and retries', async () => {

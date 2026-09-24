@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import BookingsApp from '../BookingsApp';
@@ -17,6 +17,8 @@ async function mount(api = fakeAppsApi(), section: string | null = null) {
   render(<RepositoryProvider repository={repo}><I18nProvider><AppsProvider api={api}>
     <BookingsApp bookingId={null} section={section} onSection={onSection} onBack={onBack} onConnectCalendar={vi.fn()} />
   </AppsProvider></I18nProvider></RepositoryProvider>);
+  // LocalRepository.load() resolves on a microtask; flush it inside act.
+  await act(async () => {});
   return { api, onSection, onBack, user: userEvent.setup() };
 }
 
@@ -43,6 +45,17 @@ describe('BookingsApp', () => {
   it('shows the booking page tab from the URL', async () => {
     await mount(fakeAppsApi(), 'page');
     expect(await screen.findByRole('heading', { name: 'Your booking page' })).toBeInTheDocument();
+  });
+
+  it('refreshes Home and Apps once the booking page switch is saved', async () => {
+    const api = fakeAppsApi({
+      saveBookingsConfig: vi.fn(async () => configFixture({ settings: { ...configFixture().settings!, accepting: false } })),
+    });
+    const { user } = await mount(api, 'page');
+    await waitFor(() => expect(api.list).toHaveBeenCalledTimes(1));
+    await user.click(await screen.findByRole('checkbox', { name: 'Taking bookings' }));
+    expect(api.saveBookingsConfig).toHaveBeenCalledWith(expect.objectContaining({ accepting: false, version: 3 }));
+    await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
   });
 
   it('says so when Bookings cannot be loaded, and retries', async () => {

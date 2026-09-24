@@ -44,6 +44,17 @@ async function mount(children: ReactNode, repo = new LocalRepository(), entry = 
     </MemoryRouter>,
   );
 }
+const INSTALLED = {
+  apps: [{ key: 'bookings' as const, state: 'active' as const, accepting: true, publicUrl: 'https://s.test/b/x', pending: 0 }],
+  available: ['bookings' as const],
+};
+/** Answers the bell's notification list with whatever count `unread` gives now; every other request fails as offline. */
+function serveNotifications(unread: () => number) {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    if (!String(input).includes('/api/notifications')) throw new TypeError('offline');
+    return new Response(JSON.stringify({ ok: true, notifications: [], unread: unread(), nextCursor: null }));
+  }));
+}
 async function sidebarQueries() {
   await waitFor(() => expect(document.querySelector('.dashboard-sidebar')).not.toBeNull());
   return within(document.querySelector('.dashboard-sidebar') as HTMLElement);
@@ -312,7 +323,7 @@ describe('workspace navigation', () => {
   });
   it('opens a booking straight from its notification link', async () => {
     const apps = fakeAppsApi({
-      list: vi.fn(async () => ({ apps: [{ key: 'bookings' as const, state: 'active' as const, publicUrl: 'https://s.test/b/x', pending: 0 }], available: ['bookings' as const] })),
+      list: vi.fn(async () => ({ apps: [{ key: 'bookings' as const, state: 'active' as const, accepting: true, publicUrl: 'https://s.test/b/x', pending: 0 }], available: ['bookings' as const] })),
       booking: vi.fn(async () => bookingFixture({ startsAt: '2026-12-04T02:00:00.000Z' })),
     });
     const repo = Object.assign(new LocalRepository(), { apps });
@@ -323,10 +334,30 @@ describe('workspace navigation', () => {
   });
   it('puts an Alerts bell in the top bar only once an app is installed', async () => {
     const withApp = fakeAppsApi({
-      list: vi.fn(async () => ({ apps: [{ key: 'bookings' as const, state: 'active' as const, publicUrl: 'https://s.test/b/x', pending: 0 }], available: ['bookings' as const] })),
+      list: vi.fn(async () => ({ apps: [{ key: 'bookings' as const, state: 'active' as const, accepting: true, publicUrl: 'https://s.test/b/x', pending: 0 }], available: ['bookings' as const] })),
     });
     await mount(<Dashboard />, Object.assign(new LocalRepository(), { apps: withApp }), '/app', { appsVersion: 1 });
     expect(await screen.findByRole('button', { name: 'Alerts' })).toBeInTheDocument();
+  });
+  it('names the bell with its unread count, so the badge is not the only way to know', async () => {
+    serveNotifications(() => 3);
+    const withApp = fakeAppsApi({ list: vi.fn(async () => INSTALLED) });
+    await mount(<Dashboard />, Object.assign(new LocalRepository(), { apps: withApp }), '/app', { appsVersion: 1 });
+    const bell = await screen.findByRole('button', { name: 'Alerts, 3 unread' });
+    expect(within(bell).getByText('3')).toHaveAttribute('aria-hidden', 'true');
+  });
+  it('re-reads apps when a new alert arrives while the app stays open', async () => {
+    let unread = 0;
+    serveNotifications(() => unread);
+    const withApp = fakeAppsApi({ list: vi.fn(async () => INSTALLED) });
+    await mount(<Dashboard />, Object.assign(new LocalRepository(), { apps: withApp }), '/app', { appsVersion: 1 });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Alerts' }));
+    expect(withApp.list).toHaveBeenCalledTimes(1);
+    unread = 1;
+    await user.click(await screen.findByRole('button', { name: 'Refresh notifications' }));
+    expect(await screen.findByRole('button', { name: 'Alerts, 1 unread' })).toBeInTheDocument();
+    await waitFor(() => expect(withApp.list).toHaveBeenCalledTimes(2));
   });
   it('shows no bell while nothing is installed', async () => {
     const empty = fakeAppsApi();

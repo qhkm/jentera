@@ -4,7 +4,9 @@ import type { AppsApi, AppsList, Booking, InstalledApp } from './types';
 
 /* One source for the business's apps, so Home, the bell, the daily brief and
    the Bookings screen agree. It loads when apps are on, again when the app
-   returns to the foreground, and again after any change (refresh). */
+   returns to the foreground, again when the unread alerts count rises (a new
+   booking request arrives as an alert, and the bell polls while the app stays
+   on screen), and again after any change (refresh). */
 
 export interface AppsState {
   /** Apps are on for this owner and the repository can reach them. */
@@ -23,7 +25,12 @@ const OFF: AppsState = {
 };
 const AppsContext = createContext<AppsState>(OFF);
 
-export function AppsProvider({ api, children }: { api: AppsApi | null; children: ReactNode }) {
+export function AppsProvider({ api, unread = null, children }: {
+  api: AppsApi | null;
+  /** The bell's unread count, or null while it is unknown (loading). */
+  unread?: number | null;
+  children: ReactNode;
+}) {
   const [list, setList] = useState<AppsList | null>(null);
   const [pending, setPending] = useState<Booking[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -62,6 +69,17 @@ export function AppsProvider({ api, children }: { api: AppsApi | null; children:
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [api, refresh]);
+
+  /* The first known count is what the mount-time load already covered; after
+     that, each rise is something new. A count that falls (read) or goes
+     unknown (a poll in flight) is not. */
+  const lastUnread = useRef<number | null>(null);
+  useEffect(() => {
+    if (unread === null) return;
+    const before = lastUnread.current;
+    lastUnread.current = unread;
+    if (before !== null && unread > before) void refresh();
+  }, [unread, refresh]);
 
   const value: AppsState = api ? { enabled: true, api, list, pending, loading, error, refresh } : OFF;
   return <AppsContext.Provider value={value}>{children}</AppsContext.Provider>;

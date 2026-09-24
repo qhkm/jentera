@@ -1,5 +1,5 @@
 import type {
-  AppsApi, AppsList, Booking, BookingActionResult, BookingsConfig, BookingsConfigInput, BookingsPage, BookingsQuery,
+  AppsApi, AppsList, Booking, BookingActionResult, BookingsConfig, BookingsConfigInput, BookingsPage, BookingsQuery, InstalledApp,
 } from './types';
 
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
@@ -52,6 +52,17 @@ async function call(path: string, write?: { method: 'POST' | 'PUT'; body: unknow
   return data;
 }
 
+/** One installed app, with `accepting` defaulted for a Worker that predates it. */
+function installedApp(value: unknown): InstalledApp | null {
+  if (!object(value) || value.key !== 'bookings' || (value.state !== 'active' && value.state !== 'paused')
+    || typeof value.publicUrl !== 'string' || !Number.isInteger(value.pending) || Number(value.pending) < 0
+    || !(value.accepting === undefined || typeof value.accepting === 'boolean')) return null;
+  return {
+    key: value.key, state: value.state, accepting: value.accepting ?? true,
+    publicUrl: value.publicUrl, pending: value.pending as number,
+  };
+}
+
 function isBooking(value: unknown): value is Booking {
   return object(value) && typeof value.id === 'string' && UUID.test(value.id)
     && typeof value.reference === 'string' && typeof value.customerName === 'string'
@@ -87,8 +98,9 @@ function action(data: Record<string, unknown>): BookingActionResult {
 export class RemoteAppsApi implements AppsApi {
   async list(): Promise<AppsList> {
     const data = await call('');
-    if (!Array.isArray(data.apps) || !Array.isArray(data.available)) throw new AppsError('INVALID_RESPONSE');
-    return { apps: data.apps as AppsList['apps'], available: data.available as AppsList['available'] };
+    const apps = Array.isArray(data.apps) ? data.apps.map(installedApp) : null;
+    if (!apps || apps.some((app) => app === null) || !Array.isArray(data.available)) throw new AppsError('INVALID_RESPONSE');
+    return { apps: apps as InstalledApp[], available: data.available as AppsList['available'] };
   }
 
   async bookingsConfig(): Promise<BookingsConfig> {

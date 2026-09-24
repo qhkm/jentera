@@ -228,7 +228,7 @@ export default function Dashboard() {
 
   const [computerStatusTarget, setComputerStatusTarget] = useState<HTMLDivElement | null>(null);
   return (
-    <AppsProvider api={appsEnabled ? repository.apps ?? null : null}>
+    <AppsProvider api={appsEnabled ? repository.apps ?? null : null} unread={notifications.loading ? null : notifications.unread}>
     <Shell
       accountAccessory={<div className="workspace-header-accessories">
         {signedIn && <Link className="workspace-upgrade-link" to="/subscribe">

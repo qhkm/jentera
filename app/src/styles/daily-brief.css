@@ -40,6 +40,7 @@
 .brief-bookings li { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 14px 0; min-width: 0; }
 .brief-booking-line { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .brief-bookings li .field-error { flex-basis: 100%; }
+.brief-bookings-note { color: var(--text-secondary); }
 .brief-all { display: flex; align-items: center; gap: 8px; align-self: flex-start; min-height: 44px; margin-top: auto; font-size: var(--font-body-size); }
 .brief-all:hover, .brief-records li button:hover strong, .brief-refresh:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 4px; }
 .brief-no-records { color: var(--text-secondary); line-height: 1.8; padding-block: 14px; }

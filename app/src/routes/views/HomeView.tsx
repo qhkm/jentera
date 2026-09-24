@@ -32,6 +32,7 @@ import { useActivity } from '@/hooks/useActivity';
 import type { ConnectionsState } from '@/hooks/useConnections';
 import { useSnapshot } from '@/lib/repo';
 import { useApps, useHomeApps } from '@/lib/apps/useApps';
+import { appLive } from '@/lib/apps/bookings';
 import { DailyBrief } from '@/components/DailyBrief';
 import { HomeGoals } from '@/components/HomeGoals';
 import { useBusinessClock } from '@/hooks/useBusinessClock';
@@ -169,7 +170,7 @@ export default function HomeView({
                 {app.pending > 0 && <span className="home-action-count" aria-hidden="true">{app.pending}</span>}
               </span>
               <span><strong>{t(`apps.${app.key}.name`)}</strong>
-                <small>{app.pending > 0 ? t('apps.pending', { n: app.pending }) : t(app.state === 'paused' ? 'apps.paused' : 'apps.ready')}</small></span>
+                <small>{app.pending > 0 ? t('apps.pending', { n: app.pending }) : t(appLive(app) ? 'apps.ready' : 'apps.paused')}</small></span>
             </button>
           ))}
           {homeApps.length > 3 ? (
@@ -231,10 +232,15 @@ export default function HomeView({
         bookings={homeApps && apps.api && apps.pending ? {
           items: apps.pending,
           onConfirm: async (id) => {
-            const result = await apps.api!.decide(id, 'confirm');
-            void apps.refresh();
-            return result.booking;
+            /* Refresh either way, so Home's count and the list agree with
+               whatever the server now holds. */
+            try {
+              return (await apps.api!.decide(id, 'confirm')).booking;
+            } finally {
+              void apps.refresh();
+            }
           },
+          onReread: (id) => apps.api!.booking(id),
           onOpenAll: () => onOpenApp?.('bookings'),
         } : null} />}
 

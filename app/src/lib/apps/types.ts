@@ -6,7 +6,10 @@ export type AppKey = 'bookings';
 
 export interface InstalledApp {
   key: AppKey;
+  /** An operator's pause; the owner cannot change it. */
   state: 'active' | 'paused';
+  /** The owner's own Taking bookings switch. A Worker that predates it is read as true. */
+  accepting: boolean;
   publicUrl: string;
   /** Pending requests whose time has not started. */
   pending: number;

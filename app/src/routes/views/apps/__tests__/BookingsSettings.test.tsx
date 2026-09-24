@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import BookingsSettings, { slugFrom } from '../BookingsSettings';
@@ -101,6 +101,15 @@ describe('BookingsSettings', () => {
     expect(api.saveBookingsConfig.mock.calls[0][0].services[0].hours).toEqual([
       { weekday: 1, opens: '09:00', closes: '12:00' }, { weekday: 1, opens: '14:00', closes: '17:00' },
     ]);
+  });
+
+  it('says before saving that existing bookings are kept, but not while setting up', async () => {
+    const kept = 'Existing bookings are kept. Changing hours or turning a service off affects new requests only.';
+    await mount(configFixture());
+    expect(screen.getByText(kept)).toBeInTheDocument();
+    cleanup();
+    await mount(NEW);
+    expect(screen.queryByText(kept)).toBeNull();
   });
 
   it('keeps advanced settings folded and shows the link it will publish', async () => {

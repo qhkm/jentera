@@ -18,7 +18,7 @@ describe('AppsProvider', () => {
 
   it('loads installed apps and pending requests, and refreshes when the app returns to the foreground', async () => {
     const api = fakeAppsApi({
-      list: vi.fn(async () => ({ apps: [{ key: 'bookings' as const, state: 'active' as const, publicUrl: 'https://s.test/b/x', pending: 1 }], available: ['bookings' as const] })),
+      list: vi.fn(async () => ({ apps: [{ key: 'bookings' as const, state: 'active' as const, accepting: true, publicUrl: 'https://s.test/b/x', pending: 1 }], available: ['bookings' as const] })),
       bookings: vi.fn(async ({ from }: BookingsQuery) => ({ bookings: from ? [bookingFixture({ startsAt: new Date(Date.now() + 86_400_000).toISOString() })] : [], nextCursor: null })),
     });
     render(<AppsProvider api={api}><Probe /></AppsProvider>);
@@ -30,6 +30,26 @@ describe('AppsProvider', () => {
       document.dispatchEvent(new Event('visibilitychange'));
     });
     await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+  });
+
+  it('refreshes once each time the unread alerts count rises, and not while it is unknown or falls', async () => {
+    const api = fakeAppsApi();
+    const view = (unread: number | null) => <AppsProvider api={api} unread={unread}><Probe /></AppsProvider>;
+    const { rerender } = render(view(null));
+    await waitFor(() => expect(api.list).toHaveBeenCalledTimes(1));
+    // The first known count is what the mount-time load already covered.
+    await act(async () => { rerender(view(2)); });
+    await act(async () => { rerender(view(2)); });
+    expect(api.list).toHaveBeenCalledTimes(1);
+    await act(async () => { rerender(view(3)); });
+    await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+    // A poll in flight reads as unknown; the same count after it is no rise.
+    await act(async () => { rerender(view(null)); });
+    await act(async () => { rerender(view(3)); });
+    await act(async () => { rerender(view(1)); });
+    expect(api.list).toHaveBeenCalledTimes(2);
+    await act(async () => { rerender(view(2)); });
+    await waitFor(() => expect(api.list).toHaveBeenCalledTimes(3));
   });
 
   it('keeps today\'s Home when nothing is installed', async () => {

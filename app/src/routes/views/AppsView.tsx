@@ -2,6 +2,7 @@ import { CalendarCheck } from '@phosphor-icons/react';
 import { Button, Card, LoadingState } from '@/components/ui';
 import { useT } from '@/i18n/I18nProvider';
 import { useApps } from '@/lib/apps/useApps';
+import { appLive } from '@/lib/apps/bookings';
 import type { AppKey } from '@/lib/apps/types';
 import BookingsApp from './apps/BookingsApp';
 
@@ -53,7 +54,7 @@ export default function AppsView({ app, bookingId, section, onOpen, onConnectCal
               <span className="apps-tile-icon"><AppIcon size={24} weight="duotone" aria-hidden="true" /></span>
               <span className="apps-tile-copy">
                 <strong>{t(`apps.${app.key}.name`)}</strong>
-                <small>{app.pending > 0 ? t('apps.pending', { n: app.pending }) : t(app.state === 'paused' ? 'apps.paused' : 'apps.ready')}</small>
+                <small>{app.pending > 0 ? t('apps.pending', { n: app.pending }) : t(appLive(app) ? 'apps.ready' : 'apps.paused')}</small>
               </span>
             </button>;
           })}

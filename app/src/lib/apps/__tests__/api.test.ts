@@ -19,10 +19,20 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('RemoteAppsApi', () => {
   it('lists installed and available apps', async () => {
-    answer(200, { ok: true, apps: [{ key: 'bookings', state: 'active', publicUrl: 'https://s.test/b/seido', pending: 2 }], available: ['bookings'] });
+    answer(200, { ok: true, apps: [{ key: 'bookings', state: 'active', accepting: false, publicUrl: 'https://s.test/b/seido', pending: 2 }], available: ['bookings'] });
     expect(await new RemoteAppsApi().list()).toEqual({
-      apps: [{ key: 'bookings', state: 'active', publicUrl: 'https://s.test/b/seido', pending: 2 }], available: ['bookings'],
+      apps: [{ key: 'bookings', state: 'active', accepting: false, publicUrl: 'https://s.test/b/seido', pending: 2 }], available: ['bookings'],
     });
+  });
+
+  it('reads a list from a Worker that does not say whether bookings are taken as taking them', async () => {
+    answer(200, { ok: true, apps: [{ key: 'bookings', state: 'active', publicUrl: 'https://s.test/b/seido', pending: 0 }], available: ['bookings'] });
+    expect((await new RemoteAppsApi().list()).apps[0].accepting).toBe(true);
+  });
+
+  it('rejects an installed app that is not what the Worker promises', async () => {
+    answer(200, { ok: true, apps: [{ key: 'bookings', state: 'active', accepting: 'no', publicUrl: 'https://s.test/b/seido', pending: 0 }], available: ['bookings'] });
+    await expect(new RemoteAppsApi().list()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
   });
 
   it('asks for a window of bookings with the filters in the query', async () => {

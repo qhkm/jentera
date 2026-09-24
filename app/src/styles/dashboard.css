@@ -776,7 +776,7 @@
 /* ── Apps and Bookings ─────────────────────────────────────────────── */
 .apps-view, .bookings-app { display: grid; gap: 20px; }
 .apps-heading h1, .bookings-app-heading h1 { font-size: 24px; font-weight: 650; }
-.apps-heading p, .bookings-lead, .bookings-more p, .booking-page-preview p, .apps-none, .bookings-empty { color: var(--text-secondary); }
+.apps-heading p, .bookings-lead, .bookings-more p, .booking-page-preview p, .apps-none, .bookings-empty, .bookings-kept { color: var(--text-secondary); }
 .apps-section { display: grid; gap: 12px; }
 .apps-section h2 { font-size: 15px; font-weight: 600; }
 .apps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 12px; }

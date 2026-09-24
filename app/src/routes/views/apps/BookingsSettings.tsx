@@ -241,6 +241,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
       <p>{t(problem.key)}</p>
       {problem.reload && <Button type="button" variant="outline" onClick={onReload}>{t('bookings.settings.reload')}</Button>}
     </div>}
+    {installed && <p className="bookings-kept">{t('bookings.settings.kept')}</p>}
     <Button type="submit" disabled={saving}>{t(installed ? 'bookings.settings.save' : 'bookings.setup.publish')}</Button>
   </form>;
 }

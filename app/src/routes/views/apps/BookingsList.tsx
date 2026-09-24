@@ -3,7 +3,9 @@ import { Button, Card, Chip, LoadingState } from '@/components/ui';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useApps } from '@/lib/apps/useApps';
 import { AppsError } from '@/lib/apps/api';
-import { actionErrorKey, addDays, groupByDay, loadPendingBookings, loadWindow, WINDOW_DAYS } from '@/lib/apps/bookings';
+import {
+  actionErrorKey, addDays, groupByDay, loadPendingBookings, loadWindow, unconfirmedErrorKey, WINDOW_DAYS,
+} from '@/lib/apps/bookings';
 import { malaysiaDay } from '@/lib/daily-brief';
 import type { AppsApi, Booking } from '@/lib/apps/types';
 import BookingCard, { type BookingAction } from './BookingCard';
@@ -12,9 +14,6 @@ type Filter = 'needs' | 'today' | 'upcoming' | 'date';
 const POLL_MS = 10_000;
 /** Upcoming reaches 90 days ahead in three windows. */
 const UPCOMING_OFFSETS = [0, 31, 62];
-/** Action-error keys that claim to show the booking "as it stands" — only
-    honest when the re-read that should have confirmed that also succeeded. */
-const CLAIMS_CURRENT_STATE = new Set(['bookings.error.alreadyDecided', 'bookings.error.uncertain']);
 
 export default function BookingsList({ api, bookingId, onConnectCalendar, now = () => new Date() }: {
   api: AppsApi;
@@ -237,7 +236,7 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
       } catch {
         /* The re-read failed too — do not claim to be showing the booking
            "as it stands" when we could not confirm what that is. */
-        setMessages((current) => ({ ...current, [booking.id]: CLAIMS_CURRENT_STATE.has(key) ? 'bookings.error.generic' : key }));
+        setMessages((current) => ({ ...current, [booking.id]: unconfirmedErrorKey(key) }));
       }
     } finally {
       actionsInFlight.current -= 1;

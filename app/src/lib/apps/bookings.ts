@@ -1,6 +1,6 @@
 import { BUSINESS_TIME_ZONE, malaysiaDay } from '@/lib/daily-brief';
 import { AppsError } from './api';
-import type { AppsApi, Booking, BookingsConfig, BookingsConfigInput, BookingsQuery, CalendarReason } from './types';
+import type { AppsApi, Booking, BookingsConfig, BookingsConfigInput, BookingsQuery, CalendarReason, InstalledApp } from './types';
 
 /* What the Bookings screens need that is not a network call: loading every
    page of a window, the Needs you scan, and the words for each state. */
@@ -13,6 +13,12 @@ export const PENDING_SCAN_DAYS = 91;
 const MAX_PAGES = 20;
 
 export type Tone = 'neutral' | 'green' | 'red' | 'amber';
+
+/** Whether an installed app's tile may say the page is live: only while it is
+    active and the owner is taking bookings. Either one off reads as Paused. */
+export function appLive(app: InstalledApp): boolean {
+  return app.state === 'active' && app.accepting;
+}
 
 export function addDays(date: string, days: number): string {
   const next = new Date(`${date}T00:00:00Z`);
@@ -83,6 +89,16 @@ export function whatsappKey(booking: Booking): string | null {
   if (booking.status === 'declined') return 'bookings.whatsapp.decline';
   if (booking.status === 'cancelled') return 'bookings.whatsapp.cancel';
   return null;
+}
+
+/** Action-error keys that claim to show the booking "as it stands" — only
+    honest when the re-read that should have confirmed that also succeeded. */
+const CLAIMS_CURRENT_STATE = new Set(['bookings.error.alreadyDecided', 'bookings.error.uncertain']);
+
+/** The action error to show when the re-read after it failed too: never a
+    claim about where the booking stands now. */
+export function unconfirmedErrorKey(key: string): string {
+  return CLAIMS_CURRENT_STATE.has(key) ? 'bookings.error.generic' : key;
 }
 
 export function actionErrorKey(error: unknown): string {

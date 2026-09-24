@@ -15,7 +15,7 @@ const WA = 'https://wa.me/60123456789?text=Hi';
 const calendar = (status: Booking['calendar']['status'], over: Partial<Booking['calendar']> = {}) =>
   ({ status, error: null, reason: null, canRetry: false, account: null, ...over });
 const installed = (pending: number) => vi.fn(async () => ({
-  apps: [{ key: 'bookings' as const, state: 'active' as const, publicUrl: 'https://s.test/b/x', pending }], available: ['bookings' as const],
+  apps: [{ key: 'bookings' as const, state: 'active' as const, accepting: true, publicUrl: 'https://s.test/b/x', pending }], available: ['bookings' as const],
 }));
 /** Pending requests on `status: 'pending'` queries, `window` on everything else. */
 const serve = (pending: Booking[], window: Booking[] = []) =>
@@ -315,7 +315,7 @@ describe('BookingsList', () => {
      shows. Stops a Today fetch firing and then getting thrown away the
      instant Needs you takes over. */
   it('does not fetch Today before the default filter is decided', async () => {
-    type ListResult = { apps: { key: 'bookings'; state: 'active'; publicUrl: string; pending: number }[]; available: ['bookings'] };
+    type ListResult = { apps: { key: 'bookings'; state: 'active'; accepting: boolean; publicUrl: string; pending: number }[]; available: ['bookings'] };
     let resolveList!: (value: ListResult) => void;
     const list = vi.fn(() => new Promise<ListResult>((resolve) => { resolveList = resolve; }));
     const bookings = serve([], []);
@@ -331,7 +331,7 @@ describe('BookingsList', () => {
     // all — otherwise it stays null forever (that is how "not installed" is
     // represented), which is a different case from "still deciding".
     await act(async () => {
-      resolveList({ apps: [{ key: 'bookings', state: 'active', publicUrl: 'https://s.test/b/x', pending: 0 }], available: ['bookings'] });
+      resolveList({ apps: [{ key: 'bookings', state: 'active', accepting: true, publicUrl: 'https://s.test/b/x', pending: 0 }], available: ['bookings'] });
     });
     await waitFor(() => expect(bookings).toHaveBeenCalled());
   });

@@ -10,6 +10,7 @@ import { isRunId } from '@/lib/task';
 import type { View } from '@/routes/Dashboard';
 import type { BizTab } from '@/routes/views/MyBusinessView';
 import type { Booking } from '@/lib/apps/types';
+import { useApps } from '@/lib/apps/useApps';
 
 const STATUS: Record<string, string> = {
   completed: 'work.done', failed: 'work.failed', blocked: 'work.blocked',
@@ -22,9 +23,21 @@ export function DailyBrief({ activity, snapshot, now, onNavigate, bookings }: {
   snapshot: BusinessSnapshot;
   now: Date;
   onNavigate: (view: View, tab?: BizTab, runId?: string) => void;
-  bookings?: { items: Booking[]; onConfirm: (id: string) => Promise<Booking>; onOpenAll: () => void } | null;
+  bookings?: {
+    items: Booking[];
+    onConfirm: (id: string) => Promise<Booking>;
+    onReread: (id: string) => Promise<Booking>;
+    onOpenAll: () => void;
+  } | null;
 }) {
   const { t, lang } = useI18n();
+  const apps = useApps();
+  /* One Refresh for the whole card: Needs you comes from the apps state, not
+     from activity, and a no-op while apps are off. */
+  function reload() {
+    activity.reload();
+    void apps.refresh();
+  }
   const brief = activity.real && activity.data ? dailyBrief(activity.data, snapshot, now) : null;
   const locale = lang === 'bm' ? 'ms-MY' : 'en-MY';
   const clock = (date: Date) => date.toLocaleTimeString(locale, { timeZone: BUSINESS_TIME_ZONE, hour: 'numeric', minute: '2-digit' });
@@ -44,11 +57,11 @@ export function DailyBrief({ activity, snapshot, now, onNavigate, bookings }: {
     <section className="daily-brief" aria-labelledby="daily-brief-heading" aria-busy={activity.loading}>
       <header className="daily-brief-header">
         <div className="daily-brief-identity"><JenteraMascot size={38} /><h2 id="daily-brief-heading">{t('brief.title')}</h2></div>
-        <button type="button" className="brief-refresh" onClick={activity.reload} disabled={activity.loading}>
+        <button type="button" className="brief-refresh" onClick={reload} disabled={activity.loading}>
           <ArrowClockwise size={17} aria-hidden="true" />{t('brief.refresh')}
         </button>
       </header>
-      {bookings && <BookingsNeedsYou items={bookings.items} onConfirm={bookings.onConfirm} onOpenAll={bookings.onOpenAll} />}
+      {bookings && <BookingsNeedsYou items={bookings.items} onConfirm={bookings.onConfirm} onReread={bookings.onReread} onOpenAll={bookings.onOpenAll} />}
       {activity.mode === 'error' ? (
         <div className="brief-state" role="alert"><WarningCircle size={24} aria-hidden="true" />
           <p>{t('brief.error')}</p>
