@@ -223,7 +223,7 @@ async function accessToken(
 }
 
 /** Google's reasons for a 403 that is throttling, not a refusal of the grant. */
-const RATE_LIMIT_REASONS = new Set(['rateLimitExceeded', 'userRateLimitExceeded', 'quotaExceeded']);
+const RATE_LIMIT_REASONS = new Set(['rateLimitExceeded', 'userRateLimitExceeded', 'quotaExceeded', 'dailyLimitExceeded']);
 
 /** Google's machine-readable reason from an error body: error.errors[0].reason, else error.status. */
 function errorReason(text: string): string | null {

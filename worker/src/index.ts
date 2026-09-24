@@ -322,8 +322,9 @@ export default {
       }
       /* Booking Calendar jobs the first attempt did not finish: retries,
          a cancel that raced its create, and anything a crash left leased.
-         Last on the tick, after liveness: it calls Google and may take up to
-         its 40-second budget, which must not delay the liveness check. */
+         Last on the tick, after liveness: the sweep stops starting jobs after
+         40 seconds, and a job already started may run past that. Leases make an
+         overlapping tick safe. */
       try {
         const calendar = await sweepBookingCalendar(env);
         if (calendar.processed || calendar.errors) {

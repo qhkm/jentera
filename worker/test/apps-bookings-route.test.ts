@@ -21,7 +21,7 @@ let ownerB = '';
 let staffA = '';
 let serviceA = '';
 
-type Calendar = { status: string; error: string | null; reason: string | null; canRetry: boolean; account: string | null };
+type Calendar = { status: string; reason?: string | null; canRetry?: boolean; account?: string | null };
 type Json = {
   ok: boolean; code?: string; calendarQueued?: boolean; whatsappUrl: string | null;
   booking: { id: string; status: string; expired: boolean; calendar: Calendar; whatsappUrl: string | null };
@@ -545,5 +545,30 @@ describe('route dispatch', () => {
     const retry = await call('POST', `/api/apps/bookings/bookings/${id}/Calendar/Retry`, ownerA);
     expect(retry.status).toBe(200);
     expect((await jsonOf<Json>(retry)).booking.status).toBe('confirmed');
+  });
+});
+
+describe('Calendar retry offer', () => {
+  it('offers retry only where it can work', async () => {
+    const cancelled = await booking(inDays(2), { status: 'cancelled' });
+    await asOwner((sql) => sql`update booking set calendar_status = 'not_connected' where id = ${cancelled}`);
+    const a = await jsonOf<Json>(await call('GET', `/api/apps/bookings/bookings/${cancelled}`, ownerA));
+    expect(a.booking.calendar).toMatchObject({ status: 'not_connected', canRetry: false });
+
+    const lost = await booking(inDays(3), { status: 'confirmed', ref: 'QQQQQQ' });
+    await asOwner((sql) => sql`update booking set calendar_status = 'failed', calendar_reason = 'disconnected',
+      calendar_account = null where id = ${lost}`);
+    const b = await jsonOf<Json>(await call('GET', `/api/apps/bookings/bookings/${lost}`, ownerA));
+    expect(b.booking.calendar).toMatchObject({ status: 'failed', reason: 'disconnected', canRetry: false });
+
+    await asOwner((sql) => sql`update booking set calendar_account = 'google-subject-1' where id = ${lost}`);
+    const c = await jsonOf<Json>(await call('GET', `/api/apps/bookings/bookings/${lost}`, ownerA));
+    expect(c.booking.calendar.canRetry).toBe(true);
+    expect(JSON.stringify(c)).not.toContain('google-subject-1');
+
+    const waiting = await booking(inDays(4), { status: 'confirmed', ref: 'RRRRRR' });
+    await asOwner((sql) => sql`update booking set calendar_status = 'not_connected' where id = ${waiting}`);
+    const d = await jsonOf<Json>(await call('GET', `/api/apps/bookings/bookings/${waiting}`, ownerA));
+    expect(d.booking.calendar.canRetry).toBe(true);
   });
 });

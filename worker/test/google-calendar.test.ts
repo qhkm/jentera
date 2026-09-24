@@ -232,6 +232,12 @@ describe('Google Calendar budget and removal', () => {
     expect(String((denied as Error).message)).not.toContain('secret detail');
   });
 
+  it('reads a daily quota 403 as busy too', async () => {
+    const daily = google(() => Response.json({ error: { errors: [{ reason: 'dailyLimitExceeded' }] } }, { status: 403 }));
+    await expect(createGoogleCalendarEvent(env, secret, event, daily.fetcher))
+      .rejects.toMatchObject({ auth: false, message: 'Google Calendar is busy. Jentera will try again.' });
+  });
+
   it('turns other delete failures into errors the caller can act on', async () => {
     const broken = google(() => new Response('{}', { status: 500 }));
     await expect(deleteGoogleCalendarEvent(env, secret, event.requestId, broken.fetcher))

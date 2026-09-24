@@ -52,8 +52,8 @@ const SWEEP_LIMIT = 10;
    sweep — with enough of them, other tenants' due jobs never get a turn. The sweep pushes such a
    job's next_attempt_at forward by this much; see sweepBookingCalendar. */
 const SWEEP_ERROR_DEFER_MS = 5 * 60_000;
-/* The sweep stops starting jobs this long after it began, and leaves the rest due for the next
-   minute: it runs far from Neon, and a slow Google must not keep one tick running into the next. */
+/* The sweep stops starting jobs after this long, and a job already started may run past that.
+   Leases make an overlapping tick safe. */
 const SWEEP_TIME_BUDGET_MS = 40_000;
 
 export const CALENDAR_RECONNECT = 'Reconnect Google Calendar, then retry.';

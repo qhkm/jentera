@@ -30,6 +30,7 @@ export interface BookingRow {
   calendar_status: CalendarStatus;
   calendar_error: string | null;
   calendar_reason: CalendarReason | null;
+  calendar_account: string | null;
   calendar_account_label: string | null;
   created_at: Date;
 }
@@ -78,7 +79,7 @@ export type DecideResult =
 const COLUMNS: string[] = [
   'id', 'reference', 'service_id', 'service_name', 'starts_at', 'ends_at', 'party_size', 'customer_name',
   'customer_phone', 'note', 'status', 'decided_at', 'cancelled_at', 'calendar_status', 'calendar_error',
-  'calendar_reason', 'calendar_account_label', 'created_at',
+  'calendar_reason', 'calendar_account', 'calendar_account_label', 'created_at',
 ];
 
 function messageKind(status: BookingStatus): MessageKind | null {
@@ -106,8 +107,9 @@ export function bookingJson(row: BookingRow, ctx: BookingContext): BookingJson {
       status: row.calendar_status,
       error: row.calendar_error,
       reason: row.calendar_reason,
-      canRetry: (row.calendar_status === 'failed' && row.calendar_reason !== 'removed_in_google') ||
-        row.calendar_status === 'not_connected',
+      canRetry: (row.calendar_status === 'failed' && row.calendar_reason !== 'removed_in_google'
+          && !(row.calendar_reason === 'disconnected' && row.calendar_account === null))
+        || (row.calendar_status === 'not_connected' && row.status === 'confirmed'),
       account: row.calendar_account_label,
     },
     whatsappUrl: kind ? whatsappUrl(row.customer_phone, bookingMessage({
