@@ -2,7 +2,7 @@
 Type=Application
 Name=Terminal
 Comment=Open a terminal on Jentera's computer
-Exec=/usr/bin/xterm -title "Jentera Terminal"
+Exec=/usr/bin/xterm -title "Jentera Terminal" -e /home/sprite/aisar/runner/jentera-terminal.sh
 Icon=/usr/share/pixmaps/xterm-color_48x48.xpm
 Terminal=false
 Categories=System;TerminalEmulator;

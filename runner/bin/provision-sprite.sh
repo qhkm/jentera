@@ -81,6 +81,7 @@ sprite file push -o "$sprite_org" -s "$sprite_name" -p \
   runner/bin/desktop-release-keys.py \
   runner/bin/jentera-tint2rc \
   runner/bin/jentera-terminal.desktop \
+  runner/bin/jentera-terminal.sh \
   runner/bin/browser-smoke.mjs \
   runner/bin/jentera-calendar.mjs \
   runner/bin/jentera-gws.mjs \
@@ -103,6 +104,7 @@ sprite exec -o "$sprite_org" -s "$sprite_name" -- \
     /home/sprite/aisar/runner/configure-model-provider.py \
     /home/sprite/aisar/runner/model-smoke.py \
     /home/sprite/aisar/runner/jentera-calendar.mjs \
+    /home/sprite/aisar/runner/jentera-terminal.sh \
     /home/sprite/aisar/runner/hermes-service.sh \
     /home/sprite/aisar/runner/display-service.sh \
     /home/sprite/aisar/runner/runner-service.sh \

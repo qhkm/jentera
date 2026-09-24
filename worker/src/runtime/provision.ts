@@ -314,6 +314,7 @@ export const RUNTIME_BUNDLE_ASSETS = [
   'runner/bin/display-service.sh',
   'runner/bin/jentera-tint2rc',
   'runner/bin/jentera-terminal.desktop',
+  'runner/bin/jentera-terminal.sh',
   'runner/bin/desktop-smoke.mjs',
   'runner/bin/desktop-release-keys.py',
   'runner/bin/browser-smoke.mjs',
@@ -384,6 +385,7 @@ export async function downloadRuntimeBundle(
     'chmod 755 /home/sprite/aisar/runner/configure-model-provider.py ' +
       '/home/sprite/aisar/runner/model-smoke.py ' +
       '/home/sprite/aisar/runner/jentera-calendar.mjs ' +
+      '/home/sprite/aisar/runner/jentera-terminal.sh ' +
       '/home/sprite/aisar/runner/hermes-service.sh ' +
       '/home/sprite/aisar/runner/runner-service.sh ' +
       '/home/sprite/aisar/runner/display-service.sh ' +

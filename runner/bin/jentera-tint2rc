@@ -27,7 +27,9 @@ panel_background_id = 1
 panel_position = bottom center horizontal
 panel_layer = top
 panel_monitor = all
-panel_dock = 1
+# Reserve one ordinary bottom strut. Legacy dock mode lets Openbox reposition
+# the panel as a 640px-wide dockapp and incorrectly reserves half the desktop.
+panel_dock = 0
 wm_menu = 1
 autohide = 0
 strut_policy = follow_size
