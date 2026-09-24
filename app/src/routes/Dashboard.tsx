@@ -42,6 +42,7 @@ import { AppsProvider } from '@/lib/apps/useApps';
 import type { RoutineConfig } from '@/lib/routines/types';
 import { BottomNav } from '@/components/BottomNav';
 import { useNotifications } from '@/hooks/useNotifications';
+import { workspaceParams } from '@/lib/notifications';
 import { ComputerStatus } from '@/components/ComputerStatus';
 import { isPwaStandalone } from '@/pwa/install';
 import { useChatPreview } from '@/hooks/useChatPreview';
@@ -319,6 +320,10 @@ export default function Dashboard() {
             onOpenTask={openTask}
             onOpenReview={(runId) => setSearchParams({ view: 'work', review: runId })}
             onOpenRoutine={(id) => go('routines', undefined, null, id)}
+            onOpenUrl={(url) => {
+              const params = workspaceParams(url);
+              if (params) setSearchParams(params);
+            }}
           />}
           {view === 'business' && (
             <MyBusinessView

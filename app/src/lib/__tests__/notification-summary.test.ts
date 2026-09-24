@@ -12,6 +12,7 @@ const notification = (title: string, body: string): AppNotification => ({
   runId: 'run-1',
   routineId: 'routine-1',
   occurrenceId: 'occurrence-1',
+  url: null,
 });
 
 describe('notificationSummary', () => {

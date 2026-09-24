@@ -1,4 +1,4 @@
-import { ArrowClockwise, ArrowRight, ArrowUpRight, Bell, CalendarBlank, Check, WarningCircle } from '@phosphor-icons/react';
+import { ArrowClockwise, ArrowRight, ArrowUpRight, Bell, CalendarBlank, CalendarCheck, Check, WarningCircle } from '@phosphor-icons/react';
 import { Button, LoadingState } from '@/components/ui';
 import { useI18n } from '@/i18n/I18nProvider';
 import type { AppNotification } from '@/lib/notifications';
@@ -10,15 +10,17 @@ type NotificationsState = ReturnType<typeof useNotifications>;
 function Glyph({ item }: { item: AppNotification }) {
   const Icon = notificationSummary(item) ? CalendarBlank
     : item.kind === 'routine_failed' ? WarningCircle
-    : item.kind === 'reminder_due' || item.kind === 'routine_needs_approval' || item.kind === 'approval_requested' || item.kind === 'work_needs_you' ? Bell : Check;
+    : item.kind === 'reminder_due' || item.kind === 'routine_needs_approval' || item.kind === 'approval_requested' || item.kind === 'work_needs_you' ? Bell
+    : item.kind === 'booking_requested' ? CalendarCheck : Check;
   return <span className={`notification-icon notification-icon-${item.kind}`}><Icon size={20} weight="duotone" aria-hidden="true" /></span>;
 }
 
-export default function NotificationsView({ state, onOpenTask, onOpenRoutine, onOpenReview }: {
+export default function NotificationsView({ state, onOpenTask, onOpenRoutine, onOpenReview, onOpenUrl }: {
   state: NotificationsState;
   onOpenTask: (runId: string, title?: string) => void;
   onOpenReview?: (runId: string) => void;
   onOpenRoutine: (routineId: string) => void;
+  onOpenUrl?: (url: string) => void;
 }) {
   const { lang, t } = useI18n();
   const date = (instant: string) => new Intl.DateTimeFormat(lang === 'bm' ? 'ms-MY' : 'en-MY', {
@@ -29,7 +31,8 @@ export default function NotificationsView({ state, onOpenTask, onOpenRoutine, on
   }).format(new Date(instant));
   async function open(item: AppNotification) {
     await state.markRead(item.id).catch(() => undefined);
-    if (item.runId && onOpenReview && ['work_needs_you', 'approval_requested'].includes(item.kind)) onOpenReview(item.runId);
+    if (item.url && onOpenUrl) onOpenUrl(item.url);
+    else if (item.runId && onOpenReview && ['work_needs_you', 'approval_requested'].includes(item.kind)) onOpenReview(item.runId);
     else if (item.runId) onOpenTask(item.runId, item.title);
     else if (item.routineId) onOpenRoutine(item.routineId);
   }
@@ -67,7 +70,7 @@ export default function NotificationsView({ state, onOpenTask, onOpenRoutine, on
                   {t(`notifications.summary.attention.${summary.failed === 1 ? 'one' : 'many'}`, { n: summary.failed })}
                 </span>}
                 <span className="notification-summary-open">{t('notifications.summary.open')}<ArrowRight size={15} aria-hidden="true" /></span>
-              </> : <span className={item.runId || item.routineId ? 'notification-body-preview' : undefined}>{item.body}</span>}
+              </> : <span className={item.runId || item.routineId || item.url ? 'notification-body-preview' : undefined}>{item.body}</span>}
             </span>
             <span className="notification-side">
               <time dateTime={item.createdAt}>{summary ? summaryDate(item.createdAt) : date(item.createdAt)}</time>
