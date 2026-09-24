@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Card, Chip, LoadingState } from '@/components/ui';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useApps } from '@/lib/apps/useApps';
+import { AppsError } from '@/lib/apps/api';
 import { actionErrorKey, addDays, groupByDay, loadPendingBookings, loadWindow, WINDOW_DAYS } from '@/lib/apps/bookings';
 import { malaysiaDay } from '@/lib/daily-brief';
 import type { AppsApi, Booking } from '@/lib/apps/types';
@@ -11,6 +12,9 @@ type Filter = 'needs' | 'today' | 'upcoming' | 'date';
 const POLL_MS = 10_000;
 /** Upcoming reaches 90 days ahead in three windows. */
 const UPCOMING_OFFSETS = [0, 31, 62];
+/** Action-error keys that claim to show the booking "as it stands" — only
+    honest when the re-read that should have confirmed that also succeeded. */
+const CLAIMS_CURRENT_STATE = new Set(['bookings.error.alreadyDecided', 'bookings.error.uncertain']);
 
 export default function BookingsList({ api, bookingId, onConnectCalendar, now = () => new Date() }: {
   api: AppsApi;
@@ -27,23 +31,43 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
   const [offset, setOffset] = useState(0);
   const [date, setDate] = useState(() => malaysiaDay(now()));
   const [rows, setRows] = useState<Booking[] | null>(null);
+  const rowsRef = useRef<Booking[] | null>(null);
+  rowsRef.current = rows;
   const [focused, setFocused] = useState<Booking | null>(null);
+  const focusedRef = useRef<Booking | null>(null);
+  focusedRef.current = focused;
+  const [focusedError, setFocusedError] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, setBusy] = useState<Set<string>>(new Set());
   const [messages, setMessages] = useState<Record<string, string>>({});
   const generation = useRef(0);
+  /** ids confirmed/declined/cancelled while this view has been open. Kept
+      across a quiet reload even once they drop out of a status-scoped fetch
+      — Needs you's pending-only scan is the case that otherwise drops a
+      card (and its WhatsApp link) the moment it is decided. */
+  const decidedHere = useRef<Set<string>>(new Set());
+  /** Bumped when an action starts, and again when it settles, so a load
+      already in flight can tell a stale read from a trustworthy one. */
+  const actionEpoch = useRef(0);
+  const actionsInFlight = useRef(0);
 
   /* Needs you when requests wait, otherwise Today — decided once, so
-     confirming the last request does not pull the view away from it. */
+     confirming the last request does not pull the view away from it. Also
+     resolved (to Today) if the apps list itself failed, so this does not
+     wait forever on a count that will never arrive. */
   useEffect(() => {
-    if (chosen === null && apps.pending !== null) setChosen(apps.pending.length > 0 ? 'needs' : 'today');
-  }, [chosen, apps.pending]);
+    if (chosen === null && (apps.pending !== null || apps.error)) {
+      setChosen(apps.pending !== null && apps.pending.length > 0 ? 'needs' : 'today');
+    }
+  }, [chosen, apps.pending, apps.error]);
 
   const load = useCallback(async (quiet = false) => {
     const mine = ++generation.current;
+    const epoch = actionEpoch.current;
     if (!quiet) {
       setRows(null);
       setFailed(false);
+      decidedHere.current.clear();
     }
     try {
       const today = malaysiaDay(clock.current());
@@ -51,15 +75,42 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
         : filter === 'today' ? await loadWindow(api, { from: today, days: 1 })
           : filter === 'upcoming' ? await loadWindow(api, { from: addDays(today, offset), days: WINDOW_DAYS })
             : await loadWindow(api, { from: date, days: 1 });
-      if (mine === generation.current) setRows(next);
+      if (mine !== generation.current) return;
+      if (epoch !== actionEpoch.current) {
+        /* An action started or settled while this fetch was in flight, so it
+           may already be stale relative to what the owner just did. Drop it
+           rather than risk overwriting a fresher result, and once nothing is
+           acting, ask again. */
+        if (actionsInFlight.current === 0) void load(true);
+        return;
+      }
+      setRows((current) => {
+        const byId = new Map((current ?? []).map((booking) => [booking.id, booking] as const));
+        const freshIds = new Set(next.map((booking) => booking.id));
+        const kept = [...decidedHere.current]
+          .filter((id) => !freshIds.has(id) && byId.has(id))
+          .map((id) => byId.get(id)!);
+        return [...next, ...kept].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+      });
     } catch {
-      if (mine === generation.current && !quiet) setFailed(true);
+      if (mine === generation.current && (!quiet || rowsRef.current === null)) setFailed(true);
     }
   }, [api, filter, offset, date]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    /* Nothing to fetch yet: the default filter (Needs you vs Today) is
+       still undecided, so a fetch here would be for the wrong filter and
+       flash Today before Needs you takes over. Deliberately not watching
+       `apps.pending`/`apps.error` themselves here — refresh() (run after
+       every action) hands back a new array each time even when nothing
+       about the count changed, and watching it would re-run this load on
+       every action instead of only once, when `chosen` first resolves. */
+    if (chosen === null && apps.pending === null && !apps.error) return;
+    void load();
+  }, [load, chosen]);
 
   useEffect(() => {
+    setFocusedError(null);
     if (!bookingId) {
       setFocused(null);
       return;
@@ -67,28 +118,55 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
     let live = true;
     api.booking(bookingId).then(
       (booking) => { if (live) setFocused(booking); },
-      () => { if (live) setMessages((current) => ({ ...current, [bookingId]: 'bookings.error.notFound' })); },
+      (error) => {
+        if (!live) return;
+        setFocusedError(error instanceof AppsError && error.status === 404 ? 'bookings.error.notFound' : 'bookings.error.load');
+      },
     );
     return () => { live = false; };
   }, [api, bookingId]);
 
-  const syncing = [...(rows ?? []), ...(focused ? [focused] : [])].some((booking) => booking.calendar.status === 'pending');
+  /* Re-reads one booking without trusting the result if an action started
+     or settled meanwhile — or if, by the time it resolves, that id is no
+     longer the row (row or pinned card) it was fetched for. */
+  const refetch = useCallback(async (id: string) => {
+    const epoch = actionEpoch.current;
+    try {
+      const fresh = await api.booking(id);
+      if (epoch !== actionEpoch.current) return;
+      setRows((list) => list?.map((booking) => (booking.id === fresh.id ? fresh : booking)) ?? list);
+      setFocused((booking) => (booking?.id === fresh.id ? fresh : booking));
+    } catch {
+      /* Keep the last known row; the next poll tick tries again. */
+    }
+  }, [api]);
+
+  const syncingIds = new Set<string>();
+  for (const booking of rows ?? []) if (booking.calendar.status === 'pending') syncingIds.add(booking.id);
+  if (focused && focused.calendar.status === 'pending') syncingIds.add(focused.id);
+  /* A stable key (not the Set itself, recreated every render) so the
+     interval below is only torn down and rearmed when the syncing ids
+     actually change. */
+  const syncingKey = [...syncingIds].sort().join(',');
   useEffect(() => {
-    if (!syncing) return;
+    if (!syncingKey) return;
+    const ids = syncingKey.split(',');
     const timer = window.setInterval(() => {
-      void load(true);
-      if (focused) void api.booking(focused.id).then(setFocused, () => undefined);
+      if (document.visibilityState === 'hidden') return;
+      for (const id of ids) void refetch(id);
     }, POLL_MS);
     return () => window.clearInterval(timer);
-  }, [syncing, load, api, focused]);
+  }, [syncingKey, refetch]);
 
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void load(true);
+      if (document.visibilityState !== 'visible') return;
+      void load(true);
+      if (focusedRef.current) void refetch(focusedRef.current.id);
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [load]);
+  }, [load, refetch]);
 
   function replace(next: Booking) {
     setRows((list) => list?.map((booking) => (booking.id === next.id ? next : booking)) ?? list);
@@ -97,7 +175,10 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
 
   async function act(booking: Booking, action: BookingAction) {
     if (action === 'cancel' && !window.confirm(t('bookings.cancel.confirm', { name: booking.customerName }))) return;
-    setBusy(booking.id);
+    if (action !== 'retry') decidedHere.current.add(booking.id);
+    actionsInFlight.current += 1;
+    actionEpoch.current += 1;
+    setBusy((current) => new Set(current).add(booking.id));
     setMessages((current) => {
       const next = { ...current };
       delete next[booking.id];
@@ -108,15 +189,25 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
         : action === 'cancel' ? await api.cancel(booking.id) : await api.retryCalendar(booking.id);
       replace(result.booking);
     } catch (error) {
-      setMessages((current) => ({ ...current, [booking.id]: actionErrorKey(error) }));
+      const key = actionErrorKey(error);
       /* Someone else decided, or the answer was lost: show the booking as the server has it now. */
       try {
-        replace(await api.booking(booking.id));
+        const fresh = await api.booking(booking.id);
+        replace(fresh);
+        setMessages((current) => ({ ...current, [booking.id]: key }));
       } catch {
-        /* The message stands. */
+        /* The re-read failed too — do not claim to be showing the booking
+           "as it stands" when we could not confirm what that is. */
+        setMessages((current) => ({ ...current, [booking.id]: CLAIMS_CURRENT_STATE.has(key) ? 'bookings.error.generic' : key }));
       }
     } finally {
-      setBusy(null);
+      actionsInFlight.current -= 1;
+      actionEpoch.current += 1;
+      setBusy((current) => {
+        const next = new Set(current);
+        next.delete(booking.id);
+        return next;
+      });
       void apps.refresh();
     }
   }
@@ -124,7 +215,7 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
   const locale = lang === 'bm' ? 'ms-MY' : 'en-MY';
   const dayTitle = (day: string) => new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
     .format(new Date(`${day}T00:00:00Z`));
-  const card = (booking: Booking) => <BookingCard key={booking.id} booking={booking} busy={busy === booking.id}
+  const card = (booking: Booking) => <BookingCard key={booking.id} booking={booking} busy={busy.has(booking.id)}
     message={messages[booking.id] ? t(messages[booking.id]) : null} now={clock.current()}
     onAct={(action) => void act(booking, action)} onConnectCalendar={onConnectCalendar} />;
   const shown = (rows ?? []).filter((booking) => booking.id !== focused?.id);
@@ -146,13 +237,13 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
       <h2 id="bookings-focused-title">{t('bookings.focused')}</h2>
       {card(focused)}
     </section>}
-    {!focused && bookingId && messages[bookingId] && <p role="alert">{t(messages[bookingId])}</p>}
+    {!focused && bookingId && focusedError && <p role="alert">{t(focusedError)}</p>}
     {failed && <Card role="alert" className="bookings-state">
       <p>{t('bookings.error.load')}</p>
       <Button variant="outline" onClick={() => void load()}>{t('apps.retry')}</Button>
     </Card>}
     {!failed && rows === null && <LoadingState title={t('bookings.loading')} />}
-    {rows !== null && shown.length === 0 && <p className="bookings-empty">{t(`bookings.empty.${filter}`)}</p>}
+    {rows !== null && rows.length === 0 && <p className="bookings-empty">{t(`bookings.empty.${filter}`)}</p>}
     {rows !== null && shown.length > 0 && (filter === 'upcoming'
       ? groupByDay(shown).map(([day, list]) => <section key={day} className="bookings-day-group" aria-label={dayTitle(day)}>
         <h3>{dayTitle(day)}</h3>{list.map(card)}
