@@ -7,7 +7,17 @@ export type NotificationKind =
   | 'routine_skipped'
   | 'routine_needs_approval'
   | 'work_needs_you'
-  | 'approval_requested';
+  | 'approval_requested'
+  | 'work_finished';
+
+/* The kinds this app can show. A row of any other kind is left out of the
+   list rather than rejecting it (`fetchNotifications`), so a Worker that
+   writes a new kind before this app ships it hides that one row and nothing
+   else. It still belongs here first, or its owners never see it. */
+const KINDS: readonly NotificationKind[] = [
+  'reminder_due', 'routine_completed', 'routine_failed', 'routine_skipped', 'routine_needs_approval',
+  'work_needs_you', 'approval_requested', 'work_finished',
+];
 
 export interface AppNotification {
   id: string;
@@ -31,10 +41,13 @@ const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
-function notification(value: unknown): value is AppNotification {
+const knownKind = (item: { kind: string }): item is AppNotification =>
+  (KINDS as readonly string[]).includes(item.kind);
+
+/** Well formed, whatever its kind; `knownKind` decides whether it is shown. */
+function notification(value: unknown): value is Omit<AppNotification, 'kind'> & { kind: string } {
   if (!object(value)) return false;
   return isRunId(value.id) && typeof value.kind === 'string' &&
-    ['reminder_due', 'routine_completed', 'routine_failed', 'routine_skipped', 'routine_needs_approval', 'work_needs_you', 'approval_requested'].includes(value.kind) &&
     typeof value.title === 'string' && typeof value.body === 'string' &&
     (value.runId === null || isRunId(value.runId)) &&
     (value.routineId === null || isRunId(value.routineId)) &&
@@ -65,7 +78,14 @@ export async function fetchNotifications(cursor?: string): Promise<NotificationP
       !(data.nextCursor === null || typeof data.nextCursor === 'string')) {
     throw new Error('Jentera returned an invalid notification list.');
   }
-  return data as unknown as NotificationPage;
+  const notifications = data.notifications.filter(knownKind);
+  const unknown = data.notifications.length - notifications.length;
+  if (unknown > 0) console.warn(`[notifications] left out ${unknown} of an unknown kind`);
+  return {
+    notifications,
+    unread: Number(data.unread),
+    nextCursor: data.nextCursor as string | null,
+  };
 }
 
 export async function readNotification(id: string): Promise<void> {
