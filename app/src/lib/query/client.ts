@@ -30,15 +30,22 @@ export function retryOnce(failureCount: number, error: unknown): boolean {
 export function createQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
+      /* networkMode 'always' on both: TanStack's default ('online') holds a
+         request while the browser reports offline and sends it on
+         reconnect. A confirm tapped in a lift would go out minutes later,
+         with nobody left on the screen to send the customer the WhatsApp
+         message, and a first load offline would spin for ever. Instead the
+         request goes, fails at once, and says so — as before the cache. */
       queries: {
         staleTime: STALE_MS,
         gcTime: GC_MS,
         refetchOnWindowFocus: true,
         retry: retryOnce,
+        networkMode: 'always',
       },
       /* Confirm, decline, cancel and a settings save are never sent twice:
          a lost answer means re-read and show the truth. */
-      mutations: { retry: false },
+      mutations: { retry: false, networkMode: 'always' },
     },
   });
 }

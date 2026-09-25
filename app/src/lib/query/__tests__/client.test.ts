@@ -11,6 +11,13 @@ describe('the page query client', () => {
     expect(defaults.mutations).toMatchObject({ retry: false });
   });
 
+  it('sends a write and a read even while the browser reports offline, so a failure shows at once', () => {
+    // TanStack's default ('online') would hold a tap made offline and send it on reconnect.
+    const defaults = createQueryClient().getDefaultOptions();
+    expect(defaults.mutations).toMatchObject({ networkMode: 'always' });
+    expect(defaults.queries).toMatchObject({ networkMode: 'always' });
+  });
+
   it('retries a read once, and only on a failure that can be temporary', () => {
     expect(retryOnce(0, new AppsError('NETWORK', 0, false))).toBe(true);
     expect(retryOnce(0, new AppsError('REQUEST_FAILED', 503))).toBe(true);

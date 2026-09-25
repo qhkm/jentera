@@ -1,7 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { QueryClient } from '@tanstack/react-query';
+import { onlineManager, type QueryClient } from '@tanstack/react-query';
 import BookingsList from '../BookingsList';
 import { LocalRepository } from '@/lib/repo/local';
 import { AppsProvider } from '@/lib/apps/useApps';
@@ -566,6 +566,45 @@ describe('BookingsList', () => {
     await waitFor(() => expect(within(card).getByRole('alert')).toHaveTextContent('We did not hear back'));
     expect(within(card).getByText('Confirmed')).toBeInTheDocument();
     expect(api.decide).toHaveBeenCalledTimes(1);
+  });
+
+  /* In a lift with no signal: the tap fails at once with the message it
+     always gave, and is never sent later when the signal comes back — by
+     then no one may be there to send the customer the WhatsApp message. */
+  it('fails a tap made offline at once, and never sends it later', async () => {
+    const api = fakeAppsApi({
+      list: installed(1), bookings: serve([bookingFixture()]),
+      decide: vi.fn().mockRejectedValue(new AppsError('NETWORK', 0, true)),
+      booking: vi.fn().mockRejectedValue(new AppsError('NETWORK', 0, false)),
+    });
+    const { user } = await mount(api, null, { client: createQueryClient() });
+    const card = await screen.findByRole('article', { name: 'Aisyah' });
+    act(() => { onlineManager.setOnline(false); });
+    try {
+      await user.click(within(card).getByRole('button', { name: 'Confirm' }));
+      await waitFor(() => expect(within(screen.getByRole('article', { name: 'Aisyah' })).getByRole('alert'))
+        .toHaveTextContent('Something went wrong. Try again.'));
+      expect(api.decide).toHaveBeenCalledTimes(1);
+      expect(within(screen.getByRole('article', { name: 'Aisyah' })).getByRole('button', { name: 'Confirm' })).toBeEnabled();
+    } finally {
+      act(() => { onlineManager.setOnline(true); });
+    }
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(api.decide).toHaveBeenCalledTimes(1);
+  });
+
+  it('says it could not load, not a forever spinner, when opened offline', async () => {
+    const offline = () => { throw new AppsError('NETWORK', 0, false); };
+    const api = fakeAppsApi({ list: vi.fn(async () => offline()), bookings: vi.fn(async () => offline()) });
+    act(() => { onlineManager.setOnline(false); });
+    try {
+      await mount(api);
+      expect(await screen.findByText('Could not load bookings.')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+      expect(screen.queryByText('Loading bookings…')).toBeNull();
+    } finally {
+      act(() => { onlineManager.setOnline(true); });
+    }
   });
 
   it('stops polling once Calendar has synced', async () => {
