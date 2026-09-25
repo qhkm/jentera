@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { AppsError } from '../api';
 import {
   actionErrorKey, addDays, bookingWhen, calendarReasonKey, calendarTag, configToInput, groupByDay,
-  loadPendingBookings, loadWindow, statusTag, whatsappKey,
+  loadPendingBookings, loadWindow, mergeBookingRows, statusTag, whatsappKey, type OwnRead,
 } from '../bookings';
 import { bookingFixture, configFixture, fakeAppsApi } from './fixtures';
-import type { BookingsQuery } from '../types';
+import type { Booking, BookingsQuery } from '../types';
 
 describe('loading bookings', () => {
   it('follows cursors to the end of a window', async () => {
@@ -87,5 +87,32 @@ describe('labels', () => {
       services: [{ id: '22222222-2222-4222-8222-222222222222', name: 'Cupping class', description: 'A guided recovery session.', durationMinutes: 60, capacity: 4,
         priceLabel: 'RM45', active: true, hours: [{ weekday: 2, opens: '10:00', closes: '13:00' }] }],
     });
+  });
+});
+
+describe('the rows a Bookings list shows', () => {
+  const soon = bookingFixture({ id: '11111111-1111-4111-8111-00000000000a', startsAt: '2026-10-06T02:00:00.000Z' });
+  const later = bookingFixture({ id: '11111111-1111-4111-8111-00000000000b', customerName: 'Aina', startsAt: '2026-10-07T02:00:00.000Z' });
+  const own = (entries: [Booking, number][]) => new Map<string, OwnRead>(entries.map(([booking, updatedAt]) => [booking.id, { booking, updatedAt }]));
+
+  it('waits for the list itself', () => {
+    expect(mergeBookingRows(null, 0, own([[soon, 5]]), new Set([soon.id]))).toBeNull();
+  });
+
+  it('draws any other row from whichever read it last, soonest first', () => {
+    const polled = { ...soon, calendar: { ...soon.calendar, status: 'created' as const } };
+    expect(mergeBookingRows([later, soon], 100, own([[polled, 200]]), new Set())).toEqual([polled, later]);
+    expect(mergeBookingRows([later, soon], 300, own([[polled, 200]]), new Set())).toEqual([soon, later]);
+  });
+
+  it('draws a booking decided here from its own read, even when a list read later still says pending', () => {
+    const confirmed = { ...soon, status: 'confirmed' as const };
+    expect(mergeBookingRows([soon, later], 300, own([[confirmed, 200]]), new Set([soon.id]))).toEqual([confirmed, later]);
+  });
+
+  it('keeps a booking decided here when a later list leaves it out, and no other', () => {
+    const confirmed = { ...soon, status: 'confirmed' as const };
+    const other = { ...later, status: 'confirmed' as const };
+    expect(mergeBookingRows([], 300, own([[confirmed, 200], [other, 200]]), new Set([soon.id]))).toEqual([confirmed]);
   });
 });

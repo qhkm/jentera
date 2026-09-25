@@ -2,9 +2,9 @@ import { ArrowsClockwise, WhatsappLogo } from '@phosphor-icons/react';
 import { Button, Tag } from '@/components/ui';
 import { useI18n } from '@/i18n/I18nProvider';
 import { bookingWhen, calendarReasonKey, calendarTag, statusTag, whatsappKey } from '@/lib/apps/bookings';
-import type { Booking } from '@/lib/apps/types';
+import type { Booking, BookingAction } from '@/lib/apps/types';
 
-export type BookingAction = 'confirm' | 'decline' | 'cancel' | 'retry';
+export type { BookingAction };
 
 /* One booking as the owner acts on it. The WhatsApp link is an ordinary link
    the owner taps, so no pop-up blocker is involved, and it never claims the

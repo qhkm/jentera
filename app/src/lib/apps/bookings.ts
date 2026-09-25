@@ -130,6 +130,40 @@ export function groupByDay(bookings: Booking[]): [string, Booking[]][] {
   return [...days.entries()];
 }
 
+/** A booking as its own query last read it, and when (ms since epoch). */
+export interface OwnRead {
+  booking: Booking;
+  updatedAt: number;
+}
+
+/** The rows a Bookings list shows, soonest first, or null while the list
+    itself has not loaded.
+    - A booking decided in this view (`kept`) is drawn from its own query:
+      the action's answer, then only later reads of that one booking (a
+      Calendar poll). No list read can put it back to pending, and it stays
+      when a later list leaves it out: Needs you's pending-only scan drops a
+      card the moment it is decided, WhatsApp link and all.
+    - Any other row is drawn from whichever read it last: the list, or its
+      own query (a Calendar poll). */
+export function mergeBookingRows(
+  list: Booking[] | null,
+  listUpdatedAt: number,
+  own: ReadonlyMap<string, OwnRead>,
+  kept: ReadonlySet<string>,
+): Booking[] | null {
+  if (list === null) return null;
+  const listed = new Set(list.map((booking) => booking.id));
+  const rows = list.map((booking) => {
+    const read = own.get(booking.id);
+    return read && (kept.has(booking.id) || read.updatedAt > listUpdatedAt) ? read.booking : booking;
+  });
+  for (const id of kept) {
+    const read = own.get(id);
+    if (read && !listed.has(id)) rows.push(read.booking);
+  }
+  return rows.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+}
+
 /** The saved settings as a save request for the same version. */
 export function configToInput(config: BookingsConfig): BookingsConfigInput {
   return {

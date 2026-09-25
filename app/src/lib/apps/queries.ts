@@ -1,8 +1,10 @@
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { keys } from '@/lib/query/keys';
+import { bookingListsFilter, keys, mutationKeys } from '@/lib/query/keys';
 import { useRequiredBusinessId } from '@/lib/query/scope';
-import { loadPendingBookings } from './bookings';
-import type { AppsApi, AppsList, BookingsConfigInput } from './types';
+import { loadPendingBookings, loadWindow } from './bookings';
+import type {
+  AppsApi, AppsList, Booking, BookingAction, BookingActionResult, BookingsConfigInput,
+} from './types';
 
 /* The Apps API as cached queries. Every screen that reads the same data
    reads it through the same options here, so the page's cache shares one
@@ -51,5 +53,82 @@ export function useSaveBookingsConfig(api: AppsApi) {
       client.setQueryData(keys.bookingsConfig(businessId), config);
       void refreshApps(client, businessId);
     },
+  });
+}
+
+/** Every booking in one window of Malaysian days (Today, a picked date, or
+    31 days of Upcoming). */
+export function bookingWindowQuery(api: AppsApi, businessId: string, from: string, days: number) {
+  return queryOptions({ queryKey: keys.bookingWindow(businessId, from, days), queryFn: () => loadWindow(api, { from, days }) });
+}
+
+/** One booking, as the server has it now. */
+export function bookingQuery(api: AppsApi, businessId: string, bookingId: string) {
+  return queryOptions({ queryKey: keys.booking(businessId, bookingId), queryFn: () => api.booking(bookingId) });
+}
+
+/** Stops every read in flight that could hold this booking as it was before
+    a decision: every list, and the booking's own query. A cancelled read
+    never lands; each query keeps what it had. */
+export async function cancelBookingReads(client: QueryClient, businessId: string, bookingId: string): Promise<void> {
+  await Promise.all([
+    client.cancelQueries(bookingListsFilter(businessId)),
+    client.cancelQueries({ queryKey: keys.booking(businessId, bookingId), exact: true }),
+  ]);
+}
+
+const stillWaiting = (booking: Booking) => booking.status === 'pending' && !booking.expired;
+
+/** The server's answer for one booking, written where every screen reads it:
+    its own query, and every cached list that holds it. The waiting-requests
+    list keeps only what still waits, as the scan itself does. A list that
+    does not hold the booking is left exactly as it was. */
+export function writeBooking(client: QueryClient, businessId: string, booking: Booking): void {
+  client.setQueryData(keys.booking(businessId, booking.id), booking);
+  const holds = (rows: Booking[] | undefined): rows is Booking[] => !!rows && rows.some((row) => row.id === booking.id);
+  const replace = (rows: Booking[]) => rows.map((row) => (row.id === booking.id ? booking : row));
+  client.setQueriesData<Booking[]>({ queryKey: keys.bookingWindows(businessId) }, (rows) => (holds(rows) ? replace(rows) : undefined));
+  client.setQueryData<Booking[]>(keys.pendingBookings(businessId), (rows) => (holds(rows) ? replace(rows).filter(stillWaiting) : undefined));
+}
+
+/** The booking as the server has it now, after an action that failed or got
+    no answer, written everywhere like an action's answer. Rejects when that
+    read fails too. */
+export async function rereadBooking(client: QueryClient, api: AppsApi, businessId: string, bookingId: string): Promise<Booking> {
+  const fresh = await client.fetchQuery({ ...bookingQuery(api, businessId, bookingId), staleTime: 0 });
+  writeBooking(client, businessId, fresh);
+  return fresh;
+}
+
+export interface BookingActionVars {
+  id: string;
+  action: BookingAction;
+}
+
+export function runBookingAction(api: AppsApi, { id, action }: BookingActionVars): Promise<BookingActionResult> {
+  return action === 'confirm' || action === 'decline' ? api.decide(id, action)
+    : action === 'cancel' ? api.cancel(id) : api.retryCalendar(id);
+}
+
+/** Confirm, decline, cancel and Retry Calendar. Reads already in flight are
+    cancelled before the request goes and again when the answer arrives, so
+    a read that began before the decision cannot land after it; the answer
+    is written into the booking's query and every list that holds it; then
+    the lists and the apps list are read again. Never retried: a lost answer
+    means re-read and show the truth (`rereadBooking`), never send twice.
+    Each call is its own mutation, so two bookings can be acted on at once. */
+export function useBookingAction(api: AppsApi) {
+  const client = useQueryClient();
+  const businessId = useRequiredBusinessId();
+  return useMutation({
+    mutationKey: mutationKeys.bookingAction(businessId),
+    mutationFn: (vars: BookingActionVars) => runBookingAction(api, vars),
+    onMutate: (vars) => cancelBookingReads(client, businessId, vars.id),
+    onSuccess: async (result, vars) => {
+      await cancelBookingReads(client, businessId, vars.id);
+      writeBooking(client, businessId, result.booking);
+    },
+    onSettled: () => { void refreshApps(client, businessId); },
+    retry: false,
   });
 }

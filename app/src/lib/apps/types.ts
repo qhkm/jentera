@@ -67,6 +67,9 @@ export interface BookingsQuery {
   cursor?: string;
 }
 
+/** What the owner can do to one booking from its card. */
+export type BookingAction = 'confirm' | 'decline' | 'cancel' | 'retry';
+
 export interface BookingActionResult {
   booking: Booking;
   whatsappUrl: string | null;
