@@ -150,6 +150,16 @@ describe('sites: pages', () => {
     expect(html).toContain('lang=bm');
   });
 
+  it('opens on the nearest date with a time instead of an empty today', async () => {
+    const html = await (await get(`/b/seido?service=${service}&lang=en`)).text();
+    expect(html).toContain('aria-label="Tue 6 Oct · 3 times"');
+    expect(html).toMatch(/aria-label="Tue 6 Oct · 3 times"[^>]*aria-current="date"/);
+    expect(html).toContain('10:00 am');
+    expect(html).toContain('aria-disabled="true"');
+    const invalid = await (await get(`/b/seido?service=${service}&date=not-a-date&lang=en`)).text();
+    expect(invalid).toMatch(/aria-label="Tue 6 Oct · 3 times"[^>]*aria-current="date"/);
+  });
+
   it('shows the form with the privacy notice, the widget and a submission key', async () => {
     const html = await (await get(`/b/seido/request?service=${service}&start=${encodeURIComponent(TEN)}`)).text();
     expect(html).toContain('Your name and phone number go to SEIDO &lt;Coffee&gt;');

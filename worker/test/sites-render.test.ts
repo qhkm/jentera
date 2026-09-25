@@ -60,7 +60,7 @@ describe('pages', () => {
   });
 
   it('lists times with places left, and says when a day has none', () => {
-    const html = timesPage({ ...base, service, selected: '2026-10-06', notice: 'taken', days: [
+    const html = timesPage({ ...base, service, selected: '2026-10-06', nextAvailable: null, notice: 'taken', days: [
       { date: '2026-10-06', slots: [{ startsAt: new Date('2026-10-06T02:00:00Z'), endsAt: new Date('2026-10-06T03:00:00Z'), remaining: 1 }] },
       { date: '2026-10-07', slots: [] },
     ] });
@@ -68,8 +68,12 @@ describe('pages', () => {
     expect(html).toContain('1 place left');
     expect(html).toContain('That time was just taken');
     expect(html).toContain('/b/seido/request?service=');
-    const empty = timesPage({ ...base, service, selected: '2026-10-07', notice: null, days: [{ date: '2026-10-07', slots: [] }] });
+    expect(html).toContain('1 time');
+    expect(html).toContain('aria-disabled="true"');
+    const empty = timesPage({ ...base, service, selected: '2026-10-07', nextAvailable: '2026-10-09', notice: null, days: [{ date: '2026-10-07', slots: [] }] });
     expect(empty).toContain('No open times on this day.');
+    expect(empty).toContain('Go to next available →');
+    expect(empty).toContain('date=2026-10-09');
   });
 
   it('shows the privacy notice in both languages, the widget only with a site key, and the submission key', () => {

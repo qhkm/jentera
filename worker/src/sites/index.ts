@@ -18,6 +18,9 @@ import { donePage, formPage, messagePage, page, redirect, servicesPage, timesPag
    lower-case, so a capital is answered with a redirect before any lookup. */
 const PATH = /^\/b\/([a-z0-9][a-z0-9-]{1,38}[a-z0-9])(\/request|\/done)?\/?$/i;
 const DAYS_SHOWN = 7;
+/** At most today plus the longest allowed horizon. Only used when the first
+    seven days contain no opening, or an explicitly selected date is full. */
+const LOOKAHEAD_DAYS = 91;
 /** A booking form is a few hundred bytes; a body past this is not one. */
 const BODY_MAX = 8192;
 const FORM_TYPE = 'application/x-www-form-urlencoded';
@@ -210,11 +213,27 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
     const serviceId = url.searchParams.get('service');
     if (!serviceId) return page(servicesPage({ ...base, services: info.services }));
     const asked = url.searchParams.get('date');
-    const from = asked && isDate(asked) ? asked : myDate(now);
-    const times = await loadOpenTimes(env, businessId, serviceId, from, DAYS_SHOWN, now);
+    const hasAskedDate = Boolean(asked && isDate(asked));
+    const from = hasAskedDate ? asked! : myDate(now);
+    let times = await loadOpenTimes(env, businessId, serviceId, from, DAYS_SHOWN, now);
     if (!times) return redirect(`/b/${slug}?lang=${lang}`, 303);
+    let selected = hasAskedDate ? from : times.days.find((day) => day.slots.length > 0)?.date ?? from;
+    let nextAvailable = times.days.find((day) => day.date > selected && day.slots.length > 0)?.date ?? null;
+    if (times.days.every((day) => day.slots.length === 0)) {
+      const horizon = await loadOpenTimes(env, businessId, serviceId, from, LOOKAHEAD_DAYS, now);
+      if (!horizon) return redirect(`/b/${slug}?lang=${lang}`, 303);
+      const nextIndex = horizon.days.findIndex((day) => day.date > selected && day.slots.length > 0);
+      nextAvailable = nextIndex >= 0 ? horizon.days[nextIndex].date : null;
+      // On first arrival, take the customer straight to the earliest useful
+      // week. An explicit or bookmarked date stays selected and gets a link.
+      if (!hasAskedDate && nextIndex >= 0) {
+        selected = horizon.days[nextIndex].date;
+        times = { ...horizon, days: horizon.days.slice(nextIndex, nextIndex + DAYS_SHOWN) };
+        nextAvailable = null;
+      }
+    }
     return page(timesPage({
-      ...base, service: times.service, days: times.days, selected: times.days[0]?.date ?? from,
+      ...base, service: times.service, days: times.days, selected, nextAvailable,
       notice: url.searchParams.get('notice') === 'taken' ? 'taken' : null,
     }));
   }
