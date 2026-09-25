@@ -9,7 +9,8 @@ export type NotificationKind =
   | 'work_needs_you'
   | 'approval_requested'
   | 'booking_requested'
-  | 'work_finished';
+  | 'work_finished'
+  | 'credit_warning';
 
 /* The kinds this app can show. A row of any other kind is left out of the
    list rather than rejecting it (`fetchNotifications`), so a Worker that
@@ -17,7 +18,7 @@ export type NotificationKind =
    else. It still belongs here first, or its owners never see it. */
 const KINDS: readonly NotificationKind[] = [
   'reminder_due', 'routine_completed', 'routine_failed', 'routine_skipped', 'routine_needs_approval',
-  'work_needs_you', 'approval_requested', 'booking_requested', 'work_finished',
+  'work_needs_you', 'approval_requested', 'booking_requested', 'work_finished', 'credit_warning',
 ];
 
 export interface AppNotification {

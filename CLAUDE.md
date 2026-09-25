@@ -293,7 +293,15 @@ work task asked in the app that finished or failed two minutes or more
 after it was asked (`FINISHED_PUSH_AFTER_SECONDS`). Quick chat replies,
 Telegram (which carries its own reply and buttons) and routines (which have
 their own kinds) get none of these. Every business was a business of one on
-24 September, and until then these reached nobody at all. The consumer
+24 September, and until then these reached nobody at all.
+`credit_warning` (migration 071) goes to every owner once a month when 80%
+of the month's AI credits are used (`runtime/credit-warning.ts`, checked
+right after `finalizeRuntimeUsage`, before the Telegram early return).
+"Used" means cost or computer time, whichever is nearer its cap. The key is
+`credit_warning:YYYY-MM` on the database's UTC month, the same window
+`runtimeBudgetSnapshot` sums. Owners see the same figures on the Profile
+tab (`components/CreditUsageCard.tsx`, from `/api/runtime`'s `budget`).
+The consumer
 sends what it queued at once with `deliverPendingPushes`, because an
 approval waits about a minute and the cron could take as long; the cron
 stays the backstop. Both paths claim a row by moving `deliver_after`

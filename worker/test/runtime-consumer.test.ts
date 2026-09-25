@@ -1158,6 +1158,56 @@ describe('the runtime queue consumer', () => {
   });
 });
 
+describe('warning the owners about the month’s AI credits', () => {
+  it('warns the owner once a finished run leaves the month past 80%', async () => {
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.09.01-3', AISAR_DEEP_MODEL_NAME: 'deepseek-v4-flash',
+      AI: { run: async () => ({ response: JSON.stringify({ kind: 'conversation', status: 'completed' }) }) },
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, { provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64) });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const owner = await asOwner(async (sql) => {
+      const [user] = await sql<{ id: string }[]>`
+        insert into app_user (email, email_verified) values ('solo@example.com', true) returning id`;
+      await sql`insert into membership (user_id, business_id, role) values (${user.id}, ${A}, 'owner')`;
+      /* US$4.05 of US$5 already spent this month by an earlier run. */
+      const [earlier] = await sql<{ id: string }[]>`
+        insert into runtime_task (business_id, kind, status, payload, dedupe_key)
+        values (${A}, 'run', 'completed', '{}'::jsonb, 'earlier-spend') returning id`;
+      await sql`insert into runtime_budget (business_id) values (${A}) on conflict (business_id) do nothing`;
+      await sql`insert into runtime_usage (business_id, runtime_task_id, status, reserved_input_tokens,
+                  reserved_output_tokens, cost_microusd, model)
+                values (${A}, ${earlier.id}, 'completed', 0, 0, 4050000, 'deepseek-v4-flash')`;
+      return user.id;
+    });
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'deepseek-v4-flash',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `credits:${run.id}`,
+      payload: { input: 'Hi', objective: 'Hi', responseMode: 'quick', model: 'deepseek-v4-flash' },
+    }));
+    const runnerFetch: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) return jsonResponse({ ok: true, release: '2026.09.01-3',
+        runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+        hermes: { jenteraPatch: 'jentera-runtime-2026-09-16' },
+        toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false });
+      if (url.endsWith('/v1/tasks')) return jsonResponse({ ok: true, hermesRunId: 'credit-run', status: 'started' }, 202);
+      if (url.endsWith('/events')) return new Response([
+        { type: 'delta', delta: 'Hello.' }, { type: 'done' },
+      ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), { headers: { 'Content-Type': 'text/event-stream' } });
+      return jsonResponse({ ok: true, status: 'completed', output: 'Hello.', usage: { input_tokens: 20, output_tokens: 10 } });
+    };
+    expect(await handleRuntimeMessage(env, { version: 1, businessId: A, taskId: task.id }, { provider, fetch: runnerFetch }))
+      .toEqual({ action: 'ack', reason: 'completed' });
+    const notes = await asTenant(A, (tx) => tx<{ recipient_user_id: string; kind: string }[]>`
+      select recipient_user_id, kind from notification`);
+    expect(notes).toEqual([{ recipient_user_id: owner, kind: 'credit_warning' }]);
+  });
+});
+
 describe('telling the owner who asked in the app', () => {
   it('pushes a long work task\'s result to the owner who asked, at once', async () => {
     const env = testEnv({

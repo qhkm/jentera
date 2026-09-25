@@ -101,4 +101,35 @@ describe('notification inbox rows', () => {
     await vi.waitFor(() => expect(onOpenTask).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222', 'Chase the late invoices — done'));
     expect(onOpenReview).not.toHaveBeenCalled();
   });
+
+  it('opens the business profile from a credit warning', async () => {
+    const onOpenUrl = vi.fn();
+    const state = {
+      items: [{
+        id: '11111111-1111-4111-8111-111111111111',
+        kind: 'credit_warning' as const,
+        title: '80% of this month’s AI credits used',
+        body: 'US$4.02 of US$5.00 used. They reset on the 1st. Reply in chat if you need more before then.',
+        runId: null,
+        routineId: null,
+        occurrenceId: null,
+        url: '/app?view=business&tab=profile',
+        readAt: null,
+        createdAt: '2026-09-24T02:00:00.000Z',
+      }],
+      unread: 1,
+      nextCursor: null,
+      loading: false,
+      loadingMore: false,
+      error: null,
+      refresh: vi.fn(async () => {}),
+      markRead: vi.fn(async () => {}),
+      markAll: vi.fn(async () => {}),
+      loadMore: vi.fn(async () => {}),
+    };
+    render(<RepositoryProvider repository={new LocalRepository()}><I18nProvider><NotificationsView state={state} onOpenTask={vi.fn()} onOpenRoutine={vi.fn()} onOpenUrl={onOpenUrl} /></I18nProvider></RepositoryProvider>);
+    const card = (await screen.findByText('80% of this month’s AI credits used')).closest('button');
+    card?.click();
+    await vi.waitFor(() => expect(onOpenUrl).toHaveBeenCalledWith('/app?view=business&tab=profile'));
+  });
 });

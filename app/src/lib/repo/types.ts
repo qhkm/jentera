@@ -408,6 +408,12 @@ export interface RuntimeOverview {
     status: 'queued' | 'working' | 'needs_approval';
     startedAt: string;
   } | null;
+  /** This month's AI credits: the caps, and what is used against them
+      (`runtimeBudgetSnapshot`). Sent to every member; shown to owners. */
+  budget?: {
+    budget: { monthlyCostMicrousd: number; monthlyRuntimeSeconds: number };
+    usage: { costMicrousd: number; runtimeMs: number };
+  };
 }
 
 export interface RuntimeSkill {
