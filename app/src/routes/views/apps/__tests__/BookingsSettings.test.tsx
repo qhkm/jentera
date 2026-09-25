@@ -40,6 +40,7 @@ describe('slugFrom', () => {
 describe('BookingsSettings', () => {
   it('publishes a first service with weekday hours and the business link name', async () => {
     const { api, onSaved, user } = await mount(NEW);
+    expect(screen.getByRole('heading', { name: 'Set up your booking page' })).toBeInTheDocument();
     await user.type(await screen.findByLabelText('Name'), 'Cupping class');
     await user.click(screen.getByRole('checkbox', { name: /I understand/ }));
     await user.click(screen.getByRole('button', { name: 'Publish booking page' }));
@@ -177,6 +178,7 @@ describe('BookingsSettings', () => {
 
   it('switches focused sections through the secondary settings navigation', async () => {
     const { user } = await mount(configFixture());
+    expect(screen.queryByRole('heading', { name: 'Settings' })).toBeNull();
     const navigation = screen.getByRole('navigation', { name: 'Booking settings sections' });
     expect(navigation).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Services' })).toHaveAttribute('aria-current', 'page');

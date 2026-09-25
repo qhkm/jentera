@@ -252,8 +252,10 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
   ];
 
   return <form className="bookings-settings" onSubmit={(event) => void save(event)} noValidate>
-    <h2>{t(installed ? 'bookings.settings.title' : 'bookings.setup.title')}</h2>
-    {!installed && <p className="bookings-lead">{t('bookings.setup.lead')}</p>}
+    {!installed && <>
+      <h2>{t('bookings.setup.title')}</h2>
+      <p className="bookings-lead">{t('bookings.setup.lead')}</p>
+    </>}
     <div className="bookings-settings-shell">
       <nav className="bookings-settings-nav" aria-label={t('bookings.settings.nav')}>
         {panels.map((item) => <button key={item.id} type="button" className={panel === item.id ? 'active' : ''}
