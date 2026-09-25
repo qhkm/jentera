@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keys } from '@/lib/query/keys';
 import { useBusinessId } from '@/lib/query/scope';
 import { appsListQuery, pendingBookingsQuery, refreshApps } from './queries';
 import type { AppsApi, AppsList, Booking, InstalledApp } from './types';
@@ -60,6 +61,14 @@ function LiveAppsProvider({ api, businessId, unread, children }: {
   const scanning = (bookings?.pending ?? 0) > 0;
   const scan = useQuery({ ...pendingBookingsQuery(api, businessId), enabled: scanning });
   const pending = !bookings ? null : !scanning ? NONE : scan.data ?? null;
+  /* So that scan is dropped, not kept: when a new request arrives later,
+     the waiting requests are unknown until a fresh scan lands, never the
+     old, already-decided ones with their Confirm. Every observer of the
+     scan is disabled at 0, so nothing reads it again here; a read of it
+     still in flight is cancelled. */
+  useEffect(() => {
+    if (!scanning) void client.resetQueries({ queryKey: keys.pendingBookings(businessId), exact: true });
+  }, [scanning, client, businessId]);
 
   const refresh = useCallback(() => refreshApps(client, businessId), [client, businessId]);
 

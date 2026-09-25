@@ -11,6 +11,11 @@ function Probe() {
   const home = useHomeApps();
   return <output>{JSON.stringify({ enabled: apps.enabled, apps: apps.list?.apps.length ?? null, pending: apps.pending?.length ?? null, home: home?.length ?? null })}</output>;
 }
+/** Who waits, by name: 'unknown' while the waiting requests are not known. */
+function Waiting() {
+  const { pending } = useApps();
+  return <output>{pending === null ? 'unknown' : pending.map((booking) => booking.customerName).join(',') || 'none'}</output>;
+}
 const bookingsApp = (pending: number) => ({ key: 'bookings' as const, state: 'active' as const, accepting: true, publicUrl: 'https://s.test/b/x', pending });
 const installed = (pending: number) => vi.fn(async (): Promise<AppsList> => ({ apps: [bookingsApp(pending)], available: ['bookings'] }));
 const tomorrow = () => new Date(Date.now() + 86_400_000).toISOString();
@@ -128,7 +133,7 @@ describe('AppsProvider', () => {
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('"apps":0'));
   });
 
-  it('stops counting requests once the list says none wait, whatever an earlier scan left cached', async () => {
+  it('stops counting requests once the list says none wait, and drops the earlier scan', async () => {
     let waiting = 1;
     const api = fakeAppsApi({
       list: vi.fn(async (): Promise<AppsList> => ({ apps: [bookingsApp(waiting)], available: ['bookings'] })),
@@ -141,7 +146,37 @@ describe('AppsProvider', () => {
     waiting = 0;
     await act(async () => { rerender(view(1)); });
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('"pending":0'));
-    expect(client.getQueryData(keys.pendingBookings(TEST_BUSINESS_ID))).toHaveLength(1);
+    expect(client.getQueryData(keys.pendingBookings(TEST_BUSINESS_ID))).toBeUndefined();
     expect(api.bookings).toHaveBeenCalledTimes(1);
+  });
+
+  /* Decided on another device, or on the brief, and hours later a new
+     request arrives: until the fresh scan lands the waiting requests are
+     unknown, never the old request with its Confirm and a count of 1. */
+  it('shows a new request once its scan lands, never the old decided one while it is in flight', async () => {
+    let waiting = 1;
+    let answer: ((rows: { bookings: ReturnType<typeof bookingFixture>[]; nextCursor: null }) => void) | null = null;
+    const old = bookingFixture({ startsAt: tomorrow() });
+    const fresh = bookingFixture({ id: '11111111-1111-4111-8111-0000000000ff', customerName: 'Nadia', startsAt: tomorrow() });
+    const api = fakeAppsApi({
+      list: vi.fn(async (): Promise<AppsList> => ({ apps: [bookingsApp(waiting)], available: ['bookings'] })),
+      bookings: vi.fn<AppsApi['bookings']>()
+        .mockResolvedValueOnce({ bookings: [old], nextCursor: null })
+        .mockImplementationOnce(() => new Promise((resolve) => { answer = resolve; })),
+    });
+    const view = (unread: number) => <AppsProvider api={api} unread={unread}><Waiting /></AppsProvider>;
+    const { rerender } = await renderWithQuery(view(0));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Aisyah'));
+    waiting = 0;
+    await act(async () => { rerender(view(1)); });
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('none'));
+    // A new request arrives: the bell's count rises again.
+    waiting = 1;
+    await act(async () => { rerender(view(2)); });
+    await waitFor(() => expect(api.bookings).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('status')).toHaveTextContent('unknown');
+    await act(async () => { answer!({ bookings: [fresh], nextCursor: null }); });
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Nadia'));
+    expect(screen.getByRole('status')).not.toHaveTextContent('Aisyah');
   });
 });
