@@ -217,8 +217,8 @@ DESKTOP_VIEW_BUSINESS_IDS = "4e8c2593-2af2-494f-b157-fec0295a50b5"
 # Canary: Kitakod Ventures only, 2026-09-09. Empty allowlist = every business.
 ROUTINES_ENABLED = "true"
 AISAR_ROUTINES_BUSINESS_IDS = "4e8c2593-2af2-494f-b157-fec0295a50b5"
-# Apps pilot. Stays "false" until the release step in the spec flips it.
-APPS_ENABLED = "false"
+# Apps pilot, on since 2026-09-25 for the businesses listed below only.
+APPS_ENABLED = "true"
 APPS_BUSINESS_IDS = "4e8c2593-2af2-494f-b157-fec0295a50b5"
 SITES_ORIGIN = "https://jentera-sites.qhkmdev90.workers.dev"
 # router.fmcv.my is a separate LiteLLM gateway and therefore uses the FMCV
@@ -398,7 +398,7 @@ binding = "HYPERDRIVE"
 id = "f77c72f8d6614bb0b6955170caadad07"
 
 [env.sites.vars]
-APPS_ENABLED = "false"
+APPS_ENABLED = "true"
 APPS_BUSINESS_IDS = "4e8c2593-2af2-494f-b157-fec0295a50b5"
 SITES_ORIGIN = "https://jentera-sites.qhkmdev90.workers.dev"
 TURNSTILE_SITE_KEY = "0x4AAAAAAEyClnNFPsv8OJBY"
