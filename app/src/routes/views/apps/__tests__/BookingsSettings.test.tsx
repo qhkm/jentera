@@ -56,6 +56,8 @@ describe('BookingsSettings', () => {
 
   it('saves customer-facing service and location details', async () => {
     const { api, user } = await mount(configFixture());
+    await user.click(screen.getByText('Location and booking link'));
+    await user.click(screen.getByText('Description (optional)', { selector: 'summary' }));
     const location = screen.getByLabelText('Where the booking takes place');
     await user.clear(location);
     await user.type(location, 'Online · Link shared after confirmation');
@@ -71,7 +73,7 @@ describe('BookingsSettings', () => {
 
   it('saves the customer change deadline and explains reminder delivery accurately', async () => {
     const { api, user } = await mount(configFixture());
-    await user.click(screen.getByText('Advanced settings'));
+    await user.click(screen.getByText('Booking rules and reminders'));
     await user.selectOptions(screen.getByLabelText('Customer change deadline'), '720');
     expect(screen.getByText(/does not send it automatically yet/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
@@ -80,7 +82,8 @@ describe('BookingsSettings', () => {
 
   it('shows Calendar protection and saves a manual closure in Malaysia time', async () => {
     const { api, user } = await mount(configFixture());
-    await user.click(screen.getByText('Advanced settings'));
+    await user.click(screen.getByText('Calendar conflict protection'));
+    await user.click(screen.getByText('Blocked time and closures'));
     expect(screen.getByText(/Active for owner@example.com/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Add blocked time' }));
     await user.type(screen.getByLabelText('Reason'), 'Team retreat');
@@ -170,9 +173,11 @@ describe('BookingsSettings', () => {
     expect(screen.getByRole('button', { name: 'Save settings' })).toBeInTheDocument();
   });
 
-  it('keeps advanced settings folded and shows the link it will publish', async () => {
+  it('keeps secondary controls folded and shows the link it will publish', async () => {
     await mount(configFixture());
-    expect(screen.getByText('Advanced settings').closest('details')).not.toHaveAttribute('open');
+    for (const label of ['Location and booking link', 'Booking rules and reminders', 'Calendar conflict protection', 'Blocked time and closures']) {
+      expect(screen.getByText(label).closest('details')).not.toHaveAttribute('open');
+    }
     expect(screen.getByText('https://sites.test/b/seido')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add another service' })).toBeInTheDocument();
   });

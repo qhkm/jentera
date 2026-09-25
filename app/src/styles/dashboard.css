@@ -807,6 +807,19 @@
 .booking-card-actions, .booking-page-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .booking-card-whatsapp, .booking-page-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
 .bookings-settings { display: grid; gap: 16px; }
+.bookings-settings { max-width: 760px; }
+.bookings-service-basics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.bookings-section { border-top: 1px solid var(--border); padding: 14px 0; min-width: 0; }
+.bookings-section > summary { cursor: pointer; font-weight: 600; }
+.bookings-section > summary small { margin-left: 12px; font-weight: 400; color: var(--text-secondary); }
+.bookings-section[open] > summary { margin-bottom: 16px; }
+.bookings-section > label + label, .bookings-section > p, .bookings-section > p + label { margin-top: 12px; }
+.bookings-section .bookings-hours { margin-top: 12px; }
+.bookings-settings > .btn { justify-self: start; }
+@media (max-width: 640px) {
+  .bookings-service-basics { grid-template-columns: 1fr; }
+  .bookings-section > summary small { display: block; margin: 4px 0 0 18px; }
+}
 .bookings-settings label { display: grid; gap: 6px; font-size: 13px; }
 .bookings-settings .bookings-check, .booking-page .bookings-check { display: flex; align-items: center; gap: 8px; }
 .bookings-service { display: grid; gap: 12px; padding: 16px; }
