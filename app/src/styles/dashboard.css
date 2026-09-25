@@ -845,3 +845,8 @@
 @media (max-width: 640px) {
   .home-actions.home-actions-apps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* The month's AI credits (components/CreditUsageCard.tsx): amber from 80%,
+   red from 95%, whichever cap is nearer. */
+.credit-meter-warn .progress-fill { background: var(--color-amber-500); }
+.credit-meter-high .progress-fill { background: var(--color-red-500); }

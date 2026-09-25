@@ -28,6 +28,12 @@ const serve = (notifications: unknown[]) => vi.stubGlobal('fetch', vi.fn(async (
 afterEach(() => vi.unstubAllGlobals());
 
 describe('the notification list', () => {
+  it('accepts a credit warning', async () => {
+    serve([item('credit_warning')]);
+    const page = await fetchNotifications();
+    expect(page.notifications.map((n) => n.kind)).toEqual(['credit_warning']);
+  });
+
   it('accepts a finished-task notification', async () => {
     serve([item('work_finished')]);
     const page = await fetchNotifications();

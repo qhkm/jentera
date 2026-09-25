@@ -27,6 +27,7 @@ import { useTeamEnabled } from '@/lib/repo/gate';
 import TeamPanel from './TeamPanel';
 import BotsPanel from './BotsPanel';
 import { FounderGroupInvite } from '@/components/FounderGroupInvite';
+import { CreditUsageCard } from '@/components/CreditUsageCard';
 import PermissionsPanel from './PermissionsPanel';
 import KnowledgePanel from './KnowledgePanel';
 import { hasConfirmedValue, confirmedValue } from '@/lib/knowledge';
@@ -369,6 +370,7 @@ export default function MyBusinessView({
                 <ArrowUpRight size={15} aria-hidden="true" />
               </button>
             </Card>
+            <CreditUsageCard />
           </div>
         )}
 
