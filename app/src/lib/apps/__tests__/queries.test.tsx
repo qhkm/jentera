@@ -2,13 +2,13 @@ import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { AppsError } from '../api';
-import { bookingQuery, cancelBookingReads, rereadBooking, useBookingAction, writeBooking } from '../queries';
+import { appsListQuery, bookingQuery, cancelBookingReads, rereadBooking, useBookingAction, writeBooking } from '../queries';
 import { BOOKING_ID, bookingFixture, configFixture, fakeAppsApi } from './fixtures';
 import { createQueryClient } from '@/lib/query/client';
 import { keys } from '@/lib/query/keys';
 import { QueryScope } from '@/lib/query/scope';
 import { createTestQueryClient, TEST_BUSINESS_ID as BIZ } from '@/test-support/query';
-import type { QueryClient } from '@tanstack/react-query';
+import { useQuery, type QueryClient } from '@tanstack/react-query';
 import type { AppsList, Booking, BookingActionResult } from '../types';
 
 const OTHER_ID = '11111111-1111-4111-8111-00000000000e';
@@ -80,6 +80,24 @@ describe('writing a booking into the cache', () => {
     }
   });
 
+  it('re-marks a patched list invalidated if it was invalidated before the write, so it still refetches when next shown', async () => {
+    const client = createTestQueryClient();
+    const booking = bookingFixture();
+    const other = bookingFixture({ id: OTHER_ID, customerName: 'Aina' });
+    client.setQueryData(TODAY, [booking, other]);
+    client.setQueryData(keys.pendingBookings(BIZ), [booking, other]);
+    // Inactive here (no observer mounted): invalidating only flags them.
+    await client.invalidateQueries({ queryKey: TODAY, exact: true, refetchType: 'none' });
+    await client.invalidateQueries({ queryKey: keys.pendingBookings(BIZ), exact: true, refetchType: 'none' });
+    expect(client.getQueryState(TODAY)!.isInvalidated).toBe(true);
+    expect(client.getQueryState(keys.pendingBookings(BIZ))!.isInvalidated).toBe(true);
+
+    writeBooking(client, BIZ, bookingFixture({ status: 'confirmed' }));
+
+    expect(client.getQueryState(TODAY)!.isInvalidated).toBe(true);
+    expect(client.getQueryState(keys.pendingBookings(BIZ))!.isInvalidated).toBe(true);
+  });
+
   it('re-reads a booking whose action failed and writes it everywhere', async () => {
     const client = createTestQueryClient();
     client.setQueryData(keys.pendingBookings(BIZ), [bookingFixture()]);
@@ -109,6 +127,33 @@ describe('writing a booking into the cache', () => {
     await expect(result).resolves.toEqual(fresh);
     expect(client.getQueryData(keys.booking(BIZ, BOOKING_ID))).toEqual(fresh);
   });
+
+  it('never cancels or dedupes a concurrent reread of the same booking; each gets its own answer, and the cache ends with the later write', async () => {
+    const client = createTestQueryClient();
+    const first = bookingFixture({ status: 'declined' });
+    const second = bookingFixture({ status: 'cancelled' });
+    let resolveFirst!: (booking: Booking) => void;
+    let resolveSecond!: (booking: Booking) => void;
+    const api = fakeAppsApi({
+      booking: vi.fn()
+        .mockImplementationOnce(() => new Promise<Booking>((resolve) => { resolveFirst = resolve; }))
+        .mockImplementationOnce(() => new Promise<Booking>((resolve) => { resolveSecond = resolve; })),
+    });
+
+    const a = rereadBooking(client, api, BIZ, BOOKING_ID);
+    const b = rereadBooking(client, api, BIZ, BOOKING_ID);
+    await vi.waitFor(() => expect(api.booking).toHaveBeenCalledTimes(2));
+
+    // b's answer lands first, then a's — neither reread cancelled or
+    // dedup'd onto the other's read, and each resolves with its own answer.
+    resolveSecond(second);
+    await expect(b).resolves.toEqual(second);
+    resolveFirst(first);
+    await expect(a).resolves.toEqual(first);
+
+    // The cache simply ends with whichever write landed last (a's).
+    expect(client.getQueryData(keys.booking(BIZ, BOOKING_ID))).toEqual(first);
+  });
 });
 
 describe('a booking action', () => {
@@ -118,23 +163,36 @@ describe('a booking action', () => {
     client.setQueryData(keys.pendingBookings(BIZ), [bookingFixture()]);
     const confirmed = bookingFixture({ status: 'confirmed' });
     const api = fakeAppsApi({ decide: vi.fn(async () => ({ booking: confirmed, whatsappUrl: null, calendarQueued: false })) });
-    // A read of the apps list already out when the action starts: its own
-    // affairs, not something the action waits on.
-    let resolveAppsList!: (list: AppsList) => void;
-    const appsListRead = client.fetchQuery({
-      queryKey: keys.appsList(BIZ),
-      queryFn: () => new Promise<AppsList>((resolve) => { resolveAppsList = resolve; }),
-    });
     const { result } = renderHook(() => useBookingAction(api), { wrapper: scope(client) });
     await act(async () => { await result.current.mutateAsync({ id: BOOKING_ID, action: 'confirm' }); });
     expect(api.decide).toHaveBeenCalledWith(BOOKING_ID, 'confirm');
     expect(client.getQueryData(TODAY)).toEqual([confirmed]);
     expect(client.getQueryData(keys.pendingBookings(BIZ))).toEqual([]);
     expect(client.getQueryState(TODAY)!.isInvalidated).toBe(true);
-    // mutateAsync resolved without waiting for the apps list to be read again.
-    expect(client.getQueryState(keys.appsList(BIZ))!.fetchStatus).toBe('fetching');
+  });
+
+  it("resolves without waiting for the apps list to be read again, even with a mounted observer watching it", async () => {
+    const client = createTestQueryClient();
+    const confirmed = bookingFixture({ status: 'confirmed' });
+    let resolveAppsList!: (list: AppsList) => void;
+    const api = fakeAppsApi({
+      decide: vi.fn(async () => ({ booking: confirmed, whatsappUrl: null, calendarQueued: false })),
+      list: vi.fn(() => new Promise<AppsList>((resolve) => { resolveAppsList = resolve; })),
+    });
+    function useBoth() {
+      return { action: useBookingAction(api), appsList: useQuery(appsListQuery(api, BIZ)) };
+    }
+    const { result } = renderHook(useBoth, { wrapper: scope(client) });
+    // A mounted observer's own read of the apps list, already in flight.
+    await vi.waitFor(() => expect(result.current.appsList.fetchStatus).toBe('fetching'));
+
+    await act(async () => { await result.current.action.mutateAsync({ id: BOOKING_ID, action: 'confirm' }); });
+
+    // The action resolved even though onSettled asked for the apps list
+    // again and that mounted observer's read is still in flight.
+    expect(result.current.appsList.fetchStatus).toBe('fetching');
     resolveAppsList({ apps: [], available: ['bookings'] });
-    await appsListRead;
+    await vi.waitFor(() => expect(result.current.appsList.fetchStatus).toBe('idle'));
   });
 
   it("cancels its own reads again when the answer lands, so one already out while the request was in flight can't overwrite it", async () => {

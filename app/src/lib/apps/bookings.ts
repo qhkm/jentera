@@ -148,10 +148,13 @@ export interface OwnRead {
       card the moment it is decided, WhatsApp link and all.
     - Any other row is drawn from whichever read it last: the list, or its
       own query (a Calendar poll).
-    Precondition: an id belongs in `kept` only once `writeBooking` or
-    `rereadBooking` (`./queries`) has written its own query for it — before
-    that, `own` holds nothing to draw from and this falls back to the list's
-    row regardless. */
+    Precondition: mark an id `kept` only once `writeBooking` or
+    `rereadBooking` (`./queries`) has written its own query for it with the
+    decided value. Marking it any earlier is actively harmful, not merely
+    premature: a Calendar poll can already have left a pre-decision (stale)
+    read of that booking in its own query, and `kept` skips the timestamp
+    comparison entirely — it would pin that stale own-read ahead of a newer,
+    correct list read until the action's write finally lands. */
 export function mergeBookingRows(
   list: Booking[] | null,
   listUpdatedAt: number,
