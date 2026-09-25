@@ -62,4 +62,23 @@ describe('BookingsApp', () => {
     await user.click(await screen.findByRole('button', { name: 'Try again' }));
     expect(await screen.findByRole('tab', { name: 'Bookings' })).toBeInTheDocument();
   });
+
+  it('shows the settings again on a revisit inside 30 s without asking the server', async () => {
+    const first = await mount(fakeAppsApi(), 'page');
+    expect(await screen.findByRole('heading', { name: 'Your booking page' })).toBeInTheDocument();
+    first.unmount();
+    await mount(first.api, 'page', first.client);
+    expect(screen.getByRole('heading', { name: 'Your booking page' })).toBeInTheDocument();
+    expect(first.api.bookingsConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a saved switch at once from the server\'s answer, without reading the settings again', async () => {
+    const api = fakeAppsApi({
+      saveBookingsConfig: vi.fn(async () => configFixture({ settings: { ...configFixture().settings!, accepting: false } })),
+    });
+    const { user } = await mount(api, 'page');
+    await user.click(await screen.findByRole('checkbox', { name: 'Taking bookings' }));
+    expect(await screen.findByText(/^Paused\./)).toBeInTheDocument();
+    expect(api.bookingsConfig).toHaveBeenCalledTimes(1);
+  });
 });

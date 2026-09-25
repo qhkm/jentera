@@ -1,29 +1,27 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import type { QueryClient } from '@tanstack/react-query';
 import BookingsSettings, { slugFrom } from '../BookingsSettings';
-import { I18nProvider } from '@/i18n/I18nProvider';
-import { RepositoryProvider } from '@/lib/repo/context';
 import { LocalRepository } from '@/lib/repo/local';
 import { AppsError } from '@/lib/apps/api';
 import { configFixture, fakeAppsApi, SERVICE_ID } from '@/lib/apps/__tests__/fixtures';
 import type { BookingsConfig } from '@/lib/apps/types';
+import { createQueryClient } from '@/lib/query/client';
+import { renderWithQuery } from '@/test-support/query';
 
 const NEW: BookingsConfig = { installation: null, version: null, settings: null, services: [] };
 
-async function mount(config: BookingsConfig, api = fakeAppsApi()) {
+async function mount(config: BookingsConfig, api = fakeAppsApi(), client?: QueryClient) {
   const repo = new LocalRepository();
   await repo.setBizType('restaurant');
   await repo.setBizProfile({ name: 'Kedai Kita', loc: 'Shah Alam' });
   const onSaved = vi.fn();
   const onReload = vi.fn();
-  render(<RepositoryProvider repository={repo}><I18nProvider>
-    <BookingsSettings api={api} config={config} onSaved={onSaved} onReload={onReload} />
-  </I18nProvider></RepositoryProvider>);
   // The repository loads asynchronously (LocalRepository.load() resolves on
-  // a microtask); flush it here so every test's first assertion, not only
-  // one that happens to use findBy*, sees the mounted form.
-  await act(async () => {});
+  // a microtask); renderWithQuery flushes it, so every test's first
+  // assertion, not only one that happens to use findBy*, sees the form.
+  await renderWithQuery(<BookingsSettings api={api} config={config} onSaved={onSaved} onReload={onReload} />, { repository: repo, client });
   return { api, onSaved, onReload, user: userEvent.setup() };
 }
 
@@ -145,5 +143,14 @@ describe('BookingsSettings', () => {
     expect(screen.getByText('Advanced settings').closest('details')).not.toHaveAttribute('open');
     expect(screen.getByText('https://sites.test/b/seido')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add another service' })).toBeInTheDocument();
+  });
+
+  it('never sends a save twice, even when its answer was lost', async () => {
+    const api = fakeAppsApi({ saveBookingsConfig: vi.fn().mockRejectedValue(new AppsError('NETWORK', 0, true)) });
+    // The production client: only its no-retry rule for writes is under test.
+    const { user } = await mount(configFixture(), api, createQueryClient());
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(await screen.findByText('We could not confirm the save. Reload to check what was saved.')).toBeInTheDocument();
+    expect(api.saveBookingsConfig).toHaveBeenCalledTimes(1);
   });
 });
