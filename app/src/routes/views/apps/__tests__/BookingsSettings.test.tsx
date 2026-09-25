@@ -56,14 +56,13 @@ describe('BookingsSettings', () => {
 
   it('saves customer-facing service and location details', async () => {
     const { api, user } = await mount(configFixture());
-    await user.click(screen.getByText('Location and booking link'));
-    await user.click(screen.getByText('Description (optional)', { selector: 'summary' }));
-    const location = screen.getByLabelText('Where the booking takes place');
-    await user.clear(location);
-    await user.type(location, 'Online · Link shared after confirmation');
     const description = screen.getByLabelText('Description (optional)');
     await user.clear(description);
     await user.type(description, 'A focused session with our team.');
+    await user.click(screen.getByRole('button', { name: 'Location and booking link' }));
+    const location = screen.getByLabelText('Where the booking takes place');
+    await user.clear(location);
+    await user.type(location, 'Online · Link shared after confirmation');
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
     expect(api.saveBookingsConfig).toHaveBeenCalledWith(expect.objectContaining({
       location: 'Online · Link shared after confirmation',
@@ -73,7 +72,7 @@ describe('BookingsSettings', () => {
 
   it('saves the customer change deadline and explains reminder delivery accurately', async () => {
     const { api, user } = await mount(configFixture());
-    await user.click(screen.getByText('Booking rules and reminders'));
+    await user.click(screen.getByRole('button', { name: 'Booking rules and reminders' }));
     await user.selectOptions(screen.getByLabelText('Customer change deadline'), '720');
     expect(screen.getByText(/does not send it automatically yet/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
@@ -82,9 +81,9 @@ describe('BookingsSettings', () => {
 
   it('shows Calendar protection and saves a manual closure in Malaysia time', async () => {
     const { api, user } = await mount(configFixture());
-    await user.click(screen.getByText('Calendar conflict protection'));
-    await user.click(screen.getByText('Blocked time and closures'));
+    await user.click(screen.getByRole('button', { name: 'Calendar conflict protection' }));
     expect(screen.getByText(/Active for owner@example.com/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Blocked time and closures' }));
     await user.click(screen.getByRole('button', { name: 'Add blocked time' }));
     await user.type(screen.getByLabelText('Reason'), 'Team retreat');
     fireEvent.change(screen.getByLabelText('Starts'), { target: { value: '2026-10-12T09:00' } });
@@ -110,6 +109,7 @@ describe('BookingsSettings', () => {
 
   it('points at a closing time before the opening time', async () => {
     const { api, user } = await mount(configFixture());
+    await user.click(screen.getByRole('button', { name: 'Weekly hours' }));
     fireEvent.change(screen.getByLabelText('Tuesday closes'), { target: { value: '09:00' } });
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
     expect(screen.getByText('Closing time must be after opening time.')).toBeInTheDocument();
@@ -161,24 +161,31 @@ describe('BookingsSettings', () => {
   });
 
   it('does not show a link as if it were live before the page is published', async () => {
-    await mount(NEW);
+    const { user } = await mount(NEW);
+    await user.click(screen.getByRole('button', { name: 'Location and booking link' }));
     expect(screen.getByText('Once published, your link will end in /b/kedai-kita')).toBeInTheDocument();
     expect(screen.queryByText('…/b/kedai-kita')).toBeNull();
   });
 
   it('still renders when the saved link is not a full address', async () => {
     const config = configFixture({ installation: { slug: 'seido', state: 'active', publicUrl: '/b/seido' } });
-    await mount(config);
+    const { user } = await mount(config);
+    await user.click(screen.getByRole('button', { name: 'Location and booking link' }));
     expect(screen.getByText('…/b/seido')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save settings' })).toBeInTheDocument();
   });
 
-  it('keeps secondary controls folded and shows the link it will publish', async () => {
-    await mount(configFixture());
-    for (const label of ['Location and booking link', 'Booking rules and reminders', 'Calendar conflict protection', 'Blocked time and closures']) {
-      expect(screen.getByText(label).closest('details')).not.toHaveAttribute('open');
-    }
+  it('switches focused sections through the secondary settings navigation', async () => {
+    const { user } = await mount(configFixture());
+    const navigation = screen.getByRole('navigation', { name: 'Booking settings sections' });
+    expect(navigation).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Services' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByLabelText('Description (optional)')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Location and booking link' }));
+    expect(screen.getByRole('button', { name: 'Location and booking link' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByLabelText('Description (optional)')).toBeNull();
     expect(screen.getByText('https://sites.test/b/seido')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add another service' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Where the booking takes place')).toBeInTheDocument();
   });
 });
