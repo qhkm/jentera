@@ -1673,7 +1673,7 @@ describe('live progress to the web chat', () => {
     const statuses = published.filter((event) => event.type === 'status');
     expect(statuses).toContainEqual(expect.objectContaining({ detail: 'Checking the opening hours', kind: 'step' }));
     expect(statuses.find((event) => String(event.detail).includes('web_search'))).toMatchObject({ kind: 'tool' });
-    expect(statuses.find((event) => String(event.detail).includes('System ready'))).toMatchObject({ kind: 'stage' });
+    expect(statuses.find((event) => event.detail === '⏳ Starting…')).toMatchObject({ kind: 'stage' });
     for (const event of published) {
       expect(event).toMatchObject({ businessId: A, runId: run.id });
     }

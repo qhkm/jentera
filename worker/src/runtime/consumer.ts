@@ -117,6 +117,7 @@ import {
 } from '../notifications/work';
 import { deliverPendingPushes } from '../push/outbox';
 import { maybeWarnCredits } from './credit-warning';
+import { wakeLine } from './wake-lines';
 import {
   cancelRoutineRuntimeOccurrence,
   finishRoutineRuntimeOccurrence,
@@ -235,7 +236,9 @@ export { CREDIT_CAP_NOTICE } from './failure-notice';
     status instead, except while a real tool is running. The statuses never
     enter the durable answer lane. */
 const STAGE_STATUS: Record<string, string> = {
-  database_ready: '✅ System ready — starting…',
+  /* Not "ready": this stage is reached before the sprite has answered, and
+     on a cold start it is followed by a wake of about twenty seconds. */
+  database_ready: '⏳ Starting…',
   provider_awake: '✅ Runner online — starting agent…',
   runner_ready: '✅ Agent session ready — thinking…',
   hermes_started: '✅ Agent started — thinking…',
@@ -2383,6 +2386,12 @@ export async function handleRuntimeMessage(
           }));
         if (deferred && lease.task.runId) {
           await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'waking');
+          /* Said, and in good humour: a silent twenty seconds reads as broken. */
+          const line = wakeLine(lease.task.runId);
+          await publishRunProgressSafely(
+            env, message.businessId, lease.task.runId, 'status', { detail: line, kind: 'wake' },
+          );
+          await tellTelegramWaking(env, lease.task, liveBubbleId, options.telegramToken, line);
           /* A delay to the start only: a run already on Hermes that meets a
              restart is a different story, and would muddy the measurement. */
           if (!lease.task.remoteRunId) {
@@ -2801,6 +2810,27 @@ async function settleApprovalBubble(
     text,
     { inline_keyboard: [] },
   ).catch(() => {});
+}
+
+/** The waking line in the Telegram bubble, where there is one. Best effort:
+    a failed edit costs the owner a status line, never the run. */
+async function tellTelegramWaking(
+  env: Env,
+  task: RuntimeTask,
+  liveBubbleId: number | undefined,
+  existingToken: TelegramCredential | undefined,
+  line: string,
+): Promise<void> {
+  const telegram = telegramHint(task.payload);
+  const messageId = liveBubbleId ?? telegram?.liveMessageId;
+  if (!telegram?.privateChat || !messageId) return;
+  try {
+    const token = existingToken ?? await withTenant(env, task.businessId, (tx) =>
+      useTelegramCredential(env, tx, task.businessId, telegram.connectionId));
+    await editMessageText(token, telegram.chatId, messageId, line);
+  } catch {
+    /* Telegram declined or the credential is gone; the answer still comes. */
+  }
 }
 
 function telegramHint(value: unknown): {

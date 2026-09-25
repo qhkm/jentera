@@ -30,6 +30,7 @@ import { reserveRuntimeUsage } from '../src/runtime/usage';
 import { previewForEmail, previewModelAccess } from '../src/chat-preview';
 import { businessHasAccess } from '../src/access';
 import { generateVapidJwk } from '../src/push/crypto';
+import { WAKE_LINES, wakeLine } from '../src/runtime/wake-lines';
 import { savePushSubscription } from '../src/push/subscriptions';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -1155,6 +1156,81 @@ describe('the runtime queue consumer', () => {
       expect(second).toHaveLength(2);
       expect(new Set([...first, ...second].map((row) => row.business_id)).size).toBe(27);
     });
+  });
+});
+
+describe('telling the owner their workspace is waking up', () => {
+  const restarting: typeof fetch = async () =>
+    jsonResponse({ ok: false, release: '2026.09.01-3' }, 503);
+
+  it('shows the app one playful, honest line per run, the same on every check', async () => {
+    const published: Array<Record<string, unknown>> = [];
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.09.01-3', AISAR_MODEL_NAME: 'MiniMax-M3',
+      RUN_STREAMS: { idFromName: () => 'stream', get: () => ({ fetch: async (_url: string, init: RequestInit) => {
+        published.push(JSON.parse(String(init.body)) as Record<string, unknown>); return jsonResponse({ ok: true });
+      } }) },
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, { provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64) });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `wake:${run.id}`, payload: { input: 'hello', channel: 'app' },
+    }));
+
+    await handleRuntimeMessage(env, { version: 1, businessId: A, taskId: task.id }, { provider, fetch: restarting });
+    /* The next check, once the wake delay has passed. */
+    await asOwner((sql) => sql`update runtime_task set available_at = now() where id = ${task.id}`);
+    await handleRuntimeMessage(env, { version: 1, businessId: A, taskId: task.id }, { provider, fetch: restarting });
+
+    const wakes = published.filter((event) => event.type === 'status' && event.kind === 'wake');
+    expect(wakes).toHaveLength(2);
+    expect(WAKE_LINES).toContain(wakes[0].detail);
+    expect(wakes[1].detail).toBe(wakes[0].detail);
+    expect(wakes[0].detail).toBe(wakeLine(run.id));
+  });
+
+  it('says it in the Telegram bubble too, instead of a stage that claims to be ready', async () => {
+    const env = testEnv({ RUNTIME_RELEASE: '2026.09.01-3', AISAR_MODEL_NAME: 'MiniMax-M3' });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, { provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64) });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const [owner] = await asOwner((sql) => sql<{ id: string }[]>`
+      insert into app_user (email, email_verified) values ('wake-owner@example.com', true) returning id`);
+    const connection = await asTenant(A, (tx) => saveConnection(env, tx, A, {
+      connector: 'telegram', method: 'bot_token', externalId: '123456789',
+      displayName: '@alpha_bot', secret: '123456789:AAtoken', connectedBy: owner.id,
+    }));
+    await asTenant(A, (tx) => bindTelegramInternalChat(tx, connection.id, 42));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.message.telegram', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `telegram:wake:${run.id}`,
+      payload: {
+        input: 'hello', objective: 'hello', function: 'assistant', channel: 'telegram', responseMode: 'quick',
+        telegram: {
+          connectionId: connection.id, chatId: 42, messageId: 7, from: 'Owner',
+          question: 'hello', privateChat: true, liveMessageId: 77,
+        },
+      },
+    }));
+    const edits: Array<{ message_id?: number; text?: string }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/editMessageText')) {
+        edits.push(JSON.parse(String(init?.body)) as { message_id?: number; text?: string });
+      }
+      return jsonResponse({ ok: true, result: { message_id: 77 } });
+    }));
+
+    await handleRuntimeMessage(env, { version: 1, businessId: A, taskId: task.id }, { provider, fetch: restarting });
+
+    expect(edits.map((edit) => edit.message_id)).toContain(77);
+    expect(edits.map((edit) => edit.text)).toContain(wakeLine(run.id));
+    expect(edits.map((edit) => edit.text)).not.toContain('✅ System ready — starting…');
   });
 });
 
