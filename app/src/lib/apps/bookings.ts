@@ -40,16 +40,12 @@ export async function loadWindow(api: AppsApi, query: Omit<BookingsQuery, 'curso
 }
 
 /** Requests waiting on the owner that can still be confirmed, soonest first. */
+/** Every request still waiting on the owner, soonest first: one request for
+    the whole horizon (the API allows a 91-day window for pending only). */
 export async function loadPendingBookings(api: AppsApi, now: Date): Promise<Booking[]> {
-  const today = malaysiaDay(now);
-  const windows: Omit<BookingsQuery, 'cursor'>[] = [];
-  for (let offset = 0; offset < PENDING_SCAN_DAYS; offset += WINDOW_DAYS) {
-    windows.push({ from: addDays(today, offset), days: Math.min(WINDOW_DAYS, PENDING_SCAN_DAYS - offset), status: 'pending' });
-  }
-  const pages = await Promise.all(windows.map((query) => loadWindow(api, query)));
-  const seen = new Set<string>();
-  return pages.flat()
-    .filter((booking) => booking.status === 'pending' && !booking.expired && !seen.has(booking.id) && Boolean(seen.add(booking.id)))
+  const rows = await loadWindow(api, { from: malaysiaDay(now), days: PENDING_SCAN_DAYS, status: 'pending' });
+  return rows
+    .filter((booking) => booking.status === 'pending' && !booking.expired)
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 }
 

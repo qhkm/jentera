@@ -135,7 +135,7 @@ export class RemoteAppsApi implements AppsApi {
 
   async bookings(query: BookingsQuery): Promise<BookingsPage> {
     const params = new URLSearchParams({
-      from: query.from, days: String(query.days), limit: '50',
+      from: query.from, days: String(query.days), limit: query.status === 'pending' ? '100' : '50',
       ...(query.status ? { status: query.status } : {}),
       ...(query.cursor ? { cursor: query.cursor } : {}),
     });

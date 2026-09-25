@@ -13,6 +13,9 @@ import { runCalendarJob } from '../apps/bookings/calendar-sync';
 import { isDate, myDate } from '../apps/bookings/time';
 import type { Lang } from '../apps/bookings/messages';
 
+/** Today plus the longest booking horizon (90 days), counting today as day 0. */
+const PENDING_WINDOW_DAYS = 91;
+
 /* Business apps, owner side. Spec: docs/plans/2026-09-23-apps-shell-and-bookings-v1.md.
    Every path answers 404 unless the business is on the apps pilot list, so
    removing an id hides the feature at once. */
@@ -45,7 +48,27 @@ export async function handleApps(
   execution?: { waitUntil(promise: Promise<unknown>): void },
 ): Promise<Response | null> {
   if (url.pathname !== '/api/apps' && !url.pathname.startsWith('/api/apps/')) return null;
+  /* Server-Timing, so an owner's DevTools can split a slow request between
+     signing in and the route's own work (Date.now advances across I/O, which
+     is what these are). */
+  const started = Date.now();
   const identity = await resolveTenant(env, request);
+  const auth = Date.now() - started;
+  const response = await appsRoute(request, env, url, cors, identity, execution);
+  const timed = new Response(response.body, response);
+  timed.headers.set('Server-Timing', `auth;dur=${auth}, route;dur=${Date.now() - started - auth}`);
+  if (cors['Access-Control-Allow-Origin']) timed.headers.set('Timing-Allow-Origin', cors['Access-Control-Allow-Origin']);
+  return timed;
+}
+
+async function appsRoute(
+  request: Request,
+  env: Env,
+  url: URL,
+  cors: Record<string, string>,
+  identity: Awaited<ReturnType<typeof resolveTenant>>,
+  execution?: { waitUntil(promise: Promise<unknown>): void },
+): Promise<Response> {
   if (!identity) return json({ ok: false, err: 'not signed in' }, { status: 401 }, cors);
   if (!hasBusiness(identity)) return json({ ok: false, err: 'no business', code: 'NO_BUSINESS' }, { status: 404 }, cors);
   if (!appsEnabledFor(env, identity.businessId)) return notFound(cors);
@@ -118,7 +141,10 @@ export async function handleApps(
       const status = url.searchParams.get('status');
       const rawCursor = url.searchParams.get('cursor');
       const cursor = rawCursor ? decodeCursor(rawCursor) : null;
-      if (!isDate(from) || !Number.isInteger(days) || days < 1 || days > 31 || !Number.isInteger(limit) || limit < 1 ||
+      /* Waiting requests span the whole booking horizon, and the app wants
+         them in one request rather than three 31-day windows in parallel. */
+      const maxDays = status === 'pending' ? PENDING_WINDOW_DAYS : 31;
+      if (!isDate(from) || !Number.isInteger(days) || days < 1 || days > maxDays || !Number.isInteger(limit) || limit < 1 ||
           limit > 100 || (status !== null && status !== 'pending') || (rawCursor && !cursor)) {
         return json({ ok: false, err: 'invalid bookings window' }, { status: 400 }, cors);
       }

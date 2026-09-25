@@ -53,7 +53,7 @@ describe('RemoteAppsApi', () => {
     expect(page).toEqual({ bookings: [BOOKING], nextCursor: 'next' });
     const url = new URL(String(fake.mock.calls[0][0]), 'https://x.test');
     expect(url.pathname).toBe('/api/apps/bookings/bookings');
-    expect(Object.fromEntries(url.searchParams)).toEqual({ from: '2026-10-06', days: '31', limit: '50', status: 'pending', cursor: 'abc' });
+    expect(Object.fromEntries(url.searchParams)).toEqual({ from: '2026-10-06', days: '31', limit: '100', status: 'pending', cursor: 'abc' });
     expect(fake.mock.calls[0][1]).toMatchObject({ credentials: 'include', cache: 'no-store' });
   });
 

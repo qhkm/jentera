@@ -24,16 +24,11 @@ describe('loading bookings', () => {
     const sooner = bookingFixture({ id: '11111111-1111-4111-8111-00000000000b', startsAt: '2026-10-07T02:00:00.000Z' });
     const expired = bookingFixture({ id: '11111111-1111-4111-8111-00000000000c', expired: true });
     const api = fakeAppsApi({
-      bookings: vi.fn(async ({ from }: BookingsQuery) => ({
-        bookings: from === '2026-11-05' ? [later] : from === '2026-10-05' ? [sooner, expired] : [],
-        nextCursor: null,
-      })),
+      bookings: vi.fn(async (_query: BookingsQuery) => ({ bookings: [later, sooner, expired], nextCursor: null })),
     });
     // 20:00 UTC on 4 Oct is 04:00 on 5 Oct in Malaysia.
     const rows = await loadPendingBookings(api, new Date('2026-10-04T20:00:00Z'));
-    expect(api.bookings.mock.calls.map(([q]) => [q.from, q.days, q.status])).toEqual([
-      ['2026-10-05', 31, 'pending'], ['2026-11-05', 31, 'pending'], ['2026-12-06', 29, 'pending'],
-    ]);
+    expect(api.bookings.mock.calls.map(([q]) => [q.from, q.days, q.status])).toEqual([['2026-10-05', 91, 'pending']]);
     expect(rows.map((b) => b.id.slice(-1))).toEqual(['b', 'a']);
   });
 

@@ -158,6 +158,23 @@ describe('listing bookings', () => {
     expect(rest.nextCursor).toBeNull();
   });
 
+  it('answers every waiting request of the 91-day horizon in one window, and only waiting ones get that long', async () => {
+    const far = await booking(inDays(80), { ref: 'FARAWY' });
+    await booking(inDays(3), { ref: 'DECDED', status: 'confirmed' });
+    const res = await call('GET', '/api/apps/bookings/bookings?days=91&status=pending&limit=100', ownerA);
+    expect(res.status).toBe(200);
+    const body = await jsonOf<{ bookings: Array<{ id: string; status: string }> }>(res);
+    expect(body.bookings.map((b) => b.id)).toEqual([far]);
+    expect((await call('GET', '/api/apps/bookings/bookings?days=92&status=pending', ownerA)).status).toBe(400);
+    expect((await call('GET', '/api/apps/bookings/bookings?days=91', ownerA)).status).toBe(400);
+  });
+
+  it('says where its time went, for the owner looking at their own request', async () => {
+    const res = await call('GET', '/api/apps/bookings/bookings?days=1', ownerA);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Server-Timing')).toMatch(/^auth;dur=\d+, route;dur=\d+$/);
+  });
+
   it('refuses a bad window and hides another business', async () => {
     expect((await call('GET', '/api/apps/bookings/bookings?from=2026-02-30', ownerA)).status).toBe(400);
     expect((await call('GET', '/api/apps/bookings/bookings?from=2026-09-27&days=32', ownerA)).status).toBe(400);

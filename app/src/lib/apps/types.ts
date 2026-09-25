@@ -61,7 +61,7 @@ export interface BookingsPage {
 export interface BookingsQuery {
   /** A Malaysian date, YYYY-MM-DD. */
   from: string;
-  /** 1–31 Malaysian days. */
+  /** 1–31 Malaysian days; up to 91 when `status` is 'pending'. */
   days: number;
   status?: 'pending';
   cursor?: string;
