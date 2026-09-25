@@ -32,6 +32,16 @@ describe('AppsProvider', () => {
     await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
   });
 
+  it('skips the waiting-request scan when the apps list already says none are waiting', async () => {
+    const api = fakeAppsApi({
+      list: vi.fn(async () => ({ apps: [{ key: 'bookings' as const, state: 'active' as const, accepting: true, publicUrl: 'https://s.test/b/x', pending: 0 }], available: ['bookings' as const] })),
+    });
+    render(<AppsProvider api={api}><Probe /></AppsProvider>);
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('"apps":1'));
+    expect(screen.getByRole('status')).toHaveTextContent('"pending":0');
+    expect(api.bookings).not.toHaveBeenCalled();
+  });
+
   it('refreshes once each time the unread alerts count rises, and not while it is unknown or falls', async () => {
     const api = fakeAppsApi();
     const view = (unread: number | null) => <AppsProvider api={api} unread={unread}><Probe /></AppsProvider>;

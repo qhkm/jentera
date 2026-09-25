@@ -58,6 +58,19 @@ describe('BookingsList', () => {
     expect(within(after).queryByRole('button', { name: 'Confirm' })).toBeNull();
   });
 
+  it('opens Needs you on the scan that decided it, without scanning again', async () => {
+    const api = fakeAppsApi({ list: installed(1), bookings: serve([bookingFixture()]) });
+    await mount(api);
+    await screen.findByRole('article', { name: 'Aisyah' });
+    const pendingScans = () => api.bookings.mock.calls.filter(([query]) => query.status === 'pending').length;
+    expect(pendingScans()).toBe(3);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /^Today/ }));
+    await user.click(screen.getByRole('button', { name: /^Needs you/ }));
+    await screen.findByRole('article', { name: 'Aisyah' });
+    await waitFor(() => expect(pendingScans()).toBe(6));
+  });
+
   it('shows the booking as it stands when it was decided elsewhere first', async () => {
     const api = fakeAppsApi({
       list: installed(1), bookings: serve([bookingFixture()]),
