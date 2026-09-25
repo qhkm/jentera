@@ -197,6 +197,11 @@ echo "main is now $RELEASE_SHA"
 fi
 
 # ---- 4. deploy the worker ---------------------------------------------------
+# `wrangler deploy` skips package.json's predeploy, so the one guard that
+# needs production runs here: a worker must not go out ahead of a migration
+# its code expects (045 did, 2026-09-15..25).
+step "migrations applied"
+(cd "$WT/worker" && node scripts/check-migrations-applied.mjs) || die "production lacks a migration; apply it, then resume with --resume"
 step "deploy worker"
 if command -v pnpm >/dev/null 2>&1; then
   (cd "$WT/worker" && pnpm exec wrangler deploy) || die "wrangler deploy failed"
