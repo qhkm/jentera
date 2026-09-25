@@ -37,6 +37,13 @@ const Setup = lazy(() => import('@/routes/Setup'));
 const Dashboard = lazy(() => import('@/routes/Dashboard'));
 const LaunchAdmin = lazy(() => import('@/routes/LaunchAdmin'));
 
+/* `pnpm dev` deliberately runs without a backend unless VITE_API_URL is
+   supplied. Keep that documented local-storage preview usable without
+   pretending it is an authenticated account. Production always has the API
+   configured, so its session gate remains unchanged. */
+const LOCAL_DEVELOPMENT_PREVIEW = import.meta.env.DEV
+  && !(import.meta.env.VITE_API_URL ?? '').trim();
+
 function RouteLoading() {
   return <PageLoading title="Loading your page…" />;
 }
@@ -82,7 +89,7 @@ function SetupStage() {
  */
 function RequireAuth({ children }: { children: ReactElement }) {
   const location = useLocation();
-  if (useSignedIn()) return children;
+  if (useSignedIn() || LOCAL_DEVELOPMENT_PREVIEW) return children;
   /* Carry where they were, so signing in returns them to the chat they were
      reading rather than to the front of the app. The worker validates this
      before it acts on it; sending it is not the same as trusting it. */
