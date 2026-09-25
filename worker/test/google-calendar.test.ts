@@ -9,6 +9,7 @@ import {
   deleteGoogleCalendarEvent,
   exchangeGoogleCalendarCode,
   googleCalendarAuthorizeUrl,
+  listGoogleCalendarBusy,
   listGoogleCalendarEvents,
   normaliseCalendarEvent,
   normaliseCalendarRange,
@@ -98,6 +99,38 @@ describe('Google Calendar operations', () => {
     expect(events).toEqual([expect.objectContaining({ id: 'event-1', summary: 'Private title' })]);
     expect(String(fetcher.mock.calls[1][0])).toContain('maxResults=50');
     expect((fetcher.mock.calls[1][1]?.headers as Record<string, string>).Authorization).toBe('Bearer access-secret');
+  });
+
+  it('reads only busy ranges, follows pages, and ignores transparent and Jentera events', async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ access_token: 'access-secret' }))
+      .mockResolvedValueOnce(Response.json({
+        nextPageToken: 'next',
+        items: [
+          { id: 'external-1', status: 'confirmed', start: { dateTime: '2026-09-17T10:00:00+08:00' }, end: { dateTime: '2026-09-17T10:30:00+08:00' } },
+          { id: 'transparent', transparency: 'transparent', start: { dateTime: '2026-09-17T11:00:00+08:00' }, end: { dateTime: '2026-09-17T12:00:00+08:00' } },
+          { id: 'jentera1234', start: { dateTime: '2026-09-17T12:00:00+08:00' }, end: { dateTime: '2026-09-17T13:00:00+08:00' } },
+        ],
+      }))
+      .mockResolvedValueOnce(Response.json({
+        items: [{ id: 'all-day', start: { date: '2026-09-18' }, end: { date: '2026-09-19' } }],
+      }));
+    const ranges = await listGoogleCalendarBusy(env, calendarSecret(profile), {
+      timeMin: '2026-09-17T00:00:00+08:00',
+      timeMax: '2026-09-20T00:00:00+08:00',
+    }, fetcher);
+    expect(ranges.map((range) => ({
+      eventKey: range.eventKey,
+      startsAt: range.startsAt.toISOString(),
+      endsAt: range.endsAt.toISOString(),
+    }))).toEqual([
+      { eventKey: 'external-1', startsAt: '2026-09-17T02:00:00.000Z', endsAt: '2026-09-17T02:30:00.000Z' },
+      { eventKey: 'all-day', startsAt: '2026-09-17T16:00:00.000Z', endsAt: '2026-09-18T16:00:00.000Z' },
+    ]);
+    const first = new URL(String(fetcher.mock.calls[1][0]));
+    expect(first.searchParams.get('fields')).toBe('nextPageToken,items(id,status,transparency,start(date,dateTime),end(date,dateTime))');
+    expect(first.searchParams.has('q')).toBe(false);
+    expect(new URL(String(fetcher.mock.calls[2][0])).searchParams.get('pageToken')).toBe('next');
   });
 
   it('uses a stable provider event id when an approved creation is retried', async () => {

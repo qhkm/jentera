@@ -13,6 +13,7 @@ const SLUG = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 const RESERVED = new Set(['api', 'admin', 'www', 'app', 'b']);
 
 interface DayDraft { open: boolean; opens: string; closes: string }
+interface BlockDraft { key: string; id: string | null; label: string; startsAt: string; endsAt: string }
 interface ServiceDraft {
   key: string;
   id: string | null;
@@ -28,6 +29,30 @@ interface ServiceDraft {
 }
 
 let draftKeys = 0;
+let blockKeys = 0;
+
+function malaysiaInput(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(date);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}T${value.hour}:${value.minute}`;
+}
+
+function malaysiaIso(value: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}:00+08:00`);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function newBlock(): BlockDraft {
+  const start = new Date(Date.now() + 24 * 60 * 60_000);
+  start.setUTCMinutes(0, 0, 0);
+  const end = new Date(start.getTime() + 60 * 60_000);
+  return { key: `block-${++blockKeys}`, id: null, label: '', startsAt: malaysiaInput(start.toISOString()), endsAt: malaysiaInput(end.toISOString()) };
+}
 
 /** A link name from a business name, or '' when none fits the rules. */
 export function slugFrom(name: string): string {
@@ -84,6 +109,9 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
   const [changeCutoff, setChangeCutoff] = useState(config.settings?.changeCutoffMinutes ?? 360);
   const [horizon, setHorizon] = useState(config.settings?.horizonDays ?? 30);
   const [location, setLocation] = useState(config.settings?.location ?? '');
+  const [blocks, setBlocks] = useState<BlockDraft[]>(() => config.blocks.map((block) => ({
+    key: block.id, id: block.id, label: block.label, startsAt: malaysiaInput(block.startsAt), endsAt: malaysiaInput(block.endsAt),
+  })));
   const [acknowledged, setAcknowledged] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<{ key: string; reload: boolean } | null>(null);
@@ -126,6 +154,14 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
       }
     }
     if (location.trim().length > 160) found.location = 'bookings.settings.error.location';
+    for (const block of blocks) {
+      const start = malaysiaIso(block.startsAt);
+      const end = malaysiaIso(block.endsAt);
+      if (!block.label.trim() || block.label.trim().length > 80 || !start || !end ||
+          Date.parse(end) <= Date.parse(start) || Date.parse(end) - Date.parse(start) > 31 * 86_400_000) {
+        found[`${block.key}.range`] = 'bookings.settings.error.block';
+      }
+    }
     return found;
   }
 
@@ -157,6 +193,12 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
             .map((day) => ({ weekday: day, opens: service.days[day].opens, closes: service.days[day].closes })),
           ...service.extra,
         ],
+      })),
+      blocks: blocks.map((block) => ({
+        id: block.id,
+        label: block.label.trim(),
+        startsAt: malaysiaIso(block.startsAt)!,
+        endsAt: malaysiaIso(block.endsAt)!,
       })),
     };
     setSaving(true);
@@ -275,6 +317,38 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
       <p className="bookings-lead">{t('bookings.settings.cutoff.help')}</p>
       {error('changeCutoff')}
       <p className="bookings-lead">{t('bookings.settings.reminders')}</p>
+      <div className="bookings-calendar-protection card">
+        <strong>{t('bookings.settings.calendarProtection')}</strong>
+        <p className="bookings-lead">{config.calendarProtection.connected
+          ? config.calendarProtection.syncedAt
+            ? t('bookings.settings.calendarProtection.active', { account: config.calendarProtection.account ?? t('bookings.settings.calendarProtection.calendar') })
+            : t('bookings.settings.calendarProtection.waiting')
+          : t('bookings.settings.calendarProtection.disconnected')}</p>
+        {config.calendarProtection.lastError && <p className="field-error" role="alert">{t('bookings.settings.calendarProtection.problem')}</p>}
+      </div>
+      <div className="bookings-blocks">
+        <strong>{t('bookings.settings.blocks')}</strong>
+        <p className="bookings-lead">{t('bookings.settings.blocks.help')}</p>
+        {blocks.map((block) => <fieldset key={block.key} className="bookings-block card">
+          <legend>{t('bookings.settings.block')}</legend>
+          <label>{t('bookings.settings.block.label')}
+            <Input value={block.label} maxLength={80} onChange={(event) => setBlocks((list) => list.map((item) => item.key === block.key ? { ...item, label: event.target.value } : item))} />
+          </label>
+          <label>{t('bookings.settings.block.start')}
+            <Input type="datetime-local" step={900} value={block.startsAt} onChange={(event) => setBlocks((list) => list.map((item) => item.key === block.key ? { ...item, startsAt: event.target.value } : item))} />
+          </label>
+          <label>{t('bookings.settings.block.end')}
+            <Input type="datetime-local" step={900} value={block.endsAt} onChange={(event) => setBlocks((list) => list.map((item) => item.key === block.key ? { ...item, endsAt: event.target.value } : item))} />
+          </label>
+          {error(`${block.key}.range`)}
+          <Button type="button" variant="ghost" onClick={() => setBlocks((list) => list.filter((item) => item.key !== block.key))}>
+            {t('bookings.settings.block.remove')}
+          </Button>
+        </fieldset>)}
+        {blocks.length < 100 && <Button type="button" variant="outline" onClick={() => setBlocks((list) => [...list, newBlock()])}>
+          {t('bookings.settings.block.add')}
+        </Button>}
+      </div>
     </details>
     {!installed && <label className="bookings-check bookings-ack">
       <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />

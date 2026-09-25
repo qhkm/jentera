@@ -61,6 +61,17 @@ describe('openSlots', () => {
       ['2026-09-27T03:00:00.000Z', 1], ['2026-09-27T04:00:00.000Z', 2],
     ]);
   });
+  it('hides slots that overlap a closure, while keeping adjacent slots', () => {
+    const blocked = [{
+      startsAt: at('2026-09-27T03:00:00Z'),
+      endsAt: at('2026-09-27T04:00:00Z'),
+    }];
+    const slots = openSlots({ service, hours, settings, reservations: [], blocked, now, from: '2026-09-27', days: 1 });
+    expect(slots.map((s) => s.startsAt.toISOString())).toEqual([
+      '2026-09-27T02:00:00.000Z',
+      '2026-09-27T04:00:00.000Z',
+    ]);
+  });
   it('never offers a date past the horizon, whatever the caller asks for', () => {
     expect(lastBookableDate(now, 1)).toBe('2026-09-27');
     const beyond = openSlots({ service, hours, settings: { ...settings, horizonDays: 1 }, reservations: [], now, from: '2026-10-04', days: 7 });

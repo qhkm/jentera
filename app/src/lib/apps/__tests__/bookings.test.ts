@@ -69,6 +69,8 @@ describe('labels', () => {
     expect(actionErrorKey(new AppsError('ALREADY_DECIDED', 409))).toBe('bookings.error.alreadyDecided');
     expect(actionErrorKey(new AppsError('EXPIRED', 409))).toBe('bookings.error.expired');
     expect(actionErrorKey(new AppsError('CALENDAR_DISCONNECTED', 409))).toBe('bookings.error.calendarDisconnected');
+    expect(actionErrorKey(new AppsError('CALENDAR_CONFLICT', 409))).toBe('bookings.error.calendarConflict');
+    expect(actionErrorKey(new AppsError('CALENDAR_CHECK_UNAVAILABLE', 503))).toBe('bookings.error.calendarCheckUnavailable');
     expect(actionErrorKey(new AppsError('NETWORK', 0, true))).toBe('bookings.error.uncertain');
     expect(actionErrorKey(new Error('boom'))).toBe('bookings.error.generic');
   });
@@ -86,6 +88,7 @@ describe('labels', () => {
       acknowledgeAvailabilityLimits: true,
       services: [{ id: '22222222-2222-4222-8222-222222222222', name: 'Cupping class', description: 'A guided recovery session.', durationMinutes: 60, capacity: 4,
         priceLabel: 'RM45', active: true, hours: [{ weekday: 2, opens: '10:00', closes: '13:00' }] }],
+      blocks: [],
     });
   });
 });

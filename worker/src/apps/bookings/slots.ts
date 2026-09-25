@@ -4,6 +4,7 @@ export interface SlotService { durationMinutes: number; capacity: number }
 export interface SlotHours { weekday: number; opens: string; closes: string }
 export interface SlotSettings { minNoticeMinutes: number; horizonDays: number }
 export interface Reservation { startsAt: Date; endsAt: Date; partySize: number }
+export interface BlockedInterval { startsAt: Date; endsAt: Date }
 export interface OpenSlot { startsAt: Date; endsAt: Date; remaining: number }
 
 const FOREVER = new Date(8.64e15);
@@ -54,11 +55,13 @@ export function openSlots(input: {
   hours: SlotHours[];
   settings: SlotSettings;
   reservations: Reservation[];
+  blocked?: BlockedInterval[];
   now: Date;
   from: string;
   days: number;
 }): OpenSlot[] {
   const { service, hours, settings, reservations, now } = input;
+  const blocked = input.blocked ?? [];
   const earliest = now.getTime() + settings.minNoticeMinutes * 60_000;
   const last = lastBookableDate(now, settings.horizonDays);
   const found = new Map<number, OpenSlot>();
@@ -74,6 +77,7 @@ export function openSlots(input: {
         const key = startsAt.getTime();
         if (key < earliest || found.has(key)) continue;
         const endsAt = new Date(key + service.durationMinutes * 60_000);
+        if (blocked.some((range) => range.startsAt.getTime() < endsAt.getTime() && range.endsAt.getTime() > key)) continue;
         const remaining = placesLeft(service.capacity, reservations, startsAt, endsAt);
         if (remaining > 0) found.set(key, { startsAt, endsAt, remaining });
       }

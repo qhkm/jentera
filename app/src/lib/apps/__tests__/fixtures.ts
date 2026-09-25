@@ -25,6 +25,8 @@ export function configFixture(over: Partial<BookingsConfig> = {}): BookingsConfi
       id: SERVICE_ID, name: 'Cupping class', description: 'A guided recovery session.', durationMinutes: 60, capacity: 4, priceLabel: 'RM45', active: true,
       hours: [{ weekday: 2, opens: '10:00', closes: '13:00' }],
     }],
+    blocks: [],
+    calendarProtection: { connected: true, account: 'owner@example.com', syncedAt: '2026-10-05T00:00:00.000Z', lastError: null },
     ...over,
   };
 }

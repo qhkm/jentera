@@ -149,6 +149,22 @@ describe('createBookingRequest', () => {
     expect((await send(input({ serviceId: second, partySize: 6 }))).kind).toBe('taken');
   });
 
+  it('rechecks manual closures and cached Calendar busy time when an old form is submitted', async () => {
+    await asOwner((sql) => sql`insert into booking_block (business_id, label, starts_at, ends_at)
+      values (${A}, 'Closed', ${TEN}, ${new Date(TEN.getTime() + 3_600_000)})`);
+    expect((await send(input())).kind).toBe('taken');
+    await asOwner(async (sql) => {
+      await sql`delete from booking_block where business_id = ${A}`;
+      const [connection] = await sql<{ id: string }[]>`insert into connection
+        (business_id, connector, method, status) values (${A}, 'google', 'oauth', 'connected') returning id`;
+      await sql`insert into booking_calendar_busy
+        (business_id, connection_id, event_key, starts_at, ends_at)
+        values (${A}, ${connection.id}, 'external-busy', ${TEN}, ${new Date(TEN.getTime() + 3_600_000)})`;
+    });
+    expect((await send(input())).kind).toBe('taken');
+    expect(await asOwner((sql) => sql`select 1 from booking`)).toHaveLength(0);
+  });
+
   it('refuses when the owner has paused, even for a form opened before', async () => {
     await asOwner((sql) => sql`update booking_settings set accepting = false where business_id = ${A}`);
     expect((await send(input())).kind).toBe('unavailable');

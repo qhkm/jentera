@@ -46,6 +46,7 @@ import { handleRuntimeConnect } from './routes/runtime-connect';
 import { sweepPushOutbox } from './push/outbox';
 import { sweepBookingCalendar } from './apps/bookings/calendar-sync';
 import { dispatchBookingReminders } from './apps/bookings/reminders';
+import { sweepBookingCalendarAvailability } from './apps/bookings/calendar-availability';
 import { refillSparePool } from './runtime/spares';
 import { handleNotifications } from './routes/notifications';
 import { handleTeam } from './routes/team';
@@ -286,6 +287,14 @@ export default {
       /* Notifications queued for the owner's devices go out on the same tick. */
       try { await dispatchDueReminders(env); }
       catch (err) { console.error(`[reminders] ${String(err)}`); }
+      try {
+        const availability = await sweepBookingCalendarAvailability(env);
+        if (availability.synced || availability.errors) {
+          console.log(`[bookings-availability] synced=${availability.synced} skipped=${availability.skipped} errors=${availability.errors}`);
+        }
+      } catch (err) {
+        console.error(`[bookings-availability] ${String(err)}`);
+      }
       try {
         const reminders = await dispatchBookingReminders(env);
         if (reminders.notified || reminders.errors) {

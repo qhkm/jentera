@@ -93,7 +93,11 @@ function isBooking(value: unknown): value is Booking {
 }
 
 function isConfig(value: unknown): value is BookingsConfig {
-  return object(value) && Array.isArray(value.services)
+  return object(value) && Array.isArray(value.services) && Array.isArray(value.blocks)
+    && value.blocks.every((block) => object(block) && typeof block.id === 'string' && UUID.test(block.id)
+      && typeof block.label === 'string' && typeof block.startsAt === 'string' && Number.isFinite(Date.parse(block.startsAt))
+      && typeof block.endsAt === 'string' && Number.isFinite(Date.parse(block.endsAt)))
+    && object(value.calendarProtection) && typeof value.calendarProtection.connected === 'boolean'
     && (value.installation === null || (object(value.installation)
       && typeof value.installation.slug === 'string' && typeof value.installation.publicUrl === 'string'))
     && (value.version === null || Number.isInteger(value.version));

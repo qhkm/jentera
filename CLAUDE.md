@@ -679,6 +679,16 @@ up to an hour apart) and recovers orphaned attempts. A booking remembers its
 Google account and never touches another one; a failure carries a
 machine-readable `calendar.reason` and `canRetry` for the app to word.
 
+Booking availability is protected separately from event creation. Owners can
+save business-wide closures in `booking_block`. For a connected Google
+Calendar, the API Worker keeps a five-minute cache of busy time ranges in
+`booking_calendar_busy`; it never stores event titles, descriptions, guests or
+locations. The public booking Worker reads only those ranges and manual
+closures, while a pending confirmation forces a fresh Google check and remains
+pending on either a collision or a provider outage. OAuth primes the cache and
+the minute cron refreshes due businesses. Google credentials never enter the
+public Worker import graph.
+
 In the app, `useAppsEnabled() && repository.apps` gates everything
 (`LocalRepository` has no `apps`, so the demo never shows it); `AppsProvider`
 in `Dashboard` holds the installed apps and waiting requests for Home, the

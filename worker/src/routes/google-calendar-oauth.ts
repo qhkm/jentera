@@ -14,6 +14,8 @@ import {
   googleCalendarAuthorizeUrl,
   googleCalendarConfigured,
 } from '../connectors/google-calendar';
+import { refreshBookingCalendarAvailability } from '../apps/bookings/calendar-availability';
+import { appsEnabledFor } from '../apps/gating';
 
 const COOKIE = 'aisar_calendar_oauth';
 const COOKIE_PATH = '/api/auth';
@@ -110,6 +112,12 @@ export async function handleGoogleCalendarCallback(
     }));
   } catch {
     return finish('failed');
+  }
+  // Prime the time-only cache before the owner returns to the app. A Calendar
+  // outage does not undo a valid OAuth connection; the settings screen shows
+  // the refresh problem and confirmation continues to fail safely.
+  if (appsEnabledFor(env, identity.businessId)) {
+    await refreshBookingCalendarAvailability(env, identity.businessId, { force: true });
   }
   return finish('connected');
 }

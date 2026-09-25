@@ -76,7 +76,7 @@ describe('RemoteAppsApi', () => {
     answer(409, { ok: false, code: 'CAPACITY_BELOW_RESERVED', serviceId: 's-1' });
     await expect(new RemoteAppsApi().saveBookingsConfig({
       version: 3, slug: 'seido', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: null,
-      acknowledgeAvailabilityLimits: true, services: [],
+      acknowledgeAvailabilityLimits: true, services: [], blocks: [],
     })).rejects.toMatchObject({ code: 'CAPACITY_BELOW_RESERVED', serviceId: 's-1' });
   });
 
@@ -91,7 +91,7 @@ describe('RemoteAppsApi', () => {
     garbled();
     await expect(new RemoteAppsApi().saveBookingsConfig({
       version: 3, slug: 'seido', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: null,
-      acknowledgeAvailabilityLimits: true, services: [],
+      acknowledgeAvailabilityLimits: true, services: [], blocks: [],
     })).rejects.toMatchObject({ code: 'INVALID_RESPONSE', status: 200, uncertain: true });
     await expect(new RemoteAppsApi().decide(ID, 'confirm')).rejects.toMatchObject({ code: 'INVALID_RESPONSE', uncertain: true });
     await expect(new RemoteAppsApi().list()).rejects.toMatchObject({ code: 'INVALID_RESPONSE', uncertain: false });

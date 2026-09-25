@@ -56,6 +56,12 @@ export interface CalendarEventView {
   htmlLink: string | null;
 }
 
+export interface CalendarBusyInterval {
+  eventKey: string;
+  startsAt: Date;
+  endsAt: Date;
+}
+
 const ACCESS_EXPIRED = 'Google Calendar access expired. Reconnect it to continue.';
 const UNREACHABLE = 'Google Calendar could not be reached.';
 const BUSY = 'Google Calendar is busy. Jentera will try again.';
@@ -351,6 +357,63 @@ export async function listGoogleCalendarEvents(
   if (!response.ok) throw await providerError(response);
   const body = await response.json().catch(() => null) as { items?: Record<string, unknown>[] } | null;
   return (body?.items ?? []).map(view).filter((event) => event.id && event.start && event.end);
+}
+
+function busyInstant(value: unknown): Date | null {
+  if (!value || typeof value !== 'object') return null;
+  const shaped = value as { dateTime?: unknown; date?: unknown };
+  const raw = typeof shaped.dateTime === 'string' ? shaped.dateTime
+    : typeof shaped.date === 'string' ? `${shaped.date}T00:00:00+08:00` : '';
+  const date = new Date(raw);
+  return raw && !Number.isNaN(date.getTime()) ? date : null;
+}
+
+/** Busy times only: no titles, descriptions, guests or locations. Jentera's
+    own deterministic events are excluded because the booking rows already
+    hold their capacity; counting both would close group services after the
+    first customer. */
+export async function listGoogleCalendarBusy(
+  env: Env,
+  rawSecret: string,
+  range: { timeMin: string; timeMax: string },
+  fetcher: typeof fetch = fetch,
+  signal?: AbortSignal,
+): Promise<CalendarBusyInterval[]> {
+  const token = await accessToken(env, rawSecret, fetcher, signal);
+  const found: CalendarBusyInterval[] = [];
+  let pageToken: string | null = null;
+  for (let page = 0; page < 20; page += 1) {
+    const params = new URLSearchParams({
+      timeMin: range.timeMin,
+      timeMax: range.timeMax,
+      timeZone: 'Asia/Kuala_Lumpur',
+      singleEvents: 'true',
+      showDeleted: 'false',
+      maxResults: '2500',
+      fields: 'nextPageToken,items(id,status,transparency,start(date,dateTime),end(date,dateTime))',
+      ...(pageToken ? { pageToken } : {}),
+    });
+    const response = await fetcher(`${API}/calendars/primary/events?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      ...(signal ? { signal } : {}),
+    });
+    if (!response.ok) throw await providerError(response);
+    const body = await response.json().catch(() => null) as {
+      nextPageToken?: unknown;
+      items?: Array<{ id?: unknown; status?: unknown; transparency?: unknown; start?: unknown; end?: unknown }>;
+    } | null;
+    if (!body) throw new GoogleCalendarError('Google Calendar returned an incomplete availability response.');
+    for (const event of body.items ?? []) {
+      const eventKey = typeof event.id === 'string' ? event.id : '';
+      if (!eventKey || eventKey.startsWith('jentera') || event.status === 'cancelled' || event.transparency === 'transparent') continue;
+      const startsAt = busyInstant(event.start);
+      const endsAt = busyInstant(event.end);
+      if (startsAt && endsAt && endsAt.getTime() > startsAt.getTime()) found.push({ eventKey, startsAt, endsAt });
+    }
+    pageToken = typeof body.nextPageToken === 'string' && body.nextPageToken ? body.nextPageToken : null;
+    if (!pageToken) return found;
+  }
+  throw new GoogleCalendarError('Google Calendar availability was too large to read safely.');
 }
 
 export async function createGoogleCalendarEvent(

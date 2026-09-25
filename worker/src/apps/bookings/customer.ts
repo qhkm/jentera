@@ -12,6 +12,7 @@ import { newReference } from './reference';
 import { openSlots } from './slots';
 import { addDays, myDate, myInstant } from './time';
 import { cancelBookingReminders } from './reminders';
+import { blockedIntervalsFor } from './availability';
 
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const SESSION_MS = 2 * 60 * 60_000;
@@ -248,13 +249,17 @@ export async function rescheduleByCustomer(
     if (!service?.active) return { kind: 'unavailable' };
     const date = myDate(startsAt);
     const hours = await readHours(tx, businessId, service.id);
-    const reservations = await reservationsFor(
-      tx, businessId, service.id, myInstant(date), myInstant(addDays(date, 1)), row.id,
-    );
+    const windowStart = myInstant(date);
+    const windowEnd = myInstant(addDays(date, 1));
+    const [reservations, blocked] = await Promise.all([
+      reservationsFor(tx, businessId, service.id, windowStart, windowEnd, row.id),
+      blockedIntervalsFor(tx, businessId, windowStart, windowEnd),
+    ]);
     const slot = openSlots({
       service: { durationMinutes: service.duration_minutes, capacity: service.capacity }, hours,
       settings: { minNoticeMinutes: settings.min_notice_minutes, horizonDays: settings.horizon_days },
       reservations, now, from: date, days: 1,
+      blocked,
     }).find((candidate) => candidate.startsAt.getTime() === startsAt.getTime());
     if (!slot || slot.remaining < row.party_size) return { kind: 'taken' };
 

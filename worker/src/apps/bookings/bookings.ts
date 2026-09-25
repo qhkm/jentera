@@ -6,6 +6,7 @@ import { bookingMessage, bookingReminderMessage, whatsappUrl, type Lang, type Me
 import { addDays, myInstant } from './time';
 import { queueCalendarJob } from './calendar-job';
 import { cancelBookingReminders, scheduleBookingReminders } from './reminders';
+import { hasAvailabilityConflict } from './availability';
 
 /* The owner's side of booking requests. Decisions and cancellations lock in
    the common order (the installation, then the service, then the booking)
@@ -77,7 +78,7 @@ export interface BookingCursor { d: string; p: 0 | 1; s: string; id: string }
 
 export type DecideResult =
   | { ok: true; row: BookingRow; changed: boolean; calendarQueued: boolean }
-  | { ok: false; code: 'NOT_FOUND' | 'ALREADY_DECIDED' | 'EXPIRED' | 'NOT_RETRYABLE' | 'CALENDAR_DISCONNECTED' };
+  | { ok: false; code: 'NOT_FOUND' | 'ALREADY_DECIDED' | 'EXPIRED' | 'NOT_RETRYABLE' | 'CALENDAR_DISCONNECTED' | 'CALENDAR_CONFLICT' };
 
 // A plain string[]: postgres.js's identifier helper, tx(COLUMNS), does not accept a readonly tuple.
 const COLUMNS: string[] = [
@@ -212,6 +213,9 @@ export async function decideBooking(
   if (row.status === target) return { ok: true, row, changed: false, calendarQueued: false };
   if (row.status !== 'pending') return { ok: false, code: 'ALREADY_DECIDED' };
   if (row.starts_at.getTime() <= now.getTime()) return { ok: false, code: 'EXPIRED' };
+  if (target === 'confirmed' && await hasAvailabilityConflict(tx, businessId, row.starts_at, row.ends_at)) {
+    return { ok: false, code: 'CALENDAR_CONFLICT' };
+  }
   let calendarStatus: CalendarStatus = 'none';
   let pin: ReturnType<typeof calendarPin> | null = null;
   if (target === 'confirmed') {

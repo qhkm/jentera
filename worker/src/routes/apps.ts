@@ -12,6 +12,7 @@ import {
 import { runCalendarJob } from '../apps/bookings/calendar-sync';
 import { isDate, myDate } from '../apps/bookings/time';
 import type { Lang } from '../apps/bookings/messages';
+import { refreshBookingCalendarAvailability } from '../apps/bookings/calendar-availability';
 
 /** Today plus the longest booking horizon (90 days), counting today as day 0. */
 const PENDING_WINDOW_DAYS = 91;
@@ -180,6 +181,22 @@ async function appsRoute(
         const body = (await request.json().catch(() => null)) as { decision?: unknown } | null;
         const decision = body?.decision === 'confirm' || body?.decision === 'decline' ? body.decision : null;
         if (!decision) return json({ ok: false, err: 'decision must be confirm or decline' }, { status: 400 }, cors);
+        if (decision === 'confirm') {
+          // Only a still-pending request can become confirmed. This avoids
+          // contacting Google for a 404 or an idempotent second click; the
+          // locked decision below remains the authority if state races.
+          const pending = await withTenant(env, businessId, async (tx) => {
+            const [row] = await tx`select 1 from booking
+              where business_id = ${businessId} and id = ${id} and status = 'pending'`;
+            return Boolean(row);
+          });
+          if (pending) {
+            const availability = await refreshBookingCalendarAvailability(env, businessId, { now, force: true });
+            if (availability === 'error') {
+              return json({ ok: false, code: 'CALENDAR_CHECK_UNAVAILABLE' }, { status: 503 }, cors);
+            }
+          }
+        }
         run = (tx) => decideBooking(tx, businessId, id, decision, identity.userId, now);
       } else if (action === 'cancel') {
         run = (tx) => cancelBooking(tx, businessId, id, identity.userId, now);

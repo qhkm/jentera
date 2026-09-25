@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { handleApps } from '../src/routes/apps';
 import { myDate } from '../src/apps/bookings/time';
 import {
-  CALENDAR_DISCONNECTED_ADD, CALENDAR_DISCONNECTED_CLEANUP, CALENDAR_RECONNECT, processBookingCalendarJob,
+  CALENDAR_DISCONNECTED_ADD, CALENDAR_DISCONNECTED_CLEANUP, processBookingCalendarJob,
 } from '../src/apps/bookings/calendar-sync';
 import { saveConnection } from '../src/connections';
 import { GOOGLE_CALENDAR_SCOPES, calendarSecret } from '../src/connectors/google-calendar';
@@ -57,6 +57,16 @@ beforeEach(async () => {
   ownerB = await signIn(ids['b@example.com']);
   staffA = await signIn(ids['s@example.com']);
   serviceA = ids.service;
+  vi.stubGlobal('fetch', fetchFake(async (input, init) => {
+    const url = String(input);
+    if (url === 'https://oauth2.googleapis.com/token') return Response.json({ access_token: 'access' });
+    if ((init?.method ?? 'GET') === 'GET' && url.includes('/calendars/primary/events?')) return Response.json({ items: [] });
+    if (init?.method === 'POST' && url.includes('/calendars/primary/events?')) {
+      const sent = JSON.parse(String(init.body)) as { id: string };
+      return Response.json({ id: sent.id, status: 'confirmed' });
+    }
+    return new Response(null, { status: 599 });
+  }));
 });
 
 async function call(
@@ -81,8 +91,7 @@ function recorder() {
   return { execution: { waitUntil: (promise: Promise<unknown>) => { scheduled.push(promise); } }, scheduled };
 }
 
-const connectGoogle = () => asOwner((sql) => sql<{ id: string }[]>`insert into connection (business_id, connector, method, status)
-  values (${A}, 'google', 'oauth', 'connected') returning id`);
+const connectGoogle = async () => [await connectAccount('account-default', 'owner@example.com')];
 const calendarRow = async (id: string) => {
   const [row] = await asOwner((sql) => sql<{ calendar_status: string; calendar_error: string | null; calendar_connection_id: string | null }[]>`
     select calendar_status, calendar_error, calendar_connection_id from booking where id = ${id}`);
@@ -108,6 +117,7 @@ function stubGoogle() {
     const method = init?.method ?? 'GET';
     calls.push({ method, url });
     if (url === 'https://oauth2.googleapis.com/token') return Response.json({ access_token: 'access' });
+    if (method === 'GET' && url.includes('/calendars/primary/events?')) return Response.json({ items: [] });
     if (method === 'POST' && url.startsWith('https://www.googleapis.com/calendar/v3/calendars/primary/events')) {
       const sent = JSON.parse(String(init?.body)) as { id: string };
       return Response.json({ id: sent.id, status: 'confirmed' });
@@ -186,7 +196,7 @@ describe('listing bookings', () => {
 
 describe('deciding', () => {
   it('confirms, queues a Calendar job when Google is connected, and repeats safely', async () => {
-    await asOwner((sql) => sql`insert into connection (business_id, connector, method, status) values (${A}, 'google', 'oauth', 'connected')`);
+    await connectGoogle();
     const id = await booking(inDays(2));
     const res = await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
     expect(res.status).toBe(200);
@@ -205,6 +215,34 @@ describe('deciding', () => {
     const body = await jsonOf<Json>(await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' }));
     expect(body.booking.calendar.status).toBe('not_connected');
     expect(await asOwner((sql) => sql`select 1 from booking_calendar_job`)).toHaveLength(0);
+  });
+
+  it('keeps a request pending when the fresh Calendar check finds a conflict', async () => {
+    await connectGoogle();
+    const startsAt = inDays(2);
+    const endsAt = new Date(new Date(startsAt).getTime() + 3_600_000).toISOString();
+    vi.stubGlobal('fetch', fetchFake(async (input) => String(input) === 'https://oauth2.googleapis.com/token'
+      ? Response.json({ access_token: 'access' })
+      : Response.json({ items: [{ id: 'external-busy', start: { dateTime: startsAt }, end: { dateTime: endsAt } }] })));
+    const id = await booking(startsAt);
+    const res = await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: 'CALENDAR_CONFLICT' });
+    const [row] = await asOwner((sql) => sql`select status, decided_at from booking where id = ${id}`);
+    expect(row).toEqual({ status: 'pending', decided_at: null });
+    expect(await jobRow()).toEqual([]);
+  });
+
+  it('fails safely and keeps the request pending when Calendar cannot be checked', async () => {
+    await connectGoogle();
+    vi.stubGlobal('fetch', fetchFake(async () => new Response('{}', { status: 503 })));
+    const id = await booking(inDays(2));
+    const res = await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ code: 'CALENDAR_CHECK_UNAVAILABLE' });
+    const [row] = await asOwner((sql) => sql`select status, decided_at from booking where id = ${id}`);
+    expect(row).toEqual({ status: 'pending', decided_at: null });
+    expect(await jobRow()).toEqual([]);
   });
 
   it('refuses a conflicting decision, an expired request, and another business', async () => {
@@ -246,7 +284,7 @@ describe('deciding', () => {
 
 describe('cancelling', () => {
   it('releases the place, keeps the confirmation, and queues removal when an event may exist', async () => {
-    await asOwner((sql) => sql`insert into connection (business_id, connector, method, status) values (${A}, 'google', 'oauth', 'connected')`);
+    await connectGoogle();
     const id = await booking(inDays(2));
     await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
     const res = await call('POST', `/api/apps/bookings/bookings/${id}/cancel`, ownerA);
@@ -289,7 +327,7 @@ describe('tenant isolation', () => {
     // Business B is installed too (see beforeEach), so these requests reach
     // the real business_id-scoped queries and RLS rather than stopping at
     // "app not installed" — the gap the review flagged.
-    await asOwner((sql) => sql`insert into connection (business_id, connector, method, status) values (${A}, 'google', 'oauth', 'connected')`);
+    await connectGoogle();
     const id = await booking(inDays(2));
     await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
 
@@ -329,8 +367,8 @@ describe('Calendar sync from the owner side', () => {
     expect((await jsonOf<Json>(res)).booking.calendar.status).toBe('pending');
     expect(r.scheduled).toHaveLength(1);
     await Promise.all(r.scheduled);
-    // This connection has no stored credential, so the attempt asks for a reconnect.
-    expect(await calendarRow(id)).toMatchObject({ calendar_status: 'failed', calendar_error: CALENDAR_RECONNECT });
+    // The first provider attempt has already run; the route response did not wait for it.
+    expect(await calendarRow(id)).toMatchObject({ calendar_status: 'created' });
 
     const repeat = recorder();
     await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' }, true, repeat.execution);
@@ -513,7 +551,7 @@ describe('Calendar sync from the owner side', () => {
     await asOwner((sql) => sql`delete from connection where id = ${first.id}`);
     await connectAccount('account-2', 'other@example.com');
     expect(await processBookingCalendarJob(ENV, A, id)).toBe('failed');
-    expect(google.calls).toHaveLength(0);
+    expect(google.creates()).toHaveLength(0);
 
     const failed = await jsonOf<Json>(await call('GET', `/api/apps/bookings/bookings/${id}`, ownerA));
     expect(failed.booking.calendar).toEqual({

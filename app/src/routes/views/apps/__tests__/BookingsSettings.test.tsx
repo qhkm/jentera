@@ -9,7 +9,8 @@ import { AppsError } from '@/lib/apps/api';
 import { configFixture, fakeAppsApi, SERVICE_ID } from '@/lib/apps/__tests__/fixtures';
 import type { BookingsConfig } from '@/lib/apps/types';
 
-const NEW: BookingsConfig = { installation: null, version: null, settings: null, services: [] };
+const NEW: BookingsConfig = { installation: null, version: null, settings: null, services: [], blocks: [],
+  calendarProtection: { connected: false, account: null, syncedAt: null, lastError: null } };
 
 async function mount(config: BookingsConfig, api = fakeAppsApi()) {
   const repo = new LocalRepository();
@@ -47,6 +48,7 @@ describe('BookingsSettings', () => {
       acknowledgeAvailabilityLimits: true,
       services: [{ id: null, name: 'Cupping class', description: null, durationMinutes: 60, capacity: 1, priceLabel: null, active: true,
         hours: [1, 2, 3, 4, 5].map((weekday) => ({ weekday, opens: '09:00', closes: '17:00' })) }],
+      blocks: [],
     });
     expect(onSaved).toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: 'Add another service' })).toBeNull();
@@ -74,6 +76,25 @@ describe('BookingsSettings', () => {
     expect(screen.getByText(/does not send it automatically yet/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
     expect(api.saveBookingsConfig).toHaveBeenCalledWith(expect.objectContaining({ changeCutoffMinutes: 720 }));
+  });
+
+  it('shows Calendar protection and saves a manual closure in Malaysia time', async () => {
+    const { api, user } = await mount(configFixture());
+    await user.click(screen.getByText('Advanced settings'));
+    expect(screen.getByText(/Active for owner@example.com/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Add blocked time' }));
+    await user.type(screen.getByLabelText('Reason'), 'Team retreat');
+    fireEvent.change(screen.getByLabelText('Starts'), { target: { value: '2026-10-12T09:00' } });
+    fireEvent.change(screen.getByLabelText('Ends'), { target: { value: '2026-10-12T17:00' } });
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(api.saveBookingsConfig).toHaveBeenCalledWith(expect.objectContaining({
+      blocks: [{
+        id: null,
+        label: 'Team retreat',
+        startsAt: '2026-10-12T01:00:00.000Z',
+        endsAt: '2026-10-12T09:00:00.000Z',
+      }],
+    }));
   });
 
   it('will not publish until availability is acknowledged', async () => {

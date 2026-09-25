@@ -24,7 +24,14 @@ async function mount(api = fakeAppsApi(), section: string | null = null) {
 
 describe('BookingsApp', () => {
   it('shows only the setup form before Bookings is installed, then moves to the booking page', async () => {
-    const api = fakeAppsApi({ bookingsConfig: vi.fn(async () => ({ installation: null, version: null, settings: null, services: [] })) });
+    const api = fakeAppsApi({ bookingsConfig: vi.fn(async () => ({
+      installation: null,
+      version: null,
+      settings: null,
+      services: [],
+      blocks: [],
+      calendarProtection: { connected: false, account: null, syncedAt: null, lastError: null },
+    })) });
     const { onSection, user } = await mount(api);
     expect(await screen.findByRole('heading', { name: 'Set up your booking page' })).toBeInTheDocument();
     expect(screen.queryByRole('tablist')).toBeNull();

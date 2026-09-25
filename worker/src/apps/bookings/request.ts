@@ -9,6 +9,7 @@ import { reservationsFor } from './public';
 import { newReference } from './reference';
 import { openSlots } from './slots';
 import { addDays, myDate, myInstant } from './time';
+import { blockedIntervalsFor } from './availability';
 
 /* A customer's booking request from the public page. Creation locks the
    installation first (which serialises it with config saves, decisions and
@@ -142,12 +143,18 @@ export async function createBookingRequest(
     if (!service) return { kind: 'service_gone' };
     const hours = await readHours(tx, businessId, service.id);
     const date = myDate(input.startsAt);
-    const reservations = await reservationsFor(tx, businessId, service.id, myInstant(date), myInstant(addDays(date, 1)));
+    const windowStart = myInstant(date);
+    const windowEnd = myInstant(addDays(date, 1));
+    const [reservations, blocked] = await Promise.all([
+      reservationsFor(tx, businessId, service.id, windowStart, windowEnd),
+      blockedIntervalsFor(tx, businessId, windowStart, windowEnd),
+    ]);
     const slot = openSlots({
       service: { durationMinutes: service.duration_minutes, capacity: service.capacity },
       hours,
       settings: { minNoticeMinutes: settings.min_notice_minutes, horizonDays: settings.horizon_days },
       reservations,
+      blocked,
       now,
       from: date,
       days: 1,

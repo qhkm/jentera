@@ -4,6 +4,7 @@ import { hoursFor, readHours } from './hours';
 import type { Lang } from './messages';
 import { openSlots, type OpenSlot, type Reservation } from './slots';
 import { addDays, myDate, myInstant } from './time';
+import { blockedIntervalsFor } from './availability';
 
 /* What a business's customers may see, read for the public booking pages.
    The business is found only through bookings_by_slug; everything after
@@ -99,8 +100,13 @@ export async function loadOpenTimes(
     if (!page || !service) return null;
     const today = myDate(now);
     const start = from < today ? today : from;
-    const reservations = await reservationsFor(tx, businessId, service.id, myInstant(start), myInstant(addDays(start, days)), excludeBookingId);
-    const slots = openSlots({ service, hours: service.hours, settings: page.settings, reservations, now, from: start, days });
+    const windowStart = myInstant(start);
+    const windowEnd = myInstant(addDays(start, days));
+    const [reservations, blocked] = await Promise.all([
+      reservationsFor(tx, businessId, service.id, windowStart, windowEnd, excludeBookingId),
+      blockedIntervalsFor(tx, businessId, windowStart, windowEnd),
+    ]);
+    const slots = openSlots({ service, hours: service.hours, settings: page.settings, reservations, blocked, now, from: start, days });
     const out: DayTimes[] = [];
     for (let offset = 0; offset < days; offset += 1) {
       const date = addDays(start, offset);
