@@ -8,7 +8,7 @@ import {
   actionErrorKey, addDays, groupByDay, mergeBookingRows, unconfirmedErrorKey, WINDOW_DAYS, type OwnRead,
 } from '@/lib/apps/bookings';
 import {
-  bookingQuery, bookingWindowQuery, rereadBooking, useBookingAction, type BookingActionVars,
+  bookingQuery, bookingWindowQuery, pendingBookingsQuery, rereadBooking, useBookingAction, type BookingActionVars,
 } from '@/lib/apps/queries';
 import { keys, mutationKeys } from '@/lib/query/keys';
 import { useRequiredBusinessId } from '@/lib/query/scope';
@@ -74,12 +74,18 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
   const kept = useMemo(() => new Set(decided.scope === scope ? decided.ids : []), [decided, scope]);
 
   /* Needs you is the shared waiting-requests query (useApps), so opening it
-     never scans again; every other filter is a window query. Nothing is
-     asked for until the default filter is decided. */
+     inside 30 s never scans again; every other filter is a window query.
+     Nothing is asked for until the default filter is decided. */
   const windowRead = useQuery({
     ...bookingWindowQuery(api, businessId, range.from, range.days),
     enabled: chosen !== null && !needs,
   });
+  /* Opening Needs you also watches that shared query, as any screen showing
+     it does, so a scan older than 30 s is refreshed once in the background
+     while the cached requests show. Only while the list says some wait:
+     at 0 there is nothing to scan for (useApps). */
+  const waitingInList = (apps.list?.apps.find((app) => app.key === 'bookings')?.pending ?? 0) > 0;
+  useQuery({ ...pendingBookingsQuery(api, businessId), enabled: needs && waitingInList });
   /* Nothing is shown before the default filter is decided: until then the
      window query above is Today's, and its cache is not what will open. */
   const list: Booking[] | null = chosen === null ? null : needs ? apps.pending : windowRead.data ?? null;

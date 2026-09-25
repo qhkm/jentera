@@ -73,6 +73,24 @@ describe('BookingsList', () => {
     expect(pendingScans()).toBe(1);
   });
 
+  it('shows Needs you at once after 30 s, while one background scan refreshes it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const api = fakeAppsApi({ list: installed(1), bookings: serve([bookingFixture()]) });
+    const { user } = await mount(api);
+    await screen.findByRole('article', { name: 'Aisyah' });
+    const pendingScans = () => api.bookings.mock.calls.filter(([query]) => query.status === 'pending').length;
+    await user.click(screen.getByRole('button', { name: /^Today/ }));
+    await screen.findByText('No bookings today.');
+    vi.setSystemTime(new Date(NOW.getTime() + 31_000));
+    await user.click(screen.getByRole('button', { name: /^Needs you/ }));
+    expect(screen.getByRole('article', { name: 'Aisyah' })).toBeInTheDocument();
+    await waitFor(() => expect(pendingScans()).toBe(2));
+    await act(async () => {});
+    expect(pendingScans()).toBe(2);
+    expect(screen.getByRole('article', { name: 'Aisyah' })).toBeInTheDocument();
+  });
+
   it('shows the booking as it stands when it was decided elsewhere first', async () => {
     const api = fakeAppsApi({
       list: installed(1), bookings: serve([bookingFixture()]),
