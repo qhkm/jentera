@@ -1,5 +1,6 @@
 # Debug / temp
 .wrangler/
+worker/public-sites/
 .tmp-shots/
 aisar-site/
 *.log

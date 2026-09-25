@@ -40,11 +40,11 @@ async function call(method: string, path: string, cookie: string, body?: unknown
 }
 
 const service = (over: Record<string, unknown> = {}) => ({
-  id: null, name: 'Cupping class', durationMinutes: 60, capacity: 4, priceLabel: 'RM45', active: true,
+  id: null, name: 'Cupping class', description: 'A guided recovery session.', durationMinutes: 60, capacity: 4, priceLabel: 'RM45', active: true,
   hours: [{ weekday: 6, opens: '10:00', closes: '13:00' }], ...over,
 });
 const config = (over: Record<string, unknown> = {}) => ({
-  version: null, slug: 'kedai-aisyah', accepting: true, minNoticeMinutes: 120, horizonDays: 30,
+  version: null, slug: 'kedai-aisyah', accepting: true, minNoticeMinutes: 120, horizonDays: 30, location: '12 Jalan Example',
   acknowledgeAvailabilityLimits: true, services: [service()], ...over,
 });
 type Saved = { config: { version: number; installation: { slug: string; publicUrl: string }; services: Array<{ id: string; active: boolean; hours: unknown[] }> } };
@@ -74,6 +74,8 @@ describe('apps route: config', () => {
     const saved = await jsonOf<Saved>(await call('PUT', '/api/apps/bookings/config', ownerA, config()));
     expect(saved.config.version).toBe(1);
     expect(saved.config.installation).toMatchObject({ slug: 'kedai-aisyah', publicUrl: 'https://sites.test/b/kedai-aisyah' });
+    expect(saved.config).toMatchObject({ settings: { location: '12 Jalan Example' },
+      services: [{ description: 'A guided recovery session.' }] });
     const listed = await jsonOf<{ apps: unknown[] }>(await call('GET', '/api/apps', ownerA));
     expect(listed.apps).toEqual([{ key: 'bookings', state: 'active', accepting: true, publicUrl: 'https://sites.test/b/kedai-aisyah', pending: 0 }]);
   });

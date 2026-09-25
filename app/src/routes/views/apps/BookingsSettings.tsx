@@ -17,6 +17,7 @@ interface ServiceDraft {
   key: string;
   id: string | null;
   name: string;
+  description: string;
   durationMinutes: number;
   capacity: number;
   priceLabel: string;
@@ -48,7 +49,7 @@ function originOf(url: string): string | null {
 
 function newService(): ServiceDraft {
   return {
-    key: `new-${++draftKeys}`, id: null, name: '', durationMinutes: 60, capacity: 1, priceLabel: '', active: true,
+    key: `new-${++draftKeys}`, id: null, name: '', description: '', durationMinutes: 60, capacity: 1, priceLabel: '', active: true,
     days: Object.fromEntries(WEEK.map((day) => [day, { open: day >= 1 && day <= 5, opens: '09:00', closes: '17:00' }])),
     extra: [],
   };
@@ -62,7 +63,7 @@ function toDraft(service: BookingService): ServiceDraft {
     else days[range.weekday] = { open: true, opens: range.opens, closes: range.closes };
   }
   return {
-    key: service.id, id: service.id, name: service.name, durationMinutes: service.durationMinutes,
+    key: service.id, id: service.id, name: service.name, description: service.description ?? '', durationMinutes: service.durationMinutes,
     capacity: service.capacity, priceLabel: service.priceLabel ?? '', active: service.active, days, extra,
   };
 }
@@ -81,6 +82,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
   const [services, setServices] = useState<ServiceDraft[]>(() => (config.services.length ? config.services.map(toDraft) : [newService()]));
   const [minNotice, setMinNotice] = useState(config.settings?.minNoticeMinutes ?? 120);
   const [horizon, setHorizon] = useState(config.settings?.horizonDays ?? 30);
+  const [location, setLocation] = useState(config.settings?.location ?? '');
   const [acknowledged, setAcknowledged] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<{ key: string; reload: boolean } | null>(null);
@@ -110,6 +112,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
     for (const service of services) {
       const name = service.name.trim();
       if (!name || name.length > 80) found[`${service.key}.name`] = 'bookings.settings.error.name';
+      if (service.description.trim().length > 240) found[`${service.key}.description`] = 'bookings.settings.error.description';
       if (!Number.isInteger(service.capacity) || service.capacity < 1 || service.capacity > 50) {
         found[`${service.key}.capacity`] = 'bookings.settings.error.capacity.range';
       }
@@ -119,6 +122,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
         if (service.days[day].closes <= service.days[day].opens) found[`${service.key}.day.${day}`] = 'bookings.settings.error.closes';
       }
     }
+    if (location.trim().length > 160) found.location = 'bookings.settings.error.location';
     return found;
   }
 
@@ -134,10 +138,12 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
       accepting: config.settings?.accepting ?? true,
       minNoticeMinutes: minNotice,
       horizonDays: horizon,
+      location: location.trim() || null,
       acknowledgeAvailabilityLimits: installed || acknowledged,
       services: services.map((service) => ({
         id: service.id,
         name: service.name.trim(),
+        description: service.description.trim() || null,
         durationMinutes: service.durationMinutes,
         capacity: service.capacity,
         priceLabel: service.priceLabel.trim() || null,
@@ -176,6 +182,12 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
   return <form className="bookings-settings" onSubmit={(event) => void save(event)} noValidate>
     <h2>{t(installed ? 'bookings.settings.title' : 'bookings.setup.title')}</h2>
     {!installed && <p className="bookings-lead">{t('bookings.setup.lead')}</p>}
+    <label>{t('bookings.settings.location')}
+      <Input value={location} maxLength={160} placeholder={t('bookings.settings.location.placeholder')}
+        aria-invalid={Boolean(errors.location)} onChange={(event) => setLocation(event.target.value)} />
+    </label>
+    <p className="bookings-lead">{t('bookings.settings.location.help')}</p>
+    {error('location')}
     {services.map((service, index) => <fieldset key={service.key} className="bookings-service card">
       <legend>{services.length > 1 ? t('bookings.settings.serviceN', { n: index + 1 }) : t('bookings.settings.service')}</legend>
       <label>{t('bookings.settings.name')}
@@ -183,6 +195,13 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
           onChange={(event) => update(service.key, { name: event.target.value })} />
       </label>
       {error(`${service.key}.name`)}
+      <label>{t('bookings.settings.description')}
+        <textarea className="input" value={service.description} maxLength={240} rows={3}
+          placeholder={t('bookings.settings.description.placeholder')}
+          aria-invalid={Boolean(errors[`${service.key}.description`])}
+          onChange={(event) => update(service.key, { description: event.target.value })} />
+      </label>
+      {error(`${service.key}.description`)}
       <label>{t('bookings.settings.duration')}
         <select className="input" value={service.durationMinutes} onChange={(event) => update(service.key, { durationMinutes: Number(event.target.value) })}>
           {DURATIONS.map((minutes) => <option key={minutes} value={minutes}>{t('bookings.settings.minutes', { n: minutes })}</option>)}

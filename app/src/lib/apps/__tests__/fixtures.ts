@@ -20,9 +20,9 @@ export function configFixture(over: Partial<BookingsConfig> = {}): BookingsConfi
   return {
     installation: { slug: 'seido', state: 'active', publicUrl: 'https://sites.test/b/seido' },
     version: 3,
-    settings: { accepting: true, minNoticeMinutes: 120, horizonDays: 30, availabilityAcknowledgedAt: '2026-10-01T00:00:00.000Z' },
+    settings: { accepting: true, minNoticeMinutes: 120, horizonDays: 30, location: '12 Jalan Example, Kuala Lumpur', availabilityAcknowledgedAt: '2026-10-01T00:00:00.000Z' },
     services: [{
-      id: SERVICE_ID, name: 'Cupping class', durationMinutes: 60, capacity: 4, priceLabel: 'RM45', active: true,
+      id: SERVICE_ID, name: 'Cupping class', description: 'A guided recovery session.', durationMinutes: 60, capacity: 4, priceLabel: 'RM45', active: true,
       hours: [{ weekday: 2, opens: '10:00', closes: '13:00' }],
     }],
     ...over,

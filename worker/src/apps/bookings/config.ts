@@ -17,6 +17,7 @@ export interface HoursInput { weekday: number; opens: string; closes: string }
 export interface ServiceInput {
   id: string | null;
   name: string;
+  description: string | null;
   durationMinutes: number;
   capacity: number;
   priceLabel: string | null;
@@ -29,6 +30,7 @@ export interface ConfigInput {
   accepting: boolean;
   minNoticeMinutes: number;
   horizonDays: number;
+  location: string | null;
   acknowledgeAvailabilityLimits: boolean;
   services: ServiceInput[];
 }
@@ -36,7 +38,7 @@ export interface ServiceView extends Omit<ServiceInput, 'id'> { id: string }
 export interface ConfigView {
   installation: { slug: string; state: 'active' | 'paused'; publicUrl: string } | null;
   version: number | null;
-  settings: { accepting: boolean; minNoticeMinutes: number; horizonDays: number; availabilityAcknowledgedAt: string } | null;
+  settings: { accepting: boolean; minNoticeMinutes: number; horizonDays: number; location: string | null; availabilityAcknowledgedAt: string } | null;
   services: ServiceView[];
 }
 
@@ -58,6 +60,13 @@ function text(value: unknown, max: number): string | null {
   if (typeof value !== 'string') return null;
   const clean = value.replace(/\s+/g, ' ').trim();
   return clean.length >= 1 && clean.length <= max ? clean : null;
+}
+
+function optionalText(value: unknown, max: number): Parsed<string | null> {
+  const raw = typeof value === 'string' ? value.trim() : value;
+  if (raw === undefined || raw === null || raw === '') return { ok: true, value: null };
+  const valueText = text(raw, max);
+  return valueText ? { ok: true, value: valueText } : fail(`text must be at most ${max} characters`);
 }
 
 export function publicBookingUrl(sitesOrigin: string, slug: string): string {
@@ -102,6 +111,8 @@ function parseService(value: unknown): Parsed<ServiceInput> {
   if (id === undefined) return fail('service id is not valid');
   const name = text(raw.name, 80);
   if (!name) return fail('service name must be 1 to 80 characters');
+  const description = optionalText(raw.description, 240);
+  if (!description.ok) return fail('service description must be at most 240 characters');
   const durationMinutes = int(raw.durationMinutes, 15, 480);
   if (durationMinutes === null || durationMinutes % 15 !== 0) return fail('duration must be 15 to 480 minutes in 15-minute steps');
   const capacity = int(raw.capacity, 1, 50);
@@ -115,7 +126,7 @@ function parseService(value: unknown): Parsed<ServiceInput> {
   if (typeof active !== 'boolean') return fail('active must be true or false');
   const hours = parseHours(raw.hours ?? []);
   if (!hours.ok) return hours;
-  return { ok: true, value: { id, name, durationMinutes, capacity, priceLabel, active, hours: hours.value } };
+  return { ok: true, value: { id, name, description: description.value, durationMinutes, capacity, priceLabel, active, hours: hours.value } };
 }
 
 export function parseConfigInput(body: unknown): Parsed<ConfigInput> {
@@ -130,6 +141,8 @@ export function parseConfigInput(body: unknown): Parsed<ConfigInput> {
   if (minNoticeMinutes === null) return fail('minimum notice must be 0 to 10080 minutes');
   const horizonDays = int(raw.horizonDays, 1, 90);
   if (horizonDays === null) return fail('booking horizon must be 1 to 90 days');
+  const location = optionalText(raw.location, 160);
+  if (!location.ok) return fail('location must be at most 160 characters');
   if (!Array.isArray(raw.services) || raw.services.length < 1 || raw.services.length > MAX_SERVICES) {
     return fail(`add between 1 and ${MAX_SERVICES} services`);
   }
@@ -145,7 +158,7 @@ export function parseConfigInput(body: unknown): Parsed<ConfigInput> {
   return {
     ok: true,
     value: {
-      version, slug, accepting: raw.accepting, minNoticeMinutes, horizonDays,
+      version, slug, accepting: raw.accepting, minNoticeMinutes, horizonDays, location: location.value,
       acknowledgeAvailabilityLimits: raw.acknowledgeAvailabilityLimits === true, services,
     },
   };
@@ -156,11 +169,11 @@ export async function readConfig(tx: postgres.TransactionSql, businessId: string
     select public_slug, state, config_version from app_installation
      where business_id = ${businessId} and app_key = 'bookings'`;
   if (!installation) return { installation: null, version: null, settings: null, services: [] };
-  const [settings] = await tx<{ accepting: boolean; min_notice_minutes: number; horizon_days: number; availability_acknowledged_at: Date }[]>`
-    select accepting, min_notice_minutes, horizon_days, availability_acknowledged_at
+  const [settings] = await tx<{ accepting: boolean; min_notice_minutes: number; horizon_days: number; location: string | null; availability_acknowledged_at: Date }[]>`
+    select accepting, min_notice_minutes, horizon_days, location, availability_acknowledged_at
       from booking_settings where business_id = ${businessId}`;
-  const services = await tx<{ id: string; name: string; duration_minutes: number; capacity: number; price_label: string | null; active: boolean }[]>`
-    select id, name, duration_minutes, capacity, price_label, active from booking_service
+  const services = await tx<{ id: string; name: string; description: string | null; duration_minutes: number; capacity: number; price_label: string | null; active: boolean }[]>`
+    select id, name, description, duration_minutes, capacity, price_label, active from booking_service
      where business_id = ${businessId} order by sort, name, id`;
   const hours = await readHours(tx, businessId);
   return {
@@ -174,10 +187,11 @@ export async function readConfig(tx: postgres.TransactionSql, businessId: string
       accepting: settings.accepting,
       minNoticeMinutes: settings.min_notice_minutes,
       horizonDays: settings.horizon_days,
+      location: settings.location,
       availabilityAcknowledgedAt: settings.availability_acknowledged_at.toISOString(),
     } : null,
     services: services.map((s) => ({
-      id: s.id, name: s.name, durationMinutes: s.duration_minutes, capacity: s.capacity,
+      id: s.id, name: s.name, description: s.description, durationMinutes: s.duration_minutes, capacity: s.capacity,
       priceLabel: s.price_label, active: s.active,
       hours: hoursFor(hours, s.id),
     })),
@@ -225,8 +239,8 @@ export async function saveConfig(tx: postgres.TransactionSql, businessId: string
     // Lost a race with a concurrent first save: the client must reload.
     if (inserted.length === 0) throw new ConfigError('CONFIG_CHANGED');
     await tx`insert into booking_settings
-      (business_id, accepting, availability_acknowledged_at, min_notice_minutes, horizon_days, updated_at)
-      values (${businessId}, ${input.accepting}, ${now}, ${input.minNoticeMinutes}, ${input.horizonDays}, ${now})`;
+      (business_id, accepting, availability_acknowledged_at, min_notice_minutes, horizon_days, location, updated_at)
+      values (${businessId}, ${input.accepting}, ${now}, ${input.minNoticeMinutes}, ${input.horizonDays}, ${input.location}, ${now})`;
   } else {
     if (input.version !== existing.config_version) throw new ConfigError('CONFIG_CHANGED');
     if (input.slug !== existing.public_slug) {
@@ -236,13 +250,13 @@ export async function saveConfig(tx: postgres.TransactionSql, businessId: string
     }
     const updated = await tx`update booking_settings
       set accepting = ${input.accepting}, min_notice_minutes = ${input.minNoticeMinutes},
-          horizon_days = ${input.horizonDays}, updated_at = ${now}
+          horizon_days = ${input.horizonDays}, location = ${input.location}, updated_at = ${now}
       where business_id = ${businessId} returning business_id`;
     if (updated.length === 0) {
       if (!input.acknowledgeAvailabilityLimits) throw new ConfigError('ACK_REQUIRED');
       await tx`insert into booking_settings
-        (business_id, accepting, availability_acknowledged_at, min_notice_minutes, horizon_days, updated_at)
-        values (${businessId}, ${input.accepting}, ${now}, ${input.minNoticeMinutes}, ${input.horizonDays}, ${now})`;
+        (business_id, accepting, availability_acknowledged_at, min_notice_minutes, horizon_days, location, updated_at)
+        values (${businessId}, ${input.accepting}, ${now}, ${input.minNoticeMinutes}, ${input.horizonDays}, ${input.location}, ${now})`;
     }
     await tx`update app_installation set config_version = config_version + 1, updated_at = ${now}
       where business_id = ${businessId} and app_key = 'bookings'`;
@@ -273,12 +287,12 @@ async function saveServices(tx: postgres.TransactionSql, businessId: string, ser
     if (id) {
       await tx`update booking_service
         set name = ${service.name}, duration_minutes = ${service.durationMinutes}, capacity = ${service.capacity},
-            price_label = ${service.priceLabel}, active = ${service.active}, sort = ${sort}
+            description = ${service.description}, price_label = ${service.priceLabel}, active = ${service.active}, sort = ${sort}
         where business_id = ${businessId} and id = ${id}`;
     } else {
       const [created] = await tx<{ id: string }[]>`
-        insert into booking_service (business_id, name, duration_minutes, capacity, price_label, active, sort)
-        values (${businessId}, ${service.name}, ${service.durationMinutes}, ${service.capacity},
+        insert into booking_service (business_id, name, description, duration_minutes, capacity, price_label, active, sort)
+        values (${businessId}, ${service.name}, ${service.description}, ${service.durationMinutes}, ${service.capacity},
                 ${service.priceLabel}, ${service.active}, ${sort})
         returning id`;
       id = created.id;

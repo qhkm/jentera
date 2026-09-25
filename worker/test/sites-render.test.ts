@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { donePage, escapeHtml, formPage, messagePage, page, redirect, servicesPage, timesPage } from '../src/sites/render';
 
-const base = { slug: 'seido', lang: 'en' as const, businessName: 'SEIDO <script>alert(1)</script>' };
-const service = { id: '11111111-1111-4111-8111-111111111112', name: 'Cupping <b>class</b>', durationMinutes: 60, capacity: 2, priceLabel: 'RM45 & up', hours: [] };
+const base = { slug: 'seido', lang: 'en' as const, businessName: 'SEIDO <script>alert(1)</script>', location: '12 Jalan <Central>' };
+const service = { id: '11111111-1111-4111-8111-111111111112', name: 'Cupping <b>class</b>', description: 'A calm <strong>recovery</strong> session.', durationMinutes: 60, capacity: 2, priceLabel: 'RM45 & up', hours: [] };
 
 describe('escaping and responses', () => {
   it('escapes the five HTML characters', () => {
@@ -12,7 +12,7 @@ describe('escaping and responses', () => {
   it('sends every security header and never a cookie', () => {
     const res = page('<p>hi</p>');
     expect(res.headers.get('Content-Security-Policy')).toBe(
-      "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+      "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; script-src https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
     expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
     expect(res.headers.get('Referrer-Policy')).toBe('no-referrer');
     expect(res.headers.get('X-Robots-Tag')).toBe('noindex');
@@ -26,14 +26,30 @@ describe('escaping and responses', () => {
 });
 
 describe('pages', () => {
+  it('keeps the selected Malaysian date when returning from the details step', () => {
+    const html = formPage({ ...base, service, startsAt: new Date('2026-10-06T17:00:00Z'), remaining: 2, submissionKey: 'k',
+      values: { name: '', phone: '', note: '', party: '1' }, errors: [], siteKey: undefined });
+    expect(html).toContain(`href="/b/seido?service=${service.id}&amp;date=2026-10-07&amp;lang=en"`);
+    expect(html).toContain('aria-current="step"><span>3</span>Your details');
+    expect(html).toContain('Malaysia time (GMT+8)');
+    expect(html).toContain('Your booking is confirmed only after the business gets in touch.');
+  });
+
   it('renders business and service names as text, never markup', () => {
     const html = servicesPage({ ...base, services: [service] });
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('SEIDO &lt;script&gt;');
     expect(html).toContain('Cupping &lt;b&gt;class&lt;/b&gt;');
+    expect(html).toContain('A calm &lt;strong&gt;recovery&lt;/strong&gt; session.');
+    expect(html).toContain('12 Jalan &lt;Central&gt;');
     expect(html).toContain('RM45 &amp; up');
     expect(html).toContain('<meta name="robots" content="noindex">');
     expect(html).toContain(`href="/b/seido?service=${service.id}&amp;lang=en"`);
+  });
+
+  it('uses an honest location fallback when the owner has not added one', () => {
+    expect(servicesPage({ ...base, location: null, services: [service] })).toContain('Confirmed on WhatsApp');
+    expect(servicesPage({ ...base, lang: 'bm', location: null, services: [service] })).toContain('Disahkan melalui WhatsApp');
   });
 
   it('switches language and marks Malay pages as ms', () => {

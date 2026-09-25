@@ -396,6 +396,9 @@ crons = []
 [env.sites.placement]
 region = "aws:ap-southeast-1"
 
+[env.sites.assets]
+directory = "./public-sites"
+
 [[env.sites.hyperdrive]]
 binding = "HYPERDRIVE"
 id = "f77c72f8d6614bb0b6955170caadad07"

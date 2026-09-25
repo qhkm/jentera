@@ -19,10 +19,10 @@ beforeEach(async () => {
       values (${A}, 'bookings', 'seido'), (${B}, 'bookings', 'beta')`;
     await sql`insert into app_slug (public_slug, business_id, app_key)
       values ('seido', ${A}, 'bookings'), ('seido-lama', ${A}, 'bookings'), ('beta', ${B}, 'bookings')`;
-    await sql`insert into booking_settings (business_id, availability_acknowledged_at, min_notice_minutes, horizon_days)
-      values (${A}, now(), 120, 30), (${B}, now(), 0, 30)`;
-    const [a] = await sql<{ id: string }[]>`insert into booking_service (business_id, name, duration_minutes, capacity)
-      values (${A}, 'Cupping class', 60, 2) returning id`;
+    await sql`insert into booking_settings (business_id, availability_acknowledged_at, min_notice_minutes, horizon_days, location)
+      values (${A}, now(), 120, 30, '12 Jalan Example'), (${B}, now(), 0, 30, null)`;
+    const [a] = await sql<{ id: string }[]>`insert into booking_service (business_id, name, description, duration_minutes, capacity)
+      values (${A}, 'Cupping class', 'A guided recovery session.', 60, 2) returning id`;
     await sql`insert into booking_service (business_id, name, duration_minutes, capacity, active)
       values (${A}, 'Old workshop', 60, 2, false)`;
     const [b] = await sql<{ id: string }[]>`insert into booking_service (business_id, name, duration_minutes, capacity)
@@ -44,7 +44,8 @@ describe('public reads', () => {
 
   it('lists only active services, and reports whether the page is open', async () => {
     const page = await loadPublicPage(ENV, A);
-    expect(page).toMatchObject({ businessName: 'SEIDO <Coffee>', lang: 'en', open: true });
+    expect(page).toMatchObject({ businessName: 'SEIDO <Coffee>', lang: 'en', open: true,
+      settings: { location: '12 Jalan Example' }, services: [{ description: 'A guided recovery session.' }] });
     expect(page!.services.map((s) => s.name)).toEqual(['Cupping class']);
     await asOwner((sql) => sql`update booking_settings set accepting = false where business_id = ${A}`);
     expect((await loadPublicPage(ENV, A))!.open).toBe(false);

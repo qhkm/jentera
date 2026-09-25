@@ -124,7 +124,7 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
   const info = await loadPublicPage(env, businessId);
   if (!info) return notFound(earlyLang);
   const lang = langOf(url, info);
-  const base = { slug, lang, businessName: info.businessName };
+  const base = { slug, lang, businessName: info.businessName, location: info.settings.location };
 
   if (sub === '/done') {
     const reference = url.searchParams.get('ref') ?? '';

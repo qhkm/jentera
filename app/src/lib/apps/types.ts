@@ -83,6 +83,7 @@ export interface WeeklyHours {
 export interface BookingService {
   id: string;
   name: string;
+  description: string | null;
   durationMinutes: number;
   capacity: number;
   priceLabel: string | null;
@@ -93,7 +94,7 @@ export interface BookingService {
 export interface BookingsConfig {
   installation: { slug: string; state: 'active' | 'paused'; publicUrl: string } | null;
   version: number | null;
-  settings: { accepting: boolean; minNoticeMinutes: number; horizonDays: number; availabilityAcknowledgedAt: string } | null;
+  settings: { accepting: boolean; minNoticeMinutes: number; horizonDays: number; location: string | null; availabilityAcknowledgedAt: string } | null;
   services: BookingService[];
 }
 
@@ -108,6 +109,7 @@ export interface BookingsConfigInput {
   accepting: boolean;
   minNoticeMinutes: number;
   horizonDays: number;
+  location: string | null;
   acknowledgeAvailabilityLimits: boolean;
   services: BookingServiceInput[];
 }

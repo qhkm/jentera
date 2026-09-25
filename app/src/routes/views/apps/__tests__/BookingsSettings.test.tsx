@@ -43,13 +43,28 @@ describe('BookingsSettings', () => {
     await user.click(screen.getByRole('checkbox', { name: /I understand/ }));
     await user.click(screen.getByRole('button', { name: 'Publish booking page' }));
     expect(api.saveBookingsConfig).toHaveBeenCalledWith({
-      version: null, slug: 'kedai-kita', accepting: true, minNoticeMinutes: 120, horizonDays: 30,
+      version: null, slug: 'kedai-kita', accepting: true, minNoticeMinutes: 120, horizonDays: 30, location: null,
       acknowledgeAvailabilityLimits: true,
-      services: [{ id: null, name: 'Cupping class', durationMinutes: 60, capacity: 1, priceLabel: null, active: true,
+      services: [{ id: null, name: 'Cupping class', description: null, durationMinutes: 60, capacity: 1, priceLabel: null, active: true,
         hours: [1, 2, 3, 4, 5].map((weekday) => ({ weekday, opens: '09:00', closes: '17:00' })) }],
     });
     expect(onSaved).toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: 'Add another service' })).toBeNull();
+  });
+
+  it('saves customer-facing service and location details', async () => {
+    const { api, user } = await mount(configFixture());
+    const location = screen.getByLabelText('Where the booking takes place');
+    await user.clear(location);
+    await user.type(location, 'Online · Link shared after confirmation');
+    const description = screen.getByLabelText('Description (optional)');
+    await user.clear(description);
+    await user.type(description, 'A focused session with our team.');
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(api.saveBookingsConfig).toHaveBeenCalledWith(expect.objectContaining({
+      location: 'Online · Link shared after confirmation',
+      services: [expect.objectContaining({ description: 'A focused session with our team.' })],
+    }));
   });
 
   it('will not publish until availability is acknowledged', async () => {
