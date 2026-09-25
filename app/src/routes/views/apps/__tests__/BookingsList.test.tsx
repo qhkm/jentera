@@ -8,7 +8,8 @@ import { AppsProvider } from '@/lib/apps/useApps';
 import { AppsError } from '@/lib/apps/api';
 import { BOOKING_ID, bookingFixture, fakeAppsApi } from '@/lib/apps/__tests__/fixtures';
 import type { Booking, BookingsQuery } from '@/lib/apps/types';
-import { renderWithQuery } from '@/test-support/query';
+import { createQueryClient } from '@/lib/query/client';
+import { renderWithQuery, returnToApp } from '@/test-support/query';
 
 const NOW = new Date('2026-10-05T00:00:00Z');   // Monday 08:00 in Malaysia
 const WA = 'https://wa.me/60123456789?text=Hi';
@@ -68,7 +69,8 @@ describe('BookingsList', () => {
     await user.click(screen.getByRole('button', { name: /^Today/ }));
     await user.click(screen.getByRole('button', { name: /^Needs you/ }));
     await screen.findByRole('article', { name: 'Aisyah' });
-    await waitFor(() => expect(pendingScans()).toBe(2));
+    // Back inside 30 s: Needs you is the shared scan's answer, not a new scan.
+    expect(pendingScans()).toBe(1);
   });
 
   it('shows the booking as it stands when it was decided elsewhere first', async () => {
@@ -258,13 +260,10 @@ describe('BookingsList', () => {
       list: installed(1), bookings,
       decide: vi.fn(async () => { decided = true; return { booking: confirmed, whatsappUrl: WA, calendarQueued: false }; }),
     });
-    const { user } = await mount(api);
+    const { client, user } = await mount(api);
     await user.click(within(await screen.findByRole('article', { name: 'Aisyah' })).getByRole('button', { name: 'Confirm' }));
     await screen.findByRole('link', { name: /Send confirmation on WhatsApp/ });
-    await act(async () => {
-      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
-      document.dispatchEvent(new Event('visibilitychange'));
-    });
+    await returnToApp(client);
     const card = await screen.findByRole('article', { name: 'Aisyah' });
     await waitFor(() => expect(within(card).getByText('Confirmed')).toBeInTheDocument());
     expect(within(card).getByRole('link', { name: /Send confirmation on WhatsApp/ })).toHaveAttribute('href', WA);
@@ -305,18 +304,13 @@ describe('BookingsList', () => {
       list: installed(0), bookings,
       decide: vi.fn(async () => { current = confirmed; return { booking: confirmed, whatsappUrl: WA, calendarQueued: false }; }),
     });
-    const { user } = await mount(api);
+    const { client, user } = await mount(api);
     await screen.findByRole('article', { name: 'Aisyah' });
 
     // A quiet reload starts and its read is held open, before the write.
-    await act(async () => {
-      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
-      document.dispatchEvent(new Event('visibilitychange'));
-    });
-    // `calls` counts only the window fetches this test cares about — the
-    // pending-status scan (fired on both mount and this same visibilitychange,
-    // by AppsProvider's own listener) goes through the early-return branch
-    // above and is excluded, same as the old `polls quietly` test excluded it.
+    await returnToApp(client);
+    // `calls` counts only the window reads this test cares about; a
+    // pending-status scan goes through the early-return branch above.
     await waitFor(() => expect(calls).toBe(2));
 
     // The action resolves while that reload is still in flight.
@@ -400,32 +394,19 @@ describe('BookingsList', () => {
     await waitFor(() => expect(api.booking).toHaveBeenCalledWith(BOOKING_ID));
   });
 
-  /* Fix round 1, item 10: a quiet load that fails while rows is still null
-     (here, a foreground reload that overtakes an initial load still in
-     flight) must show the failed state rather than leave the spinner
-     forever — the bug was that only a non-quiet failure ever set it. */
-  it('shows the failed state, not a forever spinner, when a quiet reload is first to fail', async () => {
-    let releaseInitial: (() => void) | null = null;
-    let calls = 0;
+  /* Fix round 1, item 10: a load that fails before any rows arrived must
+     show the failed state rather than leave the spinner forever. (The old
+     trigger, a foreground reload overtaking the first load, cannot happen
+     any more: the cache joins a second read to the one in flight.) */
+  it('shows the failed state, not a forever spinner, when the list cannot be read', async () => {
     const bookings = vi.fn(async (query: BookingsQuery) => {
       if (query.status === 'pending') return { bookings: [], nextCursor: null };
-      calls += 1;
-      if (calls === 1) {
-        await new Promise<void>((resolve) => { releaseInitial = resolve; });
-        return { bookings: [], nextCursor: null };
-      }
       throw new AppsError('NETWORK', 0, false);
     });
     const api = fakeAppsApi({ list: installed(0), bookings });
     await mount(api);
-    await waitFor(() => expect(calls).toBe(1));
-
-    await act(async () => {
-      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
-      document.dispatchEvent(new Event('visibilitychange'));
-    });
     expect(await screen.findByText('Could not load bookings.')).toBeInTheDocument();
-    releaseInitial!();
+    expect(screen.queryByText('Loading bookings…')).toBeNull();
   });
 
   /* Fix round 2, item A: a discarded load has no other trigger to retry it
@@ -516,39 +497,22 @@ describe('BookingsList', () => {
      scenario: failing while `rows` is still null), no later success ever
      cleared it again — the failed card kept showing over the now-correctly
      loaded list. */
-  it('clears the failed state once a later quiet load succeeds', async () => {
-    let releaseInitial: (() => void) | null = null;
+  it('clears the failed state once a later read succeeds', async () => {
     let calls = 0;
     const bookings = vi.fn(async (query: BookingsQuery) => {
       if (query.status === 'pending') return { bookings: [], nextCursor: null };
       calls += 1;
-      if (calls === 1) {
-        // The initial load never gets to apply its rows — a newer load (the
-        // visibilitychange reload below) always supersedes it first, so it
-        // is released only for cleanliness, not relied on for an assertion.
-        await new Promise<void>((resolve) => { releaseInitial = resolve; });
-        return { bookings: [], nextCursor: null };
-      }
-      if (calls === 2) throw new AppsError('NETWORK', 0, false);
+      if (calls === 1) throw new AppsError('NETWORK', 0, false);
       return { bookings: [], nextCursor: null };
     });
     const api = fakeAppsApi({ list: installed(0), bookings });
-    await mount(api);
-    await waitFor(() => expect(calls).toBe(1));
-
-    // A foreground reload fires and fails while rows is still null — the
-    // failed card appears.
-    await act(async () => {
-      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
-      document.dispatchEvent(new Event('visibilitychange'));
-    });
+    const { client } = await mount(api);
     expect(await screen.findByText('Could not load bookings.')).toBeInTheDocument();
 
-    // A further foreground reload succeeds — the failed card must go away.
-    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    // The owner comes back to the app and the read succeeds: the failed card goes away.
+    await returnToApp(client);
     await waitFor(() => expect(screen.queryByText('Could not load bookings.')).toBeNull());
-    expect(screen.getByText('No bookings today.')).toBeInTheDocument();
-    releaseInitial!();
+    expect(await screen.findByText('No bookings today.')).toBeInTheDocument();
   });
 
   /* Fix round 2, item E: a deep-link fetch that failed for a reason other
@@ -562,14 +526,104 @@ describe('BookingsList', () => {
       return bookingFixture();
     });
     const api = fakeAppsApi({ list: installed(0), bookings: serve([], []), booking });
-    await mount(api, BOOKING_ID);
+    const { client } = await mount(api, BOOKING_ID);
     expect(await screen.findByText('Could not load bookings.')).toBeInTheDocument();
 
-    await act(async () => {
-      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
-      document.dispatchEvent(new Event('visibilitychange'));
-    });
+    await returnToApp(client);
     await waitFor(() => expect(screen.getByRole('region', { name: 'From your notification' })).toBeInTheDocument());
     expect(screen.queryByText('Could not load bookings.')).toBeNull();
+  });
+
+  it('shows the Bookings tab again on a revisit inside 30 s without asking the server', async () => {
+    const api = fakeAppsApi({ list: installed(0), bookings: serve([], [bookingFixture({ status: 'confirmed' })]) });
+    const first = await mount(api);
+    await screen.findByRole('article', { name: 'Aisyah' });
+    first.unmount();
+    await mount(api, null, { client: first.client });
+    expect(await screen.findByRole('article', { name: 'Aisyah' })).toBeInTheDocument();
+    expect(api.list).toHaveBeenCalledTimes(1);
+    expect(api.bookings).toHaveBeenCalledTimes(1);
+  });
+
+  it('never sends a confirm twice, and shows the booking as it stands', async () => {
+    const api = fakeAppsApi({
+      list: installed(1), bookings: serve([bookingFixture()]),
+      decide: vi.fn().mockRejectedValue(new AppsError('NETWORK', 0, true)),
+      booking: vi.fn(async () => bookingFixture({ status: 'confirmed', whatsappUrl: WA })),
+    });
+    // The production client: only its no-retry rule for writes is under test.
+    const { user } = await mount(api, null, { client: createQueryClient() });
+    await user.click(within(await screen.findByRole('article', { name: 'Aisyah' })).getByRole('button', { name: 'Confirm' }));
+    const card = await screen.findByRole('article', { name: 'Aisyah' });
+    await waitFor(() => expect(within(card).getByRole('alert')).toHaveTextContent('We did not hear back'));
+    expect(within(card).getByText('Confirmed')).toBeInTheDocument();
+    expect(api.decide).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops polling once Calendar has synced', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const syncing = bookingFixture({ status: 'confirmed', calendar: calendar('pending') });
+    const api = fakeAppsApi({
+      list: installed(0), bookings: serve([], [syncing]),
+      booking: vi.fn(async () => bookingFixture({ status: 'confirmed', calendar: calendar('created') })),
+    });
+    await mount(api, null, { delay: null });
+    await screen.findByRole('article', { name: 'Aisyah' });
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    await waitFor(() => expect(screen.getByText('Added to Google Calendar')).toBeInTheDocument());
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    expect(api.booking).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops polling when the list is closed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const syncing = bookingFixture({ status: 'confirmed', calendar: calendar('pending') });
+    const api = fakeAppsApi({ list: installed(0), bookings: serve([], [syncing]) });
+    const { unmount } = await mount(api, null, { delay: null });
+    await screen.findByRole('article', { name: 'Aisyah' });
+    unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    expect(api.booking).not.toHaveBeenCalled();
+  });
+
+  it('does not ask again for a booking that could not be found when the owner returns', async () => {
+    const api = fakeAppsApi({ list: installed(0), bookings: serve([], []), booking: vi.fn().mockRejectedValue(new AppsError('NOT_FOUND', 404)) });
+    const { client } = await mount(api, BOOKING_ID);
+    expect(await screen.findByText('This booking could not be found.')).toBeInTheDocument();
+    await returnToApp(client);
+    await screen.findByText('No bookings today.');
+    expect(api.booking).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('This booking could not be found.')).toBeInTheDocument();
+  });
+
+  it('shows a decision in every cached list at once, not only the one it was made in', async () => {
+    let decided = false;
+    let holdToday: (() => void) | null = null;
+    const confirmed = bookingFixture({ status: 'confirmed', whatsappUrl: WA });
+    const bookings = vi.fn(async (query: BookingsQuery) => {
+      if (query.status === 'pending') return { bookings: decided ? [] : [bookingFixture()], nextCursor: null };
+      // Today's second read (after the decision) is held, so the card below comes from the cache.
+      if (decided) await new Promise<void>((resolve) => { holdToday = resolve; });
+      return { bookings: [decided ? confirmed : bookingFixture()], nextCursor: null };
+    });
+    const api = fakeAppsApi({
+      list: installed(1), bookings,
+      decide: vi.fn(async () => { decided = true; return { booking: confirmed, whatsappUrl: WA, calendarQueued: false }; }),
+    });
+    const { user } = await mount(api);
+    await screen.findByRole('article', { name: 'Aisyah' });
+    // Today is read once and cached, with the request still waiting.
+    await user.click(screen.getByRole('button', { name: /^Today/ }));
+    expect(within(await screen.findByRole('article', { name: 'Aisyah' })).getByText('Needs you')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^Needs you/ }));
+    await user.click(within(await screen.findByRole('article', { name: 'Aisyah' })).getByRole('button', { name: 'Confirm' }));
+    await screen.findByRole('link', { name: /Send confirmation on WhatsApp/ });
+    // Back to Today: decided at once, while its own read is still in flight.
+    await user.click(screen.getByRole('button', { name: /^Today/ }));
+    const card = await screen.findByRole('article', { name: 'Aisyah' });
+    expect(within(card).getByText('Confirmed')).toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'Confirm' })).toBeNull();
+    await waitFor(() => expect(holdToday).not.toBeNull());
+    await act(async () => { holdToday!(); });
   });
 });
