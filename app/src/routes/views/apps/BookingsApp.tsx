@@ -5,6 +5,7 @@ import { Tabs } from '@/components/Tabs';
 import { useT } from '@/i18n/I18nProvider';
 import { useApps } from '@/lib/apps/useApps';
 import { bookingsConfigQuery } from '@/lib/apps/queries';
+import type { BookingsConfig } from '@/lib/apps/types';
 import { useRequiredBusinessId } from '@/lib/query/scope';
 import BookingsList from './BookingsList';
 import BookingPage from './BookingPage';
@@ -23,8 +24,18 @@ export default function BookingsApp({ bookingId, section, onSection, onBack, onC
   const apps = useApps();
   const api = apps.api!;
   const businessId = useRequiredBusinessId();
-  /* A revisit inside 30 s shows the cached settings with no request. */
-  const read = useQuery(bookingsConfigQuery(api, businessId));
+  /* A revisit inside 30 s shows the cached settings with no request. While
+     the settings form is open (Settings, or setup before the first publish)
+     nothing reads them again in the background: a newer version from the
+     owner's other device would remount the form under them and wipe what
+     they had typed. Their save finds it instead (CONFIG_CHANGED, Reload). */
+  const editing = (config: BookingsConfig | undefined) =>
+    config !== undefined && (section === 'settings' || config.installation == null);
+  const read = useQuery({
+    ...bookingsConfigQuery(api, businessId),
+    refetchOnWindowFocus: (query) => !editing(query.state.data),
+    refetchOnReconnect: (query) => !editing(query.state.data),
+  });
   const config = read.data ?? null;
   /* A retry in flight shows the loading state, not the failure again. */
   const failed = read.isError && !config && !read.isFetching;

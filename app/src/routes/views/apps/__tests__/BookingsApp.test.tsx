@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { QueryClient } from '@tanstack/react-query';
@@ -6,7 +6,7 @@ import BookingsApp from '../BookingsApp';
 import { LocalRepository } from '@/lib/repo/local';
 import { AppsProvider } from '@/lib/apps/useApps';
 import { configFixture, fakeAppsApi } from '@/lib/apps/__tests__/fixtures';
-import { renderWithQuery } from '@/test-support/query';
+import { renderWithQuery, returnToApp } from '@/test-support/query';
 
 async function mount(api = fakeAppsApi(), section: string | null = null, client?: QueryClient) {
   const repo = new LocalRepository();
@@ -80,5 +80,28 @@ describe('BookingsApp', () => {
     await user.click(await screen.findByRole('checkbox', { name: 'Taking bookings' }));
     expect(await screen.findByText(/^Paused\./)).toBeInTheDocument();
     expect(api.bookingsConfig).toHaveBeenCalledTimes(1);
+  });
+
+  /* A save from the owner's other device meanwhile, then a return to the
+     app after 30 s: what they had typed here stays. Saving it is what finds
+     the newer version (CONFIG_CHANGED, with Reload), not a quiet read. */
+  it('keeps what the owner is typing in Settings when they come back to the app', async () => {
+    let version = 3;
+    const api = fakeAppsApi({ bookingsConfig: vi.fn(async () => configFixture({ version })) });
+    const { client, user } = await mount(api, 'settings');
+    const location = await screen.findByLabelText('Where the booking takes place');
+    await user.clear(location);
+    await user.type(location, 'Level 2, Wisma Kita');
+    version = 4;
+    await returnToApp(client);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(screen.getByLabelText('Where the booking takes place')).toHaveValue('Level 2, Wisma Kita');
+  });
+
+  it('reads the settings again on a return to the app while another tab is open', async () => {
+    const { api, client } = await mount(fakeAppsApi(), 'page');
+    expect(await screen.findByRole('heading', { name: 'Your booking page' })).toBeInTheDocument();
+    await returnToApp(client);
+    await waitFor(() => expect(api.bookingsConfig).toHaveBeenCalledTimes(2));
   });
 });
