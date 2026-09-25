@@ -50,6 +50,8 @@ export interface Booking {
   };
   /** A prefilled message the owner opens; never proof that anything was sent. */
   whatsappUrl: string | null;
+  /** A prefilled reminder the owner explicitly opens; never automatic delivery. */
+  reminderWhatsappUrl: string | null;
   createdAt: string;
 }
 
@@ -94,7 +96,7 @@ export interface BookingService {
 export interface BookingsConfig {
   installation: { slug: string; state: 'active' | 'paused'; publicUrl: string } | null;
   version: number | null;
-  settings: { accepting: boolean; minNoticeMinutes: number; horizonDays: number; location: string | null; availabilityAcknowledgedAt: string } | null;
+  settings: { accepting: boolean; minNoticeMinutes: number; changeCutoffMinutes: number; horizonDays: number; location: string | null; availabilityAcknowledgedAt: string } | null;
   services: BookingService[];
 }
 
@@ -108,6 +110,7 @@ export interface BookingsConfigInput {
   slug: string;
   accepting: boolean;
   minNoticeMinutes: number;
+  changeCutoffMinutes: number;
   horizonDays: number;
   location: string | null;
   acknowledgeAvailabilityLimits: boolean;

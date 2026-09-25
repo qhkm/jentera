@@ -630,6 +630,12 @@ SHA-256 hash (`booking_customer_session`, migration 072). Cancellation releases
 the slot immediately. Rescheduling atomically cancels the old row and creates a
 new pending request, rather than silently moving a confirmed appointment; any
 old Google Calendar event is removed through the same durable Calendar job.
+The owner chooses how long before the appointment customers may still change it
+(six hours by default). Confirmed bookings create durable 24-hour and two-hour
+reminder rows. The minute cron turns each due row into one owner notification
+and push whose booking card has a prepared WhatsApp reminder. This is deliberately
+an owner nudge, not a claim that Jentera sent the customer a message: there is no
+live WhatsApp Cloud API connector yet.
 
 It is a pilot. `APPS_ENABLED` and `APPS_BUSINESS_IDS` (exact UUIDs, at most
 20, empty means nobody) sit in both `[vars]` and `[env.sites.vars]` of

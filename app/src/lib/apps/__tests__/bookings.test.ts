@@ -81,7 +81,7 @@ describe('labels', () => {
 
   it('turns a saved config back into a save request for the same version', () => {
     expect(configToInput(configFixture())).toEqual({
-      version: 3, slug: 'seido', accepting: true, minNoticeMinutes: 120, horizonDays: 30,
+      version: 3, slug: 'seido', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30,
       location: '12 Jalan Example, Kuala Lumpur',
       acknowledgeAvailabilityLimits: true,
       services: [{ id: '22222222-2222-4222-8222-222222222222', name: 'Cupping class', description: 'A guided recovery session.', durationMinutes: 60, capacity: 4,

@@ -72,6 +72,15 @@ export function bookingMessage(m: MessageInput): string {
   return `Hi ${m.customerName}, sorry, your ${m.serviceName} booking on ${when} (ref ${m.reference}) has been cancelled. You can book another time here: ${m.publicUrl}`;
 }
 
+/** A reminder the owner explicitly sends from the booking card. */
+export function bookingReminderMessage(m: Omit<MessageInput, 'kind'>): string {
+  const when = whenText(m.startsAt, m.lang);
+  if (m.lang === 'bm') {
+    return `Hai ${m.customerName}, ini peringatan untuk tempahan ${m.serviceName} anda pada ${when}. Rujukan ${m.reference}. Jumpa di ${m.businessName}.${m.manageUrl ? ` Ubah atau batalkan tempahan: ${m.manageUrl}` : ''}`;
+  }
+  return `Hi ${m.customerName}, a reminder for your ${m.serviceName} booking on ${when}. Ref ${m.reference}. See you at ${m.businessName}.${m.manageUrl ? ` Change or cancel your booking: ${m.manageUrl}` : ''}`;
+}
+
 export function whatsappUrl(phone: string, text: string): string {
   return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
 }

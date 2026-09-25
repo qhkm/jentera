@@ -11,6 +11,7 @@ import { reservationsFor } from './public';
 import { newReference } from './reference';
 import { openSlots } from './slots';
 import { addDays, myDate, myInstant } from './time';
+import { cancelBookingReminders } from './reminders';
 
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const SESSION_MS = 2 * 60 * 60_000;
@@ -27,6 +28,8 @@ export interface ManagedBooking {
   customerName: string;
   status: BookingStatus;
   customerCancelledAt: Date | null;
+  changeCutoffMinutes: number;
+  canChange: boolean;
 }
 
 interface ManagedRow {
@@ -40,6 +43,7 @@ interface ManagedRow {
   customer_name: string;
   status: BookingStatus;
   customer_cancelled_at: Date | null;
+  change_cutoff_minutes: number;
 }
 
 const MANAGED_COLUMNS: string[] = [
@@ -47,11 +51,14 @@ const MANAGED_COLUMNS: string[] = [
   'customer_name', 'status', 'customer_cancelled_at',
 ];
 
-function managed(row: ManagedRow): ManagedBooking {
+function managed(row: ManagedRow, now = new Date()): ManagedBooking {
   return {
     id: row.id, reference: row.reference, serviceId: row.service_id, serviceName: row.service_name,
     startsAt: row.starts_at, endsAt: row.ends_at, partySize: row.party_size,
     customerName: row.customer_name, status: row.status, customerCancelledAt: row.customer_cancelled_at,
+    changeCutoffMinutes: row.change_cutoff_minutes,
+    canChange: (row.status === 'pending' || row.status === 'confirmed')
+      && row.starts_at.getTime() - now.getTime() >= row.change_cutoff_minutes * 60_000,
   };
 }
 
@@ -105,10 +112,11 @@ export async function loadManagedBooking(
   const hash = await customerTokenHash(token);
   return withTenant(env, businessId, async (tx) => {
     const [row] = await tx<ManagedRow[]>`
-      select ${tx(MANAGED_COLUMNS)} from booking b
+      select ${tx(MANAGED_COLUMNS)}, bs.change_cutoff_minutes from booking b
        join booking_customer_session s on s.business_id = b.business_id and s.booking_id = b.id
+       join booking_settings bs on bs.business_id = b.business_id
        where s.business_id = ${businessId} and s.token_hash = ${hash} and s.expires_at > ${now}`;
-    return row ? managed(row) : null;
+    return row ? managed(row, now) : null;
   });
 }
 
@@ -129,7 +137,9 @@ async function lockManaged(
   if (!target) return null;
   await tx`select 1 from booking_service where business_id = ${businessId} and id = ${target.service_id} for update`;
   const [row] = await tx<Array<ManagedRow & { calendar_status: CalendarStatus }>>`
-    select ${tx(MANAGED_COLUMNS)}, calendar_status from booking
+    select ${tx(MANAGED_COLUMNS)}, calendar_status,
+           (select change_cutoff_minutes from booking_settings where business_id = ${businessId}) as change_cutoff_minutes
+      from booking
      where business_id = ${businessId} and id = ${session.booking_id} for update`;
   return row ?? null;
 }
@@ -162,7 +172,7 @@ function activity(lang: Lang, kind: 'cancelled' | 'rescheduled', name: string, w
 export type CustomerChangeResult =
   | { kind: 'changed'; booking: ManagedBooking; calendarBookingId: string | null }
   | { kind: 'same'; booking: ManagedBooking }
-  | { kind: 'not_found' | 'not_changeable' | 'unavailable' | 'taken' };
+  | { kind: 'not_found' | 'not_changeable' | 'cutoff' | 'unavailable' | 'taken' };
 
 export async function cancelByCustomer(
   env: DatabaseEnv,
@@ -175,10 +185,11 @@ export async function cancelByCustomer(
   return withTenant(env, businessId, async (tx): Promise<CustomerChangeResult> => {
     const row = await lockManaged(tx, businessId, hash, now);
     if (!row) return { kind: 'not_found' };
-    if (row.status === 'cancelled' && row.customer_cancelled_at) return { kind: 'same', booking: managed(row) };
+    if (row.status === 'cancelled' && row.customer_cancelled_at) return { kind: 'same', booking: managed(row, now) };
     if ((row.status !== 'pending' && row.status !== 'confirmed') || row.starts_at.getTime() <= now.getTime()) {
       return { kind: 'not_changeable' };
     }
+    if (row.starts_at.getTime() - now.getTime() < row.change_cutoff_minutes * 60_000) return { kind: 'cutoff' };
     const [job] = row.status === 'confirmed'
       ? await tx`select 1 from booking_calendar_job where business_id = ${businessId} and booking_id = ${row.id}`
       : [];
@@ -191,11 +202,12 @@ export async function cancelByCustomer(
       where business_id = ${businessId} and id = ${row.id} and status in ('pending', 'confirmed')
       returning ${tx(MANAGED_COLUMNS)}, calendar_status`;
     if (eventMayExist) await queueCalendarJob(tx, businessId, row.id, 'absent', now);
+    await cancelBookingReminders(tx, businessId, row.id, now);
     const [business] = await tx<{ lang: Lang }[]>`select lang from business where id = ${businessId}`;
     const lang: Lang = business?.lang === 'bm' ? 'bm' : 'en';
     const note = activity(lang, 'cancelled', row.customer_name, whenText(row.starts_at, lang), row.service_name, row.party_size);
     await notifyOwners(tx, businessId, row.id, note.title, note.body, `booking-customer-cancelled:${row.id}`);
-    return { kind: 'changed', booking: managed(updated), calendarBookingId: eventMayExist ? row.id : null };
+    return { kind: 'changed', booking: managed({ ...updated, change_cutoff_minutes: row.change_cutoff_minutes }, now), calendarBookingId: eventMayExist ? row.id : null };
   });
 }
 
@@ -219,11 +231,12 @@ export async function rescheduleByCustomer(
     const row = await lockManaged(tx, businessId, hash, now);
     if (!row) return { kind: 'not_found' };
     if (row.starts_at.getTime() === startsAt.getTime() && (row.status === 'pending' || row.status === 'confirmed')) {
-      return { kind: 'same', booking: managed(row) };
+      return { kind: 'same', booking: managed(row, now) };
     }
     if ((row.status !== 'pending' && row.status !== 'confirmed') || row.starts_at.getTime() <= now.getTime()) {
       return { kind: 'not_changeable' };
     }
+    if (row.starts_at.getTime() - now.getTime() < row.change_cutoff_minutes * 60_000) return { kind: 'cutoff' };
     const [settings] = await tx<{ accepting: boolean; min_notice_minutes: number; horizon_days: number }[]>`
       select accepting, min_notice_minutes, horizon_days from booking_settings where business_id = ${businessId}`;
     const [installation] = await tx<{ state: 'active' | 'paused' }[]>`select state from app_installation
@@ -257,7 +270,7 @@ export async function rescheduleByCustomer(
                party_size, customer_name, customer_phone, note, id, ${now}
           from booking where business_id = ${businessId} and id = ${row.id}
         on conflict (business_id, reference) do nothing returning ${tx(MANAGED_COLUMNS)}`;
-      if (inserted) { created = inserted; break; }
+      if (inserted) { created = { ...inserted, change_cutoff_minutes: row.change_cutoff_minutes }; break; }
     }
     if (!created) throw new Error('could not allocate a rescheduled booking reference');
 
@@ -274,11 +287,12 @@ export async function rescheduleByCustomer(
     await tx`update booking_customer_session set booking_id = ${created.id}
       where business_id = ${businessId} and token_hash = ${hash}`;
     if (eventMayExist) await queueCalendarJob(tx, businessId, row.id, 'absent', now);
+    await cancelBookingReminders(tx, businessId, row.id, now);
 
     const [business] = await tx<{ lang: Lang }[]>`select lang from business where id = ${businessId}`;
     const lang: Lang = business?.lang === 'bm' ? 'bm' : 'en';
     const note = activity(lang, 'rescheduled', row.customer_name, whenText(slot.startsAt, lang), service.name, row.party_size);
     await notifyOwners(tx, businessId, created.id, note.title, note.body, `booking-rescheduled:${created.id}`);
-    return { kind: 'changed', booking: managed(created), calendarBookingId: eventMayExist ? row.id : null };
+    return { kind: 'changed', booking: managed(created, now), calendarBookingId: eventMayExist ? row.id : null };
   });
 }

@@ -44,7 +44,7 @@ const service = (over: Record<string, unknown> = {}) => ({
   hours: [{ weekday: 6, opens: '10:00', closes: '13:00' }], ...over,
 });
 const config = (over: Record<string, unknown> = {}) => ({
-  version: null, slug: 'kedai-aisyah', accepting: true, minNoticeMinutes: 120, horizonDays: 30, location: '12 Jalan Example',
+  version: null, slug: 'kedai-aisyah', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: '12 Jalan Example',
   acknowledgeAvailabilityLimits: true, services: [service()], ...over,
 });
 type Saved = { config: { version: number; installation: { slug: string; publicUrl: string }; services: Array<{ id: string; active: boolean; hours: unknown[] }> } };

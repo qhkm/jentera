@@ -126,4 +126,15 @@ describe('customer booking access', () => {
     const [old] = await asOwner((sql) => sql<{ status: string }[]>`select status from booking where id = ${original.bookingId}`);
     expect(old.status).toBe('pending');
   });
+
+  it('enforces the owner-defined change deadline without changing the booking', async () => {
+    const original = await booked();
+    await asOwner((sql) => sql`update booking_settings set change_cutoff_minutes = 2880 where business_id = ${A}`);
+    const token = await session(original.reference);
+    expect(await loadManagedBooking(ENV, A, token, NOW)).toMatchObject({ changeCutoffMinutes: 2880, canChange: false });
+    expect(await cancelByCustomer(ENV, A, token, NOW)).toEqual({ kind: 'cutoff' });
+    expect(await rescheduleByCustomer(ENV, A, token, ELEVEN, NOW)).toEqual({ kind: 'cutoff' });
+    const [old] = await asOwner((sql) => sql<{ status: string }[]>`select status from booking where id = ${original.bookingId}`);
+    expect(old.status).toBe('pending');
+  });
 });

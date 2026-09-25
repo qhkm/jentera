@@ -29,6 +29,7 @@ export interface ConfigInput {
   slug: string;
   accepting: boolean;
   minNoticeMinutes: number;
+  changeCutoffMinutes: number;
   horizonDays: number;
   location: string | null;
   acknowledgeAvailabilityLimits: boolean;
@@ -38,7 +39,7 @@ export interface ServiceView extends Omit<ServiceInput, 'id'> { id: string }
 export interface ConfigView {
   installation: { slug: string; state: 'active' | 'paused'; publicUrl: string } | null;
   version: number | null;
-  settings: { accepting: boolean; minNoticeMinutes: number; horizonDays: number; location: string | null; availabilityAcknowledgedAt: string } | null;
+  settings: { accepting: boolean; minNoticeMinutes: number; changeCutoffMinutes: number; horizonDays: number; location: string | null; availabilityAcknowledgedAt: string } | null;
   services: ServiceView[];
 }
 
@@ -139,6 +140,8 @@ export function parseConfigInput(body: unknown): Parsed<ConfigInput> {
   if (typeof raw.accepting !== 'boolean') return fail('accepting must be true or false');
   const minNoticeMinutes = int(raw.minNoticeMinutes, 0, 10080);
   if (minNoticeMinutes === null) return fail('minimum notice must be 0 to 10080 minutes');
+  const changeCutoffMinutes = int(raw.changeCutoffMinutes, 0, 10080);
+  if (changeCutoffMinutes === null) return fail('change cutoff must be 0 to 10080 minutes');
   const horizonDays = int(raw.horizonDays, 1, 90);
   if (horizonDays === null) return fail('booking horizon must be 1 to 90 days');
   const location = optionalText(raw.location, 160);
@@ -158,7 +161,7 @@ export function parseConfigInput(body: unknown): Parsed<ConfigInput> {
   return {
     ok: true,
     value: {
-      version, slug, accepting: raw.accepting, minNoticeMinutes, horizonDays, location: location.value,
+      version, slug, accepting: raw.accepting, minNoticeMinutes, changeCutoffMinutes, horizonDays, location: location.value,
       acknowledgeAvailabilityLimits: raw.acknowledgeAvailabilityLimits === true, services,
     },
   };
@@ -169,8 +172,8 @@ export async function readConfig(tx: postgres.TransactionSql, businessId: string
     select public_slug, state, config_version from app_installation
      where business_id = ${businessId} and app_key = 'bookings'`;
   if (!installation) return { installation: null, version: null, settings: null, services: [] };
-  const [settings] = await tx<{ accepting: boolean; min_notice_minutes: number; horizon_days: number; location: string | null; availability_acknowledged_at: Date }[]>`
-    select accepting, min_notice_minutes, horizon_days, location, availability_acknowledged_at
+  const [settings] = await tx<{ accepting: boolean; min_notice_minutes: number; change_cutoff_minutes: number; horizon_days: number; location: string | null; availability_acknowledged_at: Date }[]>`
+    select accepting, min_notice_minutes, change_cutoff_minutes, horizon_days, location, availability_acknowledged_at
       from booking_settings where business_id = ${businessId}`;
   const services = await tx<{ id: string; name: string; description: string | null; duration_minutes: number; capacity: number; price_label: string | null; active: boolean }[]>`
     select id, name, description, duration_minutes, capacity, price_label, active from booking_service
@@ -186,6 +189,7 @@ export async function readConfig(tx: postgres.TransactionSql, businessId: string
     settings: settings ? {
       accepting: settings.accepting,
       minNoticeMinutes: settings.min_notice_minutes,
+      changeCutoffMinutes: settings.change_cutoff_minutes,
       horizonDays: settings.horizon_days,
       location: settings.location,
       availabilityAcknowledgedAt: settings.availability_acknowledged_at.toISOString(),
@@ -239,8 +243,8 @@ export async function saveConfig(tx: postgres.TransactionSql, businessId: string
     // Lost a race with a concurrent first save: the client must reload.
     if (inserted.length === 0) throw new ConfigError('CONFIG_CHANGED');
     await tx`insert into booking_settings
-      (business_id, accepting, availability_acknowledged_at, min_notice_minutes, horizon_days, location, updated_at)
-      values (${businessId}, ${input.accepting}, ${now}, ${input.minNoticeMinutes}, ${input.horizonDays}, ${input.location}, ${now})`;
+      (business_id, accepting, availability_acknowledged_at, min_notice_minutes, change_cutoff_minutes, horizon_days, location, updated_at)
+      values (${businessId}, ${input.accepting}, ${now}, ${input.minNoticeMinutes}, ${input.changeCutoffMinutes}, ${input.horizonDays}, ${input.location}, ${now})`;
   } else {
     if (input.version !== existing.config_version) throw new ConfigError('CONFIG_CHANGED');
     if (input.slug !== existing.public_slug) {
@@ -250,13 +254,13 @@ export async function saveConfig(tx: postgres.TransactionSql, businessId: string
     }
     const updated = await tx`update booking_settings
       set accepting = ${input.accepting}, min_notice_minutes = ${input.minNoticeMinutes},
-          horizon_days = ${input.horizonDays}, location = ${input.location}, updated_at = ${now}
+          change_cutoff_minutes = ${input.changeCutoffMinutes}, horizon_days = ${input.horizonDays}, location = ${input.location}, updated_at = ${now}
       where business_id = ${businessId} returning business_id`;
     if (updated.length === 0) {
       if (!input.acknowledgeAvailabilityLimits) throw new ConfigError('ACK_REQUIRED');
       await tx`insert into booking_settings
-        (business_id, accepting, availability_acknowledged_at, min_notice_minutes, horizon_days, location, updated_at)
-        values (${businessId}, ${input.accepting}, ${now}, ${input.minNoticeMinutes}, ${input.horizonDays}, ${input.location}, ${now})`;
+        (business_id, accepting, availability_acknowledged_at, min_notice_minutes, change_cutoff_minutes, horizon_days, location, updated_at)
+        values (${businessId}, ${input.accepting}, ${now}, ${input.minNoticeMinutes}, ${input.changeCutoffMinutes}, ${input.horizonDays}, ${input.location}, ${now})`;
     }
     await tx`update app_installation set config_version = config_version + 1, updated_at = ${now}
       where business_id = ${businessId} and app_key = 'bookings'`;

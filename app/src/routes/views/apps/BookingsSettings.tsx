@@ -8,7 +8,7 @@ import type { AppsApi, BookingService, BookingsConfig, BookingsConfigInput, Week
 /* Monday first, as a Malaysian week reads; 0 is Sunday in the data. */
 const WEEK = [1, 2, 3, 4, 5, 6, 0] as const;
 const DURATIONS = Array.from({ length: 32 }, (_, i) => (i + 1) * 15);
-const NOTICE = [0, 30, 60, 120, 240, 720, 1440, 2880, 10080];
+const NOTICE = [0, 30, 60, 120, 240, 360, 720, 1440, 2880, 10080];
 const SLUG = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 const RESERVED = new Set(['api', 'admin', 'www', 'app', 'b']);
 
@@ -81,6 +81,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
   const slug = slugInput ?? slugFrom(business.name);
   const [services, setServices] = useState<ServiceDraft[]>(() => (config.services.length ? config.services.map(toDraft) : [newService()]));
   const [minNotice, setMinNotice] = useState(config.settings?.minNoticeMinutes ?? 120);
+  const [changeCutoff, setChangeCutoff] = useState(config.settings?.changeCutoffMinutes ?? 360);
   const [horizon, setHorizon] = useState(config.settings?.horizonDays ?? 30);
   const [location, setLocation] = useState(config.settings?.location ?? '');
   const [acknowledged, setAcknowledged] = useState(false);
@@ -94,6 +95,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
   }, [lang]);
   const origin = config.installation ? originOf(config.installation.publicUrl) : null;
   const notices = [...new Set([...NOTICE, minNotice])].sort((a, b) => a - b);
+  const cutoffs = [...new Set([...NOTICE, changeCutoff])].sort((a, b) => a - b);
 
   function update(key: string, change: Partial<ServiceDraft>) {
     setServices((list) => list.map((service) => (service.key === key ? { ...service, ...change } : service)));
@@ -107,6 +109,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
     const found: Record<string, string> = {};
     if (!SLUG.test(slug) || RESERVED.has(slug)) found.slug = 'bookings.settings.error.slug';
     if (!Number.isInteger(horizon) || horizon < 1 || horizon > 90) found.horizon = 'bookings.settings.error.horizon';
+    if (!Number.isInteger(changeCutoff) || changeCutoff < 0 || changeCutoff > 10080) found.changeCutoff = 'bookings.settings.error.cutoff';
     if (!installed && !acknowledged) found.acknowledge = 'bookings.settings.error.acknowledge';
     if (!services.some((service) => service.active)) found.services = 'bookings.settings.error.noService';
     for (const service of services) {
@@ -137,6 +140,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
       slug,
       accepting: config.settings?.accepting ?? true,
       minNoticeMinutes: minNotice,
+      changeCutoffMinutes: changeCutoff,
       horizonDays: horizon,
       location: location.trim() || null,
       acknowledgeAvailabilityLimits: installed || acknowledged,
@@ -263,6 +267,14 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
         <Input type="number" min={1} max={90} value={horizon} aria-invalid={Boolean(errors.horizon)} onChange={(event) => setHorizon(Number(event.target.value))} />
       </label>
       {error('horizon')}
+      <label>{t('bookings.settings.cutoff')}
+        <select className="input" value={changeCutoff} aria-invalid={Boolean(errors.changeCutoff)} onChange={(event) => setChangeCutoff(Number(event.target.value))}>
+          {cutoffs.map((minutes) => <option key={minutes} value={minutes}>{noticeLabel(minutes)}</option>)}
+        </select>
+      </label>
+      <p className="bookings-lead">{t('bookings.settings.cutoff.help')}</p>
+      {error('changeCutoff')}
+      <p className="bookings-lead">{t('bookings.settings.reminders')}</p>
     </details>
     {!installed && <label className="bookings-check bookings-ack">
       <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />

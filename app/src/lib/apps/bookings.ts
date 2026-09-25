@@ -137,6 +137,7 @@ export function configToInput(config: BookingsConfig): BookingsConfigInput {
     slug: config.installation?.slug ?? '',
     accepting: config.settings?.accepting ?? true,
     minNoticeMinutes: config.settings?.minNoticeMinutes ?? 120,
+    changeCutoffMinutes: config.settings?.changeCutoffMinutes ?? 360,
     horizonDays: config.settings?.horizonDays ?? 30,
     location: config.settings?.location ?? null,
     acknowledgeAvailabilityLimits: config.settings !== null,

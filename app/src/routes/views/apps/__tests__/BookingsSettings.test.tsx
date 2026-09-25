@@ -43,7 +43,7 @@ describe('BookingsSettings', () => {
     await user.click(screen.getByRole('checkbox', { name: /I understand/ }));
     await user.click(screen.getByRole('button', { name: 'Publish booking page' }));
     expect(api.saveBookingsConfig).toHaveBeenCalledWith({
-      version: null, slug: 'kedai-kita', accepting: true, minNoticeMinutes: 120, horizonDays: 30, location: null,
+      version: null, slug: 'kedai-kita', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: null,
       acknowledgeAvailabilityLimits: true,
       services: [{ id: null, name: 'Cupping class', description: null, durationMinutes: 60, capacity: 1, priceLabel: null, active: true,
         hours: [1, 2, 3, 4, 5].map((weekday) => ({ weekday, opens: '09:00', closes: '17:00' })) }],
@@ -65,6 +65,15 @@ describe('BookingsSettings', () => {
       location: 'Online · Link shared after confirmation',
       services: [expect.objectContaining({ description: 'A focused session with our team.' })],
     }));
+  });
+
+  it('saves the customer change deadline and explains reminder delivery accurately', async () => {
+    const { api, user } = await mount(configFixture());
+    await user.click(screen.getByText('Advanced settings'));
+    await user.selectOptions(screen.getByLabelText('Customer change deadline'), '720');
+    expect(screen.getByText(/does not send it automatically yet/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(api.saveBookingsConfig).toHaveBeenCalledWith(expect.objectContaining({ changeCutoffMinutes: 720 }));
   });
 
   it('will not publish until availability is acknowledged', async () => {

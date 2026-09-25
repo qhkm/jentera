@@ -87,7 +87,9 @@ function isBooking(value: unknown): value is Booking {
     && object(value.calendar) && typeof value.calendar.status === 'string'
     && typeof value.calendar.canRetry === 'boolean'
     && (value.whatsappUrl === null
-      || (typeof value.whatsappUrl === 'string' && value.whatsappUrl.startsWith('https://wa.me/')));
+      || (typeof value.whatsappUrl === 'string' && value.whatsappUrl.startsWith('https://wa.me/')))
+    && (value.reminderWhatsappUrl === null
+      || (typeof value.reminderWhatsappUrl === 'string' && value.reminderWhatsappUrl.startsWith('https://wa.me/')));
 }
 
 function isConfig(value: unknown): value is BookingsConfig {

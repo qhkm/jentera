@@ -2,9 +2,10 @@ import type postgres from 'postgres';
 import { findConnection } from '../../connections';
 import { GOOGLE_CALENDAR_CONNECTOR } from '../../connectors/google-calendar';
 import { CALENDAR_MAX_ATTEMPTS, calendarPin, sameAccountConnection, type CalendarReason } from './calendar-sync';
-import { bookingMessage, whatsappUrl, type Lang, type MessageKind } from './messages';
+import { bookingMessage, bookingReminderMessage, whatsappUrl, type Lang, type MessageKind } from './messages';
 import { addDays, myInstant } from './time';
 import { queueCalendarJob } from './calendar-job';
+import { cancelBookingReminders, scheduleBookingReminders } from './reminders';
 
 /* The owner's side of booking requests. Decisions and cancellations lock in
    the common order (the installation, then the service, then the booking)
@@ -67,6 +68,8 @@ export interface BookingJson {
   };
   /** A prefilled message for the owner to send; never proof it was sent. */
   whatsappUrl: string | null;
+  /** A prefilled reminder for the owner to send for a future confirmation. */
+  reminderWhatsappUrl: string | null;
   createdAt: string;
 }
 
@@ -89,6 +92,7 @@ function messageKind(status: BookingStatus): MessageKind | null {
 
 export function bookingJson(row: BookingRow, ctx: BookingContext): BookingJson {
   const kind = messageKind(row.status);
+  const manageUrl = `${ctx.publicUrl}/manage?ref=${encodeURIComponent(row.reference)}`;
   return {
     id: row.id,
     reference: row.reference,
@@ -117,8 +121,14 @@ export function bookingJson(row: BookingRow, ctx: BookingContext): BookingJson {
       kind, lang: ctx.lang, customerName: row.customer_name, serviceName: row.service_name,
       partySize: row.party_size, startsAt: row.starts_at, reference: row.reference,
       businessName: ctx.businessName, publicUrl: ctx.publicUrl,
-      manageUrl: `${ctx.publicUrl}/manage?ref=${encodeURIComponent(row.reference)}`,
+      manageUrl,
     })) : null,
+    reminderWhatsappUrl: row.status === 'confirmed' && row.starts_at.getTime() > ctx.now.getTime()
+      ? whatsappUrl(row.customer_phone, bookingReminderMessage({
+        lang: ctx.lang, customerName: row.customer_name, serviceName: row.service_name,
+        partySize: row.party_size, startsAt: row.starts_at, reference: row.reference,
+        businessName: ctx.businessName, publicUrl: ctx.publicUrl, manageUrl,
+      })) : null,
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -218,6 +228,7 @@ export async function decideBooking(
     where business_id = ${businessId} and id = ${id} and status = 'pending'
     returning ${tx(COLUMNS)}`;
   if (pin) await queueCalendarJob(tx, businessId, id, 'present', now);
+  if (target === 'confirmed') await scheduleBookingReminders(tx, businessId, id, row.starts_at, now);
   return { ok: true, row: updated, changed: true, calendarQueued: pin !== null };
 }
 
@@ -244,6 +255,7 @@ export async function cancelBooking(
     where business_id = ${businessId} and id = ${id} and status = 'confirmed'
     returning ${tx(COLUMNS)}`;
   if (eventMayExist) await queueCalendarJob(tx, businessId, id, 'absent', now);
+  await cancelBookingReminders(tx, businessId, id, now);
   return { ok: true, row: updated, changed: true, calendarQueued: eventMayExist };
 }
 

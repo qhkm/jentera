@@ -160,21 +160,21 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
       return page(managePage({ ...base, token, booking,
         confirmCancel: url.searchParams.get('confirm') === 'cancel',
         notice: notice === 'cancelled' || notice === 'rescheduled' ? notice : undefined,
-        now,
       }));
     }
     if (action === 'cancel' && request.method === 'POST') {
       if (!form || !sameOriginPost()) return notFound(lang);
       const result = await cancelByCustomer(env, businessId, token, now);
       if (result.kind === 'not_found') return page(customerMessagePage({ ...base, kind: 'expired' }), 401);
+      if (result.kind === 'cutoff') return page(customerMessagePage({ ...base, kind: 'cutoff' }), 409);
       if (result.kind === 'not_changeable' || result.kind === 'unavailable' || result.kind === 'taken') {
         return page(customerMessagePage({ ...base, kind: 'unavailable' }), 409);
       }
       return redirect(`/b/${slug}/manage/${token}?notice=cancelled&lang=${lang}`, 303);
     }
     if (action === 'reschedule') {
-      if ((booking.status !== 'pending' && booking.status !== 'confirmed') || booking.startsAt.getTime() <= now.getTime()) {
-        return page(managePage({ ...base, token, booking, now }));
+      if (!booking.canChange) {
+        return page(managePage({ ...base, token, booking }));
       }
       if (!info.open) return page(customerMessagePage({ ...base, kind: 'unavailable' }), 409);
       if (request.method === 'POST') {
@@ -182,6 +182,7 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
         const startsAt = new Date(form.get('start') ?? '');
         const result = await rescheduleByCustomer(env, businessId, token, startsAt, now);
         if (result.kind === 'not_found') return page(customerMessagePage({ ...base, kind: 'expired' }), 401);
+        if (result.kind === 'cutoff') return page(customerMessagePage({ ...base, kind: 'cutoff' }), 409);
         if (result.kind === 'not_changeable' || result.kind === 'unavailable') {
           return page(customerMessagePage({ ...base, kind: 'unavailable' }), 409);
         }

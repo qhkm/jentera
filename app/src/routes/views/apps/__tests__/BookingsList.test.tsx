@@ -58,6 +58,16 @@ describe('BookingsList', () => {
     expect(within(after).queryByRole('button', { name: 'Confirm' })).toBeNull();
   });
 
+  it('offers the prepared reminder separately from the confirmation message', async () => {
+    const reminder = 'https://wa.me/60123456789?text=Reminder';
+    const confirmed = bookingFixture({ status: 'confirmed', whatsappUrl: WA, reminderWhatsappUrl: reminder, calendar: calendar('created') });
+    const api = fakeAppsApi({ list: installed(0), bookings: serve([], [confirmed]) });
+    await mount(api);
+    const card = await screen.findByRole('article', { name: 'Aisyah' });
+    expect(within(card).getByRole('link', { name: 'Send reminder on WhatsApp' })).toHaveAttribute('href', reminder);
+    expect(within(card).getByRole('link', { name: /Send confirmation on WhatsApp/ })).toHaveAttribute('href', WA);
+  });
+
   it('opens Needs you on the scan that decided it, without scanning again', async () => {
     const api = fakeAppsApi({ list: installed(1), bookings: serve([bookingFixture()]) });
     await mount(api);

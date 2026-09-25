@@ -60,6 +60,9 @@ export default function BookingCard({ booking, busy, message, now, onAct, onConn
       {whatsapp && booking.whatsappUrl && <a className="btn btn-outline booking-card-whatsapp" href={booking.whatsappUrl} target="_blank" rel="noopener noreferrer">
         <WhatsappLogo size={17} aria-hidden="true" />{t(whatsapp)}
       </a>}
+      {booking.reminderWhatsappUrl && <a className="btn btn-outline booking-card-whatsapp" href={booking.reminderWhatsappUrl} target="_blank" rel="noopener noreferrer">
+        <WhatsappLogo size={17} aria-hidden="true" />{t('bookings.whatsapp.reminder')}
+      </a>}
     </div>
   </article>;
 }

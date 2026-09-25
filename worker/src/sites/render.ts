@@ -67,6 +67,8 @@ const T = {
     rescheduledBody: 'Your previous booking was cancelled. The business will confirm the new time on WhatsApp.',
     sessionExpired: 'For your privacy, this secure session has expired. Find your booking again to continue.',
     bookingUnavailable: 'Online changes are not available right now. Your existing booking has not changed.',
+    cutoffPassed: 'The deadline to change this booking has passed. Contact the business directly if you need help.',
+    changePolicy: (n: number) => n === 0 ? 'Changes are allowed until the booking starts.' : `Changes are allowed up to ${n < 60 ? `${n} minutes` : n % 1440 === 0 ? `${n / 1440} ${n === 1440 ? 'day' : 'days'}` : `${n / 60} hours`} before the booking.`,
     titles: { not_found: 'Page not found', unavailable: 'Not taking bookings right now', changed: 'Please start a fresh request', busy: 'Please try again shortly', bad_request: 'Please start again' },
     bodies: {
       not_found: 'This booking page does not exist.',
@@ -111,6 +113,8 @@ const T = {
     rescheduledBody: 'Tempahan sebelumnya telah dibatalkan. Pihak perniagaan akan mengesahkan masa baharu melalui WhatsApp.',
     sessionExpired: 'Demi privasi anda, sesi selamat ini telah tamat. Cari tempahan anda semula untuk meneruskan.',
     bookingUnavailable: 'Perubahan dalam talian tidak tersedia sekarang. Tempahan sedia ada anda tidak berubah.',
+    cutoffPassed: 'Tarikh akhir untuk mengubah tempahan ini telah berlalu. Hubungi pihak perniagaan secara terus jika anda memerlukan bantuan.',
+    changePolicy: (n: number) => n === 0 ? 'Perubahan dibenarkan sehingga tempahan bermula.' : `Perubahan dibenarkan sehingga ${n < 60 ? `${n} minit` : n % 1440 === 0 ? `${n / 1440} hari` : `${n / 60} jam`} sebelum tempahan.`,
     titles: { not_found: 'Halaman tidak dijumpai', unavailable: 'Tidak menerima tempahan buat masa ini', changed: 'Sila mulakan permintaan baharu', busy: 'Sila cuba sebentar lagi', bad_request: 'Sila mulakan semula' },
     bodies: {
       not_found: 'Halaman tempahan ini tidak wujud.',
@@ -285,7 +289,7 @@ function bookingSummary(input: Base & { booking: ManagedBooking }): string {
 ${locationHtml(input.lang, input.location)}</div>`;
 }
 
-export function managePage(input: Base & { token: string; booking: ManagedBooking; confirmCancel?: boolean; notice?: 'cancelled' | 'rescheduled'; now?: Date }): string {
+export function managePage(input: Base & { token: string; booking: ManagedBooking; confirmCancel?: boolean; notice?: 'cancelled' | 'rescheduled' }): string {
   const t = T[input.lang];
   const path = `/manage/${input.token}`;
   if (input.notice) {
@@ -293,8 +297,7 @@ export function managePage(input: Base & { token: string; booking: ManagedBookin
     return layout({ lang: input.lang, title: cancelled ? t.cancelledTitle : t.rescheduledTitle, businessName: input.businessName, location: input.location,
       body: `<div class="success-mark" aria-hidden="true">✓</div><h1>${cancelled ? t.cancelledTitle : t.rescheduledTitle}</h1><p>${cancelled ? t.cancelledBody : t.rescheduledBody}</p>${bookingSummary(input)}<a class="secondary" href="${href(input.slug, path, { lang: input.lang })}">${t.manage}</a>` });
   }
-  const changeable = (input.booking.status === 'pending' || input.booking.status === 'confirmed')
-    && input.booking.startsAt.getTime() > (input.now?.getTime() ?? Date.now());
+  const changeable = input.booking.canChange;
   if (input.confirmCancel && changeable) {
     return layout({ lang: input.lang, title: t.cancelTitle, businessName: input.businessName, location: input.location,
       body: `<h1>${t.cancelTitle}</h1><p class="muted intro">${t.cancelHint}</p>${bookingSummary(input)}<div class="actions"><a href="${href(input.slug, path, { lang: input.lang })}">${t.keepBooking}</a><form method="post" action="${href(input.slug, `${path}/cancel`, { lang: input.lang })}"><button class="danger" type="submit">${t.confirmCancel}</button></form></div>` });
@@ -302,7 +305,7 @@ export function managePage(input: Base & { token: string; booking: ManagedBookin
   return layout({
     lang: input.lang, title: t.manage, businessName: input.businessName, location: input.location,
     langSwitch: href(input.slug, path, { lang: other(input.lang) }),
-    body: `<h1>${t.manage}</h1>${bookingSummary(input)}${changeable
+    body: `<h1>${t.manage}</h1>${bookingSummary(input)}<p class="muted">${t.changePolicy(input.booking.changeCutoffMinutes)}</p>${changeable
       ? `<div class="actions"><a href="${href(input.slug, `${path}/reschedule`, { lang: input.lang })}">${t.changeTime}</a><a class="danger" href="${href(input.slug, path, { confirm: 'cancel', lang: input.lang })}">${t.cancelBooking}</a></div>`
       : `<p class="muted">${t.cannotChange}</p>`}`,
   });
@@ -332,10 +335,10 @@ export function reschedulePage(input: Base & { token: string; booking: ManagedBo
     body: `<a class="back" href="${href(input.slug, `/manage/${input.token}`, { lang: input.lang })}">← ${t.back}</a><h1>${t.rescheduleTitle}</h1><p class="muted intro">${t.rescheduleHint}</p>${input.notice ? `<p class="notice" role="alert">${t.taken}</p>` : ''}<nav class="days">${strip}</nav><h2>${chosen ? dayLabel(chosen.date, input.lang) : ''}</h2>${content}` });
 }
 
-export function customerMessagePage(input: Base & { kind: 'expired' | 'unavailable' }): string {
+export function customerMessagePage(input: Base & { kind: 'expired' | 'cutoff' | 'unavailable' }): string {
   const t = T[input.lang];
   return layout({ lang: input.lang, title: t.manage, businessName: input.businessName, location: input.location,
-    body: `<h1>${t.manage}</h1><p>${input.kind === 'expired' ? t.sessionExpired : t.bookingUnavailable}</p><a class="secondary" href="${href(input.slug, '/manage', { lang: input.lang })}">${t.findBooking}</a>` });
+    body: `<h1>${t.manage}</h1><p>${input.kind === 'expired' ? t.sessionExpired : input.kind === 'cutoff' ? t.cutoffPassed : t.bookingUnavailable}</p><a class="secondary" href="${href(input.slug, '/manage', { lang: input.lang })}">${t.findBooking}</a>` });
 }
 
 export function messagePage(input: { slug: string | null; lang: Lang; businessName: string | null; kind: MessageKind }): string {

@@ -151,7 +151,8 @@ describe('pages', () => {
     const token = 'a'.repeat(43);
     const booking = { id: 'b', reference: 'K7Q2MP', serviceId: service.id, serviceName: 'Cupping class',
       startsAt: new Date('2026-10-06T02:00:00Z'), endsAt: new Date('2026-10-06T03:00:00Z'), partySize: 2,
-      customerName: 'Aisyah', status: 'confirmed' as const, customerCancelledAt: null };
+      customerName: 'Aisyah', status: 'confirmed' as const, customerCancelledAt: null,
+      changeCutoffMinutes: 360, canChange: true };
     const login = manageLoginPage({ ...base, reference: 'K7Q2MP', error: true });
     expect(login).toContain('Continue securely');
     expect(login).toContain('Those details do not match');
