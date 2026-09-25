@@ -63,12 +63,13 @@ describe('BookingsList', () => {
     await mount(api);
     await screen.findByRole('article', { name: 'Aisyah' });
     const pendingScans = () => api.bookings.mock.calls.filter(([query]) => query.status === 'pending').length;
-    expect(pendingScans()).toBe(3);
+    // One scan (one request since the API takes the 91-day horizon at once), not two.
+    expect(pendingScans()).toBe(1);
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: /^Today/ }));
     await user.click(screen.getByRole('button', { name: /^Needs you/ }));
     await screen.findByRole('article', { name: 'Aisyah' });
-    await waitFor(() => expect(pendingScans()).toBe(6));
+    await waitFor(() => expect(pendingScans()).toBe(2));
   });
 
   it('shows the booking as it stands when it was decided elsewhere first', async () => {
