@@ -376,6 +376,69 @@ are untraced, context is reset on success/failure, concurrent runs keep their
 own correlation, and a failed log sink cannot fail initialization. Startup
 records stay operator-only; they are not chat progress events.
 
+## Measurements, 2026-09-25: where a slow start comes from
+
+This is the Grok Bot backlog item "chat startup delay", measured before any
+fix. The sample is 77 app replies (`owner.ask`, deepseek-flash) completed in
+the seven days to 25 September. It came from `reply-latency.sh db 7`, plus
+read-only queries on `run_event` and `runtime_task`.
+
+**Overall numbers:**
+
+- The wait from `work.requested` to `work.started` was 1.6 s at p50 and
+  10.7 s at p90.
+- Agent time was 11.4 s at p50 and 63.6 s at p90.
+- The total was 16 s at p50, 76 s at p90 and 288 s at most.
+
+The median start is fast. The problem is a tail of slow starts, and that
+tail has two distinct causes.
+
+**Grouped by how long the business had been idle beforehand:**
+
+| Idle since the business's previous run | Runs | p50 | p90 | max |
+|---|---|---|---|---|
+| under 15 min | 40 | 1.4 s | 2.8 s | 103.7 s |
+| 15–60 min | 16 | 1.5 s | 2.7 s | 10.9 s |
+| 1–4 h | 11 | 6.2 s | 19.3 s | 95.7 s |
+| over 4 h or first | 14 | 2.7 s | 12.5 s | 26.7 s |
+
+**Grouped by the run task's `attempt`:**
+
+| Start wait | Runs | `attempt` |
+|---|---|---|
+| under 5 s | 65 | 64 × 0, 1 × 1 |
+| 5–25 s | 7 | all 0 |
+| 25 s or more | 5 | 4 at 1–2; one at 0, which queued behind the owner's own previous message |
+
+1. **Cold wake: 5–25 s, 7 of 77 runs.** One attempt that is simply slow. The
+   sprite had slept, typically after one to four hours idle, and waking it
+   plus Hermes's restart is the cost. This is the lever the keepalive
+   decision (`docs/todo.md`, left at 0 on 19 September) already weighed.
+2. **A failed first attempt: 42–104 s, 4 of 77 runs, the only ones a
+   minute or more late.**
+   - The first dispatch did not take, and nothing retried it quickly. The
+     run started only when the inline slice's 30 s safety-net message
+     (`INLINE_SAFETY_NET_SECONDS`) came round, or the queue's 60 s
+     `retry_delay` did, or both.
+   - The observed waits sit on those timers: 42 s is 30 plus about 12, and
+     96 s and 104 s are 30 plus 60 plus about 6–14.
+   - This matches the owner's "30 seconds before anything happens": the
+     time is spent waiting for a timer, not working. Two of the four came
+     three to four minutes after a previous reply, on a sprite that had
+     already frozen.
+
+**What is not known.** Why each first attempt failed is not recorded
+anywhere durable. `runtime_task.last_error` is cleared on success, and the
+defer and retry reasons exist only in Worker logs. Those logs are enabled
+(`[observability]`), but wrangler's login token has no observability scope.
+The likely class is the cold-wake response the consumer already tolerates
+(`runner returned invalid JSON (5xx)` while Hermes restarts), but that is
+inferred from the timing, not observed.
+
+**Nearly every slow start is one business.** 12 of the 14 runs waiting over
+5 s were `4e8c2593…`. That is the heaviest user and the desktop-observe
+canary, and it received the most releases that week.
+
 ## Levers
 
 Done:
