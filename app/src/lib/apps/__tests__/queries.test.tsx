@@ -2,14 +2,14 @@ import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { AppsError } from '../api';
-import { cancelBookingReads, rereadBooking, useBookingAction, writeBooking } from '../queries';
+import { bookingQuery, cancelBookingReads, rereadBooking, useBookingAction, writeBooking } from '../queries';
 import { BOOKING_ID, bookingFixture, configFixture, fakeAppsApi } from './fixtures';
 import { createQueryClient } from '@/lib/query/client';
 import { keys } from '@/lib/query/keys';
 import { QueryScope } from '@/lib/query/scope';
 import { createTestQueryClient, TEST_BUSINESS_ID as BIZ } from '@/test-support/query';
 import type { QueryClient } from '@tanstack/react-query';
-import type { Booking } from '../types';
+import type { AppsList, Booking, BookingActionResult } from '../types';
 
 const OTHER_ID = '11111111-1111-4111-8111-00000000000e';
 const TODAY = keys.bookingWindow(BIZ, '2026-10-05', 1);
@@ -58,6 +58,28 @@ describe('writing a booking into the cache', () => {
     expect(client.getQueryData(TODAY)).toBeUndefined();
   });
 
+  it("keeps each patched list's own dataUpdatedAt, so it does not out-age a later own read of another kept row in it", () => {
+    vi.useFakeTimers();
+    try {
+      const client = createTestQueryClient();
+      const booking = bookingFixture();
+      const other = bookingFixture({ id: OTHER_ID, customerName: 'Aina' });
+      client.setQueryData(TODAY, [booking, other]);
+      client.setQueryData(keys.pendingBookings(BIZ), [booking, other]);
+      const todayBefore = client.getQueryState(TODAY)!.dataUpdatedAt;
+      const pendingBefore = client.getQueryState(keys.pendingBookings(BIZ))!.dataUpdatedAt;
+
+      vi.advanceTimersByTime(1000);
+      writeBooking(client, BIZ, bookingFixture({ status: 'confirmed' }));
+
+      expect(client.getQueryData(TODAY)).toEqual([bookingFixture({ status: 'confirmed' }), other]);
+      expect(client.getQueryState(TODAY)!.dataUpdatedAt).toBe(todayBefore);
+      expect(client.getQueryState(keys.pendingBookings(BIZ))!.dataUpdatedAt).toBe(pendingBefore);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('re-reads a booking whose action failed and writes it everywhere', async () => {
     const client = createTestQueryClient();
     client.setQueryData(keys.pendingBookings(BIZ), [bookingFixture()]);
@@ -66,6 +88,26 @@ describe('writing a booking into the cache', () => {
     await expect(rereadBooking(client, api, BIZ, BOOKING_ID)).resolves.toEqual(declined);
     expect(client.getQueryData(keys.booking(BIZ, BOOKING_ID))).toEqual(declined);
     expect(client.getQueryData(keys.pendingBookings(BIZ))).toEqual([]);
+  });
+
+  it("cancels a read of the booking's own query already in flight, so a stale poll cannot win a re-read", async () => {
+    const client = createTestQueryClient();
+    const stale = bookingFixture({ status: 'pending' });
+    const fresh = bookingFixture({ status: 'declined' });
+    let resolveStale!: (booking: Booking) => void;
+    const api = fakeAppsApi({
+      booking: vi.fn()
+        .mockImplementationOnce(() => new Promise<Booking>((resolve) => { resolveStale = resolve; }))
+        .mockResolvedValueOnce(fresh),
+    });
+    // A read of the booking's own query already in flight (a Calendar poll,
+    // or a focus refetch) when the action's re-read is asked for.
+    const inFlight = client.fetchQuery({ ...bookingQuery(api, BIZ, BOOKING_ID), staleTime: 0 }).catch(() => 'cancelled');
+    const result = rereadBooking(client, api, BIZ, BOOKING_ID);
+    resolveStale(stale);
+    expect(await inFlight).toBe('cancelled');
+    await expect(result).resolves.toEqual(fresh);
+    expect(client.getQueryData(keys.booking(BIZ, BOOKING_ID))).toEqual(fresh);
   });
 });
 
@@ -76,13 +118,66 @@ describe('a booking action', () => {
     client.setQueryData(keys.pendingBookings(BIZ), [bookingFixture()]);
     const confirmed = bookingFixture({ status: 'confirmed' });
     const api = fakeAppsApi({ decide: vi.fn(async () => ({ booking: confirmed, whatsappUrl: null, calendarQueued: false })) });
+    // A read of the apps list already out when the action starts: its own
+    // affairs, not something the action waits on.
+    let resolveAppsList!: (list: AppsList) => void;
+    const appsListRead = client.fetchQuery({
+      queryKey: keys.appsList(BIZ),
+      queryFn: () => new Promise<AppsList>((resolve) => { resolveAppsList = resolve; }),
+    });
     const { result } = renderHook(() => useBookingAction(api), { wrapper: scope(client) });
     await act(async () => { await result.current.mutateAsync({ id: BOOKING_ID, action: 'confirm' }); });
     expect(api.decide).toHaveBeenCalledWith(BOOKING_ID, 'confirm');
     expect(client.getQueryData(TODAY)).toEqual([confirmed]);
     expect(client.getQueryData(keys.pendingBookings(BIZ))).toEqual([]);
     expect(client.getQueryState(TODAY)!.isInvalidated).toBe(true);
-    expect(client.getQueryState(keys.appsList(BIZ))).toBeUndefined();
+    // mutateAsync resolved without waiting for the apps list to be read again.
+    expect(client.getQueryState(keys.appsList(BIZ))!.fetchStatus).toBe('fetching');
+    resolveAppsList({ apps: [], available: ['bookings'] });
+    await appsListRead;
+  });
+
+  it("cancels its own reads again when the answer lands, so one already out while the request was in flight can't overwrite it", async () => {
+    const client = createTestQueryClient();
+    const pending = bookingFixture();
+    client.setQueryData(TODAY, [pending]);
+    client.setQueryData(keys.pendingBookings(BIZ), [pending]);
+    client.setQueryData(keys.booking(BIZ, BOOKING_ID), pending);
+    const confirmed = bookingFixture({ status: 'confirmed' });
+    let resolveDecide!: (result: BookingActionResult) => void;
+    const api = fakeAppsApi({
+      decide: vi.fn(() => new Promise<BookingActionResult>((resolve) => { resolveDecide = resolve; })),
+    });
+    const { result } = renderHook(() => useBookingAction(api), { wrapper: scope(client) });
+
+    let mutationPromise!: Promise<BookingActionResult>;
+    await act(async () => {
+      mutationPromise = result.current.mutateAsync({ id: BOOKING_ID, action: 'confirm' });
+      await vi.waitFor(() => expect(api.decide).toHaveBeenCalledTimes(1));
+    });
+
+    // Reads of all three keys start while the request is out (after onMutate's
+    // cancel, before the answer lands), each held so it can be resolved late.
+    const held: Array<() => void> = [];
+    const readList = (queryKey: readonly unknown[]) => client.fetchQuery({
+      queryKey, queryFn: () => new Promise<Booking[]>((resolve) => held.push(() => resolve([pending]))), staleTime: 0,
+    }).catch(() => 'cancelled');
+    const readOwn = (queryKey: readonly unknown[]) => client.fetchQuery({
+      queryKey, queryFn: () => new Promise<Booking>((resolve) => held.push(() => resolve(pending))), staleTime: 0,
+    }).catch(() => 'cancelled');
+    const reads = [readList(TODAY), readList(keys.pendingBookings(BIZ)), readOwn(keys.booking(BIZ, BOOKING_ID))];
+    expect(held).toHaveLength(3);
+
+    await act(async () => {
+      resolveDecide({ booking: confirmed, whatsappUrl: null, calendarQueued: false });
+      await mutationPromise;
+    });
+    held.forEach((resolve) => resolve());
+    await Promise.all(reads);
+
+    expect(client.getQueryData(TODAY)).toEqual([confirmed]);
+    expect(client.getQueryData(keys.pendingBookings(BIZ))).toEqual([]);
+    expect(client.getQueryData(keys.booking(BIZ, BOOKING_ID))).toEqual(confirmed);
   });
 
   it('is never sent twice, whatever the failure, even with the production retry rules', async () => {

@@ -39,14 +39,17 @@ export async function loadWindow(api: AppsApi, query: Omit<BookingsQuery, 'curso
   return rows;
 }
 
-/** Requests waiting on the owner that can still be confirmed, soonest first. */
+/** A request still waiting on the owner: pending, and not past its start (a
+    pending booking whose start has passed can no longer be confirmed). */
+export function stillWaiting(booking: Booking): boolean {
+  return booking.status === 'pending' && !booking.expired;
+}
+
 /** Every request still waiting on the owner, soonest first: one request for
     the whole horizon (the API allows a 91-day window for pending only). */
 export async function loadPendingBookings(api: AppsApi, now: Date): Promise<Booking[]> {
   const rows = await loadWindow(api, { from: malaysiaDay(now), days: PENDING_SCAN_DAYS, status: 'pending' });
-  return rows
-    .filter((booking) => booking.status === 'pending' && !booking.expired)
-    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  return rows.filter(stillWaiting).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 }
 
 /** What the owner should know about the booking's Google Calendar event.
@@ -144,7 +147,11 @@ export interface OwnRead {
       when a later list leaves it out: Needs you's pending-only scan drops a
       card the moment it is decided, WhatsApp link and all.
     - Any other row is drawn from whichever read it last: the list, or its
-      own query (a Calendar poll). */
+      own query (a Calendar poll).
+    Precondition: an id belongs in `kept` only once `writeBooking` or
+    `rereadBooking` (`./queries`) has written its own query for it — before
+    that, `own` holds nothing to draw from and this falls back to the list's
+    row regardless. */
 export function mergeBookingRows(
   list: Booking[] | null,
   listUpdatedAt: number,

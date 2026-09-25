@@ -1,7 +1,7 @@
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { bookingListsFilter, keys, mutationKeys } from '@/lib/query/keys';
 import { useRequiredBusinessId } from '@/lib/query/scope';
-import { loadPendingBookings, loadWindow } from './bookings';
+import { loadPendingBookings, loadWindow, stillWaiting } from './bookings';
 import type {
   AppsApi, AppsList, Booking, BookingAction, BookingActionResult, BookingsConfigInput,
 } from './types';
@@ -77,24 +77,36 @@ export async function cancelBookingReads(client: QueryClient, businessId: string
   ]);
 }
 
-const stillWaiting = (booking: Booking) => booking.status === 'pending' && !booking.expired;
-
 /** The server's answer for one booking, written where every screen reads it:
-    its own query, and every cached list that holds it. The waiting-requests
-    list keeps only what still waits, as the scan itself does. A list that
-    does not hold the booking is left exactly as it was. */
+    its own query, and every cached list that holds it. Each patched list
+    keeps its own `dataUpdatedAt`: this write is not a re-read of that list,
+    so it must not make another kept row in it look newer than a later own
+    read of that row (`mergeBookingRows` compares against the list's
+    timestamp). The waiting-requests list keeps only what still waits, as
+    the scan itself does. A list that does not hold the booking is left
+    exactly as it was. */
 export function writeBooking(client: QueryClient, businessId: string, booking: Booking): void {
   client.setQueryData(keys.booking(businessId, booking.id), booking);
   const holds = (rows: Booking[] | undefined): rows is Booking[] => !!rows && rows.some((row) => row.id === booking.id);
   const replace = (rows: Booking[]) => rows.map((row) => (row.id === booking.id ? booking : row));
-  client.setQueriesData<Booking[]>({ queryKey: keys.bookingWindows(businessId) }, (rows) => (holds(rows) ? replace(rows) : undefined));
-  client.setQueryData<Booking[]>(keys.pendingBookings(businessId), (rows) => (holds(rows) ? replace(rows).filter(stillWaiting) : undefined));
+  for (const query of client.getQueryCache().findAll({ queryKey: keys.bookingWindows(businessId) })) {
+    const rows = query.state.data as Booking[] | undefined;
+    if (holds(rows)) client.setQueryData(query.queryKey, replace(rows), { updatedAt: query.state.dataUpdatedAt });
+  }
+  const pending = client.getQueryState<Booking[]>(keys.pendingBookings(businessId));
+  if (pending && holds(pending.data)) {
+    client.setQueryData(keys.pendingBookings(businessId), replace(pending.data).filter(stillWaiting), { updatedAt: pending.dataUpdatedAt });
+  }
 }
 
 /** The booking as the server has it now, after an action that failed or got
-    no answer, written everywhere like an action's answer. Rejects when that
-    read fails too. */
+    no answer, written everywhere like an action's answer. Cancels a read of
+    this one booking already in flight first — a Calendar poll or a focus
+    refetch that started before the action, or that `fetchQuery` below would
+    otherwise just dedupe onto — so it cannot win over this fresh read.
+    Rejects when that read fails too. */
 export async function rereadBooking(client: QueryClient, api: AppsApi, businessId: string, bookingId: string): Promise<Booking> {
+  await client.cancelQueries({ queryKey: keys.booking(businessId, bookingId), exact: true });
   const fresh = await client.fetchQuery({ ...bookingQuery(api, businessId, bookingId), staleTime: 0 });
   writeBooking(client, businessId, fresh);
   return fresh;
