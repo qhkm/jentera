@@ -117,16 +117,25 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
   `docs/superpowers/specs/2026-09-25-query-cache-bookings-path-design.md`).
   Every key starts `['biz', businessId, …]` and is built only in
   `lib/query/keys.ts`, so one business's data can never draw under another.
-  Writes are mutations that never retry and put the server's answer into the
-  cache (`writeBooking` in `lib/apps/queries.ts`); a lost answer is re-read,
-  never resent. The cache lives in memory for the page, with nothing persisted
-  to the device, and `RepositoryGate` makes it for signed-in pages only: the
-  demo gets none. Tests mount through `renderWithQuery`
-  (`src/test-support/query.tsx`) and say "the owner came back" with
-  `returnToApp(client)`. The cache listens for `visibilitychange` on
-  `window`, and the non-bubbling `new Event('visibilitychange')` older tests
-  dispatch on `document` never reaches it. Activity, Routines, Goals,
-  Connections and shared chats still fetch by hand until phase 2.
+  Every decision on this path, the Home brief's included, goes through
+  `useBookingAction`, and a failed or unanswered one through `rereadBooking`
+  (both `lib/apps/queries.ts`): the mutation never retries and puts the
+  server's answer into every cached copy of the booking (`writeBooking`); a
+  lost answer is re-read, never resent, with the card busy until the re-read
+  lands and the lists read again only after it. A decision made around them
+  leaves the Bookings screens showing a stale Confirm. Requests use
+  `networkMode: 'always'`, so a tap made offline fails at once instead of
+  being sent on reconnect. The cache lives in memory for the page, with
+  nothing persisted to the device, and `RepositoryGate` makes it for
+  signed-in pages only: the demo gets none. Tests mount through
+  `renderWithQuery` (`src/test-support/query.tsx`). `returnToApp(client)` is
+  "the owner came back after 30 s": it invalidates every query first, so it
+  forces everything stale and cannot catch a `staleTime` regression;
+  `focusApp()` shows the page alone, for a return inside the window. The
+  cache listens for `visibilitychange` on `window`, and the non-bubbling
+  `new Event('visibilitychange')` older tests dispatch on `document` never
+  reaches it. Activity, Routines, Goals, Connections and shared chats still
+  fetch by hand until phase 2.
 
 ## Native shell (`mobile/`)
 

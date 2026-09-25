@@ -1,6 +1,6 @@
 # A query cache for the Bookings path (TanStack Query, phase 1)
 
-Status: design approved in conversation on 2026-09-25; not built.
+Status: design approved in conversation on 2026-09-25; built on branch query-cache (plan docs/superpowers/plans/2026-09-25-query-cache-bookings-path.md).
 
 ## Why
 
