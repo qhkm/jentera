@@ -110,3 +110,69 @@ describe('the inline first slice behind another reply', () => {
     expect(queued).toEqual([]);
   });
 });
+
+describe('the inline first slice on a waking sprite', () => {
+  /* A cold sprite's runner answers before Hermes does. The slice used to hand
+     that straight to the queue, which looked again only after its delay; it
+     now keeps looking itself, every couple of seconds, while its budget lasts. */
+  it('keeps checking while Hermes starts, then answers without a queue handover', async () => {
+    const queued: unknown[] = [];
+    const env = testEnv({
+      RUNTIME_RELEASE: RELEASE,
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+      RUNTIME_QUEUE: { send: async (message: unknown) => { queued.push(message); } },
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, RELEASE, 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `ask:${run.id}`,
+      payload: {
+        input: 'hi', model: 'MiniMax-M3', responseMode: 'quick',
+        objective: 'hi', function: 'ask', channel: 'app',
+      },
+    }));
+    const hermesUpAt = Date.now() + 1_200;
+    let probes = 0;
+    const runnerFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        probes += 1;
+        if (Date.now() < hermesUpAt) return Response.json({ ok: false, release: RELEASE }, { status: 503 });
+        return Response.json({
+          ok: true, release: RELEASE,
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-16' },
+          toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        return Response.json({ ok: true, hermesRunId: 'woken-run', status: 'running' }, { status: 202 });
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}/events`)) {
+        const body = [{ type: 'delta', seq: 1, delta: 'Hello.' }, { type: 'done' }]
+          .map((event) => `data: ${JSON.stringify(event)}`).join('\n\n') + '\n\n';
+        return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}`)) {
+        return Response.json({ ok: true, status: 'completed', output: 'Hello.' });
+      }
+      return Response.json({ error: 'not found' }, { status: 404 });
+    };
+
+    await runInlineSlice(env, { version: 1, businessId: A, taskId: task.id }, {
+      provider, fetch: runnerFetch, observationSliceMs: 10_000, wakePollMs: 300,
+    });
+
+    const [row] = await asOwner((sql) => sql<{ status: string }[]>`select status from run where id = ${run.id}`);
+    expect(row.status).toBe('completed');
+    expect(probes).toBeGreaterThan(1);
+    expect(queued).toEqual([]);
+  });
+});

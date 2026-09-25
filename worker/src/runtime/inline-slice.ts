@@ -33,6 +33,7 @@ export interface InlineSliceOptions {
   fetch?: typeof globalThis.fetch;
   observationSliceMs?: number;
   busyPollMs?: number;
+  wakePollMs?: number;
 }
 
 /** waitUntil grants 30 s after the response. The slice stops at 20 s so its
@@ -46,6 +47,12 @@ export const INLINE_SAFETY_NET_SECONDS = 30;
     running, the slice polls for the slot this often instead of handing the
     message to the queue's watchdog. */
 const INLINE_BUSY_POLL_MS = 1_000;
+/** A waking sprite answers within seconds of Hermes finishing its restart
+    (15–30 s from cold). Looking every two seconds costs one readiness probe
+    each and takes the handover to the queue — which looks again only after
+    its own delay — out of the common cold start. */
+const INLINE_WAKE_POLL_MS = 2_000;
+const WAKING = /^runtime is still waking$/;
 /** Do not start a dispatch with less of the budget left than this; hand
     over instead, so the run is never started by an invocation about to die. */
 const INLINE_MIN_DISPATCH_MS = 4_000;
@@ -66,6 +73,7 @@ export async function runInlineSlice(
   const startedAt = Date.now();
   const budgetMs = inline.observationSliceMs ?? INLINE_SLICE_MS;
   const pollMs = inline.busyPollMs ?? INLINE_BUSY_POLL_MS;
+  const wakePollMs = inline.wakePollMs ?? INLINE_WAKE_POLL_MS;
   let message = first;
   let toldOwner = false;
   try {
@@ -74,6 +82,7 @@ export async function runInlineSlice(
       const result = await handleRuntimeQueueMessage(env, message, {
         ...inline,
         observationSliceMs: Math.max(INLINE_MIN_DISPATCH_MS, remainingMs),
+        wakeRetrySeconds: Math.max(1, Math.round(wakePollMs / 1_000)),
       });
       if (result.action === 'ack') return;
       /* Intake is converted to its durable task on admission; wait on that. */
@@ -85,6 +94,11 @@ export async function runInlineSlice(
           await tellOwnerWaiting(env, message);
         }
         await new Promise((resolve) => setTimeout(resolve, pollMs));
+        continue;
+      }
+      const waking = result.action === 'requeue' && WAKING.test(result.reason);
+      if (waking && remainingMs - wakePollMs > INLINE_MIN_DISPATCH_MS) {
+        await new Promise((resolve) => setTimeout(resolve, wakePollMs));
         continue;
       }
       if (message.version === 1) {

@@ -439,6 +439,60 @@ inferred from the timing, not observed.
 5 s were `4e8c2593…`. That is the heaviest user and the desktop-observe
 canary, and it received the most releases that week.
 
+### The fix, 2026-09-25
+
+Reading the code confirmed the second cause.
+
+**The unrecognised answer.**
+
+- While Hermes, or any specialist profile, is still starting, the runner's
+  `/readyz` answers **503 with a JSON body** `{ ok: false }`
+  (`runner/src/server.mjs`).
+- `isWakingRunnerFailure` recognised only a 5xx whose body was not JSON,
+  which is the sprite edge's answer while the machine itself boots.
+- So the commoner half of every cold start went through the generic
+  failure path: a flat 30 s retry and one of the task's five attempts spent.
+
+**The request that outlived its invocation.**
+
+- Readiness and start calls kept their own 30 s timeout, even inside the
+  inline slice. That slice lives in a `waitUntil` that Cloudflare ends
+  about 30 s after the response.
+- A slow wake could therefore outlive the invocation and leave the task
+  leased to a dead owner, which is recovered only after 90 s without a
+  heartbeat (`DEAD_OWNER_SECONDS`).
+
+**What changed:**
+
+- **A new error for "not serving yet".** `RunnerClient.ready()` throws
+  `RunnerNotReadyError` when the runner answers `ok: false`, or when
+  nothing answers before the caller's deadline. The consumer treats it as
+  a wake: no attempt spent, bounded by the existing `WAKE_GIVE_UP_MS`
+  (4 min).
+- **Every runner call ends with its slice.** `observationSliceFetch` now
+  bounds every runner call by the slice deadline, not only the event
+  stream, so no call outlives the invocation that holds the task.
+- **The inline slice keeps looking.** It re-checks a waking sprite every
+  2 s (`INLINE_WAKE_POLL_MS`) while its 20 s budget lasts, the way it
+  already waited for a busy slot. Only then does it hand the task to the
+  queue.
+- **Each delay is recorded.** A start that waits records why, once per
+  reason, as `work.delayed` with `reason` set to `waking`, `busy`,
+  `preparing` or `retry`.
+
+**Expected effect.** The four 42–104 s starts should fall to the cold-wake
+range of roughly 10–25 s. That is a hypothesis until re-measured.
+
+**Re-measure** after a week on the new Worker. Run `reply-latency.sh db 7`,
+then attribute each slow start from its events:
+
+```sql
+select e.payload->>'reason' as reason, count(*)
+  from run_event e join run r on r.id = e.run_id and r.business_id = e.business_id
+ where e.type = 'work.delayed' and r.created_at > now() - interval '7 days'
+ group by 1;
+```
+
 ## Levers
 
 Done:

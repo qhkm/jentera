@@ -59,6 +59,103 @@ describe('durable Hermes run delivery', () => {
     expect(row.status).toBe('queued');
   });
 
+  it('does not spend an attempt while Hermes restarts behind a runner that is up', async () => {
+    /* The commoner half of a cold wake: the runner process answers, as JSON,
+       and says it is not ready because Hermes behind it is still restarting.
+       That was graded a failure (`runner request failed (503)`): a flat 30 s
+       retry and an attempt spent. Four of the slowest starts in the week to
+       25 Sep (42–104 s) were retries of this shape (docs/reply-latency.md). */
+    const env = testEnv({ RUNTIME_RELEASE: '2026.09.01-3', AISAR_MODEL_NAME: 'MiniMax-M3' });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `run:${run.id}`, payload: { input: 'hello' },
+    }));
+    const restartingFetch: typeof fetch = async () =>
+      Response.json({ ok: false, release: '2026.09.01-3' }, { status: 503 });
+
+    const result = await handleRuntimeMessage(
+      env, { version: 1, businessId: A, taskId: task.id }, { provider, fetch: restartingFetch },
+    );
+
+    expect(result).toMatchObject({ action: 'requeue', reason: 'runtime is still waking' });
+    const [row] = await asOwner((sql) => sql<{ attempt: number; status: string }[]>`
+      select attempt, status from runtime_task where id = ${task.id}`);
+    expect(row).toEqual({ attempt: 0, status: 'queued' });
+    /* Why it waited is kept with the run, once, for the next measurement. */
+    const delays = await asOwner((sql) => sql<{ payload: { reason: string } }[]>`
+      select payload from run_event where run_id = ${run.id} and type = 'work.delayed'`);
+    expect(delays.map((d) => d.payload.reason)).toEqual(['waking']);
+    await handleRuntimeMessage(
+      env, { version: 1, businessId: A, taskId: task.id }, { provider, fetch: restartingFetch },
+    );
+    expect(await asOwner((sql) => sql`
+      select 1 from run_event where run_id = ${run.id} and type = 'work.delayed'`)).toHaveLength(1);
+  });
+
+  it('never outlives its slice: a readiness call still hanging at the slice end is cut and the task released', async () => {
+    /* Run inside the request that received the message, a slice lives only
+       as long as that invocation. A readiness call left on its own 30 s
+       timeout outlived it; the invocation died holding the lease, and the
+       task sat until a dead-owner recovery 90 s later. */
+    const env = testEnv({ RUNTIME_RELEASE: '2026.09.01-3', AISAR_MODEL_NAME: 'MiniMax-M3' });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `run:${run.id}`, payload: { input: 'hello' },
+    }));
+    /* A sprite still coming up: the request neither answers nor fails. */
+    const hangingFetch: typeof fetch = (_input, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+    });
+
+    const began = Date.now();
+    const result = await handleRuntimeMessage(
+      env, { version: 1, businessId: A, taskId: task.id },
+      { provider, fetch: hangingFetch, observationSliceMs: 1_500 },
+    );
+
+    expect(Date.now() - began).toBeLessThan(10_000);
+    expect(result).toMatchObject({ action: 'requeue', reason: 'runtime is still waking' });
+    const [row] = await asOwner((sql) => sql<{ attempt: number; status: string; lease_token: string | null }[]>`
+      select attempt, status, lease_token from runtime_task where id = ${task.id}`);
+    expect(row).toEqual({ attempt: 0, status: 'queued', lease_token: null });
+  });
+
+  it('records why a start was retried when the runner fails outright', async () => {
+    const env = testEnv({ RUNTIME_RELEASE: '2026.09.01-3', AISAR_MODEL_NAME: 'MiniMax-M3' });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `run:${run.id}`, payload: { input: 'hello' },
+    }));
+    const brokenFetch: typeof fetch = async () => Response.json({ error: 'boom' }, { status: 500 });
+
+    await handleRuntimeMessage(env, { version: 1, businessId: A, taskId: task.id }, { provider, fetch: brokenFetch });
+
+    const delays = await asOwner((sql) => sql<{ payload: { reason: string } }[]>`
+      select payload from run_event where run_id = ${run.id} and type = 'work.delayed'`);
+    expect(delays.map((d) => d.payload.reason)).toEqual(['retry']);
+  });
+
   it('still gives up when the runner keeps answering badly long after any wake', async () => {
     /* Bounded by the measured wake cost, not open-ended: a runner that is
        simply broken must still reach the terminal path. started_at survives a

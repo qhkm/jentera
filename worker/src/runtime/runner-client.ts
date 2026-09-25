@@ -130,6 +130,17 @@ export interface RunnerConfigState {
     being told which it was. */
 export type RuntimeBusyReason = 'business_browser_paused';
 
+/** The runtime is not serving yet: the runner answered that Hermes behind it
+    is still starting, or nothing answered before the caller's deadline. After
+    a wake this is the normal first few seconds, not a failed attempt; the
+    consumer waits it out (consumer.ts `isWakingRunnerFailure`). */
+export class RunnerNotReadyError extends Error {
+  constructor(detail: string) {
+    super(`runner is not ready yet (${detail})`);
+    this.name = 'RunnerNotReadyError';
+  }
+}
+
 /** The isolated runtime is still finishing an earlier task. This is normal
     backpressure, not a failed model attempt, and callers should poll shortly. */
 export class RuntimeBusyError extends Error {
@@ -200,7 +211,18 @@ export class RunnerClient {
   }
 
   async ready(): Promise<RunnerReadiness> {
-    const body = await this.request('/readyz');
+    let body: RunnerTaskResponse;
+    try {
+      /* The runner answers 503 with `ok: false` while Hermes, or one of its
+         specialist profiles, is still starting (runner/src/server.mjs). */
+      body = await this.request('/readyz', {}, [200, 503]);
+    } catch (error) {
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        throw new RunnerNotReadyError('no answer yet');
+      }
+      throw error;
+    }
+    if (body.ok === false) throw new RunnerNotReadyError('503');
     if (this.expectedRelease && body.release !== this.expectedRelease) {
       throw new Error('runner did not attest the desired runtime release');
     }
