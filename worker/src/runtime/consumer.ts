@@ -2383,11 +2383,16 @@ export async function handleRuntimeMessage(
           }));
         if (deferred && lease.task.runId) {
           await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'waking');
-          await recordStartDelay(env, message.businessId, lease.task.runId, 'waking');
+          /* A delay to the start only: a run already on Hermes that meets a
+             restart is a different story, and would muddy the measurement. */
+          if (!lease.task.remoteRunId) {
+            await recordStartDelay(env, message.businessId, lease.task.runId, 'waking');
+          }
         }
         return {
           action: 'requeue',
-          delaySeconds: wakeDelay,
+          /* The queue takes whole seconds; the defer above may be fractional. */
+          delaySeconds: Math.max(1, Math.ceil(wakeDelay)),
           reason: deferred ? 'runtime is still waking' : 'runtime task lease was lost',
         };
       }
@@ -2558,7 +2563,9 @@ export async function handleRuntimeMessage(
     );
     if (executionTask && lease.task.runId) {
       await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'retrying');
-      await recordStartDelay(env, message.businessId, lease.task.runId, 'retry');
+      if (!lease.task.remoteRunId) {
+        await recordStartDelay(env, message.businessId, lease.task.runId, 'retry');
+      }
     }
     /* Lifecycle and cancellation controls back off exponentially; ordinary
        interactive work keeps the snappy fixed delay the chat expects. */
@@ -2591,6 +2598,18 @@ export function telegramFloodDelaySeconds(reportedWaitSeconds: number): number {
   );
 }
 
+/** Aborts when either does: `AbortSignal.any` where the runtime has it, a
+    small relay where it does not, so neither timeout is ever dropped. */
+function eitherSignal(a: AbortSignal, b: AbortSignal): AbortSignal {
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any([a, b]);
+  const both = new AbortController();
+  for (const signal of [a, b]) {
+    if (signal.aborted) both.abort(signal.reason);
+    else signal.addEventListener('abort', () => both.abort(signal.reason), { once: true });
+  }
+  return both.signal;
+}
+
 function observationSliceFetch(
   fetcher: typeof globalThis.fetch | undefined,
   endsAtMs: number,
@@ -2606,12 +2625,7 @@ function observationSliceFetch(
          outlived it while a sprite woke, the task stayed leased to a dead
          invocation, and it waited 90 s for dead-owner recovery. */
       const deadline = AbortSignal.timeout(remainingMs);
-      return base(input, {
-        ...init,
-        signal: init.signal && typeof AbortSignal.any === 'function'
-          ? AbortSignal.any([init.signal, deadline])
-          : deadline,
-      });
+      return base(input, { ...init, signal: init.signal ? eitherSignal(init.signal, deadline) : deadline });
     }
     /* RunnerClient owns a 15-minute stream timeout. Replace it with the
        shorter task/invocation slice so the body reader, not only the header

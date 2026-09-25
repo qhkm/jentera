@@ -134,6 +134,90 @@ describe('durable Hermes run delivery', () => {
     expect(row).toEqual({ attempt: 0, status: 'queued', lease_token: null });
   });
 
+  it('also waits while Hermes’s port is still closed and the runner answers 500 not-ready', async () => {
+    /* Before Hermes listens at all, the runner's own fetch to it is refused and
+       /readyz answers 500 { ok: false, error: 'runner error' } — the earliest
+       seconds of a cold start. */
+    const env = testEnv({ RUNTIME_RELEASE: '2026.09.01-3', AISAR_MODEL_NAME: 'MiniMax-M3' });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `run:${run.id}`, payload: { input: 'hello' },
+    }));
+    const portClosedFetch: typeof fetch = async () =>
+      Response.json({ ok: false, error: 'runner error' }, { status: 500 });
+
+    expect(await handleRuntimeMessage(
+      env, { version: 1, businessId: A, taskId: task.id }, { provider, fetch: portClosedFetch },
+    )).toMatchObject({ action: 'requeue', reason: 'runtime is still waking' });
+    const [row] = await asOwner((sql) => sql<{ attempt: number; last_error: string | null }[]>`
+      select attempt, last_error from runtime_task where id = ${task.id}`);
+    expect(row.attempt).toBe(0);
+  });
+
+  it('treats a start cut off by the slice as a wait, not a failed attempt', async () => {
+    /* The runner deduplicates admission by task id, so a start whose answer
+       never arrived is safely asked again; charging it an attempt and 30 s
+       was the same wake penalty by another route. */
+    const env = testEnv({ RUNTIME_RELEASE: '2026.09.01-3', AISAR_MODEL_NAME: 'MiniMax-M3' });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `run:${run.id}`, payload: { input: 'hello' },
+    }));
+    const slowStartFetch: typeof fetch = (input, init) => {
+      if (String(input).endsWith('/readyz')) {
+        return Promise.resolve(Response.json({
+          ok: true, release: '2026.09.01-3',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-16' },
+          toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+        }));
+      }
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+      });
+    };
+
+    const result = await handleRuntimeMessage(
+      env, { version: 1, businessId: A, taskId: task.id },
+      { provider, fetch: slowStartFetch, observationSliceMs: 1_500 },
+    );
+    expect(result).toMatchObject({ action: 'requeue', reason: 'runtime is still waking' });
+    const [row] = await asOwner((sql) => sql<{ attempt: number; status: string }[]>`
+      select attempt, status from runtime_task where id = ${task.id}`);
+    expect(row).toEqual({ attempt: 0, status: 'queued' });
+  });
+
+  it('still reports a malformed not-ready answer as a runner failure', async () => {
+    const env = testEnv({ RUNTIME_RELEASE: '2026.09.01-3', AISAR_MODEL_NAME: 'MiniMax-M3' });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', dedupeKey: 'malformed', payload: { input: 'hello' },
+    }));
+    const oddFetch: typeof fetch = async () => Response.json({ release: '2026.09.01-3' }, { status: 503 });
+    await handleRuntimeMessage(env, { version: 1, businessId: A, taskId: task.id }, { provider, fetch: oddFetch });
+    const [row] = await asOwner((sql) => sql<{ last_error: string }[]>`
+      select last_error from runtime_task where id = ${task.id}`);
+    expect(row.last_error).toBe('runner request failed (503)');
+  });
+
   it('records why a start was retried when the runner fails outright', async () => {
     const env = testEnv({ RUNTIME_RELEASE: '2026.09.01-3', AISAR_MODEL_NAME: 'MiniMax-M3' });
     const provider = new LocalRuntimeProvider();

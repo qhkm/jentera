@@ -166,6 +166,20 @@ export class RuntimeBusyError extends Error {
  * and the version does not. Anything unrecognised becomes null and the caller
  * simply learns less.
  */
+/** Which part of a not-ready runtime is not ready, for `last_error`. Names
+    only: the specialist profiles the runner reports unhealthy, and whether
+    the runner could attest its own source. */
+function notReadyDetail(status: number, body: RunnerTaskResponse): string {
+  const parts: string[] = [String(status)];
+  const profiles = Object.entries(body.specialistProfiles ?? {})
+    .filter(([profile, ready]) => specialistProfileValid(profile) && ready !== true)
+    .map(([profile]) => profile);
+  if (profiles.length) parts.push(`profiles not ready: ${profiles.join(', ')}`);
+  if (body.runner && body.runner.sourceAttested !== true) parts.push('source not attested');
+  if (status === 500) parts.push('Hermes not answering');
+  return parts.join('; ');
+}
+
 function configState(value: unknown): RunnerConfigState | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const body = value as Record<string, unknown>;
@@ -211,18 +225,7 @@ export class RunnerClient {
   }
 
   async ready(): Promise<RunnerReadiness> {
-    let body: RunnerTaskResponse;
-    try {
-      /* The runner answers 503 with `ok: false` while Hermes, or one of its
-         specialist profiles, is still starting (runner/src/server.mjs). */
-      body = await this.request('/readyz', {}, [200, 503]);
-    } catch (error) {
-      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
-        throw new RunnerNotReadyError('no answer yet');
-      }
-      throw error;
-    }
-    if (body.ok === false) throw new RunnerNotReadyError('503');
+    const body = await this.readiness();
     if (this.expectedRelease && body.release !== this.expectedRelease) {
       throw new Error('runner did not attest the desired runtime release');
     }
@@ -454,6 +457,45 @@ export class RunnerClient {
     } finally {
       await reader.cancel().catch(() => {});
     }
+  }
+
+  /** `/readyz`, told apart by status. While the runtime is coming up the
+      runner answers `ok: false` — 503 once Hermes listens but a part of it is
+      unhealthy, 500 while Hermes's port is still closed and the runner's own
+      call to it is refused (runner/src/server.mjs). Both are the wait after a
+      wake, not a failure; the detail says which part is not ready, so a
+      runtime that never becomes ready is diagnosable from `last_error`. */
+  private async readiness(): Promise<RunnerTaskResponse> {
+    let response: Response;
+    try {
+      response = await this.fetcher(`${this.origin}/readyz`, {
+        headers: {
+          ...(this.edgeToken ? { Authorization: `Bearer ${this.edgeToken}` } : {}),
+          'X-Aisar-Runner-Key': this.runnerKey,
+        },
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (error) {
+      /* A sprite still coming up may answer nothing before the deadline. */
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        throw new RunnerNotReadyError('no answer yet');
+      }
+      throw error;
+    }
+    const text = await response.text();
+    if (text.length > RESPONSE_LIMIT) throw new Error('runner response exceeded limit');
+    let body: RunnerTaskResponse;
+    try {
+      body = text ? JSON.parse(text) as RunnerTaskResponse : {};
+    } catch {
+      throw new Error(`runner returned invalid JSON (${response.status})`);
+    }
+    if (response.status === 200) return body;
+    if ((response.status === 500 || response.status === 503) && body.ok === false) {
+      throw new RunnerNotReadyError(notReadyDetail(response.status, body));
+    }
+    const detail = typeof body.error === 'string' ? `: ${body.error.slice(0, 200)}` : '';
+    throw new Error(`runner request failed (${response.status})${detail}`);
   }
 
   private async request(

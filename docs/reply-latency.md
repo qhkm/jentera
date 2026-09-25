@@ -445,9 +445,13 @@ Reading the code confirmed the second cause.
 
 **The unrecognised answer.**
 
-- While Hermes, or any specialist profile, is still starting, the runner's
-  `/readyz` answers **503 with a JSON body** `{ ok: false }`
-  (`runner/src/server.mjs`).
+- While the runtime is still starting, the runner's `/readyz` answers with
+  a JSON body `{ ok: false }` (`runner/src/server.mjs`). The status depends
+  on the stage:
+  - **500** while Hermes's port is still closed, because the runner's own
+    call to Hermes is refused;
+  - **503** once Hermes is listening but it, or a specialist profile, is
+    not yet healthy.
 - `isWakingRunnerFailure` recognised only a 5xx whose body was not JSON,
   which is the sprite edge's answer while the machine itself boots.
 - So the commoner half of every cold start went through the generic
@@ -465,20 +469,34 @@ Reading the code confirmed the second cause.
 **What changed:**
 
 - **A new error for "not serving yet".** `RunnerClient.ready()` throws
-  `RunnerNotReadyError` when the runner answers `ok: false`, or when
-  nothing answers before the caller's deadline. The consumer treats it as
-  a wake: no attempt spent, bounded by the existing `WAKE_GIVE_UP_MS`
+  `RunnerNotReadyError` when the runner answers 500 or 503 with
+  `ok: false`, or when nothing answers before the caller's deadline. The
+  error's detail names the unhealthy profiles, a missing source
+  attestation, or "Hermes not answering". The consumer treats it as a
+  wake: no attempt spent, bounded by the existing `WAKE_GIVE_UP_MS`
   (4 min).
+- **An unconfirmed start is also a wake.** The runner admits by task id,
+  so a start is safe to repeat. A start cut off by a deadline, or one that
+  finds the first still being admitted, gets the same treatment.
 - **Every runner call ends with its slice.** `observationSliceFetch` now
   bounds every runner call by the slice deadline, not only the event
   stream, so no call outlives the invocation that holds the task.
 - **The inline slice keeps looking.** It re-checks a waking sprite every
   2 s (`INLINE_WAKE_POLL_MS`) while its 20 s budget lasts, the way it
   already waited for a busy slot. Only then does it hand the task to the
-  queue.
+  queue. The remaining budget is measured again after every call, never
+  assumed.
+- **`work.started` is written on the first recorded start.** It used to
+  key on an empty `started_at`, and a defer stamps `started_at`, so every
+  run that waited on a wake lost the event and dropped out of
+  `reply-latency.sh db`.
 - **Each delay is recorded.** A start that waits records why, once per
   reason, as `work.delayed` with `reason` set to `waking`, `busy`,
-  `preparing` or `retry`.
+  `preparing` or `retry`. Only delays before the run reaches Hermes are
+  recorded.
+- **The cost of the change.** A runtime that never becomes ready now
+  fails after about 4 min of waiting plus its attempts, where it used to
+  fail after about 2.5 min.
 
 **Expected effect.** The four 42–104 s starts should fall to the cold-wake
 range of roughly 10–25 s. That is a hypothesis until re-measured.

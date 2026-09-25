@@ -82,13 +82,20 @@ export async function runInlineSlice(
       const result = await handleRuntimeQueueMessage(env, message, {
         ...inline,
         observationSliceMs: Math.max(INLINE_MIN_DISPATCH_MS, remainingMs),
-        wakeRetrySeconds: Math.max(1, Math.round(wakePollMs / 1_000)),
+        /* Fractional on purpose: the defer's `available_at` must not land
+           after the next poll, or that poll is refused as if the slot were
+           busy and the owner is told they are behind another message. */
+        wakeRetrySeconds: wakePollMs / 1_000,
       });
+      /* The call may have used most of the budget — a readiness check held
+         until the slice deadline is exactly the slow wake this loop exists
+         for — so what is left is measured again, never assumed. */
+      const leftMs = budgetMs - (Date.now() - startedAt);
       if (result.action === 'ack') return;
       /* Intake is converted to its durable task on admission; wait on that. */
       if (result.nextMessage) message = result.nextMessage;
       const waiting = result.action === 'requeue' && WAITING_FOR_SLOT.test(result.reason);
-      if (waiting && remainingMs - pollMs > INLINE_MIN_DISPATCH_MS) {
+      if (waiting && leftMs - pollMs > INLINE_MIN_DISPATCH_MS) {
         if (!toldOwner && message.version === 1) {
           toldOwner = true;
           await tellOwnerWaiting(env, message);
@@ -97,7 +104,7 @@ export async function runInlineSlice(
         continue;
       }
       const waking = result.action === 'requeue' && WAKING.test(result.reason);
-      if (waking && remainingMs - wakePollMs > INLINE_MIN_DISPATCH_MS) {
+      if (waking && leftMs - wakePollMs > INLINE_MIN_DISPATCH_MS) {
         await new Promise((resolve) => setTimeout(resolve, wakePollMs));
         continue;
       }
