@@ -14,7 +14,9 @@ export type NotificationKind =
   /* A customer asked for a booking on a Bookings page (migration 068). */
   | 'booking_requested'
   /* A long work task asked for in the app finished or failed (migration 069). */
-  | 'work_finished';
+  | 'work_finished'
+  /* 80% of this month's AI credits are used; owners, once a month (migration 071). */
+  | 'credit_warning';
 
 export interface NotificationRow {
   id: string;

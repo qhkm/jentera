@@ -116,6 +116,7 @@ import {
   notifyRequesterWorkFinished,
 } from '../notifications/work';
 import { deliverPendingPushes } from '../push/outbox';
+import { maybeWarnCredits } from './credit-warning';
 import {
   cancelRoutineRuntimeOccurrence,
   finishRoutineRuntimeOccurrence,
@@ -2121,6 +2122,9 @@ export async function handleRuntimeMessage(
             usageStatus,
             outcome.usage,
           );
+          /* Before the Telegram return below: every finished run spends
+             credits, whichever channel it came from. */
+          pushesQueued += await maybeWarnCredits(tx, message.businessId);
           if (!lease.task.runId || (successful && outcome.payload.telegram)) return done;
           const workKind = routineRuntimeMeta(lease.task.payload)
             ? 'work'
@@ -2150,7 +2154,7 @@ export async function handleRuntimeMessage(
             const objective = outcome.payload.objective ?? outcome.payload.input.slice(0, 200);
             const status = successful ? assessment?.status ?? 'needs_review' : 'failed';
             if (status === 'completed' || status === 'failed') {
-              pushesQueued = await notifyRequesterWorkFinished(tx, message.businessId, {
+              pushesQueued += await notifyRequesterWorkFinished(tx, message.businessId, {
                 runId: lease.task.runId,
                 status,
                 objective,
@@ -2158,7 +2162,7 @@ export async function handleRuntimeMessage(
                 kind: workKind,
               });
             } else {
-              pushesQueued = await notifyOwnersWorkNeedsYou(tx, message.businessId, {
+              pushesQueued += await notifyOwnersWorkNeedsYou(tx, message.businessId, {
                 runId: lease.task.runId,
                 status,
                 objective,
