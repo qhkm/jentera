@@ -306,8 +306,8 @@ describe('BookingsList', () => {
 
   /* A read that began before a decision never lands after it: the action
      cancels the reads already out. The pinned card is drawn from the
-     booking's own query alone (it is never kept), so a held re-read of it
-     landing late would put Confirm back on the card. */
+     booking's own query alone, whatever the list holds, so a held re-read
+     of it landing late would put Confirm back on the card. */
   it('does not let a stale reload undo a fresh decision', async () => {
     let current = bookingFixture();
     let releaseStale: (() => void) | null = null;

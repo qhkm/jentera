@@ -84,12 +84,13 @@ export async function cancelBookingReads(client: QueryClient, businessId: string
     read of that row (`mergeBookingRows` compares against the list's
     timestamp). It also keeps a patched list's `isInvalidated`: `setQueryData`
     clears it as an ordinary successful write would, but this write answers
-    for one booking, not the list — a window `refreshApps` left invalidated
-    while inactive (a failed action's `onSettled` runs regardless) must still
-    refetch the rest of its rows next time it is shown, not read as fresh for
-    up to 30 s because this one row happened to get patched first. The
-    waiting-requests list keeps only what still waits, as the scan itself
-    does. A list that does not hold the booking is left exactly as it was. */
+    for one booking, not the list — a window an earlier `refreshApps` left
+    invalidated while inactive (one runs after every action that succeeded,
+    and after a failed one's re-read) must still refetch the rest of its
+    rows next time it is shown, not read as fresh for up to 30 s because
+    this one row happened to get patched first. The waiting-requests list
+    keeps only what still waits, as the scan itself does. A list that does
+    not hold the booking is left exactly as it was. */
 export function writeBooking(client: QueryClient, businessId: string, booking: Booking): void {
   notifyManager.batch(() => {
     client.setQueryData(keys.booking(businessId, booking.id), booking);

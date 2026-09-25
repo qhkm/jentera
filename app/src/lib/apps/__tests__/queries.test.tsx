@@ -191,8 +191,10 @@ describe('a booking action', () => {
     // The action resolved even though onSuccess asked for the apps list
     // again and that mounted observer's read is still in flight.
     expect(result.current.appsList.fetchStatus).toBe('fetching');
-    resolveAppsList({ apps: [], available: ['bookings'] });
-    await vi.waitFor(() => expect(result.current.appsList.fetchStatus).toBe('idle'));
+    await act(async () => {
+      resolveAppsList({ apps: [], available: ['bookings'] });
+      await vi.waitFor(() => expect(result.current.appsList.fetchStatus).toBe('idle'));
+    });
   });
 
   it("cancels its own reads again when the answer lands, so one already out while the request was in flight can't overwrite it", async () => {
