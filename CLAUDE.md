@@ -624,6 +624,13 @@ Calendar. The spec is `docs/plans/2026-09-23-apps-shell-and-bookings-v1.md`;
 plans 1–4 beside it end with "As built" notes that carry what the release
 must do.
 
+Customers can later manage a booking with its reference and WhatsApp number.
+That proof creates a two-hour opaque session whose token is stored only as a
+SHA-256 hash (`booking_customer_session`, migration 072). Cancellation releases
+the slot immediately. Rescheduling atomically cancels the old row and creates a
+new pending request, rather than silently moving a confirmed appointment; any
+old Google Calendar event is removed through the same durable Calendar job.
+
 It is a pilot. `APPS_ENABLED` and `APPS_BUSINESS_IDS` (exact UUIDs, at most
 20, empty means nobody) sit in both `[vars]` and `[env.sites.vars]` of
 `worker/wrangler.toml`, and `worker/scripts/check-apps-flags.mjs` fails a deploy

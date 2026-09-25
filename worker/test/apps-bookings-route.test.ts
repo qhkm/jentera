@@ -193,6 +193,7 @@ describe('deciding', () => {
     const body = await jsonOf<Json>(res);
     expect(body.booking).toMatchObject({ status: 'confirmed', calendar: { status: 'pending' } });
     expect(decodeURIComponent(body.whatsappUrl!)).toContain('is confirmed. Ref K7Q2MP. See you at SEIDO Coffee.');
+    expect(decodeURIComponent(body.whatsappUrl!)).toContain('Change or cancel your booking: https://sites.test/b/seido/manage?ref=K7Q2MP');
     const again = await call('POST', `/api/apps/bookings/bookings/${id}/decide`, ownerA, { decision: 'confirm' });
     expect(again.status).toBe(200);
     const jobs = await asOwner((sql) => sql<{ desired: string; revision: number }[]>`select desired, revision from booking_calendar_job`);

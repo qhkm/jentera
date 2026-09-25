@@ -3,11 +3,17 @@ import type { Lang } from '../apps/bookings/messages';
 import { loadOpenTimes, loadPublicPage, resolvePublicSlug, type PublicPage } from '../apps/bookings/public';
 import { REFERENCE } from '../apps/bookings/reference';
 import { createBookingRequest, findSubmission, parseRequestForm, submissionDigest } from '../apps/bookings/request';
+import {
+  beginCustomerSession, cancelByCustomer, loadManagedBooking, rescheduleByCustomer, validCustomerToken,
+} from '../apps/bookings/customer';
 import { isDate, myDate } from '../apps/bookings/time';
 import { clientIp } from '../ratelimit';
 import { turnstileIdempotencyKey, verifyTurnstile } from '../turnstile';
 import type { SitesEnv } from './env';
-import { donePage, formPage, messagePage, page, redirect, servicesPage, timesPage, SECURITY_HEADERS, type FormError, type MessageKind } from './render';
+import {
+  customerMessagePage, donePage, formPage, manageLoginPage, managePage, messagePage, page, redirect,
+  reschedulePage, servicesPage, timesPage, SECURITY_HEADERS, type FormError, type MessageKind,
+} from './render';
 
 /* The public booking pages: the whole of the jentera-sites deploy. It never
    reads or sets a cookie and holds no credential; a business is found only
@@ -16,7 +22,7 @@ import { donePage, formPage, messagePage, page, redirect, servicesPage, timesPag
 /* Case-insensitive on purpose: a customer typing the link, or a phone
    capitalising its first letter, still reaches the page. Names are stored
    lower-case, so a capital is answered with a redirect before any lookup. */
-const PATH = /^\/b\/([a-z0-9][a-z0-9-]{1,38}[a-z0-9])(\/request|\/done)?\/?$/i;
+const PATH = /^\/b\/([a-z0-9][a-z0-9-]{1,38}[a-z0-9])(\/.*)?$/i;
 const DAYS_SHOWN = 7;
 /** At most today plus the longest allowed horizon. Only used when the first
     seven days contain no opening, or an explicitly selected date is full. */
@@ -100,19 +106,22 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
   if (!match || (request.method !== 'GET' && request.method !== 'POST')) return notFound('en');
   const [, typed, typedSub = ''] = match;
   const slug = typed.toLowerCase();
-  const sub = typedSub.toLowerCase();
+  const sub = typedSub.endsWith('/') && typedSub !== '/' ? typedSub.slice(0, -1) : typedSub;
+  const earlyLang = langOf(url, null);
+  const knownSub = sub === '' || sub === '/request' || sub === '/done' || sub === '/manage'
+    || /^\/manage\/[A-Za-z0-9_-]{43}(?:\/(?:cancel|reschedule))?$/.test(sub);
+  if (!knownSub) return notFound(earlyLang);
 
   /* Everything before resolvePublicSlug costs no database. The sites deploy
      shares the production Hyperdrive pool with the main API, so the switch,
      the brakes and the body guards all answer from here. */
-  const earlyLang = langOf(url, null);
   if (env.APPS_ENABLED !== 'true') return notFound(earlyLang);
   // 307 like an old name's redirect, so a form post stays a post.
   if (typed !== slug || typedSub !== sub) return redirect(`/b/${slug}${sub}${url.search}`, 307);
   const ip = clientIp(request);
   if (env.SITES_BURST && !(await env.SITES_BURST.limit({ key: `site:${ip}` })).success) return plain('busy', earlyLang, 429);
   let form: URLSearchParams | null = null;
-  if (sub === '/request' && request.method === 'POST') {
+  if (request.method === 'POST') {
     const read = await readForm(request, earlyLang);
     if (read instanceof Response) return read;
     form = read;
@@ -128,6 +137,82 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
   if (!info) return notFound(earlyLang);
   const lang = langOf(url, info);
   const base = { slug, lang, businessName: info.businessName, location: info.settings.location };
+
+  const manageMatch = sub.match(/^\/manage\/([A-Za-z0-9_-]{43})(?:\/(cancel|reschedule))?$/);
+  const sameOriginPost = () => request.headers.get('Origin') === origin;
+
+  if (sub === '/manage') {
+    const reference = (form?.get('reference') ?? url.searchParams.get('ref') ?? '').trim().toUpperCase();
+    if (request.method === 'GET') return page(manageLoginPage({ ...base, reference, error: false }));
+    if (!form || !sameOriginPost()) return notFound(lang);
+    const session = await beginCustomerSession(env, businessId, reference, form.get('phone') ?? '', now);
+    if (!session) return page(manageLoginPage({ ...base, reference, error: true }), 400);
+    return redirect(`/b/${slug}/manage/${session.token}?lang=${lang}`, 303);
+  }
+
+  if (manageMatch) {
+    const [, token, action] = manageMatch;
+    if (!validCustomerToken(token)) return notFound(lang);
+    const booking = await loadManagedBooking(env, businessId, token, now);
+    if (!booking) return page(manageLoginPage({ ...base, reference: '', error: false, expired: true }), 401);
+    if (!action && request.method === 'GET') {
+      const notice = url.searchParams.get('notice');
+      return page(managePage({ ...base, token, booking,
+        confirmCancel: url.searchParams.get('confirm') === 'cancel',
+        notice: notice === 'cancelled' || notice === 'rescheduled' ? notice : undefined,
+        now,
+      }));
+    }
+    if (action === 'cancel' && request.method === 'POST') {
+      if (!form || !sameOriginPost()) return notFound(lang);
+      const result = await cancelByCustomer(env, businessId, token, now);
+      if (result.kind === 'not_found') return page(customerMessagePage({ ...base, kind: 'expired' }), 401);
+      if (result.kind === 'not_changeable' || result.kind === 'unavailable' || result.kind === 'taken') {
+        return page(customerMessagePage({ ...base, kind: 'unavailable' }), 409);
+      }
+      return redirect(`/b/${slug}/manage/${token}?notice=cancelled&lang=${lang}`, 303);
+    }
+    if (action === 'reschedule') {
+      if ((booking.status !== 'pending' && booking.status !== 'confirmed') || booking.startsAt.getTime() <= now.getTime()) {
+        return page(managePage({ ...base, token, booking, now }));
+      }
+      if (!info.open) return page(customerMessagePage({ ...base, kind: 'unavailable' }), 409);
+      if (request.method === 'POST') {
+        if (!form || !sameOriginPost()) return notFound(lang);
+        const startsAt = new Date(form.get('start') ?? '');
+        const result = await rescheduleByCustomer(env, businessId, token, startsAt, now);
+        if (result.kind === 'not_found') return page(customerMessagePage({ ...base, kind: 'expired' }), 401);
+        if (result.kind === 'not_changeable' || result.kind === 'unavailable') {
+          return page(customerMessagePage({ ...base, kind: 'unavailable' }), 409);
+        }
+        if (result.kind === 'taken') {
+          return redirect(`/b/${slug}/manage/${token}/reschedule?notice=taken&lang=${lang}`, 303);
+        }
+        return redirect(`/b/${slug}/manage/${token}?notice=rescheduled&lang=${lang}`, 303);
+      }
+      const asked = url.searchParams.get('date');
+      const hasAskedDate = Boolean(asked && isDate(asked));
+      const from = hasAskedDate ? asked! : myDate(now);
+      let times = await loadOpenTimes(env, businessId, booking.serviceId, from, DAYS_SHOWN, now, booking.id);
+      if (!times) return page(customerMessagePage({ ...base, kind: 'unavailable' }), 409);
+      let selected = hasAskedDate ? from : times.days.find((day) => day.slots.length > 0)?.date ?? from;
+      if (times.days.every((day) => day.slots.length === 0) && !hasAskedDate) {
+        const horizon = await loadOpenTimes(env, businessId, booking.serviceId, from, LOOKAHEAD_DAYS, now, booking.id);
+        const nextIndex = horizon?.days.findIndex((day) => day.slots.length > 0) ?? -1;
+        if (horizon && nextIndex >= 0) {
+          selected = horizon.days[nextIndex].date;
+          times = { ...horizon, days: horizon.days.slice(nextIndex, nextIndex + DAYS_SHOWN) };
+        }
+      }
+      const selectedStart = url.searchParams.get('start');
+      const parsedStart = selectedStart ? new Date(selectedStart) : null;
+      return page(reschedulePage({ ...base, token, booking, days: times.days, selected,
+        selectedStart: parsedStart && !Number.isNaN(parsedStart.getTime()) ? parsedStart : null,
+        notice: url.searchParams.get('notice') === 'taken',
+      }));
+    }
+    return notFound(lang);
+  }
 
   if (sub === '/done') {
     const reference = url.searchParams.get('ref') ?? '';
@@ -155,7 +240,7 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
     }), status);
   }
 
-  if (form) {
+  if (form && sub === '/request') {
     const parsed = parseRequestForm(form);
     const values = {
       name: form.get('name') ?? '', phone: form.get('phone') ?? '',

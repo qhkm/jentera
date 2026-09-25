@@ -4,6 +4,7 @@ import { GOOGLE_CALENDAR_CONNECTOR } from '../../connectors/google-calendar';
 import { CALENDAR_MAX_ATTEMPTS, calendarPin, sameAccountConnection, type CalendarReason } from './calendar-sync';
 import { bookingMessage, whatsappUrl, type Lang, type MessageKind } from './messages';
 import { addDays, myInstant } from './time';
+import { queueCalendarJob } from './calendar-job';
 
 /* The owner's side of booking requests. Decisions and cancellations lock in
    the common order (the installation, then the service, then the booking)
@@ -116,6 +117,7 @@ export function bookingJson(row: BookingRow, ctx: BookingContext): BookingJson {
       kind, lang: ctx.lang, customerName: row.customer_name, serviceName: row.service_name,
       partySize: row.party_size, startsAt: row.starts_at, reference: row.reference,
       businessName: ctx.businessName, publicUrl: ctx.publicUrl,
+      manageUrl: `${ctx.publicUrl}/manage?ref=${encodeURIComponent(row.reference)}`,
     })) : null,
     createdAt: row.created_at.toISOString(),
   };
@@ -184,22 +186,6 @@ async function lockForChange(tx: postgres.TransactionSql, businessId: string, id
   const [row] = await tx<BookingRow[]>`select ${tx(COLUMNS)} from booking
     where business_id = ${businessId} and id = ${id} for update`;
   return row ?? null;
-}
-
-/** Record the Calendar state a booking should reach. A new revision tells a
-    running executor its work is stale; a live lease is left alone. */
-export async function queueCalendarJob(
-  tx: postgres.TransactionSql,
-  businessId: string,
-  bookingId: string,
-  desired: 'present' | 'absent',
-  now: Date,
-): Promise<void> {
-  await tx`insert into booking_calendar_job (business_id, booking_id, desired, revision, attempts, next_attempt_at, updated_at)
-    values (${businessId}, ${bookingId}, ${desired}, 1, 0, ${now}, ${now})
-    on conflict (business_id, booking_id) do update
-      set desired = excluded.desired, revision = booking_calendar_job.revision + 1, attempts = 0,
-          next_attempt_at = excluded.next_attempt_at, last_error = null, updated_at = excluded.updated_at`;
 }
 
 export async function decideBooking(

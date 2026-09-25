@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { donePage, escapeHtml, formPage, messagePage, page, redirect, servicesPage, timesPage } from '../src/sites/render';
+import {
+  donePage, escapeHtml, formPage, manageLoginPage, managePage, messagePage, page, redirect,
+  reschedulePage, servicesPage, timesPage,
+} from '../src/sites/render';
 
 const base = { slug: 'seido', lang: 'en' as const, businessName: 'SEIDO <script>alert(1)</script>', location: '12 Jalan <Central>' };
 const service = { id: '11111111-1111-4111-8111-111111111112', name: 'Cupping <b>class</b>', description: 'A calm <strong>recovery</strong> session.', durationMinutes: 60, capacity: 2, priceLabel: 'RM45 & up', hours: [] };
@@ -132,6 +135,7 @@ describe('pages', () => {
     const done = donePage({ ...base, reference: 'K7Q2MP' });
     expect(done).toContain('K7Q2MP');
     expect(done).toContain('will confirm on WhatsApp.');
+    expect(done).toContain('/b/seido/manage?ref=K7Q2MP&amp;lang=en');
     expect(messagePage({ ...base, kind: 'unavailable' })).toContain('Not taking bookings right now');
     expect(messagePage({ slug: null, lang: 'en', businessName: null, kind: 'not_found' })).toContain('Page not found');
     const unreadable = messagePage({ slug: null, lang: 'en', businessName: null, kind: 'bad_request' });
@@ -141,5 +145,23 @@ describe('pages', () => {
     expect(unreadableBm).toContain('Sila mulakan semula');
     expect(unreadableBm).toContain('Borang ini tidak dapat dibaca. Kembali dan cuba lagi.');
     expect(messagePage({ slug: null, lang: 'en', businessName: null, kind: 'busy' })).toContain('Please try again shortly');
+  });
+
+  it('renders private management, cancellation confirmation, and rescheduling without exposing a phone number', () => {
+    const token = 'a'.repeat(43);
+    const booking = { id: 'b', reference: 'K7Q2MP', serviceId: service.id, serviceName: 'Cupping class',
+      startsAt: new Date('2026-10-06T02:00:00Z'), endsAt: new Date('2026-10-06T03:00:00Z'), partySize: 2,
+      customerName: 'Aisyah', status: 'confirmed' as const, customerCancelledAt: null };
+    const login = manageLoginPage({ ...base, reference: 'K7Q2MP', error: true });
+    expect(login).toContain('Continue securely');
+    expect(login).toContain('Those details do not match');
+    const manage = managePage({ ...base, token, booking, confirmCancel: true });
+    expect(manage).toContain('Cancel this booking?');
+    expect(manage).toContain(`/manage/${token}/cancel`);
+    expect(manage).not.toContain('60123456789');
+    const reschedule = reschedulePage({ ...base, token, booking, selected: '2026-10-06', selectedStart: booking.startsAt,
+      days: [{ date: '2026-10-06', slots: [{ startsAt: booking.startsAt, endsAt: booking.endsAt, remaining: 1 }] }] });
+    expect(reschedule).toContain('Request this new time');
+    expect(reschedule).toContain('name="start"');
   });
 });

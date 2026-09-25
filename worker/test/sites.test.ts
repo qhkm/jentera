@@ -60,7 +60,9 @@ function get(path: string, e = env()) {
 function post(fields: Record<string, string>, e = env(), fetchImpl?: typeof fetch, path = '/b/seido/request?lang=en') {
   const body = new URLSearchParams(fields);
   const request = new Request(`https://sites.test${path}`, {
-    method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'CF-Connecting-IP': '203.0.113.9' },
+    method: 'POST', body, headers: {
+      'Content-Type': 'application/x-www-form-urlencoded', 'CF-Connecting-IP': '203.0.113.9', Origin: 'https://sites.test',
+    },
   });
   return handleSites(request, e, { now: () => NOW, fetchImpl });
 }
@@ -148,6 +150,43 @@ describe('sites: pages', () => {
     expect(html).toContain('<html lang="ms">');
     expect(html).toContain('10.00 pagi');
     expect(html).toContain('lang=bm');
+  });
+
+  it('verifies a customer, reschedules atomically, and then cancels the new request', async () => {
+    const sent = await post(form());
+    const receipt = new URL(sent.headers.get('Location')!, 'https://sites.test');
+    const reference = receipt.searchParams.get('ref')!;
+    const entry = await get(`/b/seido/manage?ref=${reference}&lang=en`);
+    expect(await entry.text()).toContain('Find your booking');
+
+    const wrong = await post({ reference, phone: '0199999999' }, env(), undefined, '/b/seido/manage?lang=en');
+    expect(wrong.status).toBe(400);
+    expect(await wrong.text()).toContain('Those details do not match');
+    const verified = await post({ reference, phone: '012-345 6789' }, env(), undefined, '/b/seido/manage?lang=en');
+    expect(verified.status).toBe(303);
+    const privatePath = verified.headers.get('Location')!;
+    expect(privatePath).toMatch(/^\/b\/seido\/manage\/[A-Za-z0-9_-]{43}\?lang=en$/);
+    expect(await (await get(privatePath)).text()).toContain('Awaiting confirmation');
+
+    const reschedulePath = `${privatePath.split('?')[0]}/reschedule?date=2026-10-06&lang=en`;
+    const choices = await get(reschedulePath);
+    expect(await choices.text()).toContain('11:00 am');
+    const changed = await post({ start: '2026-10-06T03:00:00.000Z' }, env(), undefined, reschedulePath);
+    expect(changed.status).toBe(303);
+    expect(changed.headers.get('Location')).toContain('notice=rescheduled');
+    expect(await (await get(changed.headers.get('Location')!)).text()).toContain('New time requested');
+
+    const cancelPath = `${privatePath.split('?')[0]}/cancel?lang=en`;
+    const cancelled = await post({}, env(), undefined, cancelPath);
+    expect(cancelled.status).toBe(303);
+    expect(cancelled.headers.get('Location')).toContain('notice=cancelled');
+    expect(await (await get(cancelled.headers.get('Location')!)).text()).toContain('Booking cancelled');
+    const statuses = await asOwner((sql) => sql<{ status: string; starts_at: Date }[]>`
+      select status, starts_at from booking order by starts_at`);
+    expect(statuses.map((row) => [row.starts_at.toISOString(), row.status])).toEqual([
+      ['2026-10-06T02:00:00.000Z', 'cancelled'],
+      ['2026-10-06T03:00:00.000Z', 'cancelled'],
+    ]);
   });
 
   it('opens on the nearest date with a time instead of an empty today', async () => {
