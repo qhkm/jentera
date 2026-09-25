@@ -81,6 +81,9 @@ export interface MeResponse {
   /** Opaque account id from the session; scopes per-browser state such as
       Ask history so two accounts sharing a browser never see each other's. */
   userId?: string;
+  /** The session's business; null on a first sign-in, before one exists.
+      Every query cache key starts with it (lib/query/keys.ts). */
+  businessId?: string | null;
 }
 
 /** No business yet — first sign-in, before the local state is migrated. */
@@ -250,6 +253,10 @@ export class RemoteRepository implements Repository {
     };
   }
 
+  /** The business `createBusiness` made on this page, for a first sign-in
+      whose /api/me answered before there was one. */
+  createdBusinessId: string | null = null;
+
   /** Create the business this account will own. Not on the interface —
       the cutover calls it once, before the first load can succeed. */
   async createBusiness(p: {
@@ -263,6 +270,7 @@ export class RemoteRepository implements Repository {
       method: 'POST',
       body: JSON.stringify(p),
     });
+    this.createdBusinessId = businessId;
     return businessId;
   }
 
