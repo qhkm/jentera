@@ -188,7 +188,7 @@ describe('a booking action', () => {
 
     await act(async () => { await result.current.action.mutateAsync({ id: BOOKING_ID, action: 'confirm' }); });
 
-    // The action resolved even though onSettled asked for the apps list
+    // The action resolved even though onSuccess asked for the apps list
     // again and that mounted observer's read is still in flight.
     expect(result.current.appsList.fetchStatus).toBe('fetching');
     resolveAppsList({ apps: [], available: ['bookings'] });

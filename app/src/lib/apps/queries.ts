@@ -141,8 +141,12 @@ export function runBookingAction(api: AppsApi, { id, action }: BookingActionVars
     cancelled before the request goes and again when the answer arrives, so
     a read that began before the decision cannot land after it; the answer
     is written into the booking's query and every list that holds it; then
-    the lists and the apps list are read again. Never retried: a lost answer
-    means re-read and show the truth (`rereadBooking`), never send twice.
+    the lists and the apps list are read again, without waiting for them.
+    Never retried: a lost answer means re-read and show the truth
+    (`rereadBooking`), never send twice. On a failure nothing is read again
+    here: the caller re-reads the booking and only then refreshes, since a
+    fresh Needs you scan landing first would drop a card someone else just
+    decided before the truth about it arrives.
     Each call is its own mutation, so two bookings can be acted on at once. */
 export function useBookingAction(api: AppsApi) {
   const client = useQueryClient();
@@ -154,8 +158,8 @@ export function useBookingAction(api: AppsApi) {
     onSuccess: async (result, vars) => {
       await cancelBookingReads(client, businessId, vars.id);
       writeBooking(client, businessId, result.booking);
+      void refreshApps(client, businessId);
     },
-    onSettled: () => { void refreshApps(client, businessId); },
     retry: false,
   });
 }

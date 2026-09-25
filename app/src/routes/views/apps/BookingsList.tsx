@@ -51,6 +51,10 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
   /** Bookings confirmed, declined or cancelled here, for the window they
       were decided in (`scope`). Choosing another window starts afresh. */
   const [decided, setDecided] = useState<{ scope: string; ids: string[] }>({ scope: '', ids: [] });
+  const forgetDecided = () => setDecided({ scope: '', ids: [] });
+  /** Bookings whose action failed and that are being read again. Still busy:
+      the action has settled, but a second tap now could send it twice. */
+  const [recovering, setRecovering] = useState<ReadonlySet<string>>(() => new Set());
 
   /* Needs you when requests wait, otherwise Today — decided once, so
      confirming the last request does not pull the view away from it. Also
@@ -76,14 +80,19 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
     ...bookingWindowQuery(api, businessId, range.from, range.days),
     enabled: chosen !== null && !needs,
   });
-  const list: Booking[] | null = needs ? apps.pending : windowRead.data ?? null;
+  /* Nothing is shown before the default filter is decided: until then the
+     window query above is Today's, and its cache is not what will open. */
+  const list: Booking[] | null = chosen === null ? null : needs ? apps.pending : windowRead.data ?? null;
   const listUpdatedAt = needs
     ? client.getQueryState(keys.pendingBookings(businessId))?.dataUpdatedAt ?? 0
     : windowRead.dataUpdatedAt;
 
   /* Each booking decided here, and each whose Calendar is syncing, is
      watched through its own query: the action's answer and later polls land
-     there. Seeded from the list, so watching starts without a request. */
+     there. Seeded from the list, so watching starts without a request. A
+     booking decided here is drawn from that query alone, so it is also read
+     again when the owner comes back to the app: a change made elsewhere
+     since then reaches the card. */
   const syncing = (list ?? []).filter((booking) => booking.calendar.status === 'pending').map((booking) => booking.id);
   const watched = [...new Set([...kept, ...syncing])].sort();
   const reads: UseQueryOptions<Booking, Error, Booking, BookingKey>[] = watched.map((id) => {
@@ -94,7 +103,7 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
       initialDataUpdatedAt: row ? listUpdatedAt : undefined,
       refetchInterval: pollWhileSyncing,
       refetchIntervalInBackground: false,
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: kept.has(id),
     };
   });
   const ownReads = useQueries({ queries: reads });
@@ -121,16 +130,17 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
     : null;
 
   /* A read in flight after a failure shows the loading state again. */
-  const failed = needs
+  const failed = chosen !== null && (needs
     ? apps.error && apps.pending === null && !apps.loading
-    : windowRead.isError && windowRead.data === undefined && !windowRead.isFetching;
+    : windowRead.isError && windowRead.data === undefined && !windowRead.isFetching);
 
-  /* Busy per booking: whichever actions are in flight right now. */
+  /* Busy per booking: whichever actions are in flight right now, and any
+     being read again after a failure. */
   const busyIds = useMutationState({
     filters: { mutationKey: mutationKeys.bookingAction(businessId), status: 'pending' },
     select: (mutation) => (mutation.state.variables as BookingActionVars | undefined)?.id ?? '',
   });
-  const busy = new Set(busyIds);
+  const busy = new Set([...busyIds, ...recovering]);
 
   async function act(booking: Booking, kind: BookingAction) {
     if (kind === 'cancel' && !window.confirm(t('bookings.cancel.confirm', { name: booking.customerName }))) return;
@@ -166,6 +176,7 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
       const key = actionErrorKey(error);
       /* Someone else decided, or the answer was lost: show the booking as
          the server has it now. Never send the action again. */
+      setRecovering((current) => new Set(current).add(booking.id));
       try {
         await rereadBooking(client, api, businessId, booking.id);
         keep();
@@ -174,6 +185,16 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
         /* The re-read failed too — do not claim to be showing the booking
            "as it stands" when we could not confirm what that is. */
         setMessages((current) => ({ ...current, [booking.id]: unconfirmedErrorKey(key) }));
+      } finally {
+        setRecovering((current) => {
+          const next = new Set(current);
+          next.delete(booking.id);
+          return next;
+        });
+        /* The lists are read again only now, after the booking itself: a
+           fresh Needs you scan landing first would drop a card someone else
+           just decided before the truth about it arrives. */
+        void apps.refresh();
       }
     }
   }
@@ -197,12 +218,17 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
   return <div className="bookings-list">
     <div className="bookings-filters" role="group" aria-label={t('bookings.filters')}>
       {(['needs', 'today', 'upcoming'] as const).map((option) => <Chip key={option} active={filter === option} aria-pressed={filter === option}
-        onClick={() => { setChosen(option); setOffset(0); }}>
+        onClick={() => { if (option !== filter || offset !== 0) forgetDecided(); setChosen(option); setOffset(0); }}>
         {t(`bookings.filter.${option}`)}{option === 'needs' && waiting > 0 ? ` (${waiting})` : ''}
       </Chip>)}
       <label className="bookings-date">{t('bookings.date.pick')}
         <input className="input" type="date" value={date}
-          onChange={(event) => { if (event.target.value) { setDate(event.target.value); setChosen('date'); } }} />
+          onChange={(event) => {
+            if (!event.target.value) return;
+            if (filter !== 'date' || event.target.value !== date) forgetDecided();
+            setDate(event.target.value);
+            setChosen('date');
+          }} />
       </label>
     </div>
     {focused && <section className="bookings-focused" aria-labelledby="bookings-focused-title">
@@ -223,10 +249,10 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
       : <div className="bookings-cards">{shown.map(card)}</div>)}
     {filter === 'upcoming' && <div className="bookings-window">
       <Button variant="ghost" disabled={offset === UPCOMING_OFFSETS[0]}
-        onClick={() => setOffset((value) => UPCOMING_OFFSETS[Math.max(0, UPCOMING_OFFSETS.indexOf(value) - 1)])}>{t('bookings.window.earlier')}</Button>
+        onClick={() => { forgetDecided(); setOffset((value) => UPCOMING_OFFSETS[Math.max(0, UPCOMING_OFFSETS.indexOf(value) - 1)]); }}>{t('bookings.window.earlier')}</Button>
       <span>{t('bookings.window.range', { from: dayTitle(addDays(today, offset)), to: dayTitle(addDays(today, offset + WINDOW_DAYS - 1)) })}</span>
       <Button variant="ghost" disabled={offset === UPCOMING_OFFSETS[UPCOMING_OFFSETS.length - 1]}
-        onClick={() => setOffset((value) => UPCOMING_OFFSETS[Math.min(UPCOMING_OFFSETS.length - 1, UPCOMING_OFFSETS.indexOf(value) + 1)])}>{t('bookings.window.later')}</Button>
+        onClick={() => { forgetDecided(); setOffset((value) => UPCOMING_OFFSETS[Math.min(UPCOMING_OFFSETS.length - 1, UPCOMING_OFFSETS.indexOf(value) + 1)]); }}>{t('bookings.window.later')}</Button>
     </div>}
   </div>;
 }
