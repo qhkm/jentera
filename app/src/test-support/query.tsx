@@ -47,14 +47,28 @@ export async function renderWithQuery(ui: ReactElement, options: RenderWithQuery
   return { ...view, client };
 }
 
-/** The owner comes back to the app after the 30 s window: every cached query
-    is past it, and the browser fires visibilitychange. It bubbles to window,
-    as the HTML spec says, which is where the query cache listens; the
-    non-bubbling Event older tests dispatch on document never reaches it. */
+/* The browser shows the page again and fires visibilitychange. It bubbles
+   to window, as the HTML spec says, which is where the query cache listens;
+   the non-bubbling Event older tests dispatch on document never reaches it. */
+function showPage(): void {
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+  document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
+}
+
+/** The owner comes back to the app, and nothing else happens: only what is
+    past its 30 s is read again. Pair it with a faked Date to say how long
+    they were away. */
+export async function focusApp(): Promise<void> {
+  await act(async () => { showPage(); });
+}
+
+/** The owner comes back to the app after the 30 s window. It forces every
+    cached query stale first (it invalidates them all), then shows the page,
+    so everything on screen is read again whatever its age: a test using it
+    cannot catch a `staleTime` regression. Use `focusApp` for that. */
 export async function returnToApp(client: QueryClient): Promise<void> {
   await act(async () => {
     await client.invalidateQueries({ refetchType: 'none' });
-    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
-    document.dispatchEvent(new Event('visibilitychange', { bubbles: true }));
+    showPage();
   });
 }

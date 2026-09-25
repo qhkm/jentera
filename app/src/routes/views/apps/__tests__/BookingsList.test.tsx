@@ -9,7 +9,7 @@ import { AppsError } from '@/lib/apps/api';
 import { BOOKING_ID, bookingFixture, fakeAppsApi } from '@/lib/apps/__tests__/fixtures';
 import type { Booking, BookingsQuery } from '@/lib/apps/types';
 import { createQueryClient } from '@/lib/query/client';
-import { renderWithQuery, returnToApp } from '@/test-support/query';
+import { focusApp, renderWithQuery, returnToApp } from '@/test-support/query';
 
 const NOW = new Date('2026-10-05T00:00:00Z');   // Monday 08:00 in Malaysia
 const WA = 'https://wa.me/60123456789?text=Hi';
@@ -569,6 +569,25 @@ describe('BookingsList', () => {
     expect(await screen.findByRole('article', { name: 'Aisyah' })).toBeInTheDocument();
     expect(api.list).toHaveBeenCalledTimes(1);
     expect(api.bookings).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads nothing again when the owner comes back inside 30 s, and what is on screen once past it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const confirmed = bookingFixture({ status: 'confirmed' });
+    const api = fakeAppsApi({ list: installed(0), bookings: serve([], [confirmed]), booking: vi.fn(async () => confirmed) });
+    await mount(api, BOOKING_ID);
+    await screen.findByRole('region', { name: 'From your notification' });
+    await waitFor(() => expect(api.bookings).toHaveBeenCalledTimes(1));
+    // The apps list, Today and the notified booking.
+    const requests = () => api.list.mock.calls.length + api.bookings.mock.calls.length + api.booking.mock.calls.length;
+    expect(requests()).toBe(3);
+    vi.setSystemTime(new Date(NOW.getTime() + 29_000));
+    await focusApp();
+    expect(requests()).toBe(3);
+    vi.setSystemTime(new Date(NOW.getTime() + 31_000));
+    await focusApp();
+    await waitFor(() => expect(requests()).toBe(6));
   });
 
   it('never sends a confirm twice, and shows the booking as it stands', async () => {
