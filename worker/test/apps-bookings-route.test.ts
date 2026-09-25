@@ -169,6 +169,12 @@ describe('listing bookings', () => {
     expect((await call('GET', '/api/apps/bookings/bookings?days=91', ownerA)).status).toBe(400);
   });
 
+  it('says where its time went, for the owner looking at their own request', async () => {
+    const res = await call('GET', '/api/apps/bookings/bookings?days=1', ownerA);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Server-Timing')).toMatch(/^auth;dur=\d+, route;dur=\d+$/);
+  });
+
   it('refuses a bad window and hides another business', async () => {
     expect((await call('GET', '/api/apps/bookings/bookings?from=2026-02-30', ownerA)).status).toBe(400);
     expect((await call('GET', '/api/apps/bookings/bookings?from=2026-09-27&days=32', ownerA)).status).toBe(400);
