@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
@@ -15,6 +15,7 @@ import { AppsProvider } from '@/lib/apps/useApps';
 import { bookingFixture, fakeAppsApi } from '@/lib/apps/__tests__/fixtures';
 import { AppsError } from '@/lib/apps/api';
 import type { AppsApi, BookingsQuery } from '@/lib/apps/types';
+import { renderWithQuery } from '@/test-support/query';
 
 const WA = 'https://wa.me/60123456789?text=Hi';
 const installed = (pending: number, accepting = true) => vi.fn(async () => ({
@@ -36,13 +37,12 @@ async function mount(api: AppsApi | null, options: { activityFails?: boolean } =
     : async () => ({ counters: { handled: 0, needsYou: 0, minutesSaved: 0, thisWeek: 0, connections: 0 }, work: [] });
   const onNavigate = vi.fn();
   const onOpenApp = vi.fn();
-  render(<MemoryRouter><SignedInProvider value account="home-apps-test"><RepositoryProvider repository={repo}>
+  // The repository and the apps list load on microtasks; renderWithQuery flushes them inside act.
+  await renderWithQuery(<MemoryRouter><SignedInProvider value account="home-apps-test"><RepositoryProvider repository={repo}>
     <I18nProvider><ToastProvider><ActivityProvider><AppsProvider api={api}>
       <Harness onNavigate={onNavigate} onOpenApp={onOpenApp} />
     </AppsProvider></ActivityProvider></ToastProvider></I18nProvider>
   </RepositoryProvider></SignedInProvider></MemoryRouter>);
-  // The repository and the apps list load on microtasks; flush them inside act.
-  await act(async () => {});
   return { onNavigate, onOpenApp, user: userEvent.setup() };
 }
 

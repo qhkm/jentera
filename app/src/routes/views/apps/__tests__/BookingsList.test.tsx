@@ -1,14 +1,14 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { QueryClient } from '@tanstack/react-query';
 import BookingsList from '../BookingsList';
-import { I18nProvider } from '@/i18n/I18nProvider';
-import { RepositoryProvider } from '@/lib/repo/context';
 import { LocalRepository } from '@/lib/repo/local';
 import { AppsProvider } from '@/lib/apps/useApps';
 import { AppsError } from '@/lib/apps/api';
 import { BOOKING_ID, bookingFixture, fakeAppsApi } from '@/lib/apps/__tests__/fixtures';
 import type { Booking, BookingsQuery } from '@/lib/apps/types';
+import { renderWithQuery } from '@/test-support/query';
 
 const NOW = new Date('2026-10-05T00:00:00Z');   // Monday 08:00 in Malaysia
 const WA = 'https://wa.me/60123456789?text=Hi';
@@ -22,21 +22,20 @@ const serve = (pending: Booking[], window: Booking[] = []) =>
   vi.fn(async (query: BookingsQuery) => ({ bookings: query.status === 'pending' ? pending : window, nextCursor: null }));
 
 /* The real I18nProvider calls useSnapshot(), which throws without a
-   RepositoryProvider above it — so every mount needs one, and
-   LocalRepository.load() resolves on a microtask that must be flushed
-   before the first assertion. */
-async function mount(api: ReturnType<typeof fakeAppsApi>, bookingId: string | null = null, options: { delay?: number | null } = {}) {
+   RepositoryProvider above it — so every mount passes a repository, and
+   renderWithQuery flushes LocalRepository.load()'s microtask before the
+   first assertion. Pass `client` to mount again over the same cache. */
+async function mount(api: ReturnType<typeof fakeAppsApi>, bookingId: string | null = null, options: { delay?: number | null; client?: QueryClient } = {}) {
   const onConnectCalendar = vi.fn();
   /* `delay: null` when a test needs to click under fake timers — userEvent's
      default pacing waits on real setTimeout, which fake timers never fire
      unless explicitly advanced, and this file only fakes time to drive this
      component's own poll. */
   const user = userEvent.setup(options.delay !== undefined ? { delay: options.delay } : undefined);
-  render(<RepositoryProvider repository={new LocalRepository()}><I18nProvider><AppsProvider api={api}>
+  const view = await renderWithQuery(<AppsProvider api={api}>
     <BookingsList api={api} bookingId={bookingId} onConnectCalendar={onConnectCalendar} now={() => NOW} />
-  </AppsProvider></I18nProvider></RepositoryProvider>);
-  await act(async () => {});
-  return { onConnectCalendar, user };
+  </AppsProvider>, { repository: new LocalRepository(), client: options.client });
+  return { onConnectCalendar, user, client: view.client, unmount: view.unmount };
 }
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
@@ -373,11 +372,7 @@ describe('BookingsList', () => {
     const list = vi.fn(() => new Promise<ListResult>((resolve) => { resolveList = resolve; }));
     const bookings = serve([], []);
     const api = fakeAppsApi({ list, bookings });
-    const onConnectCalendar = vi.fn();
-    render(<RepositoryProvider repository={new LocalRepository()}><I18nProvider><AppsProvider api={api}>
-      <BookingsList api={api} bookingId={null} onConnectCalendar={onConnectCalendar} now={() => NOW} />
-    </AppsProvider></I18nProvider></RepositoryProvider>);
-    await act(async () => {});
+    await mount(api);
     expect(screen.getByRole('status')).toBeInTheDocument();
     expect(bookings).not.toHaveBeenCalled();
     // The app must actually be installed for `apps.pending` to resolve at

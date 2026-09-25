@@ -1,25 +1,23 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import type { QueryClient } from '@tanstack/react-query';
 import BookingsApp from '../BookingsApp';
-import { I18nProvider } from '@/i18n/I18nProvider';
-import { RepositoryProvider } from '@/lib/repo/context';
 import { LocalRepository } from '@/lib/repo/local';
 import { AppsProvider } from '@/lib/apps/useApps';
 import { configFixture, fakeAppsApi } from '@/lib/apps/__tests__/fixtures';
+import { renderWithQuery } from '@/test-support/query';
 
-async function mount(api = fakeAppsApi(), section: string | null = null) {
+async function mount(api = fakeAppsApi(), section: string | null = null, client?: QueryClient) {
   const repo = new LocalRepository();
   await repo.setBizType('restaurant');
   await repo.setBizProfile({ name: 'Kedai Kita', loc: 'Shah Alam' });
   const onSection = vi.fn();
   const onBack = vi.fn();
-  render(<RepositoryProvider repository={repo}><I18nProvider><AppsProvider api={api}>
+  const view = await renderWithQuery(<AppsProvider api={api}>
     <BookingsApp bookingId={null} section={section} onSection={onSection} onBack={onBack} onConnectCalendar={vi.fn()} />
-  </AppsProvider></I18nProvider></RepositoryProvider>);
-  // LocalRepository.load() resolves on a microtask; flush it inside act.
-  await act(async () => {});
-  return { api, onSection, onBack, user: userEvent.setup() };
+  </AppsProvider>, { repository: repo, client });
+  return { api, onSection, onBack, user: userEvent.setup(), client: view.client, unmount: view.unmount };
 }
 
 describe('BookingsApp', () => {
