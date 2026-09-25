@@ -684,6 +684,22 @@ It connects as `neondb_owner` on purpose — RLS scopes every tenant table to
 session sets `default_transaction_read_only`, so the owner connection cannot
 write; that's a server-side guard, not a regex over the query.
 
+### Migrations in production
+
+Nothing applies `worker/migrations/` to production; each migration is run by
+hand, and one can be skipped while its code ships. `045_native_login_handoff.sql`
+was, and from about 15 to 25 September every magic link and every
+password-signup verification answered an empty 500 — Google sign-in hid it.
+`worker/scripts/check-migrations-applied.mjs` now compares every table,
+column and function the migrations create (following later drops and
+renames) with production, read-only, and refuses the deploy on a gap. It runs
+in `predeploy`, in `deploy:sites`, and in `ship-runtime.sh` before its
+`wrangler deploy` (which skips `predeploy`). It fails closed when production
+cannot be reached — an expired `neonctl` login is the usual cause; run
+`neonctl auth` — and `AISAR_SKIP_MIGRATION_CHECK=1` skips it, loudly, for an
+emergency. It does not see indexes, policies or constraints. Apply the
+migration first, then deploy the code that needs it.
+
 ### Running the worker locally
 
 ```bash
