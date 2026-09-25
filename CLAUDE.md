@@ -112,6 +112,21 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
   renders a `button`.
 - The old static engine wrote work-done indices as **strings**; the app reads either format and writes strings, so existing users' approvals survive the cutover.
 - **Playbook figures are for the anonymous demo only.** Every playbook carries plausible counters, work items and customer conversations; they are the same for every business of a type and move for nobody. Shown to a signed-in owner they are lies, and they were shipped as lies three times: a "4 connections" badge for an account with one, a dashboard that read 82% handled, and an inbox naming customers who do not exist. `useActivity` answers `real` / `pending` / `demo` — branch on `demo` before borrowing anything, and treat `pending` as the real layout with nothing in it. A boolean is what caused this: "not real yet" and "show the demo" are different answers.
+- **Server data on the Bookings path goes through one query cache**
+  (`app/src/lib/query/`, TanStack Query v5; spec
+  `docs/superpowers/specs/2026-09-25-query-cache-bookings-path-design.md`).
+  Every key starts `['biz', businessId, …]` and is built only in
+  `lib/query/keys.ts`, so one business's data can never draw under another.
+  Writes are mutations that never retry and put the server's answer into the
+  cache (`writeBooking` in `lib/apps/queries.ts`); a lost answer is re-read,
+  never resent. The cache lives in memory for the page, with nothing persisted
+  to the device, and `RepositoryGate` makes it for signed-in pages only: the
+  demo gets none. Tests mount through `renderWithQuery`
+  (`src/test-support/query.tsx`) and say "the owner came back" with
+  `returnToApp(client)`. The cache listens for `visibilitychange` on
+  `window`, and the non-bubbling `new Event('visibilitychange')` older tests
+  dispatch on `document` never reaches it. Activity, Routines, Goals,
+  Connections and shared chats still fetch by hand until phase 2.
 
 ## Native shell (`mobile/`)
 
