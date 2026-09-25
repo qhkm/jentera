@@ -103,9 +103,12 @@ describe('computer readiness', () => {
     const view = mount(async () => ({ runtime: ready, activeWork }), true, vi.fn(), target, openActivity);
     try {
       const user = userEvent.setup();
-      await user.click(await screen.findByRole('button', {
+      const trigger = await screen.findByRole('button', {
         name: `Jentera · Working on · ${activeWork.objective}`,
-      }));
+      });
+      expect(trigger.querySelector('.jentera-mark')).toBeNull();
+      expect(trigger.querySelector('svg')).not.toBeNull();
+      await user.click(trigger);
       const popover = document.querySelector<HTMLElement>('.computer-status-popover')!;
       expect(within(popover).getByText(activeWork.objective)).toBeVisible();
       expect(within(popover).getByText('1 more in progress')).toBeVisible();

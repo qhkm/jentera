@@ -123,7 +123,45 @@
 }
 
 @media (min-width: 1024px) {
-  .dashboard-shell .dashboard-sidebar { width: 200px; }
+  /* The rail should scan like navigation, not read like a second content
+     column. Keep mobile controls untouched, but use a denser desktop rhythm
+     so every destination and the privacy note fit without feeling stacked. */
+  .dashboard-shell .dashboard-sidebar {
+    width: 184px;
+    gap: 10px;
+  }
+  .dashboard-shell .dashboard-profile {
+    min-height: 48px;
+    padding: 6px 8px;
+    gap: 8px;
+  }
+  .dashboard-shell .dashboard-profile-name { font-size: 12.5px; }
+  .dashboard-shell .dashboard-profile-location { font-size: 11px; }
+  .dashboard-shell .dashboard-sidebar-nav { gap: 6px; }
+  .dashboard-shell .dashboard-nav-section + .dashboard-nav-section { padding-top: 6px; }
+  .dashboard-shell .dashboard-nav-section h2 {
+    margin-bottom: 2px;
+    padding-inline: 8px;
+    font-size: 10px;
+  }
+  .dashboard-shell .dashboard-nav-section-items { gap: 0; }
+  .dashboard-shell .dashboard-nav-item {
+    min-height: 38px;
+    padding: 6px 8px;
+    border-radius: 9px;
+  }
+  .dashboard-shell .dashboard-nav-item > span:first-child { gap: 8px; }
+  .dashboard-shell .dashboard-nav-icon {
+    width: 22px;
+    height: 22px;
+  }
+  .dashboard-shell .dashboard-sidebar-note {
+    margin-top: auto;
+    padding: 8px;
+    gap: 7px;
+    font-size: 11px;
+    line-height: 1.35;
+  }
 }
 
 @media (max-width: 700px) {

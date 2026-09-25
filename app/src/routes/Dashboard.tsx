@@ -39,7 +39,6 @@ import SkillsView from './views/SkillsView';
 import GoalsView from './views/GoalsView';
 import AppsView from './views/AppsView';
 import { AppsProvider } from '@/lib/apps/useApps';
-import { AlertsBell } from '@/components/AlertsBell';
 import type { RoutineConfig } from '@/lib/routines/types';
 import { BottomNav } from '@/components/BottomNav';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -235,7 +234,6 @@ export default function Dashboard() {
           <Sparkle size={15} weight="fill" aria-hidden="true" />
           <span>{t('account.earlyMember')}</span>
         </Link>}
-        <AlertsBell unread={notifications.unread} onOpen={() => go('notifications')} />
         <div className="computer-status-header-slot" ref={setComputerStatusTarget} />
       </div>}
       className={`dashboard-shell workspace-shell workspace-current ${isChat ? 'dashboard-chat workspace-chat' : 'workspace-dashboard'}`}

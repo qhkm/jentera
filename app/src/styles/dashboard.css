@@ -838,15 +838,10 @@
 .home-action-bookings { background: linear-gradient(145deg, rgb(244 114 182 / 0.11), transparent 64%), var(--bg-card); }
 .home-action-bookings .home-action-icon { position: relative; background: rgb(244 114 182 / 0.14); color: rgb(244 114 182); }
 .home-action-add { border-style: dashed; background: var(--bg-card); }
-.home-action-count, .workspace-bell-count {
+.home-action-count {
   position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;
   background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; line-height: 20px; text-align: center;
 }
-.workspace-bell {
-  position: relative; display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid var(--rail);
-  border-radius: 12px; background: var(--bg-card); color: var(--text);
-}
-.workspace-bell:hover { background: var(--bg-card-hover); }
 @media (max-width: 640px) {
   .home-actions.home-actions-apps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

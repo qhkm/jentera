@@ -130,7 +130,7 @@ export function ComputerStatus({ onOpenChat, onOpenKnowledge, onOpenActivity, mo
       <button ref={trigger} type="button" className="computer-status-trigger" data-state={activeWork?.status ?? state}
         aria-label={`${title} · ${status}${activeWork ? ` · ${activeWork.objective}` : ''}`}
         aria-expanded={open} aria-controls={open ? panelId : undefined} onClick={() => setOpen(value => !value)}>
-        {activeWork ? <JenteraMark size={22} /> : <Desktop size={18} aria-hidden="true" />}
+        <Desktop size={18} aria-hidden="true" />
         <span className="computer-status-dot" aria-hidden="true" />
       </button>
       {open && <div id={panelId} className={`computer-status-popover ${settingUp ? 'computer-status-setup' : ''} ${activeWork ? 'computer-status-active' : ''}`} role="region" aria-label={title}>
