@@ -49,7 +49,7 @@ From a read-only survey of `app/src` on 2026-09-25:
 ### 1. The cache and how long it lives
 
 - **One `QueryClient` per signed-in page.** `RepositoryGate` creates it only when it chooses `RemoteRepository`, and mounts it with `QueryClientProvider`. The anonymous demo gets no client and does not change.
-- **The cache lives as long as the page.** Signing out already reloads the page. Every query key starts with the business id, `['biz', businessId, …]`, so a later business switch can never show one business's data under another.
+- **The cache lives as long as the page.** Signing out already reloads the page. Every query key starts with the business id, `['biz', businessId, …]`, so a later business switch can never show one business's data under another. The id comes from the signed-in session the gate already holds (`/api/me`'s `businessId`), exposed once through a small hook rather than read per screen.
 - **Defaults:**
   - `staleTime` 30 s: a revisit inside that window shows the cache without a request.
   - `gcTime` 30 min: unused data is dropped after that.
@@ -57,6 +57,7 @@ From a read-only survey of `app/src` on 2026-09-25:
 - **Retries.**
   - A read retries **once**, and only on a failure that can be temporary: `AppsError` with `status === 0` (network), `status >= 500`, or `INVALID_RESPONSE`.
   - A 4xx never retries.
+  - The notifications module throws a plain `Error` with no status, so a notifications read retries once on any failure.
   - **Mutations never retry.** Confirm, decline and cancel keep today's rule: a lost answer means re-read and show the truth, never send twice.
 - **Tests** mount through one helper, `renderWithQuery`: a fresh client per test, `retry: false`, `gcTime: Infinity`, and the existing providers.
 
