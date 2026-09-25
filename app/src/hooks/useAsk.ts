@@ -30,6 +30,7 @@ import { isRunId } from '@/lib/task';
 import type { ReminderDraft } from '@/lib/reminders';
 import { safeTaskProgressLabel } from '@/lib/task-presentation';
 import { automaticAskMode, automaticResponseDepth } from '@/lib/ask-routing';
+import { WAKE_LINE_COUNT, wakeLineIndex } from '@/lib/wake-line';
 
 export interface AskMessage {
   reminderDraft?: ReminderDraft;
@@ -162,7 +163,7 @@ function applyProgress(message: AskMessage, event: AskProgressEvent, t: Translat
   if (event.type === 'status' && event.kind === 'step') {
     message.taskProgressLabel = safeTaskProgressLabel(event.detail);
   }
-  if (['queued', 'waking', 'retrying', 'needs_approval'].includes(event.type)) {
+  if (['queued', 'waking', 'retrying', 'needs_approval'].includes(event.type) || event.kind === 'wake') {
     message.taskProgressLabel = undefined;
   }
   /* The agent's own steps and tool calls read as a list; a
@@ -185,6 +186,14 @@ function applyProgress(message: AskMessage, event: AskProgressEvent, t: Translat
        replace the status bubble with an empty reply. */
     if (!text.trim()) return message;
     return { ...message, text, state: 'streaming', liveStatus: undefined };
+  }
+  /* The workspace is still waking. The line is the owner's language, not
+     the Worker's English detail, and stays one line for the whole run. */
+  if (event.type === 'status' && event.kind === 'wake') {
+    const text = t(`ask.wake.${wakeLineIndex(message.runId ?? message.pendingId ?? '', WAKE_LINE_COUNT)}`);
+    return message.state === 'streaming'
+      ? { ...message, liveStatus: text }
+      : { ...message, text, state: 'waking' };
   }
   /* Once answer text is on screen, a status line must not erase
      it; it rides alongside, so a tool running mid-answer still
