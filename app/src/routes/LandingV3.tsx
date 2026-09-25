@@ -27,6 +27,13 @@ const APP_LOGOS = [
   { name: 'Slack', file: 'slack.svg' },
 ];
 
+const LANDING_NAV = [
+  { href: '#lv3-product', label: 'Product' },
+  { href: '#lv3-team', label: 'Use cases' },
+  { href: '#lv3-how', label: 'How it works' },
+  { href: '#lv3-pricing', label: 'Pricing' },
+] as const;
+
 function Mascot() {
   return <img src="/images/jentera-character-glossy-v1.webp" alt="" className="lv3-mascot" width={512} height={512} />;
 }
@@ -38,11 +45,11 @@ export default function LandingV3() {
     <a href="#lv3-main" className="lv3-skip">Skip to content</a>
     <header className="lv3-header lv3-wrap">
       <Link className="lv3-brand lv3-original-brand" to="/" aria-label="Jentera home"><JenteraMark size={36} /><span>Jentera</span></Link>
-      <nav className="lv3-nav" aria-label="Main navigation"><a href="#lv3-product">Product</a>{PRIMARY_SITELINKS.slice(0, 3).map(link => <Link key={link.href} to={link.href}>{link.label}</Link>)}</nav>
+      <nav className="lv3-nav" aria-label="Main navigation">{LANDING_NAV.map(link => <a key={link.href} href={link.href}>{link.label}</a>)}</nav>
       <div className="lv3-header-actions"><Link className="lv3-login" to="/signin">Log in</Link><Link className="lv3-button" to={launchOffer.href}>Get started <ArrowRight size={15} /></Link></div>
       <button className="lv3-menu-button" ref={menuButton} type="button" aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={menuOpen} aria-controls="lv3-mobile-menu" onClick={() => setMenuOpen(value => !value)}>{menuOpen ? <X size={24} /> : <List size={24} />}</button>
     </header>
-    {menuOpen && <nav className="lv3-mobile-menu" id="lv3-mobile-menu" aria-label="Mobile navigation" onClick={() => setMenuOpen(false)} onKeyDown={event => { if (event.key === 'Escape') { setMenuOpen(false); menuButton.current?.focus(); } }}><a href="#lv3-product">Product</a>{PRIMARY_SITELINKS.map(link => <Link key={link.href} to={link.href}>{link.label}</Link>)}<Link to="/signin">Log in</Link></nav>}
+    {menuOpen && <nav className="lv3-mobile-menu" id="lv3-mobile-menu" aria-label="Mobile navigation" onClick={() => setMenuOpen(false)} onKeyDown={event => { if (event.key === 'Escape') { setMenuOpen(false); menuButton.current?.focus(); } }}>{LANDING_NAV.map(link => <a key={link.href} href={link.href}>{link.label}</a>)}<Link to="/signin">Log in</Link></nav>}
     <main id="lv3-main">
       <section className="lv3-hero" aria-labelledby="lv3-title">
         <div className="lv3-hero-copy lv3-wrap">
@@ -78,7 +85,7 @@ export default function LandingV3() {
         <p className="lv3-capabilities-note">Illustrative previews with example tasks.</p>
       </section>
       <section className="lv3-tools lv3-wrap" id="lv3-tools" aria-labelledby="lv3-tools-title">
-        <span className="lv3-badge">Made for Malaysian businesses</span>
+        <span className="lv3-eyebrow">YOUR EVERYDAY TOOLS</span>
         <h2 id="lv3-tools-title">Works with your everyday tools</h2>
         <p>Your everyday apps, files, and browser-based work—all part of the conversation.</p>
         <div className="lv3-tool-grid lv3-brand-grid">

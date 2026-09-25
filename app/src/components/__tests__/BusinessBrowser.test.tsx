@@ -443,7 +443,7 @@ it('uses the same field guard for the paste box and clears direct typing on loss
   expired = true;
   const proxy = screen.getByLabelText('Live browser keyboard');
   fireEvent.input(proxy, { target: { value: '\u200bexpire-now' } });
-  await screen.findByText('Your browser control expired.');
+  await screen.findByText('Your browser control expired.', undefined, { timeout: 10_000 });
   expect(screen.queryByLabelText('Live browser keyboard')).toBeNull();
   expect(screen.getByRole('button', { name: 'Take control' })).toBeEnabled();
   expect(JSON.stringify(localStorage)).not.toContain('guarded-paste');

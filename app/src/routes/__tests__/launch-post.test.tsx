@@ -20,6 +20,8 @@ describe('Jentera launch post', () => {
     expect(within(navigation).getByRole('link', { name: 'Use cases' })).toHaveAttribute('href', '#lv3-team');
     expect(within(navigation).getByRole('link', { name: 'How it works' })).toHaveAttribute('href', '#lv3-how');
     expect(within(navigation).getByRole('link', { name: 'Pricing' })).toHaveAttribute('href', '#lv3-pricing');
+    expect(screen.queryByText('Made for Malaysian businesses')).toBeNull();
+    expect(screen.getByText('YOUR EVERYDAY TOOLS')).toBeVisible();
     const pricing = screen.getByRole('region', { name: 'Start with one clear plan.' });
     expect(within(pricing).getByText('RM99')).toBeVisible();
     expect(within(pricing).getByText(/Then RM199\/month from month 4/)).toBeVisible();

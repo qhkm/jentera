@@ -290,8 +290,10 @@ describe('workspace navigation', () => {
     const work = (await sidebarQueries()).getByRole('group', { name: 'Work' });
     expect(within(work).getAllByRole('button').map(button => button.textContent?.replace(/\d+$/, ''))).toEqual(['Activity', 'Apps']);
     const mobile = document.querySelector('.dashboard-bottom-nav')!;
-    expect([...mobile.querySelectorAll(':scope > button')].slice(0, 4).map(button => button.textContent))
-      .toEqual(['Home', 'Activity2', 'Chat', 'Apps']);
+    await waitFor(() => {
+      expect([...mobile.querySelectorAll(':scope > button')].slice(0, 4).map(button => button.textContent))
+        .toEqual(['Home', 'Activity2', 'Chat', 'Apps']);
+    });
   });
   it.each([undefined, 2])('keeps Apps hidden without supported discovery: %s', async appsVersion => {
     const apps = fakeAppsApi();
