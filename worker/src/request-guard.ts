@@ -1,4 +1,4 @@
-import { readSessionToken } from './auth';
+import { COOKIE_NAME, readSessionToken } from './auth';
 import type { Env } from './env';
 import { clientIp } from './ratelimit';
 import { ASK_FILE_PATH, INGEST_FILE_PATH, UPLOAD_DOCUMENT_LIMIT } from './routes/runs';
@@ -17,6 +17,28 @@ export const MAX_API_BODY_BYTES = 128 * 1024;
     at most N bytes") instead of the guard's generic "request body too
     large". */
 export const MAX_UPLOAD_BODY_BYTES = UPLOAD_DOCUMENT_LIMIT + 64 * 1024;
+
+/** The workspace origins, as `ALLOWED_ORIGINS` lists them; CORS reads the same list. */
+export function allowedOrigins(env: Pick<Env, 'ALLOWED_ORIGINS'>): string[] {
+  return (env.ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+/* The public booking pages are on book.jentera.ai, the same site as this API,
+   so SameSite=Lax no longer keeps the session cookie off a write sent from
+   them. A browser always names the page a cross-origin write comes from; a
+   write carrying the session cookie from anywhere but the workspace is
+   refused. A bearer token is never attached by a browser on its own, and a
+   request with no Origin is not a browser's. */
+const WRITES = new Set(['POST', 'PUT', 'DELETE']);
+
+function crossSiteCookieWrite(request: Request, env: Env): boolean {
+  if (!WRITES.has(request.method)) return false;
+  const origin = request.headers.get('Origin');
+  if (origin === null || request.headers.get('Authorization') !== null) return false;
+  const cookies = (request.headers.get('Cookie') ?? '').split(';').map((part) => part.trim());
+  if (!cookies.some((part) => part.startsWith(`${COOKIE_NAME}=`))) return false;
+  return !allowedOrigins(env).includes(origin);
+}
 
 function bodyCapFor(method: string, pathname: string): number {
   return method === 'POST' && [INGEST_FILE_PATH, ASK_FILE_PATH].includes(pathname)
@@ -123,6 +145,8 @@ export async function guardApiRequest(
   if (url.pathname.length + url.search.length > 8_192) {
     return response(414, 'request target too long', cors);
   }
+
+  if (crossSiteCookieWrite(request, env)) return response(403, 'request from an unknown page', cors);
 
   const cap = bodyCapFor(request.method, url.pathname);
   const declaredLength = request.headers.get('Content-Length');

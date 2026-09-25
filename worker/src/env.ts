@@ -82,8 +82,8 @@ export interface Env {
      Exact business ids only, like desktop view: an empty list is nobody. */
   APPS_ENABLED?: string;
   APPS_BUSINESS_IDS?: string;
-  /* The public origin of the sites deploy, e.g.
-     https://jentera-sites.qhkmdev90.workers.dev — used to build booking links. */
+  /* The public origin of the sites deploy, https://book.jentera.ai — used to
+     build booking links; the sites deploy redirects every other host to it. */
   SITES_ORIGIN?: string;
   /** Immutable runner + Hermes + browser release identifier. */
   RUNTIME_RELEASE?: string;

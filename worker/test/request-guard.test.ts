@@ -19,6 +19,31 @@ function request(path: string, init: RequestInit = {}): Request {
 }
 
 describe('pre-route API request guard', () => {
+  describe('a signed-in write from a page that is not the workspace', () => {
+    const write = (headers: Record<string, string>, method = 'POST') => {
+      const req = request('/api/state/facts', { method, headers: { 'Content-Type': 'text/plain', ...headers } });
+      return guardApiRequest(req, testEnv(), new URL(req.url), cors);
+    };
+
+    it('is refused before any route runs', async () => {
+      for (const method of ['POST', 'PUT', 'DELETE']) {
+        const response = await write({ Cookie: 'aisar_session=abc', Origin: 'https://book.jentera.ai' }, method);
+        expect(response?.status).toBe(403);
+        expect(response?.headers.get('Cache-Control')).toBe('no-store');
+      }
+      expect((await write({ Cookie: 'x=1; aisar_session=abc', Origin: 'null' }))?.status).toBe(403);
+    });
+
+    it('still passes from the workspace, without a cookie, without an Origin, or as a read', async () => {
+      expect(await write({ Cookie: 'aisar_session=abc', Origin: 'http://localhost:5173' })).toBeNull();
+      expect(await write({ Origin: 'https://book.jentera.ai' })).toBeNull();
+      expect(await write({ Cookie: 'aisar_session=abc' })).toBeNull();
+      expect(await write({ Cookie: 'aisar_session=abc', Origin: 'https://book.jentera.ai', Authorization: 'Bearer token' })).toBeNull();
+      const read = request('/api/state', { headers: { Cookie: 'aisar_session=abc', Origin: 'https://book.jentera.ai' } });
+      expect(await guardApiRequest(read, testEnv(), new URL(read.url), cors)).toBeNull();
+    });
+  });
+
   it('refuses a general burst before route work', async () => {
     const env = testEnv({ API_BURST: { limit: async () => ({ success: false }) } });
     const req = request('/api/state');

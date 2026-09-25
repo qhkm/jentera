@@ -623,7 +623,12 @@ when the two drift. Off the list, every owner and public path answers 404,
 and `/api/me` sends `features.apps` to owners only, so staff never see it.
 
 The public pages are a second deploy of `worker/`, `jentera-sites`
-(`pnpm deploy:sites`), on its own origin: it never reads or sets a cookie,
+(`pnpm deploy:sites`), on its own origin, `book.jentera.ai` (since 25
+September; any other host, including the first `workers.dev` links, gets a
+308 there). That is the same *site* as `api.jentera.ai`, so SameSite=Lax no
+longer keeps the session cookie off a write sent from a booking page:
+`guardApiRequest` refuses a POST, PUT or DELETE that carries the session
+cookie and an `Origin` outside `ALLOWED_ORIGINS`. It never reads or sets a cookie,
 holds no credential secret (only `TURNSTILE_SECRET`), and answers 404
 outside `/b/…`. Its entry is `src/sites/index.ts`, typed against `SitesEnv`,
 and `test/sites-bundle.test.ts` fails if its import graph ever reaches

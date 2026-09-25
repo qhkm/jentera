@@ -119,6 +119,17 @@ describe('sites: pages', () => {
     expect(await asOwner((sql) => sql`select 1 from booking`)).toHaveLength(0);
   });
 
+  it('moves a request on any other host to the public origin, keeping the method and the rest', async () => {
+    const res = await handleSites(new Request('https://jentera-sites.old.test/b/seido?service=x&lang=bm'), env({ HYPERDRIVE: NOWHERE }), { now: () => NOW });
+    expect(res.status).toBe(308);
+    expect(res.headers.get('Location')).toBe('https://sites.test/b/seido?service=x&lang=bm');
+    expectSecurityHeaders(res);
+    const sent = await handleSites(new Request('https://jentera-sites.old.test/b/seido/request?lang=en', { method: 'POST', body: 'a=1',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }), env({ HYPERDRIVE: NOWHERE }), { now: () => NOW });
+    expect(sent.status).toBe(308);
+    expect(sent.headers.get('Location')).toBe('https://sites.test/b/seido/request?lang=en');
+  });
+
   it('sends a link name typed with capitals to its lower-case page, before the database', async () => {
     const res = await get('/b/SEIDO?service=x&lang=bm', env({ HYPERDRIVE: NOWHERE }));
     expect(res.status).toBe(307);

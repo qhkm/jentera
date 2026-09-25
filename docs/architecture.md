@@ -54,7 +54,7 @@ those three choices.
 |---|---|---|---|
 | **Web app** | `app/` | Cloudflare Pages project `aisar-jentera`, serving `jentera.ai` and `jentera.aisar.ai` | `./deploy.sh "msg"` |
 | **Control plane** | `worker/` | Cloudflare Worker `aisar-api`, custom domain `api.jentera.ai` | `wrangler deploy`, or step 4 of `ship-runtime.sh` |
-| **Public pages** | `worker/` (`src/sites/index.ts`, `[env.sites]`) | Cloudflare Worker `jentera-sites`, its own origin (`jentera-sites.qhkmdev90.workers.dev` during the pilot); no cookies, no credential secrets | `pnpm deploy:sites`, which checks the apps flags first |
+| **Public pages** | `worker/` (`src/sites/index.ts`, `[env.sites]`) | Cloudflare Worker `jentera-sites`, its own origin, `book.jentera.ai` (the first `workers.dev` links 308 to it); no cookies, no credential secrets | `pnpm deploy:sites`, which checks the apps flags first |
 | **Agent host** | `runner/` + pinned Hermes | Node + Python on a Fly Sprite, one per business | `worker/scripts/ship-runtime.sh` |
 | **Native shell** | `mobile/` | Capacitor, app id `ai.jentera.app` | Xcode / Gradle, manual |
 | **Credential vault** | not in this repo | Workers `aisar-vault` and `aisar-vault-deposit` | separately |

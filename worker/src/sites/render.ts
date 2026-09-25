@@ -27,7 +27,7 @@ export function page(html: string, status = 200): Response {
 /** 303 after a POST or to send a customer back a step; 307 for a link name
     the business used before, which it may take up again and which must keep
     a POST a POST. */
-export function redirect(location: string, status: 303 | 307): Response {
+export function redirect(location: string, status: 303 | 307 | 308): Response {
   return new Response(null, { status, headers: { Location: location, ...SECURITY_HEADERS } });
 }
 

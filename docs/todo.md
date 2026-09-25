@@ -112,7 +112,6 @@ comparison.
 - DMARC aggregate reports at admin@kitakodventures.com since the flip to `p=quarantine` on 9 Sep.
 - The poc sprite counts against the 10 concurrent-sprite org limit alongside 13 business sprites; decide whether it stays.
 - The installed PWA on a phone keeps the old bundle until its update prompt is accepted; the crowded bottom bar fix from 12 Sep shows only after that.
-- Turnstile on the booking page. The sites deploy checks Turnstile only once `TURNSTILE_SECRET` is set there, and the widget must list the sites hostname. Add `jentera-sites.qhkmdev90.workers.dev` to the widget, then `wrangler secret put TURNSTILE_SECRET --env sites`; do both before `APPS_ENABLED` is true.
 
 ## Deferred product decisions
 

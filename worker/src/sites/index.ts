@@ -77,9 +77,22 @@ async function readForm(request: Request, lang: Lang): Promise<URLSearchParams |
   return new URLSearchParams(text);
 }
 
+function publicOrigin(env: SitesEnv): string | null {
+  try {
+    return env.SITES_ORIGIN ? new URL(env.SITES_ORIGIN).origin : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function handleSites(request: Request, env: SitesEnv, deps: Deps = {}): Promise<Response> {
   const now = deps.now?.() ?? new Date();
   const url = new URL(request.url);
+  /* One public origin. The first links went out on the workers.dev host;
+     every other host answers with a permanent redirect to SITES_ORIGIN,
+     308 so a form post stays a post. */
+  const origin = publicOrigin(env);
+  if (origin && url.origin !== origin) return redirect(`${origin}${url.pathname}${url.search}`, 308);
   const match = url.pathname.match(PATH);
   if (!match || (request.method !== 'GET' && request.method !== 'POST')) return notFound('en');
   const [, typed, typedSub = ''] = match;

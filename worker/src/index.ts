@@ -76,16 +76,12 @@ import {
   type RuntimeQueueMessage,
 } from './runtime/consumer';
 import { sweepRuntimeLiveness } from './runtime/liveness';
-import { guardApiRequest } from './request-guard';
+import { allowedOrigins, guardApiRequest } from './request-guard';
 
 export { RunStream } from './run-stream';
 
 function cors(env: Env, origin: string | null): Record<string, string> {
-  const allowed = (env.ALLOWED_ORIGINS ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const ok = origin && allowed.includes(origin);
+  const ok = origin && allowedOrigins(env).includes(origin);
 
   /* Credentialed requests are strict in two ways the non-credentialed
      case is not: the browser rejects a wildcard origin outright, and it
