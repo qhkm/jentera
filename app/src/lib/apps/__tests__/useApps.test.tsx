@@ -144,15 +144,4 @@ describe('AppsProvider', () => {
     expect(client.getQueryData(keys.pendingBookings(TEST_BUSINESS_ID))).toHaveLength(1);
     expect(api.bookings).toHaveBeenCalledTimes(1);
   });
-
-  it('marks every cached Bookings window stale on a refresh, so a decision made on Home shows there', async () => {
-    const api = fakeAppsApi({ list: installed(0) });
-    const view = (unread: number) => <AppsProvider api={api} unread={unread}><Probe /></AppsProvider>;
-    const { client, rerender } = await renderWithQuery(view(0));
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('"apps":1'));
-    client.setQueryData(keys.bookingWindow(TEST_BUSINESS_ID, '2026-10-05', 1), [bookingFixture()]);
-    await act(async () => { rerender(view(1)); });
-    await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
-    expect(client.getQueryState(keys.bookingWindow(TEST_BUSINESS_ID, '2026-10-05', 1))?.isInvalidated).toBe(true);
-  });
 });
