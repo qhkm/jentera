@@ -57,6 +57,11 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
       `act`'s `finally` consumes these once nothing is acting any more. */
   const reloadOwed = useRef(false);
   const refetchFocusedOwed = useRef(false);
+  /** The waiting requests the shared scan just found, when they are what
+      chose Needs you. The first Needs you load shows them instead of running
+      the same three-window scan again straight after; every later load
+      (a chip, a poll, a return to the app) reads fresh. */
+  const seed = useRef<Booking[] | null>(null);
 
   /* Needs you when requests wait, otherwise Today — decided once, so
      confirming the last request does not pull the view away from it. Also
@@ -64,7 +69,9 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
      wait forever on a count that will never arrive. */
   useEffect(() => {
     if (chosen === null && (apps.pending !== null || apps.error)) {
-      setChosen(apps.pending !== null && apps.pending.length > 0 ? 'needs' : 'today');
+      const needs = apps.pending !== null && apps.pending.length > 0;
+      if (needs) seed.current = apps.pending;
+      setChosen(needs ? 'needs' : 'today');
     }
   }, [chosen, apps.pending, apps.error]);
 
@@ -78,7 +85,10 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, now = 
     }
     try {
       const today = malaysiaDay(clock.current());
-      const next = filter === 'needs' ? await loadPendingBookings(api, clock.current())
+      const seeded = filter === 'needs' && !quiet ? seed.current : null;
+      seed.current = null;
+      const next = seeded ? seeded
+        : filter === 'needs' ? await loadPendingBookings(api, clock.current())
         : filter === 'today' ? await loadWindow(api, { from: today, days: 1 })
           : filter === 'upcoming' ? await loadWindow(api, { from: addDays(today, offset), days: WINDOW_DAYS })
             : await loadWindow(api, { from: date, days: 1 });

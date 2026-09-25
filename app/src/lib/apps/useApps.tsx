@@ -43,8 +43,12 @@ export function AppsProvider({ api, unread = null, children }: {
     setLoading(true);
     try {
       const next = await api.list();
-      const installed = next.apps.some((app) => app.key === 'bookings');
-      const nextPending = installed ? await loadPendingBookings(api, new Date()) : null;
+      const bookings = next.apps.find((app) => app.key === 'bookings');
+      /* The list's count is every pending request not yet started, which is
+         everything the 91-day scan could find; at 0 the scan is a wasted
+         round trip before Home and Bookings can draw. */
+      const nextPending = !bookings ? null
+        : bookings.pending === 0 ? [] : await loadPendingBookings(api, new Date());
       if (mine !== generation.current) return;
       setList(next);
       setPending(nextPending);
