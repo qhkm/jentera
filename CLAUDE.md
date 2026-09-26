@@ -169,8 +169,14 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
   is open and on screen, and a failed read keeps the list, read-only, under
   its error. `refresh()` still resolves only once both reads have landed —
   the save and reconcile flows in `RoutinesView` wait on it — and reads are
-  not retried, as before. Shared chats still fetch by hand; they load only
-  on the team plan.
+  not retried, as before. Shared chats closed phase 2
+  (`hooks/useSharedChats.ts`, key `['biz', id, 'shared-chats']`, the
+  workspaces this person is in with their chats; team plan only): they
+  were read once when the chat screen mounted, so a colleague's new chat
+  waited for a page reload, and a failed read emptied the list. Now a
+  return to the app reads them again and a failed read keeps them. The
+  Team settings workspace panel still reads `/api/workspaces` for itself,
+  with its own create and add-member edits.
 
 ## Native shell (`mobile/`)
 

@@ -23,6 +23,8 @@ export const keys = {
   routines: (businessId: string) => ['biz', businessId, 'routines'] as const,
   /** One routine and the first page of its run history. */
   routine: (businessId: string, routineId: string) => ['biz', businessId, 'routine', routineId] as const,
+  /** The workspaces this person is in, each with its chats. */
+  sharedChats: (businessId: string) => ['biz', businessId, 'shared-chats'] as const,
 };
 
 /** Mutation keys live apart from query keys, scoped the same way. */
