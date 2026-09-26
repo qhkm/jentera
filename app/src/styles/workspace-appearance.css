@@ -123,24 +123,24 @@
 }
 
 :is(.theme-light, .site-theme-light) :is(.dashboard-shell, .workspace-loading) {
-  --bg: #faf9f7;
-  --bg-card: #f2f1ee;
-  --bg-card-hover: #eae9e6;
-  --text: #292929;
-  --text-secondary: #545454;
-  --text-muted: #606060;
+  --bg: #f7faf8;
+  --bg-card: #fff;
+  --bg-card-hover: #f0f7f4;
+  --text: #17231f;
+  --text-secondary: #52615c;
+  --text-muted: #687771;
   --border: rgb(var(--border-ink) / .065);
   --rail: rgb(var(--border-ink) / .14);
-  --workspace-control: #e9e8e5;
-  --workspace-control-hover: #deddd9;
-  --workspace-control-border: #cdd5d1;
-  --workspace-primary: #343434;
-  --workspace-primary-hover: #242424;
+  --workspace-control: #edf5f1;
+  --workspace-control-hover: #e2efe9;
+  --workspace-control-border: #c7dbd2;
+  --workspace-primary: #123a2e;
+  --workspace-primary-hover: #09291f;
   --workspace-primary-ink: #fff;
   --workspace-focus: #397663;
 }
 :is(.theme-light, .site-theme-light) .dashboard-shell.workspace-current {
-  --bg: #faf9f7;
+  --bg: #f7faf8;
   --color-bg: var(--bg);
 }
 
@@ -245,6 +245,35 @@
   :is(.routine-card, .routine-starter:not(:disabled), .notification-card,
       .business-shortcuts > button):hover {
   background: rgb(var(--border-ink) / .035);
+}
+/* Booking calendar: white working surface and emerald-tinted controls keep
+   the dense grid crisp without introducing grey panels. */
+:is(.theme-light, .site-theme-light) .dashboard-shell :is(.bookings-view-switch, .bookings-calendar-span) {
+  border-color: rgb(var(--border-ink) / .13);
+  background: #f5faf7;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell :is(.bookings-view-switch, .bookings-calendar-span) button.active {
+  background: #e5f5ef;
+  color: #087653;
+  box-shadow: none;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .bookings-calendar,
+:is(.theme-light, .site-theme-light) .dashboard-shell :is(.bookings-calendar-toolbar, .bookings-calendar-day, .bookings-calendar-month-day) {
+  background: #fff;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .bookings-calendar-protection {
+  background: #f4faf7;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .bookings-calendar-weekdays {
+  background: #f7fbf9;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .bookings-calendar-month-grid > i {
+  background: #f3f8f5;
+}
+:is(.theme-light, .site-theme-light) .dashboard-shell .bookings-calendar-period .btn-outline {
+  border-color: rgb(var(--border-ink) / .18);
+  background: #f5faf7;
+  color: #173d31;
 }
 /* Reduce nested boxes and roomy list cards across the remaining pages. */
 .dashboard-shell .business-connections { gap: 12px; }
