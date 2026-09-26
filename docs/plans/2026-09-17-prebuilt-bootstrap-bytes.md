@@ -1,6 +1,20 @@
 # Serving the bootstrap's bytes ourselves
 
-Status: proposal, 17 September 2026. No code. Read
+Status: **not built; not needed on the evidence of 27 September.** The failures
+this set out to remove were read from a query that counted almost any early
+failure as `STAGE:install` (the marker prints before anything runs). By the
+stage each sprite actually reported, the 14 days to 27 September hold 39
+install-stage failures, 38 of them the 18 September tag incident, against 524 at
+`downloads` from three sprites Fly could not wake and 438 at `checks` from
+release-wide failures. Nothing in that points at the third-party downloads this
+plan replaces; `docs/todo.md` ("Setup failures, read by the stage they failed
+at") has the query. Other parts are stale too: the runner bundle already comes
+from R2 on a signed ticket (`routes/runtime-bundle.ts`), the Chromium half was
+answered by the 18 September measurements (`docs/chrome-*-2026-09-18.md`), and
+`qhkm/hermes-agent` stays public. Revisit only if install-stage failures come
+back.
+
+Original status: proposal, 17 September 2026. No code. Read
 [`provisioning-time.md`](../provisioning-time.md) first — it holds the
 measurements this argues from.
 
