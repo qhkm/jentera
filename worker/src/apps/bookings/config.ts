@@ -14,6 +14,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const UNIQUE_VIOLATION = '23505';
 
 export interface HoursInput { weekday: number; opens: string; closes: string }
+export interface BlockInput { id: string | null; label: string; startsAt: Date; endsAt: Date }
 export interface ServiceInput {
   id: string | null;
   name: string;
@@ -29,17 +30,22 @@ export interface ConfigInput {
   slug: string;
   accepting: boolean;
   minNoticeMinutes: number;
+  changeCutoffMinutes: number;
   horizonDays: number;
   location: string | null;
   acknowledgeAvailabilityLimits: boolean;
   services: ServiceInput[];
+  blocks: BlockInput[];
 }
 export interface ServiceView extends Omit<ServiceInput, 'id'> { id: string }
+export interface BlockView { id: string; label: string; startsAt: string; endsAt: string }
 export interface ConfigView {
   installation: { slug: string; state: 'active' | 'paused'; publicUrl: string } | null;
   version: number | null;
-  settings: { accepting: boolean; minNoticeMinutes: number; horizonDays: number; location: string | null; availabilityAcknowledgedAt: string } | null;
+  settings: { accepting: boolean; minNoticeMinutes: number; changeCutoffMinutes: number; horizonDays: number; location: string | null; availabilityAcknowledgedAt: string } | null;
   services: ServiceView[];
+  blocks: BlockView[];
+  calendarProtection: { connected: boolean; account: string | null; syncedAt: string | null; lastError: string | null };
 }
 
 export type ConfigErrorCode = 'CONFIG_CHANGED' | 'SLUG_TAKEN' | 'ACK_REQUIRED' | 'UNKNOWN_SERVICE' | 'CAPACITY_BELOW_RESERVED';
@@ -129,6 +135,30 @@ function parseService(value: unknown): Parsed<ServiceInput> {
   return { ok: true, value: { id, name, description: description.value, durationMinutes, capacity, priceLabel, active, hours: hours.value } };
 }
 
+function parseBlocks(value: unknown): Parsed<BlockInput[]> {
+  if (value === undefined) return { ok: true, value: [] };
+  if (!Array.isArray(value) || value.length > 100) return fail('blocked times must be a list of at most 100 ranges');
+  const blocks: BlockInput[] = [];
+  for (const item of value) {
+    const raw = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>;
+    const id = raw.id === undefined || raw.id === null ? null
+      : typeof raw.id === 'string' && UUID.test(raw.id) ? raw.id.toLowerCase() : undefined;
+    const label = text(raw.label, 80);
+    const startsAt = typeof raw.startsAt === 'string' ? new Date(raw.startsAt) : new Date(NaN);
+    const endsAt = typeof raw.endsAt === 'string' ? new Date(raw.endsAt) : new Date(NaN);
+    if (id === undefined || !label || Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) ||
+        endsAt.getTime() <= startsAt.getTime() || endsAt.getTime() - startsAt.getTime() > 31 * 86_400_000 ||
+        startsAt.getUTCSeconds() !== 0 || startsAt.getUTCMilliseconds() !== 0 ||
+        endsAt.getUTCSeconds() !== 0 || endsAt.getUTCMilliseconds() !== 0) {
+      return fail('each blocked time needs a label and a valid range of at most 31 days');
+    }
+    blocks.push({ id, label, startsAt, endsAt });
+  }
+  const ids = blocks.map((block) => block.id).filter((id): id is string => id !== null);
+  if (new Set(ids).size !== ids.length) return fail('a blocked time appears twice');
+  return { ok: true, value: blocks };
+}
+
 export function parseConfigInput(body: unknown): Parsed<ConfigInput> {
   if (!body || typeof body !== 'object') return fail('a JSON object is required');
   const raw = body as Record<string, unknown>;
@@ -139,6 +169,8 @@ export function parseConfigInput(body: unknown): Parsed<ConfigInput> {
   if (typeof raw.accepting !== 'boolean') return fail('accepting must be true or false');
   const minNoticeMinutes = int(raw.minNoticeMinutes, 0, 10080);
   if (minNoticeMinutes === null) return fail('minimum notice must be 0 to 10080 minutes');
+  const changeCutoffMinutes = int(raw.changeCutoffMinutes, 0, 10080);
+  if (changeCutoffMinutes === null) return fail('change cutoff must be 0 to 10080 minutes');
   const horizonDays = int(raw.horizonDays, 1, 90);
   if (horizonDays === null) return fail('booking horizon must be 1 to 90 days');
   const location = optionalText(raw.location, 160);
@@ -155,11 +187,13 @@ export function parseConfigInput(body: unknown): Parsed<ConfigInput> {
   const ids = services.map((s) => s.id).filter((id): id is string => id !== null);
   if (new Set(ids).size !== ids.length) return fail('a service appears twice');
   if (!services.some((s) => s.active)) return fail('at least one service must be active');
+  const blocks = parseBlocks(raw.blocks);
+  if (!blocks.ok) return blocks;
   return {
     ok: true,
     value: {
-      version, slug, accepting: raw.accepting, minNoticeMinutes, horizonDays, location: location.value,
-      acknowledgeAvailabilityLimits: raw.acknowledgeAvailabilityLimits === true, services,
+      version, slug, accepting: raw.accepting, minNoticeMinutes, changeCutoffMinutes, horizonDays, location: location.value,
+      acknowledgeAvailabilityLimits: raw.acknowledgeAvailabilityLimits === true, services, blocks: blocks.value,
     },
   };
 }
@@ -168,14 +202,26 @@ export async function readConfig(tx: postgres.TransactionSql, businessId: string
   const [installation] = await tx<{ public_slug: string; state: 'active' | 'paused'; config_version: number }[]>`
     select public_slug, state, config_version from app_installation
      where business_id = ${businessId} and app_key = 'bookings'`;
-  if (!installation) return { installation: null, version: null, settings: null, services: [] };
-  const [settings] = await tx<{ accepting: boolean; min_notice_minutes: number; horizon_days: number; location: string | null; availability_acknowledged_at: Date }[]>`
-    select accepting, min_notice_minutes, horizon_days, location, availability_acknowledged_at
+  if (!installation) return {
+    installation: null, version: null, settings: null, services: [], blocks: [],
+    calendarProtection: { connected: false, account: null, syncedAt: null, lastError: null },
+  };
+  const [settings] = await tx<{ accepting: boolean; min_notice_minutes: number; change_cutoff_minutes: number; horizon_days: number; location: string | null; availability_acknowledged_at: Date }[]>`
+    select accepting, min_notice_minutes, change_cutoff_minutes, horizon_days, location, availability_acknowledged_at
       from booking_settings where business_id = ${businessId}`;
   const services = await tx<{ id: string; name: string; description: string | null; duration_minutes: number; capacity: number; price_label: string | null; active: boolean }[]>`
     select id, name, description, duration_minutes, capacity, price_label, active from booking_service
      where business_id = ${businessId} order by sort, name, id`;
   const hours = await readHours(tx, businessId);
+  const blocks = await tx<{ id: string; label: string; starts_at: Date; ends_at: Date }[]>`
+    select id, label, starts_at, ends_at from booking_block
+     where business_id = ${businessId} and ends_at > now() order by starts_at, id`;
+  const [calendar] = await tx<{ id: string; display_name: string | null; synced_at: Date | null; last_error: string | null }[]>`
+    select c.id, c.display_name, a.synced_at, coalesce(a.last_error, c.last_error) as last_error
+      from connection c left join booking_calendar_availability a
+        on a.business_id = c.business_id and a.connection_id = c.id
+     where c.business_id = ${businessId} and c.connector = 'google' and c.status = 'connected'
+     order by c.connected_at desc limit 1`;
   return {
     installation: {
       slug: installation.public_slug,
@@ -186,6 +232,7 @@ export async function readConfig(tx: postgres.TransactionSql, businessId: string
     settings: settings ? {
       accepting: settings.accepting,
       minNoticeMinutes: settings.min_notice_minutes,
+      changeCutoffMinutes: settings.change_cutoff_minutes,
       horizonDays: settings.horizon_days,
       location: settings.location,
       availabilityAcknowledgedAt: settings.availability_acknowledged_at.toISOString(),
@@ -195,6 +242,13 @@ export async function readConfig(tx: postgres.TransactionSql, businessId: string
       priceLabel: s.price_label, active: s.active,
       hours: hoursFor(hours, s.id),
     })),
+    blocks: blocks.map((block) => ({
+      id: block.id, label: block.label, startsAt: block.starts_at.toISOString(), endsAt: block.ends_at.toISOString(),
+    })),
+    calendarProtection: calendar ? {
+      connected: true, account: calendar.display_name, syncedAt: calendar.synced_at?.toISOString() ?? null,
+      lastError: calendar.last_error,
+    } : { connected: false, account: null, syncedAt: null, lastError: null },
   };
 }
 
@@ -239,8 +293,8 @@ export async function saveConfig(tx: postgres.TransactionSql, businessId: string
     // Lost a race with a concurrent first save: the client must reload.
     if (inserted.length === 0) throw new ConfigError('CONFIG_CHANGED');
     await tx`insert into booking_settings
-      (business_id, accepting, availability_acknowledged_at, min_notice_minutes, horizon_days, location, updated_at)
-      values (${businessId}, ${input.accepting}, ${now}, ${input.minNoticeMinutes}, ${input.horizonDays}, ${input.location}, ${now})`;
+      (business_id, accepting, availability_acknowledged_at, min_notice_minutes, change_cutoff_minutes, horizon_days, location, updated_at)
+      values (${businessId}, ${input.accepting}, ${now}, ${input.minNoticeMinutes}, ${input.changeCutoffMinutes}, ${input.horizonDays}, ${input.location}, ${now})`;
   } else {
     if (input.version !== existing.config_version) throw new ConfigError('CONFIG_CHANGED');
     if (input.slug !== existing.public_slug) {
@@ -250,18 +304,44 @@ export async function saveConfig(tx: postgres.TransactionSql, businessId: string
     }
     const updated = await tx`update booking_settings
       set accepting = ${input.accepting}, min_notice_minutes = ${input.minNoticeMinutes},
-          horizon_days = ${input.horizonDays}, location = ${input.location}, updated_at = ${now}
+          change_cutoff_minutes = ${input.changeCutoffMinutes}, horizon_days = ${input.horizonDays}, location = ${input.location}, updated_at = ${now}
       where business_id = ${businessId} returning business_id`;
     if (updated.length === 0) {
       if (!input.acknowledgeAvailabilityLimits) throw new ConfigError('ACK_REQUIRED');
       await tx`insert into booking_settings
-        (business_id, accepting, availability_acknowledged_at, min_notice_minutes, horizon_days, location, updated_at)
-        values (${businessId}, ${input.accepting}, ${now}, ${input.minNoticeMinutes}, ${input.horizonDays}, ${input.location}, ${now})`;
+        (business_id, accepting, availability_acknowledged_at, min_notice_minutes, change_cutoff_minutes, horizon_days, location, updated_at)
+        values (${businessId}, ${input.accepting}, ${now}, ${input.minNoticeMinutes}, ${input.changeCutoffMinutes}, ${input.horizonDays}, ${input.location}, ${now})`;
     }
     await tx`update app_installation set config_version = config_version + 1, updated_at = ${now}
       where business_id = ${businessId} and app_key = 'bookings'`;
   }
   await saveServices(tx, businessId, input.services, now);
+  await saveBlocks(tx, businessId, input.blocks, now);
+}
+
+async function saveBlocks(tx: postgres.TransactionSql, businessId: string, blocks: BlockInput[], now: Date): Promise<void> {
+  const existing = await tx<{ id: string }[]>`
+    select id from booking_block where business_id = ${businessId} order by id for update`;
+  const known = new Set(existing.map((block) => block.id));
+  for (const block of blocks) {
+    if (block.id && !known.has(block.id)) throw new ConfigError('CONFIG_CHANGED');
+  }
+  const kept = new Set<string>();
+  for (const block of blocks) {
+    if (block.id) {
+      await tx`update booking_block set label = ${block.label}, starts_at = ${block.startsAt}, ends_at = ${block.endsAt}, updated_at = ${now}
+        where business_id = ${businessId} and id = ${block.id}`;
+      kept.add(block.id);
+    } else {
+      const [created] = await tx<{ id: string }[]>`insert into booking_block
+        (business_id, label, starts_at, ends_at, created_at, updated_at)
+        values (${businessId}, ${block.label}, ${block.startsAt}, ${block.endsAt}, ${now}, ${now}) returning id`;
+      kept.add(created.id);
+    }
+  }
+  for (const old of existing) {
+    if (!kept.has(old.id)) await tx`delete from booking_block where business_id = ${businessId} and id = ${old.id}`;
+  }
 }
 
 async function saveServices(tx: postgres.TransactionSql, businessId: string, services: ServiceInput[], now: Date): Promise<void> {

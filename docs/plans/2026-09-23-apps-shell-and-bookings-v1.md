@@ -46,6 +46,15 @@ The kill criterion comes from the direction doc. If 3 pilot businesses have
 not taken one real customer booking within 2 weeks of going live, stop before
 the WhatsApp port.
 
+## Added after v1
+
+Customer cancellation and rescheduling were added on 25 September 2026.
+Reference + WhatsApp verification issues a two-hour opaque session whose token
+is stored only as a SHA-256 hash. Cancellation releases capacity immediately.
+Rescheduling atomically cancels the old reservation and creates a fresh pending
+request, so the owner still approves the new time. Confirmed Calendar events
+are removed by the existing durable job.
+
 ## Out of scope
 
 Each of these is a later project:
@@ -54,7 +63,6 @@ Each of these is a later project:
   taps)
 - payments or deposits
 - reminders to customers
-- the customer cancelling or rescheduling
 - shared staff/resource scheduling, nightly rentals, and checking existing
   Google Calendar events for availability
 - editing the page by chat, and any agent tool for bookings (reading or

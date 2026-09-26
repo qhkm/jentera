@@ -17,6 +17,7 @@ export interface MessageInput {
   reference: string;
   businessName: string;
   publicUrl: string;
+  manageUrl?: string;
 }
 
 const EN_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -54,7 +55,7 @@ export function bookingMessage(m: MessageInput): string {
   const when = whenText(m.startsAt, m.lang);
   if (m.lang === 'bm') {
     if (m.kind === 'confirm') {
-      return `Hai ${m.customerName}, tempahan ${m.serviceName} anda untuk ${m.partySize} orang pada ${when} telah disahkan. Rujukan ${m.reference}. Jumpa di ${m.businessName}.`;
+      return `Hai ${m.customerName}, tempahan ${m.serviceName} anda untuk ${m.partySize} orang pada ${when} telah disahkan. Rujukan ${m.reference}. Jumpa di ${m.businessName}.${m.manageUrl ? ` Ubah atau batalkan tempahan: ${m.manageUrl}` : ''}`;
     }
     if (m.kind === 'decline') {
       return `Hai ${m.customerName}, maaf, kami tidak dapat menerima tempahan ${m.serviceName} anda pada ${when}. Sila pilih masa lain: ${m.publicUrl}`;
@@ -63,12 +64,21 @@ export function bookingMessage(m: MessageInput): string {
   }
   const people = m.partySize === 1 ? '1 person' : `${m.partySize} people`;
   if (m.kind === 'confirm') {
-    return `Hi ${m.customerName}, your ${m.serviceName} for ${people} on ${when} is confirmed. Ref ${m.reference}. See you at ${m.businessName}.`;
+    return `Hi ${m.customerName}, your ${m.serviceName} for ${people} on ${when} is confirmed. Ref ${m.reference}. See you at ${m.businessName}.${m.manageUrl ? ` Change or cancel your booking: ${m.manageUrl}` : ''}`;
   }
   if (m.kind === 'decline') {
     return `Hi ${m.customerName}, sorry, we can't take your ${m.serviceName} booking on ${when}. Please choose another time: ${m.publicUrl}`;
   }
   return `Hi ${m.customerName}, sorry, your ${m.serviceName} booking on ${when} (ref ${m.reference}) has been cancelled. You can book another time here: ${m.publicUrl}`;
+}
+
+/** A reminder the owner explicitly sends from the booking card. */
+export function bookingReminderMessage(m: Omit<MessageInput, 'kind'>): string {
+  const when = whenText(m.startsAt, m.lang);
+  if (m.lang === 'bm') {
+    return `Hai ${m.customerName}, ini peringatan untuk tempahan ${m.serviceName} anda pada ${when}. Rujukan ${m.reference}. Jumpa di ${m.businessName}.${m.manageUrl ? ` Ubah atau batalkan tempahan: ${m.manageUrl}` : ''}`;
+  }
+  return `Hi ${m.customerName}, a reminder for your ${m.serviceName} booking on ${when}. Ref ${m.reference}. See you at ${m.businessName}.${m.manageUrl ? ` Change or cancel your booking: ${m.manageUrl}` : ''}`;
 }
 
 export function whatsappUrl(phone: string, text: string): string {

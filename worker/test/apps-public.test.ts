@@ -73,6 +73,22 @@ describe('public reads', () => {
     ]);
   });
 
+  it('removes manual closures and cached Google busy time without exposing event details', async () => {
+    await asOwner(async (sql) => {
+      const [connection] = await sql<{ id: string }[]>`insert into connection
+        (business_id, connector, method, status) values (${A}, 'google', 'oauth', 'connected') returning id`;
+      await sql`insert into booking_block (business_id, label, starts_at, ends_at)
+        values (${A}, 'Private event', '2026-10-06T03:00:00Z', '2026-10-06T04:00:00Z')`;
+      await sql`insert into booking_calendar_busy
+        (business_id, connection_id, event_key, starts_at, ends_at)
+        values (${A}, ${connection.id}, 'provider-opaque-id', '2026-10-06T04:00:00Z', '2026-10-06T05:00:00Z')`;
+    });
+    const times = await loadOpenTimes(ENV, A, serviceA, '2026-10-06', 1, NOW);
+    expect(times!.days[0].slots.map((slot) => slot.startsAt.toISOString())).toEqual([
+      '2026-10-06T02:00:00.000Z',
+    ]);
+  });
+
   it('starts from today when asked for a past date, and refuses other businesses\' or inactive services', async () => {
     const times = await loadOpenTimes(ENV, A, serviceA, '2026-09-01', 3, NOW);
     expect(times!.days.map((d) => d.date)).toEqual(['2026-10-05', '2026-10-06', '2026-10-07']);

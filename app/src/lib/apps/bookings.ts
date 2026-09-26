@@ -111,6 +111,8 @@ export function actionErrorKey(error: unknown): string {
       case 'EXPIRED': return 'bookings.error.expired';
       case 'NOT_RETRYABLE': return 'bookings.error.notRetryable';
       case 'CALENDAR_DISCONNECTED': return 'bookings.error.calendarDisconnected';
+      case 'CALENDAR_CONFLICT': return 'bookings.error.calendarConflict';
+      case 'CALENDAR_CHECK_UNAVAILABLE': return 'bookings.error.calendarCheckUnavailable';
       case 'NOT_FOUND': return 'bookings.error.notFound';
     }
     if (error.uncertain) return 'bookings.error.uncertain';
@@ -181,9 +183,11 @@ export function configToInput(config: BookingsConfig): BookingsConfigInput {
     slug: config.installation?.slug ?? '',
     accepting: config.settings?.accepting ?? true,
     minNoticeMinutes: config.settings?.minNoticeMinutes ?? 120,
+    changeCutoffMinutes: config.settings?.changeCutoffMinutes ?? 360,
     horizonDays: config.settings?.horizonDays ?? 30,
     location: config.settings?.location ?? null,
     acknowledgeAvailabilityLimits: config.settings !== null,
     services: config.services.map((service) => ({ ...service, hours: service.hours.map((range) => ({ ...range })) })),
+    blocks: config.blocks.map((block) => ({ ...block })),
   };
 }

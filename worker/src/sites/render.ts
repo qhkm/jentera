@@ -1,4 +1,5 @@
 import type { DayTimes, PublicService } from '../apps/bookings/public';
+import type { ManagedBooking } from '../apps/bookings/customer';
 import type { RequestField } from '../apps/bookings/request';
 import { clockText, dateText, type Lang } from '../apps/bookings/messages';
 import { myDate, myInstant } from '../apps/bookings/time';
@@ -55,6 +56,19 @@ const T = {
     privacy: (b: string) => `Your name and phone number go to ${b} to handle this booking.`, privacyLink: 'Privacy',
     receivedTitle: 'Request received', received: (b: string) => `${b} will confirm on WhatsApp.`, reference: 'Reference',
     taken: 'That time was just taken. Please choose another.',
+    manage: 'Manage booking', manageTitle: 'Find your booking', manageHint: 'Enter the reference and WhatsApp number used for the booking.',
+    referenceInput: 'Booking reference', findBooking: 'Continue securely', manageError: 'Those details do not match a booking. Check them and try again.',
+    status: 'Status', statuses: { pending: 'Awaiting confirmation', confirmed: 'Confirmed', declined: 'Declined', cancelled: 'Cancelled' },
+    changeTime: 'Choose a new time', cancelBooking: 'Cancel booking', cannotChange: 'This booking can no longer be changed online.',
+    cancelTitle: 'Cancel this booking?', cancelHint: 'This releases the time immediately. This action cannot be undone.',
+    keepBooking: 'Keep booking', confirmCancel: 'Yes, cancel booking', cancelledTitle: 'Booking cancelled', cancelledBody: 'The business has been notified.',
+    rescheduleTitle: 'Choose a new time', rescheduleHint: 'Your current time stays reserved until you confirm a new one.',
+    confirmNewTime: 'Request this new time', rescheduledTitle: 'New time requested',
+    rescheduledBody: 'Your previous booking was cancelled. The business will confirm the new time on WhatsApp.',
+    sessionExpired: 'For your privacy, this secure session has expired. Find your booking again to continue.',
+    bookingUnavailable: 'Online changes are not available right now. Your existing booking has not changed.',
+    cutoffPassed: 'The deadline to change this booking has passed. Contact the business directly if you need help.',
+    changePolicy: (n: number) => n === 0 ? 'Changes are allowed until the booking starts.' : `Changes are allowed up to ${n < 60 ? `${n} minutes` : n % 1440 === 0 ? `${n / 1440} ${n === 1440 ? 'day' : 'days'}` : `${n / 60} hours`} before the booking.`,
     titles: { not_found: 'Page not found', unavailable: 'Not taking bookings right now', changed: 'Please start a fresh request', busy: 'Please try again shortly', bad_request: 'Please start again' },
     bodies: {
       not_found: 'This booking page does not exist.',
@@ -88,6 +102,19 @@ const T = {
     privacy: (b: string) => `Nama dan nombor telefon anda dihantar kepada ${b} untuk menguruskan tempahan ini.`, privacyLink: 'Privasi',
     receivedTitle: 'Permintaan diterima', received: (b: string) => `${b} akan mengesahkan melalui WhatsApp.`, reference: 'Rujukan',
     taken: 'Masa itu baru sahaja diambil. Sila pilih masa lain.',
+    manage: 'Urus tempahan', manageTitle: 'Cari tempahan anda', manageHint: 'Masukkan rujukan dan nombor WhatsApp yang digunakan untuk tempahan.',
+    referenceInput: 'Rujukan tempahan', findBooking: 'Teruskan dengan selamat', manageError: 'Butiran tersebut tidak sepadan dengan tempahan. Semak dan cuba lagi.',
+    status: 'Status', statuses: { pending: 'Menunggu pengesahan', confirmed: 'Disahkan', declined: 'Ditolak', cancelled: 'Dibatalkan' },
+    changeTime: 'Pilih masa baharu', cancelBooking: 'Batalkan tempahan', cannotChange: 'Tempahan ini tidak lagi boleh diubah dalam talian.',
+    cancelTitle: 'Batalkan tempahan ini?', cancelHint: 'Masa ini akan dikosongkan serta-merta. Tindakan ini tidak boleh dibuat asal.',
+    keepBooking: 'Kekalkan tempahan', confirmCancel: 'Ya, batalkan tempahan', cancelledTitle: 'Tempahan dibatalkan', cancelledBody: 'Pihak perniagaan telah dimaklumkan.',
+    rescheduleTitle: 'Pilih masa baharu', rescheduleHint: 'Masa semasa anda kekal ditempah sehingga anda mengesahkan masa baharu.',
+    confirmNewTime: 'Minta masa baharu ini', rescheduledTitle: 'Masa baharu diminta',
+    rescheduledBody: 'Tempahan sebelumnya telah dibatalkan. Pihak perniagaan akan mengesahkan masa baharu melalui WhatsApp.',
+    sessionExpired: 'Demi privasi anda, sesi selamat ini telah tamat. Cari tempahan anda semula untuk meneruskan.',
+    bookingUnavailable: 'Perubahan dalam talian tidak tersedia sekarang. Tempahan sedia ada anda tidak berubah.',
+    cutoffPassed: 'Tarikh akhir untuk mengubah tempahan ini telah berlalu. Hubungi pihak perniagaan secara terus jika anda memerlukan bantuan.',
+    changePolicy: (n: number) => n === 0 ? 'Perubahan dibenarkan sehingga tempahan bermula.' : `Perubahan dibenarkan sehingga ${n < 60 ? `${n} minit` : n % 1440 === 0 ? `${n / 1440} hari` : `${n / 60} jam`} sebelum tempahan.`,
     titles: { not_found: 'Halaman tidak dijumpai', unavailable: 'Tidak menerima tempahan buat masa ini', changed: 'Sila mulakan permintaan baharu', busy: 'Sila cuba sebentar lagi', bad_request: 'Sila mulakan semula' },
     bodies: {
       not_found: 'Halaman tempahan ini tidak wujud.',
@@ -115,16 +142,16 @@ a{color:var(--accent);text-underline-offset:4px}a,button,input,select,textarea{-
 main{max-width:1032px;margin:28px auto 0;padding:0 24px}.booking-layout{display:grid;grid-template-columns:280px minmax(0,1fr);gap:48px;align-items:start}.business{padding:24px 0}.avatar{width:64px;height:64px;display:grid;place-items:center;background:var(--soft);border:1px solid var(--line);border-radius:var(--radius-control);font-size:24px;font-weight:650;margin-bottom:24px}.eyebrow{font-size:11px;letter-spacing:1.8px;text-transform:uppercase;font-weight:650;color:var(--muted)}.business-name{font-size:27px;line-height:1.25;letter-spacing:-1px;margin:12px 0 18px;overflow-wrap:anywhere}.business-copy{color:var(--muted);font-size:14px}.explanation{border-top:1px solid var(--line);margin-top:30px;padding-top:24px}.explanation strong{font-size:13px}.location{display:flex;gap:10px;margin-top:24px;color:var(--muted);font-size:13px}.location span:first-child{color:var(--accent)}.location strong{display:block;color:var(--ink);font-size:12px}.timezone{font-size:12px;color:var(--muted);margin-top:24px}
 .panel{background:transparent;border:1px solid var(--line);border-radius:var(--radius-card);padding:32px;box-shadow:none;min-width:0;min-height:390px}.steps{display:flex;list-style:none;padding:0 0 25px;margin:0 0 30px;border-bottom:1px solid var(--line);gap:16px}.steps li{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}.steps span{display:grid;place-items:center;width:23px;height:23px;flex-shrink:0;border:1px solid var(--line);border-radius:50%;font-size:11px}.steps [aria-current]{color:var(--accent);font-weight:650}.steps [aria-current] span{background:var(--accent);border-color:var(--accent);color:var(--bg)}
 h1{font-size:25px;line-height:1.25;letter-spacing:-.7px;margin:8px 0 10px;overflow-wrap:anywhere}h2{font-size:16px;margin:26px 0 14px;letter-spacing:-.2px}p{margin:10px 0 20px}.muted{color:var(--muted);font-size:14px}.intro{margin-bottom:28px}.back{display:inline-block;font-size:13px;margin-bottom:20px;text-decoration:none}.card{display:block;padding:18px;margin:10px 0;border:1px solid var(--line);border-radius:var(--radius-item);background:var(--surface);text-decoration:none;color:inherit;overflow-wrap:anywhere}a.card:hover,a.day:hover{border-color:var(--accent);background:var(--soft)}.service-card{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px}.service-card strong{font-size:17px}.service-card .muted{margin-top:6px}.service-description{max-width:32rem;margin:8px 0 0;color:var(--muted);font-size:13px;line-height:1.5}.service-action{color:var(--accent);font-size:12px;font-weight:600;white-space:nowrap}.price{display:inline-block;padding-left:12px;margin-left:12px;border-left:1px solid var(--line);color:var(--ink)}.summary{padding:16px 18px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-item);margin:0 0 24px}.summary .muted{margin:4px 0 0}.summary .location{margin-top:12px}.pending{font-size:12px;color:var(--muted);margin-top:24px}.empty{padding:28px 18px;text-align:center;background:var(--soft);border-radius:12px}.empty p{margin:4px 0}.next-available{display:inline-flex;margin-top:16px;padding:9px 14px;border:1px solid var(--line);border-radius:999px;text-decoration:none;font-size:12px;font-weight:600}
-.days{display:flex;gap:8px;overflow-x:auto;padding:4px 4px 12px;scrollbar-width:thin}.day{flex:0 0 74px;padding:9px 5px;border:1px solid var(--line);border-radius:var(--radius-control);text-decoration:none;color:var(--muted);background:var(--surface);text-align:center;font-size:11px}.day strong{display:block;font-size:22px;line-height:1.3;color:var(--ink)}.day[aria-disabled="true"]{opacity:.42}.availability{display:block;margin-top:3px;font-size:9px;color:var(--accent)}.day[aria-disabled="true"] .availability{color:var(--muted)}.day[aria-current="date"]{border-color:var(--accent);background:var(--accent);color:var(--bg);opacity:1}.day[aria-current="date"] strong,.day[aria-current="date"] .availability{color:var(--bg)}.day[aria-disabled="true"][aria-current="date"]{background:var(--soft);color:var(--ink)}.day[aria-disabled="true"][aria-current="date"] strong{color:var(--ink)}.day[aria-disabled="true"][aria-current="date"] .availability{color:var(--muted)}.times{display:grid;grid-template-columns:repeat(auto-fill,minmax(125px,1fr));gap:10px}.times .card{margin:0;text-align:center;padding:14px 8px}.times .muted{font-size:11px;margin-top:4px}
+.days{display:flex;gap:8px;overflow-x:auto;padding:4px 4px 12px;scrollbar-width:thin}.day{flex:0 0 74px;padding:9px 5px;border:1px solid var(--line);border-radius:var(--radius-control);text-decoration:none;color:var(--muted);background:var(--surface);text-align:center;font-size:11px}.day strong{display:block;font-size:22px;line-height:1.3;color:var(--ink)}.day[aria-disabled="true"]{opacity:.42}.availability{display:block;margin-top:3px;font-size:9px;color:var(--accent)}.day[aria-disabled="true"] .availability{color:var(--muted)}.day[aria-current="date"]{border-color:var(--accent);background:var(--accent);color:var(--bg);opacity:1}.day[aria-current="date"] strong,.day[aria-current="date"] .availability{color:var(--bg)}.day[aria-disabled="true"][aria-current="date"]{background:var(--soft);color:var(--ink)}.day[aria-disabled="true"][aria-current="date"] strong{color:var(--ink)}.day[aria-disabled="true"][aria-current="date"] .availability{color:var(--muted)}.times{display:grid;grid-template-columns:repeat(auto-fill,minmax(125px,1fr));gap:10px}.times .card{margin:0;text-align:center;padding:14px 8px}.times .muted{font-size:11px;margin-top:4px}.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:22px}.actions a,.actions button{display:grid;place-items:center;min-height:48px;margin:0;padding:11px 16px;border-radius:999px;text-align:center;text-decoration:none;font-weight:600}.actions a{border:1px solid var(--line);color:var(--ink)}.danger{border-color:#82483f!important;background:#3a1512!important;color:#ffd9d4!important}.status{display:inline-flex;padding:5px 10px;border-radius:999px;background:var(--soft);color:var(--accent);font-size:12px;font-weight:650}.manage-meta{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}.manage-meta span{display:block}.manage-meta .muted{font-size:11px}.secondary{display:inline-grid;place-items:center;min-height:48px;padding:11px 20px;border:1px solid var(--line);border-radius:999px;color:var(--ink);text-decoration:none}.center{text-align:center}
 label{display:block;font-size:13px;font-weight:600;margin:18px 0 7px}input,select,textarea{width:100%;font:inherit;padding:12px;border:1px solid var(--line);border-radius:var(--radius-control);background:var(--surface);color:var(--ink)}textarea{resize:vertical}button{width:100%;margin-top:12px;font:inherit;font-weight:600;min-height:48px;padding:12px 24px;border:1px solid var(--primary);border-radius:999px;background:var(--primary);color:var(--primary-ink);cursor:pointer}button:hover{background:#fff}form>.muted{font-size:12px;margin-top:20px}.error{color:#ffb4ab;font-size:13px;margin:5px 0 0}.notice{padding:12px 16px;border-radius:10px;background:#3a1512;color:#f6c8c3}.success-mark{display:grid;place-items:center;width:56px;height:56px;border-radius:50%;background:var(--soft);color:var(--accent);font-size:26px;margin-bottom:24px}footer{margin:28px 0 32px;font-size:12px;color:var(--muted);text-align:center}
-@media(max-width:760px){.topbar{padding:18px 20px}main{margin:0 auto;padding:0 20px}.booking-layout{grid-template-columns:1fr;gap:20px}.business{padding:12px 0 0;display:grid;grid-template-columns:48px 1fr;column-gap:14px}.avatar{width:48px;height:48px;border-radius:13px;font-size:19px;grid-row:1/4;margin:0}.business .eyebrow{margin:0}.business-name{font-size:22px;margin:4px 0 0}.business-copy,.explanation,.business>.timezone{display:none}.panel{padding:24px;min-height:340px;border-radius:16px}.steps{gap:12px;margin-bottom:24px}.steps li{font-size:11px;gap:5px}h1{font-size:23px}.service-card{padding:18px}.service-action{font-size:11px}}
+@media(max-width:760px){.topbar{padding:18px 20px}main{margin:0 auto;padding:0 20px}.booking-layout{grid-template-columns:1fr;gap:20px}.business{padding:12px 0 0;display:grid;grid-template-columns:48px 1fr;column-gap:14px}.avatar{width:48px;height:48px;border-radius:13px;font-size:19px;grid-row:1/4;margin:0}.business .eyebrow{margin:0}.business-name{font-size:22px;margin:4px 0 0}.business-copy,.explanation,.business>.timezone{display:none}.panel{padding:24px;min-height:340px;border-radius:16px}.steps{gap:12px;margin-bottom:24px}.steps li{font-size:11px;gap:5px}h1{font-size:23px}.service-card{padding:18px}.service-action{font-size:11px}.actions{grid-template-columns:1fr}}
 @media(max-width:760px){.brand>.muted{display:none}.lang{white-space:nowrap}.summary .timezone{margin-top:8px}}
 @media(max-width:380px){main{padding:0 12px}.panel{padding:20px 16px}.steps{gap:8px}.steps li{font-size:10px}.service-card{gap:10px}.service-action{white-space:normal}}
 `;
 
 interface Base { slug: string; lang: Lang; businessName: string; location?: string | null }
 
-function href(slug: string, path: '' | '/request' | '/done', params: Record<string, string>): string {
+function href(slug: string, path: string, params: Record<string, string>): string {
   const query = new URLSearchParams(params).toString();
   return escapeHtml(`/b/${slug}${path}${query ? `?${query}` : ''}`);
 }
@@ -236,8 +263,82 @@ export function donePage(input: Base & { reference: string }): string {
     lang: input.lang, title: t.receivedTitle, businessName: input.businessName, location: input.location,
     body: `<div class="success-mark" aria-hidden="true">✓</div><h1>${t.receivedTitle}</h1><p>${escapeHtml(t.received(input.businessName))}</p>
 <p class="card"><span class="muted">${t.reference}</span><br><strong>${escapeHtml(input.reference)}</strong></p>
-<a href="${href(input.slug, '', { lang: input.lang })}">${t.back}</a>`,
+<div class="actions"><a href="${href(input.slug, '/manage', { ref: input.reference, lang: input.lang })}">${t.manage}</a><a href="${href(input.slug, '', { lang: input.lang })}">${t.back}</a></div>`,
   });
+}
+
+export function manageLoginPage(input: Base & { reference: string; error: boolean; expired?: boolean }): string {
+  const t = T[input.lang];
+  return layout({
+    lang: input.lang, title: t.manageTitle, businessName: input.businessName, location: input.location,
+    langSwitch: href(input.slug, '/manage', { ref: input.reference, lang: other(input.lang) }),
+    body: `<h1>${t.manageTitle}</h1><p class="muted intro">${input.expired ? t.sessionExpired : t.manageHint}</p>
+${input.error ? `<p class="notice" role="alert">${t.manageError}</p>` : ''}
+<form method="post" action="${href(input.slug, '/manage', { lang: input.lang })}">
+<label for="reference">${t.referenceInput}</label><input id="reference" name="reference" required maxlength="6" autocomplete="off" value="${escapeHtml(input.reference)}">
+<label for="phone">${t.phone}</label><input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required>
+<button type="submit">${t.findBooking} <span aria-hidden="true">→</span></button></form>`,
+  });
+}
+
+function bookingSummary(input: Base & { booking: ManagedBooking }): string {
+  const t = T[input.lang];
+  return `<div class="summary"><span class="status">${t.statuses[input.booking.status]}</span><h2>${escapeHtml(input.booking.serviceName)}</h2>
+<div class="muted">${dateText(input.booking.startsAt, input.lang)} · ${clockText(input.booking.startsAt, input.lang)}</div>
+<div class="manage-meta"><span><span class="muted">${t.reference}</span><strong>${escapeHtml(input.booking.reference)}</strong></span><span><span class="muted">${t.party}</span><strong>${input.booking.partySize}</strong></span></div>
+${locationHtml(input.lang, input.location)}</div>`;
+}
+
+export function managePage(input: Base & { token: string; booking: ManagedBooking; confirmCancel?: boolean; notice?: 'cancelled' | 'rescheduled' }): string {
+  const t = T[input.lang];
+  const path = `/manage/${input.token}`;
+  if (input.notice) {
+    const cancelled = input.notice === 'cancelled';
+    return layout({ lang: input.lang, title: cancelled ? t.cancelledTitle : t.rescheduledTitle, businessName: input.businessName, location: input.location,
+      body: `<div class="success-mark" aria-hidden="true">✓</div><h1>${cancelled ? t.cancelledTitle : t.rescheduledTitle}</h1><p>${cancelled ? t.cancelledBody : t.rescheduledBody}</p>${bookingSummary(input)}<a class="secondary" href="${href(input.slug, path, { lang: input.lang })}">${t.manage}</a>` });
+  }
+  const changeable = input.booking.canChange;
+  if (input.confirmCancel && changeable) {
+    return layout({ lang: input.lang, title: t.cancelTitle, businessName: input.businessName, location: input.location,
+      body: `<h1>${t.cancelTitle}</h1><p class="muted intro">${t.cancelHint}</p>${bookingSummary(input)}<div class="actions"><a href="${href(input.slug, path, { lang: input.lang })}">${t.keepBooking}</a><form method="post" action="${href(input.slug, `${path}/cancel`, { lang: input.lang })}"><button class="danger" type="submit">${t.confirmCancel}</button></form></div>` });
+  }
+  return layout({
+    lang: input.lang, title: t.manage, businessName: input.businessName, location: input.location,
+    langSwitch: href(input.slug, path, { lang: other(input.lang) }),
+    body: `<h1>${t.manage}</h1>${bookingSummary(input)}<p class="muted">${t.changePolicy(input.booking.changeCutoffMinutes)}</p>${changeable
+      ? `<div class="actions"><a href="${href(input.slug, `${path}/reschedule`, { lang: input.lang })}">${t.changeTime}</a><a class="danger" href="${href(input.slug, path, { confirm: 'cancel', lang: input.lang })}">${t.cancelBooking}</a></div>`
+      : `<p class="muted">${t.cannotChange}</p>`}`,
+  });
+}
+
+export function reschedulePage(input: Base & { token: string; booking: ManagedBooking; days: DayTimes[]; selected: string; selectedStart?: Date | null; notice?: boolean }): string {
+  const t = T[input.lang];
+  const path = `/manage/${input.token}/reschedule`;
+  const chosen = input.days.find((day) => day.date === input.selected) ?? input.days[0];
+  const strip = input.days.map((day) => {
+    const instant = myInstant(day.date);
+    const locale = input.lang === 'bm' ? 'ms-MY' : 'en-MY';
+    const part = (options: Intl.DateTimeFormatOptions) => escapeHtml(new Intl.DateTimeFormat(locale, { ...options, timeZone: 'Asia/Kuala_Lumpur' }).format(instant));
+    const available = day.slots.length > 0;
+    const contents = `${part({ weekday: 'short' })}<strong>${part({ day: 'numeric' })}</strong>${part({ month: 'short' })}<span class="availability">${available ? t.timesAvailable(day.slots.length) : t.noTimesShort}</span>`;
+    return available ? `<a class="day" href="${href(input.slug, path, { date: day.date, lang: input.lang })}"${day.date === chosen?.date ? ' aria-current="date"' : ''}>${contents}</a>`
+      : `<span class="day" aria-disabled="true"${day.date === chosen?.date ? ' aria-current="date"' : ''}>${contents}</span>`;
+  }).join('');
+  const selectedSlot = input.selectedStart && chosen?.slots.find((slot) => slot.startsAt.getTime() === input.selectedStart!.getTime());
+  const content = selectedSlot
+    ? `<div class="summary"><strong>${dateText(selectedSlot.startsAt, input.lang)} · ${clockText(selectedSlot.startsAt, input.lang)}</strong><p class="muted">${t.rescheduleHint}</p></div><form method="post" action="${href(input.slug, path, { lang: input.lang })}"><input type="hidden" name="start" value="${escapeHtml(selectedSlot.startsAt.toISOString())}"><button type="submit">${t.confirmNewTime}</button></form>`
+    : chosen && chosen.slots.length > 0
+      ? `<div class="times">${chosen.slots.map((slot) => `<a class="card" href="${href(input.slug, path, { date: chosen.date, start: slot.startsAt.toISOString(), lang: input.lang })}"><strong>${clockText(slot.startsAt, input.lang)}</strong><div class="muted">${t.placesLeft(slot.remaining)}</div></a>`).join('')}</div>`
+      : `<div class="empty"><p>${t.noTimes}</p><p class="muted">${t.emptyHint}</p></div>`;
+  return layout({ lang: input.lang, title: t.rescheduleTitle, businessName: input.businessName, location: input.location,
+    langSwitch: href(input.slug, path, { date: input.selected, lang: other(input.lang) }),
+    body: `<a class="back" href="${href(input.slug, `/manage/${input.token}`, { lang: input.lang })}">← ${t.back}</a><h1>${t.rescheduleTitle}</h1><p class="muted intro">${t.rescheduleHint}</p>${input.notice ? `<p class="notice" role="alert">${t.taken}</p>` : ''}<nav class="days">${strip}</nav><h2>${chosen ? dayLabel(chosen.date, input.lang) : ''}</h2>${content}` });
+}
+
+export function customerMessagePage(input: Base & { kind: 'expired' | 'cutoff' | 'unavailable' }): string {
+  const t = T[input.lang];
+  return layout({ lang: input.lang, title: t.manage, businessName: input.businessName, location: input.location,
+    body: `<h1>${t.manage}</h1><p>${input.kind === 'expired' ? t.sessionExpired : input.kind === 'cutoff' ? t.cutoffPassed : t.bookingUnavailable}</p><a class="secondary" href="${href(input.slug, '/manage', { lang: input.lang })}">${t.findBooking}</a>` });
 }
 
 export function messagePage(input: { slug: string | null; lang: Lang; businessName: string | null; kind: MessageKind }): string {

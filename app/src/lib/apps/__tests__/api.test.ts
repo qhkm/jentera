@@ -7,7 +7,8 @@ const BOOKING = {
   startsAt: '2026-10-06T02:00:00.000Z', endsAt: '2026-10-06T03:00:00.000Z', partySize: 2, customerName: 'Aisyah',
   customerPhone: '60123456789', note: null, status: 'confirmed', expired: false, decidedAt: '2026-10-05T00:00:00.000Z',
   cancelledAt: null, calendar: { status: 'pending', error: null, reason: null, canRetry: false, account: null },
-  whatsappUrl: 'https://wa.me/60123456789?text=Hi', createdAt: '2026-10-04T00:00:00.000Z',
+  whatsappUrl: 'https://wa.me/60123456789?text=Hi', reminderWhatsappUrl: 'https://wa.me/60123456789?text=Reminder',
+  createdAt: '2026-10-04T00:00:00.000Z',
 };
 
 function answer(status: number, body: unknown) {
@@ -74,8 +75,8 @@ describe('RemoteAppsApi', () => {
   it('carries the service a config refusal is about', async () => {
     answer(409, { ok: false, code: 'CAPACITY_BELOW_RESERVED', serviceId: 's-1' });
     await expect(new RemoteAppsApi().saveBookingsConfig({
-      version: 3, slug: 'seido', accepting: true, minNoticeMinutes: 120, horizonDays: 30, location: null,
-      acknowledgeAvailabilityLimits: true, services: [],
+      version: 3, slug: 'seido', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: null,
+      acknowledgeAvailabilityLimits: true, services: [], blocks: [],
     })).rejects.toMatchObject({ code: 'CAPACITY_BELOW_RESERVED', serviceId: 's-1' });
   });
 
@@ -89,8 +90,8 @@ describe('RemoteAppsApi', () => {
     const garbled = () => vi.stubGlobal('fetch', vi.fn(async () => new Response('{"ok":tr', { status: 200 })));
     garbled();
     await expect(new RemoteAppsApi().saveBookingsConfig({
-      version: 3, slug: 'seido', accepting: true, minNoticeMinutes: 120, horizonDays: 30, location: null,
-      acknowledgeAvailabilityLimits: true, services: [],
+      version: 3, slug: 'seido', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: null,
+      acknowledgeAvailabilityLimits: true, services: [], blocks: [],
     })).rejects.toMatchObject({ code: 'INVALID_RESPONSE', status: 200, uncertain: true });
     await expect(new RemoteAppsApi().decide(ID, 'confirm')).rejects.toMatchObject({ code: 'INVALID_RESPONSE', uncertain: true });
     await expect(new RemoteAppsApi().list()).rejects.toMatchObject({ code: 'INVALID_RESPONSE', uncertain: false });

@@ -2,8 +2,11 @@ import type postgres from 'postgres';
 import { findConnection } from '../../connections';
 import { GOOGLE_CALENDAR_CONNECTOR } from '../../connectors/google-calendar';
 import { CALENDAR_MAX_ATTEMPTS, calendarPin, sameAccountConnection, type CalendarReason } from './calendar-sync';
-import { bookingMessage, whatsappUrl, type Lang, type MessageKind } from './messages';
+import { bookingMessage, bookingReminderMessage, whatsappUrl, type Lang, type MessageKind } from './messages';
 import { addDays, myInstant } from './time';
+import { queueCalendarJob } from './calendar-job';
+import { cancelBookingReminders, scheduleBookingReminders } from './reminders';
+import { hasAvailabilityConflict } from './availability';
 
 /* The owner's side of booking requests. Decisions and cancellations lock in
    the common order (the installation, then the service, then the booking)
@@ -66,6 +69,8 @@ export interface BookingJson {
   };
   /** A prefilled message for the owner to send; never proof it was sent. */
   whatsappUrl: string | null;
+  /** A prefilled reminder for the owner to send for a future confirmation. */
+  reminderWhatsappUrl: string | null;
   createdAt: string;
 }
 
@@ -73,7 +78,7 @@ export interface BookingCursor { d: string; p: 0 | 1; s: string; id: string }
 
 export type DecideResult =
   | { ok: true; row: BookingRow; changed: boolean; calendarQueued: boolean }
-  | { ok: false; code: 'NOT_FOUND' | 'ALREADY_DECIDED' | 'EXPIRED' | 'NOT_RETRYABLE' | 'CALENDAR_DISCONNECTED' };
+  | { ok: false; code: 'NOT_FOUND' | 'ALREADY_DECIDED' | 'EXPIRED' | 'NOT_RETRYABLE' | 'CALENDAR_DISCONNECTED' | 'CALENDAR_CONFLICT' };
 
 // A plain string[]: postgres.js's identifier helper, tx(COLUMNS), does not accept a readonly tuple.
 const COLUMNS: string[] = [
@@ -88,6 +93,7 @@ function messageKind(status: BookingStatus): MessageKind | null {
 
 export function bookingJson(row: BookingRow, ctx: BookingContext): BookingJson {
   const kind = messageKind(row.status);
+  const manageUrl = `${ctx.publicUrl}/manage?ref=${encodeURIComponent(row.reference)}`;
   return {
     id: row.id,
     reference: row.reference,
@@ -116,7 +122,14 @@ export function bookingJson(row: BookingRow, ctx: BookingContext): BookingJson {
       kind, lang: ctx.lang, customerName: row.customer_name, serviceName: row.service_name,
       partySize: row.party_size, startsAt: row.starts_at, reference: row.reference,
       businessName: ctx.businessName, publicUrl: ctx.publicUrl,
+      manageUrl,
     })) : null,
+    reminderWhatsappUrl: row.status === 'confirmed' && row.starts_at.getTime() > ctx.now.getTime()
+      ? whatsappUrl(row.customer_phone, bookingReminderMessage({
+        lang: ctx.lang, customerName: row.customer_name, serviceName: row.service_name,
+        partySize: row.party_size, startsAt: row.starts_at, reference: row.reference,
+        businessName: ctx.businessName, publicUrl: ctx.publicUrl, manageUrl,
+      })) : null,
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -186,22 +199,6 @@ async function lockForChange(tx: postgres.TransactionSql, businessId: string, id
   return row ?? null;
 }
 
-/** Record the Calendar state a booking should reach. A new revision tells a
-    running executor its work is stale; a live lease is left alone. */
-export async function queueCalendarJob(
-  tx: postgres.TransactionSql,
-  businessId: string,
-  bookingId: string,
-  desired: 'present' | 'absent',
-  now: Date,
-): Promise<void> {
-  await tx`insert into booking_calendar_job (business_id, booking_id, desired, revision, attempts, next_attempt_at, updated_at)
-    values (${businessId}, ${bookingId}, ${desired}, 1, 0, ${now}, ${now})
-    on conflict (business_id, booking_id) do update
-      set desired = excluded.desired, revision = booking_calendar_job.revision + 1, attempts = 0,
-          next_attempt_at = excluded.next_attempt_at, last_error = null, updated_at = excluded.updated_at`;
-}
-
 export async function decideBooking(
   tx: postgres.TransactionSql,
   businessId: string,
@@ -216,6 +213,9 @@ export async function decideBooking(
   if (row.status === target) return { ok: true, row, changed: false, calendarQueued: false };
   if (row.status !== 'pending') return { ok: false, code: 'ALREADY_DECIDED' };
   if (row.starts_at.getTime() <= now.getTime()) return { ok: false, code: 'EXPIRED' };
+  if (target === 'confirmed' && await hasAvailabilityConflict(tx, businessId, row.starts_at, row.ends_at)) {
+    return { ok: false, code: 'CALENDAR_CONFLICT' };
+  }
   let calendarStatus: CalendarStatus = 'none';
   let pin: ReturnType<typeof calendarPin> | null = null;
   if (target === 'confirmed') {
@@ -232,6 +232,7 @@ export async function decideBooking(
     where business_id = ${businessId} and id = ${id} and status = 'pending'
     returning ${tx(COLUMNS)}`;
   if (pin) await queueCalendarJob(tx, businessId, id, 'present', now);
+  if (target === 'confirmed') await scheduleBookingReminders(tx, businessId, id, row.starts_at, now);
   return { ok: true, row: updated, changed: true, calendarQueued: pin !== null };
 }
 
@@ -258,6 +259,7 @@ export async function cancelBooking(
     where business_id = ${businessId} and id = ${id} and status = 'confirmed'
     returning ${tx(COLUMNS)}`;
   if (eventMayExist) await queueCalendarJob(tx, businessId, id, 'absent', now);
+  await cancelBookingReminders(tx, businessId, id, now);
   return { ok: true, row: updated, changed: true, calendarQueued: eventMayExist };
 }
 

@@ -41,7 +41,9 @@ export interface RunProgressEvent {
 
 /** What a status line is, so the browser can keep the agent's own steps and
     tool calls as a list and treat the dispatch stages as a label. */
-export const STATUS_KINDS = ['stage', 'step', 'tool'] as const;
+/* `wake`: the workspace is still waking (runtime/wake-lines.ts); the app
+   shows its own translated line for it rather than the English detail. */
+export const STATUS_KINDS = ['stage', 'step', 'tool', 'wake'] as const;
 export type StatusKind = (typeof STATUS_KINDS)[number];
 
 export interface RunLiveEvent {

@@ -53,6 +53,10 @@ export const EVENTS = [
      of anything: `runSteps` reads these back for the chat's receipt. */
   'agent.step',
   'answer.guardrail',
+  /* Why a run's start waited — `waking`, `busy`, `preparing` or `retry` —
+     written once per reason, so a slow start can be attributed rather
+     than inferred from attempt counts (docs/reply-latency.md). */
+  'work.delayed',
 ] as const;
 export type RunEventType = (typeof EVENTS)[number];
 

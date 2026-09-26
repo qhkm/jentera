@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bookingMessage, whatsappUrl, whenText, type MessageInput } from '../src/apps/bookings/messages';
+import { bookingMessage, bookingReminderMessage, whatsappUrl, whenText, type MessageInput } from '../src/apps/bookings/messages';
 
 const base: MessageInput = {
   kind: 'confirm', lang: 'en', customerName: 'Aisyah', serviceName: 'cupping class', partySize: 2,
@@ -25,6 +25,12 @@ describe('booking messages', () => {
     expect(bookingMessage({ ...base, lang: 'bm' })).toBe(
       'Hai Aisyah, tempahan cupping class anda untuk 2 orang pada Sabtu 26 Sep, 3.00 petang telah disahkan. Rujukan K7Q2MP. Jumpa di SEIDO Coffee.');
     expect(bookingMessage({ ...base, lang: 'bm', kind: 'cancel' })).toContain('telah dibatalkan');
+  });
+  it('prepares an honest reminder with the customer management link', () => {
+    expect(bookingReminderMessage({ ...base, manageUrl: 'https://sites.test/b/seido/manage?ref=K7Q2MP' })).toBe(
+      'Hi Aisyah, a reminder for your cupping class booking on Sat 26 Sep at 3:00 pm. Ref K7Q2MP. See you at SEIDO Coffee. Change or cancel your booking: https://sites.test/b/seido/manage?ref=K7Q2MP');
+    expect(bookingReminderMessage({ ...base, lang: 'bm', manageUrl: 'https://sites.test/b/seido/manage?ref=K7Q2MP' }))
+      .toContain('Ubah atau batalkan tempahan: https://sites.test/b/seido/manage?ref=K7Q2MP');
   });
   it('URL-encodes the text for wa.me, never HTML-escapes it', () => {
     const url = whatsappUrl('60123456789', 'Hi <Aisyah> & co?');

@@ -9,11 +9,13 @@ import type { AppsApi, BookingService, BookingsConfig, BookingsConfigInput, Week
 /* Monday first, as a Malaysian week reads; 0 is Sunday in the data. */
 const WEEK = [1, 2, 3, 4, 5, 6, 0] as const;
 const DURATIONS = Array.from({ length: 32 }, (_, i) => (i + 1) * 15);
-const NOTICE = [0, 30, 60, 120, 240, 720, 1440, 2880, 10080];
+const NOTICE = [0, 30, 60, 120, 240, 360, 720, 1440, 2880, 10080];
 const SLUG = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 const RESERVED = new Set(['api', 'admin', 'www', 'app', 'b']);
 
 interface DayDraft { open: boolean; opens: string; closes: string }
+interface BlockDraft { key: string; id: string | null; label: string; startsAt: string; endsAt: string }
+type SettingsPanel = 'services' | 'hours' | 'page' | 'rules' | 'calendar' | 'blocks';
 interface ServiceDraft {
   key: string;
   id: string | null;
@@ -29,6 +31,30 @@ interface ServiceDraft {
 }
 
 let draftKeys = 0;
+let blockKeys = 0;
+
+function malaysiaInput(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(date);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}T${value.hour}:${value.minute}`;
+}
+
+function malaysiaIso(value: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}:00+08:00`);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function newBlock(): BlockDraft {
+  const start = new Date(Date.now() + 24 * 60 * 60_000);
+  start.setUTCMinutes(0, 0, 0);
+  const end = new Date(start.getTime() + 60 * 60_000);
+  return { key: `block-${++blockKeys}`, id: null, label: '', startsAt: malaysiaInput(start.toISOString()), endsAt: malaysiaInput(end.toISOString()) };
+}
 
 /** A link name from a business name, or '' when none fits the rules. */
 export function slugFrom(name: string): string {
@@ -83,12 +109,17 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
   const slug = slugInput ?? slugFrom(business.name);
   const [services, setServices] = useState<ServiceDraft[]>(() => (config.services.length ? config.services.map(toDraft) : [newService()]));
   const [minNotice, setMinNotice] = useState(config.settings?.minNoticeMinutes ?? 120);
+  const [changeCutoff, setChangeCutoff] = useState(config.settings?.changeCutoffMinutes ?? 360);
   const [horizon, setHorizon] = useState(config.settings?.horizonDays ?? 30);
   const [location, setLocation] = useState(config.settings?.location ?? '');
+  const [blocks, setBlocks] = useState<BlockDraft[]>(() => config.blocks.map((block) => ({
+    key: block.id, id: block.id, label: block.label, startsAt: malaysiaInput(block.startsAt), endsAt: malaysiaInput(block.endsAt),
+  })));
   const [acknowledged, setAcknowledged] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<{ key: string; reload: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [panel, setPanel] = useState<SettingsPanel>('services');
   const dayName = useMemo(() => {
     const format = new Intl.DateTimeFormat(lang === 'bm' ? 'ms-MY' : 'en-MY', { weekday: 'long', timeZone: 'UTC' });
     // 4 October 2026 was a Sunday, so day d is 4 + d October.
@@ -96,6 +127,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
   }, [lang]);
   const origin = config.installation ? originOf(config.installation.publicUrl) : null;
   const notices = [...new Set([...NOTICE, minNotice])].sort((a, b) => a - b);
+  const cutoffs = [...new Set([...NOTICE, changeCutoff])].sort((a, b) => a - b);
 
   function update(key: string, change: Partial<ServiceDraft>) {
     setServices((list) => list.map((service) => (service.key === key ? { ...service, ...change } : service)));
@@ -109,6 +141,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
     const found: Record<string, string> = {};
     if (!SLUG.test(slug) || RESERVED.has(slug)) found.slug = 'bookings.settings.error.slug';
     if (!Number.isInteger(horizon) || horizon < 1 || horizon > 90) found.horizon = 'bookings.settings.error.horizon';
+    if (!Number.isInteger(changeCutoff) || changeCutoff < 0 || changeCutoff > 10080) found.changeCutoff = 'bookings.settings.error.cutoff';
     if (!installed && !acknowledged) found.acknowledge = 'bookings.settings.error.acknowledge';
     if (!services.some((service) => service.active)) found.services = 'bookings.settings.error.noService';
     for (const service of services) {
@@ -125,6 +158,14 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
       }
     }
     if (location.trim().length > 160) found.location = 'bookings.settings.error.location';
+    for (const block of blocks) {
+      const start = malaysiaIso(block.startsAt);
+      const end = malaysiaIso(block.endsAt);
+      if (!block.label.trim() || block.label.trim().length > 80 || !start || !end ||
+          Date.parse(end) <= Date.parse(start) || Date.parse(end) - Date.parse(start) > 31 * 86_400_000) {
+        found[`${block.key}.range`] = 'bookings.settings.error.block';
+      }
+    }
     return found;
   }
 
@@ -133,12 +174,21 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
     setProblem(null);
     const found = validate();
     setErrors(found);
-    if (Object.keys(found).length) return;
+    if (Object.keys(found).length) {
+      const keys = Object.keys(found);
+      if (keys.some((key) => key === 'location' || key === 'slug')) setPanel('page');
+      else if (keys.some((key) => key === 'horizon' || key === 'changeCutoff')) setPanel('rules');
+      else if (keys.some((key) => key.endsWith('.range'))) setPanel('blocks');
+      else if (keys.some((key) => key.endsWith('.hours') || key.includes('.day.'))) setPanel('hours');
+      else setPanel('services');
+      return;
+    }
     const input: BookingsConfigInput = {
       version: config.version,
       slug,
       accepting: config.settings?.accepting ?? true,
       minNoticeMinutes: minNotice,
+      changeCutoffMinutes: changeCutoff,
       horizonDays: horizon,
       location: location.trim() || null,
       acknowledgeAvailabilityLimits: installed || acknowledged,
@@ -156,17 +206,31 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
           ...service.extra,
         ],
       })),
+      blocks: blocks.map((block) => ({
+        id: block.id,
+        label: block.label.trim(),
+        startsAt: malaysiaIso(block.startsAt)!,
+        endsAt: malaysiaIso(block.endsAt)!,
+      })),
     };
     setSaving(true);
     try {
       onSaved(await saveConfig.mutateAsync(input));
     } catch (error) {
       const code = error instanceof AppsError ? error.code : '';
-      if (code === 'SLUG_TAKEN') setErrors({ slug: 'bookings.settings.error.slugTaken' });
-      else if (code === 'ACK_REQUIRED') setErrors({ acknowledge: 'bookings.settings.error.acknowledge' });
+      if (code === 'SLUG_TAKEN') {
+        setErrors({ slug: 'bookings.settings.error.slugTaken' });
+        setPanel('page');
+      } else if (code === 'ACK_REQUIRED') {
+        setErrors({ acknowledge: 'bookings.settings.error.acknowledge' });
+        setPanel('services');
+      }
       else if (code === 'CAPACITY_BELOW_RESERVED') {
         const service = services.find((draft) => draft.id === (error as AppsError).serviceId);
-        if (service) setErrors({ [`${service.key}.capacity`]: 'bookings.settings.error.capacity.reserved' });
+        if (service) {
+          setErrors({ [`${service.key}.capacity`]: 'bookings.settings.error.capacity.reserved' });
+          setPanel('services');
+        }
         else setProblem({ key: 'bookings.settings.error.capacity.reserved', reload: false });
       } else if (code === 'CONFIG_CHANGED' || code === 'UNKNOWN_SERVICE') setProblem({ key: 'bookings.settings.error.changed', reload: true });
       else if (error instanceof AppsError && error.uncertain) setProblem({ key: 'bookings.settings.error.uncertain', reload: true });
@@ -180,17 +244,33 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
   const error = (key: string) => (errors[key] ? <p className="field-error" role="alert">{t(errors[key])}</p> : null);
   const noticeLabel = (minutes: number) => (NOTICE.includes(minutes)
     ? t(`bookings.settings.notice.${minutes}`) : t('bookings.settings.notice.custom', { n: minutes }));
+  const panels: Array<{ id: SettingsPanel; label: string; meta?: string }> = [
+    { id: 'services', label: t('bookings.settings.services'), meta: String(services.length) },
+    { id: 'hours', label: t('bookings.settings.hours') },
+    { id: 'page', label: t('bookings.settings.pageDetails') },
+    { id: 'rules', label: t('bookings.settings.rules') },
+    { id: 'calendar', label: t('bookings.settings.calendarProtection'), meta: config.calendarProtection.lastError ? '!' : undefined },
+    { id: 'blocks', label: t('bookings.settings.blocks'), meta: blocks.length ? String(blocks.length) : undefined },
+  ];
 
   return <form className="bookings-settings" onSubmit={(event) => void save(event)} noValidate>
-    <h2>{t(installed ? 'bookings.settings.title' : 'bookings.setup.title')}</h2>
-    {!installed && <p className="bookings-lead">{t('bookings.setup.lead')}</p>}
-    <label>{t('bookings.settings.location')}
-      <Input value={location} maxLength={160} placeholder={t('bookings.settings.location.placeholder')}
-        aria-invalid={Boolean(errors.location)} onChange={(event) => setLocation(event.target.value)} />
-    </label>
-    <p className="bookings-lead">{t('bookings.settings.location.help')}</p>
-    {error('location')}
-    {services.map((service, index) => <fieldset key={service.key} className="bookings-service card">
+    {!installed && <>
+      <h2>{t('bookings.setup.title')}</h2>
+      <p className="bookings-lead">{t('bookings.setup.lead')}</p>
+    </>}
+    <div className="bookings-settings-shell">
+      <nav className="bookings-settings-nav" aria-label={t('bookings.settings.nav')}>
+        {panels.map((item) => <button key={item.id} type="button" className={panel === item.id ? 'active' : ''}
+          aria-label={item.label} aria-current={panel === item.id ? 'page' : undefined} onClick={() => setPanel(item.id)}>
+          <span>{item.label}</span>{item.meta && <small>{item.meta}</small>}
+        </button>)}
+      </nav>
+      <section className="bookings-settings-panel">
+        <header className="bookings-settings-panel-heading">
+          <h3>{panels.find((item) => item.id === panel)!.label}</h3>
+        </header>
+    {panel === 'services' && <>
+      {services.map((service, index) => <fieldset key={service.key} className="bookings-service card">
       <legend>{services.length > 1 ? t('bookings.settings.serviceN', { n: index + 1 }) : t('bookings.settings.service')}</legend>
       <label>{t('bookings.settings.name')}
         <Input value={service.name} maxLength={80} aria-invalid={Boolean(errors[`${service.key}.name`])}
@@ -204,6 +284,7 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
           onChange={(event) => update(service.key, { description: event.target.value })} />
       </label>
       {error(`${service.key}.description`)}
+      <div className="bookings-service-basics">
       <label>{t('bookings.settings.duration')}
         <select className="input" value={service.durationMinutes} onChange={(event) => update(service.key, { durationMinutes: Number(event.target.value) })}>
           {DURATIONS.map((minutes) => <option key={minutes} value={minutes}>{t('bookings.settings.minutes', { n: minutes })}</option>)}
@@ -218,22 +299,6 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
         <Input value={service.priceLabel} maxLength={40} placeholder={t('bookings.settings.price.placeholder')}
           onChange={(event) => update(service.key, { priceLabel: event.target.value })} />
       </label>
-      <div className="bookings-hours" role="group" aria-label={t('bookings.settings.hours')}>
-        <span className="bookings-hours-title">{t('bookings.settings.hours')}</span>
-        {WEEK.map((day) => <div key={day} className="bookings-day">
-          <label className="bookings-check bookings-day-open">
-            <input type="checkbox" checked={service.days[day].open} onChange={(event) => updateDay(service.key, day, { open: event.target.checked })} />
-            {dayName(day)}
-          </label>
-          {service.days[day].open && <>
-            <input className="input" type="time" step={900} aria-label={t('bookings.settings.opens', { day: dayName(day) })}
-              value={service.days[day].opens} onChange={(event) => updateDay(service.key, day, { opens: event.target.value })} />
-            <input className="input" type="time" step={900} aria-label={t('bookings.settings.closes', { day: dayName(day) })}
-              value={service.days[day].closes} onChange={(event) => updateDay(service.key, day, { closes: event.target.value })} />
-          </>}
-          {error(`${service.key}.day.${day}`)}
-        </div>)}
-        {error(`${service.key}.hours`)}
       </div>
       {service.id !== null && <label className="bookings-check">
         <input type="checkbox" checked={service.active} onChange={(event) => update(service.key, { active: event.target.checked })} />
@@ -247,6 +312,39 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
       <Button type="button" variant="outline" onClick={() => setServices((list) => [...list, newService()])}>{t('bookings.settings.addService')}</Button>
       <p>{t('bookings.settings.independent')}</p>
     </div>}
+    </>}
+    {panel === 'hours' && <div className="bookings-hours-services">
+      {services.map((service) => <fieldset key={service.key} className="bookings-service card">
+        <legend>{service.name || t('bookings.settings.service')}</legend>
+        <div className="bookings-hours" role="group" aria-label={`${service.name || t('bookings.settings.service')} · ${t('bookings.settings.hours')}`}>
+          {WEEK.map((day) => <div key={day} className="bookings-day">
+            <label className="bookings-check bookings-day-open">
+              <input type="checkbox" checked={service.days[day].open} onChange={(event) => updateDay(service.key, day, { open: event.target.checked })} />
+              {dayName(day)}
+            </label>
+            {service.days[day].open && <>
+              <input className="input" type="time" step={900} aria-label={services.length > 1
+                ? `${service.name || t('bookings.settings.service')}: ${t('bookings.settings.opens', { day: dayName(day) })}`
+                : t('bookings.settings.opens', { day: dayName(day) })}
+                value={service.days[day].opens} onChange={(event) => updateDay(service.key, day, { opens: event.target.value })} />
+              <input className="input" type="time" step={900} aria-label={services.length > 1
+                ? `${service.name || t('bookings.settings.service')}: ${t('bookings.settings.closes', { day: dayName(day) })}`
+                : t('bookings.settings.closes', { day: dayName(day) })}
+                value={service.days[day].closes} onChange={(event) => updateDay(service.key, day, { closes: event.target.value })} />
+            </>}
+            {error(`${service.key}.day.${day}`)}
+          </div>)}
+          {error(`${service.key}.hours`)}
+        </div>
+      </fieldset>)}
+    </div>}
+    {panel === 'page' && <div className="bookings-settings-fields">
+    <label>{t('bookings.settings.location')}
+      <Input value={location} maxLength={160} placeholder={t('bookings.settings.location.placeholder')}
+        aria-invalid={Boolean(errors.location)} onChange={(event) => setLocation(event.target.value)} />
+    </label>
+    <p className="bookings-lead">{t('bookings.settings.location.help')}</p>
+    {error('location')}
     <label>{t('bookings.settings.slug')}
       <Input value={slug} maxLength={40} aria-invalid={Boolean(errors.slug)} onChange={(event) => setSlugInput(event.target.value.toLowerCase())} />
     </label>
@@ -254,8 +352,8 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
     <p className="bookings-link-preview">{!installed ? t('bookings.settings.link.future', { path: `/b/${slug}` })
       : origin ? `${origin}/b/${slug}` : `…/b/${slug}`}</p>
     {error('slug')}
-    <details className="bookings-advanced">
-      <summary>{t('bookings.settings.advanced')}</summary>
+    </div>}
+    {panel === 'rules' && <div className="bookings-settings-fields">
       <label>{t('bookings.settings.notice')}
         <select className="input" value={minNotice} onChange={(event) => setMinNotice(Number(event.target.value))}>
           {notices.map((minutes) => <option key={minutes} value={minutes}>{noticeLabel(minutes)}</option>)}
@@ -265,7 +363,47 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
         <Input type="number" min={1} max={90} value={horizon} aria-invalid={Boolean(errors.horizon)} onChange={(event) => setHorizon(Number(event.target.value))} />
       </label>
       {error('horizon')}
-    </details>
+      <label>{t('bookings.settings.cutoff')}
+        <select className="input" value={changeCutoff} aria-invalid={Boolean(errors.changeCutoff)} onChange={(event) => setChangeCutoff(Number(event.target.value))}>
+          {cutoffs.map((minutes) => <option key={minutes} value={minutes}>{noticeLabel(minutes)}</option>)}
+        </select>
+      </label>
+      <p className="bookings-lead">{t('bookings.settings.cutoff.help')}</p>
+      {error('changeCutoff')}
+      <p className="bookings-lead">{t('bookings.settings.reminders')}</p>
+    </div>}
+    {panel === 'calendar' && <div className="bookings-settings-fields">
+        <p className="bookings-lead">{config.calendarProtection.connected
+          ? config.calendarProtection.syncedAt
+            ? t('bookings.settings.calendarProtection.active', { account: config.calendarProtection.account ?? t('bookings.settings.calendarProtection.calendar') })
+            : t('bookings.settings.calendarProtection.waiting')
+          : t('bookings.settings.calendarProtection.disconnected')}</p>
+        {config.calendarProtection.lastError && <p className="field-error" role="alert">{t('bookings.settings.calendarProtection.problem')}</p>}
+    </div>}
+    {panel === 'blocks' && <>
+      <div className="bookings-blocks">
+        <p className="bookings-lead">{t('bookings.settings.blocks.help')}</p>
+        {blocks.map((block) => <fieldset key={block.key} className="bookings-block card">
+          <legend>{t('bookings.settings.block')}</legend>
+          <label>{t('bookings.settings.block.label')}
+            <Input value={block.label} maxLength={80} onChange={(event) => setBlocks((list) => list.map((item) => item.key === block.key ? { ...item, label: event.target.value } : item))} />
+          </label>
+          <label>{t('bookings.settings.block.start')}
+            <Input type="datetime-local" step={900} value={block.startsAt} onChange={(event) => setBlocks((list) => list.map((item) => item.key === block.key ? { ...item, startsAt: event.target.value } : item))} />
+          </label>
+          <label>{t('bookings.settings.block.end')}
+            <Input type="datetime-local" step={900} value={block.endsAt} onChange={(event) => setBlocks((list) => list.map((item) => item.key === block.key ? { ...item, endsAt: event.target.value } : item))} />
+          </label>
+          {error(`${block.key}.range`)}
+          <Button type="button" variant="ghost" onClick={() => setBlocks((list) => list.filter((item) => item.key !== block.key))}>
+            {t('bookings.settings.block.remove')}
+          </Button>
+        </fieldset>)}
+        {blocks.length < 100 && <Button type="button" variant="outline" onClick={() => setBlocks((list) => [...list, newBlock()])}>
+          {t('bookings.settings.block.add')}
+        </Button>}
+      </div>
+    </>}
     {!installed && <label className="bookings-check bookings-ack">
       <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />
       {t('bookings.setup.acknowledge')}
@@ -276,6 +414,10 @@ export default function BookingsSettings({ api, config, onSaved, onReload }: {
       {problem.reload && <Button type="button" variant="outline" onClick={onReload}>{t('bookings.settings.reload')}</Button>}
     </div>}
     {installed && <p className="bookings-kept">{t('bookings.settings.kept')}</p>}
-    <Button type="submit" disabled={saving}>{t(installed ? 'bookings.settings.save' : 'bookings.setup.publish')}</Button>
+    <div className="bookings-settings-actions">
+      <Button type="submit" disabled={saving}>{t(installed ? 'bookings.settings.save' : 'bookings.setup.publish')}</Button>
+    </div>
+      </section>
+    </div>
   </form>;
 }

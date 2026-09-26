@@ -44,10 +44,10 @@ const service = (over: Record<string, unknown> = {}) => ({
   hours: [{ weekday: 6, opens: '10:00', closes: '13:00' }], ...over,
 });
 const config = (over: Record<string, unknown> = {}) => ({
-  version: null, slug: 'kedai-aisyah', accepting: true, minNoticeMinutes: 120, horizonDays: 30, location: '12 Jalan Example',
-  acknowledgeAvailabilityLimits: true, services: [service()], ...over,
+  version: null, slug: 'kedai-aisyah', accepting: true, minNoticeMinutes: 120, changeCutoffMinutes: 360, horizonDays: 30, location: '12 Jalan Example',
+  acknowledgeAvailabilityLimits: true, services: [service()], blocks: [], ...over,
 });
-type Saved = { config: { version: number; installation: { slug: string; publicUrl: string }; services: Array<{ id: string; active: boolean; hours: unknown[] }> } };
+type Saved = { config: { version: number; installation: { slug: string; publicUrl: string }; services: Array<{ id: string; active: boolean; hours: unknown[] }>; blocks: Array<{ id: string; label: string; startsAt: string; endsAt: string }> } };
 
 describe('apps route: access', () => {
   it('answers 404 for a business outside the pilot, and when the switch is off', async () => {
@@ -104,6 +104,45 @@ describe('apps route: config', () => {
       config({ version: 1, services: [service({ id: svc.id, name: 'Cupping' })] })));
     expect(second.config.version).toBe(2);
     expect((await call('PUT', '/api/apps/bookings/config', ownerA, config({ version: 1, services: [service({ id: svc.id })] }))).status).toBe(409);
+  });
+
+  it('creates, updates and removes manual closures with the rest of the versioned config', async () => {
+    const first = await jsonOf<Saved>(await call('PUT', '/api/apps/bookings/config', ownerA, config({
+      blocks: [{ id: null, label: 'Team retreat', startsAt: '2026-10-12T01:00:00.000Z', endsAt: '2026-10-12T09:00:00.000Z' }],
+    })));
+    expect(first.config.blocks).toEqual([expect.objectContaining({ label: 'Team retreat' })]);
+    const block = first.config.blocks[0];
+    const serviceId = first.config.services[0].id;
+    const second = await jsonOf<Saved>(await call('PUT', '/api/apps/bookings/config', ownerA, config({
+      version: first.config.version,
+      services: [service({ id: serviceId })],
+      blocks: [{ id: block.id, label: 'Closed for training', startsAt: block.startsAt, endsAt: block.endsAt }],
+    })));
+    expect(second.config.blocks).toEqual([expect.objectContaining({ id: block.id, label: 'Closed for training' })]);
+    const removed = await jsonOf<Saved>(await call('PUT', '/api/apps/bookings/config', ownerA, config({
+      version: second.config.version,
+      services: [service({ id: serviceId })],
+      blocks: [],
+    })));
+    expect(removed.config.blocks).toEqual([]);
+  });
+
+  it('refuses malformed, duplicate and cross-tenant closure ids', async () => {
+    const bad = await call('PUT', '/api/apps/bookings/config', ownerA, config({
+      blocks: [{ id: null, label: 'Too long', startsAt: '2026-10-01T00:00:00.000Z', endsAt: '2026-11-02T00:00:00.000Z' }],
+    }));
+    expect(bad.status).toBe(400);
+    const beta = await jsonOf<Saved>(await call('PUT', '/api/apps/bookings/config', ownerB, config({
+      slug: 'beta-salon', blocks: [{ id: null, label: 'Beta closure', startsAt: '2026-10-02T00:00:00.000Z', endsAt: '2026-10-03T00:00:00.000Z' }],
+    })));
+    const stolen = beta.config.blocks[0];
+    const attempt = await call('PUT', '/api/apps/bookings/config', ownerA, config({
+      blocks: [{ ...stolen }, { ...stolen }],
+    }));
+    expect(attempt.status).toBe(400);
+    const crossTenant = await call('PUT', '/api/apps/bookings/config', ownerA, config({ blocks: [stolen] }));
+    expect(crossTenant.status).toBe(409);
+    expect(await crossTenant.json()).toMatchObject({ code: 'CONFIG_CHANGED' });
   });
 
   it('normalises the link name, and refuses taken or reserved ones', async () => {

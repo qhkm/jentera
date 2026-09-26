@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearAskStorage, useAsk } from '@/hooks/useAsk';
+import { WAKE_LINE_COUNT, wakeLineIndex } from '@/lib/wake-line';
 import { LocalRepository } from '@/lib/repo/local';
 import { RepositoryProvider } from '@/lib/repo/context';
 import { SignedInProvider } from '@/lib/repo/gate';
@@ -114,6 +115,32 @@ describe('useAsk durable answers', () => {
       usedKeys: ['business.name'],
       grounded: true,
     });
+  });
+
+  it('says the workspace is waking in the owner’s language, one line per run', async () => {
+    const repo: Repository = new LocalRepository();
+    let options: AskOptions | undefined;
+    repo.ask = (_question: string, next?: AskOptions): Promise<AskAnswer> => {
+      options = next;
+      return new Promise<AskAnswer>(() => {});
+    };
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SignedInProvider value>
+        <RepositoryProvider repository={repo}>{children}</RepositoryProvider>
+      </SignedInProvider>
+    );
+    const { result } = renderHook(() => useAsk(business, { handled: 0, needs: 0 }, (key) => key), { wrapper });
+    await waitFor(() => expect(result.current).not.toBeNull());
+    const runId = '5b2f0c1e-8d4a-4c7e-9f3b-2a6d1e0c9b88';
+
+    act(() => result.current!.send('handle this', 'work'));
+    act(() => options?.onRunCreated?.(runId));
+    /* The Worker's English line is only a fallback; the app speaks for itself. */
+    act(() => options?.onProgress?.({ type: 'status', kind: 'wake', detail: '☕ English fallback' }));
+    const expected = `ask.wake.${wakeLineIndex(runId, WAKE_LINE_COUNT)}`;
+    expect(result.current!.messages[1]).toMatchObject({ text: expected, state: 'waking' });
+    act(() => options?.onProgress?.({ type: 'status', kind: 'wake', detail: '☕ English fallback' }));
+    expect(result.current!.messages[1].text).toBe(expected);
   });
 
   it('warms the agent once when a signed-in chat opens', async () => {

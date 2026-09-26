@@ -10,6 +10,7 @@ import type { RuntimeProvider } from './provider';
 import { runtimeProviderFor } from './provision';
 import {
   RunnerClient,
+  RunnerNotReadyError,
   RUNNER_INPUT_MAX,
   RUNNER_INSTRUCTIONS_MAX,
   type RunnerApprovalRequest,
@@ -259,7 +260,9 @@ export async function dispatchRuntimeRun(
     task.businessId,
     task.id,
   );
-  const started = await client.start({
+  let started: Awaited<ReturnType<RunnerClient['start']>>;
+  try {
+    started = await client.start({
     businessId: task.businessId,
     taskId: task.id,
     leaseToken,
@@ -283,9 +286,24 @@ export async function dispatchRuntimeRun(
        keeps its original deadline. */
     deadlineAt: Date.now() + runSeconds * 1_000,
     ...(keepaliveUntil ? { keepaliveUntil } : {}),
-  });
+    });
+  } catch (error) {
+    /* The runner admits by task id, so a start whose answer never came back is
+       safely asked again. Cut off by the slice or the runner's own deadline,
+       it is the wake still finishing, not a failed attempt. */
+    if (!task.remoteRunId && error instanceof Error &&
+        (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+      throw new RunnerNotReadyError('start not confirmed');
+    }
+    throw error;
+  }
   stage('hermes_started');
   const remoteRunId = started.hermesRunId;
+  /* A repeated start that finds the first still being admitted is told
+     `duplicate` before Hermes has answered with a run id: ask again shortly. */
+  if (!remoteRunId && started.duplicate && !task.remoteRunId) {
+    throw new RunnerNotReadyError('admission in progress');
+  }
   if (!remoteRunId) throw new Error('runner returned no Hermes run id');
   const firstStart = !task.remoteRunId;
   const recorded = await withTenant(env, task.businessId, async (tx) => {
@@ -300,7 +318,10 @@ export async function dispatchRuntimeRun(
     if (saved && firstStart) {
       await markRuntimeUsageStarted(tx, task.businessId, task.id);
     }
-    if (saved && !task.startedAt && task.runId) {
+    /* On the first recorded start, not on `started_at`: a run that waited on
+       a wake was deferred first, and a defer stamps `started_at`. Keyed on
+       that, the slow starts this event exists to measure never got it. */
+    if (saved && firstStart && task.runId) {
       await append(tx, task.businessId, task.runId, 'work.started', {
         runtimeTaskId: task.id,
         remoteRunId,

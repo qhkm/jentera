@@ -904,7 +904,7 @@ async function streamAsk(
         ...(typeof event.approvalId === 'string' ? { approvalId: event.approvalId } : {}),
         ...(event.approvalSource === 'vault' || event.approvalSource === 'runtime'
           ? { approvalSource: event.approvalSource } : {}),
-        ...(event.kind === 'stage' || event.kind === 'step' || event.kind === 'tool' ? { kind: event.kind } : {}),
+        ...(event.kind === 'stage' || event.kind === 'step' || event.kind === 'tool' || event.kind === 'wake' ? { kind: event.kind } : {}),
       });
     };
     const finishFromDurableState = (recovering = true) => {
@@ -954,7 +954,7 @@ async function streamAsk(
           ...(typeof event.approvalId === 'string' ? { approvalId: event.approvalId } : {}),
           ...(event.approvalSource === 'vault' || event.approvalSource === 'runtime'
             ? { approvalSource: event.approvalSource } : {}),
-          ...(event.kind === 'stage' || event.kind === 'step' || event.kind === 'tool' ? { kind: event.kind } : {}),
+          ...(event.kind === 'stage' || event.kind === 'step' || event.kind === 'tool' || event.kind === 'wake' ? { kind: event.kind } : {}),
         });
       }
       if (['completed', 'failed', 'cancelled'].includes(event.type)) finishFromDurableState(false);

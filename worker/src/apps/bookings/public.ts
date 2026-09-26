@@ -4,6 +4,7 @@ import { hoursFor, readHours } from './hours';
 import type { Lang } from './messages';
 import { openSlots, type OpenSlot, type Reservation } from './slots';
 import { addDays, myDate, myInstant } from './time';
+import { blockedIntervalsFor } from './availability';
 
 /* What a business's customers may see, read for the public booking pages.
    The business is found only through bookings_by_slug; everything after
@@ -72,11 +73,13 @@ export async function reservationsFor(
   serviceId: string,
   from: Date,
   to: Date,
+  excludeBookingId?: string,
 ): Promise<Reservation[]> {
   const rows = await tx<{ starts_at: Date; ends_at: Date; party_size: number }[]>`
     select starts_at, ends_at, party_size from booking
-     where business_id = ${businessId} and service_id = ${serviceId}
-       and status in ('pending', 'confirmed') and starts_at < ${to} and ends_at > ${from}`;
+       where business_id = ${businessId} and service_id = ${serviceId}
+       and status in ('pending', 'confirmed') and starts_at < ${to} and ends_at > ${from}
+       ${excludeBookingId ? tx`and id <> ${excludeBookingId}` : tx``}`;
   return rows.map((r) => ({ startsAt: r.starts_at, endsAt: r.ends_at, partySize: r.party_size }));
 }
 
@@ -89,6 +92,7 @@ export async function loadOpenTimes(
   from: string,
   days: number,
   now: Date,
+  excludeBookingId?: string,
 ): Promise<{ page: PublicPage; service: PublicService; days: DayTimes[] } | null> {
   return withTenant(env, businessId, async (tx) => {
     const page = await readPublicPage(tx, businessId);
@@ -96,8 +100,13 @@ export async function loadOpenTimes(
     if (!page || !service) return null;
     const today = myDate(now);
     const start = from < today ? today : from;
-    const reservations = await reservationsFor(tx, businessId, service.id, myInstant(start), myInstant(addDays(start, days)));
-    const slots = openSlots({ service, hours: service.hours, settings: page.settings, reservations, now, from: start, days });
+    const windowStart = myInstant(start);
+    const windowEnd = myInstant(addDays(start, days));
+    const [reservations, blocked] = await Promise.all([
+      reservationsFor(tx, businessId, service.id, windowStart, windowEnd, excludeBookingId),
+      blockedIntervalsFor(tx, businessId, windowStart, windowEnd),
+    ]);
+    const slots = openSlots({ service, hours: service.hours, settings: page.settings, reservations, blocked, now, from: start, days });
     const out: DayTimes[] = [];
     for (let offset = 0; offset < days; offset += 1) {
       const date = addDays(start, offset);

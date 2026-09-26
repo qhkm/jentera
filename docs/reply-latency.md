@@ -376,6 +376,141 @@ are untraced, context is reset on success/failure, concurrent runs keep their
 own correlation, and a failed log sink cannot fail initialization. Startup
 records stay operator-only; they are not chat progress events.
 
+## Measurements, 2026-09-25: where a slow start comes from
+
+This is the Grok Bot backlog item "chat startup delay", measured before any
+fix. The sample is 77 app replies (`owner.ask`, deepseek-flash) completed in
+the seven days to 25 September. It came from `reply-latency.sh db 7`, plus
+read-only queries on `run_event` and `runtime_task`.
+
+**Overall numbers:**
+
+- The wait from `work.requested` to `work.started` was 1.6 s at p50 and
+  10.7 s at p90.
+- Agent time was 11.4 s at p50 and 63.6 s at p90.
+- The total was 16 s at p50, 76 s at p90 and 288 s at most.
+
+The median start is fast. The problem is a tail of slow starts, and that
+tail has two distinct causes.
+
+**Grouped by how long the business had been idle beforehand:**
+
+| Idle since the business's previous run | Runs | p50 | p90 | max |
+|---|---|---|---|---|
+| under 15 min | 40 | 1.4 s | 2.8 s | 103.7 s |
+| 15–60 min | 16 | 1.5 s | 2.7 s | 10.9 s |
+| 1–4 h | 11 | 6.2 s | 19.3 s | 95.7 s |
+| over 4 h or first | 14 | 2.7 s | 12.5 s | 26.7 s |
+
+**Grouped by the run task's `attempt`:**
+
+| Start wait | Runs | `attempt` |
+|---|---|---|
+| under 5 s | 65 | 64 × 0, 1 × 1 |
+| 5–25 s | 7 | all 0 |
+| 25 s or more | 5 | 4 at 1–2; one at 0, which queued behind the owner's own previous message |
+
+1. **Cold wake: 5–25 s, 7 of 77 runs.** One attempt that is simply slow. The
+   sprite had slept, typically after one to four hours idle, and waking it
+   plus Hermes's restart is the cost. This is the lever the keepalive
+   decision (`docs/todo.md`, left at 0 on 19 September) already weighed.
+2. **A failed first attempt: 42–104 s, 4 of 77 runs, the only ones a
+   minute or more late.**
+   - The first dispatch did not take, and nothing retried it quickly. The
+     run started only when the inline slice's 30 s safety-net message
+     (`INLINE_SAFETY_NET_SECONDS`) came round, or the queue's 60 s
+     `retry_delay` did, or both.
+   - The observed waits sit on those timers: 42 s is 30 plus about 12, and
+     96 s and 104 s are 30 plus 60 plus about 6–14.
+   - This matches the owner's "30 seconds before anything happens": the
+     time is spent waiting for a timer, not working. Two of the four came
+     three to four minutes after a previous reply, on a sprite that had
+     already frozen.
+
+**What is not known.** Why each first attempt failed is not recorded
+anywhere durable. `runtime_task.last_error` is cleared on success, and the
+defer and retry reasons exist only in Worker logs. Those logs are enabled
+(`[observability]`), but wrangler's login token has no observability scope.
+The likely class is the cold-wake response the consumer already tolerates
+(`runner returned invalid JSON (5xx)` while Hermes restarts), but that is
+inferred from the timing, not observed.
+
+**Nearly every slow start is one business.** 12 of the 14 runs waiting over
+5 s were `4e8c2593…`. That is the heaviest user and the desktop-observe
+canary, and it received the most releases that week.
+
+### The fix, 2026-09-25
+
+Reading the code confirmed the second cause.
+
+**The unrecognised answer.**
+
+- While the runtime is still starting, the runner's `/readyz` answers with
+  a JSON body `{ ok: false }` (`runner/src/server.mjs`). The status depends
+  on the stage:
+  - **500** while Hermes's port is still closed, because the runner's own
+    call to Hermes is refused;
+  - **503** once Hermes is listening but it, or a specialist profile, is
+    not yet healthy.
+- `isWakingRunnerFailure` recognised only a 5xx whose body was not JSON,
+  which is the sprite edge's answer while the machine itself boots.
+- So the commoner half of every cold start went through the generic
+  failure path: a flat 30 s retry and one of the task's five attempts spent.
+
+**The request that outlived its invocation.**
+
+- Readiness and start calls kept their own 30 s timeout, even inside the
+  inline slice. That slice lives in a `waitUntil` that Cloudflare ends
+  about 30 s after the response.
+- A slow wake could therefore outlive the invocation and leave the task
+  leased to a dead owner, which is recovered only after 90 s without a
+  heartbeat (`DEAD_OWNER_SECONDS`).
+
+**What changed:**
+
+- **A new error for "not serving yet".** `RunnerClient.ready()` throws
+  `RunnerNotReadyError` when the runner answers 500 or 503 with
+  `ok: false`, or when nothing answers before the caller's deadline. The
+  error's detail names the unhealthy profiles, a missing source
+  attestation, or "Hermes not answering". The consumer treats it as a
+  wake: no attempt spent, bounded by the existing `WAKE_GIVE_UP_MS`
+  (4 min).
+- **An unconfirmed start is also a wake.** The runner admits by task id,
+  so a start is safe to repeat. A start cut off by a deadline, or one that
+  finds the first still being admitted, gets the same treatment.
+- **Every runner call ends with its slice.** `observationSliceFetch` now
+  bounds every runner call by the slice deadline, not only the event
+  stream, so no call outlives the invocation that holds the task.
+- **The inline slice keeps looking.** It re-checks a waking sprite every
+  2 s (`INLINE_WAKE_POLL_MS`) while its 20 s budget lasts, the way it
+  already waited for a busy slot. Only then does it hand the task to the
+  queue. The remaining budget is measured again after every call, never
+  assumed.
+- **`work.started` is written on the first recorded start.** It used to
+  key on an empty `started_at`, and a defer stamps `started_at`, so every
+  run that waited on a wake lost the event and dropped out of
+  `reply-latency.sh db`.
+- **Each delay is recorded.** A start that waits records why, once per
+  reason, as `work.delayed` with `reason` set to `waking`, `busy`,
+  `preparing` or `retry`. Only delays before the run reaches Hermes are
+  recorded.
+- **The cost of the change.** A runtime that never becomes ready now
+  fails after about 4 min of waiting plus its attempts, where it used to
+  fail after about 2.5 min.
+
+**Expected effect.** The four 42–104 s starts should fall to the cold-wake
+range of roughly 10–25 s. That is a hypothesis until re-measured.
+
+**Re-measure** after a week on the new Worker. Run `reply-latency.sh db 7`,
+then attribute each slow start from its events:
+
+```sql
+select e.payload->>'reason' as reason, count(*)
+  from run_event e join run r on r.id = e.run_id and r.business_id = e.business_id
+ where e.type = 'work.delayed' and r.created_at > now() - interval '7 days'
+ group by 1;
+```
+
 ## Levers
 
 Done:

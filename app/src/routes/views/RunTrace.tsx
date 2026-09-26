@@ -31,6 +31,7 @@ const PLAIN: Record<string, string> = {
   'work.completed': 'Finished',
   'work.failed': 'Failed',
   'outcome.observed': 'Result came back',
+  'work.delayed': 'Waited to start',
 };
 
 function summarise(payload: unknown): string {

@@ -484,6 +484,10 @@ button.ask-context-link:hover {
 .computer-preview-panel img { display: block; width: 100%; height: auto; border-radius: 10px; }
 .computer-preview-panel p { color: var(--text-secondary); font-size: 11px; line-height: 1.5; margin: 6px 0; }
 .computer-preview-panel.is-expanded { max-width: 100%; }
+/* The live view's screen box grows (`flex: 1`) in the takeover dialog, which
+   has a height to grow into. This panel has none, so the box sized to zero
+   and nothing showed. Here it takes the sprite's 1280×800 shape instead. */
+.computer-preview-panel .business-desktop-stage-shell { flex: none; height: auto; aspect-ratio: 16 / 10; max-height: 65dvh; }
 .computer-preview-live-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .computer-preview-live-header > div { min-width: 0; flex: 1; }
 .computer-preview-live-header strong { display: block; color: var(--text); font-size: 12px; font-weight: 500; }

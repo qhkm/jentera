@@ -806,14 +806,29 @@
 .booking-card-message, .field-error { color: var(--danger); font-size: 13px; }
 .booking-card-actions, .booking-page-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .booking-card-whatsapp, .booking-page-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
-.bookings-settings { display: grid; gap: 16px; }
+.bookings-settings { display: grid; gap: 16px; max-width: 1040px; }
+.bookings-settings-shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 28px; align-items: start; }
+.bookings-settings-nav { position: sticky; top: 20px; display: grid; gap: 4px; padding-right: 18px; border-right: 1px solid var(--border); }
+.bookings-settings-nav button { width: 100%; min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary); font: inherit; text-align: left; cursor: pointer; }
+.bookings-settings-nav button:hover { background: var(--bg-card); color: var(--text); }
+.bookings-settings-nav button.active { background: var(--bg-card); color: var(--text); font-weight: 600; }
+.bookings-settings-nav small { min-width: 20px; padding: 2px 6px; border-radius: 999px; background: rgb(var(--border-ink) / .07); color: var(--text-secondary); font-size: 11px; text-align: center; }
+.bookings-settings-panel { min-width: 0; display: grid; gap: 16px; }
+.bookings-settings-panel-heading { min-height: 42px; display: flex; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+.bookings-settings-panel-heading h3 { font-size: 18px; }
+.bookings-settings-fields, .bookings-hours-services { display: grid; gap: 16px; }
+.bookings-settings-actions { position: sticky; bottom: 0; display: flex; padding: 14px 0; background: linear-gradient(transparent, var(--bg) 28%); }
+.bookings-service-basics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .bookings-settings label { display: grid; gap: 6px; font-size: 13px; }
 .bookings-settings .bookings-check, .booking-page .bookings-check { display: flex; align-items: center; gap: 8px; }
 .bookings-service { display: grid; gap: 12px; padding: 16px; }
 .bookings-hours { display: grid; gap: 8px; }
 .bookings-hours-title { font-size: 13px; font-weight: 600; }
 .bookings-day { display: grid; grid-template-columns: minmax(110px, 1fr) auto auto; align-items: center; gap: 8px; }
-.bookings-advanced summary { cursor: pointer; font-weight: 600; }
+.bookings-blocks { display: grid; gap: 10px; margin-top: 16px; }
+.bookings-block { display: grid; grid-template-columns: minmax(140px, 1.25fr) minmax(170px, 1fr) minmax(170px, 1fr) auto; align-items: end; gap: 10px; padding: 14px; }
+.bookings-block legend { font-size: 13px; font-weight: 600; }
+.bookings-block .field-error { grid-column: 1 / -1; }
 .bookings-link-preview { font-family: var(--font-mono); font-size: 13px; color: var(--text-secondary); overflow-wrap: anywhere; }
 .bookings-problem { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: rgb(249 156 0 / 0.1); }
 .booking-page { display: grid; gap: 16px; }
@@ -826,7 +841,16 @@
 .booking-page-preview ul { display: grid; gap: 6px; }
 .booking-page-preview li { display: flex; justify-content: space-between; gap: 8px; }
 @media (max-width: 640px) {
+  .bookings-settings-shell { grid-template-columns: 1fr; gap: 18px; }
+  .bookings-settings-nav { position: static; display: flex; overflow-x: auto; padding: 0 0 8px; border: 0; scrollbar-width: none; }
+  .bookings-settings-nav::-webkit-scrollbar { display: none; }
+  .bookings-settings-nav button { width: auto; min-width: max-content; border: 1px solid var(--border); }
+  .bookings-service-basics { grid-template-columns: 1fr; }
+  .bookings-settings-panel-heading { display: none; }
+  .bookings-settings-actions { position: static; padding: 4px 0 0; background: none; }
+  .bookings-settings-actions .btn { width: 100%; }
   .bookings-day { grid-template-columns: 1fr 1fr; }
+  .bookings-block { grid-template-columns: 1fr; }
   .bookings-day-open { grid-column: 1 / -1; }
   .bookings-date { margin-left: 0; }
   .apps-offer { grid-template-columns: auto 1fr; }

@@ -97,7 +97,7 @@ import {
   withUnseenMediaNote,
 } from '../connectors/telegram';
 import { runtimeModelKeyNeedsRotation } from './openrouter-keys';
-import { RunnerClient, RuntimeBusyError } from './runner-client';
+import { RunnerClient, RunnerNotReadyError, RuntimeBusyError } from './runner-client';
 import {
   getRuntime,
   getRuntimeAccess,
@@ -117,6 +117,7 @@ import {
 } from '../notifications/work';
 import { deliverPendingPushes } from '../push/outbox';
 import { maybeWarnCredits } from './credit-warning';
+import { wakeLine } from './wake-lines';
 import {
   cancelRoutineRuntimeOccurrence,
   finishRoutineRuntimeOccurrence,
@@ -128,7 +129,31 @@ import {
  *  not JSON. Narrow on purpose — a runner that returns a well-formed error is
  *  saying something, and that still counts as an attempt. */
 function isWakingRunnerFailure(error: unknown): boolean {
+  /* Two shapes of the same wait: the sprite's edge answering an HTML 5xx
+     while the machine boots, and the runner answering `ok: false` while
+     Hermes restarts behind it. Until 25 Sep only the first was recognised,
+     and the second — the commoner — was retried after a flat 30 s. */
+  if (error instanceof RunnerNotReadyError) return true;
   return error instanceof Error && /^runner returned invalid JSON \(5\d\d\)$/.test(error.message);
+}
+
+/** Why a run's start waited, kept once per reason (`work.delayed`). Never
+    allowed to fail the task: it is evidence, not control flow. */
+async function recordStartDelay(
+  env: Env,
+  businessId: string,
+  runId: string | null | undefined,
+  reason: 'waking' | 'busy' | 'preparing' | 'retry',
+): Promise<void> {
+  if (!runId) return;
+  await withTenant(env, businessId, async (tx) => {
+    const [seen] = await tx`
+      select 1 from run_event
+       where business_id = ${businessId} and run_id = ${runId}
+         and type = 'work.delayed' and payload->>'reason' = ${reason}
+       limit 1`;
+    if (!seen) await append(tx, businessId, runId, 'work.delayed', { reason });
+  }).catch(() => undefined);
 }
 
 const MAX_TASK_ATTEMPTS = 5;
@@ -211,7 +236,9 @@ export { CREDIT_CAP_NOTICE } from './failure-notice';
     status instead, except while a real tool is running. The statuses never
     enter the durable answer lane. */
 const STAGE_STATUS: Record<string, string> = {
-  database_ready: '✅ System ready — starting…',
+  /* Not "ready": this stage is reached before the sprite has answered, and
+     on a cold start it is followed by a wake of about twenty seconds. */
+  database_ready: '⏳ Starting…',
   provider_awake: '✅ Runner online — starting agent…',
   runner_ready: '✅ Agent session ready — thinking…',
   hermes_started: '✅ Agent started — thinking…',
@@ -646,6 +673,9 @@ export async function handleRuntimeQueueMessage(
     fetch?: typeof globalThis.fetch;
     /** The inline first slice (see inline-slice.ts) bounds its observation. */
     observationSliceMs?: number;
+    /** How soon a waking runtime is looked at again; the inline slice polls
+        faster than the queue's default. */
+    wakeRetrySeconds?: number;
   } = {},
 ): Promise<RuntimeQueueMessageResult> {
   if (message.version === 1) return handleRuntimeMessage(env, message, options);
@@ -1010,6 +1040,7 @@ export async function handleRuntimeMessage(
     runtimeSnapshot?: { value: AgentRuntimeRecord | null };
     /** Test-only/specialized override; production keeps the 13-minute cap. */
     observationSliceMs?: number;
+    wakeRetrySeconds?: number;
   } = {},
 ): Promise<RuntimeMessageResult> {
   const messageStartedAt = Date.now();
@@ -1176,6 +1207,7 @@ export async function handleRuntimeMessage(
         if (!deferred) {
           return { action: 'requeue', delaySeconds: 10, reason: 'runtime task lease was lost' };
         }
+        await recordStartDelay(env, message.businessId, lease.task.runId, 'preparing');
         const repairWindow = Math.floor(Date.now() / (5 * 60 * 1_000));
         await publishRuntimeTask(env, message.businessId, {
           kind,
@@ -2299,6 +2331,9 @@ export async function handleRuntimeMessage(
           deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
             delaySeconds: BUSY_RETRY_SECONDS,
           }));
+        if (deferred && executionTask) {
+          await recordStartDelay(env, message.businessId, lease.task.runId, 'busy');
+        }
         return {
           action: 'requeue',
           delaySeconds: BUSY_RETRY_SECONDS,
@@ -2344,16 +2379,29 @@ export async function handleRuntimeMessage(
       const wokeTooSlowly = waitingSince !== null &&
         Date.now() - waitingSince >= WAKE_GIVE_UP_MS;
       if (!wokeTooSlowly) {
+        const wakeDelay = options.wakeRetrySeconds ?? WAKE_RETRY_SECONDS;
         const deferred = await withTenant(env, message.businessId, (tx) =>
           deferRuntimeTask(tx, message.businessId, message.taskId, leaseToken, {
-            delaySeconds: WAKE_RETRY_SECONDS,
+            delaySeconds: wakeDelay,
           }));
         if (deferred && lease.task.runId) {
           await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'waking');
+          /* Said, and in good humour: a silent twenty seconds reads as broken. */
+          const line = wakeLine(lease.task.runId);
+          await publishRunProgressSafely(
+            env, message.businessId, lease.task.runId, 'status', { detail: line, kind: 'wake' },
+          );
+          await tellTelegramWaking(env, lease.task, liveBubbleId, options.telegramToken, line);
+          /* A delay to the start only: a run already on Hermes that meets a
+             restart is a different story, and would muddy the measurement. */
+          if (!lease.task.remoteRunId) {
+            await recordStartDelay(env, message.businessId, lease.task.runId, 'waking');
+          }
         }
         return {
           action: 'requeue',
-          delaySeconds: WAKE_RETRY_SECONDS,
+          /* The queue takes whole seconds; the defer above may be fractional. */
+          delaySeconds: Math.max(1, Math.ceil(wakeDelay)),
           reason: deferred ? 'runtime is still waking' : 'runtime task lease was lost',
         };
       }
@@ -2524,6 +2572,9 @@ export async function handleRuntimeMessage(
     );
     if (executionTask && lease.task.runId) {
       await publishRunProgressSafely(env, message.businessId, lease.task.runId, 'retrying');
+      if (!lease.task.remoteRunId) {
+        await recordStartDelay(env, message.businessId, lease.task.runId, 'retry');
+      }
     }
     /* Lifecycle and cancellation controls back off exponentially; ordinary
        interactive work keeps the snappy fixed delay the chat expects. */
@@ -2556,6 +2607,18 @@ export function telegramFloodDelaySeconds(reportedWaitSeconds: number): number {
   );
 }
 
+/** Aborts when either does: `AbortSignal.any` where the runtime has it, a
+    small relay where it does not, so neither timeout is ever dropped. */
+function eitherSignal(a: AbortSignal, b: AbortSignal): AbortSignal {
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any([a, b]);
+  const both = new AbortController();
+  for (const signal of [a, b]) {
+    if (signal.aborted) both.abort(signal.reason);
+    else signal.addEventListener('abort', () => both.abort(signal.reason), { once: true });
+  }
+  return both.signal;
+}
+
 function observationSliceFetch(
   fetcher: typeof globalThis.fetch | undefined,
   endsAtMs: number,
@@ -2563,8 +2626,16 @@ function observationSliceFetch(
   const base = fetcher ?? ((input, init) => globalThis.fetch(input, init));
   return (input, init = {}) => {
     const url = String(input);
-    if (!url.includes('/events')) return base(input, init);
     const remainingMs = Math.max(1, endsAtMs - Date.now());
+    if (!url.includes('/events')) {
+      /* Every other runner call keeps its own timeout, but none may outlive
+         the slice. Run inside the request that received the message, a slice
+         dies with that invocation; a readiness call left on its 30 s timeout
+         outlived it while a sprite woke, the task stayed leased to a dead
+         invocation, and it waited 90 s for dead-owner recovery. */
+      const deadline = AbortSignal.timeout(remainingMs);
+      return base(input, { ...init, signal: init.signal ? eitherSignal(init.signal, deadline) : deadline });
+    }
     /* RunnerClient owns a 15-minute stream timeout. Replace it with the
        shorter task/invocation slice so the body reader, not only the header
        request, is aborted before Cloudflare terminates the consumer. */
@@ -2739,6 +2810,27 @@ async function settleApprovalBubble(
     text,
     { inline_keyboard: [] },
   ).catch(() => {});
+}
+
+/** The waking line in the Telegram bubble, where there is one. Best effort:
+    a failed edit costs the owner a status line, never the run. */
+async function tellTelegramWaking(
+  env: Env,
+  task: RuntimeTask,
+  liveBubbleId: number | undefined,
+  existingToken: TelegramCredential | undefined,
+  line: string,
+): Promise<void> {
+  const telegram = telegramHint(task.payload);
+  const messageId = liveBubbleId ?? telegram?.liveMessageId;
+  if (!telegram?.privateChat || !messageId) return;
+  try {
+    const token = existingToken ?? await withTenant(env, task.businessId, (tx) =>
+      useTelegramCredential(env, tx, task.businessId, telegram.connectionId));
+    await editMessageText(token, telegram.chatId, messageId, line);
+  } catch {
+    /* Telegram declined or the credential is gone; the answer still comes. */
+  }
 }
 
 function telegramHint(value: unknown): {
