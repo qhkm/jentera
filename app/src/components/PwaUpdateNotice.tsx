@@ -4,6 +4,7 @@ import { Button } from '@/components/ui';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useRegisterSW } from '@/pwa/register';
 import { applyUpdate } from '@/pwa/apply-update';
+import { runsServedBuild } from '@/pwa/served-build';
 import { startUpdateChecks } from '@/pwa/update-checks';
 import { isNative } from '@/lib/native';
 
@@ -15,15 +16,30 @@ function WebPwaUpdateNotice() {
   const { t } = useI18n();
   const stopChecks = useRef<(() => void) | null>(null);
   const [applying, setApplying] = useState(false);
+  /* Each newer worker found is a fresh question: is this page behind it? */
+  const [found, setFound] = useState(0);
+  const [current, setCurrent] = useState<{ found: number; value: boolean } | null>(null);
   const { needRefresh: [needRefresh, setNeedRefresh], updateServiceWorker } = useRegisterSW({
     onRegisteredSW(_url, registration) {
       stopChecks.current?.();
       stopChecks.current = registration ? startUpdateChecks(registration) : null;
     },
     onRegisterError() { /* No worker, no install; the app is unaffected. */ },
+    onNeedRefresh() {
+      setFound((count) => count + 1);
+    },
   });
   useEffect(() => () => stopChecks.current?.(), []);
-  if (!needRefresh) return null;
+  useEffect(() => {
+    if (!needRefresh) return;
+    let live = true;
+    void runsServedBuild().then((value) => { if (live) setCurrent({ found, value }); });
+    return () => { live = false; };
+  }, [needRefresh, found]);
+  /* Shown only once the answer for the latest worker is in, and only when
+     the page is behind it: a page already on the new build has nothing to
+     reload into. */
+  if (!needRefresh || current?.found !== found || current.value) return null;
   return (
     <div
       role="status"
