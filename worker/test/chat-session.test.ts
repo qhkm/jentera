@@ -4,7 +4,7 @@ import { handleRuns } from '../src/routes/runs';
 import { recordArtifact } from '../src/artifacts';
 import { ensureChatSession, runVisibleTo } from '../src/chat-sessions';
 import { notifyOwnersWorkNeedsYou } from '../src/notifications/work';
-import { finishRun, recordWork, startRun } from '../src/runs';
+import { append, finishRun, recordWork, startRun } from '../src/runs';
 import { recordDelegation, runCoordination } from '../src/coordination';
 import { enqueueRuntimeTask } from '../src/runtime/tasks';
 import { asOwner, asTenant, jsonOf, req, signIn, testEnv, truncateAll } from './harness';
@@ -188,5 +188,25 @@ describe('a chat and who may read its runs', () => {
     expect(staffList.artifacts.map((a) => a.name)).toEqual(['shared.md', 'private.md']);
     expect((await get(`/api/artifacts/${P1}`, cookieOwner, handleArtifacts, env)).status).toBe(404);
     expect((await get(`/api/artifacts/${P1}`, cookieStaff, handleArtifacts, env)).status).toBe(200);
+  });
+
+  it('reports each specialist hand-off with its outcome and the steps it took', async () => {
+    const runId = await finishedRun(owner, null);
+    await asTenant(A, async (tx) => {
+      await append(tx, A, runId, 'agent.handoff', { stage: 'requested', specialist: 'records', depth: 1 });
+      await append(tx, A, runId, 'agent.handoff', { stage: 'started', specialist: 'records', depth: 1 });
+      await append(tx, A, runId, 'agent.tool', {
+        tool: 'business_records', detail: '⟦Finance and records⟧ ⚙️ business_records: "invoices"', agent: 'records' });
+      await append(tx, A, runId, 'agent.handoff', { stage: 'finished', specialist: 'records', depth: 1 });
+      await append(tx, A, runId, 'agent.handoff', { stage: 'requested', specialist: 'growth', depth: 1 });
+      await append(tx, A, runId, 'agent.handoff', { stage: 'refused', specialist: 'growth', depth: 1, code: 'limit_count' });
+    });
+    const data = await asTenant(A, (tx) => runCoordination(tx, A, runId));
+    expect(data.handoffs).toEqual([
+      expect.objectContaining({ specialist: 'records', name: 'records', depth: 1, outcome: 'finished',
+        steps: ['⟦Finance and records⟧ ⚙️ business_records: "invoices"'] }),
+      expect.objectContaining({ specialist: 'growth', outcome: 'refused', code: 'limit_count', steps: [] }),
+    ]);
+    expect(await asTenant(P1, (tx) => runCoordination(tx, A, runId))).toEqual({ assignment: null, events: [] });
   });
 });
