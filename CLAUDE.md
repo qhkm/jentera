@@ -507,6 +507,41 @@ the test run" reached a Chief of Staff who had never seen the digest request
 Growth had just scheduled. The Telegram session is one for life, so the
 window is what lets it re-route once a thread has gone quiet.
 
+Specialists can hand part of a task to each other
+(`docs/plans/2026-09-26-specialist-handoff.md`, plan beside it). The caller's
+Hermes turn calls `ask_specialist`; the tool asks the runner on loopback with
+the Hermes key, against `GET /v1/handoff/available` and `POST /v1/handoff`,
+both answered before the runner-key check and accepting only that key
+(`runner/src/server.mjs`). `runner/src/handoff.mjs` then runs the specialist
+at `/p/<profile>/v1/runs` while the caller waits, relaying its tools and
+approvals into the task's stream marked `agent`. The limits hold in the
+runner, not the model: two levels, five hand-offs, one at a time, and
+`min(time left − 60 s, 390 s)` per hand-off — 390 s stays under Hermes's
+420 s guard on tool calls issued together. The brief never leaves the
+sprite: `ask_specialist`'s own step has no preview, the same as
+`execute_code`. The switch is two vars in `worker/wrangler.toml`
+(`handoffEnabledFor` in `worker/src/handoff.ts`): `HANDOFF_ENABLED` and
+`HANDOFF_BUSINESS_IDS`, a comma-separated list of exact UUIDs — a business
+gets hand-offs only when both the flag is `"true"` and its id is on the
+list, so an empty list means nobody whatever the flag says. A listed
+business gets `handoff: { enabled: true }` in its config document, which is
+what the tool's own availability check reads; Hermes caches that check for
+30 s per business, not per task, so a task that started with no hand-off
+limits — a quick reply, which never gets the field — can still show the
+model the tool, but the runner's `POST /v1/handoff` refuses the call itself
+with `unavailable` regardless. Steps from a specialist are `⟦Name⟧ <tool line>`
+(`agentStep` in `worker/src/handoff.ts`, `splitAgentStep` in
+`app/src/lib/task-presentation.ts`); runs record the event `agent.handoff`,
+and "Who's working on this" lists each hand-off through `runCoordination`'s
+`handoffs`. `runner/src/handoff.mjs` ships inside the runtime bundle
+(`RUNTIME_BUNDLE_ASSETS` in `worker/src/runtime/provision.ts`,
+`runner/bin/provision-sprite.sh`'s push list), so once these commits reach
+main a plain Worker deploy is refused by `check-bundle-pin` until
+`ship-runtime.sh` pins a commit that contains the file. Run the opt-in
+`runner/test/handoff-hermes.e2e.test.mjs` (skipped unless
+`HANDOFF_E2E_HERMES` names a Hermes checkout) before any Hermes pin bump
+that touches the jentera plugin.
+
 The outcome assessor (`task-outcome.ts`) decides whether a finished reply
 was work and what state it left, and the reply waits on it. It has one
 budget, `ASSESSMENT_BUDGET_MS` (5 s), across however many calls it makes: a
