@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  donePage, escapeHtml, formPage, manageLoginPage, managePage, messagePage, page, redirect,
+  calendarFile, donePage, escapeHtml, formPage, manageLoginPage, managePage, messagePage, page, redirect,
   reschedulePage, servicesPage, timesPage,
 } from '../src/sites/render';
 
@@ -25,6 +25,23 @@ describe('escaping and responses', () => {
     expect(moved.status).toBe(307);
     expect(moved.headers.get('Location')).toBe('/b/seido');
     expect(moved.headers.get('X-Robots-Tag')).toBe('noindex');
+  });
+
+  it('creates a private standards-compatible calendar file without customer details', async () => {
+    const booking = { id: 'booking-id', reference: 'K7Q2MP', serviceId: service.id, serviceName: 'Cut, style; finish',
+      startsAt: new Date('2026-10-06T02:00:00Z'), endsAt: new Date('2026-10-06T03:00:00Z'), partySize: 2,
+      customerName: 'Aisyah', status: 'confirmed' as const, customerCancelledAt: null,
+      changeCutoffMinutes: 360, canChange: true };
+    const response = calendarFile({ ...base, location: '12 Jalan, Central', booking, generatedAt: new Date('2026-10-05T00:00:00Z') });
+    expect(response.headers.get('Content-Type')).toBe('text/calendar; charset=utf-8');
+    expect(response.headers.get('Content-Disposition')).toBe('attachment; filename="booking-K7Q2MP.ics"');
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    const text = await response.text();
+    expect(text).toContain('DTSTART:20261006T020000Z\r\nDTEND:20261006T030000Z');
+    expect(text).toContain('SUMMARY:Cut\\, style\\; finish');
+    expect(text).toContain('LOCATION:12 Jalan\\, Central');
+    expect(text).toContain('Reference: K7Q2MP');
+    expect(text).not.toContain('Aisyah');
   });
 });
 
@@ -171,10 +188,17 @@ describe('pages', () => {
     const login = manageLoginPage({ ...base, reference: 'K7Q2MP', error: true });
     expect(login).toContain('Continue securely');
     expect(login).toContain('Those details do not match');
-    const manage = managePage({ ...base, token, booking, confirmCancel: true });
-    expect(manage).toContain('Cancel this booking?');
-    expect(manage).toContain(`/manage/${token}/cancel`);
-    expect(manage).not.toContain('60123456789');
+    const overview = managePage({ ...base, token, booking });
+    expect(overview).toContain('class="status status-confirmed"');
+    expect(overview).toContain('Your appointment is confirmed.');
+    expect(overview).toContain('Add to Google Calendar');
+    expect(overview).toContain(`/manage/${token}/calendar.ics`);
+    expect(overview).toContain('calendar.google.com/calendar/render?');
+    expect(overview).toContain('12+Jalan+%3CCentral%3E');
+    const cancel = managePage({ ...base, token, booking, confirmCancel: true });
+    expect(cancel).toContain('Cancel this booking?');
+    expect(cancel).toContain(`/manage/${token}/cancel`);
+    expect(cancel).not.toContain('60123456789');
     const reschedule = reschedulePage({ ...base, token, booking, selected: '2026-10-06', selectedStart: booking.startsAt,
       days: [{ date: '2026-10-06', slots: [{ startsAt: booking.startsAt, endsAt: booking.endsAt, remaining: 1 }] }] });
     expect(reschedule).toContain('Request this new time');

@@ -202,6 +202,34 @@ describe('sites: pages', () => {
     ]);
   });
 
+  it('offers calendar actions only for a confirmed booking and protects the calendar file with the customer session', async () => {
+    const sent = await post(form());
+    const reference = new URL(sent.headers.get('Location')!, 'https://sites.test').searchParams.get('ref')!;
+    const verified = await post({ reference, phone: '012-345 6789' }, env(), undefined, '/b/seido/manage?lang=en');
+    const privatePath = verified.headers.get('Location')!.split('?')[0];
+    const calendarPath = `${privatePath}/calendar.ics`;
+
+    expect((await get(calendarPath)).status).toBe(404);
+    await asOwner((sql) => sql`update booking set status = 'confirmed', decided_at = ${NOW} where reference = ${reference}`);
+
+    const manage = await (await get(`${privatePath}?lang=en`)).text();
+    expect(manage).toContain('Your appointment is confirmed.');
+    expect(manage).toContain('Add to Google Calendar');
+    expect(manage).toContain(calendarPath);
+
+    const calendar = await get(calendarPath);
+    expect(calendar.status).toBe(200);
+    expect(calendar.headers.get('Content-Type')).toBe('text/calendar; charset=utf-8');
+    expect(calendar.headers.get('Content-Disposition')).toBe(`attachment; filename="booking-${reference}.ics"`);
+    expect(calendar.headers.get('Cache-Control')).toBe('no-store');
+    const text = await calendar.text();
+    expect(text).toContain('BEGIN:VCALENDAR\r\nVERSION:2.0');
+    expect(text).toContain('SUMMARY:Cupping class');
+    expect(text).toContain(`Reference: ${reference}`);
+    expect(text).not.toContain('Aisyah');
+    expect((await get(`/b/seido/manage/${'a'.repeat(43)}/calendar.ics`)).status).toBe(401);
+  });
+
   it('opens on the nearest date with a time instead of an empty today', async () => {
     const html = await (await get(`/b/seido?service=${service}&lang=en`)).text();
     expect(html).toContain('aria-label="Tue 6 Oct · 3 times"');

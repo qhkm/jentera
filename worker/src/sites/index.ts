@@ -11,7 +11,7 @@ import { clientIp } from '../ratelimit';
 import { turnstileIdempotencyKey, verifyTurnstile } from '../turnstile';
 import type { SitesEnv } from './env';
 import {
-  customerMessagePage, donePage, formPage, manageLoginPage, managePage, messagePage, page, redirect,
+  calendarFile, customerMessagePage, donePage, formPage, manageLoginPage, managePage, messagePage, page, redirect,
   reschedulePage, servicesPage, timesPage, SECURITY_HEADERS, type FormError, type MessageKind,
 } from './render';
 
@@ -109,7 +109,7 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
   const sub = typedSub.endsWith('/') && typedSub !== '/' ? typedSub.slice(0, -1) : typedSub;
   const earlyLang = langOf(url, null);
   const knownSub = sub === '' || sub === '/request' || sub === '/done' || sub === '/manage'
-    || /^\/manage\/[A-Za-z0-9_-]{43}(?:\/(?:cancel|reschedule))?$/.test(sub);
+    || /^\/manage\/[A-Za-z0-9_-]{43}(?:\/(?:cancel|reschedule|calendar\.ics))?$/.test(sub);
   if (!knownSub) return notFound(earlyLang);
 
   /* Everything before resolvePublicSlug costs no database. The sites deploy
@@ -138,7 +138,7 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
   const lang = langOf(url, info);
   const base = { slug, lang, businessName: info.businessName, location: info.settings.location };
 
-  const manageMatch = sub.match(/^\/manage\/([A-Za-z0-9_-]{43})(?:\/(cancel|reschedule))?$/);
+  const manageMatch = sub.match(/^\/manage\/([A-Za-z0-9_-]{43})(?:\/(cancel|reschedule|calendar\.ics))?$/);
   const sameOriginPost = () => request.headers.get('Origin') === origin;
 
   if (sub === '/manage') {
@@ -155,6 +155,10 @@ export async function handleSites(request: Request, env: SitesEnv, deps: Deps = 
     if (!validCustomerToken(token)) return notFound(lang);
     const booking = await loadManagedBooking(env, businessId, token, now);
     if (!booking) return page(manageLoginPage({ ...base, reference: '', error: false, expired: true }), 401);
+    if (action === 'calendar.ics') {
+      if (request.method !== 'GET' || booking.status !== 'confirmed') return notFound(lang);
+      return calendarFile({ ...base, booking, generatedAt: now });
+    }
     if (!action && request.method === 'GET') {
       const notice = url.searchParams.get('notice');
       return page(managePage({ ...base, token, booking,
