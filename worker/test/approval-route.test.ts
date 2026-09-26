@@ -1,11 +1,15 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { handleRuntime } from '../src/routes/runtime';
 import { handleRuns } from '../src/routes/runs';
 import { ensureChatSession } from '../src/chat-sessions';
-import { startRun, finishRun } from '../src/runs';
+import { runTrace, startRun, finishRun } from '../src/runs';
+import { LocalRuntimeProvider } from '../src/runtime';
+import { ensureProviderRuntime } from '../src/runtime/provision';
 import { pauseRuntimeTaskForApproval } from '../src/runtime/tasks';
 import type { Env } from '../src/env';
-import { asOwner, asTenant, req, signIn, testEnv, truncateAll } from './harness';
+import {
+  asOwner, asTenant, fetchFake, jsonOf, req, sendFake, signIn, testEnv, truncateAll,
+} from './harness';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const ORIGIN = 'https://jentera.ai';
@@ -36,6 +40,10 @@ beforeEach(async () => {
   staffCookie = await signIn(staffId);
 });
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 /** A web approval parked on a leased task, as the consumer now does. */
 async function parkWebApproval(runId: string | null = null): Promise<string> {
   const taskId = crypto.randomUUID();
@@ -59,7 +67,7 @@ async function parkWebApproval(runId: string | null = null): Promise<string> {
 async function call(
   method: string,
   path: string,
-  opts: { cookie?: string; origin?: string | null; contentType?: string; body?: unknown } = {},
+  opts: { cookie?: string; origin?: string | null; contentType?: string; body?: unknown; env?: Env } = {},
 ) {
   const { request, url } = req(method, path, { cookie: opts.cookie });
   const headers = new Headers(request.headers);
@@ -71,7 +79,7 @@ async function call(
     headers,
     body: method === 'GET' ? undefined : JSON.stringify(opts.body ?? {}),
   });
-  const env = testEnv({ ALLOWED_ORIGINS: ORIGIN }) as Env;
+  const env = opts.env ?? testEnv({ ALLOWED_ORIGINS: ORIGIN }) as Env;
   const response = await handleRuntime(shaped, env, url, {
     'Access-Control-Allow-Origin': ORIGIN,
   });
@@ -179,5 +187,59 @@ describe('deciding it', () => {
     const after = await call('GET', `/api/runtime/approvals/${id}`, { cookie: ownerCookie });
     expect((await after.json() as { approval: { status: string } }).approval.status)
       .toBe('pending');
+  });
+
+  /* A specialist's approval lapses on the runner when its hand-off ends. The
+     runner then refuses the approve as a different answer (409); until 27
+     September that read as "runner unavailable", 503 on every tap. */
+  async function lapsedOnRunner() {
+    const send = sendFake<{ taskId: string }>();
+    const env = testEnv({ ALLOWED_ORIGINS: ORIGIN, RUNTIME_QUEUE: { send }, RUNTIME_RELEASE: '2026.09.01-3' }) as Env;
+    await ensureProviderRuntime(env, A, {
+      provider: new LocalRuntimeProvider(), runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    const run = await asTenant(A, async (tx) => {
+      const run = await startRun(tx, A, { kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite' });
+      await finishRun(tx, A, run.id, 'needs_approval');
+      return run;
+    });
+    const id = await parkWebApproval(run.id);
+    const runner = fetchFake(async () =>
+      Response.json({ ok: false, error: 'approval already resolved differently' }, { status: 409 }));
+    vi.stubGlobal('fetch', runner);
+    return { env, send, run, id, runner };
+  }
+
+  it('reads an approve that lapsed on the runner as expired, and resumes the run without it', async () => {
+    const { env, send, run, id, runner } = await lapsedOnRunner();
+    const response = await call('POST', `/api/runtime/approvals/${id}/decide`,
+      { cookie: ownerCookie, body: { decision: 'approve' }, env });
+    expect(response.status).toBe(409);
+    expect(await jsonOf(response)).toMatchObject({
+      ok: false, code: 'APPROVAL_EXPIRED', approval: { status: 'expired', decision: 'deny' },
+    });
+    expect(runner).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(runner.mock.calls[0][1]?.body))).toMatchObject({ decision: 'approve' });
+
+    const after = await call('GET', `/api/runtime/approvals/${id}`, { cookie: ownerCookie, env });
+    expect((await jsonOf<{ approval: { status: string } }>(after)).approval.status).toBe('expired');
+    /* The task resumes now, told the tool was not approved, rather than
+       waiting out the rest of the window. */
+    const trace = await asTenant(A, (tx) => runTrace(tx, run.id));
+    expect(trace).toContainEqual(expect.objectContaining({
+      type: 'approval.rejected', payload: expect.objectContaining({ reason: 'approval_lapsed' }),
+    }));
+    const [task] = await asOwner((sql) => sql<{ due: boolean }[]>`
+      select available_at <= now() as due from runtime_task where run_id = ${run.id}`);
+    expect(task.due).toBe(true);
+    expect(send).toHaveBeenCalledOnce();
+  });
+
+  it('still applies a deny the runner already holds as lapsed', async () => {
+    const { env, id } = await lapsedOnRunner();
+    const response = await call('POST', `/api/runtime/approvals/${id}/decide`,
+      { cookie: ownerCookie, body: { decision: 'deny' }, env });
+    expect(response.status).toBe(200);
+    expect(await jsonOf(response)).toMatchObject({ status: 'applied', approval: { status: 'denied' } });
   });
 });

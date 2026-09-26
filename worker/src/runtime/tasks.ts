@@ -808,6 +808,43 @@ export async function releaseRuntimeApprovalDecision(
   return rows.length === 1;
 }
 
+/**
+ * A claimed approve the runner refused because the request had already
+ * lapsed there — a specialist's approval whose hand-off ended first. The
+ * owner answered too late for it to count, so it reads as expired, exactly
+ * what the timeout would have written, and the resume runs now rather than
+ * waiting out the window.
+ */
+export async function lapseRuntimeApprovalDecision(
+  tx: postgres.TransactionSql,
+  businessId: string,
+  taskId: string,
+  approvalId: string,
+): Promise<RuntimeApproval | null> {
+  const [row] = await tx<{ result: unknown }[]>`
+    select result from runtime_task
+     where id = ${taskId} and business_id = ${businessId}
+       and kind = 'resume' and status in ('queued', 'failed', 'leased')
+     for update`;
+  const current = runtimeApprovalFromResult(row?.result);
+  if (!row || !current || current.id !== approvalId || current.status !== 'deciding') return null;
+  const approval: RuntimeApproval = {
+    ...current,
+    status: 'expired',
+    decision: 'deny',
+    decidedAt: new Date().toISOString(),
+  };
+  const rows = await tx`
+    update runtime_task
+       set result = ${tx.json({ ...resultObject(row.result), approval } as never)},
+           available_at = now(), remote_status = 'running', updated_at = now()
+     where id = ${taskId} and business_id = ${businessId}
+       and result #>> '{approval,id}' = ${approvalId}
+       and result #>> '{approval,status}' = 'deciding'
+    returning id`;
+  return rows.length === 1 ? approval : null;
+}
+
 export async function expireRuntimeApproval(
   tx: postgres.TransactionSql,
   businessId: string,

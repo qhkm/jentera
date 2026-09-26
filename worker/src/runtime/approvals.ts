@@ -22,16 +22,18 @@ import { withTenant } from '../db';
 import {
   claimRuntimeApprovalDecision,
   completeRuntimeApprovalDecision,
+  lapseRuntimeApprovalDecision,
   releaseRuntimeApprovalDecision,
   type RuntimeApproval,
   type RuntimeApprovalBinding,
   type RuntimeTask,
 } from './tasks';
 import { decideRuntimeTaskApproval } from './run-task';
+import { RunnerApprovalConflictError } from './runner-client';
 import { resumeRunAfterApproval } from '../runs';
 import { signalRuntimeTask } from './consumer';
 
-export type ApprovalOutcome = 'accepted' | 'duplicate' | 'invalid' | 'unavailable';
+export type ApprovalOutcome = 'accepted' | 'duplicate' | 'expired' | 'invalid' | 'unavailable';
 
 export interface ApprovalDecisionResult {
   outcome: ApprovalOutcome;
@@ -80,18 +82,27 @@ export async function applyRuntimeApprovalDecision(
     );
     if (!decided?.ok) throw new Error('runner approval decision was not accepted');
   } catch (error) {
-    /* Back to pending, deliberately. An approval the runner never heard about
-       must be answerable again rather than stuck deciding, and the owner
-       gets a retryable failure instead of a silent one. */
-    await withTenant(env, businessId, (tx) =>
-      releaseRuntimeApprovalDecision(tx, businessId, claim.task.id, claim.approval.id));
-    console.warn('[runtime] approval decision could not reach runner', {
-      businessId,
-      taskId: claim.task.id,
-      surface: binding.surface,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return { outcome: 'unavailable' };
+    /* The runner no longer holds the request open — a specialist's approval
+       lapses when its hand-off ends — so no retry can apply this answer. A
+       deny is what already happened there and completes as one below. An
+       approve came too late: answering "try again" (503) on every tap was a
+       promise nothing could keep, so it reads as expired instead. */
+    if (error instanceof RunnerApprovalConflictError) {
+      if (decision === 'approve') return lapse(env, businessId, claim.task, claim.approval);
+    } else {
+      /* Back to pending, deliberately. An approval the runner never heard
+         about must be answerable again rather than stuck deciding, and the
+         owner gets a retryable failure instead of a silent one. */
+      await withTenant(env, businessId, (tx) =>
+        releaseRuntimeApprovalDecision(tx, businessId, claim.task.id, claim.approval.id));
+      console.warn('[runtime] approval decision could not reach runner', {
+        businessId,
+        taskId: claim.task.id,
+        surface: binding.surface,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { outcome: 'unavailable' };
+    }
   }
 
   const finalized = await withTenant(env, businessId, async (tx) => {
@@ -116,4 +127,31 @@ export async function applyRuntimeApprovalDecision(
 
   await signalRuntimeTask(env, businessId, claim.task.id);
   return { outcome: 'accepted', task: claim.task, approval: finalized };
+}
+
+/** An approve the runner refused as lapsed: it reads as expired, the run is
+    told it was denied, and the task resumes now to finish without it rather
+    than waiting out the rest of the window. */
+async function lapse(
+  env: Env,
+  businessId: string,
+  task: RuntimeTask,
+  claimed: RuntimeApproval,
+): Promise<ApprovalDecisionResult> {
+  const approval = await withTenant(env, businessId, async (tx) => {
+    const lapsed = await lapseRuntimeApprovalDecision(tx, businessId, task.id, claimed.id);
+    if (!lapsed) return null;
+    if (task.runId) {
+      await resumeRunAfterApproval(tx, businessId, task.runId, 'deny', {
+        runtimeTaskId: task.id,
+        requestId: lapsed.requestId,
+        tool: lapsed.tool,
+        reason: 'approval_lapsed',
+      });
+    }
+    return lapsed;
+  });
+  if (!approval) return { outcome: 'invalid' };
+  await signalRuntimeTask(env, businessId, task.id);
+  return { outcome: 'expired', task, approval };
 }

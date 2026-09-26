@@ -32,6 +32,7 @@ import {
   deferRuntimeTaskForFlood,
   enqueueRuntimeTask,
   expireRuntimeApproval,
+  lapseRuntimeApprovalDecision,
   exhaustRuntimeTask,
   leaseRuntimeTask,
   leaseRuntimeTaskWithBusinessLock,
@@ -581,7 +582,7 @@ export async function handleRuntimeApprovalCallback(
   },
   telegramToken: TelegramCredential,
   fetcher?: typeof globalThis.fetch,
-): Promise<'accepted' | 'duplicate' | 'invalid' | 'unavailable'> {
+): Promise<'accepted' | 'duplicate' | 'expired' | 'invalid' | 'unavailable'> {
   const { outcome } = await applyRuntimeApprovalDecision(
     env,
     businessId,
@@ -618,6 +619,18 @@ export async function handleRuntimeApprovalCallback(
     return 'duplicate';
   }
   if (outcome === 'unavailable') return 'unavailable';
+  if (outcome === 'expired') {
+    /* The claim already answered the button ("Applying…"), and a callback
+       is answered once; the bubble is what can still say so. */
+    await editMessageText(
+      telegramToken,
+      callback.chatId,
+      callback.messageId,
+      '⌛ This approval expired before your answer reached it — continuing without it…',
+      { inline_keyboard: [] },
+    ).catch(() => {});
+    return 'expired';
+  }
 
   await editMessageText(
     telegramToken,
@@ -1454,6 +1467,7 @@ export async function handleRuntimeMessage(
           const decision = waitingApproval.status === 'deciding'
             ? waitingApproval.decision ?? 'deny'
             : 'deny';
+          let lapsed = false;
           const decided = await decideRuntimeTaskApproval(
             env,
             message.businessId,
@@ -1467,15 +1481,42 @@ export async function handleRuntimeMessage(
                its end while its approval waits. A retry answers the same, so
                until 27 September this path spent every attempt on it and
                failed a task whose answer was already written. A deny is
-               what already happened there; carry on to the task's own
-               outcome. */
-            if (error instanceof RunnerApprovalConflictError && decision === 'deny') {
+               what already happened there; an approve replayed from a claim
+               whose surface died came too late and reads as expired, as
+               applyRuntimeApprovalDecision reads it. Either way, carry on to
+               the task's own outcome. */
+            if (error instanceof RunnerApprovalConflictError) {
+              lapsed = true;
               return { ok: true } satisfies RunnerTaskResponse;
             }
             throw error;
           });
           if (!decided?.ok) throw new Error('runner approval timeout decision was not accepted');
-          if (waitingApproval.status === 'deciding') {
+          if (waitingApproval.status === 'deciding' && lapsed && decision === 'approve') {
+            const expired = await withTenant(env, message.businessId, async (tx) => {
+              const approval = await lapseRuntimeApprovalDecision(
+                tx, message.businessId, lease.task.id, waitingApproval.id);
+              if (!approval) return false;
+              if (lease.task.runId) {
+                await resumeRunAfterApproval(tx, message.businessId, lease.task.runId, 'deny', {
+                  runtimeTaskId: lease.task.id,
+                  requestId: approval.requestId,
+                  tool: approval.tool,
+                  reason: 'approval_lapsed',
+                });
+              }
+              return true;
+            });
+            if (!expired) throw new Error('runtime approval state changed before resume');
+            await settleApprovalBubble(
+              env,
+              lease.task,
+              waitingApproval.telegram?.messageId ?? 0,
+              'deny',
+              true,
+              options.telegramToken,
+            );
+          } else if (waitingApproval.status === 'deciding') {
             const resolved = await withTenant(env, message.businessId, async (tx) => {
               const approval = await completeRuntimeApprovalDecision(
                   tx,

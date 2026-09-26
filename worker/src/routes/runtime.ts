@@ -330,6 +330,12 @@ export async function handleRuntime(
         cors,
       );
     }
+    if (result.outcome === 'expired') {
+      /* The request lapsed before the answer reached it (a specialist's
+         hand-off ended first). A conflict, so the card settles as expired
+         rather than offering a retry that can never land. */
+      return json({ ...body('expired'), ok: false, code: 'APPROVAL_EXPIRED' }, { status: 409, headers }, cors);
+    }
     return json({ ok: false, code: 'APPROVAL_NOT_PENDING' }, { status: 409, headers }, cors);
   }
 
