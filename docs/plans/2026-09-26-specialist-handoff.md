@@ -71,6 +71,8 @@ comment on `max_concurrent_runs` in `configure-model-provider.py` expected
 Chief-to-specialist calls over `/p/<profile>/`, but nothing made one until
 now.
 
+- An approval raised inside the specialist's run (a plugin approval rule) arrived on that run's own event stream at `/p/records/v1/runs/{id}/events`, was answered at `/p/records/v1/runs/{id}/approval` with `choice: once`, and the run then completed (checked 2026-09-26, same pinned Hermes).
+
 ## How a hand-off works
 
 1. The caller (Chief of Staff or a specialist) calls the tool
