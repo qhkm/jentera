@@ -2479,7 +2479,14 @@ class SafeDeltaStreams {
 
   /** A hand-off's own approval lapses when it ends unanswered: left in place,
    *  a stale head would block every later approval in the task from ever
-   *  resolving (resolveApproval only ever accepts the queue's head). */
+   *  resolving (resolveApproval only ever accepts the queue's head).
+   *
+   *  It lapses as a deny, recorded like any other answer, not forgotten. The
+   *  Worker still holds the approval open and will answer it — its own
+   *  timeout denies it — and until 27 September that deny found nothing and
+   *  answered 409, which the Worker retried until the whole task failed with
+   *  the root's finished answer in hand. Now the deny is a duplicate of what
+   *  already happened, and an approve is refused as a different answer. */
   dropHandoffApprovals(taskId, runId) {
     const stream = this.streams.get(taskId);
     if (!stream) return;
@@ -2490,7 +2497,17 @@ class SafeDeltaStreams {
     if (!stale.size) return;
     stream.pendingApprovals = stream.pendingApprovals.filter((approval) => !stale.has(approval.requestId));
     stream.history = stream.history.filter((event) => event.type !== 'approval' || !stale.has(event.requestId));
-    for (const requestId of stale) stream.approvalTargets.delete(requestId);
+    for (const requestId of stale) {
+      stream.approvalTargets.delete(requestId);
+      this.remember(stream, requestId, 'deny');
+    }
+  }
+
+  remember(stream, requestId, decision) {
+    stream.resolvedApprovals.set(requestId, decision);
+    while (stream.resolvedApprovals.size > 32) {
+      stream.resolvedApprovals.delete(stream.resolvedApprovals.keys().next().value);
+    }
   }
 
   /** Bind the native Hermes request identity end to end. The in-flight
@@ -2547,10 +2564,7 @@ class SafeDeltaStreams {
       stream.history = stream.history.filter(
         (event) => event.type !== 'approval' || event.requestId !== requestId,
       );
-      stream.resolvedApprovals.set(requestId, decision);
-      while (stream.resolvedApprovals.size > 32) {
-        stream.resolvedApprovals.delete(stream.resolvedApprovals.keys().next().value);
-      }
+      this.remember(stream, requestId, decision);
       return { duplicate: false };
     })();
     stream.approvalResolution = { requestId, decision, promise: operation };

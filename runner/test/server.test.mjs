@@ -1285,3 +1285,31 @@ test('a specialist approval left unanswered when its hand-off ends does not bloc
   assert.equal((await (await pending).json()).ok, true);
   release();
 });
+
+test("a specialist approval that lapsed with its hand-off answers the Worker's deny as already given", async () => {
+  const release = await withHandoffs();
+  hermesStatus = 'completed'; /* the hand-off ends while its approval is still waiting */
+  eventsByRun['run-2'] = [
+    { event: 'approval.request', request_id: 'd'.repeat(32), description: 'Create a draft invoice' },
+  ];
+  await start(TASK, { handoff: HANDOFF });
+  assert.equal((await handOff({ runId: 'run-1', specialist: 'records', brief: 'Draft it' })).status, 200);
+  const answer = (decision) => call(`/v1/tasks/${TASK}/approval`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId: 'd'.repeat(32), decision }),
+  });
+  try {
+    /* The Worker's own timeout denies it: a settled duplicate, never a 409
+       it would retry until the task failed. */
+    const denied = await answer('deny');
+    assert.equal(denied.status, 200);
+    assert.equal((await denied.json()).duplicate, true);
+    /* The owner's late approve cannot resurrect it. */
+    const approved = await answer('approve');
+    assert.equal(approved.status, 409);
+    assert.equal(approvalRequests.length, 0, 'nothing is sent to Hermes for a lapsed approval');
+  } finally {
+    release();
+  }
+});
