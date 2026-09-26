@@ -76,6 +76,10 @@ describe('pages', () => {
     const html = servicesPage({ ...base, brandColor: '#62A8FF', logoUrl: '/b/seido/logo', services: [service] });
     expect(html).toContain(':root{--accent:#62a8ff;--focus:#62a8ff;--accent-ink:#080808}');
     expect(html).toContain('<img src="/b/seido/logo" alt="" width="64" height="64">');
+    expect(html).toContain('<h2 class="business-name">SEIDO &lt;script&gt;');
+    expect(html).not.toContain('class="brand-mark"');
+    expect(html).not.toContain('<div class="brand">');
+    expect(html).toContain('<footer><a href="https://jentera.ai" rel="noreferrer">Powered by Jentera</a></footer>');
     const unsafe = servicesPage({ ...base, brandColor: '</style><script>', logoUrl: null, services: [service] });
     expect(unsafe).not.toContain('</style><script>');
   });
@@ -90,6 +94,7 @@ describe('pages', () => {
     expect(html).toContain('<html lang="ms">');
     expect(html).toContain('Pilih perkhidmatan');
     expect(html).toContain('href="/b/seido?lang=en"');
+    expect(html).toContain('Dikuasakan oleh Jentera');
   });
 
   it('lists times with places left, and says when a day has none', () => {
