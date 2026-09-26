@@ -498,6 +498,9 @@ button.ask-context-link:hover {
 }
 /* Which specialist took a step (docs/plans/2026-09-26-specialist-handoff.md). */
 .ask-step-agent { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 999px; background: var(--bg-card); color: var(--text-secondary); font-size: 11px; line-height: 18px; white-space: nowrap; }
+/* One specialist's line in "Who's working on this": name, outcome, reason, time. */
+.task-coordination-handoff { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.task-coordination-handoff span + span::before { content: '· '; }
 .ask-writing-hint.ask-ai-disclaimer {
   color: var(--text-secondary);
   font-size: 11px;

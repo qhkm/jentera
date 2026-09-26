@@ -22,8 +22,8 @@ describe('recorded role activity', () => {
     trigger.focus();
     await userEvent.keyboard('{Enter}');
     expect(screen.getByText('Assigned to Operations.')).toBeVisible();
-    expect(screen.getByText(/Assignment alone is not a handoff/)).toBeVisible();
-    expect(screen.queryByText('Specialist assistance requested')).toBeNull();
+    expect(screen.getByText(/Assignment alone is not a hand-off/)).toBeVisible();
+    expect(screen.queryByText('A helper was asked to do part of the task')).toBeNull();
     await userEvent.keyboard('{Escape}');
     expect(trigger).toHaveFocus();
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
@@ -42,8 +42,8 @@ describe('recorded role activity', () => {
     await act(async () => { await Promise.resolve(); });
     await act(async () => { screen.getByRole('button', { name: /Who’s working on this/ }).click(); });
     await act(async () => { vi.advanceTimersByTime(5000); });
-    expect(screen.getByText('Specialist assistance requested')).toBeInTheDocument();
-    expect(screen.getByText('Delegation reported an error')).toBeInTheDocument();
+    expect(screen.getByText('A helper was asked to do part of the task')).toBeInTheDocument();
+    expect(screen.getByText('The helper reported an error')).toBeInTheDocument();
     expect(screen.queryByText(/Finance/)).toBeNull();
     view.unmount();
     await act(async () => { vi.advanceTimersByTime(10000); });
@@ -56,7 +56,25 @@ describe('recorded role activity', () => {
     mount(read);
     await userEvent.click(await screen.findByRole('button', { name: /Who’s working on this/ }));
     await userEvent.click(await screen.findByRole('button', { name: /try again/i }));
-    await waitFor(() => expect(screen.getByText('Delegation returned to the lead role')).toBeInTheDocument());
-    expect(screen.getByText(/not proof the task succeeded/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('The helper handed its part back')).toBeInTheDocument());
+    expect(screen.getByText(/not proof the whole task succeeded/)).toBeInTheDocument();
+  });
+  it('names each specialist who helped, what they did, and how it ended', async () => {
+    mount(vi.fn().mockResolvedValue({
+      assignment: { role: null, kind: 'coordinator' },
+      events: [],
+      handoffs: [
+        { id: 7, specialist: 'records', name: 'Finance and records', depth: 1, outcome: 'finished',
+          at: '2026-09-26T01:00:00Z', steps: ['⟦Finance and records⟧ ⚙️ business_records: "invoices"'] },
+        { id: 9, specialist: 'growth', name: 'Growth and marketing', depth: 1, outcome: 'refused', code: 'limit_count',
+          at: '2026-09-26T01:01:00Z', steps: [] },
+      ],
+    } satisfies RunCoordination));
+    const chip = await screen.findByRole('button', { name: /Who’s working on this/ });
+    expect(chip).toHaveTextContent('Chief of Staff + Finance and records, Growth and marketing');
+    await userEvent.click(chip);
+    expect(screen.getByText('Finance and records')).toBeInTheDocument();
+    expect(screen.getByText('Finished their part')).toBeInTheDocument();
+    expect(screen.getByText(/five hand-offs already used/)).toBeInTheDocument();
   });
 });

@@ -131,4 +131,14 @@ describe('answering an approval from the chat', () => {
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
   });
+
+  it('says which specialist is asking', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => jsonOnce({ approval: { ...PENDING.approval, agent: 'Finance and records' } })));
+    render(
+      <RepositoryProvider repository={new LocalRepository()}>
+        <I18nProvider><RuntimeApprovalCard approvalId="a1" /></I18nProvider>
+      </RepositoryProvider>,
+    );
+    expect(await screen.findByText('Finance and records needs your go-ahead')).toBeInTheDocument();
+  });
 });

@@ -32,6 +32,7 @@ const PLAIN: Record<string, string> = {
   'work.failed': 'Failed',
   'outcome.observed': 'Result came back',
   'work.delayed': 'Waited to start',
+  'agent.handoff': 'Handed part to a specialist',
 };
 
 function summarise(payload: unknown): string {

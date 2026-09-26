@@ -21,6 +21,8 @@ export interface PendingApproval {
   message: string;
   status: 'pending' | 'deciding' | 'approved' | 'denied' | 'expired';
   surface?: 'web' | 'telegram';
+  /** The specialist's display name, when a specialist raised the approval. */
+  agent?: string;
 }
 
 type Phase = 'loading' | 'ready' | 'deciding' | 'settled' | 'gone';
@@ -100,7 +102,7 @@ export function RuntimeApprovalCard({ approvalId, onDecided }: { approvalId: str
       : approval?.status ?? 'expired';
   return (
     <HumanApprovalCard
-      title={t('ask.approval.title')}
+      title={approval?.agent ? t('ask.approval.titleBy', { name: approval.agent }) : t('ask.approval.title')}
       eyebrow={t('ask.approval.runtime')}
       summary={approval?.message ?? ''}
       facts={[{ label: t('ask.approval.action'), value: approval?.tool ?? '' }]}

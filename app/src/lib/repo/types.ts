@@ -322,10 +322,23 @@ export interface BrowserInputTarget {
   nextSequence: number;
 }
 
+/** One specialist hand-off in a run (docs/plans/2026-09-26-specialist-handoff.md). */
+export interface RunHandoff {
+  id: number;
+  specialist: string;
+  name: string;
+  depth: number;
+  outcome: 'working' | 'finished' | 'failed' | 'refused';
+  code?: string;
+  at: string;
+  steps: string[];
+}
+
 /** Read-only projection of the existing tenant-scoped run endpoint. */
 export interface RunCoordination {
   assignment: { role: string | null; kind: 'specialist' | 'coordinator' } | null;
   events: { id: number; stage: 'requested' | 'returned' | 'failed'; at: string }[];
+  handoffs?: RunHandoff[];
 }
 
 export interface RunResult {
