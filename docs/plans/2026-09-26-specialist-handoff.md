@@ -549,7 +549,9 @@ What changed, in the order it landed:
   than failing to start. The payload's `handoff` field is present exactly
   when the base is, so a roster naming only the routed specialist no longer
   switches the mechanism on with nothing to say. The preamble no longer
-  carries the speaker line; the base does. The runner requires the base and
+  carries the speaker line; the base does. The runner hands off only with
+  the base — a start without it (a Worker from before it, after a rollback)
+  runs, and its `ask_specialist` calls answer `unavailable` — and it
   tells each specialist whom it may ask (the roster less its own chain), the
   count, and that the next level cannot hand on; a second-level specialist
   is told it cannot hand on at all. The root's own instructions are
