@@ -143,6 +143,17 @@ export class RunnerNotReadyError extends Error {
   }
 }
 
+/** The runner holds no open request for this approval any more: the
+    specialist hand-off that raised it ended and it lapsed as a deny, or the
+    task itself already reached its end. A retry cannot change that, so it is
+    an answer about the approval, not a failure to reach the runner. */
+export class RunnerApprovalConflictError extends Error {
+  constructor(detail: string) {
+    super(`runner no longer holds this approval open (${detail})`);
+    this.name = 'RunnerApprovalConflictError';
+  }
+}
+
 /** The isolated runtime is still finishing an earlier task. This is normal
     backpressure, not a failed model attempt, and callers should poll shortly. */
 export class RuntimeBusyError extends Error {
@@ -325,7 +336,7 @@ export class RunnerClient {
     if (reason !== undefined && (decision !== 'deny' || !safeApprovalReason(reason))) {
       throw new Error('runner approval reason is invalid');
     }
-    return this.request(`/v1/tasks/${encodeURIComponent(taskId)}/approval`, {
+    const { status, body } = await this.exchange(`/v1/tasks/${encodeURIComponent(taskId)}/approval`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -333,7 +344,12 @@ export class RunnerClient {
         decision,
         ...(decision === 'deny' && reason ? { reason: reason.trim() } : {}),
       }),
-    });
+    }, [200, 409]);
+    if (status === 409) {
+      throw new RunnerApprovalConflictError(
+        typeof body.error === 'string' ? body.error.slice(0, 200) : 'conflict');
+    }
+    return body;
   }
 
   /** Consume the runner's already-filtered presentation stream. Unknown event
@@ -513,6 +529,17 @@ export class RunnerClient {
     accepted: number[] = [200],
     timeoutMs = 30_000,
   ): Promise<RunnerTaskResponse> {
+    return (await this.exchange(path, init, accepted, timeoutMs)).body;
+  }
+
+  /** One call, with the status it answered: some routes mean different
+      things by two accepted statuses. */
+  private async exchange(
+    path: string,
+    init: RequestInit = {},
+    accepted: number[] = [200],
+    timeoutMs = 30_000,
+  ): Promise<{ status: number; body: RunnerTaskResponse }> {
     const response = await this.fetcher(`${this.origin}${path}`, {
       ...init,
       headers: {
@@ -534,7 +561,7 @@ export class RunnerClient {
       const detail = typeof body.error === 'string' ? `: ${body.error.slice(0, 200)}` : '';
       throw new Error(`runner request failed (${response.status})${detail}`);
     }
-    return body;
+    return { status: response.status, body };
   }
 }
 

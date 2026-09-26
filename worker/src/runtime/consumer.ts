@@ -99,7 +99,13 @@ import {
   withUnseenMediaNote,
 } from '../connectors/telegram';
 import { runtimeModelKeyNeedsRotation } from './openrouter-keys';
-import { RunnerClient, RunnerNotReadyError, RuntimeBusyError } from './runner-client';
+import {
+  RunnerApprovalConflictError,
+  RunnerClient,
+  RunnerNotReadyError,
+  RuntimeBusyError,
+  type RunnerTaskResponse,
+} from './runner-client';
 import {
   getRuntime,
   getRuntimeAccess,
@@ -1455,7 +1461,19 @@ export async function handleRuntimeMessage(
             waitingApproval.requestId,
             decision,
             options.fetch,
-          );
+          ).catch((error: unknown) => {
+            /* The runner no longer holds this request open: a specialist's
+               approval lapses when its hand-off ends, and a task can reach
+               its end while its approval waits. A retry answers the same, so
+               until 27 September this path spent every attempt on it and
+               failed a task whose answer was already written. A deny is
+               what already happened there; carry on to the task's own
+               outcome. */
+            if (error instanceof RunnerApprovalConflictError && decision === 'deny') {
+              return { ok: true } satisfies RunnerTaskResponse;
+            }
+            throw error;
+          });
           if (!decided?.ok) throw new Error('runner approval timeout decision was not accepted');
           if (waitingApproval.status === 'deciding') {
             const resolved = await withTenant(env, message.businessId, async (tx) => {

@@ -1850,6 +1850,109 @@ describe('specialists handing off', () => {
     const found = await asTenant(A, (tx) => findRuntimeApproval(tx, A, row.approval.id));
     expect(found?.approval.agent).toBe('Finance and records');
   });
+
+  /* A specialist's approval lapses on the runner when its hand-off's time
+     runs out, and the root goes on to finish its answer. The Worker's own
+     timeout then denies a request the runner no longer holds: until 27
+     September that 409 was retried until the whole task failed. */
+  it.each([
+    ['answers the lapsed deny as a duplicate', 200, { ok: true, status: 'running', duplicate: true }],
+    ['has already finished the task', 409, { ok: false, error: 'task is terminal' }],
+  ])('still ends with the answer when the runner %s', async (_case, approvalStatus, approvalBody) => {
+    const env = testEnv({
+      RUNTIME_RELEASE: '2026.09.01-3',
+      AISAR_MODEL_NAME: 'MiniMax-M3',
+      RUN_STREAMS: {
+        idFromName: () => ({ toString: () => 'stream-id' }),
+        get: () => ({ fetch: async () => Response.json({ ok: true }) }),
+      },
+    });
+    const provider = new LocalRuntimeProvider();
+    await ensureProviderRuntime(env, A, {
+      provider, runnerKey: 'r'.repeat(64), hermesApiKey: 'h'.repeat(64),
+    });
+    await asTenant(A, (tx) => markRuntimeReady(tx, A, '2026.09.01-3', 'v1'));
+    const run = await asTenant(A, (tx) => startRun(tx, A, {
+      kind: 'ask', triggerShape: 'owner.ask', runtime: 'hermes-sprite', model: 'MiniMax-M3',
+    }));
+    const task = await asTenant(A, (tx) => enqueueRuntimeTask(tx, A, {
+      kind: 'run', runId: run.id, dedupeKey: `live:${run.id}`,
+      payload: {
+        input: 'Draft the overdue invoices', model: 'MiniMax-M3', responseMode: 'deep',
+        objective: 'Draft the overdue invoices', function: 'ask', channel: 'app',
+      },
+    }));
+    let started = false;
+    let paused = true;
+    const approvalCalls: unknown[] = [];
+    const runnerFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/readyz')) {
+        return response({
+          ok: true, release: '2026.09.01-3',
+          runner: { sourceAttested: true, sourceSha256: 'a'.repeat(64) },
+          hermes: { jenteraPatch: 'jentera-runtime-2026-09-16' },
+          toolMode: 'full-tools', webSearchBackend: 'ddgs', edgeAuthorizationForwarded: false,
+          specialistProfiles: { operations: true, customers: true, growth: true, records: true },
+        });
+      }
+      if (url.endsWith('/v1/tasks') && init?.method === 'POST') {
+        const duplicate = started;
+        started = true;
+        return response({ ok: true, duplicate, hermesRunId: 'live-run', status: 'running' }, duplicate ? 200 : 202);
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}/approval`)) {
+        approvalCalls.push(JSON.parse(String(init?.body)));
+        return response(approvalBody, approvalStatus);
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}/events`)) {
+        const events = paused
+          ? [
+              { type: 'handoff', stage: 'started', specialist: 'records', name: 'Finance and records', depth: 1, seq: 1 },
+              { type: 'approval', requestId: 'b'.repeat(32), tool: 'business_records', message: 'Create a draft invoice', agent: 'records', seq: 2 },
+            ]
+          : [
+              { type: 'handoff', stage: 'failed', specialist: 'records', name: 'Finance and records', depth: 1, code: 'time', seq: 3 },
+              { type: 'delta', delta: 'Finance and records ran out of time before the draft.', seq: 4 },
+              { type: 'done' },
+            ];
+        return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), {
+          status: 200, headers: { 'Content-Type': 'text/event-stream' },
+        });
+      }
+      if (url.endsWith(`/v1/tasks/${task.id}`)) {
+        return response(paused
+          ? { ok: true, status: 'running' }
+          : {
+              ok: true, status: 'completed',
+              output: 'Finance and records ran out of time before the draft.',
+              usage: { input_tokens: 900, output_tokens: 40, total_tokens: 940 },
+            });
+      }
+      return response({ error: 'not found' }, 404);
+    };
+    const message = { version: 1 as const, businessId: A, taskId: task.id };
+    await handleRuntimeMessage(env, message, { provider, fetch: runnerFetch, observationSliceMs: 600 });
+    const [waiting] = await asOwner((sql) => sql<{ kind: string; status: string; approval: { status: string; agent?: string } }[]>`
+      select kind, status, result->'approval' as approval from runtime_task where id = ${task.id}`);
+    expect(waiting).toMatchObject({ kind: 'resume', status: 'queued', approval: { status: 'pending', agent: 'Finance and records' } });
+
+    /* Nobody answered, the hand-off ended on the runner, and the window is up. */
+    paused = false;
+    await asOwner((sql) => sql`update runtime_task set available_at = now() where id = ${task.id}`);
+    await expect(handleRuntimeMessage(env, message, { provider, fetch: runnerFetch, observationSliceMs: 600 }))
+      .resolves.toEqual({ action: 'ack', reason: 'completed' });
+    expect(approvalCalls).toEqual([{ requestId: 'b'.repeat(32), decision: 'deny' }]);
+    const [done] = await asOwner((sql) => sql<{ status: string; result: unknown }[]>`
+      select status, result from runtime_task where id = ${task.id}`);
+    expect(done).toEqual({ status: 'completed', result: 'Finance and records ran out of time before the draft.' });
+    const [finished] = await asOwner((sql) => sql<{ status: string }[]>`select status from run where id = ${run.id}`);
+    expect(finished.status).toBe('completed');
+    const trace = await asTenant(A, (tx) => runTrace(tx, run.id));
+    expect(trace).toContainEqual(expect.objectContaining({
+      type: 'approval.rejected', payload: expect.objectContaining({ reason: 'approval_timeout' }),
+    }));
+  });
 });
 
 describe('conversation versus work', () => {
