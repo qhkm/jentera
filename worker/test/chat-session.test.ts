@@ -213,4 +213,22 @@ describe('a chat and who may read its runs', () => {
     ]);
     expect(await asTenant(P1, (tx) => runCoordination(tx, A, runId))).toEqual({ assignment: null, events: [] });
   });
+
+  /* Hand-offs are part of the run, so the run's own visibility rule governs
+     them: a colleague's private chat reveals nothing new. */
+  it("keeps a private chat's hand-offs from a colleague", async () => {
+    const privateRun = await finishedRun(staff, CHAT);
+    await asTenant(A, async (tx) => {
+      await append(tx, A, privateRun, 'agent.handoff', { stage: 'requested', specialist: 'records', depth: 1 });
+      await append(tx, A, privateRun, 'agent.handoff', { stage: 'started', specialist: 'records', depth: 1 });
+      await append(tx, A, privateRun, 'agent.handoff', { stage: 'finished', specialist: 'records', depth: 1 });
+    });
+    const colleague = await get(`/api/runs/${privateRun}/coordination`, cookieOwner);
+    expect(colleague.status).toBe(404);
+    expect(JSON.stringify(await jsonOf(colleague))).not.toMatch(/records|handoff/);
+    const asker = await get(`/api/runs/${privateRun}/coordination`, cookieStaff);
+    expect(asker.status).toBe(200);
+    expect((await jsonOf<{ handoffs?: { specialist: string }[] }>(asker)).handoffs?.map((h) => h.specialist))
+      .toEqual(['records']);
+  });
 });
