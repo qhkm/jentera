@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
@@ -271,6 +271,54 @@ describe('Home with apps', () => {
     const { user } = await mount(api);
     await user.click(await screen.findByRole('button', { name: 'Refresh' }));
     await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+  });
+
+  /* BookingsNeedsYou keeps its confirmed line in its own `done` state, which
+     only survives while it stays mounted. A new request arriving mid-visit
+     takes the apps list from 0 waiting to >0 before that new scan lands, so
+     `apps.pending` is briefly null (useApps.tsx resets it on the way to a
+     fresh count) — that must not unmount the brief's bookings section and
+     lose Aisyah's confirmed line and her WhatsApp link. */
+  it('keeps a confirmed booking\'s WhatsApp link on the brief when a new request arrives', async () => {
+    let phase: 'one' | 'none' | 'new' = 'one';
+    let hold: (() => void) | null = null;
+    const old = bookingFixture({ startsAt: new Date(Date.now() + 3 * 86_400_000).toISOString() });
+    const fresh = bookingFixture({
+      id: '11111111-1111-4111-8111-0000000000ff',
+      customerName: 'Nadia',
+      startsAt: new Date(Date.now() + 4 * 86_400_000).toISOString(),
+    });
+    const confirmed: Booking = { ...old, status: 'confirmed', whatsappUrl: WA };
+    const api = fakeAppsApi({
+      list: vi.fn(async () => ({
+        apps: [{ key: 'bookings' as const, state: 'active' as const, accepting: true, publicUrl: 'https://s.test/b/x', pending: phase === 'none' ? 0 : 1 }],
+        available: ['bookings' as const],
+      })),
+      bookings: vi.fn(async (query: BookingsQuery) => {
+        if (query.status !== 'pending') return { bookings: [], nextCursor: null };
+        if (phase === 'new') { await new Promise<void>((resolve) => { hold = resolve; }); return { bookings: [fresh], nextCursor: null }; }
+        return { bookings: phase === 'one' ? [old] : [], nextCursor: null };
+      }),
+      decide: vi.fn(async () => { phase = 'none'; return { booking: confirmed, whatsappUrl: WA, calendarQueued: false }; }),
+    });
+    const { user } = await mount(api);
+    await user.click(await screen.findByRole('button', { name: 'Confirm Aisyah' }));
+    expect(await screen.findByRole('link', { name: /Send confirmation on WhatsApp/ })).toHaveAttribute('href', WA);
+    await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+
+    // A new request arrives: the list says 1 waiting again, its scan held in flight.
+    phase = 'new';
+    await user.click(screen.getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(api.list).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(hold).not.toBeNull());
+
+    // While the new scan is in flight, Aisyah's confirmed line and WhatsApp link must stay.
+    expect(screen.getByRole('link', { name: /Send confirmation on WhatsApp/ })).toHaveAttribute('href', WA);
+    expect(screen.queryByRole('button', { name: 'Confirm Aisyah' })).toBeNull();
+
+    await act(async () => { hold!(); });
+    expect(await screen.findByRole('button', { name: 'Confirm Nadia' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Send confirmation on WhatsApp/ })).toHaveAttribute('href', WA);
   });
 
   it('keeps the waiting requests when the rest of the brief fails to load', async () => {

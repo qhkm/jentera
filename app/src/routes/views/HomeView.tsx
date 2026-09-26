@@ -234,8 +234,8 @@ export default function HomeView({
       </section>}
 
       {!demo && <DailyBrief activity={activity} snapshot={snap} now={now} onNavigate={onNavigate}
-        bookings={homeApps && apps.api && apps.pending
-          ? <BriefBookings api={apps.api} items={apps.pending} onOpenAll={() => onOpenApp?.('bookings')} />
+        bookings={homeApps && apps.api
+          ? <BriefBookings api={apps.api} items={apps.pending ?? []} onOpenAll={() => onOpenApp?.('bookings')} />
           : null} />}
 
       {goalsEnabled && <HomeGoals onOpen={() => onNavigate('goals')} />}
