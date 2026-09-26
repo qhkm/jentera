@@ -145,8 +145,11 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
   `focusApp()` shows the page alone, for a return inside the window. The
   cache listens for `visibilitychange` on `window`, and the non-bubbling
   `new Event('visibilitychange')` older tests dispatch on `document` never
-  reaches it. Activity, Routines, Goals, Connections and shared chats still
-  fetch by hand until phase 2.
+  reaches it. Goals joined it on 26 September (`hooks/useGoals.ts`, key
+  `['biz', id, 'goals']`: Home's card and the Goals screen share one read;
+  an edit re-reads it, because the server's answer carries no recounted
+  progress). Activity, Routines, Connections and shared chats still fetch
+  by hand until phase 2 reaches them.
 
 ## Native shell (`mobile/`)
 

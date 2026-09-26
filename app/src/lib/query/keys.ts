@@ -17,6 +17,7 @@ export const keys = {
   bookingsConfig: (businessId: string) => ['biz', businessId, 'apps', 'bookings', 'config'] as const,
   booking: (businessId: string, bookingId: string) => ['biz', businessId, 'apps', 'booking', bookingId] as const,
   notifications: (businessId: string) => ['biz', businessId, 'notifications'] as const,
+  goals: (businessId: string) => ['biz', businessId, 'goals'] as const,
 };
 
 /** Mutation keys live apart from query keys, scoped the same way. */
