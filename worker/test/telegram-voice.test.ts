@@ -71,6 +71,22 @@ describe('a Telegram voice note', () => {
     expect(runs[0].input).toMatch(/automatic transcript/);
   });
 
+  /* Review 26 Sep: a 300 s note transcribed to 4,549 characters, and a Telegram
+     question over 4000 fails the run's payload check on every attempt. */
+  it('answers a transcript longer than a Telegram message, giving the agent all of it', async () => {
+    const long = `${'Tolong semak stok beras dan minyak. '.repeat(140)}Akhir sekali, hantar laporan.`;
+    expect(long.length).toBeGreaterThan(4_000);
+    const { env, provider, intake } = await setup(long);
+    await handleRuntimeQueueMessage(env, intake(11), { provider });
+    const [row] = await asOwner((sql) => sql<{ question: string; refQuestion: string; input: string }[]>`
+      select t.payload->'telegram'->>'question' as question, r.trigger_ref->>'question' as "refQuestion",
+             t.payload->>'input' as input
+        from run r join runtime_task t on t.run_id = r.id where r.business_id = ${A} and t.kind = 'run'`);
+    expect(row.question.length).toBeLessThanOrEqual(4_000);
+    expect(row.refQuestion.length).toBeLessThanOrEqual(4_000);
+    expect(row.input).toContain('Akhir sekali, hantar laporan.');
+  });
+
   it('asks the owner to type a note it could not make out, and starts no run', async () => {
     const { env, provider, intake } = await setup('Thank you.');
     await expect(handleRuntimeQueueMessage(env, intake(8), { provider }))

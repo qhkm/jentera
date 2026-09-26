@@ -777,7 +777,7 @@ export async function handleRuntimeQueueMessage(
           chatId: message.incoming.chatId,
           messageId: message.incoming.messageId,
           from: message.incoming.from,
-          question: message.incoming.text,
+          question: telegramQuestion(message.incoming.text),
           sessionId: telegramSessionId,
           ...(message.incoming.voice ? { input: 'voice', durationS: message.incoming.voice.durationS } : {}),
         },
@@ -811,7 +811,7 @@ export async function handleRuntimeQueueMessage(
             chatId: message.incoming.chatId,
             messageId: message.incoming.messageId,
             from: message.incoming.from,
-            question: message.incoming.text,
+            question: telegramQuestion(message.incoming.text),
             privateChat: true,
           },
         },
@@ -2948,6 +2948,14 @@ async function settleFailedTelegramBubble(
     await liveStream?.cleanup();
     return false;
   }
+}
+
+/** A Telegram run's question, as the run and its task keep it. A typed message
+    is at most 4000 characters already; a transcript is not (a 300 s voice note
+    read 4,549), and the task's payload check refuses more. The agent's input
+    carries the whole transcript. */
+function telegramQuestion(text: string): string {
+  return text.length > 4_000 ? `${text.slice(0, 3_999)}…` : text;
 }
 
 function validVoice(voice: unknown): boolean {
