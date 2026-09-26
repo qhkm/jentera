@@ -348,6 +348,14 @@
   background: var(--workspace-panel-bg);
   box-shadow: var(--workspace-panel-shadow);
 }
+:is(.theme-light, .site-theme-light) .workspace-v3 .dashboard-content .bookings-app :is(.card, .bookings-calendar) {
+  border-color: rgb(18 72 54 / .15);
+  box-shadow: 0 12px 30px rgb(31 67 55 / .11), 0 2px 7px rgb(31 67 55 / .06);
+}
+:is(.theme-light, .site-theme-light) .workspace-v3 .dashboard-content .bookings-calendar-event {
+  border-color: rgb(18 72 54 / .13);
+  box-shadow: 0 3px 9px rgb(31 67 55 / .08);
+}
 .workspace-v3 .dashboard-content .daily-brief {
   border: 1px solid var(--workspace-panel-border);
   border-radius: var(--workspace-panel-radius);

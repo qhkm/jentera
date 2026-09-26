@@ -15,7 +15,7 @@ import { useRequiredBusinessId } from '@/lib/query/scope';
 import { malaysiaDay } from '@/lib/daily-brief';
 import type { AppsApi, Booking, BookingAction, BookingBlock, BookingsConfig } from '@/lib/apps/types';
 import BookingCard from './BookingCard';
-import BookingsCalendar, { mondayOf, type CalendarSpan } from './BookingsCalendar';
+import BookingsCalendar, { daysInMonth, firstOfMonth, mondayOf, moveMonth, type CalendarSpan } from './BookingsCalendar';
 
 type Filter = 'needs' | 'today' | 'upcoming' | 'date';
 type View = 'list' | 'calendar';
@@ -77,7 +77,9 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, blocks
   const today = malaysiaDay(clock.current());
   const listRange = filter === 'upcoming' ? { from: addDays(today, offset), days: WINDOW_DAYS }
     : filter === 'date' ? { from: date, days: 1 } : { from: today, days: 1 };
-  const calendarRange = { from: calendarSpan === 'week' ? mondayOf(calendarDate) : calendarDate, days: calendarSpan === 'week' ? 7 : 1 };
+  const calendarRange = calendarSpan === 'week' ? { from: mondayOf(calendarDate), days: 7 }
+    : calendarSpan === 'month' ? { from: firstOfMonth(calendarDate), days: daysInMonth(calendarDate) }
+      : { from: calendarDate, days: 1 };
   const range = view === 'calendar' ? calendarRange : listRange;
   const needs = view === 'list' && filter === 'needs';
   const scope = needs ? 'needs' : `${view}/${range.from}/${range.days}`;
@@ -277,9 +279,12 @@ export default function BookingsList({ api, bookingId, onConnectCalendar, blocks
       <BookingsCalendar anchor={calendarDate} span={calendarSpan} today={today} rows={shown} blocks={blocks}
         calendarProtection={calendarProtection} selectedId={calendarBookingId}
         onSelect={setCalendarBookingId}
-        onNavigate={(direction) => { setCalendarBookingId(null); forgetDecided(); setCalendarDate((current) => addDays(calendarSpan === 'week' ? mondayOf(current) : current, direction * (calendarSpan === 'week' ? 7 : 1))); }}
+        onNavigate={(direction) => { setCalendarBookingId(null); forgetDecided(); setCalendarDate((current) => calendarSpan === 'month'
+          ? moveMonth(current, direction)
+          : addDays(calendarSpan === 'week' ? mondayOf(current) : current, direction * (calendarSpan === 'week' ? 7 : 1))); }}
         onToday={() => { setCalendarBookingId(null); forgetDecided(); setCalendarDate(today); }}
-        onSpan={(span) => { setCalendarBookingId(null); forgetDecided(); setCalendarSpan(span); }} />
+        onSpan={(span) => { setCalendarBookingId(null); forgetDecided(); setCalendarSpan(span); }}
+        onOpenDay={(day) => { setCalendarBookingId(null); forgetDecided(); setCalendarDate(day); setCalendarSpan('day'); }} />
       {calendarBooking && <section className="bookings-calendar-detail" aria-labelledby="bookings-calendar-detail-title">
         <div className="bookings-calendar-detail-heading">
           <h2 id="bookings-calendar-detail-title">{t('bookings.calendarView.details')}</h2>

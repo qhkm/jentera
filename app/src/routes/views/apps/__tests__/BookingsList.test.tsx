@@ -70,6 +70,31 @@ describe('BookingsList', () => {
     await waitFor(() => expect(api.bookings).toHaveBeenCalledWith(expect.objectContaining({ from: '2026-10-05', days: 1 })));
   });
 
+  it('shows a whole month and drills into a selected day', async () => {
+    const api = fakeAppsApi({ list: installed(0), bookings: serve([], [bookingFixture({ status: 'confirmed' })]) });
+    const { user } = await mount(api);
+    await screen.findByRole('article', { name: 'Aisyah' });
+    await user.click(screen.getByRole('button', { name: 'Calendar' }));
+    let calendarView = await screen.findByRole('region', { name: 'Booking calendar' });
+
+    await user.click(within(calendarView).getByRole('button', { name: 'Month' }));
+    await waitFor(() => expect(api.bookings).toHaveBeenCalledWith(expect.objectContaining({ from: '2026-10-01', days: 31 })));
+    calendarView = await screen.findByRole('region', { name: 'Booking calendar' });
+    expect(within(calendarView).getByText('October 2026')).toBeInTheDocument();
+
+    await user.click(within(calendarView).getByRole('button', { name: 'Next period' }));
+    await waitFor(() => expect(api.bookings).toHaveBeenCalledWith(expect.objectContaining({ from: '2026-11-01', days: 30 })));
+    calendarView = await screen.findByRole('region', { name: 'Booking calendar' });
+    expect(within(calendarView).getByText('November 2026')).toBeInTheDocument();
+
+    await user.click(within(calendarView).getByRole('button', { name: 'Today' }));
+    calendarView = await screen.findByRole('region', { name: 'Booking calendar' });
+    await user.click(await within(calendarView).findByRole('button', { name: /1 bookings/ }));
+    await waitFor(() => expect(api.bookings).toHaveBeenCalledWith(expect.objectContaining({ from: '2026-10-06', days: 1 })));
+    calendarView = await screen.findByRole('region', { name: 'Booking calendar' });
+    expect(within(calendarView).getByRole('button', { name: 'Day' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('opens on Needs you, and a confirm shows the WhatsApp link and Syncing at once', async () => {
     const confirmed = bookingFixture({ status: 'confirmed', whatsappUrl: WA, calendar: calendar('pending') });
     const api = fakeAppsApi({
