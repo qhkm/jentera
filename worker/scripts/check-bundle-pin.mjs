@@ -22,11 +22,12 @@
  *
  * Exit 0 = safe to deploy. Exit 1 = the deploy would strand provisioning.
  */
+import { execFileSync } from 'node:child_process';
 import { readFileSync, mkdtempSync, readFileSync as read, rmSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { bundleKey, packBundle } from './bundle-pack.mjs';
+import { bundleAssets, bundleKey, packBundle, repoRoot } from './bundle-pack.mjs';
 import { execWrangler } from './wrangler-cli.mjs';
 
 const fail = (msg) => { console.error(`FAIL  ${msg}`); process.exit(1); };
@@ -40,10 +41,34 @@ if (!pinned) fail('RUNTIME_BUNDLE_SHA256 not found in wrangler.toml; provisionin
 if (!bucket) fail('the RUNTIME_BUNDLES r2_buckets binding is missing from wrangler.toml');
 
 // ---- 1. the pin describes what packing that commit actually produces ------
+/** Whether `git` has this object locally, without fetching anything. */
+const hasObject = (spec) => {
+  try {
+    execFileSync('git', ['cat-file', '-e', spec], { cwd: repoRoot(), stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 let packed;
 try {
   packed = packBundle(commit);
 } catch (error) {
+  /* The bundle is packed from the pinned commit with this checkout's asset
+     list. Once a new runtime file is merged, that list names a file the
+     pinned commit predates, and nothing but a release can fix it: say so,
+     rather than send the operator to fetch a commit they already have. */
+  const missing = hasObject(`${commit}^{commit}`)
+    ? bundleAssets().filter((asset) => !hasObject(`${commit}:${asset}`))
+    : [];
+  if (missing.length) {
+    fail(`this checkout's RUNTIME_BUNDLE_ASSETS (worker/src/runtime/provision.ts) names\n` +
+         `      ${missing.join(', ')}, which the pinned bundle commit ${commit.slice(0, 12)} does not have.\n` +
+         '      A runtime file was merged but not yet released. A plain deploy cannot ship past\n' +
+         '      that: run worker/scripts/ship-runtime.sh, which pins a commit that has it and\n' +
+         '      deploys the Worker with it.');
+  }
   fail(`could not pack ${commit}: ${error.message}\n` +
        `      Fetch the commit (git fetch origin ${commit}) before deploying.`);
 }
