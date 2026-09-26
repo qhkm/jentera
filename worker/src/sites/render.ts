@@ -6,11 +6,12 @@ import { clockText, dateText, type Lang } from '../apps/bookings/messages';
 import { addDays, myDate, myInstant, weekday } from '../apps/bookings/time';
 
 /* Server-rendered booking pages. Every business- or customer-supplied string
-   goes through escapeHtml. No script of ours runs on these pages; the only
-   script is Cloudflare's Turnstile widget. */
+   goes through escapeHtml. A static helper only restores the calendar scroll
+   target after navigation; Cloudflare's Turnstile is the only third-party
+   script. */
 
 export const SECURITY_HEADERS: Record<string, string> = {
-  'Content-Security-Policy': "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; script-src https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+  'Content-Security-Policy': "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
   'X-Robots-Tag': 'noindex',
@@ -193,6 +194,7 @@ body{background:var(--page)}a{color:var(--ink)}main{max-width:1120px;margin:40px
 .service-context h2{font-size:25px;line-height:1.3;letter-spacing:-.6px;margin:0 0 16px;overflow-wrap:anywhere}.service-meta{color:var(--muted);font-size:14px;margin:0 0 12px}.service-context .service-description{margin:18px 0}.service-context .summary-change{display:inline-block;margin-top:16px;color:var(--ink)}.business .location{margin-top:20px}.welcome-copy{font-size:13px;margin-top:24px;color:var(--muted);overflow-wrap:anywhere}.welcome-copy strong{display:block;color:var(--ink);margin-bottom:6px}.welcome-copy p{margin:0}.business .pending{line-height:1.6;margin-top:28px}
 .service-card{padding:20px;margin:12px 0;background:transparent}.service-card strong{font-size:16px}.service-action{color:var(--ink)}.back{color:var(--muted);margin-bottom:22px}.details-summary{border:0;border-bottom:1px solid var(--line);border-radius:0;padding:0 0 20px;background:transparent}.details-summary .location{display:none}.summary-change{color:var(--ink)}
 .date-time-layout{display:grid;grid-template-columns:minmax(260px,1fr) minmax(160px,.65fr);gap:28px;align-items:start}.month-calendar{min-width:0}.month-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}.month-heading h2{font-size:15px;margin:0}.month-navigation{display:flex;gap:4px}.month-arrow{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;font-size:22px;color:var(--ink);text-decoration:none}.month-arrow:hover{background:var(--soft)}.month-arrow[aria-disabled]{opacity:.25}.month-weekdays,.month-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}.month-weekdays{margin-bottom:10px;font-size:10px;color:var(--muted);text-align:center;text-transform:uppercase}.calendar-day{display:grid;place-items:center;aspect-ratio:1;min-width:0;border-radius:50%;font-size:14px;text-decoration:none;font-weight:600;color:var(--ink);background:var(--soft)}a.calendar-day:hover{outline:1px solid var(--accent);outline-offset:-1px}.calendar-day[aria-disabled]{color:var(--muted);opacity:.45;background:transparent;font-weight:400}.calendar-day[aria-current="date"]{background:var(--primary);color:var(--primary-ink)}.month-calendar .timezone{margin-top:24px}.time-column{min-width:0}.time-column h2{margin:8px 0 24px;font-size:14px;font-weight:500}.time-column .times{grid-template-columns:1fr;max-height:380px;overflow-y:auto;padding:2px 5px 4px 2px;scrollbar-width:thin}.time-column .time-card{min-height:48px;padding:11px 8px;border-radius:6px;background:transparent;font-size:14px}.time-column .time-card:hover{border-color:var(--ink)}.time-column .time-card[aria-current]{border-color:var(--primary);background:var(--primary);color:var(--primary-ink);box-shadow:none}.time-column .time-card[aria-current] .muted{color:inherit}.time-column .empty{border:0;background:transparent;padding:16px 0;text-align:left}.time-column .selection-action{display:block;position:static;background:none;margin:12px 0 0;padding:0}.time-column .selection-action-copy{display:none}.time-column .primary-action{width:100%;min-width:0;border-radius:6px}.time-column .time-prompt{font-size:11px}.time-column button{border-radius:6px}.form-submit{background:var(--surface)}
+#booking-calendar,#booking-times{scroll-margin-top:16px}
 .calendar-day{width:100%;max-width:44px;justify-self:center}.calendar-day[aria-disabled][aria-current]{background:var(--soft);color:var(--muted);opacity:1}.time-column .empty-mark{display:none}
 @media(min-width:761px) and (max-width:1000px){.booking-layout{grid-template-columns:230px minmax(0,1fr)}.business,.panel{padding:24px}.date-time-layout{gap:18px;grid-template-columns:minmax(230px,1fr) minmax(140px,.6fr)}}
 @media(max-width:760px){main{margin:12px auto 0;padding:0 16px}.booking-layout{grid-template-columns:1fr;border-radius:10px}.business{display:block;padding:24px;border-right:0;border-bottom:1px solid var(--line)}.avatar{float:left;width:40px;height:40px;margin:0 12px 16px 0}.business-name{min-height:40px;display:flex;align-items:center;margin:0 0 16px;font-size:14px}.service-context{clear:both}.service-context h2{font-size:22px;margin-bottom:8px}.service-meta{margin-bottom:6px}.service-context .service-description{margin:10px 0}.business .location{margin-top:12px}.business .pending{margin:14px 0 0}.service-context .summary-change{margin-top:8px}.welcome-copy{margin-top:14px}.panel{padding:24px;min-height:0}.panel>h1{font-size:20px}.date-time-layout{grid-template-columns:minmax(240px,1fr) minmax(140px,.7fr);gap:24px}.month-days,.month-weekdays{gap:4px}.calendar-day{max-height:46px}.selection-action .primary-action{min-width:0}}
@@ -223,7 +225,7 @@ function layout(input: { lang: Lang; title: string; body: string; langSwitch?: s
   const topbar = input.langSwitch ? `<header class="topbar"><a class="lang" href="${input.langSwitch}">${t.otherLang}</a></header>` : '';
   return `<!doctype html><html lang="${input.lang === 'bm' ? 'ms' : 'en'}" data-theme="${input.pageTheme ?? 'dark'}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
-<title>${escapeHtml(input.title)}</title><link rel="icon" href="/favicon.svg"><link rel="preload" href="/geist-sans.woff2" as="font" type="font/woff2" crossorigin><style>${CSS}${accentStyle(input.brandColor)}</style>${input.widget ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>' : ''}</head>
+<title>${escapeHtml(input.title)}</title><link rel="icon" href="/favicon.svg"><link rel="preload" href="/geist-sans.woff2" as="font" type="font/woff2" crossorigin><style>${CSS}${accentStyle(input.brandColor)}</style><script src="/booking-page.js" defer></script>${input.widget ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>' : ''}</head>
 <body>${topbar}<main><div${name ? ' class="booking-layout"' : ''}>${sidebar}<section class="panel">${input.body}</section></div>
 <footer><a href="https://jentera.ai" rel="noreferrer">${t.poweredBy}</a></footer></main></body></html>`;
 }
@@ -276,7 +278,7 @@ function monthCalendar(input: CalendarInput & { lang: Lang; link: (params: Recor
       ? `<a class="calendar-day" aria-label="${label}" href="${input.link({ date })}"${selected}>${i + 1}</a>`
       : `<span class="calendar-day" aria-label="${label}" aria-disabled="true"${selected}>${i + 1}</span>`;
   }).join('');
-  return `<div class="month-calendar"><div class="month-heading"><h2>${escapeHtml(title)}</h2><nav class="month-navigation" aria-label="${t.steps[1]}">${arrow(previous, previous >= min, t.previousMonth, '‹')}${arrow(next.slice(0, 7), next.slice(0, 7) <= max, t.nextMonth, '›')}</nav></div><div class="month-weekdays" aria-hidden="true">${labels}</div><div class="month-days">${blanks}${cells}</div><p class="timezone">${t.timezone}</p></div>`;
+  return `<div class="month-calendar" id="booking-calendar"><div class="month-heading"><h2>${escapeHtml(title)}</h2><nav class="month-navigation" aria-label="${t.steps[1]}">${arrow(previous, previous >= min, t.previousMonth, '‹')}${arrow(next.slice(0, 7), next.slice(0, 7) <= max, t.nextMonth, '›')}</nav></div><div class="month-weekdays" aria-hidden="true">${labels}</div><div class="month-days">${blanks}${cells}</div><p class="timezone">${t.timezone}</p></div>`;
 }
 
 function serviceContext(input: Base & { service: PublicService; canChangeService?: boolean }): string {
@@ -302,20 +304,20 @@ export function timesPage(input: Base & CalendarInput & { service: PublicService
   const t = T[input.lang];
   const chosen = input.days.find((d) => d.date === input.selected) ?? input.days[0];
   const selectedSlot = input.selectedStart && chosen?.slots.find((slot) => slot.startsAt.getTime() === input.selectedStart!.getTime());
-  const calendar = monthCalendar({ ...input, link: (params) => href(input.slug, '', { service: input.service.id, ...params, lang: input.lang }) });
+  const calendar = monthCalendar({ ...input, link: (params) => `${href(input.slug, '', { service: input.service.id, ...params, lang: input.lang })}#${params.date ? 'booking-times' : 'booking-calendar'}` });
   const times = chosen && chosen.slots.length > 0
     ? `<div class="times">${chosen.slots.map((slot) => {
       const active = selectedSlot?.startsAt.getTime() === slot.startsAt.getTime();
-      return `<a class="card time-card"${active ? ' aria-current="true"' : ''} href="${href(input.slug, '', { service: input.service.id, date: chosen.date, start: slot.startsAt.toISOString(), lang: input.lang })}"><strong>${clockText(slot.startsAt, input.lang)}</strong>${input.service.capacity > 1 ? `<div class="muted">${t.placesLeft(slot.remaining)}</div>` : ''}</a>`;
+      return `<a class="card time-card"${active ? ' aria-current="true"' : ''} href="${href(input.slug, '', { service: input.service.id, date: chosen.date, start: slot.startsAt.toISOString(), lang: input.lang })}#booking-times"><strong>${clockText(slot.startsAt, input.lang)}</strong>${input.service.capacity > 1 ? `<div class="muted">${t.placesLeft(slot.remaining)}</div>` : ''}</a>`;
     }).join('')}</div>${selectedSlot ? '' : `<p class="muted time-prompt">${t.selectTimeHint}</p>`}`
-    : `<div class="empty"><span class="empty-mark" aria-hidden="true">○</span><p>${t.noTimes}</p><p class="muted">${t.emptyHint}</p>${input.nextAvailable ? `<a class="next-available" href="${href(input.slug, '', { service: input.service.id, date: input.nextAvailable, lang: input.lang })}">${t.nextAvailable} →</a>` : ''}</div>`;
+    : `<div class="empty"><span class="empty-mark" aria-hidden="true">○</span><p>${t.noTimes}</p><p class="muted">${t.emptyHint}</p>${input.nextAvailable ? `<a class="next-available" href="${href(input.slug, '', { service: input.service.id, date: input.nextAvailable, lang: input.lang })}#booking-times">${t.nextAvailable} →</a>` : ''}</div>`;
   const selection = selectedSlot ? `<div class="selection-action"><span class="selection-action-copy"><span>${t.selectedTime}</span><strong>${clockText(selectedSlot.startsAt, input.lang)}</strong></span><a class="primary-action" href="${href(input.slug, '/request', { service: input.service.id, start: selectedSlot.startsAt.toISOString(), lang: input.lang })}">${t.continue} <span aria-hidden="true">→</span></a></div>` : '';
   return layout({
     ...branding(input),
     lang: input.lang, title: `${input.service.name} · ${input.businessName}`, businessName: input.businessName, location: input.location,
     context: serviceContext(input),
     langSwitch: href(input.slug, '', { service: input.service.id, date: chosen?.date ?? input.selected, ...(selectedSlot ? { start: selectedSlot.startsAt.toISOString() } : {}), lang: other(input.lang) }),
-    body: `<h1>${t.chooseDateTime}</h1>${input.notice === 'taken' ? `<p class="notice" role="alert">${t.taken}</p>` : ''}<div class="date-time-layout">${calendar}<section class="time-column" aria-label="${t.chooseTime}"><h2>${chosen ? dayLabel(chosen.date, input.lang) : ''}</h2>${times}${selection}</section></div><p class="pending">${t.pending}</p>`,
+    body: `<h1>${t.chooseDateTime}</h1>${input.notice === 'taken' ? `<p class="notice" role="alert">${t.taken}</p>` : ''}<div class="date-time-layout">${calendar}<section class="time-column" id="booking-times" aria-label="${t.chooseTime}"><h2>${chosen ? dayLabel(chosen.date, input.lang) : ''}</h2>${times}${selection}</section></div><p class="pending">${t.pending}</p>`,
   });
 }
 
@@ -346,8 +348,8 @@ export function formPage(input: Base & {
     lang: input.lang, title: `${input.service.name} · ${input.businessName}`, widget: Boolean(input.siteKey), businessName: input.businessName, location: input.location,
     context: serviceContext(input),
     langSwitch: href(input.slug, '/request', { service: input.service.id, start: date, lang: other(input.lang) }),
-    body: `<a class="back" href="${href(input.slug, '', { service: input.service.id, date: myDate(input.startsAt), start: input.startsAt.toISOString(), lang: input.lang })}">← ${t.back}</a>
-<h1>${t.yourDetails}</h1><p class="muted intro">${t.detailsHint}</p><div class="summary details-summary"><div class="summary-heading"><span class="summary-label">${t.appointment}</span><a class="summary-change" href="${href(input.slug, '', { service: input.service.id, date: myDate(input.startsAt), start: input.startsAt.toISOString(), lang: input.lang })}">${t.changeTimeAction}</a></div><div class="appointment-time"><strong>${dayLabel(myDate(input.startsAt), input.lang)} · ${clockText(input.startsAt, input.lang)}</strong><span class="muted">${t.timezone}</span></div></div>
+    body: `<a class="back" href="${href(input.slug, '', { service: input.service.id, date: myDate(input.startsAt), start: input.startsAt.toISOString(), lang: input.lang })}#booking-times">← ${t.back}</a>
+<h1>${t.yourDetails}</h1><p class="muted intro">${t.detailsHint}</p><div class="summary details-summary"><div class="summary-heading"><span class="summary-label">${t.appointment}</span><a class="summary-change" href="${href(input.slug, '', { service: input.service.id, date: myDate(input.startsAt), start: input.startsAt.toISOString(), lang: input.lang })}#booking-times">${t.changeTimeAction}</a></div><div class="appointment-time"><strong>${dayLabel(myDate(input.startsAt), input.lang)} · ${clockText(input.startsAt, input.lang)}</strong><span class="muted">${t.timezone}</span></div></div>
 ${general}<form class="booking-form" method="post" action="${href(input.slug, '/request', { lang: input.lang })}">
 <input type="hidden" name="service" value="${escapeHtml(input.service.id)}"><input type="hidden" name="start" value="${escapeHtml(date)}">
 <input type="hidden" name="submission_key" value="${escapeHtml(input.submissionKey)}">
@@ -435,17 +437,17 @@ export function reschedulePage(input: Base & CalendarInput & { token: string; bo
   const t = T[input.lang];
   const path = `/manage/${input.token}/reschedule`;
   const chosen = input.days.find((day) => day.date === input.selected) ?? input.days[0];
-  const calendar = monthCalendar({ ...input, link: (params) => href(input.slug, path, { ...params, lang: input.lang }) });
+  const calendar = monthCalendar({ ...input, link: (params) => `${href(input.slug, path, { ...params, lang: input.lang })}#${params.date ? 'booking-times' : 'booking-calendar'}` });
   const selectedSlot = input.selectedStart && chosen?.slots.find((slot) => slot.startsAt.getTime() === input.selectedStart!.getTime());
   const content = selectedSlot
     ? `<div class="summary"><strong>${dateText(selectedSlot.startsAt, input.lang)} · ${clockText(selectedSlot.startsAt, input.lang)}</strong><p class="muted">${t.rescheduleHint}</p></div><form method="post" action="${href(input.slug, path, { lang: input.lang })}"><input type="hidden" name="start" value="${escapeHtml(selectedSlot.startsAt.toISOString())}"><button type="submit">${t.confirmNewTime}</button></form>`
     : chosen && chosen.slots.length > 0
-      ? `<div class="times">${chosen.slots.map((slot) => `<a class="card time-card" href="${href(input.slug, path, { date: chosen.date, start: slot.startsAt.toISOString(), lang: input.lang })}"><strong>${clockText(slot.startsAt, input.lang)}</strong><div class="muted">${t.placesLeft(slot.remaining)}</div></a>`).join('')}</div>`
-      : `<div class="empty"><p>${t.noTimes}</p><p class="muted">${t.emptyHint}</p>${input.nextAvailable ? `<a class="next-available" href="${href(input.slug, path, { date: input.nextAvailable, lang: input.lang })}">${t.nextAvailable} →</a>` : ''}</div>`;
+      ? `<div class="times">${chosen.slots.map((slot) => `<a class="card time-card" href="${href(input.slug, path, { date: chosen.date, start: slot.startsAt.toISOString(), lang: input.lang })}#booking-times"><strong>${clockText(slot.startsAt, input.lang)}</strong><div class="muted">${t.placesLeft(slot.remaining)}</div></a>`).join('')}</div>`
+      : `<div class="empty"><p>${t.noTimes}</p><p class="muted">${t.emptyHint}</p>${input.nextAvailable ? `<a class="next-available" href="${href(input.slug, path, { date: input.nextAvailable, lang: input.lang })}#booking-times">${t.nextAvailable} →</a>` : ''}</div>`;
   return layout({ ...branding(input), lang: input.lang, title: t.rescheduleTitle, businessName: input.businessName, location: input.location,
     context: input.service ? serviceContext({ ...input, service: input.service }) : `<div class="service-context"><h2>${escapeHtml(input.booking.serviceName)}</h2></div>`,
     langSwitch: href(input.slug, path, { date: input.selected, lang: other(input.lang) }),
-    body: `<a class="back" href="${href(input.slug, `/manage/${input.token}`, { lang: input.lang })}">← ${t.back}</a><h1>${t.rescheduleTitle}</h1><p class="muted intro">${t.rescheduleHint}</p>${input.notice ? `<p class="notice" role="alert">${t.taken}</p>` : ''}<div class="date-time-layout">${calendar}<section class="time-column"><h2>${chosen ? dayLabel(chosen.date, input.lang) : ''}</h2>${content}</section></div>` });
+    body: `<a class="back" href="${href(input.slug, `/manage/${input.token}`, { lang: input.lang })}">← ${t.back}</a><h1>${t.rescheduleTitle}</h1><p class="muted intro">${t.rescheduleHint}</p>${input.notice ? `<p class="notice" role="alert">${t.taken}</p>` : ''}<div class="date-time-layout">${calendar}<section class="time-column" id="booking-times"><h2>${chosen ? dayLabel(chosen.date, input.lang) : ''}</h2>${content}</section></div>` });
 }
 
 export function customerMessagePage(input: Base & { kind: 'expired' | 'cutoff' | 'unavailable' }): string {

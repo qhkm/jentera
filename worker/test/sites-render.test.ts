@@ -15,7 +15,7 @@ describe('escaping and responses', () => {
   it('sends every security header and never a cookie', () => {
     const res = page('<p>hi</p>');
     expect(res.headers.get('Content-Security-Policy')).toBe(
-      "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; script-src https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+      "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
     expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
     expect(res.headers.get('Referrer-Policy')).toBe('no-referrer');
     expect(res.headers.get('X-Robots-Tag')).toBe('noindex');
@@ -60,10 +60,15 @@ describe('pages', () => {
     expect(january.match(/class="calendar-day"/g)).toHaveLength(31);
   });
 
+  it('loads the same-origin helper that restores calendar scroll targets', () => {
+    const html = servicesPage({ ...base, services: [service] });
+    expect(html).toContain('<script src="/booking-page.js" defer></script>');
+  });
+
   it('keeps the selected Malaysian date when returning from the details step', () => {
     const html = formPage({ ...base, service, startsAt: new Date('2026-10-06T17:00:00Z'), remaining: 2, submissionKey: 'k',
       values: { name: '', phone: '', note: '', party: '1' }, errors: [], siteKey: undefined });
-    expect(html).toContain(`href="/b/seido?service=${service.id}&amp;date=2026-10-07&amp;start=2026-10-06T17%3A00%3A00.000Z&amp;lang=en"`);
+    expect(html).toContain(`href="/b/seido?service=${service.id}&amp;date=2026-10-07&amp;start=2026-10-06T17%3A00%3A00.000Z&amp;lang=en#booking-times"`);
     expect(html).toContain('<h1>Your details</h1>');
     expect(html).toContain('Malaysia time (GMT+8)');
     expect(html).toContain('<span class="summary-label">Appointment</span>');
@@ -142,10 +147,14 @@ describe('pages', () => {
     expect(html).toContain('class="service-context"');
     expect(html).toContain('1 time');
     expect(html).toContain('aria-disabled="true"');
+    expect(html).toContain('id="booking-calendar"');
+    expect(html).toContain('id="booking-times"');
+    expect(html).toContain('date=2026-10-06&amp;lang=en#booking-times');
+    expect(html).toContain('start=2026-10-06T02%3A00%3A00.000Z&amp;lang=en#booking-times');
     const empty = timesPage({ ...base, service, selected: '2026-10-07', nextAvailable: '2026-10-09', notice: null, days: [{ date: '2026-10-07', slots: [] }] });
     expect(empty).toContain('No open times on this day.');
     expect(empty).toContain('Go to next available →');
-    expect(empty).toContain('date=2026-10-09');
+    expect(empty).toContain('date=2026-10-09&amp;lang=en#booking-times');
   });
 
   it('shows the privacy notice in both languages, the widget only with a site key, and the submission key', () => {
