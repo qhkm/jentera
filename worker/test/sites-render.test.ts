@@ -36,6 +36,10 @@ describe('pages', () => {
     expect(html).toContain('aria-current="step"><span>3</span>Details');
     expect(html).toContain('<span>4</span>Confirm');
     expect(html).toContain('Malaysia time (GMT+8)');
+    expect(html).toContain('<span class="summary-label">Appointment</span>');
+    expect(html).toContain('>Change time</a>');
+    expect(html).toContain('class="form-grid"');
+    expect(html).toContain('class="form-submit"');
     expect(html).toContain('Your booking is confirmed only after the business gets in touch.');
   });
 
@@ -94,6 +98,7 @@ describe('pages', () => {
     expect(en).toContain('class="cf-turnstile" data-sitekey="site-key" data-action="booking"');
     expect(en).toContain('name="submission_key" value="key-1"');
     expect(en).toContain('value="&lt;Aisyah&gt;"');
+    expect(en).toContain('placeholder="012 345 6789"');
     expect(en).toContain('<option value="3">3</option>');
     expect(en).not.toContain('<option value="4">');
     const bm = formPage({ ...input, lang: 'bm', siteKey: undefined });
@@ -143,6 +148,9 @@ describe('pages', () => {
     expect(done).toContain('will confirm on WhatsApp.');
     expect(done).toContain('/b/seido/manage?ref=K7Q2MP&amp;lang=en');
     expect(done).toContain('aria-current="step"><span>4</span>Confirm');
+    expect(done).toContain('Keep this reference to manage or change your booking.');
+    expect(done).toContain('class="receipt-primary"');
+    expect(done).toContain('Book another appointment');
     expect(messagePage({ ...base, kind: 'unavailable' })).toContain('Not taking bookings right now');
     expect(messagePage({ slug: null, lang: 'en', businessName: null, kind: 'not_found' })).toContain('Page not found');
     const unreadable = messagePage({ slug: null, lang: 'en', businessName: null, kind: 'bad_request' });
