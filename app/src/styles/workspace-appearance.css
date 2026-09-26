@@ -536,7 +536,8 @@
   border-color: var(--workspace-focus);
   box-shadow: 0 0 0 2px rgb(var(--accent-green-rgb) / .08);
 }
-.dashboard-shell .ask-studio-send {
+.dashboard-shell .ask-studio-send,
+.dashboard-shell .ask-voice-button {
   border-radius: 50%;
 }
 .dashboard-shell .ask-studio-send:not(:disabled) {
