@@ -12,10 +12,13 @@
    now moves the badge, because both read the same array.
    ============================================================ */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useContext } from 'react';
+import { QueryClient, QueryClientContext, useQuery } from '@tanstack/react-query';
 import { useRepository } from '@/lib/repo';
 import type { Connection } from '@/lib/repo';
 import { useSignedIn } from '@/lib/repo/gate';
+import { keys } from '@/lib/query/keys';
+import { useBusinessId } from '@/lib/query/scope';
 import { findConnector } from '@/lib/tools';
 
 /**
@@ -38,98 +41,74 @@ export interface ConnectionsState {
   real: boolean;
   error: Error | null;
   retry: () => void;
-  /** Optimistic updates from the connect/disconnect controls. */
+  /** Shows a connect or disconnect at once, from the server's answer to it. */
   setRows: React.Dispatch<React.SetStateAction<Connection[] | null>>;
 }
 
+/** How often a Telegram connection waiting for its owner chat is read again. */
+export const PAIRING_POLL_MS = 3000;
+
+const NONE: Connection[] = [];
+
+/* Only tests and the dev preview are signed in without a cache (the gate
+   builds one for every signed-in page). They get this client so the query
+   can be declared, disabled, with nothing sent. */
+const INERT = new QueryClient();
+
+const awaitingTelegram = (rows: Connection[] | null | undefined) => (rows ?? []).some(
+  (row) => row.connector === 'telegram' && row.status === 'connected' && row.paired !== true,
+);
+
+/**
+ * The business's connections, read once for everything that shows them —
+ * the dashboard hands them to Home, My Business, Library and the connector
+ * options, and the setup screen reads the same cache entry. A return to the
+ * app reads them again with the rows kept on screen, and a failed refresh
+ * keeps them. While a Telegram bot waits for its owner chat they are read
+ * every 3 s, only while the app is on screen: pairing happens in Telegram,
+ * and coming back resumes the check.
+ */
 export function useConnections(): ConnectionsState {
   const repo = useRepository();
   const signedIn = useSignedIn();
-  const [rows, setRows] = useState<Connection[] | null>(null);
-  const [error, setError] = useState<Error | null>(null);
-  const [attempt, setAttempt] = useState(0);
-  /* Guards React 18's double-invoke in development, which would
-     otherwise fire two identical requests on every mount. */
-  const inflight = useRef(false);
+  const scoped = useContext(QueryClientContext);
+  const businessId = useBusinessId();
+  const client = scoped ?? INERT;
+  const live = signedIn && scoped !== undefined && businessId !== null;
+  const query = useQuery({
+    queryKey: keys.connections(businessId ?? 'none'),
+    queryFn: () => repo.connections(),
+    enabled: live,
+    refetchInterval: (q) => (awaitingTelegram(q.state.data) ? PAIRING_POLL_MS : false),
+    refetchIntervalInBackground: false,
+  }, client);
+  const { refetch } = query;
 
-  useEffect(() => {
-    if (!signedIn) {
-      setRows([]);
-      setError(null);
-      return;
-    }
-    if (inflight.current) return;
-    inflight.current = true;
-    let live = true;
+  const retry = useCallback(() => {
+    if (live) void refetch();
+  }, [live, refetch]);
+  /* A read already in flight began before this change and would land after
+     it, taking it back: stop it first, then write. */
+  const setRows = useCallback<ConnectionsState['setRows']>((action) => {
+    if (!live || businessId === null) return;
+    const target = keys.connections(businessId);
+    void client.cancelQueries({ queryKey: target }).then(() => {
+      client.setQueryData<Connection[] | null>(target, (prev) => (
+        typeof action === 'function' ? action(prev ?? null) : action
+      ));
+    });
+  }, [live, client, businessId]);
 
-    void repo.connections().then(
-      (c) => {
-        if (live) {
-          setRows(c);
-          setError(null);
-        }
-        inflight.current = false;
-      },
-      /* A failure must not claim there are none — that would put a
-         disconnected-looking screen in front of a working bot. Null
-         stays "unknown", and the callers fall back to saying nothing. */
-      (reason: unknown) => {
-        if (live) {
-          setRows(null);
-          setError(reason instanceof Error ? reason : new Error('Could not load connections.'));
-        }
-        inflight.current = false;
-      },
-    );
-
-    return () => {
-      live = false;
-      inflight.current = false;
-    };
-  }, [repo, signedIn, attempt]);
-
-  /* Saving a Telegram bot and pairing the owner's private chat are two
-     separate steps. Pairing finishes in Telegram, outside this page, so
-     keep the shared connection state fresh until the owner presses Start.
-     Owning the poll here lets Setup, Home, and My Business all clear their
-     action notice automatically instead of each screen inventing its own
-     version of the same check. */
-  useEffect(() => {
-    const awaitingTelegram = (rows ?? []).some(
-      (row) => row.connector === 'telegram' && row.status === 'connected' && row.paired !== true,
-    );
-    if (!signedIn || !awaitingTelegram) return;
-
-    let live = true;
-    const timer = window.setInterval(() => {
-      void repo.connections().then((next) => {
-        if (live) setRows(next);
-      }).catch(() => {});
-    }, 3000);
-    return () => {
-      live = false;
-      window.clearInterval(timer);
-    };
-  }, [repo, rows, signedIn]);
-
-  const mode: ConnectionsMode = !signedIn
-    ? 'demo'
-    : rows !== null
-      ? 'real'
-      : error
-        ? 'error'
-        : 'pending';
+  const rows = !signedIn ? NONE : query.data ?? null;
+  const failed = rows === null && query.isError && !query.isFetching;
+  const mode: ConnectionsMode = !signedIn ? 'demo' : rows !== null ? 'real' : failed ? 'error' : 'pending';
 
   return {
     rows,
     mode,
     real: mode === 'real',
-    error,
-    retry: () => {
-      setRows(null);
-      setError(null);
-      setAttempt((n) => n + 1);
-    },
+    error: failed ? query.error : null,
+    retry,
     setRows,
   };
 }

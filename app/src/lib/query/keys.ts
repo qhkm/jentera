@@ -19,6 +19,7 @@ export const keys = {
   notifications: (businessId: string) => ['biz', businessId, 'notifications'] as const,
   goals: (businessId: string) => ['biz', businessId, 'goals'] as const,
   activity: (businessId: string) => ['biz', businessId, 'activity'] as const,
+  connections: (businessId: string) => ['biz', businessId, 'connections'] as const,
 };
 
 /** Mutation keys live apart from query keys, scoped the same way. */

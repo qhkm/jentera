@@ -154,8 +154,15 @@ Deploy with `./deploy.sh "msg"` — builds `app/` and publishes to the **`aisar-
   refreshes in the background with the figures still on screen — until
   then it emptied the brief and the Activity list after every chat
   answer, approval and review. Its `real / pending / error / demo` answer
-  is unchanged, and a failed refresh stays `real`. Routines, Connections
-  and shared chats still fetch by hand until phase 2 reaches them.
+  is unchanged, and a failed refresh stays `real`. Connections joined it
+  too (`hooks/useConnections.ts`, key `['biz', id, 'connections']`): the
+  setup screen and the dashboard share one read, a return to the app reads
+  it again, and the Telegram pairing check runs every 3 s only while the
+  app is on screen (it ran in the background for as long as a bot stayed
+  unpaired). `setRows` stops any read in flight before it writes, so an
+  answer that began before a connect cannot land after it and take it
+  back. Routines and shared chats still fetch by hand until phase 2
+  reaches them.
 
 ## Native shell (`mobile/`)
 

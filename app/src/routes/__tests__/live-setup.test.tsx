@@ -6,6 +6,7 @@ import Setup from '@/routes/Setup';
 import { LocalRepository } from '@/lib/repo/local';
 import { RepositoryProvider } from '@/lib/repo/context';
 import { SignedInProvider } from '@/lib/repo/gate';
+import { TestQueryScope } from '@/test-support/query';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { ToastProvider } from '@/components/Toast';
 import type { Connection, RuntimeOverview } from '@/lib/repo';
@@ -97,7 +98,7 @@ class WaitingForStartRepository extends ReadyRepository {
 function mount(repo: LocalRepository) {
   return render(
     <MemoryRouter initialEntries={['/setup']}>
-      <SignedInProvider value>
+      <TestQueryScope><SignedInProvider value>
         <RepositoryProvider repository={repo}>
           <I18nProvider>
             <ToastProvider>
@@ -108,7 +109,7 @@ function mount(repo: LocalRepository) {
             </ToastProvider>
           </I18nProvider>
         </RepositoryProvider>
-      </SignedInProvider>
+      </SignedInProvider></TestQueryScope>
     </MemoryRouter>,
   );
 }

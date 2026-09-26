@@ -11,7 +11,7 @@
    These tests pin the two functions that decide what is real.
    ============================================================ */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { connectedNames } from '@/hooks/useConnections';
 import { withoutLinkClaim } from '@/lib/live-connectors';
 import type { Connection } from '@/lib/repo';
@@ -119,11 +119,13 @@ describe('stripping the subtitle’s connection claim', () => {
    third state.
    ============================================================ */
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type { QueryClient } from '@tanstack/react-query';
 import { useConnections } from '@/hooks/useConnections';
-import { RepositoryProvider } from '@/lib/repo/context';
 import { LocalRepository } from '@/lib/repo/local';
 import { SignedInProvider } from '@/lib/repo/gate';
+import { focusApp, renderWithQuery, returnToApp } from '@/test-support/query';
 
 function held() {
   const repo = new LocalRepository();
@@ -138,26 +140,63 @@ function held() {
   return { repo, calls, answer: (c: Connection[] = []) => release?.(c) };
 }
 
-function Probe() {
+function Probe({ id = 'mode' }: { id?: string }) {
   const c = useConnections();
-  return <span data-testid="mode">{c.mode}</span>;
+  return <div>
+    <span data-testid={id}>{c.mode}</span>
+    <span data-testid={`${id}-rows`}>{c.rows ? c.rows.map((r) => r.connector).join(',') || 'none' : 'unknown'}</span>
+    <button type="button" onClick={() => c.setRows((prev) => [row('google_calendar'), ...(prev ?? [])])}>Show a new connection</button>
+  </div>;
 }
 
-function mountWith(repo: LocalRepository, signedIn = true) {
-  return render(
-    <SignedInProvider value={signedIn}>
-      <RepositoryProvider repository={repo}>
-        <Probe />
-      </RepositoryProvider>
-    </SignedInProvider>,
-  );
+/** A page as the gate builds it: signed in means a cache above it. */
+function mountWith(repo: LocalRepository, signedIn = true, client?: QueryClient) {
+  return renderWithQuery(<SignedInProvider value={signedIn}><Probe /></SignedInProvider>, { repository: repo, client });
 }
+
+/** Lets an answer finish landing: the cache hands updates to the screen on
+    a later tick, so one tick is not always enough. */
+const settle = () => act(async () => { for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 0)); });
+
+/** Answers the test releases one at a time, in order. */
+function queued() {
+  const repo = new LocalRepository();
+  const waiting: { resolve: (c: Connection[]) => void; reject: (e: Error) => void }[] = [];
+  let calls = 0;
+  repo.connections = () => { calls += 1; return new Promise<Connection[]>((resolve, reject) => { waiting.push({ resolve, reject }); }); };
+  return {
+    repo,
+    calls: () => calls,
+    /* Each waits for its request to have been made: the repository loads
+       first, so an answer given too early would reach nobody. */
+    answer: async (c: Connection[]) => {
+      await waitFor(() => expect(waiting.length).toBeGreaterThan(0));
+      await act(async () => { waiting.shift()!.resolve(c); });
+      await settle();
+    },
+    fail: async () => {
+      await waitFor(() => expect(waiting.length).toBeGreaterThan(0));
+      await act(async () => { waiting.shift()!.reject(new Error('offline')); });
+      await settle();
+    },
+  };
+}
+
+function hidePage() {
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+  window.dispatchEvent(new Event('visibilitychange'));
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+});
 
 describe('what mode says before the answer arrives', () => {
   it('is pending, not demo', async () => {
     /* `demo` here is what put the playbook's 4 on the badge. */
     const { repo, calls, answer } = held();
-    mountWith(repo);
+    await mountWith(repo);
 
     /* Wait on the request, not on `pending`. `pending` is already true
        on the first render — before the effect fires — so waiting for it
@@ -172,7 +211,7 @@ describe('what mode says before the answer arrives', () => {
   });
 
   it('is demo only when nobody is signed in', async () => {
-    mountWith(new LocalRepository(), false);
+    await mountWith(new LocalRepository(), false);
     await waitFor(() => expect(screen.getByTestId('mode')).toHaveTextContent('demo'));
   });
 
@@ -183,9 +222,89 @@ describe('what mode says before the answer arrives', () => {
     repo.connections = async () => {
       throw new Error('offline');
     };
-    mountWith(repo);
+    await mountWith(repo);
 
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.getByTestId('mode')).toHaveTextContent('error');
+  });
+});
+
+describe('staying current', () => {
+  it('reads again when the owner comes back to the app, keeping the rows meanwhile', async () => {
+    const { repo, calls, answer } = queued();
+    const { client } = await mountWith(repo);
+    await answer([row('telegram')]);
+    await waitFor(() => expect(screen.getByTestId('mode-rows')).toHaveTextContent('telegram'));
+    await returnToApp(client);
+    await waitFor(() => expect(calls()).toBe(2));
+    expect(screen.getByTestId('mode-rows')).toHaveTextContent('telegram');
+    await answer([row('telegram'), row('bukku')]);
+    await waitFor(() => expect(screen.getByTestId('mode-rows')).toHaveTextContent('telegram,bukku'));
+  });
+
+  it('keeps the rows when reading them again fails', async () => {
+    const { repo, calls, answer, fail } = queued();
+    const { client } = await mountWith(repo);
+    await answer([row('telegram')]);
+    await returnToApp(client);
+    await waitFor(() => expect(calls()).toBe(2));
+    await fail();
+    expect(screen.getByTestId('mode')).toHaveTextContent('real');
+    expect(screen.getByTestId('mode-rows')).toHaveTextContent('telegram');
+  });
+
+  it('is read once for screens mounted apart, as the setup screen and the dashboard are', async () => {
+    const { repo, calls, answer } = queued();
+    await renderWithQuery(<SignedInProvider value><section><Probe id="setup" /></section><main><Probe id="dashboard" /></main></SignedInProvider>, { repository: repo });
+    await answer([row('telegram')]);
+    await waitFor(() => expect(screen.getByTestId('dashboard-rows')).toHaveTextContent('telegram'));
+    expect(calls()).toBe(1);
+  });
+
+  /* A connect or disconnect is shown at once from the server's answer. A
+     read that began before it must not land after it and take it back. */
+  it('keeps a change shown through setRows when an older read lands after it', async () => {
+    const { repo, calls, answer } = queued();
+    const { client } = await mountWith(repo);
+    await answer([row('telegram')]);
+    await returnToApp(client);
+    await waitFor(() => expect(calls()).toBe(2));
+    await userEvent.click(screen.getByRole('button', { name: 'Show a new connection' }));
+    await waitFor(() => expect(screen.getByTestId('mode-rows')).toHaveTextContent('google_calendar,telegram'));
+    await answer([row('telegram')]);
+    expect(screen.getByTestId('mode-rows')).toHaveTextContent('google_calendar,telegram');
+  });
+});
+
+describe('waiting for the Telegram owner chat to pair', () => {
+  const unpaired = (): Connection => ({ ...row('telegram'), paired: false });
+
+  it('checks every 3 s while the app is on screen, stops while it is hidden, and resumes on return', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    let calls = 0;
+    const repo = new LocalRepository();
+    repo.connections = async () => { calls += 1; return [unpaired()]; };
+    await mountWith(repo);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(calls).toBe(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+    expect(calls).toBe(2);
+    await act(async () => { hidePage(); await vi.advanceTimersByTimeAsync(12_000); });
+    expect(calls).toBe(2);
+    await focusApp();
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+    expect(calls).toBeGreaterThanOrEqual(3);
+  });
+
+  it('stops checking once the chat is paired', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    let calls = 0;
+    const repo = new LocalRepository();
+    repo.connections = async () => { calls += 1; return calls < 2 ? [unpaired()] : [row('telegram')]; };
+    await mountWith(repo);
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+    expect(calls).toBe(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(9000); });
+    expect(calls).toBe(2);
   });
 });
