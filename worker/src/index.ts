@@ -38,6 +38,7 @@ import { handleRepo } from './routes/repo';
 import { handleRuns } from './routes/runs';
 import { handleRoutines } from './routes/routines';
 import { handleReminders, dispatchDueReminders } from './reminders';
+import { handleVoice } from './routes/voice';
 import { handlePush } from './routes/push';
 import { handleArtifacts, RUNTIME_ARTIFACTS_PATH } from './routes/artifacts';
 import { handleRuntimeBundle } from './routes/runtime-bundle';
@@ -209,6 +210,8 @@ export default {
     /* Routines: owner-scheduled deterministic jobs, behind a flag. */
     const reminders = await handleReminders(request, env, url, headers);
     if (reminders) return reminders;
+    const voice = await handleVoice(request, env, url, headers);
+    if (voice) return voice;
     const routines = await handleRoutines(request, env, url, headers);
     if (routines) return routines;
 

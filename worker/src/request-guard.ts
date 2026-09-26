@@ -2,6 +2,8 @@ import { COOKIE_NAME, readSessionToken } from './auth';
 import type { Env } from './env';
 import { clientIp } from './ratelimit';
 import { ASK_FILE_PATH, INGEST_FILE_PATH, UPLOAD_DOCUMENT_LIMIT } from './routes/runs';
+import { VOICE_TRANSCRIBE_PATH } from './routes/voice';
+import { VOICE_MAX_BYTES } from './voice/transcribe';
 
 /** API payloads are small JSON commands except on the two explicitly bounded
     file routes below. */
@@ -41,7 +43,9 @@ function crossSiteCookieWrite(request: Request, env: Env): boolean {
 }
 
 function bodyCapFor(method: string, pathname: string): number {
-  return method === 'POST' && [INGEST_FILE_PATH, ASK_FILE_PATH].includes(pathname)
+  if (method !== 'POST') return MAX_API_BODY_BYTES;
+  if (pathname === VOICE_TRANSCRIBE_PATH) return VOICE_MAX_BYTES;
+  return [INGEST_FILE_PATH, ASK_FILE_PATH].includes(pathname)
     ? MAX_UPLOAD_BODY_BYTES
     : MAX_API_BODY_BYTES;
 }

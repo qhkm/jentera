@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { guardApiRequest, MAX_API_BODY_BYTES, MAX_UPLOAD_BODY_BYTES } from '../src/request-guard';
 import { ASK_FILE_PATH, INGEST_FILE_PATH, UPLOAD_DOCUMENT_LIMIT } from '../src/routes/runs';
+import { VOICE_TRANSCRIBE_PATH } from '../src/routes/voice';
+import { VOICE_MAX_BYTES } from '../src/voice/transcribe';
 import { testEnv } from './harness';
 
 const INGEST = `https://api.test${INGEST_FILE_PATH}`;
@@ -31,6 +33,18 @@ async function guard(request: Request): Promise<Response | null> {
 describe('the pre-route body cap', () => {
   it('never caps below the route own ceiling', () => {
     expect(MAX_UPLOAD_BODY_BYTES).toBeGreaterThanOrEqual(UPLOAD_DOCUMENT_LIMIT);
+  });
+
+  it('lets a voice recording through to the voice route, and to no other', async () => {
+    const VOICE = `https://api.test${VOICE_TRANSCRIBE_PATH}`;
+    const recording = (url: string, bytes: number) => new Request(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'audio/webm;codecs=opus', 'Content-Length': String(bytes) },
+      body: new Uint8Array(bytes),
+    });
+    expect(await guard(recording(VOICE, 4 * 1024 * 1024))).toBeNull();
+    expect((await guard(recording(VOICE, VOICE_MAX_BYTES + 1)))?.status).toBe(413);
+    expect((await guard(recording(ASK, 4 * 1024 * 1024)))?.status).toBe(413);
   });
 
   it('lets a document through to the upload route', async () => {

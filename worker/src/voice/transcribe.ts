@@ -19,6 +19,12 @@ const STOCK_PHRASES = new Set([
   'terima kasih', 'terima kasih kerana menonton', 'you', 'bye',
 ]);
 
+/** The largest recording heard, from Telegram or the app. Hearing a note
+    holds its bytes, a binary string and their base64 at once, so Telegram's
+    20 MB file limit came near the isolate's 128 MB (review, 26 Sep). A real
+    ten-minute Opus note is about 2.5 MB. */
+export const VOICE_MAX_BYTES = 5 * 1024 * 1024;
+
 export type Heard = { text: string } | { unintelligible: true };
 
 export async function transcribeVoice(ai: Ai, audio: Uint8Array): Promise<Heard> {

@@ -12,6 +12,7 @@
    ============================================================ */
 
 import { sanitizePublicRuntimeText } from '../runtime/public-output';
+import { VOICE_MAX_BYTES } from '../voice/transcribe';
 import {
   callVaultTelegram,
   fetchVaultTelegramFile,
@@ -685,10 +686,7 @@ export interface TelegramVoice {
     note transcribes in one Whisper request in about 80 s. */
 export const VOICE_MAX_SECONDS = 600;
 
-/** Hearing a note holds its bytes, a binary string and their base64 at once,
-    so Telegram's 20 MB file limit came near the isolate's 128 MB (review,
-    26 Sep). A real ten-minute Opus note is about 2.5 MB. */
-export const VOICE_MAX_BYTES = 5 * 1024 * 1024;
+export { VOICE_MAX_BYTES };
 
 export const VOICE_REPLIES = {
   tooLong: 'That voice note is longer than 10 minutes. Send a shorter one, or type your message.',
